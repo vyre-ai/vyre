@@ -190,7 +190,7 @@ test("needs and gate: list, show, revise (flags and $EDITOR), approve needs a pe
   assert.match(show.out, new RegExp(`vyre gate approve ${s}`));
   assert.equal(JSON.parse((await vyre(["gate", "show", s, "--json"], env)).stdout).draft.body, "The shop opens at 7 from Monday.");
   const sv = JSON.parse((await vyre(["gate", "show", s, "--view"], env)).stdout.split("\n")[0]);
-  assert.deepEqual([sv.cmd, sv.view.kind, sv.view.title, sv.view.state], ["gate show", "card", "send via mail", "held"]);
+  assert.deepEqual([sv.cmd, sv.view.kind, sv.view.title, sv.view.state], ["gate show", "card", "send via mail", "wait"]);
   assert.deepEqual(sv.view.fields.slice(0, 4), [{ label: "Id", value: s }, { label: "To", value: "kit@northwind.example" },
     { label: "Subject", value: "Opening hours" }, { label: "Words", value: "The shop opens at 7 from Monday." }]);
   // --view never opens an editor: it asks for the words, naming the command that takes them.

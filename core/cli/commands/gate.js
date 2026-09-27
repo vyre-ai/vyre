@@ -127,7 +127,9 @@ export function card(it) {
     ...(it.error ? [{ label: "Last send", value: `failed: ${it.error}` }] : []),
     ...(it.state === "held" ? [{ label: "Next", value: `vyre gate approve ${id8(it.id)} · vyre gate revise ${id8(it.id)} · vyre gate reject ${id8(it.id)}` }] : []),
   ];
-  return { kind: "card", title: `${it.kind} via ${it.via}`, state: it.state, fields };
+  // The draft's own state stays in data; the card's is Render's CheckState.
+  const state = it.state === "held" ? "wait" : it.state === "sent" || it.state === "approved" ? "ok" : /reject|fail/.test(String(it.state)) ? "failed" : "unknown";
+  return { kind: "card", title: `${it.kind} via ${it.via}`, state, fields };
 }
 
 /** Open $VISUAL or $EDITOR on text and return what was saved, or null when none can run here. */

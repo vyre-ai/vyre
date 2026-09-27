@@ -221,10 +221,10 @@ test("apps cli: questions stop after three rounds", async () => {
 test("apps cli: pick reads a number, a name from the list, yes, or a new name", () => {
   assert.deepEqual(pick(WHO, "2"), { text: "dinner at 8?", app: "WhatsApp", to: "c9" });
   assert.deepEqual(pick(WHO, "yes"), { text: "dinner at 8?", app: "WhatsApp", to: "c3" });
-  assert.deepEqual(pick(WHO, "AMIR"), { text: "dinner at 8?", app: "WhatsApp", to: "c9" });
+  assert.deepEqual(pick(WHO, "KIT"), { text: "dinner at 8?", app: "WhatsApp", to: "c9" });
   assert.equal(pick(WHO, "n"), null);
   assert.equal(pick({ ...WHO, didYouMean: undefined }, "y"), null, "a yes with nothing offered is not a name");
-  assert.deepEqual(pick(WHO, "kit"), { text: "dinner at 8?", app: "WhatsApp", to: "kit" });
+  assert.deepEqual(pick(WHO, "Northwind Bakery"), { text: "dinner at 8?", app: "WhatsApp", to: "Northwind Bakery" });
   assert.equal(pick(WHO, "9"), null);
   assert.deepEqual(pick(WHICH, "2"), { text: "I'm running late", app: "Messages", to: "juno" });
   assert.deepEqual(pick(WHICH, "slack"), { text: "I'm running late", app: "slack", to: "juno" });
