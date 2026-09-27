@@ -85,13 +85,14 @@ Owns `lib/connectors/` (was `core/connectors/`, moved 2026-09-28), `core/mcp/`, 
   Retested after the testbox resize (8 CPUs): docs-check caught docs/reference/tools.md gone stale
   from vault.connections.grant's new description; regenerated with `node scripts/gen-docs-reference`
   (no .js extension — the .js form 404s) and pushed as 0f0453b9. boundaries+docs-check 66/66.
-- Reviewer's MEDIUM on 9ca2c50a (signed off to land, fix before wiring): `normalize()` in
-  core/mcp/discover.js drops env/header VALUES but keeps `args` and `url` verbatim, and those are
-  common places a key sits in plain text (`--api-key sk-...`, `?key=...`, `user:pass@host`).
-  Not urgent today: nothing calls discover() outside its own tests yet (see Next item 1 below).
-  Must fix before that wiring lands: reduce `url` to origin+path (hasSecrets on query/userinfo),
-  redact the value after a `--*token/--*key/--*secret/--*password` flag (or its `=value` form) in
-  `args` (hasSecrets too), and add a test with a planted key in both places.
+- FIXED (06f92ad1): reviewer's MEDIUM on 9ca2c50a — `normalize()` in core/mcp/discover.js dropped
+  env/header VALUES but kept `args` and `url` verbatim, and those are common places a key sits in
+  plain text (`--api-key sk-...`, `?key=...`, `user:pass@host`). `url` is now reduced to
+  origin+pathname (`hasSecrets` on query or userinfo); `args` has each secret flag's value
+  (`--*token/--*key/--*secret/--*password`, next element or `=value` joined) replaced with the
+  literal `[redacted]`, its own `hasSecrets`. New test with a planted key in both places
+  (core/mcp/discover.test.js). core/mcp+core/config+boundaries+docs-check 137/137 on testbox.
+  Still true: nothing calls discover() outside its own tests yet (Next item 1).
 - LOAD RULE (lead): check `ssh testbox uptime` right before every run; run only under 6.
 - RESUMED 2026-09-28: merged origin/main (794 commits, 0.1.0-rc.1/rc.2 landed) into work/connectors
   at 38a0240c. Conflicts: CHANGELOG.md (kept both entries), core/modules/index.js and
