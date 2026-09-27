@@ -87,13 +87,14 @@ Perf:
 
 - `749317f`, `1505f42` on main c48959b: `/vyre todo|remind|agenda` use the planner's merged shapes
   (planner.add {text, kind?}, planner.list {kind: "todo"}, planner.agenda {from?}); a reminder is
-  `{text: "remind me <when> <what>"}` so parse.js reads the time. core/about reads `memory.me
-  {limit: 20}` and keeps the user's current facts at confidence 0.5+ for works_at, role, lives_in,
-  uses, prefers only. Real client names in tests replaced by the sample world.
+  `{text: "remind me <when> <what>"}` so parse.js reads the time. `f39404e`: core/about reads
+  memory-iq's `memory.profile {limit: 12}` and keeps kinds work, place, preference only (no people,
+  vehicles, clients); `/vyre remember` calls `memory_remember` and offers a lesson when refused. Real client names in tests replaced by the sample world.
 - End to end on the test box, a scratch tree of this branch + work/planner (8acf291) + work/memory-iq
   (23d25ac): test/cc-plugin (the real planner through the copied plugin's MCP server: remind in
   2 hours, todo, list, agenda, a no-time reminder refused), core/about, test/harness,
-  core/planner/planner, core/memory/personal/answer: 46/46. This branch alone (stand-in): 15/15.
+  core/planner/planner, core/memory/personal/answer: 46/46. Again at e1bd6cb (main 964af29) with
+  memory-iq 9cec54f: 48/48. The integrator's failing trial was ddf4653, before the rewrite. This branch alone (stand-in): 15/15.
 - SessionStart hook with about.md, vyred down, 30 runs on the Mac (load 2.6): 43 ms median, 47 ms
   p95 net of the timer (bare node 21 ms). Imports are about 13 ms, 10 of them core/daemon/client.js.
 
@@ -103,18 +104,19 @@ Perf:
 
 ## Next
 
-- memory-iq answers: if a bare "mcp" caller may use memory.answer, add a test through the plugin;
-  if memory.remember lands, the command already calls it.
+- When memory-iq allows bare "mcp": a combined test (memory_remember then memory_answer through
+  the copied plugin's MCP server).
 - When vyre is on npm: set `ON_NPM = true` in `harness/lib/vyre.js`.
 - If the hook's p95 creeps past 50 ms: import core/daemon/client.js lazily in hook.js (harness
   owner's file; ask first).
 
 ## Needs from others
 
-- memory-iq (asked 28 Sep): (1) memory.answer refuses the user's own Claude Code session, caller
-  bare "mcp" (not in OWNER); Vyre's threads always call as mcp:agent:<name>, so a bare "mcp" is
-  the user's session. Allow it? (2) is the memory.me subset above right and its row shape stable?
-  (3) memory.remember {text}: wanted? Until then `/vyre remember` offers a lesson.
+- memory-iq (shapes confirmed; memory.profile and memory.remember on 892b339): their gate refuses a
+  bare "mcp" caller, which is the user's own Claude Code session. Told them; they will add it.
+  Then add a combined test through the plugin for memory_answer and memory_remember.
+- planner: asked whether `at: "6pm"` alone and "6pm call ..." should parse (the lead thinks yes).
+  /vyre remind does not depend on it.
 - planner (settled 28 Sep): shapes adopted as merged; no {day, days} sugar needed. Told them a bare
   "mcp" caller is the user's own session (no label, may edit what it added); mcp:agent:<name> is
   an agent. Delivery of a due reminder: push + Capsule + Deck, not a Claude session. The agent
