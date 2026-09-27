@@ -17,6 +17,7 @@ import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
 import { answerer, parse as parseQuestion } from "./personal/answer.js";
 import { profile } from "./personal/profile.js";
+import { contradictions, settle as answerOf } from "./personal/contradict.js";
 import { createReader, claudeOnce, modelFor, turnHash } from "./personal/reader.js";
 import { asker, ASK_DAILY_USD } from "./iq/ask.js";
 import { fixes as fixLog } from "./iq/fix.js";
@@ -941,6 +942,27 @@ export default {
         for (const l of lines) { if (n + l.length > 300) break; out.push(l); n += l.length + 1; }
         return { lines: out };
       },
+    });
+    // Two values for one thing about the person's life, put to them to settle (graph win 3).
+    ctx.tool("memory.contradictions", {
+      description: "Things memory holds two values for about the person's life (where they live, their wife's name), for them to settle: { contradictions: [{ id, question, values: [{ value, confidence, sessions, last_seen }] }] }. The person's own surfaces only.",
+      input: { type: "object", properties: {} },
+      run: readerOnly(async () => {
+        if (running) await running.catch(() => {});
+        return { contradictions: contradictions(personal).map(({ _say, subject, ...c }) => c) };
+      }, "memory.contradictions"),
+    });
+    ctx.tool("memory.settle", {
+      description: "The person settles a contradiction: pick is the value that holds. It is told to memory in their words (\"I live in Porto\"), which outweighs every older value. Returns { id, text, facts } as memory.remember does; memory.uncorrect is not needed: telling memory again changes it.",
+      input: { type: "object", required: ["id", "pick"], properties: { id: { type: "string" }, pick: { type: "string" } } },
+      run: ownerWrite(async ({ id, pick }, { caller } = {}) => {
+        if (running) await running.catch(() => {});
+        const c = contradictions(personal).find(x => x.id === id);
+        if (!c) throw Object.assign(new Error(`no open contradiction ${id}: it may be settled already`), { code: "not_found" });
+        const r = personal.remember(answerOf(c, pick), { who: `settle:${plain(caller || "", 40)}` });
+        ctx.events.emit("memory.remembered", { id: r.id, facts: r.facts.length });
+        return { id: r.id, text: r.text, facts: r.facts.map(f => ({ id: f.id, subject: f.subject, rel: f.rel, object: f.object, confidence: f.confidence })) };
+      }),
     });
     // The preview for "Delete everything that came from <device>": what would go, in counts.
     ctx.tool("memory.device", {

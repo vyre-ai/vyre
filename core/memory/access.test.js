@@ -163,3 +163,21 @@ test("today: a project's brief line, its last session and what memory learned la
   // An agent granted only northwind gets nothing of harlow's.
   assert.equal((await call("memory.today", { room: "harlow", agent: "kit" }, "mcp:agent:kit")).code, "denied");
 });
+
+test("contradictions: the person sees and settles them; a model never does", async t => {
+  const { call, db } = await module_(t);
+  const put = db.prepare("INSERT INTO memory_me_claims (session, seq, ts, subj, rel, obj, conf, method) VALUES (?,?,?,?,?,?,?,?)");
+  put.run("11111111-aaaa-4000-8000-000000000001", 0, Date.now() - 9 * 86_400_000, "me", "lives_in", "place:Lisbon", 0.8, "model");
+  put.run("11111111-aaaa-4000-8000-000000000002", 0, Date.now() - 2 * 86_400_000, "me", "lives_in", "place:Porto", 0.8, "model");
+  await call("memory.curate", { full: true }, "cli");
+  const list = (await call("memory.contradictions", {}, "deck")).data.contradictions;
+  const home = list.find(c => c.rel === "lives_in");
+  assert.ok(home, JSON.stringify(list));
+  assert.equal(home.subject, undefined, "only what a surface shows");
+  assert.equal((await call("memory.contradictions", {}, "mcp")).code, "denied");
+  assert.equal((await call("memory.settle", { id: home.id, pick: "Porto" }, "mcp")).code, "denied");
+  const r = await call("memory.settle", { id: home.id, pick: "Porto" }, "deck");
+  assert.equal(r.data.text, "I live in Porto", JSON.stringify(r));
+  assert.equal((await call("memory.contradictions", {}, "deck")).data.contradictions.find(c => c.rel === "lives_in"), undefined);
+  assert.equal((await call("memory.settle", { id: home.id, pick: "Porto" }, "deck")).code, "not_found");
+});

@@ -26,6 +26,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (role: user or assistant). The trust
   world through memory.ask (`eval-iq --world trust`): accuracy 1, confident-wrong 0, the "Jordan"
   trap refused.
+- Contradictions to confirm: `memory.contradictions` lists what memory holds two values for about
+  the person's life ("Where do you live: Porto or Lisbon?", "What your wife's name is: Juno or
+  Jordan?"), when a rival still carries a fifth of the belief and the person has not settled it.
+  `memory.settle {id, pick}` tells memory their answer in their own words ("I live in Porto"),
+  which outweighs every older value. The person's surfaces only.
 - memory.ask takes `screen {app, title, selection, text}` (the Capsule's, floor-redacted): for a
   question that points at it ("who sent this email?"), the names the graph knows on screen widen
   the search and the model sees the screen marked as never a source. Never for a question about
