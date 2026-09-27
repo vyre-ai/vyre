@@ -36,6 +36,12 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 ## Needs from others
 
+- integrator: when merging, take this branch's scripts/gen-tokens over work/mobile 622224a's, drop
+  capsule-pro's hand-written Swift add-on, then run `npm run tokens` and commit the three outputs
+  (apps/app/src/theme/tokens.ts, the Capsule's Tokens.generated.swift, deck/css/tokens.css).
+- capsule-pro: Theme.swift reads Tokens.monoSizes, not TypeScale.mono.
+- deck: switch deck.css to import deck/css/tokens.css when ready.
+
 - User (via lead): violet or teal; confirm the install defaults (iPhone: web app over Tailscale;
   Android: APK over adb); Planner in the desktop rail and the phone's Places sheet.
 - sessions: Session board aligned with ADR 0030 (work/sessions 3496b48): provider, model and auth
