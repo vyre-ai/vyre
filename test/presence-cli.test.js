@@ -1,8 +1,9 @@
 // @ts-check
-// `vyre vault` and `vyre memory` writes against the REAL presence verifier (no test fixture that
-// finds a person at every call). Without a terminal they are refused asking for a person at a
-// terminal, which is callAsPerson's answer, so the commands do route through it. With the proof
-// (the code vyred writes to the person's login terminal, typed back) they go through.
+// `vyre vault` writes against the REAL presence verifier (no test fixture that finds a person at
+// every call). Without a terminal they are refused asking for a person at a terminal, which is
+// callAsPerson's answer, so the commands do route through it. With the proof (the code vyred
+// writes to the person's login terminal, typed back) they go through. `vyre memory` corrections
+// are the user's own and ask nothing (the no-nag rule).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -47,25 +48,28 @@ const terminal = screen => ({
   prompt: async () => /type this code[^:]*: ([A-Z0-9]+)/i.exec(screen.at(-1)?.text || "")?.[1] || "",
 });
 
-test("presence cli: vault and memory writes without a person are refused asking for one, exit 3", async t => {
+test("presence cli: vault writes without a person are refused asking for one, exit 3; memory asks nothing", async t => {
   const { root } = await realVyred(t);
   const env = { VYRE_HOME: root };
   const cases = [
     [["vault", "put", "mail-token", "--kind", "api-key"], "fixture-value\n"],
     [["vault", "grant", "mail-token", "gate"]],
     [["vault", "get", "mail-token", "--copy"]],
-    [["memory", "correct", "alex prefers tea", "wrong"]],
-    [["memory", "merge", "Harlow", "Harlow Legal"]],
-    [["memory", "split", "Harlow", "Harlow Legal"]],
   ];
   for (const [args, input] of cases) {
     const r = await vyre(args, env, input || "");
     assert.equal(r.code, 3, `vyre ${args.join(" ")}: ${r.out}`);
     assert.match(r.out, /needs a person at a terminal/, `vyre ${args.join(" ")} did not go through callAsPerson: ${r.out}`);
   }
+  // No terminal, no code: a correction reaches memory, whose own answer (nothing matches) is past presence.
+  for (const args of [["memory", "correct", "alex prefers tea", "wrong"], ["memory", "merge", "Harlow", "Harlow Legal"], ["memory", "split", "Harlow", "Harlow Legal"]]) {
+    const r = await vyre(args, env);
+    assert.notEqual(r.code, 3, `vyre ${args.join(" ")}: ${r.out}`);
+    assert.doesNotMatch(r.out, /person at a terminal|Type the code/, `vyre ${args.join(" ")} asked for presence: ${r.out}`);
+  }
 });
 
-test("presence cli: with the person's proof from their terminal, vault.put and memory.correct go through", async t => {
+test("presence cli: with the person's proof from their terminal, vault.put and vault.grant go through", async t => {
   const { root, screen } = await realVyred(t);
   const io = terminal(screen);
   const put = await callAsPerson("vault.put", { name: "mail-token", kind: "api-key", fields: { value: "fixture-value" } }, { root, io, tty: true });
@@ -73,7 +77,4 @@ test("presence cli: with the person's proof from their terminal, vault.put and m
   assert.equal(screen.at(-1).file, "/dev/ttys007", "the code went to the person's login terminal");
   const grant = await callAsPerson("vault.grant", { name: "mail-token", module: "gate" }, { root, io, tty: true });
   assert.ok(grant.data, JSON.stringify(grant));
-  // A fact that is not there is the tool's own answer, past presence: proof was accepted.
-  const c = await callAsPerson("memory.correct", { fact: "no such fact", action: "wrong" }, { root, io, tty: true });
-  assert.notEqual(c.error && c.error.code, "presence_required", JSON.stringify(c));
 });

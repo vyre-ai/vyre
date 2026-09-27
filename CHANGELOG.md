@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Memory corrections ask nothing; the Mac update line works
+
+- `vyre memory correct`, `merge` and `split` asked for the code on the terminal (or Touch ID) on
+  every correction, for the user's own memory. They no longer ask: memory.correct, memory.merge
+  and memory.split drop their presence declaration. The owner-surface allowlist stays, and a
+  session's MCP or a caller that names an agent is still refused, without a prompt.
+  `core/memory/index.js`, `core/cli/commands/memory.js`, `test/presence-cli.test.js`.
+- `vyre box update` told a Mac older than its box to run `npm i -g vyre@latest && vyre up`, which
+  fails: Vyre is not on npm yet. It and doctor's install-size fix now print
+  `npm install -g https://vyre.run/box/vyre.tgz && vyre up` (one constant, `INSTALL` in
+  `core/cli/brand.js`). The known gap is closed in the docs.
+
 #### `vyre up` after an upgrade restarts the old vyred; the assistant is one command away
 
 - On a user's Mac, `npm i -g` over an install and then `vyre up` printed "vyred is already

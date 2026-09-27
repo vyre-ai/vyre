@@ -36,24 +36,43 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - One vyred per home: vyred.lock in the real folder, socket from the real folder. Tests
   core/daemon/lock.test.js; checked with the real CLI on the test box through a symlink.
 
+## Done (4)
+
+- `vyre up` restarts a vyred on another build (d310169): "updated · restarted vyred (old → new)",
+  stops only the pid both the pid file and health name. test/upgrade.test.js.
+- The ending's assistant line says `vyre assistant <name>`; new `vyre assistant` (d310169).
+- `vyre box update` and doctor print `npm install -g https://vyre.run/box/vyre.tgz && vyre up`
+  (INSTALL in core/cli/brand.js); the known gap is closed in box-care, troubleshooting, known-gaps.
+- No-nag: memory.correct/merge/split drop presence; agents and MCP stay refused (ownerWrite and the
+  callers list), silently. Targeted tests 64/64 on the test box.
+
 ## Doing
 
-- Stress-drive memory: the 30 min run had 0 functional failures but an RSS slope of 2.85 MB/10 min
-  (80 -> 88.5 MB in the first 15 min, then flat; the 98 MB last sample was the log read-back).
-  Post-run samples are now excluded and /v1/health carries memory; a 20 min rerun on the test
-  box (~/vyre-ci/stress-polish2.json) will say whether the JS heap grows or a native cache fills.
+- Vault reveal and grant: one proof lasting about 30 minutes from the CLI. Asked the lead where
+  the window may live (Claude's Bash is the same user, so a secret file or claimed tty is
+  readable or spoofable). Proposal: the existing presence session, opened by Touch ID, passkey or
+  Capsule, held per device by vyred, covering vault.reveal/copy/totp and vault.approve/grant, only
+  for cli, deck and capsule callers; a tty code stays one per call.
 
 ## Next
 
-- Read the rerun; fix a heap leak if there is one, or document the cache warmup.
+- Stress-drive memory: 30 min run had 0 failures but RSS 80 -> 88.5 MB in the first 15 min, then
+  flat. A 20 min rerun on the test box is at ~/vyre-ci/stress-polish2.json: read it, fix a heap
+  leak if there is one, or document the cache warmup.
 - capsule-now to call capsule.report from the app (asked); then doctor's Capsule line is real.
 
 ## Needs from others
+
+- lead: yes/no on the vault 30-minute window above; whether learn.* and agents.create/update
+  also drop presence as own-data (left gated for now).
 
 - tailnet: `link.health` shape for the status line (asked).
 - connectors: `vyre connect` conventions and any tool the screen should show (asked).
 
 ## Changed contracts
+
+- memory (owner: memory/recall team): memory.correct, memory.merge, memory.split no longer
+  declare presence (their summaries are gone). docs/using/memory.md says so.
 
 - link (owner: link/tailnet): link.find and link.pair refuse `not_real_home` on a temp home
   (config/dialogs.js realBoxAllowed).

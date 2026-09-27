@@ -1623,7 +1623,6 @@ Correct a fact: wrong (never true), ended (stopped being true at `at`), replace 
   - `subject` string
   - `wait` boolean
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Needs a person present.
 
 ### `memory.corrections`
 
@@ -1681,7 +1680,6 @@ Two nodes are one: everything said about the first is said about the second (int
   - `into` string, required
   - `node` string, required
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Needs a person present.
 
 ### `memory.mute`
 
@@ -1728,7 +1726,6 @@ One node is two: with room or project, the one that project's sessions name is s
   - `project` string
   - `room` string
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Needs a person present.
 
 ### `memory.stats`
 

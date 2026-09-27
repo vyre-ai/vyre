@@ -7,7 +7,7 @@
 // read; every tool still answers, with nothing.
 
 import { Curator } from "./curator.js";
-import { Graph, say } from "./graph.js";
+import { Graph } from "./graph.js";
 import { floorPlan } from "./floor.js";
 import path from "node:path";
 import { within } from "./teach.js";
@@ -272,49 +272,15 @@ export default {
       prior_source: prior ? String(prior.origin || "extract") : null, prior_rule: prior?.rule ?? null,
       prior_confidence: prior ? Number(prior.confidence) : null,
     });
-    // ---- presence (ADR 0004): what the user is asked to approve, one line of plain text. The
-    // registry on main ignores the field today; security's enforces it. A summary never throws:
-    // it reads labels from the main graph when it can, and falls back to what was typed.
-    /** Plain text, one line, under 400 characters: no control characters, quotes kept simple. */
+    // Corrections are the user's own: no presence proof (the no-nag rule). An agent is still
+    // refused by ownerWrite, without a prompt.
+    /** Plain text, one line: no control characters, for a refusal that quotes a caller. */
     const plain = (x, max = 120) => {
       const t = String(x ?? "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim();
       return t.length > max ? t.slice(0, max - 3) + "..." : t;
     };
-    /** A node's label from its id or name, else the text without its kind prefix ("title:cto" -> "cto"). */
-    const labelOf = x => {
-      const v = String(x ?? "");
-      try { const n = graph.node(v) || graph.resolve(v); if (n) return String(n.label); } catch {}
-      return v.replace(/^[a-z]+:/, "").replace(/#.*$/, "");
-    };
-    const where = input => { const room = roomOf(input); return room && room !== "*" ? `(in ${plain(room, 60)})` : "(everywhere)"; };
-    const summary = fn => input => {
-      let text;
-      try { text = fn(input || {}); } catch { text = "a memory change"; }
-      return plain(text, 399);
-    };
-    const factOf = input => {
-      const [a, r, b] = input.fact ? String(input.fact).split("|") : [input.subject, input.rel, input.object];
-      return `"${plain(say(String(r || "?"), plain(labelOf(a)), plain(labelOf(b))), 160)}"`;
-    };
-    const correctSummary = summary(input => {
-      const f = factOf(input), w = where(input);
-      switch (input.action) {
-        case "wrong": return `Correct: ${f} is wrong ${w}`;
-        case "ended": return `Correct: ${f} ended${input.at != null && input.at !== "" ? " " + plain(input.at, 40) : ""} ${w}`;
-        case "replace": return `Correct: ${f} -> "${plain(input.object, 80)}" ${w}`;
-        case "confirm": return `Confirm: ${f} ${w}`;
-        case "add": return `Add: ${f} ${w}`;
-        default: return `Correct: ${f} ${w}`;
-      }
-    });
-    const mergeSummary = summary(input => `Merge: "${plain(labelOf(input.node), 80)}" into "${plain(labelOf(input.into), 80)}" (everywhere)`);
-    const splitSummary = summary(input => input.other
-      ? `Split: "${plain(labelOf(input.node), 80)}" and "${plain(labelOf(input.other), 80)}" are two (everywhere)`
-      : `Split: "${plain(labelOf(input.node), 80)}" ${where(input)} is someone else`);
-
     ctx.tool("memory.correct", {
       callers: OWNERS,
-      presence: { summary: correctSummary },
       description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads.",
       input: { type: "object", required: ["action"], properties: { fact: { type: "string" }, subject: { type: "string" }, rel: { type: "string" }, object: { type: "string" },
         action: { type: "string", enum: ["wrong", "ended", "replace", "confirm", "add"] }, at: {}, note: { type: "string" }, wait: { type: "boolean" }, ...roomField } },
@@ -346,7 +312,6 @@ export default {
     });
     ctx.tool("memory.merge", {
       callers: OWNERS,
-      presence: { summary: mergeSummary },
       description: "Two nodes are one: everything said about the first is said about the second (into).",
       input: { type: "object", required: ["node", "into"], properties: { node: { type: "string" }, into: { type: "string" } } },
       run: ownerWrite(async ({ node, into }, { caller } = {}) => {
@@ -362,7 +327,6 @@ export default {
     });
     ctx.tool("memory.split", {
       callers: OWNERS,
-      presence: { summary: splitSummary },
       description: "One node is two: with room or project, the one that project's sessions name is someone else (two different people with one name); with other, two nodes that were merged are kept apart.",
       input: { type: "object", required: ["node"], properties: { node: { type: "string" }, other: { type: "string" }, ...roomField } },
       run: ownerWrite(async (input, { caller } = {}) => {
