@@ -54,7 +54,7 @@ public final class Desk: ObservableObject {
     /// The Capsule hid: the list and any card close; what waits stays, and is read again on open.
     func hidden() { closeCard(); mode = .none }
 
-    /// What counts toward the Beacon dot: proposed lessons are quiet.
+    /// What counts toward the attention dot: proposed lessons are quiet.
     public var loud: Int { VyState.loud(waiting) }
     public var open: Waiting? { if case .card(let k) = mode { return waiting.first { $0.key == k } }; return nil }
     public var pinned: Bool { if case .card = mode { return true }; return false }

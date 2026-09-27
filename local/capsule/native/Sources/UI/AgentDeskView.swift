@@ -1,6 +1,6 @@
 // AgentDesk: the waiting list and the card that answers one item, drawn from Desk.
 //
-// Beacon for anything held or asking, quiet for a proposed lesson. The list is oldest first. A
+// Attention (violet) for anything held or asking, quiet for a proposed lesson. The list is oldest first. A
 // mail draft is edited in place and ⌘⏎ sends exactly what the card shows; an ask or a lesson is a
 // yes or a no. Keys are the panel's (Agent/AgentPanelKeys.swift); this view only draws.
 
@@ -12,7 +12,7 @@ struct WaitingList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("WAITING ON YOU · \(desk.waiting.count)").font(Theme.label).tracking(1.6).foregroundColor(Theme.beacon)
+                Text("WAITING ON YOU · \(desk.waiting.count)").font(Theme.label).tracking(1.6).foregroundColor(Theme.attention)
                 Spacer()
                 Text("oldest first").font(Theme.label).foregroundColor(Theme.ash)
             }
@@ -34,7 +34,7 @@ struct WaitingRow: View {
     let selected: Bool
     var body: some View {
         HStack(spacing: 10) {
-            Circle().fill(w.quiet ? Theme.ash : Theme.beacon).frame(width: 7, height: 7).frame(width: Theme.iconSize)
+            Circle().fill(w.quiet ? Theme.ash : Theme.attention).frame(width: 7, height: 7).frame(width: Theme.iconSize)
             VStack(alignment: .leading, spacing: 1) {
                 Text(w.title).font(Theme.title).foregroundColor(Theme.bone).lineLimit(1)
                 if !w.sub.isEmpty { Text(w.sub).font(Theme.subtitle).foregroundColor(Theme.stone).lineLimit(1) }
@@ -46,7 +46,7 @@ struct WaitingRow: View {
         .padding(.horizontal, 14)
         .frame(height: Theme.rowHeight)
         .background(selected ? Theme.raised : Color.clear)
-        .overlay(alignment: .leading) { if selected { Rectangle().fill(Theme.beacon).frame(width: 2) } }
+        .overlay(alignment: .leading) { if selected { Rectangle().fill(Theme.attention).frame(width: 2) } }
     }
 }
 
@@ -59,7 +59,7 @@ struct HeldCardView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text(w.source == .lesson ? "VYRE PROPOSES" : "HELD FOR YOU").font(Theme.label).tracking(1.6)
-                    .foregroundColor(w.source == .lesson ? Theme.ash : Theme.beacon)
+                    .foregroundColor(w.source == .lesson ? Theme.ash : Theme.attention)
                 Text(w.title).font(Theme.title).foregroundColor(Theme.bone).lineLimit(1)
             }
             content
@@ -145,7 +145,7 @@ struct WaitingHint: View {
     var body: some View {
         let n = desk.waiting.count
         HStack(spacing: 8) {
-            Circle().fill(desk.loud > 0 ? Theme.beacon : Theme.ash).frame(width: 6, height: 6)
+            Circle().fill(desk.loud > 0 ? Theme.attention : Theme.ash).frame(width: 6, height: 6)
             Text("\(n) waiting on you. Press ↑ to see \(n == 1 ? "it" : "them").").font(Theme.subtitle).foregroundColor(Theme.stone)
             Spacer()
         }

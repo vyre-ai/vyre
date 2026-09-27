@@ -21,7 +21,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     lazy var planner = PlannerBanners(vyred: vyred)
     /// Clipboard, contacts, modules, Glass and watches (Agent/AgentWiring.swift).
     let wiring: AgentWiring
-    /// The menu-bar item's button, for the Beacon mark (Agent/AgentMenuBar.swift).
+    /// The menu-bar item's button, for the attention mark (Agent/AgentMenuBar.swift).
     var status: NSStatusItem? { menuBar?.item }
     /// Repaints the mark when the waiting list changes (Agent/AgentMenuBar.swift).
     var agentSink: AnyCancellable?
@@ -47,6 +47,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         // must not take the user's keys or add a second mark to his menu bar.
         let headless = ProcessInfo.processInfo.environment["VYRE_CAPSULE_HEADLESS"] == "1"
         hotkeys.fire = { [weak self] front in self?.panel.toggle(front: front) }
+        hotkeys.onChange = { [weak self] ok, message in self?.reportHotkeys(ok: ok, message: message) }
         if !headless { hotkeys.start() }
         (model.providers.first as? AppsProvider)?.refreshIfChanged(wait: false)
         // Human-only calls (ADR 0004): "Confirm it's you" in the panel, then the Capsule's key signs.
@@ -60,11 +61,14 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
             let box = UncheckedBox(input)
             return await MainActor.run { presence }.proofFromAnyThread(tool: tool, input: box)
         }
-        vyred.follower.onState = { [weak self] st in self?.health.set(up: st == .open) }
+        vyred.follower.onState = { [weak self] st in
+            self?.health.set(up: st == .open)
+            if st == .open { self?.hotkeys.reportRetry() }
+        }
         vyred.follower.start()
         panel.onShownChange = { [weak self] shown in if shown { self?.health.refresh() } else { self?.menuBar?.close() } }
         if !headless { makeStatusItem() }
-        // The agent half (Agent/): the waiting list and its Beacon dot, the wired providers,
+        // The agent half (Agent/): the waiting list and its attention dot, the wired providers,
         // capsule.requested, and the driven mode.
         followWaiting()
         wiring.attach(model)
@@ -133,6 +137,18 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
             default: return p.uppercased()
             }
         }.joined()
+    }
+
+    /// capsule.report: whether Control twice works, and if not why, for `vyre doctor`. A failed
+    /// send (vyred not up yet) goes again when the follower reconnects.
+    func reportHotkeys(ok: Bool, message: String?) {
+        var input: [String: Any] = ["ok": ok]
+        if let message { input["message"] = message }
+        let vyred = self.vyred
+        Task { [weak self] in
+            let r = await vyred.call("capsule.report", input, timeout: 5)
+            if r.error != nil { self?.hotkeys.reportFailed(ok: ok, message: message) }
+        }
     }
 
     @objc func openCapsule() { panel.show(front: PanelController.frontApp()) }

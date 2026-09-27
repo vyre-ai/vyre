@@ -33,7 +33,7 @@ public final class IconCache {
         case .ash: return rgb(0x8C877D)
         case .signal: return rgb(0xC6F36B)
         case .recall: return rgb(0xEBC76B)
-        case .beacon: return rgb(0xFF7A59)
+        case .attention: return rgb(0xB8A4FF)
         }
     }
     static func rgb(_ v: Int) -> NSColor {

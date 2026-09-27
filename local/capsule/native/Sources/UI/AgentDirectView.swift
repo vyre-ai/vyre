@@ -1,5 +1,5 @@
 // AgentDirect: the conversation with an agent, drawn from Direct. History oldest first, the reply
-// streaming into it, the agent's open asks in Beacon (a click opens the card), and vyred's own
+// streaming into it, the agent's open asks in violet attention (a click opens the card), and vyred's own
 // notices as one faint line (rule 3).
 
 import SwiftUI
@@ -48,11 +48,11 @@ struct DirectView: View {
             Text(m.role == .user ? (m.surface.map { "YOU · \($0.uppercased())" } ?? "YOU") : agent.uppercased())
                 .font(Theme.label).tracking(1.2).foregroundColor(m.role == .agent ? Theme.signal : Theme.ash)
             ForEach(Array((m.tools ?? []).enumerated()), id: \.offset) { _, t in
-                Text("\(t.done ? (t.error ? "failed" : "done") : "running") · \(t.summary)").font(Theme.label).foregroundColor(t.error ? Theme.beacon : Theme.ash).lineLimit(1)
+                Text("\(t.done ? (t.error ? "failed" : "done") : "running") · \(t.summary)").font(Theme.label).foregroundColor(Theme.ash).lineLimit(1)
             }
             Text(DirectView.markdown(m.text + (m.role == .agent && m.done != true && m.error == nil ? " …" : "")))
                 .font(Theme.reply).foregroundColor(Theme.bone).textSelection(.enabled)
-            if let e = m.error { Text(e).font(Theme.subtitle).foregroundColor(Theme.beacon) }
+            if let e = m.error { Label("Failed. \(e)", systemImage: "xmark.circle").font(Theme.subtitle).foregroundColor(Theme.stone) }
         }
         .opacity(m.pending ? 0.6 : 1)
     }

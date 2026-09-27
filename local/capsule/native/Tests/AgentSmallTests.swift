@@ -1,6 +1,6 @@
 // capsule-suite: agentSmallSuite
 // With vyred gone the Capsule says it is offline; the
-// menu-bar mark has a Beacon version for when something waits.
+// menu-bar mark has an attention (violet) version for when something waits.
 
 import AppKit
 import Foundation
@@ -24,7 +24,7 @@ let agentSmallSuite = Suite("agent small") { t in
         t.eq(got?.1, true)
     }
 
-    t.test("the menu-bar mark with the Beacon dot draws") {
+    t.test("the menu-bar mark with the attention dot draws") {
         let img = MainActor.assumeIsolated { CapsuleApp.menuBarMarkWaiting() }
         t.ok(img.size.width == 18 && !img.isTemplate)
     }

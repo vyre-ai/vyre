@@ -20,7 +20,8 @@ public enum Theme {
     public static let bone = hex(0xF1EEE6)
     public static let signal = hex(0xC6F36B)
     public static let recall = hex(0xEBC76B)
-    public static let beacon = hex(0xFF7A59)
+    /// The "needs you" colour: violet, matching the Deck and the phone (never coral for waiting).
+    public static let attention = hex(0xB8A4FF)
 
     public static func tint(_ t: Tint) -> Color {
         switch t {
@@ -29,7 +30,7 @@ public enum Theme {
         case .ash: return ash
         case .signal: return signal
         case .recall: return recall
-        case .beacon: return beacon
+        case .attention: return attention
         }
     }
 

@@ -4,6 +4,34 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Esc takes back a queued message in the native Capsule
+
+- Esc on a reply queued for a terminal-busy session calls `threads.unqueue` with the send's
+  `queued_id` ("Taken back. <name> never got it."); handed over, Esc only stops following and
+  never calls threads.stop; a hand-over racing the key says "Too late" once (capsule-now rule 8).
+  `local/capsule/native/Sources/Host/CapsuleModel.swift` `stopReply`, `takeBack`;
+  `Vyred/State.swift` QueuedSend `id`, `withdrawn`; `UI/CapsuleView.swift`. Test in
+  Tests/CapsuleModelTests.swift.
+
+#### No orange in the Capsule
+
+- Beacon orange is gone from both Capsules. Things that need you (the held glyph in results, Kit's
+  tint, formerly `Tint.beacon`, now `Tint.attention`) are violet #B8A4FF. Errors and status lines
+  (Stopped., failed turns and tools, the sight panels' status) are neutral: Stone text, a crossed
+  circle and a word. A destructive action's confirm line is Bone. `local/capsule/native/Sources/`
+  UI, Kit, Providers/IconCache.swift, Extensions/sight; `local/capsule/app/capsule.css`, `capsule.js`.
+
+#### The Capsule tells `vyre doctor` why Control twice is off, and waiting is violet
+
+- The native Capsule calls capsule.report once after its hot keys start and again only when
+  Control twice turns on or off (asked for from the menu, or a tap macOS turned off for good). The
+  message names the cause and the chord that still works, for example "Input Monitoring is off,
+  so Control twice is off. ⌥Space still opens the Capsule." A report vyred missed goes again when
+  it is back. `local/capsule/native/Sources/Host/HotkeyReport.swift`, `Host/Hotkeys.swift`.
+- "Waiting on you" is violet (`Theme.attention`, #B8A4FF), as on the Deck and the phone: the list
+  label, dots, selected bar, source label, the hint under an empty box, and the menu-bar mark's
+  dot. The Electron Capsule's waiting label, dot, badge and tray dot match (`--attention`).
+
 #### The box's alarms and reminders ring on the Mac
 
 - The native Capsule keeps /v1/link/events open (hidden too: a timer on the box has to ring
@@ -328,6 +356,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   has is still `not_found`; an away Mac says so. `recall.transcript` joins the link's read
   allowlist (core/link/allow.js), and agents and MCP still never get it. Test:
   test/federation-reads.test.js.
+
+#### The site has no Capsule zip, and a clean checkout stamps clean
 
 - The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and
   `release.sh` no longer build, upload or redirect to `Vyre-mac.zip`. `/download/mac` still

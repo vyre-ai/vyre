@@ -631,7 +631,7 @@ public final class CapsuleModel: ObservableObject {
             // capsule-now rule 5: busy in a terminal, the words wait for its turn to end.
             if VJ.truthy(d["queued"]) {
                 let name = VJ.nonEmpty(d["name"]) ?? c.label
-                reply?.queued = QueuedSend(name: name, note: VJ.nonEmpty(d["note"]))
+                reply?.queued = QueuedSend(name: name, note: VJ.nonEmpty(d["note"]), id: (d["queued_id"] as? NSNumber)?.intValue)
                 return .said(VJ.nonEmpty(d["note"]) ?? "\(name) is busy in your terminal. I'll hand it your message when this turn ends.")
             }
             if VJ.bool(d["sent"]) == false {
@@ -672,12 +672,38 @@ public final class CapsuleModel: ObservableObject {
 
     public func stopReply() {
         guard let r = reply, !r.finished else { return }
+        // capsule-now rule 8: words still queued for a terminal session are taken back; once
+        // handed over there is no interrupt path into it, so the Capsule stops following only.
+        if let q = r.queued, VyState.replyText(r).isEmpty {
+            if !q.delivered { Task { @MainActor in await takeBack(r, q) }; return }
+            reply = VyState.cancel(r)
+            line = "Stopped following. \(q.name) already has your message; its reply lands in its thread."
+            return
+        }
         reply = VyState.cancel(r)
-        // A queued message has no interrupt path into a terminal session: stop following only.
-        if r.queued != nil { line = "Stopped following. \(r.queued!.name) still gets the message when its turn ends."; return }
         if r.thread.isEmpty { return }
         // threads.stop takes {thread}: with {id} it was refused and the process ran on.
         keeper.stop(r.thread)
+    }
+}
+
+extension CapsuleModel {
+    /// threads.unqueue for words not handed over yet. Empty means the Harness handed them over
+    /// between the key and the call: say so once, and the next Esc stops following.
+    func takeBack(_ r: Reply, _ q: QueuedSend) async {
+        var input: [String: Any] = ["thread": r.thread, "surface": "capsule"]
+        if let id = q.id { input["queued"] = id }
+        let u = await vyred.call("threads.unqueue", input, presence: false)
+        if let why = Bridge.explain(u) { line = "Could not take it back: \(why)"; return }
+        let ids = ((u.data as? [String: Any])?["unqueued"] as? [Any]) ?? []
+        guard reply?.thread == r.thread else { return }
+        if !ids.isEmpty {
+            if var x = reply { x = VyState.cancel(x); x.queued?.withdrawn = true; reply = x }
+            line = "Taken back. \(q.name) never got it."
+        } else {
+            reply?.queued?.delivered = true
+            line = "Too late: \(q.name) already has it. Its reply shows here when its turn ends."
+        }
     }
 }
 
