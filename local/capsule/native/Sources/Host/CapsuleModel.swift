@@ -19,7 +19,7 @@ public final class CapsuleModel: ObservableObject {
         public var id: String { section.rawValue }
     }
 
-    @Published public var text = "" { didSet { if text != oldValue { search() } } }
+    @Published public var text = "" { didSet { if text != oldValue { extensionBoxChanged?(); search() } } }
     @Published public internal(set) var groups: [Group] = []
     @Published public var selected = 0
     /// One line under the bar ("Copied", an error), cleared on the next keystroke.
@@ -49,7 +49,7 @@ public final class CapsuleModel: ObservableObject {
             // The outer chip stays only while `target` is its child; any other change (nil, an
             // agent, another app) makes the chip one level again, so the two never disagree.
             if let p = targetParent, target.map({ $0.id.hasPrefix(Self.childID(p.id, "")) }) != true { targetParent = nil }
-            if target != oldValue { targetChanged(); search() }
+            if target != oldValue { extensionBoxChanged?(); targetChanged(); search() }
         }
     }
     /// The outer chip when `target` was picked inside it: WhatsApp for "WhatsApp › juno". Set
@@ -65,6 +65,8 @@ public final class CapsuleModel: ObservableObject {
     var extensionMentions: ((String, VyreCandidate?) -> [ExtensionMention])?
     var extensionRefreshers: ((String, VyreCandidate?) -> [@MainActor () async -> (String, [ExtensionMention])?])?
     var extensionPicked: ((VyreCandidate, VyreCandidate?) -> Void)?
+    /// The words or the chip changed: extensions forget a preview waiting for a second Enter.
+    var extensionBoxChanged: (() -> Void)?
     var sendToExtension: ((String, VyreCandidate, VyreCandidate?, Query) async -> ActionOutcome)?
     private var appTargets: [String: MentionTarget] = [:]
     /// Rows a refreshMentions brought, per extension, for one `@` query (`key`). Used while the box

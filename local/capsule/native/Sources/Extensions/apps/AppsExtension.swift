@@ -93,10 +93,16 @@ final class AppsExtension: CapsuleExtension {
     private(set) var inside: [String: [MentionTarget]] = [:]
     /// The raw ids apps.targets gave, by our target id.
     private var rawIDs: [String: String] = [:]
-    /// A send shown and waiting for the second Enter: the words, where, and the route.
+    private var reading: Task<Void, Never>?
+    /// A send shown and waiting for the second Enter: the words, where, and the route. Forgotten
+    /// when the words or the chip change (boxChanged), on hide, and after previewFor.
     private(set) var pending: (key: String, route: AppsRoute, at: Date)?
     /// How long a preview waits for its second Enter.
-    static let previewFor: TimeInterval = 120
+    static let previewFor: TimeInterval = 60
+    /// Bumped on every hide and box change: a route that lands after one never arms a preview.
+    private var generation = 0
+    /// A route or a send in flight: another Enter meanwhile is not a second Enter.
+    private var busy = false
 
     init(host: CapsuleHost) { self.host = host }
 
@@ -106,8 +112,11 @@ final class AppsExtension: CapsuleExtension {
 
     func capsuleDidHide() {
         listing?.cancel(); listing = nil
-        pending = nil
+        reading?.cancel(); reading = nil
+        pending = nil; generation += 1
     }
+
+    func boxChanged() { pending = nil; generation += 1 }
 
     /// apps.list, once per showing; the rows stay for the next `@` from memory.
     func loadApps() {
@@ -117,7 +126,9 @@ final class AppsExtension: CapsuleExtension {
 
     func refreshApps(_ v: VyredLink) async {
         let r = await v.call("apps.list", ["limit": 100])
-        guard !Task.isCancelled, r.error == nil else { return }
+        guard !Task.isCancelled else { return }
+        // A failure is tried again at the next `@`, not left until the next showing.
+        guard r.error == nil else { listing = nil; return }
         apps = AppRow.from(r.data)
     }
 
@@ -133,6 +144,8 @@ final class AppsExtension: CapsuleExtension {
             guard let app = appName(p) else { return [] }
             return filter(inside[app] ?? [], query)
         }
+        // vyred's tools may not have been read when the Capsule showed: ask again, without waiting.
+        if apps.isEmpty { loadApps() }
         let q = query.trimmingCharacters(in: .whitespaces)
         let known = apps.filter { !$0.actions.isEmpty }
         let rows = q.isEmpty ? known : apps
@@ -155,13 +168,14 @@ final class AppsExtension: CapsuleExtension {
 
     func mentionPicked(_ target: MentionTarget, context: MentionContext) {
         guard context.parent == nil, target.nests, let app = appName(target), let v = vyred else { return }
-        Task { [weak self] in await self?.readInside(app, parent: target.id, v) }
+        reading?.cancel()
+        reading = Task { [weak self] in await self?.readInside(app, parent: target.id, v) }
     }
 
     /// What is inside an app, into memory, so the next `@` under its chip answers at once.
     func readInside(_ app: String, parent: String, _ v: VyredLink) async {
         let r = await v.call("apps.targets", ["app": app, "q": "", "limit": 50])
-        guard r.error == nil else { return }
+        guard !Task.isCancelled, r.error == nil else { return }
         inside[app] = targets(r.data, app: app, parent: parent)
     }
 
@@ -199,8 +213,16 @@ final class AppsExtension: CapsuleExtension {
         guard v.has("apps.route") else { return .failed("The apps module is not on this Vyre yet.") }
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let app = appName(parent ?? target) else { return .failed("\(target.label) is not an app Vyre knows.") }
-        let child = parent == nil ? nil : (rawIDs[target.id] ?? target.label)
+        // A child is sent to by the id its app gave, never by a name vyred might match to another.
+        var child: String?
+        if parent != nil {
+            guard let id = rawIDs[target.id] else { return .failed("\(target.label) is not in \(app) any more. Type @ to pick again.") }
+            child = id
+        }
         let key = "\(app)\u{0}\(child ?? "")\u{0}\(words)"
+        guard !busy else { return .said("One moment: the last one is still going.") }
+        busy = true
+        defer { busy = false }
 
         // The second Enter on the same words, while its preview is fresh: send it.
         if let p = pending, p.key == key, Date().timeIntervalSince(p.at) < Self.previewFor {
@@ -211,6 +233,7 @@ final class AppsExtension: CapsuleExtension {
 
         var input: [String: Any] = ["text": words, "app": app]
         if let c = child { input["to"] = c }
+        let gen = generation
         let r = await v.call("apps.route", input)
         if let why = r.error { return .failed(why) }
         let route = AppsRoute.from(r.data)
@@ -219,6 +242,8 @@ final class AppsExtension: CapsuleExtension {
         case .ask(let ask, let dym, let names): return .said(AppsRoute.question(ask, dym, names))
         case .action(_, _, _, let sends, _, let said):
             if !sends { return await commit(route, v) }
+            // Hidden, or other words, while the route was asked: show nothing to confirm.
+            guard gen == generation, host.isShown else { return .failed("The words changed. Press Enter to see the message again.") }
             pending = (key, route, Date())
             return .said("\(said) · Enter again to send")
         }
@@ -233,6 +258,7 @@ final class AppsExtension: CapsuleExtension {
             let r = await v.call("apps.act", input)
             if let why = r.error { return .failed(why) }
             let d = (r.data as? [String: Any]) ?? [:]
+            if gated && d["held"] == nil { return .failed("\(app) did not hold the message for approval, so Vyre stopped. Check \(app) before trying again.") }
             if let held = d["held"] as? [String: Any] {
                 guard let id = VJ.nonEmpty(held["id"]) else { return .failed("\(app) held the message but gave no id to approve.") }
                 let g = await v.call("gate.approve", ["id": id], presence: true)

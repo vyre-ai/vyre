@@ -79,6 +79,10 @@ public protocol CapsuleExtension: AnyObject {
     /// A chord from keyChords was pressed.
     func handle(chord: KeyShortcut, query: Query) -> Bool
 
+    /// The words in the box or the chip changed (a key, a pick, a chip dropped). Forget anything
+    /// that was waiting for a second Enter on the old ones. The default does nothing.
+    func boxChanged()
+
     /// The Capsule is showing. `front` is the app that was in front; nothing about its window has
     /// been read yet (reading it is the extension's own act, on request, with its permission).
     func capsuleWillShow(front: FrontApp?)
@@ -104,6 +108,7 @@ public extension CapsuleExtension {
         await send(text, to: target, query: query)
     }
     func handle(chord: KeyShortcut, query: Query) -> Bool { false }
+    func boxChanged() {}
     func capsuleWillShow(front: FrontApp?) {}
     func capsuleDidHide() {}
 }

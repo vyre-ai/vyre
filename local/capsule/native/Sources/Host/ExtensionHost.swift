@@ -40,6 +40,7 @@ final class ExtensionHost: CapsuleHost {
         refreshing = Set(extensions.filter(\.refreshesMentions).map { type(of: $0).id })
         model.extensionRefreshers = { [weak self] q, parent in self?.refreshers(q, parent: parent) ?? [] }
         model.extensionPicked = { [weak self] c, parent in self?.picked(c, parent: parent) }
+        model.extensionBoxChanged = { [weak self] in self?.extensions.forEach { $0.boxChanged() } }
         model.sendToExtension = { [weak self] text, c, parent, query in
             guard let self, let (e, t) = self.targets[c.id] else { return .failed("\(c.label) is not there any more.") }
             // A child goes with the chip it was picked under ("juno" in "WhatsApp").

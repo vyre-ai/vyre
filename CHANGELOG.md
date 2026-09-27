@@ -15,9 +15,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Enter routes the words through `apps.route`, scoped to the chip, with the picked contact's id.
   What sends nothing (a timer, a note, the weather) runs at once through `apps.act`, with no
   prompt. A send is shown first ("WhatsApp → Juno Park: running late · Enter again to send"); a
-  second Enter on the same words within two minutes sends it through `apps.send` with the
-  person's proof. A send the Gate holds (Slack) runs through `apps.act` and is approved with
-  `gate.approve` as the proof. Other words, a send, or hiding the Capsule forget the preview.
+  second Enter within a minute, with the words and chip untouched, sends it through `apps.send`
+  with the person's proof. A send the Gate holds (Slack) runs through `apps.act` and is approved
+  with `gate.approve` as the proof; one that comes back not held stops there. Any key, a chip
+  change, a send, or hiding the Capsule forgets the preview, a route that lands after one of them
+  arms nothing, and an Enter while a route is in flight is not the second Enter.
+- Kit: `CapsuleExtension.boxChanged()` (default: nothing), called when the words or the chip
+  change, so an extension can drop what waited for a second Enter. A held Return key is one press
+  in the panel (`isARepeat` is ignored).
 - An unclear app or recipient is a question under the box ("Who should get this? Did you mean
   Ammi jee on WhatsApp? Type @ to pick."), never nothing.
 

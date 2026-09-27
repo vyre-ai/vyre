@@ -213,7 +213,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             model.deeper(); return true
         case 125: model.move(1); return true   // down
         case 126: model.move(-1); return true  // up
-        case 36, 76: // return
+        case 36, 76: // return; a held key is one press, so a held Enter never confirms what it showed
+            if e.isARepeat { return true }
             if cmd || shift { return model.run(shortcut: KeyShortcut("return", command: cmd, shift: shift)) }
             model.run(); return true
         case 8 where cmd && !shift: // ⌘C with nothing selected in the box copies the row

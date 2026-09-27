@@ -179,6 +179,41 @@ let appsExtensionSuite = Suite("apps extension") { t in
         t.eq(l.calls("apps.send").count, 0)
     }
 
+    t.test("Enter: any change to the words or chip, or a route that lands after hide, arms nothing") {
+        let l = link(route: rules)
+        let r = t.wait { @MainActor () -> [ActionOutcome] in
+            let host = AppsHost(l)
+            let ext = AppsExtension(host: host)
+            await ext.refreshApps(l)
+            let wa = ext.mentions(matching: "whats", context: .top)[0]
+            await ext.readInside("WhatsApp", parent: wa.id, l)
+            let kit = ext.mentions(matching: "kit", context: MentionContext(parent: wa, extensionID: "apps"))[0]
+            var outs: [ActionOutcome] = []
+            outs.append(await ext.send("hi", to: kit, in: wa, query: Query("hi")))
+            // Edited and put back: the preview is gone, so this Enter only shows it again.
+            ext.boxChanged()
+            outs.append(await ext.send("hi", to: kit, in: wa, query: Query("hi")))
+            // Hidden while the route was being asked: the answer shows nothing to confirm.
+            ext.boxChanged()
+            l.answer("apps.route") { i in
+                DispatchQueue.main.sync { MainActor.assumeIsolated { ext.capsuleDidHide() } }
+                return .success(rules(i))
+            }
+            outs.append(await ext.send("hi", to: kit, in: wa, query: Query("hi")))
+            l.answer("apps.route") { .success(rules($0)) }
+            outs.append(await ext.send("hi", to: kit, in: wa, query: Query("hi")))
+            // A contact that is no longer in the list is not sent to by its name.
+            outs.append(await ext.send("hi", to: MentionTarget(id: "in:WhatsApp:gone", label: "Juno Park", sendsTo: "WhatsApp"), in: wa, query: Query("hi")))
+            return outs
+        }
+        t.eq(r?[0], .said("WhatsApp → c4: hi · Enter again to send"))
+        t.eq(r?[1], .said("WhatsApp → c4: hi · Enter again to send"))
+        t.eq(r?[2], .failed("The words changed. Press Enter to see the message again."))
+        t.eq(r?[3], .said("WhatsApp → c4: hi · Enter again to send"))
+        t.eq(r?[4], .failed("Juno Park is not in WhatsApp any more. Type @ to pick again."))
+        t.eq(l.calls("apps.send").count, 0)
+    }
+
     t.test("Enter: an unclear recipient is a question with Did you mean; an app with no words says so") {
         let l = link(route: rules)
         let r = t.wait { @MainActor () -> [ActionOutcome] in
@@ -204,7 +239,8 @@ let appsExtensionSuite = Suite("apps extension") { t in
             let ext = AppsExtension(host: AppsHost(l))
             await ext.refreshApps(l)
             let slack = ext.mentions(matching: "slack", context: .top)[0]
-            let general = MentionTarget(id: "in:Slack:C1", label: "#general", sendsTo: "Slack", parentID: slack.id)
+            await ext.readInside("Slack", parent: slack.id, l)
+            let general = ext.mentions(matching: "juno", context: MentionContext(parent: slack, extensionID: "apps"))[0]
             return [await ext.send("shipped", to: general, in: slack, query: Query("")),
                     await ext.send("shipped", to: general, in: slack, query: Query(""))]
         }
@@ -212,6 +248,20 @@ let appsExtensionSuite = Suite("apps extension") { t in
         t.eq(r?[1], .said("Posted in #general (g7)"))
         t.eq(l.trail.suffix(2), ["apps.act", "gate.approve+proof"])
         t.eq(l.calls("apps.send").count, 0)
+        // A gated route whose act comes back not held stops, never "Done".
+        let l2 = link { i in ["app": "Slack", "action": "post", "args": ["to": i["to"] ?? "", "text": i["text"] ?? ""], "sends": true, "gated": true, "said": "Slack → #general: x"] }
+        l2.answer("apps.act") { _ in .success(["said": "Posted"]) }
+        let r2 = t.wait { @MainActor () -> ActionOutcome in
+            let ext = AppsExtension(host: AppsHost(l2))
+            await ext.refreshApps(l2)
+            let slack = ext.mentions(matching: "slack", context: .top)[0]
+            await ext.readInside("Slack", parent: slack.id, l2)
+            let c = ext.mentions(matching: "", context: MentionContext(parent: slack, extensionID: "apps"))[0]
+            _ = await ext.send("x", to: c, in: slack, query: Query(""))
+            return await ext.send("x", to: c, in: slack, query: Query(""))
+        }
+        t.eq(r2, .failed("Slack did not hold the message for approval, so Vyre stopped. Check Slack before trying again."))
+        t.eq(l2.calls("gate.approve").count, 0)
     }
 
     t.test("Enter: with no apps module on this Vyre, it says so") {

@@ -15,6 +15,7 @@ final class ChatProbe: CapsuleExtension {
     static var asked: [String] = []
     static var sent: [String] = []
     static var picked: [String] = []
+    static var boxChanges = 0
     /// The words of each refreshMentions call, by call number, and the calls a test lets finish.
     static var refreshCalls: [String] = []
     static var released = Set<Int>()
@@ -30,7 +31,7 @@ final class ChatProbe: CapsuleExtension {
         generation += 1
         for (_, w) in waiters { w.resume() }
         waiters = [:]
-        asked = []; sent = []; picked = []; refreshCalls = []; released = []; refreshing = false; stubborn = false
+        asked = []; sent = []; picked = []; boxChanges = 0; refreshCalls = []; released = []; refreshing = false; stubborn = false
     }
 
     static func release(_ n: Int) {
@@ -70,6 +71,8 @@ final class ChatProbe: CapsuleExtension {
         }
         return [MentionTarget(id: "fresh-\(n)", label: "fresh:\(query)#\(n)", sendsTo: "WhatsApp", parentID: "whatsapp")]
     }
+
+    func boxChanged() { Self.boxChanges += 1 }
 
     func mentionPicked(_ target: MentionTarget, context: MentionContext) {
         Self.picked.append("\(target.id)@\(context.parent?.id ?? "-")")
@@ -213,6 +216,31 @@ let extensionNestSuite = Suite("extension nesting") { t in
             }
         }
         t.eq(r, ["WhatsApp > kit", "false WhatsApp > kit", "true - > WhatsApp nests:true", "true - > -", "false - > -"])
+    }
+
+    t.test("boxChanged on each change of words or chip, and a held Return sends nothing") {
+        let r: [String]? = t.wait {
+            let (m, h) = await MainActor.run { world("held") }
+            await chipWhatsApp(m)
+            await MainActor.run { m.text = "@kit"; m.run() }
+            t.ok(await soon { m.targetParent != nil }, "kit picked inside WhatsApp")
+            return await MainActor.run { () -> [String] in
+                let pc = PanelController(model: m)
+                func ret(_ held: Bool) -> NSEvent {
+                    NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+                                     characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: held, keyCode: 36)!
+                }
+                let before = ChatProbe.boxChanges
+                m.text = "hi"; m.text = "hi"; m.text = "hi there"
+                let typed = ChatProbe.boxChanges - before
+                let held = "\(pc.key(ret(true))) sent:\(ChatProbe.sent.count)"
+                m.dropChip()
+                let dropped = ChatProbe.boxChanges - before - typed
+                m.didHide()
+                return withExtendedLifetime(h) { ["\(typed)", held, "\(dropped)"] }
+            }
+        }
+        t.eq(r, ["2", "true sent:0", "1"], "two real changes of words, a held Return swallowed, one chip change")
     }
 
     t.test("the outer chip never outlives its child: setting target elsewhere makes the chip one level") {
