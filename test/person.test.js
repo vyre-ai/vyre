@@ -13,7 +13,7 @@ import { Readable } from "node:stream";
 import { start } from "../core/daemon/index.js";
 import * as config from "../core/config/index.js";
 import { names } from "../core/names/service.js";
-import { HUMAN_ONLY } from "../core/presence/index.js";
+import { HUMAN_ONLY, fingerprint } from "../core/presence/index.js";
 import { COOKIE, signed } from "../core/presence/person.js";
 import { tempHome } from "./helpers.js";
 
@@ -31,7 +31,9 @@ const lenient = {
   covered: () => false,
   coverage: () => ({ covered: false, since: null, expires: null }),
   enrolled: /** @type {any[]} */ ([]),
-  enroll(k) { this.enrolled.push(k); return { id: `kh${this.enrolled.length}`, kind: k.kind, name: k.name }; },
+  // As the real one: a device key's id is its fingerprint, and the same key twice is refused.
+  enroll(k) { const id = fingerprint(k.public_key); if (this.enrolled.some(e => e.id === id)) throw new Error("that key is already enrolled");
+    this.enrolled.push({ ...k, id }); return { id, kind: k.kind, name: k.name }; },
 };
 
 async function box(t) {
@@ -250,10 +252,13 @@ test("person: the native app returns to vyre:// and must sign the trade with the
   const ok = await trade(await code());
   assert.equal(ok.status, 200, JSON.stringify(ok));
   // The biometric key rides the trade: enrolled as a device presence key, for HUMAN_ONLY proofs.
-  assert.match(ok.data.human.key, /^kh\d+$/);
+  assert.match(ok.data.human.key, /^[\w-]{22}$/);
   const k = lenient.enrolled[lenient.enrolled.length - 1];
   assert.equal(lenient.enrolled.length, before + 1);
   assert.deepEqual([k.kind, k.alg], ["device", -7]);
   assert.equal(crypto.createPublicKey({ key: Buffer.from(k.public_key, "base64url"), format: "der", type: "spki" }).export({ format: "jwk" }).x, human.x);
+  // Signing in again with the same biometric key answers the id it already has.
+  const again = await trade(await code());
+  assert.deepEqual(again.data.human, { key: ok.data.human.key });
   assert.match(ok.data.token, /^[\w-]+\.[\w-]+$/);
 });

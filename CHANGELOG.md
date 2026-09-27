@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Phones over the relay: vault sessions, and the same key signing in again
+
+- A presence session serves vault reveal and copy for a device paired over the relay
+  (`device:<id>`) as it does for the Deck over the tailnet; the person session gate runs first.
+- The native trade with a biometric key that is enrolled already answers `human: { key }` with
+  its id (the key's fingerprint), not an error.
+
 #### The uid split, wired: sessions start through the spawner on the box
 
 - Off by default: `sessions.spawner` is "off" until ADR 0030 phase 3 (sessions reach Vyre's tools
