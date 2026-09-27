@@ -21,7 +21,7 @@
 // the same way with `machine` added, and says "on <machine>"; its refusals are presence.js macProblem's.
 
 import { h, put, add } from "../js/dom.js";
-import { attempt } from "../js/api.js";
+import { queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { problemLine, macHeld, macLabel, macProblem } from "./presence.js";
@@ -77,6 +77,8 @@ export function questionCard(ask) {
   function back() { if (state.step > 0) { state.step--; draw(); el.focus?.(); } }
 
   const onMac = () => (ask.machine ? { machine: ask.machine } : {});
+  // A Mac's refusal asks for a passkey on the card (macProblem), so the outbox never proves on its own.
+  const presence = (/** @type {{ presence?: boolean }} */ o) => ({ presence: o.presence ? true : ask.machine ? false : undefined });
   /** @param {{ presence?: boolean }} [opts] a passkey proof first (a Mac's refusal asked for one) */
   async function submit(opts = {}) {
     if (state.busy || state.decided) return;
@@ -84,7 +86,7 @@ export function questionCard(ask) {
     try { input = { ...answerInput(ask.id, questions, picks), ...onMac() }; } catch (e) { state.error = e; draw(); return; }
     state.width = widthOf(el, "submit");
     state.busy = "submit"; state.error = null; draw();
-    const r = await attempt("threads.answer", input, opts.presence ? { presence: true } : {});
+    const r = await queued("threads.answer", input, presence(opts));
     state.busy = null;
     if (!r.error) { state.decided = "allow"; state.shown = input.answers; }
     else failed(r.error, o => submit({ ...opts, ...o }));
@@ -95,7 +97,7 @@ export function questionCard(ask) {
     if (state.busy || state.decided) return;
     state.width = widthOf(el, "decline");
     state.busy = "decline"; state.error = null; draw();
-    const r = await attempt("threads.answer", { ask: ask.id, decision: "deny", surface: "deck", ...onMac() }, opts.presence ? { presence: true } : {});
+    const r = await queued("threads.answer", { ask: ask.id, decision: "deny", surface: "deck", ...onMac() }, presence(opts));
     state.busy = null;
     if (!r.error) state.decided = "deny";
     else failed(r.error, o => decline({ ...opts, ...o }));

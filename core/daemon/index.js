@@ -481,6 +481,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     res.writeHead(200, { "content-type": "text/css", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
     return res.end(themeCss((config.load(root).theme || {}).colors));
   }
+  // The browser half of the resilience client (ADR 0029), which the Deck imports as
+  // ../../core/resilience/<file>.js: that resolves here in a browser and to the repo file in Node,
+  // so the Deck and its tests load the one copy. Only these five files; nothing else in core/.
+  const res29 = req.method === "GET" && /^\/core\/resilience\/(backoff|sse|stream|outbox|web)\.js$/.exec(url.pathname);
+  if (res29) return serveFile(res, path.join(REPO, "core", "resilience", res29[1] + ".js"));
   // The one app (ADR 0027), beside the Deck until it takes over /.
   if (req.method === "GET" && (url.pathname === "/app" || url.pathname.startsWith("/app/"))) return serveApp(res, url.pathname);
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
@@ -571,8 +576,19 @@ function serveDeck(res, pathname) {
   // The service worker carries the build, so a release is a new sw.js and a phone swaps its cache
   // at once (deck/sw.js BUILD).
   if (file === path.join(dir, "sw.js")) buf = Buffer.from(swWithBuild(buf.toString("utf8")));
-  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", "cache-control": "no-cache",
-    "x-content-type-options": "nosniff", "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'" });
+  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...DECK_HEADERS });
+  res.end(buf);
+}
+
+/** What every Deck file goes out with. */
+const DECK_HEADERS = { "cache-control": "no-cache", "x-content-type-options": "nosniff",
+  "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'" };
+
+/** One module from outside deck/ that the Deck imports (core/resilience), with the Deck's headers. */
+function serveFile(res, file) {
+  let buf;
+  try { buf = fs.readFileSync(file); } catch { return send(res, 404, { error: { code: "not_found", message: path.basename(file) } }); }
+  res.writeHead(200, { "content-type": "text/javascript", ...DECK_HEADERS });
   res.end(buf);
 }
 

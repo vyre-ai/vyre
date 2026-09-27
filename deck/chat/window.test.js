@@ -145,10 +145,9 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
 });
 
 let evId = 0;
-class FakeES { constructor() { FakeES.last = this; this.l = new Map(); this.readyState = 1; } addEventListener(t, f) { (this.l.get(t) || this.l.set(t, []).get(t)).push(f); } }
-/** @type {any} */ (FakeES).OPEN = 1;
-Object.assign(globalThis, { EventSource: FakeES });
-const emit = (type, payload, thread = SID) => { for (const f of FakeES.last.l.get(type) || []) f({ data: JSON.stringify({ id: ++evId, type, thread, at: Date.now(), payload }) }); };
+// Events go to the listeners by hand (api.js hear()): with no EventSource global, api.js opens no stream.
+const { hear } = await import("../js/api.js");
+const emit = (type, payload, thread = SID) => hear({ id: ++evId, type, thread, at: Date.now(), payload });
 const wait = (ms = 10) => new Promise(r => setTimeout(r, ms));
 /** Until a condition holds (boot reads over fetch), at most `ms`. */
 async function until(fn, ms = 5000) { const t = Date.now(); while (!fn()) { if (Date.now() - t > ms) throw new Error("timed out"); await wait(5); } }

@@ -371,6 +371,177 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (about 160 MB) for some 20 s and then settled near 90 MB, so RSS max failed every run. Mean and
   max RSS still print. On testbox: settled 87.3 / 84.0 MB, startup peak 150.3 / 154.2 MB.
 
+#### The Deck's rail is the 72 px icon rail (Design A v1)
+
+- From 720 px up the rail is a 72 px column (deck/js/rail.js, css/deck.css `.rail`): the home
+  mark (to Now, "Vyre home"; its dot turns `--beacon-dot` while anything needs you), then Now,
+  Chat, Agents, Projects, Planner, Memory, Vault, and at the bottom Devices, Settings and the
+  person's avatar ("Account", titled with the owner's name). Each place is 60 by 50, radius 10,
+  an icon 20 over its 12/16 label in `--label`; hover and the current place fill `--hover` with
+  `--text`, the current label at 600 and `aria-current="page"`. Fills change over
+  `--motion-tap` with `--ease`, and not at all under Reduce Motion.
+- The Now badge is the one from js/status-mark.js, now on the icon (top 4, right 8) and
+  `aria-hidden`; Now itself reads "Now, 5 need you". It is the only colour in the rail.
+- Cmd+1 to Cmd+9 (Ctrl off a Mac) open the places in rail order, never while typing in a field,
+  and not on the phone.
+- Planner is /planner. Devices is /settings#devices (Settings scrolls to it again when a kept
+  page comes back). The avatar opens Settings until the account menu is drawn.
+- New icons in the 16 grid: planner (a calendar page) and devices (a laptop beside a phone).
+- The brand, the avatar and the machine footer (host, "On your tailnet") left the shell: the
+  header sits right of the rail with its address, search and needs pill, and the sample-data
+  note moved into it. The nav is named "Vyre", not "Places".
+- A view's own list (Chat's sessions, Vault's places) and the pinned or recent projects beside
+  a project now sit in a 240 list column right of the rail (`aside.rail-lower`), hidden while
+  empty. Under 900 a session or a project's board replaces it; the projects beside a board show
+  from 1400, and so do Vault's places (was 1200), its chip row below that.
+- The phone shell is unchanged: `.rail` and the list column are hidden under 720.
+- The page being left is hidden on the desk again: the router made the new address current only
+  after leave() ran, so leave() saw the old page as current and never hid it, and on a chat
+  session the Chat list painted under the transcript. The Vault and Glass, never kept, are now
+  really ended when left.
+- The list column never scrolls sideways: `overflow-x: hidden`, and its rows end in an
+  ellipsis. The rail's groups are `.rail-set`, since chat.css already styles `.rail-group`.
+- deck/test/rail.test.js covers the order, labels, names, the badge on Now, the key map and the
+  CSS geometry.
+
+#### The Deck paints with token roles only (Design A v1)
+
+- deck.css no longer defines --graphite, --carbon, --raised, --ash, --stone, --bone, --signal,
+  --signal-hover, --signal-ink, --beacon or --r-1 to --r-4. Their uses in deck/ moved to the
+  roles in tokens.css: lime marks, rings, carets, dots and accent text are `--focus`, fills are
+  `--primary-*`, a sheet's backdrop is `--scrim`. The Agents Computer preview keeps its fixed
+  dark drawing under `--swatch-*`, defined once in deck.css.
+- Radii are `--radius-chip` (4), `--radius-button` and `--radius-field` (8, was 6),
+  `--radius-card` (12, was 10) and `--radius-sheet` (14), each with its value as a fallback
+  until app-design's radius tokens land in tokens.css.
+- --recall*, --beacon-wash and --beacon-rule stay in deck.css, grouped as Deck-only until they
+  have a role.
+- On paper, the chat view's lime (running states, links, keyword colour, live dots, the caret),
+  Memory's ring, the terminal's live dot and the Lead mark's dot now take paper's `--focus`
+  green instead of staying dark-theme lime.
+- deck/test/tokens.test.js fails if a raw name comes back anywhere under deck/, if deck.css
+  defines a radius token, or if a swatch is used outside the Computer preview.
+
+#### The Deck's phone switch point is 720 (Design A v1)
+
+- The phone query is now `(max-width: 719px), (max-height: 500px) and (pointer: coarse)` and the
+  desk-only query starts at `min-width: 720px`, in every CSS file under deck/ and in
+  PHONE_QUERY (deck/js/dom.js), per docs/design/system/layout.md. Column widths such as
+  `.set-col` (760) are layout, not the switch point, and stay.
+- deck/test/pwa.test.js fails on any @media still at 760 or 761, and on a bare 719 or 720 width
+  query that is not the phone query or its complement.
+
+#### One toast in the Deck (Design A v1)
+
+- deck/js/toast.js is the Deck's one toast (styles deck/css/toast.css): 4 s, role status and
+  aria-live polite, never takes focus, one at a time (a new one replaces the old), Undo as a
+  ghost button (44 on touch, 28 on the desktop), Cmd+Z / Ctrl+Z for Undo while it is up, hover
+  pauses and leaving restarts at 2 s, floating (bottom centre at max 480, or 24 above the Capsule
+  on the phone, `--float` shadow) or in place in a row's slot. Now's Undo toast on the phone and
+  the vault's copy toast (its Clear now, countdown and draining bar) both use it; `.np-toast` and
+  `.vt-toast` are gone.
+
+#### Status marks: one model on the Deck (Design A v1)
+
+- deck/js/status-mark.js draws the five status marks (needs you 8 solid attention dot, failed 12
+  crossed circle in `--text-2`, running 10 `--focus` ring with elapsed time, unread 8 solid,
+  done 8 hollow), the needs-you badge (18 tall, 1 to 99 then "99+", "3 need you"), the neutral
+  count and the path dot (direct `--focus`, relayed `--label` solid, none hollow). Styles in
+  deck/css/marks.css. Failed and relayed never take the attention colour or amber. `.dot.beacon`
+  and `.dot.health-*` are aliases; the rail's Now count is the badge; Settings' Network row, the
+  health dot and Connections' running and failed states use the marks.
+
+#### One button system in the Deck (Design A v1)
+
+- deck/css/buttons.css is the Deck's one button: primary, secondary, outline, ghost and hold, at
+  28 and 32 on the desktop and 44 and 54 on touch, with busy (spinner, -ing word, same width) and
+  disabled (label ink on a quiet fill, no opacity). Instrument Sans 13/18 600, sentence case: no
+  more mono caps. Sizes, radii and motion read the Design A tokens with the spec values as
+  fallbacks. The old names are aliases: `.btn` (outline), `.btn-primary`, `.btn-ghost`, `.btn-sm`
+  (28), `.sb` (secondary 44), `.sb-primary` (primary 54), `.sb-full` and `.ibtn`, so every view
+  picks it up. On the phone every button is at least 44 and icon buttons get a 44 hit area.
+  deck/js/button.js builds one (`button()`, `setBusy()`, `hold()`). Tests in
+  deck/test/design-components.test.js.
+
+#### The Reconnecting pill no longer moves the view
+
+- `.reach` (the line js/pwa.js shows while the box does not answer) was in the normal flow under
+  the header and pushed every view down about 41 px when it came. It is now one small pill fixed
+  under the header, centred, on the panel colour, taking no layout space (ADR 0029 R3). Found by
+  native-core's native-bar harness. Test in deck/test/pwa.test.js.
+
+#### The sign-in page's imports live in api.js
+
+- deck/js/api.js exports `signIn()` (presence.person.start {} with a passkey; fires "deck:person")
+  and `personCode({cc, return, label})` (a one-time code for the hosted app's hop and `vyre link
+  signin`, resolving to {code, expires, redirect}), which deck/person/signin/signin.js imports.
+  js/person.js re-exports the same signIn for the sheet.
+
+#### The Deck's stream tells views when it came back or was reset
+
+- `onResume(fn)` in deck/js/api.js: fn("reconnect") when the stream opens again after a drop, and
+  fn("reset", id) when vyred says its log is behind this page's cursor, so a view (Chat's
+  session) reloads what it may have missed through tools. The same shape as chat's 30a9f81, on
+  the resilience client, which already follows from the reset id (no event after it is dropped
+  as seen) and reopens a closed stream. Test in deck/js/resilience.test.js.
+
+#### A Mac session's ask is answered from Needs
+
+- Now, the phone's Needs you rows and sheet, /needs/<ask> and a thread's held card answer an ask
+  or question from a session on the paired Mac like a box one: threads.answer carries `machine`
+  (straight to the box, not the outbox, with the same "asked" presence). The row's third line
+  says "on <mac>". mac_offline and timeout show the box's words and the item stays;
+  no_such_tool, unsupported, bad_input naming machine, or not_found on an item without node
+  mean the box cannot forward, and every Mac item says "Answer it on <mac>" for the rest of the
+  page (needs.js macAnswers, event deck:mac-answers). A push to an ask that has gone says "This
+  ask was answered or has gone."; one raised this session opens from its ask.raised event.
+
+#### The sign-in sheet says what carries on after it
+
+- When the box asks for a person session in the middle of an action, the sheet's second line
+  names it ("Then Vyre carries on with sending your message."), for sends, answers, the Gate,
+  the terminal and agents; any other tool shows no line. `carryOn` in deck/js/person.js, tested
+  in person.test.js.
+
+#### Settings says whether the hosted app can reach the box
+
+- Settings, Network gains a read-only "Hosted app" row from system.info `network.origins` (the
+  effective list; empty is off), naming the config key. A box that does not report it shows no
+  row. `deck/views/settings.js`.
+
+#### The Deck on the resilience client (ADR 0029)
+
+- The Deck's one event stream is core/resilience's follow() over fetch (web.js open), with
+  lifecycle(): the first connection starts at the newest event, every reconnect resumes from the
+  cursor (Last-Event-ID and since=), doubles are dropped, 45 s of silence is a dead stream, and a
+  hidden page closes it and reconnects at once when it is back. The cursor is kept (cursorStore).
+  api.js's on(), the event objects, `reachable` and `deck:reach` are as before; a prefix like
+  "thread.*" now hears every matching type, not only the names the Deck knew. New: `deck:stream`
+  (the stream's state), `kick()`, `stopEvents()`.
+- vyred serves /core/resilience/{stream,sse,backoff,outbox,web}.js with the Deck's headers, which
+  js/api.js imports as ../../core/resilience/*.js (the same file in the browser and in Node tests,
+  no copy). The service worker keeps them at install; the onboarding page may load them.
+- Writes carry an Idempotency-Key (R2): call(name, input, { write: true }) makes one per call,
+  or { key } passes one; the retry after a person sign-in and the passkey retry of an owner's
+  answer reuse it, so the box runs the write once. Reads carry none (the box keeps keyed answers).
+- An outbox (R2), kept in IndexedDB (web.js idbStore): the Chat composer's send, Find's and the
+  projects view's send, every answer (Now, the needs sheet, Chat's ask and question cards), a
+  Discard at the Gate, and the planner's add and todo done go through api.js queue()/queued().
+  They show as sending at once; a box out of reach keeps them on the device and they go once,
+  with the same key, when the stream is back, the page is in front or the network changes (at
+  most once a minute otherwise). The composer says "Sending when your box answers" and takes the
+  next message. A refusal (4xx, or a tool's own error such as a Mac's timeout) is the view's error
+  as before, never retried. A Send at the Gate (a passkey) is never queued: offline it fails at
+  once with the usual offline error.
+- One quiet Reconnecting pill (R3, js/reconnect.js) replaces the phone's offline line: hidden
+  while the stream is open, shown only after the first failed retry, "Reconnecting since 14:32"
+  once the box has been gone 60 s (one timer, no interval), "This phone is offline." without a
+  network. Retry reconnects now. The box coming back no longer re-runs the router (which scrolled
+  the page to the top): the stream replays what was missed.
+- Open offline from the cache (R3): Now's needs list and the Agents list paint at once from what
+  this device last saw (web.js cacheStore, IndexedDB), then the box's answer replaces it and is
+  kept. Only asks and questions are kept, never what is held at the Gate. Out of reach, both keep
+  their last contents instead of going empty. Chats already opened from its own snapshot.
 #### A vyred killed by a signal is started again in the box
 
 - core/daemon/loop.sh waited again on a vyred that died by a signal (SIGKILL, the OOM killer)

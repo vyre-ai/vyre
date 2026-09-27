@@ -52,7 +52,7 @@
    under it in --panel. Keys 34 tall, radius 6, --hover, mono 12/16. */
 .term-keys { display: none; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; flex-shrink: 0;
   padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--rule); }
-.term-key { min-width: 0; height: 34px; padding: 0; border: 0; border-radius: var(--r-2); background: var(--hover); color: var(--text);
+.term-key { min-width: 0; height: 34px; padding: 0; border: 0; border-radius: var(--radius-field, 8px); background: var(--hover); color: var(--text);
   font-family: var(--mono); font-size: 12px; line-height: 16px; text-align: center; touch-action: manipulation; cursor: pointer;
   -webkit-user-select: none; user-select: none; }
 /* Ctrl or Alt latched until the next key. */

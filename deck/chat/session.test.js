@@ -43,12 +43,10 @@ E.insertBefore = function (n, ref) { if (!ref) { this.append(n); return n; } n.r
 E.replaceWith = function (n) { const p = this.parentNode; if (!p) return; p.insertBefore(n, this); this.remove(); };
 E.after = function (n) { this.parentNode.insertBefore(n, this.nextSibling); };
 
-/** The event stream: one fake EventSource, fed by hand. */
+/** The event stream, fed by hand: api.js hear() hands an event to the listeners as the stream does. */
 let evId = 0;
-class FakeES { constructor() { FakeES.last = this; this.l = new Map(); this.readyState = 1; } addEventListener(t, f) { (this.l.get(t) || this.l.set(t, []).get(t)).push(f); } }
-/** @type {any} */ (FakeES).OPEN = 1;
-Object.assign(globalThis, { EventSource: FakeES });
-const emit = (type, payload, thread = SID) => { for (const f of FakeES.last.l.get(type) || []) f({ data: JSON.stringify({ id: ++evId, type, thread, at: Date.now(), payload }) }); };
+const { hear, heardResume } = await import("../js/api.js");
+const emit = (type, payload, thread = SID) => hear(/** @type {any} */ ({ id: ++evId, type, thread, at: Date.now(), payload }));
 
 const fx = JSON.parse(readFileSync(new URL("./fixtures/session-blocks.json", import.meta.url), "utf8"));
 const SID = fx.session.id;
@@ -333,7 +331,7 @@ test("a live thread the transcript cannot find yet: threads.get's events drawn, 
 const box3 = new El("div");
 doc.body.append(box3);
 let stop3 = () => {};
-const at = (type, payload, when) => { for (const f of FakeES.last.l.get(type) || []) f({ data: JSON.stringify({ id: ++evId, type, thread: NEW, at: when ?? Date.now(), payload }) }); };
+const at = (type, payload, when) => hear(/** @type {any} */ ({ id: ++evId, type, thread: NEW, at: when ?? Date.now(), payload }));
 const press3 = k => { const e = /** @type {any} */ (new Event("keydown")); e.key = k; e.target = doc.body; for (const f of keys) f(e); return e; };
 const stopBtn = () => $(box3, ".composer-stop");
 
@@ -569,9 +567,8 @@ test("a reconnect or a stream reset re-reads threads.get, threads.asks and the t
   const stop5 = mountSession(box5, { thread: RES, project: null, onBack() {} });
   await wait(30);
   assert.match(text($(box5, ".thread-view")), /It is open\./);
-  const es = FakeES.last;
-  const fireOpen = () => { for (const f of es.l.get("open") || []) f({}); };
-  fireOpen(); // the first open: not a resume
+  // The stream's first open is not a resume, so only the comebacks are told (api.js heardResume).
+  const fireOpen = () => heardResume("reconnect");
   const before = calls.length;
   // While the stream was down: a message, a queued row and an ask, and their transcript.
   res.events.push(
@@ -603,12 +600,12 @@ test("a reconnect or a stream reset re-reads threads.get, threads.asks and the t
   // The box's log was reset: ids start again at 2, below everything seen.
   res.events = [{ id: 3, type: "thread.queued", thread: RES, at: Date.now(), payload: { queued: 10, uuid: "q10", text: "And ping kit", surface: "deck" } }];
   const b2 = calls.length;
-  for (const f of es.l.get("stream.reset") || []) f({ data: JSON.stringify({ id: 2, type: "stream.reset", source: "vyred", thread: null, project: null, at: Date.now(), payload: { from: 2, reason: "cursor_ahead" } }) });
+  heardResume("reset", 2);
   await wait(40);
   assert.deepEqual(calls.slice(b2).find(c => c.tool === "threads.get")?.input, { thread: RES, since: 2, limit: 500 }, "from vyred's id");
   assert.match(text($(box5, ".cv-queued")), /And ping kit/, "an event after the reset is applied, though its id is low");
   // A live event with a low id after the reset is heard too (api.js lowered its cursor).
-  for (const f of es.l.get("thread.queued") || []) f({ data: JSON.stringify({ id: 4, type: "thread.queued", thread: RES, at: Date.now(), payload: { queued: 11, uuid: "q11", text: "Last one for Northwind Bakery", surface: "deck" } }) });
+  hear(/** @type {any} */ ({ id: 4, type: "thread.queued", thread: RES, at: Date.now(), payload: { queued: 11, uuid: "q11", text: "Last one for Northwind Bakery", surface: "deck" } }));
   await wait();
   assert.match(text($(box5, ".cv-queued")), /Last one for Northwind Bakery/);
   stop5();

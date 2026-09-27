@@ -27,6 +27,7 @@ import { h, put, empty } from "../js/dom.js";
 import { attempt as apiAttempt } from "../js/api.js";
 import { withPresence } from "./memory-presence.js";
 import { since } from "../js/fmt.js";
+import { statusMark, statusOf } from "../js/status-mark.js";
 
 /** Vault kinds that make sense for each way of using an item (ADR 0016, decision 2). */
 export const ITEM_KINDS = {
@@ -215,8 +216,8 @@ export async function drawConnections(el, ctx, deps = {}) {
       h("div", { class: "cn-head" },
         h("span", { class: "mono cn-name" }, s.name),
         h("span", { class: "tag" }, s.transport),
-        h("span", { class: "set-state cn-state" + (s.state === "running" ? "" : " faint"), "data-state": s.state },
-          s.state === "running" ? h("span", { class: "dot signal", "aria-hidden": "true" }) : null, s.state)),
+        h("span", { class: "set-state cn-state" + (s.state === "running" || failed ? "" : " faint"), "data-state": s.state },
+          statusOf(s.state) === "running" || failed ? statusMark(s.state, { beside: true }) : null, s.state)),
       failed && s.error ? h("div", { class: "small cn-err" }, s.error) : null,
       h("dl", { class: "cn-meta" },
         meta("Runs", h("code", { class: "set-mono" }, how || "")),

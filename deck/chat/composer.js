@@ -40,7 +40,7 @@
 // opts.onQueue hears how many wait and for whom (the Mac's lease line).
 
 import { h, put } from "../js/dom.js";
-import { attempt, on } from "../js/api.js";
+import { attempt, queued as viaOutbox, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import {
   draftKind, draftBody, kindLabel, findMention, applyMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
@@ -434,9 +434,17 @@ export function mountComposer(opts) {
     /** @type {Record<string, any>} */
     const input = machine ? { thread, text, surface: "deck", machine }
       : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
-    const r = await attempt("threads.send", input);
+    // Through the outbox (ADR 0029): a box out of reach keeps the words on this device and sends
+    // them, once, when it is back. Meanwhile the note says so and the composer takes the next one.
+    let waited = false;
+    const r = await viaOutbox("threads.send", input, { onWait: () => {
+      waited = true; sending = false; send.disabled = false;
+      note.classList.add("soft");
+      put(note, icon("clock", 12), " Sending when your box answers: ", h("span", { class: "faint" }, text.length > 60 ? text.slice(0, 59) + "…" : text));
+    } });
     sending = false;
     send.disabled = false;
+    if (waited && !r.error) { put(note); note.classList.remove("soft"); }
     drawChips();
     const back = () => {
       if (drawn) patch(dropLocal(/** @type {any} */ (S), uuid));

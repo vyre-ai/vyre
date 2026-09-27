@@ -31,12 +31,11 @@ Object.defineProperties(E, {
 E.insertBefore = function (n, ref) { if (!ref) { this.append(n); return n; } n.remove(); this.childNodes.splice(this.childNodes.indexOf(ref), 0, n); n.parentNode = this; return n; };
 E.replaceWith = function (n) { const p = this.parentNode; if (!p) return; p.insertBefore(n, this); this.remove(); };
 
+// The event stream, fed by hand: api.js hear() hands an event to the listeners as the stream does.
 let evId = 0;
-class FakeES { constructor() { FakeES.last = this; this.l = new Map(); this.readyState = 1; } addEventListener(t, f) { (this.l.get(t) || this.l.set(t, []).get(t)).push(f); } }
-/** @type {any} */ (FakeES).OPEN = 1;
-Object.assign(globalThis, { EventSource: FakeES });
+const { hear } = await import("../js/api.js");
 const MAC = "7c1d2e3f-mac-session";
-const emit = (type, payload) => { for (const f of FakeES.last.l.get(type) || []) f({ data: JSON.stringify({ id: ++evId, type, thread: MAC, project: null, at: Date.now(), payload: { thread: MAC, source: "mac", machine: "alex-mac", ...payload } }) }); };
+const emit = (type, payload) => hear(/** @type {any} */ ({ id: ++evId, type, thread: MAC, project: null, at: Date.now(), payload: { thread: MAC, source: "mac", machine: "alex-mac", ...payload } }));
 
 const T0 = Date.now() - 60_000;
 const turns = [
