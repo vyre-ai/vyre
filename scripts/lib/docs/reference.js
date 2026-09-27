@@ -241,9 +241,11 @@ const ENV_MEANING = {
   NO_DIALOGS: "`1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab).",
   NO_OPEN: "Never open a browser tab from the terminal.",
   NO_UP: "`vyre box add` installs Vyre without starting it.",
+  NPM_BIN: "The `npm` that `vyre update` installs a release with. Tests point it at a fake.",
   ONBOARD_HOST: "The address onboarding listens on. Default `127.0.0.1`.",
   OPEN_BIN: "The command that opens links. Tests point it at a fake.",
   PROJECT: "The project a thread belongs to, for its brief.",
+  RELEASES_API: "Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server.",
   PROJECTS: "The projects an agent's thread is limited to, comma separated, or `*` for all of them.",
   SCOPE_CWDS: "The folders an agent's `recall.search` is held to, as JSON.",
   SOCKET: "The path of vyred's socket, for the Capsule.",
@@ -385,7 +387,7 @@ function fields(schema, prefix = "", depth = 0) {
 }
 
 function callersText(t) {
-  if (t.internal) return "other modules only (internal, never listed)";
+  if (t.internal) return "other modules only (internal: `vyre call` answers no_such_tool)";
   if (t.hook) return "its webhook route only, `POST /v1/<module>/<name>/hook`";
   if (!t.callers) return "any caller";
   return t.callers.slice().sort(byName).map(code).join(", ");
@@ -435,6 +437,7 @@ function toolsPage(mods, byModule) {
     `${total} tools across ${[...byModule.values()].filter(ts => ts.length).length} modules. Every caller reaches a tool through the same path: Claude through MCP, a surface through HTTP, the CLI with \`vyre call <tool> [json]\`. The input is checked against the schema below, then the rules run, then the tool.`,
     "",
     "Callers are the kinds of caller that may use a tool: `cli` (the terminal), `local` (the Mac's own surfaces), `deck`, `capsule`, `mcp` (Claude and agents), `module` (another module). Any caller means the tool does not limit them. See [tools and events](../build/tools-and-events.md).",
+    "A tool marked internal is registered, but only another module can call it: `vyre call`, MCP and HTTP answer `no_such_tool`, and `vyre tools` never lists it. A person reaches what it does through a public tool (`agents.history` reads `threads.history`, for example).",
     "",
     "A tool marked \"needs a person present\" runs only after someone proves they are at the machine, with Touch ID, a passkey or the terminal: see [presence](../concepts/presence.md). A call from Claude alone cannot pass it.",
     "",

@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
 import { PERSON_ONLY } from "../presence/index.js";
+import { validateDecls } from "../config/settings.js";
 
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
 const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
@@ -23,21 +24,26 @@ const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
 const CORE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/** Vyre's own modules are the ones shipped in the repo (core, local, modules); a home's never are. */
+const REPO_DIR = path.resolve(CORE_DIR, "..");
+const firstParty = (/** @type {string} */ dir) => path.resolve(dir).startsWith(REPO_DIR + path.sep);
 /**
  * The only caller labels a module may call under, and who may. A person's labels ("cli", "deck")
  * are never here: a module that could call as one would act as the person. The link on a Mac types
  * into a session for the person at the box as "link:box" (docs/adr/0021-box-reads-the-mac.md).
  * @type {Record<string, string[]>}
  */
-const CALL_AS = { link: ["link:box"] };
+// settings passes a person's change on to the module that keeps the value, as that person.
+const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"] };
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
 
 /**
- * Check a manifest. Returns a list of problems; empty means valid.
- * @param {any} m
+ * Check a manifest. Returns a list of problems; empty means valid. `firstParty` is true for a
+ * module shipped with Vyre; a module from anywhere else is held to more (its settings' stores).
+ * @param {any} m @param {{ firstParty?: boolean }} [opts]
  */
-export function validate(m) {
+export function validate(m, { firstParty = false } = {}) {
   const out = [];
   if (!m || typeof m !== "object") return ["module.json is not an object"];
   if (!NAME.test(String(m.name || ""))) out.push(`name "${m.name}" must be lowercase letters, digits and dashes`);
@@ -50,6 +56,7 @@ export function validate(m) {
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
   }
   for (const e of (m.watches && m.watches.emits) || []) if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
+  out.push(...validateDecls(String(m.name), m.settings, { firstParty, tools: (m.does && m.does.tools) || [] }));
   // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
   const providers = m.does && m.does.providers;
   if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
@@ -68,7 +75,7 @@ export function discover(roots) {
       const file = path.join(dir, "module.json");
       if (!fs.existsSync(file)) continue;
       let manifest = null, problems = [];
-      try { manifest = JSON.parse(fs.readFileSync(file, "utf8")); problems = validate(manifest); }
+      try { manifest = JSON.parse(fs.readFileSync(file, "utf8")); problems = validate(manifest, { firstParty: firstParty(dir) }); }
       catch (err) { problems = ["module.json unreadable: " + /** @type {Error} */ (err).message]; }
       found.push({ dir, manifest, problems });
     }
@@ -133,10 +140,12 @@ export const callerKind = caller => {
  * May this caller use a tool with this callers list? On a box the Deck is served at the tailnet
  * address, where the names listener admits only the owner and labels the call "tailnet:<login>"
  * (ADR 0002). That is the owner's own Deck, so a tool open to "deck" is open to it; an agent's own
- * node ("tailnet:agent:<name>") is not.
+ * node ("tailnet:agent:<name>") is not. A "tailnet" entry opens a tool to the owner's devices only,
+ * such as the phone (ADR 0018). The bare word is never a caller itself: a socket client could send
+ * it as a label.
  * @param {string[]|null|undefined} callers
  */
-export const callerAllowed = (callers, caller) => !callers || callers.includes(callerKind(caller))
+export const callerAllowed = (callers, caller) => !callers || (callers.includes(callerKind(caller)) && callerKind(caller) !== "tailnet")
   || (callers.includes("deck") && ownerDevice(caller))
   || (callers.includes("tailnet") && ownerDevice(caller));
 
@@ -154,6 +163,12 @@ export const ownerOverTailnet = caller => /^tailnet:(?!agent:)./.test(String(cal
  * human-only call. A guest, an agent's node and a socket label are never one.
  */
 export const ownerDevice = caller => ownerOverTailnet(caller) || /^device:[a-z2-7]{16}$/.test(String(caller));
+
+/** Shipped in the repo (core, local, modules), not added to a home's modules folder. @param {string} dir @param {any} paths */
+const inRepo = (dir, paths) => {
+  const d = path.resolve(dir), home = paths && paths.modules ? path.resolve(paths.modules) + path.sep : null;
+  return d.startsWith(path.dirname(CORE_DIR) + path.sep) && !(home && d.startsWith(home));
+};
 
 export class Registry {
   /**
@@ -229,6 +244,17 @@ export class Registry {
     const declared = new Set((m.does && m.does.tools) || []);
     return {
       name: m.name, config, paths,
+      // Every running module's declared settings (module.json "settings"), for the settings
+      // module to serve. Manifests are public; a module switched off takes its settings with it.
+      declaredSettings: () => [...this.modules.entries()].filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.settings))
+        // module and firstParty come from the loader, after the declaration, so a manifest can't claim them.
+        .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name, firstParty: firstParty(r.dir) }))),
+      // Every running module's teaches.tips, for the tips module to choose from (core/tips). Tips
+      // are plain text a module chose to show; the tips module checks them, never this loader.
+      // firstParty: shipped in the repo, so its tips follow Vyre's version, not the module's own.
+      declaredTips: () => [...this.modules.entries()]
+        .filter(([, r]) => r.state === "running" && r.manifest && r.manifest.teaches && Array.isArray(r.manifest.teaches.tips))
+        .map(([name, r]) => ({ module: name, version: r.manifest.version, firstParty: inRepo(r.dir, paths), tips: r.manifest.teaches.tips })),
       // The module's namespace in vyre.db: migrations are bound to its name, so its tables must
       // carry that name. Reads may join any table; writes to another module's tables go through
       // that module's tools.
@@ -289,6 +315,9 @@ export class Registry {
         const rec = this.modules.get(m.name);
         const core = Boolean(rec && path.resolve(rec.dir).startsWith(CORE_DIR + path.sep));
         if (!core || !(CALL_AS[m.name] || []).includes(String(as))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
+        // settings relays a person only to the tools first-party modules declared as their own
+        // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
+        if (m.name === "settings" && !this.settingTools().has(tool)) throw new Error(`settings may not call ${tool} as ${as}: no first-party setting names it`);
         return this.call(tool, input, String(as));
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
@@ -394,10 +423,10 @@ export class Registry {
     // (docs/adr/0004-presence.md). Only modules are exempt: only the loader makes those callers.
     const presence = this.deps.presence;
     if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
-      const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" ? terminal : null });
+      const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
-      meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null } };
+      meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
     }
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
     // The key reaches the tool too, so a tool that hands work on can carry it (threads.send uses
@@ -426,6 +455,20 @@ export class Registry {
       const code = typeof err?.code === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(err.code) ? err.code : "failed";
       return { error: { code, message: err?.message || String(e), ...(err?.detail && typeof err.detail === "object" ? { detail: err.detail } : {}) } };
     }
+  }
+
+  /** The getter and setter tools first-party modules name in their settings' tool stores. */
+  settingTools() {
+    const out = new Set();
+    for (const r of this.modules.values()) {
+      if (r.state !== "running" || !r.manifest || !Array.isArray(r.manifest.settings) || !firstParty(r.dir)) continue;
+      for (const d of r.manifest.settings) {
+        const t = d && d.store && d.store.tool;
+        if (t && t.get && t.get.tool) out.add(String(t.get.tool));
+        if (t && t.set && t.set.tool) out.add(String(t.set.tool));
+      }
+    }
+    return out;
   }
 
   status() {

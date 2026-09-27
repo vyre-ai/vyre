@@ -20,16 +20,28 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   threads.commands, rewind restore code (7543952e); images, threads.shell, threads.remember,
   thinking, background tasks (034c71e5).
 
+- After LOGOUT 4: Capsule quick answer = Vyre IQ prompt (core/sessions/iq-prompt.js, capsule@1,
+  replace mode, facts numbered, thinking off, version on thread.started), eval
+  scripts/eval-iq-prompt.js --live + test/eval/iq-prompt.test.js. No temperature knob exists in
+  Claude Code or the SDK (reported to the lead).
+- Event names stay as chat's contract reads them (model.switched, thinking.switched,
+  thread.thinking); sessions.models added.
+
 ## Doing
-- Waiting on the lead's phase 3 decision: A per-thread socket for the plugin (recommended; e2e
-  builds the daemon side) vs B fully in-process hooks + MCP.
+- Lead order (after LOGOUT 4): 2 Option A wiring (VYRE_SOCKET in spawnSession, client.js, MCP
+  server, hooks, then the spawner on; daemon side is e2e efb02b2c, merged in 8a2c5959).
 
 ## Next
-1. Phase 3 per the decision (gates e2e's uid split and teammates' team.* tools).
-2. Usage pause per auth for teammate starts and subagents (teammates' section 14).
-3. `device` on ask.answered; `mode` on thread.started; threads.asks on the box merging Mac asks
-   (tailnet sends the hunk).
-4. Codex/ACP only as modules later (conformance.js).
+3. "Doesn't ask" (bypassPermissions): person-only, no Touch ID, per session (Shift+Tab) and a
+   project default; an answer never grants it; floor (PreToolUse) + Gate still apply; refused
+   when the harness plugin is not loaded.
+4. Bugs: queued sends drop images; persist pending steers (st.steers is memory only).
+5. threads.send model/effort for the Capsule's Cmd-Return (or confirm threads.model covers it).
+6. A warm background session for purpose "memory" (Vyre IQ latency).
+7. Usage pause per auth for teammate starts and subagents.
+Then the compile phase: tests for every piece, docs, polish.
+Testing the SDK driver on testbox: VYRE_SESSIONS_SDK_DIR=~/vyre-ci/sessions-sdk (0.3.283, with
+optional deps; without them the tests silently run on the CLI).
 
 ## Needs from others
 - integrator: one full-suite run with `VYRE_SESSIONS_DRIVER=sdk VYRE_SESSIONS_SDK_DIR=<dir with SDK 0.3.283>`.

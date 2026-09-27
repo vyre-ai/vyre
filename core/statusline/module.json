@@ -8,5 +8,15 @@
   "watches": { "emits": [] },
   "shows": { "cli": ["statusline"] },
   "needs": {},
-  "teaches": {}
+  "teaches": {
+    "tips": [
+      {"id": "install", "text": "Put Vyre's line under every Claude Code session with `vyre statusline install`. It asks before it edits anything.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre statusline install", "docs": "using/claude-code.md#put-vyres-line-under-every-session"},
+      {"id": "read-line", "text": "The line reads `vyre · 2 need you · box ok · juno idle`: what waits on you, your box, and your assistant.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/claude-code.md#put-vyres-line-under-every-session"},
+      {"id": "chain", "text": "Keep your own status line and add Vyre's under it with `vyre statusline install --chain`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre statusline install --chain", "docs": "using/claude-code.md#put-vyres-line-under-every-session"},
+      {"id": "uninstall", "text": "`vyre statusline uninstall` takes Vyre's line out and puts yours back.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre statusline uninstall", "docs": "using/claude-code.md#put-vyres-line-under-every-session"},
+      {"id": "box-away", "text": "`box away` in the line means this Mac is paired but cannot reach your box right now.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/claude-code.md#put-vyres-line-under-every-session"},
+      {"id": "empty-line", "text": "An empty status line means vyred is not running. Run `vyre up` to bring it back.", "surfaces": ["cli"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "command": "vyre up", "docs": "using/claude-code.md#put-vyres-line-under-every-session"},
+      {"id": "backup", "text": "Install keeps your old Claude Code settings as `settings.json.vyre-backup` beside the file.", "surfaces": ["cli"], "level": "discovery", "trigger": "idle", "since": "0.1.0", "docs": "using/claude-code.md#put-vyres-line-under-every-session"}
+    ]
+  }
 }

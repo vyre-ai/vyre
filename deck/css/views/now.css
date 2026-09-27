@@ -9,7 +9,7 @@
 /* No assistant yet: the Create your assistant card (js/assistant-setup.js) stands in for the line.
    The same rules are in agents.css, since each view loads only its own stylesheet. */
 .now-assistant.has-card { font-size: inherit; line-height: inherit; color: var(--text); margin-top: 8px; }
-.asst-card { padding: 20px 24px 18px; border: 1px solid var(--rule-strong); border-radius: var(--r-3); background: var(--panel); }
+.asst-card { padding: 20px 24px 18px; border: 1px solid var(--rule-strong); border-radius: var(--radius-card, 12px); background: var(--panel); }
 .asst-title { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: var(--text); }
 .asst-lede { margin: 4px 0 0; font-size: 14px; line-height: 20px; }
 .asst-form { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; max-width: 480px; }
@@ -31,7 +31,7 @@
 .need { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding: 16px 20px; }
 .need-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
 .need h3 { font-size: 17px; line-height: 24px; font-weight: 600; }
-.need-cmd { font-size: 15px; font-weight: 500; padding: 1px 6px; border-radius: var(--r-1); background: var(--code-bg); }
+.need-cmd { font-size: 15px; font-weight: 500; padding: 1px 6px; border-radius: var(--radius-chip, 4px); background: var(--code-bg); }
 .need-why { margin-top: 4px; font-size: 14px; line-height: 20px; color: var(--text-2); }
 /* Send was approved and the sender failed: still needs the user, so it takes the Beacon colour. */
 .need-error { margin-top: 0; color: var(--beacon-ink); }
@@ -56,7 +56,7 @@
 .fact-main { flex-grow: 1; min-width: 0; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; row-gap: 0; }
 .fact-text { font-size: 14px; line-height: 20px; }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .now-col { padding: 12px 16px 24px; }
   .now-head { padding-left: 0; padding-bottom: 20px; gap: 6px; }
   .now-head .lbl { display: none; }
@@ -152,20 +152,13 @@
 /* The row's actions as real buttons: for a keyboard (shown while focused) and a screen reader. */
 .np-kb { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .np-kb:focus-within { position: static; width: auto; height: auto; clip: auto; overflow: visible; display: flex; gap: 8px; padding: 0 14px 12px 58px; background: var(--panel); }
-.np-kb-b { min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--rule-strong); background: var(--hover); color: var(--text);
-  font-family: var(--sans); font-size: 15px; font-weight: 600; cursor: pointer; }
-.np-kb-b:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* .np-kb-b is the secondary touch button (css/buttons.css). */
 
 .np-skel { padding: 0; }
 .np-skel-row { height: 78px; background: var(--hover); opacity: 0.6; }
 .np-skel-row + .np-skel-row { border-top: 1px solid var(--rule); }
 
-/* The Undo toast: above the Capsule. */
-.np-toast { position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 56px + 24px); z-index: 900;
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 6px 0 16px;
-  background: var(--panel); color: var(--text); border: 1px solid var(--rule-strong); border-radius: 12px; box-shadow: var(--light-top); }
-.np-toast-t { font-size: 15px; line-height: 20px; }
-.np-toast-undo { min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--text); font-family: var(--sans); font-size: 15px; font-weight: 600; cursor: pointer; }
+/* The Undo toast is the Deck's one toast (js/toast.js, css/toast.css). */
 
 /* Working. */
 .np-wrow { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; text-decoration: none; color: var(--text); }

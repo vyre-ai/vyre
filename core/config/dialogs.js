@@ -106,14 +106,15 @@ export function dialogsAllowed(env = process.env) {
  * Whether a vyred on `root` may look for, or pair with, a box on the real tailnet. The same rule
  * as dialogs: a dev world, a demo or a stress run on a temp home found the user's live box and
  * sent it a real pairing request. Only ~/.vyre may, or a home whose owner says so with
- * VYRE_ALLOW_DIALOGS=1 or VYRE_ALLOW_REAL_BOX=1. VYRE_NO_DIALOGS does not change it: a stress run
- * sets that and still must not pair.
+ * VYRE_ALLOW_REAL_BOX=1. VYRE_ALLOW_DIALOGS=1 is about dialogs, not boxes: a trial home that
+ * allowed dialogs and named the user's box sent it a pairing request. VYRE_NO_DIALOGS does not
+ * change it either: a stress run sets that and still must not pair.
  * @param {string} root @param {NodeJS.ProcessEnv} [env]
  */
 export function realBoxAllowed(root, env = process.env) {
   if (env.VYRE_ALLOW_REAL_BOX === "1") return true;
   if (env.NODE_TEST_CONTEXT) return false;
-  return isRealHome(root) || env.VYRE_ALLOW_DIALOGS === "1";
+  return isRealHome(root);
 }
 
 /** The error code a refused dialog carries. */

@@ -133,7 +133,7 @@ export function css(t) {
     const c = t.color[theme];
     const out = Object.entries(c).filter(([k]) => k !== "beacon").map(([k, v]) => [kebab(k), v]);
     out.push(["beacon-ink", c.beacon], ["beacon-dot", c.beacon], ["beacon-badge-ink", c.primaryInk]);
-    out.push(["float", t.shadow[theme]]);
+    out.push(["float", t.shadow[theme]], ["popover", t.popover[theme]]);
     return out.map(([k, v]) => `  --${k}: ${v};`).join("\n");
   };
   return `/* ${HEAD} */
@@ -142,11 +142,24 @@ export function css(t) {
 ${roles("dark")}
   --sans: '${t.font.sans}', 'Helvetica Neue', Arial, sans-serif;
   --mono: '${t.font.mono}', ui-monospace, Menlo, monospace;
+${Object.entries(t.radius).map(([k, v]) => `  --radius-${kebab(k)}: ${v}px;`).join("\n")}
+${Object.entries(t.type.desktop).map(([k, [size, line]]) => `  --size-${k}: ${size}px; --line-${k}: ${line}px;`).join("\n")}
+${t.space.map((v, i) => `  --space-${i}: ${v}px;`).join("\n")}
+${Object.entries(t.control).map(([k, v]) => `  --control-${kebab(k)}: ${v}px;`).join("\n")}
+${Object.entries(t.motion).filter(([k]) => k !== "ease").map(([k, v]) => `  --motion-${k}: ${v}ms;`).join("\n")}
+  --ease: cubic-bezier(${t.motion.ease.join(", ")});
   color-scheme: dark;
 }
 :root[data-theme="paper"] {
 ${roles("paper")}
   color-scheme: light;
+}
+/* On a phone (under 720 wide, or a phone in landscape) the read and title steps are larger (iOS body
+   size, no zoom on focus). */
+@media (max-width: ${t.layout.breakpoints.medium - 1}px), (max-height: 500px) and (pointer: coarse) {
+  :root {
+${Object.entries(t.type.phone).filter(([k, v]) => v.join() !== t.type.desktop[k].join()).map(([k, [size, line]]) => `    --size-${k}: ${size}px; --line-${k}: ${line}px;`).join("\n")}
+  }
 }
 `;
 }

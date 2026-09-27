@@ -206,7 +206,7 @@ export class Gate {
 
   row(id) {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM gate_items WHERE id = ?").get(String(id)));
-    if (!r) throw new Error(`nothing at the Gate has id ${id}`);
+    if (!r) throw Object.assign(new Error(`nothing at the Gate has id ${id}`), { code: "not_found" });
     return r;
   }
 

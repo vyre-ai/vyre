@@ -88,13 +88,34 @@ without editing Capsule files:
 - Planner banners (d608b8a), Touch ID in the panel, menu-bar popover, Taildrop send, the typing
   fix, the extension seam, `@` targets: see CHANGELOG.
 
-## Doing
-- Session events (ADR 0030, sessions d12171cc): tool rows, turn, state, usage and the paced
-  reveal are built and measured (see CHANGELOG), Swift 287/287. They land after batch 3a is on
-  main: merge main then, run the suite, hand the sha to the integrator, and stop again.
-  Numbers (optimised, off-screen panel): event to paint p95 1.1 ms; first token 2.2 ms; chars per
-  frame CV 0.47; visible-update gap p95 18 ms; 0 size changes; Esc to stopped 1.5 ms; typing
-  p95 8.7 ms.
+## Doing (session 5, 2026-09-27, after logout 4)
+Merged main 7880dfa6 (b3c63eb5). Done this session: the answer card grows, then scrolls (540d55ba,
+c1a9223f: keys, follow, thumb, Jump to latest, no empty headings, whole-row results); ⌘⏎ in the
+same thread with threads.model + threads.thinking (f7e7fb52). Swift 304/304.
+Now: app-design's capsule.md (vyre-app-design docs/design/system/capsule.md, 6f8ae52f), in tasks:
+T1 geometry, copy, sentence case, footer states; T2 voice and computer-use surfaces, layered Esc.
+Blocked: Vyre IQ iq.ask (memory-iq not on main); the hub theme (/v1/appearance/theme, not on main).
+
+The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, never paired):
+- trial vyred pid 58916 (`node core/daemon/main.js` from this worktree, started before the merge,
+  so it has no threads.model: ⌘⏎ falls back to a new thread until it restarts; its config points
+  at the real box and a restart may make a pairing request, so ask the lead first)
+- trial Capsule relaunched on each new build: `open -n -g --env VYRE_HOME=/private/tmp/claude-501/vyre-try --env VYRE_ALLOW_DIALOGS=1 local/capsule/native/.build/Vyre.app`
+  (find the pid with `pgrep -f vyre-capsule-pro/local/capsule/native/.build/Vyre.app`)
+- Stop: quit from the menu-bar mark ("Quit Vyre Capsule"), then
+  `VYRE_HOME=/private/tmp/claude-501/vyre-try node bin/vyre down`.
+- The real Vyre (global npm 0.0.1, vyred 60055, ~/.vyre) is untouched.
+
+## Next
+1. capsule.md T1 and T2 (above), then the rest of its Gaps list that is not blocked.
+2. Vyre IQ: iq.ask {stream: true} when memory-iq lands it: stages, source chips ⌘1..⌘3, "Not sure"
+   with known, nothing found.
+3. The settings hub (native-core, app-design appearance): GET /v1/appearance/theme at launch,
+   repaint on appearance.changed; Tokens.generated.swift as the offline fallback only.
+4. The real-Vyre install after tonight's deploy, only with the lead's go; then the 11-step check.
+5. "idle" on @ session rows from threads.list `status`. Persist PlannerBanners.unsent.
+6. Voice and computer use live checks need the user (speech key, Mic / Accessibility / Screen
+   Recording grants).
 
 ## Footprint: met (2026-09-27)
 - CI run 36314455924 (macos-latest): never shown 18.3 MB footprint, RSS 82.3 MB; hidden after use
@@ -136,24 +157,29 @@ box, and every key below passed through or kept.
 | Dictation (the system key) | Dictate into the box | AppKit |
 | Services | From the field's context menu and the app menu | AppKit |
 | ←/→, ⌥←/→, ⌘←/→ | Move by character, word, line; with ⇧ they select | the field |
-| ⌘↑/↓ | Start or end of the box; with ⇧ they select | the field |
+| ⌘↑/↓ | Top or end of a long answer; with no answer to scroll, start or end of the box; with ⇧ they select | Capsule, the field |
+| ⌥↑/↓ | Three lines of a long answer; with none, the box's | Capsule, the field |
+| PageUp/PageDown, Home/End | Page through a long answer, or go to its top or end; the focus stays in the box | Capsule |
 | ⌥⌫, ⌘⌫ | Delete a word, delete to the start (⌘⌫ removes an attachment chip first) | the field, Capsule |
 | ⌃A, ⌃E, ⌃K (and the other emacs keys) | Start, end, kill to end | the field |
 | ⌘W | Hide the Capsule | Window menu |
 | ⌘, | Settings: hides the Capsule and opens the menu-bar popover | app menu |
 | ⌘Q | Hides the Capsule. Quitting is "Quit Vyre Capsule" in the menu-bar item's menu, so a stray ⌘Q never loses the hot keys | app menu |
-| Esc | Cancel Touch ID, a confirm, or a streaming answer; else clear the box; else hide | Capsule |
+| Esc | Cancel Touch ID, a confirm, or a streaming answer; else clear an answer back to plain search; else clear the box; else hide | Capsule |
 | ↑/↓ | Move in the results; ↑ in an empty box opens what waits on you | Capsule |
-| ⏎ | Run the row (a held ⏎ counts once) | Capsule |
-| ⌘⏎, ⇧⏎ | The row's other actions; ⌘⏎ sends a held card | Capsule |
+| ⏎ | On a question: keep the answer and open the follow-up box; in it, continue the thread. Otherwise run the row (a held ⏎ counts once) | Capsule |
+| ⌘⏎ | On a question or a follow-up: think deeper (the same thread switched to the deeper model, thinking on). On a row: its other action; on a held card: send | Capsule |
+| ⇧⏎ | The row's other action | Capsule |
+| ⌘O | Open the answer's thread in Vyre chat on the box | Capsule |
 | Tab | Pick the @ row, or send the words to the first destination | Capsule |
 | ⌘K | The row's actions, to pick one | Capsule |
-| ⌘D | The same question to the deeper model | Capsule |
+| ⌘D | The same as ⌘⏎ on a finished quick answer (kept for old habits) | Capsule |
 | ⌘S | Send a file row to the box | Capsule |
 | ⌘→ at the end of the box | Show or fold memory's sources | Capsule |
 | ⌫ in an empty box | Drop the @ chip | Capsule |
 | A in the waiting list | Allow or accept the highlighted row | Capsule |
-| ⌥⏎ | Push to talk (sight) | extension |
+| ⌥⏎ | Talk into the box: hold to talk while down, or tap to start and tap to stop (sight) | extension |
+| "do …" then ⏎, or ⌘⏎ on an action | Computer use: an agent session with hands and screen, tool rows live, Esc stops the hands | Capsule |
 | ⌥Space, Control twice | Open or hide the Capsule from anywhere | hot keys |
 
 ## Real-Mac check for the native Capsule (the user, at the Mac, in their own terminal)
@@ -201,15 +227,6 @@ then `vyre call gate.request "$H"` with N changed each time.
 Afterwards: `vyre call gate.held '{}'` shows nothing left over. Discard anything that is, with the
 card's Discard button in the Capsule or `vyre call gate.reject '{"id":"<id>"}'`.
 If a step fails, note its number and what the screen said. Screenshots of the Capsule only.
-
-## Next
-2. "idle" on @ session rows from threads.list `status` (VyreThread has no status yet), and
-   "send now".
-3. Switch the "live in terminal" badge to capsule-now's `live` flag (threads.list and
-   projects.catalog rows carry it via fc7fa70).
-4. Local ring answers kept only in memory (PlannerBanners.unsent). Persist them to
-   <home>/capsule/ if a quit before the box returns matters.
-5. The real-Mac check above, when the user says go (the lead hands it over).
 
 ## Needs from others
 - capsule-now: its rules doc (docs/work/capsule-now.md) is not written yet; the lead asked the

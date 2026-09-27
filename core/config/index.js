@@ -101,6 +101,18 @@ export function privateSocketDir() {
  * projects.move "enabled" lets projects.move really move a box's homes (off until box-deploy validates it). */
 
 /**
+ * Pages on other sites that may call this box from the owner's browser: Vyre's hosted app. Config
+ * network.origins replaces the list; an empty list turns cross-origin calls off.
+ */
+export const HOSTED_ORIGINS = Object.freeze(["https://app.vyre.run"]);
+
+/** The origins in effect for this network config, lowercased, no trailing slash. @param {any} network @returns {string[]} */
+export function hostedOrigins(network) {
+  const list = network && Array.isArray(network.origins) ? network.origins : HOSTED_ORIGINS;
+  return list.map(o => String(o).toLowerCase().replace(/\/+$/, ""));
+}
+
+/**
  * The box's work folder: the vyre-work volume, which Taildrive shares. Tests point
  * VYRE_WORK_DIR at a temp folder.
  */
