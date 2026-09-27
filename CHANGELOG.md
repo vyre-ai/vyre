@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Project teammates: a listener leak on a failed launch
+
+- The catch-all listener that closes the launch-vs-turn-finished race (previous entry) never
+  unsubscribed itself when `threads.launch` threw, leaking one listener per failed attempt.
+  Wrapped in `try`/`finally` so it always does.
+
 #### Project teammates: a paused team.done says why, in the transcript
 
 - `team.done`'s notes-not-changed refusal now also posts a `threads.notice` into the teammate's

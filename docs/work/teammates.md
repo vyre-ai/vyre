@@ -191,6 +191,17 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
      warnings. New assertion in the existing notes-changed test. Compaction re-injection was
      already this shape (a `threads.post`, visible in the transcript) from the start.
    20/20 team tests still green (this addition included), stable, testbox; 61/61 docs.
+7. A second, independent reviewer signed off 20d0f121 (2026-09-28) with one LOW: the early
+   catch-all listener's own unsubscribe (`early()`) was never called when `threads.launch` itself
+   threw, leaking one "thread.finished" listener (and its small id-buffering Set) per failed
+   launch attempt, forever. Fixed with a `try { ... } finally { early(); }` around the launch
+   call, so it is always unsubscribed whichever way that call ends. Also fixed a doc-comment
+   inaccuracy `neutralize()`'s own comment said it "splices in a zero-width space" without saying
+   it also drops the tag's opening `<` (the actual, and stronger, behavior — the tests were
+   already right about this, the comment was not). No new test for the leak itself (forcing
+   `threads.launch` to throw deterministically against the fake driver is not straightforward);
+   verified by inspection that `finally` covers both the success and throw paths. 25/25 (team +
+   boundaries) still green on testbox.
 
 ## e2e review round 1 (2026-09-28, f8cbc882)
 
