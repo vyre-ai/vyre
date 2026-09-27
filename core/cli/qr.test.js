@@ -1,7 +1,7 @@
 // @ts-check
-// The QR encoder, against matrices checked module for module with an independent encoder (the
-// qrcode package, byte mode, level M, the same mask) when this file was written: a version 3
-// code, and a version 9 one that carries version information. Plus the parts a scanner reads first.
+// The terminal QR code: the vendored encoder (deck/vendor/qrcode.js) at level M in byte mode,
+// pinned for a box address and a relay pair URL longer than version 10 holds, plus the parts a
+// scanner reads first and the half-block drawing.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,15 +10,15 @@ import { qr, terminal } from "./qr.js";
 
 const hash = m => crypto.createHash("sha256").update(m.map(r => r.map(b => (b ? "1" : "0")).join("")).join("\n")).digest("hex").slice(0, 16);
 
-test("qr: matrices match an independent encoder", () => {
-  const short = qr("https://vyre.tail0000.ts.net/", { mask: 2 });
+test("qr: a box address matches the encoder this file was checked against, and a relay pair URL fits", () => {
+  // The same matrix the previous, independently checked encoder gave for this address.
+  const short = qr("https://vyre.tail0000.ts.net/");
   assert.equal(short.length, 29, "version 3");
-  assert.equal(hash(short), "f2e7ab9ccbfc590a");
-  const long = qr("https://alex.vyre.run/" + "y".repeat(140), { mask: 5 });
-  assert.equal(long.length, 53, "version 9");
-  assert.equal(hash(long), "35400178e9e06564");
-  const auto = hash(qr("https://vyre.tail0000.ts.net/"));
-  assert.ok([0, 1, 2, 3, 4, 5, 6, 7].some(k => hash(qr("https://vyre.tail0000.ts.net/", { mask: k })) === auto), "the chosen mask is one of the eight, fully applied");
+  assert.equal(hash(short), "523a8700eb6d9c56");
+  // A pair URL with a 64-character box name is about 260 characters: past version 10's 213 bytes.
+  const pair = "https://vyre.run/pair#" + "x".repeat(240);
+  assert.equal(qr(pair).length, 65, "version 12");
+  assert.ok(qr("é").length === 21, "UTF-8 text in byte mode");
 });
 
 test("qr: finder patterns, timing, sizes and limits", () => {
@@ -30,7 +30,7 @@ test("qr: finder patterns, timing, sizes and limits", () => {
   assert.deepEqual([8, 9, 10, 11, 12].map(i => m[6][i]), [true, false, true, false, true], "timing row");
   assert.equal(m[21 - 8][8], true, "the dark module");
   assert.equal(qr("x".repeat(213)).length, 57, "version 10 holds 213 bytes");
-  assert.throws(() => qr("x".repeat(214)), /too long/);
+  assert.equal(qr("x".repeat(214)).length, 61, "and one more byte is version 11");
 });
 
 test("qr: terminal lines pair two rows per line, with a quiet zone", () => {
