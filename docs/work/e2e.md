@@ -370,6 +370,9 @@ Plan (to the lead before building):
 - Waiting: glass hotfix sha (read full diff as second pair of eyes); federation transport code.
 - 0.1.1 queue (after rc.2): agent-browser sizing on testbox; browse eval harness (~30 fixture tasks,
   CI gate, 90%) once glass's browse.task exists; per-level peer lookup instead of ps -A.
+- cohesion 5ef364c3 (shared agentClaim, read): real gaps closed; MEDIUM regression: empty name ("cli agent:")
+  returns "" -> falsy -> network/relay now trust it (they denied before). Asked: empty counts as a claim.
+  TODO me: fold core/daemon's AGENT_CLAIM into agentClaim after 1ff45c03 lands.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
