@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Reconnecting pill no longer moves the view
+
+- `.reach` (the line js/pwa.js shows while the box does not answer) was in the normal flow under
+  the header and pushed every view down about 41 px when it came. It is now one small pill fixed
+  under the header, centred, on the panel colour, taking no layout space (ADR 0029 R3). Found by
+  native-core's native-bar harness. Test in deck/test/pwa.test.js.
+
 #### The sign-in page's imports live in api.js
 
 - deck/js/api.js exports `signIn()` (presence.person.start {} with a passkey; fires "deck:person")

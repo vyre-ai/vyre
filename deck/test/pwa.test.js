@@ -464,3 +464,13 @@ test("pwa sideways: isPhone asks matchMedia the one query and is false without m
   assert.deepEqual(asked, [PHONE_QUERY]);
   assert.equal(isPhone({}), false);
 });
+
+test("pwa: the Reconnecting pill floats under the header and takes no layout space (ADR 0029 R3)", () => {
+  const css = read("css/deck.css");
+  const rule = /\n\.reach \{([^}]*)\}/.exec(css);
+  assert.ok(rule, "the .reach rule");
+  assert.match(rule[1], /position: fixed/);
+  assert.match(rule[1], /top: calc\(env\(safe-area-inset-top\) \+ 48px \+ 8px\)/);
+  assert.match(rule[1], /border-radius: 999px/);
+  assert.doesNotMatch(css, /\.reach \{[^}]*position: (relative|static)/, "no rule puts it back in the flow");
+});
