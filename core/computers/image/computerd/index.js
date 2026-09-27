@@ -11,27 +11,37 @@
 // AT-SPI is Python's job (atspi.py, next to this file); xdotool and ImageMagick's `import` are
 // shelled out to directly, since there is nothing here worth a binding for a single command each.
 //
-// Chrome's own debugging port (9222) is never reachable off 127.0.0.1: earlier this relayed it
-// out on its own unauthenticated port, which meant full CDP access (cookies, page content,
-// arbitrary JS, anything the Vault autofilled) to anything else on the internal network. Now
-// computerd is the only thing that ever dials 9222, and only after the same bearer check every
-// other route gets: GET /cdp/json/version proxies Chrome's own answer with its
-// webSocketDebuggerUrl rewritten to point back through here, and the WebSocket upgrade at
-// /cdp/... relays raw bytes to and from 127.0.0.1:9222 once its own check passes. A plain
-// WebSocket cannot carry an Authorization header, so that one check reads the token from
-// `?token=` on the upgrade request instead — modules/hands-chrome/cdp.js appends it, and it is
-// never logged or echoed, same as everywhere else here.
+// Chrome is computerd's own child, started with --remote-debugging-pipe: it has no debugging
+// port at all, so nothing else on the computer (the agent's own terminal included) can reach it
+// and step around the token and the shield. computerd owns that one pipe and shares it between
+// its clients through cdpmux.js, which gives every client a browser session of its own (so what
+// one client switches on, Fetch interception or a trace, never outlives it or reaches another),
+// keeps each client's ids and sessions apart, and refuses Browser.close. GET /cdp/json/version answers in Chrome's own /json/version shape
+// with a webSocketDebuggerUrl pointing back here, and the WebSocket upgrade at
+// /cdp/devtools/browser/<id> is the only way in. A plain WebSocket cannot carry an Authorization
+// header, so that one check reads the token from `?token=` on the upgrade request instead:
+// modules/hands-chrome/cdp.js appends it, and it is never logged or echoed, same as everywhere
+// else here. Chrome is restarted if it exits (1 s, doubling to 30 s at most), and every call
+// still waiting on it is answered with an error.
+//
+// Two kinds of client. COMPUTERD_TOKEN is the agent's. While a person signs in (the shield,
+// POST /shield), the agent's clients are cut and new ones get 423; the shield may also carry a
+// fill token, which alone is accepted as a "fill" client (the Vault filling the sign-in form)
+// on the upgrade and on /cdp/json/version, and nowhere else. Lowering the shield forgets it and
+// cuts those clients too.
 //
 // UNVALIDATED: written by inspection, never run against a live X display or AT-SPI bus. See the
 // report to the lead for what needs checking once the box is up.
 
 import { createServer } from "node:http";
-import { connect } from "node:net";
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { URL } from "node:url";
 import { createFs } from "./fs.js";
-
-const CHROME = { host: "127.0.0.1", port: 9222 };
+import { CdpMux } from "./cdpmux.js";
+import { acceptKey, encodeFrame, FrameParser } from "./ws.js";
 
 const PORT = Number(process.env.COMPUTERD_PORT || 7000);
 const TOKEN = process.env.COMPUTERD_TOKEN || "";
@@ -42,12 +52,35 @@ if (!TOKEN) {
 
 const ATSPI = new URL("./atspi.py", import.meta.url).pathname;
 
+// ---- Chrome: its flags, moved here from entrypoint.sh -------------------------------------
+const HOME = process.env.HOME || "/home/agent";
+const CHROME_BIN = process.env.CHROME_BIN || "chromium";
+// The image sets both (the browser's own folder, outside the agent's home); the defaults are
+// for running computerd by hand.
+const CHROME_PROFILE = process.env.CHROME_PROFILE || path.join(HOME, ".chromium");
+const CHROME_LOG = process.env.CHROME_LOG || path.join(HOME, ".chromium.log");
+const SCREEN = /^[0-9]+x[0-9]+$/.test(process.env.SCREEN || "") ? String(process.env.SCREEN) : "1440x900";
+// The few sites that go out through the user's Mac (config glass.egress, core/computers/egress.js):
+// vyred passes the proxy script as a data: URL only when the setting is on and lists a site.
+// Checked against that exact shape, so nothing else ever reaches Chrome's command line through it.
+// WebRTC is kept off UDP that bypasses the proxy, or a listed site could still learn this box's
+// own address from a STUN reply.
+const PAC = process.env.VYRE_PROXY_PAC || "";
+const PAC_SHAPE = /^data:application\/x-ns-proxy-autoconfig;base64,[A-Za-z0-9+\/]+=*$/;
+if (PAC && !PAC_SHAPE.test(PAC)) {
+  console.error("computerd: VYRE_PROXY_PAC is not a PAC data: URL; refusing to start Chrome without the sites it lists");
+  process.exit(1);
+}
+/** The id in the one browser endpoint this computerd serves: /cdp/devtools/browser/<id>. */
+const BROWSER_ID = crypto.randomUUID();
+const BROWSER_PATH = `/cdp/devtools/browser/${BROWSER_ID}`;
+
 // Glass's file routes (fs.js), and the shield: while a person signs in, the routes that see or
 // touch the screen answer 423 (ADR 0005, decision 3). In memory, so a restart starts unshielded.
 const files = createFs();
 let shielded = false;
-/** Open CDP pipes, so raising the shield can cut every one already attached. */
-const cdpPipes = new Set();
+/** Set only while shielded, by POST /shield {on: true, fill_token}; see the header. */
+let fillToken = "";
 const SHIELDED_ROUTES = new Set(["GET /tree", "GET /screenshot", "POST /act", "POST /input"]);
 
 // node:child_process.spawn() inherits the whole environment by default, VNC_PASSWORD and
@@ -59,7 +92,19 @@ const SHIELDED_ROUTES = new Set(["GET /tree", "GET /screenshot", "POST /act", "P
 // any child of computerd gets; it closes the separate, easier channel of computerd's own spawned
 // children leaking the same values if one of them ever echoes or crash-dumps its environment).
 const CHILD_ENV_ALLOW = ["PATH", "HOME", "DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "LANG", "LC_ALL"];
-const childEnv = () => Object.fromEntries(CHILD_ENV_ALLOW.filter(k => process.env[k] !== undefined).map(k => [k, process.env[k]]));
+const childEnv = (allow = CHILD_ENV_ALLOW) => Object.fromEntries(allow.filter(k => process.env[k] !== undefined).map(k => [k, process.env[k]]));
+// Chrome gets the same allowlist plus what the entrypoint exports for accessibility (AT-SPI
+// only sees Chromium's tree with these) and the session bus's pid. Before computerd started it,
+// Chrome inherited the entrypoint's whole environment, the VNC password and this token included.
+const CHROME_ENV_ALLOW = [...CHILD_ENV_ALLOW, "DBUS_SESSION_BUS_PID", "GTK_MODULES", "NO_AT_BRIDGE", "QT_ACCESSIBILITY", "XAUTHORITY", "TZ", "LANGUAGE", "USER"];
+
+/** Constant-time token comparison; hashing first hides the length too. */
+function sameToken(given, expected) {
+  if (typeof given !== "string" || typeof expected !== "string" || !expected) return false;
+  const a = crypto.createHash("sha256").update(given).digest();
+  const b = crypto.createHash("sha256").update(expected).digest();
+  return crypto.timingSafeEqual(a, b);
+}
 
 /** Run a subprocess, collect stdout/stderr, resolve/reject on exit. Never throws synchronously. */
 function run(cmd, args, { input, timeout = 15_000, binary = false } = {}) {
@@ -155,6 +200,113 @@ function readBody(req) {
   });
 }
 
+// ---- Chrome, over its pipe -------------------------------------------------------------
+
+/** Logs name methods and count things; cdpmux never hands this a message's contents. */
+const mux = new CdpMux({ log: line => console.log(line) });
+/** @type {import("node:child_process").ChildProcess|null} */
+let chrome = null;
+let stopping = false;
+let backoff = 1000;
+let firstLaunch = true;
+/** @type {NodeJS.Timeout|null} */
+let restartTimer = null;
+
+function chromeArgs() {
+  const [w, h] = SCREEN.split("x");
+  return [
+    "--no-sandbox",
+    // --test-type keeps Chromium from drawing its --no-sandbox warning bar into the Glass stream.
+    "--test-type",
+    "--disable-gpu",
+    "--disable-dev-shm-usage",
+    "--force-renderer-accessibility",
+    // Nothing loads into this browser but the pages the agent opens.
+    "--disable-extensions",
+    // No keyring in here; say so rather than let Chrome guess (ADR 0005: cookies are obfuscated,
+    // not encrypted, and the volume holding them is what needs protecting).
+    "--password-store=basic",
+    // CDP on fds 3 and 4, no port: see the header.
+    "--remote-debugging-pipe",
+    `--user-data-dir=${CHROME_PROFILE}`,
+    `--window-size=${w},${h}`,
+    "--start-maximized",
+    ...(PAC ? [`--proxy-pac-url=${PAC}`, "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"] : []),
+    "about:blank",
+  ];
+}
+
+function launchChrome() {
+  restartTimer = null;
+  if (stopping) return;
+  // The profile lives on the home volume; a container that was killed (or a Chrome that crashed)
+  // leaves its Singleton locks behind, and the next one then refuses to start with "profile in use".
+  for (const f of ["SingletonLock", "SingletonSocket", "SingletonCookie"]) {
+    try { fs.unlinkSync(path.join(CHROME_PROFILE, f)); } catch {}
+  }
+  /** @type {number|"ignore"} */
+  let logfd = "ignore";
+  try { logfd = fs.openSync(CHROME_LOG, firstLaunch ? "w" : "a"); } catch {}
+  firstLaunch = false;
+  const started = Date.now();
+  let done = false;
+  /** @param {string} why */
+  const gone = why => {
+    if (done) return;
+    done = true;
+    chrome = null;
+    mux.detach(`Chrome ${why}`);
+    if (stopping) return;
+    if (Date.now() - started > 60_000) backoff = 1000;
+    console.error(`computerd: chromium ${why}; starting it again in ${backoff / 1000} s`);
+    restartTimer = setTimeout(launchChrome, backoff);
+    backoff = Math.min(backoff * 2, 30_000);
+  };
+  /** @type {import("node:child_process").ChildProcess} */
+  let child;
+  try {
+    child = spawn(CHROME_BIN, chromeArgs(), { stdio: ["ignore", logfd, logfd, "pipe", "pipe"], env: childEnv(CHROME_ENV_ALLOW) });
+  } catch (e) {
+    if (typeof logfd === "number") try { fs.closeSync(logfd); } catch {}
+    gone(`could not be started: ${/** @type {Error} */ (e).message}`);
+    return;
+  }
+  if (typeof logfd === "number") try { fs.closeSync(logfd); } catch {}
+  chrome = child;
+  child.on("error", e => gone(`could not be started: ${/** @type {any} */ (e).code || e.message}`));
+  child.on("exit", (code, signal) => gone(signal ? `was stopped by ${signal}` : `exited ${code}`));
+  const toChrome = /** @type {import("node:stream").Writable} */ (child.stdio[3]);
+  const fromChrome = /** @type {import("node:stream").Readable} */ (child.stdio[4]);
+  if (toChrome && fromChrome) mux.attach(toChrome, fromChrome);
+  console.log("computerd: chromium started");
+}
+
+/** Chrome's /json/version shape, from Browser.getVersion over the pipe. @param {number} timeout */
+async function chromeVersion(timeout) {
+  const v = await mux.call("Browser.getVersion", {}, undefined, timeout);
+  return {
+    "Browser": v.product,
+    "Protocol-Version": v.protocolVersion,
+    "User-Agent": v.userAgent,
+    "V8-Version": v.jsVersion,
+    "WebKit-Version": v.revision,
+  };
+}
+
+/**
+ * GET /cdp/json/version: Chrome's own answer, with a webSocketDebuggerUrl that points back
+ * through here. `host` is whatever the caller used to reach computerd (req.headers.host), so the
+ * URL it gets back is exactly the address it can dial next.
+ * @param {string} host
+ */
+async function cdpVersion(host) {
+  if (!mux.up) throw Object.assign(new Error("chromium is not running (it is being started again)"), { status: 503 });
+  let info;
+  try { info = await chromeVersion(5000); }
+  catch (e) { throw Object.assign(new Error(`chromium did not answer: ${/** @type {Error} */ (e).message}`), { status: 503 }); }
+  return { ...info, webSocketDebuggerUrl: `ws://${host}${BROWSER_PATH}` };
+}
+
 async function health() {
   let display = process.env.DISPLAY || "";
   let size = null;
@@ -164,10 +316,7 @@ async function health() {
     if (Number.isFinite(w) && Number.isFinite(h)) size = { w, h };
   } catch { /* leave size null; /health still answers */ }
   let chrome = null;
-  try {
-    const res = await fetch(`http://${CHROME.host}:${CHROME.port}/json/version`, { signal: AbortSignal.timeout(2000) });
-    chrome = res.ok ? await res.json() : null;
-  } catch { chrome = null; }
+  try { chrome = mux.up ? await chromeVersion(2000) : null; } catch { chrome = null; }
   return { ok: true, display, size, chrome };
 }
 
@@ -177,63 +326,59 @@ async function screenshot() {
 }
 
 /**
- * Chrome's own /json/version, fetched over loopback and handed back with its
- * webSocketDebuggerUrl rewritten to point through this proxy instead of at 127.0.0.1:9222 —
- * `host` is whatever the caller used to reach computerd (req.headers.host), so the URL it gets
- * back is exactly the address it can actually dial next.
- * @param {string} host
- */
-async function cdpVersion(host) {
-  let res;
-  try { res = await fetch(`http://${CHROME.host}:${CHROME.port}/json/version`, { signal: AbortSignal.timeout(5000) }); }
-  catch (e) { throw new Error(`chromium is not answering on its debugging port: ${/** @type {Error} */ (e).message}`); }
-  if (!res.ok) throw new Error(`chromium's /json/version answered HTTP ${res.status}`);
-  const info = await res.json();
-  if (info && typeof info.webSocketDebuggerUrl === "string") {
-    // ws://127.0.0.1:9222/devtools/browser/<id> -> ws://<host, from the caller's own request>/cdp/devtools/browser/<id>
-    info.webSocketDebuggerUrl = info.webSocketDebuggerUrl.replace(/^wss?:\/\/[^/]+/, `ws://${host}/cdp`);
-  }
-  return info;
-}
-
-/**
- * Proxy a CDP WebSocket upgrade to Chrome's loopback debugging port, once the token in the
- * request's own query string checks out (a plain WebSocket cannot send an Authorization header).
- * Nothing here parses CDP itself: once the token is checked, it is a dumb authenticated pipe.
+ * The CDP WebSocket: checked (token from `?token=`, path, shield), handshaken here, and handed to
+ * the mux as one client. Nothing is relayed anywhere; there is no port to relay to.
  * @param {import("node:http").IncomingMessage} req
- * @param {import("node:net").Socket} socket
+ * @param {import("node:stream").Duplex} socket
  * @param {Buffer} head
  */
-function proxyCdpUpgrade(req, socket, head) {
-  const url = new URL(req.url || "/", "http://computerd");
+function cdpUpgrade(req, socket, head) {
+  socket.on("error", () => {});
+  const refuse = status => { try { socket.end(`HTTP/1.1 ${status}\r\nconnection: close\r\ncontent-length: 0\r\n\r\n`); } catch {} };
+  let url;
+  try { url = new URL(req.url || "/", "http://computerd"); } catch { return refuse("400 Bad Request"); }
   const token = url.searchParams.get("token") || "";
-  if (token !== TOKEN) { socket.end("HTTP/1.1 401 Unauthorized\r\nconnection: close\r\n\r\n"); return; }
-  if (!url.pathname.startsWith("/cdp/")) { socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n"); return; }
-  // While a person signs in, no one attaches to Chrome: a CDP session could read the form.
-  if (shielded) { socket.end("HTTP/1.1 423 Locked\r\nconnection: close\r\n\r\n"); return; }
-  const targetPath = url.pathname.slice("/cdp".length);
+  const kind = sameToken(token, TOKEN) ? "agent" : (fillToken && sameToken(token, fillToken)) ? "fill" : null;
+  if (!kind) return refuse("401 Unauthorized");
+  if (url.pathname !== BROWSER_PATH) return refuse("404 Not Found");
+  // While a person signs in, the agent does not attach to Chrome: a CDP session could read the form.
+  if (kind === "agent" && shielded) return refuse("423 Locked");
+  const key = req.headers["sec-websocket-key"];
+  if (String(req.headers.upgrade || "").toLowerCase() !== "websocket" || typeof key !== "string" || !key) return refuse("400 Bad Request");
+  if (!mux.up) return refuse("503 Service Unavailable");
 
-  const upstream = connect(CHROME.port, CHROME.host);
-  cdpPipes.add(socket);
-  socket.on("close", () => { cdpPipes.delete(socket); try { upstream.destroy(); } catch {} });
-  upstream.on("error", () => { try { socket.destroy(); } catch {} });
-  socket.on("error", () => { try { upstream.destroy(); } catch {} });
-  upstream.on("connect", () => {
-    // Chrome's own handshake, rebuilt from the browser's request rather than replayed verbatim:
-    // the path loses its /cdp prefix and the token never leaves computerd, and Host must name
-    // Chrome's own loopback address or its DevTools host check refuses the upgrade.
-    const headers = [];
-    for (let i = 0; i < req.rawHeaders.length; i += 2) {
-      const name = req.rawHeaders[i];
-      if (/^host$/i.test(name)) continue;
-      headers.push(`${name}: ${req.rawHeaders[i + 1]}`);
+  socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${acceptKey(key)}\r\n\r\n`);
+  if (typeof (/** @type {any} */ (socket)).setNoDelay === "function") /** @type {any} */ (socket).setNoDelay(true);
+  let open = true;
+  const transport = {
+    /** @param {string} text */
+    send(text) { if (open) socket.write(encodeFrame(Buffer.from(text, "utf8"), 0x1)); },
+    close() {
+      if (!open) return;
+      open = false;
+      // 1001, going away; then make sure the socket really goes even if the client never answers.
+      try { socket.end(encodeFrame(Buffer.from([0x03, 0xe9]), 0x8)); } catch {}
+      setTimeout(() => socket.destroy(), 1000).unref();
+    },
+  };
+  const client = mux.addClient(kind, transport);
+  const parser = new FrameParser();
+  /** @param {Buffer} chunk */
+  const onData = chunk => {
+    let msgs;
+    try { msgs = parser.push(chunk); } catch { open = false; socket.destroy(); return; }
+    for (const m of msgs) {
+      if ("control" in m) {
+        if (m.control === "ping" && open) socket.write(encodeFrame(m.payload, 0xa));
+        else if (m.control === "close") transport.close();
+        continue;
+      }
+      client.receive(m.message.toString("utf8"));
     }
-    headers.push(`Host: ${CHROME.host}:${CHROME.port}`);
-    upstream.write(`GET ${targetPath} HTTP/1.1\r\n${headers.join("\r\n")}\r\n\r\n`);
-    if (head && head.length) upstream.write(head);
-    upstream.pipe(socket);
-    socket.pipe(upstream);
-  });
+  };
+  socket.on("data", onData);
+  socket.on("close", () => { open = false; client.leave(); });
+  if (head && head.length) onData(head);
 }
 
 const server = createServer(async (req, res) => {
@@ -246,22 +391,45 @@ const server = createServer(async (req, res) => {
     res.end(buf);
   };
   try {
-    const auth = req.headers["authorization"] || "";
-    const ok = typeof auth === "string" && auth === `Bearer ${TOKEN}`;
-    if (!ok) return send(401, { error: { message: "missing or wrong bearer token" } });
-
     const url = new URL(req.url || "/", "http://computerd");
     const { pathname } = url;
+    const auth = req.headers["authorization"];
+    const bearer = typeof auth === "string" && auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
+    const isVersion = req.method === "GET" && pathname === "/cdp/json/version";
+    // The fill token opens /cdp/json/version (and the upgrade) and nothing else.
+    const kind = sameToken(bearer, TOKEN) ? "agent" : (isVersion && fillToken && sameToken(bearer, fillToken)) ? "fill" : null;
+    if (!kind) return send(401, { error: { message: "missing or wrong bearer token" } });
 
     if (pathname.startsWith("/fs/")) return files(req, res, url);
     if (req.method === "POST" && pathname === "/shield") {
       const body = await readBody(req);
-      shielded = Boolean(body && body.on === true);
-      if (shielded) for (const pipe of cdpPipes) { try { pipe.destroy(); } catch {} }
+      const on = Boolean(body && body.on === true);
+      const ft = body ? body.fill_token : undefined;
+      if (ft !== undefined && ft !== null) {
+        if (!on) return send(400, { error: { message: "fill_token is only accepted with on: true" } });
+        if (typeof ft !== "string" || ft.length < 32) return send(400, { error: { message: "fill_token must be a string of at least 32 characters" } });
+        if (sameToken(ft, TOKEN)) return send(400, { error: { message: "fill_token must differ from computerd's own token" } });
+      }
+      shielded = on;
+      if (on) {
+        mux.closeKind("agent");
+        if (typeof ft === "string") {
+          // A new fill token retires whatever the old one let in.
+          if (fillToken && !sameToken(ft, fillToken)) mux.closeKind("fill");
+          fillToken = ft;
+        }
+      } else {
+        fillToken = "";
+        mux.closeKind("fill");
+      }
       return send(200, { shielded });
     }
     if (shielded && SHIELDED_ROUTES.has(`${req.method} ${pathname}`)) return send(423, { error: { code: "shielded", message: "a person is signing in on this computer" } });
 
+    if (isVersion) {
+      if (kind === "agent" && shielded) return send(423, { error: { code: "shielded", message: "a person is signing in on this computer" } });
+      return send(200, await cdpVersion(String(req.headers.host || `127.0.0.1:${PORT}`)));
+    }
     if (req.method === "GET" && pathname === "/health") {
       return send(200, await health());
     }
@@ -275,9 +443,6 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && pathname === "/screenshot") {
       return sendBinary(200, await screenshot(), "image/png");
-    }
-    if (req.method === "GET" && pathname === "/cdp/json/version") {
-      return send(200, await cdpVersion(String(req.headers.host || `127.0.0.1:${PORT}`)));
     }
     if (req.method === "POST" && pathname === "/act") {
       const body = await readBody(req);
@@ -295,20 +460,31 @@ const server = createServer(async (req, res) => {
     }
     return send(404, { error: { message: `no such route: ${req.method} ${pathname}` } });
   } catch (e) {
-    const message = String(/** @type {Error} */ (e).message || e).replace(new RegExp(TOKEN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "[token]");
-    send(500, { error: { message } });
+    let message = String(/** @type {Error} */ (e).message || e);
+    for (const secret of [TOKEN, fillToken]) if (secret) message = message.split(secret).join("[token]");
+    const status = Number(/** @type {any} */ (e).status) || 500;
+    send(status, { error: { message } });
   }
 });
 
 // CDP's WebSocket upgrade never reaches the request handler above (Node routes it here
-// instead), so it gets its own auth check: proxyCdpUpgrade reads the token from the query
-// string, since a plain WebSocket cannot set a header.
-server.on("upgrade", (req, socket, head) => proxyCdpUpgrade(req, socket, head));
+// instead), so it gets its own auth check: cdpUpgrade reads the token from the query string,
+// since a plain WebSocket cannot set a header.
+server.on("upgrade", (req, socket, head) => cdpUpgrade(req, socket, head));
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`computerd listening on :${PORT}`);
 });
 
+launchChrome();
+
 for (const sig of ["SIGTERM", "SIGINT"]) {
-  process.on(sig, () => { server.close(() => process.exit(0)); });
+  process.on(sig, () => {
+    stopping = true;
+    if (restartTimer) clearTimeout(restartTimer);
+    mux.closeAll();
+    if (chrome) { try { chrome.kill("SIGTERM"); } catch {} }
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 3000).unref();
+  });
 }
