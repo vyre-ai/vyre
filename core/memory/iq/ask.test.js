@@ -31,6 +31,14 @@ test("ask: a reply stands only on the passages it was given and on their words",
   assert.equal(no.abstained, true);
   assert.deepEqual(no.known, ["the refund rounding was fixed"]);
   assert.equal(checkAsk(null, P).abstained, true);
+  // What the model was shown for a passage counts: its date, project folder and session name.
+  const H = [{ ...P[0], cwd: "/Users/alex/Work/northwind", name: "Northwind invoices" }];
+  assert.equal(checkAsk({ answer: "It was fixed on 2026-06-12 in northwind.", cite: [1], confidence: 0.8 }, H).abstained, false, "the passage's date and project");
+  assert.equal(checkAsk({ answer: "It was fixed on 2026-06-13.", cite: [1], confidence: 0.8 }, H).abstained, true, "another date");
+  // A name of several words stands when each word is there; a word that is not is still missing.
+  const N = [{ ...P[0], text: "Juno did the accessibility pass on the Harlow site, legal pages first." }];
+  assert.equal(checkAsk({ answer: "Juno did it for Harlow Legal.", cite: [1], confidence: 0.8 }, N).abstained, false);
+  assert.equal(checkAsk({ answer: "Juno did it for Harlow Bakery.", cite: [1], confidence: 0.8 }, N).abstained, true);
 });
 
 function db(t) {

@@ -35,10 +35,13 @@ export const SYSTEM = [
   "If the passages do not answer the question, set abstain true and answer null, and put what they do say that bears on it in known.",
 ].join("\n");
 
+/** A passage's header as the model sees it: project folder, session name, date. */
+const header = p => [p.cwd ? String(p.cwd).split("/").filter(Boolean).pop() : "unknown", String(p.name || p.session), p.ts ? new Date(p.ts).toISOString().slice(0, 10) : "unknown"];
+
 /** The prompt for one question and its passages: numbered from 1, each with its session name and date. */
 export function askPrompt(question, passages) {
   const fence = s => String(s).replace(/<\/?passage[^>]*>/gi, "");
-  const body = passages.map((p, i) => `<passage n="${i + 1}" project="${fence(p.cwd ? String(p.cwd).split("/").filter(Boolean).pop() : "unknown")}" session="${fence(p.name || p.session)}" date="${p.ts ? new Date(p.ts).toISOString().slice(0, 10) : "unknown"}" role="${p.role}">\n${fence(String(p.text).slice(0, 1500))}\n</passage>`).join("\n");
+  const body = passages.map((p, i) => { const [project, session, date] = header(p); return `<passage n="${i + 1}" project="${fence(project)}" session="${fence(session)}" date="${date}" role="${p.role}">\n${fence(String(p.text).slice(0, 1500))}\n</passage>`; }).join("\n");
   return `${body}\n\nQuestion: ${fence(question)}`;
 }
 
@@ -81,8 +84,12 @@ export function checkAsk(reply, passages) {
   if (reply.abstain || typeof reply.answer !== "string" || !reply.answer.trim()) return { abstained: true, known, why: "the model abstained" };
   const cite = [...new Set((Array.isArray(reply.cite) ? reply.cite : []).map(Number))];
   if (!cite.length || cite.some(n => !Number.isInteger(n) || n < 1 || n > passages.length)) return { abstained: true, known, why: "a citation is not a passage given" };
-  const text = norm(cite.map(n => passages[n - 1].text).join("\n"));
-  const missing = mustAppear(reply.answer).filter(w => !text.includes(norm(w)));
+  // What the model was shown for each cited passage: its words and its header (the project folder,
+  // the session's name and the date), so "it went live on 2026-06-12" stands on the passage's date.
+  const text = norm(cite.map(n => passages[n - 1]).map(p => `${p.text}\n${header(p).join("\n")}`).join("\n"));
+  // A name of several words stands when each of its words is there ("Friday June" in "Friday, 12 June").
+  const has = w => text.includes(norm(w)) || (/^[A-Z][^\s]*(?: [A-Z][^\s]*)+$/.test(w) && w.split(" ").every(x => text.includes(norm(x))));
+  const missing = mustAppear(reply.answer).filter(w => !has(w));
   if (missing.length) return { abstained: true, known, why: `not in what it cites: ${missing.slice(0, 3).join(", ")}` };
   const confidence = Math.max(0, Math.min(1, Number(reply.confidence) || 0));
   if (confidence < SURE) return { abstained: true, known, why: "not sure" };
