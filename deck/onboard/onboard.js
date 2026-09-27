@@ -836,20 +836,37 @@ const SCREENS = {
 
   // The user's decisions (the lead, 29 Sep, docs/design/drive-onboarding.md e69a544a): files on
   // demand by default, a what-to-sync folder picker with sizes, per-folder agent access, a
-  // receive-files switch, no quota. Federation's own doc is candid about what that needs versus
-  // what exists: on-demand mounting is real (files.drive.share/mount); the picker, per-folder
-  // access and files.receive as a UI toggle are not built (M/M/S); the "watch it appear on your
-  // other device" celebration needs the phone app and a Capsule drop target, neither of which
-  // exist, so it can't be the real celebration yet either. Still a stub UI-wise, but with the
-  // decided design named accurately rather than a placeholder line, so it reads like a described
-  // plan, not a guess.
+  // receive-files switch, no quota (flagged, not decided, so never shown here). Federation's own
+  // doc is candid about what that needs versus what exists: on-demand mounting is real
+  // (files.drive.share/mount, ADR 0024's rename to "Vyre Drive"); the picker, per-folder access
+  // and files.receive as a UI toggle are not built (M/M/S) — no onboard.* tool for any of them
+  // exists yet in core/onboard/loopback.js's allowlist, so this stays inert preview, not a working
+  // form, exactly like the rest of this step group degrades. The "watch it appear on your other
+  // device" celebration needs the phone app and a Capsule drop target (drive-onboarding.md item
+  // 7), neither of which exist, so it's named here as the payoff to look forward to, once devices
+  // (this onboarding's own next step) are paired — not staged as a live demo.
   drive(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Vyre Drive."),
-      h("p", { class: "lead" }, "Your files, mounted on demand: nothing downloads until you open it. Pick which folders, who can reach them, whether this device can receive what the server sends you, and watch a file you drop in show up wherever you look next."));
+      h("p", { class: "lead" }, "Your files, mounted on demand: nothing downloads until you open it. Pick which folders, who can reach them, whether this device can receive what the server sends you."));
+    const folder = (name, path, on) => h("label", { class: on ? "on" : "" },
+      h("input", { type: "checkbox", checked: on, disabled: true }),
+      h("span", { class: "t" }, h("b", null, name), h("span", null, path)));
+    col.append(h("div", { class: "ob-panel" },
+      h("p", { class: "lbl" }, "What to sync"),
+      h("div", { class: "choice" }, folder("Desktop", "~/Desktop", true), folder("Documents", "~/Documents", true), folder("Harlow Legal (project)", "~/Work/harlow-legal", true)),
+      h("p", { class: "small muted" }, "node_modules, .git and build folders are left out automatically."),
+      h("p", { class: "lbl", style: { marginTop: "14px" } }, "How"),
+      h("div", { class: "choice" },
+        h("label", { class: "on" }, icon("check", 14), h("span", { class: "t" }, h("b", null, "Files on demand"), h("span", null, "The default: mounted in Finder, fetched only when you open something. Nothing downloads up front."))),
+        h("label", null, h("input", { type: "checkbox", disabled: true }), h("span", { class: "t" }, h("b", null, "Server only"), h("span", null, "Don't mount this share on this device.")))),
+      h("p", { class: "lbl", style: { marginTop: "14px" } }, "Per-folder access"),
+      h("p", { class: "small muted" }, "Agents get none of this by default; Capsule, chat and per-project access are each their own grant, the same shape as the vault's."),
+      h("p", { class: "lbl", style: { marginTop: "14px" } }, "Receiving files"),
+      h("div", { class: "choice" }, h("label", null, h("input", { type: "checkbox", disabled: true }), h("span", { class: "t" }, h("b", null, "Let the server send files here"), h("span", null, "Off by default, per device."))))));
     col.append(h("div", { class: "need" },
       h("div", { class: "lbl" }, "Coming soon"),
-      "This step isn't built yet: the folder picker, per-folder access and the receive switch all need work that hasn't landed. Skip it for now, and share a folder from the CLI or the Deck in the meantime."));
+      "This is the plan, not a working form yet: the picker, per-folder access and the receive switch all need work that hasn't landed. Once your devices are paired, drop a file in and watch it show up wherever you look next — that moment needs this step's pieces plus your phone and Capsule, so it isn't real yet either. Skip for now, and share a folder from the CLI or the Deck in the meantime."));
     s.foot({ label: "Continue", run: s.next });
   },
 
