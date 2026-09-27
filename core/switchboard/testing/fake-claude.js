@@ -74,14 +74,14 @@ if (TX && argv.includes("--fork-session")) {
   if (fs.existsSync(from)) fs.writeFileSync(path.join(dir, `${session}.jsonl`), fs.readFileSync(from, "utf8").split("\n").filter(Boolean)
     .map(l => { try { return JSON.stringify({ ...JSON.parse(l), sessionId: session }); } catch { return l; } }).join("\n") + "\n");
 }
-/** @type {string|null} */
-let parent = null;
+/** @type {string|null} A rewind (--resume-session-at) continues from that entry: the next lines hang under it. */
+let parent = flag("--resume-session-at") || null;
 function tx(type, message, extra = {}) {
   if (!TX) return;
   const cwd = process.cwd();
   const dir = path.join(TX, cwd.replace(/[^A-Za-z0-9]/g, "-"));
   fs.mkdirSync(dir, { recursive: true });
-  const uuid = crypto.randomUUID();
+  const uuid = extra.uuid || crypto.randomUUID();
   fs.appendFileSync(path.join(dir, `${session}.jsonl`), JSON.stringify({ parentUuid: parent, isSidechain: false, userType: "external", cwd, sessionId: session,
     version: "2.1.283", gitBranch: "", entrypoint: "sdk-cli", type, message, uuid, timestamp: new Date().toISOString(), ...extra }) + "\n");
   parent = uuid;
@@ -196,9 +196,10 @@ const result = (ok, text, cost = 0.001) => out({ type: "result", subtype: ok ? "
   usage: { input_tokens: 10, output_tokens: String(text).length, cache_read_input_tokens: 100, cache_creation_input_tokens: 50 },
   ...(took.length ? { user_message_uuids: took } : {}) });
 
-async function turn(prompt) {
+async function turn(prompt, uuid = null) {
   const p = String(prompt).trim();
-  tx("user", { role: "user", content: String(prompt) });
+  // A user line's uuid is the message's own when the host gave one, as Claude Code keeps it.
+  tx("user", { role: "user", content: String(prompt) }, uuid ? { uuid } : {});
   if (/^write /i.test(p)) {
     const file = path.resolve(p.slice(6).trim());
     const { allowed } = await useTool("Write", { file_path: file, content: "hi" }, { ask: true,
@@ -352,7 +353,7 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     if (m.priority === "next" && busy) { folds.push({ uuid: m.uuid || null, text: String(text) }); return; }
     queue = queue.then(async () => {
       busy = true; took = m.uuid ? [m.uuid] : [];
-      try { await turn(text); } finally { busy = false; }
+      try { await turn(text, m.uuid || null); } finally { busy = false; }
       // Steered words the turn never reached (an interrupt, a turn with no reply left) run next.
       if (folds.length) { const f = folds; folds = []; queue = queue.then(async () => { busy = true; took = f.map(x => x.uuid).filter(Boolean); try { await turn(f.map(x => x.text).join("\n\n")); } finally { busy = false; } }); }
     });

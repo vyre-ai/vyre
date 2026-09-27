@@ -35,7 +35,7 @@ function inbox() {
 
 /**
  * The SDK's options for a launch. The same launch the CLI runner turns into flags (argsFor).
- * @param {{ id: string, resume?: boolean, forkFrom?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
+ * @param {{ id: string, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
  *           system?: { mode: "append"|"replace", text: string }|null, append?: string|null, budgetUsd?: number|null,
  *           tools?: "none"|null, settings?: boolean, bin?: string|null, cwd: string, env: Record<string, string|undefined> }} o
  */
@@ -50,6 +50,7 @@ export function optionsFor(o) {
     env: o.env,
     includePartialMessages: true,
     ...(o.forkFrom ? { resume: o.forkFrom, forkSession: true, sessionId: o.id } : o.resume ? { resume: o.id } : { sessionId: o.id }),
+    ...(o.resumeAt && (o.resume || o.forkFrom) ? { resumeSessionAt: o.resumeAt } : {}),
     systemPrompt: system,
     settingSources: o.settings === false ? [] : ["user", "project", "local"],
     ...(plugins.length ? { plugins } : {}),

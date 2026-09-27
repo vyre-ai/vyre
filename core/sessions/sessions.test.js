@@ -533,6 +533,29 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual([fin.canceled, fin.reason], [true, "interrupt"]);
   });
 
+  test(`${driver}: rewind goes back to a message, as a double Esc does, and its words come back`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "one", surface: "deck" })).data;
+    await w.finished(th.id);
+    for (const [n, text] of [[2, "two"], [3, "three"]]) { await w.tool("threads.send", { thread: th.id, text, surface: "deck" }); await w.finished(th.id, n); }
+    const turns = (await w.events(th.id)).filter(e => e.type === "thread.turn").map(e => e.payload);
+    const file = path.join(w.transcripts, w.work.replace(/[^A-Za-z0-9]/g, "-"), `${th.id}.jsonl`);
+    const lines = () => fs.readFileSync(file, "utf8").trim().split("\n").map(l => JSON.parse(l));
+    const two = lines().find(l => l.type === "user" && l.uuid === turns[1].uuid);
+    assert.ok(two, "a user message's transcript uuid is the one thread.turn gave");
+    const r = (await w.tool("threads.rewind", { thread: th.id, uuid: turns[1].uuid })).data;
+    assert.deepEqual(r, { rewound: true, thread: th.id, uuid: turns[1].uuid, text: "two" });
+    const argv = (await until(() => w.launches().find(l => l.argv && l.argv.includes("--resume-session-at")), "the rewound launch")).argv;
+    assert.equal(argv[argv.indexOf("--resume-session-at") + 1], two.parentUuid, "it goes on from just before the message");
+    assert.ok((await w.events(th.id)).some(e => e.type === "thread.rewound" && e.payload.at === two.parentUuid));
+    await w.tool("threads.send", { thread: th.id, text: "two, but shorter", surface: "deck" });
+    await w.finished(th.id, 4);
+    const again = lines().find(l => l.type === "user" && l.message.content === "two, but shorter");
+    assert.equal(again.parentUuid, two.parentUuid, "the new message hangs where the old one did");
+    assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[0].uuid })).data.rewound, false, "the first message starts a new session instead");
+    assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[1].uuid }, "mcp")).error.code, "denied");
+  });
+
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {
     const w = await boot(t, { driver, role: "local" });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "whoami", surface: "deck" })).data;

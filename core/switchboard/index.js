@@ -490,7 +490,7 @@ export class Switchboard {
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
-    const lo = { id, resume: o.resume, forkFrom: o.forkFrom || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
+    const lo = { id, resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, system: o.system || null, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined };
     const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null,
       // Turns (ADR 0030): the current one, how many this thread has had, the steered messages not
@@ -1104,6 +1104,33 @@ export class Switchboard {
     return { thread: id, mode };
   }
 
+  /**
+   * Rewind to a message, as a double Esc does in Claude Code: the conversation goes back to just
+   * before that message (the message and everything after it are left on a branch the session no
+   * longer follows), and the message's words come back for the composer to edit and send again.
+   * The same thread and transcript; a running turn is stopped first.
+   * @param {string} id @param {string} uuid the user message (thread.turn's uuid, the transcript line's)
+   */
+  async rewind(id, uuid) {
+    const rec = this.must(id);
+    const t = findSession(this.deps.transcripts || [], id);
+    if (!t) throw Object.assign(new Error("this session has no transcript here to rewind"), { code: "bad_input" });
+    let line = null;
+    for (const l of fs.readFileSync(t.file, "utf8").split("\n")) {
+      if (!l.includes(uuid)) continue;
+      try { const j = JSON.parse(l); if (j.uuid === uuid && j.type === "user") { line = j; break; } } catch {}
+    }
+    if (!line) throw Object.assign(new Error(`no message ${String(uuid).slice(0, 8)} in this session`), { code: "bad_input" });
+    const text = typeof line.message?.content === "string" ? line.message.content
+      : (Array.isArray(line.message?.content) ? line.message.content.filter(b => b && b.type === "text").map(b => b.text).join("\n") : "");
+    if (!line.parentUuid) return { rewound: false, thread: id, text, note: "That is the first message: start a new session with it instead." };
+    const st = this.live.get(id);
+    if (st) await this.close(id, st, "rewind");
+    await this.launch({ resume: id, resumeAt: String(line.parentUuid) });
+    this.emit("thread.rewound", { uuid, at: String(line.parentUuid) }, id, rec.project);
+    return { rewound: true, thread: id, uuid, text };
+  }
+
   /** Stop the turn a thread is running; the thread stays and takes the next message. */
   async interrupt(id) {
     const st = this.live.get(id);
@@ -1470,6 +1497,14 @@ export default {
         guard(caller, "send queued words");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can send queued words"), { code: "denied" });
         return sb.sendNow(i.thread, i.queued);
+      });
+
+    tool("threads.rewind", "Go back to a message, as a double Esc does in Claude Code: the session continues from just before it, and its words come back (text) to edit and send again. uuid: the message's (thread.turn's uuid).",
+      { type: "object", required: ["thread", "uuid"], properties: { thread: str, uuid: str } },
+      async (i, { caller }) => {
+        guard(caller, "rewind sessions");
+        if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can rewind a session"), { code: "denied" });
+        return sb.rewind(i.thread, i.uuid);
       });
 
     tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation so far, in the same folder, that the original never sees. For a session busy in a terminal, the way to carry on from here without two keyboards on one transcript.",

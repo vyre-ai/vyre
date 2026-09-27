@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: rewind, as a double Esc does
+
+- `threads.rewind {thread, uuid}` (a person's surface only): the session goes back to just before
+  that user message and carries on from there in the same thread and transcript (the CLI's
+  `--resume-session-at`, the SDK's `resumeSessionAt`); the message's words come back as `text` for
+  the composer. A running turn is stopped first. Emits `thread.rewound {uuid, at}`. Rewinding to
+  the first message says to start a new session instead. A user message's transcript uuid is the
+  one `thread.turn` gave, so a surface names it from the live stream or the history.
+
 #### Sessions: steering, turns, the queue, state and usage (ADR 0030, step 6's events)
 
 - Steering is the default (the user: Chat must feel like Claude Code in the terminal). A message
