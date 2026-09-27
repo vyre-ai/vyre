@@ -114,7 +114,8 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
   and wait while the load is over 8. Then rsync to ~/vyre-ci/docs-s and run `DOCS_SHOTS_SHARP=~/vyre-ci/docs-s-tools
   CHROME=/usr/local/bin/vyre-chrome nice -n 15 node scripts/docs-shots [--only a,b]`, and copy back the
   PNGs and docs/shots.json. Include pwa 3b's screens (see Still open).
-- Chat's terminal page, when chat f964f8a/b85ab3f land (Pending below).
+- DONE: chat's terminal page (f964f8a/b85ab3f are on main): offsets and the 1 MB cut line, a 4 KB
+  key hold, the box-update line with Open a new terminal here, Take size, and the phone key bar.
 
 ## Still open (tips)
 
@@ -151,7 +152,7 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
 
 ## Pending page changes (apply when the code reaches main)
 
-- chat f964f8a, b85ab3f (Deck terminal offsets), HOLD until merged: using/chat.md "Open a terminal
+- DONE (applied after both reached main) chat f964f8a, b85ab3f (Deck terminal offsets): using/chat.md "Open a terminal
   on the box" changes: reattaches from its offset with its own scrollback (a cut shows a dim
   "older output was not kept" line); holds up to 4 KB of keys typed while the link is down and
   sends them once caught up; after a deploy "The box was updated and this terminal was closed."
