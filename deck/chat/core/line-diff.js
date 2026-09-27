@@ -106,11 +106,21 @@ export function parseUnifiedDiff(diffText) {
   if (!diffText) return [];
   /** @type {DiffLine[]} */
   const diff = [];
+  // Lines the current hunk still holds, from its header's counts: inside a hunk, "--- x" is a
+  // removed "-- x" (a SQL comment, say), not a file header.
+  let oldLeft = 0, newLeft = 0;
   for (const line of splitLines(String(diffText))) {
-    if (!line.length) { diff.push({ type: "context", content: line }); continue; }
-    if (line.startsWith("@@")) { diff.push({ type: "header", content: line }); continue; }
-    if (line.startsWith("+")) { if (!line.startsWith("+++")) diff.push({ type: "add", content: line }); continue; }
-    if (line.startsWith("-")) { if (!line.startsWith("---")) diff.push({ type: "remove", content: line }); continue; }
+    const inHunk = oldLeft > 0 || newLeft > 0;
+    if (!line.length) { diff.push({ type: "context", content: line }); if (inHunk) { oldLeft--; newLeft--; } continue; }
+    if (line.startsWith("@@")) {
+      const m = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
+      oldLeft = m ? Number(m[1] ?? 1) : 0; newLeft = m ? Number(m[2] ?? 1) : 0;
+      diff.push({ type: "header", content: line });
+      continue;
+    }
+    if (line.startsWith("+")) { if (inHunk || !line.startsWith("+++")) diff.push({ type: "add", content: line }); newLeft--; continue; }
+    if (line.startsWith("-")) { if (inHunk || !line.startsWith("---")) diff.push({ type: "remove", content: line }); oldLeft--; continue; }
+    if (line.startsWith(" ")) { oldLeft--; newLeft--; }
     if (line.startsWith("diff --git") || line.startsWith("index ")) continue;
     if (line.startsWith("\\ No newline")) { diff.push({ type: "header", content: line }); continue; }
     diff.push({ type: "context", content: line });

@@ -176,7 +176,7 @@ function known(name, i, out, body) {
   }
   if (AGENT.has(name)) {
     return set({ type: "sub_agent", subAgentType: str(i.subagent_type), description: str(i.description) ?? str(i.prompt)?.split("\n")[0],
-      log: bodies ? out ?? "" : "" });
+      log: String(body(out ?? "") ?? "") });
   }
   if (name === "TodoWrite") {
     if (!Array.isArray(i.todos)) return undefined;
