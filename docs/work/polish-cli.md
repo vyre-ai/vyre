@@ -73,10 +73,18 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Doing
 
-- Nothing in flight. a84d4180 pushed, ready for the integrator queue.
+- Testbox HOLD (sessions' full suite). Untested since eecfb59c: 8c7bcdb1 (threads fork,
+  threads.send-now, /pair QR, push.seen device). Queued: threads-sessions, switchboard-cli, phone.
+- `vyre config` for native-core: offered; waiting on their answer (their draft config.js is
+  uncommitted in their worktree).
 
 ## Next
 
+- After 3a (sessions) lands: merge main, resolve modules/index.js, presence (PERSON_ONLY union),
+  switchboard.test; targeted run; send the integrator the sha (batch 3b).
+- Modularity: core/cli/qr.js imports deck/vendor/qrcode.js (a vendored pure lib): name it in
+  test/boundaries.test.js when that lands, or move the vendored file to a shared lib.
+- threads.queue {thread} when sessions ships it (asked).
 - Session verbs follow-ups when work/sessions lands: threads.send `mode`, queued_id, a queue read,
   the unqueue/edit/send_now/rewind tools, thread.turn/state/usage payloads (7 gaps sent to sessions).
 - If work/relay reaches main after us: point `vyre relay pair` (core/cli/commands/relay.js) at
