@@ -338,7 +338,7 @@ export class Switchboard {
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
     const args = argsFor({ id, resume: o.resume, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined });
-    const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null };
+    const state = { launch: o, key, message: "", block: /** @type {number|null} */ (null), seen: new Map(), pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null };
     this.live.set(id, state);
     state.proc = this.run({
       bin: this.bin, args, cwd: rec.cwd, env,
@@ -349,12 +349,15 @@ export class Switchboard {
   }
 
   onMessage(id, st, m) {
-    const t = translate(m);
+    const t = translate(m, st.seen);
     const rec = this.record(id);
     const project = rec ? rec.project : null;
     if (t.model) this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" });
-    if (t.message !== undefined) { this.flush(id, st); st.message = t.message; }
+    if (t.message !== undefined) { this.flush(id, st); st.message = t.message; st.block = null; }
     if (t.delta) {
+      // One throttle per message and block: a new block sends what the last one built up first.
+      const block = t.block ?? null;
+      if (block !== st.block) { this.flush(id, st); st.block = block; }
       st.pending += t.delta;
       if (!st.timer) st.timer = setTimeout(() => this.flush(id, st), TEXT_EVERY_MS);
     }
@@ -490,7 +493,7 @@ export class Switchboard {
     if (!st.pending) return;
     const delta = st.pending; st.pending = "";
     const rec = this.record(id);
-    this.emit("thread.text", { message: st.message, delta }, id, rec ? rec.project : null);
+    this.emit("thread.text", { message: st.message, ...(st.block != null ? { block: st.block } : {}), delta }, id, rec ? rec.project : null);
   }
 
   /**

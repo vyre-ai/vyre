@@ -299,9 +299,13 @@ function cleanPatch(/** @type {any} */ p) {
 }
 
 /**
- * @typedef {{ seq: number, kind: "user", ts: number, text: string, command?: true }
- *   | { seq: number, kind: "text", ts: number, message: string|null, text: string }
- *   | { seq: number, kind: "thinking", ts: number, text: string }
+ * `block` on text and thinking is the content block's index within its message, counted across
+ * every line that shares message.id (Claude Code writes one block per line), so it equals the
+ * index the live stream gives and the Deck can swap a live row for its block in place. `uuid` on
+ * a person's line is the transcript line's own.
+ * @typedef {{ seq: number, kind: "user", ts: number, text: string, command?: true, uuid?: string }
+ *   | { seq: number, kind: "text", ts: number, message: string|null, block?: number, text: string }
+ *   | { seq: number, kind: "thinking", ts: number, block?: number, text: string }
  *   | { seq: number, kind: "tool", ts: number, id: string, tool: string, input: any, output: string|null,
  *       error: boolean, done_ts: number|null, duration_ms: number|null, patch?: any }
  *   | { seq: number, kind: "turn", ts: number, duration_ms: number, tokens: { input: number, output: number },
@@ -318,6 +322,10 @@ class Reader {
     /** @type {Map<string, any>} tool blocks waiting for their result, by tool_use id */
     this.pending = new Map();
     this.turn = this.fresh(null, 0);
+    /** @type {Map<string, number>} content blocks seen so far, by message id */
+    this.counts = new Map();
+    /** @type {((id: string) => number) | null} blocks a message had before the window, while none of its lines may be missed */
+    this.before = null;
   }
 
   /** @param {number|null} seq the human line that starts it (null: it started before the window) @param {number} ts */
@@ -378,6 +386,9 @@ class Reader {
     /** @type {any} */
     const b = { seq, kind: "user", ts, text: clean(text, TEXT_CAP) };
     if (COMMAND.test(text)) b.command = true;
+    if (typeof o.uuid === "string" && o.uuid) b.uuid = o.uuid;
+    // A person spoke inside the window, so every message from here on starts inside it too.
+    this.before = null;
     this.blocks.push(b);
     this.turn = this.fresh(seq, ts);
     return "human";
@@ -408,17 +419,29 @@ class Reader {
     if (only) return null;
     const c = m.content;
     const parts = typeof c === "string" ? [{ type: "text", text: c }] : Array.isArray(c) ? c : [];
+    // The API's content block index: every block of the message counts, whatever its type, and
+    // the lines of one message each carry the next of its blocks.
+    const key = typeof m.id === "string" && m.id ? m.id : null;
+    let index = 0;
+    if (key) {
+      if (this.counts.has(key)) index = /** @type {number} */ (this.counts.get(key));
+      // Only the window's first message can have begun before it: one message's lines are
+      // written together, so any later message starts inside the window.
+      else if (this.before) { index = this.before(key); this.before = null; }
+      this.counts.set(key, index + parts.length);
+    }
     /** @type {any} */
     let prev = null;
-    for (const p of parts) {
+    for (const [i, p] of parts.entries()) {
       if (!p || typeof p !== "object") continue;
+      const block = key ? index + i : i;
       if (p.type === "text" && typeof p.text === "string" && p.text.trim()) {
         if (prev && prev.kind === "text") { prev.raw += "\n" + p.text; continue; }
-        prev = { seq, kind: "text", ts, message: m.id ?? null, raw: p.text };
+        prev = { seq, kind: "text", ts, message: m.id ?? null, block, raw: p.text };
         this.blocks.push(prev);
       } else if (p.type === "thinking" && typeof p.thinking === "string" && p.thinking.trim()) {
         if (prev && prev.kind === "thinking") { prev.raw += "\n" + p.thinking; continue; }
-        prev = { seq, kind: "thinking", ts, raw: p.thinking };
+        prev = { seq, kind: "thinking", ts, block, raw: p.thinking };
         this.blocks.push(prev);
       } else if (p.type === "tool_use" && typeof p.id === "string") {
         const tool = String(p.name || "tool");
@@ -471,6 +494,34 @@ function lineCount(/** @type {Buffer} */ buf) {
 }
 
 /**
+ * How many content blocks message `id` had in the lines just before byte `at`: walk back over its
+ * lines (and anything else between them) until another message, a person's line or LOOKAHEAD
+ * lines.
+ * @param {Buffer} buf @param {number} at @param {string} id
+ */
+function blocksBefore(buf, at, id) {
+  let n = 0, end = at - 1, seen = 0;
+  while (end > 0 && seen < LOOKAHEAD) {
+    const start = buf.lastIndexOf(0x0a, end - 1) + 1;
+    const o = parse(buf, start, end);
+    end = start - 1; seen++;
+    if (!o || typeof o !== "object" || o.isSidechain === true || o.parent_tool_use_id) continue;
+    const m = o.message;
+    if (!m || typeof m !== "object") continue;
+    if (o.type === "assistant") {
+      if (m.id !== id) break;                                         // an earlier message: this one started after it
+      n += typeof m.content === "string" ? 1 : Array.isArray(m.content) ? m.content.length : 0;
+      continue;
+    }
+    if (o.type === "user" && !o.isMeta) {
+      const c = m.content;
+      if (typeof c === "string" || (Array.isArray(c) && c.some(p => p && p.type === "text"))) break;
+    }
+  }
+  return n;
+}
+
+/**
  * Read lines [fromLine, toLine) starting at byte `at`, then read on past toLine for the results
  * and the close of what the window opened.
  * @param {Buffer} buf @param {number} at @param {number} fromLine @param {number} toLine @param {number} limit
@@ -479,6 +530,9 @@ function scan(buf, at, fromLine, toLine, limit) {
   const r = new Reader();
   // A read from the top of the file owns the turn it starts in, human line or not.
   if (fromLine === 0) r.turn.zero = true;
+  // A window that starts inside a message counts the blocks its earlier lines held, so the index
+  // does not depend on where the read began.
+  else r.before = id => blocksBefore(buf, at, id);
   let seq = fromLine, pos = at, truncated = false, torn = -1;
   while (pos < buf.length && seq < toLine) {
     if (r.blocks.length >= limit) { truncated = true; break; }

@@ -9,8 +9,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { blocks, BLOCK_CAP, THINK_CAP } from "./index.js";
 import { tempHome } from "../../test/helpers.js";
+import { translate } from "../switchboard/translate.js";
 
-const RICH = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "rich.jsonl");
+const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
+const RICH = path.join(FIX, "rich.jsonl");
 const at = (/** @type {string} */ s) => Date.parse(s);
 
 test("blocks: a real-shaped session reads as user, thinking, text, tools and turns", () => {
@@ -33,9 +35,12 @@ test("blocks: a real-shaped session reads as user, thinking, text, tools and tur
   assert.match(prompt.text, /\[Stripe key redacted …ke12\]/);
   assert.ok(!JSON.stringify(bs).includes("NorthwindBakery0000fake"), "a pasted key left the read");
   assert.equal(prompt.ts, at("2026-09-02T10:01:00.000Z"));
+  assert.equal(prompt.uuid, "u0004", "a person's block carries its line's uuid");
 
   assert.equal(by(5, "thinking").text, "juno said the form breaks on submit. Read the component first.");
-  assert.deepEqual(by(6, "text"), { seq: 6, kind: "text", ts: at("2026-09-02T10:01:04.000Z"), message: "msg_01A", text: "Let me look at the order form." });
+  assert.equal(by(5, "thinking").block, 0);
+  // msg_01A is written as three lines (thinking, text, tool_use): the text is its block 1.
+  assert.deepEqual(by(6, "text"), { seq: 6, kind: "text", ts: at("2026-09-02T10:01:04.000Z"), message: "msg_01A", block: 1, text: "Let me look at the order form." });
 
   const read = by(7, "tool");
   assert.equal(read.tool, "Read");
@@ -170,4 +175,45 @@ test("blocks: a big file reads its tail and from far in without trouble", t => {
 test("blocks: a missing file is no blocks, never an error", () => {
   assert.deepEqual(blocks("/nowhere/at/all.jsonl", { from: 5 }), { blocks: [], next: 5, first: null });
   assert.deepEqual(blocks("/nowhere/at/all.jsonl"), { blocks: [], next: 0, first: null });
+});
+
+// ------------------------------------------------------------ live keys equal transcript keys
+
+/** The (message, block) keys the live stream gives, done and partial, from stream-json lines. */
+function liveKeys(/** @type {string} */ file) {
+  const seen = new Map();
+  let message = "";
+  const done = [], deltas = new Map();
+  for (const line of fs.readFileSync(file, "utf8").split("\n").filter(Boolean)) {
+    const t = translate(JSON.parse(line), seen);
+    if (t.message !== undefined) message = t.message;
+    if (t.delta) deltas.set(`${message}#${t.block}`, (deltas.get(`${message}#${t.block}`) || "") + t.delta);
+    for (const e of t.events) if (e.type === "thread.text") done.push(e.payload);
+  }
+  return { done, deltas };
+}
+
+test("blocks: a message written as text, tool_use, text keeps each text's content block index", () => {
+  const bs = /** @type {any[]} */ (blocks(path.join(FIX, "split.jsonl"), { from: 0 }).blocks);
+  assert.deepEqual(bs.filter(b => b.kind === "text" || b.kind === "thinking").map(b => [b.kind, b.message ?? null, b.block]), [
+    ["thinking", null, 0], ["text", "msg_03A", 1], ["text", "msg_03A", 3], ["text", "msg_03B", 0],
+  ]);
+  assert.equal(bs[0].uuid, "u0301");
+  // A read that starts inside msg_03A (its last line) counts the lines before the window.
+  const mid = /** @type {any[]} */ (blocks(path.join(FIX, "split.jsonl"), { from: 4 }).blocks);
+  assert.deepEqual(mid.filter(b => b.kind === "text").map(b => [b.message, b.block]), [["msg_03A", 3], ["msg_03B", 0]]);
+});
+
+test("blocks: the live stream's keys (message, block) equal the transcript's for every text", () => {
+  const tx = /** @type {any[]} */ (blocks(path.join(FIX, "split.jsonl"), { from: 0 }).blocks).filter(b => b.kind === "text");
+  const { done, deltas } = liveKeys(path.join(FIX, "split.stream.jsonl"));
+  const keys = (/** @type {any[]} */ xs) => xs.map(x => `${x.message}#${x.block}`);
+  assert.deepEqual(keys(done), keys(tx), "a done text is keyed as its transcript block");
+  assert.deepEqual([...deltas.keys()], keys(tx), "the deltas of each text are keyed as its transcript block");
+  for (const b of tx) {
+    assert.equal(deltas.get(`${b.message}#${b.block}`), b.text, "the deltas of one block add up to its text, and only its");
+    assert.equal(done.find(d => d.message === b.message && d.block === b.block).text, b.text);
+  }
+  // Without the count, two texts of one message would share a key and the second overwrite the first.
+  assert.equal(new Set(keys(done)).size, done.length);
 });
