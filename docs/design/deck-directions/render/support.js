@@ -139,7 +139,47 @@
       if (cr < min) fails.push({ text: text.slice(0, 60), ratio: +cr.toFixed(2), min, color: cs.color, bg: `rgb(${bg.slice(0, 3).map(Math.round)})`, cls: el.className });
       if (!el.closest("[data-scrolls]") && (r.right > box.right + 1 || r.bottom > box.bottom + 1 || r.left < box.left - 1)) clipped.push(text.slice(0, 60));
     }
-    return { fails, clipped };
+    return { fails, clipped, offscale: system(root) };
+  }
+
+  // The reduced system: 5 sizes, 2 weights, 2 families, and only the palette's colours.
+  const SIZES = [12, 13, 15, 20, 28], WEIGHTS = [400, 600];
+  const FAMILIES = ["Instrument Sans", "JetBrains Mono"];
+  function allowedColours() {
+    const set = new Set(["0,0,0", "255,255,255"]);
+    for (const sheet of document.styleSheets) {
+      let rules; try { rules = sheet.cssRules; } catch { continue; }
+      for (const r of rules) {
+        if (!r.style || !/^\.t-(dark|light)/.test(r.selectorText || "")) continue;
+        for (const name of r.style) if (name.startsWith("--")) for (const m of r.style.getPropertyValue(name).matchAll(/#([0-9a-f]{6})\b|rgba?\(([^)]+)\)/gi)) {
+          if (m[1]) set.add([0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16)).join(","));
+          else set.add(m[2].split(",").slice(0, 3).map(v => +v).join(","));
+        }
+      }
+    }
+    return set;
+  }
+  function system(root) {
+    const ok = allowedColours(), out = new Set();
+    const rgb = c => { const m = c.match(/[\d.]+/g); return m && (m[3] === undefined || +m[3] > 0) ? m.slice(0, 3).map(v => Math.round(+v)).join(",") : null; };
+    for (const el of [root, ...root.querySelectorAll("*")]) {
+      if (el.closest("svg") && el.tagName.toLowerCase() !== "svg") continue;
+      const cs = getComputedStyle(el);
+      if (cs.display === "none") continue;
+      const hasText = [...el.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim());
+      if (hasText) {
+        const size = parseFloat(cs.fontSize), weight = +cs.fontWeight, fam = cs.fontFamily.split(",")[0].replace(/["']/g, "").trim();
+        if (!SIZES.includes(size)) out.add(`size ${size}px "${el.textContent.trim().slice(0, 30)}"`);
+        if (!WEIGHTS.includes(weight)) out.add(`weight ${weight} "${el.textContent.trim().slice(0, 30)}"`);
+        if (!FAMILIES.includes(fam)) out.add(`family ${fam}`);
+        const c = rgb(cs.color); if (c && !ok.has(c)) out.add(`colour rgb(${c}) text "${el.textContent.trim().slice(0, 30)}"`);
+      }
+      for (const prop of ["backgroundColor", "borderTopColor"]) {
+        if (prop === "borderTopColor" && parseFloat(cs.borderTopWidth) === 0) continue;
+        const c = rgb(cs[prop]); if (c && !ok.has(c)) out.add(`colour rgb(${c}) ${prop} .${el.className}`);
+      }
+    }
+    return [...out];
   }
 
   document.addEventListener("DOMContentLoaded", () => {

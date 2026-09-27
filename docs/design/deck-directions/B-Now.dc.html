@@ -9,142 +9,134 @@
 <body>
 <x-dc>
 <helmet>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
 <style>body{margin:0}</style>
 </helmet>
 <div class="vy dB {{theme}}" style="width: 1440px; height: 900px;">
 
 <nav class="rail" aria-label="Deck">
-  <a href="#" aria-label="Vyre home" style="width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; border: 1px solid var(--rule-strong); background: var(--bg);">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg>
-  </a>
-  <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="rb-badge">2</span></a>
+  <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg></a>
+  <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="badge">4</span></a>
   <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
   <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
   <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
   <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
   <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
-  <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+  <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 8px;">
     <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
-    <span class="av-p" style="width: 32px; height: 32px; border-radius: 16px;">AL</span>
+    <span class="av av-32 av-me">a</span>
   </div>
 </nav>
 
 <main class="main">
-  <div class="top">
-    <span class="h4" style="font-size: 15px;">Now</span>
-    <div class="cmd" style="width: 400px; margin: 0 auto;"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span>Jump to anything</span><span class="kbd" style="margin-left: auto;">⌘K</span></div>
-    <span class="pill-need"><span class="dot dot-need"></span>2 need you</span>
-  </div>
+  <header class="top">
+    <div class="top-l"><h1 class="t15 w6">Now</h1></div>
+    <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow">Jump to anything, or type a command</span><span class="kbd">⌘K</span></div>
+    <div class="top-r"><a class="needs" href="#"><span class="dot dot-need"></span>4 need you</a></div>
+  </header>
 
-  <div class="page" style="display: flex; flex-direction: column; gap: 24px;">
-    <div style="display: flex; align-items: flex-end; gap: 32px;">
-      <div class="col" style="gap: 8px;">
-        <span class="lbl">Saturday 27 September · 14:21</span>
-        <h1 class="h1">Good afternoon, alex</h1>
-        <p class="lead">Two things need you. kit and juno are working.</p>
+  <div class="page" style="display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px;">
+
+    <div class="col" style="gap: 24px; min-width: 0;">
+      <div class="row" style="align-items: baseline; gap: 16px;">
+        <h2 class="t20 w6">Good afternoon, alex</h2>
+        <span class="t2">4 need you · 2 working · 5 done today</span>
       </div>
-    </div>
 
-    <div class="col" style="gap: 12px;">
-      <div class="composer" style="border-radius: 14px;">
-        <div class="composer-in" style="font-size: 17px; line-height: 26px; padding: 18px 20px 8px; min-height: 60px;">What should we do?</div>
-        <div class="composer-bar" style="padding: 8px 12px 12px;">
-          <button class="cchip" aria-label="Attach"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button>
+      <div class="composer">
+        <div class="composer-in">What should we do? Describe it and pick who does it.</div>
+        <div class="composer-bar">
+          <button class="cchip" aria-label="Attach a file"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button>
           <button class="cchip"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Harlow Legal<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
-          <button class="cchip"><span class="av" style="width: 18px; height: 18px; font-size: 10px; border-radius: 5px;">k</span>kit<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
+          <button class="cchip"><span class="av" style="width: 18px; height: 18px; border-radius: 5px;">k</span>kit<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
           <button class="cchip">Sonnet 5<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
-          <span class="micro t3" style="margin-left: auto; margin-right: 8px;"><span class="kbd">⏎</span> to start</span>
-          <button class="sbtn sbtn-p">Start<svg class="ic" viewBox="0 0 16 16" style="stroke-width: 2;"><path d="M8 13V3M4 7l4-4 4 4"></path></svg></button>
+          <span class="t12 t3" style="margin-left: auto; margin-right: 8px;">⏎ start · ⇧⏎ new line</span>
+          <button class="btn btn-p btn-sm">Start</button>
         </div>
       </div>
-      <div class="row" style="gap: 8px;">
-        <span class="micro t3" style="margin-right: 4px;">Try</span>
-        <button class="chip">Draft the weekly Northwind update</button>
-        <button class="chip">Check Harlow's intake form</button>
-        <button class="chip">What did juno do today?</button>
-      </div>
+
+      <section class="col" style="gap: 10px; min-height: 0;" aria-label="Needs you">
+        <div class="row" style="gap: 8px;">
+          <span class="lbl">Needs you</span><span class="count">4</span>
+          <span class="t12 t3" style="margin-left: auto;"><span class="kbd">J</span> <span class="kbd">K</span> move · <span class="kbd">A</span> allow · <span class="kbd">D</span> deny or discard</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px;">
+          <article class="card is-focus" style="display: flex; flex-direction: column;">
+            <div class="card-h"><span class="dot dot-need"></span><span class="lbl bea">Permission</span><span class="t12 t3" style="margin-left: auto;">kit · 14:21</span></div>
+            <div class="col" style="padding: 0 16px; gap: 4px;">
+              <h3 class="t15 w6">Allow kit to push to main?</h3>
+              <span class="t2">Harlow Legal · Intake form rebuild</span>
+            </div>
+            <div class="code" style="margin: 12px 16px 0;">git push origin main</div>
+            <p class="t2" style="padding: 10px 16px 16px;">Your rule "Ask before pushing to a client's main branch" held this. One file changed; all 7 tests pass.</p>
+            <div class="card-f" style="margin-top: auto;">
+              <button class="btn btn-p">Allow once<span class="k">A</span></button>
+              <button class="btn">Always in Harlow Legal</button>
+              <button class="btn btn-g" style="margin-left: auto;">Deny<span class="k">D</span></button>
+            </div>
+          </article>
+
+          <article class="card" style="display: flex; flex-direction: column;">
+            <div class="card-h"><span class="dot dot-need"></span><span class="lbl bea">Draft to send</span><span class="t12 t3" style="margin-left: auto;">juno · 13:58</span></div>
+            <div class="col" style="padding: 0 16px 8px; gap: 4px;">
+              <h3 class="t15 w6">juno's Q3 update to Harlow Legal</h3>
+            </div>
+            <div style="padding: 0 16px;">
+              <div class="df"><span class="t12 t3">To</span><span class="df-v trunc">office@harlowlegal.example</span></div>
+              <div class="df"><span class="t12 t3">Subject</span><span class="df-v editing">Q3 report, the short version<span class="caret"></span></span></div>
+              <div class="df"><span class="t12 t3">Message</span><span class="df-v t2">The Q3 report is attached. Consult bookings rose every month this quarter, and the new intake form goes live next week.</span></div>
+              <div class="df"><span class="t12 t3">Attached</span><span class="df-v mono t12">reports/q3-report.pdf</span></div>
+            </div>
+            <div class="card-f" style="margin-top: auto;">
+              <button class="btn btn-p">Send<span class="k">⌘⏎</span></button>
+              <span class="t12 t3">Click a line to change it</span>
+              <button class="btn btn-g" style="margin-left: auto;">Discard<span class="k">D</span></button>
+            </div>
+          </article>
+        </div>
+
+        <div class="list">
+          <div class="li"><span class="dot dot-need"></span><span class="lbl bea" style="width: 84px;">Question</span><span class="grow trunc w6">Which photo leads the holiday menu page?</span><span class="t2 trunc" style="width: 220px;">juno · Northwind Bakery</span><span class="t12 t3" style="width: 40px; text-align: right;">13:40</span></div>
+          <div class="li"><span class="dot dot-need"></span><span class="lbl bea" style="width: 84px;">Permission</span><span class="grow trunc w6">Allow kit to read orders/sheet.csv in Northwind Bakery wholesale and holiday catering</span><span class="t2 trunc" style="width: 220px;">kit · Northwind Bakery wholesale and holiday catering</span><span class="t12 t3" style="width: 40px; text-align: right;">11:02</span></div>
+        </div>
+      </section>
     </div>
 
-    <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 380px; gap: 20px; flex: 1 1 auto; min-height: 0;">
-
-      <div class="card" style="display: flex; flex-direction: column; overflow: hidden; border-color: var(--rule-strong);">
-        <div class="card-h" style="padding-bottom: 10px;">
-          <span class="dot dot-need"></span>
-          <span class="lbl bea">Needs you</span>
-          <span class="msg-time" style="margin-left: auto;">14:21</span>
-        </div>
-        <div class="col" style="padding: 0 20px; gap: 8px;">
-          <span class="h3">Allow kit to push to main?</span>
-          <span class="small t2">Harlow Legal · Intake form rebuild</span>
-        </div>
-        <div class="gate-cmd" style="margin: 16px 20px 0;">git push origin main</div>
-        <p class="small t2" style="padding: 12px 20px 0;">Your rule "Ask before pushing to a client's main branch" held this. The fix is one line and all 7 tests pass.</p>
-        <div class="col" style="padding: 20px; gap: 8px; margin-top: auto;">
-          <div class="row" style="gap: 8px;">
-            <button class="sbtn sbtn-p" style="flex: 1 1 auto;">Allow once</button>
-            <button class="sbtn sbtn-g">Deny</button>
-          </div>
-          <button class="sbtn sbtn-sm" style="width: 100%;">Always in Harlow Legal</button>
-        </div>
-      </div>
-
-      <div class="card" style="display: flex; flex-direction: column; overflow: hidden; border-color: var(--rule-strong);">
-        <div class="card-h" style="padding-bottom: 10px;">
-          <span class="dot dot-need"></span>
-          <span class="lbl bea">Needs you</span>
-          <span class="msg-time" style="margin-left: auto;">13:58</span>
-        </div>
-        <div class="col" style="padding: 0 20px; gap: 8px;">
-          <span class="h3">juno's first client email this week</span>
-          <span class="small t2">Harlow Legal · Q3 report · held at the Gate</span>
-        </div>
-        <div style="margin: 16px 20px 0; border: 1px solid var(--rule); border-radius: 8px; background: var(--bg); overflow: hidden;">
-          <div class="row small" style="padding: 8px 12px; gap: 10px; border-bottom: 1px solid var(--rule);"><span class="t3" style="width: 52px;">To</span><span class="mono draft-f" style="font-size: 12.5px;">office@harlowlegal.example</span></div>
-          <div class="row small" style="padding: 8px 12px; gap: 10px; border-bottom: 1px solid var(--rule);"><span class="t3" style="width: 52px;">Subject</span><span class="draft-f">Q3 report, the short version</span></div>
-          <p class="small" style="padding: 10px 12px; line-height: 20px;">The Q3 report is attached. Consult bookings rose every month this quarter, and the new intake form goes live next week. Full numbers are on page 2.</p>
-        </div>
-        <span class="micro t3" style="padding: 8px 20px 0;">Click any line to change it.</span>
-        <div class="row" style="padding: 20px; gap: 8px; margin-top: auto;">
-          <button class="sbtn sbtn-p" style="flex: 1 1 auto;">Send</button>
-          <button class="sbtn sbtn-g">Discard</button>
-        </div>
-      </div>
-
-      <div class="col" style="gap: 20px; min-height: 0;">
-        <div class="card" style="overflow: hidden;">
-          <div class="card-h"><span class="h4">Working</span><span class="micro t3" style="margin-left: auto;">2 running · 5 done today</span></div>
-          <div class="lrow" style="flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 20px;">
-            <div class="row" style="gap: 10px;">
-              <span class="av">k</span>
-              <div class="col grow"><span class="small" style="font-weight: 600;">kit</span><span class="micro t3 trunc">Intake form rebuild · Harlow Legal</span></div>
-              <span class="dot dot-run pulse"></span>
-              <button class="sbtn sbtn-g sbtn-sm">Watch</button>
-            </div>
-            <div class="mono trunc" style="font-size: 11.5px; line-height: 18px; color: var(--text-2); background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 5px 10px;">Waiting at the Gate · git push origin main</div>
-          </div>
-          <div class="lrow" style="flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 20px 16px;">
-            <div class="row" style="gap: 10px;">
-              <span class="av">j</span>
-              <div class="col grow"><span class="small" style="font-weight: 600;">juno</span><span class="micro t3 trunc">Holiday menu copy · Northwind Bakery</span></div>
-              <span class="dot dot-run pulse"></span>
-              <button class="sbtn sbtn-g sbtn-sm">Watch</button>
-            </div>
-            <div class="mono trunc" style="font-size: 11.5px; line-height: 18px; color: var(--text-2); background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 5px 10px;">Read(menus/winter-2026.md) · 12 min</div>
+    <aside class="col" style="gap: 16px; min-height: 0;">
+      <section class="list" aria-label="Working">
+        <div class="list-h"><span class="lbl">Working</span><span class="t12 t3" style="margin-left: auto;">2 running</span></div>
+        <div class="li" style="align-items: flex-start; padding: 10px 16px;">
+          <span class="av">k</span>
+          <div class="col grow" style="gap: 2px;">
+            <div class="row" style="gap: 8px;"><span class="w6">kit</span><span class="t2 trunc grow">Intake form rebuild</span><span class="dot dot-need" title="Waiting on you"></span></div>
+            <span class="t12 t3 trunc">Waiting on you · 3m 12s</span>
           </div>
         </div>
-
-        <div class="card" style="background: var(--recall-wash); border-color: var(--rule); box-shadow: none; flex: 1 1 auto;">
-          <div class="card-h"><svg class="ic rec" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg><span class="h4">Learned today</span><a href="#" class="micro t2" style="margin-left: auto;">Open Memory</a></div>
-          <div class="col" style="padding: 0 20px 16px; gap: 12px;">
-            <div class="col" style="gap: 2px;"><span class="small rec" style="font-weight: 500;">Harlow Legal prefers short weekly summaries.</span><span class="micro t3">From call notes, 12 Sep</span></div>
-            <div class="col" style="gap: 2px;"><span class="small rec" style="font-weight: 500;">Northwind Bakery closes orders at 16:00 on Fridays.</span><span class="micro t3">From the order inbox, today</span></div>
-            <span class="micro t3">From your notes. No model was used.</span>
+        <div class="li" style="align-items: flex-start; padding: 10px 16px;">
+          <span class="av">j</span>
+          <div class="col grow" style="gap: 2px;">
+            <div class="row" style="gap: 8px;"><span class="w6">juno</span><span class="t2 trunc grow">Holiday menu copy</span><span class="dot dot-run"></span></div>
+            <span class="t12 t3 trunc mono">Read menus/winter-2026.md</span>
           </div>
         </div>
-      </div>
+      </section>
 
-    </div>
+      <section class="list" aria-label="Done today">
+        <div class="list-h"><span class="lbl">Done today</span><a class="t12 t2" href="#" style="margin-left: auto;">All activity</a></div>
+        <div class="li"><svg class="ic t3" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span class="grow trunc">Weekly Northwind update sent</span><span class="t12 t3">12:10</span></div>
+        <div class="li"><svg class="ic t3" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span class="grow trunc">Harlow site: fixed the broken contact link</span><span class="t12 t3">11:48</span></div>
+        <div class="li"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg><span class="grow trunc">Deploy to Northwind staging failed</span><a class="t12 t2 w6" href="#">Retry</a></div>
+        <div class="li"><span class="t12 t3 grow">2 more</span></div>
+      </section>
+
+      <section class="list" aria-label="Learned today">
+        <div class="list-h"><svg class="ic ic-12 t3" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg><span class="lbl">Learned today</span><a class="t12 t2" href="#" style="margin-left: auto;">Memory</a></div>
+        <div class="li" style="align-items: flex-start; padding: 10px 16px;"><div class="col" style="gap: 2px;"><span>Harlow Legal prefers short weekly summaries.</span><span class="t12 t3">From call notes, 12 Sep</span></div></div>
+        <div class="li" style="align-items: flex-start; padding: 10px 16px;"><div class="col" style="gap: 2px;"><span>Northwind closes orders at 16:00 on Fridays.</span><span class="t12 t3">From the order inbox, today</span></div></div>
+      </section>
+    </aside>
+
   </div>
 </main>
 

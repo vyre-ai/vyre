@@ -4,30 +4,35 @@
 // text-on-colour pair the surfaces draw is listed in PAIRS and must pass WCAG AA: 4.5:1 for body
 // text, 3:1 for large text and UI marks (dots, rings, borders that carry meaning).
 
-/** "Needs you". Coral was retired on 27 Sep 2026; it may not come back (test/hygiene.test.js). */
+/**
+ * "Needs you", the only colour besides lime. It marks a dot and a label, never a card or a wash.
+ * Violet is the pick; teal is the one alternative (honey was dropped by the user, 27 Sep 2026).
+ * Coral was retired on 27 Sep 2026; it may not come back (test/hygiene.test.js).
+ */
 export const ATTENTION = {
-  dark: { ink: "#B8A4FF", wash: "rgba(184,164,255,0.12)", rule: "rgba(184,164,255,0.32)" },
-  light: { ink: "#5B3FC4", wash: "rgba(91,63,196,0.08)", rule: "rgba(91,63,196,0.32)" },
+  violet: { dark: "#B8A4FF", light: "#5B3FC4" },
+  teal: { dark: "#5FD4C4", light: "#0B6E66" },
 };
 
+/**
+ * The reduced set (deck-design second pass): eight neutrals per theme, lime as the one accent
+ * (primary actions, focus, running) and the attention colour. No gold, no red, no other hue.
+ * Memory, success and info are neutrals plus an icon. A removed diff line is a neutral wash.
+ */
 export const PALETTE = {
   dark: {
     bg: "#0E0D0C", panel: "#161513", hover: "#1E1C1A", rule: "#2B2926", "rule-strong": "#3A3733",
     text: "#F1EEE6", "text-2": "#B3AEA4", label: "#8C877D",
     "primary-bg": "#C6F36B", "primary-hover": "#D4F88A", "primary-ink": "#0E0D0C",
-    focus: "#C6F36B", "signal-wash": "rgba(198,243,107,0.12)",
-    "recall-ink": "#EBC76B", "recall-wash": "rgba(235,199,107,0.10)",
-    "beacon-ink": ATTENTION.dark.ink, "beacon-dot": ATTENTION.dark.ink,
-    "beacon-wash": ATTENTION.dark.wash, "beacon-rule": ATTENTION.dark.rule,
+    focus: "#C6F36B", "signal-wash": "rgba(198,243,107,0.12)", "del-wash": "rgba(140,135,125,0.14)",
+    "beacon-ink": ATTENTION.violet.dark, "beacon-dot": ATTENTION.violet.dark,
   },
   light: {
-    bg: "#F4F1EA", panel: "#FBFAF6", hover: "#FBFAF6", rule: "#DCD7CC", "rule-strong": "#C9C3B7",
+    bg: "#F4F1EA", panel: "#FBFAF6", hover: "#EEEAE2", rule: "#DCD7CC", "rule-strong": "#C9C3B7",
     text: "#141311", "text-2": "#4A463F", label: "#6B665D",
     "primary-bg": "#141311", "primary-hover": "#4A463F", "primary-ink": "#F4F1EA",
-    focus: "#46700C", "signal-wash": "rgba(70,112,12,0.10)",
-    "recall-ink": "#7E5B0C", "recall-wash": "rgba(126,91,12,0.08)",
-    "beacon-ink": ATTENTION.light.ink, "beacon-dot": ATTENTION.light.ink,
-    "beacon-wash": ATTENTION.light.wash, "beacon-rule": ATTENTION.light.rule,
+    focus: "#46700C", "signal-wash": "rgba(70,112,12,0.10)", "del-wash": "rgba(107,102,93,0.10)",
+    "beacon-ink": ATTENTION.violet.light, "beacon-dot": ATTENTION.violet.light,
   },
 };
 
@@ -47,17 +52,25 @@ export const PAIRS = [
   ["primary-ink", "primary-bg", 4.5, "primary button label"],
   ["primary-ink", "primary-hover", 4.5, "primary button label, hovered"],
   ["focus", "bg", 3, "focus ring and running dot"],
+  ["focus", "panel", 3, "focus ring on a card"],
   ["text", "signal-wash", 4.5, "selected row, added diff line"],
-  ["recall-ink", "bg", 4.5, "recalled text"],
-  ["recall-ink", "recall-wash", 4.5, "recalled text on its wash"],
-  ["beacon-ink", "bg", 4.5, "needs-you text"],
-  ["beacon-ink", "panel", 4.5, "needs-you text on a card"],
-  ["beacon-ink", "beacon-wash", 4.5, "needs-you label on a held block"],
-  ["text", "beacon-wash", 4.5, "held block body"],
-  ["text-2", "beacon-wash", 4.5, "held block detail"],
-  ["beacon-dot", "bg", 3, "needs-you dot and badge"],
+  ["text-2", "signal-wash", 4.5, "meta text on a selected row (label steps up to text-2 on a wash)"],
+  ["text-2", "del-wash", 4.5, "removed diff line"],
+  ["beacon-ink", "bg", 4.5, "needs-you label"],
+  ["beacon-ink", "panel", 4.5, "needs-you label on a card"],
+  ["beacon-ink", "hover", 4.5, "needs-you label on a hovered row"],
+  ["beacon-dot", "bg", 3, "needs-you dot"],
   ["primary-ink", "beacon-dot", 4.5, "count on a needs-you badge"],
 ];
+
+/** The palette with another attention colour swapped in. @param {keyof typeof ATTENTION} name */
+export function withAttention(name) {
+  const a = ATTENTION[name];
+  return {
+    dark: { ...PALETTE.dark, "beacon-ink": a.dark, "beacon-dot": a.dark },
+    light: { ...PALETTE.light, "beacon-ink": a.light, "beacon-dot": a.light },
+  };
+}
 
 /** @param {string} c @returns {[number, number, number, number]} r, g, b (0-255) and alpha */
 export function parse(c) {
