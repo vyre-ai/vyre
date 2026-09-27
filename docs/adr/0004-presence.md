@@ -285,3 +285,13 @@ starts a real vyred and calls one of these tools as a person needs a verifier:
 already carries those edits for the gate, vault, watchers, switchboard, Capsule bridge,
 computers, glass, hands, link and CLI tests. A branch that merges after it keeps them, and adds
 the same line to any new test of that kind.
+
+## Addendum, 27 Sep 2026: no proof for the keyboard
+
+The user's rule: Touch ID or a passkey only for pairing, vault secrets, and sending, posting or
+paying outside. Taking the keyboard of an agent's computer pauses the agent, and handing it back
+returns what it had, so `computers.takeover` and `computers.giveback` leave the floor's list.
+They and `glass.take` and `glass.release` sit on a new list, `PERSON_ONLY`: no proof, but still
+a person's. The tools refuse an agent's caller themselves, the registry refuses a guest from
+another tailnet, and the harness refuses them to Claude's sessions as it does the floor's list.
+The same holds for a private sign-in (`glass.take` with `private`).

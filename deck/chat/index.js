@@ -14,13 +14,24 @@
 // On the box, the list takes in the paired Mac's sessions too, each with a machine chip; opening
 // one reads it through the box (recall.thread) and never offers to send to it. A paired Mac that
 // is away shows as one quiet chip in the list's header, from link.macs, read with each refresh.
+//
+// The shell keeps pages mounted (deck/js/app.js): each address, query included, is its own page,
+// hidden rather than ended when the user leaves. So a kept Chat page's key handlers act only while
+// ctx.shown(), and a revisit refreshes through ctx.onShow.
+//
+// Three more places live on /chat as query parameters, so deck/js/app.js's routes stay as they
+// are (ADR 0024): ?new[&cwd=][&project=] the New session sheet (newsession.js), ?folders[&at=]
+// [&pick] the folder browser (folders.js), ?term=<id> a terminal (term.js, loaded only then).
+// "n" opens New session from anywhere in Chat, unless the key is typed into a field.
 
-import { h, put, empty, link, back } from "../js/dom.js";
+import { h, put, empty, link, go, back } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { when, plural } from "../js/fmt.js";
 import { renderNav } from "./nav.js";
 import { mountSession } from "./session.js";
+import { mountNewSession } from "./newsession.js";
+import { mountFolders, foldersHref } from "./folders.js";
 import { threadHref, projectHref } from "./lib/routes.js";
 import { mergeSessions, title } from "./lib/sessions.js";
 import { machineChip, offlineChip, readMacs } from "../js/machine.js";
@@ -42,10 +53,36 @@ const loadSnapshot = () => { try { return JSON.parse(localStorage.getItem(SNAP_K
 const seen = new Map();
 const remember = (/** @type {any[]} */ rows) => { for (const r of rows) seen.set(r.id, r); };
 
+/** The New session sheet's address, from a project or a folder. @param {{ project?: string|null, cwd?: string|null }} [o] */
+export const newHref = (o = {}) => "/chat?new" + (o.project ? "&project=" + encodeURIComponent(o.project) : "") + (o.cwd ? "&cwd=" + encodeURIComponent(o.cwd) : "");
+
+/** Which of the query-parameter places an address is, or null for the list and sessions. @param {URLSearchParams} q */
+export const modeOf = q => (q.has("new") ? "new" : q.has("folders") ? "folders" : q.get("term") ? "term" : null);
+
+/** Is a key press inside something the user types into? @param {any} t */
+const typing = t => !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+
+/**
+ * Open a terminal in a folder and go to it. Resolves to a sentence when it could not, for the
+ * folder browser to show. term.js is another task's; until it lands this says so plainly.
+ * @param {string} cwd
+ */
+export async function openTerminalAt(cwd) {
+  let mod;
+  try { mod = await import("./term.js"); } catch { return "The terminal is not part of this Deck yet."; }
+  const r = await mod.openTerminal(cwd);
+  if (!r || r.error) return "Could not open a terminal: " + (r?.error?.message || r?.error || "the box did not say why") + ".";
+  go("/chat?term=" + encodeURIComponent(r.term));
+}
+
 /** @param {any} ctx */
 export default async function chat(ctx) {
   const project = ctx.params.project || null;
   const thread = ctx.params.thread || null;
+  const query = ctx.query || new URLSearchParams();
+  const mode = thread ? null : modeOf(query);
+  /** On screen now: a kept page that is hidden hears keys too, and must not act on them. */
+  const shown = () => (typeof ctx.shown === "function" ? ctx.shown() : ctx.alive());
   let mounted = false;
   const state = { projects: /** @type {any[]} */ ([]), rows: /** @type {import("./lib/sessions.js").Row[]} */ ([]), err: null, offline: false, snapAt: null, loaded: false,
     macs: /** @type {any[]} */ ([]) };
@@ -76,13 +113,23 @@ export default async function chat(ctx) {
     if (p.data && c.data) saveSnapshot(state.projects, state.rows);
   }
 
+  const onKey = (/** @type {KeyboardEvent} */ e) => {
+    if (e.key !== "n" || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented || typing(e.target) || mode === "new" || !shown()) return;
+    e.preventDefault();
+    go(newHref({ project: project || query.get("project") }));
+  };
+  document.addEventListener("keydown", onKey);
+  ctx.cleanup(() => document.removeEventListener("keydown", onKey));
+
+  // The sheet, the browser and the terminal do not wait for the session list: only the rail does.
+  if (mode) drawMode();
   // A session opens at once: what the list knew about it is enough to start reading it, and the
   // list itself (for the rail) is read behind it.
   if (thread) {
     const row = seen.get(thread) || (loadSnapshot()?.rows || []).find((/** @type {any} */ r) => r.id === thread) || null;
     if (row) { state.rows = [row]; drawMain(); }
   }
-  // The list as this phone last saw it, drawn at once; the box's answer replaces it a moment later.
+  // The list as this device last saw it, drawn at once; the box's answer replaces it a moment later.
   const snap = !thread ? loadSnapshot() : null;
   if (snap) remember(snap.rows || []);
   if (snap) {
@@ -90,19 +137,20 @@ export default async function chat(ctx) {
     state.rows = snap.rows || [];
     state.loaded = true;
     drawNav();
-    drawMain();
-  } else if (!mounted) put(ctx.root, h("div", { class: "chat-pad" }, h("div", { class: "empty" }, thread ? "Opening the session…" : "Reading your sessions…")));
+    if (!mode) drawMain();
+  } else if (!mounted && !mode) put(ctx.root, h("div", { class: "chat-pad" }, h("div", { class: "empty" }, thread ? "Opening the session…" : "Reading your sessions…")));
   await load();
   if (!ctx.alive()) return;
   drawNav();
-  drawMain();
+  if (!mode) drawMain();
 
   let rt = 0;
   const refresh = () => { clearTimeout(rt); rt = window.setTimeout(async () => {
     await load();
     if (!ctx.alive()) return;
     drawNav();
-    if (!thread) drawMain();               // the session view follows its own events; no full redraw needed
+    // The session view follows its own events; the sheet, browser and terminal keep their state.
+    if (!thread && !mode) drawMain();
   }, 500); };
   ctx.cleanup(() => clearTimeout(rt));
   // Coming back to a kept Chat page: it is already on screen; check the box for anything missed.
@@ -117,6 +165,49 @@ export default async function chat(ctx) {
     ctx.rail(renderNav({ projects: state.projects, rows: state.rows, route: { project, thread }, err: state.err, onChange: drawNav }));
   }
 
+  /** The query-parameter places. Each mounts once and cleans up when the user leaves. */
+  function drawMode() {
+    const pad = h("div", { class: "chat-pad" });
+    put(ctx.root, pad);
+    if (mode === "new") {
+      const from = query.get("project");
+      ctx.cleanup(mountNewSession(pad, { cwd: query.get("cwd"), project: from, shown,
+        onDone: () => back(from ? projectHref(from) : "/chat"),
+        onBrowse: () => go(foldersHref(null, true)) }));
+    } else if (mode === "folders") {
+      const pick = query.has("pick");
+      ctx.cleanup(mountFolders(pad, { at: query.get("at"), shown,
+        pick: pick ? cwd => go(newHref({ cwd })) : null,
+        onCancel: () => back(newHref()),
+        onNewSession: cwd => go(newHref({ cwd })),
+        onTerminal: openTerminalAt }));
+    } else if (mode === "term") {
+      const term = String(query.get("term"));
+      pad.classList.add("chat-term");
+      put(pad, h("div", { class: "empty" }, "Opening the terminal…"));
+      import("./term.js").then(mod => {
+        if (!ctx.alive()) return;
+        put(pad);
+        try {
+          const stop = mod.mountTerminal(pad, { term, onBack: () => back("/chat?folders") });
+          if (typeof stop === "function") ctx.cleanup(stop);
+        } catch (e) {
+          put(pad, empty("The terminal could not open.", e), link("/chat?folders", { class: "link" }, "Back to Folders"));
+        }
+      }, () => {
+        if (!ctx.alive()) return;
+        put(pad, empty("The terminal is not part of this Deck yet."), link("/chat?folders", { class: "link" }, "Back to Folders"));
+      });
+    }
+  }
+
+  /** The two ways in from Chat's own pages: New session and Folders. */
+  function actions(from) {
+    return h("div", { class: "chat-actions" },
+      link("/chat?folders", { class: "btn btn-ghost btn-sm", title: "Folders on the box" }, icon("projects", 14), "Folders"),
+      h("button", { class: "btn btn-primary btn-sm chat-new", type: "button", title: "New session (n)", onclick: () => go(newHref({ project: from })) }, icon("plus", 14), "New session"));
+  }
+
   function drawMain() {
     if (!ctx.alive()) return;
     if (thread) {
@@ -125,9 +216,9 @@ export default async function chat(ctx) {
       const container = h("div", { class: "chat-session" });
       put(ctx.root, container);
       // A session the list knows the Switchboard never ran opens straight from its transcript.
-      const known = state.rows.find(r => r.id === thread);
-      ctx.cleanup(mountSession(container, { thread, project, recorded: !!known && !known.live, known: !!known, turns: known?.turns || 0,
-        source: known?.source || null, machine: known?.machine || null, onBack: () => back(project ? projectHref(project) : "/chat") }));
+      const known = /** @type {any} */ (state.rows.find(r => r.id === thread));
+      ctx.cleanup(mountSession(container, /** @type {any} */ ({ thread, project, recorded: !!known && !known.live, known: !!known, turns: known?.turns || 0,
+        source: known?.source || null, machine: known?.machine || null, onBack: () => back(project ? projectHref(project) : "/chat") })));
       return;
     }
     const note = state.offline ? h("div", { class: "empty chat-offline" }, `Offline. Showing the list as of ${when(state.snapAt)}.`) : null;
@@ -140,15 +231,16 @@ export default async function chat(ctx) {
           h("h1", { class: "chat-title ellipsis" }, proj ? proj.name : project),
           machineChip(proj),
           rows.length ? h("span", { class: "code faint chat-count" }, plural(rows.length, "session")) : null,
-          offlineChip(state.macs)),
+          offlineChip(state.macs),
+          actions(project)),
         rows.length ? h("div", { class: "rows chat-rows" }, rows.map(r => threadRow(r, project)))
           : !proj && state.projects.length ? h("div", { class: "empty" }, `There is no project called ${project}.`)
-          : empty(state.err ? "Sessions could not be read." : "No sessions in this project yet. Pick one into it from Projects, or start one there.", state.err)));
+          : [empty(state.err ? "Sessions could not be read." : "No sessions in this project yet.", state.err), startHere(project)]));
       return;
     }
     const recent = state.rows.filter(r => r.human || r.live).slice(0, 30);
     put(ctx.root, note, h("div", { class: "chat-pad" },
-      h("div", { class: "chat-head" }, h("h1", { class: "chat-title" }, "Chat"), offlineChip(state.macs)),
+      h("div", { class: "chat-head" }, h("h1", { class: "chat-title" }, "Chat"), offlineChip(state.macs), actions(null)),
       // On a phone the rail is hidden, so the projects are listed here as well.
       state.projects.length ? h("section", { class: "chat-projects", "aria-labelledby": "chat-projects-h" },
         h("div", { class: "section-head" }, h("h2", { class: "lbl", id: "chat-projects-h" }, "Projects")),
@@ -160,7 +252,14 @@ export default async function chat(ctx) {
       h("section", { class: "chat-recent", "aria-labelledby": "chat-recent-h" },
         h("div", { class: "section-head" }, h("h2", { class: "lbl", id: "chat-recent-h" }, "Recent")),
         recent.length ? h("div", { class: "rows" }, recent.map(r => threadRow(r, null)))
-          : empty(state.err ? "Sessions could not be read." : "No sessions yet. Start Claude Code in a terminal and it shows here.", state.err))));
+          : [empty(state.err ? "Sessions could not be read." : "No sessions yet. Start one here, or start Claude Code in a terminal and it shows here.", state.err), startHere(null)])));
+  }
+
+  /** The empty state's way in: a clear New session button. */
+  function startHere(from) {
+    return h("div", { class: "chat-start" },
+      h("button", { class: "btn btn-primary chat-new", type: "button", onclick: () => go(newHref({ project: from })) }, icon("plus", 14), "New session"),
+      h("span", { class: "faint" }, "or press ", h("span", { class: "kbd" }, "n")));
   }
 
   function threadRow(row, inProject) {

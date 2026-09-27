@@ -247,7 +247,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root }
   if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
-    const result = await registry.call(name, await body(req), caller, { ...via, proof: parsePresence(req.headers["x-vyre-presence"]) });
+    const result = await registry.call(name, await body(req), caller, { ...via, proof: parsePresence(req.headers["x-vyre-presence"]),
+      keep: req.headers["x-vyre-presence-keep"] === "1" });
+    // A session the proof opened goes back in a header, in the form x-vyre-presence takes.
+    if (result.session) {
+      const s = result.session;
+      delete result.session;
+      res.setHeader("x-vyre-presence-session", `session id=${s.session} secret=${s.secret} expires=${s.expires}`);
+    }
     const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400 : 500;
     return send(res, status, result);
   }

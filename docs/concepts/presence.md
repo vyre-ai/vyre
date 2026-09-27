@@ -24,13 +24,18 @@ Before you prove anything, every method shows you the tool's summary: for the Ga
 
 ## Which tools need it
 
-The floor keeps a fixed list in `core/presence/index.js` (`HUMAN_ONLY`). A module can add a tool to it with `presence: true`, but it cannot take one away.
+The floor keeps a fixed list in `core/presence/index.js` (`HUMAN_ONLY`). A module can add a tool to it with `presence: true`, or ask only for some inputs with a `when` function on the tool's presence setting, but it cannot take one away.
 
-- Gate and permissions: `gate.approve`, `gate.revise`, `gate.reject`, `threads.answer`.
+- Sending: `gate.approve`.
 - Vault: `vault.put`, `vault.approve`, `vault.unlock`, `vault.offboard`, `vault.inject`, `vault.totp`, `vault.backup`, `vault.restore`, `vault.delete`, `vault.device.code`, `vault.device.unlock`, `vault.unlock-passphrase`, `vault.reveal`, `vault.copy`, `vault.resolve`, `vault.render`, `vault.session.open`, `vault.kit`.
 - Learning: `learn.accept`, `learn.retire`, `learn.relax`, `learn.skill-install`.
-- Hands and machines: `computers.takeover`, `computers.giveback`, `link.pair.approve`.
+- Machines: `link.pair.approve`.
 - Presence itself: `presence.enroll`, `presence.remove`, `presence.code`, `presence.session.open`.
+- Who else reaches this box: `files.drive.share`, `files.drive.unshare`, `network.guests.add`, `network.guests.remove`, `network.guests.enable`, `hooks.enable`, `hooks.open`, `hooks.close`, `computers.tailnet.set`, `computers.egress.set`.
+
+Your own actions on your own screens ask for no proof (`PERSON_ONLY`): answering Claude's questions and permission asks (`threads.answer`), changing or discarding a held draft (`gate.revise`, `gate.reject`, which send nothing), opening a terminal (`term.open`, `term.attach`), and taking an agent's computer and handing it back (`computers.takeover`, `computers.giveback`, `glass.take`, `glass.release`). Only a person's surface can call them: agents and guests are refused, and Claude's sessions cannot name them in a shell command.
+
+Making or changing an agent (`agents.create`, `agents.update`) is not on the list: it asks for no proof. Only you make an agent, and your assistant may change some of its fields. See [Agents](../using/agents.md).
 
 `GET /v1/tools` and `vyre tools` mark these with `presence: true`. [Tools](../reference/tools.md) marks them "needs a person present".
 

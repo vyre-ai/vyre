@@ -114,9 +114,21 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
     return handle(req, res, "onboard");
   }
 
+  // A WebSocket gets the same Host rule as a request (DNS rebinding), then a session. The
+  // onboarding page opens no streams, so past both it is still refused: the terminal and Glass
+  // are the owner's over the tailnet, never the onboarding link's.
+  function onUpgrade(req, socket) {
+    socket.on("error", () => {});
+    const end = (status, text) => { try { socket.end(`HTTP/1.1 ${status} ${text}\r\nconnection: close\r\n\r\n`); } catch {} };
+    if (!loopbackHost(String(req.headers.host || ""))) return end(421, "Misdirected Request");
+    if (!session(req, new URL(req.url || "/", "http://127.0.0.1"))) return end(403, "Forbidden");
+    end(404, "Not Found");
+  }
+
   function listen(p) {
     return new Promise((resolve, reject) => {
       const s = http.createServer((req, res) => { onRequest(req, res).catch(e => json(res, 500, "internal", e.message)); });
+      s.on("upgrade", onUpgrade);
       s.once("error", reject);
       s.listen(p, host, () => {
         s.off("error", reject);
