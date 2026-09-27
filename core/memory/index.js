@@ -11,6 +11,7 @@ import { Graph } from "./graph.js";
 import { floorPlan } from "./floor.js";
 import fs from "node:fs";
 import path from "node:path";
+import { retriever } from "./iq/retrieve.js";
 import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
 import { answerer, parse as parseQuestion } from "./personal/answer.js";
@@ -417,6 +418,25 @@ export default {
       run: async (input, { caller } = {}) => {
         await personalOnly(input, caller, "memory.answer");
         return answer({ q: String(input.q ?? input.question ?? ""), project_cwds: clean(input.project_cwds), sources: Boolean(input.sources) });
+      },
+    });
+    // Vyre IQ's retrieval (ADR 0034, core/memory/iq/retrieve.js): the passages a question's answer
+    // would be read from, fused from Recall's searches and widened by names memory knows. Personal
+    // names widen it only for a caller that may see personal facts.
+    const retrieve = retriever({ graph, personal, askDir, now: () => Date.now(),
+      search: async q => { const r = await ctx.call("recall.search", q); if (r?.error) throw new Error(r.error.message || "recall.search failed"); return Array.isArray(r?.data) ? r.data : r?.data?.hits || []; } });
+    ctx.tool("memory.retrieve", {
+      description: "The turns Vyre IQ would read to answer a question: { passages: [{ id, session, seq, role, ts, text, name, cwd, score, via }], expanded, window }. No model. expand, when, recency and hybrid switch steps off, for the evaluation.",
+      input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds, k: { type: "integer", minimum: 1, maximum: 30 },
+        expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" },
+        knobs: { type: "object", description: "evaluation only: passed to recall.search" }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        const project_cwds = clean(input.project_cwds);
+        let sees = true;
+        try { await personalOnly(input, caller, "memory.retrieve"); } catch { sees = false; }
+        if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
+        return retrieve({ question: String(input.question || ""), project_cwds, k: input.k ?? 8, personal: sees,
+          expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, knobs: input.knobs || {} });
       },
     });
     ctx.tool("memory.profile", {

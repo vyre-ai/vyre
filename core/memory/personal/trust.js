@@ -23,9 +23,10 @@ export const userWords = (/** @type {string} */ text) => {
 
 /**
  * Words of building or testing memory itself: a turn with one is someone writing examples, not
- * someone talking about their life. Specific on purpose: "test" alone is an ordinary word.
+ * someone talking about their life. Specific on purpose: "test" alone is an ordinary word, and so
+ * are a dev job's own words ("seed data", "assert"): a work session is not about memory.
  */
-const DEV = /\b(?:fixtures?|test (?:worlds?|cases?|sentences?|data|examples?|inputs?|users?)|(?:sample|sealed|gold|held-?out|synthetic|fake|made-up|invented) (?:worlds?|persons?|people|users?|data|sessions?)|evals?|eval harness|evaluation (?:worlds?|cases?|sets?)|memory\.(?:answer|remember|profile|context)|iq\.ask|personal facts?|extract(?:ion|or|s)? (?:rules?|pass)|checkread|confident[- ]wrong|recall@\d|expected (?:answer|output)s?|seed(?:ed)? (?:data|world)|assert(?:s|ion|ions)?|should (?:answer|return|extract))\b/i;
+const DEV = /\b(?:fixtures?|test (?:worlds?|cases?|sentences?|examples?|inputs?)|(?:sample|sealed|gold|held-?out|synthetic|fake|made-up|invented) (?:worlds?|persons?|people|users?|sessions?)|evals?|eval harness|evaluation (?:worlds?|cases?|sets?)|memory\.(?:answer|remember|profile|context|retrieve)|iq\.ask|personal facts?|extract(?:ion|or|s)? (?:rules?|pass)|checkread|confident[- ]wrong|recall@\d|expected (?:answer|output)s?|seed(?:ed)? worlds?|should (?:answer|return|extract))\b/i;
 
 /** A user turn that is about building or testing memory. */
 export const devTalk = (/** @type {string} */ text) => DEV.test(userWords(text));

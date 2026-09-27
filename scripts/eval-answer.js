@@ -161,7 +161,7 @@ export function score(questions, got) {
  * @param {import("node:sqlite").DatabaseSync} db
  * @param {{ me: any, embedder: any, dense: any }} opts
  */
-async function startMemory(db, { me, embedder, dense, runner = null }) {
+export async function startMemory(db, { me, embedder, dense, runner = null }) {
   const tools = new Map();
   const ctx = {
     name: "memory",
@@ -204,7 +204,7 @@ async function startMemory(db, { me, embedder, dense, runner = null }) {
  * one transaction: the indexer commits turn by turn, which is right for a live index and makes a
  * throwaway one take seconds longer than it has to.
  */
-async function embedAll(db, embedder) {
+export async function embedAll(db, embedder) {
   const add = db.prepare("INSERT OR REPLACE INTO recall_vectors (session, seq, chunk, off, v) VALUES (?,?,?,?,?)");
   const rows = /** @type {any[]} */ (db.prepare("SELECT session, seq, text FROM recall_turns ORDER BY rowid").all());
   const made = [];
