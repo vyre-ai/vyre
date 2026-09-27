@@ -327,10 +327,9 @@ export default {
         if (!it || it.state !== "sending") throw fail(`${id} is not an approved item being sent`, "denied");
         const m = /^mail:([A-Za-z0-9_-]{1,64})$/.exec(String(it.via || ""));
         if (!m) throw fail(`${id} is not held for a mail account`);
-        // The person approved it, so the person's own view of the vault decides: the account must
-        // still be there, and still one mail serves itself.
-        const all = await use("vault.connections.list", { caller: "local" });
-        const acct = (Array.isArray(all) ? all : all?.connections || []).find(r => r.id === m[1]);
+        // The person approved it, so no surface filter applies: the account must still be there,
+        // and still one mail serves itself. vault.connections.get is for module callers.
+        const acct = await ctx.call("vault.connections.get", { id: m[1] }).then(r => (r.error ? null : r.data));
         if (!acct) throw fail(`the mail account ${m[1]} was removed; connect it again to send this`, "no_account");
         const kind = adapterOf(acct);
         if (kind !== "imap" && kind !== "apps-script") throw fail(`${m[1]} sends through its own module, not mail.release`, "denied");

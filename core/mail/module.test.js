@@ -36,6 +36,7 @@ async function world(t, { connections, items = {}, handlers = {} }) {
       const s = caller === "capsule" ? "capsule" : /^mcp:agent:/.test(caller) ? "agents" : caller.startsWith("mcp") ? "chat" : null;
       return s && c.surfaces.includes(s);
     }).map(({ surfaces, ...c }) => c),
+    "vault.connections.get": ({ id }) => { const c = connections.find(x => x.id === id); if (!c) return null; const { surfaces, ...row } = c; return row; },
     "gate.offer": () => ({ offered: true }),
     "gate.held": () => [...held.values()].filter(i => i.state === "held"),
     "gate.request": input => { const id = `g${++n}`; held.set(id, { id, state: "held", ...input }); return { id, message: "held" }; },
