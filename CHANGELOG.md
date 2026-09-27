@@ -18,11 +18,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   minutes. `--once`, `--json` or a pipe print
   one result. New `vyre vault health`, `breach`, `history <item>`, `revert <item> <version>` and
   `clear-clipboard`.
-- `vyre phone add` walks a phone onto the box as the app-design sheet shows: the address with a
-  terminal QR (a dependency-free encoder, `core/cli/qr.js`), Tailscale, a one-time passkey code,
-  install steps, then live checks until the phone's push device, a test notification and its
-  passkey show up. `vyre phone list`, `remove <id>` and `test [id]`. `--android --usb|--wireless`
-  finds adb and says what is missing until the box serves the Android app.
+- `vyre phone add` walks a phone onto the box as the app-design sheet shows: which phone, a
+  single-use relay QR to pair (relay.pair.start; nothing to install on the phone first), install
+  steps, live checks ("via relay 80 ms", a test notification, the device's presence key), then the
+  optional "Faster and private: add Tailscale" step. `--tailscale-only`, or a box without the relay,
+  takes the old path: Tailscale, the box's address with a terminal QR (a dependency-free encoder,
+  `core/cli/qr.js`) and a one-time passkey code. `vyre phone list` (relay devices too),
+  `remove <id>` and `test [id]`. `--android --usb|--wireless` finds adb and says what is missing
+  until the box serves the Android app.
 - `vyre todo`, `notes`, `alarm`, `timer` and `remind` take `edit <id>` and `rm <id>` (an id of
   another kind is refused with the command that owns it); `vyre timer list`, `vyre remind list`,
   `vyre ringing` and `vyre dismiss <id>`.

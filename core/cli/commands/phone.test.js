@@ -86,7 +86,7 @@ test("phone add: steps, a code from the verifier, then the checks pass as the ph
   const text = lines.join("\n");
   assert.match(text, /Pairing a phone with the box \(vyre\.tail0000\.ts\.net\)/);
   assert.match(text, /Network\s+Tailscale, tailnet tail0000/);
-  assert.match(text, /the relay is coming/, "no relay tool on this box");
+  assert.match(text, /This box has no relay yet, so the phone pairs over Tailscale/, "the relay is the default; no relay tool on this box");
   assert.match(text, new RegExp(`Open Vyre\\s+${BOX.replace(/\./g, "\\.")}`));
   assert.match(text, /Type this address on the phone/, "no QR code into a pipe");
   assert.match(text, /iPhone: Safari: Share, then Add to Home Screen/);
@@ -156,7 +156,9 @@ test("phone add --json: the address, the code and the steps as one value, withou
   assert.equal(v.url, BOX + "/");
   assert.match(v.code, /^[A-Z0-9]{8}$/);
   assert.ok(v.expires > Date.now() + 9 * 60_000, "the code lasts 10 minutes");
-  assert.deepEqual(v.network, { kind: "tailscale", tailnet: "tail0000", login: null, relay: null });
+  assert.equal(v.network, "tailscale", "no relay on this box, so Tailscale");
+  assert.deepEqual(v.tailscale, { tailnet: "tail0000", login: null, address: BOX + "/" });
+  assert.equal(v.relay, "this box has no relay yet");
   assert.deepEqual(v.checks.map(c => [c.id, c.state]), [["reached", "wait"], ["https", "wait"], ["app", "wait"], ["push", "wait"], ["passkey", "wait"]]);
 });
 
@@ -233,6 +235,10 @@ test("phone: a device new on the relay counts as reached, and says it came throu
   const now = { devices: [], keys: [], relay: [{ id: "d_old", path: null }, { id: "d_new", kind: "web", path: "relay", online: true }] };
   const reached = evaluate(before, now, { address: "https://vyre.tail0000.ts.net" }).find(c => c.id === "reached");
   assert.equal(reached?.state, "ok");
-  assert.match(String(reached?.note), /through the relay/);
+  assert.equal(reached?.note, "via relay");
+  const timed = { ...now, relay: [now.relay[0], { ...now.relay[1], rtt: 80.4, presence: true, name: "alex's iPhone" }] };
+  const checks = evaluate(before, timed, { address: "https://vyre.tail0000.ts.net" });
+  assert.equal(checks.find(c => c.id === "reached")?.note, "via relay 80 ms");
+  assert.deepEqual([checks.find(c => c.id === "passkey")?.state, checks.find(c => c.id === "passkey")?.note], ["ok", "alex's iPhone"], "the relay device's own presence key");
   assert.equal(evaluate(before, before, {}).find(c => c.id === "reached")?.state, "wait", "a device already there is not new");
 });

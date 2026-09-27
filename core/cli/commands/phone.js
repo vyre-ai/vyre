@@ -4,8 +4,9 @@
 //   vyre phone add [--iphone|--android]    the steps the Deck's "Add your phone" sheet shows: the
 //                                          box's address (and a QR of it), the network, a one-time
 //                                          code for the passkey, how to install, then live checks
-//   vyre phone add --relay                 pair through the relay instead (no Tailscale on the
-//                                          phone): a single-use QR from relay.pair.start
+//                                          The relay is the default: a single-use QR from
+//                                          relay.pair.start, then Tailscale as an optional last step
+//   vyre phone add --tailscale-only        Tailscale on the phone first, and the box's address
 //   vyre phone add --android --usb         the native app over a cable (adb); --wireless for
 //                                          Wireless debugging. Needs an APK the box serves
 //   vyre phone list                        the devices that get notifications, and the passkeys
@@ -32,7 +33,7 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { execFile } from "node:child_process";
-import { call, request } from "../../daemon/client.js";
+import { call } from "../../daemon/client.js";
 import * as config from "../../config/index.js";
 import { callAsPerson, realIO } from "../presence.js";
 import * as tailnet from "../tailnet.js";
@@ -97,18 +98,23 @@ export function evaluate(before, now, { address = null, tested = null } = {}) {
   const relayed = (now.relay || []).filter(r => !had.has("relay:" + r.id));
   const keys = now.keys.filter(k => k.kind === "passkey" && !had.has(k.id));
   const any = devices.length > 0 || keys.length > 0 || relayed.length > 0;
+  // rtt: the relay's round trip, when it reports one (ADR 0026 asks it to).
+  const viaRelay = relayed.find(r => r.path === "relay");
+  // A device paired through the relay enrolls its own presence key (relay.devices.list presence).
+  const keyed = keys.length > 0 || relayed.some(r => r.presence);
   const https = String(address || "").startsWith("https:");
   const apple = devices.some(d => APPLE.test(String(d.service)));
   return [
     { id: "reached", label: "Phone reached the box", state: any ? "ok" : "wait",
-      note: relayed.some(r => r.path === "relay") ? "through the relay" : any ? "direct or relayed: the box cannot tell for a tailnet phone yet" : undefined },
+      note: viaRelay ? `via relay${Number.isFinite(Number(viaRelay.rtt)) ? ` ${Math.round(Number(viaRelay.rtt))} ms` : ""}` : any ? "direct or relayed: the box cannot tell for a tailnet phone yet" : undefined },
     { id: "https", label: "Secure address works (HTTPS)", state: any && https ? "ok" : !https && address ? "failed" : "wait",
       note: any && https ? "a browser offers notifications and passkeys only on a secure page" : !https && address ? `${address} is not https` : undefined },
     { id: "app", label: "Opened as an app, not a browser tab", state: apple ? "ok" : devices.length ? "unknown" : "wait",
       note: apple ? "an iPhone sends notifications only from the Home Screen app" : devices.length ? "the box cannot tell an Android app from a tab yet" : undefined },
     { id: "push", label: "Test notification sent", state: !tested ? "wait" : tested.sent > 0 ? "ok" : "failed",
       note: tested ? (tested.sent > 0 ? "the push service took it; check the phone shows it" : `the push service refused it · vyre phone test ${tested.device}`) : undefined },
-    { id: "passkey", label: "Face ID key saved for approvals", state: keys.length ? "ok" : "wait", note: keys.length ? String(keys[0].name || keys[0].id) : undefined },
+    { id: "passkey", label: "Face ID key saved for approvals", state: keyed ? "ok" : "wait",
+      note: keys.length ? String(keys[0].name || keys[0].id) : keyed ? String((relayed.find(r => r.presence) || {}).name || "through the relay") : undefined },
   ];
 }
 
@@ -150,8 +156,10 @@ function follow(local, onEvent) {
  */
 
 /**
- * `vyre phone add`: the steps, then the checks until they pass or the code runs out.
- * @param {{ iphone?: boolean, android?: boolean, relay?: boolean }} flags
+ * `vyre phone add`: the steps, then the checks until they pass or the code runs out. The relay is
+ * the default (nothing to install on the phone first); Tailscale is the optional last step that
+ * makes it direct and private, or the whole path with --tailscale-only.
+ * @param {{ iphone?: boolean, android?: boolean, tailscaleOnly?: boolean }} flags
  * @param {AddDeps} [deps]
  */
 export async function add(flags, deps = {}) {
@@ -159,83 +167,86 @@ export async function add(flags, deps = {}) {
   if (!t) return EXIT.FAILED;
   if (!t.address) return fail("the box has no address yet, so a phone cannot reach it", { next: "vyre name, then vyre phone add" });
   const address = t.address.replace(/\/$/, "");
+  const io = deps.io || realIO;
 
-  // The code first: it is the one step that asks the person, and nothing is worth showing without it.
+  // The pairing first: it is the one step that asks the person, and nothing is worth showing
+  // without it. The relay's single-use QR (https://vyre.run/pair#<offer>); on a Mac it is minted
+  // on the box through the link. A box without the relay falls back to Tailscale and says so.
   let code = null, expires = Date.now() + (deps.life ?? CODE_LIFE);
   /** @type {string|null} */ let offer = null;
-  if (flags.relay) {
-    // A single-use relay QR (https://vyre.run/pair#<offer>), 10 minutes. On a Mac it is minted on
-    // the box through the link, with this Mac's proof of presence.
-    const r = t.local ? await callAsPerson("relay.pair.start", {}, { io: deps.io || realIO })
-      : await callAsPerson("link.call", { tool: "relay.pair.start", input: {} }, { io: deps.io || realIO });
-    if (r.error && r.error.code === "no_such_tool") return fail("this box has no relay yet", { next: "vyre phone add, with Tailscale on the phone" });
-    if (r.error) return failTool(r.error);
-    offer = r.data && r.data.url;
-    if (r.data && r.data.expiresAt && deps.life === undefined) expires = Number(r.data.expiresAt);
-  } else if (t.local) {
-    const r = await callAsPerson("presence.code", {}, { io: deps.io || realIO });
+  let noRelay = false;
+  if (!flags.tailscaleOnly) {
+    const r = t.local ? await callAsPerson("relay.pair.start", {}, { io })
+      : await callAsPerson("link.call", { tool: "relay.pair.start", input: {} }, { io });
+    if (r.error && r.error.code === "no_such_tool") noRelay = true;
+    else if (r.error) return failTool(r.error, "vyre phone add --tailscale-only pairs over Tailscale instead");
+    else {
+      offer = r.data && r.data.url;
+      if (r.data && r.data.expiresAt && deps.life === undefined) expires = Number(r.data.expiresAt);
+    }
+  }
+  if (!offer && t.local) {
+    const r = await callAsPerson("presence.code", {}, { io });
     if (r.error) return failTool(r.error);
     code = typeof r.data === "string" ? r.data : r.data && r.data.code;
     if (r.data && r.data.expires && deps.life === undefined) expires = Number(r.data.expires);
   }
 
-  const [ts, tools] = await Promise.all([(deps.tailscale || (() => tailnet.status()))().catch(() => null), request("GET", "/v1/tools")]);
-  const relay = list(tools).map(x => String(x.name)).filter(n => n.startsWith("relay."));
+  const ts = await (deps.tailscale || (() => tailnet.status()))().catch(() => null);
   const [d0, k0, r0] = await Promise.all([t.tool("push.devices"), t.tool("presence.keys"), t.tool("relay.devices.list")]);
   if (d0.error) return failTool(d0.error);
   if (k0.error) return failTool(k0.error);
   const before = { devices: list(d0), keys: list(k0), relay: relayDevices(r0) };
-  const hasRelay = !r0.error || relay.length > 0;
 
-  const net = {
-    kind: "tailscale", tailnet: tailnetOf(address), login: ts && ts.login ? ts.login : null,
-    relay: relay.length ? relay : null,
-  };
+  const phone = flags.iphone ? "iPhone" : flags.android ? "Android" : null;
+  const tailscale = { tailnet: tailnetOf(address), login: ts && ts.login ? ts.login : null, address: address + "/" };
   const install = {
     iphone: "Safari: Share, then Add to Home Screen. Open Vyre from the Home Screen: notifications work only there.",
     android: "Chrome: the menu, then Install app. Or the native app over a cable: vyre phone add --android --usb",
   };
+  const installFor = flags.iphone ? { iphone: install.iphone } : flags.android ? { android: install.android } : install;
   if (json()) {
-    if (offer) return emit({ box: address, url: offer, network: { kind: "relay" }, expires, checks: evaluate(before, before, { address }) });
-    return emit({ box: address, url: address + "/", network: net, code, expires,
-      install: flags.iphone ? { iphone: install.iphone } : flags.android ? { android: install.android } : install,
+    return emit({ box: address, phone, network: offer ? "relay" : "tailscale", url: offer || address + "/", code, expires,
+      install: installFor, tailscale, ...(noRelay ? { relay: "this box has no relay yet" } : {}),
       checks: evaluate(before, before, { address }) });
   }
 
-  if (offer) {
-    out(`  Pairing a phone with the box through the relay ${dim("(" + hostOf(address) + ")")}`);
-    out(dim("  Confirmed · the QR works once, for 10 minutes"));
-    out("");
-    out(`  1 ${bold("Open Vyre".padEnd(14))}${offer}`);
-    if (colour) {
-      for (const l of terminal(qr(offer), { indent: "     " })) out(l);
-      out(dim("                   Scan this with the phone's camera. No Tailscale needed on the phone"));
-    } else out(dim("                   Open this address on the phone (the QR code shows in a colour terminal)"));
-    out(`  2 ${bold("Install".padEnd(14))}${dim("Share, then Add to Home Screen (iPhone) · the menu, then Install app (Android)")}`);
-    out(`  3 ${bold("Checks")}`);
-    return watch(t, { address, before, expires }, deps);
-  }
-  out(`  Pairing a phone with the box ${dim("(" + hostOf(address) + ")")}`);
-  if (code) out(dim("  Confirmed · the code works once, for 10 minutes"));
-  out("");
   const pad = s => bold(s.padEnd(14));
-  out(`  1 ${pad("Network")}Tailscale${net.tailnet ? ", tailnet " + net.tailnet : ""}`);
-  out(dim(`                   Get Tailscale on the phone, and sign in as ${net.login || "the same account as the box"}`));
-  out(dim(hasRelay ? "                   Without Tailscale on the phone: vyre phone add --relay"
-    : "                   Without Tailscale on the phone: the relay is coming; for now the phone needs Tailscale"));
-  out(`  2 ${pad("Open Vyre")}${address}`);
-  if (colour) {
-    for (const l of terminal(qr(address + "/"), { indent: "     " })) out(l);
-    out(dim("                   Scan this with the phone's camera, or type the address"));
-  } else out(dim("                   Type this address on the phone (the QR code shows in a colour terminal)"));
-  out(code ? `                   ${dim("When it asks for a code (Passkey, Add), type")} ${signal(spaced(code))}`
-    : dim("                   The passkey code comes from the box: vyre presence code there, then type it on the phone"));
-  const steps = flags.iphone ? [["iPhone", install.iphone]] : flags.android ? [["Android", install.android]] : [["iPhone", install.iphone], ["Android", install.android]];
-  out(`  3 ${pad("Install")}${steps[0][0]}: ${steps[0][1]}`);
-  for (const [name, how] of steps.slice(1)) out(`                   ${name}: ${how}`);
-  out(dim("                   Then on Now: turn on notifications, and add a passkey"));
-  out(`  4 ${bold("Checks")}`);
-
+  const indent = "                   ";
+  out(`  Pairing a phone with the box ${dim("(" + hostOf(address) + ")")}`);
+  out(dim(offer ? "  Confirmed · the QR works once, for 10 minutes" : code ? "  Confirmed · the code works once, for 10 minutes" : ""));
+  if (noRelay && !flags.tailscaleOnly) out(dim("  This box has no relay yet, so the phone pairs over Tailscale"));
+  out("");
+  out(`  1 ${pad("Which phone?")}${phone || "iPhone or Android"}${phone ? "" : dim("  (--iphone or --android shows one)")}`);
+  let n = 2;
+  if (offer) {
+    out(`  ${n++} ${pad("Pair")}${dim("scan with the phone's camera; nothing to install first")}`);
+    if (colour) for (const l of terminal(qr(offer), { indent: "     " })) out(l);
+    out(dim(`${indent}${offer}`));
+  } else {
+    out(`  ${n++} ${pad("Network")}Tailscale${tailscale.tailnet ? ", tailnet " + tailscale.tailnet : ""}`);
+    out(dim(`${indent}Get Tailscale on the phone, and sign in as ${tailscale.login || "the same account as the box"}`));
+    out(`  ${n++} ${pad("Open Vyre")}${address}`);
+    if (colour) for (const l of terminal(qr(address + "/"), { indent: "     " })) out(l);
+    else out(dim(`${indent}Type this address on the phone (the QR code shows in a colour terminal)`));
+    out(code ? `${indent}${dim("When it asks for a code (Passkey, Add), type")} ${signal(spaced(code))}`
+      : dim(`${indent}The passkey code comes from the box: vyre presence code there, then type it on the phone`));
+  }
+  const steps = Object.entries(installFor).map(([k, v]) => [k === "iphone" ? "iPhone" : "Android", v]);
+  out(`  ${n++} ${pad("Install")}${steps[0][0]}: ${steps[0][1]}`);
+  for (const [name, how] of steps.slice(1)) out(`${indent}${name}: ${how}`);
+  out(dim(`${indent}Then on Now: turn on notifications, and add a passkey`));
+  out(`  ${n++} ${bold("Checks")}`);
+  if (offer) {
+    // The optional step after the checks: the relay works everywhere; Tailscale makes it direct.
+    const tail = [`  ${n} ${pad("Faster and private: add Tailscale")}${dim("(optional)")}`,
+      dim(`${indent}Get Tailscale on the phone and sign in as ${tailscale.login || "the same account as the box"}; Vyre switches`),
+      dim(`${indent}to ${address} by itself when the phone answers there`)];
+    const code0 = await watch(t, { address, before, expires }, deps);
+    out("");
+    for (const l of tail) out(l);
+    return code0;
+  }
   return watch(t, { address, before, expires }, deps);
 }
 
@@ -459,22 +470,24 @@ export async function testPush(id) {
 const HELP = `
   vyre phone add               the steps to put a phone on the box, then live checks
       --iphone | --android     only that phone's install step
-      --relay                  pair through the relay: a single-use QR, no Tailscale on the phone
+      --tailscale-only         skip the relay: Tailscale on the phone first, then the box's address
       --android --usb          the native app over a cable (needs adb and an APK the box serves)
       --android --wireless     the same over Wireless debugging
   vyre phone list              the devices that get notifications, and the passkeys
   vyre phone remove <id>...    forget a notification device, or remove a passkey (asks you first)
   vyre phone test [id]         send a test notification to every device, or one
 
-  add mints a one-time code for the phone's passkey (it asks you first, and lasts 10 minutes),
-  then watches until the phone shows up: a new notification device, a test notification the
+  add pairs through the relay by default: it asks you first, then shows a QR that works once
+  for 10 minutes, so the phone needs nothing installed first. Adding Tailscale afterwards makes the
+  path direct and private. With --tailscale-only (or on a box without the relay) it mints a
+  one-time code for the phone's passkey instead. Then it watches until the phone shows up: a new notification device, a test notification the
   push service took, and a new passkey. It checks again every minute and when you press Enter.
   With --json it prints the address, the code and the steps as one JSON value and does not watch.`;
 
 export default {
   name: "phone", order: 46, usage: USAGE, summary: "add a phone to your box, list, remove and test the ones it has", help: HELP,
   async run(args) {
-    const { flags, pos } = parse(args, { bool: ["iphone", "android", "usb", "wireless", "relay"], values: [], cmd: "phone" });
+    const { flags, pos } = parse(args, { bool: ["iphone", "android", "usb", "wireless", "relay", "tailscale-only"], values: [], cmd: "phone" });
     const [sub0 = "list", ...rest] = pos;
     const sub = ({ ls: "list", rm: "remove", pair: "add" })[sub0] || sub0;
     if (sub === "add") {
@@ -482,9 +495,10 @@ export default {
       if ((flags.usb || flags.wireless) && !flags.android) return usage("vyre phone add: --usb and --wireless are for --android", "vyre phone add --android --usb");
       if (flags.usb && flags.wireless) return usage("vyre phone add: --usb or --wireless, not both");
       if (flags.iphone && flags.android) return usage("vyre phone add: --iphone or --android, not both");
-      if (flags.relay && (flags.usb || flags.wireless)) return usage("vyre phone add: --relay pairs the web app; --usb and --wireless install the native one");
+      if (flags.relay && flags["tailscale-only"]) return usage("vyre phone add: the relay is the default; --tailscale-only skips it");
       if (flags.usb || flags.wireless) return android(flags);
-      return add(flags);
+      // --relay is the default now, kept so old notes still work.
+      return add({ iphone: flags.iphone, android: flags.android, tailscaleOnly: Boolean(flags["tailscale-only"]) });
     }
     if (sub === "list") return listPhones();
     if (sub === "remove") return remove(rest);
