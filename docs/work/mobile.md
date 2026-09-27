@@ -92,7 +92,7 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   (47fbb75c). Fixed apps/app/.gitignore, which dropped the local modules' native sources
   (vault-android, vyre-signer never reached git); vault-android = work/vault-next 725e4a41. The
   HUMAN_ONLY mirror gained presence.person.start. Perf flag kept per device + a web Settings row,
-  because the Home Screen app opens /app/ with no query (ceaf1268). Root suite runs lib/**.
+  because the Home Screen app opens /app/ with no query (ceaf1268). Root suite runs `lib/**/*.test.js`.
   test/mobile-tailnet.test.js updated for ADR 0032 (sign in as the person with the device key
   first) (2df02254). App 121/121, tsc clean; testbox 168/168 (push, docs-*, lib, mobile-tailnet,
   person, presence). Headless Chrome over CDP: renders, badge on with ?perf=1, kept on /app/,
@@ -104,18 +104,23 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
 
 ## One app: Doing
 - The real-iPhone run: steps in "iPhone test steps" below, after tonight's deploy.
-- Design-system adoption: ask and trust cards on <Card> (CardCode for commands), IconButton +
+- Design-system adoption: ask and trust cards on `<Card>` (CardCode for commands), IconButton +
   Icon (send, stop, check, x drawn as bars; no react-native-svg), composer Send/Stop as 44 circles.
   Settings row not built on purpose: the app shows no registry keys yet (ListRow's group variant
   covers Settings). Remaining: key hint, tabs, sheet, the list row chevron, the Back control as
   chev-l (visible change, ask app-design), icon size 16 vs 20 in the composer (spec vs board, ask
   app-design), react-native-svg for exact paths (a dependency decision).
-- BLOCKER for the iPhone run: main 53cd1326 has no apps/ (batch 4) and nothing packs
+- Batch 2 (ee74901c): real icons (react-native-svg 15.12.1, all 47 from icons.md), StatusMark badge,
+  count, word and elapsed (`since`, one visible-only timer), 44 single and two-line list rows with a
+  chevron, your bubble hover fill, device-row proof names and tags, web swipe commits at 40%. The
+  mobile checklist is app-design's teams.md "mobile" section (f0752612); next in its Start here
+  order: 7, the shell (header labels and page swipe, floating Capsule, Places as a bottom sheet).
+- BLOCKER for the iPhone run (ci is fixing it, lead): main 53cd1326 has no apps/ (batch 4) and nothing packs
   apps/app/dist into vyre.tgz or the box image, so /app/ is 404 no_app on the box. Told the lead.
 
 ## iPhone test steps (for the lead to hand the user)
 1. iPhone: Tailscale on, same tailnet as the box.
-2. Safari: open https://<box>/app/ . Share, Add to Home Screen, Add. Open Vyre from the Home Screen
+2. Safari: open `https://<box>/app/`. Share, Add to Home Screen, Add. Open Vyre from the Home Screen
    (the installed app has its own cookies and storage, separate from Safari: do everything below in it).
 3. Settings (top right), Performance meter: tap it once. The page reloads and a small badge shows
    fps, dropped frames and a verdict. It stays on across launches until tapped again.
@@ -136,7 +141,7 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
    keyboard, queue/unqueue via threads.unqueue), the approve swipe; the `?perf=1` overlay.
 4. Phone first-class parity list (every Deck page), then the Android build in CI and
    `vyre phone add --android --usb`.
-5. work/mobile-presence: the device presence method as its own branch for relay (device:<id>).
+5. work/mobile-presence: the device presence method as its own branch for relay (`device:<id>`).
 
 ## Native (ADR 0018, PAUSED)
 
@@ -214,7 +219,7 @@ down after):
 2. Step 3 the approval sheet, 4 Chat, 5 Find, 6 Agents, per phone.md.
 3. Use chat's contracts (work/chat 10604b9, once merged): ask anchors (anchor.event, or thread +
    at; tool_use_id null for MCP) for Open session; questions (threads.asks kind question,
-   answers map); "Always in <project>" only when ask.always_project, threads.answer
+   answers map); "Always in `<project>`" only when ask.always_project, threads.answer
    {decision:"always", scope:"project"}; labels from system.info.assistant.name, null means Vyre.
 4. Colours: attention is violet (one asset swap, the user may pick honey or teal), no red or
    system destructive styles; errors are text with a crossed circle and "failed"; destructive =
@@ -230,7 +235,7 @@ down after):
 ## Needs from others
 - native-core (ADR 0035 settings hub, approved, work/native-core 799ad333; after 0.1.0 for mobile):
   settings.snapshot + GET /v1/theme?device= at start; on settings.changed re-read, appearance.* refetch
-  with If-None-Match: <rev>, repaint without reload; compare rev on foreground. Answered (native-core
+  with If-None-Match: `<rev>`, repaint without reload; compare rev on foreground. Answered (native-core
   b95cc4dc): leave `device` out and the hub uses the caller's own device (snapshot echoes it);
   /v1/theme is a whole tokens.json with color.dark and color.paper plus `scheme` and `rev` (swap
   tokens.ts one to one); appearance.scheme = system (default, follow the OS) | dark | paper, and the
@@ -241,7 +246,7 @@ down after):
   names for human_only and sessionable.
 - cohesion ADR 0036 (work/cohesion 07cb32ab), agreed after 0.1.0: waiting.list/count/changed
   (renames needs.*; answer each row with its answer.tool), context.report on foreground and on
-  thread/project change, and a Glass mini-view in a thread and on Now (sight.watch agent:<name>,
+  thread/project change, and a Glass mini-view in a thread and on Now (sight.watch `agent:<name>`,
   sight.steps + sight.stepped), only while it is visible. The mini-view needs an app-design phone
   spec first. Asked cohesion: frame wire format, size and rate, a lower-rate option for the relay,
   tailnet/device callers and presence for sight.*, answer.tool carrying its input, device defaulting.
