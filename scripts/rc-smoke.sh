@@ -68,9 +68,15 @@ vc() { "$RC_DOCKER" exec -u vyre "$C" vyre call "$@" 2>&1; }
 # The tool is on this box?
 has() { ! vc "$1" '{}' | grep -q 'no_such_tool'; }
 get() { "$RC_DOCKER" exec -u vyre "$C" node /opt/rc/get.js "$1"; }
+# vyred's pid when `vyre status` says running, else nothing.
+upid() { "$RC_DOCKER" exec -u vyre "$C" vyre status 2>/dev/null | grep -i running | sed -n 's/.*pid \([0-9][0-9]*\).*/\1/p' | head -1; }
+# Up and settled: running with the same pid 3 s apart, so a vyred the loop is still replacing (a
+# first start that exits "already running", then the loop's 2 s pause) is not taken for ready.
 ready() {
   i=0
-  until "$RC_DOCKER" exec "$C" vyre status 2>/dev/null | grep -qi running; do
+  while :; do
+    a=$(upid)
+    if [ -n "$a" ]; then sleep 3; i=$((i + 3)); [ "$(upid)" = "$a" ] && return 0; fi
     i=$((i + 1)); [ $i -ge "${1:-90}" ] && return 1; sleep 1
   done
 }
