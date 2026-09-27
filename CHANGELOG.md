@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A queued reply streams live, and only its own turn counts
+
+- A reply queued for a busy session no longer takes the words, tools or end of the turn the
+  session was busy with. It waits for the `thread.sent` carrying its own `queued` id (another
+  surface's hand-over is not its own), then streams that turn's `thread.text` pieces as they come,
+  and finishes at that turn's `thread.finished`. When events carry `turn` (ADR 0030 owned
+  sessions), events from any other turn are dropped. The Electron Capsule
+  (`local/capsule/lib/state.js` `applyReply`) and the native one (`State.swift`) both; tests in
+  state.test.js and StateTests.swift.
+
 #### Esc takes back a message still queued for a terminal session
 
 - In the Electron Capsule, Esc on a queued reply calls `threads.unqueue` for that message

@@ -62,6 +62,16 @@ them, one per fix.
    stops following only ("Stopped following. <name> already has your message; its reply lands
    in its thread."), never threads.stop. Reference: `bridge.js` `unqueue`.
 
+9. **A queued reply follows its own turn, live.** While queued, the thread's `thread.text`,
+   `thread.tool` and `thread.finished` belong to the turn it is busy with: ignore them. The
+   reply is handed over at the `thread.sent` whose `queued` equals its `queued_id` (any
+   `queued` when the id is unknown); remember that event's `turn` if it has one. From then on,
+   fold the pieces as they stream (caret on) and finish at the next `thread.finished`; with a
+   turn known, drop events that name a different `turn`. Terminal sessions still answer in one
+   piece at their Stop (`threads.replied`); owned sessions (ADR 0030) stream. The status line
+   after hand-over: "Handed to <name>. Its reply shows here as it comes." Reference:
+   `state.js` `applyReply`, `State.swift` `applyReply`.
+
 ## Done
 - f5bd7b9 fix(switchboard): limit notice only at >= 80% or rejected; `lowlimit` in fake-claude.
 - cf4531e fix(capsule): memory in quick prompts, quotes as quotes, notices as status, question line.
@@ -81,12 +91,20 @@ them, one per fix.
 - Tailnet has my answers to its Mac-send design (sent 2026-09-27).
 
 ## Doing
-- Nothing in flight. Saved 2026-09-27 at logout. All work pushed: work/capsule-now (live,
-  threads.unqueue, Electron Esc take-back 6c5bfe0) and work/capsule-agent (capsule.report, no
-  orange b62130d, native Esc take-back 792420c). Merge capsule-now before capsule-agent.
+- 2026-09-27 after logout 3: main merged into both branches. Rule 9 (a queued reply follows its
+  own turn, live) in Electron (work/capsule-now ece665f) and native (work/capsule-agent a1621e8).
+  Rules 1 to 9 sent to the sessions team for owned sessions (queued ids, hand-over as
+  thread.sent{queued, turn} before the turn's first event, one turn for several rows, `turn` on
+  every thread event, a "send now" that acts on a queued row). Waiting for its answer and the
+  name of the send-now tool. Merge capsule-now before capsule-agent.
 
 ## Next (open requests, in order)
-- threads.unqueue on the phone (mobile's, rule 8 is the spec). Streaming a queued session's reply live.
+- threads.unqueue on the phone (mobile's, rule 8 is the spec).
+- Once sessions names it: Cmd-Enter on a queued reply = send now (owned sessions only; a terminal
+  session has no interrupt path). Then a live test against a real owned session on the fake.
+- Terminal sessions could stream too, from recall.watch on the transcript (on main via chat
+  46e68bc); only if the user wants it, since it reads the transcript while the Capsule is open.
+- The DM view (applyDm) has the same busy-turn mix-up for queued words: port rule 9 there.
 - tailnet (answers sent 2026-09-27): sending to Mac sessions from the box. My answers:
   1 yes: a separate WRITE allowlist (threads.send, later threads.unqueue), person callers only, and
     `as: "person"` checked on the Mac.
