@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Projects, phone and desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2200px; height: 1120px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1300px;">
+      <span class="lbl">Places · Projects</span>
+      <h1 class="t28 w6">A project is a folder and everything that works in it: threads, agents, rules, memory and files.</h1>
+      <p class="t15 t2">You make every project by hand, and it keeps its work apart from the others. Its page answers three questions: what is going on here, what may agents do here without asking, and what does Vyre remember about it.</p>
+    </div>
+  </div>
+
+  <div class="frames">
+
+    <div class="cap">
+      <span class="cap-t">Desktop, 1280 wide · list and detail</span>
+      <div class="win" style="width: 1280px; height: 800px;">
+        <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+        <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+          <nav class="rail" aria-label="Vyre">
+            <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="badge">2</span></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+            <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+            <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>Devices</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+              <span class="av av-32 av-me" style="margin-top: 6px;">a</span>
+            </div>
+          </nav>
+          <main class="main">
+            <header class="top" style="grid-template-columns: minmax(0, 1fr) 360px minmax(0, 1fr);">
+              <div class="top-l"><h1 class="t15 w6">Projects</h1><span class="t12 t3">4 on the box</span></div>
+              <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow">Jump to anything, or ask juno</span><span class="kbd">⌘K</span></div>
+              <div class="top-r"><span class="st"><span class="dot dot-run"></span>direct 12 ms</span></div>
+            </header>
+            <div class="ld" style="grid-template-columns: 300px minmax(0, 1fr);">
+              <div class="ld-l">
+                <div class="grp">On the box<span class="t3" style="margin-left: auto; font-weight: 400;">by last activity</span></div>
+                <div class="lrow lrow-on">
+                  <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg></span>
+                  <div class="col grow" style="gap: 2px;"><div class="row" style="gap: 8px;"><span class="w6 trunc grow">Harlow Legal</span><span class="dot dot-need"></span></div><span class="mono t12 t2 trunc">~/work/harlow-legal</span><span class="t12 t3">14 threads · 1m ago</span></div>
+                </div>
+                <div class="lrow">
+                  <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg></span>
+                  <div class="col grow" style="gap: 2px;"><div class="row" style="gap: 8px;"><span class="w6 trunc grow">Northwind Bakery</span><span class="dot dot-need"></span></div><span class="mono t12 t2 trunc">~/work/northwind</span><span class="t12 t3">9 threads · 3m ago</span></div>
+                </div>
+                <div class="lrow">
+                  <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg></span>
+                  <div class="col grow" style="gap: 2px;"><span class="w6 trunc">Harlow site</span><span class="mono t12 t2 trunc">~/work/harlow-site</span><span class="t12 t3">5 threads · 6m ago</span></div>
+                </div>
+                <div class="lrow">
+                  <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg></span>
+                  <div class="col grow" style="gap: 2px;"><span class="w6 trunc">Personal</span><span class="t12 t2 trunc">No folder</span><span class="t12 t3">3 threads · Mon</span></div>
+                </div>
+                <div class="grp" style="margin-top: 8px;">On alex's MacBook Pro<span class="t3" style="margin-left: auto; font-weight: 400;">read-only</span></div>
+                <div class="lrow" style="border-bottom: 0;">
+                  <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="7" rx="1"></rect><path d="M1.5 12.5h13"></path></svg></span>
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">Scratch</span><span class="t12 t3">2 threads · opens on the Mac</span></div>
+                </div>
+                <div class="row" style="margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--rule);"><button class="btn btn-s" type="button" style="width: 100%;"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>New project</button></div>
+              </div>
+
+              <div class="ld-d" style="padding: 20px 28px; gap: 18px;">
+                <div class="row" style="gap: 12px;">
+                  <span class="av av-40"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg></span>
+                  <div class="col grow" style="gap: 2px; min-width: 0;"><h2 class="t20 w6">Harlow Legal</h2><div class="row" style="gap: 8px;"><span class="mono t12 t2">~/work/harlow-legal</span><span class="t12 t3 trunc">on the box · made 2 Sep</span></div></div>
+                  <button class="ibtn" type="button" aria-label="More"><svg class="ic" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="0.8"></circle><circle cx="8" cy="8" r="0.8"></circle><circle cx="12.5" cy="8" r="0.8"></circle></svg></button>
+                  <button class="btn btn-p" type="button"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>New session<span class="k">N</span></button>
+                </div>
+
+                <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; flex: 1 1 auto; min-height: 0;">
+                  <div class="col" style="gap: 16px; min-width: 0;">
+                    <div class="col" style="gap: 8px;">
+                      <div class="row" style="gap: 8px;"><span class="lbl grow">Threads</span><a class="t12 t2" href="#">All 14</a></div>
+                      <div class="list">
+                        <div class="li"><span class="dot dot-need"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Estate intake: probate step</span><span class="t12 t3 trunc">kit · plan to approve</span></div><span class="t12 t3">1m</span></div>
+                        <div class="li"><span class="ring"></span><div class="col grow" style="min-width: 0;"><span class="trunc">Rebuild the Harlow intake form</span><span class="t12 t3 trunc">kit · running · Edits allowed</span></div><span class="t12 t3">24m</span></div>
+                        <div class="li"><span class="dot dot-unread"></span><div class="col grow" style="min-width: 0;"><span class="trunc">Q2 billing export</span><span class="t12 t3 trunc">juno · finished, unread</span></div><span class="t12 t3">Yesterday</span></div>
+                        <div class="li"><span class="dot dot-done"></span><div class="col grow" style="min-width: 0;"><span class="trunc">Q3 report and Estate intake</span><span class="t12 t3 trunc">kit · done</span></div><span class="t12 t3">Mon</span></div>
+                      </div>
+                    </div>
+                    <div class="col" style="gap: 8px;">
+                      <span class="lbl">Agents working here</span>
+                      <div class="list">
+                        <div class="li"><span class="av">k</span><div class="col grow" style="min-width: 0;"><span class="w6">kit</span><span class="t12 t3 trunc">2 threads · Claude · opus</span></div><span class="st"><span class="ring"></span>running</span></div>
+                      </div>
+                    </div>
+                    <div class="col" style="gap: 8px;">
+                      <span class="lbl">Files</span>
+                      <div class="list">
+                        <div class="li" style="align-items: flex-start; padding: 10px 16px;"><svg class="ic t2" viewBox="0 0 16 16" style="margin-top: 1px;"><path d="M1.5 10.5l2.5-7h8l2.5 7v2h-13z"></path><path d="M1.5 10.5h13M11.5 12h.5"></path></svg><div class="col grow" style="min-width: 0; gap: 2px;"><span class="trunc">VyreDrive · projects share</span><span class="mono t12 t2 trunc">VyreDrive/projects/harlow-legal</span><span class="t12 t3">Read-only on alex's MacBook Pro · synced 2m ago</span></div><button class="btn btn-g btn-sm" type="button">Show</button></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="col" style="gap: 16px; min-width: 0;">
+                    <div class="col" style="gap: 8px;">
+                      <div class="row" style="gap: 8px;"><span class="lbl grow">Always in Harlow Legal</span><span class="t12 t3">allowed without asking</span></div>
+                      <div class="list">
+                        <div class="li"><span class="mono grow trunc">npm test</span><span class="t12 t3">from an ask · 12 Sep</span><button class="btn btn-g btn-sm" type="button">Remove</button></div>
+                        <div class="li" style="background: var(--hover); min-height: 36px;"><span class="t12 t2 grow trunc">Removed <span class="mono">npm run lint</span></span><button class="btn btn-sm" type="button">Undo</button></div>
+                        <div class="li"><span class="mono grow trunc">git push origin *</span><span class="t12 t3">from an ask · 26 Sep</span><button class="btn btn-g btn-sm" type="button">Remove</button></div>
+                        <div class="li"><span class="mono grow trunc">npm run build</span><span class="t12 t3">from an ask · 20 Sep</span><button class="btn btn-g btn-sm" type="button">Remove</button></div>
+                      </div>
+                    </div>
+                    <div class="col" style="gap: 8px;">
+                      <span class="lbl">Defaults for new sessions</span>
+                      <div class="list">
+                        <div class="li"><span class="grow">Provider</span><button class="cchip" type="button">Claude · opus<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button></div>
+                        <div class="li"><span class="grow">Mode</span><button class="cchip" type="button">Asks first<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button></div>
+                        <div class="li" style="align-items: flex-start; padding: 10px 16px;"><div class="col grow" style="gap: 2px;"><span>Trusted</span><span class="t12 t3">Needed before Doesn't ask can be held. Agents never get it.</span></div><button class="tog" type="button" aria-label="Trusted, off" style="margin-top: 2px;"></button></div>
+                      </div>
+                    </div>
+                    <div class="col" style="gap: 8px;">
+                      <div class="row" style="gap: 8px;"><span class="lbl grow">Memory for this project</span><a class="t12 t2" href="#">Open Memory</a></div>
+                      <div class="list">
+                        <div class="li"><div class="col grow" style="min-width: 0;"><span class="trunc">The Estate branch uses Estate intake v2.</span><span class="t12 t3 trunc">From "Q3 report and Estate intake" · 26 Sep</span></div></div>
+                        <div class="li"><div class="col grow" style="min-width: 0;"><span class="trunc">Run the lint before any push to main.</span><span class="t12 t3 trunc">You said it · 20 Sep</span></div></div>
+                        <div class="li"><div class="col grow" style="min-width: 0;"><span class="trunc">Client letters go out from alex, never from kit.</span><span class="t12 t3 trunc">You said it · 4 Sep</span></div></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <div class="cap">
+      <span class="cap-t">Phone, 390 wide · Projects, pushed from the Places sheet</span>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="safe-t"></div>
+        <div class="ph-nav">
+          <button class="btn btn-g" type="button" style="height: 44px; padding: 0 8px 0 4px; gap: 2px; font-size: 17px; line-height: 24px; font-weight: 400;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg>Now</button>
+          <span class="t17 w6 grow" style="text-align: center;">Projects</span>
+          <button class="ibtn" type="button" aria-label="New project" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button>
+          <span style="width: 22px; flex: none;"></span>
+        </div>
+        <div class="ph-body" style="padding-top: 4px;">
+          <div class="inp inp-ph" style="height: 44px; font-size: 17px; line-height: 24px; flex: none;"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg>Search projects</div>
+          <div class="ph-sec" style="padding-top: 4px;">On the box<span class="t12 t3" style="margin-left: auto; font-weight: 400;">4</span></div>
+          <div class="ph-card" style="flex: none;">
+            <div class="ph-row" style="align-items: center;"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg><div class="col grow" style="min-width: 0;"><div class="row" style="gap: 8px;"><span class="ttl trunc">Harlow Legal</span><span class="dot dot-need"></span></div><span class="t13 t2 trunc">14 threads · 1m ago</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+            <div class="ph-row" style="align-items: center;"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg><div class="col grow" style="min-width: 0;"><div class="row" style="gap: 8px;"><span class="ttl trunc">Northwind Bakery</span><span class="dot dot-need"></span></div><span class="t13 t2 trunc">9 threads · 3m ago</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+            <div class="ph-row" style="align-items: center;"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg><div class="col grow" style="min-width: 0;"><span class="ttl trunc">Harlow site</span><span class="t13 t2 trunc">5 threads · 6m ago</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+            <div class="ph-row" style="align-items: center;"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg><div class="col grow" style="min-width: 0;"><span class="ttl trunc">Personal</span><span class="t13 t2 trunc">3 threads · no folder · Mon</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+            <div class="ph-row" style="align-items: center; min-height: 56px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg><span class="t17 w6 grow">New project</span></div>
+          </div>
+          <div class="ph-sec">On alex's MacBook Pro<span class="t12 t3" style="margin-left: auto; font-weight: 400;">read-only</span></div>
+          <div class="ph-card" style="flex: none;">
+            <div class="ph-row" style="align-items: center;"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="7" rx="1"></rect><path d="M1.5 12.5h13"></path></svg><div class="col grow" style="min-width: 0;"><span class="t17 trunc">Scratch</span><span class="t13 t2 trunc">2 threads · opens on the Mac</span></div></div>
+          </div>
+          <span class="t12 t3">A violet dot means a thread in that project waits on you. Tap a project for its threads, rules and memory.</span>
+        </div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+    <div class="anno">
+      <span class="lbl">How it works</span>
+      <div class="anno-i"><span class="anno-n">1</span><span>A project is a folder on the box, a folder on the Mac seen read-only, or no folder at all (Personal). One file, <span class="mono">.vyre/project.json</span>, declares it; the file is the truth and the list only caches it.</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>Threads join by folder or by pick. Vyre never sorts them on its own. Status marks match Chat: violet dot waits on you, lime ring runs, filled dot unread, hollow dot done.</span></div>
+      <div class="anno-i"><span class="anno-n">3</span><span>"Always in Harlow Legal" collects every ask answered with that button. Remove takes effect at the next tool call. Rules never cross into another project.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>Defaults set the provider and mode a new session starts with. Trusted is off by default; turning it on takes a 0.6 s hold, and only then can Doesn't ask be held. Agents never get it.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>Memory here reaches only this project's briefs, so Harlow and Northwind stay apart. Files come through VyreDrive's projects share, read-only on the Mac.</span></div>
+      <div class="anno-i"><span class="anno-n">6</span><span>Phone: Projects opens from the Places sheet as a pushed page, back to Now. New project is the last row; the name and folder come next.</span></div>
+      <div class="anno-i"><span class="anno-n">7</span><span>Smooth: the list paints from cache before the box answers. Remove goes through the outbox: the rule collapses to "Removed" in place with a 4 s Undo, and no row below it jumps.</span></div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2200,"height":1120}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

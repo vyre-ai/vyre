@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Memory, phone and desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2200px; height: 1120px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1300px;">
+      <span class="lbl">Places · Memory</span>
+      <h1 class="t28 w6">Memory is what Vyre learnt, each fact in plain words with where it came from.</h1>
+      <p class="t15 t2">Facts come from sessions, emails and call notes, kept per project or about you. Lessons are rules an agent proposes and you accept or retire. You can read, correct or forget any of it, and every line shows its source.</p>
+    </div>
+  </div>
+
+  <div class="frames">
+
+    <div class="cap">
+      <span class="cap-t">Desktop, 1280 wide · list and one memory</span>
+      <div class="win" style="width: 1280px; height: 800px;">
+        <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+        <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+          <nav class="rail" aria-label="Vyre">
+            <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="badge">6</span></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</a>
+            <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+            <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>Devices</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+              <span class="av av-32 av-me" style="margin-top: 6px;">a</span>
+            </div>
+          </nav>
+          <main class="main">
+            <header class="top" style="grid-template-columns: minmax(0, 1fr) 360px minmax(0, 1fr);">
+              <div class="top-l"><h1 class="t15 w6">Memory</h1><span class="t12 t3">214 facts · 9 lessons</span></div>
+              <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow">Jump to anything, or ask juno</span><span class="kbd">⌘K</span></div>
+              <div class="top-r"><a class="needs" href="#"><span class="dot dot-need"></span>Needs you 6</a></div>
+            </header>
+            <div class="row" style="height: 52px; flex: none; padding: 0 20px; gap: 8px; border-bottom: 1px solid var(--rule);">
+              <div class="inp" style="width: 300px; flex: none;"><svg class="ic t3" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="inp-ph grow">Search memory</span><span class="kbd">/</span></div>
+              <span class="chip chip-on" style="margin-left: 8px;">All</span>
+              <span class="chip">About you</span>
+              <span class="chip">Harlow Legal</span>
+              <span class="chip">Northwind Bakery</span>
+              <span class="chip"><span class="dot dot-need"></span>Lessons to review<span class="badge">1</span></span>
+            </div>
+            <div class="ld" style="grid-template-columns: 400px minmax(0, 1fr);">
+              <div class="ld-l">
+                <div class="grp"><span class="dot dot-need"></span><span class="bea">Lessons to review</span><span class="t3" style="margin-left: auto; font-weight: 400;">1</span></div>
+                <div class="lrow" style="flex-direction: column; gap: 8px;">
+                  <div class="row" style="gap: 10px; align-items: flex-start; width: 100%;">
+                    <span class="av av-32">k</span>
+                    <div class="col grow" style="gap: 2px;"><span class="w6 trunc">Run npm test before pushing in Harlow Legal</span><span class="t12 t3 trunc">Proposed by kit · after 2 pushes failed CI · 13:40</span></div>
+                  </div>
+                  <div class="row" style="gap: 8px; padding-left: 42px;">
+                    <button class="btn btn-p btn-sm" type="button">Accept</button>
+                    <button class="btn btn-s btn-sm" type="button">Edit</button>
+                    <button class="btn btn-g btn-sm" type="button">Retire</button>
+                    <span class="t12 t3" style="margin-left: auto;">Face ID 8 min ago</span>
+                  </div>
+                </div>
+                <div class="grp" style="margin-top: 4px;">About you<span class="t3" style="margin-left: auto; font-weight: 400;">38</span></div>
+                <div class="lrow">
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">You sign emails as alex, with no title</span><span class="t12 t3 row trunc" style="gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Email to sam@northwind.test · 22 Sep</span></div>
+                </div>
+                <div class="lrow">
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">Hold weekend drafts until 9:00 on Monday</span><span class="t12 t3 row trunc" style="gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Session "Weekly planning" · 19 Sep</span></div>
+                </div>
+                <div class="grp" style="margin-top: 4px;">Harlow Legal<span class="t3" style="margin-left: auto; font-weight: 400;">121</span></div>
+                <div class="lrow lrow-on">
+                  <div class="col grow" style="gap: 2px;"><span class="w6 trunc">The Estate branch uses intake form v2</span><span class="t12 t3 row trunc" style="gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Session "Harlow intake" · 24 Sep</span></div>
+                </div>
+                <div class="lrow">
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">Reports live in harlow-legal/reports</span><span class="t12 t3 row trunc" style="gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg>Call note, Harlow weekly · 25 Sep</span></div>
+                </div>
+                <div class="grp" style="margin-top: 4px;">Northwind Bakery<span class="t3" style="margin-left: auto; font-weight: 400;">55 · 3 selected</span></div>
+                <div class="lrow" style="align-items: center;">
+                  <span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span>
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">Invoices go to the old shared drive</span><span class="t12 t3 trunc">Session "Northwind setup" · 12 Feb · last said 7 months ago</span></div>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span>
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">Wholesale runs on Tuesdays</span><span class="t12 t3 trunc">Call note · 3 Mar · two notes disagree</span></div>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span>
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">The spring menu launches in April</span><span class="t12 t3 trunc">Email from sam@northwind.test · 9 Mar</span></div>
+                </div>
+                <div class="row" style="margin-top: auto; padding: 10px 16px; border-top: 1px solid var(--rule); gap: 10px; background: var(--panel);">
+                  <span class="t12 t2">3 selected</span>
+                  <button class="btn btn-g btn-sm" type="button">Clear</button>
+                  <span class="t12 t3" style="margin-left: auto;">hold 0.6 s</span>
+                  <button class="btn btn-h btn-sm" type="button"><span class="fillbar" style="width: 40%;"></span><span>Forget 3 memories</span></button>
+                </div>
+              </div>
+              <div class="ld-d" style="padding: 24px 32px; gap: 16px;">
+                <div class="row" style="gap: 12px; align-items: flex-start;">
+                  <div class="col grow" style="gap: 4px;">
+                    <span class="lbl">Harlow Legal · fact</span>
+                    <h2 class="t20 w6">The Estate branch uses intake form v2</h2>
+                    <span class="t12 t2">Learnt 24 Sep · last said 2 days ago · confidence 0.9</span>
+                  </div>
+                  <a class="btn btn-g" href="#">Open session</a>
+                </div>
+                <section class="card" aria-label="The fact">
+                  <div class="card-h"><span class="lbl">The fact</span><span class="t12 t3" style="margin-left: auto;">Click a line to change it</span></div>
+                  <div style="padding: 0 16px 8px;">
+                    <div class="df"><span class="t12 t3">About</span><span class="df-v">Estate branch</span></div>
+                    <div class="df"><span class="t12 t3">Is</span><span class="df-v">uses</span></div>
+                    <div class="df"><span class="t12 t3">What</span><span class="df-v editing">intake form v2, from 1 Oct<span class="caret"></span></span></div>
+                  </div>
+                  <div class="card-f">
+                    <span class="row t12 t2" style="gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Saved</span>
+                    <button class="btn btn-g btn-sm" type="button">Undo</button>
+                    <span class="t12 t3">Face ID confirmed 8 min ago · covers changes until 15:02</span>
+                  </div>
+                </section>
+                <div class="col" style="gap: 8px;">
+                  <span class="lbl">Where it came from</span>
+                  <div class="card" style="padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;">
+                    <a class="row t13" href="#" style="gap: 8px;"><svg class="ic t2" viewBox="0 0 16 16"><path d="M7 9a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-.8.8M9 7a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l.8-.8"></path></svg><span class="w6" style="text-decoration: underline; text-underline-offset: 3px;">Session "Harlow intake", turn 32</span><span class="t12 t3">you said it · 24 Sep 14:10</span></a>
+                    <p class="t15" style="padding-left: 12px; border-left: 2px solid var(--rule-strong);">Use intake form v2 for the Estate branch from now on. The old one drops the executor field.</p>
+                    <a class="row t13" href="#" style="gap: 8px; padding-top: 4px;"><svg class="ic t2" viewBox="0 0 16 16"><path d="M7 9a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-.8.8M9 7a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l.8-.8"></path></svg><span style="text-decoration: underline; text-underline-offset: 3px;">Call note, Harlow weekly</span><span class="t12 t3">agrees · 25 Sep</span></a>
+                  </div>
+                </div>
+                <div class="col" style="gap: 8px;">
+                  <div class="row" style="gap: 8px;"><span class="lbl">Where it is used</span><span class="t12 t3">added to 4 sessions this week, only in Harlow Legal</span><a class="t12 t2" href="#" style="margin-left: auto; text-decoration: underline; text-underline-offset: 3px;">Show all 4</a></div>
+                  <div class="list dense">
+                    <div class="li"><span class="ring"></span><span class="grow trunc">Rebuilding the Harlow intake form</span><span class="t12 t3">kit · today</span></div>
+                    <div class="li"><span class="dot dot-done"></span><span class="grow trunc">Estate branch welcome letter</span><span class="t12 t3">kit · 26 Sep</span></div>
+                                      </div>
+                </div>
+                <div class="row" style="gap: 8px; margin-top: auto;">
+                  <button class="btn btn-s" type="button">Confirm, stop fading</button>
+                  <button class="btn" type="button">No longer true</button>
+                  <span class="t12 t3" style="margin-left: auto;">hold 0.6 s</span>
+                  <button class="btn btn-h" type="button"><span class="fillbar" style="width: 0%;"></span><span>Forget this memory</span></button>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <div class="cap">
+      <span class="cap-t">Phone, 390 wide · Memory, from the Places sheet</span>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="safe-t"></div>
+        <div class="ph-nav" style="position: relative;">
+          <a class="row" href="#" style="gap: 2px; height: 44px; padding-right: 8px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg><span class="t17">Now</span></a>
+          <span class="t17 w6" style="position: absolute; left: 0; right: 0; text-align: center; pointer-events: none;">Memory</span>
+        </div>
+        <div class="ph-body">
+          <div class="inp inp-lg" style="height: 44px; border-radius: 10px;"><svg class="ic ic-20 t3" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="inp-ph t17">Search memory</span></div>
+          <div class="row" style="gap: 8px;"><span class="chip chip-on" style="height: 32px; padding: 0 12px;">All</span><span class="chip" style="height: 32px; padding: 0 12px;">About you</span><span class="chip" style="height: 32px; padding: 0 12px;">Harlow Legal</span><span class="chip" style="height: 32px; padding: 0 10px;"><svg class="ic" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></span></div>
+          <div class="ph-sec" style="padding-top: 4px;"><span class="dot dot-need"></span><span class="bea">Lessons to review</span><span class="t12 t3" style="margin-left: auto; font-weight: 400;">1</span></div>
+          <div class="ph-card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
+            <div class="col" style="gap: 2px;"><span class="t17 w6">Run npm test before pushing in Harlow Legal</span><span class="t12 t3">Proposed by kit · after 2 pushes failed CI · 13:40</span></div>
+            <div class="row" style="gap: 8px;"><button class="btn btn-p ph-btn" type="button" style="flex: 1 1 0;">Accept</button><button class="btn btn-s ph-btn" type="button">Edit</button><button class="btn btn-g ph-btn" type="button">Retire</button></div>
+            <span class="t12 t3">Face ID confirmed 8 min ago</span>
+          </div>
+          <div class="ph-sec">Harlow Legal<span class="t12 t3" style="margin-left: auto; font-weight: 400;">121</span></div>
+          <div class="ph-card">
+            <div class="ph-row"><div class="col grow" style="gap: 2px; min-width: 0;"><span class="t17 trunc">The Estate branch uses intake form v2</span><span class="t12 t3 trunc">Session "Harlow intake" · 24 Sep</span></div></div>
+            <div class="ph-row"><div class="col grow" style="gap: 2px; min-width: 0;"><span class="t17 trunc">Reports live in harlow-legal/reports</span><span class="t12 t3 trunc">Call note, Harlow weekly · 25 Sep</span></div></div>
+          </div>
+          <div class="ph-sec">About you<span class="t12 t3" style="margin-left: auto; font-weight: 400;">38</span></div>
+          <div class="ph-card">
+            <div class="ph-row"><div class="col grow" style="gap: 2px; min-width: 0;"><span class="t17 trunc">You sign emails as alex, with no title</span><span class="t12 t3 trunc">Email to sam@northwind.test · 22 Sep</span></div></div>
+          </div>
+        </div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+    <div class="anno">
+      <span class="lbl">How it works</span>
+      <div class="anno-i"><span class="anno-n">1</span><span>A memory is one fact in plain words, with its source and date on the row. Anything Vyre tells you comes with a source: the session turn, the email or the call note, one click away.</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>Facts live per project or about you. A project's facts reach only that project's sessions; "Where it is used" names them, so nothing leaks from Harlow Legal to Northwind Bakery.</span></div>
+      <div class="anno-i"><span class="anno-n">3</span><span>Every line of a fact edits in place and says Saved where you typed, with Undo. Changing memory needs presence; one Face ID covers 30 min and the line says so.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>Lessons are proposed by agents and never apply unseen. Accept is the one primary; Edit and Retire sit beside it. The same row shows in Needs you, so the count joins the Now badge.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>Forget is a Hold button whose label carries the count (Forget 3 memories). Stale and disputed facts say so on the row, which is where forgetting usually starts.</span></div>
+      <div class="anno-i"><span class="anno-n">6</span><span>Phone: Memory opens from the Places sheet as a pushed page. Lessons to review sit on top, then facts by project, each with its source.</span></div>
+      <div class="anno-i"><span class="anno-n">7</span><span>Smooth: the list paints from cache and is virtualized past 100 rows. Search filters the cached facts in the same frame you type. Saves and forgets go through the outbox: forgotten rows collapse on release, with a 4 s Undo.</span></div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2200,"height":1120}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

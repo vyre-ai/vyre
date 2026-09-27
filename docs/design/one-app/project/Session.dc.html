@@ -126,9 +126,9 @@
                     <div class="composer-bar">
                       <button class="cchip" type="button" aria-label="Attach"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button>
                       <button class="cchip" type="button">Claude · opus<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
-                      <button class="cchip" type="button">Asks first<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
                       <span class="tag" style="gap: 4px;"><svg class="ic ic-12" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>vault: northwind orders</span>
                       <span class="grow"></span>
+                      <button class="cchip" type="button">Asks first<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
                       <button class="ibtn ibtn-sm" type="button" aria-label="Dictate"><svg class="ic" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="8" rx="2"></rect><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"></path></svg></button>
                       <button class="btn btn-s btn-sm" type="button" aria-label="Stop kit (Esc)"><svg class="ic ic-12" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5"></rect></svg>Stop<span class="k">Esc</span></button><button class="ibtn ibtn-sm" type="button" aria-label="Queue message" style="background: var(--hover); color: var(--text);"><svg class="ic" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"></path></svg></button>
                     </div>
@@ -282,6 +282,7 @@
       <div class="anno-i"><span class="anno-n">4</span><span>Asks and questions live inline at the tail and in Needs at once. Answer either one and the other resolves: the desktop shows the question answered from alex's iPhone.</span></div>
       <div class="anno-i"><span class="anno-n">5</span><span>Words typed during a turn wait in Vyre's queue: Edit or Take back until the turn ends. Send now hands them to kit at its next step. Stop (Esc) interrupts: the turn's open asks close and it ends "Stopped by you". An ask from a Mac-owned session says "Answer it on alex's MacBook Pro" until federation forwards answers.</span></div>
       <div class="anno-i"><span class="anno-n">6</span><span>Terminal is the same session's pty. One device owns the size; others watch at that size until they tap Take size. The key bar carries what a phone keyboard lacks.</span></div>
+      <div class="anno-i"><span class="anno-n">7</span><span>Smooth: the transcript is an inverted list, so history loads above with no jump. Replies reveal paced to the display and only the growing block re-parses. The composer rides visualViewport by transform; 2,000 turns stay virtualized at 60 fps.</span></div>
     </div>
 
   </div>
