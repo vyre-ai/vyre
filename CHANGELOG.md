@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### CI: ready for the Agent SDK
+
+- .github/workflows/sessions-sdk.yml: installs the Agent SDK with its bundled Claude Code
+  (231 MB, ~/.npm cached on the lockfile), checks the binary runs with a temp HOME and no
+  credentials, and runs core/sessions tests against the real SDK. Skips until the SDK is in
+  package.json.
+- node.yml and capsule-mac.yml install with `--omit=optional`, so the native binary is never
+  downloaded for tests that use the fake claude. Vyre has no other optional dependencies.
+
 #### CI: the Google OAuth test counts its retry from the expiry
 
 - core/google/module.test.js counted every calendar read, and the planner's calendar sync on

@@ -1,0 +1,46 @@
+# The Agent SDK with its real bundled Claude Code (ADR 0030). The node workflow tests sessions
+# against a fake claude and installs without the 231 MB native binary; this one installs it and
+# checks the real binary starts and idles, with no credentials and no API call. ~/.npm is cached
+# on the lockfile, so the binary downloads once per lock change. Skips (on a cheap runner) while
+# the SDK is not in package.json.
+name: sessions-sdk
+on:
+  push:
+    paths: ["package.json", "package-lock.json", "core/sessions/**", "scripts/sessions-proof/**", ".github/workflows/sessions-sdk.yml"]
+  pull_request:
+    paths: ["package.json", "package-lock.json", "core/sessions/**", "scripts/sessions-proof/**", ".github/workflows/sessions-sdk.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sessions-sdk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  real-binary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          if grep -q '"@anthropic-ai/claude-agent-sdk"' package.json; then echo present=true >> "$GITHUB_OUTPUT"; else echo "the Agent SDK is not a dependency yet: skipping"; echo present=false >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.present == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install with the native binary
+        if: steps.check.outputs.present == 'true'
+        run: npm ci --no-audit --no-fund
+      - name: The bundled Claude Code runs
+        if: steps.check.outputs.present == 'true'
+        run: |
+          bin=node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude
+          test -x "$bin" || { echo "no bundled binary at $bin"; exit 1; }
+          du -h "$bin"
+          mkdir -p "$RUNNER_TEMP/home"; HOME="$RUNNER_TEMP/home" "$bin" --version
+      - name: Driver tests against the real SDK
+        if: steps.check.outputs.present == 'true' && hashFiles('core/sessions/*.test.js') != ''
+        run: node --test --test-reporter=spec "core/sessions/*.test.js"

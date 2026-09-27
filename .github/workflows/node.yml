@@ -27,6 +27,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      # --omit=optional skips the Agent SDK's 231 MB native claude: tests use a fake (sessions-sdk.yml runs the real one).
+      - run: npm ci --no-audit --no-fund --omit=optional
       - run: npm test
       - run: npm run perf-check
