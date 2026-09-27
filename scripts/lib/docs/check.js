@@ -52,7 +52,43 @@ const BOX_ALLOWED = /\b(vyre\s+box|box\s+image|message\s+box(es)?|text\s+box(es)
 // Pages that discuss the retired word itself, or are a historical record (ADRs keep their
 // original wording; CHANGELOG.md is not rewritten for old releases), are exempt.
 const BOX_EXEMPT_FILE = ["docs/reference/glossary.md", "CHANGELOG.md"];
-const isBoxExempt = file => BOX_EXEMPT_FILE.includes(file) || file.startsWith("docs/adr/");
+const isBoxExempt = file => BOX_EXEMPT_FILE.includes(file) || file.startsWith("docs/adr/") || file.startsWith("docs/reference/");
+// Not prose: inline code (a literal config value, CLI output, install URL), a link or image
+// target (another team's not-yet-renamed page slug), and an HTML tag's attributes (an anchor id
+// kept for a heading that moved). These stay whatever they say until the code or the target page
+// renames; only what a reader reads as words is held to the new terms.
+const boxProseOnly = line => line.replace(/`[^`]*`/g, "").replace(/!?\]\([^)]*\)/g, "]()").replace(/<[a-z][^>]*>/gi, "");
+// Pages docs does not own that still say "box" in prose, pending their owning team's own 0.1.1
+// sweep (2026-09-28). A "terminology-pending" hit here is a warning, not a build failure; a plain
+// "terminology" hit does fail. This list only shrinks: remove a page when its team sweeps it, and
+// any "box" that turns up there after that fails for real. Never add a page docs owns.
+export const TERMINOLOGY_PENDING = [
+  "docs/architecture/boundaries.md", "docs/architecture/spec.md",
+  "docs/concepts/box-and-mac.md", "docs/concepts/tailnet.md",
+  "docs/contributing/index.md", "docs/contributing/testing.md",
+  "docs/design/cohesion.md", "docs/design/deck.md", "docs/design/native-bar.md",
+  "docs/design/one-app/DIRECTION.md", "docs/design/one-app/README.md", "docs/design/phone.md",
+  "docs/design/settings-inventory.md", "docs/design/TOKENS.md", "docs/design/system/copy.md",
+  "docs/design/system/components/agenda.md", "docs/design/system/components/ask-card.md",
+  "docs/design/system/components/avatar.md", "docs/design/system/components/banner.md",
+  "docs/design/system/components/button.md", "docs/design/system/components/capsule-mac.md",
+  "docs/design/system/components/card.md", "docs/design/system/components/command-bar.md",
+  "docs/design/system/components/composer.md", "docs/design/system/components/device-row.md",
+  "docs/design/system/components/form-controls.md", "docs/design/system/components/icons.md",
+  "docs/design/system/components/list.md", "docs/design/system/components/mode-chip.md",
+  "docs/design/system/components/needs-row.md", "docs/design/system/components/otp.md",
+  "docs/design/system/components/phone-shell.md", "docs/design/system/components/pill.md",
+  "docs/design/system/components/presence-line.md", "docs/design/system/components/rail.md",
+  "docs/design/system/components/settings-row.md", "docs/design/system/components/states.md",
+  "docs/design/system/components/status-mark.md", "docs/design/system/components/stepper-checks.md",
+  "docs/design/system/components/terminal.md", "docs/design/system/components/top-bar.md",
+  "docs/get-started/first-day.md", "docs/get-started/install.md", "docs/get-started/onboarding.md",
+  "docs/get-started/tailscale.md", "docs/get-started/troubleshooting.md",
+  "docs/get-started/without-docker.md", "docs/security/index.md",
+  "docs/using/box-care.md", "docs/using/capsule.md", "docs/using/chat.md", "docs/using/cli.md",
+  "docs/using/deck.md", "docs/using/glass.md", "docs/using/mobile.md", "docs/using/planner.md",
+  "docs/using/sessions.md", "docs/using/tailscale.md",
+];
 const INCLUDE = /^\s*<!--\s*include:\s*(\S+)\s*-->\s*$/;
 
 /** @typedef {{ file: string, line: number, kind: string, problem: string }} Problem */
@@ -277,10 +313,18 @@ export async function check({ root = REPO, tmp, reference } = {}) {
   const scan = (file, t) => {
     if (scanned.has(file)) return;
     scanned.add(file);
+    let fence = null; // a fenced example reproduces real CLI/config output; not held to the word
     t.split("\n").forEach((l, i) => {
       if (l.includes(EM_DASH)) add(file, i + 1, "characters", "em dash; use a colon, a comma or two sentences");
       if (l.includes(SECTION)) add(file, i + 1, "characters", "section sign; write Section 5.1");
-      if (!isBoxExempt(file) && BOX_WORD.test(l.replace(new RegExp(BOX_ALLOWED, "gi"), ""))) add(file, i + 1, "terminology", "\"box\" is retired (ADR 0038); use server or device");
+      const f = l.match(/^\s{0,3}(`{3,}|~{3,})/);
+      const inFence = Boolean(fence);
+      if (fence && f && f[1][0] === fence[0] && f[1].length >= fence.length && !l.trim().slice(f[1].length).trim()) fence = null;
+      else if (!fence && f) fence = f[1];
+      if (!inFence && !isBoxExempt(file) && BOX_WORD.test(boxProseOnly(l).replace(new RegExp(BOX_ALLOWED, "gi"), ""))) {
+        const pending = TERMINOLOGY_PENDING.includes(file);
+        add(file, i + 1, pending ? "terminology-pending" : "terminology", `"box" is retired (ADR 0038); use server or device${pending ? " (this page's own team has not swept it yet)" : ""}`);
+      }
     });
     for (const h of scanText(t)) add(file, h.line, "hygiene", h.problem);
   };

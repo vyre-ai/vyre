@@ -16,8 +16,12 @@ import { check, format, counts } from "./lib/docs/check.js";
 
 const problems = await check({ reference: process.argv.includes("--no-reference") ? false : undefined });
 for (const line of format(problems)) process.stdout.write(line + "\n");
+// "terminology-pending" (ADR 0038: a page not yet swept by its owning team) is printed but does
+// not fail the build; it is a per-page allowlist that only shrinks (scripts/lib/docs/check.js),
+// not a licence to leave "box" anywhere docs-check would otherwise catch it.
+const blocking = problems.filter(p => p.kind !== "terminology-pending");
 if (problems.length) {
   const by = Object.entries(counts(problems)).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, n]) => `${k} ${n}`).join(", ");
   process.stderr.write(`docs-check: ${problems.length} problem${problems.length === 1 ? "" : "s"} (${by})\n`);
 } else process.stderr.write("docs-check: clean\n");
-process.exitCode = problems.length ? 1 : 0;
+process.exitCode = blocking.length ? 1 : 0;

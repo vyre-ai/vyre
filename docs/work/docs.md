@@ -163,6 +163,19 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
   become `vyre server <sub>` with an alias (ADR 0038 assumes yes, one release)?
 - Sent launch the words for vyre.run (server/device, same ADR, no alias window since it's a
   fresh-visitor page).
+- Lead decided (2026-09-28): `vyre box` -> `vyre server`, alias one release (0.1.1), one-line
+  stderr notice. Recorded in ADR 0038's migration section.
+- Fixed the build-breaking design flaw the lead flagged: the terminology rule now hard-fails only
+  docs-owned pages (and anything a team has already swept); every other page is on
+  `TERMINOLOGY_PENDING` (scripts/lib/docs/check.js) and gets a non-blocking "terminology-pending"
+  warning instead, same treatment as stale shots. The list only shrinks: remove a page when its
+  team sweeps it. Also fixed: fenced examples, inline code, link/image targets and HTML tag
+  attributes are not held to the rule (they reproduce a literal value, not prose), and
+  docs/reference/*.md (generated) is exempt outright. Added a docs-check test for the rule and its
+  exemptions (test/docs-check.test.js). All 14 docs-check tests + full docs-check pass clean
+  except shots (pre-existing, unrelated) and the 531 pending warnings.
+- Sent 53bbc146 to the integrator for the first 0.1.1 batch (superseded by the fixes above; the
+  successor sha goes out next).
 
 ## Next (queued before tips)
 

@@ -45,12 +45,12 @@ the owning team (native-core / cohesion), tracked under Migration below.
 
 ### Migration (one release, 0.1.1)
 
-- **CLI**: `vyre box <sub>` (`add`, `status`, `update`, `backup`, `move`, `remove`) gets a
-  `vyre server <sub>` alias. Both work for one release (0.1.1); help text, `--help` and generated
-  docs show `vyre server`; `vyre box` still runs the same code and prints a one-line notice
-  ("vyre box is now vyre server") to stderr, not stdout, so scripts parsing stdout are unaffected.
-  Remove the alias in 0.1.2 at the earliest, and only after a deprecation window the lead signs
-  off on.
+- **CLI (decided, 2026-09-28)**: `vyre box` becomes `vyre server`. `vyre box <sub>` (`add`,
+  `status`, `update`, `backup`, `move`, `remove`) stays as an alias for one release (0.1.1): it
+  runs the same code and prints one line ("vyre box is now vyre server") to stderr, not stdout, so
+  scripts parsing stdout are unaffected. Help text, `--help` and generated docs show `vyre server`
+  from 0.1.1. Remove the alias in 0.1.2 at the earliest, and only after a deprecation window the
+  lead signs off on.
 - **Config**: `role` keeps reading `"box"` and `"local"` from existing config files (no forced
   migration, no data loss on upgrade). New config written by `vyre up`/onboarding writes `"box"`
   still for now, since the role rename (`"box"` -> `"server"`, and whatever replaces `"local"`)
@@ -60,10 +60,18 @@ the owning team (native-core / cohesion), tracked under Migration below.
 - **User-facing strings**: every doc, CLI message, UI label, error and onboarding screen that
   says "box" (or treats a Mac as a server) moves to "server"/"device" in 0.1.1, except pages
   already merged into the rc.2 release train, which docs leaves alone per the lead's instruction.
-- **Docs enforcement**: `docs-check` gains a rule that fails the build on a bare "box" in
-  published doc bodies (case-insensitive, word-boundary), with a narrow allowlist for the literal
-  strings `vyre box` (during the alias window, when quoting the old command) and "box image"
-  (the Docker image name). The allowlist shrinks as the alias window closes.
+- **Docs enforcement (revised, 2026-09-28, so this doesn't turn every team's suite red the moment
+  it merges)**: `docs-check` holds every published page to a bare "box" (case-insensitive,
+  word-boundary; not inline code, a link/image target, an HTML tag's attributes, or a fenced
+  example, all of which reproduce a literal value rather than describe it in prose), with a
+  standing allowlist for `vyre box`, `box image` and message/text/dialog box. Docs-owned pages and
+  any page a team has already swept fail hard on a hit ("terminology"). Every other published page
+  is named in `TERMINOLOGY_PENDING` (`scripts/lib/docs/check.js`) and gets a warning
+  ("terminology-pending") that is printed but does not fail the build, the same way a stale
+  screenshot doesn't. The list only shrinks: a team removes its page when it sweeps it, and any
+  "box" that reappears there afterward fails for real. ADRs and CHANGELOG.md stay exempt outright
+  (historical record); generated `docs/reference/*.md` pages are exempt too (edit the code, then
+  `npm run docs:ref`).
 - **Glossary**: `docs/reference/glossary.md` is the canonical page; every other doc that defines
   "server" or "device" inline links there instead of redefining it.
 
@@ -78,6 +86,8 @@ the owning team (native-core / cohesion), tracked under Migration below.
 
 ## Status
 
-Draft. Words are decided (the user, 2026-09-28); the sweep of docs/release notes/first-hour is
-`docs`'s 0.1.1 work; the code inventory and per-team rename handout is separate (see
-`docs/work/docs.md`).
+Draft. Words, the CLI alias and the docs-check design are decided (the user and the lead,
+2026-09-28). Landed: the words, the glossary, docs-check's terminology rule, and docs's own 0.1.1
+sweep (`docs/work/docs.md`). Open: the per-team code and per-page docs sweeps
+(`docs/work/terminology-inventory-0038.md`), and the `vyre box` -> `vyre server` CLI rename
+itself (integrator).

@@ -37,7 +37,13 @@ test("docs-check: the real docs tree is clean", async t => {
   // deploy (npm run docs:check fails on it); it must not turn every other team's suite red.
   const shots = problems.filter(p => p.kind === "shots");
   if (shots.length) t.diagnostic(`${shots.length} screenshot problems; run npm run docs:shots on the test box`);
-  assert.deepEqual(format(problems.filter(p => p.kind !== "shots")), []);
+  // "terminology-pending" (ADR 0038) is another team's queued 0.1.1 sweep, not a break in what
+  // just changed; it must not turn every other team's suite red either. A real "terminology" hit
+  // (a docs-owned page, or a page whose team already swept and dropped from the allowlist) still
+  // fails below.
+  const pending = problems.filter(p => p.kind === "terminology-pending");
+  if (pending.length) t.diagnostic(`${pending.length} terminology-pending problems (ADR 0038, other teams' 0.1.1 sweep)`);
+  assert.deepEqual(format(problems.filter(p => p.kind !== "shots" && p.kind !== "terminology-pending")), []);
 });
 
 test("docs-check: a clean fixture has no problems", async t => {
@@ -184,6 +190,32 @@ test("docs-check: em dashes and section signs, in pages and the files they inclu
   assert.ok(lines.includes("docs/a.md:17: includes ../MISSING.md, which does not exist"));
   assert.deepEqual(only(lines, /from-the-changelog/), [], "an included file's headings are anchors on the page");
   assert.deepEqual(only(lines, /ALSO-MISSING/), [], "an include line inside fenced code is an example, not an include");
+});
+
+test("docs-check: \"box\" is retired (ADR 0038), with its exemptions", async t => {
+  const root = tree(t, {
+    "a.md": FM() + [
+      "# A", "",
+      "Your box has an address.", // bare word: fails
+      "", "Run `vyre box add user@host` first.", // allowed phrase
+      "", "See [the server](box-and-mac.md).", // link target, not prose
+      "", "A dialog box needs an answer.", // allowed phrase, unrelated sense
+      "", "```", "box ok", "```", // fenced example: real output, not held to the word
+      "",
+    ].join("\n"),
+    "b.md": FM() + "# B\n\nYour box has an address.\n", // same bare-word hit, on a pending page
+    "box-and-mac.md": FM() + "# The server and devices\n",
+    "../CHANGELOG.md": "# Changelog\n\nThe box now has an address.\n", // historical record: exempt
+  }, { pages: ["a.md", "b.md", "box-and-mac.md"] });
+  const { TERMINOLOGY_PENDING } = await import("../scripts/lib/docs/check.js");
+  TERMINOLOGY_PENDING.push("docs/b.md");
+  t.after(() => TERMINOLOGY_PENDING.pop());
+  const problems = await check({ root, reference: false });
+  const lines = format(problems);
+  assert.ok(lines.includes('docs/a.md:11: "box" is retired (ADR 0038); use server or device'));
+  assert.deepEqual(only(lines, /vyre box add|dialog box|box-and-mac\.md|box ok|CHANGELOG/), [], "the alias, the unrelated sense, the link target, the fenced example and the changelog are all exempt");
+  const pending = problems.find(p => p.file === "docs/b.md" && p.kind === "terminology-pending");
+  assert.ok(pending, "a page on the allowlist gets a warning, not a failure");
 });
 
 test("docs-check: names, secrets, emails and IP addresses", async t => {

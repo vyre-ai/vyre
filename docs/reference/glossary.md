@@ -1,7 +1,7 @@
 ---
 title: Glossary
 summary: The words Vyre uses for its own pieces, and the ones it retired.
-audience: everyone
+audience: users, builders, operators, agents
 owner: docs
 status: stable
 ---
