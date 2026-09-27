@@ -209,6 +209,18 @@ Plan (to the lead before building):
   cookie store is keychain-encrypted, Safari's is TCC-protected; IndexedDB keys are not). The
   session raises the bar from one curl to stealing a browser's store.
 
+## Doing (27 Sep, after logout 6)
+
+- Merged main 68463d04 into work/e2e (changelog union).
+- RC GATE PASS on ci's release-dry-run-v0.1.0-rc.1 (run 36342106246, work/ci-rc 1d8ae652):
+  SHA256SUMS OK, build.json 0.1.0-rc.1 @ 1d8ae652 clean. rc-smoke 21 pass / 0 fail / 3 skip
+  (phone enrol needs a tailnet; mail and appearance.tokens not in the build). Update 0.1.1 and
+  rollback both keep the vault. Nothing left on testbox.
+- box-deploy ran rc-smoke on main 68463d04's tgz (~/vyre-release-68463d0) at 18:57 UTC; it exited
+  within a minute and cleaned up. Its output went to box-deploy's own terminal.
+Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
+and appearance land); review vault 9b before it lands with connectors; any review sent to me.
+
 ## RESTART SAVE (27 Sep, before the restart)
 
 Handed off (all with the integrator or signed off):
