@@ -60,7 +60,7 @@ test("module sdk: every manifest in the repo passes the module API 1 schema", ()
 });
 
 test("module sdk: the schema and the loader agree on the repo's manifests", () => {
-  for (const { file, m } of manifests()) assert.deepEqual(validate(m), [], file);
+  for (const { file, m } of manifests()) assert.deepEqual(validate(m, { firstParty: true }), [], file);
 });
 
 test("module sdk: a manifest using every module API 1 key passes", () => {

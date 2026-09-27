@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Batch 4 fits together: the module schema knows settings' secret and labels, and tips' about
+
+- packages/module-sdk: a setting may say `secret` (masked, native-core) and `labels` (one label
+  per enum value); a tip's `about` is a topic word (chat, box, modules), not only a surface;
+  ModuleContext names `declaredTips()`. test/module-sdk.test.js checks the repo's manifests as
+  first-party, as the loader does. docs-check knows the ci team; docs/work/mobile.md quotes its
+  placeholders.
+
 #### Five sessions and switchboard edges frozen until after 0.1.0
 
 - test/boundaries.test.js and docs/architecture/boundaries.md freeze core/sessions -> spawner,
