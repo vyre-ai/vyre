@@ -97,7 +97,9 @@ mobile and the Capsule (through their owners).
    glass-live does not trim it yet.
 7. Android: the device check (mobile). The Credential Manager provider is built (type-checked, pure
    core 27 JUnit): check on a device whether Chrome keeps its own clientDataJSON when passing the
-   hash; excluded credential returns Unknown, not InvalidState. Tell mobile the sha on any module change: their copy is not linked.
+   hash; the real system sheet and the unlock action round trip; assetlinks against a real site;
+   saving a password from a native app (save, card.fill, address.fill are still web-only on the
+   server); excluded credential returns Unknown, not InvalidState. Tell mobile the sha on any module change: their copy is not linked.
 8. Apple: parked until after native core; then mobile (iOS app) and capsule-pro (Capsule) add the
    targets from modules/vault-apple. The extension keeps its session in the shared Keychain, 30
    min, cleared on lock (approved).
