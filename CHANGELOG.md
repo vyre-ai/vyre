@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The palette drops the retired recall and beacon-wash colours
+
+- core/config/theme.js: recall, recall-wash, recall-ink, beacon-wash and beacon-rule are gone from
+  THEME_COLORS and THEME_USE, as tokens.json and deck.css retired them (app-design, pwa), so the
+  docs' swatches and the Deck agree. chat.css's tip-line phone block is on the 719 query.
+
 #### The module schema knows choicesFrom.read and confirm.drops
 
 - packages/module-sdk: a setting's `choicesFrom` may name `read`, the dotted path to the list in
