@@ -1,0 +1,17 @@
+{
+  "name": "appearance",
+  "version": "0.1.0",
+  "description": "The theme and the design tokens as settings, checked before they are saved and served to every surface.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["appearance.check", "appearance.resolve", "appearance.tokens.get", "appearance.tokens.set"] },
+  "watches": { "emits": ["appearance.changed"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {},
+  "settings": [
+    {"key": "appearance.theme", "group": "appearance", "label": "Theme", "help": "Follow the device, or always dark or paper.", "type": "enum", "enum": ["system", "dark", "paper"], "default": "system", "levels": ["account"], "apply": "live"},
+    {"key": "appearance.tokens", "group": "appearance", "label": "Design tokens", "help": "A partial tokens file merged over Vyre's own. Checked before it is saved.", "type": "object", "default": {}, "levels": ["account"], "apply": "live", "advanced": true,
+      "store": {"tool": {"get": {"tool": "appearance.tokens.get", "input": {}, "read": "value"}, "set": {"tool": "appearance.tokens.set", "input": {"value": "$value"}}}}}
+  ]
+}

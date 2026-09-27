@@ -8,9 +8,10 @@ status: draft
 
 # Tokens
 
-One file, `docs/design/one-app/tokens.json`, holds every value. Nobody edits a generated file:
-change the JSON and run `npm run tokens` (`scripts/gen-tokens`). `--check` fails when an output is
-stale, and CI runs it (the design workflow).
+One file, `lib/theme/tokens.json`, holds every value (it moved from `docs/design/one-app/` so it
+ships in the package: vyred reads it at run time). Nobody edits a generated file: change the JSON
+and run `npm run tokens` (`scripts/gen-tokens`). `--check` fails when an output is stale, and CI
+runs it (the design workflow).
 
 | Surface | Generated file | Read it as |
 |---|---|---|
@@ -41,11 +42,12 @@ The generator writes a surface only when its folder exists in the tree.
 
 ## Themes
 
-A person's theme (`<home>/overrides/theme.json`) or a module's `themes/<name>.json` is a partial
-tokens.json merged over the shipped one (ADR 0033). It may change colour roles, fonts, type, space,
+A person's theme (the hub value `appearance.tokens`, served by the appearance module) or a
+module's `themes/<name>.json` is a partial tokens.json merged over the shipped one (ADR 0033). It may change colour roles, fonts, type, space,
 radius, control, motion, shadow and popover. It may not change status, layout, icons or add keys.
 The merged result must keep every rule below, or the whole file is refused and each failure is
-named (`node scripts/gen-tokens --validate <file>`):
+named (`node scripts/gen-tokens --validate <file>`, or the `appearance.check` tool; the rules are
+`lib/theme`'s `applyOverride` and `check`):
 
 - every text and ground pair the surfaces draw at AA (washes composited over their ground);
 - the focus ring at 3:1 on bg and panel;
