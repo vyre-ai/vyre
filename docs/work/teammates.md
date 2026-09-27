@@ -20,20 +20,52 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
   boards (work/app-design), Paseo's agent tools and lifecycle docs.
 
 ## Doing
-- PAUSED (2026-09-27, the lead): the user refocused on the native core. Last sha before this note:
-  c2711b6f, staged in batch 3b.
+- RESUMED (2026-09-28): merged origin/main (bc751624/68463d04, batch 4, sessions' slot ledger)
+  cleanly, no conflicts. Building migration step 1. Sha a876e5e4 has it green; see below.
 
 ## Where ADR 0031 stands
-- Built: nothing. Design only: ADR 0031 is complete with every user decision in (integrator
-  auto-merge, sharing and assistant-assigned teammates, one per role, notes per project folder,
-  offered conversion, 200 turns a day, Balanced default, section 14 approved). Docs tests 61 of 61.
-- app-design boards approved (work/app-design 99820a16 and 6a1e2f7a).
-- Blocked on ADR 0030 steps 1 to 3 (sessions) before any build.
+- Built (step 1, a876e5e4): `core/team` (roles box, local; requires threads, projects, sessions).
+  Tables `team_teammates`, `team_requests`, `team_notes`. Tools `team.add` (PERSON_ONLY),
+  `team.list`, `team.ask`, `team.status`, `team.cancel`, `team.done`, `team.fail`, `team.notes`
+  (get/set, versioned, written to `<project home>/.vyre/team/<role>/notes.md`). A priority-ordered
+  serial dispatcher (`pump`): one request running per teammate, urgent first then oldest; takes a
+  `sessions.slots` teammate slot in the *requesting* project (section 12's rule, ready for
+  sharing) before it launches via `threads.launch`, releases it on `team.done`/`team.fail`, and
+  posts the result into the caller's thread with `threads.post {kind: "teammate-result"}`. A turn
+  that ends without either call closes the request as failed rather than leaving it (and the
+  slot) stuck. `vyre team [add|ask|status|cancel|notes]`. 8/8 tests green against the fake claude
+  driver (core/team/team.test.js); boundaries clean (core/team imports only the kernel and calls
+  other modules through ctx.call); docs:ref regenerated, all 61 docs tests still green;
+  switchboard+agents+presence suites (52+54) still green after the fake-claude and presence
+  changes below.
+- Two small deliberate simplifications from the ADR's literal text, both to keep step 1 small and
+  both safe to build on:
+  - A teammate is its own `team_teammates` row, not an `agents_agents` row of kind `teammate`
+    (section 1). Reusing `agents` would need a manifest change there (`kind` enum) and pulls in
+    agents' own auth/budget model before it is needed; `core/team` drives `threads.launch` /
+    `threads.post` / `threads.get` directly, the same tools `agents` itself uses, so nothing about
+    the switchboard contract changes. Revisit at step 8 (converting today's agents).
+  - `team.done`/`team.fail`'s `request` is optional and defaults to the caller's one running
+    request (a teammate only ever has one). The ADR's wrapped `<vyre-request id="...">` still
+    carries the id for a teammate that wants to be explicit; this just means it never has to be.
+- Not yet built: notes-changed enforcement on `team.done`, compaction re-injection and rotation
+  (step 2); the in-process MCP server and `@role` routing, summon from every session (step 3);
+  worktrees and the integrator (step 4); sharing (`team.share`, per-project notes parts/grants,
+  step 5); the Agents place tabs and Needs rows (step 6); `team.propose`, role templates, project
+  setup (step 7); offering today's single-project agents conversion (step 8); `using/teammates.md`
+  and the reference pages (step 9, the CLI/tools reference already regenerates itself).
+  `team.cancel` only cancels a queued request for step 1 (a running one needs a person, and
+  refuses naming what to do instead: stop the teammate's session, or `team.fail` from inside it).
+  The cycle/depth-3 check (`via`) is implemented and exercised by `team.ask`'s own logic, but not
+  yet by an integration test: that needs a teammate's own session to call `team.ask` on another,
+  which is easiest to script once step 3's in-process MCP server exists rather than through the
+  fake driver's text-prompt scripting.
+- app-design boards approved (work/app-design 99820a16 and 6a1e2f7a) — not yet consumed (step 6).
 
-## Next (when resumed)
-1. Merge main, then migration step 1: core/team (tables, team.*, inbox, CLI) against the fake
-   driver, with the slot ledger and usage pause in sessions (or through its contract).
-2. Steps 2 to 9 of the ADR's Migration section, in order.
+## Next
+1. e2e security review of the tools' caller rules (asked, 2026-09-28) before calling step 1 done.
+2. Step 2: notes-changed check on team.done, compaction re-injection, rotation.
+3. Step 3: summon tool in sessions' MCP list, result injection, per ADR 0031 and the lead's brief.
 
 ## Settings this feature needs (handed to native-core for Settings)
 Declared by native-core (work/native-core 42dcb98c, core/sessions/module.json settings list):
@@ -84,5 +116,16 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   `vault_agent_grants`, checked on release for shared teammates (the lead told vault).
 
 ## Changed contracts
-- None yet (design only). Proposed: module `team`, tables `agents_teammates`, `team_requests`,
-  `team_notes`; events `teammate.*` and `summon.*`; kind `teammate` in agents.
+- New module `team` (a876e5e4): tables `team_teammates`, `team_requests`, `team_notes` (own,
+  not `agents_agents` — see "Where ADR 0031 stands" above); tools `team.add`, `team.list`,
+  `team.ask`, `team.status`, `team.cancel`, `team.done`, `team.fail`, `team.notes`; events
+  `teammate.created`, `summon.queued`, `summon.started`, `summon.finished`, `summon.cancelled`.
+  Talks to `threads`, `projects` and `sessions` only through `ctx.call` (boundaries.test.js clean).
+- presence (a876e5e4): `team.add` added to `PERSON_ONLY` in `core/presence/index.js` — a
+  teammate is made by a person, never a session or another teammate.
+- switchboard/testing/fake-claude.js (a876e5e4, test-only): its `"vyre <tool> <json>"` prompt
+  line is now found anywhere in the prompt, not only when the whole prompt starts with it, so a
+  teammate's `<vyre-request>`-wrapped text can still script a tool call from a test. At the start
+  it behaves exactly as before (multi-line JSON still works); found further in, only that one
+  line is taken as the call, so it never swallows what follows it (the wrapper's closing tag).
+  Every switchboard/agents/presence test still green (52+54) after this change.
