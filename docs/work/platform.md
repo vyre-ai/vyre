@@ -11,7 +11,8 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - P0 written: packages/module-sdk (manifest.schema.json, manifest.js checkManifest, index.d.ts, package.json private, README), test/module-sdk.test.js, docs drift fixes in docs/architecture/spec.md and docs/build/module-contract.md.
 
 ## Doing
-- P0 is UNTESTED: testbox is closed until the integrator says "open". Then run: `nice -n 15 node --test test/module-sdk.test.js "test/docs-*.test.js"` (after `npm run docs:ref` if docs-index says stale), pull back regenerated docs, commit, push, and send the sha to the integrator for batch 4.
+- P0 GREEN on testbox (test/module-sdk.test.js + test/docs-*.test.js: 69/69). Sent to the integrator for batch 4.
+- ADR 0033 gained: the box's `vyre update` fetches, checks and signs the APK (lead, 2026-09-27; platform owns it, mobile owns signer/route); app-design's slot rules; pwa's Deck seam (deck/js/slots.js, /m/ network-only); release assets + release.json + min_from for ci; `--restore-data` asks a typed confirm (data loss).
 
 ## Next
 1. P1 once native-core's settings are on main: loader adopts packages/module-sdk/manifest.js (add packages/module-sdk to package.json files); apiVersion; ctx.api, ctx.log levels, ctx.paths.data, ctx.settings; watches.on and needs.tools for home modules; replaces (name == replaces) and disable; `vyre module new/list/check/disable/enable`.
@@ -20,6 +21,8 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 4. P4 slots/hooks/senders/apps/themes/prompt; P5 out-of-process host, keyless signing (attestations or sigstore via OIDC first), kernel thinning.
 
 ## Needs from others
+- mobile: android.json shape and the signer's entry point (a lib the box's update step can call), for P2.
+- polish-cli: reviews core/cli/commands/module.js and update.js (module.js gets aliases ["modules"], remove `modules` from daemon.js, add both to GROUPS). They write the P4 does.commands dispatcher; wants the shape { verb, tool, summary, args? }.
 - integrator: "open" for testbox, then P0 into batch 4.
 - native-core: a way for modules' manifest `settings` to join the registry (registry reads `modules.list` manifests, or a `settings.register` internal tool), and `ctx.settings` scoped to the module's own keys.
 - sessions: `does.providers` shape stays as on work/sessions; `does.hooks` (brief/enrich/pretool/stop) placement vs the SDK driver's canUseTool.

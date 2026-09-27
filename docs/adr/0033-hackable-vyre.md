@@ -3,7 +3,7 @@ title: ADR 0033: Hackable Vyre
 summary: A stable, versioned module API, an extension point for every part, user modules and overrides that survive updates, `vyre update` with channels and rollback, and third-party modules installed as grants.
 audience: builders
 owner: platform
-status: accepted
+status: stable
 ---
 
 # ADR 0033: Hackable Vyre
@@ -143,6 +143,34 @@ A third-party view or custom renderer loads in a sandboxed iframe on its own ori
 `module:<name>`, so the floor treats it as a module, never as the person. Declarative slots need
 no code at all, which is why they come first. app-design owns how slots look; pwa owns the loader.
 
+**Slot rules (app-design).** A module supplies data, never styles.
+
+- A Now card has the Needs row's shape: a title, one detail line, then `kind · source · project`,
+  and at most two actions, one of them primary. A card reaches Needs only by raising a real ask
+  through the Gate. Every other module card sits in a "From modules" section below Needs and
+  Working.
+- A tool card is the session's one-line tool row (icon, verb, mono summary, timer). It expands
+  into the template: a title, label and value rows, a diff (lime for adds, a neutral wash for
+  removals) and a link.
+- A slash command is one line in the / menu: its name and description.
+- Placement: the core rail places stay fixed. A "Modules" section under Vault holds at most three
+  pinned views, and the rest are reached through the command bar; on the phone, module views sit
+  in the Places sheet. Settings gets one group per module under a "Modules" heading at the end,
+  drawn from the registry with the same rows, source chips and reset. A `panel:<name>` takes the
+  340 px side panel on desktop and a sheet on the phone.
+- An iframe gets `theme.css` (the same custom properties as deck/css/tokens.css) and the tokens
+  JSON, and swaps `data-theme` when the host posts `{type: "theme", scheme}`. It uses only the two
+  type families. The host draws the frame's chrome (title bar, loading, error). A frame never draws
+  a Needs row and never asks for presence itself.
+
+**The Deck seam (pwa).** One file, `deck/js/slots.js`, reads `shows.deck` from `GET /v1/modules` at
+launch and again on `modules.changed` (never polled). It offers `register(kind, id, def)` and
+`list(kind)` for view, panel, settings, now and renderer. The Deck's own routes, settings sections,
+Now cards and tool cards become first-party entries registered at load, so they stay inline and
+synchronous. `/v1/modules` gives each module's version and a content hash, so the Deck can tell a
+changed module without refetching. The service worker treats `/m/<module>/` as network-only, like
+`/v1/`, so an update is never masked by a stale cache and one module can't poison another's.
+
 ### 3. User modules and overrides that survive updates
 
 The home holds everything the person made. An update never writes there, except forward store
@@ -188,8 +216,23 @@ keep working. Versions start at `0.1.0` with the first tagged release, and the m
 at 1 while Vyre is 0.x. npm and a ghcr image come later, when the person says so; `vyre update`
 reads `releases.json`, so the source can change without a client change.
 
+Where a client finds releases: the GitHub Releases API for `vyre-ai/vyre`, read once a day at
+most. `stable` is the newest release that isn't a prerelease; a `vX.Y.Z-beta.N` tag is a GitHub
+prerelease, and `beta` is the newest of either. There is no separate index file to keep in sync.
+Each release carries these assets (ci owns the workflow):
+
+- the box files, as `scripts/build-site.sh` makes them: `install-box.sh`, `compose.yml`,
+  `compose.build.yml`, `vyre.env.example`, `vyre` (the box wrapper), `Dockerfile`, `dockerignore`,
+  `vyre.tgz` and `VERSION`;
+- `android-<version>-<sha7>.apk` (unsigned) and `android.json`, from mobile's Android build;
+- `release.json`: `{ version, channel, commit, date, min_from, notes }`. `min_from` is the lowest
+  version that may update straight to this one. It is `0.1.0` unless a migration needs an
+  intermediate release, and then `vyre update` names the release to step through;
+- `SHA256SUMS` over every asset above.
+
 Integrity: until phase 5, `vyre update` checks every file against `SHA256SUMS` fetched over TLS
-from the GitHub Release. Phase 5 adds keyless signing first: GitHub artifact attestations or
+from the GitHub Release. The workflow attaches GitHub build provenance attestations from the first
+release (no key and no secret); phase 5 makes `vyre update` verify them. Phase 5 adds keyless signing first: GitHub artifact attestations or
 sigstore through the release workflow's OIDC identity, verified by `vyre update` with
 sigstore-js, so there is no key to guard or leak. A long-lived signing key (minisign) would be a
 Vyre-wide identity; it is considered only if keyless doesn't work, and only with the person's OK.
@@ -208,13 +251,27 @@ Vyre-wide identity; it is considered only if keyless doesn't work, and only with
    steps. Once an update has reported healthy, nothing restores the database automatically, so
    no data written after a healthy update is ever lost.
 
-`vyre update --rollback` puts the previous release back by hand. It keeps the current database
-unless `--restore-data` names the pre-update backup, and says what that would drop. The person
-typed the command, so there is no confirmation prompt (the no-nag rule).
+`vyre update --rollback` puts the previous release back by hand and keeps the current database,
+with no prompt: the person typed the command (the no-nag rule). `--restore-data` also puts back
+the pre-update database, which drops everything written since. Because that loses data, it says
+what it would drop and asks for a typed confirm line on a terminal, or `--yes` with `--json`.
+
+The CLI side follows polish-cli's conventions (core/cli/kit.js): `vyre update` installs, then
+restarts vyred through the same path `vyre up` uses for a stale build, never a second copy of it.
+`--check` prints `{ current, latest, channel }` and exits 0 when current, 1 when an update is
+waiting.
 
 **`vyre update` on the box** (box/vyre, extended): the same steps, plus it refreshes the box
 files and the wrapper itself from the release, tags the running image `vyre:prev` and keeps
 `src.prev` instead of deleting it, and backs up the database before the rebuild.
+
+It also brings the phone app along. It fetches the release's `android-<version>-<sha7>.apk` and
+`android.json`, checks both against `SHA256SUMS`, and has the box sign the APK with the owner's key
+from its own vault, using mobile's pure-JS v2 and v3 signer (no JDK in the image). The signed APK
+goes into the box's releases folder, where mobile's download route serves it; the previous signed
+APK is kept for a rollback. A release without an Android build leaves the current APK in place.
+box-deploy no longer uploads APKs. platform owns this step; mobile owns the signer, the route and
+the phone's self-update.
 `vyre box update` from the Mac runs it and then offers the Mac the same version.
 
 **Config migrations.** `config.json` gets a `configVersion` and ordered steps in `core/config`,
