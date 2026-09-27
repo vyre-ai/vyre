@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The design docs stay out of the package
+
+- package.json: docs/design (boards, one-app, specs) is no longer in the npm package; nothing at
+  run time reads it. release-check asserts the tarball has none of it. The install was over the
+  10 MB cap with docs/design/one-app (620 KB, 46 files) in it, and 10.3 MB without it, so
+  the cap is 12 MB now: the growth is code (memory/personal, apps, relay, resilience).
+
 #### A stopped vyred leaves a removed home removed
 
 - core/term: the terminal table is not written when the home is gone, or when there is nothing to

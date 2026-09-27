@@ -38,7 +38,7 @@
     "docs",
     "!docs/work",
     "!docs/proposals",
-    "!docs/design/boards",
+    "!docs/design",
     "!docs/**/*.png",
     "CHANGELOG.md",
     "LICENSE",
