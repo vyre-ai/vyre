@@ -150,25 +150,34 @@ export interface CredentialNeed {
 }
 
 /**
- * What a tool answers when it is called with render: true, and what `vyre <cmd> --view` frames
- * carry as `view`, so the Capsule, chat and the CLI draw one set of views.
+ * What a tool answers when it is called with render: true, and the `view` that `vyre <cmd> --view`
+ * frames carry ({ v: 1, cmd, view, data }, docs/reference/cli-json.md), so the Capsule, chat and the
+ * CLI draw one set of views. Every kind may carry a title and actions.
  */
-export interface Render {
-  kind: "table" | "card" | "text" | "qr" | "checks" | "prompt" | "error";
-  title?: string;
-  /** table */
-  columns?: string[];
-  rows?: unknown[][] | Record<string, unknown>[];
-  /** text, card, error */
-  text?: string;
-  /** qr: the payload to draw */
-  qr?: string;
-  /** checks: one line per check */
-  checks?: { label: string; ok: boolean | null; note?: string }[];
-  /** prompt: a question the surface asks, and the tool that takes the answer */
-  prompt?: { question: string; tool: ToolName; input?: Record<string, unknown>; choices?: string[] };
-  actions?: { label: string; tool: ToolName; input?: Record<string, unknown> }[];
-}
+export type Render = (
+  | { kind: "table"; columns: { key: string; label: string }[]; rows: Record<string, unknown>[]; /** Shown when there are no rows. */ empty?: string }
+  | { kind: "card"; fields: { label: string; value: unknown }[]; state?: CheckState }
+  | { kind: "text"; lines: string[] }
+  | { kind: "qr"; /** The payload to draw. */ text: string; caption?: string }
+  | { kind: "checks"; /** ids let a live view update a check in place. */ items: { id: string; label: string; state: CheckState; note?: string }[] }
+  | { kind: "prompt"; prompt: RenderPrompt }
+  | { kind: "error"; code: string; message: string; next?: string }
+) & { title?: string; actions?: RenderAction[] };
+
+export type CheckState = "ok" | "wait" | "failed" | "unknown";
+
+/** Something the person can do from the view: a tool call. */
+export interface RenderAction { label: string; tool: ToolName; input?: Record<string, unknown> }
+
+/**
+ * A question the surface asks. `label` is the question. The CLI answers by running the verb again
+ * (argv: args plus how the answer is given); a tool called with render: true is answered by
+ * calling `tool` with `input` and the answer under `name`.
+ */
+export type RenderPrompt = { name: string; label: string; choices?: string[]; secret?: boolean } & (
+  | { args: string[]; answer: "word" | "flag" | "stdin" | "confirm"; flag?: string }
+  | { tool: ToolName; input?: Record<string, unknown> }
+);
 
 export interface Tip {
   id: string;

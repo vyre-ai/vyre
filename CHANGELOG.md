@@ -12,7 +12,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   ctx.modules.status(). Taken from the vault team's diff so the loader is edited once.
 - packages/module-sdk: `needs.credentials` in the schema and types; `Render`, the one view type a
   tool answers with render: true and `vyre <cmd> --view` frames carry (table, card, text, qr, checks,
-  prompt, error); "statusline" is a tip surface.
+  prompt, error), in polish-cli's field shapes: table columns with labels and an empty line, card
+  fields, text lines, check states with ids (ok, wait, failed, unknown), error next steps, and a
+  prompt answered either on the command line or by a tool; any kind may carry actions; "statusline" is a tip surface.
 - ADR 0033 section 3 points to ADR 0035 for the theme keys: `appearance.theme` is only the preset,
   and `appearance.scheme` is system, dark or paper.
 
