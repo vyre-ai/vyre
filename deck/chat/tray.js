@@ -38,7 +38,7 @@ export function todoPin() {
 
 /**
  * @param {{ onView: (t: Task) => void, onKill: (t: Task) => Promise<string|null>, can: () => boolean|null }} o
- *   onKill resolves to an error to show, or null. can: whether the box has threads.kill_task.
+ *   onKill resolves to an error to show, or null. can: whether the box has threads.kill-task.
  * @returns {{ el: HTMLElement, set: (tasks: Map<string, Task>) => void, draw: () => void, toggle: () => void }}
  */
 export function tasksTray(o) {

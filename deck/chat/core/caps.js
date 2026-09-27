@@ -26,7 +26,7 @@ export const SEND_IMAGES = "threads.send:images";
 /** Not offered by the server yet: off from the start on the page's probe. */
 export const NOT_OFFERED = Object.freeze([
   "threads.model", "sessions.models", "threads.commands", "threads.shell", "threads.remember", "threads.thinking",
-  "threads.kill_task", SEND_IMAGES,
+  "threads.kill-task", SEND_IMAGES,
 ]);
 
 const MISSING_CODES = new Set(["no_such_tool", "unknown_tool", "http_404"]);

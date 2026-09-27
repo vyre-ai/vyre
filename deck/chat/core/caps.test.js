@@ -48,7 +48,7 @@ test("the final contract: its tools are learnt, what it does not offer starts of
     assert.ok(SESSION_TOOLS.includes(t), t);
     assert.equal(CAPS.has(t), null, "live tools are asked, not assumed");
   }
-  for (const t of ["threads.model", "sessions.models", "threads.commands", "threads.shell", "threads.remember", "threads.thinking", "threads.kill_task", SEND_IMAGES]) {
+  for (const t of ["threads.model", "sessions.models", "threads.commands", "threads.shell", "threads.remember", "threads.thinking", "threads.kill-task", SEND_IMAGES]) {
     assert.ok(NOT_OFFERED.includes(t), t);
     assert.equal(CAPS.has(t), false, t);
   }
