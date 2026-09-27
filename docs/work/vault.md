@@ -111,6 +111,10 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 3. A scan for `.env` files in project folders, offering to import each and delete it.
 4. Loading the Chrome extension in a real browser. It is tested only by its manifest and the
    listener's HTTP contract.
+5. e2e's LOW from the connections review (f3d39f3f, not blocking): `connections.allowed()` has no
+   way to be told a caller carries a person session, so a module acting for the owner's tailnet
+   device (e.g. mail on the phone) is always refused rather than allowed - it fails closed today,
+   but thread `meta.person` through once a real caller needs it.
 
 ## Needs from others
 
@@ -136,6 +140,9 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 
 ## Changed contracts
 
+- `ctx.modules.tools(caller)` (core/modules, kernel): read-only, `structuredClone`d, same shape as
+  `GET /v1/tools`. Landed on main via rc.1, not vault-next's own; flagged here per e2e's review
+  since it widens a kernel ctx surface. `ctx.modules.status()` is also now `structuredClone`d.
 - `ctx.vault.fetch(name, { field?, watcher? })`: the second argument is new and optional.
   `needs.vault` may say "per-agent" as well as "per-watcher".
 - `vault.release {name, field?, watcher?}` (internal) returns `{ value }`. It requires an active
