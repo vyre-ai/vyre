@@ -35,7 +35,7 @@ function planted(t) {
   g("config", "filter.y.clean", cmd);
   g("config", "filter.y.smudge", cmd);
   fs.writeFileSync(path.join(dir, ".gitattributes"), "* diff=x filter=y\n");
-  return { root, dir, ran };
+  return { root, dir, ran, cmd };
 }
 const runs = ran => (fs.existsSync(ran) ? fs.readFileSync(ran, "utf8").trim().split("\n").filter(Boolean) : []);
 
@@ -75,6 +75,27 @@ test("safe git: nothing but lib/git-safe.js starts git", () => {
   };
   for (const d of ["core", "local", "modules", "lib"]) walk(path.join(REPO, d));
   assert.deepEqual(bad, []);
+});
+
+test("safe git: a repo's own gpg.program is never the one vyred runs, even to check a signature", t => {
+  const { dir, cmd, ran } = planted(t);
+  // A commit with a gpgsig trailer makes git try to verify it, whether or not the bytes are a
+  // real signature: hand-craft one so this doesn't depend on a real gpg being installed.
+  const head = execFileSync("git", ["-C", dir, "cat-file", "commit", "HEAD"], { encoding: "utf8", env: safeGitEnv() });
+  const split = head.indexOf("\n\n");
+  const sig = "-----BEGIN PGP SIGNATURE-----\n\nbogus\n-----END PGP SIGNATURE-----";
+  const signed = `${head.slice(0, split)}\ngpgsig ${sig.replace(/\n/g, "\n ")}${head.slice(split)}`;
+  const sha = execFileSync("git", ["-C", dir, "hash-object", "-t", "commit", "-w", "--stdin"], { input: signed, encoding: "utf8", env: safeGitEnv() }).trim();
+  execFileSync("git", ["-C", dir, "config", "gpg.program", cmd], { env: safeGitEnv() });
+  execFileSync("git", ["-C", dir, "config", "log.showSignature", "true"], { env: safeGitEnv() });
+  fs.rmSync(ran, { force: true });
+  for (const args of [["log", "-1", sha], ["log", "-1", "--format=%G?", sha], ["show", sha]]) {
+    gitSync(dir, args, { timeout: 10_000 });
+    assert.deepEqual(runs(ran), [], `git ${args.join(" ")} ran the repo's gpg.program`);
+  }
+  // the trap works: plain git (no safe overrides) does call it, so the assertions above mean something.
+  try { execFileSync("git", ["-C", dir, "log", "-1", "--format=%G?", sha], { stdio: "ignore", env: safeGitEnv() }); } catch {}
+  assert.ok(runs(ran).length > 0, "the planted gpg.program runs under plain git");
 });
 
 test("safe git: a failed call carries git's own explanation", t => {

@@ -12,8 +12,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   user. lib/git-safe.js is the one way vyred runs git now (gitSync, gitAsync) (no fsmonitor, no hooks, no pager, no
   external diff, no network, no global or system config, and every filter driver the repo names
   overridden to cat, since `status` runs clean filters), used by the vault's checks, the build
-  stamp and the switchboard's push summary. test/safe-git.test.js plants an fsmonitor, textconv,
-  filter drivers and hooks, and fails if any file but lib/git-safe.js starts git (core/cli, the person's own terminal, aside).
+  stamp and the switchboard's push summary. A repo's own `log.showSignature=true` plus
+  `gpg.program`/`gpg.ssh.program`/`gpg.x509.program` ran that command as vyred on `log` and `show`
+  (an explicit `--format=%G?` asked for it too, signed or not); all three are forced to `false`.
+  test/safe-git.test.js plants an fsmonitor, textconv, filter drivers, hooks and a gpg.program, and
+  fails if any file but lib/git-safe.js starts git (core/cli, the person's own terminal, aside).
 
 #### On a Mac, the caller check no longer leaves vyred's socket blocking
 
