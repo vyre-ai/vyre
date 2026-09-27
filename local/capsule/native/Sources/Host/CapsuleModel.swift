@@ -786,6 +786,8 @@ public final class CapsuleModel: ObservableObject {
 
     func ask(_ words: String, model: String = "haiku", context: String? = nil, computerUse: Bool = false) async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type a question first.") }
+        // Vyre IQ (IQAsk.swift): a plain quick question is memory.ask's, grounded or "Not sure yet."
+        if !computerUse, context == nil, model == "haiku", let out = await askIQ(words) { return out }
         let dir = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask")
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch {
             return .failed("Could not make the Capsule's folder: \(error.localizedDescription)")

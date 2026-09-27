@@ -116,7 +116,8 @@ The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, n
 1. app-design 305fc07b left: tip.md (tips.next, ⌘. dismisses), credential-sheet.md check
    against the row built, glass-mini.md step pill; "three recent items" on open (capsule.md).
 2. A held mail from "Write it" could open its card at once (today: words, then ↑).
-3. (0.1.1) memory-iq 6adfc4b6 spec (docs/design/iq-everywhere.md on work/memory-iq): memory.ask
+3. DONE for rc.2 without streaming (IQAsk.swift). Left for 0.1.1: stream:true with memory.thinking
+   stages, ⌘1..⌘3 on source chips. memory-iq 6adfc4b6 spec (docs/design/iq-everywhere.md on work/memory-iq): memory.ask
    {question, stream:true, id:"cap_<n>", context:{project}}; memory.thinking {id, stage} then
    memory.answered; reply {answer, confidence, abstained, known[], sources[], via, limited?, message?}.
    Draw answer, "confidence X · from N sessions", 3 sources (tap opens the turn); abstained: "Not

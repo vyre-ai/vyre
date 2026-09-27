@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### rc.2: Capsule questions are Vyre IQ (memory.ask)
+
+- A quick question (after the pause, or ⏎) goes to memory.ask, not a lean model session with the
+  Capsule's own prompt: memory-iq's grounded answer with a chip "confidence 0.82 · from 2
+  sessions" that unfolds up to three sources; "Not sure yet." with what memory does know and
+  "Ask Claude instead: ⌘⏎"; at the day's cap, memory's message exactly. No streaming yet (0.1.1).
+- A follow-up or ⌘⏎ after an IQ answer starts a session told the conversation. The old path
+  (threads.start, lean) runs only when vyred has no memory.ask (no_such_tool).
+- `Sources/Host/IQAsk.swift` (new), `Sources/Host/CapsuleModel.swift`, `Sources/Host/AutoAsk.swift`,
+  `Sources/Vyred/MemoryBox.swift`, `Sources/UI/CapsuleView.swift`; `Tests/IQAskTests.swift`. The
+  frecency file test waits for the write (a CI flake). Swift 329/329.
+
 #### rc.2: no gold, no epoch ages, one placeholder
 
 - Design A retired the gold: memory's colour (`Theme.recall`, the icon tint) is neutral text, and

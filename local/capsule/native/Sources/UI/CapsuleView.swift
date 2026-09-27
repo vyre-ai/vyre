@@ -673,7 +673,7 @@ struct MemorySources: View {
             // A source chip (capsule.md): 28 tall, radius 14, 1 px ruleStrong, 13/18 text2.
             HStack(spacing: 6) {
                 let n = memory.conversationCount
-                Text(n == 1 ? "from 1 of your sessions" : "from \(n) of your sessions")
+                Text(memory.iq ? IQAnswer.chip(memory) : n == 1 ? "from 1 of your sessions" : "from \(n) of your sessions")
                 Image(systemName: expanded ? "chevron.down" : "chevron.right").imageScale(.small).foregroundColor(Theme.ash)
             }
             .font(Theme.title).foregroundColor(Theme.stone)
