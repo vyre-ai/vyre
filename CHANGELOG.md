@@ -4,11 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-<<<<<<< HEAD
-#### scripts/rc-smoke.sh: the release smoke check
-=======
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
->>>>>>> origin/main
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at
   the top, the CLI loads every command, so without it every `vyre` call and vyred failed with
@@ -617,8 +613,6 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   shows the backfill and the turns still to read.
 - scripts/eval-answer.js replays the reads from test/eval/reads/<world>.json, so CI calls no
   model. `--record` records them with `claude -p` and `--no-model` scores the rules alone.
-<<<<<<< HEAD
-=======
 #### scripts/rc-smoke.sh: the release smoke check
 
 - `scripts/rc-smoke.sh <vyre.tgz>` walks a release's path on a throwaway box built from the package,
@@ -630,7 +624,6 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   docker calls go through a shim that maps vyre:local and vyre:prev to the smoke's own names, so a
   live box on the same server is never touched. box-deploy runs it before a redeploy.
 
->>>>>>> origin/main
 #### Not found is a 404, and `vyre link signin` says when it's done
 
 - An id that isn't there (gate.get, gate.approve and the rest on a held item; agents.* on an
