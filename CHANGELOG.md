@@ -143,7 +143,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - core/switchboard/switchboard.test.js: the Bash-redaction test builds its fake key at run time,
   so test/hygiene.test.js no longer reads it as a secret.
 - test/cohesion-drift.test.js: composer-state.js and settings-keys.js leave the models allowlist;
-  both read the box's model aliases now (native-core-composer).
+  both read the box's model aliases now (native-core-composer). AutoAsk.swift is down to 1 (capsule-pro).
 
 #### The install cap is 20 MB for 0.1.0
 
