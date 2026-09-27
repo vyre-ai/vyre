@@ -126,7 +126,9 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
 1. DONE: handed 7423c8c to capsule-pro. Was: send capsule-pro the hash to merge. Then run capsule-mac CI on
    4d40355 (the AppsExtension) and hand that over too (it changes Kit, CapsuleModel,
    ExtensionHost and Panel by one line each: see Changed contracts).
-2. Switch the presence summary to host.prove when capsule-pro ships it.
+2. DONE (native a8859f0, Swift 284/284): sends prove via host.prove / link.call(summary:). capsule-pro merged
+   7423c8c at 6ff7185 and fixed the CI signing hang. Asked capsule-pro to add apps.send to the host's
+   VyredClient.sessionable (the box side already has it).
 3. Slack adapter (slice 3, design below), then WhatsApp over hands (slice 4: hands.find,
    settleMs up to 5000, press Send rather than key Return; needs_front for keys), then any-app.
 
