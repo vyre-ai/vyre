@@ -4204,7 +4204,7 @@ Let a surface (capsule, chat, agents or phone) use a connection.
 
 ### `vault.connections.list`
 
-Connections the caller's surface may use: {surface, connections: [{id, source, ref, provider, account, auth, label, capabilities, state, needs?, uses, use?}]}. `uses` maps each capability to the {tool, input} that acts on it; with `capability`, `use` is that one. A person sees every row with its surfaces and may pass `surface` to see one surface's view; a module must pass `surface` or `caller` (the caller it acts for). Never a value.
+Connections the caller's surface may use: {surface, connections: [{id, source, ref, provider, account, auth, label, capabilities, state, needs?, uses, use?}], suggest_default?}. `uses` maps each capability to the {tool, input} that acts on it; with `capability`, `use` is that one and `suggest_default` is true the first time that capability has two or more ready connections and no default (asked once ever, not once per surface). A person sees every row with its surfaces and may pass `surface` to see one surface's view; a module must pass `surface` or `caller` (the caller it acts for). Never a value.
 
 - Input:
   - `caller` string

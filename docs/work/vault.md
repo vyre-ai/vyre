@@ -140,6 +140,12 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 
 ## Changed contracts
 
+- `vault.connections.list` with a `capability` adds `suggest_default: boolean` (0.1.1 #7): true
+  the first time that capability has two or more ready connections and no default, then never
+  again for that capability (`vault_default_asked`, new table, `DEFAULT_SUGGEST_MIGRATION`).
+  `vault.health` adds `touchid: {enrolled, available}` (0.1.1 #4), advisory only. `judge()` adds
+  `passkey-available` (0.1.1 #8, `core/vault/passkeys.json`), Watchtower-only like
+  `2fa-available` - remind.js's REASONS doesn't list it, so it is never a planner todo.
 - `ctx.modules.tools(caller)` (core/modules, kernel): read-only, `structuredClone`d, same shape as
   `GET /v1/tools`. Landed on main via rc.1, not vault-next's own; flagged here per e2e's review
   since it widens a kernel ctx surface. `ctx.modules.status()` is also now `structuredClone`d.
