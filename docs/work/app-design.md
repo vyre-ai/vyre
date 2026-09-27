@@ -55,7 +55,7 @@ Apple Developer account. Absorbs deck-design and phone-design.
   Device row in Needs on the person's trusted devices. The TrustBrowser board draws all three.
   Accepted and queued by relay (work/relay 5243964, docs/work/relay.md Next).
   Added 27 Sep (mobile's build): record trusted_by and trusted_at on web devices for the
-  "Trusted from <device> · <time>" line; mobile hides it until then.
+  "Trusted from <device> · <time>" line; mobile hides it until then. Queued by relay (81b0dfa).
 - onboard: expose the person's name (onboard.person) so the app's avatar shows their initial.
 
 - integrator: when merging, take this branch's scripts/gen-tokens over work/mobile 622224a's, drop
