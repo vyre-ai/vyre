@@ -16,7 +16,7 @@ import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
-import { Registry, discover, ownerDevice, callerKind } from "../modules/index.js";
+import { Registry, discover, ownerDevice } from "../modules/index.js";
 import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
@@ -251,20 +251,18 @@ async function above(socket, registry) {
   return insideClaude(pid, { threads: [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])] });
 }
 
-/** The labels of a person's own surfaces, which tools trust as the person (their callers lists and checks). */
-const PERSON_LABELS = new Set(["cli", "local", "deck", "capsule"]);
-
 /**
- * A socket caller as vyred takes it. A person's label from a process under a `claude` or a thread
- * is that model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the
- * call proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
- * review). An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
+ * A socket caller as vyred takes it. Any label but a model's own (a surface's, core/modules
+ * SURFACE_LABELS, or one no surface uses yet) from a process under a `claude` or a thread is that
+ * model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the call
+ * proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
+ * review). "anonymous" stays: the session could say "mcp" itself, so it gains nothing. An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
  * here; the person's own actions still refuse it (fromClaude). Asked once per connection.
  * @param {string} caller @param {import("node:net").Socket} socket @param {any} registry @param {string} [thread]
  * @returns {Promise<{ caller: string, model: boolean }>}
  */
 async function asTaken(caller, socket, registry, thread) {
-  if (!PERSON_LABELS.has(callerKind(caller))) return { caller, model: false };
+  if (MODEL_LABEL.test(caller) || caller === "anonymous") return { caller, model: false };
   let v = taken.get(socket);
   if (!v) { v = above(socket, registry).then(w => w.inside); taken.set(socket, v); }
   return await v ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true } : { caller, model: false };

@@ -9,6 +9,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
+import { SURFACE_LABELS } from "../core/modules/index.js";
 import { ancestry, insideClaude, controllingTty, loginOf, tmuxClients } from "../core/daemon/peer.js";
 
 const tree = {
@@ -123,7 +124,7 @@ test("peer: a person-only call from under a claude is refused silently; the same
   assert.match(held.body.error.message, /inside a Claude session/);
 });
 
-test("peer: a person's label from under a claude is the session's own, for every tool; from outside it stays the person's", async t => {
+test("peer: a person's or any surface's label from under a claude is the session's own, for every tool; from outside it stays", async t => {
   const root = tempHome(t);
   // A probe that says who vyred took the caller to be, and one open only to the person's surfaces
   // (a callers list, as core/team, settings and mail check a person's label).
@@ -149,6 +150,13 @@ test("peer: a person's label from under a claude is the session's own, for every
     const outside = await client(dir, socket, "probe.who", {}, { headers });
     assert.equal(outside.body.data.caller, label, JSON.stringify(outside));
     assert.equal((await client(dir, socket, "probe.mine", {}, { headers })).status, 200);
+  }
+  // Every surface's label in the kernel's list, and a surface name no module uses yet, is the
+  // session's own from inside; from outside each stays what it said.
+  for (const label of [...SURFACE_LABELS, "phone", "glass-now"]) {
+    const headers = { "x-vyre-caller": label };
+    assert.equal((await client(dir, socket, "probe.who", {}, { underClaude: true, headers })).body.data.caller, "mcp", label);
+    assert.equal((await client(dir, socket, "probe.who", {}, { headers })).body.data.caller, label, label);
   }
   // A model's own label is not traced and not changed; a person-only tool from inside is still
   // refused out loud, never run as the model's.
