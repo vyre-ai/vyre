@@ -32,6 +32,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   label, dots, selected bar, source label, the hint under an empty box, and the menu-bar mark's
   dot. The Electron Capsule's waiting label, dot, badge and tray dot match (`--attention`).
 
+#### `@` inside an app (native Capsule)
+
+- An extension's `@` target can nest (`MentionTarget.nests`): picked, it is a chip ("WhatsApp"),
+  and a second `@` asks only that extension for what it holds, through
+  `mentions(matching:context:)` with the chip as `MentionContext.parent`. The pick makes a
+  two-level chip ("WhatsApp › juno"); Enter calls `send(_:to:in:query:)` with the child and its
+  parent; delete on an empty box drops the child, then the chip. The chip shows the extension's
+  icon.
+- `refreshMentions(matching:context:)`: a slower second answer, asked once 120 ms after typing
+  pauses, cancelled by the next key and by hide, replacing the extension's rows only for the same
+  words, chip and search, only while the Capsule is shown, and only for extensions that say
+  `refreshesMentions`; several run side by side. `mentionPicked(_:context:)` is told once per pick. Every addition has a default, so
+  existing extensions are unchanged. `Sources/Kit/Extension.swift`, `Sources/Host/`,
+  `Sources/UI/CapsuleView.swift`, `Tests/ExtensionNestTests.swift`.
 #### The box's alarms and reminders ring on the Mac
 
 - The native Capsule keeps /v1/link/events open (hidden too: a timer on the box has to ring

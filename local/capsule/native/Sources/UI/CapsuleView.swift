@@ -82,8 +82,13 @@ struct CapsuleView: View {
             MarkView(size: 22)
             if let c = model.target {
                 HStack(spacing: 5) {
-                    Image(systemName: c.kind == .agent ? "person.crop.circle" : c.kind == .project ? "folder" : c.kind == .app ? "app" : "text.bubble")
-                        .font(.system(size: 11, weight: .medium))
+                    // An extension's target shows the icon it gave (an app's own); the outer chip
+                    // of a two-level one leads, "WhatsApp › juno".
+                    chipIcon(model.targetParent ?? c)
+                    if let p = model.targetParent {
+                        Text(p.label).font(.system(size: 13, weight: .medium)).foregroundColor(Theme.stone).lineLimit(1)
+                        Text("›").font(.system(size: 12, weight: .medium)).foregroundColor(Theme.ash)
+                    }
                     Text(c.label).font(.system(size: 13, weight: .medium)).lineLimit(1)
                 }
                 .foregroundColor(Theme.bone)
@@ -127,6 +132,20 @@ struct CapsuleView: View {
         }
         .padding(.leading, 18).padding(.trailing, 14)
         .frame(height: Theme.barHeight)
+    }
+
+    /// The chip's icon: the picture an extension gave its target (an app's own icon), its symbol,
+    /// or the symbol for what kind of thing Vyre's own target is.
+    @ViewBuilder private func chipIcon(_ c: VyreCandidate) -> some View {
+        let spec = model.mentionIcon(c)
+        if case .symbol(let name, _)? = spec {
+            Image(systemName: name).font(.system(size: 11, weight: .medium))
+        } else if let spec, let img = model.icons.image(spec, points: 14, scale: 2) {
+            Image(nsImage: img).resizable().interpolation(.high).frame(width: 14, height: 14)
+        } else {
+            Image(systemName: c.kind == .agent ? "person.crop.circle" : c.kind == .project ? "folder" : c.kind == .app ? "app" : "text.bubble")
+                .font(.system(size: 11, weight: .medium))
+        }
     }
 
     // MARK: the answer (capsule-now rule 4: the question, who answers, memory, then the answer)

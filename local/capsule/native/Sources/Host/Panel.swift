@@ -203,8 +203,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             hide(); return true
         case 51 where e.modifierFlags.contains(.command) && !model.attachments.isEmpty: // ⌘⌫ takes the last attachment off
             model.removeAttachment(); return true
-        case 51 where model.text.isEmpty && model.target != nil: // delete on an empty box drops the chip
-            model.target = nil; return true
+        case 51 where model.text.isEmpty && model.target != nil: // delete on an empty box drops the chip (a child first)
+            model.dropChip(); return true
         case 48 where model.current?.kind == "mention": // tab picks the @ row
             model.run(); return true
         case 124 where cmd && (model.showsMemory || model.askedMemory != nil): // ⌘→ shows or folds memory's sources

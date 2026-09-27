@@ -8,6 +8,13 @@ import ApplicationServices
 import CoreGraphics
 import SwiftUI
 
+/// One `@` target an extension named, as the model lists it: which extension, the row, the target.
+struct ExtensionMention {
+    var ext: String
+    var candidate: VyreCandidate
+    var target: MentionTarget
+}
+
 @MainActor
 final class ExtensionHost: CapsuleHost {
     let model: CapsuleModel
@@ -29,10 +36,14 @@ final class ExtensionHost: CapsuleHost {
         }
         reread()
         model.attachers = extensions.compactMap { $0 as? SendAttaching }
-        model.extensionMentions = { [weak self] q in self?.mentions(q) ?? [] }
-        model.sendToExtension = { [weak self] text, c, query in
+        model.extensionMentions = { [weak self] q, parent in self?.mentions(q, parent: parent) ?? [] }
+        refreshing = Set(extensions.filter(\.refreshesMentions).map { type(of: $0).id })
+        model.extensionRefreshers = { [weak self] q, parent in self?.refreshers(q, parent: parent) ?? [] }
+        model.extensionPicked = { [weak self] c, parent in self?.picked(c, parent: parent) }
+        model.sendToExtension = { [weak self] text, c, parent, query in
             guard let self, let (e, t) = self.targets[c.id] else { return .failed("\(c.label) is not there any more.") }
-            return await e.send(text, to: t, query: query)
+            // A child goes with the chip it was picked under ("juno" in "WhatsApp").
+            return await e.send(text, to: t, in: parent.flatMap { self.targets[$0.id]?.1 }, query: query)
         }
         model.panelFor = { [weak self] item in self?.sidePanel(for: item) }
     }
@@ -50,18 +61,50 @@ final class ExtensionHost: CapsuleHost {
 
     /// Targets named in the last `@` list, by candidate id, for the send that follows.
     private var targets: [String: (CapsuleExtension, MentionTarget)] = [:]
+    /// Extensions that said they have a slower second answer (refreshesMentions), read at load.
+    private var refreshing = Set<String>()
 
-    func mentions(_ q: String) -> [(VyreCandidate, MentionTarget)] {
-        var out: [(VyreCandidate, MentionTarget)] = []
-        for e in extensions {
-            let id = type(of: e).id
-            for t in e.mentions(matching: q) {
-                let c = VyreCandidate(kind: .app, id: "ext:\(id):\(t.id)", label: t.label, sub: t.sub, last: 0)
-                targets[c.id] = (e, t)
-                out.append((c, t))
+    /// The extensions a `@` asks, with what each is told. No chip (`parent` nil): all of them, as
+    /// before nesting. A nesting chip: only the extension it came from, with the chip as parent.
+    private func asked(_ parent: VyreCandidate?) -> [(CapsuleExtension, MentionContext)] {
+        guard let p = parent else { return extensions.map { ($0, .top) } }
+        guard let (e, t) = targets[p.id] else { return [] }
+        return [(e, MentionContext(parent: t, extensionID: type(of: e).id))]
+    }
+
+    /// One target as a candidate row. A child's id carries its chip's (CapsuleModel.childID), so
+    /// "juno" in WhatsApp and "juno" in Slack stay two targets.
+    private func candidate(_ e: CapsuleExtension, _ t: MentionTarget, _ parent: VyreCandidate?) -> ExtensionMention {
+        let id = type(of: e).id
+        let c = VyreCandidate(kind: .app, id: parent.map { CapsuleModel.childID($0.id, t.id) } ?? "ext:\(id):\(t.id)",
+                              label: t.label, sub: t.sub, last: 0)
+        targets[c.id] = (e, t)
+        return ExtensionMention(ext: id, candidate: c, target: t)
+    }
+
+    /// What the extensions name for the words, answered from memory, on every keystroke.
+    func mentions(_ q: String, parent: VyreCandidate? = nil) -> [ExtensionMention] {
+        asked(parent).flatMap { e, ctx in e.mentions(matching: q, context: ctx).map { candidate(e, $0, parent) } }
+    }
+
+    /// The slower second answer (refreshMentions), one call per extension that has one, for the
+    /// model to run side by side and apply as each lands. A call answers nil for nothing new, or
+    /// when its task was cancelled while the extension worked.
+    func refreshers(_ q: String, parent: VyreCandidate?) -> [@MainActor () async -> (String, [ExtensionMention])?] {
+        asked(parent).filter { refreshing.contains(type(of: $0.0).id) }.map { e, ctx in
+            { [weak self] in
+                guard !Task.isCancelled, let rows = await e.refreshMentions(matching: q, context: ctx),
+                      !Task.isCancelled, let self else { return nil }
+                return (type(of: e).id, rows.map { self.candidate(e, $0, parent) })
             }
         }
-        return out
+    }
+
+    /// A target became the chip: tell the extension it came from, once.
+    func picked(_ c: VyreCandidate, parent: VyreCandidate?) {
+        guard let (e, t) = targets[c.id] else { return }
+        let under = parent.flatMap { targets[$0.id]?.1 }
+        e.mentionPicked(t, context: MentionContext(parent: under, extensionID: under == nil ? nil : type(of: e).id))
     }
 
     func willShow(front: FrontApp?) { extensions.forEach { $0.capsuleWillShow(front: front) } }
