@@ -77,11 +77,23 @@ const liveEvents = [
   { id: 2, type: "thread.text", thread: LIVE, at: T0 + 1000, payload: { message: "msg_q", text: "Two questions first.", done: true } },
   { id: 3, type: "thread.tool", thread: LIVE, at: T0 + 2000, payload: { id: "toolu_q", tool: "AskUserQuestion", phase: "started", summary: "2 questions" } },
 ];
+// The third session: an ADR 0030 thread (provider, model, auth, state, queue, interrupt).
+const NEW = "4b7e2a90-sdk-thread";
+let interruptMissing = false;
 globalThis.fetch = /** @type {any} */ (async (url, o) => {
   const tool = decodeURIComponent(String(url).split("/v1/tools/")[1]);
   const input = JSON.parse(o.body);
   calls.push({ tool, input });
   let data;
+  if (input.thread === NEW || input.session === NEW) {
+    if (tool === "threads.interrupt" && interruptMissing) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no tool threads.interrupt" } }) };
+    if (tool === "threads.get") data = { thread: { id: NEW, name: "Q3 report and Estate intake", cwd: "/home/alex/work/harlow-legal", status: "idle", holder: null, agent: "kit" }, events: [], asks: [] };
+    else if (tool === "recall.transcript") data = { session: { id: NEW, cwd: "/home/alex/work/harlow-legal" }, blocks: [], next: 0, first: 0 };
+    else if (tool === "threads.asks") data = [];
+    else if (tool === "threads.answer") data = { answered: true };
+    else data = tool === "memory.facts" ? { facts: [] } : {};
+    return { status: 200, statusText: "", json: async () => ({ data }) };
+  }
   if (input.thread === LIVE || input.session === LIVE) {
     if (tool === "threads.get") data = { thread: { id: LIVE, name: null, cwd: fx.session.cwd, status: "running", holder: null, agent: null }, events: liveEvents, asks: [fx.asks[0]] };
     else if (tool === "recall.transcript") {
@@ -113,10 +125,19 @@ test("chips: the owner's initial for you, the Vyre mark for replies", () => {
   assert.ok($(container, ".cv-head .cv-av-vyre svg"));
 });
 
-test("open: blocks as rows, one Vyre header per run, tool cards, the turn footer, never claude", () => {
+test("open: blocks as rows, one Vyre header per run, tool runs folded, the turn footer, never claude", async () => {
   assert.equal($$(container, ".cv-user").length, 1);
   assert.equal($$(container, ".cv-head").length, 1);
   assert.match(text($(container, ".cv-head")), /Vyre/);
+  // Changed on purpose (the chat view, 27 Sep): runs of tool calls fold into one quiet row each,
+  // the todo list stays out (it is the thing to read), and a fold's cards are built when it opens.
+  const runs = $$(container, ".cv-run");
+  assert.equal(runs.length, 2);
+  assert.match(text(runs[0]), /^Read 1 file, searched 1 time/);
+  assert.match(text(runs[1]).trim(), /^Edited 1 file, ran 1 command, fetched 1 page, used 1 tool · [\d.]+ s$/);
+  assert.equal($$(container, ".cv-tool").length, 1, "the todo list, not folded");
+  for (const r of runs) await $(r, ".cv-run-head").click();
+  assert.equal($$(container, ".cv-run[data-open]").length, 2);
   assert.equal($$(container, ".cv-tool").length, 7);
   assert.equal($$(container, ".cv-think").length, 1);
   assert.match(text($(container, ".cv-tool[data-tool=Bash]")), /\$ npm test -- src\/order/);
@@ -214,4 +235,112 @@ test("a live thread the transcript cannot find yet: threads.get's events drawn, 
   assert.equal($$(box, ".cv-turn").length, 1);
   assert.ok($(box, ".cv-q"), "the card stays");
   stop2();
+});
+
+// ---- an ADR 0030 session: chip, state word, fold rows, queue, Stop, asks answered elsewhere ----
+
+// Mounted in the first test below, so the tests above see only their own key listeners.
+const box3 = new El("div");
+doc.body.append(box3);
+let stop3 = () => {};
+const at = (type, payload, when) => { for (const f of FakeES.last.l.get(type) || []) f({ data: JSON.stringify({ id: ++evId, type, thread: NEW, at: when ?? Date.now(), payload }) }); };
+const press3 = k => { const e = /** @type {any} */ (new Event("keydown")); e.key = k; e.target = doc.body; for (const f of keys) f(e); return e; };
+const stopBtn = () => $(box3, ".composer-stop");
+
+test("the header chip names provider, model and auth, and the state word follows the session", async () => {
+  stop3 = mountSession(box3, { thread: NEW, project: null, onBack() {} });
+  await wait(30);
+  assert.equal($(box3, ".cv-chip"), null, "nothing known, no chip");
+  assert.match(text($(box3, ".cv-state")), /^idle$/);
+  assert.equal(stopBtn().hidden, true, "no Stop while idle");
+  at("thread.started", { provider: "claude", model: "claude-opus-4-5", auth: "subscription" });
+  assert.equal(text($(box3, ".cv-chip")), "Claude · opus · subscription");
+  assert.match(text($(box3, ".cv-state")), /^starting$/);
+  at("thread.stopped", { reason: "idle" });
+  assert.match(text($(box3, ".cv-state")), /^idle$/);
+  assert.match(text($(box3, ".lease-bar")), /Resumes on your next message/);
+});
+
+test("thinking folds to its length, a run of tools is one row that counts up, the turn ends with time and tokens", async () => {
+  const t0 = Date.now() - 60_000;
+  at("thread.sent", { text: "Rebuild the intake for the Estate branch", surface: "deck" }, t0);
+  assert.equal(stopBtn().hidden, false, "Stop while a turn runs");
+  at("thread.text", { kind: "reasoning", message: "m1", text: "Weighing the two forms", done: true }, t0 + 1000);
+  at("thread.text", { message: "m1", text: "Using Estate intake v2.", done: true }, t0 + 9000);
+  assert.equal(text($(box3, ".cv-think-head")), "Thinking · 8 s");
+  at("thread.tool", { call: "c1", name: "Read", status: "running", summary: "src/intake/schema.ts" }, t0 + 10_000);
+  at("thread.tool", { call: "c1", status: "completed" }, t0 + 10_400);
+  at("thread.tool", { call: "c2", name: "Bash", status: "running", summary: "npm run build" }, Date.now() - 42_000);
+  const run = $(box3, ".cv-run");
+  assert.ok(run, "two calls in a row fold into one row");
+  assert.match(text(run).trim(), /^Running npm run build · 0:4\d$/);
+  assert.equal($$(box3, ".cv-tool").length, 0, "closed: its cards are not built");
+  at("thread.tool", { call: "c2", status: "completed" });
+  assert.match(text($(box3, ".cv-run")).trim(), /^Read 1 file, ran 1 command · \d+ s$/);
+  await $(box3, ".cv-run-head").click();
+  assert.equal($$(box3, ".cv-run .cv-tool").length, 2, "open: the calls as rows");
+  at("thread.finished", { ok: true, duration_ms: 72_000, tokens: { input: 18_400, output: 900 } });
+  await wait(20);
+  assert.match(text($$(box3, ".cv-turn").at(-1)), /^1 min 12 s · 18k in, 900 out$/);
+  assert.equal(stopBtn().hidden, true, "no Stop once the turn is over");
+});
+
+test("queued rows sit above the composer; their buttons wait for the sessions update", async () => {
+  at("thread.queued", { uuid: "q1", text: "Then open a PR against main" });
+  const row = $(box3, ".cv-queued-row");
+  assert.ok(row);
+  assert.match(text(row), /^Queued\s*Then open a PR against main/);
+  for (const [cls, label] of [[".cv-q-edit", "Edit"], [".cv-q-take", "Take back"], [".cv-q-now", "Send now"]]) {
+    const b = $(row, cls);
+    assert.equal(text(b), label);
+    assert.equal(b.disabled, true);
+    assert.equal(b.getAttribute("title"), "Needs the sessions update");
+  }
+  assert.doesNotMatch(text($(box3, ".thread-view")), /Then open a PR/, "waiting is not in the timeline");
+  at("thread.sent", { uuid: "q1", text: "Then open a PR against main", surface: "deck" });
+  assert.equal($(box3, ".cv-queued").hidden, true);
+  assert.match(text($$(box3, ".cv-user").at(-1)), /Then open a PR against main/);
+});
+
+test("Stop interrupts the turn, which reads 'Stopped by you'; without threads.interrupt, Esc falls back to threads.stop", async () => {
+  assert.equal(stopBtn().hidden, false);
+  await stopBtn().click();
+  await wait();
+  assert.ok(calls.some(c => c.tool === "threads.interrupt" && c.input.thread === NEW));
+  at("thread.finished", { ok: false, canceled: true, reason: "interrupt" });
+  await wait(20);
+  assert.match(text($$(box3, ".cv-turn").at(-1)), /^Stopped by you/);
+  interruptMissing = true;
+  at("thread.sent", { text: "One more thing", surface: "deck" });
+  assert.equal(press3("Escape").defaultPrevented, true);
+  await wait();
+  assert.ok(calls.some(c => c.tool === "threads.stop" && c.input.thread === NEW), "threads.stop when the Switchboard has no interrupt");
+  at("thread.stopped", { reason: "stop" });
+  await wait(20);
+  assert.match(text($$(box3, ".cv-turn").at(-1)), /^Stopped by you/);
+  assert.match(text($(box3, ".cv-state")), /^stopped$/);
+});
+
+test("an inline ask: A allows, D denies, and one answered on another screen says where", async () => {
+  at("ask.raised", { ask: "ask_n1", kind: "permission", tool: "Bash", summary: "git push origin q3-report" });
+  await wait();
+  const cards = () => $$(box3, ".cv-ask");
+  assert.equal(cards().length, 1);
+  assert.equal(press3("a").defaultPrevented, true);
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.answer").at(-1).input, { ask: "ask_n1", decision: "allow", surface: "deck" });
+  at("ask.answered", { ask: "ask_n1", decision: "allow", by: "deck" });
+  assert.doesNotMatch(text(cards()[0]), /Answered from/, "answered here: nothing about another screen");
+  at("ask.raised", { ask: "ask_n2", kind: "permission", tool: "Bash", summary: "npm publish" });
+  await wait();
+  press3("d");
+  await wait();
+  assert.equal(calls.filter(c => c.tool === "threads.answer").at(-1).input.decision, "deny");
+  at("ask.raised", { ask: "ask_n3", kind: "permission", tool: "Bash", summary: "rm -rf dist" });
+  await wait();
+  at("ask.answered", { ask: "ask_n3", decision: "allow", by: "capsule" });
+  const last = cards().at(-1);
+  assert.match(text(last), /Allowed once/);
+  assert.match(text(last), /Answered from the Capsule · \d\d:\d\d/);
+  stop3();
 });

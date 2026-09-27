@@ -69,6 +69,36 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   beside the home, CHAT_DEMO and the WebSocket pass-through.
 
 
+
+#### Chat: long sessions and terminals that outlive vyred
+
+- Long sessions render windowed above 100 rows (deck/chat/core/window.js, deck/chat/window-view.js):
+  rows near the viewport are mounted, the rest are measured spacers; the reading position holds
+  while a reply streams and while history loads above. A 2,000-turn session keeps under 150 rows
+  mounted (46 at most in the test); a 3,500-block history page applies in 40 ms (was 817 ms).
+- The Deck terminal follows resilience's durable terminal (ADR 0029 R4): it counts the bytes it
+  drew and reattaches with from=<offset> after a vyred restart (1012), redraws under a line when
+  older output was cut, holds up to 4 KB of keys typed while away, and phones get a key bar (Esc,
+  Tab, Ctrl, Alt, arrows, Paste).
+
+#### Chat: a session reads as a native chat over the event stream (ADR 0030)
+
+- deck/chat/session.js renders from deck/chat/core/session-state.js: the transcript read and
+  live thread.* and ask.* events go into one keyed state, and only the rows whose keys changed
+  are patched. Runs of tool calls fold into one row ("Edited 3 files, ran 2 commands · 12 s")
+  that opens to the calls; a running call counts up ("Running npm run build · 0:42"); thinking
+  shows its length; a todo list is never folded. Replies stream paced to the display
+  (deck/chat/live-text.js, core/pace.js), frames only while the page is on screen, and only the
+  growing paragraph re-parses. Rows off screen use content-visibility.
+- The header shows the provider, model and auth ("Claude · opus · subscription") and the state
+  word; a session closed for idleness says "Resumes on your next message".
+- Stop (Esc) while a turn runs: threads.interrupt, or threads.stop on a Switchboard without it;
+  the turn reads "Stopped by you". Queued messages sit above the composer with Edit, Take back
+  and Send now, disabled ("Needs the sessions update") until the Switchboard has
+  threads.edit, threads.unqueue and threads.send `now`.
+- Permission cards: A allows once, D denies. An ask answered on another screen says so
+  ("Answered from the Capsule · 14:31").
+- deck/sw.js SHELL keeps the new modules. Tests in deck/chat/session.test.js and core tests.
 #### A stopped vyred leaves a removed home removed
 
 - core/term: the terminal table is not written when the home is gone, or when there is nothing to

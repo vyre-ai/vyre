@@ -13,9 +13,12 @@
 // A session busy in the user's terminal takes the message into a queue instead (capsule-now's
 // contract, docs/work/capsule-now.md): threads.send answers {sent: false, queued: true, name,
 // note}, thread.queued {queued, text} says it is waiting, and thread.sent {queued, via} says the
-// Harness handed it over at the end of the turn. The words leave the box, and a line above it
-// lists what waits until each is handed over. Nothing can withdraw one yet (threads.unqueue is
-// not built).
+// Harness handed it over at the end of the turn. The words leave the box; the session view draws
+// what waits as rows above it (session.js, from session-state's queue), and opts.onQueue hears
+// how many wait and for whom.
+//
+// While a turn runs (setBusy(true)) a Stop button sits beside Send, and Esc in the box presses
+// it (opts.onStop), unless the mention menu is open.
 //
 // A session on the paired Mac (opts.machine, or setMachine() once the view learns it) is sent to
 // through the box: threads.send carries `machine`, the box forwards it, and the reply comes back
@@ -32,9 +35,10 @@ const touch = () => typeof matchMedia === "function" && matchMedia("(pointer: co
 
 /**
  * @param {{ thread: string, agents: string[], threads: { id: string, name: string|null }[], holder: string|null, surface: string,
- *   machine?: string|null, onOffline?: (machine: string|null) => void, onQueue?: (n: number, name: string) => void }} opts
+ *   machine?: string|null, onOffline?: (machine: string|null) => void, onQueue?: (n: number, name: string) => void, onStop?: () => void }} opts
  * onOffline: called with the Mac's name when a send finds it offline, with null when a send goes through.
- * @returns {{ el: HTMLElement, focus: () => void, stop: () => void, setMachine: (m: string|null) => void }}
+ * @returns {{ el: HTMLElement, focus: () => void, stop: () => void, setMachine: (m: string|null) => void, setBusy: (on: boolean) => void,
+ *   setText: (text: string) => void }}
  */
 export function mountComposer(opts) {
   const { thread } = opts;
@@ -50,22 +54,18 @@ export function mountComposer(opts) {
   });
   const menu = h("div", { class: "composer-menu", hidden: true });
   const send = h("button", { class: "ibtn composer-send", "aria-label": "Send", onclick: submit }, icon("send", 16));
+  let busy = false;
+  const stopBtn = h("button", { class: "btn btn-ghost btn-sm composer-stop", type: "button", hidden: true, title: "Stop this turn (Esc)",
+    onclick: () => opts.onStop?.() }, "Stop", h("span", { class: "kbd" }, "Esc"));
   const wrap = h("div", { class: "composer-wrap" }, menu,
-    h("div", { class: "composer-row" }, ta, send),
+    h("div", { class: "composer-row" }, ta, stopBtn, send),
   );
-  const queued = h("div", { class: "composer-queued", role: "status", hidden: true });
   /** Messages waiting in the session's queue, by the inbox id thread.queued gives, oldest first. */
   const waiting = new Map();
   let busyName = "";
-  function drawQueued() {
-    opts.onQueue?.(waiting.size, busyName);
-    queued.hidden = waiting.size === 0;
-    put(queued, icon("clock", 12), " ", waiting.size === 1 ? `Queued for ${busyName || "this session"}` : `${waiting.size} queued for ${busyName || "this session"}`,
-      h("span", { class: "faint" }, ", sent when its turn in your terminal ends:"),
-      h("span", { class: "composer-queued-text ellipsis" }, [...waiting.values()].at(-1) || ""));
-  }
+  function drawQueued() { opts.onQueue?.(waiting.size, busyName); }
   const note = h("div", { class: "composer-note", role: "status" });
-  const root = h("div", { class: "composer" }, queued, note, wrap, h("div", { class: "composer-hint" }, h("span", { class: "kbd" }, "Enter"), " to send · ", h("span", { class: "kbd" }, "Shift+Enter"), " for a new line · @ to mention · / for commands"));
+  const root = h("div", { class: "composer" }, note, wrap, h("div", { class: "composer-hint" }, h("span", { class: "kbd" }, "Enter"), " to send · ", h("span", { class: "kbd" }, "Shift+Enter"), " for a new line · @ to mention · / for commands"));
 
   function grow() { ta.style.height = "auto"; ta.style.height = Math.min(200, ta.scrollHeight) + "px"; }
 
@@ -127,6 +127,7 @@ export function mountComposer(opts) {
 
   function onKey(e) {
     if (!menu.hidden && (e.key === "Escape")) { closeMenu(); return; }
+    if (e.key === "Escape" && busy && opts.onStop) { e.preventDefault(); opts.onStop(); return; }
     // A phone keyboard has no Shift: Enter is a newline there, and the send button sends.
     if (e.key === "Enter" && !e.shiftKey && menu.hidden && !e.isComposing && !touch()) { e.preventDefault(); submit(); }
   }
@@ -164,5 +165,8 @@ export function mountComposer(opts) {
     }),
   ];
 
-  return { el: root, focus: () => ta.focus(), setMachine: m => { machine = m || null; }, stop: () => { for (const off of offs) off(); clearTimeout(leaseTimer); } };
+  return { el: root, focus: () => ta.focus(), setMachine: m => { machine = m || null; },
+    setBusy: on => { busy = !!on && !!opts.onStop; stopBtn.hidden = !busy; },
+    setText: t => { ta.value = String(t ?? ""); grow(); ta.focus(); },
+    stop: () => { for (const off of offs) off(); clearTimeout(leaseTimer); } };
 }

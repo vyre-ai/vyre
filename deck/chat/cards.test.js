@@ -186,3 +186,59 @@ test("tool cards: the checklist, a short diff and a run open on their own; a rea
   assert.ok($(agentAv("Vyre"), "svg"));
   assert.equal(text(agentAv("juno")), "ju");
 });
+
+test("permission card: the diff summary, totals first, a row per file on a tap, binary and 'and N more'", async () => {
+  vyred();
+  const push = askCard({ id: "ask_g", tool: "Bash", kind: "permission", always: false, reason: null,
+    detail: { command: "git push origin main",
+      changes: [
+        { file: "src/intake/estate.ts", added: 96, removed: 41 },
+        { file: "src/intake/probate.ts", added: 92, removed: 92 },
+        { file: "public/harlow-legal-logo.png", added: null, removed: null, binary: true },
+      ],
+      totals: { files: 5, added: 188, removed: 133 }, truncated: true } });
+  const sum = $(push, ".cv-changes");
+  assert.ok(sum, "a push with changes shows the summary");
+  const head = $(sum, ".cv-ch-head");
+  assert.match(text(head), /Changed files/);
+  assert.equal(text($(head, ".cv-ch-add")), "+188");
+  assert.equal(text($(head, ".cv-ch-del")), "−133");
+  assert.equal($(sum, ".cv-ch-list"), null, "per-file rows wait for a tap");
+  assert.equal(head.getAttribute("aria-expanded"), "false");
+  await head.click();
+  const rows = $$(sum, ".cv-ch-row");
+  assert.equal(rows.length, 3);
+  assert.match(text(rows[0]), /src\/intake\/estate\.ts/);
+  assert.equal(text($(rows[0], ".cv-ch-add")), "+96");
+  assert.equal(text($(rows[0], ".cv-ch-del")), "−41");
+  assert.match(text(rows[2]), /binary/);
+  assert.equal($(rows[2], ".cv-ch-add"), null, "a binary file has no counts");
+  assert.equal(text($(sum, ".cv-ch-more")), "and 2 more");
+  assert.equal($(push, ".cv-ch-head").getAttribute("aria-expanded"), "true");
+  // Open stays open when the card redraws (the Deny field), and the buttons stay below it.
+  push.onKey(key("Escape"));
+  assert.ok($(push, ".cv-ch-list"), "the rows stay open across a redraw");
+  push.onKey(key("Escape"));
+  assert.ok($(push, ".gate-actions"));
+});
+
+test("permission card: a single-file Edit keeps its inline diff with the summary above the buttons; no changes, no row", () => {
+  vyred();
+  const edit = askCard({ id: "ask_e2", tool: "Edit", kind: "permission", always: false, reason: null,
+    detail: { file: "src/order/OrderForm.js", old: "a\nb", new: "a\nc",
+      changes: [{ file: "src/order/OrderForm.js", added: 1, removed: 1 }], totals: { files: 1, added: 1, removed: 1 } } });
+  assert.equal($$(edit, ".cv-dl-add").length, 1, "the inline diff stays");
+  assert.match(text($(edit, ".cv-ch-head")), /Changed file\b/);
+  assert.equal($(edit, ".cv-ch-more"), null);
+  const kids = [...edit.children];
+  const at = c => kids.findIndex(k => k.classList.contains(c));
+  assert.ok(at("cv-changes") > at("cv-ask-what") && at("cv-changes") < at("gate-actions"), "summary between the diff and the buttons");
+
+  const plain = askCard({ id: "ask_n", tool: "Edit", kind: "permission", always: false, reason: null,
+    detail: { file: "src/order/OrderForm.js", old: "a", new: "b" } });
+  assert.equal($(plain, ".cv-changes"), null);
+  const empty = askCard({ id: "ask_n2", tool: "Bash", kind: "permission", always: false, reason: null,
+    detail: { command: "git push", changes: [], totals: { files: 0, added: 0, removed: 0 } } });
+  assert.equal($(empty, ".cv-changes"), null);
+  assert.equal($(askCard({ id: "ask_n3", tool: "Bash", kind: "permission", reason: null }), ".cv-changes"), null, "no detail at all");
+});

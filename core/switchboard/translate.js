@@ -115,11 +115,18 @@ export function describe(tool, input = {}) {
  * question to route: `kind` "question" with `questions`, or "permission" with `detail`; `input` and `suggestions` stay in memory),
  * `cancel` (a request Claude Code withdrew), `delta` (partial text, which the runner throttles
  * rather than emitting one event per token), `limited` (the subscription's limit was hit) and
- * `turn` (a turn ended, with its result).
+ * `turn` (a turn ended, with its result). `block` goes with a delta: the content block it grows.
+ *
+ * Text is keyed by (message, block), the same key the transcript read gives (transcripts.blocks),
+ * so a live row and its transcript block are one. `block` is the API's content block index:
+ * a delta carries it, and a whole message's text counts the blocks before it. Claude Code sends a
+ * message as several lines, one block each, so the count runs across lines; `seen` holds it
+ * (message id -> blocks so far) and belongs to the caller. Without it a line counts on its own.
  * @param {any} m
+ * @param {Map<string, number>} [seen]
  */
-export function translate(m) {
-  /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, limited?: boolean, turn?: any,
+export function translate(m, seen) {
+  /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, block?: number, limited?: boolean, turn?: any,
    *   limit?: { status: string, kind: string|null, resets_at: number|null, utilization?: number } }} */
   const out = { events: [] };
   if (!m || typeof m !== "object") return out;
@@ -137,14 +144,25 @@ export function translate(m) {
     // Deltas carry no message id; message_start does, and the runner keeps it for what follows.
     if (m.parent_tool_use_id) return out;
     if (e.type === "message_start" && e.message && e.message.id) out.message = String(e.message.id);
-    if (e.type === "content_block_delta" && e.delta && e.delta.type === "text_delta" && e.delta.text) out.delta = String(e.delta.text);
+    if (e.type === "content_block_delta" && e.delta && e.delta.type === "text_delta" && e.delta.text) {
+      out.delta = String(e.delta.text);
+      if (Number.isInteger(e.index)) out.block = e.index;
+    }
     return out;
   }
 
   if (m.type === "assistant" && m.message && !m.parent_tool_use_id) {
     const id = String(m.message.id || "");
-    for (const b of m.message.content || []) {
-      if (b.type === "text" && b.text) out.events.push({ type: "thread.text", payload: { message: id, text: String(b.text).slice(0, 20000), done: true } });
+    const content = Array.isArray(m.message.content) ? m.message.content : [];
+    const base = seen && id ? seen.get(id) || 0 : 0;
+    if (seen && id) {
+      seen.set(id, base + content.length);
+      // Only the current message can still grow; older ones are dropped so the map stays small.
+      if (seen.size > 16) for (const k of seen.keys()) { if (seen.size <= 16) break; if (k !== id) seen.delete(k); }
+    }
+    for (const [i, b] of content.entries()) {
+      if (!b || typeof b !== "object") continue;
+      if (b.type === "text" && b.text) out.events.push({ type: "thread.text", payload: { message: id, block: base + i, text: String(b.text).slice(0, 20000), done: true } });
       if (b.type === "tool_use") out.events.push({ type: "thread.tool", payload: { id: b.id, tool: b.name, phase: "started", ...describe(b.name, b.input) } });
     }
     return out;
