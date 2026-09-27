@@ -21,6 +21,7 @@ import { SPEC } from "./kinds.js";
 export const REPROMPT_MS = 60_000;
 
 const ok = data => ({ status: 200, body: { data } });
+const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 const origin = u => { try { const x = new URL(String(u)); return ["http:", "https:"].includes(x.protocol) ? x.origin : null; } catch { return null; } };
 
 /** Rows of one kind, names and descriptions only. @param {import("./fill.js").Fill} fill @param {string} kind */
@@ -111,4 +112,40 @@ export async function addressRoute(fill, b, h) {
   const out = {};
   for (const k of /** @type {string[]} */ (SPEC.address.fields)) if (f[k]) out[k] = f[k];
   return ok(out);
+}
+
+/**
+ * POST identities {}: every login's sites and the name to show for it, for the phone's and the
+ * Mac's own autofill list (iOS and macOS ASCredentialIdentityStore, Android's inline chips). The
+ * OS must know (site, user) before anyone unlocks, or it shows nothing. This is the one place a
+ * username leaves the seal, into storage the OS protects (ADR 0028, threat model), so it needs a
+ * live session to fetch, and `vault.autofill.identities: "names"` in config.json sends the item's
+ * name in place of the username. Passwords never.
+ * @param {import("./fill.js").Fill} fill @param {any} _b @param {Record<string, string>} h
+ */
+export async function identitiesRoute(fill, _b, h) {
+  const g = gate(fill, h, "identities", null);
+  if (g.reply) return g.reply;
+  const namesOnly = fill.identities === "names";
+  const out = [];
+  for (const r of /** @type {any[]} */ (fill.db.prepare("SELECT * FROM vault_items WHERE kind IN ('login', 'passkey') ORDER BY name").all())) {
+    if (!fill.vault.rowOk("vault_items", r)) continue;
+    const details = json(r.details, {});
+    if (r.kind === "passkey") {
+      // The user handle is what the site knows the account by; iOS files the passkey under it.
+      let handle = "";
+      try { handle = (await fill.vault.fields(r)).user_handle || ""; } catch { /* locked: listed without it */ }
+      out.push({ name: r.name, kind: "passkey", rp: details.rp, credential: details.credential, userHandle: handle, user: namesOnly ? r.name : r.description.split(" · ")[0] });
+      continue;
+    }
+    let user = r.name;
+    if (!namesOnly) {
+      // A locked personal vault gives what it can: the item name stands in for the username.
+      try { user = (await fill.vault.fields(r)).username || r.name; } catch { user = r.name; }
+    }
+    // Whether it has a one-time-code seed (iOS 18 offers it for code fields); never the seed.
+    out.push({ name: r.name, kind: "login", sites: fill.hostsOf(r), apps: json(r.apps, []), user, totp: json(r.fields, []).includes("totp") });
+  }
+  fill.vault.audit("identities", null, g.who, true, `${out.length} identities${namesOnly ? ", names only" : ""}`);
+  return ok({ identities: out, users: namesOnly ? "names" : "usernames" });
 }

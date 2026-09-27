@@ -142,6 +142,8 @@ export class Fill {
     this.vault = vault;
     /** How long a session lasts from the proof that opened it. */
     this.windowMs = fillWindowMs(config);
+    /** What the OS autofill store gets for each login: "usernames" (the default) or "names" (ADR 0028). */
+    this.identities = config && config.vault && config.vault.autofill && config.vault.autofill.identities === "names" ? "names" : "usernames";
     this.db = vault.db;
     this.verifyVaultPassphrase = verifyVaultPassphrase;
     this.now = now;
@@ -268,9 +270,12 @@ export class Fill {
       case "GET status": return this.status(h);
       case "POST otp": return otpRoute(this, b, h);
       case "POST save": return saveRoute(this, b, h);
+      case "POST identities": return cards.identitiesRoute(this, b, h);
       case "POST passkeys": return passkeys.listRoute(this, b, h);
       case "POST passkey.create": return passkeys.createRoute(this, b, h);
       case "POST passkey.get": return passkeys.getRoute(this, b, h);
+      case "POST passkey.assert": return passkeys.assertRoute(this, b, h);
+      case "POST passkey.register": return passkeys.registerRoute(this, b, h);
       case "POST cards": return cards.listRoute(this, b, h);
       case "POST card.fill": return cards.cardRoute(this, b, h);
       case "POST address.fill": return cards.addressRoute(this, b, h);
@@ -575,7 +580,7 @@ export class Fill {
 // ---- the listener -----------------------------------------------------------------------
 
 const ROUTES = { pair: "POST", unlock: "POST", challenge: "POST", lock: "POST", match: "POST", fill: "POST", status: "GET", otp: "POST", save: "POST",
-  passkeys: "POST", "passkey.create": "POST", "passkey.get": "POST", cards: "POST", "card.fill": "POST", "address.fill": "POST" };
+  identities: "POST", passkeys: "POST", "passkey.create": "POST", "passkey.get": "POST", "passkey.assert": "POST", "passkey.register": "POST", cards: "POST", "card.fill": "POST", "address.fill": "POST" };
 
 class HttpError extends Error {
   /** @param {number} status @param {string} code @param {string} message */

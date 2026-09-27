@@ -73,11 +73,17 @@ mobile and the Capsule (through their owners).
   android://<pkg>@<sha256> matching for match/fill/otp. Sent to mobile to include. UNVERIFIED on
   gradle/device.
 
+- iOS/macOS: modules/vault-apple/ (credential provider: passwords, passkeys, one-time codes;
+  Secure Enclave device key; SwiftUI host; XcodeGen project, unsigned simulator build). Type-checked
+  on iOS-simulator and macOS SDKs only. Server: identities (usernames or names, totp flag, passkey
+  userHandle), passkey.assert / passkey.register over a clientDataHash.
+- hygiene: test fixtures assemble PEM headers at run time. Full set + hygiene: 576 pass, 0 fail.
+
 ## Doing
 
-- Full-suite run after 39f6f00b (waiting on testbox load). Then: iOS/macOS credential provider
-  targets (simulator/CI only), agent fill in Glass (waits on computers), a real-browser check of the
-  extension (waits on the lead: Mac free), Android CredentialProviderService (passkeys, Android 14).
+- Waiting: mobile (include vault-android, gradle tests, device check), computers (fill.begin/end for
+  Glass), the lead (a real-browser check of the extension; which team adds the Apple extension
+  targets; the session-in-Keychain call for iOS). Android CredentialProviderService next.
 
 ## Next (the approved order, sizes sent to the lead 2026-09-27)
 

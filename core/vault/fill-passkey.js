@@ -5,6 +5,12 @@
 //   POST /v1/fill/passkeys        { url, rpId }                                   -> { passkeys: [{ id, name, description }] }
 //   POST /v1/fill/passkey.create  { url, rpId, challenge, user, algs, exclude? }  -> { name, response }
 //   POST /v1/fill/passkey.get     { url, rpId, challenge, allow?, id? }           -> { response } | { choose: [...] }
+//   POST /v1/fill/passkey.assert  { rpId, clientDataHash, credential }             -> { credentialId, authenticatorData, signature, userHandle }
+//   POST /v1/fill/passkey.register { rpId, clientDataHash, user, algs, exclude? }  -> { name, credentialId, attestationObject }
+//
+// The last two are for iOS, macOS and Android's Credential Manager, which build clientDataJSON
+// themselves (with the origin they checked) and hand over only its hash. With "none"
+// attestation, registration does not sign the client data at all, so its hash is only echoed.
 //
 // The page's origin is the extension worker's to give (the sender's URL, never the page's say),
 // and webauthn.js refuses an rpId the origin may not claim. Listing needs a paired device; making
@@ -15,7 +21,7 @@
 
 import crypto from "node:crypto";
 import { gate, openFailed } from "./fill-save.js";
-import { createCredential, getAssertion, rpIdAllowed } from "./webauthn.js";
+import { createCredential, getAssertion, assertHash, rpIdAllowed } from "./webauthn.js";
 import { slug } from "./import.js";
 
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
@@ -100,6 +106,42 @@ export async function getRoute(fill, b, h) {
   fill.vault.audit("passkey-get", r.name, g.who, true, rpId);
   fill.vault.emit("vault.filled", { name: r.name, device: g.d.id });
   return ok({ response: out.response });
+}
+
+/** @param {import("./fill.js").Fill} fill @param {any} b @param {Record<string, string>} h */
+export async function assertRoute(fill, b, h) {
+  const g = gate(fill, h, "passkey-get", null);
+  if (g.reply) return g.reply;
+  const { refuse } = /** @type {any} */ (g);
+  const rpId = String(b.rpId || "");
+  if (typeof b.credential !== "string" || !B64U.test(b.credential)) return refuse(400, "TypeError", "name the passkey by its credential id");
+  const r = passkeysFor(fill, rpId).find(x => json(x.details, {}).credential === b.credential);
+  if (!r) return refuse(404, "NotAllowedError", `no such passkey for ${rpId}`);
+  let f;
+  try { f = await fill.vault.fields(r); } catch (e) { const [s, code, m] = openFailed(e, r.name); return refuse(s, code, m); }
+  let out;
+  try { out = assertHash({ credential: { id: f.credential_id, rpId: f.rp_id, userHandle: f.user_handle, privateKey: f.private_key, signCount: Number(f.sign_count) || 0 }, clientDataHash: b.clientDataHash }); }
+  catch (e) { return refuse(400, domError(e), /** @type {Error} */ (e).message); }
+  fill.db.prepare("UPDATE vault_sessions SET last_used = ? WHERE id = ?").run(fill.now(), g.s.id);
+  fill.vault.audit("passkey-get", r.name, g.who, true, rpId);
+  fill.vault.emit("vault.filled", { name: r.name, device: g.d.id });
+  return ok(out);
+}
+
+/** @param {import("./fill.js").Fill} fill @param {any} b @param {Record<string, string>} h */
+export async function registerRoute(fill, b, h) {
+  const rpId = String(b.rpId || "");
+  if (typeof b.clientDataHash !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(b.clientDataHash)) {
+    const g0 = gate(fill, h, "passkey-create", null);
+    return g0.reply || /** @type {any} */ (g0).refuse(400, "TypeError", "clientDataHash is 32 bytes of base64url");
+  }
+  // The platform checked the origin; the registration itself is the same as the extension's, with
+  // the rpId's own https origin standing in for the page (none attestation signs no client data).
+  const made = await createRoute(fill, { url: `https://${rpId}`, rpId, challenge: crypto.randomBytes(32).toString("base64url"), user: b.user, algs: b.algs, exclude: b.exclude }, h);
+  if (made.status !== 200) return made;
+  const d = made.body.data;
+  return ok({ name: d.name, credentialId: d.response.id, attestationObject: d.response.response.attestationObject,
+    authenticatorData: d.response.response.authenticatorData, publicKey: d.response.response.publicKey });
 }
 
 /** For tests: a fresh challenge, as a relying party makes one. */

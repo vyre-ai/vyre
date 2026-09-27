@@ -100,3 +100,30 @@ test("passkeys: create on a site, sign in with it, the site's checks pass; looka
   for (const secret of [ch1, ch2, ch3, userId]) assert.ok(!audit.includes(secret));
   assert.ok(!/PRIVATE KEY/.test(audit));
 });
+
+test("passkeys for iOS, macOS and Credential Manager: register and assert over the platform's clientDataHash", async t => {
+  const { call, h, auth } = await setup(t);
+  const hash1 = crypto.createHash("sha256").update("platform client data 1").digest("base64url");
+  const reg = await call("passkey.register", { rpId: "northwind.test", clientDataHash: hash1,
+    user: { id: b64u(crypto.randomBytes(16)), name: "kit@northwind.test", displayName: "Kit" }, algs: [-7] }, h);
+  assert.equal(reg.status, 200, JSON.stringify(reg.body));
+  assert.ok(reg.body.data.attestationObject && reg.body.data.credentialId);
+  // The platform builds its own client data; the vault signs authenticatorData || its hash.
+  const cd = Buffer.from(JSON.stringify({ type: "webauthn.get", challenge: challenge(), origin: "https://northwind.test" }));
+  const hash2 = crypto.createHash("sha256").update(cd).digest();
+  const a = await call("passkey.assert", { rpId: "northwind.test", clientDataHash: hash2.toString("base64url"), credential: reg.body.data.credentialId }, h);
+  assert.equal(a.status, 200, JSON.stringify(a.body));
+  const key = crypto.createPublicKey({ key: Buffer.from(reg.body.data.publicKey, "base64url"), format: "der", type: "spki" });
+  const authData = Buffer.from(a.body.data.authenticatorData, "base64url");
+  assert.deepEqual(authData.subarray(0, 32), crypto.createHash("sha256").update("northwind.test").digest());
+  assert.equal(crypto.verify("sha256", Buffer.concat([authData, hash2]), { key, dsaEncoding: "der" }, Buffer.from(a.body.data.signature, "base64url")), true);
+  // Refusals: a hash that is not 32 bytes, an unknown credential, no session.
+  assert.equal((await call("passkey.assert", { rpId: "northwind.test", clientDataHash: "abc", credential: reg.body.data.credentialId }, h)).body.error.code, "TypeError");
+  assert.equal((await call("passkey.assert", { rpId: "northwind.test", clientDataHash: hash2.toString("base64url"), credential: "AAAAAAAAAAAAAAAAAAAAAA" }, h)).body.error.code, "NotAllowedError");
+  assert.equal((await call("passkey.assert", { rpId: "northwind.test", clientDataHash: hash2.toString("base64url"), credential: reg.body.data.credentialId }, auth)).body.error.code, "session_required");
+  // identities lists the passkey with its user handle, and logins with a seed say so.
+  const ids = (await call("identities", {}, h)).body.data.identities;
+  const pk = ids.find(i => i.kind === "passkey");
+  assert.equal(pk.rp, "northwind.test");
+  assert.ok(pk.userHandle);
+});

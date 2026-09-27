@@ -88,6 +88,16 @@ test("fill: device-key unlock, one challenge, one use, 60 seconds; wrong keys an
   assert.equal(filled.body.data.username, "kit");
   assert.equal((await call("fill", { name: "harlow-portal", url: app }, { ...a2, "x-vyre-session": s4 })).body.error.code, "wrong_origin");
 
+  // The OS autofill store's list: sites and usernames, never a password; needs the session.
+  assert.equal((await call("identities", {}, a2)).body.error.code, "session_required");
+  const ids = (await call("identities", {}, { ...a2, "x-vyre-session": s4 })).body.data;
+  assert.equal(ids.users, "usernames");
+  const nw = ids.identities.find(i => i.name === "northwind-orders");
+  assert.deepEqual([nw.user, nw.sites, nw.apps], ["kit", ["https://orders.northwind.test"], [`android:sh.northwind.orders@${sha}`]]);
+  assert.ok(!JSON.stringify(ids).includes("sample-"), "no password");
+  fill.identities = "names";
+  assert.equal((await call("identities", {}, { ...a2, "x-vyre-session": s4 })).body.data.identities.find(i => i.name === "northwind-orders").user, "northwind-orders");
+
   const audit = JSON.stringify(db.prepare("SELECT * FROM vault_audit").all());
   assert.ok(!audit.includes(c1.challenge));
   assert.match(audit, /device key/);

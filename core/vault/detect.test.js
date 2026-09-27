@@ -3,6 +3,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { classify } from "./detect.js";
 
+// Private-key PEM headers are assembled here, so no key-shaped header sits whole in the source.
+const pemBegin = (kind = "") => ["-----BEGIN", `${kind}PRIVATE KEY-----`].join(" ");
+
 // Fake values are built at run time from a seeded generator, so no key-shaped literal sits in the
 // source for a push-protection scanner to trip on, and none of them is a real credential.
 const ALNUM = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -128,9 +131,9 @@ test("SaaS tokens by shape", () => {
 
 test("PEM blocks", () => {
   table([
-    ["SIGNING", "-----BEGIN PRIVATE KEY-----\\n" + fake(64) + "\\n-----END PRIVATE KEY-----", { secret: true, type: "private-key" }],
-    ["DEPLOY_KEY", "-----BEGIN OPENSSH PRIVATE KEY-----\n" + fake(70) + "\n-----END OPENSSH PRIVATE KEY-----", { secret: true, type: "private-key" }],
-    ["GITHUB_APP_KEY", "-----BEGIN RSA PRIVATE KEY-----\n" + fake(64), { secret: true, type: "private-key", provider: "github" }],
+    ["SIGNING", pemBegin() + "\\n" + fake(64) + "\\n-----END PRIVATE KEY-----", { secret: true, type: "private-key" }],
+    ["DEPLOY_KEY", pemBegin("OPENSSH ") + "\n" + fake(70) + "\n-----END OPENSSH PRIVATE KEY-----", { secret: true, type: "private-key" }],
+    ["GITHUB_APP_KEY", pemBegin("RSA ") + "\n" + fake(64), { secret: true, type: "private-key", provider: "github" }],
     ["TLS_CERT", "-----BEGIN CERTIFICATE-----\n" + fake(64) + "\n-----END CERTIFICATE-----", { secret: false, type: "cert" }],
   ]);
 });
@@ -179,7 +182,7 @@ test("public-by-design names", () => {
   table([
     ["NEXT_PUBLIC_STRIPE_KEY", "sk_live_" + fake(24), { secret: true, type: "api-key", provider: "stripe", public: true }],
     ["VITE_CLAUDE", "sk-ant-api03-" + fake(90), { secret: true, provider: "anthropic", public: true }],
-    ["REACT_APP_PUBLIC_KEY", "-----BEGIN PRIVATE KEY-----\n" + fake(40), { secret: true, type: "private-key", public: true }],
+    ["REACT_APP_PUBLIC_KEY", pemBegin() + "\n" + fake(40), { secret: true, type: "private-key", public: true }],
     ["NEXT_PUBLIC_SUPABASE_KEY", jwt({ iss: "supabase", role: "service_role" }), { secret: true, provider: "supabase", public: true }],
   ]);
 });
@@ -258,7 +261,7 @@ test("result never echoes the value", () => {
     ["ANTHROPIC_API_KEY", "sk-ant-api03-" + fake(90)], ["STRIPE_KEY", "sk_live_" + fake(24)],
     ["GITHUB_TOKEN", "ghp_" + fake(36)], ["AWS_SECRET_ACCESS_KEY", fake(40)], ["X", "AKIA" + fake(16, UPPER)],
     ["DATABASE_URL", "postgres://harlow:" + fake(20) + "@db.northwind.internal/app"],
-    ["S", jwt({ iss: "supabase", role: "service_role", exp })], ["K", "-----BEGIN PRIVATE KEY-----\n" + fake(64)],
+    ["S", jwt({ iss: "supabase", role: "service_role", exp })], ["K", pemBegin() + "\n" + fake(64)],
     ["DB_PASSWORD", "Northwind-Harlow-99"], ["BLOB", fake(64)], ["NEXT_PUBLIC_X", "sk_live_" + fake(24)],
     ["SLACK", "https://hooks.slack.com/services/T0/B0/" + fake(24)], ["PORT", "8080"],
   ];

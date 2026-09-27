@@ -217,3 +217,19 @@ export function getAssertion({ credential, origin, challenge, crossOrigin = fals
     signCount,
   };
 }
+
+/**
+ * Sign for a platform that built clientDataJSON itself and hands over only its hash: iOS and
+ * macOS (ASPasskeyCredentialRequest) and Android's Credential Manager. The origin checks were
+ * the platform's; the rpId is still checked here as a domain the credential belongs to.
+ * @param {{ credential: { id: string, rpId: string, userHandle: string, privateKey: string, signCount?: number }, clientDataHash: string }} opts
+ */
+export function assertHash({ credential, clientDataHash }) {
+  if (!credential || typeof credential !== "object") throw new TypeError("credential is required");
+  if (!rpIdAllowed(credential.rpId, `https://${credential.rpId}`)) throw fail("SecurityError", "the passkey's rpId is not a domain");
+  const hash = fromB64u(clientDataHash, "clientDataHash", 32, 32);
+  const signCount = Number(credential.signCount) || 0;
+  const auth = authData(credential.rpId, FLAG.UP | FLAG.UV | FLAG.BE | FLAG.BS, signCount);
+  const signature = crypto.sign("sha256", Buffer.concat([auth, hash]), { key: credential.privateKey, dsaEncoding: "der" });
+  return { credentialId: credential.id, authenticatorData: b64u(auth), signature: b64u(signature), userHandle: credential.userHandle };
+}

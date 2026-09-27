@@ -9,6 +9,9 @@ import path from "node:path";
 import { setupPlan, addAllowedSigner, findPrivateKeys } from "./setup.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 
+// Private-key PEM headers are assembled here, so no key-shaped header sits whole in the source.
+const pemBegin = (kind = "") => ["-----BEGIN", `${kind}PRIVATE KEY-----`].join(" ");
+
 const PUB = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHarlowLegalSampleKeyForTestsOnly00000000000 alex@harlow.test";
 
 test("ssh setup: IdentityAgent, SSH_AUTH_SOCK, git signing through the agent, allowed signers", () => {
@@ -33,9 +36,9 @@ test("ssh import: private keys only, by their first line, with item names", () =
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-ssh-dir-"));
   try {
     const w = (n, s) => fs.writeFileSync(path.join(dir, n), s);
-    w("id_ed25519", "-----BEGIN OPENSSH PRIVATE KEY-----\nsample\n-----END OPENSSH PRIVATE KEY-----\n");
+    w("id_ed25519", pemBegin("OPENSSH ") + "\nsample\n-----END OPENSSH PRIVATE KEY-----\n");
     w("id_ed25519.pub", PUB + "\n");
-    w("northwind deploy", "-----BEGIN RSA PRIVATE KEY-----\nsample\n");
+    w("northwind deploy", pemBegin("RSA ") + "\nsample\n");
     w("known_hosts", "github.test ssh-ed25519 AAAA\n");
     w("config", "Host *\n");
     w("id_ed25519-cert.pub", "ssh-ed25519-cert-v01@openssh.com AAAA\n");

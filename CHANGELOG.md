@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### iOS and macOS AutoFill provider, and passkeys for platforms that hash their own client data
+
+- modules/vault-apple/ holds the iOS and macOS credential provider: passwords, passkeys and
+  one-time codes behind a Secure Enclave device key. It has a SwiftUI host and an XcodeGen project
+  that builds unsigned for the simulator. It is type-checked only: nothing is signed, built or run
+  without an Apple Developer team.
+- The fill listener adds `identities` for the OS credential stores, which carries usernames by
+  default and item names with `vault.autofill.identities: "names"`, a `totp` flag, and passkey
+  user handles. It also adds `passkey.assert` and `passkey.register` over the platform's
+  clientDataHash (webauthn.js assertHash). The same routes serve Android's Credential Manager.
+
 #### Android autofill: a module for the Vyre app, phone pairing codes, native-app matching
 
 - modules/vault-android/ is an Expo local module (Kotlin): an AutofillService whose suggestions

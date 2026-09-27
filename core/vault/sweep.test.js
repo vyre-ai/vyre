@@ -13,6 +13,9 @@ import { recorded } from "./testing.js";
 import { prepare, sweepText, sweepFiles, shellHistories } from "./sweep.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
+// Private-key PEM headers are assembled here, so no key-shaped header sits whole in the source.
+const pemBegin = (kind = "") => ["-----BEGIN", `${kind}PRIVATE KEY-----`].join(" ");
+
 const hex = n => crypto.randomBytes(n).toString("hex");
 // Key shapes assembled at run time, so none sits whole in the source.
 const stripeKey = () => ["sk", "live", hex(14)].join("_");
@@ -28,7 +31,7 @@ test("sweepText: vault values by item, shapes by type, separators inside values,
     `const key = "${a}"; // and again ${a}`,
     `DATABASE=${url}`,
     `stripe.setKey('${stray}')`,
-    "-----BEGIN OPENSSH PRIVATE KEY-----",
+    pemBegin("OPENSSH "),
     "nothing here, short and 1234567890123",
   ].join("\n");
   const found = sweepText(text, values, "src/app.js");

@@ -100,7 +100,7 @@ test("create: attestationObject, authData layout, COSE key matches SPKI", () => 
   assert.equal(r.publicKeyAlgorithm, -7);
   assert.equal(credential.signCount, 0);
   assert.equal(credential.userHandle, juno.id);
-  assert.match(credential.privateKey, /^-----BEGIN PRIVATE KEY-----/);
+  assert.ok(credential.privateKey.startsWith(["-----BEGIN", "PRIVATE KEY-----"].join(" ")));
 
   const att = unb64u(r.attestationObject);
   const { value: obj, used } = cborDecode(att);
