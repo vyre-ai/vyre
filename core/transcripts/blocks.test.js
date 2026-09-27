@@ -177,6 +177,54 @@ test("blocks: a missing file is no blocks, never an error", () => {
   assert.deepEqual(blocks("/nowhere/at/all.jsonl"), { blocks: [], next: 0, first: null });
 });
 
+test("blocks: words typed while the model works are a steer inside its turn, with the step they joined at", t => {
+  const f = write(t, [
+    U("Rebuild the Harlow Legal intake", "2026-09-03T08:00:00Z"),
+    A("m1", { type: "tool_use", id: "t1", name: "Read", input: { file_path: "src/intake/general.ts" } }, "2026-09-03T08:00:01Z"),
+    R("t1", "1\texport const general = {};", "2026-09-03T08:00:02Z"),
+    A("m2", { type: "tool_use", id: "t2", name: "Bash", input: { command: "npm test" } }, "2026-09-03T08:00:03Z"),
+    { ...U("Use Estate intake v2 instead", "2026-09-03T08:00:04Z"), uuid: "steer-1" },
+    R("t2", "ok", "2026-09-03T08:00:05Z"),
+    A("m3", { type: "text", text: "Switching to the v2 form." }, "2026-09-03T08:00:06Z"),
+    U("Thanks, now push q3-report", "2026-09-03T08:01:00Z"),
+    A("m4", { type: "text", text: "Pushed." }, "2026-09-03T08:01:02Z"),
+  ]);
+  const bs = /** @type {any[]} */ (blocks(f, { from: 0 }).blocks);
+  assert.deepEqual(bs.map(b => `${b.seq}:${b.kind}`), ["0:user", "1:tool", "3:tool", "4:user", "6:text", "7:turn", "7:user", "8:text", "8:turn"]);
+  const steer = bs.find(b => b.seq === 4);
+  assert.deepEqual([steer.steered, steer.step, steer.uuid, steer.text], [true, 1, "steer-1", "Use Estate intake v2 instead"], "one call had finished");
+  const closed = bs.find(b => b.kind === "turn" && !b.open);
+  assert.deepEqual([closed.seq, closed.duration_ms], [7, 6000], "the steer starts no turn: the first turn runs on to its reply");
+  assert.equal(bs.find(b => b.seq === 7 && b.kind === "user").steered, undefined, "after the reply, a new turn");
+});
+
+test("blocks: a live read of an open turn keeps its steer, and resumes at the turn's first line", t => {
+  const f = write(t, [
+    U("Draft the Northwind Bakery menu", "2026-09-03T09:00:00Z"),
+    A("m1", { type: "tool_use", id: "t1", name: "Read", input: { file_path: "menu.md" } }, "2026-09-03T09:00:01Z"),
+    { ...U("Keep the prices as they are", "2026-09-03T09:00:02Z"), uuid: "s-2" },
+  ]);
+  const one = blocks(f, { from: 0 });
+  const steer = /** @type {any} */ (one.blocks.find(b => b.kind === "user" && b.seq === 2));
+  assert.deepEqual([steer.steered, steer.step], [true, 0], "the Read was still running");
+  assert.equal(one.next, 0);
+  assert.deepEqual(blocks(f, { from: one.next }).blocks.filter(b => /** @type {any} */ (b).steered).map(b => b.seq), [2], "the same on a re-read");
+});
+
+test("blocks: an interrupt ends the turn; neither it nor what follows is a steer", t => {
+  const f = write(t, [
+    U("Run the Northwind Bakery build", "2026-09-03T10:00:00Z"),
+    A("m1", { type: "tool_use", id: "t1", name: "Bash", input: { command: "npm run build" } }, "2026-09-03T10:00:01Z"),
+    { type: "user", timestamp: "2026-09-03T10:00:02Z", message: { role: "user", content: [
+      { type: "tool_result", tool_use_id: "t1", content: "Interrupted", is_error: true },
+      { type: "text", text: "[Request interrupted by user for tool use]" }] } },
+    U("Try the dev build instead", "2026-09-03T10:00:03Z"),
+  ]);
+  const bs = /** @type {any[]} */ (blocks(f, { from: 0 }).blocks);
+  assert.ok(!bs.some(b => b.steered));
+  assert.equal(bs.filter(b => b.kind === "user").length, 3);
+});
+
 // ------------------------------------------------------------ live keys equal transcript keys
 
 /** The (message, block) keys the live stream gives, done and partial, from stream-json lines. */

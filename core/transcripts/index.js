@@ -237,6 +237,8 @@ const LOOKAHEAD = 20000;
 
 const REMINDER = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
 const COMMAND = /^\s*<(command-name|command-message|command-args|local-command-stdout|local-command-stderr)>/;
+/** Claude Code's own line when a turn is stopped: never the person steering. */
+const INTERRUPTED = /^\[Request interrupted by user/;
 
 /**
  * Redact, then cap. Slicing a little past the cap first keeps a runaway string cheap to redact,
@@ -303,7 +305,12 @@ function cleanPatch(/** @type {any} */ p) {
  * every line that shares message.id (Claude Code writes one block per line), so it equals the
  * index the live stream gives and the Deck can swap a live row for its block in place. `uuid` on
  * a person's line is the transcript line's own.
- * @typedef {{ seq: number, kind: "user", ts: number, text: string, command?: true, uuid?: string }
+ *
+ * A person's line inside an open turn (the model has called a tool and not yet finished its
+ * reply) is a steer: words typed while it worked, which joined the turn at its next step. It is
+ * `steered: true, step: <tool calls finished in the turn before it>`, it does not start a turn,
+ * and the Deck marks it "Steered at step N" as it did live.
+ * @typedef {{ seq: number, kind: "user", ts: number, text: string, command?: true, uuid?: string, steered?: true, step?: number }
  *   | { seq: number, kind: "text", ts: number, message: string|null, block?: number, text: string }
  *   | { seq: number, kind: "thinking", ts: number, block?: number, text: string }
  *   | { seq: number, kind: "tool", ts: number, id: string, tool: string, input: any, output: string|null,
@@ -330,7 +337,9 @@ class Reader {
 
   /** @param {number|null} seq the human line that starts it (null: it started before the window) @param {number} ts */
   fresh(seq, ts) {
-    return { seq, ts, first: 0, last: 0, lastSeq: -1, any: false, zero: false, model: /** @type {string|null} */ (null), usage: new Map() };
+    return { seq, ts, first: 0, last: 0, lastSeq: -1, any: false, zero: false, model: /** @type {string|null} */ (null), usage: new Map(),
+      // Steering: whether the model's last word was a tool call (so the turn goes on), and how many calls have finished.
+      calling: false, steps: 0 };
   }
 
   /**
@@ -381,6 +390,15 @@ class Reader {
     }
     const text = texts.join("\n").replace(REMINDER, "").trim();
     if (!text) return null;
+    if (this.steers(text)) {
+      if (only) return null;
+      /** @type {any} */
+      const b = { seq, kind: "user", ts, text: clean(text, TEXT_CAP), steered: true, step: this.turn.steps };
+      if (typeof o.uuid === "string" && o.uuid) b.uuid = o.uuid;
+      this.before = null;
+      this.blocks.push(b);
+      return null;
+    }
     if (only) return "human";
     this.closeTurn(seq, false);
     /** @type {any} */
@@ -394,11 +412,25 @@ class Reader {
     return "human";
   }
 
+  /**
+   * Is a person's line with this text a steer? Only inside a turn this read holds, while a tool
+   * call is outstanding or the model's last word was one. A command or Claude Code's own
+   * "[Request interrupted by user]" line never is.
+   * @param {string} text
+   */
+  steers(text) {
+    const t = this.turn;
+    if (!t.any || (t.seq === null && !t.zero)) return false;
+    if (COMMAND.test(text) || INTERRUPTED.test(text)) return false;
+    return t.calling || [...this.pending.values()].some(b => b.seq >= (t.seq ?? 0));
+  }
+
   /** @param {any} p @param {any} o @param {number} ts */
   result(p, o, ts) {
     const b = this.pending.get(p.tool_use_id);
     if (!b) return;
     this.pending.delete(p.tool_use_id);
+    this.turn.steps++;
     b.output = clean(resultText(p.content), BLOCK_CAP);
     b.error = p.is_error === true;
     b.done_ts = ts || null;
@@ -416,9 +448,15 @@ class Reader {
     if (typeof m.model === "string" && m.model && !m.model.startsWith("<")) t.model = m.model;
     // Every line of one reply repeats its usage, and the last one has the final output count.
     if (m.usage && typeof m.usage === "object") t.usage.set(m.id || `line:${seq}`, m.usage);
-    if (only) return null;
     const c = m.content;
     const parts = typeof c === "string" ? [{ type: "text", text: c }] : Array.isArray(c) ? c : [];
+    // The turn goes on while the model's last word is a tool call; text or thinking after one may be its end.
+    for (const p of parts) {
+      if (!p || typeof p !== "object") continue;
+      if (p.type === "tool_use") t.calling = true;
+      else if ((p.type === "text" && typeof p.text === "string" && p.text.trim()) || p.type === "thinking") t.calling = false;
+    }
+    if (only) return null;
     // The API's content block index: every block of the message counts, whatever its type, and
     // the lines of one message each carry the next of its blocks.
     const key = typeof m.id === "string" && m.id ? m.id : null;

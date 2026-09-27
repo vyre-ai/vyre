@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createSession, applyEvent, applyBlocks } from "./session-state.js";
+import { createSession, applyEvent, applyBlocks, localSend, dropLocal, checkpoints } from "./session-state.js";
 
 const T = "th-harlow";
 /** @param {any} s */
@@ -295,4 +295,150 @@ test("a session closed for idleness is idle, not stopped", () => {
   ev(s, "thread.stopped", { reason: "idle" });
   assert.equal(s.state, "idle");
   assert.equal(s.stopped, "idle");
+});
+
+// ---- steering, the queue, rewinds, modes, todos and tasks (the composer like Claude Code) ----
+
+test("a steer: drawn on send, moved to where it joined, and a transcript re-read keeps one marker", () => {
+  const s = createSession(T);
+  ev(s, "thread.sent", { text: "Rebuild the Estate intake", uuid: "u-1" }, { at: 1000 });
+  ev(s, "thread.tool", { call: "c1", name: "Read", status: "running" }, { at: 2000 });
+  const drawn = localSend(s, { uuid: "u-2", text: "Use Estate intake v2 instead", mode: "steer", at: 3000 });
+  assert.deepEqual(keys(s), ["u:u-1", "t:c1", "steer:u-2", "u:u-2"]);
+  assert.ok(drawn.includes("steer:u-2") && drawn.includes("u:u-2"));
+  assert.equal(s.byKey.get("steer:u-2").pending, true, "steering until kit reads it");
+  ev(s, "thread.tool", { call: "c1", status: "completed" }, { at: 3500 });
+  ev(s, "thread.tool", { call: "c2", name: "Bash", status: "running" }, { at: 3600 });
+  ev(s, "thread.tool", { call: "c2", status: "completed" }, { at: 3900 });
+  const out = ev(s, "thread.steered", { uuid: "u-2", turn: `${T}:1`, step: 2 }, { at: 4000 });
+  assert.deepEqual(keys(s), ["u:u-1", "t:c1", "t:c2", "steer:u-2", "u:u-2"], "the words moved to the tail they joined");
+  const m = s.byKey.get("steer:u-2");
+  assert.deepEqual([m.pending, m.step, m.user, m.at], [false, 2, "u:u-2", 4000]);
+  assert.ok(out.includes("steer:u-2") && out.includes("u:u-2"));
+  ev(s, "thread.sent", { text: "Use Estate intake v2 instead", uuid: "u-2" });
+  assert.equal(s.items.filter(i => i.kind === "user").length, 2, "the echo is the same message");
+  applyBlocks(s, [
+    { seq: 0, kind: "user", ts: 1000, text: "Rebuild the Estate intake", uuid: "u-1" },
+    { seq: 1, kind: "tool", ts: 2000, id: "c1", tool: "Read", input: { file_path: "src/intake/general.ts" }, output: "x", error: false },
+    { seq: 3, kind: "tool", ts: 3600, id: "c2", tool: "Bash", input: { command: "npm test" }, output: "ok", error: false },
+    { seq: 5, kind: "user", ts: 4000, text: "Use Estate intake v2 instead", uuid: "u-2", steered: true, step: 2 },
+  ]);
+  assert.deepEqual(keys(s), ["u:u-1", "t:c1", "t:c2", "steer:u-2", "u:u-2"]);
+  assert.equal(s.items.filter(i => i.kind === "steer").length, 1);
+  assert.equal(s.byKey.get("u:u-2").steered, true);
+});
+
+test("a steer read from the transcript alone gets the same marker, once", () => {
+  const s = createSession(T);
+  applyBlocks(s, [
+    { seq: 0, kind: "user", ts: 1, text: "Draft the Northwind Bakery menu" },
+    { seq: 1, kind: "tool", ts: 2, id: "c1", tool: "Read", input: { file_path: "menu.md" }, output: "x", error: false },
+    { seq: 3, kind: "user", ts: 3, text: "Keep the prices", steered: true, step: 1 },
+    { seq: 4, kind: "text", ts: 4, message: "msg_1", text: "Keeping them." },
+  ]);
+  assert.deepEqual(keys(s), ["u:@0", "t:c1", "steer:@3", "u:@3", "m:msg_1:0"]);
+  assert.equal(s.byKey.get("steer:@3").step, 1);
+  applyBlocks(s, [{ seq: 3, kind: "user", ts: 3, text: "Keep the prices", steered: true, step: 1 }]);
+  assert.equal(s.items.filter(i => i.kind === "steer").length, 1, "read twice, one marker");
+});
+
+test("queued on send, confirmed by thread.queued, then steered from the queue: the queued words are the steer", () => {
+  const s = createSession(T);
+  ev(s, "thread.sent", { text: "Rebuild the intake", uuid: "u-1" });
+  assert.deepEqual(localSend(s, { uuid: "q-1", text: "Then open a PR against main", mode: "queue", at: 5 }), ["@queued"]);
+  assert.deepEqual(s.queued, [{ uuid: "q-1", text: "Then open a PR against main", queued: null, at: 5, local: true }]);
+  ev(s, "thread.queued", { uuid: "q-1", text: "Then open a PR against main" }, { at: 6 });
+  assert.deepEqual(s.queued, [{ uuid: "q-1", text: "Then open a PR against main", queued: null, at: 6 }], "one row, the box's");
+  ev(s, "thread.unqueued", { uuid: "q-1", reason: "steered" });
+  assert.equal(s.queued.length, 0);
+  ev(s, "thread.steered", { uuid: "q-1", step: 3 }, { at: 9 });
+  assert.deepEqual(keys(s), ["u:u-1", "steer:q-1", "u:q-1"]);
+  assert.equal(s.byKey.get("u:q-1").text, "Then open a PR against main");
+  assert.equal(s.byKey.get("steer:q-1").step, 3);
+});
+
+test("a failed send takes back what was drawn; an echo without a uuid is the words drawn on send", () => {
+  const s = createSession(T);
+  localSend(s, { uuid: "u-9", text: "Keep the witness page", mode: "steer" });
+  assert.deepEqual(dropLocal(s, "u-9").sort(), ["steer:u-9", "u:u-9"]);
+  assert.equal(s.items.length, 0);
+  localSend(s, { uuid: "q-9", text: "later", mode: "queue" });
+  assert.deepEqual(dropLocal(s, "q-9"), ["@queued"]);
+  assert.equal(s.queued.length, 0);
+  localSend(s, { uuid: "u-10", text: "Keep the witness page", mode: "steer" });
+  ev(s, "thread.sent", { text: "Keep the witness page", surface: "deck" });
+  assert.equal(s.items.filter(i => i.kind === "user").length, 1);
+  assert.equal(s.byKey.get("u:u-10").confirmed, true);
+  assert.deepEqual(localSend(s, { uuid: "u-11", text: "x", mode: null }), [], "an idle send draws nothing: thread.sent does");
+});
+
+test("a rewind drops that message and everything after it, and a re-read does not bring them back", () => {
+  const s = createSession(T);
+  const blocks = [
+    { seq: 0, kind: "user", ts: 1, text: "Read the intake folder", uuid: "a" },
+    { seq: 1, kind: "text", ts: 2, message: "msg_a", text: "It has three forms." },
+    { seq: 2, kind: "turn", ts: 1, duration_ms: 1, tokens: { input: 1, output: 1 }, model: "m" },
+    { seq: 2, kind: "user", ts: 3, text: "Rebuild the Estate intake", uuid: "b" },
+    { seq: 3, kind: "tool", ts: 4, id: "c1", tool: "Edit", input: { file_path: "src/intake/estate.ts", old_string: "a", new_string: "b" }, output: "ok", error: false },
+    { seq: 4, kind: "text", ts: 5, message: "msg_b", text: "Done." },
+  ];
+  applyBlocks(s, blocks);
+  assert.deepEqual(checkpoints(s).map(c => c.uuid), ["b", "a"], "newest first");
+  const out = ev(s, "thread.rewound", { uuid: "b", restore: "both" }, { at: 10 });
+  assert.ok(out.includes("@rewound") && out.includes("t:c1") && out.includes("u:@2"));
+  assert.deepEqual(s.rewound, { uuid: "b", restore: "both", text: "Rebuild the Estate intake", at: 10 });
+  assert.deepEqual(keys(s).slice(0, 3), ["u:@0", "m:msg_a:0", "turn:@2"]);
+  assert.equal(s.items.length, 4);
+  assert.equal(s.items[3].text, 'Rewound to before "Rebuild the Estate intake", files too');
+  applyBlocks(s, blocks);
+  assert.equal(s.items.length, 4, "the dropped blocks stay dropped");
+  ev(s, "thread.rewound", { uuid: "a", restore: "code" });
+  assert.equal(s.items.length, 5, "code only: the conversation stays");
+  assert.equal(s.items[4].text, 'Files put back to before "Read the intake folder"');
+});
+
+test("mode, model and thinking: from thread.started and their own events", () => {
+  const s = createSession(T);
+  ev(s, "thread.started", { provider: "claude", model: "opus", mode: "default", modes: ["default", "acceptEdits", "plan", "bypassPermissions"], thinking: false });
+  assert.equal(s.mode, "default");
+  assert.deepEqual(s.modes, ["default", "acceptEdits", "plan", "bypassPermissions"]);
+  assert.equal(s.thinking, false);
+  assert.deepEqual(ev(s, "thread.mode", { mode: "plan" }), ["@session"]);
+  assert.equal(s.mode, "plan");
+  assert.deepEqual(ev(s, "thread.model", { model: "sonnet" }), ["@session"]);
+  assert.equal(s.model, "sonnet");
+  assert.deepEqual(ev(s, "thread.thinking", { on: true }), ["@session"]);
+  assert.equal(s.thinking, true);
+});
+
+test("todos: the newest TodoWrite of the thread, announced as @todos", () => {
+  const s = createSession(T);
+  const blocks = [
+    { seq: 0, kind: "user", ts: 1, text: "Plan the Harlow Legal launch" },
+    { seq: 1, kind: "tool", ts: 2, id: "td1", tool: "TodoWrite", input: { todos: [{ content: "Read the intake", status: "in_progress", activeForm: "Reading the intake" }] }, output: "ok", error: false },
+    { seq: 2, kind: "tool", ts: 3, id: "td2", tool: "TodoWrite", input: { todos: [{ content: "Read the intake", status: "completed" }, { content: "Run the tests", status: "pending" }] }, output: "ok", error: false },
+  ];
+  assert.ok(applyBlocks(s, blocks).includes("@todos"));
+  assert.deepEqual(s.todos, { key: "t:td2", todos: [{ content: "Read the intake", status: "completed" }, { content: "Run the tests", status: "pending" }] });
+  assert.deepEqual(applyBlocks(s, blocks), [], "read again: nothing moved");
+});
+
+test("background tasks: guessed from tool calls until thread.task comes, then the box's", () => {
+  const s = createSession(T);
+  const out = applyBlocks(s, [
+    { seq: 0, kind: "user", ts: 1, text: "Start the Northwind dev server" },
+    { seq: 1, kind: "tool", ts: 2, id: "b1", tool: "Bash", input: { command: "npm run dev", run_in_background: true }, output: "Command running in background with ID: bash_1", error: false },
+    { seq: 2, kind: "tool", ts: 3, id: "b2", tool: "Bash", input: { command: "npm run build", run_in_background: true }, output: "Command running in background with ID: bash_2", error: false },
+    { seq: 3, kind: "tool", ts: 4, id: "k1", tool: "KillShell", input: { shell_id: "bash_2" }, output: "killed", error: false },
+    { seq: 4, kind: "tool", ts: 5, id: "a1", tool: "Task", input: { description: "Check the menu prices", prompt: "x" }, output: null, error: false },
+  ]);
+  assert.ok(out.includes("@tasks"));
+  assert.deepEqual([...s.tasks.values()].map(t => [t.id, t.kind, t.title, t.status]), [
+    ["bash_1", "shell", "npm run dev", "running"], ["bash_2", "shell", "npm run build", "killed"], ["a1", "agent", "Check the menu prices", "running"]]);
+  assert.deepEqual(ev(s, "thread.task", { id: "sh_7", kind: "shell", title: "npm run dev", status: "running" }, { at: 9 }), ["@tasks"]);
+  assert.deepEqual([...s.tasks.keys()], ["sh_7"], "the guesses give way");
+  ev(s, "thread.task", { id: "sh_7", status: "completed" });
+  assert.deepEqual([s.tasks.get("sh_7").status, s.tasks.get("sh_7").title], ["completed", "npm run dev"]);
+  applyBlocks(s, [{ seq: 5, kind: "tool", ts: 6, id: "b3", tool: "Bash", input: { command: "npm test", run_in_background: true }, output: "ID: bash_3", error: false }]);
+  assert.deepEqual([...s.tasks.keys()], ["sh_7"], "tool calls no longer move them");
 });
