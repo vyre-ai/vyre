@@ -138,6 +138,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   sign-off: fast-forward main, targeted run, tell box-deploy to redeploy (backup first). Then merge into pre/rc.
 - Reviewer (security) now signs off shas. Cleared for 0.1.1: teammates 9d9e6688 (on 20d0f121, fixes its LOW; supersedes b19f10c2),
   memory-iq d0b916b9 + 7ee03df6 (together). windows 8cd4722d cleared (with cac517d4 + 63156fe9).
+- connectors 21beb66b (lib/connectors move, shrinks the rc.2 freeze; mcp discover) AFTER e2e signs off;
+  connectors will ping.
 - teammates b19f10c2 (core/team, ADR 0031 step 1; e2e signed off). It carries a cherry-pick of 1941f2cf
   in core/daemon/index.js, already on main: expect a trivial conflict there.
 
