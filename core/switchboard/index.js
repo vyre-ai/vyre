@@ -180,7 +180,7 @@ export const LIMIT_NOTICE_AT = 0.8;
 const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
 
 /** Launch options kept with a thread and reused on every resume. */
-const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort"];
+const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort", "quick"];
 
 /** Reasoning effort, as /effort takes it (the Agent SDK's EffortLevel). */
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -577,11 +577,13 @@ export class Switchboard {
     const st = this.live.get(id);
     const rec = this.record(id);
     const key = String(toolUseID || (input && input.tool_use_id) || crypto.randomUUID());
-    const r = await this.deps.call("sessions.slots", { action: "take", kind: "subagent", project: (rec && rec.project) || "_none", owner: id, key, timeout_ms: 10 * 60_000 });
+    const r = await this.deps.call("sessions.slots", { action: "take", kind: "subagent", project: (rec && rec.project) || "_none", owner: id, key, timeout_ms: 10 * 60_000, auth: (rec && rec.auth) || "ambient" });
     if (r && r.error) {
       if (r.error.code === "no_such_tool") return {};
       return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny",
-        permissionDecisionReason: `No subagent slot came free (${r.error.message}). Carry on without it, or try again later.` } };
+        permissionDecisionReason: r.error.code === "usage_paused"
+          ? `Subagents are ${r.error.message} Carry on without one.`
+          : `No subagent slot came free (${r.error.message}). Carry on without it, or try again later.` } };
     }
     if (st && this.live.get(id) === st) { st.subSlots = st.subSlots || new Set(); st.subSlots.add(key); }
     else this.deps.call("sessions.slots", { action: "release", owner: id, key }).catch(() => {});
@@ -710,6 +712,7 @@ export class Switchboard {
     }
     for (const e of t.events) {
       if (e.type === "thread.text") this.flush(id, st);                // the whole text lands after its last delta
+      if (e.type === "thread.text" && e.payload.done && !e.payload.kind && !e.payload.notice) st.lastText = String(e.payload.text || "");
       if (e.type === "thread.finished") {
         this.flush(id, st);
         // The turn's own cost from the running total: a total below the last one is a new count
@@ -749,6 +752,7 @@ export class Switchboard {
       const ev = this.emit(e.type, e.payload, id, project);
       if (e.type === "thread.finished" && ev) this.schedulePrune(id, ev.id);
       if (e.type === "thread.finished") this.turnEnded(id, st, project);
+      if (e.type === "thread.finished" && st.answered) { const a = st.answered; st.answered = null; a({ text: st.lastText || "", ok: Boolean(e.payload.ok), cost_usd: Number(e.payload.cost_usd) || 0 }); }
     }
     // The floor, before anyone is asked (ADR 0030, "Security"): a call it denies is refused here,
     // not put to the person, whatever the session's own settings say. The Harness runs the same
@@ -817,6 +821,9 @@ export class Switchboard {
   limit(id, st, l, project) {
     this.db.prepare("UPDATE threads_runs SET last_limit = ? WHERE id = ?").run(JSON.stringify({ ...l, at: Date.now() }), id);
     this.emit("thread.limit", l, id, project);
+    // The plan's usage per credential, where the usage pause is decided (sessions.usage.*).
+    const rec = this.record(id);
+    this.deps.call("sessions.usage.report", { auth: (rec && rec.auth) || "ambient", ...l }).catch(() => {});
     if (l.status === "allowed") { st.limitStatus = l.status; return; }
     const loud = l.status === "rejected" || (typeof l.utilization === "number" && l.utilization >= LIMIT_NOTICE_AT);
     if (!loud || st.limitStatus === l.status) return;
@@ -1424,6 +1431,51 @@ export class Switchboard {
     return { thread: id, effort: e, ...(st ? {} : { note: "applies when the thread next runs" }) };
   }
 
+  /**
+   * One question to a purpose's warm session (Vyre IQ's "memory", ADR 0034's latency target): a
+   * lean session (no plugin, no tools, none of the user's settings) already started and waiting,
+   * so the answer does not pay Claude Code's start. Each question gets a fresh one, never one that
+   * heard another question: the one used is closed when it answers, and a new spare starts behind
+   * it. Nothing is started before the first question (light by default); a spare nobody uses
+   * closes after sessions.idle_minutes, as every idle session does. The system text is fixed per
+   * spare, so the question's own material goes in `prompt`.
+   * @param {{ purpose: string, system?: string|null, prompt: string, model?: string|null, timeoutMs?: number }} o
+   * @returns {Promise<{ text: string, ok: boolean, cost_usd: number, warm: boolean, ms: number, thread: string }>}
+   */
+  async quick({ purpose, system = null, prompt, model = null, timeoutMs = 60_000 }) {
+    const t0 = Date.now();
+    const key = `${purpose}\u0000${model || ""}\u0000${crypto.createHash("sha256").update(String(system || "")).digest("hex")}`;
+    this.spares = this.spares || new Map();
+    let id = this.spares.get(key);
+    this.spares.delete(key);
+    const warm = Boolean(id && this.live.has(id) && !this.live.get(id).turn);
+    if (!warm) id = (await this.spare(purpose, system, model)).id;
+    const st = this.live.get(id);
+    if (!st) throw new Error(`the ${purpose} session did not start`);
+    const answer = new Promise((resolve, reject) => {
+      st.answered = resolve;
+      const t = setTimeout(() => { st.answered = null; reject(Object.assign(new Error(`no answer within ${timeoutMs} ms`), { code: "timeout" })); }, timeoutMs);
+      t.unref?.();
+    });
+    this.write(id, String(prompt));
+    // The next question's session starts now, while this one answers.
+    this.spare(purpose, system, model).then(r => { if (this.spares.has(key)) this.stop(r.id).catch(() => {}); else this.spares.set(key, r.id); }).catch(e => this.deps.log(`threads: no spare ${purpose} session (${e.message})`));
+    try {
+      const r = /** @type {any} */ (await answer);
+      return { ...r, warm, ms: Date.now() - t0, thread: id };
+    } finally {
+      st.done = true; st.stopping = true;
+      setImmediate(() => st.proc.stop());
+    }
+  }
+
+  /** A lean session for a purpose, started and left waiting for its question. */
+  async spare(purpose, system, model) {
+    const cwd = path.join(this.deps.root || os.tmpdir(), "quick", purpose.replace(/[^a-z0-9-]/gi, "_"));
+    fs.mkdirSync(cwd, { recursive: true });
+    return this.launch({ cwd, lean: true, quick: true, purpose, name: `Vyre ${purpose}`, ...(system ? { append: String(system) } : {}), ...(model ? { model } : {}) });
+  }
+
   /** A running thread's background tasks (shell commands and subagents), newest last. */
   tasks(id) {
     this.must(id);
@@ -1526,7 +1578,9 @@ export class Switchboard {
       : this.db.prepare(`SELECT id FROM threads_runs ${all ? "" : `WHERE status IN (${LIVE.map(() => "?").join(",")}) OR last_at > ?`} ORDER BY last_at DESC LIMIT 200`)
         .all(...(all ? [] : [...LIVE, Date.now() - 86_400_000]));
     const live = this.sessions.live(this.ours());
-    return rows.map(r => ({ ...this.record(String(r.id)), live: live.has(String(r.id)) }));
+    // Warm sessions (quick) are Vyre's own plumbing: listed only with all.
+    const quick = all ? new Set() : new Set(/** @type {any[]} */ (this.db.prepare("SELECT id, opts FROM threads_runs WHERE opts LIKE '%\"quick\":true%'").all()).map(r => String(r.id)));
+    return rows.filter(r => !quick.has(String(r.id))).map(r => ({ ...this.record(String(r.id)), live: live.has(String(r.id)) }));
   }
 
   /** A thread with its recent events, its open asks and who holds it. What a surface opening it needs. */
@@ -2006,6 +2060,12 @@ export default {
     });
     // For other modules only (agents): start or resume with an agent's credentials, scope and
     // instructions. Internal, so no surface or model can hand a thread an environment.
+    ctx.tool("threads.quick", {
+      description: "One question to a purpose's warm session (a lean one already started, so no start-up wait): memory (Vyre IQ), planner, helper and the like. A fresh session per question; the system text is fixed per spare, the question's material goes in prompt. Returns { text, ok, cost_usd, warm, ms, thread }.", internal: true,
+      input: { type: "object", required: ["purpose", "prompt"], properties: { purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
+      run: async i => sb.quick({ purpose: i.purpose, prompt: i.prompt, system: i.system || null, model: i.model || null, timeoutMs: i.timeout_ms || 60_000 }),
+    });
+
     ctx.tool("threads.launch", {
       description: "Start or resume a thread for an agent, with its credentials set only in that child.", internal: true,
       input: { type: "object", properties: { cwd: str, project: str, prompt: str, name: str, model: str, surface: str, resume: str,

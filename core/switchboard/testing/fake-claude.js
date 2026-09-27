@@ -415,7 +415,7 @@ async function turn(prompt, uuid = null) {
     await say("plenty left"); return result(true, "plenty left", 0);
   }
   if (/^nearlimit$/i.test(p)) {
-    out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "five_hour", resetsAt: 1790000000, utilization: 0.85 } });
+    out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "five_hour", resetsAt: Number(process.env.FAKE_CLAUDE_RESETS_AT) || 1790000000, utilization: 0.85 } });
     await say("still here"); return result(true, "still here", 0);
   }
   if (/^whoami$/i.test(p)) { await say(`auth=${auth}`); return result(true, `auth=${auth}`, auth === "api-key" ? 0.25 : 0); }

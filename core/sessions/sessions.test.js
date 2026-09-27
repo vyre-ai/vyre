@@ -732,6 +732,28 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(w.launches().some(l => l.model === "sonnet") && w.launches().some(l => l.effort === "max"));
   });
 
+  test(`${driver}: a warm session for memory: the second question finds one waiting, each question a fresh one, none in the list`, { skip }, async t => {
+    const asker = { name: "asker", manifest: { does: { tools: ["asker.ask"] } }, source: `
+      export default { async start(ctx) {
+        ctx.tool("asker.ask", { input: { type: "object" }, run: async i => { const r = await ctx.call("threads.quick", i); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; } });
+        return { async stop() {} };
+      } };` };
+    const w = await boot(t, { driver, modules: [asker] });
+    assert.equal((await w.tool("threads.quick", { purpose: "memory", prompt: "x" })).error.code, "no_such_tool", "internal: modules only");
+    const a = (await w.tool("asker.ask", { purpose: "memory", system: "Answer from the facts given.", prompt: "who is kit" })).data;
+    assert.deepEqual([a.text, a.ok, a.warm], ["echo: who is kit", true, false]);
+    // The spare for the next question is started behind it; wait for it to be up.
+    const quickLive = async () => (await w.tool("threads.list", { all: true })).data.filter(r => r.name === "Vyre memory" && ["idle", "starting"].includes(r.status) && r.id !== a.thread);
+    await until(async () => (await quickLive()).length === 1, "the spare");
+    const b = (await w.tool("asker.ask", { purpose: "memory", system: "Answer from the facts given.", prompt: "who is juno" })).data;
+    assert.deepEqual([b.text, b.warm], ["echo: who is juno", true], "a fresh session that never heard the first question");
+    assert.notEqual(a.thread, b.thread);
+    await until(async () => (await w.tool("threads.get", { thread: a.thread })).data.thread.status === "stopped", "the used one closes");
+    assert.ok(!(await w.tool("threads.list", {})).data.some(r => r.name === "Vyre memory"), "not in a person's list");
+    const launch = w.launches().filter(x => x.argv).at(-1).argv;
+    assert.ok(launch.includes("--setting-sources") && !launch.includes("--plugin-dir"), "lean: no settings, no plugin");
+  });
+
   test(`${driver}: an interrupted turn ends canceled, by you`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
@@ -832,6 +854,26 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(st.held, 0, "every slot came back");
     assert.deepEqual((await w.tool("sessions.limits.set", { project: "harlow-legal", max_subagents: 2 })).data, { project: "harlow-legal", subagent: 2 });
     assert.equal((await w.tool("sessions.limits.set", { project: "harlow-legal", max_subagents: 9 }, "mcp")).error.code, "denied", "a model never raises its own limits");
+  });
+
+  test(`${driver}: near the plan's limit, new subagents pause until the reset or "Resume anyway"`, { skip: driver === "cli" ? "subagent slots need the Agent SDK's in-process hooks" : skip }, async t => {
+    const saved = process.env.FAKE_CLAUDE_RESETS_AT;
+    process.env.FAKE_CLAUDE_RESETS_AT = String(Math.floor(Date.now() / 1000) + 3600);
+    t.after(() => { if (saved === undefined) delete process.env.FAKE_CLAUDE_RESETS_AT; else process.env.FAKE_CLAUDE_RESETS_AT = saved; });
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "nearlimit", surface: "deck" })).data;
+    await w.finished(th.id);
+    const u = await until(async () => (await w.tool("sessions.usage.get", {})).data.auths.find(a => a.paused), "the pause");
+    assert.deepEqual([u.auth, u.status, u.utilization], ["ambient", "allowed_warning", 0.85]);
+    await w.tool("threads.send", { thread: th.id, text: "subagent check the prices", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.match((await w.said(th.id)).at(-1), /The subagent did not run: Subagents are paused: the plan is 85% used/);
+    // Resume anyway is the person's: a model is refused.
+    assert.equal((await w.tool("sessions.usage.resume", { auth: "ambient" }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("sessions.usage.resume", { auth: "ambient" }, "deck")).data.paused, false);
+    await w.tool("threads.send", { thread: th.id, text: "subagent check the prices", surface: "deck" });
+    await w.finished(th.id, 3);
+    assert.equal((await w.said(th.id)).at(-1), "subagent done: check the prices");
   });
 
   test(`${driver}: thread.usage says the context used and the window; a teammate's result waits for the turn, never steers`, { skip }, async t => {

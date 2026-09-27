@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: a warm session for Vyre IQ, and the usage pause
+
+- `threads.quick {purpose, prompt, system?, model?}` (internal, for modules: memory's Vyre IQ,
+  planner, helper): one question to a lean session already started and waiting, so it skips
+  Claude Code's start. A fresh session per question (never one that heard another); a spare
+  starts behind each answer, none before the first question, and an unused spare closes when idle.
+  Warm sessions are not in a person's threads.list (all: true shows them).
+- The usage pause (ADR 0031 section 14): the Switchboard reports each credential's thread.limit
+  to `sessions.usage.report`; at a warning, 80 percent used or refused, new subagents (and
+  teammates, when they pass `auth` to sessions.slots) on that credential are refused with
+  `usage_paused` until the window resets. `sessions.usage.get`; `sessions.usage.resume {auth}`
+  ("Resume anyway", PERSON_ONLY); events `usage.paused`, `usage.resumed`;
+  `sessions.pause_at_warning: false` turns it off. Running sessions go on.
+
 #### Sessions: effort, deeper sends, queued images, steers that survive a stop
 
 - Effort, as /effort: `threads.start`/`threads.launch {effort}` (low, medium, high, xhigh, max;

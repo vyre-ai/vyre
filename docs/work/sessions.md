@@ -39,16 +39,17 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   {model, effort} for Cmd-Return; queued images kept; steers persisted (threads_steers) and
   restored on resume.
 
+- threads.quick (warm lean sessions per purpose) for memory-iq; usage pause per auth
+  (sessions.usage.*, usage_paused on sessions.slots take with auth).
+
 ## Doing
-- Next: warm background session for purpose "memory" (Vyre IQ latency), then the usage pause.
+- Lead's list done through 7. Compile phase next: the promised items below, then docs + polish.
 
 ## Next
 - Promised (after the queue): settings.resolve at start (effort, mode, max_turns, budget_usd,
   checkpoints, fast); server `t` on thread.text; threads.effort + settings.changed level
   session (ADR 0035); thread.status event; context.now in enrich/capsule; brief adds planner
   agenda, needs, connections (cohesion); tool_use id on call meta once kernel has the field.
-6. A warm background session for purpose "memory" (Vyre IQ latency).
-7. Usage pause per auth for teammate starts and subagents.
 Then the compile phase: tests for every piece, docs, polish.
 Testing the SDK driver on testbox: VYRE_SESSIONS_SDK_DIR=~/vyre-ci/sessions-sdk (0.3.283, with
 optional deps; without them the tests silently run on the CLI).

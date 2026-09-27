@@ -152,15 +152,68 @@ export default {
     const slots = new Slots({ limits: () => ({ box: boxLimits(), project: projectLimits }), emit: (type, payload) => { try { ctx.events.emit(type, payload); } catch {} } });
     const kind = { type: "string", enum: KINDS };
 
+    // ------------------------------------------------------------ the usage pause (ADR 0031 section 14)
+    // What Claude Code last said about each credential's plan (thread.limit, via the Switchboard).
+    // Near the limit (a warning, 80 percent used, or refused), new teammates and subagents on that
+    // credential wait instead of starting, until the window resets or the person says "Resume
+    // anyway". Sessions already running go on. sessions.pause_at_warning false turns it off.
+    /** @type {Map<string, { status: string, kind: string|null, utilization: number|null, resets_at: number|null, at: number, resumed_until?: number }>} */
+    const usage = new Map();
+    const pauseOn = () => !(ctx.config && ctx.config.sessions && ctx.config.sessions.pause_at_warning === false);
+    const resetsMs = (/** @type {any} */ u) => (typeof u.resets_at === "number" ? (u.resets_at < 1e12 ? u.resets_at * 1000 : u.resets_at) : null);
+    const pausedFor = (/** @type {string} */ auth) => {
+      const u = usage.get(String(auth));
+      if (!u || !pauseOn()) return null;
+      const near = u.status === "rejected" || u.status === "allowed_warning" || (typeof u.utilization === "number" && u.utilization >= 0.8);
+      const until = resetsMs(u);
+      if (!near || (until != null && Date.now() >= until) || (u.resumed_until && Date.now() < u.resumed_until)) return null;
+      return { auth: String(auth), status: u.status, utilization: u.utilization, resets_at: until };
+    };
+    const usageRow = (/** @type {string} */ auth) => { const u = usage.get(auth); return u ? { auth, ...u, resets_at: resetsMs(u), paused: Boolean(pausedFor(auth)) } : null; };
+    ctx.tool("sessions.usage.report", {
+      description: "The Switchboard's report of a credential's plan usage (thread.limit).", internal: true,
+      input: { type: "object", required: ["auth", "status"], properties: { auth: str, status: str, kind: str, utilization: { type: "number" }, resets_at: { type: "number" } } },
+      run: async i => {
+        const auth = String(i.auth);
+        const was = Boolean(pausedFor(auth));
+        const old = usage.get(auth);
+        usage.set(auth, { status: String(i.status), kind: i.kind ?? null, utilization: typeof i.utilization === "number" ? i.utilization : null,
+          resets_at: typeof i.resets_at === "number" ? i.resets_at : null, at: Date.now(), ...(old && old.resumed_until ? { resumed_until: old.resumed_until } : {}) });
+        const now = pausedFor(auth);
+        if (now && !was) ctx.events.emit("usage.paused", now);
+        if (!now && was) { ctx.events.emit("usage.resumed", { auth, by: "reset" }); for (const k of KINDS) slots.pump(k); }
+        return usageRow(auth);
+      },
+    });
+    tool("sessions.usage.get", "Each Claude credential's plan usage as Claude Code last reported it (status, window, utilization, resets_at), and whether new teammates and subagents on it are paused.",
+      { type: "object", properties: {} }, async () => ({ pause_at_warning: pauseOn(), auths: [...usage.keys()].map(usageRow) }));
+    tool("sessions.usage.resume", "Resume anyway: start teammates and subagents on this credential again although its plan is near the limit, until the window resets.",
+      { type: "object", required: ["auth"], properties: { auth: str } },
+      async (i, { caller }) => {
+        const auth = String(i.auth);
+        const u = usage.get(auth);
+        if (!u) return { auth, paused: false, note: "nothing is paused on it" };
+        u.resumed_until = resetsMs(u) ?? Date.now() + 5 * 3600_000;
+        ctx.events.emit("usage.resumed", { auth, by: String(caller || "") });
+        for (const k of KINDS) slots.pump(k);
+        return usageRow(auth);
+      }, PEOPLE);
+
     ctx.tool("sessions.slots", {
       description: "The concurrency ledger (for the Switchboard and teammates): take a teammate or subagent slot (waiting its turn, or not), release one, release all an owner holds, or read what is held.", internal: true,
       input: { type: "object", required: ["action"], properties: { action: { type: "string", enum: ["take", "release", "release-owner", "status"] }, kind, project: str, owner: str, key: str,
-        wait: { type: "boolean" }, timeout_ms: { type: "integer" }, id: str } },
+        wait: { type: "boolean" }, timeout_ms: { type: "integer" }, id: str, auth: { type: "string", description: "The credential the new session runs on: its plan's usage pause applies." } } },
       run: async i => {
         if (i.action === "status") return slots.status();
         if (i.action === "release") return { released: i.id ? slots.release(String(i.id)) : slots.releaseKey(String(i.owner), String(i.key)) };
         if (i.action === "release-owner") return { released: slots.releaseOwner(String(i.owner), i.kind || null) };
         const want = { kind: /** @type {any} */ (i.kind), project: String(i.project || "_none"), owner: String(i.owner || ""), key: String(i.key || "") };
+        const paused = i.auth ? pausedFor(String(i.auth)) : null;
+        if (paused) {
+          const pct = typeof paused.utilization === "number" ? `${Math.round(paused.utilization * 100)}% used` : paused.status === "rejected" ? "at its limit" : "near its limit";
+          const at = paused.resets_at ? `, until it resets at ${new Date(paused.resets_at).toISOString().slice(11, 16)} UTC` : "";
+          throw Object.assign(new Error(`paused: the plan is ${pct}${at}; no new ${want.kind} starts on it (Resume anyway: sessions.usage.resume)`), { code: "usage_paused" });
+        }
         const r = slots.take(want, { wait: i.wait !== false, timeoutMs: Math.min(Number(i.timeout_ms) || 10 * 60_000, 60 * 60_000) });
         if (!(r instanceof Promise)) return r;
         const s = await r;
