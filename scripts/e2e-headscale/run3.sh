@@ -21,7 +21,7 @@ curl -s -X POST 127.0.0.1:19301/webauthn >/dev/null
 curl -s -X POST 127.0.0.1:19300/export | python3 -c "import sys,json;print(json.dumps({\"credentials\":json.load(sys.stdin)[\"ok\"]}))" | curl -s -X POST 127.0.0.1:19301/import -d @- >/dev/null
 OUT=$(timeout 40 docker compose --profile mac exec -T mac sh -c "timeout 30 vyre up --connect https://vyre.tail0000.ts.net </dev/null 2>&1"); echo "$OUT" | sed -n 2,3p
 CODE=$(echo "$OUT" | grep -o "Code: [0-9-]*" | cut -d" " -f2)
-echo "== the Mac own browser cannot approve itself"
+echo "== the Mac's own browser approves with its passkey"
 $S "const api=await import(\"/js/api.js\");try{return JSON.stringify(await api.call(\"link.pair.approve\",{code:\"$CODE\"},{presence:true}))}catch(e){return \"refused: \"+e.message}"
 echo "== the phone approves"
 curl -s -X POST 127.0.0.1:19301/nav -d "{\"url\":\"https://vyre.tail0000.ts.net/now\"}" >/dev/null

@@ -9,7 +9,10 @@ labelled `run.vyre.e2e`:
 
 - headscale 0.29.4, with this policy (database mode, `headscale policy set`).
 - the box: the tailscale service from box/compose.yml with `--login-server`, and vyred from
-  `vyre-e2e:local` (built from the branch: `docker build -t vyre-e2e:local -f box/Dockerfile .`).
+  `vyre-e2e:local` (built from the branch: `docker build -t vyre-e2e:local -f box/Dockerfile .`). Write a
+  `build.json` (`{"commit":"<sha>","dirty":false}`) at the tree's root first, as a release does:
+  without it every build is "v0.0.1", the Deck's service worker keeps the last run's files under
+  the same cache name, and a page can load a stale module next to a fresh one.
 - `alex-mac`: a tailscale node, headless Chrome and a vyred with `{"role":"local"}`, all in one
   network namespace, as on a Mac. `alex-phone` (profile phone): a second node and browser.
 - `shim/tailscale` as the box's VYRE_TAILSCALE_BIN: headscale has no `tailscale cert` and no
