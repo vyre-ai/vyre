@@ -168,11 +168,9 @@
         "help": { "type": "string" },
         "type": { "enum": ["enum", "bool", "int", "number", "string", "list", "object", "model"] },
         "enum": { "type": "array", "items": { "type": "string" } },
-        "choices": {
-          "description": "The allowed numbers for an int, or { tool }: one of this module's own tools that lists the choices when the schema is read (ADR 0035).",
-          "anyOf": [{ "type": "array", "items": { "type": "number" } }, { "$ref": "#/$defs/toolRef" }]
-        },
-        "check": { "$ref": "#/$defs/toolRef", "description": "One of this module's own tools, asked { ok } or { ok: false, message } before a value is stored (ADR 0035)." },
+        "choices": { "type": "array", "items": { "type": "number" } },
+        "choicesFrom": { "$ref": "#/$defs/toolRef", "description": "One of this module's own tools that lists the choices when the schema is read, within 500 ms; otherwise the enum or no choices (ADR 0035)." },
+        "check": { "$ref": "#/$defs/toolRef", "description": "One of this module's own tools, asked { ok } or { ok: false, message } before a value is stored, within 500 ms; off or late refuses the change (ADR 0035)." },
         "min": { "type": "number" },
         "max": { "type": "number" },
         "default": {},

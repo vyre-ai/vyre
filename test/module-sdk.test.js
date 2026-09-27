@@ -44,7 +44,7 @@ const full = () => ({
     { key: "bakery.fax", label: "Fax orders", type: "bool", levels: ["account"], apply: "live", security: "loosens", loosens: "outbound fax", confirm: { values: [true] }, store: { config: "bakery.fax" } },
     { key: "bakery.oven", label: "Oven", type: "string", levels: ["project"], apply: "session", confirm: true, store: { tool: { get: { tool: "bakery.orders", input: { project: "$project" }, read: "oven" }, set: { tool: "bakery.order", input: { oven: "$value" } } } } },
     { key: "bakery.model", label: "Model", type: "model", levels: ["account"], apply: "session", secret: false },
-    { key: "bakery.look", label: "Look", type: "enum", levels: ["account", "device"], apply: "live", choices: { tool: "bakery.orders" }, check: { tool: "bakery.check" } },
+    { key: "bakery.look", label: "Look", type: "enum", levels: ["account", "device"], apply: "live", choicesFrom: { tool: "bakery.orders" }, check: { tool: "bakery.check" } },
   ],
   needs: { vault: ["bakery-api-key"], tools: ["planner.*", "memory.answer"], network: ["api.example.com", "*.example.org:8443"], slots: ["now"] },
   teaches: { memory: ["order.habit"], prompt: [{ level: "project", file: "prompt/bakery.md" }],
@@ -104,8 +104,10 @@ test("module sdk: the checker refuses with a reason a person can act on", () => 
   has(bad(m => { m.replaces = "memory"; }), /a replacement takes the name of the module it replaces/);
   has(bad(m => { m.teaches.prompt[0].file = "/etc/passwd"; }), /must be a relative path to a \.md file/);
   has(bad(m => { m.settings[4].check.tool = "theme.check"; }), /setting bakery\.look: check\.tool must be one of this module's own tools/);
-  has(bad(m => { m.settings[4].choices = { tool: "bakery.gone" }; }), /choices\.tool must be one of this module's own tools/);
-  has(bad(m => { m.settings[4].choices = "presets"; }), /choices/);
+  has(bad(m => { m.settings[4].choicesFrom = { tool: "bakery.gone" }; }), /choicesFrom\.tool must be one of this module's own tools/);
+  has(bad(m => { m.settings[4].choices = { tool: "bakery.orders" }; }), /choices must be array/);
+  has(bad(m => { m.settings[0].levels = ["account", "session"]; }), /the session level needs a store in this module's own tools/);
+  assert.deepEqual(bad(m => { m.settings[2].levels = ["project", "session"]; }), []);
   has(bad(m => { m.settings[1].levels = ["account", "device"]; delete m.settings[1].store; }), /may not be set per device/);
   has(bad(m => { m.settings[0].levels = ["galaxy"]; }), /levels\[0\] must be one of account, project, device, session/);
   has(bad(m => { m.does.connections = "bakery.gone"; }), /does\.connections names bakery\.gone, which is not under does\.tools/);

@@ -7,9 +7,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### The manifest schema follows ADR 0035 (the settings hub)
 
 - A setting may declare the `device` and `session` levels, `check: { tool }` (asked before a value
-  is stored) and `choices: { tool }` (lists the choices when the schema is read). Both tools must
-  be the module's own. A setting with `confirm` or `security` may not be set per device. The
-  array form of `choices` for an int still works.
+  is stored; off or slower than 500 ms refuses the change) and `choicesFrom: { tool }` (lists the
+  choices when the schema is read). Both tools must be the module's own. A setting with `confirm`
+  or `security` may not be set per device, and the session level needs a store in the module's
+  own tools. `choices` stays the fixed number list for an int. `secret: true` masks a value for
+  everyone but the person.
 
 #### Manifest keys for cohesion and tips
 

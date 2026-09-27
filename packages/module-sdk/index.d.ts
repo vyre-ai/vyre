@@ -32,9 +32,11 @@ export interface SettingDef {
   help?: string;
   type: "enum" | "bool" | "int" | "number" | "string" | "list" | "object" | "model";
   enum?: string[];
-  /** The allowed numbers for an int, or a tool of this module that lists the choices (ADR 0035). */
-  choices?: number[] | { tool: ToolName };
-  /** A tool of this module asked { ok } or { ok: false, message } before a value is stored (ADR 0035). */
+  /** The allowed numbers for an int. */
+  choices?: number[];
+  /** A tool of this module that lists the choices when the schema is read, within 500 ms (ADR 0035). */
+  choicesFrom?: { tool: ToolName };
+  /** A tool of this module asked { ok } or { ok: false, message } before a value is stored, within 500 ms; off or late refuses (ADR 0035). */
   check?: { tool: ToolName };
   min?: number;
   max?: number;
