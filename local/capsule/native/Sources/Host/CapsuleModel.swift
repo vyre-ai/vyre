@@ -153,6 +153,10 @@ public final class CapsuleModel: ObservableObject {
     @Published var presenceAsk: PresenceAsk?
     /// "Add your Deepgram key": a module's missing key, asked for in the panel (Credentials.swift).
     @Published var credentialAsk: CredentialAsk?
+    /// `vyre ...` run from the box, and what it said (CommandRun.swift).
+    @Published var commandRun: CommandRun?
+    /// The CLI to run instead of vyred's own (tests: a fake vyre).
+    var cliOverride: [String]?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
     @Published var panelTick = 0
 
@@ -236,6 +240,8 @@ public final class CapsuleModel: ObservableObject {
         frecency.flush()
         vyred.follower.setShown(false)
         attachTask?.cancel(); attachments = []; removedAttachments = []
+        // A live command ends with the Capsule; what it said stays for the next show.
+        if commandRun?.running == true { commandRun?.stop() }
         keeper.hidden(busy: reply.flatMap { $0.finished ? nil : $0.thread })
         desk.hidden()
         direct.close()
@@ -345,6 +351,15 @@ public final class CapsuleModel: ObservableObject {
             if c.kind == .app { attachments = [] } else { refreshAttachments(q.text, to: c.kind == .agent ? .agent : c.kind == .project ? .project : .thread) }
             return
         }
+        // A vyre command comes before anything else: one row, and nothing is asked about it.
+        if let argv = CLIRun.parse(q.text) {
+            autoTask?.cancel(); recallTask?.cancel(); memory = nil; attachments = []
+            partial = [:]
+            groups = [Group(section: .top, items: [commandRunItem(argv)])]
+            selected = 0
+            return
+        }
+        if commandRun?.running == false { commandRun = nil }
         refreshAttachments(q.text, to: .ask)
         recall(q.text, token: t)
         if q.normalized.isEmpty { autoTask?.cancel(); if autoKey != nil { dropAuto() }; partial = [:]; groups = []; selected = 0; return }

@@ -350,6 +350,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
     const b = build();
     return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
+      // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
+      // its box by argv, never through a shell, and must run the same version.
+      cli: [process.execPath, path.join(REPO, "bin", "vyre")],
       // Where the memory is, in MB: a stress run tells a heap that grows from a native cache filling.
       memory: Object.fromEntries(Object.entries(process.memoryUsage()).map(([k, v]) => [k, Math.round(v / 1048576 * 10) / 10])),
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });

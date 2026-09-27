@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre ...` runs in the Capsule and draws what it says
+
+- The user's feedback: "run vyre voice" fell through to a memory answer. Words that start with
+  "vyre " (or "run vyre ") are now a command before anything else: one row, ⏎ runs it, and
+  nothing asks a model about them. It runs this vyred's own CLI by argv (never a shell) with
+  `--view` (polish-cli's JSON-line frames) and draws each frame natively: tables, cards, status
+  checks, a QR code, a prompt for what to add, an error with what to do next. The newest frame of
+  a kind replaces the last, so live verbs update in place. A CLI without --view gets one usage
+  exit, then one plain run with colour off. Esc ends a live verb; hiding the Capsule does too.
+- vyred's /v1/health says how to run its CLI (`cli`: node and bin/vyre in the same tree), so the
+  Capsule runs the same version as the vyred it talks to. `core/daemon/index.js` (one field, see
+  Changed contracts in docs/work/capsule-pro.md), `core/daemon/build.test.js`.
+- `Sources/Host/CommandRun.swift`, `Sources/UI/CommandRunView.swift`; `Tests/CommandRunTests.swift`
+  (a fake vyre script: frames, replace, qr/checks/table/error, the plain fallback, Esc).
+
 #### Four Capsule tests hardened for loaded CI runners
 
 - The pause test rests 400 ms, the stream test holds off ask-on-pause, the queued-session test

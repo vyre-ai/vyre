@@ -30,7 +30,7 @@ extension CapsuleModel {
     /// Whether these words ask for an answer, given the best local match. Pure, for the tests.
     nonisolated static func wantsAnswer(_ text: String, topKind: String?, topScore: Double) -> Bool {
         let words = text.split(whereSeparator: \.isWhitespace)
-        guard words.count >= 2 else { return false }
+        guard words.count >= 2, CLIRun.parse(text) == nil else { return false }
         // An exact local match (an app, a file, a setting) is what the words meant.
         if let k = topKind, k != "ask", k != "mention", topScore >= 0.95 { return false }
         if Route.asksQuestion(text) { return true }

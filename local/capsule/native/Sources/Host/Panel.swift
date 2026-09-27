@@ -215,6 +215,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         case 53: // escape
             if model.presenceAsk != nil { model.cancelPresence(); return true }
             if model.credentialAsk != nil { model.cancelCredential(); return true }
+            if model.escCommand() { return true }
             if model.confirming != nil { model.confirming = nil; model.line = nil; return true }
             if let r = model.reply, !r.finished { model.stopReply(); return true }
             // An answer on screen, or the follow-up box: back to plain search. The next Esc hides.
