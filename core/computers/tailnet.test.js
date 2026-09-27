@@ -75,7 +75,7 @@ async function setup(t, { enabled = true, missing = false, ready = true, port = 
   // The tailnet side on its own port, as the driver would name it; computerd's port is a closed one.
   const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: 9, ...(port ? { tailnet: cd.port } : {}) } } });
   const e = await engine(t, root);
-  const docker = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  const docker = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
   const create = driver.create.bind(driver);
   driver.create = async spec => { await docker.create(spec); return create(spec); };
   /** @type {Array<{ type: string, payload: any }>} */
