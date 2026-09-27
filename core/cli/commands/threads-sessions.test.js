@@ -27,6 +27,9 @@ const BIN = path.join(HERE, "..", "..", "..", "bin", "vyre");
 const FAKE = path.join(HERE, "..", "..", "switchboard", "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
 const plain = s => (s == null ? s : s.replace(/\x1b\[[0-9;]*m/g, ""));
+/** The composer's tools the CLI drives (chat parity). */
+const PARITY = ["threads.model", "threads.thinking", "threads.commands", "threads.shell", "threads.remember", "threads.tasks", "threads.kill-task", "threads.rewind"];
+
 /** A 1x1 PNG, for a message with a picture. */
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
 
@@ -322,6 +325,8 @@ test("threads verbs: start with a purpose, one-shot get, interrupt, mode, queue 
 
 test("threads chat parity: model, thinking, commands, shell and !, remember and #, tasks, images, rewind list, or what is coming", { timeout: 120_000 }, async t => {
   const w = await world(t);
+  // Main has had these since batch 3b: the live path runs, never only the "coming" line.
+  for (const name of PARITY) assert.ok(w.have.has(name), `${name} is on this vyred`);
   const s = await vyre(["threads", "start", "--cwd", w.work, "--json", "hello from alex"], w.env);
   assert.equal(s.code, 0, s.out);
   const id = JSON.parse(s.stdout).id;

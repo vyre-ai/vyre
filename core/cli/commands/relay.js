@@ -6,35 +6,11 @@
 import { call } from "../../daemon/client.js";
 import { ensureUp } from "../daemonctl.js";
 import { callAsPerson } from "../presence.js";
-import { out, dim, bold } from "../style.js";
+import { out, dim, bold, colour } from "../style.js";
 import { json, emit, fail, failTool, usage, parse } from "../kit.js";
-import { qrcode } from "../../../deck/vendor/qrcode.js";
+import { qr, terminal } from "../qr.js";
 
 const USAGE = "vyre relay [status|pair|devices|remove <id>|rename <id> <name>|trust <id> [--off]|on [--url u]|off|pin <release>|unpin] [--json]";
-
-/**
- * A QR code in terminal half blocks, two rows of modules per line, with the quiet zone the spec
- * asks for. Light modules are drawn, so it scans on a dark terminal; phone cameras read the
- * inverted code on a light one too.
- * @param {string} text
- */
-export function terminalQr(text) {
-  const q = qrcode(0, "M");
-  q.addData(text);
-  q.make();
-  const n = q.getModuleCount(), pad = 2;
-  const light = (r, c) => r < 0 || c < 0 || r >= n || c >= n || !q.isDark(r, c);
-  const lines = [];
-  for (let r = -pad; r < n + pad; r += 2) {
-    let line = "";
-    for (let c = -pad; c < n + pad; c++) {
-      const top = light(r, c), bottom = light(r + 1, c);
-      line += top && bottom ? "█" : top ? "▀" : bottom ? "▄" : " ";
-    }
-    lines.push(line);
-  }
-  return lines.join("\n");
-}
 
 /** "3h ago" and the like. */
 const ago = (ms, now = Date.now()) => {
@@ -96,8 +72,8 @@ export default [
         case "devices": return devices();
         case "pair":
           return asPerson("relay.pair.start", {}, d => {
-            out("\n" + terminalQr(d.url).split("\n").map(l => "  " + l).join("\n") + "\n");
-            out("  Scan this with your phone's camera. It works once, for 10 minutes.");
+            if (colour) { out(""); for (const l of terminal(qr(d.url))) out(l); out(""); out("  Scan this with your phone's camera. It works once, for 10 minutes."); }
+            else out("  Open this address on your phone (the QR code shows in a colour terminal). It works once, for 10 minutes.");
             out(dim(`  ${d.url}`));
             if (!d.connected) out(dim("  the box is not at the relay yet; the code works as soon as it is (vyre relay)"));
           });
