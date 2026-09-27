@@ -181,7 +181,9 @@ facts are not a project's.
 - Built 28 Sep: memory.card (e67ba34d), memory.contradictions/settle (fd7f57ab).
 - 0.1.1 queue, in order: import.start/stop/cancel
   (after federation's sync.send); then site recipes (memory.recipe per site from glass's
-  browse.finished, self-correcting, person-editable; shape proposed to glass 28 Sep).
+  browse.finished, module browse; self-correcting, person-editable). Landmark shape proposed to
+  glass: {role, name, css?, near?}, role+name first, never values. Waits on the lead's review of
+  glass's docs/design/agent-browsers.md (work/glass-live b4584a7f) before building.
 - Project graphs: recall.search `sessions` filter + retrieve scopes by folders plus picked ids (0.1.1).
 - Host-to-server sync: contract in docs/design/iq-everywhere.md; agree it with federation (paused)
   and amend ADR 0008.
