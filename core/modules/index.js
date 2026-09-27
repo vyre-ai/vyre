@@ -130,10 +130,12 @@ export const callerKind = caller => {
 };
 
 /**
- * May this caller use a tool with this callers list? On a box the Deck is served at the tailnet
+* May this caller use a tool with this callers list? On a box the Deck is served at the tailnet
  * address, where the names listener admits only the owner and labels the call "tailnet:<login>"
  * (ADR 0002). That is the owner's own Deck, so a tool open to "deck" is open to it; an agent's own
- * node ("tailnet:agent:<name>") is not.
+ * node ("tailnet:agent:<name>") is not. A "tailnet" entry opens a tool to the owner's devices only,
+ * such as the phone (ADR 0018). The bare word is never a caller itself: a socket client could send
+ * it as a label.
  * @param {string[]|null|undefined} callers
  */
 export const callerAllowed = (callers, caller) => !callers || callers.includes(callerKind(caller))

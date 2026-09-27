@@ -51,11 +51,13 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0016 | connectors | Connectors: the MCP hub and native accounts |
 | 0017 | capsule-pro | native Capsule (was claimed as 0015 here, which capsule-sight had written) |
 | 0020 | cc-plugin | Vyre as an installable Claude Code plugin, and the status line |
+| 0018 | mobile | The phone apps: native iOS and Android on the box's API |
 | 0022 | capsule-apps | @App targets: every Mac app from the Capsule |
 | 0023 | memory-iq | Personal facts and memory.answer |
 | 0024 | chat | Chat: new sessions, the box's folders, a terminal in the browser, and questions |
 | 0025 | planner | The planner: time, alarms, reminders, todos, notes and a calendar on the box |
 | 0026 | relay | End-to-end encrypted relay with QR pairing |
+| 0027 | mobile | One app: the phone, the box's web app and app.vyre.run from one Expo codebase |
 | 0029 | resilience | The resilience contract: every surface survives network outages |
 | 0030 | sessions | Vyre-owned sessions and the provider router |
 | 0031 | teammates | Project teammates |

@@ -227,6 +227,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   gave that file an import (config/dialogs.js), so the image build stopped at the SDK layer. The
   pin now lives in core/sessions/sdk-pin.js, which imports nothing; sdk.js re-exports it, and a
   test copies the file the Dockerfile names on its own and imports it.
+#### One app: the design system's fonts, type steps and one button
+
+- The app ships its own fonts (Instrument Sans 400 and 600, JetBrains Mono 400, OFL): woff2 under
+  @font-face on the web (bundled, no other host), the ttf files embedded by the expo-font config
+  plugin on iOS and Android. New dependencies: expo-font and expo-asset, for exactly that.
+- `src/theme/type.ts`: the phone type steps with their faces. No screen sets a size, line height,
+  family or weight of its own (the composer keeps 16 so iOS does not zoom).
+- One Button (docs/design/system/components/button.md): primary, secondary, outline, ghost and
+  hold, heights 28, 32, 44 and 54, busy and key hints. Hand-drawn buttons on Now, a need, a
+  session, pairing, the Vault and the undo toast now use it. Card, Tag, Banner and Avatar follow
+  their specs; the status mark takes its sizes from the spec.
+- The frame meter moved to lib/perf (shared with the Deck's native-bar harness) and carries chat's
+  budgets.
+- Fixed: apps/app/.gitignore dropped the native sources of the app's own modules (vault-android,
+  vyre-signer), so a clean checkout could not build them. Only the prebuild output is ignored now.
+  vault-android is the copy of work/vault-next 725e4a41 (Credential Manager provider).
+- Fixed: the app's HUMAN_ONLY mirror lacked presence.person.start.
+- The perf meter stays on for this device after ?perf=1 until ?perf=0 (src/perf/flag.js): the app
+  added to the Home Screen opens at /app/ with no query. On the web, Settings has a Performance
+  meter row that turns it on or off from inside the installed app.
 
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
@@ -312,6 +332,19 @@ Wires sessions 034c71e5 and db44749b (thinking as its own event) in deck/chat.
   not a fixed 60 ms, so a loaded machine does not fail them.
   test/chat-sessions-contract: the 034c71e5 tools and events are AHEAD (remove when on main),
   and their payload keys are checked on both sides, strictly once core has them.
+#### One app: the session screen on the native bar
+
+- One frame clock over chat's pacer (only the live row repaints), instant Send (the user row keeps
+  its key when the box confirms) and Stop (stopping in the same frame; threads.interrupt when the
+  box has it), open from cache then catch up from the newest event, no jump when scrolled up (a
+  Jump to latest pill), the composer on chat's composer-state (Enter steers, hold Send queues, "/"
+  commands, history, a draft per session), a model picker, the context meter, and rewind.
+- The meter carries native-core's native-bar budgets under ids tagged with its table rows
+  (keystroke, firstToken, boxToScreen, streamCV, streamGapBar, cls, viewJump, openSessionCache,
+  openSessionCold, send, stop); the phone's 50 ms stream gap stays its own check.
+- Merged work/chat 80ea6308.
+
+#### One app: the phone signs in and proves presence; the APK is the module's own route; an icon
 
 #### Chat: the model picker, the session's commands, rewind with code, the context meter
 
@@ -1248,16 +1281,138 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 
 #### The answer eval runs without the Electron Capsule
 
-- scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
-  (and route.js's words) kept for the eval; the native Capsule has it as Said.swift.
-- test/federation-send: threads.send's queued reply carries queued_id (threads.unqueue's handle).
+- Native sign-in follows e2e's shapes: the return is vyre://person/signin; the token trade has no
+  Origin and is signed by the key it registers; it also registers the biometric-bound `human` key,
+  which the box enrolls as a device presence key. Human-only calls carry `x-vyre-presence: device`
+  signed with it (one biometric prompt), ask for a 30-minute presence session, and ride that
+  session after. gate.approve goes first without a proof and asks only when the box says so.
+  x-vyre-human is gone. Tests in apps/app/src/auth/presence.test.js.
+- releases serves the APK from its own route: GET /v1/releases/android (the manifest) and
+  /v1/releases/android?file=<file> (the APK). The one-line /apps/ mapping in core/daemon is gone.
+- testIDs for ci's perf job (tab-now, tab-chats, tab-agents, now-row, now-row-swipe, transcript).
+- A placeholder icon (a lime dot on the dark background) so device builds are not blocked.
+- releases.sign (cli, local, module): signs the placed Android build now, for `vyre update`.
+- The phone keeps one presence session per path (the box pins each to the tailnet node or the
+  relay device), and relay pairing enrolls the biometric-bound key, so every proof over the relay
+  needs a fingerprint or face (e2e e5aaf881).
+- The person session is kept per path too. Over the relay the phone signs in with its paired
+  device key (presence.person.start with a device proof, one biometric prompt, no browser); on the
+  tailnet it keeps the PKCE sign-in. A relay-only phone now has a person session.
+- Vault and Devices in the app, reached from a Places sheet (the header avatar), per app-design's
+  "trusting a browser for the vault" board: an untrusted relay browser sees names only and a trust
+  card; Devices trusts or stops trusting a browser (relay.devices.trust, with presence), warns on
+  an unknown build and shows the 30-day expiry; trust changes land in place with no reload.
+- Android autofill: vault's local module (apps/app/modules/vault-android, from work/vault-next,
+  unchanged) is in the app, loaded only on Android; Settings, Autofill pairs it with the box's fill
+  listener and turns it on. Its 17 unit tests pass and the debug APK builds with it.
+- Copy in the app copies on the device tapped (value through vault.reveal, expo-clipboard or
+  navigator.clipboard), cleared after 30 s where the app can; the app never calls vault.copy.
+  New app dependency: expo-clipboard. Ask to trust is gated on relay.devices.ask-trust.
 
-#### The design docs stay out of the package
+#### One app: the relay path, pairing, the /app/ worker hooks; the box signs the Android APK
 
-- package.json: docs/design (boards, one-app, specs) is no longer in the npm package; nothing at
-  run time reads it. release-check asserts the tarball has none of it. The install was over the
-  10 MB cap with docs/design/one-app (620 KB, 46 files) in it, and 10.3 MB without it, so
-  the cap is 12 MB now: the growth is code (memory/personal, apps, relay, resilience).
+- apps/app goes to the box through relay/client's paths: the web tries the box's own origin and
+  then the relay; the phone is relay-first (the lead's default), with the Noise crypto from @noble
+  (curves, ciphers, hashes; pure JS, audited; the relay's X25519 key as bytes in expo-secure-store,
+  this device only) and random bytes from vyre-signer. The person proof signs the box path and
+  query only, whatever route prefix the relay adds. New app dependencies: @noble/curves,
+  @noble/ciphers, @noble/hashes (native only; none in the web bundle).
+- `vyre://pair?offer=...` (and /app/pair) pairs the phone with the box through the relay.
+- For pwa's /app/ worker: `npm run export:web` writes dist/precache.json; the app registers
+  /app/sw.js, subscribes to push only from a tap on Now, follows the worker's vyre:navigate, and
+  reports push.seen.
+- core/apps (module `releases`): the box serves /apps/android.json and /apps/android/<file>.apk to
+  the owner's devices only, signing CI's unsigned APK with the owner's own key (EC P-256, made on
+  first use, kept in the vault as android-release-key). The signer is pure JS on node:crypto (APK
+  Signature Scheme v2 and v3, with a DER X.509 encoder); `apksigner verify` passes v2 and v3.
+  core/apps/sign-apk.mjs is the same signer for CI.
+- The iOS app, with the Secure Enclave signer, compiles for the simulator and the device.
+- Tokens regenerated from tokens.json (popover).
+
+#### One app: the spike screens (Now, the approve swipe, a session)
+
+- Now: Needs you (held Gate items and open asks, oldest first) painted from the cache, then kept
+  live by the stream; one row component; windowed above 100 rows.
+- The approve swipe: a scroll-snap row on the web (the gesture runs on the compositor), Gesture
+  Handler on native. Right approves, left denies; the row collapses on the commit frame, the
+  answer is held 4 s for Undo, then goes through the outbox. A swipe that needs Face ID on this
+  device, or a question, opens the item instead; a refusal brings the row back with the reason.
+- A session: an inverted, windowed transcript on chat's shared core (deck/chat/core: session
+  state, window, paced reveal, grouping, composer), imported through Metro, not copied; the
+  composer follows the keyboard with one visualViewport inset; queued messages, Stop, and idle
+  shown as idle.
+- `?perf=1`: a small badge (fps, dropped, verdict) that copies the meter's report; tab.switch,
+  open.cold, open.warm, approve.collapse, stream gaps and keyboard.jump are marked. The meter
+  gains endGap. JS is 518 KB gzipped (+32 KB).
+- Merged work/chat (24855bac) for the shared core.
+
+#### One app: a native signer for the person session
+
+- apps/app/modules/vyre-signer: a local Expo module. Android Keystore P-256 (StrongBox when
+  present, else the TEE) and the iOS Secure Enclave, non-exportable, SHA-256 ECDSA; keys
+  `vyre.person` (every request's proof) and `vyre.human` (biometric-bound, for human-only calls,
+  off until the box verifies it). Also random bytes, since Hermes has no WebCrypto.
+- src/auth/person.native.ts: the same person session as the web on the module (DER signatures
+  turned into P1363, the token in expo-secure-store, sign-in through the system browser).
+  src/auth/person.ts gains a plain-JS SHA-256, derToP1363 and jwkFromXY. Fixed: person.web.ts
+  imported itself on the web instead of person.ts. Tests in src/auth/signer.test.js.
+- New app dependencies: expo-web-browser (the sign-in browser) and expo-secure-store (the token).
+- The token generator is app-design's (scripts/gen-tokens, scripts/lib/tokens.js, from main); mobile's own
+  generator and capsule-pro's Swift branch are gone, and apps/app/src/theme/tokens.test.js checks tokens.ts against it.
+
+#### One app: the resilience client, the person session, and ADR 0027 on auth and alarms
+
+- apps/app runs ADR 0029's client from core/resilience (Metro and TypeScript resolve it; one
+  copy): the stream with its cursor, the outbox with an Idempotency-Key on every write, and on
+  the web web.js (IndexedDB outbox, cursor and view cache, lifecycle). Native reads the event
+  stream with a small XHR reader (src/api/native-open.ts; React Native's fetch cannot stream).
+  src/state/connection.ts: live, reconnecting (one quiet pill, only after the first failed
+  retry), offline; outbox rows show as sending at once and leave only on the box's answer.
+  src/api/sse.js is gone.
+- src/auth/person.ts, person.web.ts: the person session. Same origin needs nothing (the box's
+  cookie); app.vyre.run signs in with PKCE, keeps a non-extractable P-256 key in IndexedDB,
+  sends its JWK to POST /v1/person/token, and signs every request (`authorization: Vyre`,
+  `x-vyre-proof`, ES256 over method, path, body hash, time and nonce). A 401
+  person_session_required clears the token and signs in again. Tests include the RFC 7636 PKCE
+  vector and a signature WebCrypto verifies.
+- ADR 0027: section 2 follows the sessions changes (idle is resumable, interrupt, busy, driver)
+  and names core/resilience as the app's client; new 3a (signing in) and 3b (alarms: Android
+  schedules exact local alarms keyed planner-<item>-<due>; the iPhone web app depends on push).
+- Merged work/resilience (with main 15e82dd) into work/mobile.
+
+#### The Capsule's tokens come from the one tokens.json
+
+- scripts/gen-tokens also writes `local/capsule/native/Sources/UI/Tokens.generated.swift`: both
+  schemes' colours as exact sRGB, the status rows (needs you, failed, running, unread, done) in
+  order with their marks and words, radius, control heights, space, motion and the desktop type
+  scale. `--check` covers it, and test/tokens-swift.test.js checks every colour key in both
+  schemes and the status words.
+
+#### One app: ADR 0027 and the smoothness meter
+
+- docs/adr/0027-one-app.md (draft): one Expo codebase for the iPhone web app, the Android APK,
+  the box-served app and app.vyre.run; the native iOS build is the fallback after a one-week
+  spike on a real iPhone. The smoothness bar as acceptance criteria, the hosted app's pinned,
+  signed versions, and what is shared with chat (the session core) and sessions (ADR 0030 events).
+  Joins the nav; ADR 0027 claimed in docs/work/README.md.
+- apps/app/perf/meter.js: a DOM-free frame meter the web (requestAnimationFrame) and native
+  (Reanimated) both feed; bounded rings, named measures, gaps and long tasks, and a verdict
+  against `BAR`, the ADR's table as data. Tests in apps/app/perf/meter.test.js.
+- scripts/gen-tokens (`npm run tokens`, `--check`): writes apps/app/src/theme/tokens.ts from
+  docs/design/one-app/tokens.json, with `attention(scheme, alt)` so violet or teal stays one key.
+  Coral is gone from the app's tokens. Test in apps/app/src/theme/tokens.test.js.
+- apps/app: the Expo 54 scaffold (expo-router, React Native Web, Reanimated 4.1, Gesture
+  Handler, zustand), its own package.json and lockfile outside the root workspace (Expo is the
+  app's stack, ADR 0027; the box's `npm ci` never installs it). Three mounted tabs (Now, Chats,
+  Agents) on the generated tokens, a fixed full-screen web shell, a typed box client
+  (`call`, an SSE reader with Last-Event-ID resume), and `?perf=1` feeding the meter
+  (`window.__vyrePerf`). The web export is served under /app (2.0 MB, 476 KB gzipped JS).
+- The meter gains `pause()`: a hidden page is a break, not dropped frames.
+- deck/test/world.js keeps its exported pieces (for apps/test/world.js) with main's alex folder
+  beside the home, CHAT_DEMO and the WebSocket pass-through.
+
+
+
 
 
 #### Chat: matched to the sessions team's real Switchboard (work/sessions)
@@ -1352,6 +1507,20 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - Permission cards: A allows once, D denies. An ask answered on another screen says so
   ("Answered from the Capsule · 14:31").
 - deck/sw.js SHELL keeps the new modules. Tests in deck/chat/session.test.js and core tests.
+
+#### The answer eval runs without the Electron Capsule
+
+- scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
+  (and route.js's words) kept for the eval; the native Capsule has it as Said.swift.
+- test/federation-send: threads.send's queued reply carries queued_id (threads.unqueue's handle).
+
+#### The design docs stay out of the package
+
+- package.json: docs/design (boards, one-app, specs) is no longer in the npm package; nothing at
+  run time reads it. release-check asserts the tarball has none of it. The install was over the
+  10 MB cap with docs/design/one-app (620 KB, 46 files) in it, and 10.3 MB without it, so
+  the cap is 12 MB now: the growth is code (memory/personal, apps, relay, resilience).
+
 
 #### A stopped vyred leaves a removed home removed
 
@@ -1991,6 +2160,8 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   for plan approval and modes (ADR 0030), projects, memory and lessons, settings and first run;
   the session board follows ADR 0030 (provider chip, Stop, queued words with take back and send
   now); every key screen states how it meets the smoothness bar.
+
+
 
 #### Tests: the plugin's MCP calls go one at a time
 
@@ -3236,6 +3407,20 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   consent, never replacing one the user has (`--chain` keeps theirs above Vyre's line). `vyre up`
   on a Mac offers it once on a terminal.
 - Learning treats running `hooks/run.js` by hand as running a hook by hand.
+#### Native iPhone and Android apps run against a test box
+
+- `apps/ios` (SwiftUI, XcodeGen, no packages) and `apps/android` (Compose) build and run on a
+  simulator and an emulator against `apps/test/world.js`, signing in with a one-time code. Both
+  follow the phone PWA's structure: Now, Projects, Chat, Find, Agents, a pull down for Find, and
+  Settings (with the Vault) from the avatar. Find reads `@agent ...`, `tell <session> to ...` and
+  `watch <session>` as the Mac Capsule does. Vault values need this phone's key, and the screen is
+  secured while one shows. Voice and the Mac's files are not in this build.
+- `apps/ios/scripts/build.sh [test]` and `./apps/android/gradlew -p apps/android` build without
+  prompts for CI. Simulator builds are ad-hoc signed and use a software key, because the
+  simulator refuses biometry-bound Enclave keys. `apps/RELEASE.md` has the owner's steps for real
+  phones, TestFlight and the Play Store.
+- `deck/test/world.js` exports `startVyred`, `seedVault` and `makeAgents` beside `buildHome`,
+  `makeProjects` and `heldItems`; `apps/test/world.js` sets `VYRE_NO_DIALOGS`.
 
 #### CI on GitHub's free runners
 
@@ -3658,6 +3843,31 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - The floor's list named `learn.skill_install`, a tool that does not exist; it is
   `learn.skill-install`, and the Deck's Install button called the same wrong name. A test fails
   when the list names a tool no shipped module declares (`vault.export` is held in reserve).
+#### Mobile: the iPhone app (ADR 0018)
+
+- `apps/ios`: a SwiftUI app (iOS 17, Swift 6, no packages), generated by XcodeGen from
+  `apps/ios/project.yml`. The core so far: the design tokens (dark and paper), the bundled
+  Instrument Sans and JetBrains Mono (OFL, from google/fonts), the mark as a Shape, the app icon
+  rendered from TOKENS.md by `apps/ios/scripts/render-icon.sh`; one API client with typed
+  envelope errors; canonical JSON checked byte for byte against vectors node writes from
+  core/presence; an SSE reader that resumes with Last-Event-ID; the Secure Enclave device key
+  (P-256, Face ID, `device key=.. ts=.. nonce=.. sig=..`); sign-in through the box's
+  `/onboard/device` page. Work in progress: not built on a simulator yet.
+
+#### Mobile: the server side of the phone apps (ADR 0018)
+
+- A new presence method, `device`: a phone's ECDSA P-256 key, held in its Secure Enclave or
+  StrongBox, enrolled with `presence.enroll {kind:"device", name, public_key, alg:-7}` and sent
+  as `x-vyre-presence: device key=<id> ts=<ms> nonce=<n> sig=<DER>` over the Capsule's message.
+  Any other curve or alg is refused. Capsule and device share one check and one nonce set. It is
+  offered only once a device key is enrolled, works on the box, and opens a presence session.
+- A `"tailnet"` entry in a tool's `callers` now lets in any `tailnet:<login>` caller, so the
+  owner's devices reach the Gate, `threads.answer`, push and the vault's reveal, copy, TOTP and
+  session tools. Presence still decides the human-only ones. `callerKind` is unchanged.
+- `/onboard/device`: the page the phone app opens to sign in with the Deck's passkey, or a
+  one-time code when the box has none, returning to `vyre://enrolled?id=<key id>`.
+- `apps/test/world.js`: a box world for the apps' tests, every request as alex's phone on the
+  tailnet, with fake Gate senders on 127.0.0.1 and test endpoints for codes, held items and asks.
 
 #### Presence: a person proves they are there (ADR 0004)
 
