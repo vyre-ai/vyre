@@ -124,6 +124,19 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   (`ONLY=<regex>` for some screens, `DESKTOP=1280x800,1440x900,2000x1100` adds desktop sizes,
   `PHONES=0` drops the phones). Stop the world and Chrome after (pids in /tmp/pwa-*.pid).
 
+## Doing (saved before restart 5, 2026-09-27)
+- Handed off: RC 15d02055 to the integrator (tests 494/493/1 skipped, Chrome check of Now ok
+  at 390/430/1280); then c78b87c0 (budget 8 fix: backoff 250 ms, 500 ms, 1 s, doubling to 60 s; a
+  kick when any tool call is answered while reconnecting; pill from attempt 4). The integrator
+  decides whether c78b87c0 replaces 15d02055.
+- Waiting on: native-core's budget 8 rerun on c78b87c0 (their harness is 26ef7da4; the 3,254 px
+  jump is chat's 553017a1, not on main); main to carry cohesion (waiting, context, sight.frame
+  0f4d1105), native-core fa349d31 (theme routes, snapshot device, Dark/Paper writes scheme) and
+  app-design core/appearance, then one live check of each against the real modules.
+- Next: docs' tips wiring (docs/build/tips.md, once tips is on main); the Glass header frame in a
+  thread with chat (glass-mini.md Header variant); the tool row's Step link is chat's.
+- No testbox processes running (Chrome and world stopped by process group).
+
 ## Doing (resumed after logout 4, 2026-09-27)
 - READY for batch 4 sent to the integrator: 2a577ede (main 53cd1326 merged, pushed). Chrome check
   on testbox (deck/test/resilience-shots.js): pill, offline line, Retry, outbox once, /app/ route all
