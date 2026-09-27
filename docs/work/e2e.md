@@ -163,7 +163,8 @@ not_owner" is world setup (127.0.0.2 fails isTailnet before whois; docs' local 0
 Also 5b30ed3 (pushed): asks and held items carry `presence: {required, covered}`; gate.revise,
 gate.reject and threads.answer off the floor; gate.approve asks only for send/spend (NARROWABLE)
 and is sessionable (x-vyre-presence-keep: 1 returns x-vyre-presence-session). Shape sent to pwa,
-chat, mobile, phone-design. Lead to decide: deletions asking; SESSION_IDLE 5 min vs the ~30 min rule.
+chat, mobile, phone-design. Lead decided: Gate deletions ask; a presence session lasts 30 min from the proof, no idle cutoff
+(done in the commit after 5b30ed3).
 
 Waiting for the integrator's deployed sha. Then: build a throwaway box from it on the test box
 with scripts/e2e-headscale (README there), never /srv/vyre, and report pass or fail per item to the
@@ -205,6 +206,6 @@ event stream's first byte. Tear down afterwards.
   and only for name, instructions, model, effort and description. Refusals are `denied` (403).
 - /v1/events/stream sends `: open` as its first body bytes.
 - threads.asks, threads.get asks, gate.held, gate.get: each item has `presence: {required, covered}`.
-  gate.revise, gate.reject, threads.answer: no presence. gate.approve: presence for send/spend
-  only, sessionable. Request header `x-vyre-presence-keep: 1` + strong proof returns
+  gate.revise, gate.reject, threads.answer: no presence. gate.approve: presence for send, spend
+  and delete, sessionable. A presence session lasts 30 minutes from the proof. Request header `x-vyre-presence-keep: 1` + strong proof returns
   `x-vyre-presence-session: session id=.. secret=.. expires=..`. Internal tool presence.covered.

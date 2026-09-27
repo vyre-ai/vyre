@@ -55,7 +55,7 @@ export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", 
 /**
  * Floor tools whose owner may say, per input, that no proof is needed (`presence.when`). Without
  * that declaration they ask every time. gate.approve asks only for what goes out as the user:
- * sending, posting or paying (the no-nag rule).
+ * sending, posting, paying or deleting outside (the no-nag rule).
  */
 export const NARROWABLE = new Set(["gate.approve"]);
 
@@ -93,8 +93,10 @@ const CHALLENGE_TTL = 120_000;
 const CAPSULE_SKEW = 60_000;
 const COOL_DOWN = 30_000;
 const CODE_TTL = 10 * 60_000;
-const SESSION_IDLE = 5 * 60_000;
+// A session lasts 30 minutes from the proof, used or not (the no-nag rule: one proof covers
+// about 30 minutes on that device). There is no shorter idle cutoff inside that.
 const SESSION_MAX = 30 * 60_000;
+const SESSION_IDLE = SESSION_MAX;
 /** The proofs strong enough to open a session: hardware or a key the model cannot read. */
 const SESSION_FROM = new Set(["touchid", "capsule", "passkey"]);
 const MAX_OPEN = 64;
@@ -458,7 +460,7 @@ export class Presence {
 
   /**
    * Open a short session after a strong proof. The secret is returned once and kept only as a
-   * hash; it lasts 5 minutes idle and 30 at most, and only on the device that opened it.
+   * hash; it lasts 30 minutes from the proof, and only on the device that opened it.
    * @param {{ method?: string, keyId?: string|null, peer?: any }} proved how the opening call was proved
    */
   openSession({ method, keyId = null, peer = null } = {}) {

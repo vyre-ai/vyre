@@ -62,7 +62,7 @@ export default {
     });
 
     ctx.tool("presence.session.open", {
-      description: "After one strong proof (Touch ID, the Capsule or a passkey), a secret that proves presence for revealing, copying and TOTP codes for 5 minutes idle, 30 at most, on this device only.",
+      description: "After one strong proof (Touch ID, the Capsule or a passkey), a secret that proves presence for revealing, copying, TOTP codes and sends at the Gate for 30 minutes, on this device only.",
       presence: { summary: async () => "Keep revealing and copying vault items for up to 30 minutes on this device" },
       input: obj({}),
       run: async (_, meta) => {

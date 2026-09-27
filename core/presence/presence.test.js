@@ -312,8 +312,10 @@ test("presence: a session proves reveal, copy, TOTP and sends for a while, on on
   assert.equal((await p.verify({ ...APPROVE, def, proof, peer: { stableId: "phone" } })).ok, true, "a send the Gate says may ride it (the no-nag rule)");
   assert.equal((await p.verify({ ...reveal, tool: "vault.delete", proof, peer: { stableId: "phone" } })).ok, false, "never a tool off the list");
   assert.equal((await p.verify({ ...reveal, proof: { ...proof, secret: "wrong" }, peer: { stableId: "phone" } })).ok, false);
-  tick(6 * 60_000);
-  assert.equal((await p.verify({ ...reveal, proof, peer: { stableId: "phone" } })).ok, false, "idle too long");
+  tick(25 * 60_000);
+  assert.equal((await p.verify({ ...reveal, proof, peer: { stableId: "phone" } })).ok, true, "25 minutes unused: still covered, no idle cutoff");
+  tick(5 * 60_000);
+  assert.equal((await p.verify({ ...reveal, proof, peer: { stableId: "phone" } })).ok, false, "30 minutes from the proof");
   const s2 = p.openSession({ method: "touchid" });
   const proof2 = { method: "session", id: s2.session, secret: s2.secret };
   for (let i = 0; i < 7; i++) { tick(4 * 60_000); assert.ok((await p.verify({ ...reveal, proof: proof2 })).ok, "kept alive " + i); }

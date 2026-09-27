@@ -73,7 +73,8 @@ async function box(t) {
   const root = tempHome(t);
   const mail = await outbox(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" },
-    gate: { senders: { mail: { type: "gmail", vault: "mail-token", from: "me@example.com", base: mail.base } } } }));
+    gate: { senders: { mail: { type: "gmail", vault: "mail-token", from: "me@example.com", base: mail.base },
+      drive: { type: "http", vault: "mail-token", hosts: [mail.base] } } } }));
   const screen = [];
   const d = await start({ root, log: () => {}, presence: deps => new Presence({ ...deps,
     touchid: { available: async () => false, authenticate: async () => ({ ok: false, reason: "unavailable" }) },
@@ -220,6 +221,11 @@ test("bypass: revising, discarding and deleting sends nothing and asks for no pr
   assert.equal((await raw(b.socket, "/v1/tools/gate.revise", { id: b.id, edited: { subject: "Hello again" } }, { "x-vyre-caller": "cli" })).status, 200);
   assert.equal((await raw(b.socket, "/v1/tools/gate.reject", { id: b.id }, deck)).status, 200);
   assert.equal(b.mail.got.length, 0);
+  // Deleting the user's data outside cannot be undone, so it asks like a send.
+  const del = (await call("gate.request", { kind: "delete", via: "drive", to: "northwind-bakery", content: { method: "DELETE", url: `${b.mail.base}/files/menu.pdf` } }, { root: b.root, caller: "mcp" }));
+  assert.ok(del.data, JSON.stringify(del.error));
+  assert.deepEqual((await call("gate.get", { id: del.data.id }, { root: b.root, caller: "deck" })).data.presence, { required: true, covered: false });
+  assert.equal((await raw(b.socket, "/v1/tools/gate.approve", { id: del.data.id }, deck)).body.error.code, "presence_required");
   // A model is refused all of them, silently: no proof is asked of it.
   const other = (await call("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "x", body: "y" } }, { root: b.root, caller: "mcp" })).data.id;
   for (const tool of ["gate.reject", "gate.revise"]) {

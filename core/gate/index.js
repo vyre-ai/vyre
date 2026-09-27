@@ -4,7 +4,7 @@
 // This file is the tool layer. It decides who may call what and hands the work to the Gate class.
 // The rule behind the table: anyone may ask for something to go out, only a person may let it go.
 // So gate.request is open to Claude, and gate.approve, gate.revise and gate.reject refuse every
-// mcp caller. Only approving what goes out as the user (a send or a spend) needs presence
+// mcp caller. Only approving what acts as the user outside (a send, a spend, a deletion) needs presence
 // (core/presence, floor rule 1, the no-nag rule), and one live presence session on the device
 // covers it; revising and discarding send nothing and need none. `presence.summary` says what the
 // person is proving before they prove it, and every held item carries `presence: {required,
@@ -33,8 +33,12 @@ const destOf = (edited, it) => [].concat((edited && edited.to) ?? it.to).filter(
 const mergedContent = (edited, it) => ({ ...(it.final || it.draft), ...(edited || {}) });
 const previewOf = c => String((c && (c.subject || c.body || (c.method && c.url ? `${c.method} ${c.url}` : ""))) || "").replace(/\s+/g, " ").trim().slice(0, 120);
 
-/** The kinds that go out as the user (sending, posting, paying): approving one needs presence. A deletion does not. */
-const OUTBOUND = new Set(["send", "spend"]);
+/**
+ * The kinds that act as the user in the outside world: sending or posting, paying, and deleting
+ * their mail, files or posts (which cannot be undone). Approving one needs presence. Every Gate
+ * kind is one of these today; a kind added later asks only if it is listed here.
+ */
+const OUTBOUND = new Set(["send", "spend", "delete"]);
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
