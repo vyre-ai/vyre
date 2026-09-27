@@ -218,14 +218,13 @@ process.stderr.write("no"); process.exit(1);
   assert.deepEqual(off.peers.map(p => [p.login, p.served, p.why]), [["sam@harlow.example", false, "not the owner"], ["pat@northwind.example", false, "not the owner"]]);
 });
 
-test("hosted app: the owner's calls from app.vyre.run are marked cross-origin; a guest's are refused", async t => {
+test("hosted app: the listener answers the owner's preflight and probe from app.vyre.run; a guest's calls are refused", async t => {
   const { send, call } = await box(t);
   const app = { origin: "https://app.vyre.run" };
   assert.equal((await send(OWNER_IP, "OPTIONS", "/v1/tools/threads.list", undefined, { ...app, "access-control-request-method": "POST" })).status, 204);
   assert.deepEqual(await send(OWNER_IP, "GET", "/v1/health", undefined, app), { status: 200, data: { reachable: true } });
-  // The router refuses a tool call from the hosted origin without a person session (e2e's rule).
-  const bare = await call(OWNER_IP, "threads.list", {}, app);
-  assert.deepEqual([bare.status, bare.error.code], [401, "person_session_required"]);
+  // Whether a call from the hosted origin runs is the router's person-session rule (e2e's,
+  // test/person.test.js); the listener's part is only that it gets there, from the owner.
   // A guest from the same page gets nothing; the owner's own page needs no session.
   assert.equal((await call(SAM_IP, "threads.list", {}, app)).status, 403);
   assert.equal((await call(OWNER_IP, "threads.list", {}, { origin: "https://alex.vyre.run:0" })).status, 200);

@@ -164,6 +164,11 @@ Later the same day (lead and e2e answers):
   headers now match the relay's: content-type, authorization, x-vyre-proof, x-vyre-presence,
   idempotency-key, last-event-id.
 
+- After the freeze (test box, `nice -n 15`, load 4.5): names service, identity, guests, onboard,
+  daemon, presence, presence-bypass, projects, config, hygiene, docs-build, docs-index, fixtures:
+  179 tests, 178 pass. The one failure was my hosted-app test asserting e2e's 401, which lives on
+  work/e2e; it now asserts only the listener's part (guests 9 of 9).
+
 Waiting: e2e (merges work/tailnet and tests the app flow end to end), relay (origin list, and whether the
 hosted app ever reaches the box through the relay), sessions (threads.answer contract for
 Mac-owned sessions, below).
