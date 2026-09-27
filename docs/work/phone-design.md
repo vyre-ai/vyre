@@ -3,6 +3,10 @@
 Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: phone-design
 
 ## Done
+- Reduced system (deck-design e1428b1, cut at fe7e8e0) applied to phone.md (352c985) and the
+  canvas. New private canvas on this account (the old one is on the previous account):
+  https://claude.ai/artifact/3SthmzgeUYv6o8bbaBNhD6, only the 10 Picked boards (A and B dropped).
+  Contrast: 338 checks, both themes, 0 below AA. Source backup: <team-dir>/design-backup/phone/.
 - Expo pivot (lead, 2026-09-27): phone.md now specs one Expo app for iOS, Android and web
   (mobile leads ADR 0027). Tokens are plain values for one tokens.ts (section 2). Borrowed from
   Paseo's app: page-swipe thresholds, inverted transcript with follow and Jump to latest,
@@ -21,15 +25,12 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
   on work/chat 10604b9; phone.md section 15 names the fields.
 
 ## Doing
-- The reduced system (deck-design e1428b1) is applied to phone.md (352c985) and to the 10 Picked
-  canvas boards (scratchpad phone/project F*.dc.html; backup in project-backup-pre-reduced,
-  transform in scratchpad reduce.py). Contrast re-run on the Picked boards: 338 checks in both
-  themes, 0 below AA. Canvas NOT yet republished: waiting on the lead for the canvas link and
-  whether to drop the old A and B boards.
+- Nothing in flight. Waiting on paseo-research (team/research/paseo-ui.md) for the one-app batch:
+  one design for web, Mac desktop and phone plus a design sheet, with deck-design as one team.
 
 ## Next
-1. Republish the canvas to the same link once the lead sends it (files under project/, never the
-   repo as root). Then send the integrator the head.
+1. When paseo-research reports: work with deck-design on one system and screens that adapt
+   across sizes (lead, 2026-09-27).
 2. The attention colour stays violet unless the user picks teal: one line per theme.
 3. Review the Expo app (mobile, ADR 0027) against phone.md as screenshots arrive.
 
