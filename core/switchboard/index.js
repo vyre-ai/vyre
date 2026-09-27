@@ -1319,6 +1319,8 @@ export default {
     ctx.store.migrate(MIGRATIONS);
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
     const cfg = sessionsConfig(ctx.config);
+    // Where spawnSession (core/sessions/spawn.js) reads it, for both drivers.
+    process.env.VYRE_SESSIONS_SPAWNER = cfg.spawner;
     /** This machine's own Claude credential for threads no agent runs (ADR 0030, "Auth"). */
     // The vault is asked only when a credential was put there for this (onboarding's Claude step,
     // or sessions.auth set on purpose), so a machine without one never touches the vault.

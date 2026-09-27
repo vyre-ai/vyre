@@ -6,6 +6,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### The uid split, wired: sessions start through the spawner on the box
 
+- Off by default: `sessions.spawner` is "off" until ADR 0030 phase 3 (sessions reach Vyre's tools
+  in process); "on", or VYRE_SESSIONS_SPAWNER=on, turns it on. ADR 0032 records the gap, dated.
+- The spawner changes directory as the agent (root there cannot enter the agent's home), allows
+  programs by real path, and finds the Agent SDK's binary in the image or /opt/vyre-sessions-sdk.
+
 - core/sessions/spawn.js starts every session through the box's spawner when its socket is there
   (as uid vyre-agent, under the spawner's `tini -s`, its own group and session), and directly
   elsewhere. The handle looks like a ChildProcess at once; the pid, group and session reach

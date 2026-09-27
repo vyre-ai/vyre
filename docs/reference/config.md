@@ -66,7 +66,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | --- | --- | --- |
 | `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/names/index.js` |
 | `VYRE_AGENT_GID` | Not described yet. | `core/spawner/main.js` |
-| `VYRE_AGENT_HOME` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_AGENT_HOME` | Not described yet. | `core/sessions/spawn.js`, `core/spawner/main.js` |
 | `VYRE_AGENT_UID` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ALLOW_DIALOGS` | `1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins. | `core/config/dialogs.js`, `core/daemon/index.js` |
 | `VYRE_ALLOW_REAL_BOX` | Not described yet. | `core/config/dialogs.js` |
@@ -94,7 +94,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_EGRESS_UPSTREAM` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/switchboard/index.js` |
-| `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/sessions/index.js`, `core/switchboard/index.js`, `harness/lib/vyre.js` |
+| `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
 | `VYRE_NO_OPEN` | Never open a browser tab from the terminal. | `core/cli/commands/vault.js` |
 | `VYRE_NO_UP` | `vyre box add` installs Vyre without starting it. | `core/cli/commands/box.js` |
@@ -106,7 +106,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_PROJECTS_MOVE` | Not described yet. | `core/projects/index.js` |
 | `VYRE_SCREEN_BIN` | Not described yet. | `local/screen-mac/index.js` |
 | `VYRE_SESSIONS_DRIVER` | Not described yet. | `core/sessions/config.js` |
-| `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js` |
+| `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js`, `core/spawner/main.js` |
 | `VYRE_SPAWNER_ALLOW` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_SSE_HEARTBEAT_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |
@@ -137,6 +137,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_PROJECT` | The project a thread belongs to, for its brief. | `harness/hooks/hook.js` |
 | `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
 | `VYRE_SCOPE_CWDS` | The folders an agent's `recall.search` is held to, as JSON. | `core/switchboard/index.js`, `harness/mcp/server.js` |
+| `VYRE_SESSIONS_SPAWNER` | Not described yet. | `core/sessions/config.js`, `core/sessions/spawn.js` |
 | `VYRE_SPAWNER_SOCKET` | Not described yet. | `core/spawner/client.js`, `core/spawner/main.js` |
 | `VYRE_THREAD` | The session id of a headless thread vyred runs. | `harness/hooks/hook.js` |
 

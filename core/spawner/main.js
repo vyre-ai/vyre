@@ -53,9 +53,12 @@ if (!process.getuid || process.getuid() !== 0) {
   try { asVyre("chmod", "700", env.VYRE_USER_HOME || "/home/vyre"); } catch {}
 
   // Claude Code: the global install, and the Agent SDK's own binary (ADR 0030) where it is bundled.
-  const sdk = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "node_modules", "@anthropic-ai");
-  let bundled = [];
-  try { bundled = fs.readdirSync(sdk).filter(n => /^claude-agent-sdk-linux-/.test(n)).map(n => path.join(sdk, n, "claude")).filter(p => fs.existsSync(p)); } catch {}
+  // It lives in the image's own node_modules, or where sessions installs it (/opt/vyre-sessions-sdk).
+  const bundled = [];
+  for (const base of [path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".."), "/opt/vyre-sessions-sdk", env.VYRE_SESSIONS_SDK_DIR || ""].filter(Boolean)) {
+    const sdk = path.join(base, "node_modules", "@anthropic-ai");
+    try { for (const n of fs.readdirSync(sdk)) if (/^claude-agent-sdk-linux-/.test(n) && fs.existsSync(path.join(sdk, n, "claude"))) bundled.push(path.join(sdk, n, "claude")); } catch {}
+  }
   const allow = ["/usr/local/bin/claude", ...bundled, ...String(env.VYRE_SPAWNER_ALLOW || "").split(":").filter(p => p.startsWith("/"))];
   const home = env.VYRE_AGENT_HOME || "/home/vyre-agent";
   const makeDir = dir => execFileSync("/usr/bin/setpriv", [`--reuid=${AGENT.uid}`, `--regid=${AGENT.gid}`, `--groups=${SHARED}`, "--inh-caps=-all", "--",

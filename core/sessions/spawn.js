@@ -38,8 +38,9 @@ export function findSubreaper() {
  *           uid?: number, gid?: number, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void }} o
  */
 export function spawnSession(command, args, o = {}) {
-  // VYRE_SESSIONS_SPAWNER=0 keeps sessions as vyred's own uid (the split off), where the box has a spawner.
-  if (o.spawner === true || (o.spawner !== false && process.env.VYRE_SESSIONS_SPAWNER !== "0" && process.platform === "linux" && spawnerHere())) return viaSpawner(command, args, o);
+  // Only with sessions.spawner "on" (VYRE_SESSIONS_SPAWNER=on): off until owned sessions reach
+  // Vyre's tools in process (ADR 0030 phase 3), since vyre-agent cannot open vyred's socket.
+  if (o.spawner === true || (o.spawner !== false && process.env.VYRE_SESSIONS_SPAWNER === "on" && process.platform === "linux" && spawnerHere())) return viaSpawner(command, args, o);
   const posix = process.platform !== "win32";
   const [cmd, argv] = o.subreaper && posix ? [o.subreaper, ["-s", "--", command, ...args]] : [command, args];
   const env = { ...(o.env || {}) };
@@ -72,7 +73,7 @@ function absolute(command, env) {
   for (const dir of String((env && env.PATH) || process.env.PATH || "").split(":")) {
     if (!dir) continue;
     const p = path.join(dir, command);
-    try { fs.accessSync(p, fs.constants.X_OK); return fs.realpathSync(p); } catch {}
+    try { fs.accessSync(p, fs.constants.X_OK); return p; } catch {}
   }
   return command;
 }
