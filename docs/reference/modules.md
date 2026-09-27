@@ -22,7 +22,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
-| [`computers`](#computers) | `core/computers` | `box` | 23 | 15 | cli, deck |
+| [`computers`](#computers) | `core/computers` | `box` | 25 | 17 | cli, deck |
 | [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 9 | 5 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
@@ -107,8 +107,8 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Folder: `core/computers`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [23](tools.md#computers), 5 of them only for other modules
-- Emits: [15 events](events.md#computers)
+- Tools: [25](tools.md#computers), 7 of them only for other modules
+- Emits: [17 events](events.md#computers)
 - Shows on: cli, deck
 - Streams: `glass`
 - Needs vault: `tailscale-agent-authkey`

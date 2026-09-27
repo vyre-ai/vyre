@@ -206,7 +206,7 @@ test("computerd: /fs is behind the bearer token, and the shield answers 423 on i
   assert.ok(!anon.body.toString().includes(TOKEN));
   assert.equal((await req(base, "GET", "/fs/read?path=todo.txt")).body.toString(), "0123456789");
 
-  assert.deepEqual((await req(base, "POST", "/shield", { body: { on: true } })).json, { shielded: true });
+  assert.deepEqual((await req(base, "POST", "/shield", { body: { on: true } })).json, { shielded: true, frozen: false });
   for (const [m, r] of [["GET", "/tree"], ["GET", "/screenshot"], ["POST", "/act"], ["POST", "/input"]]) {
     const res = await req(base, m, r, { body: m === "POST" ? {} : undefined });
     assert.equal(res.status, 423, `${m} ${r}`);
@@ -214,6 +214,6 @@ test("computerd: /fs is behind the bearer token, and the shield answers 423 on i
   }
   assert.equal((await req(base, "GET", "/fs/stat?path=todo.txt")).status, 200, "files are Glass's, and stay open to it");
   assert.equal((await req(base, "POST", "/shield", { headers: { authorization: "Bearer wrong" }, body: { on: false } })).status, 401);
-  assert.deepEqual((await req(base, "POST", "/shield", { body: { on: false } })).json, { shielded: false });
+  assert.deepEqual((await req(base, "POST", "/shield", { body: { on: false } })).json, { shielded: false, frozen: false });
   assert.notEqual((await req(base, "POST", "/act", { body: {} })).status, 423);
 });
