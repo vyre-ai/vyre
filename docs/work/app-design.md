@@ -239,3 +239,10 @@ account + device and drop the tokens tool store. Then polish passes over the spe
     overflow, not noise.
   - Sent to vault (msg_id 79e667f5) and launch (msg_id f7dacdfd). Still owe launch: the step-shell
     board and the session-import 5-stage revision (queued, see above).
+
+- cohesion folded the interaction rules into docs/design/interaction.md (5debc1bc, sent binding to
+  every 0.1.1 team) and asked for three follow-ups: wrote the confirmed Answer card into
+  result-card.md as its real home (00d3f471, see below); streaming IQ / step pills / handoff
+  boards stay queued until memory-iq/capsule-pro/glass actually ask, so I'm not guessing at shape;
+  the violet-fill cleanup they flagged was already closed by launch's 57eebd9f before they read my
+  message — confirmed clean, nothing open there.
