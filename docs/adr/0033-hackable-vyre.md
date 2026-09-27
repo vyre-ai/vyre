@@ -367,7 +367,10 @@ the native-core milestone**, one small branch per step, each merged green:
 5. The floor (`core/harness/rules.js`) moves into the kernel as `core/floor`, since the kernel
    runs it on every call.
 
-The boundary test learns that `lib/*` is shared pure code (ci owns the test). What stays after
+The boundary test learns that `lib/*` is shared pure code (ci owns the test). Whichever branch
+creates `lib/` first (app-design's `lib/theme` in phase 4, or `lib/tailnet` here) adds `"lib"` to
+`package.json` `files` in the same commit, and data a lib needs at run time lives beside it
+(`lib/theme/tokens.json`), since `docs/design` is not in the package. What stays after
 this is the kernel plus surfaces (the CLI's own vault terminal code).
 
 ### 7. Docs
