@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Deck's stream tells views when it came back or was reset
+
+- `onResume(fn)` in deck/js/api.js: fn("reconnect") when the stream opens again after a drop, and
+  fn("reset", id) when vyred says its log is behind this page's cursor, so a view (Chat's
+  session) reloads what it may have missed through tools. The same shape as chat's 30a9f81, on
+  the resilience client, which already follows from the reset id (no event after it is dropped
+  as seen) and reopens a closed stream. Test in deck/js/resilience.test.js.
+
 #### A Mac session's ask is answered from Needs
 
 - Now, the phone's Needs you rows and sheet, /needs/<ask> and a thread's held card answer an ask

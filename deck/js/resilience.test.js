@@ -87,6 +87,28 @@ test("events: the first stream starts at the newest event, and a reconnect resum
   off();
 });
 
+test("events: onResume hears a reconnect and a reset, and events after a reset are not dropped as seen", async () => {
+  /** @type {any[]} */ const why = [], heard = [];
+  const offR = api.onResume((w, from) => why.push([w, from]));
+  const off = api.on("thread.*", e => heard.push(e.id));
+  const last = () => streams[streams.length - 1];
+  last().end();
+  await tick();
+  api.kick();
+  await tick();
+  last().push("retry: 2000\nid: 8\n\n");
+  await tick();
+  assert.deepEqual(why, [["reconnect", undefined]]);
+  // The box's log was reset behind this page's cursor: it says so, and follows from id 2.
+  const reset = { id: 2, at: 1, type: "stream.reset", source: "daemon", project: null, thread: null, payload: {} };
+  last().push(`id: 2\nevent: stream.reset\ndata: ${JSON.stringify(reset)}\n\n`);
+  last().push(`id: 3\nevent: thread.text\ndata: ${JSON.stringify({ ...reset, id: 3, type: "thread.text", thread: "t1", payload: { text: "after" } })}\n\n`);
+  await tick();
+  assert.deepEqual(why.at(-1), ["reset", 2]);
+  assert.deepEqual(heard, [3], "an event after the reset arrives, though its id is below the old cursor");
+  off(); offR();
+});
+
 test("idempotency: a write carries one key, the same on the retry after a sign-in; a read carries none", async () => {
   sent.length = 0;
   let signIns = 0;

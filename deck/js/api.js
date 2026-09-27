@@ -464,6 +464,26 @@ export function on(type, fn) {
   return () => { subs.delete(sub); };
 }
 
+/** @type {Set<(why: "reconnect"|"reset", from?: number) => void>} */
+const resumeSubs = new Set();
+let wasOpen = false;
+
+/**
+ * Hear the stream come back after a drop ("reconnect"), or vyred say its log is behind this page's
+ * cursor ("reset", with the id it follows from when it says one): reload what may have been
+ * missed through tools. Returns an unsubscribe. (The shape chat's session view uses.)
+ * @param {(why: "reconnect"|"reset", from?: number) => void} fn
+ */
+export function onResume(fn) {
+  resumeSubs.add(fn);
+  return () => { resumeSubs.delete(fn); };
+}
+
+/** @param {"reconnect"|"reset"} why @param {number} [from] */
+function resumed(why, from) {
+  for (const fn of resumeSubs) { try { fn(why, from); } catch (err) { console.error(err); } }
+}
+
 function startStream() {
   const cursor = cursorStore(BOX);
   stream = follow({
@@ -472,8 +492,9 @@ function startStream() {
     headers: { "x-vyre-caller": "deck", ...headers },
     onEvent: deliver,
     // The box's log is behind this cursor (its store was reset): the views reload through tools.
-    onReset: () => { if (typeof window !== "undefined") window.dispatchEvent(new Event("deck:navigate")); },
+    onReset: (/** @type {any} */ r) => { resumed("reset", typeof r === "number" ? r : Number(r?.id ?? r?.from) || undefined); if (typeof window !== "undefined") window.dispatchEvent(new Event("deck:navigate")); },
     onState: s => {
+      if (s.state === "open") { if (wasOpen) resumed("reconnect"); wasOpen = true; }
       streamState = s;
       // Back: the outbox goes now, not at its next minute.
       if (s.state === "open") { reach(true); void outboxReady?.then(o => o.kick()); }
