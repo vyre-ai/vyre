@@ -175,7 +175,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | `memory.corrected` | `action`, `addresses`, `prior_confidence`, `prior_rule`, `prior_source`, `rel`, `scope` |
 | `memory.curated` | `edges`, `ms`, `nodes`, `updated` |
 | `memory.merged` | `id`, `scope` |
-| `memory.split` | none; sometimes `callers`, `description`, `id`, `input`, `presence`, `run`, `scope` |
+| `memory.split` | none; sometimes `callers`, `description`, `id`, `input`, `run`, `scope` |
 
 ## names
 

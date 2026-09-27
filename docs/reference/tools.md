@@ -1191,12 +1191,11 @@ The listener, the open routes, and what Tailscale Funnel is publishing from this
 
 ### `learn.accept`
 
-Accept a proposed lesson. Only the user can: from the CLI, the Capsule or the Deck, with presence. In a thread the user accepts by replying yes; nothing needs calling.
+Accept a proposed lesson. Only the user can: from the CLI, the Capsule or the Deck; an agent is refused. In a thread the user accepts by replying yes; nothing needs calling.
 
 - Input:
   - `id` integer, required
 - Callers: `capsule`, `cli`, `deck`
-- Needs a person present.
 
 ### `learn.add`
 
@@ -1271,7 +1270,7 @@ PostToolUse or PostToolUseFailure: a call ran (ok) or failed. Hashes a file Clau
 
 ### `learn.relax`
 
-Loosen a lesson: lower its level, narrow or move its scope, narrow `when`, change or remove its check, lower its cap, pin it, or rewrite its rule. Only the user can, with presence.
+Loosen a lesson: lower its level, narrow or move its scope, narrow `when`, change or remove its check, lower its cap, pin it, or rewrite its rule. Only the user can, from their own surfaces; an agent is refused.
 
 - Input:
   - `id` integer, required
@@ -1283,16 +1282,14 @@ Loosen a lesson: lower its level, narrow or move its scope, narrow `when`, chang
   - `scope` string or object
   - `when` string
 - Callers: `capsule`, `cli`, `deck`
-- Needs a person present.
 
 ### `learn.retire`
 
-Retire a lesson, or decline a proposed one. Only the user can, with presence.
+Retire a lesson, or decline a proposed one. Only the user can, from their own surfaces; an agent is refused.
 
 - Input:
   - `id` integer, required
 - Callers: `capsule`, `cli`, `deck`
-- Needs a person present.
 
 ### `learn.signal`
 
@@ -1660,7 +1657,6 @@ Correct a fact: wrong (never true), ended (stopped being true at `at`), replace 
   - `subject` string
   - `wait` boolean
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Needs a person present.
 
 ### `memory.corrections`
 
@@ -1718,7 +1714,6 @@ Two nodes are one: everything said about the first is said about the second (int
   - `into` string, required
   - `node` string, required
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Needs a person present.
 
 ### `memory.mute`
 
@@ -1765,7 +1760,6 @@ One node is two: with room or project, the one that project's sessions name is s
   - `project` string
   - `room` string
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Needs a person present.
 
 ### `memory.stats`
 

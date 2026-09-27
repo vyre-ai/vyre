@@ -9,7 +9,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { tempHome } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
-import { ancestry, insideClaude } from "../core/daemon/peer.js";
+import { ancestry, insideClaude, controllingTty } from "../core/daemon/peer.js";
 
 const tree = {
   // vyred (500) under the test runner (400); a terminal zsh (200) and a claude (300) elsewhere.
@@ -85,4 +85,11 @@ test("peer: a person-only call from under a claude is refused silently; the same
   // Tools that are not person-only are not traced at all.
   const list = await client(dir, socket, "agents.list", {}, { underClaude: true });
   assert.equal(list.status, 200, JSON.stringify(list));
+});
+
+test("peer: a detached process has no controlling terminal, whatever it says", async () => {
+  const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 2000)"], { detached: true, stdio: "ignore" });
+  await new Promise(r => setTimeout(r, 200));
+  try { assert.equal(controllingTty(/** @type {number} */ (child.pid)), null); }
+  finally { child.kill(); }
 });

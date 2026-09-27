@@ -30,13 +30,3 @@ iPhone when iCloud Keychain is on. With only the Mac, a pairing cannot be approv
 Owner: deck with link (a decision for the lead). Pages: [install](get-started/install.md),
 [onboarding](get-started/onboarding.md), [troubleshooting](get-started/troubleshooting.md),
 [the box and the Mac](concepts/box-and-mac.md), [Tailscale](using/tailscale.md).
-
-## The Mac update that vyre box update prints fails
-
-`vyre box update` upgrades the box, then, when the box is newer than the Mac, prints the command
-that upgrades the Mac, as ADR 0008 says. The command it prints is `npm i -g vyre@latest && vyre up`,
-and it fails: Vyre is not on npm yet. Run
-`npm install -g https://vyre.run/box/vyre.tgz && vyre up` instead.
-
-Owner: integrator. Pages: [looking after your box](using/box-care.md), [the CLI](using/cli.md),
-[troubleshooting](get-started/troubleshooting.md).

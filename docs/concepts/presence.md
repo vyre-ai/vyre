@@ -73,7 +73,11 @@ vyre presence remove <id>
 
 ## Sessions in the Deck
 
-Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, a Capsule signature or a passkey) returns a secret that lasts 5 minutes idle and 30 minutes at most, bound to the tailnet node that opened it.
+Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, a Capsule signature or a passkey) returns a secret that lasts 30 minutes from the proof, bound to the tailnet node that opened it. It covers revealing, copying, one-time codes, approving and granting vault items, for an item that does not ask every time.
+
+A session serves the Deck and the Capsule. The CLI gets the same 30 minutes its own way, with no secret on disk: after one Touch ID (or a Capsule or passkey proof) from a login terminal, vyred remembers that terminal, and that terminal's reveals, copies, one-time codes, approvals and grants ask nothing until 30 minutes from the proof. vyred names the terminal from the kernel's word on which process connected and which terminal it runs in, never from anything the caller sends. A process under a Claude session, a process with no controlling terminal (the Bash tool, anything detached), and a `script`, tmux or expect pty that `who` does not list never ride it, and a terminal code proves its one call without opening a window. The window lives in vyred's memory, so a restart asks again. A Claude session's MCP tools and an agent are refused, and never asked.
+
+Your own memory and lessons ask nothing: `vyre memory correct`, `merge` and `split`, and `vyre learn accept`, `retire` and `relax`. Their callers lists keep models and agents out.
 
 ## What a tool sees
 

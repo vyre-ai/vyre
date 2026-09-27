@@ -46,6 +46,7 @@ In the order `vyre help` lists them.
 | [`vyre learn`](#vyre-learn) | the lessons Vyre learned from you, and what it proposed |
 | [`vyre timer`](#vyre-timer) | a timer that rings on every device |
 | [`vyre remind`](#vyre-remind) | a reminder at a time |
+| [`vyre assistant`](#vyre-assistant) | your assistant, or make one: vyre assistant Juno |
 | [`vyre todo`](#vyre-todo) | open todos by list; add and finish them |
 | [`vyre notes`](#vyre-notes) | notes, pinned first |
 | [`vyre snooze`](#vyre-snooze) | ring again later (9 minutes by default) |
@@ -306,6 +307,17 @@ vyre remind <what> at|in <when> [--json]
 ```
 
 vyre remind "call juno" at 6 · vyre remind me in 20 minutes to check the oven · vyre remind me tomorrow at 9 to email juno
+
+### vyre assistant
+
+Your assistant, or make one: vyre assistant Juno.
+
+```
+vyre assistant [name] [--json]
+```
+
+With no name: who your assistant is. With a name: make it, as onboarding does, if there is none yet.
+On a Mac paired with a box, the assistant lives on the box.
 
 ### vyre todo
 

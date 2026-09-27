@@ -13,6 +13,60 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - planner.parse reads a time said first as a reminder: "6pm call Harlow Legal", "at 6:30 pick up
   juno". Only a time that cannot be a count leads (am/pm, a colon, noon), so "3 apples" is not one.
 
+#### The CLI gets the same 30-minute window for the vault as the Deck
+
+- `vyre vault get --reveal`, copy, one-time codes, approve and grant asked for a proof on every
+  call from a terminal. Now one Touch ID (or a Capsule or passkey proof) from a login terminal
+  covers that terminal's vault.reveal, vault.copy, vault.totp, vault.approve and vault.grant for
+  30 minutes, for items that do not ask every time. Nothing is written to disk: vyred keeps the
+  terminal in memory, named from the kernel (the socket peer's pid, its controlling terminal, and
+  `who`'s login list), gated on the peer ancestry check, so a process under `claude`, a detached
+  process, or a tmux/script pty never rides it. A terminal code proves one call and opens no
+  window. `core/presence/index.js` (`terminal` in verify), `core/daemon/index.js` (atTerminal),
+  `core/daemon/peer.js` (`controllingTty`), `core/modules/index.js`, `docs/concepts/presence.md`,
+  tests in `core/presence/presence.test.js`, `test/presence-cli.test.js`, `test/peer.test.js`.
+
+#### Memory and lesson changes ask nothing; vault sessions cover grants on the Deck; the Mac update line works
+
+- `vyre memory correct`, `merge` and `split` asked for the code on the terminal (or Touch ID) on
+  every correction, for the user's own memory. They no longer ask: memory.correct, memory.merge
+  and memory.split drop their presence declaration. The owner-surface allowlist stays, and a
+  session's MCP or a caller that names an agent is still refused, without a prompt.
+  `core/memory/index.js`, `core/cli/commands/memory.js`, `test/presence-cli.test.js`.
+- A presence session (Deck, Capsule) now also covers vault.approve and vault.grant, beside
+  reveal, copy and TOTP. For vault tools a session serves only the Deck and the Capsule: the CLI
+  proves every `vyre vault` reveal or grant afresh, since Claude's Bash is the CLI too, and MCP
+  and agents are refused. `core/presence/index.js`, `core/vault/index.js` (`session: () => true`
+  on approve and grant), `docs/concepts/presence.md`.
+- `vyre learn accept`, `retire` and `relax` ask no presence: learn.accept, learn.retire and
+  learn.relax leave the floor's list and drop their declarations. Their callers list (cli, deck,
+  capsule) and the Harness's shell check keep models and agents out. `core/learn/index.js`,
+  `docs/using/learning.md`.
+- `vyre box update` told a Mac older than its box to run `npm i -g vyre@latest && vyre up`, which
+  fails: Vyre is not on npm yet. It and doctor's install-size fix now print
+  `npm install -g https://vyre.run/box/vyre.tgz && vyre up` (one constant, `INSTALL` in
+  `core/cli/brand.js`). The known gap is closed in the docs.
+
+#### `vyre up` after an upgrade restarts the old vyred; the assistant is one command away
+
+- On a user's Mac, `npm i -g` over an install and then `vyre up` printed "vyred is already
+  running" and left the 44-minute-old vyred on the old code: both said 0.0.1. Now a release's
+  build.json commit is compared too; a vyred on another build, or a dirty or unknown one, is
+  restarted: "updated · restarted vyred (0.0.1 → 0.0.1 · 1a2b3c4)". vyred reads its build when it
+  starts, so a vyred left running over a new install cannot claim the new commit. A checkout with
+  no stamp still compares versions. `vyre up` stops only the pid that both the pid file and the
+  running vyred's health name; a mismatch stops nothing and says so. `core/cli/commands/up.js`,
+  `core/cli/daemonctl.js`, `core/daemon/build.js`.
+- "your assistant  not set up yet" was a dead end, and on a Mac it was always shown: the box's
+  health never names the assistant. The Mac now asks the box over the link, and when there is
+  none the ending says `vyre assistant <name>`. New `vyre assistant [name] [--json]`: who your
+  assistant is, or make it with the same input as the Deck's "Create your assistant" card; on a
+  paired Mac it asks the box. `core/cli/commands/assistant.js`, `core/cli/ending.js`,
+  `test/upgrade.test.js`.
+- Making the assistant needs the person, as agents.create now does everywhere: here the code on
+  this terminal or Touch ID (callAsPerson); from a Mac through the link, the Deck at the box's
+  address asks for the passkey, and `vyre assistant` says so. The home screen tests start vyred
+  with the test verifier, since they make an agent.
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
