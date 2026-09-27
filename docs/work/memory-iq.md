@@ -122,9 +122,11 @@ facts are not a project's.
   test/eval/asks/open.json (ce980557). v2 open: accuracy 0.778, confident-wrong 1, abstained 0.411,
   ungrounded 0, inconsistent 0. v1 re-recorded the same day on the same golds: 0.767, 2 CW,
   p50/p95 3.8/4.4 s via claude -p, $0.0032 a question. One question apart: not a measured win.
-- A/B on sealed (recorded blind, scores only) running on testbox: ~/vyre-ci/iq-ab-sealed-v1.txt
-  (from ~/vyre-ci/memory-iq-v1, prompt v1) then iq-ab-sealed-v2.txt (~/vyre-ci/memory-iq), marker
-  ~/vyre-ci/iq-ab-done. Do not open test/eval/asks/sealed.json.
+- A/B done. Sealed (blind): v1 0.61 / 9 confident-wrong, v2 0.62 / 6. Open: v1 0.767 / 2, v2 0.778 / 1.
+  v2 keeps (already in the RC via 1815b37d). Both worlds' v2 replies committed (test/eval/asks).
+- rc.2 handoff: branch work/memory-iq-rc2 (worktree ../vyre-memory-iq-rc2) = 1815b37d + the teach
+  me:you fix ported from work/memory + both asks files + "you prefer" grammar, head 4ff57bb6.
+  199/199 memory tests on testbox.
 - IQ everywhere: docs/design/iq-everywhere.md (surfaces, ranked gaps, owner specs). Built here:
   memory.ask stream + caller id + memory.thinking/answered (6adfc4b6), `vyre memory ask` on
   memory.ask (6adfc4b6), memory.suggest offered to suggest + suggest.ready (f50c5f21). All 0.1.1
