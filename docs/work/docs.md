@@ -74,6 +74,9 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
   deck/test/world.js: alex's folder is plainly `alex` (no temp name in shown paths).
 - Reference and index regenerated from a clean archive (e0537194). Docs tests on testbox: 79 run.
 - Then: redeploy the preview (`--branch preview`), head to the integrator.
+- STALE AGAIN after main 15e82dd7 (coral to violet 36d5a5b, VyreDrive, idle hand-back): docs-check
+  says 67 shots are older than deck.css, settings.js, glass.css and the Capsule files. Full retake
+  when the lead lifts the testbox freeze, then place, regen index, tests, preview.
 - Retake settings-connections after tailnet's VyreDrive rename (it says Taildrive).
 - Shots commands: `uptime` on the test box first (wait while load > 8), rsync to
   ~/vyre-ci/docs-s, `DOCS_SHOTS_SHARP=~/vyre-ci/docs-s-tools CHROME=/usr/local/bin/vyre-chrome
@@ -85,14 +88,14 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Pending page changes (apply when the code reaches main)
 
-- glass-live 67b85c0 (idle hand-back), HOLD until merged: glass.md gets "idle" as a fourth way a
+- DONE (f623b257 merge, applied) glass-live 67b85c0 (idle hand-back): glass.md gets "idle" as a fourth way a
   take-over ends (after Hand back, the 90 s lease, the lease moving); config
   `computers.handbackIdleMin` 0/2/5/15, default 5, set in Settings, Network, Glass hand-back;
   owner-only `computers.handback.status` / `computers.handback.set {minutes}`; events
   `computer.idle-warning {agent, surface, at}` 10 s before (`at: null` = input came in time),
   `computer.handed-back` with why `idle` and `idle_ms`; thread line "Handed back to <agent> after
   <n> min idle"; a pong keeps the lease but is not input. Regenerate reference.
-- resilience c8f5654 (ADR 0029 R4), HOLD until merged: a terminal with no viewer is kept for
+- DONE (applied; chat.md has a new terminal section) resilience c8f5654 (ADR 0029 R4): a terminal with no viewer is kept for
   `term.keep_hours` (12 h default), runs under dtach and survives a vyred restart, a deploy ends
   it (term.closed reason "box updated"), term.attach takes from=<offset>. ADR 0024 line 47 ("ends
   10 seconds after its last viewer leaves"): add a dated note pointing at ADR 0029 rather than
