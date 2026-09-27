@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import path from "node:path";
-import { Presence, HUMAN_ONLY, canonical, inputHash, parse } from "./index.js";
+import { Presence, HUMAN_ONLY, PERSON_ONLY, canonical, inputHash, parse } from "./index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { discover, Registry } from "../modules/index.js";
@@ -38,9 +38,11 @@ const codeFrom = text => /command: ([A-Z0-9]{6})/.exec(text)[1];
 const APPROVE = { tool: "gate.approve", input: { id: "a1" } };
 
 test("presence: the floor's list holds every human-only tool", () => {
-  for (const t of ["gate.approve", "gate.revise", "gate.reject", "threads.answer", "vault.put", "vault.approve", "vault.unlock",
+  for (const t of ["gate.approve", "gate.revise", "gate.reject", "vault.put", "vault.approve", "vault.unlock",
     "vault.offboard", "learn.accept", "learn.retire", "presence.enroll", "presence.remove", "presence.code"]) assert.ok(HUMAN_ONLY.has(t), t);
-  assert.ok(HUMAN_ONLY.size >= 13);
+  assert.ok(HUMAN_ONLY.size >= 12);
+  // The owner's own actions ask no proof (no nagging), but stay off a model's shell (PERSON_ONLY).
+  for (const t of ["threads.answer", "term.open"]) assert.ok(!HUMAN_ONLY.has(t) && PERSON_ONLY.has(t), t);
 });
 
 test("presence: canonical JSON sorts keys at every depth, and the hash follows it", () => {
@@ -358,4 +360,14 @@ test("presence: under tests the real terminal code is never written; tty is not 
   assert.ok(!(await p.methods()).includes("tty"));
   const c = await p.challenge({ ...APPROVE, method: "tty", tty: "/dev/ttys003" });
   assert.equal(c.error.code, "no_dialog");
+});
+
+test("presence: a tool can ask only for some inputs, and counts as asking when listed", () => {
+  const p = { required: Presence.prototype.required };
+  const def = { presence: { when: i => Boolean(i.auth) } };
+  assert.equal(p.required("agents.update", def, { instructions: "x" }), false);
+  assert.equal(p.required("agents.update", def, { auth: { budget_usd: 1 } }), true);
+  assert.equal(p.required("agents.update", def), true, "no input: listing tools");
+  assert.equal(p.required("vault.reveal", {}, { name: "northwind-mail" }), true, "on the floor's list whatever the input");
+  assert.equal(p.required("agents.create", {}, { name: "kit" }), false, "making an agent is a person's, with no passkey");
 });

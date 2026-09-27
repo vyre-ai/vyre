@@ -66,8 +66,17 @@ test("diff: empty strings, null/undefined, and huge inputs never throw and stay 
   assert.ok(Date.now() - start < 3000, "huge diff took too long");
 });
 
-test("diff: is a pure function — same inputs, same shape of output, no shared mutable state", () => {
+test("diff: is a pure function, same inputs, same shape of output, no shared mutable state", () => {
   const a = allText(renderDiff("x y z", "x q z"));
   const b = allText(renderDiff("x y z", "x q z"));
   assert.equal(a, b);
+});
+
+test("lineDiff: unified rows, removed before added, equal lines kept", async () => {
+  const { lineDiff } = await import("./diff.js");
+  const rows = lineDiff("a\nb\nc", "a\nB\nc\nd");
+  assert.deepEqual(rows.map(r => r.type + r.text), [" a", "-b", "+B", " c", "+d"]);
+  assert.deepEqual(lineDiff("", "x").map(r => r.type + r.text), ["+x"]);
+  assert.deepEqual(lineDiff("x", "").map(r => r.type + r.text), ["-x"]);
+  assert.deepEqual(lineDiff("same", "same").map(r => r.type), [" "]);
 });

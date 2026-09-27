@@ -21,7 +21,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`computers`](#computers) | `core/computers` | `box` | 21 | 14 | cli, deck |
-| [`files`](#files) | `core/files` | `box`, `local` | 14 | 3 | capsule, cli, deck |
+| [`files`](#files) | `core/files` | `box`, `local` | 16 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 9 | 5 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
@@ -30,7 +30,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
-| [`link`](#link) | `core/link` | `box`, `local` | 18 | 5 | capsule, cli, deck |
+| [`link`](#link) | `core/link` | `box`, `local` | 19 | 12 | capsule, cli, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 14 | 4 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
@@ -40,9 +40,10 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 6 | 4 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 4 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
-| [`recall`](#recall) | `core/recall` | `box`, `local` | 7 | 1 | cli |
+| [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
+| [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 22 | 13 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
@@ -95,7 +96,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#files)
+- Tools: [16](tools.md#files)
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
 
@@ -187,8 +188,8 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/link`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [18](tools.md#link), 2 of them only for other modules
-- Emits: [5 events](events.md#link)
+- Tools: [19](tools.md#link), 2 of them only for other modules
+- Emits: [12 events](events.md#link)
 - Shows on: capsule, cli, deck
 
 ## mcp
@@ -284,8 +285,8 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/recall`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [7](tools.md#recall)
-- Emits: [1 events](events.md#recall)
+- Tools: [10](tools.md#recall)
+- Emits: [3 events](events.md#recall)
 - Shows on: cli
 
 ## statusline
@@ -307,6 +308,16 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Tools: [2](tools.md#system)
 - Emits: [1 events](events.md#system)
 - Shows on: cli
+
+## term
+
+- Folder: `core/term`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [4](tools.md#term)
+- Emits: [2 events](events.md#term)
+- Shows on: no surface
+- Streams: `pty`
 
 ## threads
 
