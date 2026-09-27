@@ -8,6 +8,8 @@
 //   node scripts/eval-answer.js --keyword  without the dense index (keyword recall only)
 //   node scripts/eval-answer.js --world heldout  the held-out world (test/fixtures/personal-heldout.js
 //            and test/eval/answer-heldout.json), written before reading the rules
+//   node scripts/eval-answer.js --world blind  the blind world (test/fixtures/personal-blind.js and
+//            test/eval/answer-blind.json), written without seeing the rules or the other worlds
 //
 // Exits non-zero when memory.answer misses the bar: overall 0.9 or more, no confident wrong
 // answer, p95 under 150 ms.
@@ -36,6 +38,7 @@ import { open } from "../core/store/index.js";
 import { seedRecall } from "../test/fixtures/corpus.js";
 import { PERSONAL_SESSIONS, ME, NOW, SCRATCH } from "../test/fixtures/personal-world.js";
 import * as heldout from "../test/fixtures/personal-heldout.js";
+import * as blind from "../test/fixtures/personal-blind.js";
 import { search, thread } from "../core/recall/search.js";
 import { chunks, encode } from "../core/recall/embed.js";
 import { Dense } from "../core/recall/dense.js";
@@ -46,6 +49,7 @@ import { words } from "../local/capsule/lib/route.js";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const GOLD_FILE = path.join(ROOT, "test/eval/answer-gold.json");
 export const HELDOUT_GOLD_FILE = path.join(ROOT, "test/eval/answer-heldout.json");
+export const BLIND_GOLD_FILE = path.join(ROOT, "test/eval/answer-blind.json");
 
 /**
  * The worlds the evaluation knows: the one the rules were written against, and a held-out one.
@@ -54,6 +58,7 @@ export const HELDOUT_GOLD_FILE = path.join(ROOT, "test/eval/answer-heldout.json"
 export const WORLDS = {
   personal: () => ({ gold: JSON.parse(fs.readFileSync(GOLD_FILE, "utf8")), sessions: PERSONAL_SESSIONS, me: ME, now: NOW, scratch: SCRATCH }),
   heldout: () => ({ gold: JSON.parse(fs.readFileSync(HELDOUT_GOLD_FILE, "utf8")), sessions: heldout.HELDOUT_SESSIONS, me: heldout.ME, now: heldout.NOW, scratch: heldout.SCRATCH }),
+  blind: () => ({ gold: JSON.parse(fs.readFileSync(BLIND_GOLD_FILE, "utf8")), sessions: blind.BLIND_SESSIONS, me: blind.ME, now: blind.NOW, scratch: blind.SCRATCH }),
 };
 /** An answer at this confidence or more is one the user is told as a fact. */
 export const CONFIDENT = 0.5;
