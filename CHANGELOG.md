@@ -4,6 +4,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The relay: reach the box with a QR code, no Tailscale (ADR 0026, in progress)
+
+- A new box module, `relay` (core/relay/), off until the first pairing. The box dials out to a
+  relay and signs its route with an Ed25519 key; a device scans a QR code carrying the box's
+  X25519 key and a one-time secret (10 minutes, single use) and runs
+  Noise_IK_25519_AESGCM_SHA256 with it, in node:crypto alone and checked against the cacophony
+  test vector. Each direction has its own key and counter, so a replayed, reordered or reflected
+  frame closes the channel. Each stream in the channel becomes a real HTTP request to vyred's own
+  router through an in-memory duplex, so every route, the event stream and presence work as on
+  the tailnet.
+- A paired device is the caller `device:<id>`. The new `ownerDevice()` in core/modules counts it,
+  like `tailnet:<owner>`, as the owner on their own device for `callerAllowed` and the floor's
+  person check; presence still decides every human-only call. The socket can no longer claim a
+  `device:` label.
+- Tools: `relay.status`, `relay.enable`, `relay.disable`, `relay.pair.start` (presence),
+  `relay.pair.first` (onboarding only, before any person exists; Touch ID on a Mac),
+  `relay.devices.list|rename|remove` (remove needs presence and closes the device's connection
+  at once). Events: `relay.connected`, `relay.disconnected`, `device.paired`, `device.removed`.
+- relay/node/server.js: the relay in plain Node, for tests and self-hosting. The Cloudflare
+  Worker comes next; nothing is deployed.
+
 #### The site has no Capsule zip, and a clean checkout stamps clean
 
 - The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and

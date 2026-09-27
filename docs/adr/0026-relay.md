@@ -3,7 +3,7 @@ title: ADR 0026: The relay, a second way to reach the box
 summary: The box dials out to a small public relay, and paired devices meet it there over an end-to-end encrypted Noise channel set up by scanning a QR code. No Tailscale, no open port, no account. Modelled on Paseo's relay, with device keys, per-direction keys and an authenticated box route added.
 audience: builders
 owner: relay
-status: proposed
+status: draft
 ---
 
 # ADR 0026: The relay, a second way to reach the box
@@ -248,8 +248,8 @@ A new module, `relay`, in `core/relay/`:
   a protocol ping every 60 s and reconnects when two go unanswered, with a backoff from 1 s to
   5 minutes. Nothing polls. When the relay says a device opened, it opens that connection's data
   socket.
-- Events: `relay.connected`, `relay.disconnected`, `relay.device.paired`,
-  `relay.device.removed`. Status: `relay.status`.
+- Events: `relay.connected`, `relay.disconnected`, `device.paired`,
+  `device.removed`. Status: `relay.status`.
 
 ### 8. The clients
 

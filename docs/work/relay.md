@@ -38,14 +38,22 @@ Paseo reference: <team-dir>/../reference/paseo (Apache 2.0, commit d7b7016).
   reference relay: signed box control socket, ticketed data sockets, buffering, caps, text
   ping answered at the relay. 7/7. package.json test glob gains relay/**/*.test.js.
 
+- Box module core/relay/ (index, link, bridge, pairing, module.json): keys, signed control
+  socket, data sockets, admit (pairing secret or paired key), device:<id> through ctx.handler,
+  tools and events. test/relay.test.js: 7/7 end to end on testbox (pair, router as device,
+  presence still required, one-time QR, stranger refused, first-device path closes, remove
+  closes the live channel, socket cannot claim device:, SSE event live through the relay).
+  Neighbour suites (guests, daemon, modules, harness, presence, hygiene, docs-check) green but
+  the pre-existing screenshot mtimes.
+
 ## Doing
-- Waiting for the lead's reply on the design summary before the big build.
+- Lead has the design summary (no reply yet). Next up regardless: relay/worker/.
 
 ## Next
-1. `core/relay/channel.js`: Noise over a WebSocket (device and box sides), chunking, rekey; the
-   stream multiplexer; pairing URL codec.
-2. `core/relay/`: keys, control/data sockets, device store, pairing tools, stream-to-HTTP
-   bridge, `device:` caller. In-process tests with the node relay and a fake device.
+1. relay/worker/: Worker + DO (hibernation, signed box via WebCrypto Ed25519, autoresponse
+   ping), tested with a fake DO state. No deploy without the lead.
+2. `vyre relay` CLI (status, pair with a terminal QR, devices), and WebSocket streams through
+   the bridge (Glass).
 3. `relay/worker/`: Worker + DO, tested with a fake DO state (no deploy).
 4. `relay/client/`: the TypeScript transport for the Expo app (@noble), tested in Node.
 5. Onboarding card and Settings, Devices (with deck-design / docs owners).
@@ -61,14 +69,17 @@ Paseo reference: <team-dir>/../reference/paseo (Apache 2.0, commit d7b7016).
   by code needs caller `tailnet:<owner>`).
 - tailnet: `ownerDevice()` replacing `ownerOverTailnet` at its call sites.
 
-## Changed contracts (planned, not landed)
-- `core/modules/index.js`: `ownerDevice(caller)`; `callerAllowed` uses it.
-- `core/daemon/index.js`: `FORBIDDEN_LABEL` gains `device:`.
-- `core/harness/rules.js`: `registryRules` person check uses `ownerDevice`; floor denies Bash
-  naming the relay key files.
-- Prefix checks switched to `ownerDevice`: core/gate/index.js:64, core/link/box.js:40,
+## Changed contracts
+- Landed on work/relay: `core/modules/index.js` exports `ownerDevice(caller)`; `callerAllowed`
+  uses it for "deck" and "tailnet" entries (mobile's fad6f0f also touches callerAllowed: merge
+  by keeping both, ownerDevice covers tailnet owners). `core/daemon/index.js` `FORBIDDEN_LABEL`
+  gains `device:`. `core/harness/rules.js` `registryRules` person check uses `ownerDevice`.
+  `scripts/lib/docs/check.js` OWNERS gains "relay". package.json test glob gains relay/**.
+- New module `relay`: tools relay.*, events relay.connected, relay.disconnected, device.paired,
+  device.removed; config `relay: { enabled, url }` (default url wss://relay.vyre.run).
+- Planned, waiting on the lead: floor denies Bash naming relay/keys.json; HUMAN_ONLY additions;
+  prefix checks switched to `ownerDevice`: core/gate/index.js:64, core/link/box.js:40,
   core/files/drive.js:213, core/modules/federate.js:13, core/switchboard/index.js:737,
   core/memory/index.js:114,334, core/network/index.js:31, core/glass/index.js:204,
   core/onboard/index.js:219.
 - `core/presence/index.js`: HUMAN_ONLY additions above.
-- New events: `relay.connected`, `relay.disconnected`, `relay.device.paired`, `relay.device.removed`.

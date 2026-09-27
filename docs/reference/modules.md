@@ -40,6 +40,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 4 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 7 | 1 | cli |
+| [`relay`](#relay) | `core/relay` | `box` | 8 | 4 | capsule, cli, deck |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 22 | 13 | cli |
@@ -275,6 +276,17 @@ Who besides the owner the box's tailnet listener serves: guests from other tailn
 - Tools: [7](tools.md#recall)
 - Emits: [1 events](events.md#recall)
 - Shows on: cli
+
+## relay
+
+A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.
+
+- Folder: `core/relay`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [8](tools.md#relay)
+- Emits: [4 events](events.md#relay)
+- Shows on: capsule, cli, deck
 
 ## statusline
 
