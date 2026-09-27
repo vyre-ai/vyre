@@ -76,22 +76,23 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
 ## Doing (RESUME 5, after the deploy; box runs 53cd1326)
-- Gate 1 passed on 53cd1326 (testbox + GitHub); box deployed on it. The loop.sh SIGKILL fix is on main.
-- Recalibrated idle gate on work/ci faae7da7: heap after a forced GC (scripts/lib/gc-hook.mjs,
-  SIGUSR2, --expose-gc) < 50 MB on every Node; settled RSS < 150 and startup peak < 200 gate only
-  on the Node major in box/Dockerfile (22), informational on 24. Proof run 36326469056 GREEN:
-  Node 22 heap 20.3 / settled 97.4 / peak 159.1; Node 24 heap 21.2 (RSS 256 informational).
-- main node red on Node 24: tmp-guard, test/onboard-page.test.js leaves its temp home (tempHome
-  cleanup runs before vyred stop and Chrome exit). Fix on work/ci df6c8e82 (last after-hook
-  removes the home). Waiting on its GitHub run (testbox has no Chrome).
-- sessions-sdk driver job red on anything built on main: sessions dfeda64b's loadSdk demands the
-  bundled binary on role box; the CI job installs JS only. Sent to sessions with fix options
-  (a: tests pass sessions.claude "installed"; b: loadSdk checks JS only). Waiting on sessions.
-- batch 4b (work/integrator-b4b 22ae279d) red: not on 53cd1326 (loop.sh), the tmp-guard leak above,
-  and capsule-mac CapsuleModelTests.swift:176 "@ name then words" (sent to capsule-pro).
-- work/mobile still tracks a node_modules symlink (mobile told); guard in hygiene test.
-- Throwaway branches deleted (ci-sdkver, ci-loop, ci-perfdiag, ci-rss-bisect). testbox keeps image
-  vyre-box:gate and ~/vyre-ci/{ci,ci-gate,sdk-js,gate1.sh} (gate1.sh source in my scratchpad).
+- work/ci tip for batch 4 (merge LAST): box-image pack-list detect; hygiene node_modules guard;
+  idle gate on heap after a forced GC (proof 36326469056, and 36332059074 green on 22 and 24);
+  onboard-page temp-home fix (tmp-guard green); vyre.tgz ships the web app:
+  scripts/build-app.sh (expo export -p web, Metro's dist/assets/node_modules icons moved to
+  dist/assets/nm/ since npm never packs node_modules, then precache.mjs), called by build-site.sh
+  and box-image's pack step; package.json files += apps/app/dist; apps/app/.npmignore (the app's
+  .gitignore drops dist/ from the pack); box-image smokes /app, /app/, entry js, /app/now,
+  sw.js build id, every precached path, the manifest; release-check requires all of dist and
+  caps the install at 16 MB (12.7 MB without the app, over the old 12 MB already).
+  Proof on throwaway work/ci-appship (work/ci + work/mobile 2f1ccfff): release-check 36332466998
+  and box-image 36332467006 GREEN; dist 2.6 MB / 26 files / 23 precached; vyre.tgz 3.8 MB;
+  installed 16 MB (under the 16384 KB cap, so little headroom).
+- sessions-sdk driver job red on anything built on main (sessions dfeda64b's loadSdk wants the
+  bundled binary on role box; CI installs JS only). With sessions; fix options sent.
+- batch 4b red causes sent to integrator (not on 53cd1326; tmp-guard; capsule-mac
+  CapsuleModelTests.swift:176, sent to capsule-pro).
+- testbox keeps vyre-box:gate and ~/vyre-ci/{ci,ci-gate,sdk-js,gate1.sh}.
 
 ## Next
 - Delete throwaway branches once their workflows are on main: work/ci-app, ci-box-c8fb9aa,
