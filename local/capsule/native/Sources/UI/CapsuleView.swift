@@ -166,7 +166,7 @@ struct CapsuleView: View {
             // answer already uses it, so it folds into one line under the answer.
             if let m = model.askedMemory, model.replyText.isEmpty { MemoryLine(memory: m, expanded: $model.memoryExpanded, inset: false) }
             if let q = model.reply?.queued, !q.withdrawn {
-                Label(q.delivered ? "Handed over to \(q.name). Its answer comes when this turn ends." : "Queued for \(q.name): it gets this when its current turn ends.",
+                Label(q.delivered ? "Handed over to \(q.name). Its answer shows here as it comes." : "Queued for \(q.name): it gets this when its current turn ends.",
                       systemImage: q.delivered ? "checkmark.circle" : "clock")
                     .font(Theme.subtitle).foregroundColor(Theme.stone)
             }

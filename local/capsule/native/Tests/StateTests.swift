@@ -107,6 +107,34 @@ let stateSuite = Suite("state") { t in
         t.ok(Bridge.explain(code: "error", message: "no thread abc").contains("runs in a terminal"))
     }
 
+    t.test("a queued reply ignores the turn the session is busy with, then streams its own turn live") {
+        var r = VyState.reply("t1"); r.queued = QueuedSend(name: "Intake form", id: 7)
+        r = VyState.applyReply(r, ev(1, "thread.text", ["message": "m0", "delta": "Still refactoring"], thread: "t1"))
+        r = VyState.applyReply(r, ev(2, "thread.tool", ["id": "c1", "summary": "npm test"], thread: "t1"))
+        r = VyState.applyReply(r, ev(3, "thread.finished", ["ok": true, "cost_usd": 0.4], thread: "t1"))
+        t.eq(VyState.replyText(r), ""); t.eq(r.tools.count, 0); t.eq(r.finished, false); t.eq(r.cost, nil)
+        r = VyState.applyReply(r, ev(4, "thread.sent", ["queued": 6, "via": "turn", "turn": "t1:3"], thread: "t1"))
+        t.eq(r.queued?.delivered, false, "another surface's queued words are not ours")
+        r = VyState.applyReply(r, ev(5, "thread.sent", ["queued": 7, "via": "turn", "turn": "t1:3"], thread: "t1"))
+        t.eq(r.queued?.delivered, true); t.eq(r.queued?.turn, "t1:3")
+        r = VyState.applyReply(r, ev(6, "thread.text", ["message": "m1", "delta": "On ", "turn": "t1:3"], thread: "t1"))
+        r = VyState.applyReply(r, ev(7, "thread.text", ["message": "mX", "delta": "noise", "turn": "t1:2"], thread: "t1"))
+        r = VyState.applyReply(r, ev(8, "thread.text", ["message": "m1", "delta": "main.", "turn": "t1:3"], thread: "t1"))
+        t.eq(VyState.replyText(r), "On main."); t.eq(r.finished, false, "live, before the turn ends")
+        r = VyState.applyReply(r, ev(9, "thread.finished", ["ok": true, "cost_usd": 0.01, "turn": "t1:3"], thread: "t1"))
+        t.eq(r.finished, true); t.eq(r.ok, true); t.eq(r.cost, 0.01)
+    }
+
+    t.test("a queued reply without turn ids ends at the first finish after its hand-over") {
+        var r = VyState.reply("t1"); r.queued = QueuedSend(name: "Intake form")
+        r = VyState.applyReply(r, ev(1, "thread.finished", ["ok": true], thread: "t1"))
+        t.eq(r.finished, false, "the busy turn ending is not the answer")
+        r = VyState.applyReply(r, ev(2, "thread.sent", ["queued": 3, "via": "stop"], thread: "t1"))
+        r = VyState.applyReply(r, ev(3, "thread.text", ["message": "m1", "text": "Done.", "done": true], thread: "t1"))
+        r = VyState.applyReply(r, ev(4, "thread.finished", ["ok": true], thread: "t1"))
+        t.eq(VyState.replyText(r), "Done."); t.eq(r.finished, true)
+    }
+
     t.test("a withdrawn question is an ask.answered with decision cancelled") {
         let w = VyState.applyWaiting([], ev(1, "ask.raised", ["ask": "a1", "tool": "Write", "summary": "Write /w/a.txt", "destination": "/w/a.txt", "reason": NSNull(), "holder": NSNull()], thread: "t1"))
         t.eq(w[0].sub, "to /w/a.txt")
