@@ -63,6 +63,26 @@ native-core is main's chat (bc51d601); vyre-chat is work/chat (fe1cc5eb). Re-run
 | 10 | Esc to stopped | no Stop | 112 ms | |
 | 11 | idle timers, CPU | pass, 0.5 % | pass, 0.4 % | |
 
+Re-run, 2026-09-27 evening, testbox (load 3 to 6): native-core 62abf2cf (main 7880dfa6 merged,
+chat's windowing in), then work/chat 553017a1 and work/pwa 2d150fdd for budgets 5 and 8.
+
+| # | Budget | native-core 62abf2cf | work/chat 553017a1 | work/pwa 2d150fdd |
+|---|---|---|---|---|
+| 1 | key to paint p95, 40 / 2,000 rows | 24 / 24 ms, pass, worst work 5 ms | | |
+| 2 | first token, arrival to paint | 54 ms, pass | | |
+| 3 | stream event to paint | 130 ms, pass | | |
+| 4 | chars per frame CV / p95 gap | 1.08 / 34 ms, pass | | |
+| 5 | no jump while scrolled up | 3,467 px jump as the reply ends | 0 px, pass | 0 px |
+| 6 | fling p95 frame, 2,000 rows | 67 ms (26 rows mounted) | | |
+| 7 | open cold / from cache | 2,420 / 13 ms | | |
+| 8 | reconnect catch-up, jump | 1,529 ms, 673 px (41 px bar) | 1,514 ms, 112 px (41 px bar) | n/a: the harness saw no reopen |
+| 9 | send to user row | 102 ms | | |
+| 10 | Esc to stopped | 75 ms, pass | | |
+| 11 | idle timers, CPU | pass, 0.5 % | | |
+
+Budget 1 now passes at 2,000 rows with windowing; the composer also stops laying out per key
+(field-sizing, or one measure a frame). Event Timing rounds to 8 ms, so 24 ms is the floor it shows.
+
 Budget 1's first method counted the wait for the next frame (0 to 16.7 ms), so it read high even on
 an idle page; it moves to the Event Timing API (work per key, then time to the painted frame).
 

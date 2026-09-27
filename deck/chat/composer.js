@@ -68,6 +68,9 @@ const SCOPES = Object.freeze([
   { id: "user", label: "About you", hint: "Every project and chat" },
   { id: "local", label: "Just this folder", hint: "Not shared" },
 ]);
+/** The browser sizes a textarea to its text by itself (Chrome 123, Safari 26). */
+const FIELD_SIZING = typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("field-sizing", "content");
+const frame = typeof requestAnimationFrame === "function" ? (/** @type {() => void} */ f) => requestAnimationFrame(f) : (/** @type {() => void} */ f) => setTimeout(f, 16);
 /** How long the send button is held to queue. */
 const HOLD_MS = 450;
 /** A fallback "/" list is asked again after this long (the session was not running: it had none). */
@@ -138,7 +141,22 @@ export function mountComposer(opts) {
   const hint = h("div", { class: "composer-hint" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "memory"]));
   const root = h("div", { class: "composer" }, note, thumbs, wrap, chips, hint);
 
-  function grow() { ta.style.height = "auto"; ta.style.height = Math.min(200, ta.scrollHeight || 0) + "px"; }
+  // The box fits its text. Where CSS can size it (field-sizing, chat.css) nothing runs per key.
+  // Elsewhere it is measured once a frame, and the height is reset only when the text got
+  // shorter, so a key on a line that fits costs one read, never a layout of the timeline.
+  let growing = false, grownLen = 0;
+  function grow() {
+    if (FIELD_SIZING || growing) return;
+    growing = true;
+    frame(() => {
+      growing = false;
+      const shrank = ta.value.length < grownLen;
+      grownLen = ta.value.length;
+      if (!shrank && (ta.scrollHeight || 0) <= (ta.clientHeight || 0)) return;
+      if (shrank) ta.style.height = "auto";
+      ta.style.height = Math.min(200, ta.scrollHeight || 0) + "px";
+    });
+  }
   const caret = () => (typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length);
   const setValue = (/** @type {string} */ v, at = v.length) => { ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} grow(); drawChips(); };
   const say = (/** @type {any} */ what, soft = true) => { note.classList.toggle("soft", soft); put(note, what); };

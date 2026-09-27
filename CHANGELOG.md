@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The composer no longer lays out the page on every key
+
+- deck/chat/composer.js: the message box sizes itself with CSS field-sizing where the browser has
+  it, and otherwise measures once a frame, resetting its height only when the text got shorter.
+  deck/chat/chat.css: the composer is layout-contained. Test in deck/chat/session.test.js.
+- docs/design/native-bar.md: a re-run. Typing passes at 2,000 rows (24 ms to paint); the scroll
+  jump is fixed on work/chat; reconnect still takes 1.5 s.
+
 #### Only a person changes a setting, and settings speaks for them only to setting tools
 
 - core/presence: settings.set and settings.reset are person-only. A model never gets them, a
