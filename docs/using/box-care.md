@@ -92,7 +92,7 @@ vyred also writes a log file per day, `~/.vyre/logs/YYYY-MM-DD.log`. On a Docker
    ```
 
 > [!GAP]
-> The command `vyre box update` prints for the Mac fails until Vyre is on npm: run the one above. See [known gaps](../known-gaps.md#vyre-box-update-does-not-upgrade-the-mac).
+> The command `vyre box update` prints for the Mac fails until Vyre is on npm: run the one above. See [known gaps](../known-gaps.md#the-mac-update-that-vyre-box-update-prints-fails).
 ::: tab On a server
 ```
 vyre update

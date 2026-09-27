@@ -61,30 +61,37 @@ export function tailnet(box, net, port = 0) {
 /**
  * A box and a Mac, both running, with a work folder on each.
  * @param {any} t
- * @param {{ approve?: boolean, hold?: number, allow?: string[], macTranscripts?: boolean, boxTranscripts?: any[], health?: any }} [opts]
+ * `t` needs only `name` and `after(fn)`, so a script (deck/test/mac-world.js) can pass its own.
+ * @param {any} t
+ * @param {{ approve?: boolean, hold?: number, allow?: string[], macTranscripts?: boolean | any[], boxTranscripts?: any[], health?: any,
+ *   boxName?: string, macHost?: string, heartbeat?: number, boxConfig?: any }} [opts]
  *   hold: how long the box holds link.serve (short, so stopping is quick); allow: the box's list of
  *   tools it may ask the Mac for, to reach the Mac's own check; macTranscripts: the Mac indexes the
- *   fixture corpus, so it has sessions for the box to read; boxTranscripts: sessions (in the
- *   corpus's shape) the box indexes as its own, so a federated read has rows from both; health:
- *   the Mac's link.health check (a fake tailscale), for link.health's tests.
+ *   fixture corpus (true), or these sessions in the corpus's shape, so it has sessions for the box
+ *   to read; boxTranscripts: sessions (in the corpus's shape) the box indexes as its own, so a
+ *   federated read has rows from both; health: the Mac's link.health check (a fake tailscale), for
+ *   link.health's tests; boxName, macHost: the box's config name and the Mac's hostname (the name
+ *   the box knows it by); heartbeat: the Mac's check-in interval in ms; boxConfig: more of the
+ *   box's config.json.
  */
-export async function pair(t, { approve = true, hold = 300, allow, macTranscripts = false, boxTranscripts, health = undefined } = {}) {
+export async function pair(t, { approve = true, hold = 300, allow, macTranscripts = false, boxTranscripts, health = undefined,
+  boxName = "testbox", macHost = "test-mac", heartbeat = 100, boxConfig = {} } = {}) {
   const boxRoot = tempHome(t), macRoot = tempHome(t);
   const boxWork = fs.mkdtempSync(path.join(boxRoot, "..", "vyre-boxwork-"));
   const macWork = fs.mkdtempSync(path.join(macRoot, "..", "vyre-macwork-"));
   t.after(() => { fs.rmSync(boxWork, { recursive: true, force: true }); fs.rmSync(macWork, { recursive: true, force: true }); });
   let boxSessions = [];
   if (boxTranscripts) { boxSessions = [path.join(boxRoot, "transcripts")]; writeTranscripts(boxSessions[0], boxTranscripts); }
-  fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: "testbox", transcripts: boxSessions, files: { roots: [boxWork] },
-    ...(boxTranscripts ? { recall: { every: 0, vectors: false } } : {}) }));
+  fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: boxName, transcripts: boxSessions, files: { roots: [boxWork] },
+    ...(boxTranscripts ? { recall: { every: 0, vectors: false } } : {}), ...boxConfig }));
   let macSessions = [];
-  if (macTranscripts) { macSessions = [path.join(macRoot, "transcripts")]; writeTranscripts(macSessions[0]); }
+  if (macTranscripts) { macSessions = [path.join(macRoot, "transcripts")]; writeTranscripts(macSessions[0], Array.isArray(macTranscripts) ? macTranscripts : undefined); }
   fs.writeFileSync(path.join(macRoot, "config.json"), JSON.stringify({ role: "local", transcripts: macSessions, files: { roots: [macWork] },
     ...(macTranscripts ? { recall: { every: 0, vectors: false } } : {}) }));
   const net = { who: /** @type {any} */ (MAC), box: /** @type {any} */ (BOX), address: "" };
   // Two peers on the simulated tailnet: the box, and the phone, whose node the box's address does not match.
   linkSeams.set(macRoot, { peers: async () => [{ ip: "127.0.0.1", dns: "test-box", stableId: "nBOX" }, { ip: "127.0.0.1", dns: "test-phone", stableId: "nPHONE" }],
-    certNames: async () => [], addressOf: () => net.address, insecure: true, verify: async () => net.box, pollMs: 20, heartbeat: 100, hostname: "test-mac", timeout: 1500, ttl: 0, hold, ...(health ? { health } : {}) });
+    certNames: async () => [], addressOf: () => net.address, insecure: true, verify: async () => net.box, pollMs: 20, heartbeat, hostname: macHost, timeout: 1500, ttl: 0, hold, ...(health ? { health } : {}) });
   linkSeams.set(boxRoot, { hold, ...(allow ? { allow } : {}) });
   // Spotlight, simulated: every file under the Mac's work folder whose name holds the query.
   fileSeams.set(macRoot, { platform: "darwin", remoteTimeout: 1500,

@@ -4,7 +4,7 @@
   "main": "module.js",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["presence.keys", "presence.enroll", "presence.remove", "presence.code", "presence.session.open", "presence.session.close"] },
+  "does": { "tools": ["presence.keys", "presence.enroll", "presence.remove", "presence.code", "presence.session.open", "presence.session.close", "presence.covered"] },
   "watches": { "emits": ["presence.proved", "presence.refused", "presence.enrolled", "presence.removed"] },
   "shows": { "deck": [], "capsule": [], "cli": [] },
   "needs": {},

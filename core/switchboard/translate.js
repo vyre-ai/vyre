@@ -1,5 +1,5 @@
 // @ts-check
-// translate — what one line of Claude Code's stream-json output means to a surface.
+// translate: what one line of Claude Code's stream-json output means to a surface.
 //
 // Claude Code with `--output-format stream-json --include-partial-messages --verbose` writes a
 // line per thing that happens: system notices, partial deltas, whole assistant messages, tool
@@ -10,6 +10,12 @@
 //
 // Events stay small (spec 6, the brief): no whole tool inputs or outputs, no hook output (the
 // user's own hooks print whatever they like, personal things included), no thinking.
+//
+// An ask is richer, because a person has to judge it: a question's options, or the command, file
+// and change a permission is for. That goes into the ask's row (threads.asks), redacted and
+// capped, never into an event.
+
+import { redact } from "../transcripts/sanitize.js";
 
 const CUT = 200;
 
@@ -18,6 +24,63 @@ export const cut = (v, n = CUT) => {
   const s = String(v ?? "").replace(/\s+/g, " ").trim();
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
 };
+
+/** A string for an ask: secrets redacted, then capped. Whitespace is kept, a diff needs it. */
+export const clip = (v, n) => {
+  const s = typeof v === "string" ? redact(v).text : "";
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+};
+
+/** Caps from the chat contract (ADR 0024). */
+export const CAPS = { question: 1000, header: 200, label: 200, description: 1000, preview: 8000, detail: 8000, questions: 4, options: 8, answer: 200 };
+
+/**
+ * AskUserQuestion's questions as a person reads them: at most 4, 8 options each, every string
+ * redacted and capped. A preview is kept only when there is one.
+ * @param {any} input
+ */
+export function questionsOf(input) {
+  const qs = Array.isArray(input && input.questions) ? input.questions : [];
+  return qs.slice(0, CAPS.questions).map(q => ({
+    question: clip(q && q.question, CAPS.question),
+    header: clip(q && q.header, CAPS.header),
+    multiSelect: Boolean(q && q.multiSelect),
+    options: (Array.isArray(q && q.options) ? q.options : []).slice(0, CAPS.options).map(o => ({
+      label: clip(o && o.label, CAPS.label),
+      description: clip(o && o.description, CAPS.description),
+      ...(o && typeof o.preview === "string" && o.preview ? { preview: clip(o.preview, CAPS.preview) } : {}),
+    })),
+  }));
+}
+
+/** Any value with its strings redacted and capped, bounded in depth and breadth. */
+function scrub(v, depth = 0) {
+  if (typeof v === "string") return clip(v, CAPS.detail);
+  if (v === null || typeof v !== "object") return v;
+  if (depth >= 4) return "…";
+  if (Array.isArray(v)) return v.slice(0, 50).map(x => scrub(x, depth + 1));
+  return Object.fromEntries(Object.entries(v).slice(0, 50).map(([k, x]) => [k, scrub(x, depth + 1)]));
+}
+
+/**
+ * What a permission is for, in the fields a card shows: a command, a file and its change, a URL,
+ * or the whole input (scrubbed) for any other tool.
+ * @param {string} tool @param {Record<string, any>} input
+ */
+export function detailOf(tool, input = {}) {
+  const i = input || {};
+  const d = /** @type {Record<string, any>} */ ({});
+  const put = (k, v) => { if (typeof v === "string" && v !== "") d[k] = clip(v, CAPS.detail); };
+  if (tool === "Bash") { put("command", i.command); put("description", i.description); return d; }
+  if (tool === "Edit") { put("file", i.file_path); put("old", i.old_string); put("new", i.new_string); return d; }
+  if (tool === "Write") { put("file", i.file_path); put("content", i.content); return d; }
+  if (tool === "Read") { put("file", i.file_path); return d; }
+  if (tool === "NotebookEdit") { put("file", i.notebook_path); put("new", i.new_source); return d; }
+  if (tool === "MultiEdit") { put("file", i.file_path); d.input = scrub({ edits: i.edits }); return d; }
+  if (tool === "WebFetch") { put("url", i.url); put("description", i.prompt); return d; }
+  d.input = scrub(i);
+  return d;
+}
 
 /** Where a sending tool keeps its destination, in the order worth showing (as core/harness/rules.js). */
 const DEST_KEYS = ["to", "channel", "channel_id", "recipient", "recipients", "email", "thread_id", "chat_id", "user", "url"];
@@ -48,7 +111,8 @@ export function describe(tool, input = {}) {
  * One stream-json message, as the thread events it stands for.
  *
  * Returns a list of { type, payload } for events, plus side notes the runner acts on:
- * `session` and `model` (once known), `message` (a new assistant message began), `ask` (a permission request to route),
+ * `session` and `model` (once known), `message` (a new assistant message began), `ask` (a permission request or a
+ * question to route: `kind` "question" with `questions`, or "permission" with `detail`; `input` and `suggestions` stay in memory),
  * `cancel` (a request Claude Code withdrew), `delta` (partial text, which the runner throttles
  * rather than emitting one event per token), `limited` (the subscription's limit was hit) and
  * `turn` (a turn ended, with its result).
@@ -95,8 +159,18 @@ export function translate(m) {
 
   if (m.type === "control_request" && m.request && m.request.subtype === "can_use_tool") {
     const r = m.request;
-    out.ask = { request_id: m.request_id, tool: String(r.tool_name || ""), tool_use_id: r.tool_use_id || null,
-      input: r.input || {}, reason: r.decision_reason || r.description || null, ...describe(String(r.tool_name || ""), r.input || {}) };
+    const name = String(r.tool_name || ""), input = r.input || {};
+    const base = { request_id: m.request_id, tool: name, tool_use_id: r.tool_use_id || null, input, reason: r.decision_reason || r.description || null };
+    if (name === "AskUserQuestion") {
+      const questions = questionsOf(input);
+      out.ask = { ...base, kind: "question", questions, suggestions: null,
+        summary: cut(questions.length ? questions[0].question : "A question"), destination: null };
+      return out;
+    }
+    const d = describe(name, input);
+    out.ask = { ...base, kind: "permission", detail: detailOf(name, input),
+      suggestions: Array.isArray(r.permission_suggestions) && r.permission_suggestions.length ? r.permission_suggestions : null,
+      ...d, summary: redact(d.summary).text };
     return out;
   }
   if (m.type === "control_cancel_request") { out.cancel = m.request_id; return out; }

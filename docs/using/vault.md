@@ -15,16 +15,6 @@ hold and lists what to rotate. It is also a password manager for you: logins wit
 cards, notes, API keys, env sets and SSH keys, with a generator, import, and autofill in the
 browser.
 
-> [!GAP]
-> `vyre vault` does not yet ask you to prove presence. Every verb that stores, shows, copies,
-> grants, shares, unlocks or approves stops with `presence_required` and exit code 3. Use the Deck,
-> or run the tool through `vyre call`, which asks for Touch ID on the Mac (on the box, only the
-> Deck's passkey works), for example `vyre call vault.approve '{"id":"<id>"}'` or
-> `vyre call vault.copy '{"name":"stripe-live"}'`. Never put a value or a password in a
-> `vyre call` line. Commands that only read names (`vyre vault`, `get` without a flag, `audit`,
-> `pending`, `pass list`) and `revoke` work as described. See
-> [known gaps](../known-gaps.md#the-vault-cli-never-proves-presence).
-
 ## The floor rule
 
 No value from the Vault appears on any screen, log or event, except to a person who has just
