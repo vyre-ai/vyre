@@ -55,6 +55,9 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   Then: merge on main, FULL suite once on the test box (nice -n 15), push, sha to lead, box-deploy, e2e.
 - Trial merge of chat 65ce976 (brings federation 2379a0c) on pre/chat 9bd1cf4: only CHANGELOG
   conflicted (kept both); its 21 test files + presence-bypass: 245/245 on the test box.
+- pre/chat 61cc14d also has cc-plugin ddf4653 and planner 8acf291 (ADR table: 0024 chat, 0025
+  planner, kept both). One failure: test/cc-plugin.test.js "a stand-in planner's tools..." (the
+  real planner.add refuses the stand-in's input, bad_input). Asked the lead who fixes it.
 
 ## Next
 
