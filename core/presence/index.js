@@ -62,7 +62,7 @@ export const HUMAN_ONLY = new Set([
  * (core/daemon/peer.js).
  */
 export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach", "gate.revise", "gate.reject",
-  "agents.create", "agents.update",
+  "agents.create", "agents.update", "agents.resume",
   "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access", "projects.move",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
   "learn.accept", "learn.retire", "learn.relax",
@@ -70,7 +70,10 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // mode or a model, its own least of all.
   "sessions.prompt.set", "sessions.prompt.revert", "threads.mode", "sessions.models.set", "sessions.limits.set", "threads.shell", "threads.remember",
   // Signing a browser or app out (core/presence/person.js).
-  "presence.person.revoke"]);
+  "presence.person.revoke",
+  // Every setting is the person's own: a model never changes one, and settings relays the
+  // person to the owning module's setter (e2e review, HIGH 1).
+  "settings.set", "settings.reset"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
 
@@ -105,8 +108,14 @@ const vaultSessionCaller = caller => {
   return c.startsWith("tailnet:") || /^device:[a-z2-7]{16}$/.test(c) || c === "deck" || c === "capsule";
 };
 
-/** How long one proof covers a terminal's SESSIONABLE calls: as long as a session. */
+/** How long one proof covers a login's windowed calls: as long as a session. */
 const TERMINAL_WINDOW = 30 * 60_000;
+
+/**
+ * What the CLI's window covers: actions that also show in Needs and in notices. Revealing, copying
+ * and one-time codes put a secret or a code on screen, so a terminal proves each of those.
+ */
+export const TERMINAL_WINDOWED = new Set(["vault.approve", "vault.grant"]);
 
 export const MIGRATIONS = [`
   CREATE TABLE presence_keys (
@@ -317,6 +326,18 @@ export class Presence {
     this.terminals = new Map();
   }
 
+  /**
+   * One line on the terminal a window was used from, so a command someone else typed into it
+   * (tmux send-keys, AppleScript) cannot pass unseen.
+   * @param {string|null|undefined} tty @param {string} tool @param {any} input
+   */
+  windowNotice(tty, tool, input) {
+    if (!tty || this.noTtyWrites) return;
+    const what = tool === "vault.grant" ? `letting ${input && input.module} use ${input && input.name}` : tool === "vault.approve" ? `approving ${input && input.id}` : tool;
+    try { this.writeTty(`/dev/${tty}`, `\r\nvyre: used your Touch ID window for ${what}\r\n`); }
+    catch (e) { this.log(`presence: could not write the window notice to ${tty}: ${/** @type {Error} */ (e).message}`); }
+  }
+
   async touchid() {
     if (this.touchidImpl === undefined) this.touchidImpl = await lazy("./touchid/index.js", "authenticate");
     return this.touchidImpl;
@@ -455,7 +476,7 @@ export class Presence {
   /**
    * Check a proof for one call. Returns { ok: true, method } or a refusal that lists the methods
    * the client could use instead.
-   * @param {{ tool: string, input: any, caller: string, proof: any, def?: any, peer?: any, terminal?: string|null }} a terminal: the login terminal vyred saw the caller in
+   * @param {{ tool: string, input: any, caller: string, proof: any, def?: any, peer?: any, terminal?: string|{ key: string, tty?: string|null }|null }} a terminal: the login vyred saw the caller in (key) and the terminal to write a notice to (tty)
    */
   async verify({ tool, input, caller, proof, def, peer = null, terminal = null }) {
     const method = proof && typeof proof.method === "string" ? proof.method : null;
@@ -465,19 +486,28 @@ export class Presence {
       return { ok: /** @type {false} */ (false), code: "presence_required", message, methods: await this.methods() };
     };
     this.prune();
-    // The CLI's window: after one strong proof from a login terminal, the same terminal's reveals,
-    // grants and sends ask nothing for 30 minutes. vyred names the terminal from the kernel's word
-    // on who connected (core/daemon/index.js atTerminal), never from anything the caller sends.
-    const windowed = typeof terminal === "string" && terminal && SESSIONABLE.has(tool) && /^(cli|local)$/.test(String(caller))
-      && (def && def.presence && typeof def.presence.session === "function" ? (await Promise.resolve(def.presence.session(input)).catch(() => false)) === true : false);
-    if (windowed && (this.terminals.get(terminal) || 0) > this.now()) {
-      this.emit("presence.proved", { tool, method: "session", caller });
-      return { ok: /** @type {true} */ (true), method: "session", keyId: null };
+    // The CLI's window: after one strong proof from a login (Touch ID, the Capsule, a passkey), the
+    // same login's vault approvals and grants ask nothing for 30 minutes. vyred names the login from
+    // the kernel's word on who connected (core/daemon/index.js atTerminal), never from anything the
+    // caller sends. Anything that puts a secret or a code on screen stays per call: a terminal can
+    // be typed into by other processes (tmux send-keys, AppleScript), and a window must never turn
+    // that into a silent reveal. Each use writes a line to that terminal and says so to the tool.
+    const term = typeof terminal === "string" ? (terminal ? { key: terminal, tty: terminal } : null)
+      : terminal && typeof terminal.key === "string" && terminal.key ? terminal : null;
+    const cliLogin = Boolean(term) && /^(cli|local)$/.test(String(caller));
+    const sessionOk = async () => (def && def.presence && typeof def.presence.session === "function"
+      ? (await Promise.resolve(def.presence.session(input)).catch(() => false)) === true : false);
+    const opens = cliLogin && SESSIONABLE.has(tool);
+    if (cliLogin && TERMINAL_WINDOWED.has(tool) && (this.terminals.get(/** @type {any} */ (term).key) || 0) > this.now() && await sessionOk()) {
+      const tty = /** @type {any} */ (term).tty;
+      this.windowNotice(tty, tool, input);
+      this.emit("presence.proved", { tool, method: "window", caller });
+      return { ok: /** @type {true} */ (true), method: "window", keyId: null, where: tty || null };
     }
     if (!method) return refuse(`${tool} needs a person to prove they are here`);
     const hash = inputHash(input);
     const proved = (keyId = null) => {
-      if (windowed && SESSION_FROM.has(method)) this.terminals.set(/** @type {string} */ (terminal), this.now() + TERMINAL_WINDOW);
+      if (opens && SESSION_FROM.has(method)) this.terminals.set(/** @type {any} */ (term).key, this.now() + TERMINAL_WINDOW);
       this.emit("presence.proved", { tool, method, caller });
       return { ok: /** @type {true} */ (true), method, keyId };
     };

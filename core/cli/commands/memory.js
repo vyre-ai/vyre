@@ -108,7 +108,7 @@ async function change(sub, args) {
   const r = await call(`memory.${sub}`, { node, ...(opt.off === true ? { off: true } : {}) });
   if (r.error) return fail(r);
   if (json()) return emit(r.data);
-  out(`  ${recall(r.data.label)} ${dim(r.data.mode ? r.data.mode + "ned" : "back to normal")}`);
+  out(`  ${recall(r.data.label)} ${dim(r.data.mode === "mute" ? "muted" : r.data.mode === "pin" ? "pinned" : "back to normal")}`);
   return 0;
 }
 const CHANGES = new Set(["correct", "corrections", "uncorrect", "merge", "split", "pin", "mute"]);

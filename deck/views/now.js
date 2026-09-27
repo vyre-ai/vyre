@@ -23,7 +23,7 @@ import { things, count, clock, today, since, when, startOfToday, base, initial, 
 import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
 import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
 import { phoneNow } from "../js/now-phone.js";
-import { sessionHref, elsewhere } from "../js/need-rows.js";
+import { sessionHref, elsewhere, fromMac } from "../js/need-rows.js";
 
 /** Under 760 px Now is the phone's own layout (js/now-phone.js); this file draws the Deck's. */
 const phone = () => isPhone();
@@ -197,7 +197,8 @@ export default async function now(ctx) {
 
 /** One held item: a draft at the Gate, or a question from a session. */
 function needCard(n) {
-  const where = [n.projectName, n.threadName].filter(Boolean).join(" · ");
+  // A Mac session's: "on <mac>", where its answer runs.
+  const where = [n.projectName, n.threadName, fromMac(n) ? `on ${n.machine || "your Mac"}` : null].filter(Boolean).join(" · ");
   const threadHref = n.thread ? (n.project ? `/projects/${encodeURIComponent(n.project)}/${encodeURIComponent(n.thread)}` : `/threads/${encodeURIComponent(n.thread)}`) : null;
   const status = h("div", { class: "small muted", role: "status" });
   const buttons = h("div", { class: "need-actions" });
@@ -211,12 +212,13 @@ function needCard(n) {
     try { await needs.answer(n, opt, f && f.changed() ? f.edited() : null); }
     catch (e) {
       put(status, problem(e));
-      for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
+      // The box cannot forward answers to this Mac (needs.js): the line says where; the list redraws the card.
+      if (!(/** @type {any} */ (e)?.elsewhere)) for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
     }
   };
   // A question has choices, drawn where it was asked: the session's card answers it.
   const qHref = n.kind === "question" ? sessionHref(n) : null;
-  // A Mac session's ask or question is answered on that Mac: no buttons here.
+  // A Mac session's ask or question on a box that cannot forward the answer: no buttons here.
   const mac = elsewhere(n);
   if (mac) put(buttons, h("span", { class: "small muted" }, `Answer it on ${mac}`), h("div", { style: { flexGrow: "1" } }),
     threadHref ? link(threadHref, { class: "link small", style: { color: "var(--text-2)" } }, "Open the thread") : null);

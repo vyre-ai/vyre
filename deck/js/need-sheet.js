@@ -86,7 +86,7 @@ export function openNeedSheet(n, o) {
       else if (n.kind === "question") questionBody(n, o, ctl);
       else if (n.kind === "pair") pairBody(n, o, ctl);
       else askBody(n, o, ctl, offs);
-      // A Mac session's ask or question: shown, never answered from here.
+      // A Mac session's ask or question on a box that cannot forward the answer: shown, not answered here.
       const mac = elsewhere(n);
       if (mac) {
         for (const b of body.querySelectorAll("button, input")) /** @type {HTMLButtonElement} */ (b).disabled = true;
@@ -117,6 +117,8 @@ async function send(n, actions, status, run, ok) {
   busy.add(n.id);
   try { await run(); ok(); }
   catch (e) {
+    // The box cannot forward answers to this Mac (needs.js): the line says where, the buttons stay off.
+    if (/** @type {any} */ (e)?.elsewhere) { put(status, h("span", null, problem(e))); return; }
     put(status, h("span", { class: "nsh-failed" }, "failed"), h("span", null, problem(e)));
     for (const b of buttons) b.disabled = false;
   } finally { busy.delete(n.id); }

@@ -32,28 +32,37 @@ export const LOWER = 0.45;
 export const SINGULAR = new Set(["spouse", "partner", "mother", "father"]);
 
 /** Relations where one value holds at a time: a new value competes with the old one. */
-export const SINGLE_VALUED = new Set(["name", "birthday", "lives_in", "from", "works_at", "role", "drives", "color", "spouse", "partner", "mother", "father"]);
+export const SINGLE_VALUED = new Set(["name", "birthday", "lives_in", "from", "works_at", "role", "drives", "color", "breed", "age", "diet", "spouse", "partner", "mother", "father"]);
 /** Of those, the ones that change over a life: the newest value is favoured, not just tie-broken. */
-export const TIME_VARYING = new Set(["lives_in", "works_at", "role", "drives"]);
+export const TIME_VARYING = new Set(["lives_in", "works_at", "role", "drives", "diet", "age"]);
 
 /** word -> [role, gender]. Gender only steers she/he; null matches either. */
 export const KIN = /** @type {Record<string, [string, "f"|"m"|null]>} */ ({
   wife: ["spouse", "f"], husband: ["spouse", "m"], spouse: ["spouse", null], hubby: ["spouse", "m"], wifey: ["spouse", "f"], missus: ["spouse", "f"],
   partner: ["partner", null], "other half": ["partner", null], "better half": ["partner", null], girlfriend: ["partner", "f"], boyfriend: ["partner", "m"], fiancee: ["partner", "f"], fiance: ["partner", "m"],
-  mother: ["mother", "f"], mom: ["mother", "f"], mum: ["mother", "f"], mummy: ["mother", "f"], mommy: ["mother", "f"],
+  mother: ["mother", "f"], mom: ["mother", "f"], mum: ["mother", "f"], mummy: ["mother", "f"], mommy: ["mother", "f"], mama: ["mother", "f"], ma: ["mother", "f"],
   father: ["father", "m"], dad: ["father", "m"], daddy: ["father", "m"],
   sister: ["sister", "f"], brother: ["brother", "m"], son: ["son", "m"], daughter: ["daughter", "f"],
   kid: ["child", null], kids: ["child", null], child: ["child", null], children: ["child", null],
   dog: ["dog", null], puppy: ["dog", null], cat: ["cat", null], kitten: ["cat", null],
+  friend: ["friend", null], buddy: ["friend", null], pal: ["friend", null], bestie: ["friend", null], mate: ["friend", null],
 });
 const PLURAL = new Set(["kids", "children"]);
+/** Roles that are not the user's family: each named one is their own person, never merged under the role. */
+const FRIENDS = new Set(["friend"]);
 /** The relation from me to a relative in that role. */
 export const relOfRole = role => (role === "dog" || role === "cat" ? "pet" : role);
-const KINW = "wife|husband|spouse|hubby|wifey|missus|partner|other\\s+half|better\\s+half|girlfriend|boyfriend|fianc[eé]e?|mother|mommy|mummy|mom|mum|father|daddy|dad|sister|brother|son|daughter|kids|kid|children|child|dog|puppy|cat|kitten";
+/** Relatives a bare word opening a sentence can be ("ma is flying in"). Not a friend's word: "mate, this is broken" is someone spoken to. */
+const KINW_BARE = "wife|husband|spouse|hubby|wifey|missus|partner|other\\s+half|better\\s+half|girlfriend|boyfriend|fianc[eé]e?|mother|mommy|mummy|mama|mom|mum|ma|father|daddy|dad|sister|brother|son|daughter|kids|kid|children|child|dog|puppy|cat|kitten";
+/** "ma" and "mate" only ever follow "my"/"our" here, or open the sentence (ma): alone they are other words. */
+const KINW = `${KINW_BARE}|friend|buddy|pal|bestie|mate`;
 /** Words that are always the speaker's own relative, with or without "my". */
 const OWN_KIN = /(?<![A-Za-z'])(?<kw>hubby|wifey|missus)\b/gi;
 const KINMOD = "lovely|dear|beautiful|amazing|wonderful|older|younger|little|big|baby|eldest|oldest|youngest|middle|two|three|twin|new";
 const kinKey = w => w.toLowerCase().replace(/é/g, "e").replace(/\s+/g, " ");
+const BARE_WORD = new RegExp(`^(?:${KINW_BARE})$`, "i");
+/** Just before a name: a relative's word, so the name is that relative's, not a new person's. */
+const KIN_BEFORE = new RegExp(`\\b(?:${KINW})\\s*,?\\s*$`, "i");
 
 // Car makes: generic brands, the same for everyone, so they may live in code.
 const MAKES = ["Alfa Romeo", "Aston Martin", "Land Rover", "Range Rover", "Mercedes-Benz", "Mercedes", "Toyota", "Honda", "Ford",
@@ -68,6 +77,12 @@ export const MODELS = /** @type {Record<string, string>} */ ({
   Highlander: "Toyota", Sienna: "Toyota", "F-150": "Ford", Mustang: "Ford", Bronco: "Ford", Explorer: "Ford", Golf: "Volkswagen",
   Jetta: "Volkswagen", Tiguan: "Volkswagen", Wrangler: "Jeep", Cherokee: "Jeep", "CX-5": "Mazda", Miata: "Mazda", Leaf: "Nissan",
   Rogue: "Nissan", Altima: "Nissan", Tucson: "Hyundai", Ioniq: "Hyundai", Sorento: "Kia", Sportage: "Kia", Cayenne: "Porsche", Macan: "Porsche",
+  // Trucks, vans and the commonest SUVs and EVs.
+  Maverick: "Ford", Ranger: "Ford", Transit: "Ford", "Mach-E": "Ford", Expedition: "Ford", Tundra: "Toyota", "4Runner": "Toyota",
+  Silverado: "Chevrolet", Tahoe: "Chevrolet", Equinox: "Chevrolet", Bolt: "Chevrolet", Sierra: "GMC", "Ram 1500": "Dodge",
+  Frontier: "Nissan", Titan: "Nissan", Gladiator: "Jeep", Odyssey: "Honda", "HR-V": "Honda", Kona: "Hyundai", Soul: "Kia",
+  Niro: "Kia", Telluride: "Kia", "EV6": "Kia", Outlander: "Mitsubishi", Sprinter: "Mercedes-Benz", Defender: "Land Rover",
+  "Model 3": "Tesla", "Model Y": "Tesla", "Model S": "Tesla", "Model X": "Tesla", "R1S": "Rivian", "R1T": "Rivian",
 });
 const COLORS = "black|white|silver|grey|gray|red|blue|green|yellow|orange|brown|beige|gold|purple|maroon|navy|dark\\s+blue|dark\\s+green|dark\\s+grey";
 // A capitalised word after a make that says it is a company, not a car ("the Ford Foundation").
@@ -81,11 +96,12 @@ const MODEL_OF = new Map(Object.keys(MODELS).map(m => [alnum(m), m]));
 const MODELS_ANY = Object.keys(MODELS).sort((a, b) => b.length - a.length).map(anyCase).join("|");
 const VEHICLE = `(?:(?<col>${COLORS})\\s+)?(?:(?<make>${MAKES.map(anyCase).join("|")})(?:\\s+(?<model>Model\\s+[A-Z0-9]\\b|(?:${MODELS_ANY})\\b|[A-Z0-9][A-Za-z0-9-]*|[a-z]+\\d[a-z0-9-]*))?|(?<solo>${MODELS_ANY})\\b)`;
 // Words after "the Volvo" that say it is a car the user has, not a brand in the news.
-const CARISH = /^(?:'s\b|\s+(?:is|was|has|had)\b)?\s+(?:needs|need|broke|won't|wont|keeps|got|is\s+in\s+the\s+shop|in\s+the\s+shop|in\s+for|is\s+due|due|service|tires|tyres|battery|brakes|oil|keys|lease|insurance|registration|inspection|repair|parked|still|started|starts|makes|made|making|failed|passed|has\s+a\s+flat|won't\s+start|mot)\b/i;
+const CARISH = /^(?:'s\b|\s+(?:is|was|has|had)\b)?\s+(?:needs|need|broke|fits|survived|handled|won't|wont|keeps|got|is\s+in\s+the\s+shop|in\s+the\s+shop|in\s+for|is\s+due|due|service|tires|tyres|battery|brakes|oil|keys|lease|insurance|registration|inspection|repair|parked|still|started|starts|makes|made|making|failed|passed|has\s+a\s+flat|won't\s+start|mot)\b/i;
 /** Just before "the Mazda": something done with a car ("parked the cx5", "into the mazda"). */
 const CAR_VERB = /\b(?:parked|parking|park|drove|driving|drive|washed|washing|cleaned|cleaning|filled\s+up|into|out\s+of|in\s+the\s+back\s+of|took|taking|take)\s+$/i;
-/** "picked up the new car": the car named next in the turn is the user's. */
-const NEW_CAR = /\b(?:picked\s+up|pick\s+up|picking\s+up|collected|collecting|got|bought|getting|brought\s+home)\s+(?:the|our|my|a)\s+new\s+(?:car|motor|ride)\b/i;
+/** "picked up the new car", "BOUGHT THE TRUCK": the vehicle named next in the turn is the user's. Done
+ * verbs need no "new"; a plan ("getting the new car") only with it. */
+const NEW_CAR = /\b(?:(?:picked\s+up|collected|got|bought|brought\s+home|leased)\s+(?:the|our|my|a)\s+(?:new\s+)?|(?:pick\s+up|picking\s+up|collecting|getting)\s+(?:the|our|my|a)\s+new\s+)(?:car|motor|ride|truck|van|suv|pickup|minivan|ev)\b/i;
 /** "bye bye civic": the car said goodbye to is gone. */
 const BYE_CAR = new RegExp(`\\b(?:bye\\s+bye|goodbye|so\\s+long|farewell)\\s+(?:to\\s+)?(?:the\\s+|my\\s+|our\\s+|old\\s+)*${VEHICLE}`, "g");
 
@@ -115,7 +131,7 @@ const OWN_STOP = new Set("lot few couple bit piece share copy license licence li
 const HYPO = /\b(?:if|suppose|supposing|imagine|imagined|pretend|pretending|hypothetically|assume|assuming|wish|unless|whether|e\.g\.|for example|for instance|let's say|lets say|say that|what if|as though|roleplay|role-play|role play)\b/i;
 const NEG_BEFORE = /(?:\bnot|\bnever|\bno|n't|\bnor|\bwithout)\s+(?:\w+\s+){0,1}$/i;
 const QUESTION_START = /^(?:what|who|whose|which|where|how)\b|^(?:do|does|did|can|could|would|will|is|are|am)\s+(?:you|i|my|we|it|there|your)\b/i;
-const CUE = /\b(?:wife|husband|spouse|partner|girlfriend|boyfriend|fianc\w*|mom|mum|mother|dad|father|sister|brother|son|daughter|kids?|children|dog|cat|car|live|lives|lived|moved|birthday|born|anniversary|drive|drives|married|home|house|apartment|pet)\b/i;
+const CUE = /\b(?:wife|husband|spouse|partner|girlfriend|boyfriend|fianc\w*|mom|mum|mother|dad|father|sister|brother|son|daughter|kids?|children|dog|cat|car|truck|live|lives|lived|moved|moving|birthday|born|anniversary|drive|drives|married|home|house|apartment|pet|friend|buddy|bestie|vegetarian|vegan|diet|breed|puppy|job)\b/i;
 const FIRST_PERSON = /\b(?:I|I'm|I've|I'd|my|we|our|me|us)\b/;
 const SECOND_PERSON = /\b(?:you|your|you're|you've)\b/i;
 
@@ -150,7 +166,8 @@ function build(who) {
   const g = s => new RegExp(s, "g");
   return {
     // Subject right before a predicate: "I", "we", "she", "my wife", "my wife Jordan", "Jordan".
-    subj: new RegExp(`(?:^|[\\s,;:(])(?:(?<i>${I})|(?<p>[Ss]he|[Hh]e)|(?:${MYK})\\s+(?:(?:${KINMOD})\\s+)?(?<k>${KINW})(?:,?\\s+(?<kn>${NAME}),?)?|(?<n>${NAME})${LN})(?<aux>(?:'m|'re|'s|'ve|\\s+(?:am|are|is|was|were|have|has|had|also|still|now|currently|actually|originally|both|all|just|finally|recently|already))*)\\s+$`),
+    // Typed without the apostrophe: "im", "ive", "shes", "hes" ("were" is left alone: it is a word).
+    subj: new RegExp(`(?:^|[\\s,;:(])(?:(?<i>${I})|${u ? "(?<im>[Ii]m)|(?<ive>[Ii]ve)|(?<pz>[Ss]hes|[Hh]es)|" : ""}(?<p>[Ss]he|[Hh]e)|(?:${MYK})\\s+(?:(?:${KINMOD})\\s+)?(?<k>${KINW})(?:,?\\s+(?<kn>${NAME}),?)?|(?<n>${NAME})${LN})(?<aux>(?:'m|'re|'s|'ve|\\s+(?:am|are|is|was|were|have|has|had|been|also|still|now|currently|actually|originally|both|all|just|finally|recently|already))*)\\s+$`),
     // Possessor right before a noun: "my", "our", "her", "my wife's", "Jordan's".
     poss: new RegExp(`(?:^|[\\s,;:(])(?:(?<i>${MYOUR})|(?<p>[Hh]er|[Hh]is)|(?:${MYK})\\s+(?:(?:${KINMOD})\\s+)?(?<k>${KINW})(?:\\s+(?<kn>${NAME}))?'s|(?:(?<n>${NAME})${LN})'s)\\s+$`),
     kin: g(`(?<![A-Za-z'])${kinP}\\b(?!'s|-)`),
@@ -165,42 +182,69 @@ function build(who) {
     myCar: g(`\\b${MY}\\s+(?:car|ride)(?:'s|\\s+is)\\s+(?:a|an)\\s+(?:(?:new|used|old)\\s+)?(?:(?:19|20)\\d\\d\\s+)?${VEHICLE}`),
     myEditor: g(`\\b${MY}\\s+(?:code\\s+|text\\s+)?editor(?:\\s+of\\s+choice)?\\s+is\\s+(?<t>${TOOL})`),
     clientIs: g(`(?<o>${ORG})\\s+(?:is|are)\\s+(?:a|an|our|my|${MY})\\s+(?:(?:new|big|biggest|long-?time|key|good|great)\\s+)?client\\b`),
-    myCompany: g(`\\b${MY}\\s+(?:own\\s+)?(?:company|studio|firm|agency|business|startup|consultancy|practice|shop),?\\s+(?<o>${ORG})`),
+    myCompany: g(`\\b${MY}\\s+(?:own\\s+)?(?:company|studio|firm|agency|business|startup|consultancy|practice|shop|llc),?\\s+(?<o>${ORG})`),
     atOrgWe: new RegExp(`^(?:[Hh]ere\\s+)?[Aa]t\\s+(?<o>${ORG}),?\\s+(?:${I})\\s+[a-z]`),
     ourClient: g(`\\b(?:${MYOUR})\\s+(?:(?:new|big|biggest|key)\\s+)?client,?\\s+(?<o>${ORG})`),
     mention: g(`(?<![A-Za-z])(?<det>${MYOUR}|[Tt]he)\\s+${VEHICLE}\\b`),
     // Predicates. subj: which tail must precede; aux: the tail must carry a be-verb ("I'm from").
     preds: [
-      { hint: /\b(?:live|lives|living|reside|resides|based|settled)\b/, re: g(`\\b(?:live|lives|living|reside|resides|based|settled)\\s+in\\s+(?:the\\s+)?(?<pl>${PLACE})`), rel: "lives_in", ob: "place", tail: "subj" },
-      { hint: /\b(?:moved|relocated)\b/, re: g(`\\b(?:moved|relocated)\\s+(?:back\\s+|over\\s+|out\\s+)?(?:from\\s+${PLACE}\\s+)?to\\s+(?<pl>${PLACE})`), rel: "lives_in", ob: "place", tail: "subj" },
+      { w: "live lives living reside resides based settled", hint: /\b(?:live|lives|living|reside|resides|based|settled)\b/, re: g(`\\b(?:live|lives|living|reside|resides|based|settled)\\s+in\\s+(?:the\\s+)?(?<pl>${PLACE})`), rel: "lives_in", ob: "place", tail: "subj" },
+      { w: "moved relocated", hint: /\b(?:moved|relocated)\b/, re: g(`\\b(?:moved|relocated)\\s+(?:back\\s+|over\\s+|out\\s+)?(?:from\\s+${PLACE}\\s+)?to\\s+(?<pl>${PLACE})`), rel: "lives_in", ob: "place", tail: "subj" },
       // The same in lower case: a place is any word that is not an ordinary one, so it is held
       // loosely ("moved to neovim" is a tool) until another turn says the same place.
       ...(u ? [
-        { hint: /\b(?:live|living|based|settled)\s+in\s+[a-z]/, re: g(`\\b(?:live|lives|living|based|settled)\\s+in\\s+(?<lpl>${LPLACE})`), rel: "lives_in", ob: "place", tail: "subj", conf: CONF.indirect },
-        { hint: /\b(?:moved|relocated)\s+(?:back\s+|over\s+|up\s+|down\s+)?to\s+[a-z]/, re: g(`\\b(?:moved|relocated)\\s+(?:back\\s+|over\\s+|up\\s+|down\\s+)?to\\s+(?<lpl>${LPLACE})`), rel: "lives_in", ob: "place", tail: "subj", conf: LOWER },
-        { hint: /\b(?:originally|grew|born)\b/, re: g(`\\b(?:originally\\s+from|grew\\s+up\\s+in|born\\s+and\\s+raised\\s+in|was\\s+born\\s+in)\\s+(?<lpl>${LPLACE})`), rel: "from", ob: "place", tail: "subj", conf: CONF.indirect },
+        { w: "live lives living reside resides based settled", hint: /\b(?:lives?|living|based|settled)\s+in\s+[a-z]/, re: g(`\\b(?:live|lives|living|based|settled)\\s+in\\s+(?<lpl>${LPLACE})`), rel: "lives_in", ob: "place", tail: "subj", conf: CONF.indirect },
+        { w: "moved relocated", hint: /\b(?:moved|relocated)\s+(?:back\s+|over\s+|up\s+|down\s+)?to\s+[a-z]/, re: g(`\\b(?:moved|relocated)\\s+(?:back\\s+|over\\s+|up\\s+|down\\s+)?to\\s+(?<lpl>${LPLACE})`), rel: "lives_in", ob: "place", tail: "subj", conf: LOWER },
+        { w: "originally grew born", hint: /\b(?:originally|grew|born)\b/, re: g(`\\b(?:originally\\s+from|grew\\s+up\\s+in|born\\s+and\\s+raised\\s+in|was\\s+born\\s+in)\\s+(?<lpl>${LPLACE})`), rel: "from", ob: "place", tail: "subj", conf: CONF.indirect },
         // "i work for harlow legal": lowercase, so held loosely (a client is often "worked for" too).
-        { hint: /\bwork(?:s|ing)?\s+(?:at|for)\s+[a-z]/, re: g(`\\b(?:work|works|working)\\s+(?:at|for)\\s+(?<lo>[a-z][\\w&'-]*(?:\\s+[a-z][\\w&'-]*){0,3})`), rel: "works_at", ob: "org", tail: "subj", conf: LOWER },
+        { w: "work works working", hint: /\bwork(?:s|ing)?\s+(?:at|for)\s+[a-z]/, re: g(`\\b(?:work|works|working)\\s+(?:at|for)\\s+(?<lo>[a-z][\\w&'-]*(?:\\s+[a-z][\\w&'-]*){0,3})`), rel: "works_at", ob: "org", tail: "subj", conf: LOWER },
       ] : []),
-      { hint: /\bfrom\s+[A-Z]/, re: g(`\\bfrom\\s+(?<pl>${PLACE})`), rel: "from", ob: "place", tail: "subj", aux: true },
-      { hint: /\b(?:come|comes|came)\s+from\b/, re: g(`\\b(?:come|comes|came)\\s+from\\s+(?<pl>${PLACE})`), rel: "from", ob: "place", tail: "subj" },
-      { hint: /\b(?:grew|born)\b/, re: g(`\\b(?:grew\\s+up|was\\s+born|born\\s+and\\s+raised)\\s+in\\s+(?<pl>${PLACE})`), rel: "from", ob: "place", tail: "subj", conf: CONF.indirect },
-      { hint: /\bwork(?:s|ing)?\s+(?:at|for)\s+[A-Z]/, re: g(`\\b(?:work|works|working)\\s+(?:at|for)\\s+(?<o>${ORG})`), rel: "works_at", ob: "org", tail: "subj" },
-      { hint: /\b(?:run|runs|founded|co-?founded)\s+[A-Z]/, re: g(`\\b(?:run|runs|founded|co-?founded)\\s+(?<o>${ORG})`), rel: "works_at", ob: "org", tail: "subj", conf: CONF.indirect, role: "owner" },
-      { hint: /(?:'m|\b(?:am|is|was))\s+(?:the|a|an)\b[^.]*\s(?:at|for)\s+[A-Z]/, re: g(`\\b(?:the|a|an)\\s+(?<r>[A-Za-z][A-Za-z-]+(?:\\s+(?:of\\s+)?[a-z][a-z-]+){0,3})\\s+(?:at|for)\\s+(?<o>${ORG})`), rel: "works_at", ob: "org", tail: "subj", aux: true },
-      { hint: /\bwork(?:s|ing)?\s+as\b/, re: g(`\\bwork(?:s|ing)?\\s+as\\s+(?:a|an|the)\\s+(?<r>[A-Za-z][A-Za-z-]+(?:\\s+[a-z][a-z-]+){0,3})\\s+(?:at|for)\\s+(?<o>${ORG})`), rel: "works_at", ob: "org", tail: "subj" },
+      { w: "from", hint: /\bfrom\s+[A-Z]/, re: g(`\\bfrom\\s+(?<pl>${PLACE})`), rel: "from", ob: "place", tail: "subj", aux: true },
+      { w: "come comes came", hint: /\b(?:come|comes|came)\s+from\b/, re: g(`\\b(?:come|comes|came)\\s+from\\s+(?<pl>${PLACE})`), rel: "from", ob: "place", tail: "subj" },
+      { w: "originally grew born", hint: /\b(?:grew|born)\b/, re: g(`\\b(?:grew\\s+up|was\\s+born|born\\s+and\\s+raised)\\s+in\\s+(?<pl>${PLACE})`), rel: "from", ob: "place", tail: "subj", conf: CONF.indirect },
+      { w: "work works working", hint: /\bwork(?:s|ing)?\s+(?:at|for)\s+[A-Z]/, re: g(`\\b(?:work|works|working)\\s+(?:at|for)\\s+(?<o>${ORG})`), rel: "works_at", ob: "org", tail: "subj" },
+      { w: "run runs founded co-founded cofounded", hint: /\b(?:run|runs|founded|co-?founded)\s+[A-Z]/, re: g(`\\b(?:run|runs|founded|co-?founded)\\s+(?<o>${ORG})`), rel: "works_at", ob: "org", tail: "subj", conf: CONF.indirect, role: "owner" },
+      { w: "at for", hint: /(?:'m|\b(?:am|is|was))\s+(?:the|a|an)\b[^.]*\s(?:at|for)\s+[A-Z]/, re: g(`\\b(?:the|a|an)\\s+(?<r>[A-Za-z][A-Za-z-]+(?:\\s+(?:of\\s+)?[a-z][a-z-]+){0,3})\\s+(?:at|for)\\s+(?<o>${ORG})`), rel: "works_at", ob: "org", tail: "subj", aux: true },
+      { w: "work works working", hint: /\bwork(?:s|ing)?\s+as\b/, re: g(`\\bwork(?:s|ing)?\\s+as\\s+(?:a|an|the)\\s+(?<r>[A-Za-z][A-Za-z-]+(?:\\s+[a-z][a-z-]+){0,3})\\s+(?:at|for)\\s+(?<o>${ORG})`), rel: "works_at", ob: "org", tail: "subj" },
       { car: true, re: g(`\\b(?:drive|drives|driving)\\s+(?:a|an|the|my|our|${MY})\\s+(?:(?:new|used|old)\\s+)?(?:(?:19|20)\\d\\d\\s+)?${VEHICLE}`), rel: "drives", ob: "vehicle", tail: "subj" },
       { car: true, re: g(`\\b(?:own|owns|bought|have|has|got|leased|lease)\\s+(?:a|an|the)\\s+(?:(?:new|used|old)\\s+)?(?:(?:19|20)\\d\\d\\s+)?${VEHICLE}`), rel: "owns", ob: "vehicle", tail: "subj" },
-      { hint: /\bowns?\s+an?\s/, re: g(`\\b(?:own|owns)\\s+(?:a|an)\\s+(?<th>[a-z][a-z-]+(?:\\s+[a-z][a-z-]+)?)`), rel: "owns", ob: "thing", tail: "subj" },
+      { w: "own owns", hint: /\bowns?\s+an?\s/, re: g(`\\b(?:own|owns)\\s+(?:a|an)\\s+(?<th>[a-z][a-z-]+(?:\\s+[a-z][a-z-]+)?)`), rel: "owns", ob: "thing", tail: "subj" },
       { car: true, re: g(`\\b(?:sold|got\\s+rid\\s+of|traded\\s+in|scrapped)\\s+(?:the|our|my|${MY})\\s+(?:old\\s+)?${VEHICLE}`), rel: "ended:owns", ob: "vehicle", tail: "subj" },
-      { hint: /\buses?\s/, re: g(`\\b(?:use|uses)\\s+(?<t>${TOOL})`), rel: "uses", ob: "tool", tail: "subj" },
-      { hint: /\bprefers?\s/, re: g(`\\bprefers?\\s+(?<ph>[^.,;!?\\n]{2,80})`), rel: "prefers", ob: "phrase", tail: "subj" },
-      { hint: /\bborn\s+on\b/, re: g(`\\bborn\\s+on\\s+(?:the\\s+)?${DATE}`), rel: "birthday", ob: "date", tail: "subj", aux: true, names: true },
-      { hint: /\b(?:birthday|bday|b-day)\b/, re: g(`\\b(?:birthday|bday|b-day)(?:'s|\\s+is|\\s+falls)?\\s+(?:is\\s+)?(?:on\\s+)?(?:the\\s+)?${DATE}`), rel: "birthday", ob: "date", tail: "poss", names: true },
+      { w: "use uses", hint: /\buses?\s/, re: g(`\\b(?:use|uses)\\s+(?<t>${TOOL})`), rel: "uses", ob: "tool", tail: "subj" },
+      // An occupation, the user's or a relative's: "shes a nurse", "my dad's an electrician", "dani's a nurse".
+      // Present tense only: "she was a nurse" is a past job.
+      { bit: G.occ, re: new RegExp(`\\b(?:a|an)\\s+(?<r>(?:[a-z-]+\\s+){0,2}(?:${OCC}))\\b${NOT_ROLE_AFTER}`, "gi"), rel: "role", ob: "role", tail: "subj", aux: true, present: true, names: true },
+      { bit: G.occ, re: new RegExp(`\\bwork(?:s|ing)?\\s+as\\s+(?:a|an)\\s+(?<r>(?:[a-z-]+\\s+){0,2}(?:${OCC}))\\b${NOT_ROLE_AFTER}`, "gi"), rel: "role", ob: "role", tail: "subj", names: true },
+      // "my mom teaches": someone else's job (the user's "i teach" is often a one-off).
+      { bit: G.occ, hint: /\bteaches\b/, re: g(`\\bteaches\\b(?!\\s+(?:me|you|him|her|them|us|it|my|our|your|his|their|how|that|this|people|myself|herself|himself|themselves|to)\\b)`), rel: "role", ob: "role", val: "teacher", tail: "subj", other: true, names: true },
+      // "dani got a job at St Luke's": a named organisation only ("a job at a hospital" names none).
+      { w: "job jobs", hint: /\bjobs?\s+(?:at|with)\s/, re: g(`\\b(?:got|landed|started|took|accepted|found|has|have)\\s+(?:a|the|her|his|my|their|our)\\s+(?:new\\s+)?job\\s+(?:at|with)\\s+(?:(?<o>${ORG})${u ? `|(?<lo>[a-z][\\w&'-]*(?:\\s+[a-z][\\w&'-]*){0,3})` : ""})`), rel: "works_at", ob: "org", tail: "subj", names: true, lconf: LOWER },
+      // "ma keeps calling from tucson", "mum is flying in from Leeds": where someone else lives, loosely.
+      // Never the user: "we're flying in from portland" says nothing of home.
+      { w: "from", hint: /\sfrom\s/, re: g(`\\b(?:(?:keeps|kept|keep|always|still|just)\\s+)*(?:calling|calls|called|phoning|phones|phoned|ringing|rings|rang|texting|texts|texted|facetiming|facetimes|facetimed|visiting|(?:flying|flies|flew|driving|drives|drove|coming|comes|came)\\s+(?:in|up|down|over|out|back))(?:\\s+(?:me|us|here|again|all\\s+the\\s+way))*\\s+from\\s+(?:(?<pl>${PLACE})${u ? `|(?<lpl>${LPLACE})` : ""})`), rel: "lives_in", ob: "place", tail: "subj", other: true, conf: CONF.indirect, lconf: LOWER },
+      // A diet: "i'm vegan", "i've been vegetarian", "dani is vegan", "she's pescatarian".
+      { bit: G.diet, re: new RegExp(`\\b(?:(?:a|an|fully|strictly|mostly|now|also|basically|totally|still|full-?time)\\s+)*(?<d>${DIETW})\\b${NOT_DIET_AFTER}`, "gi"), rel: "diet", ob: "diet", tail: "subj", aux: true, present: true, names: true },
+      // "i don't eat meat": vegetarian, said indirectly. The negation is the fact here.
+      { bit: G.diet, re: g(`\\b(?:don't|dont|do\\s+not|doesn't|doesnt|does\\s+not|never|no\\s+longer)\\s+eats?\\s+(?:any\\s+)?(?<neg>meat|animal\\s+products)\\b(?!\\s+(?:on|during|before|after|at|when|if|unless|except|much|often|anymore\\s+on)\\b)`), rel: "diet", ob: "diet", tail: "subj", conf: CONF.indirect, names: true },
+      { w: "prefer prefers", hint: /\bprefers?\s/, re: g(`\\bprefers?\\s+(?<ph>[^.,;!?\\n]{2,80})`), rel: "prefers", ob: "phrase", tail: "subj" },
+      { w: "originally grew born", hint: /\bborn\s+on\b/, re: g(`\\bborn\\s+on\\s+(?:the\\s+)?${DATE}`), rel: "birthday", ob: "date", tail: "subj", aux: true, names: true },
+      { w: "birthday bday b-day", hint: /\b(?:birthday|bday|b-day)\b/, re: g(`\\b(?:birthday|bday|b-day)(?:'s|\\s+is|\\s+falls)?\\s+(?:is\\s+)?(?:on\\s+)?(?:the\\s+)?${DATE}`), rel: "birthday", ob: "date", tail: "poss", names: true },
     ],
   };
 }
-const RX = { user: build("user"), assistant: build("assistant") };
+/** Gate bits for word lists, one per distinct list: rules checked only when one of their words is there. */
+const WORD_BITS = new Map();
+let nextBit = 7;
+function wordBit(ws) {
+  let b = WORD_BITS.get(ws);
+  if (b === undefined) {
+    if (nextBit > 31) throw new Error("personal extract: out of gate bits");
+    b = 1 << nextBit++;
+    WORD_BITS.set(ws, b);
+    for (const w of ws.split(" ")) gate(w, b);
+  }
+  return b;
+}
 /** What may follow "my wife" to name her: "Jordan", ", Jordan,", "is Jordan", "called Jordan"; "my kids Sam and Juno". */
 const AFTER = {
   list: new RegExp(`^,?\\s+(${NAME}(?:,\\s*${NAME})*(?:,?\\s+and\\s+${NAME})?)`),
@@ -213,22 +257,20 @@ const AFTER = {
 };
 // Cheap tests that decide which rules a sentence can need at all. Most turns are about code and
 // pass none of them, which is what keeps a first pass over a large history fast.
-const HAS_KIN = new RegExp(`\\b(?:${KINW})\\b`, "i");
-/** First words of every make and model: a sentence with none of them names no car. A set lookup per
- * capitalised word is far cheaper than one alternation of a hundred names on every sentence. */
-const CAR_WORDS = new Set([...MAKES, ...Object.keys(MODELS)].map(m => alnum(m.split(/[\s]/)[0])));
-const hasCarWord = s => { for (const w of s.match(/\b[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)?/g) || []) if (CAR_WORDS.has(alnum(w))) return true; return false; };
-const HAS_COMPANY = /\b(?:company|studio|firm|agency|business|startup|consultancy|practice|shop)\b/;
+// (The word gates themselves, one Map lookup per word, are built below with the lists they read.)
+const HAS_COMPANY = /\b(?:company|studio|firm|agency|business|startup|consultancy|practice|shop|llc)\b/;
 const HAS_NAME = /\bname\b|\bI'm\s+[A-Z]|\bI\s+am\s+[A-Z]|\b[Cc]all\s+me\s/;
 
 /** Makes and models that are also ordinary words or names: in lower case they need a car's context. */
-const AMBIG_CAR = new Set("mini golf leaf pilot explorer accord rogue genesis lincoln jaguar mustang bronco cherokee fiat dodge lucid civic sienna tucson cayenne wrangler ford mercedes jeep focus".split(" "));
+const AMBIG_CAR = new Set(`mini golf leaf pilot explorer accord rogue genesis lincoln jaguar mustang bronco cherokee fiat dodge lucid civic sienna tucson cayenne wrangler
+  ford mercedes jeep focus maverick ranger transit expedition tahoe equinox bolt sierra frontier titan gladiator odyssey soul sprinter defender
+  model3 modely models modelx`.split(/\s+/));
 /** Right before a word: someone else owns it, or it is a common noun ("sophie's husband", "the robin's"). */
 const OTHERS_BEFORE = /(?:'s|\b(?:his|her|their|your|ur|a|an|the|any|every|each|no|whose|this|that)\b)\s*$/i;
 /** A bare relative's word opening the sentence as its subject: "partner's away", "dad (Graham) is visiting". */
 /** Words that may open a sentence before its subject. */
 const OPENING = /^(?:(?:so|and|but|also|ok|okay|oh|well|sorry|lol|ugh|just|then|plus|btw|fyi|anyway)[\s,]+)*$/i;
-const BARE_KIN = new RegExp(`^(?:(?:so|and|but|also|ok|okay|oh|well|sorry|lol|ugh|just|then|plus|btw|fyi|anyway)[\\s,]+)*(?<kw>${KINW})(?='s\\b|\\s*\\(|\\s+(?:is|are|was|were|has|had|have|and|just|will|won't|can't|isn't|wasn't|got|made|took|left|came|went|[a-z]+(?:s|ed))\\b)`, "i");
+const BARE_KIN = new RegExp(`^(?:(?:so|and|but|also|ok|okay|oh|well|sorry|lol|ugh|just|then|plus|btw|fyi|anyway)[\\s,]+)*(?<kw>${KINW_BARE})(?='s\\b|\\s*\\(|\\s+(?:is|are|was|were|has|had|have|and|just|will|won't|can't|isn't|wasn't|got|made|took|left|came|went|[a-z]+(?:s|ed))\\b)`, "i");
 // A lowercase word used the way names are: "robin and i", "isla's got", "theo (he's 9)",
 // "pepper hates the new house, she's ...". Evidence the store weighs, never a fact.
 const NAMED_AND = /(?<![\w'])(?<n>[a-z][a-z-]+)\s+and\s+(?:[iI]|me)\b/g;
@@ -246,6 +288,13 @@ const PLACE_RULES = /** @type {{ re: RegExp, conf: number, lconf: number, self?:
   { re: new RegExp(`\\b(?:getting|got|get)\\s+used\\s+to\\s+(?:living\\s+in\\s+|life\\s+in\\s+)?${PLACE_X}`, "g"), conf: LOWER, lconf: LOWER, self: true },
   { re: new RegExp(`\\b(?:the|our|my)\\s+new\\s+(?:place|house|flat|home|apartment|pad)\\s+(?:up\\s+|down\\s+|over\\s+)?in\\s+${PLACE_X}`, "g"), conf: CONF.indirect, lconf: CONF.indirect },
   { re: new RegExp(`\\b(?:our|my)\\s+(?:place|house|flat|home|apartment)\\s+in\\s+${PLACE_X}`, "g"), conf: CONF.indirect, lconf: CONF.indirect },
+  // A plan: "we're moving to denver in june". Held loosely until the move is said to have happened.
+  { re: new RegExp(`\\b(?:i'm|im|we're|i\\s+am|we\\s+are)\\s+(?:(?:finally|officially|actually|now|also|really)\\s+)?moving\\s+(?:back\\s+|over\\s+|up\\s+|down\\s+|out\\s+)?to\\s+${PLACE_X}`, "g"), conf: LOWER, lconf: LOWER },
+  // Arrived: "made it to denver!!", "settling into denver".
+  { re: new RegExp(`\\bmade\\s+it\\s+(?:to|into)\\s+${PLACE_X}`, "g"), conf: LOWER, lconf: LOWER, self: true },
+  { re: new RegExp(`\\bsettl(?:ing|ed)\\s+(?:in|into)\\s+(?:life\\s+in\\s+)?${PLACE_X}`, "g"), conf: CONF.indirect, lconf: CONF.indirect, self: true },
+  // "our portland apartment": one word, the place the home is in. Not "our old ... apartment".
+  { re: new RegExp(`\\b(?:our|my)\\s+(?:new\\s+)?(?:(?<pl>[A-Z][a-z]+)|(?<lpl>[a-z][a-z-]{2,20}))\\s+(?:apartment|flat|house|home|condo|townhouse)\\b`, "g"), conf: CONF.indirect, lconf: LOWER },
 ]);
 /** Occupations: generic nouns, the same for everyone. "im a freelance designer". */
 const OCC = `designer|developer|engineer|programmer|coder|lawyer|attorney|solicitor|barrister|paralegal|accountant|bookkeeper|teacher|lecturer|professor|tutor|nurse|doctor|gp|dentist|surgeon|vet|pharmacist|therapist|counsellor|counselor|writer|author|journalist|copywriter|photographer|illustrator|artist|animator|architect|consultant|contractor|freelancer|founder|co-founder|cofounder|ceo|cto|cfo|coo|manager|director|analyst|researcher|scientist|student|marketer|baker|chef|cook|electrician|plumber|builder|carpenter|mechanic|recruiter|realtor|producer|musician|translator|coach|trainer|administrator|strategist|planner|editor|entrepreneur|owner|investor|economist|statistician|technician|paramedic|firefighter|officer|pilot|farmer|florist|hairdresser|stylist`;
@@ -262,6 +311,160 @@ const VEHICLE_ONE = new RegExp(VEHICLE);
 const LOW_CLIENT = /\b(?:my|our)\s+(?:(?:new|big|biggest|key|main|favourite|favorite|latest)\s+)?client,?\s+(?:called\s+|named\s+|is\s+)?(?<lo>[a-z][\w&'-]*(?:\s+[a-z][\w&'-]*){0,3})/g;
 const LOW_CLIENT_IS = /(?<lo>(?:[a-z][\w&'-]*\s+){1,4})(?:is|are)\s+(?:a|an|my|our)\s+(?:(?:new|big|biggest|long-?time|key|good|great|main|favourite|favorite)\s+)?client\b/g;
 
+
+/** Lowercase words a place rule may meet that are no place: "(in law)", "our rental apartment". */
+const NOT_PLACE = new Set(`law laws charge trouble love pain debt shock luck hospital hospitals rental rentals airbnb vrbo beach lake summer winter
+  spring autumn fall dream current tiny studio cabin cottage basement starter shared student temporary claude vyre prod production staging
+  sandbox terminal meetings standup recovery therapy traffic quarantine isolation lockdown limbo`.split(/\s+/));
+
+/** Well-known dev and design tools, lower case -> how they are written. Generic, like the car makes: a
+ * lowercase tool said in passing ("im in neovim") is known without guessing at ordinary words. */
+const TOOLS = new Map(Object.entries({
+  neovim: "Neovim", nvim: "Neovim", vim: "Vim", emacs: "Emacs", vscode: "VS Code", "vs code": "VS Code", zed: "Zed", sublime: "Sublime Text",
+  "sublime text": "Sublime Text", intellij: "IntelliJ", webstorm: "WebStorm", pycharm: "PyCharm", goland: "GoLand", rubymine: "RubyMine",
+  xcode: "Xcode", "android studio": "Android Studio", cursor: "Cursor", windsurf: "Windsurf", helix: "Helix", tableplus: "TablePlus",
+  dbeaver: "DBeaver", datagrip: "DataGrip", pgadmin: "pgAdmin", postico: "Postico", "sequel pro": "Sequel Pro", "beekeeper studio": "Beekeeper Studio",
+  figma: "Figma", framer: "Framer", photoshop: "Photoshop", procreate: "Procreate", blender: "Blender", canva: "Canva", iterm: "iTerm",
+  iterm2: "iTerm", alacritty: "Alacritty", wezterm: "WezTerm", ghostty: "Ghostty", tmux: "tmux", obsidian: "Obsidian", notion: "Notion",
+  logseq: "Logseq", todoist: "Todoist", jira: "Jira", trello: "Trello", asana: "Asana", postman: "Postman", raycast: "Raycast",
+  lazygit: "Lazygit", gitkraken: "GitKraken", sourcetree: "Sourcetree", airtable: "Airtable", excel: "Excel", "google sheets": "Google Sheets",
+}));
+const TOOLSW = [...TOOLS.keys()].sort((a, b) => b.length - a.length).map(t => t.replace(/\s+/g, "\\s+")).join("|");
+/** "im in neovim", "i basically live in figma": the tool the user is working in. */
+const TOOL_IN = new RegExp(`\\b(?:i'm|im|i\\s+am|i\\s+live|i\\s+basically\\s+live|i\\s+work|i've\\s+been|ive\\s+been|been|stuck|living|working)\\s+(?:(?:mostly|always|usually|currently|still|now|back|just|all\\s+day|basically)\\s+)*in\\s+(?<t>${TOOLSW})\\b`, "g");
+/** "in figma all day". */
+const TOOL_DAY = new RegExp(`(?:^|[,;:]\\s*)in\\s+(?<t>${TOOLSW})\\s+all\\s+(?:day|week)\\b`, "g");
+/** "tableplus is open on my other monitor". */
+const TOOL_OPEN = new RegExp(`(?<![\\w.-])(?<t>${TOOLSW})(?:'s|\\s+is)\\s+(?:open|up|running)\\b(?![\\s-]+source)`, "g");
+/** "switched to zed", "moved from vscode to neovim". */
+const TOOL_SWITCH = new RegExp(`\\b(?:switched|moved|migrated|swapped|changed)\\s+(?:over\\s+)?(?:(?:from|off)\\s+(?:[\\w.-]+\\s+){1,2})?to\\s+(?<t>${TOOLSW})\\b`, "g");
+
+/** Breeds, lower case -> dog or cat. Generic, the same for everyone. */
+const BREEDS = /** @type {Record<string, "dog"|"cat">} */ ({});
+for (const b of `beagle labrador lab retriever poodle corgi dachshund spaniel cavalier cavapoo cockapoo labradoodle goldendoodle doodle terrier yorkie
+  collie shepherd husky pug bulldog frenchie boxer chihuahua greyhound whippet schnauzer rottweiler doberman pitbull shiba akita dalmatian maltese
+  pomeranian sheepdog vizsla weimaraner samoyed bernese mastiff bloodhound heeler`.split(/\s+/)) BREEDS[b] = "dog";
+for (const b of ["golden retriever", "labrador retriever", "cocker spaniel", "springer spaniel", "jack russell", "border collie", "german shepherd",
+  "french bulldog", "shih tzu", "pit bull", "great dane", "shiba inu", "basset hound"]) BREEDS[b] = "dog";
+for (const b of ["siamese", "persian", "maine coon", "ragdoll", "bengal", "sphynx", "british shorthair", "abyssinian", "burmese"]) BREEDS[b] = "cat";
+/** Breeds that are ordinary words too ("our lab", "a boxer"): only with a name or an animal beside them. */
+const AMBIG_BREED = new Set(["lab", "boxer", "husky", "shepherd", "doodle", "persian", "bengal", "siamese", "maltese", "cavalier", "heeler", "mastiff", "pointer", "burmese"]);
+const BREEDW = Object.keys(BREEDS).sort((a, b) => b.length - a.length).map(b => b.replace(/\s+/g, "\\s+")).join("|");
+const BREED_NAME = /** @type {Record<string, string>} */ ({ lab: "labrador", frenchie: "french bulldog", pitbull: "pit bull" });
+const breedOf = b => { const x = b.toLowerCase().replace(/\s+/g, " "); return BREED_NAME[x] || x; };
+const PET_MOD = "little|old|new|rescue|rescued|senior|baby|sweet|good|big|fat|lazy|crazy|daft|beloved|mini|miniature|toy|standard";
+const PET_TAIL = "(?:\\s+(?:mix|cross|puppy|pup|dog|cat|kitten))?";
+// Matched in lower case; names are read back from the sentence as typed.
+/** "biscuit (our beagle)". */
+const PET_PAREN = new RegExp(`(?<![\\w'])(?<n>[a-z][a-z-]+)\\s*\\(\\s*(?:my|our)\\s+(?:(?:${PET_MOD})\\s+)*(?<b>${BREEDW})${PET_TAIL}\\s*\\)`, "gd");
+/** "our beagle biscuit", "my golden retriever max", "my lab called scout", "our beagle is sick". */
+const PET_MY = new RegExp(`(?<![\\w'])(?:my|our)\\s+(?:(?:${PET_MOD})\\s+)*(?<b>${BREEDW})${PET_TAIL}\\b(?!'s|-)(?:,?\\s+(?<c>called\\s+|named\\s+)?(?<n>[a-z][a-z-]+))?`, "gd");
+/** "we have a lab called scout", "got a dog named pepper". */
+const PET_HAVE = new RegExp(`\\b(?:have|got|adopted|rescued|own)\\s+(?:a|an)\\s+(?:(?:${PET_MOD})\\s+)*(?<b>${BREEDW}|dog|cat|puppy|kitten)${PET_TAIL},?\\s+(?:called|named)\\s+(?<n>[a-z][a-z-]+)`, "gd");
+/** "the dog's a corgi", "our cat is a ragdoll", "biscuit is a beagle". */
+const PET_IS = new RegExp(`(?:(?<![\\w'])(?<own>my|our|the)\\s+(?<k>dog|cat|puppy|pup|kitten)|(?<![\\w'])(?<n>[a-z][a-z-]+))(?:'s|\\s+is)\\s+(?:a|an)\\s+(?:(?:${PET_MOD}|full|pure|purebred|pedigree)\\s+)*(?<b>${BREEDW})\\b(?!'s|-)`, "gd");
+
+/** Diets, lower case -> the value kept. */
+const DIETS = /** @type {Record<string, string>} */ ({ vegetarian: "vegetarian", veggie: "vegetarian", vegan: "vegan", pescatarian: "pescatarian",
+  pescetarian: "pescatarian", "plant-based": "plant-based", "plant based": "plant-based", keto: "keto", paleo: "paleo", "gluten-free": "gluten-free",
+  "gluten free": "gluten-free", halal: "halal", kosher: "kosher" });
+const DIETW = Object.keys(DIETS).sort((a, b) => b.length - a.length).map(d => d.replace(/\s+/g, "\\s+")).join("|");
+/** After a diet word: it describes a thing, not a person ("vegan options", "veggie place"). */
+const NOT_DIET_AFTER = "(?![\\w-]|\\s+(?:food|foods|place|places|restaurants?|options?|recipes?|menus?|dish(?:es)?|meals?|friendly|burgers?|cafes?|version|cheese|spot|joint|cookbooks?|leather|diet|stuff|dinners?|lunch|breakfast|alternatives?|products?|brands?|shops?|stores?|market|section|things?|pizza|chili|lasagna|sausages?|bakery|range|mode|app|site|blog))";
+/** "been vegetarian like 10 years", "went vegan last year": the user, the I left out, at a clause's start. */
+const DIET_SELF = new RegExp(`(?:^|[,;:]\\s*|\\b(?:and|but|so|lol|tbh|honestly|also)\\s+)(?:(?:just|also|still|now)\\s+)?(?:been|went|gone)\\s+(?:(?:a|fully|strictly|mostly|full)\\s+)*(?<d>${DIETW})\\b${NOT_DIET_AFTER}`, "gi");
+/** "as a vegetarian, i ...". */
+const AS_DIET = new RegExp(`(?:^|[,;:]\\s*|\\b(?:and|but|so)\\s+)as\\s+(?:a|an)\\s+(?<d>vegetarian|vegan|pescatarian|pescetarian|veggie)\\b(?:\\s+myself)?\\s*,?\\s+(?:i|i'm|im|i've|ive|my|we|me)\\b`, "gi");
+
+/** After an occupation: a noun it describes, not a person ("a developer tool", "a nurse's shift"). */
+const NOT_ROLE_AFTER = "(?![\\w-]|'s|\\s+(?:tools?|account|role|job|position|friends?|kit|mode|team|portal|site|page|view|docs?|api|console|licen[cs]e|build|version|platform|app|program|course|degree|exam|interview|meetup|conference|community|forum|group|fan|salary|rates?|shortage|strike|uniform|school))";
+/** Words that praise or size a job rather than name it: "a good nurse" is a nurse. */
+const JOB_PRAISE = /^(?:(?:good|great|bad|terrible|amazing|brilliant|excellent|real|proper|total|huge|big|fantastic|wonderful|decent|awesome|natural|born|lovely|very|really|fine|busy|tired|overworked)\s+)+/;
+const roleOf = r => lower(String(r)).replace(/\s+/g, " ").replace(JOB_PRAISE, "").trim();
+/** "been a freelance app developer about 3 years", "i've been a nurse since 2019". */
+const ROLE_BEEN = new RegExp(`(?:^|[,;:]\\s*|\\b(?:and|but|so|lol|tbh|honestly)\\s+|\\b(?:i've|ive|i\\s+have)\\s+)(?:(?:just|also|now)\\s+)?been\\s+(?:a|an)\\s+(?<r>(?:[a-z-]+\\s+){0,2}(?:${OCC}))\\b${NOT_ROLE_AFTER}`, "gi");
+/** "as a designer, i ...". */
+const AS_ROLE = new RegExp(`(?:^|[,;:]\\s*|\\b(?:and|but|so)\\s+)as\\s+(?:a|an)\\s+(?<r>(?:[a-z-]+\\s+){0,2}(?:${OCC}))(?:\\s+myself)?\\s*,?\\s+(?:i|i'm|im|i've|ive|my|we)\\b`, "gi");
+
+/** "..., thats my llc": the organisation named before it in the sentence is the user's own. */
+const THATS_MY = /,?\s*\b(?:that's|thats|that\s+is|which\s+is|it's|its)\s+(?:my|our)\s+(?:own\s+)?(?:little\s+)?(?:llc|company|business|studio|firm|agency|ltd|startup|consultancy|practice|brand|label)\b/i;
+/** "Tinfoil Studio is my llc", "tinfoil studio is my company". */
+const MY_BIZ = "(?:my|our)\\s+(?:own\\s+)?(?:little\\s+)?(?:llc|company|business|studio|firm|agency|ltd|startup|consultancy|practice|brand|label)\\b(?!'s|\\s+(?:card|account|email|address|phone|name|logo|website|site|bank))";
+const ORG_IS_MY = new RegExp(`(?<o>${ORG})\\s+is\\s+${MY_BIZ}`, "g");
+const LOW_ORG_IS_MY = new RegExp(`(?<![\\w'&-])(?<lo>(?:[a-z][\\w&'-]*\\s+){1,4})is\\s+${MY_BIZ}`, "g");
+
+/** A relative's home in brackets or said beside them: "my sister (in austin)", "my brother in Denver". */
+const KIN_IN = new RegExp(`(?<![A-Za-z'])(?:[Mm]y|[Oo]ur)\\s+(?:(?:${KINMOD})\\s+)?(?<kw>${KINW})\\b(?!'s|-)(?:\\s+(?:${NAME}|${LNAME}))?(?:\\s*\\(\\s*(?:who\\s+lives\\s+|lives\\s+|living\\s+|based\\s+)?in\\s+(?:(?<pl>${PLACE})|(?<lpl>${LPLACE}))\\s*\\)|\\s+(?:who\\s+lives\\s+)?in\\s+(?!Law\\b)(?<bpl>${PLACE})\\b(?!['-]))`, "gd");
+
+// ---- the word gates: one Map lookup per word decides which rule families a sentence can need.
+const G = { kin: 1, car: 2, occ: 4, breed: 8, diet: 16, tool: 32, vnoun: 64 };
+/** @type {Map<string, number>} */
+const GATE = new Map();
+const gate = (w, bit) => GATE.set(w, (GATE.get(w) || 0) | bit);
+for (const k of Object.keys(KIN)) gate(k.split(" ").pop(), G.kin);
+for (const w of ["fiance", "fiancee", "fiancée", "fiancé"]) gate(w, G.kin);
+for (const m of [...MAKES, ...Object.keys(MODELS)]) gate(alnum(m.split(/\s/)[0]), G.car);
+for (const o of OCC.split("|")) gate(o, G.occ);
+gate("teaches", G.occ);
+for (const b of Object.keys(BREEDS)) gate(b.split(" ").pop(), G.breed);   // a phrase needs its last word
+for (const d of [...Object.keys(DIETS), "meat"]) gate(d.split(" ")[0], G.diet);
+for (const t of TOOLS.keys()) gate(t.split(" ")[0], G.tool);
+for (const v of ["car", "motor", "ride", "truck", "van", "suv", "pickup", "minivan", "ev"]) gate(v, G.vnoun);
+/** The gates a lowercase sentence opens. A hand-rolled scan: no split array, and a word is only
+ * sliced out (and looked up) when its length could be a gate word's. */
+function gatesOf(lc) {
+  let bits = 0, start = -1;
+  const n = lc.length;
+  for (let i = 0; i <= n; i++) {
+    const c = i < n ? lc.charCodeAt(i) : 32;
+    if (c >= 97 && c <= 122 || c >= 48 && c <= 57 || c === 45 || c === 39 || c === 233) { if (start < 0) start = i; continue; }
+    if (start < 0) continue;
+    let end = i;
+    // "biscuit's", "dogs'": the word without its possessive.
+    if (lc.charCodeAt(end - 1) === 39) end--;
+    else if (end - start > 2 && lc.charCodeAt(end - 1) === 115 && lc.charCodeAt(end - 2) === 39) end -= 2;
+    const len = end - start;
+    if (len >= 2 && len <= GATE_MAX) {
+      const w = lc.slice(start, end);
+      const b = GATE.get(w);
+      if (b) bits |= b;
+      else if (w.includes("-")) bits |= GATE.get(w.replace(/-/g, "")) || 0;
+    }
+    start = -1;
+  }
+  return bits;
+}
+
+const RX = { user: build("user"), assistant: build("assistant") };
+for (const R of Object.values(RX)) for (const p of R.preds) if (p.w) p.wb = wordBit(p.w);
+/** Gates for the rules of the user's lowercase typing. */
+const B = {
+  place: wordBit("move moving moved used place house flat home apartment pad made settling settled condo townhouse"),
+  keep: wordBit("keep kept write take store put track jot"),
+  mostly: wordBit("mostly mainly usually primarily"),
+  at: wordBit("from at"),
+  bye: wordBit("bye goodbye long farewell"),
+  biz: wordBit("company studio firm agency business startup consultancy practice shop llc ltd brand label"),
+};
+/** The longest gate word: longer words are never looked up (hyphens count, "mercedes-benz"). */
+const GATE_MAX = Math.max(...[...GATE.keys()].map(w => w.length));
+
+/**
+ * Every match of a global regex, as an array. String.prototype.matchAll clones its regex on every
+ * call, and the clone costs a hash of the source: for the car and name patterns (kilobytes each),
+ * that was most of the time a sentence took. The array is filled before any match is read, so a
+ * rule that uses the same regex inside the loop cannot disturb it.
+ * @param {RegExp} re @param {string} s
+ */
+function matches(re, s) {
+  const out = [];
+  re.lastIndex = 0;
+  for (let m; (m = re.exec(s));) { out.push(m); if (!m[0]) re.lastIndex++; }
+  re.lastIndex = 0;
+  return out;
+}
+const CAPWORD = /\b[A-Z][a-z]+\b/g;
+const ORG_G = new RegExp(ORG, "g");
 const lower = s => s.toLowerCase();
 /** Drops leading words that open sentences ("Yesterday Jordan" is Jordan) and any trailing opener. */
 function cleanName(n) {
@@ -273,7 +476,7 @@ function cleanName(n) {
 }
 const cap1 = w => w.charAt(0).toUpperCase() + w.slice(1);
 /** Words that are never a name, whatever their case: kin words, makes, models, months. */
-const NEVER_NAME = new Set([...Object.keys(KIN), ...MAKE_SET, ...[...MODEL_OF.keys()], ...MONTHS, "claude", "vyre"]);
+const NEVER_NAME = new Set([...Object.keys(KIN), ...MAKE_SET, ...[...MODEL_OF.keys()], ...MONTHS, ...Object.keys(BREEDS), ...Object.keys(DIETS), "claude", "vyre"]);
 /** A lowercase word read as a name ("robin" -> "Robin"), or null when it is an ordinary word. */
 function lowName(w) {
   const x = String(w || "").toLowerCase();
@@ -284,10 +487,22 @@ function lowName(w) {
 function lowPlace(p) {
   const w = String(p || "").toLowerCase().split(/\s+/).filter(Boolean);
   const last = w[w.length - 1];
-  if (!last || last.length < 3 || ordinary(last) || NEVER_NAME.has(last) || OPENERS.has(last)) return null;
+  // Car models may be places (Tucson, Sierra); makes, tools and kin words are not.
+  if (!last || last.length < 3 || ordinary(last) || KIN[last] || MAKE_SET.has(last) || MONTHS.includes(last) || OPENERS.has(last) || NOT_PLACE.has(last) || TOOLS.has(w.join(" "))) return null;
   return w.map(cap1).join(" ");
 }
 const trimRun = s => String(s || "").replace(/[.,;:'&-]+$/, "").trim();
+/** A capitalised run that names an organisation: without the words that open a sentence ("Put Tinfoil
+ * Studio on ..." is Tinfoil Studio), and not a lone ordinary word. */
+function orgRun(x, start) {
+  const w = trimRun(x).split(/\s+/).filter(Boolean);
+  while (w.length && (OPENERS.has(lower(w[0])) || start && ordinary(w[0]))) w.shift();
+  while (w.length && OPENERS.has(lower(w[w.length - 1]))) w.pop();
+  if (!w.length || w.length === 1 && (ordinary(w[0]) || w[0].length < 3)) return null;
+  return w.join(" ");
+}
+/** A capitalised place, unless it is a tool or a word no place is ("moved to Neovim"). */
+const placeName = x => { const p = cleanRun(x); return p && !TOOLS.has(lower(p)) && !NOT_PLACE.has(lower(p)) ? p : null; };
 function cleanRun(s) {
   const w = trimRun(s).split(/\s+/).filter(Boolean);
   while (w.length && OPENERS.has(lower(w[0]))) w.shift();
@@ -319,15 +534,21 @@ function vehicleOf(gr) {
  * @param {"user"|"assistant"} who
  */
 function readable(text, who) {
-  let t = String(text).replace(/[‘’ʼ]/g, "'").replace(/[“”]/g, '"');
-  t = t.replace(/```[\s\S]*?(?:```|$)/g, "\n").replace(/"""[\s\S]*?(?:"""|$)/g, "\n").replace(/`[^`\n]*`/g, " ");
+  let t = String(text);
+  // Each pass only when its character is there: most turns have no curly quotes and no code.
+  if (/[‘’ʼ“”]/.test(t)) t = t.replace(/[‘’ʼ]/g, "'").replace(/[“”]/g, '"');
+  if (t.includes("`")) t = t.replace(/```[\s\S]*?(?:```|$)/g, "\n").replace(/`[^`\n]*`/g, " ");
+  if (t.includes('"""')) t = t.replace(/"""[\s\S]*?(?:"""|$)/g, "\n");
   // Quoted words are someone else's, or copy being written: a pasted email in "...", a draft in
   // '...'. An apostrophe inside a word ("robin's", "it's") neither opens nor closes a quote.
   if (t.includes('"')) t = t.replace(/(^|[\s:(\[])"[^"]*(?:"|$)/g, "$1\n");
   if (t.includes("'")) t = t.replace(/(^|[\s:(\[])'(?=[A-Za-z])(?:[^'\n]|'(?=[a-z]))*'(?=[\s.,;:!?)\]]|$)/g, "$1\n");
   const out = [];
   let letter = false, sig = 0, first = true;
-  for (const line of t.split("\n")) {
+  const lines = t.split("\n");
+  // One plain line with no header, quote or letter in it: nothing below can drop it.
+  if (lines.length === 1 && !/^\s*(?:>|(?:From|To|Cc|Bcc|Subject|Date|Sent):\s|Dear\s|To whom)/i.test(t)) out.push(t);
+  else for (const line of lines) {
     if (sig > 0) { sig--; if (line.trim().length < 40) continue; }
     if (/^\s*>/.test(line) || /^\s*(?:From|To|Cc|Bcc|Subject|Date|Sent):\s/.test(line)) continue;
     if (!letter && /^\s*(?:Dear\s+[^\n]{1,60}|To whom it may concern)[,:]?\s*$/i.test(line)) { letter = true; continue; }
@@ -342,7 +563,8 @@ function readable(text, who) {
     out.push(line);
   }
   // Sentences end at . ! ? before any letter: lowercase typing starts sentences in lowercase.
-  let s = out.join("\n").split(/(?<!\b(?:e\.g|i\.e|etc|vs|[Mm]r|[Mm]rs|[Mm]s|[Dd]r|[Ss]t|approx|[A-Za-z])\.)(?<=[.!?])\s+(?=[A-Za-z"'(])|\n+/).map(x => x.trim()).filter(Boolean);
+  // The cheap one-character lookbehind first: the long one only runs after a stop.
+  let s = out.join("\n").split(/(?<=[.!?])(?<!\b(?:e\.g|i\.e|etc|vs|[Mm]r|[Mm]rs|[Mm]s|[Dd]r|[Ss]t|approx|[A-Za-z])\.)\s+(?=[A-Za-z"'(])|\n+/).map(x => x.trim()).filter(Boolean);
   // Dictated words are someone else's: from "Start with:" (or "I, <Name>,") to the end of the turn.
   const cut = t.includes(":") || t.includes("I,") ? s.findIndex(x => DICTATE.test(x) || OTHER_I.test(x)) : -1;
   if (cut >= 0) {
@@ -411,6 +633,19 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
     const [roleName, g] = k;
     const kref = `kin:${roleName}`;
     const named = list.map(cleanName).filter(Boolean);
+    if (FRIENDS.has(roleName) && named.length) {
+      // "my buddy theo": a friend is a person of their own (me|friend|name:Theo), never "the friend".
+      let last = null;
+      for (const n of /** @type {string[]} */ (named)) {
+        const r = `name:${n}`;
+        add("me", roleName, r, how === "lower" ? Math.min(conf, LOWER) : conf, how);
+        add(r, "called", `lit:${lower(word)}`, Math.min(conf, indirect));
+        names.set(n, { ref: r, g }); names.set(n.split(" ")[0], { ref: r, g });
+        cands.push({ ref: r, g, name: n });
+        last = r;
+      }
+      return named.length === 1 ? last : null;
+    }
     // A lowercase name is held at LOWER until another turn confirms it; the link to the relative
     // is as sure as "my partner" alone.
     const link = how === "lower" ? Math.min(conf, indirect) : named.length ? conf : Math.min(conf, indirect);
@@ -432,7 +667,7 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
   const pronoun = (word, sentence, idx) => {
     const g = /^(?:she|her)$/i.test(word) ? "f" : "m";
     // Someone else named earlier in the sentence ("Dana said her ...") makes it ambiguous.
-    for (const m of sentence.slice(0, idx).matchAll(/\b[A-Z][a-z]+\b/g)) {
+    for (const m of matches(CAPWORD, sentence.slice(0, idx))) {
       const t = m[0];
       if (t === "I" || OPENERS.has(lower(t)) || names.has(t) || MAKE_SET.has(lower(t)) || KIN[lower(t)]) continue;
       return null;
@@ -448,13 +683,19 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
    * The reference a subject tail names, or null.
    * @param {Record<string, string|undefined>} gr
    */
-  const subjectOf = (gr, sentence, idx, allowName) => {
-    if (gr.i) return { ref: "me", conf: explicit };
-    if (gr.p) { const r = pronoun(gr.p, sentence, idx); return r ? { ref: r, conf: indirect } : null; }
+  const subjectOf = (gr, sentence, idx, allowName, pre = null) => {
+    const bare = pre !== null && OPENING.test(pre);
+    if (gr.i || gr.im || gr.ive) return { ref: "me", conf: explicit };
+    if (gr.p || gr.pz) { const r = pronoun((gr.p || gr.pz).replace(/s$/, ""), sentence, idx); return r ? { ref: r, conf: indirect } : null; }
     if (gr.k) {
       const r = kin(gr.k, gr.kn ? [gr.kn] : [], explicit);
       if (!r) return null;
       return { ref: r, conf: explicit };
+    }
+    // A bare relative's word opening the sentence: "ma keeps calling", "mum is flying in".
+    if (bare && !assistant && (gr.n || gr.ln) && BARE_WORD.test(gr.n || gr.ln)) {
+      const r = kin(/** @type {string} */ (gr.n || gr.ln), [], indirect);
+      return r ? { ref: r, conf: indirect } : null;
     }
     if (gr.n || gr.ln) {
       const n = gr.n ? cleanName(gr.n) : lowName(gr.ln);
@@ -462,6 +703,8 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
       const known = names.get(n) || names.get(n.split(" ")[0]);
       if (known) return { ref: known.ref, conf: explicit };
       if (prevF?.name && (prevF.name === n || prevF.name.split(" ")[0] === n)) return { ref: prevF.ref, conf: explicit };
+      // "Dana's husband Luis is a chef": a name right after someone else's relative is theirs to talk about.
+      if (pre !== null && KIN_BEFORE.test(pre)) return null;
       return allowName ? { ref: `name:${n}`, conf: gr.n ? explicit : indirect } : null;
     }
     return null;
@@ -506,6 +749,7 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
   const toolName = t => {
     const x = trimRun(t);
     if (!x) return null;
+    if (TOOLS.has(lower(x))) return `tool:${TOOLS.get(lower(x))}`;
     if (/^[A-Z]/.test(x)) return OPENERS.has(lower(x)) || TOOL_STOP.has(lower(x)) ? null : `tool:${x}`;
     const n = lowName(x);
     return n ? `tool:${n}` : null;
@@ -534,30 +778,67 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
     return out.length ? out.map(x => (/^[a-z]/.test(x) ? cap1(x) : x)).join(" ") : null;
   };
   /** The rules for how people type in lower case and in passing: places, work, tools, clients, cars. */
-  const personalLower = (sentence, ls, si) => {
-    if (/\b(?:move|moving|used\s+to|place|house|flat|home|apartment|pad)\b/.test(ls)) for (const r of PLACE_RULES) for (const m of sentence.matchAll(r.re)) {
+  const personalLower = (sentence, ls, si, bits) => {
+    if (bits & B.place) for (const r of PLACE_RULES) for (const m of matches(r.re, sentence)) {
       if (unsure(sentence, m.index)) continue;
       if (r.self && !SELF_BEFORE.test(sentence.slice(0, m.index))) continue;
-      const pl = m.groups.pl ? cleanRun(m.groups.pl) : lowPlace(m.groups.lpl);
+      const pl = m.groups.pl ? placeName(m.groups.pl) : lowPlace(m.groups.lpl);
       if (!pl) continue;
       const conf = m.groups.pl ? r.conf : r.lconf;
       add("me", "lives_in", `place:${pl}`, conf, conf <= LOWER ? "lower" : null);
     }
-    if (/\b(?:i'm|im|i am|work as)\s+an?\s/.test(ls)) for (const m of sentence.matchAll(ROLE_RE)) {
-      if (unsure(sentence, m.index)) continue;
-      add("me", "role", `lit:${lower(m.groups.r).replace(/\s+/g, " ")}`, explicit);
+    if (bits & G.occ) {
+      if (/\b(?:i'm|im|i am|work as)\s+an?\s/.test(ls)) for (const m of matches(ROLE_RE, sentence)) {
+        if (unsure(sentence, m.index)) continue;
+        add("me", "role", `lit:${lower(m.groups.r).replace(/\s+/g, " ")}`, explicit);
+      }
+      // "been a freelance app developer about 3 years", "as a designer, i ...".
+      if (ls.includes("been a")) for (const m of matches(ROLE_BEEN, sentence)) {
+        if (unsure(sentence, m.index)) continue;
+        const r = roleOf(m.groups.r);
+        // With its I ("i've been a nurse") it is said outright; without, it is the diary's left-out I.
+        if (r) add("me", "role", `lit:${r}`, /\b(?:i've|ive|i\s+have)\s/i.test(m[0]) ? explicit : indirect);
+      }
+      if (ls.includes("as a")) for (const m of matches(AS_ROLE, sentence)) {
+        if (unsure(sentence, m.index)) continue;
+        const r = roleOf(m.groups.r);
+        if (r) add("me", "role", `lit:${r}`, explicit);
+      }
     }
-    if (/\b(?:my|our)\b/.test(ls) && /\sin\s/.test(ls)) for (const m of sentence.matchAll(KEEP_IN)) {
+    if (bits & G.diet) {
+      for (const m of matches(DIET_SELF, sentence)) { if (!unsure(sentence, m.index)) add("me", "diet", `lit:${DIETS[lower(m.groups.d).replace(/\s+/g, " ")]}`, indirect); }
+      if (ls.includes("as a")) for (const m of matches(AS_DIET, sentence)) { if (!unsure(sentence, m.index)) add("me", "diet", `lit:${DIETS[lower(m.groups.d)]}`, explicit); }
+    }
+    if (bits & G.tool) {
+      // A known tool said in passing: "im in neovim", "tableplus is open", "switched to zed".
+      for (const re of [TOOL_IN, TOOL_DAY, TOOL_OPEN, TOOL_SWITCH]) for (const m of matches(re, ls)) {
+        if (unsure(sentence, m.index)) continue;
+        if (re === TOOL_SWITCH && !SELF_BEFORE.test(ls.slice(0, m.index))) continue;
+        const t = TOOLS.get(m.groups.t.replace(/\s+/g, " "));
+        if (t) add("me", "uses", `tool:${t}`, indirect);
+      }
+    }
+    // "put Tinfoil Studio on the invoice, thats my llc", "Tinfoil Studio is my company".
+    if (bits & B.biz && /\b(?:my|our)\b/.test(ls)) {
+      const th = THATS_MY.exec(sentence);
+      if (th && !unsure(sentence, th.index)) {
+        const runs = matches(ORG_G, sentence.slice(0, th.index)).map(x => orgRun(x[0], x.index === 0)).filter(Boolean);
+        if (runs.length === 1) add("me", "works_at", `org:${runs[0]}`, indirect);
+      }
+      for (const m of matches(ORG_IS_MY, sentence)) { const o = orgRun(m.groups.o, m.index === 0); if (o && !unsure(sentence, m.index)) add("me", "works_at", `org:${o}`, explicit); }
+      for (const m of matches(LOW_ORG_IS_MY, sentence)) { if (unsure(sentence, m.index)) continue; const o = orgBefore(m.groups.lo); if (o) add("me", "works_at", `org:${o}`, indirect); }
+    }
+    if (bits & B.keep && /\b(?:my|our)\b/.test(ls) && /\sin\s/.test(ls)) for (const m of matches(KEEP_IN, sentence)) {
       if (unsure(sentence, m.index) || !SELF_BEFORE.test(sentence.slice(0, m.index))) continue;
       const t = toolName(m.groups.t);
       if (t) add("me", "uses", t, indirect);
     }
-    if (/\b(?:mostly|mainly|usually|primarily)\b/.test(ls) && /\b(?:i|i'm|im|my)\b/.test(ls)) for (const m of sentence.matchAll(MOSTLY)) {
+    if (bits & B.mostly && /\b(?:i|i'm|im|my)\b/.test(ls)) for (const m of matches(MOSTLY, sentence)) {
       if (unsure(sentence, m.index)) continue;
       const t = toolName(m.groups.t);
       if (t) add("me", "uses", t, indirect);
     }
-    if (ls.includes("client")) for (const m of sentence.matchAll(CLIENT_LIST)) {
+    if (ls.includes("client")) for (const m of matches(CLIENT_LIST, sentence)) {
       if (unsure(sentence, m.index)) continue;
       for (const item of m.groups.list.split(/\s*,\s*|\s+(?:and|&)\s+/)) {
         const o = orgName(item);
@@ -567,20 +848,82 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
     }
     if (ls.includes("client")) {
       // "our new client, harlow legal", "harlow legal is my biggest client".
-      for (const m of sentence.matchAll(LOW_CLIENT)) { if (unsure(sentence, m.index)) continue; const o = orgName(m.groups.lo); if (o) add("me", "client", `org:${o}`, explicit); }
-      for (const m of sentence.matchAll(LOW_CLIENT_IS)) { if (unsure(sentence, m.index)) continue; const o = orgBefore(m.groups.lo); if (o) add("me", "client", `org:${o}`, explicit); }
+      for (const m of matches(LOW_CLIENT, sentence)) { if (unsure(sentence, m.index)) continue; const o = orgName(m.groups.lo); if (o) add("me", "client", `org:${o}`, explicit); }
+      for (const m of matches(LOW_CLIENT_IS, sentence)) { if (unsure(sentence, m.index)) continue; const o = orgBefore(m.groups.lo); if (o) add("me", "client", `org:${o}`, explicit); }
     }
-    if (/\s(?:from|at|@)\s/.test(ls)) for (const m of sentence.matchAll(AT_RE)) {
+    if ((bits & B.at || ls.includes("@")) && /\s(?:from|at|@)\s/.test(ls)) for (const m of matches(AT_RE, sentence)) {
       if (OTHERS_BEFORE.test(sentence.slice(Math.max(0, m.index - 16), m.index))) continue;
       const n = /^[A-Z]/.test(m.groups.n) ? cleanName(m.groups.n) : lowName(m.groups.n);
       if (n) add(`name:${n}`, "at", `lit:${lower(m.groups.o)}`, indirect, "at");
     }
-    // "just picked up the new car!! red mazda cx-5": the car named next in the turn.
-    if (ls.includes("new ")) { const m = NEW_CAR.exec(sentence); if (m && !unsure(sentence, m.index) && SELF_BEFORE.test(sentence.slice(0, m.index))) {
-      const v = VEHICLE_ONE.exec(sentence.slice(m.index + m[0].length) + " " + (sentences[si + 1] || ""));
+    // "just picked up the new car!! red mazda cx-5", "BOUGHT THE TRUCK. blue ford maverick": the vehicle
+    // named right after, in this sentence or the next.
+    if (bits & G.vnoun) { const m = NEW_CAR.exec(sentence); if (m && !unsure(sentence, m.index) && SELF_BEFORE.test(sentence.slice(0, m.index))) {
+      const near = t => { const v = VEHICLE_ONE.exec(t); return v && v.index < 24 ? v : null; };
+      const v = near(sentence.slice(m.index + m[0].length)) || near(sentences[si + 1] || "");
       if (v) car("me", "owns", v.groups, indirect, true);
     } }
-    if (/\b(?:bye|goodbye|so long|farewell)\b/.test(ls)) for (const m of sentence.matchAll(BYE_CAR)) car("me", "ended:owns", m.groups, indirect, true);
+    if (bits & (G.breed | G.kin)) pets(sentence, ls, bits);
+    // "my sister (in austin)", "my brother in Denver": where a relative lives.
+    if (bits & G.kin && ls.includes("in ")) for (const m of matches(KIN_IN, sentence)) {
+      if (unsure(sentence, m.index)) continue;
+      const pl = m.groups.pl ? placeName(m.groups.pl) : m.groups.lpl ? lowPlace(m.groups.lpl) : placeName(m.groups.bpl);
+      if (!pl) continue;
+      const r = kinAt(m.groups.kw, sentence, /** @type {any} */ (m).indices.groups.kw[1], explicit);
+      if (r) add(r, "lives_in", `place:${pl}`, m.groups.bpl ? LOWER : indirect, m.groups.bpl ? "lower" : null);
+    }
+    if (bits & B.bye && /\b(?:bye|goodbye|so long|farewell)\b/.test(ls)) for (const m of matches(BYE_CAR, sentence)) car("me", "ended:owns", m.groups, indirect, true);
+  };
+
+  /** A name as typed at [a, b) of the sentence: "Biscuit" as is, "biscuit" only when it is not an ordinary word. */
+  const typedName = (sentence, a, b) => { const x = sentence.slice(a, b); return /^[A-Z]/.test(x) ? cleanName(x) : lowName(x); };
+  /** Pets and their breeds: "biscuit (our beagle)", "our beagle biscuit", "we have a lab called scout", "the dog's a corgi". */
+  const pets = (sentence, ls, bits) => {
+    const same = ls.length === sentence.length;   // names are read back at the same offsets
+    const breed = (ref, b, conf) => { if (ref) add(ref, "breed", `lit:${breedOf(b)}`, conf); };
+    const kindOf = b => BREEDS[b.replace(/\s+/g, " ")] || (/cat|kitten/.test(b) ? "cat" : "dog");
+    if (bits & G.breed) {
+      for (const m of matches(PET_PAREN, ls)) {
+        if (!same || unsure(sentence, m.index)) continue;
+        const [a, z] = /** @type {any} */ (m).indices.groups.n;
+        const n = typedName(sentence, a, z);
+        if (!n) continue;
+        breed(kin(kindOf(m.groups.b), [n], /^[A-Z]/.test(sentence[a]) ? explicit : indirect), m.groups.b, explicit);
+      }
+      for (const m of matches(PET_MY, ls)) {
+        // "(our beagle)" belongs to the name before the bracket, read above.
+        if (unsure(sentence, m.index) || /\(\s*$/.test(ls.slice(0, m.index))) continue;
+        let n = null;
+        if (m.groups.n && same) { const [a, z] = /** @type {any} */ (m).indices.groups.n; n = typedName(sentence, a, z); }
+        if (!n && AMBIG_BREED.has(m.groups.b)) continue;
+        const low = n && /^[a-z]/.test(sentence[/** @type {any} */ (m).indices.groups.n[0]]) && !m.groups.c;
+        breed(kin(kindOf(m.groups.b), n ? [n] : [], explicit, low ? "lower" : null), m.groups.b, explicit);
+      }
+    }
+    if (ls.includes("called") || ls.includes("named")) for (const m of matches(PET_HAVE, ls)) {
+      if (!same || unsure(sentence, m.index) || !SELF_BEFORE.test(ls.slice(0, m.index))) continue;
+      const [a, z] = /** @type {any} */ (m).indices.groups.n;
+      const n = typedName(sentence, a, z);
+      if (!n) continue;
+      const r = kin(kindOf(m.groups.b), [n], /^[A-Z]/.test(sentence[a]) ? explicit : indirect);
+      if (BREEDS[m.groups.b.replace(/\s+/g, " ")]) breed(r, m.groups.b, explicit);
+    }
+    if (bits & G.breed && /(?:'s|\sis)\s+an?\s/.test(ls)) for (const m of matches(PET_IS, ls)) {
+      if (unsure(sentence, m.index)) continue;
+      if (m.groups.k) {
+        // "our cat is a ragdoll"; "the dog's a corgi" is the household's dog too.
+        const r = kin(m.groups.k === "pup" ? "puppy" : m.groups.k, [], m.groups.own === "the" ? indirect : explicit);
+        breed(r, m.groups.b, m.groups.own === "the" ? indirect : explicit);
+        continue;
+      }
+      if (!same || OTHERS_BEFORE.test(ls.slice(Math.max(0, m.index - 16), m.index))) continue;
+      const [a, z] = /** @type {any} */ (m).indices.groups.n;
+      const n = typedName(sentence, a, z);
+      if (!n) continue;
+      // A name: the pet it names this turn or last, else that name's own claim for the store to place.
+      const known = names.get(n) || (prevF?.name === n ? { ref: prevF.ref } : null);
+      breed(known ? known.ref : `name:${n}`, m.groups.b, indirect);
+    }
   };
 
   const sentences = readable(text, who);
@@ -596,20 +939,22 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
     const question = /\?\s*["')]*$/.test(sentence) || QUESTION_START.test(sentence);
     if (question) continue;
 
-    const hasKin = HAS_KIN.test(sentence), hasCar = hasCarWord(sentence);
-    const ls = assistant ? "" : sentence.toLowerCase();
+    const lc = sentence.toLowerCase();
+    const bits = gatesOf(lc);
+    const hasKin = (bits & G.kin) !== 0, hasCar = (bits & G.car) !== 0;
+    const ls = assistant ? "" : lc;
     // Names first, so a subject later in the sentence can use them.
     if (hasKin) {
-    for (const m of sentence.matchAll(R.kinName)) if (!unsure(sentence, m.index)) {
+    for (const m of matches(R.kinName, sentence)) if (!unsure(sentence, m.index)) {
       if (m.groups.n) kin(m.groups.kw, [m.groups.n], explicit);
       else { const n = lowName(m.groups.ln); if (n) kin(m.groups.kw, [n], explicit); }   // "my son's name is theo" says it outright
     }
-    for (const m of sentence.matchAll(R.nameParen)) if (!unsure(sentence, m.index)) {
+    for (const m of matches(R.nameParen, sentence)) if (!unsure(sentence, m.index)) {
       // A name beside its relative in brackets is as plain as it gets, even in lower case.
       const n = m.groups.n || lowName(m.groups.ln);
       if (n) kin(m.groups.kw, [n], m.groups.n ? explicit : indirect);
     }
-    if (!assistant) for (const m of sentence.matchAll(R.kinParen)) {
+    if (!assistant) for (const m of matches(R.kinParen, sentence)) {
       if (unsure(sentence, m.index)) continue;
       // "dad (Graham)" with no "my" is the user's dad only as the sentence's opening subject: in a
       // list ("Owen, wife (Claire)") it is someone else's.
@@ -617,15 +962,15 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
       const n = m.groups.n || lowName(m.groups.ln);
       if (n) kin(m.groups.kw, [n], m.groups.n ? explicit : indirect);
     }
-    for (const m of sentence.matchAll(R.nameComma)) if (!unsure(sentence, m.index)) kin(m.groups.kw, [lastName(m.groups.n)], explicit);
-    if (!assistant) for (const m of sentence.matchAll(R.lowComma)) { const n = lowName(m.groups.ln); if (n && !unsure(sentence, m.index)) kin(m.groups.kw, [n], explicit, "lower"); }
-    for (const m of sentence.matchAll(R.kin)) {
+    for (const m of matches(R.nameComma, sentence)) if (!unsure(sentence, m.index)) kin(m.groups.kw, [lastName(m.groups.n)], explicit);
+    if (!assistant) for (const m of matches(R.lowComma, sentence)) { const n = lowName(m.groups.ln); if (n && !unsure(sentence, m.index)) kin(m.groups.kw, [n], explicit, "lower"); }
+    for (const m of matches(R.kin, sentence)) {
       if (unsure(sentence, m.index)) continue;
       kinAt(m.groups.kw, sentence, m.index + m[0].length, explicit);
     }
     if (!assistant) {
       // "hubby's cooking tonight": a word that is only ever one's own.
-      for (const m of sentence.matchAll(OWN_KIN)) {
+      for (const m of matches(OWN_KIN, sentence)) {
         if (unsure(sentence, m.index) || OTHERS_BEFORE.test(sentence.slice(Math.max(0, m.index - 16), m.index))) continue;
         kinAt(m.groups.kw, sentence, m.index + m[0].length, indirect);
       }
@@ -637,50 +982,57 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
     }
     if (!assistant) {
       // Lowercase words used the way names are, for the store to confirm a lowercase name with.
-      if (ls.includes("'s") || ls.includes(" and ") || ls.includes("(") || / (?:she|he)\b/.test(ls)) for (const re of NAMED) for (const m of sentence.matchAll(re)) {
+      const named = NAMED.filter((re, i) => i === 0 ? ls.includes(" and ") : i === 1 ? ls.includes("'s") : i === 2 ? ls.includes("(") : / (?:she|he)\b/.test(ls));
+      for (const re of named) for (const m of matches(re, sentence)) {
         if (OTHERS_BEFORE.test(sentence.slice(Math.max(0, m.index - 16), m.index))) continue;
         const n = lowName(m.groups.n);
         if (n) add(`name:${n}`, "named", "lit:1", LOWER, "named");
       }
     }
     if (!assistant && HAS_NAME.test(sentence)) {
-      for (const m of sentence.matchAll(R.myName)) { const n = cleanName(m.groups.n); if (n && !unsure(sentence, m.index)) add("me", "name", `lit:${n}`, explicit); }
+      for (const m of matches(R.myName, sentence)) { const n = cleanName(m.groups.n); if (n && !unsure(sentence, m.index)) add("me", "name", `lit:${n}`, explicit); }
       const im = R.imName.exec(sentence);
       if (im) { const n = cleanName(im.groups.n); if (n) add("me", "name", `lit:${n}`, CONF.indirect); }
     }
-    if (hasCar) for (const m of sentence.matchAll(R.myCar)) if (!unsure(sentence, m.index)) car("me", "owns", m.groups, explicit);
-    if (sentence.includes("editor")) for (const m of sentence.matchAll(R.myEditor)) { const t = toolOf(m.groups.t); if (t && !unsure(sentence, m.index)) add("me", "uses", t, explicit); }
-    if (sentence.includes("client")) for (const m of sentence.matchAll(R.clientIs)) {
+    if (hasCar) for (const m of matches(R.myCar, sentence)) if (!unsure(sentence, m.index)) car("me", "owns", m.groups, explicit);
+    if (sentence.includes("editor")) for (const m of matches(R.myEditor, sentence)) { const t = toolOf(m.groups.t); if (t && !unsure(sentence, m.index)) add("me", "uses", t, explicit); }
+    if (sentence.includes("client")) for (const m of matches(R.clientIs, sentence)) {
       const o = cleanRun(m.groups.o);
       if (o && !unsure(sentence, m.index)) add("me", "client", `org:${o}`, explicit);
     }
-    if (HAS_COMPANY.test(sentence)) for (const m of sentence.matchAll(R.myCompany)) { const o = cleanRun(m.groups.o); if (o && !unsure(sentence, m.index)) add("me", "works_at", `org:${o}`, explicit); }
+    if (bits & B.biz && HAS_COMPANY.test(sentence)) for (const m of matches(R.myCompany, sentence)) { const o = cleanRun(m.groups.o); if (o && !unsure(sentence, m.index)) add("me", "works_at", `org:${o}`, explicit); }
     if (/^(?:[Hh]ere\s+)?[Aa]t\s+[A-Z]/.test(sentence)) { const m = R.atOrgWe.exec(sentence); const o = m && cleanRun(m.groups.o); if (o) add("me", "works_at", `org:${o}`, indirect); }
-    if (sentence.includes("client")) for (const m of sentence.matchAll(R.ourClient)) { const o = cleanRun(m.groups.o); if (o && !unsure(sentence, m.index)) add("me", "client", `org:${o}`, explicit); }
+    if (sentence.includes("client")) for (const m of matches(R.ourClient, sentence)) { const o = cleanRun(m.groups.o); if (o && !unsure(sentence, m.index)) add("me", "client", `org:${o}`, explicit); }
 
     // The verbs are matched in lower case: a sentence may start with one ("Sold the Outback").
     const low = sentence.charAt(0).toLowerCase() + sentence.slice(1);
     for (const p of R.preds) {
-      if (p.car ? !hasCar : !p.hint.test(low)) continue;
-      for (const m of low.matchAll(p.re)) {
+      if (p.car ? !hasCar : p.wb && !(bits & p.wb) || p.bit && !(bits & p.bit) || p.hint && !p.hint.test(low)) continue;
+      for (const m of matches(p.re, low)) {
         if (unsure(sentence, m.index)) continue;
-        const tail = sentence.slice(Math.max(0, m.index - 100), m.index);
+        const from = Math.max(0, m.index - 100);
+        const tail = sentence.slice(from, m.index);
         const t = (p.tail === "poss" ? R.poss : R.subj).exec(tail);
         let s = null;
         if (t) {
-          if (p.aux && !/(?:'m|'re|'s|\b(?:am|are|is|was|were)\b)/.test(t.groups.aux || "")) continue;
-          s = subjectOf(t.groups, sentence, m.index, p.names);
+          const aux = (t.groups.aux || "") + (t.groups.im || t.groups.pz ? " am" : "");
+          if (p.aux && !/(?:'m|'re|'s|\b(?:am|are|is|was|were|been)\b)/.test(aux)) continue;
+          if (p.present && /\b(?:was|were|had)\b/.test(aux)) continue;
+          const at = from + t.index + (t[0].length - t[0].replace(/^[\s,;:(]/, "").length);
+          s = subjectOf(t.groups, sentence, m.index, p.names, sentence.slice(0, at));
         }
         // "Moved to Seattle last weekend", "Just bought a blue Volvo XC40": the user's own diary
         // style leaves out the I. Only at the very start of the sentence, and only in their words.
         if (!s && !assistant && p.tail === "subj" && !p.aux && ELLIPSIS.test(sentence.slice(0, m.index))) s = { ref: "me", conf: indirect };
-        if (!s) continue;
-        const conf = Math.min(s.conf, p.conf ?? explicit);
-        const gr = m.groups;
+        if (!s || p.other && s.ref === "me") continue;
+        const gr = m.groups || {};
+        const conf = Math.min(s.conf, (gr.lpl !== undefined || gr.lo !== undefined) && p.lconf ? p.lconf : p.conf ?? explicit);
         if (p.ob === "place") {
-          const pl = gr.lpl ? lowPlace(gr.lpl) : cleanRun(gr.pl);
+          const pl = gr.lpl ? lowPlace(gr.lpl) : placeName(gr.pl);
           if (pl) add(s.ref, p.rel, `place:${pl}`, conf, gr.lpl && conf <= LOWER ? "lower" : null);
         }
+        else if (p.ob === "role") { const r = p.val || roleOf(gr.r); if (r) add(s.ref, "role", `lit:${r}`, conf); }
+        else if (p.ob === "diet") add(s.ref, "diet", `lit:${gr.neg ? (/animal/.test(gr.neg) ? "vegan" : "vegetarian") : DIETS[lower(gr.d).replace(/\s+/g, " ")]}`, conf);
         else if (p.ob === "org") {
           const o = gr.lo !== undefined ? orgName(gr.lo) : cleanRun(gr.o);
           if (!o) continue;
@@ -705,14 +1057,14 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
       }
     }
     // "the Volvo needs a service", "my Tesla": a car the user has, said in passing.
-    if (hasCar) for (const m of sentence.matchAll(R.mention)) {
+    if (hasCar) for (const m of matches(R.mention, sentence)) {
       if (!vehicleOf(m.groups) || unsure(sentence, m.index)) continue;
       const the = /^[Tt]he$/.test(m.groups.det);
       const strong = CARISH.test(sentence.slice(m.index + m[0].length)) || !assistant && CAR_VERB.test(sentence.slice(0, m.index));
       if (the && !strong) continue;
       car("me", "owns", m.groups, indirect, strong);
     }
-    if (!assistant) personalLower(sentence, ls, si);
+    if (!assistant) personalLower(sentence, ls, si, bits);
 
     if (!assistant && claims.size === before && cues.length < 5 && CUE.test(sentence) && FIRST_PERSON.test(sentence)) cues.push(sentence.slice(0, 300));
   }
@@ -737,5 +1089,31 @@ function lastName(n) {
 function toolOf(t) {
   const x = trimRun(t);
   if (!x || TOOL_STOP.has(lower(x.split(/\s+/)[0])) || OPENERS.has(lower(x.split(/\s+/)[0]))) return null;
+  if (TOOLS.has(lower(x))) return `tool:${TOOLS.get(lower(x))}`;
   return `tool:${x}`;
 }
+
+/**
+ * A vehicle's label in the rules' spelling, from however the model wrote it: "subaru outback",
+ * "Outback" and "Subaru Outback" are all "Subaru Outback". Unknown makes keep their words.
+ * @param {string} label
+ */
+export function canonVehicle(label) {
+  const w = String(label || "").trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return null;
+  const two = w.length > 1 ? MAKE_OF.get(`${w[0]} ${w[1]}`.toLowerCase()) : null;
+  const make = two || MAKE_OF.get(w[0].toLowerCase()) || null;
+  const rest = w.slice(two ? 2 : make ? 1 : 0);
+  // The longest known model the words start with: "maverick hybrid" is a Maverick.
+  let model = null;
+  for (let n = rest.length; n > 0 && !model; n--) model = MODEL_OF.get(alnum(rest.slice(0, n).join(" "))) || null;
+  const word = x => (/\d/.test(x) ? x.toUpperCase() : /^[a-z]/.test(x) ? cap1(x) : x);
+  if (!make) return model ? `${MODELS[model]} ${model}` : w.map(word).join(" ");
+  return `${make}${model ? " " + model : rest.length ? " " + rest.map(word).join(" ") : ""}`;
+}
+
+/** The user's own words in a turn: no code, no quoted, pasted or dictated text (what the rules read). */
+export const ownText = (/** @type {string} */ text) => readable(String(text || ""), "user").join(" ");
+
+/** Every make and model's first word, lower case: a turn with one may be about the user's car. */
+export const CAR_NAMES = new Set([...MAKES, ...Object.keys(MODELS)].map(m => m.toLowerCase().split(/\s+/)[0]));

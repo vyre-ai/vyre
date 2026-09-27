@@ -12,6 +12,15 @@
 //   { "$by": "<input key>", "cases": { "<value>": data, "*": data } }   chosen by an input field
 //   { "$seq": [data, data, ...] }                                         the next one per call, then the last
 // and any string "$ago:<n><s|m|h|d>" becomes that long before now, in ms, so fixture times stay fresh.
+//
+// Resilience (docs/adr/0029-resilience.md) comes from core/resilience, imported as
+// ../../core/resilience/*.js: in a browser that is /core/resilience/*.js, which vyred serves
+// (core/daemon), and in Node the repo's own files, so there is one copy.
+
+import { follow } from "../../core/resilience/stream.js";
+import { open, cursorStore, cacheStore, lifecycle, idbStore } from "../../core/resilience/web.js";
+import { outbox } from "../../core/resilience/outbox.js";
+import { backoff } from "../../core/resilience/backoff.js";
 
 const store = (() => { try { return window.sessionStorage; } catch { return null; } })();
 const q = new URLSearchParams(location.search);
@@ -53,16 +62,20 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
  * Call a tool. Resolves to its data; rejects with an ApiError.
  * @param {string} name e.g. "projects.list"
  * @param {Record<string, any>} [input]
- * @param {{ presence?: boolean | "asked", keepalive?: boolean }} [opts] presence: true proves a
+ * @param {{ presence?: boolean | "asked", keepalive?: boolean, key?: string, write?: boolean }} [opts] presence: true proves a
  *   person is here with a passkey first (ADR 0004), for what goes outside as the person (sending a
  *   held draft) and the vault. The proof is bound to this exact tool and input. "asked" is the
  *   owner's own action (answers, approvals, agents): it goes without a proof, and asks for the
  *   passkey only if this box still says presence_required (the no-nag rule; a box from before it
  *   needs one). For a SESSIONABLE tool a live presence session on this device goes instead of the
  *   passkey, and a passkey proof opens one (below). keepalive: the request outlives the page (a
- *   report sent as the app goes to the background).
+ *   report sent as the app goes to the background). key: the Idempotency-Key this write carries
+ *   (ADR 0029, R2); write: true makes a fresh one. One key per call, so the retry after a sign-in
+ *   and the passkey retry of "asked" reuse it, and the box runs the write once. Reads carry none:
+ *   the box keeps every keyed answer for a day, and a read has nothing to repeat.
  */
 export async function call(name, input = {}, opts = {}) {
+  if (opts.write && !opts.key) opts = { ...opts, key: newKey() };
   // The person session (tailnet): a box that wants one answers person_session_required. With a
   // handler set (js/person.js, from app.js), it asks the person to sign in on this device, and
   // the call is retried exactly once after that; a refused sign-in rejects as before. No handler:
@@ -81,20 +94,29 @@ let personHandler = null;
  * @param {((e: ApiError) => Promise<unknown>) | null} fn */
 export function setPersonHandler(fn) { personHandler = fn || null; }
 
+/** A fresh Idempotency-Key. crypto.randomUUID needs a secure context; getRandomValues does not.
+ * @returns {string} */
+export function newKey() {
+  const c = globalThis.crypto;
+  if (typeof c?.randomUUID === "function") return c.randomUUID();
+  return [...c.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 /** One call, as call() makes it, without the person-session retry.
- * @param {string} name @param {Record<string, any>} input @param {{ presence?: boolean | "asked", keepalive?: boolean }} opts */
+ * @param {string} name @param {Record<string, any>} input @param {{ presence?: boolean | "asked", keepalive?: boolean, key?: string }} opts */
 async function once(name, input, opts) {
+  const key = opts.key ? { "idempotency-key": opts.key } : {};
   if (opts.presence === "asked") {
-    try { return await once(name, input, {}); } catch (e) {
+    try { return await once(name, input, { key: opts.key }); } catch (e) {
       if (/** @type {any} */ (e)?.code !== "presence_required") throw e;
-      return once(name, input, { presence: true });
+      return once(name, input, { presence: true, key: opts.key });
     }
   }
-  if (!opts.presence) return post(name, input, {}, opts.keepalive);
+  if (!opts.presence) return post(name, input, key, opts.keepalive);
   const sessionable = SESSIONABLE.has(name);
   const s = sessionable ? liveSession() : null;
   if (s) {
-    try { return await post(name, input, { "x-vyre-presence": `session id=${s.id} secret=${s.secret}` }); } catch (e) {
+    try { return await post(name, input, { ...key, "x-vyre-presence": `session id=${s.id} secret=${s.secret}` }); } catch (e) {
       // The session ended on the box, or this item asks for its own proof every time: forget it
       // and ask for the passkey, as if there had been none.
       if (/** @type {any} */ (e)?.code !== "presence_required") throw e;
@@ -102,7 +124,7 @@ async function once(name, input, opts) {
     }
   }
   const proof = await presenceProof(name, input); // throws ApiError on refusal or a cancelled passkey
-  return post(name, input, { "x-vyre-presence": proof, ...(sessionable ? { "x-vyre-presence-keep": "1" } : {}) });
+  return post(name, input, { ...key, "x-vyre-presence": proof, ...(sessionable ? { "x-vyre-presence-keep": "1" } : {}) });
 }
 
 /** One POST to a tool, with any presence headers; resolves to the data or rejects with an ApiError.
@@ -235,6 +257,31 @@ export async function endPerson() {
   } catch { return false; }
 }
 
+/**
+ * Sign in on this device with a passkey (presence.person.start {}): the box sets the person
+ * session cookie. Fires window "deck:person". Call it from a tap. js/person.js wraps it in the
+ * sheet; deck/person/signin/signin.js calls it directly.
+ * @returns {Promise<{ kind: string, id: string, expires: number }>}
+ */
+export async function signIn() {
+  const r = await call("presence.person.start", {}, { presence: true });
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:person", { detail: r || null }));
+  return r;
+}
+
+/**
+ * A one-time sign-in code for another place (the hosted app's hop, or `vyre link signin`'s
+ * loopback return): presence.person.start with that input, proved by a passkey bound to it.
+ * Resolves to { code, expires, redirect }. deck/person/signin/signin.js uses it (team e2e).
+ * @param {{ cc?: string, return?: string, label?: string }} opts
+ */
+export async function personCode(opts = {}) {
+  /** @type {Record<string, string>} */
+  const input = {};
+  for (const k of /** @type {const} */ (["cc", "return", "label"])) if (typeof opts[k] === "string" && opts[k]) input[k] = opts[k];
+  return call("presence.person.start", input, { presence: true });
+}
+
 /** @param {string} tool @param {Record<string, any>} input @returns {Promise<string>} the x-vyre-presence header value */
 async function presenceProof(tool, input) {
   if (!canProve()) throw new ApiError("no_passkey", "This browser cannot use a passkey. Open the Deck in Safari or Chrome over your tailnet.", tool);
@@ -258,6 +305,80 @@ async function presenceProof(tool, input) {
   if (!cred) throw new ApiError("cancelled", "The passkey was cancelled.", tool);
   const r = cred.response;
   return `passkey id=${ch.data.challenge} cred=${b64url(cred.rawId)} ad=${b64url(r.authenticatorData)} cd=${b64url(r.clientDataJSON)} sig=${b64url(r.signature)}`;
+}
+
+// ---- the outbox (ADR 0029, R2): the person's writes survive a lost box ------------------------
+// Sends, answers, discards, todos and notes go through queue(): into an outbox kept in IndexedDB,
+// with one Idempotency-Key, and delivered in order. The view shows the write as sending at once
+// (it awaits queue()). A write the box cannot take yet (offline, restarting, a 5xx) stays in the
+// outbox and goes again, with the same key, when the stream is back, the page is in front again or
+// the network changes, and at most once a minute otherwise; queue() resolves then. A refusal on
+// its merits (a 4xx: already answered, bad input) rejects with the ApiError, as call() does, and
+// is never tried again. A write that needs a passkey (presence: true) is never queued: the proof
+// is bound to the moment, so it goes now or fails now.
+
+/** The owner's own acts: they go without a proof and ask for one only if the box insists. */
+const ASKED = new Set(["threads.answer", "gate.reject"]);
+/** This page's writes: the presence each asked for, and who hears that it is waiting. */
+const modes = new Map(), waits = new Map();
+/** @type {Promise<Awaited<ReturnType<typeof outbox>>> | null} */
+let outboxReady = null;
+
+function getOutbox() {
+  return outboxReady ??= outbox({
+    store: idbStore(BOX),
+    call: async (tool, input, key) => {
+      try { return { data: await call(tool, input, { key, presence: modes.get(key) ?? (ASKED.has(tool) ? "asked" : undefined) }) }; }
+      catch (e) {
+        const err = /** @type {any} */ (e);
+        // Not now: the box was not reached (post's "offline"), it is restarting (its 503), or
+        // something in front of it answered 5xx without a word from the box.
+        if (err?.code === "offline" || err?.code === "restarting") return { error: { code: err.code, message: String(err.message || "") } };
+        if (/^http_5\d\d$/.test(String(err?.code))) return { error: { code: "unreachable", message: String(err.message || "") } };
+        // Anything else is the box's answer on the merits, never tried again: under its own code a
+        // tool's "timeout" (a Mac that did not answer) would read as "not now" to the outbox, and a
+        // presence_required would park it until someone proves presence.
+        return { error: { code: "refused:" + String(err?.code || "failed"), message: String(err?.message || err), apiError: err } };
+      }
+    },
+    onChange: ({ pending }) => {
+      for (const e of pending) if (e.state === "waiting" && waits.has(e.key)) { const f = waits.get(e.key); waits.delete(e.key); try { f(); } catch {} }
+    },
+    newKey,
+    backoff: backoff({ min: 60_000 }),
+  });
+}
+
+/**
+ * A write the person makes, through the outbox. Resolves to its data once the box has it;
+ * rejects with an ApiError when the box refuses it (never retried).
+ * @param {string} name @param {Record<string, any>} [input]
+ * @param {{ presence?: boolean | "asked", onWait?: () => void }} [opts] presence false: never a passkey, even
+ *   for a tool that asks for one on a refusal (threads.answer); the refusal goes to the caller. onWait: called once if the
+ *   first try did not reach the box and the write waits in the outbox, so a view can let the
+ *   person go on (the composer takes the next message).
+ * @returns {Promise<any>}
+ */
+export async function queue(name, input = {}, { presence, onWait } = {}) {
+  if (presence === true) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) throw new ApiError("offline", "vyred did not answer", name);
+    return call(name, input, { presence: true, write: true });
+  }
+  const box = await getOutbox();
+  const key = newKey();
+  if (presence !== undefined) modes.set(key, presence);
+  if (onWait) waits.set(key, onWait);
+  const { answered } = await box.add(name, input, { key });
+  const r = /** @type {any} */ (await answered);
+  modes.delete(key); waits.delete(key);
+  if (!r.error) return r.data;
+  throw r.error.apiError instanceof ApiError ? r.error.apiError : new ApiError(r.error.code, r.error.message, name, r.error);
+}
+
+/** queue(), resolving to { data } or { error } like attempt().
+ * @param {string} name @param {Record<string, any>} [input] @param {Parameters<typeof queue>[2]} [opts] */
+export async function queued(name, input = {}, opts = {}) {
+  try { return { data: await queue(name, input, opts) }; } catch (error) { return { error }; }
 }
 
 /** Call, but resolve to { data } or { error } so a view can render either without try/catch. */
@@ -337,54 +458,46 @@ export async function modules() {
   try { const r = await fetch("/v1/modules"); const b = await r.json(); return b.data || []; } catch { return []; }
 }
 
-// One EventSource for the whole Deck, shared by every view. Views load their state through tools
-// and then follow events, so the stream starts at the newest event (since=latest) rather than
-// replaying the log. After that, EventSource resumes by Last-Event-ID on its own.
-//
-// Resuming (ADR 0029 R1): vyred sends `stream.reset` when the cursor it was given is ahead of its
-// log (its store was reset, or this tab followed another box). Its id is the one to follow from,
-// lower than anything seen, so lastSeen drops to it; without that every later event would be
-// dropped as already seen. A stream the browser gave up on (CLOSED: a 403, a proxy that closed
-// it for good) is opened again here, 1 s doubling to 30 s, only while the page is visible, from
-// the last id seen. Each time the stream comes back, or is reset, onResume's listeners hear it,
-// so a view reloads what it may have missed through tools.
-/** @type {EventSource | null} */
-let source = null;
-let lastSeen = 0;
-let opened = false;
-let retryMs = 1000;
-/** @type {any} */ let retryTimer = null;
-let waitingVisible = false;
+// One event stream for the whole Deck, shared by every view (docs/adr/0029-resilience.md, R1, R3).
+// core/resilience's follow() holds it: views load their state through tools and then follow
+// events, so the first connection starts at the newest event (since=latest); from then on every
+// reconnect resumes from the cursor, drops doubles, treats 45 s of silence as a dead stream and
+// backs off 2 s to 60 s. lifecycle() closes it while the page is hidden and reconnects at once
+// when it is back, online again or restored from the back/forward cache. One path: this page's own
+// origin. The cursor is also kept (cursorStore) so the snapshot cache can say what it is current to.
+/** @type {ReturnType<typeof follow> | null} */
+let stream = null;
+/** @type {(() => void) | null} */
+let unwire = null;
 const subs = new Set();
-/** @type {Set<(why: "reconnect"|"reset", from?: number) => void>} */
-const resumeSubs = new Set();
-// The SSE "event:" line carries the type, and named events never reach onmessage, so every type
-// a view may want is listened for by name.
-const known = new Set(["thread.started", "thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped",
-  "ask.raised", "ask.answered", "lease.changed", "session.indexed", "memory.curated", "project.created", "project.changed",
-  "thread.picked", "thread.unpicked", "tool.held", "turn.completed", "file.touched",
-  "gate.held", "gate.released", "gate.failed", "gate.rejected",
-  "lesson.proposed", "lesson.learned", "lesson.caught", "lesson.broken", "lesson.escalated", "lesson.retired",
-  "onboard.stepped", "onboard.finished", "vault.item-added", "vault.granted", "vault.revoked", "pass.created", "pass.revoked",
-  "stream.reset"]);
+/** The stream's last state, for the shell's Reconnecting pill (js/reconnect.js). */
+/** @type {import("../../core/resilience/stream.js").StreamState | null} */
+export let streamState = null;
+/** Per box, for the stores: this page's own origin. */
+const BOX = (() => { try { return location.host || "deck"; } catch { return "deck"; } })();
 
 /**
- * Listen to vyred's events. type is "thread.text", "thread.*" or "*"; a prefix type hears only
- * the names in `known`. Returns an unsubscribe.
+ * Listen to vyred's events. type is "thread.text", "thread.*" or "*". Returns an unsubscribe.
  * @param {string} type
  * @param {(e: { id: number, at: number, type: string, source: string, project: string|null, thread: string|null, payload: any }) => void} fn
  */
 export function on(type, fn) {
   const sub = { type, fn };
   subs.add(sub);
-  if (!type.includes("*") && !known.has(type)) { known.add(type); source?.addEventListener(type, heard); }
-  if (!source && !retryTimer && !waitingVisible) connect();
+  // Only in a browser: every one the Deck supports has EventSource, and Node (the tests) does not,
+  // so a test that imports a view never opens a stream by accident.
+  if (!stream && typeof EventSource !== "undefined") startStream();
   return () => { subs.delete(sub); };
 }
 
+/** @type {Set<(why: "reconnect"|"reset", from?: number) => void>} */
+const resumeSubs = new Set();
+let wasOpen = false;
+
 /**
- * Hear the stream come back after a drop ("reconnect") or vyred say its log is behind this tab's
- * cursor ("reset", with the id vyred follows from): reload through tools. Returns an unsubscribe.
+ * Hear the stream come back after a drop ("reconnect"), or vyred say its log is behind this page's
+ * cursor ("reset", with the id it follows from when it says one): reload what may have been
+ * missed through tools. Returns an unsubscribe. (The shape chat's session view uses.)
  * @param {(why: "reconnect"|"reset", from?: number) => void} fn
  */
 export function onResume(fn) {
@@ -397,133 +510,66 @@ function resumed(why, from) {
   for (const fn of resumeSubs) { try { fn(why, from); } catch (err) { console.error(err); } }
 }
 
-const pageVisible = () => { try { return typeof document === "undefined" || document.visibilityState !== "hidden"; } catch { return true; } };
-const CLOSED = () => (typeof EventSource !== "undefined" && typeof EventSource.CLOSED === "number" ? EventSource.CLOSED : 2);
-
-function connect() {
-  if (typeof EventSource === "undefined") return;
-  // An EventSource cannot send headers, so the onboarding session rides as ?s=. A reopened stream
-  // resumes from the last id seen; the first starts at the newest event.
-  const s = headers["x-vyre-onboard"];
-  const since = lastSeen > 0 ? String(lastSeen) : "latest";
-  const es = source = new EventSource(`/v1/events/stream?since=${since}` + (s ? `&s=${encodeURIComponent(s)}` : ""));
-  for (const t of known) es.addEventListener(t, heard);
-  es.addEventListener("open", () => {
-    if (es !== source) return;
-    reach(true);
-    retryMs = 1000;
-    if (opened) resumed("reconnect");
-    opened = true;
+function startStream() {
+  const cursor = cursorStore(BOX);
+  stream = follow({
+    paths: [location.origin], open,
+    // The onboarding session rides as a header now: fetch can send one, EventSource could not.
+    headers: { "x-vyre-caller": "deck", ...headers },
+    onEvent: deliver,
+    // The box's log is behind this cursor (its store was reset): the views reload through tools.
+    onReset: (/** @type {any} */ r) => { resumed("reset", typeof r === "number" ? r : Number(r?.id ?? r?.from) || undefined); if (typeof window !== "undefined") window.dispatchEvent(new Event("deck:navigate")); },
+    onState: s => {
+      if (s.state === "open") { if (wasOpen) resumed("reconnect"); wasOpen = true; }
+      streamState = s;
+      // Back: the outbox goes now, not at its next minute.
+      if (s.state === "open") { reach(true); void outboxReady?.then(o => o.kick()); }
+      else if (s.state === "reconnecting") reach(false);
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:stream", { detail: s }));
+    },
+    save: n => cursor.save(n),
   });
-  // EventSource retries on its own; CLOSED means it gave up (a 403, say), CONNECTING a lost box.
-  es.addEventListener("error", () => {
-    if (es !== source) return;
-    if (es.readyState !== (typeof EventSource.OPEN === "number" ? EventSource.OPEN : 1)) reach(false);
-    if (es.readyState === CLOSED()) { try { es.close?.(); } catch {} source = null; later(); }
-  });
-}
-
-/** Open the stream again after a backoff, and only while the page is visible. */
-function later() {
-  if (retryTimer || waitingVisible) return;
-  if (!pageVisible()) { waitVisible(); return; }
-  const ms = retryMs;
-  retryMs = Math.min(retryMs * 2, 30_000);
-  retryTimer = setTimeout(() => {
-    retryTimer = null;
-    if (source) return;
-    if (!pageVisible()) { waitVisible(); return; }
-    connect();
-  }, ms);
-}
-
-function waitVisible() {
-  if (waitingVisible || typeof document === "undefined" || !document.addEventListener) return;
-  waitingVisible = true;
-  const back = () => {
-    if (!pageVisible()) return;
-    document.removeEventListener("visibilitychange", back);
-    waitingVisible = false;
-    if (!source) { retryMs = 1000; connect(); }
-  };
-  document.addEventListener("visibilitychange", back);
-}
-
-/** An event from the stream in use; one from a stream given up on (and replaced) is not delivered. @param {MessageEvent} m */
-function heard(m) {
-  const from = /** @type {any} */ (m)?.currentTarget ?? /** @type {any} */ (m)?.target;
-  if (from && source && from !== source) return;
-  deliver(m);
-}
-
-/** @param {MessageEvent} m */
-function deliver(m) {
-  let e;
-  try { e = JSON.parse(m.data); } catch { return; }
-  const id = Number(e.id);
-  if (e.type === "stream.reset") {
-    // Follow from vyred's id, lower than what this tab saw: anything after it is new.
-    if (Number.isFinite(id)) lastSeen = id;
-    resumed("reset", Number.isFinite(id) ? id : undefined);
-    return;
-  }
-  if (id <= lastSeen) return;
-  lastSeen = id;
-  for (const s of subs) {
-    const t = s.type;
-    if (t === "*" || t === e.type || (t.endsWith(".*") && e.type.startsWith(t.slice(0, -1)))) {
-      try { s.fn(e); } catch (err) { console.error(err); }
-    }
-  }
-}
-
-// ---- the person session (core/presence/person.js) ---------------------------------------------
-// Over the tailnet the box takes this browser's node as the owner's device, not as the person: a
-// person's own action (answering an ask, approving, a terminal, a vault secret) answers 401
-// person_session_required until this browser signs in with a passkey, once per ~30 days. The box
-// sets an HttpOnly cookie, so no script on the page, or on the machine through a curl, holds it.
-// Every call that meets that answer, from any part of the Deck (some fetch on their own), signs
-// in and is sent once more; the call itself was refused before any proof on it was spent.
-
-/** @type {Promise<void> | null} */
-let signing = null;
-
-/** Sign this browser in as the person: one passkey, then the box's cookie. Throws an ApiError. */
-export function signIn() {
-  if (!signing) signing = (async () => {
-    const tool = "presence.person.start";
-    const proof = await presenceProof(tool, {});
-    let body;
-    try {
-      const res = await rawFetch("/v1/tools/" + tool, { method: "POST", body: "{}",
-        headers: { "content-type": "application/json", "x-vyre-caller": "deck", "x-vyre-presence": proof, ...headers } });
-      body = await res.json().catch(() => null);
-    } catch { throw new ApiError("offline", "The box did not answer.", tool); }
-    if (!body || body.error) throw new ApiError(body?.error?.code || "denied", body?.error?.message || "Signing in did not work.", tool, body?.error);
-    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:person", { detail: true }));
-  })().finally(() => { signing = null; });
-  return signing;
+  // A write left in the outbox by the last visit goes as soon as the page is up.
+  getOutbox();
+  unwire = lifecycle(stream, { outbox: { kick: () => { void outboxReady?.then(o => o.kick()); } } });
 }
 
 /**
- * The hosted app's hop: a one-time code for the app at `return`, bound to its PKCE challenge.
- * Resolves to { code, expires, redirect }; the page goes to redirect. Throws an ApiError.
- * @param {{ cc: string, return: string, label?: string }} input
+ * What each view last showed, per box (web.js cacheStore, ADR 0029 R3), so the phone opens from it
+ * offline: get(key) is { value, at, cursor } or null; set(key, value) keeps it with the stream's
+ * cursor. Lists only (Now's needs, Agents), never transcripts or anything held at the Gate.
  */
-export async function personCode(input) {
-  const tool = "presence.person.start";
-  const proof = await presenceProof(tool, input);
-  let body;
-  try {
-    const res = await rawFetch("/v1/tools/" + tool, { method: "POST", body: JSON.stringify(input),
-      headers: { "content-type": "application/json", "x-vyre-caller": "deck", "x-vyre-presence": proof, ...headers } });
-    body = await res.json().catch(() => null);
-  } catch { throw new ApiError("offline", "The box did not answer.", tool); }
-  if (!body || body.error || !body.data || !body.data.redirect) throw new ApiError(body?.error?.code || "denied", body?.error?.message || "Signing in did not work.", tool, body?.error);
-  return body.data;
-}
+export const snapshot = (() => {
+  /** @type {ReturnType<typeof cacheStore> | null} */ let s = null;
+  const store = () => (s ??= cacheStore(BOX));
+  return {
+    /** @param {string} key */
+    get: key => store().get(key),
+    /** @param {string} key @param {any} value */
+    set: (key, value) => store().set(key, value, { cursor: stream?.cursor ?? null }),
+  };
+})();
 
-/** @type {typeof fetch} */
-const rawFetch = typeof window !== "undefined" && typeof window.fetch === "function" ? window.fetch.bind(window) : (...a) => fetch(...a);
-// A box that wants a person session answers person_session_required; call() hands that to the
-// handler js/person.js sets (setPersonHandler), which signs in and retries once. fetch is not wrapped.
+/** Reconnect now (the pill's Retry): a no-op while the page is hidden or before any view listens. */
+export function kick() { stream?.kick(); }
+
+/** Close the stream for good (a test's end; a sign-out). The next on() opens a new one. */
+export function stopEvents() { stream?.stop(); unwire?.(); stream = null; unwire = null; }
+
+/** Hand one event to the listeners, as the stream does (tests feed events through it by hand).
+ * @param {{ id: number, type: string }} e */
+export function hear(e) { deliver(e); }
+
+/** Tell onResume's listeners the stream came back or was reset, as the stream does (tests).
+ * @param {"reconnect"|"reset"} why @param {number} [from] */
+export function heardResume(why, from) { resumed(why, from); }
+
+/** @param {{ id: number, type: string }} e */
+function deliver(e) {
+  for (const s of subs) {
+    const t = s.type;
+    if (t === "*" || t === e.type || (t.endsWith(".*") && e.type.startsWith(t.slice(0, -1)))) {
+      try { s.fn(/** @type {any} */ (e)); } catch (err) { console.error(err); }
+    }
+  }
+}

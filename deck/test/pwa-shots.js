@@ -93,7 +93,7 @@ const SCREENS = [
   { name: "offline", path: "/chat", offline: true },
   // A Mac asking to pair. link.pair.request only answers over the tailnet, so the world cannot
   // make one: link.pending's answer is stubbed in the page, and nothing else is.
-  { name: "pair", path: "/now", stub: { "link.pending": [{ id: "7f1c2a90", name: "alex's MacBook Pro", login: "alex@harlowlegal.com", node: "alex-mbp", in: 540_000 }] }, script: `if (matchMedia("(max-width: 760px), (max-height: 500px) and (pointer: coarse)").matches) { await waitFor('.np-row[data-kind=pair] .np-main', 8000); await click('.np-row[data-kind=pair] .np-main'); await wait(700); }
+  { name: "pair", path: "/now", stub: { "link.pending": [{ id: "7f1c2a90", name: "alex's MacBook Pro", login: "alex@harlowlegal.com", node: "alex-mbp", in: 540_000 }] }, script: `if (matchMedia("(max-width: 719px), (max-height: 500px) and (pointer: coarse)").matches) { await waitFor('.np-row[data-kind=pair] .np-main', 8000); await click('.np-row[data-kind=pair] .np-main'); await wait(700); }
       const i = document.querySelector('.pair-code'); if (!i) throw new Error("no pairing card"); i.value = "482"; i.dispatchEvent(new Event("input")); i.value = "482913"; i.dispatchEvent(new Event("input")); await wait(200);` },
   // Undo is honest: a denied ask is not sent while its toast shows, and Undo means it never is.
   // Then an approve from the row's real button goes at once, with no presence proof (no-nag).
@@ -104,16 +104,16 @@ const SCREENS = [
       const r = f.getBoundingClientRect(), y = r.top + r.height / 2, x = r.right - 40;
       const ev = (t, dx) => f.dispatchEvent(new PointerEvent(t, { pointerId: 9, clientX: x + dx, clientY: y, button: 0, bubbles: true, pointerType: "touch" }));
       ev("pointerdown", 0); await wait(30); ev("pointermove", -20); await wait(30); ev("pointermove", -130); await wait(30); ev("pointerup", -130); await wait(400);
-      if (!/Denied/.test(document.querySelector('.np-toast')?.textContent || "")) throw new Error("no Denied toast");
+      if (!/Denied/.test(document.querySelector('.toast')?.textContent || "")) throw new Error("no Denied toast");
       if (row.isConnected && row.offsetHeight > 2) throw new Error("the denied row did not collapse");
       if (sent.length) throw new Error("the deny went before its toast ended");
-      document.querySelector('.np-toast-undo').click(); await wait(4600);
+      document.querySelector('.toast-undo').click(); await wait(4600);
       if (sent.length) throw new Error("Undo did not stop the deny: " + JSON.stringify(sent));
       const back = document.querySelector('.np-row[data-kind=ask] .np-kb-b'); if (!back) throw new Error("the row did not come back after Undo");
       back.click(); await wait(1500);
       const a = sent.find(x => x.t === "threads.answer"); if (!a) throw new Error("the approve was not sent");
       if (a.proof) throw new Error("the approve asked for a presence proof");
-      if (!/Approved/.test(document.querySelector('.np-toast')?.textContent || "")) throw new Error("no Approved toast");` },
+      if (!/Approved/.test(document.querySelector('.toast')?.textContent || "")) throw new Error("no Approved toast");` },
   // Onboarding's history and devices steps (the phone shell is not part of onboarding).
   { name: "onboard-history", path: "/onboard#history", wait: 3000, noShell: true },
   { name: "onboard-devices", path: "/onboard#devices", wait: 3000, noShell: true },

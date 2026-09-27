@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings · account and project scopes</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2700px; height: 1180px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1500px;">
+      <span class="lbl">Places · Settings · Account and project scopes</span>
+      <h1 class="t28 w6">Every setting says where its value comes from, and a reset names where it goes back to.</h1>
+      <p class="t15 t2">61 settings in 11 groups, drawn from the one registry that also feeds <span class="mono">vyre config</span>. Account is alex everywhere; Project is what one project overrides. Changes save as you go, and the few that wait for a new session or a restart say so on the row.</p>
+    </div>
+  </div>
+
+  <div class="frames">
+
+    <!-- Desktop: Project scope, Harlow Legal, Permissions -->
+    <div class="cap">
+      <span class="cap-t">Desktop, 1280 wide · Project scope, Harlow Legal, Permissions · one row focused, one hovered, one just saved, one just reset</span>
+      <div class="win" style="width: 1280px; height: 800px;">
+        <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+        <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+          <nav class="rail" aria-label="Vyre">
+            <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+            <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>Devices</a>
+              <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+              <span class="av av-32 av-me" style="margin-top: 6px;">a</span>
+            </div>
+          </nav>
+          <main class="main">
+            <header class="top" style="grid-template-columns: minmax(0, 1fr) 360px minmax(0, 1fr);">
+              <div class="top-l"><h1 class="t15 w6">Settings</h1><span class="t12 t3 trunc">Saved as you go</span></div>
+              <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow">Jump to anything, or ask juno</span><span class="kbd">⌘K</span></div>
+              <div class="top-r"><span class="st"><span class="dot dot-run"></span>direct 12 ms</span></div>
+            </header>
+            <div class="ld">
+              <div class="ld-l">
+                <div style="padding: 12px 16px; border-bottom: 1px solid var(--rule);"><div class="inp"><svg class="ic t3" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="inp-ph grow">Find a setting</span><span class="kbd">/</span></div></div>
+                <div class="lrow" style="align-items: center;">
+                  <svg class="ic t2" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>
+                  <div class="col grow" style="gap: 2px;"><span class="w6">Models and thinking</span><span class="t12 t3 trunc">Sonnet · effort High · fast off</span></div>
+                  <span class="count">2</span>
+                </div>
+                <div class="lrow lrow-on" style="align-items: center;">
+                  <svg class="ic" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg>
+                  <div class="col grow" style="gap: 2px;"><span class="w6">Permissions</span><span class="t12 t3 trunc">Plan first · 4 allow, 1 ask, 3 never</span></div>
+                  <span class="count">3</span>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <svg class="ic t2" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"></rect><path d="M4.5 6l2 2-2 2M8.5 10.5h3"></path></svg>
+                  <div class="col grow" style="gap: 2px;"><span class="w6">Sessions</span><span class="t12 t3 trunc">Queue while busy · $5 cap per session</span></div>
+                  <span class="count">2</span>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>
+                  <div class="col grow" style="gap: 2px;"><span class="w6">Teammates</span><span class="t12 t3 trunc">Light · 1 teammate, 2 helpers</span></div>
+                  <span class="count">1</span>
+                </div>
+                <div class="lrow" style="align-items: center; padding: 9px 16px;">
+                  <svg class="ic t3" viewBox="0 0 16 16"><path d="M4 11V7a4 4 0 0 1 8 0v4l1.5 1.5h-11zM6.5 14h3"></path></svg>
+                  <span class="t2 grow trunc">Notifications</span><span class="t12 t3">Account only</span>
+                </div>
+                <div class="lrow" style="align-items: center; padding: 9px 16px;">
+                  <svg class="ic t3" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>
+                  <span class="t2 grow trunc">Planner</span><span class="t12 t3">Account only</span>
+                </div>
+                <div class="lrow" style="align-items: center; padding: 9px 16px;">
+                  <svg class="ic t3" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>
+                  <span class="t2 grow trunc">Memory</span><span class="t12 t3">Account only</span>
+                </div>
+                <div class="lrow" style="align-items: center; padding: 9px 16px;">
+                  <svg class="ic t3" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>
+                  <span class="t2 grow trunc">Vault</span><span class="t12 t3">Account only</span>
+                </div>
+                <div class="lrow" style="align-items: center; padding: 9px 16px;">
+                  <svg class="ic t3" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg>
+                  <span class="t2 grow trunc">Files and terminal</span><span class="t12 t3">Account only</span>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <svg class="ic t2" viewBox="0 0 16 16"><path d="M5 1.5v4M11 1.5v4M3.5 5.5h9v3a4.5 4.5 0 0 1-9 0zM8 13v1.5"></path></svg>
+                  <div class="col grow" style="gap: 2px;"><span class="w6">Tools</span><span class="t12 t3 trunc">Hooks from the repo · 2 plugins on</span></div>
+                  <span class="count">1</span>
+                </div>
+                <div class="lrow" style="align-items: center; padding: 9px 16px;">
+                  <svg class="ic t3" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>
+                  <span class="t2 grow trunc">Devices</span><span class="t12 t3">Account only</span>
+                </div>
+                <div class="row t12 t3" style="padding: 10px 16px; gap: 8px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M7 9a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-.8.8M9 7a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l.8-.8"></path></svg><span class="grow trunc">6 groups are account only</span><a class="t2 w6" href="#" style="text-decoration: underline; white-space: nowrap;">Set for your account</a></div>
+                <div class="row t12 t3" style="margin-top: auto; padding: 10px 16px; border-top: 1px solid var(--rule); gap: 10px;"><span class="kbd">J</span><span class="kbd">K</span>move<span class="kbd">/</span>find<span class="kbd">R</span>reset row</div>
+              </div>
+              <div class="ld-d" style="padding: 20px 32px;">
+                <div class="col" style="max-width: 720px; gap: 16px;">
+                  <div class="row" style="gap: 12px;">
+                    <div class="row" style="gap: 0;">
+                      <div class="seg" style="border-radius: 8px 0 0 8px;"><button type="button">Account</button><button class="on" type="button">Project</button></div>
+                      <button class="row" type="button" style="height: 32px; gap: 6px; padding: 0 10px 0 10px; border: 0; border-left: 1px solid var(--rule-strong); border-radius: 0 8px 8px 0; background: var(--hover); cursor: pointer;"><svg class="ic t2" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg><span class="w6">Harlow Legal</span><svg class="ic ic-12 t2" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
+                    </div>
+                    <span class="t12 t3 grow trunc">Shows only what a project can override · 20 of 61 settings</span>
+                  </div>
+                  <div class="banner">
+                    <svg class="ic t2" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"></path></svg>
+                    <div class="col grow" style="min-width: 0;"><span class="w6">2 changes apply after restart</span><span class="t12 t2 trunc">Lock after idle, Terminals open at once · your account · sessions reconnect in about 5 s</span></div>
+                    <button class="btn btn-sm" type="button">Restart now</button>
+                  </div>
+                  <div class="row" style="gap: 16px; align-items: flex-end;">
+                    <div class="col grow" style="gap: 4px; min-width: 0;"><h2 class="t20 w6">Permissions</h2><span class="t13 t2">What Claude may do in Harlow Legal without asking. <span class="mono">claude</span> in a terminal reads the same rules.</span></div>
+                    <div class="row" style="gap: 8px; flex: none;"><button class="btn btn-h btn-sm" type="button"><span class="fillbar" style="width: 0%;"></span><span>Reset 3 settings</span></button><span class="t12 t3" style="white-space: nowrap;">hold 0.6 s</span></div>
+                  </div>
+                  <div class="list">
+                    <!-- focused: reset visible -->
+                    <div class="li is-focus" style="cursor: default; display: grid; grid-template-columns: minmax(0, 1fr) 214px 168px; gap: 12px; min-height: 56px; padding: 8px 16px;">
+                      <div class="col" style="min-width: 0; gap: 2px;">
+                        <div class="row" style="gap: 8px; min-width: 0;"><span class="trunc">Mode new sessions start in</span><span class="tag">Project</span></div>
+                        <div class="row t12 t3" style="gap: 6px; min-width: 0;"><span class="trunc">Shift+Tab changes one session</span><span class="row" style="gap: 4px; flex: none;"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg>Next session</span></div>
+                      </div>
+                      <div class="row" style="justify-content: flex-end; gap: 8px; min-width: 0;"><button class="btn btn-g btn-sm" type="button">Reset to Account (Asks first)</button></div>
+                      <div class="inp" style="background: var(--panel);"><span class="grow trunc">Plan first</span><svg class="ic ic-12 t3" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></div>
+                    </div>
+                    <!-- just saved -->
+                    <div class="li" style="cursor: default; display: grid; grid-template-columns: minmax(0, 1fr) 214px 168px; gap: 12px; min-height: 56px; padding: 8px 16px;">
+                      <div class="col" style="min-width: 0; gap: 2px;">
+                        <div class="row" style="gap: 8px; min-width: 0;"><span class="trunc">Always allow</span><span class="tag">Project</span></div>
+                        <div class="row t12 t3" style="gap: 4px; min-width: 0;"><span class="mono trunc">Bash(npm test:*)</span><span style="flex: none;">, Edit and 2 more</span></div>
+                      </div>
+                      <div class="row" style="justify-content: flex-end; gap: 8px;"><span class="st"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Saved</span></div>
+                      <div class="inp" style="background: var(--panel);"><span class="grow trunc">4 rules</span><svg class="ic ic-12 t3" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></div>
+                    </div>
+                    <!-- resting override -->
+                    <div class="li" style="cursor: default; display: grid; grid-template-columns: minmax(0, 1fr) 214px 168px; gap: 12px; min-height: 56px; padding: 8px 16px;">
+                      <div class="col" style="min-width: 0; gap: 2px;">
+                        <div class="row" style="gap: 8px; min-width: 0;"><span class="trunc">Always ask</span><span class="tag">Project</span></div>
+                        <div class="row t12 t3" style="gap: 4px; min-width: 0;"><span class="mono trunc">Bash(git push:*)</span></div>
+                      </div>
+                      <div></div>
+                      <div class="inp" style="background: var(--panel);"><span class="grow trunc">1 rule</span><svg class="ic ic-12 t3" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></div>
+                    </div>
+                    <!-- hovered: Claude Code file, read-only -->
+                    <div class="li" style="cursor: default; background: var(--hover); display: grid; grid-template-columns: minmax(0, 1fr) 214px 168px; gap: 12px; min-height: 56px; padding: 8px 16px;">
+                      <div class="col" style="min-width: 0; gap: 2px;">
+                        <div class="row" style="gap: 8px; min-width: 0;"><span class="trunc">Never allow</span><span class="tag" style="background: var(--rule);">Claude Code file</span></div>
+                        <div class="row t12 t3" style="gap: 6px; min-width: 0;"><span class="mono trunc">harlow-legal/.claude/settings.json</span></div>
+                      </div>
+                      <div class="row" style="justify-content: flex-end; gap: 8px; min-width: 0;"><span class="mono t12 t2 trunc">permissions.deny</span><span class="t13 t2" style="flex: none;">· 3 rules</span></div>
+                      <button class="btn btn-sm" type="button" style="justify-self: end;"><svg class="ic" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg>Open file</button>
+                    </div>
+                    <!-- just reset: Undo for 4 s -->
+                    <div class="li" style="cursor: default; display: grid; grid-template-columns: minmax(0, 1fr) 214px 168px; gap: 12px; min-height: 56px; padding: 8px 16px;">
+                      <div class="col" style="min-width: 0; gap: 2px;">
+                        <div class="row" style="gap: 8px; min-width: 0;"><span class="trunc">Extra folders Claude may use</span></div>
+                        <div class="row t12 t3" style="gap: 6px; min-width: 0;"><span class="trunc">None beyond the project</span><span class="row" style="gap: 4px; flex: none;"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg>Next session</span></div>
+                      </div>
+                      <div class="row" style="justify-content: flex-end; gap: 4px;"><span class="t12 t2">Reset to Account</span><button class="btn btn-g btn-sm" type="button">Undo</button></div>
+                      <div class="inp" style="background: var(--panel);"><span class="grow trunc">None</span><svg class="ic ic-12 t3" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></div>
+                    </div>
+                  </div>
+                  <span class="t12 t3">Harlow Legal's values save to <span class="mono">.claude/settings.local.json</span> in the project. The committed <span class="mono">.claude/settings.json</span> is read-only here.</span>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <!-- Desktop inset: search in progress, Account scope -->
+    <div class="cap">
+      <span class="cap-t">Desktop inset · Account scope, / then "idle"</span>
+      <div class="win" style="width: 400px; height: 800px;">
+        <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+        <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+          <nav class="rail" aria-label="Vyre">
+            <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+            <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>Devices</a>
+              <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+              <span class="av av-32 av-me" style="margin-top: 6px;">a</span>
+            </div>
+          </nav>
+          <main class="main">
+            <header class="top" style="grid-template-columns: minmax(0, 1fr);">
+              <div class="top-l"><h1 class="t15 w6">Settings</h1><span class="t12 t3 trunc">Saved as you go</span></div>
+            </header>
+            <div class="ld" style="grid-template-columns: 320px minmax(0, 1fr);">
+              <div class="ld-l">
+                <div style="padding: 12px 16px; border-bottom: 1px solid var(--rule);"><div class="inp inp-focus"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow">idle<span class="caret"></span></span><span class="kbd">Esc</span></div></div>
+                <div class="grp"><span class="grow">4 results in 4 groups</span></div>
+                <div class="lrow lrow-on" style="align-items: center;">
+                  <svg class="ic" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"></rect><path d="M4.5 6l2 2-2 2M8.5 10.5h3"></path></svg>
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">Close an <span class="w6">idle</span> session after</span><span class="t12 t3 trunc">Sessions · 10 min</span></div>
+                  <span class="kbd" style="color: var(--text-2);">↵</span>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <svg class="ic t2" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">Lock after <span class="w6">idle</span></span><span class="t12 t3 trunc">Vault · 10 min · after restart</span></div>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <svg class="ic t2" viewBox="0 0 16 16"><path d="M5 1.5v4M11 1.5v4M3.5 5.5h9v3a4.5 4.5 0 0 1-9 0zM8 13v1.5"></path></svg>
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">Stop an <span class="w6">idle</span> MCP server after</span><span class="t12 t3 trunc">Tools · 10 min · after restart</span></div>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <svg class="ic t2" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">Hand a computer back after</span><span class="t12 t3 trunc">Devices · 5 min <span class="w6">idle</span></span></div>
+                </div>
+                <div class="t12 t3" style="padding: 12px 16px;">Finds labels, descriptions and key names in both scopes. Enter opens the group with the row focused.</div>
+                <div class="row t12 t3" style="margin-top: auto; padding: 10px 16px; border-top: 1px solid var(--rule); gap: 10px;"><span class="kbd">↑</span><span class="kbd">↓</span>move<span class="kbd">↵</span>open<span class="kbd">Esc</span>clear</div>
+              </div>
+              <div></div>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phone: Sessions group page, Account scope -->
+    <div class="cap">
+      <span class="cap-t">Phone, 390 wide · Sessions pushed in, Account scope</span>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="safe-t"></div>
+        <div class="ph-nav" style="display: grid; grid-template-columns: 110px minmax(0, 1fr) 110px;">
+          <span class="row" style="gap: 2px; color: var(--text);"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg><span class="t17">Settings</span></span>
+          <span class="t17 w6" style="text-align: center;">Sessions</span>
+          <span></span>
+        </div>
+        <div class="ph-body" style="gap: 12px;">
+          <div class="row" style="gap: 0;">
+            <div class="seg" style="border-radius: 10px 0 0 10px; padding: 3px; gap: 3px;"><button class="on t17" type="button" style="height: 38px; padding: 0 16px; font-size: 17px; border-radius: 8px;">Account</button><button type="button" style="height: 38px; padding: 0 16px; font-size: 17px; border-radius: 8px;">Project</button></div>
+            <button class="row grow" type="button" style="height: 44px; gap: 6px; padding: 0 12px; border: 0; border-left: 1px solid var(--rule-strong); border-radius: 0 10px 10px 0; background: var(--hover); cursor: pointer; justify-content: space-between;"><span class="t17 t2 trunc">Harlow Legal</span><svg class="ic t2" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
+          </div>
+          <div class="ph-card" data-scrolls="" style="flex: none;">
+            <!-- just reset, Undo -->
+            <div class="ph-row" style="padding: 8px 14px 0; flex-direction: column; gap: 0; align-items: stretch;">
+              <div class="row" style="gap: 12px;">
+                <div class="col grow" style="min-width: 0;"><span class="t17 trunc">Sending while busy</span><span class="t13 t3 trunc">Claude reads it at its next step</span></div>
+                <div class="row" style="height: 44px; padding: 0 10px 0 12px; gap: 6px; border-radius: 10px; background: var(--hover); flex: none;"><span class="t17">Steer</span><svg class="ic ic-12 t2" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></div>
+              </div>
+              <div class="row" style="height: 44px; gap: 4px;"><span class="t13 t2 grow">Reset to default</span><button class="btn btn-g" type="button" style="height: 44px; padding: 0 10px; margin-right: -10px;">Undo</button></div>
+            </div>
+            <div class="ph-row" style="padding: 8px 14px; align-items: center;">
+              <span class="t17 grow trunc">Tool calls</span>
+              <div class="row" style="height: 44px; padding: 0 10px 0 12px; gap: 6px; border-radius: 10px; background: var(--hover); flex: none;"><span class="t17">Summary</span><svg class="ic ic-12 t2" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></div>
+            </div>
+            <div class="ph-row" style="padding: 8px 14px; align-items: center;">
+              <div class="col grow" style="min-width: 0;"><span class="t17 trunc">File checkpoints</span><span class="t13 t3 row" style="gap: 4px;"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg>Next session</span></div>
+              <div class="row" style="width: 72px; height: 44px; justify-content: flex-end; flex: none;"><span class="tog tog-on" style="transform: scale(1.5); transform-origin: right center;"></span></div>
+            </div>
+            <!-- account value, reset always visible on touch -->
+            <div class="ph-row" style="padding: 8px 14px 0; flex-direction: column; gap: 0; align-items: stretch;">
+              <div class="row" style="gap: 12px;">
+                <div class="col grow" style="min-width: 0;"><span class="row" style="gap: 8px; min-width: 0;"><span class="t17 trunc">Max turns</span><span class="tag">Account</span></span><span class="t13 t3 row" style="gap: 4px;"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg>Next session</span></div>
+                <div class="row" style="height: 44px; gap: 0; border-radius: 10px; background: var(--hover); flex: none;"><span class="row" style="width: 44px; height: 44px; justify-content: center;"><svg class="ic" viewBox="0 0 16 16"><path d="M3 8h10"></path></svg></span><span class="t17" style="width: 36px; text-align: center;">50</span><span class="row" style="width: 44px; height: 44px; justify-content: center;"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></span></div>
+              </div>
+              <div class="row" style="height: 44px;"><button class="btn btn-g" type="button" style="height: 44px; padding: 0 10px; margin-left: -10px;">Reset to default (no limit)</button></div>
+            </div>
+            <div class="ph-row" style="padding: 8px 14px; align-items: center;">
+              <div class="col grow" style="min-width: 0;"><span class="t17 trunc">Spend cap per session</span><span class="t13 t3 row" style="gap: 4px;"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg>Next session</span></div>
+              <div class="row" style="height: 44px; padding: 0 10px 0 12px; gap: 6px; border-radius: 10px; background: var(--hover); flex: none;"><span class="t17">No cap</span><svg class="ic ic-12 t2" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></div>
+            </div>
+            <div class="ph-row" style="padding: 8px 14px; align-items: center;">
+              <div class="col grow" style="min-width: 0;"><span class="t17 trunc">Close idle sessions</span><span class="t13 t3 trunc">After 10 minutes</span></div>
+              <div class="row" style="height: 44px; gap: 0; border-radius: 10px; background: var(--hover); flex: none;"><span class="row" style="width: 44px; height: 44px; justify-content: center;"><svg class="ic" viewBox="0 0 16 16"><path d="M3 8h10"></path></svg></span><span class="t17" style="width: 36px; text-align: center;">10</span><span class="row" style="width: 44px; height: 44px; justify-content: center;"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></span></div>
+            </div>
+            <!-- just changed: Saved in the reserved line -->
+            <div class="ph-row" style="padding: 8px 14px 0; flex-direction: column; gap: 0; align-items: stretch;">
+              <div class="row" style="gap: 12px;">
+                <div class="col grow" style="min-width: 0;"><span class="row" style="gap: 8px; min-width: 0;"><span class="t17 trunc">Open at once</span><span class="tag">Account</span></span><span class="t13 t3 trunc">On this machine</span></div>
+                <div class="row" style="height: 44px; gap: 0; border-radius: 10px; background: var(--hover); flex: none;"><span class="row" style="width: 44px; height: 44px; justify-content: center;"><svg class="ic" viewBox="0 0 16 16"><path d="M3 8h10"></path></svg></span><span class="t17" style="width: 36px; text-align: center;">6</span><span class="row" style="width: 44px; height: 44px; justify-content: center;"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></span></div>
+              </div>
+              <div class="row" style="height: 44px;"><button class="btn btn-g grow" type="button" style="height: 44px; padding: 0 10px; margin-left: -10px; justify-content: flex-start;">Reset to default (no cap)</button><span class="t13 t2 row" style="gap: 4px; flex: none;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Saved</span></div>
+            </div>
+            <div class="ph-row" style="padding: 8px 14px; align-items: center;">
+              <div class="col grow" style="min-width: 0;"><span class="t17 trunc">Output style</span><span class="t13 t3 row" style="gap: 4px;"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg>Next session</span></div>
+              <div class="row" style="height: 44px; padding: 0 10px 0 12px; gap: 6px; border-radius: 10px; background: var(--hover); flex: none;"><span class="t17">Default</span><svg class="ic ic-12 t2" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></div>
+            </div>
+          </div>
+        </div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+    <div class="anno" style="width: 334px;">
+      <span class="lbl">How it works</span>
+      <div class="anno-i"><span class="anno-n">1</span><span>One registry, 61 settings, 11 groups. A 320 list with search on top and the detail capped at 720. Each group row says its current values, so most visits end in the list.</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>Scope sits at the top of the detail: Account | Project, with the project picker joined to Project. Project shows only the 20 settings a project can override; the other six groups say "Account only" and link to your account.</span></div>
+      <div class="anno-i"><span class="anno-n">3</span><span>A source chip only when the value is not the default: Project beats Account beats default. A "Claude Code file" value comes from the repo's committed file: read-only, the path on hover, Open file.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>Reset is a ghost button that names where it goes: "Reset to Account (Asks first)". Hover or focus on the desktop, always on touch. No confirm; Undo for 4 s. A whole group is a Hold button with the count.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>Applies now is not printed. "Next session" gets a clock and "After restart" a refresh; restart changes from any group collect in one banner with Restart now.</span></div>
+      <div class="anno-i"><span class="anno-n">6</span><span>Under 720 the group list is a page and a group pushes in with the scope switch on top. Controls are 44 tall and the reset line is always shown.</span></div>
+      <div class="anno-i"><span class="anno-n">7</span><span>Smooth: settings.set is optimistic. The row changes on tap; if the box refuses it flips back with a "Not saved" line and the failed glyph. Saved, Reset and Undo share one reserved slot, so nothing moves when one appears. Search filters in memory in one frame.</span></div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2700,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>
