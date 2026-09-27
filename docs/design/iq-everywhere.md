@@ -173,8 +173,10 @@ Cohesion writes the product spec. This is what IQ needs from it and what it cost
 - **Should.** `recall.search` takes `sessions: string[]` next to `project_cwds`, and a turn matches
   if either holds. `memory.retrieve` and `memory.ask` scope a project by its folders plus its picked
   session ids. A session unpicked leaves at the next pass. An agent's grants follow the same union.
-- **Size.** Recall: S (one filter, an index on session already exists). memory-iq: S (the room's ids
-  into retrieve, a test in each direction). Cohesion's spec decides the user-facing words.
+- **Built (398f6156).** `recall.search { sessions }` keeps those sessions as well as the folders'
+  (keywords and meaning both); only modules and the person's surfaces may name sessions, so a
+  model cannot widen its scope. memory.retrieve and memory.ask scope a project by its folders plus
+  its picked threads. Cohesion's spec decides the user-facing words.
 
 ## Host to server: the Mac's sessions build the box's graph
 
@@ -310,7 +312,8 @@ test it.
 | 8 | Phone Find IQ card | mobile | M | medium | spec sent (0.1.1) |
 | 9 | Chat renders "(from <session>)" as a link | chat | S | medium | spec sent (0.1.1) |
 | 10 | Teammates' brief: memory_ask for project history | teammates | S | low | built (work/teammates 7eb7ffb8; reaches teammates with core/team step 3) |
-| 11 | Project graphs: IQ reads a project's picked sessions, not only its folders | memory-iq, recall | S | high | proposed (0.1.1) |
+| 11 | Project graphs: IQ reads a project's picked sessions, not only its folders | memory-iq, recall | S | high | built (398f6156) |
+| 15 | Sessions start knowing the project (memory.today in the brief) | memory-iq, harness | S | medium | built (df22ca0c) |
 | 12 | Mac sessions build the box's graph (consent, dedupe, one reader) | federation, memory-iq | L+M | highest for a box user | contract agreed; ADR 0008 amended; 0.2 |
 | 14 | An agent corrects from the person's own words; anything else waits | memory-iq; threads.said: sessions; waiting: cohesion | S+S+S | high | memory side built; e2e review asked |
 | 13 | Correct IQ where it appears, remembered | memory-iq; card: capsule-pro, app-design, chat, mobile | S+M | high | tool, CLI and eval built; card specs sent |
