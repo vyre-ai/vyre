@@ -221,6 +221,108 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   runs in such a login. `core/presence/index.js` (`TERMINAL_WINDOWED`, `windowNotice`),
   `core/daemon/index.js` (atTerminal), `core/daemon/peer.js` (`loginOf`, `tmuxClients`),
   `core/vault/index.js` (the audit row), `docs/concepts/presence.md`, `docs/adr/0004-presence.md`.
+#### perf-check gates the live heap, and RSS on the Node the box ships
+
+- The idle RSS gate failed on GitHub's Node 24 runners at 185 to 333 MB on every batch-4 merge and on
+  its base alike, with notes-only merges swinging by 70 MB. Node 24 keeps the startup heap while
+  idle (74 to 111 MB in use, 20 MB of it live); Node 22, which the box image runs, gives it back and
+  settles near 85 MB. perf-check now starts vyred with --expose-gc and scripts/lib/gc-hook.mjs,
+  reads memoryUsage after a full GC on SIGUSR2, and gates heap used under 50 MB on every Node. The
+  settled (150 MB) and startup-peak (200 MB) RSS budgets gate on the Node major in box/Dockerfile
+  and print as informational on others.
+
+#### box-image builds whenever a file in the image changes
+
+- The detect step compared a push against a fixed path list (box/, core/daemon/, package files),
+  so the 3b branch skipped its build while core/sessions/sdk.js broke the image. It now reads the
+  file list from `npm pack --dry-run`, the same pack the image is built from, plus box/ and the
+  build files. Pull requests go through the same check instead of a paths filter.
+
+#### A tracked node_modules can't reach main
+
+- test/hygiene.test.js fails when git tracks any node_modules path. A worktree's node_modules
+  symlink was committed on a branch; on a fresh checkout it dangles and every npx step in the app
+  workflow exited 216.
+
+#### CI: the release workflow (ADR 0033)
+
+- .github/workflows/release.yml: a tag vX.Y.Z publishes a GitHub Release (stable), vX.Y.Z-beta.N a
+  prerelease (beta). Assets: build-site.sh's box files and vyre.tgz and VERSION, the unsigned
+  Android APK as android-<version>-<sha7>.apk and android.json (its file renamed to match) from app.yml's green run on the same commit when there is one,
+  release.json { version, channel, commit, date, min_from, notes } and SHA256SUMS over all of
+  them, each with a keyless build provenance attestation (no key, no secret). The notes are the
+  CHANGELOG's "## X.Y.Z" section; min_from is 0.1.0 unless release/min_from says otherwise; the
+  tag must equal package.json's version. It is a DRY RUN until the repo variable VYRE_RELEASES is
+  "go" (unset): every run, a tag push included, uploads the assets as a workflow artifact and
+  publishes nothing. Dispatched with a tag, it builds and checks the same way.
+
+#### CI: the box image is built and booted
+
+- .github/workflows/box-image.yml builds box/Dockerfile from the npm pack tarball, the context a
+  deploy builds (never pushed; layers in the Actions cache), on every push to main and on branch pushes that touch box/, core/daemon/, the package
+  files or .dockerignore, then boots it: vyred answers /v1/health on its socket; tini is PID 1;
+  a vyred killed with SIGKILL comes back through loop.sh with the container up and no Docker
+  restart; `docker stop` exits 0 inside the 30 s timeout (the SIGTERM reached vyred and it
+  drained). The tini and restart checks skip on an image without core/daemon/loop.sh.
+
+#### CI: the Capsule signing step can no longer hang
+
+- capsule-mac.yml's signing step hung to the 45-minute job timeout on capsule-pro branches:
+  createIdentity's `security add-trusted-cert` asks for a password in the user domain. The step
+  now passes createIdentity a runner that trusts with `sudo -n ... -d` (admin domain, the path
+  proven in run 36282086841), gives every command /dev/null and a 60 s timeout, stops at
+  5 minutes, and signs a copy of vyre-launcher when Vyre.app did not build.
+
+#### CI: the one Expo app
+
+- app.yml's perf job (.github/scripts/app-perf.mjs): apps/app/dist at /app/ beside
+  apps/test/world.js, headless Chromium at 390x844 with the CPU 4x throttled; waits for Now, five
+  rounds of tab switches, opens a session and scrolls it, reads window.__vyrePerf.report(). It
+  fails on tab.switch p95, open.cold p95, approve.collapse p95, dropped frames or long tasks over
+  50 ms more than 20% worse than the last green run on main (its app-perf artifact), or web JS
+  more than 10% bigger; a measure with no samples is "not measured". Playwright is installed
+  outside the repo.
+- .github/workflows/app.yml for apps/app (its own lockfile): typecheck and tests on every push;
+  the web export with its gzipped JS size in the run summary; an Android debug APK and an
+  UNSIGNED release APK, vyre-<version>-<sha7>.apk, with android.json (version, versionCode, sha,
+  sha256, size, minSdk, built, file, signer "none", cert_sha256 null) read from the APK, for the
+  box to sign with the owner's own key (no Vyre-wide release key; the box fills signer and
+  cert_sha256). A push to main publishes release android-<version>-<sha7> with both files. A copy signed with a per-run throwaway key is checked with
+  apksigner verify, and so is the output of core/apps/sign-apk.mjs (the box's pure-JS v2+v3
+  signer, fed an EC P-256 throwaway key) once it is in the tree; the NDK 27.1 and CMake 3.22 that modules/vyre-signer fetches are cached. The iOS
+  simulator build only when dispatched with `ios: true`. No EAS, no Expo account. Skips until
+  apps/app/package.json exists; also runs on core/resilience changes (the app imports it).
+
+#### CI: ready for the Agent SDK
+
+- .github/workflows/sessions-sdk.yml, for core/sessions/sdk.js's install-on-first-use SDK (Vyre
+  keeps zero npm dependencies). `driver`: the SDK's JS at sdk.js's pinned VERSION in a cache dir
+  keyed on it, then the sessions, switchboard, agents, learn and harness suites with
+  VYRE_SESSIONS_DRIVER=sdk against the fake claude. `real`: the full install with the bundled
+  Claude Code (231 MB, cached per VERSION), the binary's --version with a temp HOME and no
+  credentials, and scripts/sessions-smoke.mjs (IDLE_MS=5000; its JSON must say spawned and
+  alive) when it exists; only when sdk.js
+  or the smoke changes. Skips until core/sessions/sdk.js exists.
+
+#### CI: the Chrome tests leave nothing behind
+
+- modules/hands-chrome/chrome.test.js: the fake computerd proxy destroys its upgraded CDP pipes
+  on close. An open pipe held server.close() forever, so a failed Chrome test on Node 22 hung the
+  whole node job until its 30-minute timeout.
+- Both Chrome tests (modules/hands-chrome/chrome.test.js, test/onboard-page.test.js) start
+  Chrome in its own process group and SIGKILL the group, wait for the exit (3 s cap), and remove
+  the profile with retries, never throwing. Chrome's helpers outlived the browser and kept
+  writing: on Node 22 the removal threw ENOTEMPTY, the throwing after hook skipped vyred's stop,
+  and the file never exited (the node 22 job hung to its 30-minute timeout on every branch). On
+  Node 24 a late write recreated the temp home and tmp-guard failed the job.
+- test/tmp-guard.mjs lists up to 20 paths inside each leaked dir, so a late writer names itself.
+- node.yml skips pushes to `work/ci-*`, ci's throwaway branches that prove one other workflow.
+- scripts/perf-check: the idle RSS budget (150 MB) reads the settled size, the highest of the last
+  8 samples once they sit within 3 MB (the window runs on to 120 s until they do); a new startup
+  budget holds the first 30 s from spawn under 200 MB. vyred kept the indexing pass's heap
+  (about 160 MB) for some 20 s and then settled near 90 MB, so RSS max failed every run. Mean and
+  max RSS still print. On testbox: settled 87.3 / 84.0 MB, startup peak 150.3 / 154.2 MB.
+
 #### A vyred killed by a signal is started again in the box
 
 - core/daemon/loop.sh waited again on a vyred that died by a signal (SIGKILL, the OOM killer)

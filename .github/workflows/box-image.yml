@@ -2,13 +2,12 @@
 # what ADR 0029 promises of the container: tini is PID 1 (run plain and through box/compose.yml), vyred answers /v1/health on its socket,
 # killing vyred once brings it back through core/daemon/loop.sh with the container still up, and
 # `docker stop` reaches vyred as a SIGTERM so it drains and the container exits 0 well inside the
-# stop timeout. Every push to main runs it; other branches run it when a push touches the image's
-# inputs. Deploys that touch box/ wait for it. Layers are cached in the Actions cache.
+# stop timeout. Every push to main runs it; other branches run it when a push touches any file in
+# the image (the npm pack, plus box/ and the build files). Deploys that touch box/ wait for it. Layers are cached in the Actions cache.
 name: box-image
 on:
   push:
   pull_request:
-    paths: ["box/**", "core/daemon/**", "package.json", "package-lock.json", ".dockerignore", ".github/workflows/box-image.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,18 +20,27 @@ jobs:
     outputs:
       run: ${{ steps.check.outputs.run }}
     steps:
+      # The image is built from the npm pack of the repo (see "Pack like a deploy"), so every file
+      # in the pack is an input: a push that changes any of them builds. A fixed path list here
+      # once skipped a real break (core/sessions/sdk.js changed; the image no longer built).
+      - uses: actions/checkout@v4
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [ "${{ github.event_name }}" != "push" ] || [ "${{ github.ref }}" = "refs/heads/main" ]; then echo run=true >> "$GITHUB_OUTPUT"; exit 0; fi
-          case "$BEFORE" in ""|0000000000000000000000000000000000000000) echo run=true >> "$GITHUB_OUTPUT"; exit 0;; esac
-          files=$(gh api "repos/${{ github.repository }}/compare/$BEFORE...${{ github.sha }}" --paginate --jq '.files[].filename') || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
-          if echo "$files" | grep -qE '^(box/|core/daemon/|package(-lock)?\.json$|\.dockerignore$|\.github/workflows/box-image\.yml$)'; then
-            echo run=true >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.ref }}" = "refs/heads/main" ]; then echo run=true >> "$GITHUB_OUTPUT"; exit 0; fi
+          from=$BEFORE; [ "${{ github.event_name }}" = "pull_request" ] && from=$BASE
+          case "$from" in ""|0000000000000000000000000000000000000000) echo run=true >> "$GITHUB_OUTPUT"; exit 0;; esac
+          files=$(gh api "repos/${{ github.repository }}/compare/$from...${{ github.sha }}" --paginate --jq '.files[] | .filename, (.previous_filename // empty)') || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
+          packed=$(npm pack --dry-run --json --ignore-scripts 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const f of JSON.parse(s)[0].files)console.log(f.path)})') || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
+          [ -n "$packed" ] || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
+          hit=$( { echo "$files" | grep -xF -f <(echo "$packed"); echo "$files" | grep -E '^(box/|package(-lock)?\.json$|\.dockerignore$|\.github/workflows/box-image\.yml$)' || true; } | head -5)
+          if [ -n "$hit" ]; then
+            echo "image inputs changed:"; echo "$hit"; echo run=true >> "$GITHUB_OUTPUT"
           else
-            echo "no image input changed: skipping"; echo run=false >> "$GITHUB_OUTPUT"
+            echo "no file in the image changed: skipping"; echo run=false >> "$GITHUB_OUTPUT"
           fi
 
   build-smoke:

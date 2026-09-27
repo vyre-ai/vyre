@@ -1,0 +1,281 @@
+# The one Expo app (ADR 0027), apps/app, with its own package.json and lockfile outside the root;
+# it imports core/resilience (Metro watchFolders), so jobs check out the whole repo
+# (the box's npm ci never pulls Expo). Tests and typecheck on every push; the web export with its
+# gzipped size; a web perf guard (Chromium, 4x CPU, against the last green run); an Android debug APK and an UNSIGNED release APK (minify and Hermes exercised),
+# vyre-<version>-<sha7>.apk with android.json, published as a release on main, for the box to sign
+# with the owner's key. iOS is
+# the fallback only: run by hand with the ios input, simulator build, no signing. Plain prebuild
+# plus gradle/xcodebuild: no EAS, no Expo account. Skips (on a cheap runner) while
+# apps/app/package.json is absent.
+name: app
+on:
+  push:
+    paths: ["apps/app/**", "core/resilience/**", ".github/workflows/app.yml"]
+  pull_request:
+    paths: ["apps/app/**", "core/resilience/**", ".github/workflows/app.yml"]
+  workflow_dispatch:
+    inputs:
+      ios:
+        description: "Also build the iOS simulator app (the fallback)"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  VYRE_NO_DIALOGS: "1"
+  EXPO_NO_TELEMETRY: "1"
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps
+      - id: check
+        run: |
+          if [ -f apps/app/package.json ]; then echo present=true >> "$GITHUB_OUTPUT"; else echo "apps/app/package.json is absent: skipping"; echo present=false >> "$GITHUB_OUTPUT"; fi
+
+  test:
+    needs: detect
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+
+  web:
+    needs: detect
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx expo export -p web --output-dir dist
+      - name: Bundle size (gzipped JS, the ADR expects about 3 MB)
+        run: |
+          total=0
+          for f in $(find dist -name '*.js'); do total=$((total + $(gzip -9c "$f" | wc -c))); done
+          echo "web JS gzipped: $((total / 1024)) KiB" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "web dist on disk: $(du -sh dist | cut -f1)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-web-${{ github.sha }}
+          path: apps/app/dist
+          retention-days: 14
+
+  # The web perf guard (ADR 0027, section 6): the exported web app at /app/ beside
+  # apps/test/world.js, headless Chromium at 390x844 with the CPU 4x throttled. It fails on a
+  # tracked measure more than 20% worse than the last green run on main, or JS more than 10%
+  # bigger; a measure with no samples is "not measured". The numbers of record come from real
+  # phones; these only guard regressions. Playwright is installed outside the repo.
+  perf:
+    needs: [detect, web]
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read  # the last green run's perf artifact
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-web-${{ github.sha }}
+          path: apps/app/dist
+      - name: Playwright (outside the repo)
+        run: |
+          echo "PLAYWRIGHT_DIR=$RUNNER_TEMP/pw" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          echo '{"private":true}' > package.json
+          npm i --no-audit --no-fund --no-package-lock playwright@1
+          npx playwright install --with-deps chromium
+      - name: The last green run's numbers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow app.yml --branch main --status success -L 1 --json databaseId --jq '.[0].databaseId' || true)
+          if [ -n "$id" ] && gh run download "$id" -R "$GITHUB_REPOSITORY" -n app-perf -D "$RUNNER_TEMP/base" 2>/dev/null; then
+            echo "baseline: run $id"; else echo "no baseline yet"; fi
+      - name: Perf run
+        run: node .github/scripts/app-perf.mjs --dist apps/app/dist --out perf.json --baseline "$RUNNER_TEMP/base/perf.json" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Bundle size against the last green run
+        if: success() || failure()
+        run: |
+          total=0
+          for f in $(find apps/app/dist -name '*.js'); do total=$((total + $(gzip -9c "$f" | wc -c))); done
+          kib=$((total / 1024))
+          echo "{\"js_gzip_kib\": $kib}" > size.json
+          base=$(node -e 'try { console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).js_gzip_kib) } catch { console.log("") }' "$RUNNER_TEMP/base/size.json")
+          echo "web JS gzipped: ${kib} KiB${base:+ (last green ${base} KiB)}" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -n "$base" ] && [ $((kib * 100)) -gt $((base * 110)) ]; then echo "JS grew more than 10%"; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: app-perf
+          path: |
+            perf.json
+            size.json
+          retention-days: 90
+
+  android:
+    needs: detect
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write  # the release on main
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      # modules/vyre-signer builds native code: the NDK and CMake gradle fetches are cached.
+      - run: echo "SDK=$ANDROID_HOME" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.SDK }}/ndk/27.1.12297006
+            ${{ env.SDK }}/cmake/3.22.1
+          key: android-ndk-27.1.12297006-cmake-3.22.1
+      - run: npm ci --no-audit --no-fund
+      - run: npx expo prebuild -p android --no-install --clean
+      # The release APK ships UNSIGNED, with android.json: the box signs it with the owner's own
+      # key from its vault (the box is the root of trust; there is no Vyre-wide release key).
+      # prebuild points release at the debug keystore; that one line goes. A copy signed with a
+      # throwaway per-run key proves the APK signs and verifies with the platform's apksigner, and
+      # when the box's pure-JS signer (core/apps/sign-apk.mjs, v2+v3, EC key here) is in the tree,
+      # its output is verified with apksigner too.
+      - name: Release build unsigned
+        run: |
+          node -e '
+            const fs = require("fs"), f = "android/app/build.gradle"; let s = fs.readFileSync(f, "utf8");
+            const bt = s.indexOf("buildTypes"), rel = s.indexOf("release {", bt), line = "signingConfig signingConfigs.debug";
+            const at = s.indexOf(line, rel);
+            if (bt < 0 || rel < 0 || at < 0) { console.error("no release signingConfig to drop in " + f); process.exit(1); }
+            fs.writeFileSync(f, s.slice(0, at) + "// unsigned: the box signs it with the owner's key" + s.slice(at + line.length));'
+      - run: ./gradlew --no-daemon assembleDebug assembleRelease
+        working-directory: apps/app/android
+      - name: Name the release and write android.json
+        run: |
+          out=android/app/build/outputs/apk
+          unsigned=$(ls $out/release/*-unsigned.apk | head -1)
+          test -f "$unsigned" || { echo "no unsigned release APK"; ls -R $out; exit 1; }
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          badging=$("$bt/aapt2" dump badging "$unsigned")
+          version=$(echo "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
+          code=$(echo "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)
+          minsdk=$(echo "$badging" | sed -n "s/^sdkVersion:'\([^']*\)'.*/\1/p" | head -1)
+          sha7=$(echo "$GITHUB_SHA" | cut -c1-7)
+          mkdir -p dist-android
+          name="vyre-$version-$sha7.apk"
+          cp "$unsigned" "dist-android/$name"
+          cp $out/debug/*.apk dist-android/
+          sum=$(sha256sum "dist-android/$name" | cut -d' ' -f1)
+          size=$(stat -c %s "dist-android/$name")
+          node -e 'const [v,c,sha,sum,size,min,file]=process.argv.slice(1); console.log(JSON.stringify({ version: v, versionCode: Number(c), sha, sha256: sum, size: Number(size), minSdk: Number(min), built: new Date().toISOString(), file, signer: "none", cert_sha256: null }, null, 2))' \
+            "$version" "$code" "$GITHUB_SHA" "$sum" "$size" "$minsdk" "$name" > dist-android/android.json
+          cat dist-android/android.json
+          ls -l dist-android | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "APK=dist-android/$name" >> "$GITHUB_ENV"
+          echo "TAG=android-$version-$sha7" >> "$GITHUB_ENV"
+      - name: Signs and verifies (throwaway key; and the box's JS signer when present)
+        run: |
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          ks="$RUNNER_TEMP/throwaway.p12"; export APKPASS=$(openssl rand -hex 16)
+          keytool -genkeypair -keystore "$ks" -storetype PKCS12 -storepass "$APKPASS" -alias ci -keyalg RSA -keysize 2048 -validity 30 -dname "CN=Vyre throwaway CI" >/dev/null 2>&1
+          "$bt/zipalign" -p -f 4 "$APK" "$RUNNER_TEMP/aligned.apk"
+          "$bt/apksigner" sign --ks "$ks" --ks-pass env:APKPASS --ks-key-alias ci --out "$RUNNER_TEMP/platform-signed.apk" "$RUNNER_TEMP/aligned.apk" </dev/null
+          "$bt/apksigner" verify -v "$RUNNER_TEMP/platform-signed.apk" | head -6
+          if [ -f ../../core/apps/sign-apk.mjs ]; then
+            openssl ecparam -name prime256v1 -genkey -noout 2>/dev/null | openssl pkcs8 -topk8 -nocrypt -out "$RUNNER_TEMP/k.pem"
+            openssl req -x509 -new -key "$RUNNER_TEMP/k.pem" -days 30 -subj "/CN=Vyre throwaway CI" -out "$RUNNER_TEMP/c.pem"
+            (cd ../.. && node core/apps/sign-apk.mjs --key "$RUNNER_TEMP/k.pem" --cert "$RUNNER_TEMP/c.pem" --in "$RUNNER_TEMP/aligned.apk" --out "$RUNNER_TEMP/js-signed.apk" </dev/null) | tee -a "$GITHUB_STEP_SUMMARY"
+            "$bt/apksigner" verify --verbose --min-sdk-version 24 "$RUNNER_TEMP/js-signed.apk" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "core/apps/sign-apk.mjs not here yet: platform signing only" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          rm -f "$ks" "$RUNNER_TEMP/k.pem"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-android-${{ github.sha }}
+          path: apps/app/dist-android/
+          retention-days: 14
+      # A push to main publishes release android-<version>-<sha7>: the UNSIGNED APK and
+      # android.json ("signer": "none"; the box fills signer and cert_sha256 when it signs).
+      - name: Publish the release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Android $TAG" \
+            --notes "The Vyre Android app, UNSIGNED: your box signs it with your own key. android.json has the sha256 of this file." \
+            "$APK" dist-android/android.json
+
+  ios:
+    needs: detect
+    if: needs.detect.outputs.present == 'true' && github.event_name == 'workflow_dispatch' && inputs.ios
+    runs-on: macos-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx expo prebuild -p ios --clean
+      - name: Simulator build, unsigned
+        working-directory: apps/app/ios
+        run: |
+          ws=$(ls -d *.xcworkspace | head -1); scheme=$(basename "$ws" .xcworkspace)
+          xcodebuild -workspace "$ws" -scheme "$scheme" -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-ios-sim-${{ github.sha }}
+          path: apps/app/ios/build/Build/Products/Release-iphonesimulator/*.app
+          retention-days: 14

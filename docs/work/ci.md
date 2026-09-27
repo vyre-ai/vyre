@@ -75,11 +75,26 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
     work/* only; vault/* and wip/* stay local. The pre-push guard is installed in the repo's hooks.
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
-## Doing
-- Watching the first runs (node, capsule-mac on main).
+## Doing (RESUME 5, 2026-09-27, later)
+- DEPLOY GATE 1 PASS on main 53cd1326 (testbox, scratchpad gate1.sh = box-image.yml's steps from
+  npm pack; own tag vyre-box:gate, own container, default bridge; the compose boot is NOT run on
+  testbox because compose.yml binds 127.0.0.1:7300 and the live box's named networks). It first
+  FAILED on 65cbc02a: loop.sh never restarted a SIGKILLed vyred (dash answers 137 forever on the
+  re-wait; loop spun at 100% CPU). Fixed on work/ci-loop 53cd1326, now main. GitHub box-image on
+  main runs as a second check.
+- Under plain docker run the spawner runs as uid vyre, not root (told box-deploy to check under compose).
+- box-image detect fix: work/ci 6b16be62 (pack-list based). For batch 4.
+- Idle RSS: NOT a b4 merge. GitHub Node 24: baseline c8fb9aae 181 MB; b4 merges bimodal ~185 /
+  ~255 MB with notes-only merges swinging; flat from startup. "85 MB" was never a GitHub number.
+  Diag: work/ci-perfdiag dd8231f4 logs vyred's heap breakdown + host; rss-bisect branch runs it
+  Node 22/24 x3. Next: recommend gating after GC or on heapUsed, or fix a real live-heap cost.
+- App proof: work/mobile tracks a node_modules symlink (mobile told). Guard 3c26ea2d.
+- ci-boundaries: nothing left (fixed at merge).
 
 ## Next
-- Fix whatever the first runs show. Teams push work/<team> or `gh workflow run <wf>.yml --ref work/<team>`.
+- Delete throwaway branches once their workflows are on main: work/ci-app, ci-box-c8fb9aa,
+  ci-pid1-proof, ci-sessions, ci-release, ci-pid1, ci-boundaries (after merge).
+- actionlint v1.7.7 in the scratchpad (re-download). `gh run list -c` needs the FULL sha.
 
 ## Needs from others
 - None.

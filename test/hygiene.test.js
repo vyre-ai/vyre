@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import { FORBIDDEN, SECRET } from "../scripts/lib/hygiene.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -59,5 +60,13 @@ test("hygiene: the retired coral appears nowhere in the repo", () => {
   const self = fileURLToPath(import.meta.url);
   const hits = everyFile(ROOT).filter(f => f !== self && CORAL.test(fs.readFileSync(f, "utf8")))
     .map(f => path.relative(ROOT, f));
+  assert.deepEqual(hits, []);
+});
+
+test("hygiene: git tracks no node_modules, not even a worktree's symlink to another checkout's", () => {
+  // A tracked node_modules symlink dangles on a fresh checkout, and every npx in CI dies with 216.
+  const r = spawnSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" });
+  if (r.status !== 0) return; // not a git checkout (a packed tree): nothing to check
+  const hits = r.stdout.split("\0").filter(f => /(^|\/)node_modules(\/|$)/.test(f));
   assert.deepEqual(hits, []);
 });
