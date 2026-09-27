@@ -11,9 +11,14 @@
 // A plugin's own `.mcp.json` (named by its manifest, `${CLAUDE_PLUGIN_ROOT}` resolved to the
 // plugin's own directory) is read the same way, listed separately so the caller can label it.
 //
-// This module never edits these files and never starts a server: it only reads and normalizes.
-// Adding one still goes through `mcp.add`, which is how a value gets into the vault as a grant,
-// never a bare env var copied out of someone's `.mcp.json`.
+// This module never edits these files and never starts a server: it only reads and normalizes,
+// and never a value: `normalize()` keeps env and header NAMES only, plus `hasSecrets`, never what
+// they hold. Adding a discovered server still goes through `mcp.add`, which is how a value gets
+// into the vault as a grant, never a bare env var copied out of someone's `.mcp.json`.
+//
+// Which home: never `os.homedir()` directly. `core/config`'s `claudeJson`/`claudeHome` decide
+// whether `root` is the person's real `~/.vyre` (their real `~/.claude.json` and `~/.claude/
+// plugins/`) or anything else (a fixture folder, empty until something puts one there).
 //
 // The path walk (home file, `.claude/settings*.json`-style directories from cwd to root, a
 // project's `.mcp.json`) mirrors `core/harness/rules.js`'s `ccFile`/`hardLinked`, which walks the
@@ -24,18 +29,24 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { claudeHome, claudeJson } from "../config/dialogs.js";
 
 export const TRANSPORTS = ["stdio", "http", "sse"];
 /** A discovered name may collide with an already-added one; both are kept, told apart by source. */
 export const SOURCES = ["user", "project", "local", "plugin"];
 
 /**
- * One entry of a `mcpServers` object, normalized to the hub's own shape (core/mcp/hub.js `add`).
+ * One entry of a `mcpServers` object, normalized to the hub's own shape (core/mcp/hub.js `add`),
+ * MINUS every value: `env` and `headers` in a person's `.mcp.json` or `.claude.json` are exactly
+ * where a bearer token or an API key lives in plain text, so this keeps only their NAMES
+ * (`envNames`, `headerNames`) and a `hasSecrets` flag (e2e review, 2026-09-28). No tool, event or
+ * log built on this file's output may ever carry a value; adding a discovered server still goes
+ * through `mcp.add`, which is how a value gets into the vault as a grant.
  * An entry this cannot make sense of (no command and no url, or an explicit unknown `type`) is
  * dropped, not thrown: one bad entry in a person's `.mcp.json` should not hide the rest.
  * @param {string} name @param {any} v
  * @returns {{ name: string, transport: string, command?: string, args?: string[], cwd?: string,
- *   env?: Record<string, string>, url?: string, headers?: Record<string, string> } | null}
+ *   envNames?: string[], url?: string, headerNames?: string[], hasSecrets?: boolean } | null}
  */
 function normalize(name, v) {
   if (!v || typeof v !== "object") return null;
@@ -47,13 +58,19 @@ function normalize(name, v) {
     const out = { name, transport: "stdio", command: v.command };
     if (Array.isArray(v.args)) out.args = v.args.filter(a => typeof a === "string");
     if (typeof v.cwd === "string") out.cwd = v.cwd;
-    if (v.env && typeof v.env === "object") out.env = Object.fromEntries(Object.entries(v.env).filter(([, x]) => typeof x === "string"));
+    if (v.env && typeof v.env === "object") {
+      const names = Object.entries(v.env).filter(([, x]) => typeof x === "string").map(([k]) => k);
+      if (names.length) { out.envNames = names; out.hasSecrets = true; }
+    }
     return out;
   }
   if (typeof v.url !== "string" || !v.url) return null;
   /** @type {any} */
   const out = { name, transport: type, url: v.url };
-  if (v.headers && typeof v.headers === "object") out.headers = Object.fromEntries(Object.entries(v.headers).filter(([, x]) => typeof x === "string"));
+  if (v.headers && typeof v.headers === "object") {
+    const names = Object.entries(v.headers).filter(([, x]) => typeof x === "string").map(([k]) => k);
+    if (names.length) { out.headerNames = names; out.hasSecrets = true; }
+  }
   return out;
 }
 
@@ -112,15 +129,38 @@ function projectFiles(cwd) {
 }
 
 /**
+ * Every subdirectory of `<claudeHome>/plugins/` that ships its own `.mcp.json` at its root: a
+ * folder name and its file, or none if the plugins folder does not exist. This is a guess at
+ * where a plugin's MCP config lives (nothing else in this repo parses a plugin manifest yet); a
+ * caller may pass its own `plugins` list to `discover()` instead once that is pinned down.
+ * @param {string} dir `claudeHome(root, env)`
+ */
+function scanPlugins(dir) {
+  const base = path.join(dir, "plugins");
+  let names;
+  try { names = fs.readdirSync(base, { withFileTypes: true }); } catch { return []; }
+  return names.filter(e => e.isDirectory()).map(e => ({ name: e.name, mcpFile: path.join(base, e.name, ".mcp.json") }))
+    .filter(p => { try { return fs.statSync(p.mcpFile).isFile(); } catch { return false; } });
+}
+
+/**
  * Every MCP server named in Claude Code's own config, deduplicated by name within a source (a
  * nearer `.mcp.json` wins over a further one; user, local and each plugin are separate sources so
  * the same name in two places is not silently dropped).
- * @param {{ userHome?: string, cwd?: string, plugins?: { name: string, mcpFile: string }[] }} [o]
- *   `userHome` defaults to nothing found (a test always passes its fixture's home; production
- *   wiring passes `os.homedir()`), `cwd` to `process.cwd()`, `plugins` to none.
+ *
+ * `root` is the Vyre home, read through `core/config`'s `claudeJson`/`claudeHome` (e2e review,
+ * 2026-09-28): only a person's own `~/.vyre` reads their real `~/.claude.json` and `~/.claude/
+ * plugins/`; a dev world, a demo, a temp home or a test gets `<root>/claude.json` and
+ * `<root>/claude/plugins/`, empty until a fixture puts something there. This file never calls
+ * `os.homedir()` itself. Whoever wires this into a tool must pass the CALLER'S VERIFIED PROJECT
+ * for `cwd` (the Switchboard's project for the session, never a path an input names), so an agent
+ * cannot point discovery at a project it does not run in.
+ * @param {{ root?: string, env?: NodeJS.ProcessEnv, cwd?: string, plugins?: { name: string, mcpFile: string }[] }} [o]
+ *   `cwd` defaults to `process.cwd()` (a caller wiring this into a tool must override it); `plugins`
+ *   defaults to `scanPlugins(claudeHome(root, env))`, pass `[]` to skip plugin discovery outright.
  * @returns {{ source: string, plugin?: string, path: string, server: ReturnType<typeof normalize> }[]}
  */
-export function discover({ userHome, cwd = process.cwd(), plugins = [] } = {}) {
+export function discover({ root, env = process.env, cwd = process.cwd(), plugins } = {}) {
   const found = [];
   const push = (source, file, list, extra) => {
     const seen = new Set();
@@ -130,15 +170,13 @@ export function discover({ userHome, cwd = process.cwd(), plugins = [] } = {}) {
       found.push({ source, path: file, server, ...(extra || {}) });
     }
   };
-  if (userHome) {
-    const claudeJson = path.join(userHome, ".claude.json");
-    push("user", claudeJson, readServers(claudeJson));
-    push("local", claudeJson, readServers(claudeJson, path.resolve(cwd)));
-  }
+  const jsonFile = claudeJson(root, env);
+  push("user", jsonFile, readServers(jsonFile));
+  push("local", jsonFile, readServers(jsonFile, path.resolve(cwd)));
   const perFile = new Map();
   for (const file of projectFiles(cwd)) if (!perFile.has(file)) perFile.set(file, readServers(file));
   for (const [file, list] of perFile) push("project", file, list);
-  for (const p of plugins) push("plugin", p.mcpFile, readServers(p.mcpFile), { plugin: p.name });
+  for (const p of plugins ?? scanPlugins(claudeHome(root, env))) push("plugin", p.mcpFile, readServers(p.mcpFile), { plugin: p.name });
   return found;
 }
 
