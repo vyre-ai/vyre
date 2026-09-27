@@ -65,7 +65,9 @@ export async function remindRun(vault, call, { now = Date.now(), breached = [] }
   for (const j of judged.items) flagged.set(j.name, new Set(j.reasons.filter(r => r in REASONS)));
   for (const n of breached) if (kinds.has(n)) (flagged.get(n) ?? flagged.set(n, new Set()).get(n))?.add("breached");
 
-  const marks = /** @type {any[]} */ (db.prepare("SELECT * FROM vault_reminders").all());
+  // needs-credential rows are keyed by connection id, not an item name; needsCredentialReminders
+  // owns them, on the same table, so a connection reminder never collides with an item's.
+  const marks = /** @type {any[]} */ (db.prepare("SELECT * FROM vault_reminders WHERE reason != 'needs-credential'").all());
   const had = new Map(marks.map(m => [`${m.name}\n${m.reason}`, m]));
   const closed = [];
   // A reason gone away: its todo is done, and the mark goes, so it may be raised again later.
@@ -173,16 +175,59 @@ async function scheduledBreachCheck(vault, { fetch }) {
 const lastBreach = vault => { const r = /** @type {any} */ (vault.db.prepare("SELECT at FROM vault_jobs WHERE name = 'breach'").get()); return r ? Number(r.at) : null; };
 
 /**
- * One tick: the opted-in weekly breach check (if due), then the daily reminder run. Split out of
- * scheduleReminders so a test can call it without waiting on a real timer.
+ * A connection stuck at needs_credential (a module registered one, but nothing has filled it
+ * yet) gets one todo, the same as any other Watchtower finding, keyed `connection:<id>` in
+ * vault_reminders so it is never raised twice, closed the moment it becomes ready, and left
+ * alone once dismissed.
+ * @param {import("./vault.js").Vault} vault @param {(tool: string, input: any) => Promise<any>} call
+ * @param {import("./connections.js").Connections} connections @param {number} now
+ */
+async function needsCredentialReminders(vault, call, connections, now) {
+  const rows = (await connections.list({}, "cli")).connections.filter(r => r.state === "needs_credential");
+  const byKey = new Map(rows.map(r => [`connection:${r.id}`, r]));
+  const marks = /** @type {any[]} */ (vault.db.prepare("SELECT * FROM vault_reminders WHERE reason = 'needs-credential'").all());
+  const had = new Map(marks.map(m => [m.name, m]));
+  const closed = [];
+  for (const m of marks) {
+    if (byKey.has(m.name)) continue;
+    if (m.planner && m.state === "open") await call("planner.done", { item: m.planner }).catch(() => {});
+    vault.db.prepare("DELETE FROM vault_reminders WHERE name = ? AND reason = 'needs-credential'").run(m.name);
+    closed.push(m.name);
+  }
+  for (const m of marks) {
+    if (m.state !== "open" || !m.planner || !byKey.has(m.name)) continue;
+    const g = await call("planner.get", { item: m.planner });
+    const st = g.data && g.data.item && g.data.item.state;
+    if (st === "cancelled") vault.db.prepare("UPDATE vault_reminders SET state = 'dismissed' WHERE name = ? AND reason = 'needs-credential'").run(m.name);
+    else if (st === "done") vault.db.prepare("UPDATE vault_reminders SET state = 'done' WHERE name = ? AND reason = 'needs-credential'").run(m.name);
+  }
+  const added = [];
+  for (const [key, row] of byKey) {
+    if (had.has(key)) continue;
+    const need = row.needs && row.needs[0];
+    const title = need ? `Connect ${row.label}: ${need.module} needs its ${need.need}` : `Connect ${row.label}`;
+    const r = await call("planner.add", { kind: "todo", list: "Vault", title, tags: ["vault", "connection"], priority: 3, due: ymd(now + 14 * DAY) });
+    if (r.error) return { added, closed, planner: r.error.code !== "no_such_tool" };
+    const id = r.data && (r.data.id || (r.data.item && r.data.item.id));
+    vault.db.prepare("INSERT OR REPLACE INTO vault_reminders (name, reason, planner, state, at) VALUES (?, 'needs-credential', ?, 'open', ?)").run(key, id ? String(id) : null, now);
+    added.push(key);
+  }
+  return { added, closed, planner: true };
+}
+
+/**
+ * One tick: the opted-in weekly breach check (if due), needs-credential connections, then the
+ * daily reminder run. Split out of scheduleReminders so a test can call it without waiting on a
+ * real timer.
  * @param {import("./vault.js").Vault} vault @param {(tool: string, input: any) => Promise<any>} call
  * @param {{ log?: (m: string) => void, clock?: () => number, local?: boolean,
- *   breach?: { enabled: boolean, fetch: typeof globalThis.fetch, everyMs?: number } }} [opts] local: a Mac,
- *   which leaves reminders to its box when it is paired with one, so a person is not told twice.
- *   breach: opted in (vault.breach: "ask") runs the check at most once a week, folded into the
- *   same daily timer rather than a second one (principle 8).
+ *   breach?: { enabled: boolean, fetch: typeof globalThis.fetch, everyMs?: number },
+ *   connections?: import("./connections.js").Connections }} [opts] local: a Mac, which leaves
+ *   reminders to its box when it is paired with one, so a person is not told twice. breach:
+ *   opted in (vault.breach: "ask") runs the check at most once a week, folded into the same
+ *   daily timer rather than a second one (principle 8).
  */
-export async function remindTick(vault, call, { log = () => {}, clock = Date.now, local = false, breach } = {}) {
+export async function remindTick(vault, call, { log = () => {}, clock = Date.now, local = false, breach, connections } = {}) {
   const paired = local && Boolean((await call("link.status", {}))?.data?.linked);
   let breached = [];
   if (!paired && breach && breach.enabled) {
@@ -194,9 +239,16 @@ export async function remindTick(vault, call, { log = () => {}, clock = Date.now
       } catch (e) { log(`vault: breach check skipped this week (${/** @type {Error} */ (e).message})`); }
     }
   }
-  const r = paired ? { added: [], closed: [] } : await remindRun(vault, call, { now: clock(), breached });
-  if (r.added.length || r.closed.length) log(`vault: ${r.added.length} reminders added, ${r.closed.length} closed`);
-  return { ...r, breached };
+  const now = clock();
+  let needsCred = { added: [], closed: [] };
+  if (!paired && connections) {
+    try { needsCred = await needsCredentialReminders(vault, call, connections, now); }
+    catch (e) { log(`vault: connection reminders skipped today (${/** @type {Error} */ (e).message})`); }
+  }
+  const r = paired ? { added: [], closed: [] } : await remindRun(vault, call, { now, breached });
+  const added = [...r.added, ...needsCred.added], closed = [...r.closed, ...needsCred.closed];
+  if (added.length || closed.length) log(`vault: ${added.length} reminders added, ${closed.length} closed`);
+  return { added, closed, breached };
 }
 
 /**

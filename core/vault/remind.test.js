@@ -128,3 +128,31 @@ test("reminders: the breach check rides the daily tick, opted in, at most once a
   const week = await remindTick(vault, planner.call, { clock: () => now, breach: { enabled: true, fetch } });
   assert.deepEqual(week.breached, ["old-forum"]);
 });
+
+test("reminders: a connection stuck at needs_credential gets a todo, closed once it is ready", async t => {
+  const planner = fakePlanner();
+  const { run, vault, connections, db } = await recorded(t, { reminders: false }, { call: planner.call });
+  const now = Date.now();
+
+  // A module registers before anything grants it the item it names: needs_credential.
+  const reg = (await run("vault.connections.register", { ref: "harlow", provider: "imap-smtp", account: "alex@harlowlegal.test",
+    auth: "password", capabilities: ["send_mail"], items: ["postbox-harlow"] }, "module:postbox")).id;
+
+  const first = await remindTick(vault, planner.call, { clock: () => now, connections });
+  assert.deepEqual(first.added, [`connection:${reg}`]);
+  const todo = [...planner.items.values()][0];
+  assert.match(todo.title, /^Connect alex@harlowlegal\.test$/);
+  assert.equal(todo.priority, 3);
+
+  // A second tick raises nothing new.
+  assert.deepEqual((await remindTick(vault, planner.call, { clock: () => now, connections })).added, []);
+  assert.equal(planner.items.size, 1);
+
+  // Fixed: the item exists and is granted to postbox. The todo is done.
+  await run("vault.put", { name: "postbox-harlow", kind: "login", fields: { username: "alex", password: hex(12) } });
+  await run("vault.grant", { name: "postbox-harlow", module: "postbox" });
+  await run("vault.connections.sync");
+  const closed = await remindTick(vault, planner.call, { clock: () => now, connections });
+  assert.deepEqual(closed.closed, [`connection:${reg}`]);
+  assert.equal(todo.state, "done");
+});
