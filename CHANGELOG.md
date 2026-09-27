@@ -371,6 +371,35 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `voice.status` returns the built mic helper's path. Push-to-talk opens its stream through
   `VyredLink.stream`, the Capsule's own WebSocket client.
 - screen: the fake-helper tests pass `platform: "darwin"` so they run off the Mac.
+#### Tokens: one JSON, rendered for the Capsule, the app and the Deck
+
+- scripts/gen-tokens (`npm run tokens`) is the one token generator (lead, 27 Sep; it replaces the
+  app's and the Capsule's own). It writes apps/app/src/theme/tokens.ts (byte-identical to the
+  app's current file: `tokens`, `Scheme`, `Colors`, `attention()`), the Capsule's
+  local/capsule/native/Sources/UI/Tokens.generated.swift and deck/css/tokens.css (the Deck's
+  selectors and role names, incl. --beacon-ink, --beacon-dot, --beacon-badge-ink). `--check` exits
+  1 when a file is stale; `--ts/--swift/--css <path>` write one output elsewhere. The status keys (needsYou, failed, running, unread, done) are a stable contract. Mono is
+  now a list of sizes (12, 13), not a size and line pair; phone type steps get their own enum.
+  Tests in test/tokens.test.js.
+
+#### Design: teammates, usage limits, planner ring counts
+
+- New boards: the Agents place with teammates (ADR 0031), the teammate kinds in Needs you, and an
+  interactive "Teammates and usage" limits board (presets, custom steppers with live impact, the
+  box ceiling, usage pause, the slot queue). The Planner board counts rings as 1 + escalate_max
+  and ties "Live" to a connected stream.
+
+#### Design: one app for the web, iOS and Android
+
+- docs/design/one-app/: the one-app design sheet (principles, system, layout, key screens on phone
+  and desktop, states, the Capsule and the CLI, and device install with no Apple Developer
+  account), tokens.json as the one token source, and a render audit that reads each board's size
+  from the board. Design only; no code changes.
+- Direction A (inbox first) is the design of record (DIRECTION.md, decided 27 Sep): new boards
+  for plan approval and modes (ADR 0030), projects, memory and lessons, settings and first run;
+  the session board follows ADR 0030 (provider chip, Stop, queued words with take back and send
+  now); every key screen states how it meets the smoothness bar.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
