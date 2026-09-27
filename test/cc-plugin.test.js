@@ -141,6 +141,20 @@ test("Vyre on PATH, vyred up: the copied plugin's hooks and MCP server reach it"
   assert.equal(JSON.parse(replies.get(3).result.content[0].text).text, "hello");
 });
 
+// The registry's own floor refuses harness.rules when the call it describes reaches into the vault
+// (its input holds the path). That refusal is the floor's verdict, so the hook denies too.
+test("Vyre on PATH, vyred up: a Read or a cat into the vault is denied, not waved through", async t => {
+  const { cache, env } = install(t, { withVyre: true });
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const e = { ...env, VYRE_HOME: root };
+  for (const [tool_name, tool_input] of [["Read", { file_path: path.join(root, "vault", "x") }], ["Bash", { command: `cat ${path.join(root, "vault", "x")}` }]]) {
+    const r = await hook(cache, "rules", { session_id: "s1", cwd: "/tmp", tool_name, tool_input, tool_use_id: "toolu_1" }, e);
+    assert.equal(r.out ? JSON.parse(r.out).hookSpecificOutput.permissionDecision : "(none)", "deny", tool_name);
+  }
+});
+
 test("no Vyre: the MCP server connects with no tools and says how to install", async t => {
   const { cache, env } = install(t);
   const replies = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: path.join(path.dirname(cache), "none") },
