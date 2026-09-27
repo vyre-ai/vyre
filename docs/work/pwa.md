@@ -123,16 +123,20 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   platform: service worker, offline cache, web push, badges, passkeys, the iOS pitfalls. The bar:
   60 fps, tab switch under 100 ms, cold open under 1 s offline.
 - Merged main ef51363 (a3ec177). Fixed: the SW kept none of Now's phone modules (a910ae9).
-- Plan, in order:
-  A. core/push: the push rule. Needs-you only (ask, draft, watch; lesson off by default), held
-     until 3 min after the last use of any screen (`push.seen`, reported by surfaces on show, hide
-     and first input after a minute), dropped when answered meanwhile. Planner rings always.
-  B. Deck: the presence session on gate.approve and the vault's sessionable tools
-     (x-vyre-presence-keep, the session header reused until it ends, "Face ID covers 30 min" on
-     screen); push.seen reports; the Safari empty-push fallback (planner-ack shows then closes);
-     app badge = the Needs count.
-  C. iOS pitfalls: done (see Done), except the scroll-snap row swipe (proposal, lead's call).
-  D. tailnet's UI findings (asked them for the list), then the SW version skew.
+- A done (f925a73): core/push holds ask/draft/watch until 3 min after the last `push.seen`,
+  drops them on ask.answered or gate.released/rejected/revised/failed, lesson off by default,
+  planner rings always. ADR 0011 amended, reference regenerated.
+- B done (4f48768): the Deck keeps a presence session after a passkey on gate.approve and the
+  vault's sessionable tools (x-vyre-presence-keep), reuses it until it ends and says "Face ID
+  covers sends until h:mm"; push.seen from pwa.js (show, hide with keepalive, first input after
+  60 s); planner-ack shows a silent "Answered." under the tag then closes it (WebKit revokes a
+  subscription whose pushes show nothing); app badge = the Needs count in the installed app.
+- C done (d462fd6): fixed 100dvh shell, `--kb` keyboard inset (deck/js/keyboard.js), safe areas
+  at every width, touch-action/callout, content-visibility on long lists, Send reads "Send" while
+  covered. SW cache vyre-deck-7. Row swipes stay JS transforms (rAF, will-change only while
+  dragged); a scroll-snap row is a proposal for the lead (needs a real-iPhone spike).
+- Doing: D. tailnet's UI findings (asked them), then the SW version skew. The shots'
+  now-sheet-question needs a CHAT_DEMO=1 world (it is not a regression).
 
 ## Next
 - SW version skew: a release lands on the second launch; register sw.js with the build commit.
