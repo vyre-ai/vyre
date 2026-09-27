@@ -648,6 +648,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   longer indexes the person's real conversations (a fresh temp home reported "107 facts about
   you"). test/temp-home-claude.test.js runs vyred as a dev world does, with every fs call on a
   .claude path refused and recorded, and fails if any part reaches for one.
+- threads.remember's user scope writes the home's own CLAUDE.md (claudeHome), never ~/.claude from
+  a temp or dev home.
 - Learn's skills take their Claude Code folder from claudeHome too, and still refuse to write under
   the account's own ~/.claude whatever the home.
 
