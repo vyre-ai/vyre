@@ -469,12 +469,34 @@ async function mount(key, name, params, query, hidden = false, newAgent = false)
     await mod.default(ctx);
   } catch (e) {
     if (!entry.alive) return;
+    // The view's file did not arrive (the box out of reach before the service worker kept it):
+    // say so, and mount it again once the stream is back, instead of calling it not built.
+    if (unfetched(e)) { waitForBox(key, entry, page); return; }
     console.error(e);
     put(page, h("div", { style: { padding: "48px 72px" } },
       h("div", { class: "lbl" }, name === "missing" ? "Not found" : "Not built yet"),
       h("h1", { class: "h2", style: { marginTop: "10px" } }, name === "missing" ? "There is nothing at this address." : "This part of the Deck is not here yet."),
       h("p", { class: "muted", style: { marginTop: "8px" } }, link("/now", { class: "link" }, "Back to Now"))));
   }
+}
+
+/** A module that failed to load over the network (Chrome, Firefox, Safari word it differently). @param {any} e */
+const unfetched = e => e instanceof TypeError && /dynamically imported module|module script failed|error loading dynamically imported/i.test(String(e.message));
+
+/** A page whose view could not be fetched: one quiet line, and a fresh mount when the box answers again.
+ * @param {string} key @param {{ alive: boolean }} entry @param {HTMLElement} page */
+function waitForBox(key, entry, page) {
+  put(page, h("div", { class: "page-wait", role: "status" }, h("p", { class: "muted" }, "This page loads when your box answers.")));
+  const back = (/** @type {Event} */ ev) => {
+    if (ev.type === "deck:stream" && /** @type {CustomEvent} */ (ev).detail?.state !== "open") return;
+    window.removeEventListener("deck:stream", back);
+    window.removeEventListener("online", back);
+    if (!entry.alive || pages.get(key) !== entry) return;
+    drop(key);
+    if (current === key) void route();
+  };
+  window.addEventListener("deck:stream", back);
+  window.addEventListener("online", back);
 }
 
 /** Where a page lives: its slot in the pager on a phone, else straight in #view. */

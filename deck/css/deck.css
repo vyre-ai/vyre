@@ -377,3 +377,6 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   .ea .input:not(.ea-wide) { height: 44px; }
   .ea-in { max-width: none; }
 }
+
+/* A page whose view file did not arrive yet (js/app.js waitForBox). */
+.page-wait { padding: 48px 24px; }

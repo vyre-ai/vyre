@@ -96,7 +96,9 @@ async function pill() {
     for (let i = 0; i < 40 && back.shown; i++) { await sleep(250); back = await tab.run(PILL); }
     fs.writeFileSync(path.join(out, "390-pill-back.png"), await tab.shot());
     const errs = tab.errors.filter(e => !/Failed to load resource|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|fonts\.g/.test(e));
+    const waiting = await tab.run(`await wait(1500); return document.querySelectorAll('.page-wait').length`);
     report("390-pill-back", /** @type {string[]} */ ([back.shown && `the pill stays after Retry ("${back.words}")`,
+      waiting > 0 && `${waiting} page(s) still say they load when the box answers`,
       errs.length && `errors: ${errs.join(" | ").slice(0, 300)}`].filter(Boolean)));
   } finally { await tab.close(); }
 }
