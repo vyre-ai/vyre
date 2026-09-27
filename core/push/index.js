@@ -1,7 +1,12 @@
 // @ts-check
-// push — Web Push to the Deck and the Capsule on a phone or a laptop, for the moments the user
+// push: Web Push to the Deck and the Capsule on a phone or a laptop, for the moments the user
 // is needed: a session asking permission, something held at the Gate, a watched thread, a
-// proposed lesson. docs/adr/0011-web-push.md.
+// planner ring. docs/adr/0011-web-push.md.
+//
+// A push is for "needs you" only, and never while you are at a screen: a surface calls
+// push.seen when it is shown, when it is hidden, and on the first input after a minute of none.
+// An ask, a draft or a watch that arrives within HOLD_MS of that waits until HOLD_MS after it,
+// and is dropped if it is answered or resolved meanwhile. Planner rings always push at once.
 //
 // What a notification carries is the least that can be useful: a kind, a fixed title, and the
 // Deck path to open. Never draft content, a tool's input, a value or a name the user typed: a
@@ -27,6 +32,22 @@ const SERVICES = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "pu
 const KEY_ITEM = "push-vapid";
 const KINDS = ["ask", "draft", "watch", "lesson", "planner"];
 const PEOPLE = ["cli", "local", "deck", "capsule"];
+/** Kinds on until switched off. A lesson is not "needs you", so it is off until switched on. */
+const DEFAULT_KINDS = { ask: true, draft: true, watch: true, lesson: false, planner: true };
+/** The kinds that wait while a screen is in use. */
+const HELD = new Set(["ask", "draft", "watch"]);
+const HOLD_MS = 180_000;
+const PENDING_MAX = 200;
+/** What ends a held moment before it is sent: the event, and the tag the note used. */
+const RESOLVES = {
+  "ask.answered": e => `ask-${e.payload.ask}`,
+  "gate.released": e => `draft-${e.payload.id}`,
+  "gate.rejected": e => `draft-${e.payload.id}`,
+  "gate.revised": e => `draft-${e.payload.id}`,
+  "gate.failed": e => `draft-${e.payload.id}`,
+};
+/** For tests only: the clock and the hold. */
+export const testHooks = { now: () => Date.now(), holdMs: HOLD_MS };
 
 /**
  * What each event becomes. Titles are fixed words; the only variable part is an id in the path.
@@ -76,7 +97,7 @@ export default {
       get: k => { const r = /** @type {any} */ (db.prepare("SELECT value FROM push_state WHERE key = ?").get(k)); return r ? JSON.parse(String(r.value)) : undefined; },
       set: (k, v) => db.prepare("INSERT INTO push_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, JSON.stringify(v)),
     };
-    const settings = () => ({ quiet: state.get("quiet") ?? null, kinds: { ...Object.fromEntries(KINDS.map(k => [k, true])), ...(state.get("kinds") || {}) },
+    const settings = () => ({ quiet: state.get("quiet") ?? null, kinds: { ...DEFAULT_KINDS, ...(state.get("kinds") || {}) },
       planner_label: Boolean(state.get("planner_label")) });
 
     /** The keypair: made once, the private half in the Vault. Held in memory once fetched. */
@@ -129,18 +150,58 @@ export default {
 
     /** Planner firings pushed since start, so an ack elsewhere can close them; the newest 500. */
     const rung = new Set();
+    /** When a person last used a screen (push.seen), in memory only: a restart forgets it. */
+    let lastUse = 0;
+    /** Held moments by tag, oldest first, and the one timer that sends them. */
+    const pending = new Map();
+    /** @type {NodeJS.Timeout | null} */
+    let timer = null;
+    const arm = () => {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (!pending.size) return;
+      timer = setTimeout(flush, Math.max(0, lastUse + testHooks.holdMs - testHooks.now()));
+      timer.unref();
+    };
+    /** Sends now what may go: kinds, quiet hours and a device, checked when it is sent. */
+    const post = async (n, loud = false) => {
+      const s = settings();
+      if (!s.kinds[n.kind] || (!loud && isQuiet(s.quiet, testHooks.now()))) return;
+      if (!db.prepare("SELECT 1 FROM push_devices LIMIT 1").get()) return;
+      await deliver({ ...n, at: Date.now() });
+    };
+    async function flush() {
+      timer = null;
+      if (testHooks.now() - lastUse < testHooks.holdMs) return arm();
+      const due = [...pending.values()];
+      pending.clear();
+      for (const n of due) { try { await post(n); } catch (err) { ctx.log(`push: ${/** @type {Error} */ (err).message}`); } }
+    }
     const offs = Object.entries(NOTES).map(([type, make]) => ctx.events.on(type, async e => {
       try {
         const s = settings();
         const made = make(e, s);
         if (!made) return;
         const { loud, ...n } = made;
-        if (!s.kinds[n.kind] || (!loud && isQuiet(s.quiet))) return;
+        if (!s.kinds[n.kind] || (!loud && isQuiet(s.quiet, testHooks.now()))) return;
         if (!db.prepare("SELECT 1 FROM push_devices LIMIT 1").get()) return;
+        if (HELD.has(n.kind) && testHooks.now() - lastUse < testHooks.holdMs) {
+          pending.delete(n.tag);
+          pending.set(n.tag, n);
+          while (pending.size > PENDING_MAX) pending.delete(pending.keys().next().value);
+          if (!timer) arm();
+          return;
+        }
         if (type === "planner.fired") { rung.add(String(e.payload.firing)); if (rung.size > 500) rung.delete(rung.values().next().value); }
-        await deliver({ ...n, at: Date.now() });
+        await post(n, loud);
       } catch (err) { ctx.log(`push: ${/** @type {Error} */ (err).message}`); }
     }));
+    // Answered or resolved on a screen before it went out: it never goes out.
+    for (const [type, tagOf] of Object.entries(RESOLVES)) {
+      offs.push(ctx.events.on(type, e => {
+        if (!pending.delete(tagOf(e))) return;
+        if (!pending.size && timer) { clearTimeout(timer); timer = null; }
+      }));
+    }
     // Done or Snooze on one device (or the Deck, the Capsule, a deletion) closes the notification on
     // the others: a push with only a kind and the tag, and nothing to show.
     offs.push(ctx.events.on("planner.acked", async e => {
@@ -182,7 +243,7 @@ export default {
       async () => /** @type {any[]} */ (db.prepare("SELECT * FROM push_devices ORDER BY at").all()).map(d => ({
         device: d.id, label: d.label, service: new URL(d.endpoint).hostname, at: d.at, last_ok: d.last_ok, fails: d.fails })));
 
-    tool("push.settings", "Quiet hours ({start: \"22:00\", end: \"07:00\", timezone?}, or null for none), which kinds notify (ask, draft, watch, lesson, planner), and planner_label: show a planner item's own words on the lock screen (off by default). With no input, the current settings.",
+    tool("push.settings", "Quiet hours ({start: \"22:00\", end: \"07:00\", timezone?}, or null for none), which kinds notify (ask, draft, watch, lesson, planner; lesson is off by default), and planner_label: show a planner item's own words on the lock screen (off by default). With no input, the current settings.",
       { type: "object", properties: { quiet: { anyOf: [{ type: "object" }, { type: "null" }] }, kinds: { type: "object" }, planner_label: { type: "boolean" } } },
       async i => {
         if (i.quiet !== undefined) {
@@ -200,10 +261,26 @@ export default {
         return { ...settings(), quiet_now: isQuiet(settings().quiet) };
       });
 
+    tool("push.seen", "A person is using this screen: call it when the screen is shown, when it is hidden, and on the first input after a minute of none. Asks, drafts and watches wait until 3 minutes after the last call; planner rings do not.",
+      { type: "object", properties: { surface: { type: "string", maxLength: 80 }, visible: { type: "boolean" } } },
+      async i => {
+        if (i.surface !== undefined && String(i.surface).length > 80) throw new Error("surface is at most 80 characters");
+        lastUse = testHooks.now();
+        return { ok: true };
+      });
+
     tool("push.test", "Send a test notification to every device, or one. Ignores quiet hours.",
       { type: "object", properties: { device: str } },
       async i => deliver({ kind: "test", title: "Vyre can reach this device", path: "/settings", tag: "test", at: Date.now() }, i.device || null));
 
-    return { async stop() { for (const off of offs) { try { off(); } catch {} } } };
+    return {
+      async stop() {
+        for (const off of offs) { try { off(); } catch {} }
+        if (timer) { clearTimeout(timer); timer = null; }
+        pending.clear();
+      },
+      /** For tests: what is held, and whether a timer runs. */
+      held: () => ({ pending: [...pending.keys()], timer: Boolean(timer) }),
+    };
   },
 };

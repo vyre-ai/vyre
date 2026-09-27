@@ -12,7 +12,7 @@ import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome } from "../../test/helpers.js";
 import { vapidKeys, vapidAuth, encrypt } from "./webpush.js";
-import { isQuiet } from "./index.js";
+import { isQuiet, testHooks } from "./index.js";
 
 const subtle = crypto.webcrypto.subtle;
 const u8 = b => new Uint8Array(b);
@@ -246,4 +246,111 @@ test("push: a planner firing reaches the phone as kind planner with a fixed titl
   const labelled = JSON.parse((await decrypt(phone, svc.got[6].body)).toString());
   assert.deepEqual([labelled.title, labelled.body], ["Reminder", "Call kit"]);
   assert.equal((await deck("push.settings", { kinds: { planner: false } })).data.kinds.planner, false);
+});
+
+/** A vyred with one subscribed phone, for the "needs you" hold. The hold is cut to `hold` ms of real time. */
+async function held(t, hold) {
+  const root = tempHome(t);
+  const svc = await fakeService(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" },
+    modules: { enable: [], disable: ["recall", "memory", "learn"] }, push: { hosts: ["127.0.0.1"], allow_http: true } }));
+  const before = testHooks.holdMs;
+  testHooks.holdMs = hold;
+  t.after(() => { testHooks.holdMs = before; });
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (tool, input = {}) => call(tool, input, { root, caller: "deck" });
+  const phone = await browser();
+  await deck("push.subscribe", { subscription: { endpoint: `${svc.base}/push/phone`, keys: phone.keys } });
+  const until = async (fn, what, ms = 5000) => { const end = Date.now() + ms; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 20)); } };
+  const tags = async () => Promise.all(svc.got.map(async g => JSON.parse((await decrypt(phone, g.body)).toString()).tag));
+  const state = () => d.registry.modules.get("push").handle.held();
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  return { d, root, deck, svc, until, tags, state, sleep };
+}
+
+test("push: an ask while a screen is in use waits until the hold after the last use, and a newer use pushes it out again", async t => {
+  const hold = 1200;
+  const { d, root, deck, svc, until, tags, state, sleep } = await held(t, hold);
+  assert.deepEqual(state(), { pending: [], timer: false }, "no timer while nothing is held");
+  assert.equal((await call("push.seen", {}, { root, caller: "mcp" })).error.code, "denied", "Claude cannot say a person is here");
+  assert.match((await deck("push.seen", { surface: "x".repeat(81) })).error.message, /80/);
+
+  // (a) Seen, then an ask a third of the way in: not now, but at seen + hold.
+  assert.deepEqual((await deck("push.seen", { surface: "deck", visible: true })).data, { ok: true });
+  const seenAt = Date.now();
+  await sleep(hold / 3);
+  d.events.emit("threads", "ask.raised", { ask: "a1", tool: "Bash", summary: "ls" }, { thread: "t-1" });
+  await until(() => state().pending.length === 1, "the ask held");
+  assert.equal(state().timer, true);
+  await sleep(hold / 3);
+  assert.equal(svc.got.length, 0, "not while the screen is in use");
+  await until(() => svc.got.length === 1, "the held ask sent");
+  assert.ok(Date.now() - seenAt >= hold - 50, "not before the hold ran out");
+  assert.deepEqual(await tags(), ["ask-a1"]);
+  assert.deepEqual(state(), { pending: [], timer: false }, "the timer ends with the last held moment");
+
+  // (b) A newer use before the timer fires pushes the send out to the new use + hold.
+  await deck("push.seen", { surface: "deck", visible: true });
+  d.events.emit("gate", "gate.held", { id: "g_1", kind: "send", via: "mail" }, { thread: "t-1" });
+  await until(() => state().pending.length === 1, "the draft held");
+  await sleep(hold / 2);
+  await deck("push.seen", { surface: "deck" });
+  const again = Date.now();
+  await sleep(hold * 3 / 4);
+  assert.equal(svc.got.length, 1, "the first timer saw the newer use and waited again");
+  assert.equal(state().timer, true);
+  await until(() => svc.got.length === 2, "the draft sent after the newer use's hold");
+  assert.ok(Date.now() - again >= hold - 50);
+  assert.deepEqual((await tags()).slice(1), ["draft-g_1"]);
+
+  // Long after the last use, a moment goes at once, as before.
+  await sleep(hold + 50);
+  d.events.emit("threads", "thread.watched", { watch: "w1", reason: "finished" }, { thread: "t-1" });
+  await until(() => svc.got.length === 3, "the watch at once", 1000);
+  assert.deepEqual(state(), { pending: [], timer: false });
+});
+
+test("push: a held ask answered, or a held draft resolved, never pushes; planner rings go at once; lesson is off by default", async t => {
+  const hold = 800;
+  const { d, deck, svc, until, tags, state, sleep } = await held(t, hold);
+  await deck("push.seen", { surface: "capsule", visible: true });
+
+  // (c) Answered or resolved on a screen before the hold ran out.
+  d.events.emit("threads", "ask.raised", { ask: "a2", tool: "Bash" }, { thread: "t-1" });
+  d.events.emit("gate", "gate.held", { id: "g_2", kind: "send", via: "mail" }, { thread: "t-1" });
+  d.events.emit("gate", "gate.held", { id: "g_3", kind: "send", via: "mail" }, { thread: "t-1" });
+  await until(() => state().pending.length === 3, "three held");
+  d.events.emit("threads", "ask.answered", { ask: "a2", decision: "allow", by: "capsule" }, { thread: "t-1" });
+  d.events.emit("gate", "gate.rejected", { id: "g_2", kind: "send", via: "mail", by: "deck" }, { thread: "t-1" });
+  await until(() => state().pending.length === 1, "two resolved");
+  assert.deepEqual(state().pending, ["draft-g_3"]);
+  d.events.emit("gate", "gate.released", { id: "g_3", kind: "send", via: "mail", by: "deck" }, { thread: "t-1" });
+  await until(() => !state().pending.length, "all resolved");
+  assert.equal(state().timer, false, "nothing held, no timer");
+
+  // (d) A planner ring right after a use goes at once.
+  d.events.emit("planner", "planner.fired", { firing: "f_1", item: "i_1", kind: "reminder", title: "Call kit", due: Date.now(), ring: 1 }, {});
+  await until(() => svc.got.length === 1, "the ring", 1000);
+  assert.deepEqual(await tags(), ["planner-f_1"]);
+
+  // (e) A lesson is not "needs you": off by default, on only when switched on.
+  assert.equal((await deck("push.settings", {})).data.kinds.lesson, false);
+  await sleep(hold + 50);
+  d.events.emit("learn", "lesson.proposed", { lesson: 1 }, {});
+  await sleep(200);
+  assert.equal(svc.got.length, 1, "no lesson push by default");
+  assert.equal((await deck("push.settings", { kinds: { lesson: true } })).data.kinds.lesson, true);
+  d.events.emit("learn", "lesson.proposed", { lesson: 2 }, {});
+  await until(() => svc.got.length === 2, "the lesson once switched on", 1000);
+  assert.deepEqual((await tags()).slice(1), ["lesson-2"]);
+
+  // (f) The resolved moments never went out, and stop() leaves no timer behind.
+  await sleep(200);
+  assert.equal(svc.got.length, 2, "the resolved moments never went out");
+  await deck("push.seen", {});
+  d.events.emit("threads", "ask.raised", { ask: "a3", tool: "Bash" }, { thread: "t-1" });
+  await until(() => state().timer, "a timer for the held ask");
+  await d.registry.modules.get("push").handle.stop();
+  assert.deepEqual(state(), { pending: [], timer: false }, "stop clears the timer and what was held");
 });

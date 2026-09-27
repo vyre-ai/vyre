@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Push is for "needs you" only, and waits while you are at a screen
+
+- New tool `push.seen` (`surface`, `visible`): surfaces call it when shown, when hidden, and on
+  the first input after a minute of none. An ask, a held draft or a watched thread that arrives
+  within 3 minutes of it is held until 3 minutes after the last call, then sent (quiet hours and
+  kinds checked again). One unref'd timer, only while something is held; at most 200 held.
+- A held ask answered (`ask.answered`) or a held draft resolved (`gate.released`,
+  `gate.rejected`, `gate.revised`, `gate.failed`) is dropped and never pushed.
+- Planner rings still push at once. Lessons are off by default (`push.settings` kinds lesson
+  turns them on). ADR 0011 has an amendment.
+
 #### Now on the phone: Needs you with swipe and Undo, and a detail sheet for each item
 
 - Under 760 px Now is its own layout (deck/js/now-phone.js): a one-row setup reminder in place of
