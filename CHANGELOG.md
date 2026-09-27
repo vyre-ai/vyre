@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: the mode carries over a resume; which device answered
+
+- `thread.started` says the thread's `mode`; a resumed thread starts in the mode a person put it
+  in (`--permission-mode` on the CLI, `permissionMode` on the SDK).
+- `ask.answered` says `device` when the answer came from one of the person's devices that the
+  call identifies (a paired device over the relay, the owner's tailnet node), not only the
+  surface it names.
+
 #### Sessions: images, ! shell, # memory, thinking and background tasks (parity with Claude Code)
 
 - `threads.send {images: [{media_type, data}]}`: pasted images (png, jpeg, gif, webp; at most 5,

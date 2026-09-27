@@ -620,6 +620,14 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual(rows.map(r => [r.queued, r.uuid, r.text]), [[q.queued_id, q.uuid, "after"]]);
     await w.tool("threads.mode", { thread: th.id, mode: "plan" }, "deck");
     assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.mode, "plan", "the record says the mode");
+    // The mode carries over a resume, and the chip hears it from thread.started.
+    await w.tool("threads.stop", { thread: th.id });
+    await until(async () => (await w.events(th.id)).some(e => e.type === "thread.stopped"), "the stop");
+    await w.tool("threads.send", { thread: th.id, text: "back", surface: "deck" });
+    const back = await until(async () => (await w.events(th.id)).filter(e => e.type === "thread.started").at(-1), "the resume");
+    assert.equal(back.payload.mode, "plan");
+    const argv = (await until(() => w.launches().find(l => l.argv && l.argv.includes("plan")), "the resumed launch in plan mode")).argv;
+    assert.equal(argv[argv.indexOf("--permission-mode") + 1], "plan");
   });
 
   test(`${driver}: subagents wait for a slot when the box or the project is full, then run`, { skip: driver === "cli" ? "subagent slots need the Agent SDK's in-process hooks" : skip }, async t => {
