@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Find shows which sessions are the Mac's
+
+- The phone's Find page puts the machine chip beside a Mac session's title, in search results,
+  Recent and the "Type into" list, outside the title's ellipsis so a long title never hides it
+  (deck/views/find.js, deck/css/views/find.css). The files note no longer says Mac files show
+  when the Mac is online: the box does not search the Mac's files, so it says that.
+
 #### The box's words wait for whoever holds a Mac session
 
 - The person at the box never takes a Mac session's keyboard. While another surface on the Mac
