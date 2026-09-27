@@ -81,7 +81,7 @@ export function privateSocketDir() {
 }
 
 /** @typedef {{ tailscale: boolean, address?: string, owner?: string, domain?: string, via?: "vyre.run"|"ts.net",
- *   port?: number, acme?: "production"|"staging", box?: string, onboardPort?: number, ownerSeen?: string,
+ *   port?: number, acme?: "production"|"staging", box?: string, onboardPort?: number, ownerSeen?: string, origins?: string[],
  *   guests?: { enabled: boolean, people: Record<string, { tools: string[] }> } }} Network
  * address is the https URL the Deck is served at; owner the one Tailscale login served there (ADR 0002);
  * guests the people from other tailnets it also serves, each limited to its tools (ADR 0014 part 8). */

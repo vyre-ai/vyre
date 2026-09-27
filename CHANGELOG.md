@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The hosted app may call the box from the owner's browser
+
+- The tailnet listener answers CORS for `https://app.vyre.run` (config `network.origins`), to the
+  owner only: an exact origin, GET and POST, no credentials, and Chrome's private-network ask.
+  `GET /v1/health` from it answers only `{ reachable: true }`; every other call and WebSocket
+  needs a web session (`deps.webSession`, e2e's rule), else `401 web_session_required`. The call
+  reaches the router with `peer.origin` and `peer.webSession`.
+- Tailscale docs: the iPhone DNS failure behind tailscale#19147 in "When a device cannot connect".
+
 #### VyreDrive: the name, a lighter secrets scan, no proof to switch a share, and no guest Glass
 
 - Users see the box shares as VyreDrive (built on Tailscale's Taildrive): tool descriptions, the

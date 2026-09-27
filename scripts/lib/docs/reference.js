@@ -509,6 +509,7 @@ const MEANING = {
   "network.box": "On a Mac: the address of the box it is paired with.",
   "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset.",
   "network.ownerSeen": "When the owner was first seen on the tailnet. Written by Vyre.",
+  "network.origins": "Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `[\"https://app.vyre.run\"]` when unset; `[]` turns it off. Each call but the reachability probe needs a web session.",
 };
 
 /** The fields of a JSDoc object type, top level only: [{ key, optional, type }]. */

@@ -119,6 +119,7 @@ what lets vyred name an owner.
 | The address does not load | the device is not on the tailnet, or the box is down | open Tailscale on the device and check it is connected; `vyre box` on the Mac says whether the box answers (if you added the box with `vyre box add`) |
 | `403 not_owner` | the device is signed in to Tailscale as another login, or is tagged | sign the device in as the owner |
 | a certificate error | HTTPS certificates are off for the tailnet | turn them on, then `vyre name ts.net` |
+| on an iPhone, `ERR_SSL_PROTOCOL_ERROR` or "server not found", though the device is connected | another DNS app or an encrypted-DNS profile answers the ts.net name instead of Tailscale ([tailscale#19147](https://github.com/tailscale/tailscale/issues/19147)) | remove the DNS app or profile, or turn Tailscale off and on; keep Funnel off so the name has no public answer |
 | `vyre up` on the Mac says the box did not answer | the Mac is off the tailnet, or the box is offline | start Tailscale on the Mac, then `vyre up` again |
 
 More in [Troubleshooting](../get-started/troubleshooting.md) and
@@ -132,6 +133,9 @@ More in [Troubleshooting](../get-started/troubleshooting.md) and
 - It never changes your tailnet: no policy edit, no admin setting, and no `tailscale serve`,
   `funnel` or `lock` command. Nothing about your box is public unless you publish a webhook route
   with Funnel yourself.
+- No other site's page can call it, except Vyre's hosted app (`https://app.vyre.run`), and only
+  from the owner's browser with a web session. Without one, the app learns only that the box is
+  reachable. `network.origins` changes the list; `[]` turns it off.
 - It turns on none of the optional features below by itself.
 
 ## Optional Tailscale features
