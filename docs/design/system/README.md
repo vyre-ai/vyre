@@ -21,6 +21,7 @@ spec says "(proposed)".
   the Capsule.
 - [Copy](copy.md): voice, words we use and never use, formats.
 - [The render audit](audit.md): the check every board and every change to it passes.
+- [Spec lists by team](teams.md): every open gap, sorted by the team that closes it.
 - The component specs below, one file each: anatomy, variants, sizes, states, keyboard and touch,
   motion, copy, accessibility, the implementing file on each surface, and its gaps.
 
