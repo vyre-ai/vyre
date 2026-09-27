@@ -9,6 +9,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - core/google/module.test.js counted every calendar read, and the planner's calendar sync on
   google.added now reads one more, so node was red on main. The test counts the 401 and the
   retry from the moment the token expires.
+- modules/hands-chrome/chrome.test.js: the fake computerd proxy destroys its upgraded CDP pipes
+  on close. An open pipe held server.close() forever, so a failed Chrome test on Node 22 hung the
+  whole node job until its 30-minute timeout.
 
 #### Docs: the planner page
 

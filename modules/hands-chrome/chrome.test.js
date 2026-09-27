@@ -65,6 +65,9 @@ async function launchChrome(t) {
  */
 function fakeComputerdCdp(chromePort) {
   let token = "";
+  // An upgraded socket still holds server.close() open, so close() destroys the pipes itself.
+  /** @type {Set<import("node:net").Socket>} */
+  const pipes = new Set();
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || "/", "http://fake-computerd");
     if (req.method === "GET" && url.pathname === "/cdp/json/version") {
@@ -85,6 +88,7 @@ function fakeComputerdCdp(chromePort) {
     if (url.searchParams.get("token") !== token || !url.pathname.startsWith("/cdp/")) { socket.end("HTTP/1.1 401 Unauthorized\r\nconnection: close\r\n\r\n"); return; }
     const targetPath = url.pathname.slice("/cdp".length);
     const upstream = net.connect(chromePort, "127.0.0.1");
+    for (const p of [socket, upstream]) { pipes.add(p); p.once("close", () => pipes.delete(p)); }
     upstream.on("error", () => { try { socket.destroy(); } catch {} });
     socket.on("error", () => { try { upstream.destroy(); } catch {} });
     upstream.on("connect", () => {
@@ -102,7 +106,7 @@ function fakeComputerdCdp(chromePort) {
   });
   return {
     listen: () => new Promise(resolve => server.listen(0, "127.0.0.1", () => resolve(/** @type {any} */ (server.address()).port))),
-    close: () => new Promise(resolve => server.close(() => resolve(undefined))),
+    close: () => new Promise(resolve => { server.close(() => resolve(undefined)); for (const p of pipes) p.destroy(); }),
     setToken: t => { token = t; },
   };
 }
