@@ -71,3 +71,13 @@ test("loop: a stop passes on vyred's own exit code, even when vyred is gone befo
   assert.equal(await l.exited, 7);
   assert.equal(l.starts(), 1);
 });
+
+test("loop: a vyred killed outright (SIGKILL) is started again", { timeout: 20_000 }, async t => {
+  // dash, the box's /bin/sh, answers a second wait with the same 137, where bash says 127.
+  const dir = tempHome(t);
+  const l = run(dir, [137]);
+  t.after(() => { try { l.p.kill("SIGKILL"); } catch {} });
+  for (let i = 0; i < 100 && l.starts() < 2; i++) await sleep(50);
+  assert.equal(l.starts(), 2, "vyred was not started again after a SIGKILL");
+  assert.match(l.err(), /exited \(137\); starting it again/);
+});

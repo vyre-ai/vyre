@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A killed vyred comes back on the box
+
+- core/daemon/loop.sh spun forever after a vyred killed by a signal (SIGKILL, the OOM killer):
+  dash, the box's /bin/sh, answers a second `wait` with the same 128+n where bash says 127, so
+  the loop never started vyred again and burned a core. It now stops waiting when the status
+  repeats. The box-image smoke's "a killed vyred comes back" step failed on it since 3b; new test
+  in core/daemon/loop.test.js (a fake vyred that exits 137).
+
 #### The box image builds again with the Agent SDK pin
 
 - box/Dockerfile read the SDK version by importing core/sessions/sdk.js on its own, and 8aed4887
