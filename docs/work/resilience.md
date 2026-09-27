@@ -31,8 +31,13 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 
 ## Next
 1. Per-team fixes (below), starting with pwa and mobile (the web app is the phone's default).
-2. R6: planner.upcoming is ready (work/planner 3c75e47); mobile and pwa schedule local
-   notifications from it with the key planner-<item>-<due seconds>. Add a chaos test.
+2. R6 chaos test, once work/planner 3c75e47 is on main (not yet at b1dbb49). Planner's spec:
+   key = planner-<item>-<Math.floor(due/1000)>; planner.upcoming omits moments answered or
+   ringing and returns last_event; done/snooze/dismiss {key} on an unrung moment records it
+   answered, the box never rings it, planner.acked carries unrung:true; a repeat of the key
+   returns {already:true}; the push tag and planner-ack tag equal the key. Test: a device takes
+   upcoming, goes offline (proxy partition), answers from its outbox by key, comes back; the box
+   never rings it, one planner.acked, and a retried answer is {already:true}.
 3. `last_event` on threads.get, planner.list and Needs reads (R1), with their owners.
 4. A 30 min perf check of an idle durable terminal and of the stream client (scripts/perf-check).
 
