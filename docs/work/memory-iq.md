@@ -179,6 +179,9 @@ facts are not a project's.
   unless the lead says otherwise.
 
 ## Next
+- 0.1.1 queue, in order: person and org cards; contradictions to confirm; import.start/stop/cancel
+  (after federation's sync.send); then site recipes (memory.recipe per site from glass's
+  browse.finished, self-correcting, person-editable; shape proposed to glass 28 Sep).
 - Project graphs: recall.search `sessions` filter + retrieve scopes by folders plus picked ids (0.1.1).
 - Host-to-server sync: contract in docs/design/iq-everywhere.md; agree it with federation (paused)
   and amend ADR 0008.
