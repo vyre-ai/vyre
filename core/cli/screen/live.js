@@ -7,6 +7,7 @@
 // minute. The stream is one connection for the whole screen, from `since=latest`; when it drops
 // it comes back with Last-Event-ID, so vyred replays what was missed and nothing is lost.
 
+import { backoff } from "../../resilience/backoff.js";
 import http from "node:http";
 import * as config from "../../config/index.js";
 import { call, request } from "../../daemon/client.js";
@@ -89,7 +90,8 @@ export function formatLink(d) {
 export function stream({ onEvent, onOpen, onDown, root, since = 0 }) {
   let last = Number(since) || 0;
   let gen = 0;
-  let delay = 250;
+  // 2 s doubling to 60 s with jitter (ADR 0029, R3).
+  const wait = backoff();
   let stopped = false;
   /** @type {http.ClientRequest|null} */
   let req = null;
@@ -102,7 +104,7 @@ export function stream({ onEvent, onOpen, onDown, root, since = 0 }) {
     const headers = { accept: "text/event-stream", "x-vyre-caller": "cli", ...(last ? { "last-event-id": String(last) } : {}) };
     req = http.request({ socketPath: config.paths(root).socket, path: `/v1/events/stream?type=*&since=${last ? last : "latest"}`, method: "GET", headers, agent: false }, res => {
       if (res.statusCode !== 200) { res.resume(); retry(`the event stream answered ${res.statusCode}`); return; }
-      delay = 250;
+      wait.reset();
       onOpen?.();
       res.setEncoding("utf8");
       let buf = "";
@@ -110,9 +112,13 @@ export function stream({ onEvent, onOpen, onDown, root, since = 0 }) {
         const r = parseSSE(buf + chunk);
         buf = r.rest;
         for (const f of r.frames) {
+          // vyred's `id:` on open and on each heartbeat: the cursor to resume from, before any event.
+          if (!f.data) { const n = Number(f.id) || 0; if (n > last) last = n; continue; }
           let e;
           try { e = JSON.parse(f.data); } catch { continue; }
           const id = Number(e.id) || 0;
+          // The box's log is behind this cursor: follow from where it says, and reload the lists.
+          if (e.type === "stream.reset") { last = id; onOpen?.(); continue; }
           if (id && id <= last) continue;
           if (id) last = id;
           onEvent(e);
@@ -131,8 +137,7 @@ export function stream({ onEvent, onOpen, onDown, root, since = 0 }) {
     req = null;
     onDown?.(why);
     clearTimeout(timer);
-    timer = setTimeout(connect, delay);
-    delay = Math.min(5000, delay * 2);
+    timer = setTimeout(connect, wait.delay());
   }
   connect();
   return {

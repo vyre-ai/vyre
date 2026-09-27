@@ -11,13 +11,13 @@
 // --json (before any `--`) prints one value instead: list is { mcp, google }; add is { added,
 // grants, test }; test is the test's own reply; remove is the tool's reply.
 
-import http from "node:http";
+import { follow as followStream } from "../../resilience/stream.js";
+import { open } from "../../resilience/node.js";
 import readline from "node:readline";
 import { spawn } from "node:child_process";
 import { call } from "../../daemon/client.js";
 import * as config from "../../config/index.js";
 import { dialogsAllowed } from "../../config/dialogs.js";
-import { parseSSE } from "./threads.js";
 import { callAsPerson } from "../presence.js";
 import { flags } from "../../vault/cli-io.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
@@ -252,29 +252,21 @@ function openBrowser(url) {
 
 /**
  * vyred's event stream, opened before the sign-in starts so its end cannot be missed. Resolves
- * once vyred answers, with a close function; `onEvent` gets every event after that.
- * @param {(e: any) => void} onEvent @param {(why: string) => void} onLost
+ * once vyred answers, with a close function; `onEvent` gets every event after that. A drop or a
+ * vyred restart while the browser is away reconnects from the cursor (ADR 0029), so a
+ * google.connected sent in the gap is replayed, not lost.
+ * @param {(e: any) => void} onEvent
  * @returns {Promise<{ close: () => void } | { error: string }>}
  */
-function follow(onEvent, onLost) {
+function follow(onEvent) {
   return new Promise(resolve => {
-    let open = false, closed = false;
-    const req = http.request({ socketPath: config.paths().socket, path: "/v1/events/stream?type=google.*&since=latest", method: "GET",
-      headers: { accept: "text/event-stream", "x-vyre-caller": "cli" } }, res => {
-      if (res.statusCode !== 200) { res.resume(); resolve({ error: `the event stream answered ${res.statusCode}` }); return; }
-      open = true;
-      resolve({ close: () => { closed = true; req.destroy(); } });
-      res.setEncoding("utf8");
-      let buf = "";
-      res.on("data", chunk => {
-        const r = parseSSE(buf + chunk);
-        buf = r.rest;
-        for (const fr of r.frames) { try { onEvent(JSON.parse(fr.data)); } catch {} }
-      });
-      res.on("end", () => { if (!closed) onLost("vyred closed the event stream"); });
-    });
-    req.on("error", err => { if (closed) return; if (open) onLost(`lost vyred: ${err.message}`); else resolve({ error: "unreachable" }); });
-    req.end();
+    let opened = false;
+    const s = followStream({ paths: ["unix:" + config.paths().socket], open, type: "google.*", headers: { "x-vyre-caller": "cli" }, onEvent,
+      onState: st => {
+        if (st.state === "open" && !opened) { opened = true; resolve({ close: () => s.stop() }); }
+        // Before the first answer, a missing vyred is an error to report, not a wait.
+        else if (st.state === "reconnecting" && !opened) { s.stop(); resolve({ error: "unreachable" }); }
+      } });
   });
 }
 
@@ -308,7 +300,7 @@ async function signIn(name, client, base) {
     if (e.type === "google.connected") settle({ ok: true, email: String(p.email || "") });
     else if (e.type === "google.connect-failed") settle({ ok: false, error: String(p.error || "the sign-in failed") });
   };
-  const stream = await follow(seen, why => settle({ ok: false, error: why }));
+  const stream = await follow(seen);
   if ("error" in stream) return stream.error === "unreachable" ? fail({ error: { code: "unreachable", message: "" } }) : oops(stream.error);
 
   const r = await call("google.connect", { name, client, ...(base ? { base } : {}) });

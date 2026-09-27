@@ -11,7 +11,8 @@
 // that touches the keyboard, so a lease says which terminal holds it and a second terminal is
 // told who to take it from.
 
-import http from "node:http";
+import { follow as followStream } from "../../resilience/stream.js";
+import { open } from "../../resilience/node.js";
 import path from "node:path";
 import readline from "node:readline";
 import { call } from "../../daemon/client.js";
@@ -317,39 +318,32 @@ async function watch(id) {
   }
   if (t.status === "stopped") { out(dim("  the thread is stopped · vyre threads send resumes it")); }
 
+  // Followed with the resilient client (ADR 0029): a dropped stream or a vyred restart is a
+  // quiet "reconnecting" line and a replay from the cursor, not the end of the watch.
   return new Promise(resolve => {
-    let done = false;
+    let done = false, away = false;
     const finish = code => {
       if (done) return;
       done = true;
       process.off("SIGINT", onInt);
       if (midline) process.stdout.write("\n");
-      req.destroy();
+      stream.stop();
       resolve(code);
     };
     const onInt = () => finish(0);
     process.on("SIGINT", onInt);
-    const req = http.request({ socketPath: config.paths().socket, path: `/v1/events/stream?type=*&since=${since}`, method: "GET",
-      headers: { accept: "text/event-stream", "x-vyre-caller": "cli" } }, res => {
-      if (res.statusCode !== 200) { out(beacon(`  the event stream answered ${res.statusCode}`)); finish(1); return; }
-      res.setEncoding("utf8");
-      let buf = "";
-      res.on("data", chunk => {
-        const r = parseSSE(buf + chunk);
-        buf = r.rest;
-        for (const f of r.frames) {
-          let e;
-          try { e = JSON.parse(f.data); } catch { continue; }
-          // Stream events carry the thread at the top; the payload has it too, as a fallback.
-          if ((e.thread ?? (e.payload && e.payload.thread)) !== id) continue;
-          show(e);
-          if (e.type === "thread.stopped") { finish(0); return; }
-        }
-      });
-      res.on("end", () => { if (!done) { out(dim("  vyred closed the stream")); finish(0); } });
-    });
-    req.on("error", err => { if (!done) { out(beacon(`  lost vyred: ${err.message}`)); finish(1); } });
-    req.end();
+    const say = s => { if (midline) { process.stdout.write("\n"); midline = false; } out(s); };
+    const stream = followStream({ paths: ["unix:" + config.paths().socket], open, cursor: since, headers: { "x-vyre-caller": "cli" },
+      onEvent: e => {
+        // Stream events carry the thread at the top; the payload has it too, as a fallback.
+        if ((e.thread ?? (e.payload && e.payload.thread)) !== id) return;
+        show(e);
+        if (e.type === "thread.stopped") finish(0);
+      },
+      onState: st => {
+        if (st.state === "reconnecting" && !away) { away = true; say(dim("  reconnecting to vyred…")); }
+        else if (st.state === "open" && away) { away = false; say(dim("  back")); }
+      } });
   });
 }
 
