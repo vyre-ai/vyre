@@ -128,9 +128,15 @@ export default {
         if (parseDate(str)) { date = str; return; }
         const m = LOCAL_ISO.exec(str);
         if (m && !ZONED.test(str)) { date = m[1]; wall = m[2]; return; }
-        const ms = Date.parse(str);
-        if (Number.isNaN(ms)) throw fail(`"${str}" is not a time (an ISO time, or YYYY-MM-DD)`);
-        at = ms;
+        // Date.parse reads almost anything with a number in it ("tomorrow at 9" is a day in 2001),
+        // so trust it only with a year in the text.
+        const ms = /\b\d{4}\b/.test(str) ? Date.parse(str) : NaN;
+        if (!Number.isNaN(ms)) { at = ms; return; }
+        // Words, as people say a time: "6pm" is the next 6pm in the item's zone, "tomorrow at 9",
+        // "in 20 minutes". The parser reads them as a reminder's time.
+        const said = atWords(str, zone, t);
+        if (said == null) throw fail(`"${str}" is not a time (an ISO time, YYYY-MM-DD, or words like 6pm or tomorrow at 9)`);
+        at = said;
       };
       take(i.at);
       if (kind === "todo" && i.due !== undefined) take(i.due);
@@ -158,6 +164,18 @@ export default {
       if (at == null && TIMED.includes(kind)) throw fail(`a ${kind} needs a time: at, or wall (and date)`);
       if (at != null && at < t && !repeat && (kind === "alarm" || kind === "reminder")) throw fail("that time has already passed");
       return { ...out, at, wall, date, repeat };
+    };
+
+    /** A time in words to an instant, or null: "6pm", "tomorrow at 9", "in 20 minutes", "7:30". */
+    const atWords = (str, zone, t) => {
+      if (!parser || str.length > 80) return null;
+      for (const text of [`remind me x ${str}`, `remind me x at ${str}`]) {
+        try {
+          const p = parser(text, { now: t, tz: zone });
+          if (p && !p.ambiguous && typeof p.at === "number" && !p.repeat) return p.at;
+        } catch {}
+      }
+      return null;
     };
 
     /** An item's next_fire (and at, for a repeat) as of now. */
@@ -479,7 +497,7 @@ export default {
         if (typeof v === "number") return v;
         const d = parseDate(v);
         if (d) return toUTC(end ? addDays(d, 1) : d, { hour: 0, minute: 0 }, tz);
-        const ms = Date.parse(String(v));
+        const ms = /\b\d{4}\b/.test(String(v)) ? Date.parse(String(v)) : NaN;
         if (Number.isNaN(ms)) throw fail(`"${v}" is not a date or time`);
         return ms;
       };

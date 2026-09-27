@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The planner reads a time in words wherever it takes one
+
+- planner.add `at` (and a todo's `due`) takes words as people say them: "6pm" is the next 6pm in
+  the item's zone, "tomorrow at 9", "7:30", "in 20 minutes". ISO times and YYYY-MM-DD are read as
+  before. Date.parse is trusted only with a year in the text, since it reads "tomorrow at 9" as a
+  day in 2001; the same holds for planner.agenda from and to.
+- planner.parse reads a time said first as a reminder: "6pm call Harlow Legal", "at 6:30 pick up
+  juno". Only a time that cannot be a count leads (am/pm, a colon, noon), so "3 apples" is not one.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
