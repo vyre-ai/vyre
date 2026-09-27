@@ -13,8 +13,13 @@
 //
 // This module never edits these files and never starts a server: it only reads and normalizes,
 // and never a value: `normalize()` keeps env and header NAMES only, plus `hasSecrets`, never what
-// they hold. Adding a discovered server still goes through `mcp.add`, which is how a value gets
-// into the vault as a grant, never a bare env var copied out of someone's `.mcp.json`.
+// they hold; `url` is reduced to origin plus path (a query string or userinfo is exactly where a
+// key sits: `?key=sk-...`, `user:pass@host`) and `args` has each secret-flag's value replaced with
+// the literal `[redacted]` (`--api-key`, `--token`, `--key`, `--secret`, `--password`, either as
+// the next element or joined with `=`), both with their own `hasSecrets` (reviewer's MEDIUM on
+// 9ca2c50a, 2026-09-28: env/headers were covered but args/url were kept verbatim). Adding a
+// discovered server still goes through `mcp.add`, which is how a value gets into the vault as a
+// grant, never a bare env var copied out of someone's `.mcp.json`.
 //
 // Which home: never `os.homedir()` directly. `core/config`'s `claudeJson`/`claudeHome` decide
 // whether `root` is the person's real `~/.vyre` (their real `~/.claude.json` and `~/.claude/
@@ -34,6 +39,47 @@ import { claudeHome, claudeJson } from "../config/dialogs.js";
 export const TRANSPORTS = ["stdio", "http", "sse"];
 /** A discovered name may collide with an already-added one; both are kept, told apart by source. */
 export const SOURCES = ["user", "project", "local", "plugin"];
+
+/** A flag whose value is a secret: `--api-key`, `--token`, `-k`... down to `--auth-token`. */
+const SECRET_FLAG = /^--?[\w-]*(token|key|secret|password)$/i;
+
+/**
+ * `url`'s userinfo and query string are exactly where a bearer token or an API key sits in an SSE
+ * or streamable-HTTP server's config (`https://user:pass@host/...`, `?key=sk-...`): reduced to
+ * origin plus path, with `hasSecrets` set when either was there. A `url` that `URL` cannot parse
+ * (no scheme, a bare host) falls back to the same idea with a regex, rather than trusting it whole.
+ * @param {string} u
+ */
+function redactUrl(u) {
+  try {
+    const p = new URL(u);
+    return { url: p.origin + p.pathname, hasSecrets: Boolean(p.username || p.password || p.search) };
+  } catch {
+    const noQuery = u.split(/[?#]/)[0];
+    const m = /^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^/]*@)?(.*)$/.exec(noQuery);
+    const cleaned = m ? m[1] + m[3] : noQuery;
+    return { url: cleaned, hasSecrets: cleaned !== u || Boolean(m && m[2]) };
+  }
+}
+
+/**
+ * `args`'s own place for a secret: a flag's value, either as the next element (`--api-key sk-...`)
+ * or joined with `=` (`--token=sk-...`). Replaced with the literal string `[redacted]`, never
+ * dropped, so the arg count and a reader's sense of the command line survive.
+ * @param {string[]} args
+ */
+function redactArgs(args) {
+  let hasSecrets = false;
+  const out = args.map(a => {
+    const eq = /^(--?[\w-]+)=([\s\S]*)$/.exec(a);
+    if (eq && SECRET_FLAG.test(eq[1])) { hasSecrets = true; return `${eq[1]}=[redacted]`; }
+    return a;
+  });
+  for (let i = 0; i < out.length - 1; i++) {
+    if (SECRET_FLAG.test(out[i]) && !/^--/.test(out[i + 1])) { hasSecrets = true; out[i + 1] = "[redacted]"; }
+  }
+  return { args: out, hasSecrets };
+}
 
 /**
  * One entry of a `mcpServers` object, normalized to the hub's own shape (core/mcp/hub.js `add`),
@@ -56,7 +102,11 @@ function normalize(name, v) {
     if (typeof v.command !== "string" || !v.command) return null;
     /** @type {any} */
     const out = { name, transport: "stdio", command: v.command };
-    if (Array.isArray(v.args)) out.args = v.args.filter(a => typeof a === "string");
+    if (Array.isArray(v.args)) {
+      const { args, hasSecrets } = redactArgs(v.args.filter(a => typeof a === "string"));
+      out.args = args;
+      if (hasSecrets) out.hasSecrets = true;
+    }
     if (typeof v.cwd === "string") out.cwd = v.cwd;
     if (v.env && typeof v.env === "object") {
       const names = Object.entries(v.env).filter(([, x]) => typeof x === "string").map(([k]) => k);
@@ -65,8 +115,10 @@ function normalize(name, v) {
     return out;
   }
   if (typeof v.url !== "string" || !v.url) return null;
+  const { url, hasSecrets: urlHasSecrets } = redactUrl(v.url);
   /** @type {any} */
-  const out = { name, transport: type, url: v.url };
+  const out = { name, transport: type, url };
+  if (urlHasSecrets) out.hasSecrets = true;
   if (v.headers && typeof v.headers === "object") {
     const names = Object.entries(v.headers).filter(([, x]) => typeof x === "string").map(([k]) => k);
     if (names.length) { out.headerNames = names; out.hasSecrets = true; }
