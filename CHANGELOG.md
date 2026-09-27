@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Capsule's answer grows, then scrolls; no bare headings
+
+- The user's bug (2026-09-27): a long answer was cut off mid-line in a fixed 200 pt box with no
+  way to scroll. The answer card is now as tall as its words, up to the room it has (the whole
+  area when it is alone, or all but the first group of results and two of its rows), then it
+  scrolls: with the trackpad, and with ⌘↑ ⌘↓, PageUp PageDown, Home and End while the focus stays
+  in the box. A streaming answer follows its newest words unless the user scrolled up; scrolling
+  back to the end follows again. ⌘↑ ⌘↓ stay the box's own keys while nothing needs scrolling.
+- Empty "Send to" and "Commands" headings are gone: a group with no rows is dropped (with no
+  assistant to ask, the destinations group was empty but still drawn), and the results list ends
+  on a whole row, so a heading is never left at the bottom with its rows out of sight.
+- `Sources/UI/AnswerScroll.swift`; `Tests/AnswerScrollTests.swift` (drawn off screen in a window
+  that is never shown: the card height, overflow, the keys, follow and hold, the whole-row fit,
+  no empty group; pictures 7 and 8 with VYRE_CAPSULE_SNAP).
+
 #### Voice and computer use in the same box
 
 - Voice: Option-Return talks into the box. Hold it to talk while it is down; tap it to talk until

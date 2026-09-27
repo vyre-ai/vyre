@@ -41,7 +41,10 @@ public final class CapsuleModel: ObservableObject {
     /// calls hands.stop.
     var doing = false
     var speaker: AnyObject?
-    @Published public internal(set) var groups: [Group] = []
+    /// Rows by section. A group always has rows: an empty one is dropped, never drawn as a bare heading.
+    @Published public internal(set) var groups: [Group] = [] { didSet { if groups.contains(where: { $0.items.isEmpty }) { groups.removeAll { $0.items.isEmpty } } } }
+    /// Scrolls the answer card (UI/AnswerScroll.swift); the panel's keys drive it.
+    let answerScroll = AnswerScroller()
     @Published public var selected = 0
     /// One line under the bar ("Copied", an error), cleared on the next keystroke.
     @Published public var line: String?
