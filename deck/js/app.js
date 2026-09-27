@@ -698,7 +698,21 @@ document.addEventListener("visibilitychange", () => {
 });
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  // updateViaCache none: the browser asks the box for sw.js on every launch, so a release (a new
+  // BUILD in it) installs now. When that new worker takes over a page that already had one, the
+  // page reloads at once if nobody has touched it yet, and otherwise the next time it is hidden,
+  // so a release never mixes old and new modules under someone's finger.
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(() => {});
+  let touched = false;
+  const touch = () => { touched = true; };
+  addEventListener("pointerdown", touch, { once: true, passive: true });
+  addEventListener("keydown", touch, { once: true, passive: true });
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController) return;
+    if (!touched || document.visibilityState === "hidden") { location.reload(); return; }
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") location.reload(); });
+  });
   // A notification tap on an already-open tab: the SW posts the path rather than reloading it.
   navigator.serviceWorker.addEventListener("message", e => {
     if (e.data?.type !== "vyre:navigate" || !e.data.path) return;

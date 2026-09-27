@@ -183,7 +183,7 @@ test("pwa: a planner-ack push shows a silent notification under the ring's tag, 
   assert.deepEqual(badges, [[], []], "an ask and a draft each set a dot, with no number");
   await push({ kind: "watch", title: "Done", path: "/now", tag: "watch-w", at: 1 });
   assert.equal(badges.length, 2);
-  assert.match(read("sw.js"), /const CACHE = "vyre-deck-7";/);
+  assert.match(read("sw.js"), /const BUILD = "dev";\nconst CACHE = "vyre-deck-7-" \+ BUILD;/);
 });
 
 test("pwa: a push still shows when a browser has no app badge", async () => {

@@ -16,7 +16,7 @@ import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover } from "../modules/index.js";
-import { build } from "./build.js";
+import { build, swWithBuild } from "./build.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, parse as parsePresence } from "../presence/index.js";
 import { peerPid, insideClaude } from "./peer.js";
@@ -383,6 +383,9 @@ function serveDeck(res, pathname) {
     if (wantsShell && file !== shell) { try { buf = fs.readFileSync(shell); } catch {} }
     if (!buf) return send(res, 404, { error: { code: "no_deck", message: "the Deck is not built on this machine" } });
   }
+  // The service worker carries the build, so a release is a new sw.js and a phone swaps its cache
+  // at once (deck/sw.js BUILD).
+  if (file === path.join(dir, "sw.js")) buf = Buffer.from(swWithBuild(buf.toString("utf8")));
   res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", "cache-control": "no-cache",
     "x-content-type-options": "nosniff", "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'" });
   res.end(buf);

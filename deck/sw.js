@@ -13,7 +13,11 @@
 // with postMessage({type: "vyre:clear-offline"}). There is no sign-out in Vyre yet, but this is
 // ready for whatever that turns out to be.
 
-const CACHE = "vyre-deck-7";
+// vyred writes the build it runs into BUILD as it serves this file (core/daemon serveDeck), so
+// every release is a new sw.js, which the browser installs at once with a fresh cache: the
+// release lands on this launch, not the next one. A checkout without a stamp serves "dev".
+const BUILD = "dev";
+const CACHE = "vyre-deck-7-" + BUILD;
 const OFFLINE_CACHE = "vyre-deck-offline-1";
 const OFFLINE_TOOLS = new Set(["threads.get", "projects.list"]);
 const OFFLINE_MAX = 20;                    // distinct calls kept, oldest evicted first

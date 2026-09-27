@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### An installed phone runs a new release from its next launch, not the one after
+
+- deck/sw.js carries `const BUILD`, which vyred fills with the build it runs as it serves the
+  file (`swWithBuild` in core/daemon/build.js: the commit, or the version). Every release is a new
+  service worker with a new cache, and the Deck registers it with `updateViaCache: "none"`, so
+  the browser checks on every launch. When the new worker takes over, the page reloads at once if
+  nobody has touched it yet, and otherwise the next time it is hidden. Before, the Deck's files
+  came from the cache first and a release showed only on the second launch.
+  Test in core/daemon/build.test.js.
+
 #### The phone app: a fixed shell, the keyboard inset, safe areas, taps without delay, and Send says just "Send" while covered
 
 - One fixed shell on the phone (`deck/css/deck.css`): `position: fixed; inset: 0` at `100dvh`
