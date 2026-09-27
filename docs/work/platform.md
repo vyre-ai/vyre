@@ -45,6 +45,8 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 
 - Lead: event renames (PLANNED in core/event-catalog) wait until after 0.1.0; lead routes them then, aliases for one release.
 
+- Local, unpushed (waiting for the testbox hold to lift, then one targeted run and push as a finished sha): 9d9354f8 PLANNED renames, 7d548e64 + b5145ee1 Render in polish-cli shapes (flat prompt). Tell polish-cli when pushed.
+
 ## Next
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
 1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
