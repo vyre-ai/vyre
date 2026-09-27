@@ -10,20 +10,18 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - Team asks sent 2026-09-27: native-core (module settings into the registry: they pick "settings reads manifests" or an internal settings.register), sessions (providers shape frozen by the schema; hooks seam in canUseTool, P4), polish-cli (verb shapes, who writes module.js/update.js), app-design (card shapes, iframe tokens, slot placement), pwa (slot registry + sw caching of /m/<module>/), ci (lib/* in boundaries, the release workflow), chat (renderer slot heads-up).
 - P0 written: packages/module-sdk (manifest.schema.json, manifest.js checkManifest, index.d.ts, package.json private, README), test/module-sdk.test.js, docs drift fixes in docs/architecture/spec.md and docs/build/module-contract.md.
 
-## Doing
-- P0 for batch 4: the integrator takes the newest work/platform tip (passes over work/native-core too).
-- settings.write: work/platform-settings-write e4515fb6 (worktree ../vyre-platform-sw), approved by e2e, HELD until e2e signs off native-core.
-- Store limits (security, e2e HIGH 2 fix): work/platform-store-limits c9f1d630 (worktree ../vyre-platform-sl), on native-core 390ff807, settings+modules 40/40. Sent to native-core to adopt before they merge. e2e's other items (CALL_AS scoped to setter tools; settings.set/reset PERSON_ONLY) are native-core's.
-- ONE HUB (user directive): ADR 0033 section 3 rewritten (9f133f35). No overrides/; theme = hub keys appearance.theme + appearance.tokens (checked by lib/theme before storing); prompt layers listed and toggled in the hub. Asked native-core for: hub file + live hand edits, per-key check hook, choices from a tool, prompt-layer toggle key. P4: a first-party `theme` module (mine) declares appearance.* and serves /theme.css and /v1/theme.
+## Doing (2026-09-27, after resume from logout 4)
+- P0 for batch 4: work/platform e8e3d902 (merges main 7880dfa6; 101/101 targeted) sent to the integrator; the old b4 had the stale 2e6997dd.
+- Store limits: work/platform-store-limits 67abc47f = c9f1d630 + a clean merge of native-core 19b92574 (48/48 on testbox). Sent to native-core to fast-forward (their Doing item 3). Not adopted yet at 14:20 UTC.
+- settings.write e4515fb6: HELD until e2e signs off native-core (not yet). Then hand to the integrator.
+- Hub asks to native-core (hub file + live hand edits, per-key check tool, choices tool, prompt-layer toggle key): re-sent; no answer yet. They fold them into ADR 0035.
+- P2 DONE on work/platform 54180bb5 (145/146 on testbox, 1 skip = shellcheck absent; shellcheck clean by hand): core/cli/commands/update.js + core/cli/update/releases.js (Mac), box/vyre update/rollback (box, APK + releases.sign), docs/using/box-care.md, draft docs/build/first-module.md. up.js exports health/waitFor/bring; bring compares against mineOf().version. Not tried end to end with a real npm install and restart; releases stay dry-run (VYRE_RELEASES unset).
 
 ## Next
-(Resume after logout 4: all three branches pushed; nothing uncommitted.)
-1. native-core: confirm they adopted work/platform-store-limits c9f1d630 before merging; answer their reply on the four hub asks (hub file + live hand edits, per-key check hook, choices from a tool, prompt-layer toggle key).
-2. settings.write e4515fb6: hand to the integrator only when e2e signs off native-core.
-3. P0: confirm the integrator took the newest work/platform tip into batch 4.
-4. P1 once native-core's settings are on main: loader adopts packages/module-sdk/manifest.js (add packages/module-sdk to package.json files); apiVersion; ctx.api, ctx.log levels, ctx.paths.data, ctx.settings (get/on via settings.get + settings.changed, set via settings.write); watches.on and needs.tools for home modules; replaces (name == replaces) and disable; registry.status() rows gain `commands` (polish-cli's dispatcher reads GET /v1/modules); core/cli/commands/module.js (aliases ["modules"], remove modules from daemon.js, GROUPS "Under the hood") per polish-cli kit.js conventions, they review.
-5. P2: `vyre update` (Mac: install then vyre up's restart path; box/vyre: refresh box files, vyre:prev + src.prev, backup, APK fetch/check/copy android.json last + android.json.prev, `vyre call releases.sign`). Reads GitHub Releases API (stable = newest non-prerelease, beta = newest). SHA256SUMS over TLS. Rollback restores DB only if health fails in the update window; --restore-data asks a typed confirm. Fixture = ci's dry-run dist/ (release.yml work/ci 4b49ecf5, VYRE_RELEASES gate).
-6. P3 to P5 per ADR 0033 (P4 includes the first-party `theme` module for appearance.theme/appearance.tokens using app-design's lib/theme; first lib/ adds "lib" to package files).
+1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
+2. P1 once native-core's settings are on main (loader adopts packages/module-sdk/manifest.js, apiVersion, ctx.api/log/paths.data/settings, watches.on + needs.tools, replaces + disable, registry.status commands, core/cli/commands/module.js with polish-cli review).
+3. P2 follow-ups: an end-to-end update on testbox against a throwaway stack (not /srv/vyre) with ci's dry-run dist/ as the release; update.available daily check in vyred (update.auto notify); `vyre box update` from the Mac offering the Mac the same version; the systemd rollback race (restore while systemd restarts vyred).
+4. Compile phase: tests and polish for P0/P2; merge first-module.md with writing-a-module.md later (ADR 0033 Section 7).
 
 ## Needs from others
 - ci: release.yml on work/ci 4b49ecf5. APK asset is android-<version>-<sha7>.apk and android.json's `file` is rewritten to match. Dry run only until repo variable VYRE_RELEASES=go. Its dist/ artifact is the P2 test fixture shape; waiting on the dry-run result.
