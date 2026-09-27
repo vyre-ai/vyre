@@ -1216,3 +1216,10 @@ test("switchboard: a push ask and a Write ask carry the Changes row in threads.a
   assert.deepEqual(w.detail.totals, { files: 1, added: 1, removed: 2 });
   await tool("threads.stop", { thread: id });
 });
+
+test("describe: a Bash ask's summary is redacted, as it is shown on every device", () => {
+  const d = describe("Bash", { command: "curl -H \"Authorization: Bearer sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCD\" https://example.com" });
+  assert.doesNotMatch(d.summary, /sk-ant-api03-abcdefghijklmnop/);
+  assert.match(d.summary, /^curl -H "Authorization: Bearer \[/);
+  assert.equal(describe("Bash", { command: "npm   test" }).summary, "npm test");
+});

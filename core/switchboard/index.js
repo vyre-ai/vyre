@@ -116,8 +116,20 @@ export function projectRules(tool, suggestions) {
 }
 
 
-/** The permission modes a person may put a session in. Never bypassPermissions (ADR 0030, "Security"). */
+/** The permission modes an answer may hand back (safePermissions). Never bypassPermissions (ADR 0030, "Security"). */
 export const MODES = ["default", "acceptEdits", "plan"];
+
+/**
+ * "Doesn't ask" (bypassPermissions): the person's own choice, per session (threads.mode, Shift+Tab)
+ * or as a project's default (sessions.mode.set). No Touch ID (the user's decision), but only a
+ * person's surface sets it, an answer never does (MODES), and only in a session with Vyre's
+ * plugin loaded, so the security floor still runs at PreToolUse; the Gate is vyred's and holds
+ * whatever the mode.
+ */
+export const BYPASS = "bypassPermissions";
+/** The modes a person may put a session in. */
+export const PERSON_MODES = [...MODES, BYPASS];
+export const MODE_LABELS = { default: "Ask", acceptEdits: "Edits without asking", plan: "Plan", [BYPASS]: "Doesn't ask" };
 
 /**
  * What an answer may hand back to Claude Code as updatedPermissions: rules and directories as
@@ -400,6 +412,11 @@ export class Switchboard {
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
         o.model || null, o.auth || "ambient", now, now);
       this.db.prepare("UPDATE threads_runs SET provider = ?, purpose = ? WHERE id = ?").run(o.provider, o.purpose, id);
+      // A project's default mode (sessions.mode.set), for a new session a person starts there.
+      if (w.project && !o.agent && !o.lean) {
+        const m = await this.deps.call("sessions.mode.resolve", { project: w.project }).catch(() => null);
+        if (m && m.data && PERSON_MODES.includes(String(m.data.mode))) this.db.prepare("UPDATE threads_runs SET mode = ? WHERE id = ?").run(String(m.data.mode), id);
+      }
       // A fork's running total starts at its source's, as Claude Code continues it.
       if (o.forkFrom) this.db.prepare("UPDATE threads_runs SET cost_total = (SELECT cost_total FROM threads_runs WHERE id = ?) WHERE id = ?").run(o.forkFrom, id);
       const kept = Object.fromEntries(KEPT.filter(k => o[k] !== undefined).map(k => [k, o[k]]));
@@ -479,6 +496,22 @@ export class Switchboard {
     if (!r || r.status !== "idle") return false;
     if (this.asks.open(id).length || this.leases.holder(id)) return false;
     return !this.db.prepare("SELECT 1 FROM threads_watches WHERE thread = ? LIMIT 1").get(id);
+  }
+
+  /**
+   * The floor at PreToolUse, in process, while a thread is in "Doesn't ask" (the Agent SDK's hooks).
+   * In any other mode it answers nothing: the floor runs before the question instead (onMessage).
+   * @returns {any} a PreToolUse hook's answer
+   */
+  bypassFloor(id, input) {
+    const st = this.live.get(id);
+    if (!st || st.mode !== BYPASS || !input) return {};
+    const rec = this.record(id);
+    let v = null;
+    try { v = floorRules({ tool: String(input.tool_name || ""), input: input.tool_input || {}, cwd: rec ? rec.cwd : undefined, home: this.deps.root || undefined }); } catch {}
+    if (!v || v.decision !== "deny") return {};
+    this.emit("thread.text", { message: "vyre", text: `Refused ${input.tool_name}: ${cut(v.reason || "the security floor does not allow it", 300)}`, done: true, notice: true }, id, rec ? rec.project : null);
+    return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: `Vyre's security floor refused this: ${v.reason || "not allowed"}` } };
   }
 
   /**
@@ -591,12 +624,18 @@ export class Switchboard {
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
     // In-process hooks (the Agent SDK only): a subagent waits for a concurrency slot (sessions.slots).
-    const hooks = { PreToolUse: [{ matcher: "Agent|Task", hooks: [async (/** @type {any} */ input, /** @type {any} */ toolUseID) => this.subagentSlot(id, input, toolUseID)] }] };
-    // The mode a person put the thread in carries over a resume (never bypass: MODES only).
-    const mode = MODES.includes(String(rec.mode)) && rec.mode !== "default" ? rec.mode : null;
-    const lo = { id, hooks, mode, resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
+    // "Doesn't ask": nothing reaches a question, so the floor also runs here, in process, on every
+    // call (the plugin's PreToolUse hook runs it too; this one needs no vyred round trip).
+    const hooks = { PreToolUse: [{ matcher: "Agent|Task", hooks: [async (/** @type {any} */ input, /** @type {any} */ toolUseID) => this.subagentSlot(id, input, toolUseID)] },
+      { hooks: [async (/** @type {any} */ input) => this.bypassFloor(id, input)] }] };
+    // The mode a person put the thread in carries over a resume; "Doesn't ask" only with the plugin.
+    const withPlugin = o.plugin !== false && Boolean(pluginDir());
+    const mode = PERSON_MODES.includes(String(rec.mode)) && rec.mode !== "default" && (rec.mode !== BYPASS || withPlugin) ? rec.mode : null;
+    // "Doesn't ask" asked of a session without the plugin: it starts asking instead, and says so.
+    if (rec.mode === BYPASS && !withPlugin) this.db.prepare("UPDATE threads_runs SET mode = 'default' WHERE id = ?").run(id);
+    const lo = { id, hooks, mode, skippable: withPlugin, resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, system: o.system || null, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined };
-    const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null,
+    const state = { launch: o, key, withPlugin, mode: mode || "default", message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null,
       // Turns (ADR 0030): the current one, how many this thread has had, the steered messages not
       // yet taken in, and each message's blocks so far (for message:block keys).
       turn: null, turnNo: Number(rec.turns) || 0, steers: new Map(), ord: new Map(), pendingBlock: 0, interrupting: false };
@@ -1258,15 +1297,18 @@ export class Switchboard {
    * @param {string} id @param {string} mode
    */
   async mode(id, mode) {
-    if (!MODES.includes(mode)) throw Object.assign(new Error(`mode must be one of ${MODES.join(", ")}`), { code: "bad_input" });
+    if (!PERSON_MODES.includes(mode)) throw Object.assign(new Error(`mode must be one of ${PERSON_MODES.join(", ")}`), { code: "bad_input" });
     const st = this.live.get(id);
     if (!st) return { thread: id, mode: null, note: "not running; the mode applies to a running session" };
+    if (mode === BYPASS && !st.withPlugin) {
+      throw Object.assign(new Error("Doesn't ask needs Vyre's plugin in the session, so the security floor still runs; this one started without it"), { code: "refused" });
+    }
     if (st.proc.setMode) await st.proc.setMode(mode);
     else st.proc.write({ type: "control_request", request_id: `vyre-mode-${Date.now()}`, request: { subtype: "set_permission_mode", mode } });
     st.mode = mode;
     this.db.prepare("UPDATE threads_runs SET mode = ? WHERE id = ?").run(mode, id);
     const rec = this.record(id);
-    this.emit("mode.changed", { mode }, id, rec ? rec.project : null);
+    this.emit("mode.changed", { mode, label: MODE_LABELS[mode] }, id, rec ? rec.project : null);
     return { thread: id, mode };
   }
 
@@ -1871,8 +1913,8 @@ export default {
       { type: "object", required: ["thread"], properties: { thread: str, prompt: str, name: str, surface: str } },
       async (i, { caller }) => { guard(caller, "fork sessions"); return sb.launch({ fork: i.thread, prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) }); });
 
-    tool("threads.mode", "Put a running thread in a permission mode, as Shift+Tab does in Claude Code: default (ask), acceptEdits (edits without asking) or plan (read and plan only). Only a person's surface can; bypassPermissions is never offered.",
-      { type: "object", required: ["thread", "mode"], properties: { thread: str, mode: { type: "string", enum: MODES } } },
+    tool("threads.mode", "Put a running thread in a permission mode, as Shift+Tab does in Claude Code: default (ask), acceptEdits (edits without asking), plan (read and plan only) or bypassPermissions (\"Doesn't ask\": no questions; Vyre's security floor and the Gate still hold, and only in a session with Vyre's plugin). Only a person's surface can; no answer ever sets it.",
+      { type: "object", required: ["thread", "mode"], properties: { thread: str, mode: { type: "string", enum: PERSON_MODES } } },
       async (i, { caller, thread }) => {
         if (thread && thread === i.thread) throw Object.assign(new Error("a session's mode is changed by the person, not from the session"), { code: "denied" });
         return sb.mode(i.thread, i.mode);

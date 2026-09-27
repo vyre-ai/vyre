@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: "Doesn't ask" (bypassPermissions), the person's own
+
+- `threads.mode` takes `bypassPermissions` ("Doesn't ask"), from a person's surface only, with no
+  Touch ID; `mode.changed` carries a `label`. `sessions.mode.set/get {project, mode}`: a project's
+  default for new sessions (PERSON_ONLY; event `mode.defaulted`). It carries over a resume.
+- No answer ever grants it (safePermissions still drops a setMode to it), and no model or agent
+  sets it. Only sessions with Vyre's plugin are launched able to take it
+  (`--allow-dangerously-skip-permissions` / `allowDangerouslySkipPermissions`); a lean one refuses
+  with code `refused`, and a project default falls back to asking there.
+- The floor still runs: the plugin's PreToolUse hook, and on the Agent SDK also in process
+  (Switchboard.bypassFloor). The fake Claude now runs the plugin's PreToolUse command hooks in
+  bypass mode, so the test covers the real hook end to end.
+- Fixed: a Bash ask's summary is redacted (it is shown on every device); threads.asks rows keep
+  `project`.
+
 #### Sessions: each session talks to vyred on its own socket (ADR 0030 phase 3, option A)
 
 - The Switchboard opens a socket per live thread (core/daemon/threadsock.js, from e2e) and hands

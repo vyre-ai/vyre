@@ -31,13 +31,18 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   child env, client.js honours it, MCP server + ensureUp never start a vyred inside a session,
   spawner default on for a box, sessions.thread_socket auto|on|off.
 
+- "Doesn't ask": threads.mode bypassPermissions (person-only, no Touch ID), sessions.mode.set
+  project default, plugin required, in-process floor on the SDK, answers never grant it.
+- cohesion catches: Bash ask summary redacted; asks rows keep project.
+
 ## Doing
-- Next in the lead's order: 3 "Doesn't ask".
+- Next: agent Effort in the SDK (native-core 87fb03d7 passes `effort` to threads.launch).
 
 ## Next
-3. "Doesn't ask" (bypassPermissions): person-only, no Touch ID, per session (Shift+Tab) and a
-   project default; an answer never grants it; floor (PreToolUse) + Gate still apply; refused
-   when the harness plugin is not loaded.
+- Promised (after the queue): settings.resolve at start (effort, mode, max_turns, budget_usd,
+  checkpoints, fast); server `t` on thread.text; threads.effort + settings.changed level
+  session (ADR 0035); thread.status event; context.now in enrich/capsule; brief adds planner
+  agenda, needs, connections (cohesion); tool_use id on call meta once kernel has the field.
 4. Bugs: queued sends drop images; persist pending steers (st.steers is memory only).
 5. threads.send model/effort for the Capsule's Cmd-Return (or confirm threads.model covers it).
 6. A warm background session for purpose "memory" (Vyre IQ latency).
@@ -72,6 +77,9 @@ optional deps; without them the tests silently run on the CLI).
 - daemon/client.js: request opts.socket; VYRE_SOCKET used when no root or socket given.
   cli/daemonctl ensureUp: inside a session (VYRE_SOCKET + VYRE_THREAD) only pings, never starts.
 - sessions config: spawner defaults "on" for role box; new thread_socket auto|on|off.
+- threads.mode enum adds bypassPermissions; mode.changed {label}; sessions.mode.get/set/resolve,
+  event mode.defaulted; presence PERSON_ONLY adds sessions.mode.set. Fake claude honours the
+  permission mode and runs plugin PreToolUse hooks in bypass.
 - sessions.prompt scope "capsule"; sessions.prompt.compose/preview take purpose "capsule".
 - onboard: CREDENTIAL_READERS gains threads.
 - New module sessions: tools sessions.status, setup, prompt.get/set/history/revert/preview,

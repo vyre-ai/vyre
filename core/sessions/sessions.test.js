@@ -19,7 +19,7 @@ import { installed } from "./sdk.js";
 import { optionsFor } from "./claude.js";
 import { sessionsConfig } from "./config.js";
 import { resume } from "../cli/commands/projects.js";
-import { safePermissions, MODES, MIGRATIONS, purposeOf } from "../switchboard/index.js";
+import { safePermissions, MODES, PERSON_MODES, MIGRATIONS, purposeOf } from "../switchboard/index.js";
 import { conform } from "./conformance.js";
 import { claudeProvider } from "./providers.js";
 import { load as loadSdk } from "./sdk.js";
@@ -152,8 +152,9 @@ test("sdk options: the same launch the CLI runner turns into flags", () => {
   assert.deepEqual([r.tools, r.strictMcpConfig, r.settingSources, r.extraArgs], [[], true, [], undefined]);
 });
 
-test("modes: an answer never hands back bypassPermissions, and a person picks only default, acceptEdits or plan", () => {
+test("modes: an answer never hands back bypassPermissions; only a person picks it (Doesn't ask)", () => {
   assert.deepEqual(MODES, ["default", "acceptEdits", "plan"]);
+  assert.deepEqual(PERSON_MODES, ["default", "acceptEdits", "plan", "bypassPermissions"]);
   const offered = [{ type: "setMode", mode: "bypassPermissions", destination: "session" }, { type: "setMode", mode: "acceptEdits", destination: "session" },
     { type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test:*" }], behavior: "allow", destination: "localSettings" }, { type: "setMode", mode: "dontAsk" }, null];
   assert.deepEqual(safePermissions(offered).map(x => x.mode || x.type), ["acceptEdits", "addRules"]);
@@ -389,7 +390,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(said.includes("I was not allowed to."));
   });
 
-  test(`${driver}: only a person changes a session's mode, and never to bypassPermissions`, { skip }, async t => {
+  test(`${driver}: only a person changes a session's mode; no answer and no model ever reaches bypassPermissions`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
@@ -397,11 +398,59 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual(r, { thread: th.id, mode: "acceptEdits" });
     await until(() => w.launches().some(l => l.mode === "acceptEdits"), "the mode to reach Claude Code");
     assert.ok((await w.events(th.id)).some(e => e.type === "mode.changed" && e.payload.mode === "acceptEdits"));
-    assert.ok((await w.tool("threads.mode", { thread: th.id, mode: "bypassPermissions" })).error, "bypass is not offered");
-    for (const caller of ["mcp", "mcp:agent:juno", "mcp:thread:abc", "harness"]) assert.equal((await w.tool("threads.mode", { thread: th.id, mode: "plan" }, caller)).error.code, "denied", caller);
+    for (const caller of ["mcp", "mcp:agent:juno", "mcp:thread:abc", "harness"]) {
+      for (const mode of ["plan", "bypassPermissions"]) assert.equal((await w.tool("threads.mode", { thread: th.id, mode }, caller)).error.code, "denied", `${caller} ${mode}`);
+    }
     await w.tool("threads.send", { thread: th.id, text: "forge cli threads.mode", surface: "deck" });
     await w.finished(th.id, 2);
     assert.match((await w.said(th.id)).at(-1), /^403 .*denied/, "from inside the session, even as the CLI");
+  });
+
+  test(`${driver}: "Doesn't ask": a person turns it on with no prompt, nothing is asked, and the floor still refuses`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.ok(w.launches().at(-1).argv.includes("--allow-dangerously-skip-permissions"), "a session with the plugin may be switched to it");
+    assert.deepEqual((await w.tool("threads.mode", { thread: th.id, mode: "bypassPermissions" }, "deck")).data, { thread: th.id, mode: "bypassPermissions" });
+    await until(() => w.launches().some(l => l.mode === "bypassPermissions"), "the mode to reach Claude Code");
+    const changed = (await w.events(th.id)).find(e => e.type === "mode.changed" && e.payload.mode === "bypassPermissions");
+    assert.equal(changed.payload.label, "Doesn't ask");
+    // A write to its own permission settings: nobody is asked, and the floor refuses it at PreToolUse.
+    await w.tool("threads.send", { thread: th.id, text: "settings", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal((await w.events(th.id)).filter(e => e.type === "ask.raised").length, 0, "nothing was asked");
+    assert.ok(!fs.existsSync(path.join(w.work, ".claude", "settings.local.json")), "nothing was written");
+    assert.ok((await w.said(th.id)).includes("I was not allowed to."));
+    // It carries over an idle close: the next start is launched in it.
+    await w.tool("threads.stop", { thread: th.id });
+    await w.tool("threads.send", { thread: th.id, text: "hello", surface: "deck" });
+    await w.finished(th.id, 3);
+    const l = w.launches().filter(x => x.argv).at(-1).argv;
+    assert.equal(l[l.indexOf("--permission-mode") + 1], "bypassPermissions");
+
+    // Without Vyre's plugin (a lean thread) it is refused, and the launch never allows it.
+    const lean = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", lean: true })).data;
+    await w.finished(lean.id);
+    assert.ok(!w.launches().filter(x => x.argv).at(-1).argv.includes("--allow-dangerously-skip-permissions"));
+    assert.equal((await w.tool("threads.mode", { thread: lean.id, mode: "bypassPermissions" }, "deck")).error.code, "refused");
+  });
+
+  test(`${driver}: a project's default mode: set by the person, taken by new sessions there`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    assert.ok(!(await w.tool("projects.create", { name: "Harlow Legal", home: w.work })).error);
+    assert.equal((await w.tool("sessions.mode.set", { project: "harlow-legal", mode: "bypassPermissions" }, "mcp")).error.code, "denied", "a model never sets it");
+    assert.deepEqual((await w.tool("sessions.mode.set", { project: "harlow-legal", mode: "bypassPermissions" }, "deck")).data, { project: "harlow-legal", mode: "bypassPermissions" });
+    assert.equal((await w.tool("sessions.mode.get", { project: "harlow-legal" })).data.mode, "bypassPermissions");
+    const th = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.equal((await w.events(th.id)).find(e => e.type === "thread.started").payload.mode, "bypassPermissions");
+    const argv = w.launches().filter(x => x.argv).at(-1).argv;
+    assert.equal(argv[argv.indexOf("--permission-mode") + 1], "bypassPermissions");
+    // Cleared: new sessions ask again.
+    assert.equal((await w.tool("sessions.mode.set", { project: "harlow-legal" }, "deck")).data.mode, null);
+    const b = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(b.id);
+    assert.equal((await w.events(b.id)).find(e => e.type === "thread.started").payload.mode, "default");
   });
 
   test(`${driver}: sessions run under the subreaper, and their group is reported until the last process in it is gone`, { skip }, async t => {

@@ -116,6 +116,24 @@ questions) are still added after your text.
 Only you can edit a system prompt. No agent, model or tool call from inside a session can, its own
 least of all.
 
+### Doesn't ask
+
+"Doesn't ask" (Claude Code's `bypassPermissions`) runs a session without permission questions.
+You turn it on yourself, with no Touch ID: for one session, as Shift+Tab does, or as a project's
+default for new sessions there.
+
+```sh
+vyre call threads.mode '{"thread":"<id>","mode":"bypassPermissions"}'
+vyre call sessions.mode.set '{"project":"northwind-bakery","mode":"bypassPermissions"}'
+vyre call sessions.mode.set '{"project":"northwind-bakery"}'    # back to asking
+```
+
+What still holds: Vyre's security floor runs before every tool call (writes to your settings or
+Vyre's state, secrets, and the rest of its rules are refused), and the Gate still holds outbound
+actions. Only a person sets it: no answer to a question, no model and no agent can, and a
+session's own tools cannot. A session started without Vyre's plugin (a quick answer) refuses it.
+The mode carries over when an idle session comes back.
+
 ### The Capsule's quick answer (Vyre IQ)
 
 A question you ask in the Capsule runs as a small session on the fast model with its own prompt:

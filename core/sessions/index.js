@@ -20,6 +20,9 @@ import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./conf
 /** Per-purpose and per-project model overrides a person set from a surface. */
 const MODELS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_models (scope TEXT PRIMARY KEY, model TEXT NOT NULL, by TEXT, at INTEGER NOT NULL)`;
 const MODEL = /^[A-Za-z0-9._:\[\]-]{1,80}$/;
+/** A project's default permission mode for new sessions (sessions.mode.set): "Doesn't ask" included. */
+const MODES_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_modes (project TEXT PRIMARY KEY, mode TEXT NOT NULL, by TEXT, at INTEGER NOT NULL)`;
+const SESSION_MODES = ["default", "acceptEdits", "plan", "bypassPermissions"];
 import { installed, install, VERSION, DOWNLOAD_MB } from "./sdk.js";
 import { Slots, KINDS, BOX_DEFAULTS } from "./slots.js";
 
@@ -32,7 +35,7 @@ const scope = { type: "string", description: "assistant, agent:<name>, project:<
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION]);
+    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION]);
     const db = ctx.store.db;
     const override = scope => { const r = /** @type {any} */ (db.prepare("SELECT model FROM sessions_models WHERE scope = ?").get(scope)); return r ? String(r.model) : null; };
     /**
@@ -183,6 +186,35 @@ export default {
         }
         return { project: i.project, ...projectLimits(i.project) };
       }, PEOPLE);
+
+    const projectMode = (/** @type {string} */ project) => {
+      const r = /** @type {any} */ (db.prepare("SELECT mode, by, at FROM sessions_modes WHERE project = ?").get(String(project)));
+      return r ? { mode: String(r.mode), by: r.by == null ? null : String(r.by), at: Number(r.at) } : null;
+    };
+    tool("sessions.mode.get", "The permission mode new sessions in a project start in (sessions.mode.set), or null for Claude Code's default (ask).",
+      { type: "object", required: ["project"], properties: { project: str } },
+      async i => ({ project: String(i.project), ...(projectMode(i.project) || { mode: null }) }));
+    tool("sessions.mode.set", "The permission mode new sessions in a project start in: default (ask), acceptEdits, plan or bypassPermissions (\"Doesn't ask\": the security floor and the Gate still hold; only sessions with Vyre's plugin take it). The person's own; default (or no mode) clears it. A running session keeps its mode (threads.mode changes that).",
+      { type: "object", required: ["project"], properties: { project: str, mode: { type: "string", enum: SESSION_MODES } } },
+      async (i, { caller }) => {
+        const project = String(i.project);
+        if (!/^[A-Za-z0-9._-]{1,64}$/.test(project)) throw Object.assign(new Error("project must be a project's slug"), { code: "bad_input" });
+        if (i.mode == null || i.mode === "default") db.prepare("DELETE FROM sessions_modes WHERE project = ?").run(project);
+        else {
+          if (!SESSION_MODES.includes(String(i.mode))) throw Object.assign(new Error(`mode must be one of ${SESSION_MODES.join(", ")}`), { code: "bad_input" });
+          db.prepare("INSERT INTO sessions_modes (project, mode, by, at) VALUES (?,?,?,?) ON CONFLICT(project) DO UPDATE SET mode = excluded.mode, by = excluded.by, at = excluded.at")
+            .run(project, String(i.mode), String(caller || ""), Date.now());
+        }
+        const now = projectMode(project);
+        ctx.events.emit("mode.defaulted", { project, mode: now ? now.mode : null });
+        return { project, mode: now ? now.mode : null };
+      }, PEOPLE);
+
+    ctx.tool("sessions.mode.resolve", {
+      description: "The mode a new session in a project starts in, for the Switchboard.", internal: true,
+      input: { type: "object", properties: { project: str } },
+      run: async i => ({ mode: i.project ? (projectMode(i.project) || { mode: null }).mode : null }),
+    });
 
     ctx.tool("sessions.prompt.compose", {
       description: "The system prompt for a session starting now: the levels around Vyre's own launch text. purpose \"capsule\" is the Capsule's quick answer (Vyre IQ): the whole prompt, with append read as its facts.", internal: true,

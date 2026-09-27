@@ -30,7 +30,7 @@ import { spawnSession, killGroup } from "../sessions/spawn.js";
  * subscription's login.
  * `plugins` are more plugin folders after the Harness (`plugin`): learned skills, or a job's own.
  * @param {{ id: string, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, mode?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
- *           append?: string|null, system?: { mode: "append"|"replace", text: string }|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean }} o
+ *           append?: string|null, system?: { mode: "append"|"replace", text: string }|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean, skippable?: boolean }} o
  */
 export function argsFor(o) {
   const a = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--include-partial-messages", "--verbose",
@@ -43,6 +43,8 @@ export function argsFor(o) {
   if (o.tools === "none") a.push("--tools", "", "--strict-mcp-config");
   if (o.settings === false) a.push("--setting-sources", "");
   if (o.model) a.push("--model", o.model);
+  // "Doesn't ask" can be switched on later only if the launch allows it: with Vyre's plugin only.
+  if (o.skippable) a.push("--allow-dangerously-skip-permissions");
   if (o.mode) a.push("--permission-mode", o.mode);
   if (o.name && !o.resume) a.push("-n", o.name);
   if (o.system && o.system.text) a.push(o.system.mode === "replace" ? "--system-prompt" : "--append-system-prompt", o.system.text);
