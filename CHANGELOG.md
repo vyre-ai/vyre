@@ -247,6 +247,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The perf meter stays on for this device after ?perf=1 until ?perf=0 (src/perf/flag.js): the app
   added to the Home Screen opens at /app/ with no query. On the web, Settings has a Performance
   meter row that turns it on or off from inside the installed app.
+#### A module writes its own settings (settings.write)
+
+- core/settings: settings.write, internal and for modules only (ADR 0033, approved by the lead). A
+  module may set or clear only its own "<module>." keys, only keys kept in Vyre's settings table,
+  and never a key that asks for a confirm or loosens security. It has its own write path, so it
+  never calls a tool store (which runs as the person) or touches config.json or Claude Code's
+  files. settings.changed carries `by: "module:<name>"` for these writes. What it returns for a
+  secret key is masked (maskFor), the same as settings.get for anyone but the person. Reviewed by e2e before it
+  lands.
 
 #### A secret setting's values reach only the person
 

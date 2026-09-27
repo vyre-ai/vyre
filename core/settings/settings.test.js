@@ -10,6 +10,7 @@ import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome } from "../../test/helpers.js";
 import { coerce, validateDecls } from "../config/settings.js";
+import { MASK } from "./index.js";
 
 /** A vyred with one project (northwind) and Claude Code's folder in the temp home. */
 async function world(t, { disable = [] } = {}) {
@@ -328,4 +329,74 @@ test("maskFor masks only secret keys, keeps an object's names, and leaves unset 
   assert.equal(maskFor({ secret: true }, undefined), undefined);
   assert.equal(maskFor({}, "plain"), "plain");
   assert.deepEqual(validateDecls("bakery", [{ key: "bakery.k", label: "K", type: "string", levels: ["account"], apply: "live", secret: "yes" }]), ["setting bakery.k: secret is true or false"]);
+});
+
+/** A home module that writes settings through settings.write, via a tool the test can call. */
+function homeModule(root, name, settings) {
+  const dir = path.join(root, "modules", name);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name, version: "0.1.0", roles: ["box", "local"], does: { tools: [`${name}.put`] }, settings }));
+  fs.writeFileSync(path.join(dir, "index.js"), `export default { async start(ctx) {
+    ctx.tool("${name}.put", { input: { type: "object" }, run: async i => {
+      const r = await ctx.call("settings.write", i);
+      if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
+      return r.data;
+    } });
+    return { async stop() {} };
+  } };`);
+}
+
+test("settings.write: a module sets its own plain keys, and nothing else", async t => {
+  const root = tempHome(t);
+  homeModule(root, "bakery", [
+    { key: "bakery.opens", label: "Opening hour", type: "int", min: 0, max: 23, default: 7, levels: ["account", "project"], apply: "live" },
+    { key: "bakery.fax", label: "Fax orders", type: "bool", levels: ["account"], apply: "live", confirm: true },
+    { key: "bakery.wide", label: "Wide", type: "bool", levels: ["account"], apply: "live", security: "loosens", loosens: "everything" },
+    { key: "bakery.cfg", label: "In config", type: "int", levels: ["account"], apply: "live", store: { config: "bakery.cfg" } },
+  ]);
+  homeModule(root, "oven", [{ key: "oven.heat", label: "Heat", type: "int", levels: ["account"], apply: "live" }]);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
+  /** @type {any[]} */
+  const seen = [];
+  d.events.on("settings.changed", e => seen.push(e.payload));
+
+  // Its own plain key: written, then the person sees it.
+  let r = await c("bakery.put", { key: "bakery.opens", value: 9 });
+  assert.equal(r.error, undefined, r.error && r.error.message);
+  assert.deepEqual([r.data.value, r.data.source], [9, "account"]);
+  r = await c("settings.get", { key: "bakery.opens" });
+  assert.deepEqual([r.data.value, r.data.source], [9, "account"]);
+  assert.deepEqual(seen.map(e => [e.key, e.by]), [["bakery.opens", "module:bakery"]], "the change says which module made it");
+  r = await c("bakery.put", { key: "bakery.opens", value: 99 });
+  assert.match(r.error.message, /at most 23/);
+
+  // Someone else's key, a confirm key, a loosening key, a key kept outside Vyre's table.
+  for (const [key, why] of [["oven.heat", /only its own settings/], ["bakery.fax", /needs the person's confirm/], ["bakery.wide", /needs the person's confirm/], ["bakery.cfg", /kept outside/]]) {
+    r = await c("bakery.put", { key, value: key === "oven.heat" ? 1 : true });
+    assert.ok(r.error, key);
+    assert.match(r.error.message, why, key);
+  }
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).bakery, undefined, "config.json untouched");
+
+  // A reset clears the module's own value.
+  r = await c("bakery.put", { key: "bakery.opens" });
+  assert.deepEqual([r.data.value, r.data.source], [7, "default"]);
+
+  // Not a surface's tool: the CLI, a person, can't even see it.
+  r = await c("settings.write", { key: "bakery.opens", value: 8 });
+  assert.equal(r.error.code, "no_such_tool");
+});
+
+test("settings.write: a module's own secret key comes back masked, like settings.get for anyone but the person", async t => {
+  const root = tempHome(t);
+  homeModule(root, "bakery", [{ key: "bakery.token", label: "Till token", type: "string", levels: ["account"], apply: "live", secret: true }]);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const r = await call("bakery.put", { key: "bakery.token", value: "northwind-till-1" }, { root });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(r.data.value, MASK);
 });

@@ -209,6 +209,40 @@ export default {
       run: async (i, { caller }) => change(i, caller, undefined),
     });
 
+    // A module writing its own settings (ADR 0033), the only path that isn't a person's. It is
+    // narrow on purpose: the calling module's own "<module>." keys, kept in Vyre's settings table
+    // only, never a key that asks for a confirm or loosens security. A key kept in config.json,
+    // Claude Code's files or a tool is refused, since writing those reaches past the module's own
+    // rows (a tool store is called as the person). It never goes through change(), so none of
+    // that can be reached from here.
+    ctx.tool("settings.write", {
+      description: "A module sets or clears one of its own settings (kept by Vyre, no confirm, not loosening security). Modules only.",
+      internal: true,
+      callers: ["module"],
+      input: { type: "object", required: ["key"], properties: { key: str, value: {}, level: { type: "string", enum: ["account", "project"] }, project: str } },
+      run: async (i, { caller }) => {
+        const who = String(caller);
+        const mod = who.startsWith("module:") ? who.slice("module:".length) : null;
+        const refuse = (/** @type {string} */ m) => { throw Object.assign(new Error(m), { code: "denied" }); };
+        if (!mod) refuse("settings.write is for modules");
+        if (!String(i.key).startsWith(mod + ".")) refuse(`${mod} may write only its own settings (${mod}.*)`);
+        const d = declOf(i.key);
+        if (d.module !== mod) refuse(`${i.key} is declared by ${d.module}, not ${mod}`);
+        if (d.store) refuse(`${d.key} is kept outside Vyre's settings table; only the person changes it`);
+        if (d.confirm || d.security === "loosens") refuse(`${d.key} needs the person's confirm; only the person changes it`);
+        const project = slugOf(i.project);
+        const lv = i.level || (project && d.levels.includes("project") ? "project" : "account");
+        if (!d.levels.includes(lv)) throw Object.assign(new Error(`${d.key} is set at ${d.levels.join(" or ")} level, not ${lv}`), { code: "bad_input" });
+        if (lv === "project" && !project) throw Object.assign(new Error("a project setting needs project"), { code: "bad_input" });
+        const value = i.value === undefined || i.value === null ? undefined : coerce(d, i.value);
+        const target = lv === "project" ? project : null;
+        await write(env, d, lv, target, value, who, who);
+        ctx.events.emit("settings.changed", { key: d.key, level: lv, ...(target ? { project: target } : {}), apply: d.apply, by: who });
+        ctx.log(`${d.key} ${value === undefined ? "reset" : "set"} at ${lv}${target ? " " + target : ""} by ${who}`);
+        return effective(d, project, false);
+      },
+    });
+
     ctx.tool("settings.resolve", {
       description: "The Vyre-owned values a session starting now in this project should use, as {key: value}. Unset keys are left out.",
       internal: true,
