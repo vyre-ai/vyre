@@ -55,8 +55,20 @@ const SCREENS = [
   // The Capsule, tapped: Find as a full-height sheet.
   { name: "capsule-find", path: "/now", script: `await wait(1500); await click('.cap-open'); await wait(900);`, expect: "/find", shell: "find" },
   { name: "capsule-find-paper", path: "/now", theme: "paper", script: `await wait(1500); await click('.cap-open'); await wait(900);`, expect: "/find", shell: "find" },
-  // The avatar: Settings in a sheet, over Now.
-  { name: "settings-sheet", path: "/now", script: `await click('.ph-avatar'); await waitFor('.sheet .set-sec', 6000); await wait(600);` },
+  // The avatar: the Places sheet over Now, and its Settings tile opens Settings pushed.
+  { name: "places-sheet", path: "/now", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(600);
+      if (document.querySelectorAll('.sheet-places .plc-tile').length !== 6) throw new Error('the Places sheet has not six tiles');` },
+  // Shift+F10 on the Planner tile keeps it as a fourth page: its label joins the header, and a
+  // tap on the label lands on the page, not pushed.
+  { name: "places-kept", path: "/now", expect: "/planner", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(400);
+      const t = document.querySelector('.plc-tile[data-place=Planner]'); t.focus(); t.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true }));
+      if (t.getAttribute('aria-description') !== 'Pinned as a page') throw new Error('the tile does not say it is pinned');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(600);
+      const labels = [...document.querySelectorAll('.ph-tab')].map(a => a.textContent).join(',');
+      if (labels !== 'Now,Chats,Agents,Planner') throw new Error('labels: ' + labels);
+      await click('.ph-tab[data-view=planner]'); await wait(1200);` },
+  { name: "settings-sheet", path: "/now", shell: "pushed", expect: "/settings", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(400);
+      await click('.plc-tile[data-place=Settings]'); await waitFor('.page:not(.away) .set-sec', 6000); await wait(600);` },
   { name: "find", path: "/find", shell: "find" },
   { name: "find-query", path: "/find?q=intake", wait: 2500, shell: "find" },
   { name: "find-command", path: "/find?q=tell%20intake%20to%20add%20a%20phone%20field", wait: 2500, shell: "find" },
@@ -118,6 +130,12 @@ const SCREENS = [
   { name: "onboard-history", path: "/onboard#history", wait: 3000, noShell: true },
   { name: "onboard-devices", path: "/onboard#devices", wait: 3000, noShell: true },
   // No assistant yet (onboarding's first step skipped): agents.list answers without juno.
+  // The Glass mini card (js/glass-mini.js) from a stubbed sight: kit's computer is running.
+  { name: "now-glass-mini", path: "/now", wait: 3000, stub: {
+      "sight.targets": { targets: [{ target: "agent:kit", kind: "agent", label: "kit", live: true }] },
+      "sight.steps": { steps: [{ target: "agent:kit", action: "click", summary: "Clicked Compose in Mail", ok: true, at: 0 }] },
+      "sight.frame": { target: "agent:kit", image: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0ODAiIGhlaWdodD0iMzAwIj48cmVjdCB3aWR0aD0iNDgwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzJiMjkyNiIvPjxyZWN0IHg9IjI0IiB5PSIyNCIgd2lkdGg9IjQzMiIgaGVpZ2h0PSIzNiIgcng9IjYiIGZpbGw9IiMzYTM3MzMiLz48dGV4dCB4PSI0MCIgeT0iNDgiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmaWxsPSIjZjFlZWU2Ij5NYWlsOiBOZXcgbWVzc2FnZSB0byBkYW5hQGhhcmxvd2xlZ2FsLmNvbTwvdGV4dD48L3N2Zz4=", mime: "image/svg+xml", maxWidth: 480, at: 0 } },
+    script: `await waitFor('.gm-card img', 8000); if (!document.querySelector('.gm-card[aria-label="Open Glass for kit\\'s computer"]')) throw new Error('no card for kit');` },
   { name: "no-assistant-now", path: "/now", stub: { "agents.list": [{ name: "kit", kind: "agent", projects: ["harlow-legal"], status: "idle" }] } },
   { name: "no-assistant-agents", path: "/agents", stub: { "agents.list": [{ name: "kit", kind: "agent", projects: ["harlow-legal"], status: "idle" }] } },
   // A cold launch from the home screen opens where the user left off, not at start_url, when
@@ -136,8 +154,8 @@ for (const dev of DEVICES) {
     try {
       // The notch and the home indicator, where this Chrome can emulate them.
       await tab.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: dev.insets.top, topMax: dev.insets.top, bottom: dev.insets.bottom, bottomMax: dev.insets.bottom, left: 0, leftMax: 0, right: 0, rightMax: 0 } });
-      if (s.theme) { await tab.go(base + "/now", 300); await tab.run(`localStorage.setItem("vyre.theme", ${JSON.stringify(s.theme)}); localStorage.removeItem("vyre.last");`); }
-      else { await tab.go(base + "/now", 300); await tab.run(`localStorage.removeItem("vyre.theme"); localStorage.removeItem("vyre.last");`); }
+      if (s.theme) { await tab.go(base + "/now", 300); await tab.run(`localStorage.setItem("vyre.theme", ${JSON.stringify(s.theme)}); localStorage.removeItem("vyre.last"); localStorage.removeItem("vyre.pin");`); }
+      else { await tab.go(base + "/now", 300); await tab.run(`localStorage.removeItem("vyre.theme"); localStorage.removeItem("vyre.last"); localStorage.removeItem("vyre.pin");`); }
       if (s.stub) await tab.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
         const stub = ${JSON.stringify(s.stub)}, real = window.fetch;
         window.fetch = (u, o) => { const name = String(u).split("/v1/tools/")[1]; const d = name && stub[decodeURIComponent(name)];

@@ -568,3 +568,34 @@ test("box add: after the switch, the code waits for the passkey, and an expired 
   assert.match(text, /this Mac is paired with/);
   assert.deepEqual(asked.filter(x => x === "link.pair").length, 2);
 });
+
+test("box: vyre commands lists every verb run() handles, with its arguments and flags", async () => {
+  const { listing } = await import("./commands.js");
+  const verbs = (await listing({ only: "box" })).commands[0].verbs;
+  assert.deepEqual(verbs.map(v => v.verb), ["status", "add", "update", "backup", "move", "remove"]);
+  assert.deepEqual(verbs.find(v => v.verb === "add").args, [{ name: "user@host", required: true }]);
+  assert.deepEqual(verbs.find(v => v.verb === "remove").flags.map(f => f.name), ["purge", "yes"]);
+  assert.deepEqual(verbs.filter(v => v.read).map(v => v.verb), ["status"]);
+});
+
+test("box --view: a plan that wants a yes is a prompt frame to run again with --yes, exit 2, and nothing changes", async t => {
+  const r = rig(t);
+  config.save({ box: { ssh: "alex@203.0.113.9" }, network: { box: ADDRESS } });
+  const { setView } = await import("../kit.js");
+  const lines = [];
+  const write = process.stdout.write;
+  t.after(() => { process.stdout.write = write; setView(null); });
+  process.stdout.write = /** @type {any} */ (chunk => { lines.push(String(chunk)); return true; });
+  setView("box remove");
+  const { code } = await capture(() => /** @type {any} */ (box[0]).run(["remove", "--purge", "--json"]));
+  setView(null);
+  process.stdout.write = write;
+  assert.equal(code, 2);
+  const f = lines.join("").trim().split("\n").map(l => JSON.parse(l));
+  assert.equal(f[0].view.kind, "prompt");
+  assert.deepEqual([f[0].view.name, f[0].view.choices, f[0].view.args], ["yes", ["yes", "no"], ["box", "remove", "--purge", "--yes"]]);
+  assert.match(f[0].view.label, /stop the stack.*Go ahead\?$/);
+  assert.equal(f[0].data.question, "Go ahead?");
+  assert.equal(r.read("installer.log"), "", "nothing ran on the server");
+  assert.equal(/** @type {any} */ (config.load()).box.ssh, "alex@203.0.113.9", "the box is still remembered");
+});

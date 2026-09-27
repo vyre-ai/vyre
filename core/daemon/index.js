@@ -16,7 +16,7 @@ import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
-import { Registry, discover, ownerDevice } from "../modules/index.js";
+import { Registry, discover, ownerDevice, callerKind } from "../modules/index.js";
 import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
@@ -136,7 +136,10 @@ async function startLocked(opts, root, p, release) {
   const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
-  server.on("upgrade", (req, socket, head) => upgrade(req, socket, head, socketCaller(req)));
+  server.on("upgrade", async (req, socket, head) => {
+    try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
+    catch { socket.destroy(); }
+  });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(p.socket, () => resolve(undefined)); });
   fs.chmodSync(p.socket, 0o600);
   fs.writeFileSync(p.pid, String(process.pid));
@@ -194,6 +197,14 @@ async function body(req) {
  * the only event type its streams may see, and headers to add to every response. The socket has none.
  */
 
+/**
+ * The chat's id for one tool call (X-Vyre-Call-Id), or null. Read only on a session's own paths
+ * (its thread socket, or a call vyred bound to a thread by its agent or session key), so a tool can
+ * link what it shows (a Glass step) to that call's row in the chat. It is the session's claim,
+ * never checked, and no tool decides anything on it. A malformed id is dropped without a word.
+ */
+export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(v) ? v : null);
+
 const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|onboard$|hook$)/;
 
 /**
@@ -218,16 +229,48 @@ const MODEL_LABEL = /^(mcp|harness)(?=$|[\s:])/;
  * @param {import("node:net").Socket} socket @param {any} registry
  */
 async function fromClaude(socket, registry) {
+  const who = await above(socket, registry);
+  if (who.nopid) return "vyred cannot tell which process is calling, so this is refused";
+  if (who.inside) return "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence";
+  return who.unknown ? "vyred cannot read which processes this call runs under, so this is refused" : null;
+}
+
+/**
+ * What runs above the process on this socket: a `claude` or one of vyred's threads (inside), an
+ * ancestry vyred cannot read to the top (unknown), or no pid at all (nopid).
+ * @param {import("node:net").Socket} socket @param {any} registry
+ * @returns {Promise<{ inside: boolean, unknown?: boolean, nopid?: boolean }>}
+ */
+async function above(socket, registry) {
   const pid = await peerPid(socket);
-  if (!pid) return "vyred cannot tell which process is calling, so this is refused";
+  if (!pid) return { inside: false, nopid: true };
   const r = await registry.call("threads.pids", {}, "module:vyred");
   // The processes vyred runs threads in, their process groups and sessions (core/sessions/spawn.js
   // keeps a group listed until its last process is gone, so an orphan is still caught).
   const d = r.data || {};
-  const who = insideClaude(pid, { threads: [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])] });
-  if (who.inside) return "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence";
-  return who.unknown ? "vyred cannot read which processes this call runs under, so this is refused" : null;
+  return insideClaude(pid, { threads: [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])] });
 }
+
+/** The labels of a person's own surfaces, which tools trust as the person (their callers lists and checks). */
+const PERSON_LABELS = new Set(["cli", "local", "deck", "capsule"]);
+
+/**
+ * A socket caller as vyred takes it. A person's label from a process under a `claude` or a thread
+ * is that model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the
+ * call proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
+ * review). An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
+ * here; the person's own actions still refuse it (fromClaude). Asked once per connection.
+ * @param {string} caller @param {import("node:net").Socket} socket @param {any} registry @param {string} [thread]
+ * @returns {Promise<{ caller: string, model: boolean }>}
+ */
+async function asTaken(caller, socket, registry, thread) {
+  if (!PERSON_LABELS.has(callerKind(caller))) return { caller, model: false };
+  let v = taken.get(socket);
+  if (!v) { v = above(socket, registry).then(w => w.inside); taken.set(socket, v); }
+  return await v ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true } : { caller, model: false };
+}
+/** @type {WeakMap<object, Promise<boolean>>} */
+const taken = new WeakMap();
 
 /**
  * The login the person on the socket is typing in, as a key ("ttys003#812@<start>"), or null. Null
@@ -268,7 +311,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
   // webhook route sets, and "tailnet:*" and "onboard" are identities only a listener establishes
   // (ADR 0002). None of them may be claimed over the socket; such a claim, or none, is "anonymous".
-  const caller = policy.caller || socketCaller(req);
+  let caller = policy.caller || socketCaller(req);
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
   // A guest from another tailnet (ADR 0014 part 8) reaches only its own tools: the ones the owner
   // listed or the policy granted it, and of those only GUEST_SAFE (core/names/guests.js). Every
@@ -358,6 +401,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller says it is in session ${session.slice(0, 8)}, and vyred has no running session bound with this key` } });
     via.thread = v.data.thread;
   }
+  // A person's label from a model's shell is the session's own, whatever the tool (asTaken).
+  const shell = socket && !policy.caller ? await asTaken(caller, req.socket, registry, via.thread) : { caller, model: false };
+  caller = shell.caller;
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();
     // last_event lets a surface follow the stream from now: `since=0` would replay the whole
@@ -365,6 +411,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
     const b = build();
     return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
+      // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
+      // its box by argv, never through a shell, and must run the same version.
+      cli: [process.execPath, path.join(REPO, "bin", "vyre")],
       // Where the memory is, in MB: a stress run tells a heap that grows from a native cache filling.
       memory: Object.fromEntries(Object.entries(process.memoryUsage()).map(([k, v]) => [k, Math.round(v / 1048576 * 10) / 10])),
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
@@ -418,7 +467,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const personal = PERSON_ONLY.has(name) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"])
       || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));
-    if (socket && personal && !MODEL_LABEL.test(caller)) {
+    if (socket && personal && (shell.model || !MODEL_LABEL.test(caller))) {
       const why = await fromClaude(req.socket, registry);
       if (why) return send(res, 403, { error: { code: "denied", message: why } });
     }
@@ -431,7 +480,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const proof = parsePresence(req.headers["x-vyre-presence"]);
     // For a tool one proof covers, the CLI's terminal: its window is bound to it (core/presence).
     const terminal = socket && terminalOf && SESSIONABLE.has(name) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}),
+    // Only a caller vyred bound to a thread above says which chat tool call this is.
+    const call = via.thread ? callId(req.headers["x-vyre-call-id"]) : null;
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}), ...(call ? { call } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
@@ -476,10 +527,26 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (req.method === "GET" && url.pathname === "/v1/events" && policy.eventType) return send(res, 404, { error: { code: "not_found", message: url.pathname } });
   const own = registry.routes.get(url.pathname);
   if (own) return own(req, res, { caller, url });
-  // The Deck's colours from config, read on every request so a changed theme needs no restart.
-  if (req.method === "GET" && url.pathname === "/theme.css") {
-    res.writeHead(200, { "content-type": "text/css", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
-    return res.end(themeCss((config.load(root).theme || {}).colors));
+  // What a surface paints (ADR 0035): the appearance module's answer for one device, as CSS for
+  // the Deck and module frames or JSON for the Capsule and the phone. The hub's rev is the ETag,
+  // so a surface that follows settings.changed asks again with If-None-Match and gets a 304 when
+  // nothing it paints moved. Without the appearance module, the Deck's colours from config.
+  if (req.method === "GET" && (url.pathname === "/theme.css" || url.pathname === "/v1/theme")) {
+    const css = url.pathname === "/theme.css";
+    const q = url.searchParams.get("device");
+    const device = q && /^[A-Za-z0-9][A-Za-z0-9:._@-]{0,127}$/.test(q) ? q
+      : /^(?:tailnet:(?!agent:)[^\s:]+|device:[a-z2-7]{16})$/.test(String(caller)) ? String(caller) : undefined;
+    const r = registry.tools.has("appearance.resolve") ? await registry.call("appearance.resolve", { ...(device ? { device } : {}) }, caller) : null;
+    if (!r || r.error || !r.data) {
+      if (!css) return send(res, 404, { error: { code: "not_found", message: "the appearance module is not running" } });
+      res.writeHead(200, { "content-type": "text/css", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
+      return res.end(themeCss((config.load(root).theme || {}).colors));
+    }
+    const tag = `"${r.data.rev ?? r.data.version ?? 0}${device ? "-" + device : ""}"`;
+    const head = { "cache-control": "no-cache", etag: tag, vary: "cookie, authorization", "x-content-type-options": "nosniff" };
+    if (req.headers["if-none-match"] === tag) { res.writeHead(304, head); return res.end(); }
+    res.writeHead(200, { ...head, "content-type": css ? "text/css" : "application/json" });
+    return res.end(css ? String(r.data.css || "") : JSON.stringify({ data: r.data }));
   }
   // The browser half of the resilience client (ADR 0029), which the Deck imports as
   // ../../core/resilience/<file>.js: that resolves here in a browser and to the repo file in Node,

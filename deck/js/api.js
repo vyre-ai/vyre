@@ -143,6 +143,9 @@ async function post(name, input, extra, keepalive) {
   }
   // The service worker answers a read it kept with offline: true; the box itself was not reached.
   reach(!body?.offline);
+  // The box answered while the stream is still backing off (its sockets were cut, the network
+  // never went offline): reconnect now, not at the next wait.
+  if (!body?.offline && streamState?.state === "reconnecting") kick();
   if (body && "data" in body && !body.error) {
     if (extra["x-vyre-presence-keep"]) keepSession(res.headers?.get?.("x-vyre-presence-session"));
     return body.data;
@@ -514,6 +517,9 @@ function startStream() {
   const cursor = cursorStore(BOX);
   stream = follow({
     paths: [location.origin], open,
+    // Short first waits (250 ms, 500 ms, 1 s, then doubling to 60 s): a box back within a few
+    // seconds is followed again within one of them (native-core's budget 8: caught up in 1 s).
+    backoff: backoff({ min: 250, max: 60_000 }),
     // The onboarding session rides as a header now: fetch can send one, EventSource could not.
     headers: { "x-vyre-caller": "deck", ...headers },
     onEvent: deliver,

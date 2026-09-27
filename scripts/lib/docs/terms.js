@@ -102,9 +102,9 @@ const DECK_VIEWS_PAGE = "using/deck.md#what-is-on-each-view";
 // error there, so a page naming another one is stale. The rest take free words (a query, a name).
 const STRICT = new Set(["agents", "box", "capsule", "learn", "link", "name", "presence", "vault", "watchers"]);
 
-// Pages that legitimately name old or missing things: history, gaps and the spec. They are
-// indexed, but never fail the stale check.
-const HISTORY = [/^adr\//, /^changelog\.md$/, /^known-gaps\.md$/, /^architecture\/spec\.md$/];
+// Pages that legitimately name old or missing things: history, release notes (written before
+// the release lands), gaps and the spec. They are indexed, but never fail the stale check.
+const HISTORY = [/^adr\//, /^releases\//, /^changelog\.md$/, /^known-gaps\.md$/, /^architecture\/spec\.md$/];
 const GENERATED = /^reference\//;
 // A line carrying this comment is not checked, for a page that shows a stale name on purpose.
 const IGNORE = "<!-- terms: ignore -->";
@@ -338,6 +338,9 @@ export function known(root) {
   const commands = cliCommands(root);
   /** @type {Map<string, { module: string, file: string }>} */ const tools = new Map();
   /** @type {Map<string, { module: string, file: string }>} */ const events = new Map();
+  // Settings keys a module declares (module.json "settings"): real names, served by the hub.
+  const settings = new Set();
+  for (const { manifest: m } of mods) for (const d of Array.isArray(m.settings) ? m.settings : []) if (d && typeof d.key === "string") settings.add(d.key);
   for (const { dir, manifest: m } of mods) {
     for (const t of new Set(m.does?.tools || [])) if (!tools.has(t)) tools.set(t, { module: m.name, file: firstFile(root, dir, t, `${dir}/module.json`) });
     for (const e of new Set(m.watches?.emits || [])) if (!events.has(e)) events.set(e, { module: m.name, file: firstFile(root, dir, e, `${dir}/module.json`) });
@@ -351,7 +354,7 @@ export function known(root) {
     for (const m of fs.readFileSync(file, "utf8").matchAll(/\bctx\.([a-z]\w*)\.([a-z]\w*)/g)) api.add(`${m[1]}.${m[2]}`);
   }
   // Every dotted name, and every prefix of one: `glass.files` is a real namespace.
-  const names = new Set([...tools.keys(), ...events.keys(), ...config.keys(), ...api]);
+  const names = new Set([...tools.keys(), ...events.keys(), ...config.keys(), ...api, ...settings]);
   const prefixes = new Set();
   for (const n of names) { const s = n.split("."); for (let i = 1; i < s.length; i++) prefixes.add(s.slice(0, i).join(".")); }
   // Namespaces whose children the code lists in full: a tool's or an event's, and config.json's

@@ -1,10 +1,12 @@
 // ScreenAttach: what is on the screen, attached to words that point at it (ADR 0015).
 //
-// When the words sent from the Capsule refer to the screen ("summarize this", "what's this
-// error", "reply to this") or text is selected in the app in front, the send carries a short
-// block of screen context: the app, the window, the URL, the selection and an excerpt of the
-// visible text. The Capsule shows it first as a chip ("with your screen: Safari · ...") that the
-// user can remove, so nothing about the screen is ever sent without being shown.
+// The Capsule always knows what is on screen (the user, 2026-09-27): every send from its box
+// (quick answers, "do ...", a session) carries a short block of screen context: the app, the
+// window, the URL, the selection and an excerpt of the visible text. The Capsule shows it first
+// as a chip ("sees: Safari · ...") that the user can remove for that send, and "Stop sharing the
+// screen" turns it off until turned back on; off, only words that point at the screen ("summarize
+// this", "what's this error") or a selection attach it. Nothing about the screen is ever sent
+// without the chip showing.
 //
 // screen.context already redacts: a password field's value and selection never leave the helper,
 // and the floor's blind places (password managers, sign-in dialogs, security settings, Vyre's own
@@ -143,11 +145,11 @@ enum ScreenAttach {
         return false
     }
 
-    /// Attach when the words point at the screen or text is selected, never in a blind place and
-    /// never for a password field's selection.
-    static func decide(words: String, light: ScreenSnapshot) -> Bool {
+    /// Attach always while sharing is on, else when the words point at the screen or text is
+    /// selected; never in a blind place, and never a password field's value (body() leaves it out).
+    static func decide(words: String, light: ScreenSnapshot, always: Bool = false) -> Bool {
         if light.blind != nil { return false }
-        return refersToScreen(words) || light.hasSelection
+        return always || refersToScreen(words) || light.hasSelection
     }
 
     // MARK: - The chip and the block
@@ -155,9 +157,9 @@ enum ScreenAttach {
     static func chip(_ s: ScreenSnapshot) -> String {
         let app = s.app.isEmpty ? "the app in front" : s.app
         let title = s.window.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty, title != s.app else { return "with your screen: \(app)" }
+        guard !title.isEmpty, title != s.app else { return "sees: \(app)" }
         let short = title.count > titleMax ? String(title.prefix(titleMax - 1)).trimmingCharacters(in: .whitespaces) + "\u{2026}" : title
-        return "with your screen: \(app) \u{00B7} \(short)"
+        return "sees: \(app) \u{00B7} \(short)"
     }
 
     /// The block appended to the words. Empty for a blind place (which never gets a chip).
@@ -239,6 +241,9 @@ final class ScreenAttacher {
     private var full: ScreenSnapshot?
     private var generation = 0
 
+    /// Whether every send carries the screen (ScreenSharing), asked at each attachment.
+    var always: () -> Bool = { false }
+
     init(vyred: VyredLink, log: @escaping (String) -> Void = { _ in }) { self.vyred = vyred; self.log = log }
 
     var available: Bool { vyred.has("screen.context") }
@@ -273,7 +278,7 @@ final class ScreenAttacher {
             guard gen == generation else { return nil }
             light = light ?? s
         }
-        guard let l = light, ScreenAttach.decide(words: words, light: l) else { return nil }
+        guard let l = light, ScreenAttach.decide(words: words, light: l, always: always()) else { return nil }
         if full == nil {
             let s = await read(text: true)
             guard gen == generation else { return nil }
@@ -289,5 +294,28 @@ final class ScreenAttacher {
         let r = await vyred.call("screen.context", input, presence: false)
         if let e = r.error { log("sight: no screen context for the chip: \(e)"); return nil }
         return ScreenSnapshot.from(r.data)
+    }
+}
+
+/// Whether the Capsule shares the screen with every send: on unless the person turned it off.
+/// Kept in the app's own defaults; a test home keeps it in memory only.
+@MainActor final class ScreenSharing {
+    static let key = "shareScreen"
+    private let defaults: UserDefaults?
+    private var memory: Bool
+
+    init(defaults: UserDefaults?) {
+        self.defaults = defaults
+        memory = defaults?.object(forKey: Self.key) as? Bool ?? true
+    }
+
+    /// The app's own suite, or nothing under tests.
+    static func standard() -> ScreenSharing {
+        ScreenSharing(defaults: ProcessInfo.processInfo.environment["VYRE_CAPSULE_TEST"] == nil ? UserDefaults(suiteName: "sh.vyre.capsule") : nil)
+    }
+
+    var on: Bool {
+        get { memory }
+        set { memory = newValue; defaults?.set(newValue, forKey: Self.key) }
     }
 }
