@@ -209,6 +209,28 @@ Plan (to the lead before building):
   cookie store is keychain-encrypted, Safari's is TCC-protected; IndexedDB keys are not). The
   session raises the bar from one curl to stealing a browser's store.
 
+## RESTART SAVE (27 Sep, before the restart)
+
+Handed off (all with the integrator or signed off):
+- work/e2e-sdk 65cbc02a (image SDK pin) landed. work/e2e-noclaude 88c90d56 (claudeHome,
+  transcriptFolders, learn skills, switchboard remember) sent to the integrator.
+- work/e2e 4e5a27f7-era code (404 not_found, `vyre link signin` waits) for batch 4; scripts:
+  e2e-split/thread.sh, e2e-headscale README, rc-smoke.sh (+ scripts/rc-smoke/) at daf63e22.
+- Signed off: native-core 3ae4fc93 and fa349d31 (+ platform d62792d0, 70242656), connectors
+  84f630c9, cohesion 533f84e2 / RC 0f4d1105, sessions db4af9c3 (split validated: check.sh 30/30,
+  thread.sh 8/8), memory-iq 6a49c4bb (+ transcriptFolders merged in 2dd6e83a).
+- rc-smoke proven: 21 pass / 0 fail / 3 skip on a build-app + npm pack of pre/batch4b 63d943f5.
+  box-deploy runs it from work/e2e 88610b5e on main 68463d04's build-site vyre.tgz (npm ci first).
+
+Waiting on:
+- box-deploy's rc-smoke output on 68463d04 (mail/theme may switch on there).
+- ci's release-dry-run-v0.1.0-rc.1 artifact: `gh run download <id> -R vyre-ai/vyre -n
+  release-dry-run-v0.1.0-rc.1 -D <dir>`, check SHA256SUMS, run rc-smoke on it.
+- The integrator's reply on core/memory/rooms.test.js:227 (passes alone; likely run under claude).
+
+Next after the restart: merge main into work/e2e; the two above; any review a team sends.
+No testbox processes of mine are running.
+
 ## Doing (27 Sep, after logout 4)
 
 Done this session:
