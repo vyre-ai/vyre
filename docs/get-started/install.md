@@ -370,10 +370,8 @@ vyre capsule
 ```
 
 ```output
-  downloading https://vyre.run/box/Vyre-mac.zip
-  checked against the hash in this npm package
-  installed /Users/alex/Applications/Vyre.app
-  open it: vyre capsule (or double-click it in Finder)
+  vyre capsule install builds the Capsule on this Mac; nothing is downloaded.
+  packaged /usr/local/lib/node_modules/vyre/local/capsule/dist/Vyre-darwin-arm64/Vyre.app · source 3f9c2a1b · signed ad hoc, verified
   Capsule open · press Control twice anywhere · log /Users/alex/.vyre/logs/capsule.out
 ```
 

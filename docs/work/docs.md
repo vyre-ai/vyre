@@ -55,34 +55,60 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 - Cloudflare: the vault token (`CLOUDFLARE_API_TOKEN`, account token) reads and writes Pages.
   Created project `vyre-docs` (production branch main, nothing deployed to production, no custom
   domain). Preview deployed: https://preview.vyre-docs.pages.dev (branch `preview`).
+- Round 2 and 3 merged to main (integrator at 9335919, main f3b5e36): renderer syntax (tabs,
+  SNAG, WHY, figures with dark twins, demos, colours), terms index (docs/index.json,
+  reference/index.md, stale-mention check), screenshots with content-hash staleness, install
+  rewrite, Tailscale from zero, Vyre in Claude Code, connectors, Glass, today's merges.
+- theme.js: pwa's themeCss plus THEME_COLORS/THEME_USE; test/theme-defaults.test.js ties it to
+  deck.css. Preview at https://preview.vyre-docs.pages.dev (branch preview, noindex).
+- d5659d9 sent to integrator: vyre doctor first in troubleshooting, vault/memory presence gaps
+  closed, box-update gap renamed to the printed command.
 
 ## Doing
 
-- aaeb16a sent to integrator (round 2 + main at d51dd69). Round 3 on top, subagents:
-  T Tailscale-from-zero guide (get-started/tailscale.md); M1 sweep of get-started, known-gaps,
-  concepts, build, security, architecture for today's merges (pairing in onboarding, rules for
-  every non-person call, vault.caps, federation ADR 0021, install 6 MB and lazy model); M2 sweep of
-  using/ (connectors patch from scratchpad, new using/claude-code.md from cc-plugin, glass-live
-  text into using/glass.md, pwa Settings > Devices, Create your assistant, theme.colors).
-  Then retake shots (180 stale after main's Deck changes), regen, tests, preview redeploy.
-- Capsule "build locally" waits for capsule-pro 4c957a4 to reach main.
+- Screenshot retake (stale after main's Deck changes). The 403 not_owner blocker is fixed in the
+  tooling (0039172, 8036a21): identity.js refuses anything outside 100.64/10 before whois, so the
+  preload (VYRE_SHOTS_PEER=127.0.0.2=100.64.0.2) makes pairFrom's socket read as 100.64.0.2, the
+  fake whois answers for 100.64.0.2, and after pairing the onboarding carries on at
+  http://alex-box.tail0000.ts.net/onboard (the owner reaching the box closes the loopback door, as
+  on a real box). The four pairing shots retook cleanly. A full run is going on the test box
+  (~/vyre-ci/docs-s, log ~/vyre-ci/docs-s-run.log).
+  Resume: if the run finished, copy back `docs/**/shots/*.png` and `docs/shots.json` from
+  ~/vyre-ci/docs-s, place new shots on pages, regen reference/index from a clean git archive, run
+  the docs tests, redeploy preview (`--branch preview`), send the head to the integrator.
+- Glass boot-failure text applied (c006e55 on main).
+- a93dbcb: agents need no passkey (e6922da on main): using/agents.md, concepts/presence.md (the
+  list now matches HUMAN_ONLY, plus presence.when).
+
+## Next
+
+- Production deploy of docs.vyre.run only after the user's yes on the preview.
 
 ## Pending page changes (apply when the code reaches main)
 
-- glass-live: using/glass.md "If a computer does not start" becomes: Glass shows "kit's computer
-  did not start", the reason (e.g. "kit's computer stopped as soon as it started (exit code 3)"),
-  then ". Press Restart computer on kit's page, then Retry. If it fails again, the box's log says
-  why." with a "Retry" button and an "Open kit's page" link; the panel says "Stopped". Retry starts
-  the same computer again; Restart computer makes a new one from the current image, so Restart first
-  when the box's software was fixed. Replaces the "connection dropped" text now on the page.
-  Keep the `vyre call computers.checkout '{"agent":"kit"}'` line as the way to see the full
-  reason on the box. Trigger: integrator merges work/glass-live c006e55.
-- cc-plugin c4a30dd + 2d9a274: planner rows, "Every session knows you", reminders; text in
-  docs/work/pending-cc-plugin.md.
+- USER STANDING RULE, Vyre must not nag: fewer prompts. Touch ID only for pairing a device, vault
+  secrets, and sending, posting or paying outside; one Touch ID lasts about 30 minutes. Pages
+  change only when that code lands (presence.md, vault.md, memory.md, learning.md, glass.md,
+  deck.md, troubleshooting, first-day, install, concepts/floor.md all describe presence prompts).
+- glass-live dcb03ce (take-over, hand-back and Sign in privately ask for no passkey): when it
+  merges, glass.md step 2 (no passkey needed for Glass), Take over, hand-back, and Sign in
+  privately (just Sign in privately, then Start); concepts/presence.md moves computers.takeover
+  and computers.giveback to the new PERSON_ONLY list (no proof; agents, tailnet guests and
+  Claude's sessions still refused). Regenerate reference.
+- cc-plugin: the lead's final /vyre text is in docs/work/pending-cc-plugin.md; apply on merge.
 - planner: the planner team drafts docs/using/planner.md from merged code (alarms, timers,
   reminders, todos, notes, calendar sync, delivery to whichever device is up, what agents may do);
   docs edits it, adds it to nav under Using Vyre, links it from claude-code.md's /vyre rows.
-- capsule-pro 4c957a4: `vyre capsule` builds the native app locally; the download is retired.
+  Agent rule (user): agents add notes, reminders and todos without asking; an item names the agent
+  only when it is not your own assistant or session; no visible limit, no "only you can edit".
+- capsule-pro (work/capsule-pro, "`vyre capsule install` builds; nothing is downloaded"): `vyre capsule`
+  builds the native Capsule on first run (swiftc; an `xcode-select --install` hint if the Command
+  Line Tools are missing; a once-only offer of a local signing identity), then opens it.
+  `vyre capsule install` builds without opening. `vyre capsule --electron` runs the old Electron
+  Capsule until it is retired. No Vyre-mac.zip, no download link, capsule-install.js and
+  box/Vyre-mac.sha256 are gone. Pages: using/capsule.md (Install it), install.md step 14,
+  first-day, troubleshooting (Gatekeeper and zip snags go), onboarding step 6, box-care, CONTRIBUTING
+  refs to the zip. Also scripts/build-site.sh's zip branch (box-deploy is removing it).
 - main f3b5e36 (spec: no ctx.projects): close that gap in known-gaps.md and module-contract.md.
 
 ## Next

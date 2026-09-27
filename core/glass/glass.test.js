@@ -17,7 +17,7 @@ import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { start } from "../daemon/index.js";
-import { HUMAN_ONLY } from "../presence/index.js";
+import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import { call, request } from "../daemon/client.js";
 import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { fakeComputerd } from "./providers/fake.js";
@@ -537,10 +537,15 @@ test("glass: runs in vyred beside the real computers module, and serves raw byte
   assert.equal(again.error.code, "bad_ticket");
 });
 
-test("glass: taking the keyboard needs presence, handing it back does not", async t => {
-  const s = await boot(t);
-  assert.ok(s.registry.tools.get("glass.take").presence, "take asks for a passkey");
-  assert.ok(!s.registry.tools.get("glass.release").presence && !HUMAN_ONLY.has("glass.release"), "hand back never does");
+test("glass: taking and handing back the keyboard need no passkey, private or not; an agent still cannot", async t => {
+  const s = await boot(t, { shield: true });
+  for (const tool of ["glass.take", "glass.release"]) {
+    assert.ok(!s.registry.tools.get(tool).presence && !HUMAN_ONLY.has(tool), `${tool} asks for no passkey`);
+    assert.ok(PERSON_ONLY.has(tool), `${tool} is still a person's`);
+  }
   assert.equal((await s.deck("glass.take", { target: "computer:kit", surface: "deck:laptop" })).error, undefined);
   assert.equal((await s.deck("glass.release", { target: "computer:kit", surface: "deck:laptop" })).data.released, true);
+  assert.equal((await s.deck("glass.take", { target: "computer:kit", surface: "deck:laptop", private: true })).data.private, true, "sign in privately follows the same rule");
+  assert.equal((await s.deck("glass.release", { target: "computer:kit", surface: "deck:laptop" })).data.released, true);
+  assert.match((await s.kit("glass.take", { target: "computer:kit", surface: "deck:laptop" })).error.message, /an agent cannot act as a person's screen/);
 });
