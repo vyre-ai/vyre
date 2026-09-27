@@ -19,10 +19,13 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(HERE, "..", "..", "..", "bin", "vyre");
 const FAKE_CLAUDE = path.join(HERE, "..", "..", "switchboard", "testing", "fake-claude.js");
 
-/** @returns {Promise<{ code: number, out: string }>} */
+/** @returns {Promise<{ code: number, out: string, stdout: string }>} */
 const run = (root, args) => new Promise(resolve =>
   execFile(process.execPath, [BIN, ...args], { env: { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1" }, timeout: 30_000 },
-    (err, stdout, stderr) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, out: stdout + stderr })));
+    (err, stdout, stderr) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, out: stdout + stderr, stdout })));
+
+/** Every stdout line of a --view run, parsed as a frame. @param {string} s */
+const frames = s => s.trim().split("\n").map(l => JSON.parse(l));
 
 async function until(fn, what, ms = 10_000) {
   const end = Date.now() + ms;
@@ -155,4 +158,32 @@ test("agents cli: computer shows an agent's machine, restarts it, and shows and 
   assert.equal(juno.code, 1);
   assert.match(juno.out, /juno has no computer/);
   assert.match((await vyre("help", "agents")).out, /vyre agents computer <name> restart/);
+});
+
+test("agents cli: vyre commands lists every verb run() handles, without vyred", async t => {
+  const root = tempHome(t);
+  const r = await run(root, ["commands", "agents", "--json"]);
+  assert.equal(r.code, 0, r.out);
+  const verbs = JSON.parse(r.stdout).commands[0].verbs;
+  assert.deepEqual(verbs.map(v => v.verb), ["list", "create", "update", "ask", "history", "threads", "resume", "computer", "usage", "stop", "delete"]);
+  assert.deepEqual(verbs.filter(v => v.person).map(v => v.verb), ["create", "update", "resume", "computer"]);
+  assert.deepEqual(verbs.filter(v => v.read).map(v => v.verb), ["list", "history", "threads", "usage"]);
+  assert.deepEqual(verbs.find(v => v.verb === "delete").aliases, ["rm", "remove"]);
+  assert.deepEqual(verbs.find(v => v.verb === "history").flags.map(f => f.name), ["limit", "before"]);
+});
+
+test("agents cli: --view draws the agents as a table and a computer as a card, with the data --json prints", async t => {
+  const { vyre } = await world(t);
+  const l = await vyre("agents", "list", "--view");
+  assert.equal(l.code, 0, l.out);
+  const f = frames(l.stdout);
+  assert.deepEqual([f[0].cmd, f[0].view.kind, f[0].view.title], ["agents list", "table", "Agents"]);
+  assert.deepEqual(f[0].view.columns.map(c => c.key), ["name", "kind", "status", "doing", "projects"]);
+  assert.deepEqual(f[0].view.rows.map(r => r.id), ["juno", "kit"]);
+  assert.deepEqual(f[0].data, JSON.parse((await vyre("agents", "--json")).stdout));
+  assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 0 });
+
+  const c = frames((await vyre("agents", "computer", "kit", "--view")).stdout);
+  assert.deepEqual([c[0].view.kind, c[0].view.title, c[0].view.state], ["card", "kit's computer", "off"]);
+  assert.deepEqual(c[0].data, JSON.parse((await vyre("agents", "computer", "kit", "--json")).stdout));
 });
