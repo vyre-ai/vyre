@@ -30,7 +30,7 @@ In the order `vyre help` lists them.
 | [`vyre index`](#vyre-index) | index new and changed sessions now |
 | [`vyre new`](#vyre-new) | make a project by picking sessions (flags: --home --thread --workspace --person --org --no-pick) |
 | [`vyre open`](#vyre-open) | a project: what its threads are told, and its threads |
-| [`vyre threads`](#vyre-threads) | sessions vyred runs: start, send, list, get, watch, queue, interrupt, mode, open, asks, answer, stop (anything else searches sessions) |
+| [`vyre threads`](#vyre-threads) | sessions vyred runs: start, send, list, get, watch, queue, interrupt, mode, model, rewind, shell, tasks, open, asks, answer, stop (anything else searches sessions) |
 | [`vyre sessions`](#vyre-sessions) | how the sessions Vyre starts run: driver, sign-in, the model per purpose, the system prompt |
 | [`vyre threads`](#vyre-threads-1) | every session on this machine, searched by what was said |
 | [`vyre resume`](#vyre-resume) | open a thread in Claude Code where it ran, with its project's brief (--project, --name) |
@@ -181,7 +181,7 @@ vyre open <project> [--json]
 
 ### vyre threads
 
-Sessions vyred runs: start, send, list, get, watch, queue, interrupt, mode, open, asks, answer, stop (anything else searches sessions).
+Sessions vyred runs: start, send, list, get, watch, queue, interrupt, mode, model, rewind, shell, tasks, open, asks, answer, stop (anything else searches sessions).
 
 ```
 vyre threads start|send|watch|answer|interrupt|stop … [--json]
@@ -193,6 +193,9 @@ Running a session vyred owns:
   vyre threads send <thread> <text>                 mid-turn, vyred joins it to the running turn
   vyre threads send <thread> --queue <text>         hold it until the turn ends (a terminal session always does)
   vyre threads send <thread> --steer <text>         join the running turn at its next step
+  vyre threads send <thread> --image F [text]       with a picture (.png .jpg .gif .webp, 5 MB, 5 at most)
+  vyre threads send <thread> "!ls"                  a leading ! runs it (shell), # remembers it; --raw sends as typed
+  vyre threads send <thread> /compact               a slash command; vyre threads commands <thread> lists them
   vyre threads queue <thread>                       what is queued and not yet handed over
   vyre threads take-back|send-now <thread> <queued> take a queued message back, or hand it over now
   vyre threads edit <thread> <queued> [text]        change it (no text: $EDITOR)
@@ -202,7 +205,16 @@ Running a session vyred owns:
   vyre threads fork <thread> [prompt]               a new session from this one's history
   vyre threads mode <thread> [default|acceptEdits|plan]
                                                     say or set the permission mode
-  vyre threads rewind <thread> <uuid>               back to a message, files too
+  vyre threads model <thread> [opus|sonnet|haiku|ID]
+                                                    say or switch the model (/model)
+  vyre threads thinking <thread> on|off             thinking on (the model decides how much) or off
+  vyre threads rewind <thread>                      the messages to go back to; in a terminal, pick one
+  vyre threads rewind <thread> <n|uuid> [--restore conversation|code|both]
+                                                    back to a message (double Esc); its words come back
+  vyre threads shell <thread> <command...>          run it in the thread's folder (! mode); Claude sees it next
+  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (# mode)
+  vyre threads tasks <thread>                       its background tasks (shells, subagents)
+  vyre threads kill-task <thread> <task>            stop one
   vyre threads open <thread>                        open it in claude here (vyred lets go of an idle one)
   vyre threads stop <thread>                        end its process; the transcript stays
   Setting a mode is refused from inside Claude Code: use the Deck or a plain terminal.

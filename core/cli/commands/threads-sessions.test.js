@@ -18,7 +18,8 @@ import { start } from "../../daemon/index.js";
 import { call, request } from "../../daemon/client.js";
 import { tempHome, present } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
-import { formatEvent, pendingQueue, sendArgs, queuedId, usageLine, watchBackoff, MODES } from "./threads.js";
+import { formatEvent, pendingQueue, sendArgs, queuedId, usageLine, watchBackoff, MODES,
+  routeLine, imagesFrom, rewindTurns, turnFor, modelOf, IMAGES } from "./threads.js";
 import { modelScope, promptScope, previewInput } from "./sessions.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -26,16 +27,92 @@ const BIN = path.join(HERE, "..", "..", "..", "bin", "vyre");
 const FAKE = path.join(HERE, "..", "..", "switchboard", "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
 const plain = s => (s == null ? s : s.replace(/\x1b\[[0-9;]*m/g, ""));
+/** A 1x1 PNG, for a message with a picture. */
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
 
 // ------------------------------------------------------------ pure parts
 
 test("sendArgs: --queue and --steer before the text say how; later ones are words", () => {
-  assert.deepEqual(sendArgs(["a1b2", "draft", "the", "menu"]), { how: null, ref: "a1b2", words: ["draft", "the", "menu"] });
-  assert.deepEqual(sendArgs(["--queue", "a1b2", "draft"]), { how: "queue", ref: "a1b2", words: ["draft"] });
-  assert.deepEqual(sendArgs(["a1b2", "--steer", "also", "the", "prices"]), { how: "steer", ref: "a1b2", words: ["also", "the", "prices"] });
-  assert.deepEqual(sendArgs(["a1b2", "use", "--queue", "here"]), { how: null, ref: "a1b2", words: ["use", "--queue", "here"] });
+  const plainSend = { raw: false, images: [], error: null };
+  assert.deepEqual(sendArgs(["a1b2", "draft", "the", "menu"]), { how: null, ref: "a1b2", words: ["draft", "the", "menu"], ...plainSend });
+  assert.deepEqual(sendArgs(["--queue", "a1b2", "draft"]), { how: "queue", ref: "a1b2", words: ["draft"], ...plainSend });
+  assert.deepEqual(sendArgs(["a1b2", "--steer", "also", "the", "prices"]), { how: "steer", ref: "a1b2", words: ["also", "the", "prices"], ...plainSend });
+  assert.deepEqual(sendArgs(["a1b2", "use", "--queue", "here"]), { how: null, ref: "a1b2", words: ["use", "--queue", "here"], ...plainSend });
   assert.deepEqual(sendArgs(["a1b2", "--", "--queue", "is", "a", "flag"]).words, ["--queue", "is", "a", "flag"]);
   assert.equal(sendArgs(["--queue", "a1b2", "--steer", "x"]).how, "both");
+});
+
+test("sendArgs: --image repeats, --raw keeps a ! or # as words, a bare --image is a mistake", () => {
+  assert.deepEqual(sendArgs(["a1b2", "--image", "menu.png", "--image=logo.jpg", "--raw", "!not", "a", "shell"]),
+    { how: null, ref: "a1b2", words: ["!not", "a", "shell"], raw: true, images: ["menu.png", "logo.jpg"], error: null });
+  assert.deepEqual(sendArgs(["a1b2", "--image", "menu.png"]).words, []);
+  assert.equal(sendArgs(["a1b2", "--image"]).error, "--image needs a file");
+  assert.deepEqual(sendArgs(["a1b2", "see", "--image", "x.png"]).images, [], "after the text it is words");
+});
+
+test("routeLine: ! runs, # remembers, the rest is sent; raw sends as typed", () => {
+  assert.deepEqual(routeLine("!ls -la"), { tool: "threads.shell", body: "ls -la" });
+  assert.deepEqual(routeLine("# prefer tabs in Harlow Legal's scripts"), { tool: "threads.remember", body: "prefer tabs in Harlow Legal's scripts" });
+  assert.deepEqual(routeLine("/compact"), { tool: "threads.send", body: "/compact" });
+  assert.deepEqual(routeLine("draft the menu! #2"), { tool: "threads.send", body: "draft the menu! #2" });
+  assert.deepEqual(routeLine("!ls", true), { tool: "threads.send", body: "!ls" });
+  assert.deepEqual(routeLine("#tag", true), { tool: "threads.send", body: "#tag" });
+  assert.deepEqual(routeLine("!"), { tool: "threads.shell", body: "" });
+});
+
+test("imagesFrom: type by extension, size and count checked before anything is sent", t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-img-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const png = path.join(dir, "menu.png");
+  fs.writeFileSync(png, PNG);
+  const [one] = imagesFrom([png]);
+  assert.equal(one.media_type, "image/png");
+  assert.equal(one.data, PNG.toString("base64"));
+  fs.copyFileSync(png, path.join(dir, "logo.JPEG"));
+  assert.equal(imagesFrom([path.join(dir, "logo.JPEG")])[0].media_type, "image/jpeg");
+  fs.writeFileSync(path.join(dir, "notes.txt"), "hi");
+  assert.throws(() => imagesFrom([path.join(dir, "notes.txt")]), /notes\.txt: an image is \.png, \.jpg, \.gif or \.webp/);
+  assert.throws(() => imagesFrom([path.join(dir, "gone.png")]), /gone\.png: no such file/);
+  const big = path.join(dir, "big.webp");
+  fs.writeFileSync(big, "");
+  fs.truncateSync(big, IMAGES.mb * 1024 * 1024 + 1);
+  assert.throws(() => imagesFrom([big]), /big\.webp is 5\.0 MB; an image is at most 5 MB/);
+  assert.throws(() => imagesFrom(Array(IMAGES.count + 1).fill(png)), /at most 5 images in a message; 6 given/);
+  assert.equal(imagesFrom(Array(IMAGES.count).fill(png)).length, IMAGES.count);
+});
+
+test("rewindTurns: the messages to go back to, numbered, minus what a rewind left behind", () => {
+  const turn = (id, uuid, text) => ({ id, at: id * 1000, type: "thread.turn", payload: { turn: "t:" + id, uuid, text } });
+  const ev = [
+    turn(1, "aaaa1111-0000-4000-8000-000000000001", "draft the Northwind Bakery menu"),
+    { id: 2, type: "thread.text", payload: { message: "m", done: true, text: "ok" } },
+    turn(3, "bbbb2222-0000-4000-8000-000000000002", "add prices"),
+    turn(4, "cccc3333-0000-4000-8000-000000000003", "and the hours"),
+    turn(5, "cccc3333-0000-4000-8000-000000000003", "and the hours\n\nSundays too"),
+    { id: 6, type: "thread.turn", payload: { turn: "t:6", text: "no uuid" } },
+  ];
+  const all = rewindTurns(ev);
+  assert.deepEqual(all.map(t => [t.n, t.uuid.slice(0, 4), t.text]), [[1, "aaaa", "draft the Northwind Bakery menu"], [2, "bbbb", "add prices"], [3, "cccc", "and the hours\n\nSundays too"]]);
+  assert.deepEqual(rewindTurns(ev, 2).map(t => [t.n, t.text]), [[1, "add prices"], [2, "and the hours\n\nSundays too"]]);
+  // Rewound to "add prices": it and what came after are gone; a code-only rewind keeps them.
+  const back = [...ev, { id: 7, type: "thread.rewound", payload: { uuid: "bbbb2222-0000-4000-8000-000000000002", restore: "conversation" } }];
+  assert.deepEqual(rewindTurns(back).map(t => t.text), ["draft the Northwind Bakery menu"]);
+  assert.equal(rewindTurns([...ev, { id: 7, type: "thread.rewound", payload: { uuid: "bbbb2222-0000-4000-8000-000000000002", restore: "code" } }]).length, 3);
+  assert.deepEqual(rewindTurns([...back, turn(8, "dddd4444-0000-4000-8000-000000000004", "add prices, in dollars")]).map(t => t.n), [1, 2]);
+  assert.deepEqual(rewindTurns([]), []);
+
+  assert.deepEqual(turnFor("2", all), { uuid: "bbbb2222-0000-4000-8000-000000000002" });
+  assert.match(/** @type {any} */ (turnFor("9", all)).error, /numbered 1 to 3; 9 is not one/);
+  assert.deepEqual(turnFor("CCCC", all), { uuid: "cccc3333-0000-4000-8000-000000000003" });
+  assert.match(/** @type {any} */ (turnFor("ab", all)).error, /too short/);
+  assert.deepEqual(turnFor("eeee5555-0000-4000-8000-000000000005", all), { uuid: "eeee5555-0000-4000-8000-000000000005" }, "not in the window: passed on");
+  assert.match(/** @type {any} */ (turnFor("1", [])).error, /no messages to rewind to/);
+});
+
+test("modelOf: the record's model, else the last switch in the events", () => {
+  assert.equal(modelOf({ thread: { model: "claude-sonnet-4-6" }, events: [{ type: "model.switched", payload: { model: "haiku" } }] }), "claude-sonnet-4-6");
+  assert.equal(modelOf({ thread: {}, events: [{ type: "model.switched", payload: { model: "opus" } }, { type: "model.changed", payload: { model: "haiku" } }] }), "haiku");
+  assert.equal(modelOf({ thread: {}, events: [] }), null);
 });
 
 test("queuedId: the id a queued send came back with, however vyred spells it", () => {
@@ -99,6 +176,33 @@ test("formatEvent: the new session events render, unknown ones are ignored", () 
   assert.equal(f({ type: "thread.finished", payload: { canceled: true, reason: "interrupt" } }), "  interrupted\n");
   assert.match(f({ type: "thread.finished", payload: { error: { code: "x", message: "the model failed" } } }), /failed · the model failed/);
   assert.equal(f({ type: "thread.something-new", payload: { x: 1 } }), null);
+});
+
+test("formatEvent: model, thinking, tasks, shell, remember and rewind lines", () => {
+  const seen = new Set();
+  const f = e => plain(formatEvent(e, seen));
+  assert.equal(f({ type: "model.switched", payload: { model: "sonnet", live: true } }), "  model: sonnet\n");
+  assert.equal(f({ type: "model.switched", payload: { model: "haiku", live: false } }), "  model: haiku (from its next run)\n");
+  assert.equal(f({ type: "model.changed", payload: { model: "opus" } }), "  model: opus\n");
+  assert.equal(f({ type: "thinking.switched", payload: { on: false } }), "  thinking: off\n");
+  // Thinking shows once per message, and the message's end clears it.
+  assert.equal(f({ type: "thread.thinking", payload: { message: "m1", delta: "Let me look at" } }), "  thinking…\n");
+  assert.equal(f({ type: "thread.thinking", payload: { message: "m1", delta: " the menu" } }), null);
+  assert.equal(f({ type: "thread.text", payload: { message: "m1", delta: "Here" } }), "Here");
+  assert.equal(f({ type: "thread.text", payload: { message: "m1", done: true, text: "Here" } }), "\n");
+  // A task: when it starts, not on updates, and when it ends.
+  assert.equal(f({ type: "thread.task", payload: { id: "task_4", status: "running", kind: "shell", title: "npm run dev" } }), "  · shell task task_4 in the background: npm run dev\n");
+  assert.equal(f({ type: "thread.task", payload: { id: "task_4", status: "running", kind: "shell", title: "npm run dev (port 3000)" } }), null);
+  assert.equal(f({ type: "thread.task", payload: { id: "task_4", status: "killed", kind: "shell", title: "npm run dev", summary: "stopped by the user" } }), "  · shell task task_4 killed: stopped by the user\n");
+  assert.equal(f({ type: "thread.task", payload: { id: "task_5", status: "completed", kind: "agent", title: "review" } }), "  · agent task task_5 completed\n");
+  assert.equal(seen.size, 0);
+  assert.equal(f({ type: "thread.shell", payload: { command: "ls", code: 0, output: "menu.md\nprices.md\n" } }), "  ! ls\n    menu.md\n    prices.md\n");
+  assert.equal(f({ type: "thread.shell", payload: { command: "false", code: 1, output: "" } }), "  ! false\n  exit 1\n");
+  assert.equal(f({ type: "thread.remembered", payload: { scope: "local", file: "/work/northwind/CLAUDE.local.md" } }), "  # remembered in CLAUDE.local.md (local)\n");
+  assert.equal(f({ type: "thread.rewound", payload: { uuid: "bbbb2222-0000", restore: "conversation", at: "x" } }), "  rewound to bbbb2222\n");
+  assert.equal(f({ type: "thread.rewound", payload: { uuid: "bbbb2222-0000", restore: "both", files: { restored: true, files_changed: ["/w/menu.md"] } } }),
+    "  rewound to bbbb2222 · the conversation and the files · 1 file put back\n");
+  assert.equal(f({ type: "thread.sent", payload: { text: "this one", images: 2, surface: "deck" } }), "  > this one (+2 images)  (deck)\n");
 });
 
 test("sessions scopes: a purpose or a project for models; assistant, agent or project for prompts", () => {
@@ -214,6 +318,128 @@ test("threads verbs: start with a purpose, one-shot get, interrupt, mode, queue 
     else coming(r, name);
   }
   assert.equal((await vyre(["threads", "take-back", id], w.env)).code, 2, "take-back needs the queued id");
+});
+
+test("threads chat parity: model, thinking, commands, shell and !, remember and #, tasks, images, rewind list, or what is coming", { timeout: 120_000 }, async t => {
+  const w = await world(t);
+  const s = await vyre(["threads", "start", "--cwd", w.work, "--json", "hello from alex"], w.env);
+  assert.equal(s.code, 0, s.out);
+  const id = JSON.parse(s.stdout).id;
+  const events = async () => (await w.tool("threads.get", { thread: id, limit: 1000 })).data?.events || [];
+  const finished = async n => until(async () => (await events()).filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
+  await finished(1);
+  let turns = 1;
+
+  // model: read from the record on any vyred; switched where vyred can.
+  const m0 = await vyre(["threads", "model", id], w.env);
+  assert.equal(m0.code, 0, m0.out);
+  assert.match(m0.out, /model: /);
+  assert.ok("model" in JSON.parse((await vyre(["threads", "model", id, "--json"], w.env)).stdout));
+  assert.equal((await vyre(["threads", "model", id, "not a model!"], w.env)).code, 2);
+  const m = await vyre(["threads", "model", id, "haiku"], w.env);
+  if (w.have.has("threads.model")) {
+    assert.equal(m.code, 0, m.out);
+    assert.match(m.out, /model: haiku/);
+    assert.equal(JSON.parse((await vyre(["threads", "model", id, "--json"], w.env)).stdout).model, "haiku");
+    assert.match((await vyre(["threads", "get", id], w.env)).out, /^ +model: haiku/m, "the switch shows in the thread");
+  } else coming(m, "threads.model");
+
+  // thinking: on for a live session, or a clear "not running".
+  assert.equal((await vyre(["threads", "thinking", id, "maybe"], w.env)).code, 2);
+  const th = await vyre(["threads", "thinking", id, "on"], w.env);
+  if (w.have.has("threads.thinking")) assert.match(th.out, th.code === 0 ? /thinking: on/ : /not running/, th.out);
+  else coming(th, "threads.thinking");
+
+  const c = await vyre(["threads", "commands", id], w.env);
+  if (w.have.has("threads.commands")) {
+    assert.equal(c.code, 0, c.out);
+    assert.match(c.out, /\/compact|not running/);
+    assert.ok(Array.isArray(JSON.parse((await vyre(["threads", "commands", id, "--json"], w.env)).stdout).commands));
+  } else coming(c, "threads.commands");
+
+  // ! mode, by verb and by the composer's shortcut; --raw sends it as words.
+  const sh = await vyre(["threads", "shell", id, "echo", "northwind", "--bakery"], w.env);
+  const bang = await vyre(["threads", "send", id, "!echo harlow"], w.env);
+  if (w.have.has("threads.shell")) {
+    assert.equal(sh.code, 0, sh.out);
+    assert.match(sh.stdout, /^northwind --bakery$/m);
+    assert.equal(bang.code, 0, bang.out);
+    assert.match(bang.stdout, /^harlow$/m);
+    assert.equal((await vyre(["threads", "shell", id, "exit 3"], w.env)).code, 1);
+    assert.equal(JSON.parse((await vyre(["threads", "shell", id, "--json", "echo", "hi"], w.env)).stdout).output.trim(), "hi");
+  } else { coming(sh, "threads.shell"); coming(bang, "threads.shell"); }
+  assert.equal((await vyre(["threads", "shell", id], w.env)).code, 2);
+  assert.equal((await vyre(["threads", "send", id, "!"], w.env)).code, 2);
+  assert.equal((await vyre(["threads", "send", id, "--queue", "!ls"], w.env)).code, 2);
+
+  // # mode: the project's CLAUDE.md in the thread's folder, or the folder's private one. Never user.
+  const r1 = await vyre(["threads", "remember", id, "prefer", "tabs"], w.env);
+  const r2 = await vyre(["threads", "send", id, "# prices in dollars"], w.env);
+  const r3 = await vyre(["threads", "remember", id, "--scope", "local", "juno", "reviews", "drafts"], w.env);
+  if (w.have.has("threads.remember")) {
+    for (const r of [r1, r2, r3]) assert.equal(r.code, 0, r.out);
+    assert.match(r1.out, /remembered in .*CLAUDE\.md \(project\)/);
+    assert.equal(fs.readFileSync(path.join(w.work, "CLAUDE.md"), "utf8"), "- prefer tabs\n- prices in dollars\n");
+    assert.equal(fs.readFileSync(path.join(w.work, "CLAUDE.local.md"), "utf8"), "- juno reviews drafts\n");
+  } else { coming(r1, "threads.remember"); coming(r2, "threads.remember"); coming(r3, "threads.remember"); }
+  assert.equal((await vyre(["threads", "remember", id, "--scope", "team", "x"], w.env)).code, 2);
+
+  // Images: checked here first, then sent where vyred takes them.
+  const png = path.join(w.work, "menu.png");
+  fs.writeFileSync(png, PNG);
+  fs.writeFileSync(path.join(w.work, "menu.txt"), "hi");
+  assert.equal((await vyre(["threads", "send", id, "--image", path.join(w.work, "menu.txt"), "look"], w.env)).code, 2);
+  assert.equal((await vyre(["threads", "send", id, ...Array(6).fill(["--image", png]).flat(), "look"], w.env)).code, 2);
+  assert.equal((await vyre(["threads", "send", id, "--image"], w.env)).code, 2);
+  const img = await vyre(["threads", "send", id, "--image", png, "what", "is", "on", "this", "menu"], w.env);
+  if (w.have.has("threads.send") && (await request("GET", "/v1/tools", null, { root: w.root })).data.find(x => x.name === "threads.send").input.properties.images) {
+    assert.equal(img.code, 0, img.out);
+    await finished(++turns);
+    assert.match((await vyre(["threads", "get", id], w.env)).out, /what is on this menu \(\+1 image\)/);
+    // An image alone is a message too.
+    assert.equal((await vyre(["threads", "send", id, "--image", png], w.env)).code, 0);
+    await finished(++turns);
+  } else coming(img, "threads.send with images");
+
+  // --raw: the ! is words, sent as a message on any vyred.
+  const raw = await vyre(["threads", "send", id, "--raw", "!not a shell line"], w.env);
+  assert.equal(raw.code, 0, raw.out);
+  await finished(++turns);
+  assert.ok((await events()).some(e => e.type === "thread.sent" && e.payload.text === "!not a shell line"));
+
+  // Background tasks: started by a turn, listed, stopped.
+  const tl = await vyre(["threads", "tasks", id], w.env);
+  if (w.have.has("threads.tasks")) {
+    assert.equal(tl.code, 0, tl.out);
+    assert.match(tl.out, /no background tasks/);
+    assert.equal((await vyre(["threads", "send", id, "background sleep 30"], w.env)).code, 0);
+    await finished(++turns);
+    const task = await until(async () => (await events()).find(e => e.type === "thread.task")?.payload.id, "a background task");
+    assert.match((await vyre(["threads", "tasks", id], w.env)).out, new RegExp(`${task} +running +shell +sleep 30`));
+    const k = await vyre(["threads", "kill-task", id, task], w.env);
+    assert.equal(k.code, 0, k.out);
+    assert.match(k.out, new RegExp(`stopped task ${task}`));
+    await until(async () => JSON.parse((await vyre(["threads", "tasks", id, "--json"], w.env)).stdout).tasks.some(x => x.id === task && x.status === "killed"), "the task killed");
+    assert.match((await vyre(["threads", "get", id], w.env)).out, new RegExp(`shell task ${task} killed`));
+  } else {
+    coming(tl, "threads.tasks");
+    coming(await vyre(["threads", "kill-task", id, "task_1"], w.env), "threads.kill-task");
+  }
+  assert.equal((await vyre(["threads", "kill-task", id], w.env)).code, 2);
+
+  // rewind with no message: the list, numbered (no terminal here, so no question).
+  const rl = await vyre(["threads", "rewind", id], w.env);
+  assert.equal(rl.code, 0, rl.out);
+  assert.match(rl.out, /^ +1 +\w{8} +hello from alex$/m);
+  assert.match(rl.out, /vyre threads rewind \w{8} <n>/);
+  const listed = JSON.parse((await vyre(["threads", "rewind", id, "--json"], w.env)).stdout);
+  assert.equal(listed[0].n, 1);
+  assert.equal(listed[0].text, "hello from alex");
+  assert.equal((await vyre(["threads", "rewind", id, "99"], w.env)).code, 2);
+  assert.equal((await vyre(["threads", "rewind", id, "1", "--restore", "all"], w.env)).code, 2);
+  const rc = await vyre(["threads", "rewind", id, "1", "--restore", "code"], w.env);
+  if (w.have.has("threads.rewind") && (await request("GET", "/v1/tools", null, { root: w.root })).data.find(x => x.name === "threads.rewind").input.properties.restore) assert.notEqual(rc.code, 2, rc.out);
+  else coming(rc, "threads.rewind --restore");
 });
 
 test("threads open: vyred lets go of an idle session and claude --resume runs here", { timeout: 60_000 }, async t => {
