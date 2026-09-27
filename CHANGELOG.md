@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### ADR 0031: project teammates (draft)
+
+- docs/adr/0031-teammates.md: persistent, project-bound agents with durable notes, a serial inbox
+  and a summon tool for every session in the project. Design only; the build waits on ADR 0030
+  steps 1 to 3. docs/work/teammates.md tracks it.
+
 #### The switchboard tests pass on the Mac
 
 - core/switchboard/switchboard.test.js: the work folder is realpath'd, so the Mac's /var and
