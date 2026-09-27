@@ -24,18 +24,26 @@ import { helper, tellComputerd } from "./helper.js";
 import * as egress from "./egress.js";
 import * as tailnet from "./tailnet.js";
 import * as config from "../config/index.js";
+import { ensure as ensureBearer } from "../../lib/bearer/index.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 
+/** The default path for the docker-api bearer, in a volume box/compose.yml shares between the
+ * vyre and docker-api services only -- never vyre-agent's home, and never either process's Env. */
+const DEFAULT_BEARER_FILE = "/var/lib/vyre-secrets/docker-api-bearer";
+
 /**
  * The driver config asks for: the Docker proxy when `computers.docker` is set, the fake when
  * `computers.driver` is "fake", else none. There is deliberately no fallback to the raw socket.
+ * vyred owns the bearer file (bearer.ensure): it generates one on first boot if the box's setup
+ * has not already, so a fresh install still gets the file before docker-api needs it to answer.
  * @returns {import("./driver/index.js").Driver|null}
  */
 export function pickDriver(cfg, key) {
-  if (cfg.docker) return new DockerDriver({ url: String(cfg.docker), labelPrefix: cfg.labelPrefix, network: cfg.network, capAdd: cfg.capAdd });
+  if (cfg.docker) return new DockerDriver({ url: String(cfg.docker), bearer: ensureBearer(cfg.dockerBearerFile || DEFAULT_BEARER_FILE),
+    labelPrefix: cfg.labelPrefix, network: cfg.network, capAdd: cfg.capAdd });
   if (cfg.driver === "fake") return FakeDriver.for(key, cfg.local ? { local: cfg.local } : {});
   return null;
 }
