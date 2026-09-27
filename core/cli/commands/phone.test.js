@@ -17,9 +17,11 @@ import { Presence } from "../../presence/index.js";
 import { setJson } from "../kit.js";
 import { strip } from "../style.js";
 import { tempHome } from "../../../test/helpers.js";
-import phone, { add, android, listPhones, remove, testPush, evaluate, adbDevices } from "./phone.js";
+import phone, { add, android, listPhones, remove, testPush, evaluate, adbDevices, appManifest } from "./phone.js";
 
 const BOX = "https://vyre.tail0000.ts.net";
+/** A box that serves no Android app: nothing leaves 127.0.0.1. */
+const noApp = /** @type {any} */ (async () => ({ ok: false, status: 404, json: async () => ({}) }));
 
 /** A push service that answers 201 and records what it was sent. */
 async function fakeService(t) {
@@ -65,6 +67,15 @@ const until = async (fn, what, ms = 8000) => {
   for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 25)); }
 };
 
+/**
+ * Emit until it shows: the command opens its stream a moment after the line the test waits on, and
+ * an event before that is not replayed (since=latest). Emitting again is harmless.
+ */
+const keep = async (emit, fn, what) => {
+  const end = Date.now() + 8000;
+  for (;;) { emit(); const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 200)); }
+};
+
 /** A browser's push subscription: a real P-256 key, so push.test can encrypt to it. */
 const subscription = endpoint => {
   const e = crypto.createECDH("prime256v1");
@@ -80,7 +91,7 @@ test("phone add: steps, a code from the verifier, then the checks pass as the ph
   const lines = capture(t);
   const input = new PassThrough();
   // life: a failed assertion still ends the watch, so the file never hangs.
-  const run = add({}, { io, input, tty: false, life: 20_000 });
+  const run = add({}, { io, input, tty: false, life: 20_000, fetch: noApp });
 
   const code = await until(() => lines.map(l => /type ([A-Z0-9]{4}-[A-Z0-9]{4})/.exec(l)).find(Boolean)?.[1], "the code");
   const text = lines.join("\n");
@@ -137,11 +148,11 @@ test("phone add: steps, a code from the verifier, then the checks pass as the ph
 test("phone add: the watch ends when the code runs out, naming what never arrived", async t => {
   const { io } = await box(t);
   const lines = capture(t);
-  const code = await add({ iphone: true }, { io, input: null, tty: false, life: 400 });
+  const code = await add({ iphone: true }, { io, input: null, tty: false, life: 400, fetch: noApp });
   assert.equal(code, 1);
   const text = lines.join("\n");
   assert.doesNotMatch(text, /Android:/, "--iphone shows the iPhone step only");
-  assert.match(text, /the code ran out before: phone reached the box, secure address works \(https\), test notification sent, face id key saved/i);
+  assert.match(text, /the code ran out before: phone reached the box, secure address works \(https\), test notification arrived, face id key saved/i);
   assert.match(text, /next: vyre phone add again/);
 });
 
@@ -150,7 +161,7 @@ test("phone add --json: the address, the code and the steps as one value, withou
   const lines = capture(t);
   setJson(true);
   t.after(() => setJson(false));
-  assert.equal(await add({}, { io }), 0);
+  assert.equal(await add({}, { io, fetch: noApp }), 0);
   const v = JSON.parse(lines.at(-1));
   assert.equal(v.box, BOX);
   assert.equal(v.url, BOX + "/");
@@ -166,7 +177,7 @@ test("phone add: without a person at a terminal the code is refused, exit 3", as
   await box(t);
   capture(t);
   const noTty = { openTty: () => { throw new Error("no tty"); }, ttyName: () => "", prompt: async () => "", print() {} };
-  assert.equal(await add({}, { io: noTty, input: null, tty: false }), 3);
+  assert.equal(await add({}, { io: noTty, input: null, tty: false, fetch: noApp }), 3);
 });
 
 test("phone: evaluate reads the five checks from what is new since the start", () => {
@@ -193,34 +204,6 @@ test("phone: adb devices -l, by USB and by Wireless debugging", () => {
   ]);
 });
 
-test("phone add --android: names adb and the phone, then says the box has no APK yet, exit 1; never a real adb", async t => {
-  const dir = tempHome(t);
-  const fake = path.join(dir, "adb");
-  fs.writeFileSync(fake, `#!${process.execPath}\nconst a = process.argv.slice(2);\nif (a[0] === "version") { console.log("Android Debug Bridge version 1.0.41"); process.exit(0); }\n`
-    + `if (a[0] === "devices") { process.stdout.write("List of devices attached\\n1A2B3C4D device usb:1-1 product:husky model:Pixel_8 transport_id:1\\n\\n"); process.exit(0); }\nprocess.exit(1);\n`, { mode: 0o755 });
-  const prev = process.env.VYRE_ADB_BIN;
-  t.after(() => { if (prev === undefined) delete process.env.VYRE_ADB_BIN; else process.env.VYRE_ADB_BIN = prev; });
-  const lines = capture(t);
-
-  process.env.VYRE_ADB_BIN = path.join(dir, "no-adb");
-  assert.equal(await android({}), 1);
-  assert.match(lines.join("\n"), /adb is not installed[\s\S]*next: install Android platform-tools/);
-
-  process.env.VYRE_ADB_BIN = fake;
-  lines.length = 0;
-  assert.equal(await android({}), 1);
-  assert.match(lines.join("\n"), /Found Pixel 8 over USB[\s\S]*the box has no Android app to serve yet[\s\S]*next: vyre phone add for the web app/);
-  lines.length = 0;
-  assert.equal(await android({ wireless: true }), 1);
-  assert.match(lines.join("\n"), /Pair with Wireless debugging/, "the USB phone is not a wireless one");
-
-  setJson(true);
-  t.after(() => setJson(false));
-  lines.length = 0;
-  assert.equal(await android({}), 1);
-  assert.equal(JSON.parse(lines.at(-1)).error.code, "no_apk");
-});
-
 test("phone: usage mistakes exit 2 before asking vyred", async t => {
   const lines = capture(t);
   for (const args of [["add", "--usb"], ["add", "--android", "--usb", "--wireless"], ["add", "--iphone", "--android"], ["frob"], ["remove"], ["add", "extra"]]) {
@@ -243,4 +226,219 @@ test("phone: a device new on the relay counts as reached, and says it came throu
   const direct = { ...now, relay: [now.relay[0], { ...now.relay[1], path: "direct", rtt: 18, node: "alexs-iphone" }] };
   assert.equal(evaluate(before, direct, {}).find(c => c.id === "reached")?.note, "direct 18 ms", "a phone the relay has linked to its tailnet node");
   assert.equal(evaluate(before, before, {}).find(c => c.id === "reached")?.state, "wait", "a device already there is not new");
+});
+
+test("phone: evaluate waits for the test's receipt, and an installed app said so on the stream", () => {
+  const before = { devices: [], keys: [] };
+  const now = { devices: [{ device: "d1", service: "fcm.googleapis.com" }], keys: [] };
+  const push = o => evaluate(before, now, { address: BOX, ...o }).find(c => c.id === "push");
+  const app = o => evaluate(before, now, { address: BOX, ...o }).find(c => c.id === "app");
+  assert.deepEqual([push({})?.label, push({})?.state], ["Test notification arrived", "wait"], "before the test: arrived is what it waits for");
+  const tested = { device: "d1", sent: 1, failed: 0, receipt: "r-1" };
+  assert.deepEqual([push({ tested })?.label, push({ tested })?.state, push({ tested })?.note], ["Test notification arrived", "wait", "sent, waiting for the phone"]);
+  assert.deepEqual([push({ tested, delivered: true })?.state, push({ tested, delivered: true })?.note], ["ok", "the phone showed it"]);
+  assert.equal(push({ tested: { ...tested, sent: 0, failed: 1 } })?.state, "failed", "refused is refused, receipt or not");
+  const old = { device: "d1", sent: 1, failed: 0, receipt: null };
+  assert.deepEqual([push({ tested: old })?.label, push({ tested: old })?.state], ["Test notification sent", "ok"], "a vyred without receipts: the push service took it");
+  assert.equal(app({})?.state, "unknown", "an Android phone, and no push.seen");
+  assert.deepEqual([app({ standalone: true })?.state, app({ standalone: true })?.note], ["ok", "Vyre said it runs installed"]);
+  assert.equal(evaluate(before, before, { address: BOX, standalone: true }).find(c => c.id === "app")?.state, "ok", "push.seen alone is enough");
+});
+
+test("phone add: push.subscribed re-reads at once and push.seen from an installed app passes the app check, 5 of 5", async t => {
+  const { root, svc, io, d } = await box(t);
+  const deck = (tool, input = {}, headers = {}) => call(tool, input, { root, caller: "deck", headers });
+  const lines = capture(t);
+  // No Enter at all: only the events move the checks (and the 60 s re-read, too slow for this test).
+  const run = add({ android: true }, { io, input: null, tty: false, life: 20_000, fetch: noApp });
+  const code = await until(() => lines.map(l => /type ([A-Z0-9]{4}-[A-Z0-9]{4})/.exec(l)).find(Boolean)?.[1], "the code");
+  const device = (await deck("push.subscribe", { subscription: subscription(`${svc.base}/push/pixel`), label: "alex's Pixel" })).data.device;
+  // The push module on this branch emits nothing yet; play the event as a newer one sends it.
+  await keep(() => d.events.emit("push", "push.subscribed", { device, label: "alex's Pixel", service: "127.0.0.1" }),
+    () => svc.got.includes("/push/pixel"), "the test notification, without Enter");
+  await until(() => lines.some(l => /✓ Test notification sent · the push service took it/.test(l)), "the push check on a vyred without receipts");
+  assert.ok(lines.some(l => /\? Opened as an app/.test(l)));
+  await keep(() => d.events.emit("push", "push.seen", { surface: "now", standalone: true }), () => lines.some(l => /✓ Opened as an app, not a browser tab · Vyre said it runs installed/.test(l)), "the app check");
+  const { publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  await deck("presence.enroll", { kind: "passkey", name: "alex's Pixel", public_key: publicKey.export({ type: "spki", format: "der" }).toString("base64url"),
+    alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: crypto.randomBytes(16).toString("base64url") }, { "x-vyre-presence": `code code=${code}` });
+  assert.equal(await run, 0);
+  assert.ok(lines.some(l => /alex's Pixel is ready · 5 of 5 checks passed/.test(l)), lines.join("\n"));
+});
+
+// ------------------------------------------------------------ Android over adb
+
+const APK = Buffer.from("PK\u0003\u0004 a pretend Vyre APK for the tests ".repeat(64));
+const SHA = "abcdef1234567890";
+const good = () => ({ version: "0.14.2", versionCode: 1402, sha: SHA, sha256: crypto.createHash("sha256").update(APK).digest("hex"), size: APK.length, minSdk: 26, built: "2026-09-27T00:00:00Z" });
+
+/** The box's /apps route on 127.0.0.1: android.json (or a 404) and the APK beside it. */
+async function appServer(t, manifest) {
+  const hits = [];
+  const server = http.createServer((req, res) => {
+    hits.push(req.url);
+    if (req.url === "/apps/android.json" && manifest.value) { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); return res.end(JSON.stringify(manifest.value)); }
+    if (req.url === `/apps/android/vyre-0.14.2-${SHA.slice(0, 7)}.apk`) { res.writeHead(200, { "content-type": "application/vnd.android.package-archive" }); return res.end(APK); }
+    res.writeHead(404); res.end();
+  });
+  await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => new Promise(r => { server.close(() => r(undefined)); server.closeAllConnections(); }));
+  return { hits, base: `http://127.0.0.1:${/** @type {any} */ (server.address()).port}` };
+}
+
+/**
+ * A fake adb that logs each argv as a JSON line: one phone over USB (or what `devices` says), an
+ * API level from `sdk`, an install that checks the file is there, and am start. Never a real adb.
+ * `under`: a folder to keep it in, when the test already has a home (tempHome would move VYRE_HOME).
+ */
+function fakeAdb(t, { devices = "1A2B3C4D device usb:1-1 product:husky model:Pixel_8 transport_id:1", sdk = 34, under = "" } = {}) {
+  const dir = under ? fs.mkdtempSync(path.join(under, "adb-")) : tempHome(t);
+  const bin = path.join(dir, "adb.cjs"), log = path.join(dir, "adb.log"), tmp = path.join(dir, "tmp");
+  fs.mkdirSync(tmp);
+  fs.writeFileSync(bin, `#!${process.execPath}
+const fs = require("fs"); const a = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(a) + "\\n");
+const rest = a[0] === "-s" ? a.slice(2) : a;
+if (rest[0] === "version") { console.log("Android Debug Bridge version 1.0.41"); process.exit(0); }
+if (rest[0] === "devices") { process.stdout.write("List of devices attached\\n" + ${JSON.stringify(devices)} + "\\n\\n"); process.exit(0); }
+if (rest[0] === "shell" && rest[1] === "getprop") { console.log(${JSON.stringify(String(sdk))}); process.exit(0); }
+if (rest[0] === "install") { const f = rest[rest.length - 1]; if (!fs.existsSync(f)) { console.log("Failure [no file]"); process.exit(1); } console.log("Performing Streamed Install\\nSuccess"); process.exit(0); }
+if (rest[0] === "shell" && rest[1] === "am") { console.log("Starting: Intent { act=android.intent.action.VIEW }"); process.exit(0); }
+process.exit(1);
+`, { mode: 0o755 });
+  const prev = { adb: process.env.VYRE_ADB_BIN, tmp: process.env.TMPDIR };
+  process.env.VYRE_ADB_BIN = bin;
+  // The download's temp folder lands here, so the test can see it is gone.
+  process.env.TMPDIR = tmp;
+  t.after(() => {
+    if (prev.adb === undefined) delete process.env.VYRE_ADB_BIN; else process.env.VYRE_ADB_BIN = prev.adb;
+    if (prev.tmp === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = prev.tmp;
+  });
+  const argv = () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)) : []);
+  return { bin, argv, tmp, dir };
+}
+
+/** A box target without a vyred, for the paths that never reach the stream. */
+const fakeTarget = (local = true) => async () => ({ local, address: BOX, tool: async () => ({ data: [] }) });
+
+test("phone add --android --usb: downloads, checks, installs with adb -r, opens Vyre on the relay's offer, then Paired", async t => {
+  const { d, root } = await box(t);
+  const adb = fakeAdb(t, { under: root });
+  const srv = await appServer(t, { value: good() });
+  const lines = capture(t);
+  const offer = "https://vyre.run/pair#off'er1";
+  const run = android({}, { base: srv.base, pair: async () => ({ data: { url: offer, expiresAt: Date.now() + 60_000 } }), life: 15_000 });
+  await until(() => adb.argv().some(a => a.includes("am")), "am start");
+  let ended = false;
+  run.then(() => { ended = true; });
+  await keep(() => d.events.emit("relay", "device.paired", { id: "d_pixel", name: "alex's Pixel", kind: "android" }), () => ended, "Paired");
+  assert.equal(await run, 0);
+  const text = lines.join("\n");
+  assert.match(text, /Found Pixel 8 over USB\n\s+Installing Vyre 0\.14\.2 \(adb, no store needed\)\n\s+Opened Vyre on the phone\n\s+● Paired · alex's Pixel/);
+  const argv = adb.argv();
+  const install = argv.find(a => a.includes("install"));
+  assert.deepEqual(install?.slice(0, 4), ["-s", "1A2B3C4D", "install", "-r"]);
+  assert.match(String(install?.[4]), /vyre-0\.14\.2-abcdef1\.apk$/);
+  assert.ok(!fs.existsSync(String(install?.[4])), "the temp file is gone");
+  assert.deepEqual(fs.readdirSync(adb.tmp), [], "and its folder");
+  assert.deepEqual(argv.find(a => a.includes("am")), ["-s", "1A2B3C4D", "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d",
+    `'vyre://pair?offer=${encodeURIComponent(offer).replace(/'/g, "%27")}'`, "sh.vyre.app"]);
+  assert.ok(argv.some(a => a.join(" ") === "-s 1A2B3C4D shell getprop ro.build.version.sdk"), "the API level was checked");
+});
+
+test("phone add --android --usb: without the relay it installs and says how to pair, no am start; --json is one object", async t => {
+  const adb = fakeAdb(t);
+  const srv = await appServer(t, { value: good() });
+  const lines = capture(t);
+  const deps = { base: srv.base, target: fakeTarget(), pair: async () => ({ error: { code: "no_such_tool", message: "no such tool" } }) };
+  assert.equal(await android({}, deps), 0);
+  assert.match(lines.join("\n"), /Installing Vyre 0\.14\.2[\s\S]*Open Vyre on the phone and scan the pairing QR: vyre phone add on the box/);
+  assert.ok(adb.argv().some(a => a.includes("install")));
+  assert.ok(!adb.argv().some(a => a.includes("am")), "no offer, nothing to open");
+  setJson(true);
+  t.after(() => setJson(false));
+  assert.equal(await android({}, { ...deps, target: fakeTarget(false) }), 0, "a Mac: installs, skips the handover");
+  const v = JSON.parse(lines.at(-1));
+  assert.deepEqual([v.installed, v.opened, v.version, v.phone.model, v.phone.via], [true, false, "0.14.2", "Pixel 8", "usb"]);
+  assert.match(v.pair, /scan the pairing QR/);
+});
+
+test("phone add --android --usb: a sha256 or size that does not match is refused, the file deleted, nothing installed", async t => {
+  const adb = fakeAdb(t);
+  const manifest = { value: { ...good(), sha256: "0".repeat(64) } };
+  const srv = await appServer(t, manifest);
+  const lines = capture(t);
+  assert.equal(await android({}, { base: srv.base, target: fakeTarget() }), 1);
+  assert.match(lines.join("\n"), /the APK's sha256 is not what the box says: the download was not what the box says it built; nothing was installed/);
+  assert.ok(srv.hits.some(h => h.endsWith(".apk")), "it did download");
+  assert.deepEqual(fs.readdirSync(adb.tmp), [], "and deleted it");
+  manifest.value = { ...good(), size: APK.length + 1 };
+  lines.length = 0;
+  assert.equal(await android({}, { base: srv.base, target: fakeTarget() }), 1);
+  assert.match(lines.join("\n"), /the APK's size is not what the box says/);
+  manifest.value = { ...good(), size: APK.length - 1 };
+  lines.length = 0;
+  assert.equal(await android({}, { base: srv.base, target: fakeTarget() }), 1);
+  assert.match(lines.join("\n"), /the APK's size is not what the box says/, "a bigger file stops at the promised size");
+  assert.deepEqual(fs.readdirSync(adb.tmp), []);
+  assert.ok(!adb.argv().some(a => a.includes("install")), "never installed");
+});
+
+test("phone add --android: no manifest is no_apk, a phone too old is refused, adb missing is one hint; never a real adb", async t => {
+  const adb = fakeAdb(t, { sdk: 23 });
+  const manifest = { value: null };
+  const srv = await appServer(t, manifest);
+  const lines = capture(t);
+  assert.equal(await android({}, { base: srv.base, target: fakeTarget() }), 1);
+  assert.match(lines.join("\n"), /Found Pixel 8 over USB[\s\S]*the box has no Android app to serve yet[\s\S]*next: vyre phone add for the web app/);
+
+  manifest.value = good();
+  lines.length = 0;
+  assert.equal(await android({}, { base: srv.base, target: fakeTarget() }), 1);
+  assert.match(lines.join("\n"), /Pixel 8 runs Android API level 23, and Vyre 0\.14\.2 needs 26 or newer/);
+  assert.ok(!srv.hits.some(h => h.endsWith(".apk")), "too old: not even downloaded");
+  assert.ok(!adb.argv().some(a => a.includes("install")));
+
+  lines.length = 0;
+  assert.equal(await android({ wireless: true }, { base: srv.base, target: fakeTarget() }), 1);
+  assert.match(lines.join("\n"), /no phone over Wireless debugging[\s\S]*Pair device with pairing code/, "the USB phone is not a wireless one");
+
+  setJson(true);
+  t.after(() => setJson(false));
+  manifest.value = null;
+  lines.length = 0;
+  assert.equal(await android({}, { base: srv.base, target: fakeTarget() }), 1);
+  assert.equal(JSON.parse(lines.at(-1)).error.code, "no_apk");
+  setJson(false);
+
+  process.env.VYRE_ADB_BIN = path.join(adb.dir, "no-adb");
+  lines.length = 0;
+  assert.equal(await android({}, { base: srv.base, target: fakeTarget() }), 1);
+  const text = lines.join("\n");
+  assert.match(text, /adb is not installed[\s\S]*next: install Android platform-tools \(brew install android-platform-tools\)/);
+  assert.equal(text.split("next:").length - 1, 1, "one hint");
+});
+
+test("phone add --android: a phone that has not allowed this computer is told to tap Allow", async t => {
+  fakeAdb(t, { devices: "ZX1 unauthorized usb:1-2 transport_id:3" });
+  const lines = capture(t);
+  assert.equal(await android({}, { target: fakeTarget() }), 1);
+  assert.match(lines.join("\n"), /has not allowed this computer[\s\S]*next: tap Allow on the phone/);
+});
+
+test("phone add --json: a box that serves the Android app adds its address; the manifest is checked whole", async t => {
+  const { io } = await box(t);
+  const srv = await appServer(t, { value: good() });
+  const lines = capture(t);
+  setJson(true);
+  t.after(() => setJson(false));
+  assert.equal(await add({ android: true }, { io, base: srv.base }), 0);
+  const v = JSON.parse(lines.at(-1));
+  assert.deepEqual(v.app, { version: "0.14.2", url: `${BOX}/apps/android/vyre-0.14.2-abcdef1.apk` });
+  assert.deepEqual(await appManifest(srv.base), { manifest: good() });
+  const bad = /** @type {any} */ (async () => ({ ok: true, json: async () => ({ version: "1", sha256: "x", size: 1, sha: "abcdef1" }) }));
+  assert.deepEqual(await appManifest(srv.base, bad), { missing: true }, "a sha256 that is not one");
+  const odd = /** @type {any} */ (async () => ({ ok: true, json: async () => ({ ...good(), file: "../../etc/x.apk" }) }));
+  assert.deepEqual(await appManifest(srv.base, odd), { missing: true }, "a file name with a path in it");
+  assert.equal((await appManifest(srv.base, /** @type {any} */ (async () => { throw new Error("offline"); }))).error, "offline");
 });

@@ -8,7 +8,7 @@
 //                                          relay.pair.start, then Tailscale as an optional last step
 //   vyre phone add --tailscale-only        Tailscale on the phone first, and the box's address
 //   vyre phone add --android --usb         the native app over a cable (adb); --wireless for
-//                                          Wireless debugging. Needs an APK the box serves
+//                                          Wireless debugging. The APK comes from the box
 //   vyre phone list                        the devices that get notifications, and the passkeys
 //   vyre phone remove <id>...              forget a notification device or remove a passkey
 //   vyre phone test [id]                   send a test notification
@@ -18,20 +18,30 @@
 // itself, which a Mac cannot give over the link (a passkey is the only proof the box takes from
 // another machine, ADR 0004), so from a Mac those two point at the box or the Deck instead.
 //
-// The checks watch what the box can see: a new push device (push.devices, which emits nothing,
-// so it is read again every 60 s and whenever Enter is pressed), a new passkey (presence.enrolled
-// on the event stream, which also triggers a read), and a test notification the push service
-// took (push.test). HTTPS is inferred: a browser offers push and passkeys only on a secure page.
-// Opened as an app is known only for an iPhone (Apple sends web push to Home Screen apps alone).
+// The checks watch what the box can see, on one event stream: a new push device (push.subscribed
+// triggers a read at once; push.devices is also read again every 60 s and whenever Enter is
+// pressed), a new passkey (presence.enrolled), a test notification the phone showed (push.test with
+// a receipt, then push.delivered carrying it back), and the app opened installed (push.seen with
+// standalone). A vyred whose push.test gives no receipt still counts "the push service took it".
+// HTTPS is inferred: a browser offers push and passkeys only on a secure page. Without push.seen,
+// opened as an app is known only for an iPhone (Apple sends web push to Home Screen apps alone).
 // Whether the phone's path is direct or relayed: the relay says so for its own devices
 // (relay.devices.list path "relay"); for a phone on the tailnet the box cannot say yet.
 // The relay tools (ADR 0026) are found by trying them: a box without the relay module answers
 // no_such_tool, and everything here works without them.
+//
+// The native Android app: the box serves <box>/apps/android.json (version, sha, sha256, size,
+// minSdk, file) and the APK beside it under /apps/android/. CI builds and signs it; the box and
+// this command never re-sign. --usb and --wireless download it over the tailnet, check its size
+// and sha256, install it with adb and open it on the pairing offer.
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
+import crypto from "node:crypto";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { execFile } from "node:child_process";
 import { call } from "../../daemon/client.js";
 import * as config from "../../config/index.js";
@@ -87,12 +97,18 @@ const relayDevices = r => (r && r.data && Array.isArray(r.data.devices) ? r.data
  */
 
 /**
- * The five checks from what the box has seen since the start. Pure, for tests.
+ * @typedef {{ device: string, sent: number, failed: number, receipt?: string|null }} Tested
+ */
+
+/**
+ * The five checks from what the box has seen since the start. Pure, for tests. `delivered`: the
+ * phone posted back the test's receipt (push.delivered); `standalone`: a screen said it runs as an
+ * installed app (push.seen) since the start.
  * @param {Seen} before @param {Seen} now
- * @param {{ address?: string|null, tested?: { device: string, sent: number, failed: number } | null }} [o]
+ * @param {{ address?: string|null, tested?: Tested | null, delivered?: boolean, standalone?: boolean }} [o]
  * @returns {Check[]}
  */
-export function evaluate(before, now, { address = null, tested = null } = {}) {
+export function evaluate(before, now, { address = null, tested = null, delivered = false, standalone = false } = {}) {
   const had = new Set([...before.devices.map(d => d.device), ...before.keys.map(k => k.id), ...(before.relay || []).map(r => "relay:" + r.id)]);
   const devices = now.devices.filter(d => !had.has(d.device));
   const relayed = (now.relay || []).filter(r => !had.has("relay:" + r.id));
@@ -105,15 +121,22 @@ export function evaluate(before, now, { address = null, tested = null } = {}) {
   const keyed = keys.length > 0 || relayed.some(r => r.presence);
   const https = String(address || "").startsWith("https:");
   const apple = devices.some(d => APPLE.test(String(d.service)));
+  // A receipt means the phone says when it shows the test; without one (an older vyred) the
+  // push service taking it is all the box can know.
+  const receipted = !tested || Boolean(tested.receipt);
+  const push = !tested ? { state: "wait" }
+    : tested.sent === 0 ? { state: "failed", note: `the push service refused it · vyre phone test ${tested.device}` }
+    : !tested.receipt ? { state: "ok", note: "the push service took it; check the phone shows it" }
+    : delivered ? { state: "ok", note: "the phone showed it" }
+    : { state: "wait", note: "sent, waiting for the phone" };
   return [
     { id: "reached", label: "Phone reached the box", state: any ? "ok" : "wait",
       note: viaRelay ? `${viaRelay.path === "direct" ? "direct" : "via relay"}${viaRelay.rtt != null && Number.isFinite(Number(viaRelay.rtt)) ? ` ${Math.round(Number(viaRelay.rtt))} ms` : ""}` : any ? "direct or relayed: the box cannot tell for a tailnet phone yet" : undefined },
     { id: "https", label: "Secure address works (HTTPS)", state: any && https ? "ok" : !https && address ? "failed" : "wait",
       note: any && https ? "a browser offers notifications and passkeys only on a secure page" : !https && address ? `${address} is not https` : undefined },
-    { id: "app", label: "Opened as an app, not a browser tab", state: apple ? "ok" : devices.length ? "unknown" : "wait",
-      note: apple ? "an iPhone sends notifications only from the Home Screen app" : devices.length ? "the box cannot tell an Android app from a tab yet" : undefined },
-    { id: "push", label: "Test notification sent", state: !tested ? "wait" : tested.sent > 0 ? "ok" : "failed",
-      note: tested ? (tested.sent > 0 ? "the push service took it; check the phone shows it" : `the push service refused it · vyre phone test ${tested.device}`) : undefined },
+    { id: "app", label: "Opened as an app, not a browser tab", state: standalone || apple ? "ok" : devices.length ? "unknown" : "wait",
+      note: standalone ? "Vyre said it runs installed" : apple ? "an iPhone sends notifications only from the Home Screen app" : devices.length ? "the box cannot tell an Android app from a tab yet" : undefined },
+    { id: "push", label: receipted ? "Test notification arrived" : "Test notification sent", state: /** @type {Check["state"]} */ (push.state), note: push.note },
     { id: "passkey", label: "Face ID key saved for approvals", state: keyed ? "ok" : "wait",
       note: keys.length ? String(keys[0].name || keys[0].id) : keyed ? String((relayed.find(r => r.presence) || {}).name || "through the relay") : undefined },
   ];
@@ -127,21 +150,28 @@ const checkLine = c => `    ${mark(c)} ${c.state === "ok" ? c.label : c.state ==
 
 // ------------------------------------------------------------ the event stream
 
+/** An SSE frame's event payload: the stream sends the whole event, the fields under payload. */
+const payloadOf = f => { try { const e = JSON.parse(f.data || "{}"); return (e && e.payload) || e || {}; } catch { return {}; } };
+
 /**
- * Follow the box's presence.enrolled events: this vyred's stream on a box, the link's copy of the
- * box's stream on a Mac. Returns a stop function. Losing the stream only leaves the 60 s re-read.
+ * Follow some of the box's events: this vyred's stream on a box, the link's copy of the box's
+ * stream on a Mac. The stream filters by one type only, so for several it takes everything and
+ * keeps these here. Returns a stop function. Losing the stream only leaves the 60 s re-read.
+ * @param {boolean} local @param {string[]} types @param {(type: string, payload: any) => void} onEvent
  */
-function follow(local, onEvent, type = "presence.enrolled") {
+function follow(local, types, onEvent) {
   const at = local ? "/v1/events/stream" : "/v1/link/events";
+  const want = new Set(types);
+  const filter = types.length === 1 ? `type=${encodeURIComponent(types[0])}&` : "";
   let buf = "";
-  const req = http.request({ socketPath: config.paths().socket, path: `${at}?type=${encodeURIComponent(type)}&since=latest`, method: "GET",
+  const req = http.request({ socketPath: config.paths().socket, path: `${at}?${filter}since=latest`, method: "GET",
     headers: { accept: "text/event-stream", "x-vyre-caller": "cli" } }, res => {
     if (res.statusCode !== 200) { res.resume(); return; }
     res.setEncoding("utf8");
     res.on("data", chunk => {
       const r = parseSSE(buf + chunk);
       buf = r.rest;
-      for (const f of r.frames) if (f.event === type) onEvent(f);
+      for (const f of r.frames) if (f.event && want.has(f.event)) onEvent(f.event, payloadOf(f));
     });
   });
   req.on("error", () => {});
@@ -153,7 +183,7 @@ function follow(local, onEvent, type = "presence.enrolled") {
 
 /**
  * @typedef {{ io?: import("../presence.js").PresenceIO, input?: NodeJS.ReadableStream | null, tty?: boolean,
- *   every?: number, life?: number, tailscale?: () => Promise<any> }} AddDeps
+ *   every?: number, life?: number, tailscale?: () => Promise<any>, fetch?: typeof fetch, base?: string }} AddDeps
  */
 
 /**
@@ -201,7 +231,10 @@ export async function add(flags, deps = {}) {
   }
 
   const ts = await (deps.tailscale || (() => tailnet.status()))().catch(() => null);
-  const [d0, k0, r0] = await Promise.all([t.tool("push.devices"), t.tool("presence.keys"), t.tool("relay.devices.list")]);
+  // The native Android app, when the box serves one: one manifest fetch, no retries.
+  const served = flags.iphone ? null : appManifest((deps.base || address).replace(/\/$/, ""), deps.fetch || globalThis.fetch);
+  const [d0, k0, r0, am] = await Promise.all([t.tool("push.devices"), t.tool("presence.keys"), t.tool("relay.devices.list"), served]);
+  const app = am && am.manifest ? { version: am.manifest.version, url: `${address}/apps/android/${apkName(am.manifest)}` } : null;
   if (d0.error) return failTool(d0.error);
   if (k0.error) return failTool(k0.error);
   const before = { devices: list(d0), keys: list(k0), relay: relayDevices(r0) };
@@ -215,7 +248,7 @@ export async function add(flags, deps = {}) {
   const installFor = flags.iphone ? { iphone: install.iphone } : flags.android ? { android: install.android } : install;
   if (json()) {
     return emit({ box: address, phone, network: offer ? "relay" : "tailscale", url: offer || address + "/", code, expires,
-      install: installFor, tailscale, ...(noRelay ? { relay: "this box has no relay yet" } : {}),
+      install: installFor, ...(app ? { app } : {}), tailscale, ...(noRelay ? { relay: "this box has no relay yet" } : {}),
       checks: evaluate(before, before, { address }) });
   }
 
@@ -243,6 +276,10 @@ export async function add(flags, deps = {}) {
   const steps = Object.entries(installFor).map(([k, v]) => [k === "iphone" ? "iPhone" : "Android", v]);
   out(`  ${n++} ${pad("Install")}${steps[0][0]}: ${steps[0][1]}`);
   for (const [name, how] of steps.slice(1)) out(`${indent}${name}: ${how}`);
+  if (app) {
+    out(`${indent}${dim("or the app:")} ${app.url}`);
+    if (colour) for (const l of terminal(qr(app.url), { indent: "     " })) out(l);
+  }
   out(dim(`${indent}Then on Now: turn on notifications, and add a passkey`));
   out(`  ${n++} ${bold("Checks")}`);
   if (offer) {
@@ -280,14 +317,12 @@ function switched(t, deps) {
       if (line) out(line);
       resolve(0);
     };
-    const stop = follow(t.local, f => {
-      let d = {};
-      try { d = JSON.parse(f.data || "{}"); d = d.payload || d; } catch {}
-      if (/** @type {any} */ (d).path === "direct") {
-        const rtt = /** @type {any} */ (d).rtt;
+    const stop = follow(t.local, ["device.moved"], (_, d) => {
+      if (d.path === "direct") {
+        const rtt = d.rtt;
         end(`  ${signal("●")} Switched to Tailscale, direct${rtt != null && Number.isFinite(Number(rtt)) ? ` ${Math.round(Number(rtt))} ms` : ""}`);
       }
-    }, "device.moved");
+    });
     const onKey = chunk => { if (/[\r\n]/.test(String(chunk))) end(""); };
     const onInt = () => end("");
     const timer = setTimeout(() => end(dim("  still on the relay · it switches by itself once Tailscale is on the phone")), deps.life ?? CODE_LIFE);
@@ -298,14 +333,20 @@ function switched(t, deps) {
 
 /**
  * Read push.devices and presence.keys again whenever something may have changed, and test the
- * first new device. Resolves to 0 when the checks pass, 1 when the code runs out.
+ * first new device with a receipt. The phone showing it (push.delivered) and an installed app
+ * (push.seen) arrive on the stream. Resolves to 0 when the checks pass, 1 when the code runs out.
  */
 function watch(t, { address, before, expires }, deps) {
   const tty = deps.tty ?? Boolean(process.stdout.isTTY);
   const input = deps.input !== undefined ? deps.input : process.stdin.isTTY ? process.stdin : null;
-  /** @type {{ device: string, sent: number, failed: number } | null} */
+  /** @type {Tested | null} */
   let tested = null;
-  let checks = evaluate(before, before, { address });
+  /** Receipts the phones posted back, and whether any screen ran installed, since the start. */
+  const receipts = new Set();
+  let standalone = false;
+  let now = before;
+  const seen = () => ({ address, tested, delivered: Boolean(tested && tested.receipt && receipts.has(tested.receipt)), standalone });
+  let checks = evaluate(before, before, seen());
   let drawn = 0;
 
   const left = () => { const s = Math.max(0, Math.round((expires - Date.now()) / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
@@ -334,26 +375,38 @@ function watch(t, { address, before, expires }, deps) {
       busy = true;
       try {
         const [d, k, rl] = await Promise.all([t.tool("push.devices"), t.tool("presence.keys"), t.tool("relay.devices.list")]);
-        const now = { devices: d.error ? before.devices : list(d), keys: k.error ? before.keys : list(k), relay: rl.error ? before.relay : relayDevices(rl) };
+        now = { devices: d.error ? before.devices : list(d), keys: k.error ? before.keys : list(k), relay: rl.error ? before.relay : relayDevices(rl) };
         const fresh = now.devices.filter(x => !before.devices.some(b => b.device === x.device));
         if (fresh.length && !tested) {
-          const r = await t.tool("push.test", { device: fresh[0].device });
-          tested = { device: fresh[0].device, sent: r.data ? Number(r.data.sent) || 0 : 0, failed: r.data ? Number(r.data.failed) || 0 : 1 };
+          const r = await t.tool("push.test", { device: fresh[0].device, receipt: true });
+          tested = { device: fresh[0].device, sent: r.data ? Number(r.data.sent) || 0 : 0, failed: r.data ? Number(r.data.failed) || 0 : 1,
+            receipt: r.data && typeof r.data.receipt === "string" ? r.data.receipt : null };
         }
-        checks = evaluate(before, now, { address, tested });
-        if (!done) report();
-        if (finished(checks)) {
-          const name = (fresh[0] && fresh[0].label) || (now.keys.find(x => !before.keys.some(b => b.id === x.id)) || {}).name || "The phone";
-          end(0, `  ${signal("●")} ${name} is ready · ${checks.filter(c => c.state === "ok").length} of 5 checks passed`);
-        }
+        settle();
       } finally {
         busy = false;
         if (again && !done) { again = false; check(); }
       }
     };
+    /** Evaluate what is known now, show it, and end when everything the box can prove is done. */
+    const settle = () => {
+      if (done) return;
+      checks = evaluate(before, now, seen());
+      report();
+      if (finished(checks)) {
+        const fresh = now.devices.filter(x => !before.devices.some(b => b.device === x.device));
+        const name = (fresh[0] && fresh[0].label) || (now.keys.find(x => !before.keys.some(b => b.id === x.id)) || {}).name || "The phone";
+        end(0, `  ${signal("●")} ${name} is ready · ${checks.filter(c => c.state === "ok").length} of 5 checks passed`);
+      }
+    };
+    const onEvent = (/** @type {string} */ type, /** @type {any} */ p) => {
+      if (type === "push.delivered") { if (p.receipt) receipts.add(String(p.receipt)); settle(); }
+      else if (type === "push.seen") { if (p.standalone === true && !standalone) { standalone = true; settle(); } }
+      else check();
+    };
     const onKey = chunk => { if (/[\r\n]/.test(String(chunk))) check(); };
     const onInt = () => end(0, dim("  stopped watching · vyre phone list shows what arrived"));
-    const stopStream = follow(t.local, () => check());
+    const stopStream = follow(t.local, ["presence.enrolled", "push.subscribed", "push.delivered", "push.seen"], onEvent);
     const every = setInterval(check, deps.every ?? RECHECK);
     const tick = tty ? setInterval(draw, 1000) : null;
     const expiry = setTimeout(() => {
@@ -380,10 +433,13 @@ function watch(t, { address, before, expires }, deps) {
 
 // ------------------------------------------------------------ Android over adb
 
-/** Run adb: VYRE_ADB_BIN, else adb on PATH, else the Android SDK's. { code: 127 } when none is there. */
-function adb(args, env = process.env) {
+/**
+ * Run adb: VYRE_ADB_BIN, else adb on PATH, else the Android SDK's. { code: 127 } when none is there.
+ * @param {string[]} args @param {NodeJS.ProcessEnv} [env] @param {number} [timeout]
+ */
+function adb(args, env = process.env, timeout = 10_000) {
   const bins = env.VYRE_ADB_BIN ? [env.VYRE_ADB_BIN] : ["adb", path.join(os.homedir(), "Library", "Android", "sdk", "platform-tools", "adb")];
-  const one = bin => new Promise(resolve => execFile(bin, args, { timeout: 10_000 }, (e, stdout, stderr) => {
+  const one = bin => new Promise(resolve => execFile(bin, args, { timeout }, (e, stdout, stderr) => {
     const code = !e ? 0 : /** @type {any} */ (e).code === "ENOENT" || /** @type {any} */ (e).code === "EACCES" ? 127 : Number(/** @type {any} */ (e).code) || 1;
     resolve({ code, out: String(stdout), err: String(stderr) });
   }));
@@ -410,29 +466,162 @@ export function adbDevices(text) {
 }
 
 /**
- * The APK the box serves the phone. No box serves one yet: the Android build is a CI artifact
- * only. When a box tool or route serves it, this is where `--usb` picks it up.
- * @returns {Promise<string|null>}
+ * @typedef {{ version: string, versionCode?: number, sha: string, sha256: string, size: number,
+ *   minSdk?: number, built?: string, file?: string }} AppManifest
  */
-async function apk() { return null; }
 
-/** `vyre phone add --android --usb|--wireless`. @param {{ wireless?: boolean }} flags */
-export async function android(flags) {
-  const how = flags.wireless ? "wireless" : "usb";
-  const v = await adb(["version"]);
-  if (v.code === 127) return fail("adb is not installed, so Vyre cannot install the app over a cable", { next: "install Android platform-tools (brew install android-platform-tools), or vyre phone add for the web app" });
-  const devs = await adb(["devices", "-l"]);
-  const found = adbDevices(devs.out).filter(d => d.state === "device" && d.wireless === (how === "wireless"));
-  const unauthorized = adbDevices(devs.out).filter(d => d.state === "unauthorized");
-  const file = await apk();
-  if (!json()) {
-    if (found.length) out(dim(`  Found ${found[0].model || found[0].serial} over ${how === "usb" ? "USB" : "Wireless debugging"}`));
-    else if (unauthorized.length) out(beacon("  A phone is connected but has not allowed this computer: tap Allow on the phone"));
-    else if (how === "usb") out(dim("  No phone over USB: plug it in, and turn on USB debugging in Developer options"));
-    else out(dim("  Pair with Wireless debugging: Developer options, Wireless debugging, Pair device with pairing code, then adb pair <ip:port>"));
+/** The APK's file name: the manifest's, else vyre-<version>-<sha7>.apk. */
+export const apkName = (/** @type {AppManifest} */ m) => m.file || `vyre-${m.version}-${String(m.sha).slice(0, 7)}.apk`;
+
+/**
+ * The Android app the box serves: GET <box>/apps/android.json. One fetch, no retries.
+ * { manifest } when it serves one; { missing } for a 404, a box without the route, or a manifest
+ * that is not whole; { error } when the box did not answer at all.
+ * @param {string} base @param {typeof fetch} [f]
+ * @returns {Promise<{ manifest?: AppManifest, missing?: boolean, error?: string }>}
+ */
+export async function appManifest(base, f = globalThis.fetch) {
+  let r;
+  try { r = await f(`${base}/apps/android.json`, { cache: "no-store", signal: AbortSignal.timeout(8000) }); }
+  catch (e) { return { error: String(e && e.message || e) }; }
+  if (!r.ok) return { missing: true };
+  /** @type {any} */ let m;
+  try { m = await r.json(); } catch { return { missing: true }; }
+  const whole = m && typeof m.version === "string" && /^[0-9a-f]{64}$/i.test(String(m.sha256)) && Number(m.size) > 0
+    && (m.file ? /^[\w.-]+\.apk$/.test(String(m.file)) : typeof m.sha === "string" && m.sha.length >= 7);
+  return whole ? { manifest: m } : { missing: true };
+}
+
+/**
+ * Download the APK into a fresh temp folder, counting its size and sha256 on the way.
+ * { file, dir } when both match the manifest; { mismatch: "size"|"sha256" } (the file already
+ * deleted) when not; { missing } when the box does not serve it.
+ * @param {string} url @param {AppManifest} m @param {typeof fetch} f
+ * @returns {Promise<{ file?: string, dir?: string, mismatch?: "size"|"sha256", missing?: boolean, error?: string }>}
+ */
+async function download(url, m, f) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-apk-"));
+  const file = path.join(dir, apkName(m));
+  const drop = () => fs.rmSync(dir, { recursive: true, force: true });
+  const want = Number(m.size);
+  let size = 0;
+  const hash = crypto.createHash("sha256");
+  try {
+    const r = await f(url, { cache: "no-store", signal: AbortSignal.timeout(5 * 60_000) });
+    if (!r.ok || !r.body) { drop(); return { missing: true }; }
+    // Stop reading past the promised size: a bigger file is already the wrong one.
+    const count = new Transform({ transform(chunk, _, cb) {
+      size += chunk.length;
+      if (size > want) return cb(Object.assign(new Error("larger than the manifest says"), { code: "too_big" }));
+      hash.update(chunk); cb(null, chunk);
+    } });
+    await pipeline(Readable.fromWeb(/** @type {any} */ (r.body)), count, fs.createWriteStream(file));
+  } catch (e) {
+    drop();
+    return /** @type {any} */ (e).code === "too_big" ? { mismatch: "size" } : { error: String(e && /** @type {any} */ (e).message || e) };
   }
-  if (!file) return fail("the box has no Android app to serve yet, so there is nothing to install", { code: "no_apk", next: "vyre phone add for the web app; the native app comes with a box that serves its APK" });
-  return fail("installing over adb is not built yet", { next: "vyre phone add for the web app" });
+  if (size !== want) { drop(); return { mismatch: "size" }; }
+  if (hash.digest("hex") !== String(m.sha256).toLowerCase()) { drop(); return { mismatch: "sha256" }; }
+  return { file, dir };
+}
+
+/**
+ * @typedef {{ io?: import("../presence.js").PresenceIO, fetch?: typeof fetch, base?: string, life?: number,
+ *   target?: () => Promise<Awaited<ReturnType<typeof target>>>, pair?: () => Promise<any> }} AndroidDeps
+ */
+
+/**
+ * `vyre phone add --android --usb|--wireless`: the native app from the box, installed over adb,
+ * then opened on a relay pairing offer. deps are for tests: fetch, the box's base URL, the target
+ * and the pairing call.
+ * @param {{ wireless?: boolean }} flags @param {AndroidDeps} [deps]
+ */
+export async function android(flags, deps = {}) {
+  const how = flags.wireless ? "wireless" : "usb";
+  const f = deps.fetch || globalThis.fetch;
+  const v = await adb(["version"]);
+  if (v.code === 127) return fail("adb is not installed, so Vyre cannot install the app over a cable",
+    { code: "no_adb", next: "install Android platform-tools (brew install android-platform-tools), or put the Android SDK's platform-tools on PATH" });
+  const devs = adbDevices((await adb(["devices", "-l"])).out);
+  const found = devs.filter(d => d.state === "device" && d.wireless === (how === "wireless"));
+  if (!found.length) {
+    if (devs.some(d => d.state === "unauthorized")) return fail("a phone is connected but has not allowed this computer", { code: "unauthorized", next: "tap Allow on the phone, then vyre phone add --android --" + how });
+    return how === "usb"
+      ? fail("no phone over USB", { code: "no_phone", next: "plug it in and turn on USB debugging in Developer options, then vyre phone add --android --usb" })
+      : fail("no phone over Wireless debugging", { code: "no_phone", next: "Developer options, Wireless debugging, Pair device with pairing code, then adb pair <ip:port>" });
+  }
+  const phone = found[0];
+  const model = phone.model || phone.serial;
+  const via = how === "usb" ? "USB" : "Wireless debugging";
+  if (!json()) out(`  Found ${bold(model)} over ${via}`);
+
+  const t = await (deps.target || target)();
+  if (!t) return EXIT.FAILED;
+  if (!t.address && !deps.base) return fail("the box has no address yet, so this computer cannot fetch the app from it", { next: "vyre name, then vyre phone add --android --" + how });
+  const base = (deps.base || /** @type {string} */ (t.address)).replace(/\/$/, "");
+  const noApk = () => fail("the box has no Android app to serve yet, so there is nothing to install", { code: "no_apk", next: "vyre phone add for the web app; the native app comes with a box that serves its APK" });
+  const got = await appManifest(base, f);
+  if (got.error) return fail(`could not reach the box at ${hostOf(base)} for the app: ${got.error}`, { code: "unreachable", next: "check this computer is on the tailnet (tailscale status), then again" });
+  if (!got.manifest) return noApk();
+  const m = got.manifest;
+
+  const sdk = Number((await adb(["-s", phone.serial, "shell", "getprop", "ro.build.version.sdk"])).out.trim());
+  if (m.minSdk && Number.isFinite(sdk) && sdk > 0 && sdk < Number(m.minSdk)) {
+    return fail(`${model} runs Android API level ${sdk}, and Vyre ${m.version} needs ${m.minSdk} or newer`, { code: "too_old", next: "vyre phone add for the web app, which works in Chrome" });
+  }
+
+  const dl = await download(`${base}/apps/android/${apkName(m)}`, m, f);
+  if (dl.missing) return noApk();
+  if (dl.error) return fail(`the download from ${hostOf(base)} stopped: ${dl.error}`, { code: "download_failed", next: "vyre phone add --android --" + how + " again" });
+  if (dl.mismatch) return fail(`the APK's ${dl.mismatch} is not what the box says: the download was not what the box says it built; nothing was installed`, { code: "mismatch", next: "vyre phone add --android --" + how + " again; if it repeats, the box's app build needs a look" });
+
+  const result = { phone: { serial: phone.serial, model: phone.model, via: how }, version: m.version, sha: m.sha || null, installed: false, opened: false, paired: /** @type {boolean|null} */ (null) };
+  try {
+    if (!json()) out(`  Installing Vyre ${m.version} ${dim("(adb, no store needed)")}`);
+    const ins = await adb(["-s", phone.serial, "install", "-r", /** @type {string} */ (dl.file)], process.env, 5 * 60_000);
+    if (ins.code !== 0 || /Failure/.test(ins.out)) {
+      const why = ((ins.out + "\n" + ins.err).split("\n").map(l => l.trim()).filter(l => /Failure|error/i.test(l)).pop() || `adb exited ${ins.code}`);
+      return fail(`adb could not install Vyre: ${why}`, { code: "install_failed",
+        next: /UPDATE_INCOMPATIBLE|SIGNATURES/.test(why) ? "remove the Vyre app on the phone (another build signed it), then again" : "vyre phone add --android --" + how + " again" });
+    }
+    result.installed = true;
+  } finally {
+    if (dl.dir) fs.rmSync(dl.dir, { recursive: true, force: true });
+  }
+
+  // The pairing: the relay's offer, handed to the app as a vyre://pair link. Minting it needs
+  // the person at the box; a Mac cannot prove that yet (see add), and a box without the relay
+  // has no offer. Then the phone pairs by the QR, as the web app does.
+  const scan = "Open Vyre on the phone and scan the pairing QR: vyre phone add on the box";
+  /** @type {string|null} */ let offer = null, expiresAt = null;
+  if (t.local) {
+    const r = await (deps.pair || (() => callAsPerson("relay.pair.start", {}, { io: deps.io || realIO })))();
+    if (r && r.data && r.data.url) { offer = String(r.data.url); expiresAt = r.data.expiresAt ? Number(r.data.expiresAt) : null; }
+  }
+  if (!offer) {
+    if (json()) return emit({ ...result, pair: scan });
+    out(dim("  " + scan));
+    return 0;
+  }
+  // Listen before opening the app, so a quick pairing is not missed.
+  let onPaired = (/** @type {any} */ _) => {};
+  const stop = json() ? () => {} : follow(true, ["device.paired"], (_, p) => onPaired(p));
+  // adb shell hands the line to the phone's shell: quote the link, which has no quote in it.
+  const link = `vyre://pair?offer=${encodeURIComponent(offer).replace(/'/g, "%27")}`;
+  const am = await adb(["-s", phone.serial, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", `'${link}'`, "sh.vyre.app"]);
+  result.opened = am.code === 0 && !/Error|Exception/.test(am.out + am.err);
+  if (json()) { stop(); return emit({ ...result, ...(result.opened ? {} : { pair: scan }) }); }
+  if (!result.opened) { stop(); out(dim("  " + scan)); return 0; }
+  out("  Opened Vyre on the phone");
+  const life = deps.life ?? (expiresAt ? Math.max(0, expiresAt - Date.now()) : CODE_LIFE);
+  return new Promise(resolve => {
+    let done = false;
+    const end = (/** @type {number} */ code, /** @type {string} */ line) => { if (done) return; done = true; stop(); clearTimeout(timer); process.off("SIGINT", onInt); out(line); resolve(code); };
+    onPaired = p => end(0, `  ${signal("●")} Paired${p && p.name ? dim(" · " + p.name) : ""}`);
+    const onInt = () => end(0, dim("  stopped watching · vyre phone list shows whether it paired"));
+    const timer = setTimeout(() => end(EXIT.FAILED, beacon("  the pairing offer ran out before the phone used it") + "\n" + dim("  next: vyre phone add on the box for a new QR")), life);
+    process.on("SIGINT", onInt);
+  });
 }
 
 // ------------------------------------------------------------ list, remove, test
@@ -517,7 +706,8 @@ const HELP = `
   vyre phone add               the steps to put a phone on the box, then live checks
       --iphone | --android     only that phone's install step
       --tailscale-only         skip the relay: Tailscale on the phone first, then the box's address
-      --android --usb          the native app over a cable (needs adb and an APK the box serves)
+      --android --usb          the native app over a cable: downloads the APK the box serves,
+                               checks its size and sha256, installs it with adb, opens it to pair
       --android --wireless     the same over Wireless debugging
   vyre phone list              the devices that get notifications, and the passkeys
   vyre phone remove <id>...    forget a notification device, or remove a passkey (asks you first)
@@ -526,8 +716,8 @@ const HELP = `
   add pairs through the relay by default: it asks you first, then shows a QR that works once
   for 10 minutes, so the phone needs nothing installed first. Adding Tailscale afterwards makes the
   path direct and private. With --tailscale-only (or on a box without the relay) it mints a
-  one-time code for the phone's passkey instead. Then it watches until the phone shows up: a new notification device, a test notification the
-  push service took, and a new passkey. It checks again every minute and when you press Enter.
+  one-time code for the phone's passkey instead. Then it watches until the phone shows up: a new
+  notification device, a test notification the phone showed, and a new passkey. It checks again every minute and when you press Enter.
   With --json it prints the address, the code and the steps as one JSON value and does not watch.`;
 
 export default {
