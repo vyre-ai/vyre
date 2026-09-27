@@ -155,7 +155,10 @@ export default async function chat(ctx) {
   ctx.cleanup(() => clearTimeout(rt));
   // Coming back to a kept Chat page: it is already on screen; check the box for anything missed.
   ctx.onShow?.(refresh);
-  for (const type of ["thread.started", "thread.finished", "thread.stopped", "lease.changed", "ask.raised", "ask.answered", "project.created", "project.changed", "thread.picked", "thread.unpicked", "session.indexed"])
+  // One live catalog (cohesion item 9): the nav refetches once, 500 ms after any of these; thread.status
+  // (sessions, coming) replaces the started/finished/stopped trio when every box sends it.
+  for (const type of ["thread.started", "thread.finished", "thread.stopped", "thread.status", "lease.changed", "ask.raised", "ask.answered", "project.created",
+    "project.changed", "agents.changed", "thread.picked", "thread.unpicked", "session.indexed"])
     ctx.on(type, refresh);
 
   function drawNav() {
