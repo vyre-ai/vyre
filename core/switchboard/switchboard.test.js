@@ -1050,6 +1050,7 @@ test("demo: Edit and Bash asks carry their detail, always hands back the suggest
   assert.equal(bash.always, true);
   await tool("threads.answer", { ask: bash.id, decision: "allow", surface: "deck" });
   const reply = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the reply");
+  assert.match(of(s.got, id, "thread.thinking")[0].payload.text, /^alex wants the autumn specials/, "thinking is its own event, before the reply");
   assert.match(reply.payload.text, /^## Autumn specials/);
   assert.match(reply.payload.text, /```sh\nnpm test/);
 
@@ -1109,6 +1110,20 @@ test("agents.update: names its agent by name or agent, as the Deck's Give a comp
   assert.match((await tool("agents.update", { name: "kit", agent: "juno", computer: true })).error.message, /different agents/);
   assert.match((await tool("agents.update", { computer: true })).error.message, /say which agent/);
   assert.equal((await tool("agents.list", {})).data.find(a => a.name === "kit").computer, false);
+});
+
+test("agents.create: computer true, as the Deck's New agent and Create your assistant boxes send it, is kept", async t => {
+  const { tool } = await boot(t);
+  const r = await tool("agents.create", { name: "kit", kind: "agent", projects: [], computer: true }, "deck");
+  assert.equal(r.error, undefined, r.error && r.error.message);
+  assert.equal(r.data.computer, true);
+  const juno = await tool("agents.create", { name: "juno", kind: "assistant", projects: "*", computer: true }, "deck");
+  assert.equal(juno.error, undefined, juno.error && juno.error.message);
+  await tool("agents.create", { name: "pax", kind: "agent", projects: [] }, "deck");
+  const list = (await tool("agents.list", {})).data;
+  assert.equal(list.find(a => a.name === "kit").computer, true);
+  assert.equal(list.find(a => a.name === "juno").computer, true);
+  assert.equal(list.find(a => a.name === "pax").computer, false, "unticked stays without one");
 });
 
 test("sessions: claude is known by its command line, since node 24 names its main thread MainThread", () => {

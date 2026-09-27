@@ -1,4 +1,4 @@
 {
-  "about": "Published builds of the hosted web app (ADR 0026 section 10). Appended by the release pipeline.",
+  "about": "Published builds of the hosted web app (ADR 0026 section 10, ADR 0027 section 4): release (semver), sha (the /v/<sha>/ folder) and manifest (sha256 hex of its signed manifest). Appended by the release pipeline.",
   "releases": []
 }

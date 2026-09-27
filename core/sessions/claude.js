@@ -60,6 +60,8 @@ export function optionsFor(o) {
     ...(typeof o.budgetUsd === "number" && o.budgetUsd > 0 ? { maxBudgetUsd: o.budgetUsd } : {}),
     ...(o.bin ? { pathToClaudeCodeExecutable: o.bin } : {}),
     ...(o.hooks ? { hooks: o.hooks } : {}),
+    // File checkpoints, so a rewind can put the files back too (threads.rewind restore "code").
+    enableFileCheckpointing: true,
   };
 }
 
@@ -140,6 +142,19 @@ export function run(sdk, o) {
       return true;                                                         // initialize and the like: the SDK does its own
     },
     get alive() { return !exited; },
+    /**
+     * A control request, through the SDK's own call for it.
+     * @param {string} subtype @param {Record<string, any>} [f]
+     */
+    async control(subtype, f = {}) {
+      if (exited) throw new Error("the session has ended");
+      if (subtype === "set_model") { await q.setModel(f.model); return {}; }
+      if (subtype === "rewind_files") return q.rewindFiles(f.user_message_id, f.dry_run ? { dryRun: true } : undefined);
+      if (subtype === "supported_commands") return { commands: await q.supportedCommands() };
+      if (subtype === "stop_task") { await q.stopTask(f.task_id); return {}; }
+      if (subtype === "set_max_thinking_tokens") { await q.setMaxThinkingTokens(f.max_thinking_tokens ?? null); return {}; }
+      throw new Error(`no ${subtype} on the Agent SDK driver`);
+    },
     /** A permission mode a person chose (the Switchboard checks which). */
     async setMode(/** @type {string} */ mode) { if (!exited) await q.setPermissionMode(mode); },
     /** Stop the current turn; the session stays. */

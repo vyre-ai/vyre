@@ -1,6 +1,7 @@
 // @ts-check
-// core/config/theme.js is the palette: the Deck's stylesheet holds the same values, so the docs'
-// swatches, the theme.colors defaults and what the Deck paints can never drift apart.
+// core/config/theme.js is the palette: the Deck's stylesheets (the generated tokens.css, then
+// deck.css) hold the same values, so the docs' swatches, the theme.colors defaults and what the
+// Deck paints can never drift apart.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,10 +11,11 @@ import { fileURLToPath } from "node:url";
 import { THEME_COLORS, THEME_USE } from "../core/config/theme.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const css = fs.readFileSync(path.join(REPO, "deck/css/deck.css"), "utf8");
+const DECK = fs.readFileSync(path.join(REPO, "deck/css/deck.css"), "utf8");
+const TOKENS = fs.readFileSync(path.join(REPO, "deck/css/tokens.css"), "utf8");
 
 /** The literal colours a rule block sets: { name: value }, skipping var() and non-colours. */
-function block(selector) {
+function block(selector, css = DECK) {
   const at = css.indexOf(selector + " {");
   assert.ok(at >= 0, `deck.css has ${selector}`);
   const body = css.slice(css.indexOf("{", at) + 1, css.indexOf("\n}", at));
@@ -22,12 +24,19 @@ function block(selector) {
   return out;
 }
 
-test("theme: THEME_COLORS.dark is what deck.css paints on :root", () => {
-  assert.deepEqual(THEME_COLORS.dark, block(":root"));
+/** What tokens.css then deck.css paint under a selector (deck.css's own literals win). */
+const painted = (/** @type {string} */ sel) => ({ ...block(sel, TOKENS), ...block(sel) });
+
+test("theme: THEME_COLORS.dark is what tokens.css and deck.css paint on :root", () => {
+  const all = painted(":root");
+  for (const [k, v] of Object.entries(THEME_COLORS.dark)) assert.equal(all[k], v, `--${k}`);
+  for (const k of Object.keys(block(":root"))) assert.ok(k in THEME_COLORS.dark, `deck.css paints --${k}, missing from THEME_COLORS.dark`);
 });
 
-test("theme: THEME_COLORS.light is what deck.css paints for Paper", () => {
-  assert.deepEqual(THEME_COLORS.light, block(':root[data-theme="paper"]'));
+test("theme: THEME_COLORS.light is what tokens.css and deck.css paint for Paper", () => {
+  const all = painted(':root[data-theme="paper"]');
+  for (const [k, v] of Object.entries(THEME_COLORS.light)) assert.equal(all[k], v, `--${k}`);
+  for (const k of Object.keys(block(':root[data-theme="paper"]'))) assert.ok(k in THEME_COLORS.light, `deck.css paints --${k} on paper, missing from THEME_COLORS.light`);
 });
 
 test("theme: every colour has a use", () => {

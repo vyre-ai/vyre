@@ -389,7 +389,8 @@ The user asked how existing sessions work with Chat on the SDK. There is no conv
 ### 11. Parity with Claude Code in the terminal
 
 The user, 27 Sep: Chat must feel exactly like Claude Code in the terminal. What each behaviour
-takes, and who provides it:
+takes, and who provides it. Every row below has a tool or event on work/sessions (27 Sep), tested
+on both drivers; the surfaces build the other half:
 
 | Behaviour | In the SDK | Ours |
 |---|---|---|
