@@ -230,7 +230,7 @@ Swipe:
 
 - **Right** reveals the primary action from the left edge, 100 wide, in `--primary-bg` with
   `--primary-ink`: a check glyph (24) over "Approve" (asks) or "Send" (drafts) in 13/600, the
-  Face ID glyph instead when the item needs a proof (section 5, When Face ID shows).
+  Face ID glyph instead when `presence.required` is true and `covered` false (section 5).
   Past 100 or a fast fling, it commits: the proof runs if one is needed, and on success the
   row collapses. Letting go short of 100 leaves the action showing; tapping it commits.
 - **Left** reveals "Deny" (asks) or "Discard" (drafts) from the right edge, 100 wide, `--hover`
@@ -308,24 +308,30 @@ Body by kind:
 
 Action area (8 between buttons, 34 bottom):
 
-- Ask: the primary, full width, 54 tall, radius 12, `--primary-bg`: "Approve". When the ask
-  needs a proof it reads "Approve with Face ID" with the glyph (22) ("with Touch ID", "with
-  fingerprint", "with passkey" by device). Under it, two secondary buttons side by side, 46
-  tall, radius 12: "Always in <project>" (approves and writes the rule, with a proof only when
-  the approval itself needs one) and "Deny". Where
+- Ask: the primary, full width, 54 tall, radius 12, `--primary-bg`: "Approve", one tap (asks
+  are always `required: false`). Under it, two secondary buttons side by side, 46 tall, radius
+  12: "Always in <project>" (approves and writes the rule) and "Deny". Where
   `ask.always_project` is null, Deny takes the full width.
-- Draft: "Send with Face ID" primary ("Send" while a proof is fresh); "Discard" secondary.
+- Held item at the Gate (a send or spend): the primary follows the three presence states below,
+  "Send with Face ID" (22 px glyph; "with Touch ID", "with fingerprint", "with passkey" by
+  device) only when not covered; "Discard" secondary, never a proof. Drafts are held sends.
   Nothing else.
 - Question: "Answer" primary, enabled once a choice is picked or text typed; "Later" secondary. No
-  presence check unless the tool asks for one.
+  proof.
 - When Face ID shows (the no-nag rule): only for pairing a device, reading or using a vault
-  secret, and outbound actions (messages, posts, emails, payments). Ordinary asks (edits,
-  commands, git pushes) are
-  one tap. One proof lasts about 30 minutes on that device: while it is fresh the glyph drops
-  and the buttons read "Approve" and "Send". The box decides: every ask and held item carries
-  `presence: {required, covered}` (owned by e2e, from presence's rules). The glyph and "with
-  Face ID" show only when `required` is true and `covered` is false. The phone never guesses
-  from the tool name.
+  secret, and outbound actions (messages, posts, emails, payments). In this sheet that means a
+  held send or spend at the Gate. Asks (Claude's permission asks and questions), edits, commands,
+  git pushes, discards and deletions never prompt. The phone reads the box's `presence:
+  {required, covered}` on every ask and held item and never guesses from the tool name. There
+  are three states:
+  - `required: false`: no proof. "Approve" or "Send" with a check glyph, one tap.
+  - `required: true, covered: true`: this device proved presence recently (the session ends after
+    5 minutes idle, 30 at most). No prompt. "Send" with a check glyph, and one Meta `--text-2`
+    line under the button: "Confirmed with Face ID a moment ago" ("12 min ago").
+  - `required: true, covered: false`: "Send with Face ID" with the Face ID glyph; the proof runs
+    on tap and opens a new presence session.
+  If `covered` has lapsed by the time you tap (the box refuses), the sheet asks for Face ID then,
+  in place, without closing.
 - A proof is the same box-verified check per ADR 0004 on every surface. The web build uses a WebAuthn passkey assertion. The iOS and Android builds use a device-key signature
   after Face ID or the fingerprint (ADR 0018): a P-256 key in the Secure Enclave or StrongBox,
   enrolled once through the Deck's passkey, signs the same message the Capsule signs, and the box
@@ -387,7 +393,7 @@ gap of more than an hour ("Today 12:01"):
   `--beacon-ink`, "Details" on the right, a ghost in 13/600 `--text` (opens the detail sheet). The command
   in a mono block (`--bg`, radius 6, 10 x 12, 14/20). One Meta `--text-2` line of facts ("3
   commits · 6 files · harlow-legal/reports"). Then Deny (secondary) and Approve (primary, with the Face ID
-  glyph only when the ask needs a proof) side by side, 44 tall, radius 10, 15/600. Answered, it shrinks to one Meta line:
+  glyph only when `presence.required` is true and `covered` false) side by side, 44 tall, radius 10, 15/600. Answered, it shrinks to one Meta line:
   "Approved by you, 12:07".
 - **Question card**: the same card with the choices as rows inside it.
 - **Recalled**: a "From memory" `--recall-wash` block when memory fed the reply.

@@ -43,8 +43,8 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
 ## Needs from others
 - pwa (core/push, ADR 0011) owns the box-side push rule in phone.md section 11, with the planner
   exception (alarms and timers always push and ring). Lead told pwa 2026-09-27.
-- e2e: `presence: {required, covered}` on every ask and held item (lead decided 2026-09-27;
-  a git push is an ordinary ask, no proof). phone.md section 5 reads it.
+- e2e: `presence: {required, covered}` landed on work/e2e 5b30ed3 (pushed, not merged). phone.md
+  section 5 designs the three states from it.
 - chat: the diff summary (detail.changes on Edit/Write asks; changes + totals on held pushes),
   queued for their next session.
 - deck-design: shared chat items (gate card without a left rule, neutral deletions, author names).
