@@ -29,7 +29,12 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
   (real dtach), daemon and modules tests.
 
 ## Doing
-- Waiting on planner 3c75e47 for the R6 chaos test; helping pwa and mobile adopt web.js.
+- UNTESTED (testbox frozen for sessions' SDK suite; the lead announces the lift):
+  - R6 chaos test in test/chaos/chaos.test.js (planner.upcoming key, answer offline from the
+    outbox, the box never rings it, one planner.acked unrung:true, a retry is already:true).
+  - web.js over(pathFetch): open and caller over relay/client's createPaths().fetch (the relay
+    is Noise over a WebSocket, not an HTTP proxy); test in test/chaos/web.test.js.
+  Run: test/chaos/chaos.test.js test/chaos/web.test.js, then CHANGELOG, push, tell integrator.
 
 ## Next
 1. Per-team fixes (below), starting with pwa and mobile (the web app is the phone's default).
