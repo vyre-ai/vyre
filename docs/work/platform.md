@@ -24,6 +24,9 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - ADR 0035 (native-core 799ad333, approved) reviewed: answers the four hub asks. Schema aligned locally in abc5e6da (device/session levels, check/choices {tool}, no device on confirm/security keys). Asked native-core: hub.json in vyre backup (update rollback depends on it), check/choices behaviour when the tool is off or slow, choices naming, rev returned by the store write, enforce session level. settings.write must bump rev once the hub store lands.
 - Local, unpushed (pushes paused): 89120047, 339dee40, abc5e6da, this notes commit.
 
+- settings.write: work/platform-settings-write 70242656 (local) merges native-core's local 3ae4fc93 (maskFor), returns secret keys masked; 64/64 settings+modules+presence-bypass on testbox. Waits for e2e's sign-off of native-core, then e2e re-reviews 70242656, then integrator. Later: rev + non-secret value on its settings.changed once the hub store lands.
+- Agreed with native-core: settings.changed = rev + value at the changed level for non-secret keys. Schema: secret flag in 172da703 (local).
+
 ## Next
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
 1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
