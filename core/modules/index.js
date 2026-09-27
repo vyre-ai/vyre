@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
+import { Idempotency } from "./idempotency.js";
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
@@ -146,6 +147,8 @@ export class Registry {
     this.upgrades = new Map();
     /** @type {Map<string, (req: any, res: any, at: { caller: string, url: URL }) => any>} */
     this.routes = new Map();
+    /** A retried write runs once (ADR 0029, R2). */
+    this.idempotency = deps && deps.db ? new Idempotency(deps.db) : null;
   }
 
   /** Start every discovered module that is enabled for this machine's role. */
@@ -307,7 +310,7 @@ export class Registry {
    *   input is not verified and must not be treated as if it were. `proof` is the presence proof
    *   the request carried, checked here and not passed on.
    */
-  async call(tool, input = {}, caller = "unknown", { proof = null, ...meta } = {}) {
+  async call(tool, input = {}, caller = "unknown", { proof = null, idempotencyKey = undefined, ...meta } = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
@@ -333,8 +336,16 @@ export class Registry {
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null } };
     }
+    // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
+    const run = () => this.run(def, input, { ...meta, caller });
+    if (idempotencyKey && this.idempotency) return this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run);
+    return run();
+  }
+
+  /** @param {any} def @param {any} input @param {any} meta */
+  async run(def, input, meta) {
     // The caller is passed on, so a tool like vault.release can check which module is asking.
-    try { return { data: await def.run(input, { ...meta, caller }) }; }
+    try { return { data: await def.run(input, meta) }; }
     catch (e) {
       // A tool may throw an error carrying a code the caller can act on (a presence refusal, a
       // conflict, a missing grant). Pass a short lowercase code through; anything else is "failed".

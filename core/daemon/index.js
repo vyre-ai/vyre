@@ -23,6 +23,17 @@ import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+// The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
+// chaos tests shorten it.
+const HEARTBEAT_MS = Number(process.env.VYRE_SSE_HEARTBEAT_MS) || 15_000;
+// How long stop() waits for running tool calls.
+const DRAIN_MS = 5_000;
+
+/** A client's Idempotency-Key, when it looks like one (8 to 128 url-safe characters). */
+function idemKey(req) {
+  const k = String(req.headers["idempotency-key"] || "");
+  return /^[A-Za-z0-9_.:-]{8,128}$/.test(k) ? k : undefined;
+}
 export const REPO = path.resolve(HERE, "..", "..");
 export const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, "package.json"), "utf8")).version;
 
@@ -69,12 +80,17 @@ async function startLocked(opts, root, p, release) {
   const started = Date.now();
   /** Open event streams, closed on stop so server.close() is not held open by them. */
   const streams = new Set();
+  // Tool calls running now, so stop() lets them finish before it closes (ADR 0029, R7), and
+  // whether it has begun to: a call that arrives then is told to come back, not half-run.
+  /** @type {Set<Promise<any>>} */
+  const inflight = new Set();
+  const drain = { on: false };
   /** @type {any} */
   let registry;
   // Modules that open listeners of their own (the tailnet, the onboarding page) establish who is
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
-  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root }, { ...policy, caller, ...(peer ? { peer } : {}) })
+  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
   // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
   // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
@@ -106,7 +122,7 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root }).catch(e => {
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
   server.on("upgrade", (req, socket, head) => upgrade(req, socket, head, socketCaller(req)));
@@ -118,6 +134,10 @@ async function startLocked(opts, root, p, release) {
   let stopped = false;
   const stop = async () => {
     if (stopped) return; stopped = true;
+    // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
+    // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
+    drain.on = true;
+    if (inflight.size) await Promise.race([Promise.allSettled([...inflight]), new Promise(r => setTimeout(r, DRAIN_MS).unref())]);
     for (const end of streams) end();
     for (const s of upgraded) s.destroy();
     // A module's own stream (the link's box events) is not in `streams` or `upgraded`; close
@@ -169,7 +189,7 @@ export function socketCaller(req) {
   return !label || FORBIDDEN_LABEL.test(label) ? "anonymous" : label;
 }
 
-async function route(req, res, { registry, events, cfg, started, streams, root }, /** @type {Policy} */ policy = {}) {
+async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
@@ -247,8 +267,16 @@ async function route(req, res, { registry, events, cfg, started, streams, root }
   if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
-    const result = await registry.call(name, await body(req), caller, { ...via, proof: parsePresence(req.headers["x-vyre-presence"]) });
-    const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400 : 500;
+    if (drain.on) { res.setHeader("retry-after", "2"); return send(res, 503, { error: { code: "restarting", message: "vyred is restarting; try again in a moment" } }); }
+    // Held in `inflight` until the answer has left, not just until the tool returns: stop()
+    // closes every connection once these settle.
+    // (A module's own listener may hand over a response that is not a stream; nothing to wait on.)
+    const done = typeof res.once === "function" ? new Promise(r => { res.once("finish", r); res.once("close", r); }) : Promise.resolve();
+    inflight.add(done);
+    done.then(() => inflight.delete(done));
+    const result = await registry.call(name, await body(req), caller, { ...via, proof: parsePresence(req.headers["x-vyre-presence"]), idempotencyKey: idemKey(req) });
+    const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400
+      : result.error.code === "idempotency_conflict" ? 409 : 500;
     return send(res, status, result);
   }
   // A presence proof that needs a challenge first: tty writes a code to a login terminal, passkey
@@ -314,14 +342,29 @@ function stream(req, res, url, events, streams) {
   res.write(": open\n\n");
   const write = e => res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
   let cursor = lastId;
+  // A cursor past the newest id cannot be replayed (the log was reset, or the surface followed
+  // another box). Say so, and follow from now: the surface reloads through tools (ADR 0029, R1).
+  const can = events.resumable(cursor);
+  if (!can.ok) {
+    cursor = can.from;
+    // Shaped like an event, so a client that does not know `reset` still parses it; one that does
+    // sets its cursor to `id` (lower than its own) and reloads.
+    write({ id: cursor, at: Date.now(), type: "stream.reset", source: "vyred", project: null, thread: null, payload: { from: cursor, reason: "cursor_ahead" } });
+  }
+  // Reconnect after 2 s, and hold the cursor from the first byte: an `id:` with no data sets the
+  // browser's Last-Event-ID without firing an event, so a stream that drops before its first
+  // event still resumes from here instead of from "latest" (ADR 0029, R1).
+  res.write(`retry: 2000\nid: ${cursor}\n\n`);
   // Backlog in pages, then live. Anything emitted while paging is caught by the cursor check.
   for (;;) {
     const page = events.since(cursor, { limit: 500 });
     for (const e of page) { cursor = e.id; if (match(e)) write(e); }
     if (page.length < 500) break;
   }
-  const off = events.on(type, e => { if (e.id > cursor) { cursor = e.id; write(e); } });
-  const beat = setInterval(() => res.write(": beat\n\n"), 15_000);
+  // Every event moves the cursor, matched or not, so a filtered stream resumes near the head.
+  const off = events.on("*", e => { if (e.id > cursor) { cursor = e.id; if (match(e)) write(e); } });
+  // The heartbeat carries the cursor too; a client that hears nothing for 45 s reconnects.
+  const beat = setInterval(() => res.write(`id: ${cursor}\n: beat\n\n`), HEARTBEAT_MS);
   const end = () => { off(); clearInterval(beat); streams.delete(end); res.end(); };
   streams.add(end);
   req.on("close", end);

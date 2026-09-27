@@ -1,0 +1,243 @@
+// @ts-check
+// The chaos harness (docs/adr/0029-resilience.md, R8): vyred in a temp home behind fault proxies,
+// followed by the reference client (core/resilience), with one test per rule of the contract.
+// Every test names its rule. Timings are shortened (a 300 ms heartbeat, a 50 ms backoff) so the
+// file runs in seconds; the behaviour is the same at 15 s and 2 s.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import path from "node:path";
+import { tempHome, writeModule } from "../helpers.js";
+import { proxy } from "./proxy.js";
+
+process.env.VYRE_SSE_HEARTBEAT_MS = "300";
+const { start } = await import("../../core/daemon/index.js");
+const { follow } = await import("../../core/resilience/stream.js");
+const { outbox, memoryStore } = await import("../../core/resilience/outbox.js");
+const { backoff } = await import("../../core/resilience/backoff.js");
+const node = await import("../../core/resilience/node.js");
+
+const quick = () => backoff({ min: 50, max: 400, jitter: 0 });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function until(fn, what, ms = 8_000) {
+  const t0 = Date.now();
+  while (!(await fn())) { if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${what}`); await sleep(20); }
+}
+
+/** A module with a write that counts itself in the event log, so the count survives restarts. */
+function chaosModule(root) {
+  writeModule(path.join(root, "modules"), "chaos", { does: { tools: ["chaos.add", "chaos.slow"] }, watches: { emits: ["chaos.added"] } }, `export default { async start(ctx) {
+    ctx.tool("chaos.add", { input: { type: "object", properties: { n: { type: "number" } } }, run: async i => ctx.events.emit("chaos.added", { n: i.n }) && { n: i.n } });
+    ctx.tool("chaos.slow", { input: { type: "object", properties: { ms: { type: "number" }, n: { type: "number" } } },
+      run: async i => { await new Promise(r => setTimeout(r, i.ms)); ctx.events.emit("chaos.added", { n: i.n }); return { n: i.n }; } });
+    return {};
+  } };`);
+}
+
+async function world(t, paths = 1) {
+  const root = tempHome(t);
+  chaosModule(root);
+  let d = await start({ root, log: () => {} });
+  const proxies = [];
+  for (let i = 0; i < paths; i++) proxies.push(await proxy(d.paths.socket));
+  const w = {
+    root, proxies, get d() { return d; },
+    applied: () => d.events.since(0, { type: "chaos.added", limit: 1000 }).map(e => e.payload.n),
+    emit: n => d.events.emit("test", "thread.text", { n }),
+    async restart() { await d.stop(); d = await start({ root, log: () => {} }); },
+  };
+  t.after(async () => { for (const p of proxies) await p.close(); await d.stop(); });
+  return w;
+}
+
+function watch(w, o = {}) {
+  const got = [], resets = [], states = [];
+  const s = follow({ paths: w.proxies.map(p => p.url), open: node.open, type: "thread.*", backoff: quick(), stallMs: 1_000, probeMs: 200,
+    onEvent: e => got.push(e.payload.n), onReset: e => resets.push(e), onState: st => states.push(st), ...o });
+  return { s, got, resets, states };
+}
+const opened = f => until(() => f.states.some(x => x.state === "open"), "the stream to open");
+
+test("R1: a stream that drops before its first event replays the gap, not from 'latest'", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const f = watch(w);
+  t.after(() => f.s.stop());
+  await opened(f);
+  const [p] = w.proxies;
+  p.refuse(); p.drop();
+  for (const n of [1, 2, 3]) w.emit(n);
+  await sleep(150);
+  p.heal();
+  await until(() => f.got.length >= 3, "the gap to replay");
+  assert.deepEqual(f.got, [1, 2, 3]);
+});
+
+test("R1: a stream cut mid-event delivers every event once", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const f = watch(w);
+  t.after(() => f.s.stop());
+  await opened(f);
+  const [p] = w.proxies;
+  p.cutAfter(90);                      // every connection now ends inside the next event frame
+  for (const n of [1, 2]) w.emit(n);
+  await sleep(300);
+  p.heal(); p.drop();
+  for (const n of [3, 4]) w.emit(n);
+  await until(() => f.got.length >= 4, "all four events");
+  await sleep(200);
+  assert.deepEqual(f.got, [1, 2, 3, 4]);
+});
+
+test("R1: a partitioned path is noticed by the missing heartbeat and the stream comes back", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const f = watch(w);
+  t.after(() => f.s.stop());
+  await opened(f);
+  const [p] = w.proxies;
+  p.partition();
+  w.emit(1);
+  await until(() => f.states.some(x => x.state === "reconnecting"), "the stall to be noticed");
+  p.heal();
+  await until(() => f.got.length >= 1, "the event held up by the partition");
+  assert.deepEqual(f.got, [1]);
+});
+
+test("R1: a cursor ahead of the box's log is announced with stream.reset, never a silent stall", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const f = watch(w, { cursor: w.d.events.latestId() + 500 });
+  t.after(() => f.s.stop());
+  await until(() => f.resets.length === 1, "a reset");
+  w.emit(7);
+  await until(() => f.got.length === 1, "live events after the reset");
+  assert.deepEqual(f.got, [7]);
+});
+
+test("R1, R7: vyred restarting mid-stream loses nothing, and ids keep growing", { timeout: 30_000 }, async t => {
+  const w = await world(t);
+  const f = watch(w);
+  t.after(() => f.s.stop());
+  await opened(f);
+  w.emit(1);
+  await until(() => f.got.length === 1, "the first event");
+  const before = w.d.events.latestId();
+  await w.restart();
+  w.emit(2); w.emit(3);
+  await until(() => f.got.length >= 3, "events after the restart");
+  assert.deepEqual(f.got, [1, 2, 3]);
+  assert.ok(w.d.events.latestId() > before);
+});
+
+test("R2: a retried write with the same key runs once, even when the retries overlap", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const call = node.caller(w.proxies[0].url);
+  const [a, b] = await Promise.all([call("chaos.slow", { ms: 200, n: 1 }, "key-00000001"), call("chaos.slow", { ms: 200, n: 1 }, "key-00000001")]);
+  const c = await call("chaos.slow", { ms: 200, n: 1 }, "key-00000001");
+  assert.deepEqual([a.data, b.data, c.data], [{ n: 1 }, { n: 1 }, { n: 1 }]);
+  assert.equal(/** @type {any} */ (c).replayed, true);
+  assert.deepEqual(w.applied(), [1]);
+  // A key belongs to one tool: the same key on another tool is another write.
+  const other = await call("chaos.add", { n: 2 }, "key-00000001");
+  assert.deepEqual(other.data, { n: 2 });
+  assert.deepEqual(w.applied(), [1, 2]);
+});
+
+test("R2: the same key with other input is refused, not run", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const call = node.caller(w.proxies[0].url);
+  await call("chaos.add", { n: 1 }, "key-00000002");
+  const r = await call("chaos.add", { n: 9 }, "key-00000002");
+  assert.equal(r.error?.code, "idempotency_conflict");
+  assert.deepEqual(w.applied(), [1]);
+});
+
+test("R2: writes made offline wait in the outbox and land once, in order", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const [p] = w.proxies;
+  p.refuse();
+  const done = [];
+  const box = await outbox({ store: memoryStore(), call: node.caller(p.url, { timeoutMs: 1_000 }), backoff: quick(), onChange: o => { if (o.done) done.push(o.done.entry.input.n); } });
+  t.after(() => box.stop());
+  for (const n of [1, 2, 3]) await box.add("chaos.add", { n });
+  await sleep(300);
+  assert.deepEqual(w.applied(), [], "nothing reached the box while it was out of reach");
+  assert.equal(box.pending.length, 3);
+  p.heal();
+  await until(() => done.length === 3, "the outbox to drain");
+  assert.deepEqual(w.applied(), [1, 2, 3]);
+  assert.equal(box.pending.length, 0);
+});
+
+test("R2: an answer lost on the way back is retried on another path and applied once (reordered requests)", { timeout: 20_000 }, async t => {
+  const w = await world(t, 2);
+  const [slow, fast] = w.proxies;
+  slow.delay(700);                     // the first attempt is held up; the client gives up on it
+  let tries = 0;
+  const call = (tool, input, key) => (tries++ === 0 ? node.caller(slow.url, { timeoutMs: 300 }) : node.caller(fast.url))(tool, input, key);
+  const box = await outbox({ store: memoryStore(), call, backoff: quick() });
+  t.after(() => box.stop());
+  const { answered } = await box.add("chaos.slow", { ms: 50, n: 5 });
+  const r = await answered;
+  assert.deepEqual(/** @type {any} */ (r).data, { n: 5 });
+  await sleep(1_000);                  // the held-up original lands after the retry
+  assert.deepEqual(w.applied(), [5]);
+});
+
+test("R5: a failed path moves the stream to the next one, and it moves back when the first heals", { timeout: 20_000 }, async t => {
+  const w = await world(t, 2);
+  const [lan, tailnet] = w.proxies;
+  const f = watch(w);
+  t.after(() => f.s.stop());
+  await opened(f);
+  assert.equal(f.s.path, lan.url);
+  lan.refuse(); lan.drop();
+  w.emit(1);
+  await until(() => f.got.length === 1 && f.s.path === tailnet.url, "the switch to the second path");
+  lan.heal();
+  await until(() => f.s.path === lan.url, "the move back to the first path");
+  w.emit(2);
+  await until(() => f.got.length === 2, "events after moving back");
+  assert.deepEqual(f.got, [1, 2]);
+});
+
+test("R7: stop lets a running write finish, turns new ones away, and the outbox lands them after", { timeout: 30_000 }, async t => {
+  const w = await world(t);
+  const call = node.caller(w.proxies[0].url, { timeoutMs: 2_000 });
+  const running = call("chaos.slow", { ms: 400, n: 1 }, "key-00000007");
+  await sleep(100);
+  const stopping = w.d.stop();
+  await sleep(50);
+  const box = await outbox({ store: memoryStore(), call, backoff: quick() });
+  t.after(() => box.stop());
+  const { answered } = await box.add("chaos.add", { n: 2 });
+  const first = await running;
+  assert.deepEqual(first.data, { n: 1 }, `the write in flight was cut off by the restart: ${JSON.stringify(first)}`);
+  await stopping;
+  await w.restart();
+  const r = await answered;
+  assert.deepEqual(/** @type {any} */ (r).data, { n: 2 });
+  assert.deepEqual(w.applied(), [1, 2]);
+});
+
+test("R3: backoff runs 2 s doubling to a 60 s cap, with jitter, and resets", () => {
+  const b = backoff({ random: () => 0.5 });
+  assert.deepEqual(Array.from({ length: 8 }, () => b.delay()), [2000, 4000, 8000, 16000, 32000, 60000, 60000, 60000]);
+  b.reset();
+  assert.equal(b.delay(), 2000);
+  const j = backoff({ random: () => 1 });
+  assert.equal(j.delay(), 2400);
+});
+
+test("R3: a paused stream closes and resume() picks up from the cursor", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const f = watch(w);
+  t.after(() => f.s.stop());
+  await opened(f);
+  f.s.pause();
+  await until(() => w.proxies[0].open === 0, "the paused stream to close");
+  w.emit(1); w.emit(2);
+  await sleep(200);
+  assert.deepEqual(f.got, [], "a paused stream heard nothing");
+  f.s.resume();
+  await until(() => f.got.length === 2, "the events missed while paused");
+  assert.deepEqual(f.got, [1, 2]);
+});

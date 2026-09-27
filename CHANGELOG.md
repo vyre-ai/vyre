@@ -4,6 +4,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
+
+- vyred's event stream sends `retry: 2000` and an `id:` with the cursor as it opens and with every
+  heartbeat, so a client that drops before its first event resumes from there, not from "latest".
+  A filtered stream's cursor moves with every event. A cursor ahead of the box's log gets a
+  `stream.reset` event instead of a silent stall. Event ids are AUTOINCREMENT (a migration copies
+  the table), so a pruned tail never hands an id out twice.
+- Tool calls take an `Idempotency-Key` header. The registry keeps (caller, tool, key) with the
+  input's hash and the answer for 24 h: a repeat gets the first answer (`replayed: true`) without
+  running again, an overlapping repeat waits for the same run, and other input under the same key
+  is a 409 `idempotency_conflict`. A crash (`failed`) is not kept, so it can be retried.
+- On stop, vyred turns new tool calls away with a 503 `restarting` and lets the running ones
+  finish and answer (up to 5 s) before it closes connections.
+- `core/resilience/`: the reference client every surface can use or copy. `follow()` holds the
+  cursor, drops doubles, calls a stream silent for 45 s dead, tries each path (LAN, tailnet,
+  relay) before waiting 2 s to 60 s with jitter, probes better paths and moves back, and pauses
+  while hidden. `outbox()` keeps writes made offline and delivers them in order, once.
+- `test/chaos/`: vyred behind fault proxies (drop, partition, refuse, delay, cut mid-event, two
+  paths, restart), with a test per rule of ADR 0029.
+
 #### The site has no Capsule zip, and a clean checkout stamps clean
 
 - The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and
