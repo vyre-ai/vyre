@@ -93,7 +93,8 @@ Merged main 7880dfa6 (b3c63eb5). Done this session: the answer card grows, then 
 c1a9223f: keys, follow, thumb, Jump to latest, no empty headings, whole-row results); ⌘⏎ in the
 same thread with threads.model + threads.thinking (f7e7fb52). Swift 304/304.
 Now: app-design's capsule.md (vyre-app-design docs/design/system/capsule.md, 6f8ae52f), in tasks:
-T1 geometry, copy, sentence case, footer states; T2 voice and computer-use surfaces, layered Esc.
+T1 geometry, copy, sentence case, footer states (done, see CHANGELOG "Design A"); T2 voice and
+computer-use surfaces, layered Esc.
 Blocked: Vyre IQ iq.ask (memory-iq not on main); the hub theme (/v1/appearance/theme, not on main).
 
 The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, never paired):
@@ -178,9 +179,24 @@ box, and every key below passed through or kept.
 | ⌘→ at the end of the box | Show or fold memory's sources | Capsule |
 | ⌫ in an empty box | Drop the @ chip | Capsule |
 | A in the waiting list | Allow or accept the highlighted row | Capsule |
+| D in the waiting list | Deny the highlighted ask (a held send or a lesson says no on its card) | Capsule |
 | ⌥⏎ | Talk into the box: hold to talk while down, or tap to start and tap to stop (sight) | extension |
 | "do …" then ⏎, or ⌘⏎ on an action | Computer use: an agent session with hands and screen, tool rows live, Esc stops the hands | Capsule |
 | ⌥Space, Control twice | Open or hide the Capsule from anywhere | hot keys |
+
+### The footer (Design A, capsule.md)
+
+The footer holds keys only, four at most, chosen by `CapsuleLayout.footerHints(model)` (checked by
+`Tests/DesignATests.swift`). Status ("Copied", a confirm's question) is one line above the footer.
+Nothing typed: ↑↓ Move, ⏎ Open, Esc Hide. Results: ↑↓ Move, ⏎ (the row's first action), its ⌘⏎ or
+⌘S action, Esc Clear. Question typed, an answer on top, or the follow-up box: ⏎ Ask, ⌘⏎ Think
+deeper, ⌘O Open in Vyre, Esc Clear. Streaming: Esc Stop, ⌘⏎ Think deeper. Speaking: Esc Stop in
+place of Clear. Using your Mac: Esc Stop, ⌘O; stopped or done: ⌘O, Esc Clear. Listening: ⌥⏎ Stop.
+Ask focused: A Allow once, D Deny, ⏎ Review, Esc Close. A card: ⌘⏎ Send (or ⏎ Allow/Accept), Esc
+Back. ⌘K: ↑↓ Move, ⏎ Run, Esc Back. Touch ID: Esc Cancel. ⌘O shows only with a thread to open.
+Two words differ from the spec's table because the keys do something else today: the list's Esc
+closes the list ("Close", not "Clear"), and listening says "⌥⏎ Stop" since the Capsule cannot tell
+a held talk from a tapped one and Esc does not cancel dictation yet (T2).
 
 ## Real-Mac check for the native Capsule (the user, at the Mac, in their own terminal)
 

@@ -402,7 +402,7 @@ public final class CapsuleModel: ObservableObject {
         }
         var by: [Section: [ResultItem]] = [:]
         for r in all { by[r.section, default: []].append(r) }
-        for s in Section.allCases where s != .top {
+        for s in Self.groupOrder {
             if let rows = by[s], !rows.isEmpty { out.append(Group(section: s, items: Array(rows.prefix(s == .files ? 6 : 4)))) }
         }
         // Answers (calc) sit first: they are what the user typed, worked out.
@@ -419,6 +419,16 @@ public final class CapsuleModel: ObservableObject {
         // An answer at the top is what ⏎ acts on until the user moves into the results.
         if answerOnTop && !userMoved { selected = -1 }
     }
+
+    /// The order groups draw in (docs/design/system/capsule.md, "Search"): after the top hit and
+    /// the worked-out answers, Vyre's own, Files, Apps, Commands, then every other section (the
+    /// extensions' and providers') in the order Kit lists them. Only the draw order changes: the
+    /// Section cases and their names are the Kit contract and stay as they are. Where the words go
+    /// (the ask rows, AgentDestinations.swift) keeps its own place, first or last, below.
+    nonisolated static let groupOrder: [Section] = {
+        let lead: [Section] = [.answer, .vyre, .files, .documents, .apps, .commands]
+        return lead + Section.allCases.filter { $0 != .top && !lead.contains($0) }
+    }()
 
     /// Taildrop a file to the paired box (files.send). vyred's guard decides whether it may
     /// leave (secrets and dotfiles are refused), and its words are shown as they are.

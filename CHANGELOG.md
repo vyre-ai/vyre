@@ -4,6 +4,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Capsule: Design A geometry, copy, sentence case, a keys-only footer
+
+- The open panel is 560 tall (the bar 56, a body of 472, the footer 32), radius `Radius.sheet`;
+  rows 44 (`Control.touch`), group headers 28, the footer 32. `Sources/UI/Theme.swift`,
+  `CapsuleLayout` in `Sources/UI/CapsuleView.swift`.
+- Every size, font and radius in the Capsule's own views comes from `Tokens.generated.swift`: the
+  field and answer prose 15/22, titles 13, meta 12, headers 12/16 semibold. No hand-typed sizes
+  left in `CapsuleView.swift`, `AgentDeskView.swift`, `AgentDirectView.swift`,
+  `AgentReplyView.swift`, `PresenceView.swift` or the menu-bar popover.
+- Sentence case: headers draw as written, not monospaced or caps; "Needs you", "Held for you",
+  "Vyre proposes", "Offline", "Direct", and sight's "Listening", "Heard", "On screen".
+- Groups draw Files, Apps, Commands, then the rest (`CapsuleModel.groupOrder`); the Section cases
+  (the Kit contract) are unchanged, and the top hit, answers and the ask rows keep their places.
+- Copy: "Ask Vyre, find, or run"; the answer card reads "Vyre IQ" and "quick" or "deeper" (the
+  model ⌘⏎ switches to) with no @ target, the target's name with one.
+- The footer holds keys only, four at most, by state (`CapsuleLayout.footerHints`); the result
+  count and the mark are gone. "Copied" and a confirm's question are one line above the footer.
+  The waiting list's and ⌘K's own key lines moved into the footer. D denies a focused ask
+  (`Sources/Agent/AgentPanelKeys.swift`).
+- `Tests/DesignATests.swift` (new); `Tests/ThemeTokensTests.swift` checks the sheet radius.
+
 #### ⌘⏎ thinks deeper in the same thread
 
 - ⌘⏎ on an answer, or on a follow-up typed under it, now switches the answer's own thread to the

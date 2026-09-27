@@ -170,7 +170,7 @@ extension CapsuleModel {
         }
         let said = convo.map { "Q: \($0.q)\nA: \($0.a)" }.joined(separator: "\n\n")
         let context = said.isEmpty ? nil : "Earlier in this conversation (answered by a faster model; answer again, more carefully):\n\n" + said
-        Task { @MainActor in self.handle(await self.ask(words, model: "sonnet", context: context)) }
+        Task { @MainActor in self.handle(await self.ask(words, model: Self.deeperModel, context: context)) }
     }
 
     /// The model ⌘⏎ switches to.
@@ -239,6 +239,9 @@ extension CapsuleModel {
         voiceTurn = true
         if !handleReturn(command: false) { voiceTurn = false; search() }
     }
+
+    /// An answer is being read aloud (Esc stops it, with the answer).
+    var speaking: Bool { (speaker as? AVAudioPlayer)?.isPlaying == true }
 
     /// Say the answer aloud, when spoken replies are on (voice.settings speak). Off, voice.speak
     /// refuses with speak_off and nothing happens.

@@ -4,7 +4,8 @@
 //   ⌘C in an empty box            copies the answer on screen
 //   ⌘K                            the highlighted row's verbs, to pick one (↑↓ ⏎, Esc back)
 //   Tab                           sends the words to the first destination, whatever is highlighted
-//   list: ↑↓ move, ⏎ open, A allow (yes to the row), Esc closes the list; ↑ on the first row goes back
+//   list: ↑↓ move, ⏎ open, A allow (yes to the row), D deny (an ask only), Esc closes the list;
+//         ↑ on the first row goes back
 //   card: ⌘⏎ yes (Send, Allow, Accept); ⏎ yes for an ask or a lesson, which have no fields;
 //         Esc goes back to the list
 // There are no single-letter keys on a card: every line of a draft takes typing.
@@ -50,6 +51,8 @@ extension PanelController {
             case 53: desk.mode = .none; return true
             default:
                 if f.isEmpty, e.charactersIgnoringModifiers?.lowercased() == "a", let w = desk.highlighted { Task { await desk.yes(w) }; return true }
+                // D denies a focused ask where it is; a held send or a lesson needs its card to say no.
+                if f.isEmpty, e.charactersIgnoringModifiers?.lowercased() == "d", let w = desk.highlighted, w.source == .ask { Task { await desk.no(w) }; return true }
                 // Typing anything else goes back to the box, with the keystroke.
                 desk.mode = .none; return false
             }
