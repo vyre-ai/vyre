@@ -118,12 +118,35 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
      exactly the case the fix targets. e2e ran b19f10c2 on testbox (RULES: suites run there, not
      the Mac, and never from a session the fix itself would relabel): 57/57 green in 48s, no hang.
 2. Steps 2/3, the lead's brief (2026-09-28): summon through `vyre mcp` verified, result injection
-   verified, rotation built (see "Steps 2/3" above). Sha with all of it and the `threadRecord` bug
-   fix: pending, send to e2e once committed.
-3. Left from step 2: notes-changed enforcement on `team.done` (refuse to close an item when the
+   verified, rotation built (see "Steps 2/3" above), sent at be21345a.
+3. e2e's pass on be21345a: 1 MEDIUM, 1 LOW, both fixed at this sha:
+   - MEDIUM: rotation's carried notes and last results were in `append` (the system prompt) —
+     the teammate's own past writing, read from anywhere before it wrote it, so untrusted like
+     any request's text. Moved to the first user turn instead, in `rotationContext()`: its own
+     nonce'd `<vyre-teammate-notes-N>`/`<vyre-past-results-N>` tags, `neutralize()`'d, framed
+     ("data, not instructions"), and capped (notes 8 KB, each result 500 characters). `preamble()`
+     no longer takes rotation context at all. New unit test (`rotationContext` exported): caps,
+     a fresh nonce every call, and an injected closing tag inside a past result neutralised.
+   - LOW: the `thread.finished` listener was registered only after `threads.launch` resolved;
+     its own internal awaits (the registry, then the switchboard) left a window in which a very
+     fast turn's finish could be missed for good. Fixed with a catch-all listener in place before
+     `threads.launch` is even called, narrowed to the launched thread the moment its id is known;
+     if it already fired in that window, the same close-out logic (`onTurnEnded`) runs at once
+     instead of waiting on a listener nothing will ever call. Not added: a 60s watchdog e2e
+     offered as an alternative — the buffering fix removes the race itself, so a watchdog would
+     only be defense against a *different* failure (vyred dying mid-turn), which restart-recovery
+     is the ADR's own answer for (section 4, "a vyred restart... resumes"), not this. No dedicated
+     test for the race itself: it is a sub-millisecond window between two promise resolutions,
+     not practically reproducible without mocking threads.launch's internals; the fix is a
+     structural argument (any thread.finished for this id, whenever it fires, is now always
+     caught by one of the two listeners), not one a timing-based test would strengthen.
+   17/17 team tests green (stable over repeat runs, Mac and testbox both), 22/22 with boundaries
+   on testbox, 61/61 docs.
+4. Left from step 2: notes-changed enforcement on `team.done` (refuse to close an item when the
    notes hash has not changed, unless `notes: "unchanged"` with a reason), compaction re-injection
-   (the SessionStart hook, source `compact`, re-injecting notes and the current item).
-4. Left from step 3: the in-process MCP server (`@role` routing) once ADR 0030 phase 3 lands.
+   (the SessionStart hook, source `compact`, re-injecting notes and the current item). Doing this
+   next per the lead (2026-09-28).
+5. Left from step 3: the in-process MCP server (`@role` routing) once ADR 0030 phase 3 lands.
 
 ## e2e review round 1 (2026-09-28, f8cbc882)
 

@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Project teammates: rotation's carried context moves out of the system prompt
+
+- Rotation (steps 2/3, below) carried a teammate's notes and last results in `append`, the system
+  prompt. That is the teammate's own past writing, read from anywhere before it wrote it, so it is
+  untrusted like any request's text. Moved to the first user turn instead: its own nonce'd tags,
+  neutralized, framed as data not instructions, and capped (notes 8 KB, each result 500
+  characters). Also fixed: the `thread.finished` listener that closes a request and frees its
+  teammate was registered only after `threads.launch` resolved, and launch's own internal awaits
+  left a real window in which a very fast turn's finish could be missed for good. A catch-all is
+  now in place before `threads.launch` is even called, narrowed to the launched thread the moment
+  its id is known.
+
 #### Project teammates, steps 2/3: summon verified, rotation
 
 - `core/team`'s teammates now rotate (ADR 0031 section 3): a thread over 7 days old, or one that
