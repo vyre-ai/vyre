@@ -89,12 +89,12 @@ without editing Capsule files:
   fix, the extension seam, `@` targets: see CHANGELOG.
 
 ## Doing
-- Footprint. The 93 MB figure is RSS, which counts shared AppKit and SwiftUI pages.
-  phys_footprint (Activity Monitor's Memory) is what the 60 MB target means: 17 MB hidden in
-  headless mode on the Mac, RSS 72 MB. capsule-pro-footprint 286ad05 is merged, so the check
-  reports both, plus vmmap and heap on CI. Waiting on capsule-mac CI run 36314455924 (61dd9dc)
-  for the shown-then-hidden number. GitHub queues slowly, and each push cancels the queued run,
-  so push sparingly.
+- Waiting on capsule-mac CI for the integrator's green sha.
+
+## Footprint: met (2026-09-27)
+- CI run 36314455924 (macos-latest): never shown 18.3 MB footprint, RSS 82.3 MB; hidden after use
+  24.3 MB footprint (target 60), RSS 93.8 MB, 0.065% CPU (target 0.1); open under 50 ms. The
+  "93 MB" was RSS, which counts shared AppKit and SwiftUI pages; the target is phys_footprint.
 
 ## Also done 2026-09-27 (session 4, later)
 - ci's signing-hang fix, cherry-picked (63399a1), and the duplicate app build step removed.
@@ -110,8 +110,6 @@ without editing Capsule files:
   said in words, and the terminal-only "not one vyred runs" wording. Swift 284/284.
 
 ## Next
-1. Read CI 36314455924. If the shown-then-hidden phys_footprint is over 60 MB, trim what
-   survives a hide: SwiftUI view trees, icon caches, extension panels.
 2. When sessions lands thread.state, thread.tool {call, status}, thread.turn and thread.usage:
    tool rows by call id, "idle" on @ session rows (VyreThread has no state yet), and "send now".
 3. Switch the "live in terminal" badge to capsule-now's `live` flag (threads.list and

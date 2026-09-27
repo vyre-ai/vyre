@@ -53,13 +53,7 @@ const tool = (cmd, args, keep) => {
     // heap and vmmap suspend the target to read it; on a busy runner that has taken minutes.
     const out = execFileSync(cmd, args, { maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "pipe"], timeout: 60_000 }).toString().split("\n");
     console.log(`--- ${cmd} ${args.join(" ")}\n${(keep ? out.filter(keep) : out).slice(0, 120).join("\n")}`);
-    if (detail) {
-    const pid = String(child.pid);
-    tool("footprint", [pid]);
-    tool("vmmap", ["--summary", pid], l => !/^\s*$/.test(l));
-    tool("heap", ["-sortBySize", pid], l => /^\s*(\d+)\s+\d+/.test(l) || /Zone|Process|All zones/.test(l));
-  }
-} catch (e) { console.log(`--- ${cmd} failed: ${String(e && e.message || e).split("\n")[0]}`); }
+  } catch (e) { console.log(`--- ${cmd} failed: ${String(e && e.message || e).split("\n")[0]}`); }
 };
 
 try {

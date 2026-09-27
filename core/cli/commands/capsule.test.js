@@ -24,7 +24,7 @@ test("capsule: the usage names only the native app's commands", () => {
 test("capsule install: builds here and downloads nothing; off a Mac it says the Capsule runs on macOS", { skip: process.platform === "darwin" }, t => {
   const root = tempHome(t);
   const bin = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..", "bin", "vyre");
-  const r = spawnSync(process.execPath, [bin, "capsule", "install"], { encoding: "utf8", env: { ...process.env, VYRE_HOME: root, VYRE_DOWNLOAD_BASE: "http://127.0.0.1:9/never" } });
+  const r = spawnSync(process.execPath, [bin, "capsule", "install"], { encoding: "utf8", env: { ...process.env, VYRE_HOME: root } });
   assert.equal(r.status, 1);
   assert.match(r.stdout, /The Capsule runs on macOS/);
   assert.doesNotMatch(r.stdout + r.stderr, /Vyre-mac\.zip|download/i);

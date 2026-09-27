@@ -215,9 +215,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   ADR 0027). ADR 0004 addendum; tests in core/presence/presence.test.js.
 #### CI: the native Capsule check cannot hang the job
 
-- scripts/capsule-native-check.mjs gives heap, vmmap and footprint 60 s each and ps 10 s, and the
-  whole check has 4 minutes before it fails in words; the workflow step stops at 6. A run sat in
-  the check for over 20 minutes after the vmmap and heap detail was added.
+- scripts/capsule-native-check.mjs: the detail block (footprint, vmmap, heap) had landed inside
+  the helper that runs them, so each call ran them again until the stack overflowed, forever. It
+  runs once now, heap, vmmap and footprint get 60 s each and ps 10 s, the whole check has 4
+  minutes before it fails in words, and the workflow step stops at 6.
+- Measured on that run (macos-latest): hidden after use 24.3 MB footprint (target 60), 0.065%
+  CPU (target 0.1), open under 50 ms. RSS is 93.8 MB, most of it AppKit and SwiftUI pages
+  shared with every app; the "93 MB" reported earlier was that RSS.
 
 #### A WhatsApp or Slack send rides the presence session
 
