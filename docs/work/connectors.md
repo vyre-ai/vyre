@@ -57,27 +57,26 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/mail/`, `core/cli/co
 
 ## Doing
 
-- LOAD RULE (lead, 2026-09-27): check `ssh testbox uptime` right before every run; run only under 6 (not 8) while the integrator's suites run.
-
-- work/connectors 20f49371: mail + e2e fixes, green on testbox 2026-09-27 (load under 5): 226/226
-  targeted (modules, mcp, google, mail, connectors, connect, harness, gate), docs 50/50. e2e: OK
-  once green (sent). Kernel commit af11226d is with platform for review.
-- Landing (lead): push as finished and hand the integrator the sha for the batch after batch 4,
-  together with vault's 9b (connections list {caller}, get, use). Then real-vyred mail tests.
+- LOAD RULE (lead): check `ssh testbox uptime` right before every run; run only under 6.
+- SAVED for restart 2026-09-27. Handed to the integrator: work/connectors 8be461a9 (pushed;
+  d5b80ce9 adds only notes) for the batch after batch 4. e2e signed off (84f630c9 + row text),
+  platform approved kernel af11226d + test 77dcd644. Merge order: platform b7bbf5d8 first; keep
+  one copy of firstParty with native-core 98412a66; land TOGETHER with vault 9b (work/vault-next,
+  5d7cbd07 or later: vault.connections.list {caller}, get, use).
+- Green on testbox: 226/226 targeted + 50/50 docs (84f630c9), mail 70/70 (8be461a9).
+- No testbox processes running.
 
 ## Next
 
-1. e2e review of the mcp.call `hold`/`on_behalf` and google.mail.send `on_behalf` inputs (lead's
-   condition before merge).
-2. After vault lands connections: real-vyred mail tests (IMAP, Apps Script, Google, two MCP
-   instances) and drop the fake-ctx gap note.
-3. capsule-pro: render mail.find rows ("Send from ...") and open the Gate card after mail.compose.
-4. `vyre connect` for mail.map (CLI), and the Deck row in Connections (with pwa/native-core).
+1. When vault 9b's sha arrives: real-vyred mail tests (IMAP, Apps Script, Google, two MCP
+   instances) on top of it; hand the integrator the new sha.
+2. Tell capsule-pro when mail is on main (they render mail.find rows, open the Gate card).
+3. `vyre connect` for mail.map (CLI), and the Deck row for mail accounts (with pwa/native-core).
+4. Platform's non-blocking note: cache config.home() in the registry; one firstParty definition.
 
 ## Needs from others
 
 - vault: module-only vault.connections.list {capability?, caller} answering for that caller's surface; useOf send_mail/read_mail of every source -> mail.send/mail.search {account: id}; google-apps-script default capabilities send_mail+read_mail; take core/mail out of work/vault-next (6a0c0760).
-- e2e: review hold/on_behalf (lead's condition).
 - capsule-pro: Capsule rendering of mail rows.
 
 - Lead: whoever owns scripts/perf-check, on the first-sample flake.
