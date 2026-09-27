@@ -397,6 +397,11 @@ Plan (to the lead before building):
   HIGH: link.upload path guard allows ".." (new URL resolves) -> any box tool from any module. MEDIUM:
   sync.send (module caller) reads any path -> restrict to first-party + transcript folders. 96cbf078
   MEDIUMs 1-5 still open.
+- glass hotfix 779cc852 real-Docker (lead ask, on /srv/vyre-e2e as project vyre-e2ehf with its own
+  networks, label prefix and no published port; torn down): HOLD. Image lacks /var/lib/vyre-secrets ->
+  root-owned volume -> vyred EACCES -> computers module fails. With `mkdir+chown 1000:1000+chmod 700`
+  in the Dockerfile: lifecycle ok via bearer, vyre-agent 401 + can't read, bearer in no Env/inspect.
+  Also: docker-api loops until vyred first ensures the bearer. Sent to lead, reviewer, integrator.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
