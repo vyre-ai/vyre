@@ -68,9 +68,15 @@ as_agent() {
 
 # ---- the two homes ---------------------------------------------------------------------------
 # The agent's home is group-writable (setgid, so new folders keep the group) for computerd's
-# Files and Chrome's downloads; the agent can undo that for any folder it wants private.
-as_agent sh -c 'chmod 2775 "$HOME" && mkdir -p "$HOME/Downloads" "$HOME/.fluxbox" && chmod 2775 "$HOME/Downloads"'
+# Files; the agent can undo that for any folder it wants private.
+as_agent sh -c 'chmod 2775 "$HOME" && mkdir -p "$HOME/.fluxbox"'
 as_vyre sh -c 'umask 077; mkdir -p "$HOME/.vnc" "$HOME/chromium"'
+# Downloads: not under the agent's home (e2e review MEDIUM 3). The agent owns /home/agent
+# outright and could rename a Downloads folder there for a symlink into /var/lib/vyre, which
+# Chrome (vyre's own uid) would then follow. vyre owns this one instead, group agent, 2750: vyre
+# (Chrome) writes into it, the agent can list and read what lands there, neither can rename or
+# replace the folder itself out from under the other.
+as_vyre sh -c 'umask 027; mkdir -p "$HOME/downloads"; chgrp agent "$HOME/downloads"; chmod 2750 "$HOME/downloads"'
 
 # Once, from a computer made before the split: carry the agent's sign-ins over (cookies and
 # local storage only). Nothing else crosses: an old profile was the agent's to write, and its
@@ -174,5 +180,6 @@ exec setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \
     COMPUTERD_TOKEN_FILE="${BOOT_FILE}" SCREEN="${SCREEN}" ${VYRE_PROXY_PAC:+VYRE_PROXY_PAC="${VYRE_PROXY_PAC}"} \
     ${COMPUTERD_PORT:+COMPUTERD_PORT="${COMPUTERD_PORT}"} \
     CHROME_PROFILE="${VYRE_HOME}/chromium" CHROME_LOG="${VYRE_HOME}/chromium.log" COMPUTERD_FS_ROOT="${AGENT_HOME}" \
+    AGENT_DOWNLOADS="${VYRE_HOME}/downloads" \
     VYRE_FREEZE_FD=9 \
   node /opt/computerd/index.js
