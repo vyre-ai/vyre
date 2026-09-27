@@ -56,45 +56,47 @@
                 <div class="inp inp-lg inp-focus"><svg class="ic t3" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg><span>remind me to call Sam at 3</span><span class="caret" style="margin-left: -6px;"></span><span class="grow"></span><span class="kbd">⏎</span></div>
                 <div class="row" style="gap: 10px;">
                   <span class="chip chip-on"><svg class="ic" viewBox="0 0 16 16"><path d="M4 11V7a4 4 0 0 1 8 0v4l1.5 1.5h-11zM6.5 14h3"></path></svg>Reminder · today 15:00 · Call Sam</span>
-                  <span class="t12 t3 trunc">Add anything: alarm 7am, remind me to call Sam at 3, todo send Q3 report Friday</span>
+                  <span class="t12 t3 trunc">Read on this device as you type, no model call. Return adds it.</span>
                 </div>
               </div>
 
               <div style="display: grid; grid-template-columns: 372px minmax(0, 1fr) 336px; gap: 16px; flex: 1 1 auto; min-height: 0;">
 
                 <section class="card col" aria-label="Today" style="overflow: hidden;">
-                  <div class="card-h"><span class="lbl">Today</span><span class="t12 t3" style="margin-left: auto;">Planner and Google · work</span></div>
+                  <div class="card-h"><span class="lbl">Today</span><span class="st" style="margin-left: auto;"><span class="dot dot-run"></span>Live</span></div>
+                  <div class="row" style="gap: 10px; margin: 0 12px 8px 16px; height: 28px; padding: 0 10px; border-radius: 6px; background: var(--hover);">
+                    <span class="t12 t2" style="width: 42px; flex: none;">All day</span><span class="t13 w6 trunc grow">Stocktake</span><span class="t12 t2 trunc">Google · work · read-only</span>
+                  </div>
                   <div class="agenda" style="padding: 0 12px 0 16px;">
                     <div class="col">
                       <div class="hour">09:00</div><div class="hour">10:00</div><div class="hour">11:00</div><div class="hour">12:00</div><div class="hour">13:00</div>
-                      <div class="hour">14:00</div><div class="hour">15:00</div><div class="hour">16:00</div><div class="hour">17:00</div><div class="hour">18:00</div>
+                      <div class="hour">14:00</div><div class="hour">15:00</div><div class="hour">16:00</div><div class="hour">17:00</div>
                     </div>
                     <div style="position: relative;">
                       <div class="hour"></div><div class="hour"></div><div class="hour"></div><div class="hour"></div><div class="hour"></div>
-                      <div class="hour"></div><div class="hour"></div><div class="hour"></div><div class="hour"></div><div class="hour"></div>
-                      <div class="ev" style="position: absolute; left: 0; right: 0; top: 98px; height: 44px;">
-                        <div class="row" style="gap: 8px;"><span class="w6 trunc grow">Supplier call</span><span class="t12 t2">11:00</span></div>
-                        <span class="t12 t2 trunc">Google · work · read-only</span>
+                      <div class="hour"></div><div class="hour"></div><div class="hour"></div><div class="hour"></div>
+                      <div class="ev" style="position: absolute; left: 0; right: 0; top: 97px; height: 46px;">
+                        <div class="row" style="gap: 8px;"><span class="w6 trunc grow">Supplier call</span><span class="t12 t2">11:00 to 12:00</span></div>
+                        <div class="row" style="gap: 8px;"><span class="t12 t2 trunc grow">Google · work · read-only</span><a class="t12 w6" href="#" style="color: var(--text); text-decoration: underline;">Join</a></div>
                       </div>
-                      <div class="ev" style="position: absolute; left: 0; right: 0; top: 170px; height: 44px;">
-                        <div class="row" style="gap: 8px;"><span class="w6 trunc grow">Lunch with Sam</span><span class="t12 t2">12:30</span></div>
-                        <span class="row t12" style="gap: 6px;"><span class="dot dot-need"></span><span class="bea">Invite held in Needs you</span></span>
+                      <div class="ev" style="position: absolute; left: 0; right: 0; top: 169px; height: 46px;">
+                        <div class="row" style="gap: 8px;"><span class="w6 trunc grow">Lunch with Sam</span><span class="t12 t2">12:30 to 13:30</span></div>
+                        <span class="row t12" style="gap: 6px; min-width: 0;"><span class="t2">Harbor Cafe</span><span class="dot dot-need"></span><span class="bea trunc">Invite held in Needs you</span></span>
                       </div>
-                      <div class="ev ev-now" style="position: absolute; left: 0; right: 0; top: 242px; height: 44px;">
-                        <div class="row" style="gap: 8px;"><span class="w6 trunc grow">Review the intake form</span><span class="t12 t2">14:00</span></div>
-                        <span class="t12 t2 trunc">Harlow Legal · with kit</span>
+                      <div class="nowline" style="position: absolute; left: -6px; right: 0; top: 246px;"></div>
+                      <div class="row" style="position: absolute; left: 0; right: 0; top: 239px; height: 24px; gap: 6px; padding: 0 10px; border-radius: 6px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--focus);">
+                        <span class="ring"></span><span class="t12 trunc grow">Reminder · Chase the Harbor Cafe invoice</span><span class="t12 t2" style="flex: none;">from kit</span>
                       </div>
-                      <div class="nowline" style="position: absolute; left: -6px; right: 0; top: 250px;"></div>
-                      <div class="row" style="position: absolute; left: 0; right: 0; top: 291px; height: 22px; gap: 6px; padding: 0 10px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--rule-strong);">
-                        <svg class="ic ic-12 t2" viewBox="0 0 16 16"><path d="M4 11V7a4 4 0 0 1 8 0v4l1.5 1.5h-11zM6.5 14h3"></path></svg><span class="t12 trunc grow">Reminder · Call Sam</span><span class="t12 t2">15:00</span>
+                      <div class="ev" style="position: absolute; left: 0; right: 0; top: 289px; height: 46px;">
+                        <div class="row" style="gap: 8px;"><span class="w6 trunc grow">Review the intake form</span><span class="t12 t2">15:00 to 16:00</span></div>
+                        <span class="t12 t2 trunc">Harlow Legal · room 2</span>
                       </div>
-                      <div class="row" style="position: absolute; left: 0; right: 0; top: 387px; height: 22px; gap: 6px; padding: 0 10px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--rule-strong);">
+                      <div class="row" style="position: absolute; left: 0; right: 0; top: 386px; height: 22px; gap: 6px; padding: 0 10px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--rule-strong);">
                         <svg class="ic ic-12 t2" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="2"></rect><path d="M5 8l2 2 4-4"></path></svg><span class="t12 trunc grow">Todo due · Send Q3 report</span><span class="t12 t2">17:00</span>
                       </div>
                     </div>
                   </div>
                 </section>
-
                 <section class="list col" aria-label="Todos" style="align-self: start;">
                   <div class="list-h"><span class="lbl">Todos</span><span class="t12 t3" style="margin-left: auto;">6 open</span></div>
                   <div class="grp">Today</div>
@@ -113,7 +115,7 @@
                   <div class="grp" style="border-top: 1px solid var(--rule);">This week</div>
                   <div class="li" style="align-items: flex-start; padding: 8px 16px; border-top: 0;">
                     <span class="chk" style="margin-top: 1px;"></span>
-                    <div class="col grow" style="gap: 2px;"><span class="trunc">Renew the Northwind domain</span><span class="t12 t3 trunc">P2 · Thu · Added by kit · Northwind Bakery</span></div>
+                    <div class="col grow" style="gap: 2px;"><span class="trunc">Renew the Northwind domain</span><span class="t12 t3 trunc">P2 · Thu · from kit · Northwind Bakery</span></div>
                   </div>
                   <div class="li" style="align-items: flex-start; padding: 8px 16px;">
                     <span class="chk" style="margin-top: 1px;"></span>
@@ -126,12 +128,19 @@
                 </section>
 
                 <div class="col" style="gap: 12px; min-width: 0;">
-                  <div class="banner">
-                    <svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="9" r="5"></circle><path d="M8 6.5V9l1.5 1.5M2 3.5l2-2M14 3.5l-2-2"></path></svg>
-                    <div class="col grow" style="gap: 0;"><span class="trunc">Missed while the box was down</span><span class="t12 t2 trunc">06:30 alarm · Early bake</span></div>
-                    <button class="btn btn-g btn-sm" type="button">Clear</button>
-                  </div>
+                  <section class="card" aria-label="Ringing now" style="border-color: var(--focus);">
+                    <div class="row" style="gap: 12px; padding: 12px 16px 10px; align-items: flex-start;">
+                      <span class="ring" style="margin-top: 4px;"></span>
+                      <div class="col grow" style="gap: 2px; min-width: 0;"><span class="t12 t2">Reminder · 14:00</span><span class="w6 trunc">Chase the Harbor Cafe invoice</span><span class="t12 t2 trunc">Ringing again · 2 of 3 · from kit</span></div>
+                    </div>
+                    <div class="row" style="gap: 8px; padding: 0 16px 12px;"><button class="btn btn-p btn-sm" type="button">Done</button><button class="btn btn-s btn-sm" type="button">Snooze 9 min</button><button class="btn btn-g btn-sm" type="button">Dismiss</button></div>
+                  </section>
 
+                  <div class="banner" style="flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 16px 12px;">
+                    <div class="row" style="gap: 12px;"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="9" r="5"></circle><path d="M8 6.5V9l1.5 1.5M2 3.5l2-2M14 3.5l-2-2"></path></svg>
+                    <div class="col grow" style="gap: 0; min-width: 0;"><span class="trunc">Missed while the box was down</span><span class="t12 t2 trunc">Alarm · 06:30 · Early bake</span></div></div>
+                    <div class="row" style="gap: 8px; padding-left: 28px;"><button class="btn btn-s btn-sm" type="button">Done</button><button class="btn btn-g btn-sm" type="button">Dismiss</button></div>
+                  </div>
                   <section class="list" aria-label="Alarms and timers">
                     <div class="list-h"><span class="lbl">Alarms and timers</span><button class="ibtn ibtn-sm" type="button" aria-label="Add" style="margin-left: auto; margin-right: -8px;"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button></div>
                     <div class="li">
@@ -168,7 +177,7 @@
     </div>
 
     <div class="cap">
-      <span class="cap-t">Phone, 390 wide · Planner, today</span>
+      <span class="cap-t">Phone, 390 wide · today, offline</span>
       <div class="phone">
         <div class="island"></div>
         <div class="safe-t"></div>
@@ -178,18 +187,20 @@
           <button class="ibtn" type="button" aria-label="Add" style="margin-left: auto; width: 44px; height: 44px; color: var(--text);"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button>
         </div>
         <div class="ph-body">
-          <div class="seg" style="display: flex;"><button class="on" type="button" style="flex: 1 1 0; height: 40px;">Today</button><button type="button" style="flex: 1 1 0; height: 40px;">Todos</button><button type="button" style="flex: 1 1 0; height: 40px;">Alarms</button></div>
-          <div class="ph-sec" style="padding-top: 4px;">Monday 28 Sep<span class="t13 t3" style="margin-left: auto; font-weight: 400;">7 items</span></div>
+          <div class="row" style="justify-content: center;"><span class="pill"><svg class="ic" viewBox="0 0 16 16"><path d="M2 2l12 12M5.5 8.5a4 4 0 0 1 2.5-1M3 6a8 8 0 0 1 3-1.7M10.5 5A8 8 0 0 1 13 6.2M7 11.5a1.5 1.5 0 0 1 2 0"></path></svg>Offline · the box is out of reach</span></div>
+          <div class="ph-sec" style="padding-top: 0;">Monday 28 Sep<span class="t13 t3" style="margin-left: auto; font-weight: 400;">6 items</span></div>
+          <div class="row" style="gap: 12px; height: 40px; padding: 0 14px; border-radius: 10px; background: var(--hover);"><span class="t13 t2" style="width: 44px; flex: none;">All day</span><span class="t15 w6 trunc grow">Northwind stocktake</span><span class="t12 t2">Google · work</span></div>
           <div class="ph-card">
-            <div class="ph-row"><span class="t13 t2" style="width: 44px; padding-top: 3px;">06:30</span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">Early bake</span><span class="t12 t3 row" style="gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg>Alarm · missed while the box was down</span></div></div>
-            <div class="ph-row"><span class="t13 t2" style="width: 44px; padding-top: 3px;">07:00</span><div class="col grow" style="min-width: 0;"><span class="t17 t3 trunc">Weekdays</span><span class="t12 t3 trunc">Alarm · answered on alex's iPhone</span></div></div>
-            <div class="ph-row"><span class="t13 t2" style="width: 44px; padding-top: 3px;">11:00</span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">Supplier call</span><span class="t12 t3 trunc">Google · work · read-only</span></div></div>
-            <div class="ph-row"><span class="t13 t2" style="width: 44px; padding-top: 3px;">12:30</span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">Lunch with Sam</span><span class="t12 row" style="gap: 6px;"><span class="dot dot-need"></span><span class="bea">Invite held in Needs you</span></span></div></div>
-            <div class="ph-row" style="background: var(--signal-wash);"><span class="t13 t2" style="width: 44px; padding-top: 3px;">14:00</span><div class="col grow" style="min-width: 0;"><span class="t17 w6 trunc">Review the intake form</span><span class="t12 t2 row" style="gap: 6px;"><span class="ring"></span>Now · Harlow Legal · with kit</span></div></div>
-            <div class="ph-row"><span class="t13 t2" style="width: 44px; padding-top: 3px;">15:00</span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">Call Sam</span><span class="t12 t3 trunc">Reminder · you added it</span></div></div>
+            <div class="ph-row"><span class="t13 t2" style="width: 44px; padding-top: 3px;">11:00</span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">Supplier call</span><span class="row t12" style="gap: 8px;"><span class="t3 trunc grow">Google · work · read-only</span><a class="w6" href="#" style="color: var(--text); text-decoration: underline;">Join</a></span></div></div>
+            <div class="ph-row"><span class="t13 t2" style="width: 44px; padding-top: 3px;">12:30</span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">Lunch with Sam</span><span class="t12 t3 trunc">Harbor Cafe · to 13:30</span></div></div>
+            <div class="ph-row" style="background: var(--signal-wash);"><span class="t13 t2" style="width: 44px; padding-top: 3px;">14:00</span><div class="col grow" style="min-width: 0;"><span class="t17 w6 trunc">Chase the Harbor Cafe invoice</span><span class="t12 t2 row" style="gap: 6px;"><span class="ring"></span>Reminder · ringing on this device · from kit</span></div></div>
+            <div class="ph-row"><span class="t13 t2" style="width: 44px; padding-top: 3px;">15:00</span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">Review the intake form</span><span class="t12 t3 trunc">Harlow Legal · room 2 · to 16:00</span></div></div>
             <div class="ph-row"><span class="t13 t2" style="width: 44px; padding-top: 3px;">17:00</span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">Send Q3 report to Sam</span><span class="t12 t3 trunc">Todo due · P1 · 2 of 4 subtasks</span></div></div>
           </div>
-          <span class="t12 t3">Alarms for the next 48 h are kept on this phone, so they ring with no connection.</span>
+          <div class="ph-sec" style="padding-top: 0;">Tomorrow</div>
+          <div class="ph-card">
+            <div class="ph-row"><span class="t13 t2" style="width: 44px; padding-top: 3px;">07:00</span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">Weekdays</span><span class="t12 t3 row" style="gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><rect x="4" y="1.5" width="8" height="13" rx="1.5"></rect><path d="M7 12.5h2"></path></svg>Alarm · will ring on this device</span></div></div>
+          </div>
         </div>
         <div class="capsule"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg><span class="ph">alarm 7am, todo, remind me</span><button class="mic" type="button" aria-label="Hold to talk"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="8" rx="2"></rect><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"></path></svg></button></div>
         <div class="home-ind"></div>
@@ -197,21 +208,21 @@
     </div>
 
     <div class="cap">
-      <span class="cap-t">Phone, 390 wide · an alarm firing</span>
+      <span class="cap-t">Phone, 390 wide · a reminder firing</span>
       <div class="phone">
         <div class="island"></div>
         <div class="safe-t"></div>
         <div class="col" style="flex: 1 1 auto; min-height: 0; padding: 0 20px 48px;">
           <div class="col" style="align-items: center; text-align: center; gap: 8px; padding-top: 112px;">
-            <span class="empty-ic" style="width: 64px; height: 64px; border-radius: 32px; color: var(--text);"><svg class="ic" viewBox="0 0 16 16" style="width: 28px; height: 28px;"><circle cx="8" cy="9" r="5"></circle><path d="M8 6.5V9l1.5 1.5M2 3.5l2-2M14 3.5l-2-2"></path></svg></span>
-            <span class="t13 t2 w6" style="margin-top: 12px;">Alarm</span>
-            <span class="t28 w6">07:00</span>
-            <span class="t17 t2">Weekdays</span>
-            <span class="row t13 t2" style="gap: 6px; margin-top: 8px;"><span class="ring"></span>Ringing on 3 devices</span>
+            <span class="empty-ic" style="width: 64px; height: 64px; border-radius: 32px; color: var(--text);"><svg class="ic" viewBox="0 0 16 16" style="width: 28px; height: 28px;"><path d="M4 11V7a4 4 0 0 1 8 0v4l1.5 1.5h-11zM6.5 14h3"></path></svg></span>
+            <span class="t13 t2 w6" style="margin-top: 12px;">Reminder · 14:00</span>
+            <span class="t22 w6">Chase the Harbor Cafe invoice</span>
+            <span class="t13 t2">from kit</span>
+            <span class="row t13 t2" style="gap: 6px; margin-top: 8px;"><span class="ring"></span>Ringing again · 2 of 3 · on 3 devices</span>
           </div>
           <div class="col" style="gap: 10px; margin-top: auto;">
             <button class="btn btn-p ph-btn-lg" type="button">Done</button>
-            <button class="btn btn-s ph-btn-lg" type="button">Snooze 5 min</button>
+            <button class="btn btn-s ph-btn-lg" type="button">Snooze 9 min</button>
             <button class="btn btn-g ph-btn-lg" type="button">Dismiss</button>
             <span class="t13 t2" style="text-align: center; margin-top: 6px;">Rings on every device. The first one you answer clears the rest.</span>
             <span class="t12 t3" style="text-align: center;">If nobody answers, it rings again every 5 min, 3 times at most.</span>
@@ -223,18 +234,25 @@
 
     <div class="anno">
       <span class="lbl">How it works</span>
-      <div class="anno-i"><span class="anno-n">1</span><span>Six kinds: alarm, timer, reminder, todo, note, event. Todos carry a list, a priority from P0 to P3, a due time and subtasks. Notes are markdown, with a pin and tags.</span></div>
-      <div class="anno-i"><span class="anno-n">2</span><span>Quick add parses plain words and shows the result as a chip before you commit. Ambiguous input gets a reason instead of a guess: "Which Friday? This week or next".</span></div>
-      <div class="anno-i"><span class="anno-n">3</span><span>Google calendars are read-only and say so on the event. Invites to other people wait at the Gate and show in Needs you, with the violet dot only.</span></div>
-      <div class="anno-i"><span class="anno-n">4</span><span>"Added by kit" appears only when an agent other than juno added the item. Items fired while the box was down come back marked missed.</span></div>
-      <div class="anno-i"><span class="anno-n">5</span><span>Firing: Done, Snooze, Dismiss. Alarms and timers ring through quiet hours; reminders and todos wait. Each device keeps the next 48 h of alarms, so they ring offline.</span></div>
-      <div class="anno-i"><span class="anno-n">6</span><span>The lock screen shows a fixed title only: Alarm, Reminder, Timer finished, Starting soon, Todo due. The item name stays inside the app.</span></div>
-      <div class="anno-i"><span class="anno-n">7</span><span>Smooth: alarms for the next 48 h are scheduled on the device, so they ring offline. Done and Snooze go through the outbox and the row updates on tap.</span></div>
+      <div class="anno-i"><span class="anno-n">1</span><span>Six kinds: alarm, timer, reminder, todo, note, event. Todos carry a list, P0 to P3, a due time and subtasks.</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>Quick add is rule-based, no model call. The chip shows kind, time, repeat and duration and updates as you type. No match, no chip.</span></div>
+      <div class="anno-i"><span class="anno-n">3</span><span>Google events say "Google · work · read-only". All-day events sit in a strip at the top; a meeting link shows as Join.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>"from kit" shows only when an agent other than juno added it. Agents never add events; invites wait at the Gate.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>Unanswered, a ring repeats every 5 min, 3 times: "Ringing again · 2 of 3". Rings missed while the box was down come back marked. A page opened late shows what is ringing now.</span></div>
+      <div class="anno-i"><span class="anno-n">6</span><span>Each device schedules the next 48 h of rings itself: "Will ring on this device", box or not. The lock screen shows a fixed title only.</span></div>
+      <span class="lbl" style="margin-top: 8px;">Quick add, three answers</span>
+      <div class="col" style="gap: 8px;">
+        <span class="chip chip-on" style="align-self: flex-start;"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="9" r="5"></circle><path d="M8 6.5V9l1.5 1.5M2 3.5l2-2M14 3.5l-2-2"></path></svg>Alarm · weekdays 07:00</span>
+        <span class="chip chip-on" style="align-self: flex-start;"><svg class="ic" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Event · Thu 10:00 · 30 min</span>
+        <div class="inp inp-focus"><span class="trunc">todo send Q3 report Friday</span><span class="caret" style="margin-left: -6px;"></span></div>
+        <span class="t12 t2" style="margin-top: -4px;">Which Friday? This week or next</span>
+      </div>
       <span class="lbl" style="margin-top: 8px;">Lock screen push</span>
       <div class="ph-card row" style="gap: 12px; padding: 12px 14px; align-items: center;">
         <span class="av av-32"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg></span>
-        <div class="col grow" style="gap: 0;"><div class="row" style="gap: 8px;"><span class="t12 t3 grow">Vyre</span><span class="t12 t3">now</span></div><span class="w6">Alarm</span></div>
+        <div class="col grow" style="gap: 0;"><div class="row" style="gap: 8px;"><span class="t12 t3 grow">Vyre</span><span class="t12 t3">now</span></div><span class="w6">Reminder</span></div>
       </div>
+      <div class="anno-i" style="margin-top: 8px;"><span class="anno-n">7</span><span>Smooth: the parse is local, so the chip keeps up with each keystroke. Offline, the device rings from its own 48 h list. Done and Snooze go through the outbox; the banner clears on tap.</span></div>
     </div>
 
   </div>

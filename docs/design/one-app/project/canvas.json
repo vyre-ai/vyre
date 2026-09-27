@@ -274,6 +274,20 @@
       "w": 2660,
       "h": 1120,
       "title": "Presence: sign in once, prove it rarely \u00b7 paper"
+    },
+    "Composer.dc.html": {
+      "x": 9640,
+      "y": 6160,
+      "w": 2760,
+      "h": 1340,
+      "title": "Session: the composer, like Claude Code"
+    },
+    "Composer-paper.dc.html": {
+      "x": 9640,
+      "y": 7940,
+      "w": 2760,
+      "h": 1340,
+      "title": "Session: the composer, like Claude Code \u00b7 paper"
     }
   },
   "createdOnFiles": {
@@ -320,16 +334,16 @@
     "places": {
       "x": 0,
       "y": 5860,
-      "text": "First run and places \u00b7 dark",
+      "text": "First run, places and the composer \u00b7 dark",
       "kind": "title1",
-      "maxW": 9560
+      "maxW": 12400
     },
     "places2": {
       "x": 0,
       "y": 7640,
-      "text": "First run and places \u00b7 paper",
+      "text": "First run, places and the composer \u00b7 paper",
       "kind": "title1",
-      "maxW": 9560
+      "maxW": 12400
     },
     "more": {
       "x": 0,
@@ -372,10 +386,12 @@
     "Projects.dc.html",
     "Memory.dc.html",
     "Settings.dc.html",
+    "Composer.dc.html",
     "Onboarding-paper.dc.html",
     "Projects-paper.dc.html",
     "Memory-paper.dc.html",
     "Settings-paper.dc.html",
+    "Composer-paper.dc.html",
     "States.dc.html",
     "InstallLaptop.dc.html",
     "InstallPhones.dc.html",
