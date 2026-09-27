@@ -49,6 +49,9 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0014 | tailnet | tailnet |
 | 0016 | connectors | Connectors: the MCP hub and native accounts |
 | 0020 | cc-plugin | Vyre as an installable Claude Code plugin, and the status line |
+| 0022 | capsule-apps | @App targets: every Mac app from the Capsule |
+| 0023 | memory-iq | Personal facts and memory.answer |
 | 0024 | chat | Chat: new sessions, the box's folders, a terminal in the browser, and questions |
 | 0025 | planner | The planner: time, alarms, reminders, todos, notes and a calendar on the box |
+| 0029 | resilience | The resilience contract: every surface survives network outages |
 | 0031 | teammates | Project teammates |

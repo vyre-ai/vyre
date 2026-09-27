@@ -16,7 +16,7 @@
 // computerd, and they hold it in memory, never in a result they pass on.
 
 import { Pool, MIGRATIONS, NO_DRIVER, LIMITS } from "./pool.js";
-import { Keyboard, isSurface } from "./keyboard.js";
+import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
 import { Shield } from "./shield.js";
@@ -54,7 +54,9 @@ export default {
     const tailnetCfg = () => (ctx.config && ctx.config.computers && ctx.config.computers.tailnet) || undefined;
     const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg, egress: egressCfg,
       tailnet: { setting: () => tailnet.setting(tailnetCfg()), key: () => ctx.vault.fetch(tailnet.ITEM) } });
-    const keyboard = new Keyboard({ pool, call: ctx.call, emit, on: ctx.events.on, log: ctx.log });
+    // Live too: computers.handback.set changes the idle hand-back for a take-over already running.
+    const idleMin = () => ctx.config && ctx.config.computers ? ctx.config.computers.handbackIdleMin : undefined;
+    const keyboard = new Keyboard({ pool, call: ctx.call, emit, on: ctx.events.on, log: ctx.log, idleMs: () => idleMsOf(idleMin()) });
     const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on) => tellComputerd(pool, agent, on) });
 
     if (!driver) ctx.log("no computer driver configured (computers.docker is not set); computers cannot start");
@@ -324,6 +326,25 @@ export default {
         ctx.log(`computers' tailnet nodes ${next.enabled ? "on" : "off"} (${next.tag}), set by ${who || "unknown"}`);
         return { ...next, applies: JOINS };
       }, { presence: { summary: i => i && i.enabled === true ? "Let each agent's computer join your tailnet as its own tagged node" : "Stop agents' computers joining your tailnet" } });
+
+    // ---- idle hand-back: a take-over with no input goes back to the agent (keyboard.js) --------
+
+    const handback = () => ({ minutes: idleMsOf(idleMin()) / 60_000, choices: [...IDLE_CHOICES], warn_s: IDLE_WARN_MS / 1000 });
+
+    tool("computers.handback.status", "After how many minutes without input a take-over hands the keyboard back to the agent (config computers.handbackIdleMin; 0 is off), the choices, and how many seconds before the holder is warned.",
+      obj({}), async () => handback());
+
+    tool("computers.handback.set", "Set after how many minutes without input a take-over hands the keyboard back: 0 (off), 2, 5 or 15. The owner's to change, never an agent's; it applies at once, to a take-over already running too.",
+      obj({ minutes: { type: "number", enum: [...IDLE_CHOICES] } }, ["minutes"]), async (i, { caller }) => {
+        const who = notAgent(caller, "when a take-over hands back");
+        const minutes = Number(i.minutes);
+        if (!IDLE_CHOICES.includes(minutes)) throw new Error(`minutes must be one of ${IDLE_CHOICES.join(", ")} (0 is off)`);
+        if (!ctx.paths) throw new Error("this vyred has no home to save config in");
+        config.save({ computers: { handbackIdleMin: minutes } }, ctx.paths.root, ctx.config);
+        ctx.log(`idle hand-back ${minutes ? `after ${minutes} min` : "off"}, set by ${who || "unknown"}`);
+        for (const agent of keyboard.takeovers.keys()) keyboard.arm(agent);
+        return handback();
+      });
 
     // Which agent a tailnet node is, for the names listener (it maps a tagged node that answers
     // here to the caller `tailnet:agent:<name>`).

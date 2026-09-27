@@ -1,5 +1,5 @@
 // @ts-check
-// safety — the one gate every path in and out of the files module passes through.
+// safety: the one gate every path in and out of the files module passes through.
 //
 // The files tools let Claude, a phone or the other machine look at files, so the question they
 // must never get wrong is "may this path be seen at all". Every answer comes from resolveSafe:
@@ -72,11 +72,17 @@ function real(p) {
   try { return fs.realpathSync(p); } catch { return null; }
 }
 
+/** Does one path segment name a secret: a .env file, a key, a password store, a secrets folder? */
+export const secretName = seg => /^\.env/i.test(seg) || SECRET.some(r => r.test(seg));
+
+/** The credential places under a home folder, relative to it. The guard denies them in the real home. */
+export const HOME_DENIED = [".vyre", ".claude", ".ssh", ".gnupg", ".aws", path.join(".config", "gcloud"), ".docker",
+  ".kube", ".netrc", path.join("Library", "Keychains")];
+
 /** Is one path segment acceptable below a root? */
 export function nameAllowed(seg, allowDot = new Set()) {
   // .env files hold keys more often than not, so no config can allow them.
-  if (/^\.env/i.test(seg)) return false;
-  if (SECRET.some(r => r.test(seg))) return false;
+  if (secretName(seg)) return false;
   if (seg.startsWith(".")) return DOT_OK.has(seg) || /^\.eslintrc/.test(seg) || allowDot.has(seg);
   return true;
 }
@@ -88,9 +94,7 @@ export function nameAllowed(seg, allowDot = new Set()) {
 export function guard(opts) {
   const home = opts.home || os.homedir();
   const allowDot = new Set((opts.allowDot || []).map(String));
-  const deniedGiven = [opts.vyreHome, opts.vault, path.join(home, ".vyre"), path.join(home, ".claude"), path.join(home, ".ssh"),
-    path.join(home, ".gnupg"), path.join(home, ".aws"), path.join(home, ".config", "gcloud"), path.join(home, ".docker"),
-    path.join(home, ".kube"), path.join(home, ".netrc"), path.join(home, "Library", "Keychains"), "/Library/Keychains",
+  const deniedGiven = [opts.vyreHome, opts.vault, ...HOME_DENIED.map(d => path.join(home, d)), "/Library/Keychains",
     "/System/Library/Keychains"].filter(Boolean).map(p => path.resolve(String(p)));
   // Both spellings of each denied place: as written and with symlinks followed. On macOS the
   // temp folder and some homes sit behind a symlink, and either spelling can arrive here.
@@ -145,5 +149,5 @@ export function guard(opts) {
   /** Should a folder walk go into this directory? Denied places and dot folders are skipped. */
   const walkable = (dir, name) => name !== "node_modules" && name !== ".git" && nameAllowed(name, allowDot) && !isDenied(dir);
 
-  return { roots, resolveSafe, allowed, walkable, nameAllowed: seg => nameAllowed(seg, allowDot) };
+  return { roots, resolveSafe, allowed, walkable, isDenied, nameAllowed: seg => nameAllowed(seg, allowDot) };
 }

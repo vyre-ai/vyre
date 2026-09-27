@@ -2,7 +2,6 @@
   "network.guests.list": {
     "enabled": true,
     "safe": [
-      "glass.open",
       "glass.close",
       "threads.list"
     ],
@@ -15,7 +14,6 @@
           "vault.get"
         ],
         "allowed": [
-          "glass.open",
           "threads.list"
         ]
       }

@@ -36,24 +36,55 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - One vyred per home: vyred.lock in the real folder, socket from the real folder. Tests
   core/daemon/lock.test.js; checked with the real CLI on the test box through a symlink.
 
+## Done (4)
+
+- `vyre up` restarts a vyred on another build (d310169): "updated · restarted vyred (old → new)",
+  stops only the pid both the pid file and health name. test/upgrade.test.js.
+- The ending's assistant line says `vyre assistant <name>`; new `vyre assistant` (d310169).
+- `vyre box update` and doctor print `npm install -g https://vyre.run/box/vyre.tgz && vyre up`
+  (INSTALL in core/cli/brand.js); the known gap is closed in box-care, troubleshooting, known-gaps.
+- No-nag: memory.correct/merge/split drop presence; agents and MCP stay refused (ownerWrite and the
+  callers list), silently. Targeted tests 64/64 on the test box.
+
+- Vault sessions (lead's decision): a presence session covers vault.reveal/copy/totp/approve/grant
+  for the Deck and the Capsule only; the CLI proves every `vyre vault` reveal or grant; MCP and
+  agents refused. The in-memory per-device window from the WIP commit is gone.
+- learn.accept/retire/relax ask no presence (off the floor's list); the harness floor still
+  denies a model's shell naming them (MODEL_NEVER in core/harness/rules.js).
+- Stress: warmup is half the run. The 20 min rerun had a flat JS heap (0.69 MB/10 min) and RSS
+  81 -> 94 MB by 15 min, then flat for 5 minutes: warmup, not a leak. The 40 min confirmation run
+  was stopped at 12 min on the lead's word (testbox load).
+
 ## Doing
 
-- Stress-drive memory: the 30 min run had 0 functional failures but an RSS slope of 2.85 MB/10 min
-  (80 -> 88.5 MB in the first 15 min, then flat; the 98 MB last sample was the log read-back).
-  Post-run samples are now excluded and /v1/health carries memory; a 20 min rerun on the test
-  box (~/vyre-ci/stress-polish2.json) will say whether the JS heap grows or a native cache fills.
+- Nothing in flight.
 
 ## Next
 
-- Read the rerun; fix a heap leak if there is one, or document the cache warmup.
+- When the integrator says testbox is free: a 30 min stress run at nice -n 19 to confirm the
+  second-half RSS slope is under 1 MB/10 min.
+- Deck/Capsule clients: to ride a session for approve/grant they need e2e's
+  `x-vyre-presence-keep` (work/e2e 043123a) or presence.session.open. Deck team's call.
 - capsule-now to call capsule.report from the app (asked); then doctor's Capsule line is real.
 
 ## Needs from others
+
 
 - tailnet: `link.health` shape for the status line (asked).
 - connectors: `vyre connect` conventions and any tool the screen should show (asked).
 
 ## Changed contracts
+
+- presence (owner: e2e/security): SESSIONABLE gains vault.approve, vault.grant; a session proves a
+  vault.* tool only for deck, capsule or tailnet-owner callers. HUMAN_ONLY loses learn.accept,
+  learn.retire, learn.relax. Merge note: work/e2e also edits the SESSIONABLE line (adds
+  gate.approve) and adds PERSON_ONLY/MODEL_NEVER in core/harness/rules.js; take the union.
+- vault (owner: vault): vault.approve and vault.grant declare `session: () => true`.
+- learn (owner: learn): accept/retire/relax drop their presence declarations.
+- harness (owner: harness): rules.js MODEL_NEVER = HUMAN_ONLY plus the three lesson tools.
+
+- memory (owner: memory/recall team): memory.correct, memory.merge, memory.split no longer
+  declare presence (their summaries are gone). docs/using/memory.md says so.
 
 - link (owner: link/tailnet): link.find and link.pair refuse `not_real_home` on a temp home
   (config/dialogs.js realBoxAllowed).
