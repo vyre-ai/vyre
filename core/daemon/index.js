@@ -17,6 +17,7 @@ import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover } from "../modules/index.js";
 import { build, swWithBuild } from "./build.js";
+import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, SESSIONABLE, parse as parsePresence } from "../presence/index.js";
 import { peerPid, insideClaude, controllingTty } from "./peer.js";
@@ -376,6 +377,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     res.writeHead(200, { "content-type": "text/css", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
     return res.end(themeCss((config.load(root).theme || {}).colors));
   }
+  // The one app (ADR 0027), beside the Deck until it takes over /.
+  if (req.method === "GET" && (url.pathname === "/app" || url.pathname.startsWith("/app/"))) return serveApp(res, url.pathname);
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }
@@ -435,7 +438,8 @@ function stream(req, res, url, events, streams) {
 }
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
-  ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json" };
+  ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
+  ".ttf": "font/ttf", ".map": "application/json" };
 
 /**
  * The Deck: static files from deck/ in the repo (the deck workstream builds them). Paths that

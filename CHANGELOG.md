@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### vyred serves the one app at /app/, with its own service worker and manifest
+
+- GET /app/* serves the web export in apps/app/dist as a single-page app (any route that is not
+  a file gets index.html; /app is a 301 to /app/; no dist is 404 `no_app`). Hashed files under
+  /app/_expo/static/ are cached for a year as immutable, everything else is no-cache, with the
+  Deck's CSP and nosniff. Nothing outside dist is served.
+- GET /app/sw.js is made by vyred from core/daemon/app-sw.js and dist/precache.json (its /app/
+  files and build). Scope /app/: it precaches the export, answers navigations with the cached
+  shell, never touches /v1/ or the Deck's caches, and shows pushes the way deck/sw.js does with
+  paths under /app/.
+- GET /app/manifest.webmanifest is the export's own, else one scoped to /app/ in the Deck's colours
+  and icons. core/daemon/app.test.js (7 tests).
+
 #### Push: live checks for `vyre phone add` (push.subscribed, push.delivered, push.seen)
 
 - push.subscribe emits `push.subscribed` { device, label, service }, where service is the push

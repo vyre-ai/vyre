@@ -167,6 +167,16 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   - Asked the lead to bring e2e, tailnet and app-design branches to main before 1 to 3.
 
 ## Next
+- The push subscription when /app/ becomes /: a subscription belongs to the service worker
+  registration that made it, so the app's (scope /app/) and the Deck's (scope /) are two, and
+  core/push keeps each by its endpoint. When the app takes /, vyred serves the app's worker at
+  /sw.js with scope /, which replaces the Deck's registration in place: the browser keeps the
+  registration, so the Deck's subscription survives and now reaches the app's push handler (same
+  payload, and paths stop needing the /app prefix). The app then calls pushManager.getSubscription()
+  at launch and, if the /app/ registration still exists, unsubscribes it, unregisters it and tells
+  core/push to drop that endpoint, so one phone never rings twice. /app/* becomes a 301 to the same
+  path under / for a release, so an installed /app/ home-screen icon still opens. Nothing is
+  re-subscribed and the person is not asked for permission again.
 - SW version skew: a release lands on the second launch; register sw.js with the build commit.
 - Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
 - Step 6 Mac card: "Already on your tailnet" for an online Mac node.
@@ -194,6 +204,11 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - mobile: told the tool names, push payload and tab order so the native apps match.
 
 ## Changed contracts
+- /app/ serves apps/app/dist (SPA), /app/sw.js and /app/manifest.webmanifest are made by vyred
+  from dist/precache.json (core/daemon/app.js, app-sw.js). /app is a 301 to /app/; a missing dist
+  is 404 `no_app`; /app/_expo/static/* is immutable, the rest no-cache; a missing /app/_expo/ file
+  is a 404, not the shell. The build must write dist/precache.json =
+  {"build": "<id>", "files": ["/app/index.html", ...every hashed asset]}.
 - deck/js/needs.js items may carry `source: "mac"`, `machine` (from threads.asks or threads.list);
   such an ask or question has `options: []` and needs.answer refuses it.
 - memory.relevant: tailnet:<login> callers may read without a room (was refused).
