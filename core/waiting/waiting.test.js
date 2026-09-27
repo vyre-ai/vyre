@@ -31,7 +31,7 @@ const fake = (name, tool, key, extra = "") => [name, [tool],
     const v = globalThis.fake[${JSON.stringify(key)}]; if (v instanceof Error) throw v; return v; } }); return {}; } };`];
 const ALL = [fake("threads", "threads.asks", "asks"), fake("gate", "gate.held", "held"), fake("planner", "planner.ringing", "ringing"), fake("link", "link.pending", "pending")];
 
-async function world(t, fakes = ALL, data = {}) {
+async function world(t, fakes = ALL, data = {}, role = "box") {
   /** @type {any} */ (globalThis).fake = { asks: [], held: [], ringing: [], pending: [], ...data };
   /** @type {any} */ (globalThis).calls = {};
   const home = tempHome(t);
@@ -41,9 +41,9 @@ async function world(t, fakes = ALL, data = {}) {
   const events = new Events(db);
   const said = [];
   events.on("waiting.changed", e => said.push(e.payload));
-  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
+  const reg = new Registry({ db, events, config: { role }, paths: { root: home }, log: () => {} });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "waiting");
-  await reg.start([...core, ...discover([root])], { role: "local" });
+  await reg.start([...core, ...discover([root])], { role });
   t.after(async () => { await reg.stop?.(); db.close(); });
   const call = async (tool, input = {}, caller = "cli") => (await reg.call(tool, input, caller));
   return { reg, events, said, call, calls: /** @type {any} */ (globalThis).calls, data: /** @type {any} */ (globalThis).fake };
@@ -162,4 +162,12 @@ test("waiting.changed: after the owners' events, coalesced, and only when the co
   await wait(450);
   assert.equal(w.said.at(-1).by_kind.pairing, 0);
   assert.equal(w.said.length, 5);
+});
+
+test("waiting.list on a Mac leaves out the planner, which is the box's over the link", async t => {
+  const w = await world(t, ALL, { ringing: [RING], pending: [PAIR] }, "local");
+  const r = (await w.call("waiting.list")).data;
+  assert.ok(!r.rows.some(x => x.source === "planner"));
+  assert.ok(r.rows.some(x => x.source === "link"));
+  assert.equal(w.calls["planner.ringing"] || 0, 0, "a Mac's vyred never asks the box's planner on its own");
 });

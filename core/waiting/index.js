@@ -115,9 +115,12 @@ export default {
       } catch { return null; }
     };
 
+    // On a Mac the planner is the box's, reached over the link: a Mac's vyred never asks its box
+    // on its own (test/federation-reads.test.js), and the Mac hears rings through the link's events.
+    const sources = ctx.config && ctx.config.role === "box" ? SOURCES : SOURCES.filter(([name]) => name !== "planner");
     const compute = async () => {
-      const got = await Promise.all(SOURCES.map(([, tool, map]) => read(tool, map)));
-      const partial = SOURCES.filter((_, i) => got[i] === null).map(([name]) => name);
+      const got = await Promise.all(sources.map(([, tool, map]) => read(tool, map)));
+      const partial = sources.filter((_, i) => got[i] === null).map(([name]) => name);
       const rows = got.flatMap(g => g || []).sort(order);
       return { rows, ...tally(rows), partial };
     };

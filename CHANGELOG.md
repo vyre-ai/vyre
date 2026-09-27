@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### On a Mac, waiting leaves the planner to the box
+
+- core/waiting reads planner.ringing only on the box. On a Mac the planner is the box's, reached
+  over the link, and a Mac's vyred never asks its box on its own (test/federation-reads.test.js
+  caught waiting doing it after an owner's event). The Mac hears rings through the link's events.
+
 #### The palette test reads swatches through their roles
 
 - test/theme-defaults.test.js: tokens.css paints roles only since pwa's token pass, so a swatch
