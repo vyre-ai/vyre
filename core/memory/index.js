@@ -107,6 +107,9 @@ export default {
       ctx.events.on("thread.finished", () => void model.pump()),
     ];
     let running = null, again = false, stopping = false, timer = null;
+    /** The graph's people, orgs and projects after the last pass, to say which are new. */
+    const GROWN = "SELECT id, kind FROM memory_nodes WHERE kind IN ('person', 'org', 'repo', 'domain')";
+    let known = new Set(/** @type {any[]} */ (ctx.store.db.prepare(GROWN).all()).map(n => String(n.id)));
     // Rooms are stored, so a restart reuses the last list; they are read again from Projects on
     // the first pass and whenever a project or a pick changes.
     let roomsStale = true;
@@ -123,7 +126,20 @@ export default {
           try { result.personal = await personalPass({ full: Boolean(opts.full) }); }
           catch (e) { ctx.log("personal facts failed: " + /** @type {Error} */ (e).message); }
           opts = {};
-          if (result.changed) ctx.events.emit("memory.curated", { nodes: result.nodes, edges: result.edges, ms: result.ms, updated: curator.updated() });
+          if (result.changed) {
+            ctx.events.emit("memory.curated", { nodes: result.nodes, edges: result.edges, ms: result.ms, updated: curator.updated() });
+            // The graph grew: how many new people, orgs and projects, for a live graph view during
+            // an import (docs/design/import.md). Counts by kind only: a node's id is its name, and
+            // an event is no place for names. The view reads what is new with memory.graph { since }.
+            const now = /** @type {any[]} */ (ctx.store.db.prepare(GROWN).all());
+            const fresh = now.filter(n => !known.has(String(n.id)));
+            if (fresh.length) {
+              const by = {};
+              for (const n of fresh) by[String(n.kind)] = (by[String(n.kind)] || 0) + 1;
+              ctx.events.emit("memory.graph-grew", { nodes: result.nodes, edges: result.edges, new: by, updated: curator.updated() });
+            }
+            known = new Set(now.map(n => String(n.id)));
+          }
         } while (again && !stopping);
         return result;
       })().finally(() => { running = null; });

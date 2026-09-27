@@ -68,9 +68,9 @@ events and the graph.
 - Event `import.progress { machine, stage, done, total, eta_s }`, at most once every 2 seconds
   per machine, from Recall's `session.indexed`, the embedder's batches, `memory.curated` and the
   reader's passes. It carries counts only, never names or text.
-- Event memory.graph-grew (proposed) `{ nodes, edges, new: [{ id, kind }] }` after each curator pass during an
-  import, so a live graph view can add the new nodes without redrawing (ids and kinds only; the
-  view reads labels through `memory.graph`, under its usual scope rules).
+- Event `memory.graph-grew { nodes, edges, new: { person, org, ... }, updated }` after a curator pass
+  that added people, orgs or projects: counts by kind only (a node's id is its name). A live graph
+  view then reads what is new with `memory.graph { since }`, under its usual scope rules.
 
 ### Pacing and resumption
 
@@ -95,7 +95,7 @@ What the imported history makes possible, largest value for the size first.
 
 | # | Opportunity | What the person gets | Size | When |
 |---|---|---|---|---|
-| 1 | Import progress as a live graph | People, orgs and projects appear as sessions are read (the proposed memory.graph-grew event) | S memory, M Deck | 0.1.1 |
+| 1 | Import progress as a live graph | People, orgs and projects appear as sessions are read (`memory.graph-grew`) | S memory, M Deck | 0.1.1 |
 | 2 | "Who is ..." and "everything about ..." | One card per person or org: role, where they work, projects, last talked about, sources | S | 0.1.1 |
 | 3 | Contradictions to confirm | Two values for one thing (two home cities, two spouses): one "waiting on you" card to pick, using the suggestions IQ corrections built | S | 0.1.1 |
 | 4 | What changed | Per project, what memory learned since a date, from the person's own words (memory.today, widened) | S | 0.1.1 |
@@ -110,7 +110,7 @@ What the imported history makes possible, largest value for the size first.
 |---|---|---|---|
 | import.scan, import.plan, import.start, import.stop on the device | memory-iq (+ federation for start) | M | yes |
 | Upload channel, cursor, consent record, delete on revoke | federation | L | if federation lands it; else local-only import |
-| Box ingest: synced root, machine on every derived row, import.status, import.progress, memory.graph-grew (proposed) | memory-iq | M | yes |
+| Box ingest: synced root, machine on every derived row, `import.status`, `import.progress`, `memory.graph-grew` | memory-iq | M | yes |
 | Onboarding and install steps (discover, choose, watch it fill) | launch | M | yes |
 | Import screen and graph view designs | app-design | M | yes |
 | Live graph view | Deck | M | relaunch after 0.1.1 unless the Deck is free |
