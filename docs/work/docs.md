@@ -115,6 +115,15 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
   ON MAIN: first-hour step 8 changes colours through Settings, Appearance (the hub,
   appearance.tokens); remove every "(pending)" in releases/0.1.0.md that landed; update the
   first hour's Known gap callouts (IQ in the Capsule, vault needs, do, the hub).
+- SAVE (restart): the release notes and first hour were moved to the partner voice in 72fc3e85
+  (not yet handed on). WAITING ON launch (the new team that owns vyre.run, onboarding copy and
+  brand): their voice lines, their copy to check for accuracy against 0.1.0 (what 0.1.0 does not
+  ship was sent to them), and the docs header spec (build it into scripts/lib/docs/chrome.js).
+  TODO: review platform's tutorial wording in docs/build/first-module.md and writing-a-module.md
+  (work/platform a79d58f1, `vyre module new|check|add` built; add is step 10), and move `vyre module`
+  out of "Known limits" in releases/0.1.0.md (disable/enable, the testing SDK and templates/module
+  are still coming). ci asked about docs/index.json and docs/reference in npm: answered, nothing
+  reads them at runtime, so they can go in 0.1.1. Latest sha handed to the integrator: ecdb22eb.
 - Rule reminder from the lead: one Chrome on testbox at a time, and no shots while the integrator's
   suite runs.
 
