@@ -82,8 +82,8 @@ More typing lets the pending answer go (the turn is interrupted); it asks again 
 pause. The same words never ask twice, and the last five answers come back at once.
 
 **Where it shows.** The card opens at the top of the body, above the local results, at its
-thinking height, in the same frame as the pause fires. Its header: the Vyre IQ mark, "Vyre IQ"
-13/600 `text`, and "quick" or "deeper" 12 `label`. There are no "Quick answer", "Deeper answer"
+thinking height, in the same frame as the pause fires. Its header: "Vyre IQ" 12/600 `label`,
+then "quick" or "deeper" 12 `label`, as the group headers are. There are no "Quick answer", "Deeper answer"
 or "Follow up" rows. Once the first words arrive the local results collapse to one line ("12
 local results", with ↓), once, and never jump again.
 
@@ -217,9 +217,11 @@ one thing.
 | Results | ↑↓ Move · ⏎ Open · ⌘O Open in Vyre · Esc Clear |
 | Question typed | ⏎ Ask · ⌘⏎ Think deeper · ⌘O Open in Vyre · Esc Clear |
 | Answer streaming | Esc Stop · ⌘⏎ Think deeper |
+| Speaking | ⏎ Ask · ⌘⏎ Think deeper · ⌘O Open in Vyre · Esc Stop |
 | Follow-up box | ⏎ Ask · ⌘⏎ Think deeper · ⌘O Open in Vyre · Esc Clear |
 | Listening | ⌥⏎ Release to ask · Esc Cancel |
 | Using your Mac | Esc Stop · ⌘O Open in Vyre |
+| Computer use stopped | ⌘O Open in Vyre · Esc Clear |
 | Ask focused | A Allow once · D Deny · ⏎ Review · Esc Clear |
 
 ## Appearance and the hub

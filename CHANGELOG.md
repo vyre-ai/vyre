@@ -4,6 +4,30 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Capsule redesigned, and the design tokens in the hub
+
+- docs/design/system/capsule.md is the Design A Capsule for capsule-pro: keyboard first, a
+  question answers on pause and the field becomes the follow-up box, ⌘⏎ thinks deeper, Esc stops,
+  clears, then hides, and the footer shows only key hints. The answer card grows to the panel and
+  then scrolls with keys and a thumb, so it never clips, and a heading with no rows never draws.
+  Vyre IQ answers show their sources (iq.ask), say "Not sure" with what is known, and say when
+  nothing was found. Voice is on Option-Return; computer use ("do ...") shows its steps live and
+  Esc stops it. New boards: CapsuleLong and CapsuleDo, with CapsuleSearch and CapsuleIQ now on
+  the canvas.
+- The design tokens and the theme rules moved to lib/theme, a small pure library that ships in the
+  package (package.json "files" now has "lib"). tokens.json now lives at lib/theme/tokens.json.
+  scripts/lib/theme.js and scripts/lib/tokens.js still work, and gen-tokens writes the same bytes
+  as before.
+- New appearance module: the settings appearance.theme (system, dark or paper) and
+  appearance.tokens (a partial tokens file merged over Vyre's own). Each change to the tokens is
+  checked first and refused whole, naming each problem, when it breaks a rule: a text pair under
+  AA, the focus ring under 3:1, the attention colour reused, the status model, text under 12, a
+  touch target under 44. Surfaces read appearance.resolve or GET /v1/appearance/theme and repaint
+  on appearance.changed. The older config.theme.colors is folded in for one release.
+- docs/design/system/teams.md lists every open gap in the specs by the team that closes it.
+- The Install boards draw the real pairing code: 8 characters in two groups of four, valid 10
+  minutes.
+
 #### Design system: Design A v1, frozen
 
 - docs/design/system/ is the design system of record: tokens, layout and navigation, copy, the
