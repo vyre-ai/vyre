@@ -142,7 +142,7 @@ export class PersonSessions {
       if (!good) return { error: { code: "denied", message: "the app must sign this trade with the key it registers" } };
     }
     const s = this.start({ node, kind: "bearer", label: row.label, key: { kty: "EC", crv: "P-256", x: key.x, y: key.y } });
-    return { data: { token: s.token, expires: s.expires, id: s.id } };
+    return { data: { token: s.token, expires: s.expires, id: s.id }, native: row.origin === "app:vyre", label: row.label };
   }
 
   /**

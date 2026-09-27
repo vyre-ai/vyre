@@ -169,6 +169,7 @@ Question: can a process that is not the person act as the person over HTTP? Yes,
 | computerd | 0.0.0.0 in each computer | vyre-computers, the computer's tailnet node | per-computer bearer (plain `===`) | none | low |
 | egressgate, docker-api proxy | 0.0.0.0 on internal networks | vyred's namespace, computers | none | none | low (status leaks a reason; docker-api can stop computers) |
 | vyred socket core/daemon/index.js | unix socket 0600 | same uid | label + peer ancestry for person actions | label | HIGH (below) |
+| agent computer (glass-live 70a72036, reviewed 27 Sep) | computerd, CDP over a pipe, Xvnc with a cookie | the agent (uid 1000) in its own container | token, untrusted X cookie, freezer during a shield | none | HIGH until fixed: token and VNC password in Config.Env (every exec reads them); CDP denylist leaves cookies, file:// and chrome:// open |
 
 Findings:
 
@@ -210,22 +211,16 @@ Plan (to the lead before building):
 
 ## Doing (27 Sep, after logout 3)
 
-Done and pushed (d1ba721e): HIGH 2 link.call; a) person session; b) `vyre link signin`; vault
-fill; peer check by pgid and by orphans outside their own group; the uid split (core/spawner,
-image, compose; scripts/e2e-split/check.sh 15/15); ADR 0032.
+Batch 3 reconcile done (c8e00e7b, then a33ad949): main c8fb9aae and tailnet f30a7333 merged;
+the person gate on ownerDevice (relayed devices); cross-origin reads refused; vyre:// PKCE with a
+signed trade; the phone's biometric key enrolled at the native trade; a relayed browser's passkey
+bound to its device; one init (tini PID 1, spawner, loop.sh; check.sh 24/24); floor rule 8 for an
+agent's own folder. Reviewed: sessions e20f459 (approved, three follow-ups), glass-live 70a72036
+(two HIGH). Waiting: relay's relay.device.presence; the integrator's full suite on batch 3.
 
-Headscale run of THIS branch (27 Sep, torn down after; CA and setup files kept in /srv/vyre-e2e):
-onboarding to the Deck; a curl from the Mac node gets 401 person_session_required for
-agents.create and term.open while reads pass; the Deck's first person action signs in with the
-passkey by itself (cookie invisible to the page) and goes through; Vault seal with passkey;
-the Mac pairs; `vyre link signin` opens /person/signin, the passkey, the loopback, "signed in
-until 10/27"; the Mac CLI updates an agent on the box; a call under a claude on the Mac and its
-nohup orphan are refused; a made-up bearer is refused. Found and fixed: the service worker served
-the Deck shell for /person/signin. Harness note: a passkey cloned to the phone makes the Mac's
-counter go backwards; bump the Mac's signCount before reusing it.
-
-Next: the same run against the lead's deployed sha. Waiting: tailnet's CORS sha; pwa's sign-in
-sheet; sessions calling spawnAsAgent (and spawning detached); vault's extension key.
+Next: the Mac Secure Enclave key so the Mac proves HUMAN_ONLY to the box (approved); the headscale
+run on main after batch 3a+3b, before box-deploy ships it; rerun switchboard.test.js on the Mac
+after 123e70f6.
 
 ## Earlier (27 Sep, after the restart)
 

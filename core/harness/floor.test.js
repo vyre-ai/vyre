@@ -158,3 +158,21 @@ test("floor: the vault's value-out commands, the clipboard, and a way out throug
   for (const c of [`vyre box add me@server.example.com`, `pbpaste`, `osascript -e 'the clipboard'`, `curl --unix-socket /var/run/docker.sock http://x/containers/create -d @c.json`]) assert.equal(bash(c), "ask", c);
   for (const c of [`vyre vault list`, `vyre vault get api-key`, `docker run --rm -v ./src:/src node:22 npm test`, `docker ps`, `docker build .`]) assert.equal(bash(c), null, c);
 });
+
+test("floor: an agent's session works in its own folder under VYRE_HOME, and nowhere else there", () => {
+  const as = (tool, input, agent) => rules({ tool, input, cwd: "/home/sam/.vyre/agents/kit", home: HOME, userHome: USER, agent }).decision;
+  // kit's own folder: files and shell alike.
+  assert.equal(as("Write", { file_path: "/home/sam/.vyre/agents/kit/notes/orders.md", content: "" }, "kit"), null);
+  assert.equal(as("Edit", { file_path: "/home/sam/.vyre/agents/kit/draft.md", old_string: "a", new_string: "b" }, "kit"), null);
+  assert.equal(as("Bash", { command: "ls /home/sam/.vyre/agents/kit && cat ./draft.md > /home/sam/.vyre/agents/kit/out.md" }, "kit"), null);
+  assert.equal(as("Glob", { pattern: "**/*.md", path: "/home/sam/.vyre/agents/kit" }, "kit"), null);
+  // Another agent's folder, the vault, the config, the store, and wildcards above its folder.
+  for (const [tool, input] of [["Write", { file_path: "/home/sam/.vyre/agents/juno/notes.md", content: "" }],
+    ["Read", { file_path: "/home/sam/.vyre/config.json" }], ["Read", { file_path: "/home/sam/.vyre/vault/items.json" }],
+    ["Bash", { command: "cat /home/sam/.vyre/agents/juno/notes.md" }], ["Bash", { command: "cat /home/sam/.vyre/agents/*/notes.md" }],
+    ["Bash", { command: "cp /home/sam/.vyre/vyre.db /tmp/x" }], ["Write", { file_path: "/home/sam/.vyre/agents/kit/../juno/x.md", content: "" }]]) {
+    assert.equal(as(tool, input, "kit"), "deny", `${tool} ${JSON.stringify(input)}`);
+  }
+  // Without a vouched agent, the folder is internal as before.
+  assert.equal(as("Write", { file_path: "/home/sam/.vyre/agents/kit/notes/orders.md", content: "" }, null), "deny");
+});

@@ -169,6 +169,12 @@ export const MIGRATIONS = [`
     label TEXT,
     expires INTEGER NOT NULL
   );
+`, `
+  CREATE TABLE presence_key_devices (
+    key TEXT PRIMARY KEY,
+    device TEXT NOT NULL,
+    origin TEXT NOT NULL
+  );
 `];
 
 const CHALLENGE_TTL = 120_000;
@@ -404,7 +410,7 @@ export class Presence {
    * WebAuthn options. Returns { challenge, ... } or { error: { code, message } }.
    * @param {{ tool: string, input: any, method: string, tty?: string, def?: any }} a
    */
-  async challenge({ tool, input, method, tty, def }) {
+  async challenge({ tool, input, method, tty, def, peer = null }) {
     this.prune();
     if (this.challenges.size >= MAX_OPEN) return { error: { code: "denied", message: "too many presence challenges are open; wait for them to expire" } };
     const hash = inputHash(input);
@@ -429,11 +435,15 @@ export class Presence {
       return { challenge: id };
     }
     if (method === "passkey") {
-      const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, rp_id FROM presence_keys WHERE kind = 'passkey' ORDER BY created").all());
-      if (!rows.length) return { error: { code: "bad_input", message: "no passkey is enrolled; enroll one with presence.enroll" } };
+      // A browser paired over the relay (ADR 0032 part 2b) uses only the passkey enrolled for its
+      // own device id; every other caller uses only the passkeys bound to no device.
+      const device = peer && peer.kind === "device" && peer.stableId ? String(peer.stableId) : null;
+      const rows = /** @type {any[]} */ (this.db.prepare(`SELECT k.id, k.rp_id, d.origin FROM presence_keys k LEFT JOIN presence_key_devices d ON d.key = k.id
+        WHERE k.kind = 'passkey' AND ${device ? "d.device = ?" : "d.device IS NULL"} ORDER BY k.created`).all(...(device ? [device] : [])));
+      if (!rows.length) return { error: { code: "bad_input", message: device ? "no passkey is enrolled for this device" : "no passkey is enrolled; enroll one with presence.enroll" } };
       const rpId = String(rows[0].rp_id);
       const challenge = b64url(32);
-      this.challenges.set(id, { tool, hash, method, tries: 0, expires, challenge, rpId });
+      this.challenges.set(id, { tool, hash, method, tries: 0, expires, challenge, rpId, ...(device ? { device, origin: String(rows[0].origin) } : {}) });
       return { challenge: id, webauthn: { challenge, rpId, userVerification: "required", timeout: 60_000,
         allowCredentials: rows.filter(r => String(r.rp_id) === rpId).map(r => ({ type: "public-key", id: String(r.id) })) } };
     }
@@ -536,12 +546,17 @@ export class Presence {
       this.challenges.delete(String(proof.id));
       const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_keys WHERE id = ? AND kind = 'passkey'").get(String(proof.cred || "")));
       if (!row || String(row.rp_id) !== c.rpId) return refuse("that passkey is not enrolled");
+      const bound = /** @type {any} */ (this.db.prepare("SELECT device, origin FROM presence_key_devices WHERE key = ?").get(row.id));
+      const from = peer && peer.kind === "device" && peer.stableId ? String(peer.stableId) : null;
+      // A device-bound passkey proves only for its device, from its app's origin; no other does.
+      if ((bound ? bound.device : null) !== (c.device || null) || (c.device || null) !== from) return refuse("that passkey is not this device's");
       const w = await this.webauthn();
       if (!w) return refuse("passkeys cannot be checked on this machine");
       let r;
       try {
         r = await w.verifyAssertion({ publicKey: String(row.public_key), alg: Number(row.alg), rpId: String(row.rp_id), challenge: c.challenge,
-          authenticatorData: String(proof.ad || ""), clientDataJSON: String(proof.cd || ""), signature: String(proof.sig || "") });
+          authenticatorData: String(proof.ad || ""), clientDataJSON: String(proof.cd || ""), signature: String(proof.sig || ""),
+          ...(bound ? { origins: [String(bound.origin)] } : {}) });
       } catch (e) { r = { ok: false, reason: /** @type {Error} */ (e).message }; }
       if (!r || !r.ok) return refuse(`the passkey assertion does not check out${r && r.reason ? ": " + r.reason : ""}`);
       // A counter that does not move forward means a cloned authenticator. Synced passkeys send 0.
@@ -621,7 +636,7 @@ export class Presence {
    * Enroll a Capsule key (Ed25519), a phone's device key (P-256) or a passkey. Public keys only, as base64url SPKI DER.
    * @param {{ kind: string, name?: string, public_key: string, alg?: number, rp_id?: string, credential_id?: string }} k
    */
-  enroll({ kind, name, public_key, alg, rp_id, credential_id }) {
+  enroll({ kind, name, public_key, alg, rp_id, credential_id, device = null, origin = null }) {
     if (kind !== "capsule" && kind !== "passkey" && kind !== "device") throw new Error("kind must be capsule, passkey or device");
     let key;
     try { key = spki(public_key); } catch { throw new Error("public_key must be a base64url SPKI DER public key"); }
@@ -648,11 +663,14 @@ export class Presence {
     const created = this.now();
     this.db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, rp_id, sign_count, created, last_used) VALUES (?,?,?,?,?,?,0,?,NULL)")
       .run(id, kind, clean(name || kind).slice(0, 80) || kind, public_key, alg ?? null, rp_id ?? null, created);
+    // A passkey made in a browser paired over the relay: it proves only for that device.
+    if (kind === "passkey" && device) this.db.prepare("INSERT INTO presence_key_devices (key, device, origin) VALUES (?,?,?)").run(id, String(device), String(origin));
     return { id, kind, name: clean(name || kind).slice(0, 80) || kind, created };
   }
 
   /** Remove an enrolled key. Returns whether one was removed. */
   remove(id) {
+    this.db.prepare("DELETE FROM presence_key_devices WHERE key = ?").run(String(id));
     return Number(this.db.prepare("DELETE FROM presence_keys WHERE id = ?").run(String(id)).changes) === 1;
   }
 

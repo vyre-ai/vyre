@@ -28,9 +28,23 @@ export default {
     ctx.tool("presence.enroll", {
       description: "Enroll a Capsule key (Ed25519), a phone's device key (P-256, alg -7) or a passkey, by its public key as base64url SPKI DER. Needs presence.",
       presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Capsule key"} named "${String(input.name || input.kind)}"` },
-      input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str },
+      input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str,
+        device: str },
         ["kind", "public_key"]),
-      run: async input => {
+      run: async (input, meta = {}) => {
+        // A passkey a browser made at relay pairing (ADR 0032 part 2b): only the relay module enrolls
+        // one, for the device it just paired, under an allowed app's name (app.vyre.run). It proves
+        // only for that device, from that origin.
+        if (input.device !== undefined) {
+          if (meta.caller !== "module:relay") throw Object.assign(new Error("only the relay enrolls a device's passkey"), { code: "denied" });
+          if (input.kind !== "passkey" || !/^[a-z2-7]{16}$/.test(String(input.device))) throw Object.assign(new Error("a device's key here is a passkey for a relay device id"), { code: "bad_input" });
+          const origins = ((ctx.config.network || {}).origins || ["https://app.vyre.run"]).map(String);
+          const origin = origins.find(o => { try { return new URL(o).hostname === String(input.rp_id || "").toLowerCase(); } catch { return false; } });
+          if (!origin) throw Object.assign(new Error(`a device's passkey must be for an allowed app (${origins.join(", ")})`), { code: "denied" });
+          const k = presence.enroll({ ...input, origin });
+          ctx.events.emit("presence.enrolled", { id: k.id, kind: k.kind, name: k.name });
+          return k;
+        }
         // On the box a passkey must belong to the Deck's own address, not a name in the request.
         if (ctx.config.role === "box" && input.kind === "passkey") {
           let host = null;
@@ -112,10 +126,15 @@ export default {
         // phone's Secure Enclave or Keystore key, method device), and gets a token bound to the
         // request-signing key it sends, pinned to its device id.
         if (meta.peer && meta.peer.kind === "device") {
-          if (meta.presence.method !== "device") throw Object.assign(new Error("a paired device signs in with its own device key"), { code: "denied" });
-          const r = await ctx.call("relay.device.presence", { id: node }).catch(() => null);
-          const mine = r && r.data && r.data.key;
-          if (!mine || mine !== meta.presence.keyId) throw Object.assign(new Error("that key is not the one enrolled for this device"), { code: "denied" });
+          if (meta.presence.method === "passkey") {
+            // A relayed browser: its passkey is bound to this device id (presence checked it too).
+            const b = /** @type {any} */ (ctx.store.db.prepare("SELECT device FROM presence_key_devices WHERE key = ?").get(String(meta.presence.keyId || "")));
+            if (!b || b.device !== node) throw Object.assign(new Error("that passkey is not this device's"), { code: "denied" });
+          } else if (meta.presence.method === "device") {
+            const r = await ctx.call("relay.device.presence", { id: node }).catch(() => null);
+            const mine = r && r.data && r.data.key;
+            if (!mine || mine !== meta.presence.keyId) throw Object.assign(new Error("that key is not the one enrolled for this device"), { code: "denied" });
+          } else throw Object.assign(new Error("a paired device signs in with its own device key or passkey"), { code: "denied" });
           const k = input.key;
           if (!k || k.kty !== "EC" || k.crv !== "P-256" || typeof k.x !== "string" || typeof k.y !== "string" || k.d) throw Object.assign(new Error("key must be the public JWK of an ES256 key"), { code: "bad_input" });
           const s = people.start({ node, kind: "bearer", label, key: { kty: "EC", crv: "P-256", x: k.x, y: k.y } });

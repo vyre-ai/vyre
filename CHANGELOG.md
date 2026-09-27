@@ -297,6 +297,30 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The owner's phone over the tailnet queues for a session busy in the terminal, and an agent's
   tailnet node does not (queuesFor in core/switchboard).
 
+#### A relayed browser's passkey
+
+- presence.enroll takes `device` (a relay device id) from the relay module only: a passkey the
+  browser made at pairing, for an allowed app's name (app.vyre.run), bound to that device
+  (presence_key_devices) and checked against that app's origin. A challenge from that device
+  offers only its own passkey; every other caller is offered only the passkeys bound to no
+  device. presence.person.start from a relayed device takes that passkey or its device key.
+  Removing a key removes its binding.
+
+#### The phone's biometric key proves presence
+
+- The native app's token trade (vyre://) may carry `human`, the public JWK of its biometric-bound
+  P-256 key (Keystore, Secure Enclave). The box enrolls it as a device presence key and answers
+  `human: { key }`; the phone then proves HUMAN_ONLY calls with `x-vyre-presence: device key=..
+  ts=.. nonce=.. sig=..` (DER ECDSA over vyre-presence-v1, tool, input hash, ts, nonce), and one
+  proof opens the same 30-minute presence session as Touch ID.
+
+#### Floor rule 8: an agent's own folder
+
+- An agent without a project runs in VYRE_HOME/agents/<name>. Its session may now read and write
+  there (files, shell, globs inside it), as in watchers/. Only for the agent vyred vouched for
+  (harness:agent:<name> with its key, or VYRE_AGENT in the hook when vyred is down); another
+  agent's folder, the vault, config, keys and the store stay internal.
+
 #### Security: batch 3 reconcile (main, tailnet, relay, one init)
 
 - The person gate covers relayed devices (`device:<id>`, ownerDevice) as it covers tailnet nodes.

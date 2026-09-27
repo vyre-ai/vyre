@@ -26,10 +26,12 @@ const WHO = {
 /** Asks for a proof on every human-only tool and takes any proof: refusals below are about the session. */
 const lenient = {
   required: (tool, def, input) => HUMAN_ONLY.has(tool) || Boolean(def && def.presence && (typeof def.presence.when !== "function" || input === undefined || def.presence.when(input))),
-  verify: async ({ proof }) => (proof ? { ok: true, method: proof.method === "device" ? "device" : "passkey", keyId: proof.key || "k1" } : { ok: false, message: "needs a person", methods: ["passkey"] }),
+  verify: async ({ proof }) => (proof ? { ok: true, method: proof.method === "device" ? "device" : "passkey", keyId: proof.key || proof.cred || "k1" } : { ok: false, message: "needs a person", methods: ["passkey"] }),
   challenge: async () => ({ error: { code: "bad_input", message: "no challenges here" } }),
   covered: () => false,
   coverage: () => ({ covered: false, since: null, expires: null }),
+  enrolled: /** @type {any[]} */ ([]),
+  enroll(k) { this.enrolled.push(k); return { id: `kh${this.enrolled.length}`, kind: k.kind, name: k.name }; },
 };
 
 async function box(t) {
@@ -212,6 +214,17 @@ test("person: a device paired over the relay is a device too, and signs in with 
   assert.equal(made.status, 200, JSON.stringify(made));
   // Pinned to the device id: another relayed device cannot use it.
   assert.equal((await relayed("qrstuvwxyz234567", "POST", "/v1/tools/agents.list", {}, sign("agents.list", {}))).status, 401);
+
+  // A browser paired over the relay: its passkey, enrolled by the relay module alone, for app.vyre.run.
+  const spki = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  const web = { kind: "passkey", name: "alex-phone web", public_key: spki, alg: -7, rp_id: "app.vyre.run", credential_id: "webcredential1", device: ID };
+  assert.equal((await d.registry.call("presence.enroll", web, "cli", { proof: { method: "passkey" } })).error.code, "denied", "only the relay enrolls it");
+  assert.equal((await d.registry.call("presence.enroll", { ...web, rp_id: "evil.example" }, "module:relay")).error.code, "denied");
+  assert.ok(!(await d.registry.call("presence.enroll", web, "module:relay")).error);
+  const w = await relayed(ID, "POST", "/v1/tools/presence.person.start", { key }, { "x-vyre-presence": "passkey id=x cred=webcredential1" });
+  assert.equal(w.data && w.data.kind, "bearer", JSON.stringify(w));
+  // Another device cannot sign in with it.
+  assert.equal((await relayed("qrstuvwxyz234567", "POST", "/v1/tools/presence.person.start", { key }, { "x-vyre-presence": "passkey id=x cred=webcredential1" })).error.code, "denied");
 });
 
 test("person: the native app returns to vyre:// and must sign the trade with the key it registers", async t => {
@@ -222,8 +235,9 @@ test("person: the native app returns to vyre:// and must sign the trade with the
   const key = publicKey.export({ format: "jwk" });
   assert.equal((await call(PHONE_IP, "presence.person.start", { cc, return: "vyre://elsewhere/x" }, { "x-vyre-presence": "passkey id=x" })).error.code, "denied");
   const code = async () => (await call(PHONE_IP, "presence.person.start", { cc, return: "vyre://person/signin" }, { "x-vyre-presence": "passkey id=x" })).data.code;
+  const human = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
   const trade = (c, k = privateKey, extra = {}) => {
-    const body = { code: c, verifier, key };
+    const body = { code: c, verifier, key, human };
     const t2 = Date.now(), n = crypto.randomBytes(12).toString("base64url");
     const sig = crypto.sign("sha256", Buffer.from(signed({ method: "POST", path: "/v1/person/token", raw: JSON.stringify(body), t: t2, n })), { key: k, dsaEncoding: "ieee-p1363" }).toString("base64url");
     return send(PHONE_IP, "POST", "/v1/person/token", body, { "x-vyre-proof": `t=${t2} n=${n} sig=${sig}`, ...extra });
@@ -232,7 +246,14 @@ test("person: the native app returns to vyre:// and must sign the trade with the
   const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey;
   assert.equal((await trade(await code(), other)).error.code, "denied", "signed by another key");
   assert.equal((await trade(await code(), privateKey, { "x-test-origin": "https://app.vyre.run" })).error.code, "denied", "a web page cannot trade a native code");
+  const before = lenient.enrolled.length;
   const ok = await trade(await code());
   assert.equal(ok.status, 200, JSON.stringify(ok));
+  // The biometric key rides the trade: enrolled as a device presence key, for HUMAN_ONLY proofs.
+  assert.match(ok.data.human.key, /^kh\d+$/);
+  const k = lenient.enrolled[lenient.enrolled.length - 1];
+  assert.equal(lenient.enrolled.length, before + 1);
+  assert.deepEqual([k.kind, k.alg], ["device", -7]);
+  assert.equal(crypto.createPublicKey({ key: Buffer.from(k.public_key, "base64url"), format: "der", type: "spki" }).export({ format: "jwk" }).x, human.x);
   assert.match(ok.data.token, /^[\w-]+\.[\w-]+$/);
 });
