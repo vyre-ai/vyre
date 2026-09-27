@@ -68,7 +68,7 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   "learn.accept", "learn.retire", "learn.relax",
   // What every session is told and runs on (ADR 0030): a model never edits a system prompt, a
   // mode or a model, its own least of all.
-  "sessions.prompt.set", "sessions.prompt.revert", "threads.mode", "sessions.models.set", "sessions.limits.set",
+  "sessions.prompt.set", "sessions.prompt.revert", "threads.mode", "sessions.models.set", "sessions.limits.set", "threads.shell", "threads.remember",
   // Signing a browser or app out (core/presence/person.js).
   "presence.person.revoke"]);
 

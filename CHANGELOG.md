@@ -4,6 +4,50 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: images, ! shell, # memory, thinking and background tasks (parity with Claude Code)
+
+- `threads.send {images: [{media_type, data}]}`: pasted images (png, jpeg, gif, webp; at most 5,
+  5 MB each) go to Claude Code as image blocks before the words. `thread.sent` says how many.
+- `threads.shell {thread, command}` (person-only, PERSON_ONLY): Claude Code's `!` mode. The line
+  runs in the thread's folder as the person, under the security floor (a denied command is refused
+  before it runs), its output shows (`thread.shell {command, code, output}`) and goes to Claude with
+  the next message as Claude Code's `<bash-input>`/`<bash-stdout>` blocks.
+- `threads.remember {thread, text, scope}` (person-only): Claude Code's `#` mode, a line in the
+  project's CLAUDE.md, the user's own or the folder's CLAUDE.local.md. `thread.remembered`.
+- Thinking: its own event, `thread.thinking {message, block, delta | text + done}`, as it grows and
+  whole, so a surface that does not show thinking never takes it for the reply; `threads.thinking
+  {thread, on}` turns it on (the model decides how much) or off; `thinking.switched`.
+- Background tasks: `thread.task {id, kind: shell|agent, title, status, background, summary}` from
+  Claude Code's task_started, task_updated and task_notification; `threads.tasks {thread}` lists them;
+  `threads.kill-task {thread, task}` stops one.
+
+#### Sessions: /model, the / menu, and rewinding code (parity with Claude Code)
+
+- `threads.model {thread, model}` (a person's surface): switches a running thread's model, as
+  `/model` does (the CLI's `set_model` control, the SDK's `setModel`); the record and the chip
+  follow; event `model.switched`. A stopped thread takes it when it next runs.
+- `threads.commands {thread}`: the slash commands a running thread offers (Claude Code's own, the
+  user's, the project's and plugins'), with descriptions on the SDK driver, names from init on the
+  CLI runner. A command is sent as a message.
+- `threads.rewind {restore: "code" | "both"}`: Claude Code puts back the files its tools changed
+  since that message (its file checkpoints, now on for every session Vyre runs:
+  `enableFileCheckpointing` on the SDK, `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING` on the CLI);
+  "code" keeps the conversation, "both" also rewinds it. The answer and `thread.rewound` say which
+  files changed.
+- Both drivers answer control requests Vyre sends (`control()`: the runner waits for Claude Code's
+  control_response; the SDK driver calls the SDK's own method). The fake `claude` switches models,
+  lists commands and keeps checkpoints of what its "write" turns changed.
+
+#### Sessions: context in use, and teammates' results
+
+- `thread.usage` carries `context: {used, max, share}`: what the last request held (its input,
+  cache and output tokens) and the model's window (the result's `modelUsage.contextWindow`), so
+  teammates can rotate at 60 percent (ADR 0031).
+- Internal `threads.post {thread, text, kind, from}` (teammates' `teammate-result`): a turn of its
+  own when the thread is idle, else queued for the running turn's end; never steers and never
+  needs the keyboard. Queued rows carry `kind` (new column), and `thread.queued` and
+  `thread.sent` say it.
+
 #### Sessions: concurrency slots for teammates and subagents (the user's usage control)
 
 #### The floor follows links
