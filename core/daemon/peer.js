@@ -40,9 +40,13 @@ export function peerPid(socket) {
 function readPeerPid(socket) {
   const script = PERL[/** @type {"darwin"|"linux"} */ (process.platform)];
   if (!script) return Promise.resolve(null);
+  // The fd number, not the Socket: given a Socket, Node wraps its handle for the child and closes
+  // it when the child exits, which resets the person's keep-alive connection.
+  const fd = /** @type {any} */ (socket)._handle && /** @type {any} */ (socket)._handle.fd;
+  if (!Number.isInteger(fd) || fd < 0) return Promise.resolve(null);
   return new Promise(resolve => {
     let out = "";
-    const child = spawn("perl", ["-e", script], { stdio: ["ignore", "pipe", "ignore", socket] });
+    const child = spawn("perl", ["-e", script], { stdio: ["ignore", "pipe", "ignore", fd] });
     const timer = setTimeout(() => child.kill(), 3000);
     child.stdout.on("data", d => { out += d; });
     child.on("error", () => { clearTimeout(timer); resolve(null); });
@@ -55,50 +59,88 @@ function readPeerPid(socket) {
 }
 
 /**
- * One process: its parent and command line. /proc on Linux, ps elsewhere.
- * @param {number} pid @returns {{ ppid: number, args: string } | null}
+ * A way to look up one process: its parent and command line, or null. On Linux, /proc/<pid>/stat
+ * and cmdline. On macOS, one `ps -A` read up front (ps asks the kernel through sysctl), so a walk
+ * costs one process however deep it goes.
+ * @returns {(pid: number) => { ppid: number, args: string } | null}
  */
-export function proc(pid) {
-  try {
-    if (process.platform === "linux") {
+export function processTable() {
+  if (process.platform === "linux") return pid => {
+    try {
       const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
       // The command name is in parentheses and may hold spaces; the parent pid follows the state.
       const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
       const args = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean).join(" ");
-      return { ppid, args };
+      return Number.isInteger(ppid) ? { ppid, args } : null;
+    } catch { return null; }
+  };
+  /** @type {Map<number, { ppid: number, args: string }>} */
+  const rows = new Map();
+  try {
+    for (const line of execFileSync("ps", ["-A", "-ww", "-o", "pid=,ppid=,args="], { encoding: "utf8", timeout: 3000, maxBuffer: 16 << 20 }).split("\n")) {
+      const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+      if (m) rows.set(Number(m[1]), { ppid: Number(m[2]), args: m[3] });
     }
-    const out = execFileSync("ps", ["-o", "ppid=,args=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }).trim();
-    const m = /^(\d+)\s+(.*)$/s.exec(out);
-    return m ? { ppid: Number(m[1]), args: m[2] } : null;
-  } catch { return null; }
+  } catch {}
+  return pid => rows.get(pid) || null;
 }
 
-/** The chain from pid up to init, pid first. @param {number} pid @param {typeof proc} [look] */
-export function ancestry(pid, look = proc) {
+/**
+ * The chain from pid up to init, pid first, and whether it got there. A process whose parent
+ * ended is handed to init (or launchd), so a walk that cannot read a link is incomplete, never
+ * "nobody above".
+ * @param {number} pid @param {(pid: number) => { ppid: number, args: string } | null} look
+ * @param {(pid: number) => boolean} [stop] a pid to stop at, counted as complete
+ */
+export function ancestry(pid, look, stop = () => false) {
   const chain = [];
-  for (let cur = pid, n = 0; cur > 1 && n < 64; n++) {
+  for (let cur = pid, n = 0; n < 128; n++) {
+    if (cur <= 1) return { chain, complete: true };
+    if (stop(cur)) return { chain, complete: true };
     const p = look(cur);
-    if (!p) break;
+    if (!p) return { chain, complete: false };
     chain.push({ pid: cur, args: p.args });
-    if (p.ppid === cur) break;
+    // In a container, a process entered from outside (docker exec) has parent 0.
+    if (p.ppid === cur) return { chain, complete: false };
     cur = p.ppid;
   }
-  return chain;
+  return { chain, complete: false };
 }
 
 /**
  * Does this caller's process run inside a Claude session? Any ancestor that is a `claude`, or one
- * of `threads` (the processes vyred runs threads in), counts. vyred's own process and its
- * ancestors do not.
+ * of `threads` (the processes vyred runs threads in), counts, so a model's shell is caught
+ * whether it runs straight under claude, under a shell it started, or in a tmux or ssh it opened.
+ * A person's shell under tmux or sshd has no claude above it. vyred's own process and its
+ * ancestors are not the caller's. Unknown when the chain cannot be read to the top.
  * @param {number} pid
- * @param {{ threads?: number[], look?: typeof proc, self?: number }} [o]
- * @returns {{ inside: boolean, by?: number }}
+ * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string } | null, self?: number }} [o]
+ * @returns {{ inside: boolean, by?: number, unknown?: boolean }}
  */
-export function insideClaude(pid, { threads = [], look = proc, self = process.pid } = {}) {
-  const mine = new Set(ancestry(self, look).map(p => p.pid));
-  for (const p of ancestry(pid, look)) {
-    if (mine.has(p.pid)) break;
-    if (threads.includes(p.pid) || claudeCommand(p.args)) return { inside: true, by: p.pid };
-  }
-  return { inside: false };
+export function insideClaude(pid, { threads = [], look = processTable(), self = process.pid } = {}) {
+  const mine = new Set(ancestry(self, look).chain.map(p => p.pid));
+  const { chain, complete } = ancestry(pid, look, p => mine.has(p));
+  for (const p of chain) if (threads.includes(p.pid) || claudeCommand(p.args)) return { inside: true, by: p.pid };
+  return complete ? { inside: false } : { inside: false, unknown: true };
+}
+
+/**
+ * The terminal a process runs in, as `who` names it ("ttys003", "pts/3"), or null for none. The
+ * kernel's word, like the pid: a double-forked or setsid'd process has none, whatever it says.
+ * @param {number} pid @returns {string|null}
+ */
+export function controllingTty(pid) {
+  try {
+    if (process.platform === "linux") {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+      const nr = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[4]);
+      if (!nr) return null;
+      const major = (nr >> 8) & 0xfff, minor = (nr & 0xff) | ((nr >> 12) & 0xfff00);
+      if (major >= 136 && major <= 143) return `pts/${minor + (major - 136) * 256}`;
+      if (major === 4 && minor < 64) return `tty${minor}`;
+      return null;
+    }
+    const out = execFileSync("ps", ["-o", "tty=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }).trim();
+    return !out || out === "??" || out === "?" ? null : out.startsWith("tty") || out.startsWith("pts") ? out : `tty${out}`;
+  } catch { return null; }
 }

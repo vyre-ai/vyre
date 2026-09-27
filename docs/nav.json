@@ -72,7 +72,8 @@
       "adr/0020-claude-code-plugin.md",
       "adr/0021-box-reads-the-mac.md",
       "adr/0024-chat.md",
-      "adr/0025-planner.md"
+      "adr/0025-planner.md",
+      "adr/0029-resilience.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
     { "title": "Contributing", "pages": [
@@ -80,7 +81,10 @@
       "CONTRIBUTING-DOCS.md",
       "contributing/testing.md",
       "design/TOKENS.md",
-      "design/phone.md"
+      "design/deck.md",
+      "design/phone.md",
+      "design/one-app/README.md",
+      "design/one-app/DIRECTION.md"
     ]},
     { "title": "Status", "pages": ["known-gaps.md", "changelog.md"] }
   ],

@@ -11,9 +11,9 @@ status: draft
 An agent can have its own computer on your box: a desktop with Chrome and a terminal, in its own
 container. Glass lets you watch that screen live in the [Deck](deck.md), take over the keyboard,
 and browse the computer's files. It also browses the box's own folders. Glass works only from your
-own tailnet: only you, the tailnet owner, and guests you list can open it. It runs on the box as
-the `glass` module. The design is in [ADR 0005](../adr/0005-glass.md), and how the screen is
-streamed in [ADR 0003](../adr/0003-glass-stream.md).
+own tailnet, and only you, the tailnet owner, can open it; a guest from another tailnet cannot.
+It runs on the box as the `glass` module. The design is in [ADR 0005](../adr/0005-glass.md), and
+how the screen is streamed in [ADR 0003](../adr/0003-glass-stream.md).
 
 ## Before you start
 

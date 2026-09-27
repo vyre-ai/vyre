@@ -4,6 +4,8 @@
 // FORCE_COLOR (anything but "0") turns it on even into a pipe, unless NO_COLOR is set. Every
 // command colours through this file and nothing else.
 
+import { ATTENTION } from "../config/palette.js";
+
 /**
  * Whether a stream gets colour.
  * @param {{ isTTY?: boolean }} [stream]
@@ -23,6 +25,11 @@ export function colorOn(stream = process.stdout, env = process.env) {
  * may be a terminal while the other is a pipe.
  * @param {{ isTTY?: boolean }} stream
  */
+/** @param {string} hex "#RRGGBB" @returns {[number, number, number]} */
+function hexRgb(hex) {
+  return /** @type {[number, number, number]} */ ([1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)));
+}
+
 export function painters(stream) {
   const on = colorOn(stream);
   const sgr = code => s => (on ? `\x1b[${code}m${s}\x1b[0m` : String(s));
@@ -35,8 +42,8 @@ export function painters(stream) {
     signal: rgb(198, 243, 107),
     /** Anything that came from memory rather than a model. */
     recall: rgb(235, 199, 107),
-    /** Needs the user. Nothing else uses it. */
-    beacon: rgb(255, 122, 89),
+    /** Needs the user. Nothing else uses it. The attention colour, from core/config/palette.js. */
+    beacon: rgb(...hexRgb(ATTENTION.violet.dark)),
   };
 }
 
