@@ -68,6 +68,19 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 
 - The relayed pass between two machines on the tailnet, end to end through the box
   workstream's Docker Compose stack and tailscale sidecar. Waiting on that stack reaching main.
+- 2026-09-27: merged main (68463d04) into work/vault-next (51b1d184), then tested 9b (connections)
+  on testbox and fixed what broke: `syncVault`/`syncGoogle`/`syncMcp` called `vault.key()`
+  unconditionally, creating a key and identity in a fresh home with nothing to sync — the exact
+  regression `stop.test.js` exists to catch; now gated on `found.length`. The shared test harness
+  (`testing.js` `recorded()`) never wired `ctx.events.on`, so starting the real vault module under
+  it crashed once connections.js's `register()` subscribed to sync events; added a fake
+  listener/emit pair matching the real `Events` shape. Updated `presence.test.js`'s allowlists for
+  `vault.connections.*` (grant and update declare presence; list/get/revoke/sync/register/
+  unregister/allowed don't) and two CLI tests whose expected output predated main's newer
+  health/history formatting and totp's `next` code. Green sha d6487be9: core/vault (346),
+  core/modules, core/cli/commands/vault* + test/vault-* (25), local/voice, core/mcp, core/google,
+  test/docs-*, test/hygiene — 534 pass, 0 fail. Sent to integrator and e2e; lands with connectors
+  8be461a9.
 
 ## Next
 
