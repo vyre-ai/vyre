@@ -152,7 +152,8 @@ async function startMemory(db, { me, embedder, dense, runner = null }) {
   const tools = new Map();
   const ctx = {
     name: "memory",
-    config: { me, role: "local" },
+    // VYRE_EVAL_PASSES: readings per batch when recording (config.memory.model.passes).
+    config: { me, role: "local", memory: { model: { passes: Number(process.env.VYRE_EVAL_PASSES) || 2 } } },
     paths: {},
     store: { db, migrate: () => {} },
     log: () => {},

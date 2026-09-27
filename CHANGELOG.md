@@ -23,6 +23,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - New relations `age` and `hobby` (anyone's), with questions "how old is sam" and "what do i do
   for fun". A model birthday must name its month, a role must be an occupation, and "from" must
   say where someone began.
+- Each batch is read twice (config.memory.model.passes, 2), and the union of what the two readings
+  found is kept. A second look (one small call per batch) then checks every fact that says who
+  someone is to the user: a spouse, a child, a friend, a name. A "no" drops the fact, and a
+  failed look keeps it only as a "maybe". Someone else's family is kept as theirs ("Seren is
+  Rhodri's wife"). A plural role's attribute goes to the named person ("Emrys is 8").
+- Answers: "how many kids" counts, "what pets do we have", "where did I used to work", "who is
+  bram" from what memory knows of them, the most specific word for who someone is (daughter over
+  child), and someone else's relative ("rhodri's wife") is never the user's.
 - New tool `memory.read {now?}` gives the usage line: today's spend, the backfill, turns waiting
   and cost per 1,000 turns. With `now: true` it reads at once, within the caps. `vyre status`
   shows the backfill and the turns still to read.

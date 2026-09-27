@@ -1,22 +1,58 @@
 {
- "version": 5,
+ "version": 7,
  "model": "haiku",
  "reads": {
-  "01ffc993e5a12a2b9cd20efdc37a8e28": [
+  "00379a4d3c2392d6d9fb72a7ec9ea822": [],
+  "01c2a991c9058c09bb6e57d011050095": [],
+  "020576198305931165c24124d1ca5f57": [],
+  "04845b42c9c82f844af809483b747e2d": [],
+  "04ea2dc965c55d79a247a00f3b7bae70": [],
+  "05214ec0d1bdb21c5c93c725b3a9d556": [
    {
     "subj": "me",
-    "rel": "client",
+    "rel": "diet",
+    "obj": "lit:no mushrooms",
+    "q": "nothing with mushrooms",
+    "conf": 0.7
+   }
+  ],
+  "05bc7c1e5c372b5e5bd380008b822119": [],
+  "068a8b6b60f920d54be6022d9fc13f80": [],
+  "081225bad12e81c4b994576ccafcccb1": [],
+  "084f3aa07f0970e40d8bbb1677b86f12": [],
+  "087371ffefc01bf4bffbbed560898609": [
+   {
+    "subj": "name:Sam Okafor",
+    "rel": "works_at",
     "obj": "org:Northwind Bakery",
-    "q": "the Northwind bakery we built the site for",
+    "q": "Sam Okafor from Northwind Bakery",
     "conf": 0.9
    }
   ],
-  "03458ceaae3b6b372dd82565760f90e9": [],
-  "0349862816e9ff125fc413843f7ae858": [],
-  "037f8ae528e60f8766a9dca94eb4f1f3": [],
-  "03d42307e01c5d987bc532e015639596": [],
-  "0476f0a0a52862eeeb179008f5e4c11e": [],
-  "04ba0966ffbbb4f270304176c79c8624": [
+  "0bc73799e79391688338e6136251cc52": [],
+  "0c355a308db51f2127f2525b49cb271d": [
+   {
+    "subj": "org:Harlow",
+    "rel": "client",
+    "obj": "me",
+    "q": "the Harlow intake page",
+    "conf": 0.7
+   }
+  ],
+  "0c94ddf618d5ead8abcc741fc05b4131": [],
+  "0cc4f2ae856570f88fa6ded9141448e8": [],
+  "0db356b695fe48c25db944c54763f37d": [],
+  "0e1dd52cbbb032b5893d3e4508127b7a": [
+   {
+    "subj": "me",
+    "rel": "drives",
+    "obj": "vehicle:Subaru Outback",
+    "q": "Driving the Subaru to Northwind",
+    "conf": 0.9
+   }
+  ],
+  "0f3395defa6d885ec58b37d314ecf0f8": [],
+  "101fcb868c2269ce41b612fbd01cbe81": [
    {
     "subj": "me",
     "rel": "lives_in",
@@ -25,96 +61,128 @@
     "conf": 0.9
    }
   ],
-  "058e9aa8cf526634d245135b3917fade": [],
-  "05fd6c8ce7d8f0f74f7ade33aac8cfb9": [
+  "10227e5f238822543f660065b51ac6a1": [],
+  "118c60f0c9247408d6ccae20d6b929ad": [
    {
     "subj": "me",
-    "rel": "client",
-    "obj": "org:Northwind",
-    "q": "Northwind switched their bank to Cedar Credit Union, update the payment details on their invoices",
+    "rel": "spouse",
+    "obj": "kin:spouse",
+    "q": "Remind me to book dinner for my wife",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "birthday",
+    "obj": "lit:14 March",
+    "q": "Her birthday is on the 14th of March",
     "conf": 0.9
    }
   ],
-  "063d8944ecd2b76099eb3ab5e0107fc8": [
+  "12de2b4d6a0b43a42a93182fed715c04": [],
+  "1640e9811108889df090906a40f9b5cb": [],
+  "16b509020968d8a210614434cab111b4": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Seattle",
+    "q": "Since we moved to Seattle",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow",
+    "q": "my drive to the Harlow meetings",
+    "conf": 0.7
+   }
+  ],
+  "1934249d1a806a2b53b288f11c500b98": [],
+  "1a6fe584c9ae8a68fd1f9ffbc3fbdef1": [],
+  "1acbb34adfcba57bc60080eb95e395ea": [],
+  "1cb0e233d1e5507eb82b0e3af2bce428": [],
+  "1d3a5a1530b7d2741782c3abba48ddf8": [],
+  "1d7ed051f089360e247a6f07f509974b": [],
+  "1dd14aa84db486d1d8739b7eb5162c43": [],
+  "1e365bb75b09a385930d158ee5117258": [],
+  "1e4d6abc1f9c0f488536988d3734cf35": [],
+  "20980c4a9897f361d5630f1128a35c4e": [],
+  "2100979bc2ca1474dc5d63b79a006263": [],
+  "24126a8080c4da30d700a1eba4c90ac8": [],
+  "25856d0e551a41292815c2487e927910": [],
+  "272650cb8c6bc6bc0d48020540f0b7a7": [],
+  "293d371afd559fefdf462ae50bc6f08f": [],
+  "2bca98b9a3cd4eadd6e9325ccdcaf226": [],
+  "2d3956275efc0885a35cb3b1e8c8e42b": [],
+  "2e5f30e75719b05de01f1eba2d5853ea": [],
+  "30cda8e9bc13508788e62d7a2ff22cc1": [],
+  "32306505c8185ea420ac7b2a1c0a0832": [],
+  "32a5ca58449086443bc514e89c55880f": [],
+  "330af6311c0fe067e5d9e59feba33cfa": [],
+  "33f416104a61b365bb6dd405aa7bd942": [],
+  "34c9c7963ce808141d380f0a20dba302": [],
+  "35410c4e13ae7d8685c568697ef1734a": [],
+  "3696ef40bca9a4c04d6b941b5b53c3f8": [],
+  "36ead96f275a40570d700b6d7d756155": [],
+  "374fef9c4d54bdfeb8db81e51c66256a": [],
+  "38b4da69748a0d8ac648632c6d564201": [],
+  "390fa0998cf6f86411ce9c7dc47fcaa4": [],
+  "3b5566aa0a0504fe36ba2e63b5061369": [],
+  "3cbf425ca7d4c2d645efbdeb45e8ce7b": [],
+  "3d546bd10efd9f522cb440c41a50ed52": [],
+  "3e19e8d03c57340803b22fd1fd7efdea": [],
+  "3f628e116bd03c3435d223ef886c7439": [],
+  "40118a116dcb6eefc6e76043af7edaba": [
    {
     "subj": "me",
     "rel": "client",
     "obj": "org:Rivera Studio",
-    "q": "At Rivera Studio we bill monthly",
+    "q": "Build the monthly KPI report for Rivera Studio clients.",
     "conf": 0.9
    }
   ],
-  "06b013e555923fac93b56e7d1d66d35b": [],
-  "070fb6ce070e58199e4449e80bc3cd6b": [],
-  "0819c307d2cae4b73b93dd412f454461": [],
-  "0821de300fee1f220becffdf4791d078": [],
-  "08bffdd1ebf3a3ac75fa3260d2da0160": [
-   {
-    "subj": "kin:mother",
-    "rel": "name",
-    "obj": "lit:Ruth",
-    "q": "Ruth wants help",
-    "conf": 0.9
-   }
-  ],
-  "0910c6d3a6b756a0005e57ba536e3dd8": [],
-  "0a027e59f95cdb1c2f1784ca6e159795": [
+  "401b643b9fc1e92c7fcc08e3eecbb761": [],
+  "409c34a218618a5cfa2fe25cde706b0f": [
    {
     "subj": "me",
-    "rel": "drives",
-    "obj": "vehicle:Subaru Outback",
-    "q": "Driving the Subaru to Northwind for the photo shoot",
-    "conf": 0.9
-   },
-   {
-    "subj": "me",
-    "rel": "client",
-    "obj": "org:Northwind Bakery",
-    "q": "Driving the Subaru to Northwind for the photo shoot",
+    "rel": "owns",
+    "obj": "vehicle:Volvo",
+    "q": "The Volvo needs a service",
     "conf": 0.7
    }
   ],
-  "0bf626892d2a82fd91acbfa63da604ea": [],
-  "0c776b90d538d3783826d41f6197d610": [],
-  "0d798836d09e758733f5d6620e82392c": [
-   {
-    "subj": "me",
-    "rel": "pet",
-    "obj": "kin:dog",
-    "q": "Biscuit needs a walk",
-    "conf": 0.9
-   },
-   {
-    "subj": "kin:dog",
-    "rel": "name",
-    "obj": "lit:Biscuit",
-    "q": "Biscuit needs a walk",
-    "conf": 0.9
-   }
-  ],
-  "0da1a32b5246007accb0fcc217c20cc2": [
-   {
-    "subj": "name:Dana Reyes",
-    "rel": "works_at",
-    "obj": "org:Harlow Legal",
-    "q": "Dana Reyes at Harlow Legal",
-    "conf": 0.9
-   },
+  "414b303b5660c07649bd30ea7517c9f0": [],
+  "420854e51017eee8e622b11b08a95b83": [],
+  "4300caa5546795ff2d160ef147ba624d": [],
+  "4346ef3345d9744022a0847ec3a8ee5d": [
    {
     "subj": "me",
     "rel": "client",
-    "obj": "org:Harlow Legal",
-    "q": "Dana Reyes at Harlow Legal signed off on the homepage",
+    "obj": "org:Harlow",
+    "q": "The Harlow intake build fails on the lint step, can you look?",
     "conf": 0.9
    }
   ],
-  "0f64c0c577a0f310bd46774b695709e5": [],
-  "11a6ab467f70ec6a92394e08e079d34d": [],
-  "1237acac8593fe76ec6600030a9a88ab": [],
-  "126d46f7f546008a90b9635893deed97": [],
-  "13b04f1e9f7f6c71c7b2bace8b77de9d": [],
-  "13c75fcc6f62e46f0ee1d7c44108c8a1": [],
-  "13fb8a27db6e5f39ba2d867fa904bce2": [
+  "43b5a2f23b8769d7a0be73e349322de7": [
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Jordan",
+    "q": "my wife's birthday",
+    "conf": 0.9,
+    "verified": false
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "birthday",
+    "obj": "lit:14 March",
+    "q": "my wife's birthday is on March 14",
+    "conf": 0.9
+   }
+  ],
+  "43d314c694eec2487be05b8dcb22d35b": [],
+  "43f0f89052aaa7a06bc6e8449925a8e6": [],
+  "446772140c21d053839950de75d76568": [
    {
     "subj": "me",
     "rel": "works_at",
@@ -123,187 +191,66 @@
     "conf": 0.9
    }
   ],
-  "148f5a69d54f76a1c7e0504699382f7d": [],
-  "14cff2dda80a7584407703ae2ede152c": [],
-  "14eba249d41c15f5baaa9fff2806f0d9": [],
-  "1691b5166135da51ff3b9ce9c218f02d": [],
-  "17143d76b257b49bdc455d98d2347631": [],
-  "1744ac683734017d09e4a298de066879": [],
-  "1794d766a21afe432b69b4d521c1c2b4": [],
-  "19bdc6b0d85a10603eaa6b0e4958d136": [],
-  "19c939801323184df0769ea9f522c573": [],
-  "1d2789821dc3ec6fbb03d47928f36039": [],
-  "1e9ff4c709e31a0c402d953b6a4827e5": [
+  "46049c22ab5cfe8271cc0709d9fde12b": [],
+  "4645ff330a6b871fbc2dfd2a1e2065db": [],
+  "464e076d59bf4b7e61a3a5e0ca18b00a": [],
+  "474c3261135905239750eaa192e3acee": [],
+  "477c7bd846e2bfe55d7547979ada660d": [],
+  "49299b7da03c97f34eb4d5ebcf380a07": [],
+  "49b5a2422795c84db580871160e74821": [],
+  "4b0ab4a63b09a12f7108819fcc440032": [],
+  "4b14a628d2f82163753cb5b9911283b7": [],
+  "4c462acbf998bec781786e17d568d7df": [],
+  "4d29df26b167949616d3b631e06d159f": [],
+  "4ddc99707e136fc8e43f446115b82d7d": [],
+  "4e79876cfaf813176a6993be3bde9656": [],
+  "508389d15ad1e65989346a9685166a27": [],
+  "51060d74c77c76582100dc4ef5b7cfaf": [],
+  "51265acc66d80b2f569bd50c394f7c59": [],
+  "51bcf6b30c81de08b18c64248e8a174a": [],
+  "528216aaa58144cb5bd6f649b6de68c8": [],
+  "52e7fc420ca8af9bfac0f690093b85c4": [],
+  "5340f86f02c883599e4c4a0df1b41a16": [
    {
     "subj": "me",
-    "rel": "owns",
-    "obj": "vehicle:Outback",
-    "q": "The Outback is in the shop again",
+    "rel": "drives",
+    "obj": "vehicle:Subaru Outback",
+    "q": "Driving the Subaru to Northwind",
     "conf": 0.9
    },
    {
     "subj": "me",
-    "rel": "prefers",
-    "obj": "lit:tea over coffee",
-    "q": "I prefer tea over coffee",
-    "conf": 0.9
-   },
-   {
-    "subj": "me",
-    "rel": "diet",
-    "obj": "lit:no mushrooms",
-    "q": "nothing with mushrooms",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "Driving the Subaru to Northwind for the photo shoot",
     "conf": 0.7
    }
   ],
-  "20546c7f1d11f54d2d6cc4441b6b83ba": [
+  "542d0ce63278c57996df0a0530c000f5": [],
+  "549fc925af7f89f74097e0d643c52ff1": [],
+  "55b6bcd1709e961ed3fd558b64a0b72f": [
    {
     "subj": "me",
-    "rel": "mother",
-    "obj": "kin:mother",
-    "q": "Call with Ruth, my mother",
-    "conf": 0.9
-   },
+    "rel": "pet",
+    "obj": "kin:dog",
+    "q": "the dog's food and lead",
+    "conf": 0.9,
+    "verified": false
+   }
+  ],
+  "5708cc53ac4d5ccbcfccc969f9978c54": [
    {
-    "subj": "kin:mother",
+    "subj": "kin:sister",
     "rel": "name",
-    "obj": "lit:Ruth",
-    "q": "Ruth, my mother",
-    "conf": 0.9
+    "obj": "lit:Maya",
+    "q": "My sister Maya is opening a bakery too",
+    "conf": 0.9,
+    "verified": true
    }
   ],
-  "20883e9d9515e3a583bf536f4b779d0c": [
-   {
-    "subj": "me",
-    "rel": "lives_in",
-    "obj": "place:Seattle",
-    "q": "Since we moved to Seattle",
-    "conf": 0.9
-   }
-  ],
-  "208d808d81172d52ecd3e5e1426fc76a": [],
-  "20dbadc09fbb261a11eb1c27008c9b96": [],
-  "230d62d1d90ca6ab65aed33b83ae3196": [],
-  "239b1c0b90a6dfe2ea2675fb40b69e4e": [],
-  "2474470b719cc5aae68c23dfef1ba3bf": [],
-  "24d0f37de45c65e3de3e38ef4eff947d": [],
-  "259bc4e7dcf71c4834e7dfc3b4240abd": [],
-  "25d8f19ff17c94dc34903397ce8d655d": [
-   {
-    "subj": "me",
-    "rel": "spouse",
-    "obj": "kin:spouse",
-    "q": "Jordan says",
-    "conf": 0.9
-   }
-  ],
-  "26ba24c73e0406e97a6ec18503a12400": [],
-  "271aa98f83c6661d14862f4495898368": [],
-  "29e2c5bfd0c22f1afa6b8ddb53c1760f": [],
-  "2baced8d095166031fd64b9de77d4ce0": [],
-  "2c15c36491f1f6a69bad62f0587d3dba": [
-   {
-    "subj": "me",
-    "rel": "lives_in",
-    "obj": "place:Portland",
-    "q": "I live in Portland",
-    "conf": 0.9
-   }
-  ],
-  "2c3997f3652c478974809025818c7aba": [],
-  "2dd350774cdfbd0ab5acd7407e54e708": [],
-  "2f631bb91ff72a4403f41a2d65cb32fe": [],
-  "30cb49bec45d7a5c497c6e1a984d0b50": [],
-  "310f29a101322b37aa8edfb8550f6fa7": [],
-  "3235dc517256057e23309f6b60b8b469": [
-   {
-    "subj": "me",
-    "rel": "lives_in",
-    "obj": "place:Portland",
-    "q": "Our place in Portland is too small for a proper office.",
-    "conf": 0.9
-   }
-  ],
-  "325a6e321dc39f110be9c63f462cd55f": [
-   {
-    "subj": "me",
-    "rel": "lives_in",
-    "obj": "place:Seattle",
-    "q": "Since we moved to Seattle",
-    "conf": 0.9
-   }
-  ],
-  "327266eacb21dc8d92fa8c7f1140cafd": [
-   {
-    "subj": "me",
-    "rel": "client",
-    "obj": "org:Harlow",
-    "q": "running Harlow intake locally",
-    "conf": 0.9
-   }
-  ],
-  "34a3e40c516f74b1724293573a8124b1": [],
-  "34ce820d39ff7047e269d964e8acbdcd": [],
-  "35c8386551e88439b8e34ff68f4c08bd": [
-   {
-    "subj": "me",
-    "rel": "diet",
-    "obj": "lit:no mushrooms",
-    "q": "nothing with mushrooms",
-    "conf": 0.7
-   }
-  ],
-  "35d7d19f322d7a909247905e8cd35ebd": [],
-  "3714bbcc63fc2479f02b2d78d8e4256c": [],
-  "37ac9803009793142fb28c0de34460c9": [],
-  "389106fb0ff4414c8d6489c24e9e9cd1": [],
-  "390cf7da6b0a60bafd08e0eab7332b6d": [],
-  "399a2a5f4c77388f864df29a4a06e1dd": [],
-  "3c3edfecdc597cf4cfb61f4b0d875346": [],
-  "3df62308511a5d6b57c12fb6fc1c1187": [],
-  "3ed4584d286a43eecc8f574dea44671a": [
-   {
-    "subj": "me",
-    "rel": "uses",
-    "obj": "tool:Neovim",
-    "q": "My Neovim config broke after the plugin update.",
-    "conf": 0.9
-   }
-  ],
-  "407eb7f131d7823c4afc09061afcd893": [],
-  "40ccf948bb58d3458d6074e3134dab07": [
-   {
-    "subj": "me",
-    "rel": "client",
-    "obj": "org:Harlow Legal",
-    "q": "Harlow Legal is my biggest client",
-    "conf": 0.9
-   }
-  ],
-  "41940043b8e5e2a9b6d06205791707c9": [],
-  "44bf1ceedfb5a03c45b6de6a90eb9372": [],
-  "4511d5fcee9f7ec38497c03fbd8696be": [],
-  "453f6a5de7a46258ac3cd4b3c8e667db": [],
-  "456e19f1de590bd2e7f9467229e19ba0": [],
-  "473d1ed245252d637ecac451dad5419d": [],
-  "476fef5b46f4723ba94f1f38ab6a4908": [
-   {
-    "subj": "me",
-    "rel": "client",
-    "obj": "org:Harlow",
-    "q": "Harlow wants a family law intake form",
-    "conf": 0.9
-   }
-  ],
-  "484a7b5a7bb552997956ca15ead1ebb3": [],
-  "48c56a986e6e832fbc1ce962cc28289e": [],
-  "491d063b8a8344f1524531593d8a566e": [],
-  "49d0463a2ce74edb2f06326dffedd050": [],
-  "49d73244a7d5d53cff039dba4e93f20a": [],
-  "4b3c3fa82589852e27f8c0e795d0c711": [],
-  "4bac5e92424d6c316e337a280c06ee00": [],
-  "4c9c19404b4709d3fe4e33e7894ca989": [],
-  "4f9ad5f21ef3f6490d5ea53ce79cd577": [
+  "59288a270e4662e8786f5fb33f47620e": [],
+  "5a51a6e0804810bdfa816e807288a1d6": [],
+  "5baf28f35855ba7474993c209b6be872": [
    {
     "subj": "name:Sam Okafor",
     "rel": "works_at",
@@ -319,76 +266,278 @@
     "conf": 0.9
    }
   ],
-  "50e26f285d73f9e4446221c3f965f95a": [
+  "5edb063c9ca2ec9aac0c2443dc8c8a76": [],
+  "5fccc833269eb57637720e30c76f9e9b": [
+   {
+    "subj": "name:Dana Reyes",
+    "rel": "works_at",
+    "obj": "org:Harlow Legal",
+    "q": "Dana Reyes at Harlow Legal",
+    "conf": 0.9
+   }
+  ],
+  "5fecbe1a588a2ed99eb41fe9f7a800c4": [],
+  "6119d5da1bbef46a7ffe5a82be72e9b6": [],
+  "61d2e68a569dd5c5787f31f66b25e971": [],
+  "62d827f1cc9fe821ee1c5d02b573f657": [],
+  "6301662a984431ef1c4746c32fe856da": [],
+  "63d5b3bde019e50886d8d7a6c34e8b01": [],
+  "64147378d196c755606ba3d58386f85a": [
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Neovim",
+    "q": "My Neovim config broke after the plugin update.",
+    "conf": 0.9
+   }
+  ],
+  "6585b553910a268be31a800b3496b890": [],
+  "667ba83b03f99b6370e0dcdb4884b8a3": [
    {
     "subj": "me",
     "rel": "client",
     "obj": "org:Northwind Bakery",
-    "q": "What is the average invoice for Northwind?",
-    "conf": 0.7
+    "q": "My client Northwind Bakery",
+    "conf": 0.9
    }
   ],
-  "54a7eb92c98200bd5409dbd229ce52ea": [],
-  "5552edf851aba414b7a27d6a5e5792b5": [],
-  "55b6550e6c6861efdb4fed5dae2ad555": [],
-  "56ac723306ff2b772aeb518c5dbacf30": [],
-  "58216a58965f6eec5b83c09df51fba4e": [],
-  "5849cb01216dd8188e2ad1978888d706": [],
-  "59cdabfec1fac2014c5cb8c3e2dae088": [],
-  "59fad5f8cd883d41267166855f738bab": [],
-  "5a580f33ca8a9cb7aa786a6d0a2c67cf": [],
-  "5a8a8d14f2260f944476c68144b70b4a": [
+  "670c0e2a7b44ca59b2ac5e9dff420f92": [],
+  "673b861a12dd9b9e747dfb9a31a24a0e": [
+   {
+    "subj": "me",
+    "rel": "spouse",
+    "obj": "kin:spouse",
+    "q": "My wife Jordan wants the Harlow site to have a dark mode",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Jordan",
+    "q": "My wife Jordan wants the Harlow site to have a dark mode",
+    "conf": 0.9,
+    "verified": true
+   }
+  ],
+  "67e7d1fce92fc7a07fd2ff03de8947c0": [],
+  "680ab49937c7a511a16ae370e78ef6de": [],
+  "6b5f021b7145951d9f38c5e6e13d2556": [
+   {
+    "subj": "me",
+    "rel": "drives",
+    "obj": "vehicle:Volvo",
+    "q": "Parked the Volvo",
+    "conf": 0.9
+   }
+  ],
+  "6b721bdb59c4b9184e59ed10f6a43eb8": [],
+  "6c89aaad7e8f02c6fa77c0ff24e6233f": [],
+  "6d9358089d103e3725f809fd3b6f2473": [],
+  "6e169d9a5a1a19add8198eef107d4b53": [
    {
     "subj": "me",
     "rel": "client",
-    "obj": "org:Harlow",
-    "q": "Why is the Harlow site page slow on mobile?",
-    "conf": 0.7
+    "obj": "org:Northwind",
+    "q": "The Northwind build fails",
+    "conf": 0.9
    }
   ],
-  "5af63068650dfacac4f0c53adc3989af": [],
-  "5b1e03ccbd2c575ab94e949b40b01f40": [],
-  "5b44c21eb44ee6349a3c9e8fa4a616fb": [
+  "6e51a60fdf70377983aab38915e375ce": [],
+  "6e5ec1d64bb4530dcb94544f49bd12c9": [],
+  "6eb9509f2d2c1d3ac85975f784578d80": [],
+  "6eee33d53373e0361db43770496a179e": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind Bakery",
+    "q": "Northwind bakery we built the site for",
+    "conf": 0.9
+   }
+  ],
+  "6fa503c3654683a17143b9df6af6e079": [
+   {
+    "subj": "kin:mother",
+    "rel": "name",
+    "obj": "lit:Ruth",
+    "q": "Call with Ruth, my mother",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "me",
+    "rel": "mother",
+    "obj": "kin:mother",
+    "q": "Ruth, my mother",
+    "conf": 0.9,
+    "verified": true
+   }
+  ],
+  "6fb32ef532bfe55adccc968af884bedf": [],
+  "703e512d4ebb79097fc72f9bccd8927f": [
+   {
+    "subj": "me",
+    "rel": "drives",
+    "obj": "vehicle:Volvo XC40",
+    "q": "Driving the XC40",
+    "conf": 0.9
+   }
+  ],
+  "72420a3e04fd6ab7e12c7c15b067fbde": [],
+  "72a22bcacf27eb2b972f9ebb293d82e1": [],
+  "7416d420c63a03e6d798d64b07121cf4": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Portland",
+    "q": "I live in Portland",
+    "conf": 0.9
+   }
+  ],
+  "7796bfbbb6d48da96ff0aa49b2e9d2b1": [],
+  "77fc103b57ccc487df31307622e4a058": [],
+  "787f7c34bf43b003d235e53f037626ff": [],
+  "78b20392d4311c6e1dbb5651f9ce7760": [],
+  "78f0d69878c5bb51ba02402502472df6": [
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Neovim",
+    "q": "I use Neovim",
+    "conf": 0.9
+   }
+  ],
+  "79e92d1d070a3273b60b9c37f31511ac": [],
+  "7bff2d8eb82648c5639d95980006f036": [],
+  "7cf22578472d8cc351fea8e04866fcb3": [],
+  "7d8332b030df8a8fb1741b3e07d88460": [],
+  "7ec9d47dbc5277019655fca1390b6fc7": [
+   {
+    "subj": "me",
+    "rel": "sold",
+    "obj": "vehicle:Subaru Outback",
+    "q": "Sold the Outback this weekend",
+    "conf": 0.9
+   }
+  ],
+  "801e0eaae56784041257ef5533e0a5f9": [],
+  "80fd77a0cd59d7fa0982086b2293e973": [],
+  "817faaaeecc90ce0b5ac6b74ea647222": [],
+  "821e33795fe6c175321fb4fb46e0dcd8": [],
+  "8267881c248ed7625be30f8fe9789dc8": [
    {
     "subj": "kin:mother",
     "rel": "name",
     "obj": "lit:Ruth",
     "q": "My mom Ruth",
-    "conf": 0.9
+    "conf": 0.9,
+    "verified": true
    }
   ],
-  "5dcadcfa7fcf771b720f3a08232d22c2": [
+  "82eac1d465100821b354d0685f3b101f": [],
+  "8396d5559c6ca0ff618c3d8cce1bd044": [],
+  "849dc8fbb7fadc8e74459ce9ee88c6cf": [],
+  "86ad681cdc8eaa4030696e86175a6541": [],
+  "86d3b3ec07a442fcf8380681b876e5cd": [],
+  "876a1c0b2f860ae72de8a85ca0bf85b6": [
    {
     "subj": "me",
-    "rel": "pet",
-    "obj": "kin:dog",
-    "q": "the dog's food and lead",
+    "rel": "owns",
+    "obj": "vehicle:Subaru Outback",
+    "q": "The Outback is in the shop again",
     "conf": 0.9
-   }
-  ],
-  "5e586b39c1e78fc790e95d886c218b06": [],
-  "6162e6863682811a352405e41b38ed98": [],
-  "617d7b437784b545e712d39bda3de5ad": [],
-  "61ad3a8476381d0b6faa66a8b4dcea76": [
+   },
    {
     "subj": "me",
-    "rel": "client",
-    "obj": "org:Harlow Legal",
-    "q": "Add a README section on running Harlow site locally",
+    "rel": "prefers",
+    "obj": "lit:tea over coffee",
+    "q": "I prefer tea over coffee",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "diet",
+    "obj": "lit:no mushrooms",
+    "q": "Plan meals for the week, nothing with mushrooms.",
     "conf": 0.7
    }
   ],
-  "61e77dbb5bb3eff5e7055ce12ff9e6c0": [
+  "88e52634ee7ea01a5401e479488ff6a2": [],
+  "8a0414e08b37035fd7cafa3750545b2c": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Rivera Studio",
+    "q": "At Rivera Studio we bill monthly",
+    "conf": 0.9
+   }
+  ],
+  "8aafbd154bc3997bc375190b658062e7": [],
+  "8b13e519afc6ff11b280dc7fb44d30fb": [],
+  "8b89f39daac0d18f272adde6406a2518": [],
+  "8b8ee7cb4163caad7ac54db9bbf34b7e": [],
+  "8ca4fd739472461bddc8ca8223e4b78e": [],
+  "8cf7a6763b9e69cedd3ace31bcfd3fb0": [],
+  "8d6ece98d1d7e4874e661e5933510aa5": [],
+  "8d9f84e3a3a2f58ff244b16b92fa2e0d": [],
+  "8e617a5d8f7f103f1c2179d9623db4ba": [
+   {
+    "subj": "name:Priya Anand",
+    "rel": "works_at",
+    "obj": "org:Keel & Ash Architects",
+    "q": "The sponsor is Priya Anand at Keel & Ash Architects.",
+    "conf": 0.9
+   }
+  ],
+  "8e7070501a46efb2612ff2ec908a6e24": [],
+  "8f745702b037c4ca200422ef39e24ce5": [],
+  "8febde7ef1a8037c22e135d2510676e8": [],
+  "91291ed4221fc8842c448a749e31e0f7": [],
+  "91462f7e8e870ebb5f8ee6dec1627b5e": [],
+  "92b4e7f6b0a467816ce938fdcc1e9411": [],
+  "930d8330f62270113959622fab71898e": [],
+  "9323fac81c857bb6c90e4888541ec161": [
    {
     "subj": "me",
     "rel": "spouse",
     "obj": "kin:spouse",
-    "q": "my wife has a doctor's appointment",
-    "conf": 0.9
+    "q": "Jordan's birthday is 14 March",
+    "conf": 0.9,
+    "verified": false
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Jordan",
+    "q": "Jordan's birthday is 14 March",
+    "conf": 0.9,
+    "verified": false
    }
   ],
-  "63c0f7e3eee2d9b0ba2fdb6941d7ac17": [],
-  "64552c858c413fee51f83e5faa172cb3": [
+  "9419953733245ba3bce0aa31f3d2dc94": [],
+  "95e3c5215ae061926eafe667904d3b52": [],
+  "95f6118dca8b5bb6b747dcd3b595e1c6": [
+   {
+    "subj": "org:Harlow",
+    "rel": "client",
+    "obj": "me",
+    "q": "The Harlow deck",
+    "conf": 0.7
+   }
+  ],
+  "98ec4fba6d15b4e7719cc50184831add": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Seattle",
+    "q": "The wifi in the Seattle apartment",
+    "conf": 0.7
+   }
+  ],
+  "9b093ddf108b668b6543d2f674b47990": [],
+  "9b7e7a696e1321f6733fa95d1dfeb5e6": [],
+  "9bd13fbbd2e3ae1ff003c316d01f2569": [],
+  "9bf8a178c8fa5389a5ab55fbf4fc05fc": [
    {
     "subj": "me",
     "rel": "owns",
@@ -404,322 +553,34 @@
     "conf": 0.9
    }
   ],
-  "65315b6bc8b924b97bcfb1ec524e0000": [],
-  "6590a567dabef16819377cf622261abe": [
+  "9c6555c2afa17118b189b9742d0e9eab": [
    {
     "subj": "me",
-    "rel": "spouse",
-    "obj": "kin:spouse",
-    "q": "Jordan and I are out tomorrow",
-    "conf": 0.9
+    "rel": "client",
+    "obj": "org:Northwind Bakery",
+    "q": "What is the average invoice for Northwind?",
+    "conf": 0.7
    }
   ],
-  "66c4c4b2d1ba146324474a7d1add0a23": [],
-  "66e237426c7190165d3287dd9742b6fd": [
+  "9c8ba2791d78696dd2746634f1fcadae": [],
+  "9f141d310b801b9bb1f0df8c90115787": [
    {
-    "subj": "me",
-    "rel": "drives",
-    "obj": "vehicle:Volvo",
-    "q": "Parked the Volvo",
-    "conf": 0.9
-   }
-  ],
-  "670f794099fd307a71b4d213828a4697": [],
-  "67e6e52429df6eaa7acfd9cab7c6119d": [],
-  "687ad04e0dda3bb594dca388827d5788": [],
-  "690771c16ed38527c65b6b38eb2522c9": [],
-  "6942a5f9efd6ae907cf1864e8cb24040": [],
-  "69f708ce6e58ce3f1c7c28e4a590e4e3": [],
-  "6a9cfb771c537520d204833076f3c3a2": [],
-  "6b25d0d8ab89e2cb5061d92ee935d699": [],
-  "6e5e622317fbf3c436f8791cc9e412dd": [],
-  "6f48aff6e527485f41420b89949c3b39": [
-   {
-    "subj": "me",
-    "rel": "lives_in",
-    "obj": "place:Portland",
-    "q": "It's been raining nonstop here in Portland all week",
-    "conf": 0.9
-   }
-  ],
-  "71525913436b339c59f4c14b991bdf7a": [
-   {
-    "subj": "me",
-    "rel": "spouse",
-    "obj": "kin:spouse",
-    "q": "my wife's birthday",
+    "subj": "name:Biscuit",
+    "rel": "breed",
+    "obj": "lit:dog",
+    "q": "My dog Biscuit",
     "conf": 0.9
    },
-   {
-    "subj": "kin:spouse",
-    "rel": "birthday",
-    "obj": "lit:14 March",
-    "q": "my wife's birthday is on March 14 again next year",
-    "conf": 0.9
-   }
-  ],
-  "73a40a8cd3b7d9b614ae57f0a303a86a": [],
-  "73dbebeec9f99677ddaab6dcf58f4906": [],
-  "74185b112181aa342c552c24176c8286": [],
-  "74bd20818cb275da852a8cd0f22ae191": [],
-  "750180702db9846c327042ff5fd0d744": [],
-  "7575b5c7f25629f0ab3e64657f11e9cd": [],
-  "769e732fff31cd29262ffcf7cffc1ef8": [
    {
     "subj": "me",
     "rel": "pet",
     "obj": "kin:dog",
-    "q": "My dog Biscuit chewed the laptop charger",
-    "conf": 0.9
-   },
-   {
-    "subj": "kin:dog",
-    "rel": "name",
-    "obj": "lit:Biscuit",
     "q": "My dog Biscuit",
-    "conf": 0.9
+    "conf": 0.9,
+    "verified": true
    }
   ],
-  "7735bfe8e0668ad991f2ac925e448f86": [
-   {
-    "subj": "me",
-    "rel": "drives",
-    "obj": "vehicle:Volvo XC40",
-    "q": "Driving the XC40",
-    "conf": 0.9
-   }
-  ],
-  "7744d0d0cf33454d130b4ef2be706506": [],
-  "79259bc2a48c80838b57375b03c79e1a": [],
-  "7a3479f728ac1fa461a382f0a2554322": [],
-  "7be134776decc1ddcb31a6a8c814a689": [],
-  "7be367f5153547b77107ee8e8c2cf2f2": [],
-  "7daf8f8ed6d135a16f2a94b53e51b20a": [],
-  "7e2e64cdc6f6c008a62c386eb5a117df": [],
-  "7e8c431d1007f8ae89ed45147a0eebf2": [],
-  "7fa8963d147946da567fc0bb0ca655ab": [],
-  "803fee2d4ccdae08db42697642d08c76": [],
-  "80bb326565fc8b561ce401fb32ab1623": [],
-  "80e2c702ab8d6024e0a047eb5a3e843f": [],
-  "81ff22d3fee5d8fc3d111c21de063b40": [],
-  "83227ff5a32ac8828d4ac1fd05a071de": [],
-  "85b5b402c69778970e41953aac45d8b0": [],
-  "85e51802191ff8d6243ccdf2df22e0d6": [
-   {
-    "subj": "me",
-    "rel": "spouse",
-    "obj": "kin:spouse",
-    "q": "My wife Jordan",
-    "conf": 0.9
-   },
-   {
-    "subj": "kin:spouse",
-    "rel": "name",
-    "obj": "lit:Jordan",
-    "q": "My wife Jordan",
-    "conf": 0.9
-   }
-  ],
-  "8627b4a0bdafd0f97e0c27b8ba5eeb61": [],
-  "8726556eeffc2a4b66858861530be3c1": [],
-  "87fe6cf32256235987b079bd3e4c18b9": [],
-  "882e76bfb4338818e1604ae7eadb5863": [],
-  "8937daf0e0b89a14455915b688c09075": [
-   {
-    "subj": "me",
-    "rel": "spouse",
-    "obj": "kin:spouse",
-    "q": "Jordan and I",
-    "conf": 0.9
-   }
-  ],
-  "89508ce89b33eb916993db8c93e305c7": [
-   {
-    "subj": "me",
-    "rel": "client",
-    "obj": "org:Northwind",
-    "q": "The Northwind build fails",
-    "conf": 0.9
-   }
-  ],
-  "89653065f16bc910f6c7c4d5b78a6eb2": [],
-  "8a6aa76c5f6738c5f7cabbd6eb32b7da": [],
-  "8b86821eb4a1422897954f31a13308d8": [],
-  "8c759d88b32920ee0a0cf2f231b9ced4": [
-   {
-    "subj": "me",
-    "rel": "uses",
-    "obj": "tool:Neovim",
-    "q": "I use Neovim",
-    "conf": 0.9
-   }
-  ],
-  "8cc4fb270bfd3af5f5a3c22fd131c7ad": [],
-  "8f7358054754b4ccfbf6fe6ced6b2221": [],
-  "8f9d2a920b1b6f5aacb00776ed866921": [],
-  "8fa957016c02dbb041dbfed7f7d0446f": [],
-  "9056e7d737627f3cb6009defa438b585": [],
-  "9145c57ace49765f8413f64413fbcba5": [],
-  "93878a0549c946856d3938a2d98126a4": [],
-  "93d857859cdd433b707d97394ab4908f": [
-   {
-    "subj": "me",
-    "rel": "lives_in",
-    "obj": "place:Seattle",
-    "q": "The wifi in the Seattle apartment keeps dropping",
-    "conf": 0.7
-   }
-  ],
-  "97ce51d288426ae8279a336e6bc5502c": [],
-  "98328ac679b151c294a6ce9c6be37f09": [
-   {
-    "subj": "name:Luis",
-    "rel": "works_at",
-    "obj": "org:Harlow",
-    "q": "Added Luis to the Harlow call invite",
-    "conf": 0.7
-   }
-  ],
-  "98412e064a047d31f5ddf9d3ae86a3a4": [],
-  "98bfffefa45ccc66af8c63654a71934d": [
-   {
-    "subj": "me",
-    "rel": "drives",
-    "obj": "vehicle:Subaru Outback",
-    "q": "Driving the Subaru to Northwind",
-    "conf": 0.9
-   }
-  ],
-  "9bcb0329be5220e695f5fbf3709abf4c": [],
-  "9d02a6f879110a6e87ffbda298d751ae": [],
-  "9d73f2bc72b84cc1d646960bce22b3b8": [
-   {
-    "subj": "name:Priya Anand",
-    "rel": "works_at",
-    "obj": "org:Keel & Ash Architects",
-    "q": "The sponsor is Priya Anand at Keel & Ash Architects.",
-    "conf": 0.9
-   }
-  ],
-  "9decb5e9a4c00db3444de6c7aa22f6e0": [],
-  "9e152cbc0cefad6eea46ef08084ad8fc": [
-   {
-    "subj": "me",
-    "rel": "sold",
-    "obj": "vehicle:Subaru Outback",
-    "q": "Sold the Outback this weekend",
-    "conf": 0.9
-   }
-  ],
-  "9e728fe66694f5c538fb8db0fd26e41b": [],
-  "9f909f8083c6491bbc945631fc77891c": [],
-  "a0b3896b259ee7866aafacd6a42736e6": [],
-  "a17cbea77ad1cfa20a997e88cd29c758": [],
-  "a362754e2a891c37db03a7de1dc7bb1f": [],
-  "a442fc6dd3c3f75f723a11684bec6722": [
-   {
-    "subj": "me",
-    "rel": "spouse",
-    "obj": "kin:spouse",
-    "q": "Remind me to book dinner for my wife",
-    "conf": 0.9
-   },
-   {
-    "subj": "kin:spouse",
-    "rel": "birthday",
-    "obj": "lit:14 March",
-    "q": "Her birthday is on the 14th of March",
-    "conf": 0.9
-   }
-  ],
-  "a4d2b10d67bddb0d1c3e64345adf6bb1": [],
-  "a5ad4a9946bddfdc5f1293fb869987fe": [],
-  "a64d5c9d6599ad3eb56fc13b250e864c": [],
-  "a6829d8dc19d8112f6776baf4760e134": [],
-  "a6e2f1884f69f2bd75677fc55f153e07": [],
-  "a7d0f6dd8b21d3b8797452374dbd8a92": [],
-  "a8d6b0443ab21b760ebacd7a5c3b181d": [],
-  "a8eb71405330aac57dd1d20b1ba4977c": [],
-  "a945f17199c7b6530976506c42c32729": [],
-  "ab46022a79e8d07a6b96644aee46ba69": [],
-  "abdadd79eabca93eda633fb50d109ee4": [],
-  "af97b59c61106b737eaae53ac0ca8e92": [],
-  "b189fb009d204c8d7219412ac2604474": [],
-  "b357dff9c4921ee5599aea4e50143b8b": [],
-  "b3a0ab5059119b190795121e9d37a69d": [],
-  "b53dfbba627eed0dbd268c6c1dece204": [],
-  "b545e79b1150a1455cc0eab96d43d904": [],
-  "b690d7f6e4aa39f7719bb283784b9dcf": [],
-  "b7449e4ed0981f0adcf953645b2d3789": [],
-  "b7cc8a57552102dc1bcd1e2ca981ad36": [],
-  "b8565d66cefbe9b790f10703e2e93e34": [],
-  "b939e281fa8880f7a788fb59b83d69fb": [],
-  "bacf35910f2f4751e0b750728afe6e2e": [],
-  "bb1dec99be8519925f9c6ca758ffb681": [
-   {
-    "subj": "me",
-    "rel": "lives_in",
-    "obj": "place:Seattle",
-    "q": "I live in Seattle now",
-    "conf": 0.9
-   }
-  ],
-  "bb3e84a1f1dd6a9a3b5151223868072b": [],
-  "bb56bac9e702a73e401fc35c6eb073c8": [],
-  "bcc534349231d9430735b6179ccb5be6": [],
-  "bcebc365f51a89580ac682dfb1e80c50": [],
-  "bcf3886da8c88f0dc4fdf93978a1078a": [
-   {
-    "subj": "me",
-    "rel": "client",
-    "obj": "org:Harlow",
-    "q": "The Harlow intake build fails on the lint step, can you look?",
-    "conf": 0.7
-   }
-  ],
-  "bd51db7c7f9d9c587d8c97485e2c24f0": [],
-  "c2ada521c24f4a293e9634aa1bfc8b7c": [
-   {
-    "subj": "me",
-    "rel": "spouse",
-    "obj": "kin:spouse",
-    "q": "I'm picking up my wife from the airport",
-    "conf": 0.7
-   }
-  ],
-  "c4e296f4d4e7d93bfadb862f29dc2a2c": [],
-  "c52dc6dc5b4c64909df5559768495e1b": [],
-  "c7017b28ae57420455a90db0b457c73f": [],
-  "c71b2142a8b16abfcb43965ad780b4d6": [],
-  "c95c2ca18081901e83d2c0320b589ed4": [],
-  "c97c54d9f4bd07ff59b6a093457b92f4": [],
-  "c9fde204f889c76335b90f2cb5f3607e": [],
-  "ca16275fea4246b7b86b7b747fd3c8b6": [],
-  "ca9abda14f69d999a51a440d390365bc": [
-   {
-    "subj": "me",
-    "rel": "lives_in",
-    "obj": "place:Portland",
-    "q": "It's been raining nonstop here in Portland all week",
-    "conf": 0.9
-   }
-  ],
-  "cb995c738665e2696ecdf3a2b7e9a34b": [],
-  "cc050f86ec13d09daeaf3ab31a249563": [
-   {
-    "subj": "me",
-    "rel": "drives",
-    "obj": "vehicle:Volvo",
-    "q": "The Volvo needs a service next week",
-    "conf": 0.9
-   }
-  ],
-  "cc8edcb68855b8bb025ba655f037271a": [],
-  "cdaf0d08340a702835c459692fea04bd": [],
-  "ce310abeb79ebbf408554b822cdd8818": [],
-  "ced8216a90a4b99ac98339490ab2bcd6": [],
-  "cedf8f81a95676b62763042ac07a2802": [],
-  "cfa01ba6980ed90c4426cf3b85a474ec": [
+  "9faa0b0d4ec8f39df8ea67b93b190d4b": [
    {
     "subj": "me",
     "rel": "lives_in",
@@ -728,138 +589,122 @@
     "conf": 0.9
    }
   ],
-  "d03517ed5e89d4a3b9b165994b43ef62": [],
-  "d0dc2f49b16886512eb8e6b45e3bb367": [],
-  "d1b06d39ad82745e021b8480ba324c88": [],
-  "d1c5ff571a3673acd7cc5e3c3c81fa56": [],
-  "d203e597e6ec0f81e30680b961b436ba": [],
-  "d366fe710a744cf561959d78f69ddaa8": [],
-  "d3a492c1bc9e4eab26fdbe4280364bcb": [],
-  "d452986e443f471b65ec5f65924a9dd4": [],
-  "d5048b051445446e6c43e3466d451a58": [
+  "a019c02003a0f3d3b2d1b949b0ea2e8b": [],
+  "a149d0b4a61c0e8b67ff7159a28d8321": [],
+  "a1c0d9423ad60033745b0119fe3563f3": [],
+  "a39dd1a99eb93bb1429f3f0c45f3d8d2": [],
+  "a519a7a06a25441b350283b18fed0ded": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Seattle",
+    "q": "Since we moved to Seattle",
+    "conf": 0.9
+   }
+  ],
+  "a5a5dc5356d02f5ecc4e03386a53411e": [],
+  "a67797ad96f5924116778be5306e26f8": [],
+  "a6a0928bc6658ebfc0ae292ceda8f082": [],
+  "a6c26c7b1d6ddc730c1d4852ee39fb3b": [],
+  "a6f71a77e989a1af0728e09b9f56ecee": [],
+  "a84896a66fa40e259cf367cd41bee393": [],
+  "a8af36b15b92c0058e6ac31df7cf3184": [],
+  "a9a72b6ea9bb1aa7fb6527e523906536": [],
+  "ad0d2b5d7d4a406e46657b4f4fb6260b": [
+   {
+    "subj": "org:Northwind",
+    "rel": "client",
+    "obj": "me",
+    "q": "the Northwind page",
+    "conf": 0.7
+   }
+  ],
+  "ad927c7bc67bd121a26c7cf476445496": [],
+  "adff19b3192491b3eea2d78b83a4a059": [],
+  "aec83a7117a9fdab27d185cbe21f8921": [],
+  "af60b0803e55fc59f3d6ba0bdb92fdde": [],
+  "aff93ccb9555276a220214efad5a4a29": [],
+  "b068993c72d7ac27c1a942a129d41a7f": [],
+  "b158a6d8f06b34e3a8bd5ed3ca8e73f8": [],
+  "b1872399a6e2ff3dff5865bfcceee05e": [],
+  "b23f3d9716acbc770bb1adbe22c45253": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Seattle",
+    "q": "We're moving to Seattle next month",
+    "conf": 0.5
+   }
+  ],
+  "b31d31afb81a33b3d9255c89ff26db7d": [],
+  "b521dd4bfdd88b95e2ffa0ebd8d4d141": [],
+  "b5e2b6d939fa05135090aa86e12f5b7d": [],
+  "b76ed8ebfb50162656fbdcdc18cc2c62": [],
+  "b77bd558d50704d01f990c31f78aa0c5": [],
+  "b7a1b919c5d667b0bf521694eadc9b41": [],
+  "b979cf479864a5d09c2d602ab2c54c19": [],
+  "b9893e11d8cda33b1a9f0b13a21dcbbb": [],
+  "bb64ef58f632df8858b6a4209621b44c": [],
+  "bb87e42aabe0bcb8413af3194cdece3b": [],
+  "bb8b7d74db03d6617599d1b2adcc25f2": [],
+  "bec096d91cb3b988d166de4a3154b13d": [],
+  "bed62a600d4501947894b2d1265f7354": [],
+  "c17e946ffac3685446f04f8f1e8b18e8": [],
+  "c338d78503e4b396a66ff2eec4526d10": [],
+  "c34193a3bca2f42de3dd982670eeeaea": [],
+  "c46f1c99ece90a7f2da824045b8899d1": [],
+  "c4d0aabc7be650836967d61c9fe98a5b": [],
+  "c6b111d6eaf5e7e429ecb6b5704d6c46": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Portland",
+    "q": "It's been raining nonstop here in Portland all week.",
+    "conf": 0.9
+   }
+  ],
+  "c70d86f981be7caca90c648e27bcca95": [
    {
     "subj": "me",
     "rel": "client",
-    "obj": "org:Northwind Bakery",
-    "q": "My client Northwind Bakery",
-    "conf": 0.9
+    "obj": "org:Harlow Legal",
+    "q": "Add a README section on running Harlow site locally.",
+    "conf": 0.7
    }
   ],
-  "d7bb1ddf27189fad3a2f50a1abaa2cff": [],
-  "d820e3c3fb30e6854a02dddb7fb33b60": [],
-  "d8bb0b62b77bca47e417e1acc5f96f86": [],
-  "da0677fa5a8c7fd169e28c92f0d4c1f3": [],
-  "da102f6b47c51ffb8acf20480e47fc37": [],
-  "da527d6dad8b80d23fe8aff72f5ceebe": [],
-  "da711500943ab6ef0de8ff33d671007a": [],
-  "db83daebe801d4c2d934a6a1e5034592": [
-   {
-    "subj": "name:Sam Okafor",
-    "rel": "works_at",
-    "obj": "org:Northwind Bakery",
-    "q": "Sam Okafor from Northwind Bakery",
-    "conf": 0.9
-   }
-  ],
-  "dc2c5007e7f3d4a3bc1b43e4c9b3c8aa": [
-   {
-    "subj": "me",
-    "rel": "spouse",
-    "obj": "kin:spouse",
-    "q": "get your wife",
-    "conf": 0.9
-   }
-  ],
-  "dc52a71022e97554618f77cac42c3700": [],
-  "dd5ff880ef3a67b8e2bedd085e3d4069": [],
-  "e4ffa90a37567376d8bc026591febee1": [],
-  "e66000dc6c2ba19a70732ebf70407d46": [],
-  "e750ddda4f74696fab4c807f5bc40ecb": [],
-  "e8eb0dca9461fa6455a102f0da3af0a3": [],
-  "e9bfe6282f89cbbd3be0f977cafac7e6": [],
-  "e9db22fc02ffc026134b5ac535e139cd": [],
-  "eb0f3da35c3a90f4baa85af1e5832668": [],
-  "ec3cdea6ae5ce58a5df8cdf689da7d63": [],
-  "ed0542641eedfbeb7f155ac89e5fb9d7": [],
-  "edfe031d724d2648c7033eb0ca6f24bf": [],
-  "ee1e145b3d61ca252752faf6868f0755": [],
-  "ee8eb02d67112d30e0dab72135989d5f": [],
-  "f0651f554523d823c286f36586f69329": [],
-  "f0717068c0822a27bec1eab270cf3da0": [],
-  "f0cea9ef277dd65b0d97ec42fc854269": [
+  "c90ed5fb0257963356fb1e94bfc5627f": [],
+  "c99877c69c54178d16516fc49f07c57c": [],
+  "cad60d6dc4e6257eb2228658424ae0b5": [],
+  "cb0b1b8a132857accfcfb22d3a4d9869": [
    {
     "subj": "me",
     "rel": "pet",
     "obj": "kin:dog",
-    "q": "Taking Biscuit to the vet at noon",
-    "conf": 0.9
-   }
-  ],
-  "f29fd4845b47f63a5dadb2e578523b71": [
-   {
-    "subj": "me",
-    "rel": "spouse",
-    "obj": "kin:spouse",
-    "q": "Jordan's birthday is 14 March",
-    "conf": 0.9
+    "q": "Biscuit needs a walk",
+    "conf": 0.9,
+    "verified": true
    },
    {
-    "subj": "kin:spouse",
+    "subj": "kin:dog",
     "rel": "name",
-    "obj": "lit:Jordan",
-    "q": "Jordan's birthday is 14 March",
-    "conf": 0.9
+    "obj": "lit:Biscuit",
+    "q": "Biscuit",
+    "conf": 0.9,
+    "verified": true
    }
   ],
-  "f39bf5dd9070992e0d4a614f486435e5": [],
-  "f408c0b5583632b557d7c58fa86c4b01": [],
-  "f457c24bd4d1eda1f7f798046b53e0ca": [
+  "cd6b3556e547befc855b61b07df9c08d": [],
+  "cf84ccf557b5f95af877015cb073a6d6": [],
+  "d044650a18d7c03153ce1e5b8e456b32": [
    {
     "subj": "me",
     "rel": "client",
-    "obj": "org:Rivera Studio",
-    "q": "At Rivera Studio we bill monthly",
+    "obj": "org:Harlow Legal",
+    "q": "Harlow Legal is my biggest client",
     "conf": 0.9
    }
   ],
-  "f638416c8554ae2af2bcd1c76e307a37": [
-   {
-    "subj": "me",
-    "rel": "client",
-    "obj": "org:Rivera Studio",
-    "q": "Build the monthly KPI report for Rivera Studio clients",
-    "conf": 0.7
-   }
-  ],
-  "f6f4bc1182bca5bcc6e2ca83ede8812d": [],
-  "f84ce850472141f16094082a564f0b9a": [],
-  "f86f90ae9cd48513255ccde569d5864b": [],
-  "f8959e8e0fe4d077d6a389f4dc564e9f": [
-   {
-    "subj": "me",
-    "rel": "spouse",
-    "obj": "kin:spouse",
-    "q": "My wife's name",
-    "conf": 0.9
-   },
-   {
-    "subj": "kin:spouse",
-    "rel": "name",
-    "obj": "lit:Jordan",
-    "q": "My wife's name is Jordan",
-    "conf": 0.9
-   }
-  ],
-  "f8b24421079a10b1bd37097f99ff4e47": [],
-  "f9cd07964050f4ee37f520f7f34a1851": [],
-  "fb2592e5da01911c62ffe48921bf2c4c": [
-   {
-    "subj": "me",
-    "rel": "owns",
-    "obj": "vehicle:Subaru Outback",
-    "q": "My green Subaru Outback",
-    "conf": 0.9
-   },
+  "d0d60cf516c0c21d5c84bd1be8b3e63b": [
    {
     "subj": "vehicle:Subaru Outback",
     "rel": "color",
@@ -868,11 +713,144 @@
     "conf": 0.9
    }
   ],
-  "fbe9aca2ec541be4a085d92ce211c4b2": [],
-  "fc928a3242cc31b2c7bcbea83a5ed493": [],
-  "fcc936a0cfbe57beddcdab533618b8e2": [],
-  "fdeff21699f32adead0d94f035321e12": [],
-  "ff8940a4258e8847e072bf65b08da135": [],
-  "fff3b2427463b4b94c9f6bdca4be4858": []
+  "d0e7e5c9741a48446b7ce5ae45830209": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow",
+    "q": "Harlow wants a family law intake form",
+    "conf": 0.9
+   }
+  ],
+  "d1d45ec17f09330724696fd9c3d29e0b": [],
+  "d1f7c61960616e999e8bb0e1b1784730": [],
+  "d2c78e7d93b367f66554eff33f1a802d": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "Northwind switched their bank to Cedar Credit Union, update the payment details on their invoices.",
+    "conf": 0.9
+   }
+  ],
+  "d38da4538dea7011fbc2376a3f9ac4ae": [],
+  "d42ee7d8806741c2c66c97577c58c016": [],
+  "d4b9388e5738e43fdbf6dbadd0df82c2": [],
+  "d56c47ba50264d25b818b51923c1f5d3": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Portland",
+    "q": "Our place in Portland is too small for a proper office.",
+    "conf": 0.9
+   }
+  ],
+  "d592ae850f6885af21d2aa80fd87a3f8": [],
+  "d72ace6d9eeb39ec206c70197bf89b3c": [],
+  "d7a1c918e4095bc6446e8c38b3f8da30": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Seattle",
+    "q": "I live in Seattle now",
+    "conf": 0.9
+   }
+  ],
+  "d8e7a18f737fcd6773cedb0512f9edf8": [],
+  "d943addf0a738267b52da4dc1cebebe1": [],
+  "d97a7cac1d521652b0aeab5697da437a": [],
+  "d9a7459421268c8652c468e4d0c17a3d": [],
+  "dc7a89482a8b8e626a048a14ed1ec732": [],
+  "de571d11dbf1ea55e6cfa7e219ca0823": [],
+  "de6934b639dac133b918b3ae65645002": [],
+  "debad8bce846be4efb86086fe3762f42": [],
+  "df7e3d605cc433eb63cabb672635c509": [
+   {
+    "subj": "me",
+    "rel": "works_at",
+    "obj": "org:Rivera Studio",
+    "q": "At Rivera Studio",
+    "conf": 0.9
+   }
+  ],
+  "e0a8d7385bd170fa6dc2b3eae759a6a4": [],
+  "e122cbeaf2547dd0e18ffe997a2f42c6": [
+   {
+    "subj": "me",
+    "rel": "spouse",
+    "obj": "kin:spouse",
+    "q": "who is my wife",
+    "conf": 0.5,
+    "verified": false
+   }
+  ],
+  "e15baed5b83288d6e9f6d5efecb5dba7": [],
+  "e184a19090df5a600874ea80cd27a399": [],
+  "e1d8a2cd138501530637f9101a14f122": [],
+  "e443d53cef85dd8a1fc3e067084ab46a": [],
+  "e53a361a48f86d84907994a293ed7898": [],
+  "e53b3c1fbba510c736aa8984c0d57475": [],
+  "e5d60ca1c4a34eaf93078e64b785121d": [],
+  "e64701e2db4b10986bae24a615c4af6c": [],
+  "e6794518ce690b79482ac73fbf3c2a29": [],
+  "e722cffbe5e052672eaf1ebc9023da8d": [],
+  "e7c1d556e2a1b5a3446eb68c1f8d0c18": [],
+  "e7d7546fc962cd5e3d4bc7ee6e7def3b": [],
+  "e7eea3820df1464e72f52981c48d4fe1": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow",
+    "q": "Why is the Harlow site page slow on mobile?",
+    "conf": 0.9
+   }
+  ],
+  "e81cb4195e95ec56ad30a25f82ecda4b": [],
+  "e82f5082e7fbcd8b0efbcdc3382dd157": [],
+  "e886a53705cec1133321e31aaae8b961": [],
+  "e9ea57cc2d0efe4f2d3e4c31a121d2b2": [],
+  "eb96ce6d85db05b1a251e8ae640659c4": [],
+  "ececd53b329213fa41f2d8b3eb85ee7e": [],
+  "ed4f70e3680735a34bd2c90abac50f26": [
+   {
+    "subj": "kin:mother",
+    "rel": "name",
+    "obj": "lit:Ruth",
+    "q": "Ruth wants help",
+    "conf": 0.9,
+    "verified": false
+   }
+  ],
+  "ef1d70569e508c8d4f7606123aeb9e09": [],
+  "efec444d49c00f5b236a0f341a09d763": [],
+  "f00fd0a4dbfda93fe98696acaac3fcdc": [],
+  "f23c5369485b9946c411697f0451fe2a": [],
+  "f23e276b8f23daec7af3e60fbd78e9e5": [],
+  "f2a1ec5bad1ec799d233d4ab0fb6279a": [
+   {
+    "subj": "name:Luis",
+    "rel": "works_at",
+    "obj": "org:Harlow",
+    "q": "Added Luis to the Harlow call invite",
+    "conf": 0.7
+   }
+  ],
+  "f480672888ab789be8ac8996e59af30a": [],
+  "f52b8c4803e6b9c0b25c0957c1b07651": [],
+  "f720007b1ff4bd169fbe01a08d2986d7": [],
+  "f86e651e6b3ff8bc5f849a625a4e6ba3": [],
+  "f94ff8120df48e39291900427581f80e": [],
+  "fad2dacee6f28ecf491662cfd56e9a77": [],
+  "fc458f3e30e046be9f6fc8cf466f56ad": [],
+  "fdf7d9b09781aa210834ef981086ac70": [],
+  "feb0963567fd105d8f4f8ba3565c53c0": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow",
+    "q": "Harlow intake locally",
+    "conf": 0.9
+   }
+  ]
  }
 }

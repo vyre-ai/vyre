@@ -8,7 +8,7 @@ import { open } from "../../store/index.js";
 import { seedRecall } from "../../../test/fixtures/corpus.js";
 import { tempHome } from "../../../test/helpers.js";
 import { Personal } from "./store.js";
-import { createReader, checkRead, ownOf, signal, turnHash, readerPrompt, parseReads, modelFor, SYSTEM, READER } from "./reader.js";
+import { createReader, checkRead, ownOf, signal, turnHash, readerPrompt, parseReads, modelFor, SYSTEM, READER, VERIFY } from "./reader.js";
 
 const T0 = Date.parse("2026-09-01T09:00:00Z");
 const DAY = 86_400_000;
@@ -26,13 +26,17 @@ async function world(t, { turns, config = {}, threads = [], usd = 0.002, answers
   const sent = [];
   const clock = { t: T0 + 100 * DAY };
   const fake = async r => {
+    // The second look agrees with everything here.
+    if (r.system === VERIFY) return { text: JSON.stringify({ v: r.prompt.split("<item ").slice(1).map(() => true) }), usd: 0 };
     sent.push(r);
     const blocks = r.prompt.replace(/^<known>[^\n]*<\/known>\n\n/, "").split(/\n\n(?=<turn )/);
     const reads = blocks.map((b, i) => ({ t: i, facts: Object.entries(answers).filter(([k]) => b.includes(k)).flatMap(([, f]) => f) })).filter(x => x.facts.length);
     return { text: JSON.stringify({ reads }), usd, tokens_in: 1000, tokens_out: 50 };
   };
   const call = async tool => (tool === "threads.list" ? { data: threads } : { error: { code: "no_such_tool" } });
-  const reader = createReader({ db, personal, now: () => clock.t, call, config, runner: runner === undefined ? fake : runner });
+  // One reading per batch unless a test says otherwise: the counts below are per reading.
+  const cfg = { ...config, memory: { ...(config.memory || {}), model: { passes: 1, ...(config.memory?.model || {}) } } };
+  const reader = createReader({ db, personal, now: () => clock.t, call, config: cfg, runner: runner === undefined ? fake : runner });
   t.after(() => reader.stop());
   await personal.pass({});
   personal.derive();
@@ -101,6 +105,14 @@ test("reader: a fact must quote the user's own words, and name what it says", ()
   const van = ownOf("theo's van is a white ford transit, he drives it everywhere. my truck is blue");
   assert.equal(checkRead({ subj: "me", rel: "owns", obj: "vehicle:Ford Transit", q: "theo's van is a white ford transit", conf: 0.9 }, van).error, "not the user's vehicle");
   assert.equal(checkRead({ subj: "me", rel: "drives", obj: "vehicle:Ford Transit", q: "he drives it everywhere", conf: 0.9 }, van).error, "not the user's vehicle");
+  // Who someone is needs the second look: a no drops it, no look at all keeps it only as a maybe.
+  const wife = ownOf("my wife dani is on nights");
+  assert.equal(checkRead({ subj: "me", rel: "spouse", obj: "name:Dani", q: "my wife dani", conf: 0.9, verified: false }, wife).error, "the second look said no");
+  assert.equal(checkRead({ subj: "me", rel: "spouse", obj: "name:Dani", q: "my wife dani", conf: 0.9 }, wife).claims?.[0].conf, 0.45);
+  assert.equal(checkRead({ subj: "me", rel: "spouse", obj: "name:Dani", q: "my wife dani", conf: 0.9, verified: true }, wife).claims?.[0].conf, 0.8);
+  // Someone else's family, kept as theirs.
+  assert.deepEqual(checkRead({ subj: "name:rhodri", rel: "spouse", obj: "name:seren", q: "his wife seren", conf: 0.9, verified: true }, ownOf("rhodri needs a page, his wife seren does the admin")).claims,
+    [{ subj: "name:Rhodri", rel: "spouse", obj: "name:Seren", conf: 0.8 }]);
   const theirs = ownOf("theo's kids sam and mia are coming over, my kid luna is thrilled");
   assert.equal(checkRead({ subj: "kin:child", rel: "name", obj: "lit:Sam", q: "theo's kids sam and mia", conf: 0.9 }, theirs).error, "someone else's family");
   assert.equal(checkRead({ subj: "kin:child", rel: "name", obj: "lit:Luna", q: "my kid luna", conf: 0.9 }, theirs).claims?.[0].obj, "lit:Luna");
@@ -168,10 +180,25 @@ test("reader: a failed run or a bad answer charges what was spent and keeps the 
   const w = await world(t, { turns: ["my dog is a corgi"], runner: async () => ({ text: "I cannot help with that", usd: 0.001 }) });
   assert.equal((await w.reader.drain()).waiting, "the model's answer was not JSON");
   assert.equal(w.reader.status().waiting_turns, 1);
-  assert.equal(w.reader.status().today_usd, 0.001);
+  assert.equal(w.reader.status().today_usd, 0.004, "a drain tries a bad answer three more times, and each try is charged");
   const x = await world(t, { turns: ["my dog is a corgi"], runner: async () => { throw new Error("offline"); } });
   assert.equal((await x.reader.drain()).waiting, "the model failed");
   assert.equal(x.reader.status().last?.status, "failed");
+});
+
+test("reader: two readings of a batch keep the union of what they found", async t => {
+  let n = 0;
+  const runner = async r => {
+    if (r.system === VERIFY) return { text: JSON.stringify({ v: r.prompt.split("<item ").slice(1).map(() => true) }), usd: 0 };
+    n++;
+    const f = n === 1 ? { subj: "kin:dog", rel: "breed", obj: "lit:corgi", q: "my dog is a corgi", conf: 0.9 } : { subj: "me", rel: "pet", obj: "kin:dog", q: "my dog", conf: 0.9 };
+    return { text: JSON.stringify({ reads: [{ t: 0, facts: [f] }] }), usd: 0.001 };
+  };
+  const w = await world(t, { turns: ["my dog is a corgi"], runner, config: { memory: { model: { passes: 2 } } } });
+  await w.reader.drain();
+  assert.equal(n, 2);
+  assert.deepEqual(w.fact("kin:dog", "breed"), ["corgi"]);
+  assert.equal(w.reader.status().today_usd, 0.002, "both readings are charged");
 });
 
 test("reader: kept reads move between stores (the evaluation's fixture)", async t => {
