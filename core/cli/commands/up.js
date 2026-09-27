@@ -14,13 +14,16 @@ import { execFileSync, spawn } from "node:child_process";
 import { request, call } from "../../daemon/client.js";
 import { ensureUp, stop } from "../daemonctl.js";
 import { REPO, VERSION } from "../../daemon/index.js";
-import { out, dim, signal, beacon } from "../style.js";
+import { out, dim, bold, signal, beacon } from "../style.js";
+import { json, emit, failTool, usage } from "../kit.js";
 import * as config from "../../config/index.js";
 import { dialogsAllowed, isRealHome } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
 import { backup, restore } from "../../names/backup.js";
 import * as tailnet from "../tailnet.js";
 import { printEnding } from "../ending.js";
+import { hello } from "../brand.js";
+import { build } from "../../daemon/build.js";
 
 /** Pull --flags out of argv: { flags: { user: "alex", "dry-run": true }, rest: [...] }. */
 export function parse(args, valued = ["user", "connect"]) {
@@ -146,6 +149,8 @@ async function run(args, deps) {
   if (flags.connect !== undefined && (flags.connect === true || !String(flags.connect).trim())) {
     return fail("no_address", "--connect needs your box's address: vyre up --connect https://vyre.<tailnet>.ts.net");
   }
+  // The first `vyre up` on this machine: no store yet. It gets the welcome, not a status line.
+  const first = !fs.existsSync(config.paths().db);
   const cfg = config.load();
   let role = cfg.role;
   if (flags.box) role = "box";
@@ -164,7 +169,14 @@ async function run(args, deps) {
 
   const b = await (deps.bring || bring)(role);
   if (!b.ok) return fail("vyred_down", b.note || "vyred did not start");
-  say(b.note ? `  vyred ${signal("running")} ${dim(`· ${VERSION} · ${role} · ${b.note}`)}` : `  vyred is already running ${dim(`· ${VERSION} · ${role}`)}`);
+  if (first) {
+    say("");
+    say(hello(build()));
+    say("");
+    say("  Vyre runs Claude Code on a machine you own, and gives it memory, a vault and a private");
+    say("  address. Setting it up takes about ten minutes, one step at a time.");
+    say(dim(`\n  vyred running in the background · your data lives in ${config.home().replace(os.homedir(), "~")}`));
+  } else say(b.note ? `  vyred ${signal("running")} ${dim(`· ${VERSION} · ${role} · ${b.note}`)}` : `  vyred is already running ${dim(`· ${VERSION} · ${role}`)}`);
 
   if (systemdManaged()) {
     // An upgrade can change the units; only root can rewrite them.
@@ -179,10 +191,19 @@ async function run(args, deps) {
     return mac(config.load().network.box || null, { capsule: !flags["no-capsule"] && !json }, { ...deps, tool: callTool, json, say, done, fail });
   }
 
-  const link = await callTool("onboard.link");
+  // --keep-link (vyre update): report, mint nothing, so the link the user already has still works.
+  const keep = Boolean(flags["keep-link"]);
+  const link = await callTool("onboard.link", keep ? { mint: false } : {});
   if (link.error) return fail("onboarding_unavailable", "onboarding is not available: " + link.error.message);
   const d = link.data;
   const ssh = d.url ? sshLine(d.port, d.user) : null;
+  if (keep && "pending" in d) {
+    const left = d.pending && d.expires ? Math.max(1, Math.round((d.expires - Date.now()) / 60_000)) : 0;
+    if (json) return done({ url: null, pending: Boolean(d.pending), expires: d.expires ?? null, address: d.address || null });
+    say(d.pending ? `  set up is not finished; the link you have still works ${dim(`(${left} min left)`)}` : "  set up is not finished");
+    say(dim(`  vyre up prints a new link${d.pending ? " and voids that one" : ""}`));
+    return 0;
+  }
   if (!d.url) {
     // After onboarding: the same ending the Mac prints, so "is it done?" has one answer. The box
     // cannot ask its own address (its listener refuses itself, ADR 0002), so it asks names.
@@ -208,7 +229,10 @@ async function run(args, deps) {
   if (d.address) say(dim(`\n  or, once your devices are on the tailnet: ${d.address}`));
   say("");
   // `vyre up --box` on a Mac: the browser is right here, so open the link too.
-  if (platform === "darwin" && !ssh) (deps.openUrl || openUrl)(d.url);
+  if (platform === "darwin" && !ssh && (deps.openUrl || dialogsAllowed())) {
+    say(dim("  Opening it in your browser now."));
+    (deps.openUrl || openUrl)(d.url);
+  }
   return 0;
 }
 
@@ -233,15 +257,20 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
     done = () => 0,
     openCapsule = async () => {
       const c = await import("./capsule.js");
-      if (!c.installed() && !c.packaged().bin && !c.electron()) return false;
+      // The native Capsule builds itself on first run, so its source is enough.
+      if (!c.nativeAvailable() && !c.installed() && !c.packaged().bin && !c.electron()) return false;
       return (await c.default.run([])) === 0;
     },
+    // Offered only on the person's own terminal, never under node --test: a test never reaches
+    // the settings.json of whoever runs it.
+    statusline = async () => { if (io === terminal && !process.env.NODE_TEST_CONTEXT) await (await import("./statusline.js")).offerStatusline({ interactive: true, io }); },
   } = /** @type {any} */ (deps);
   const asking = io.tty && !json;
 
   if (!box) {
     // No address known: look for the box on the tailnet. Exactly one is taken.
     const f = await tool("link.find");
+    if (f.error && f.error.code === "not_real_home") say(dim(`  ${f.error.message}`));
     const found = (f.data && f.data.boxes) || [];
     if (found.length === 1) {
       box = found[0].address;
@@ -284,10 +313,16 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
     return 1;
   }
 
-  await pair(box, tool, say);
-  if (json) return done({ box, ready: true });
+  const paired = await pair(box, tool, say);
+  if (json) return done({ box, ready: paired !== "pending", ...(paired === "pending" ? { pairing: "waiting for approval" } : {}) });
+  if (asking) await statusline().catch(() => {});
   if (capsule && platform === "darwin" && !(await openCapsule())) {
     say(`  the Capsule is not installed: ${signal("vyre capsule install")}`);
+  }
+  if (paired === "pending") {
+    // Not ready until the box says yes: say what happens next instead of "Vyre is ready."
+    say(dim("\n  Once you approve it, run vyre up again to finish."));
+    return 0;
   }
   printEnding({ address: box, assistant: (h && h.assistant) || null });
   return 0;
@@ -296,15 +331,17 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
 /**
  * Pair this Mac with the box, or say where pairing stands. The link module owns the mechanics:
  * the Mac shows a code and the box's owner approves it (ADR 0008 section 7; `vyre box add`
- * approves it itself over SSH). Resolves true when the Mac is linked.
+ * approves it itself over SSH). Resolves "linked", "pending" (a code is waiting for approval),
+ * or "unknown" (a vyred without the link module, or an error already said).
+ * @returns {Promise<"linked" | "pending" | "unknown">}
  */
 async function pair(box, tool, say) {
   const s = await tool("link.status");
   if (s.error) {
     if (s.error.code !== "no_such_tool") say(beacon("  cannot read the link: ") + s.error.message);
-    return false;
+    return "unknown";
   }
-  if (s.data.linked) { say(`  ${signal("linked")} ${dim("· this Mac and your box work as one")}`); return true; }
+  if (s.data.linked) { say(`  ${signal("linked")} ${dim("· this Mac and your box work as one")}`); return "linked"; }
   let code = s.data.pending && s.data.pending.code;
   if (!code) {
     const p = await tool("link.pair", { box });
@@ -312,19 +349,27 @@ async function pair(box, tool, say) {
     code = p.data && p.data.code;
   }
   if (code) {
-    say(`  Approve this Mac in your Deck: it names this Mac (${os.hostname()}) and asks for your passkey. Code: ${signal(code)}`);
+    say("");
+    say(`  Approve this Mac on your phone at ${signal(box)}, or in the Deck on this Mac`);
+    say(`  The Deck there names this Mac (${os.hostname()}) and asks for your passkey. Code: ${signal(code)}`);
     say(dim("  vyre link shows when it is done."));
+    return "pending";
   }
-  return false;
+  return "unknown";
 }
 
 /** "Where should Vyre run?", asked on a Mac that knows no box and found none. */
 async function where(io, deps) {
   out("");
-  out("  Where should Vyre run?");
-  out(`    1  on a server I can SSH to ${dim("(recommended)")}`);
-  out("    2  on this Mac");
+  out(`  ${bold("Where should Vyre run?")}`);
+  out("");
+  out(`    1  On a server I can SSH to ${dim("(recommended)")}`);
+  out(dim("       Vyre installs itself there and keeps working when this Mac sleeps."));
+  out("    2  On this Mac");
+  out(dim("       The quickest way to try it. It pauses when this Mac sleeps."));
   out("    3  I already set up a box");
+  out(dim("       Pair this Mac with it."));
+  out("");
   const choice = (await io.ask("  1, 2 or 3? ")).trim();
   if (choice === "1") {
     const target = (await io.ask("  server (user@host): ")).trim();
@@ -335,8 +380,10 @@ async function where(io, deps) {
   }
   if (choice === "2") return up(["--box"], deps);
   if (choice === "3") {
-    const a = (await io.ask("  its address (https://vyre.<tailnet>.ts.net): ")).trim();
-    if (!a) { out(beacon("  no address given")); return 1; }
+    out(dim("  Its address is on the box's last screen, and in the Deck: https://<name>.<tailnet>.ts.net"));
+    const a = (await io.ask("  Your box's address: ")).trim();
+    if (!a) { out(beacon("  no address given") + dim(" · vyre up --connect <address> when you have it")); return 1; }
+    out(dim(`  Asking ${normalize(a)} to pair with this Mac.`));
     return up(["--connect", a], deps);
   }
   out(beacon("  nothing chosen") + dim(" · vyre box add user@host, vyre up --box, or vyre up --connect <address>"));
@@ -374,14 +421,14 @@ async function upSystem(flags) {
 
 export default [
   {
-    name: "up", order: 10, usage: "vyre up [--box|--connect <addr>] [--json] [--no-capsule]", summary: "start vyred and print the onboarding link, or this box's address",
+    name: "up", order: 10, usage: "vyre up [--box|--connect <addr>] [--json] [--no-capsule] [--keep-link]", summary: "start vyred and print the onboarding link, or this box's address",
     run: args => up(args),
   },
   {
     name: "uninstall", order: 95, hidden: true, usage: "vyre uninstall --system [--purge] [--dry-run]", summary: "remove the systemd units (the data stays unless --purge)",
     async run(args) {
       const { flags } = parse(args);
-      if (!flags.system) { out("  vyre uninstall --system [--purge] [--dry-run]"); return 1; }
+      if (!flags.system) return usage("vyre uninstall needs --system", "vyre uninstall --system [--purge] [--dry-run]");
       const dryRun = Boolean(flags["dry-run"]);
       if (!dryRun && (typeof process.getuid !== "function" || process.getuid() !== 0)) { out(beacon("  run it with sudo, or add --dry-run")); return 1; }
       const user = String(flags.user || process.env.SUDO_USER || os.userInfo().username);
@@ -397,9 +444,11 @@ export default [
   },
   {
     name: "backup", order: 80, usage: "vyre backup [file]", summary: "copy config, store, vault, watchers and certificates into one file",
-    async run([file]) {
+    async run(args) {
+      const [file] = args.filter(a => a !== "--json");
       const target = path.resolve(file || `vyre-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`);
       const r = await backup({ root: config.home(), file: target });
+      if (json()) return emit(r);
       out(`  ${signal(r.file)} ${dim(`· ${Math.round(r.bytes / 1024)} KB · ${r.included.join(", ")}`)}`);
       out(dim("  it holds the sealed vault: keep it somewhere only you can read"));
       return 0;
@@ -409,7 +458,7 @@ export default [
     name: "restore", order: 81, hidden: true, usage: "vyre restore <file> [--force]", summary: "put a backup back (vyred must be stopped)",
     async run(args) {
       const { flags, rest } = parse(args);
-      if (!rest[0]) { out("  vyre restore <file> [--force]"); return 1; }
+      if (!rest[0]) return usage("vyre restore needs the backup file", "vyre restore <file> [--force]");
       try { await restore({ root: config.home(), file: path.resolve(rest[0]), force: Boolean(flags.force) }); }
       catch (e) { out(beacon("  " + /** @type {Error} */ (e).message)); return 1; }
       out("  restored · vyre up to start");
@@ -417,12 +466,17 @@ export default [
     },
   },
   {
-    name: "name", order: 30, usage: "vyre name [check <n>|claim <n>|ts.net|release]", summary: "this box's address: <you>.vyre.run",
-    async run([action, name]) {
-      const tool = { check: "names.check", claim: "names.claim", "ts.net": "names.fallback", release: "names.release" }[action || ""] || "names.status";
+    name: "name", order: 30, usage: "vyre name [check <n>|claim <n>|ts.net|release] [--json]", summary: "this box's address: <you>.vyre.run",
+    async run(args) {
+      const [action, name] = args.filter(a => a !== "--json");
+      const TOOLS = { check: "names.check", claim: "names.claim", "ts.net": "names.fallback", release: "names.release" };
+      if (action && !(action in TOOLS)) return usage(`vyre name ${action}: not a subcommand`, "vyre name [check <n>|claim <n>|ts.net|release]");
+      if ((action === "check" || action === "claim") && !name) return usage(`vyre name ${action} needs a name`, `vyre name ${action} alex`);
+      const tool = TOOLS[/** @type {keyof typeof TOOLS} */ (action || "")] || "names.status";
       const r = await call(tool, name ? { name } : {});
-      if (r.error) { out(beacon(`  ${r.error.code}: `) + r.error.message); return 1; }
+      if (r.error) return failTool(r.error);
       const d = r.data;
+      if (json()) return emit(d);
       if (tool === "names.check") out(d.valid && d.available ? `  ${signal(d.address)} is free` : beacon(`  ${d.name}: ${d.why}`));
       else out(`  ${d.address ? signal(d.address) : dim("no address")} ${dim(`· ${d.phase}${d.owner ? " · owner " + d.owner : ""}${d.why ? " · " + d.why : ""}`)}`);
       return 0;
@@ -433,7 +487,7 @@ export default [
     async run([login]) {
       if (!login) { const s = await call("names.status"); out(`  ${s.data ? s.data.owner || "no owner yet" : s.error.message}`); return 0; }
       const r = await call("names.owner", { login });
-      if (r.error) { out(beacon("  " + r.error.message)); return 1; }
+      if (r.error) return failTool(r.error);
       out(`  owner: ${signal(login)}`);
       return 0;
     },

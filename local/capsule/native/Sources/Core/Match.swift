@@ -1,6 +1,7 @@
 // Match: how well a query names a label, 0..1, the same tiers as local.js match() so rows from
 // every provider rank on one scale: exact 1, prefix 0.9, word-prefix or initials 0.8, substring
-// 0.5, in-order letters 0.3, else 0. A synonym counts slightly less than the label itself, so
+// 0.5, in-order letters 0.3, else 0. A query under three letters matches only by prefix, word
+// start or initials. A synonym counts slightly less than the label itself, so
 // "Wi-Fi" typed out still beats a pane that only lists "wifi" as a synonym.
 
 import Foundation
@@ -47,8 +48,11 @@ public enum Match {
         let ws = words(label)
         if ws.contains(where: { $0.hasPrefix(qc.isEmpty ? q : qc) }) { return 0.8 }
         if qc.count >= 2, ws.count >= 2, String(ws.compactMap(\.first)).hasPrefix(qc) { return 0.8 }
-        if l.contains(q) || (qc.count >= 2 && lc.contains(qc)) { return 0.5 }
-        if qc.count >= 2, isSubsequence(qc, lc) { return 0.3 }
+        // Under three letters, only a prefix, a word's start or initials count, as in Spotlight:
+        // "sa" is Safari, never "Notes" with an s somewhere in it.
+        if q.count < 3 { return 0 }
+        if l.contains(q) || (qc.count >= 3 && lc.contains(qc)) { return 0.5 }
+        if qc.count >= 3, isSubsequence(qc, lc) { return 0.3 }
         return 0
     }
 

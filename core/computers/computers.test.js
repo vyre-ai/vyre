@@ -80,8 +80,8 @@ test("computers: the manifest loads on the box with its tools and the glass stre
   const s = await boot(t);
   const tools = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("computers."));
   assert.deepEqual(tools.sort(), ["computers.checkout", "computers.egress.set", "computers.egress.status", "computers.get", "computers.giveback",
-    "computers.list", "computers.pause", "computers.release", "computers.resume", "computers.stop", "computers.tailnet.set", "computers.tailnet.status",
-    "computers.takeover", "computers.watch"]);
+    "computers.limits", "computers.list", "computers.pause", "computers.release", "computers.restart", "computers.resume", "computers.stop",
+    "computers.tailnet.set", "computers.tailnet.status", "computers.takeover", "computers.watch"]);
   assert.equal((await s.cli("computers.endpoint", { agent: "kit" })).error.code, "no_such_tool", "an internal tool was reachable from the socket");
   // Glass is another file; whether or not it is there yet, the module runs and says which.
   const glass = s.d.registry.upgrades.has("computers/glass");
@@ -324,6 +324,20 @@ test("computers: no password or token ever reaches a tool result, an event or a 
   }
 });
 
+test("computers: limits are a person's or the assistant's to set, and restart applies them", async t => {
+  const s = await boot(t);
+  assert.match((await s.kit("computers.limits", { cpus: 8 })).error.message, /kit cannot change a computer's limits/);
+  assert.deepEqual((await s.juno("computers.limits", { agent: "kit", cpus: 3 })).data.cpus, 3);
+  const v = (await s.cli("computers.limits", { agent: "kit", memory_gb: 6 })).data;
+  assert.deepEqual([v.cpus, v.memory_gb], [3, 6]);
+  const r = await s.cli("computers.restart", { agent: "kit" });
+  assert.equal(r.data.state, "running", r.error && r.error.message);
+  const spec = [...s.h.driver.containers.values()].find(c => c.agent === "kit").spec;
+  assert.deepEqual([spec.cpus, spec.memoryMb], [3, 6144]);
+  assert.equal((await s.kit("computers.restart", {})).data.state, "running", "an agent may restart its own computer");
+  assert.match((await s.kit("computers.restart", { agent: "pax" })).error.message, /kit can only use its own computer/);
+});
+
 // ---- egress ------------------------------------------------------------------------------
 
 /** A port on loopback that nothing listens on: bound once, then closed. */
@@ -336,11 +350,15 @@ async function closedPort() {
   return port;
 }
 
-/** Point the status tool's probe at a local address for this test. */
-function viaLocal(t, port) {
-  const prev = process.env.VYRE_EGRESS_PROXY;
+/** Point the status tool's probe, and its gate status read, at local addresses for this test. */
+function viaLocal(t, port, gatePort = port) {
+  const prev = process.env.VYRE_EGRESS_PROXY, prevGate = process.env.VYRE_EGRESS_GATE_STATUS;
   process.env.VYRE_EGRESS_PROXY = `127.0.0.1:${port}`;
-  t.after(() => { if (prev === undefined) delete process.env.VYRE_EGRESS_PROXY; else process.env.VYRE_EGRESS_PROXY = prev; });
+  process.env.VYRE_EGRESS_GATE_STATUS = `127.0.0.1:${gatePort}`;
+  t.after(() => {
+    if (prev === undefined) delete process.env.VYRE_EGRESS_PROXY; else process.env.VYRE_EGRESS_PROXY = prev;
+    if (prevGate === undefined) delete process.env.VYRE_EGRESS_GATE_STATUS; else process.env.VYRE_EGRESS_GATE_STATUS = prevGate;
+  });
 }
 
 test("computers: egress is off by default, and status says the sidecar does not answer on a closed port", async t => {
@@ -352,6 +370,7 @@ test("computers: egress is off by default, and status says the sidecar does not 
   assert.deepEqual(r.data.sites, []);
   assert.equal(r.data.sidecar.answers, false);
   assert.match(r.data.sidecar.why, /ECONNREFUSED|no answer/);
+  assert.equal(r.data.gate.answers, false, "no gate, no verdict");
   assert.match(r.data.applies, /started after the change/);
   // Nothing about egress reached a new computer's env.
   await s.cli("computers.checkout", { agent: "kit" });
@@ -368,6 +387,25 @@ test("computers: status reports a listening sidecar, and the configured sites", 
   const s = await boot(t, { glass: { egress: { enabled: true, sites: ["bank.example.com", "*.harlow.example"] } } });
   const r = await s.cli("computers.egress.status");
   assert.deepEqual([r.data.enabled, r.data.sites, r.data.sidecar.answers], [true, ["bank.example.com", "*.harlow.example"], true]);
+});
+
+test("computers: status carries the gate's verdict, so a listed site that fails says why", async t => {
+  const net = await import("node:net");
+  const http = await import("node:http");
+  const socks = net.createServer(c => c.destroy());
+  await new Promise(r => socks.listen(0, "127.0.0.1", () => r(undefined)));
+  const verdict = { allowed: false, reason: "the exit node is not offering itself, or its route is not approved (ExitNodeOption is false)" };
+  const gate = http.createServer((req, res) => res.writeHead(req.url === "/status" ? 200 : 404, { connection: "close" }).end(JSON.stringify(verdict)));
+  await new Promise(r => gate.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => { socks.close(); gate.close(); });
+  viaLocal(t, /** @type {any} */ (socks.address()).port, /** @type {any} */ (gate.address()).port);
+  const s = await boot(t, { glass: { egress: { enabled: true, sites: ["portal.northwind.example"] } } });
+  const r = await s.cli("computers.egress.status");
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.deepEqual(r.data.gate, { answers: true, ...verdict });
+  verdict.allowed = true;
+  verdict.reason = "the exit node is online and offering itself";
+  assert.equal((await s.cli("computers.egress.status")).data.gate.allowed, true);
 });
 
 test("computers: egress.set is the owner's, refused to an agent, saved to config and used by the next computer", async t => {

@@ -135,6 +135,31 @@ public extension VyredLink {
     }
 }
 
+/// Something an extension offers to add to words on their way out ("with your screen: Safari ·
+/// Northwind Bakery"). Shown as a chip before sending; one key or a click on its x removes it;
+/// nothing is ever attached without the chip on screen.
+public struct SendAttachment: Sendable, Equatable {
+    /// Stable per kind of attachment ("sight:screen"): removing it keeps it off for this send.
+    public var id: String
+    /// What the chip says.
+    public var chip: String
+    public var icon: IconSpec?
+    /// Appended to the words on send, already redacted and trimmed by the extension.
+    public var body: String
+    public init(id: String, chip: String, icon: IconSpec? = nil, body: String) { self.id = id; self.chip = chip; self.icon = icon; self.body = body }
+}
+
+/// Where the words are headed: an agent, a session, a project's new thread, or a quick Ask.
+public enum SendTargetKind: Sendable { case agent, thread, project, ask }
+
+/// Adopted by an extension that attaches things to sends. Asked as the words change (debounce on
+/// your side), only while the words are headed to a send; nil means no chip. Answer fast, from
+/// what you already hold.
+@MainActor
+public protocol SendAttaching: AnyObject {
+    func attachment(for words: String, to: SendTargetKind) async -> SendAttachment?
+}
+
 /// Something `@` can name that an extension sends to: an app, a service, a person in it.
 public struct MentionTarget: Sendable, Equatable {
     /// Stable within the extension, never shown ("notes", "slack:#general").

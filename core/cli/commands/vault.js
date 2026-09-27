@@ -12,6 +12,7 @@
 // shows `<concealed by vyre>` instead of a key. It prints nothing of its own on success, so it
 // can sit in front of any command without changing that command's output.
 
+import { callAsPerson } from "../presence.js";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { dialogsAllowed } from "../../config/dialogs.js";
@@ -36,14 +37,18 @@ const say = (/** @type {string} */ s) => { if (!JSON_MODE) out(s); };
 const hint = (/** @type {string} */ s) => { if (!JSON_MODE) process.stderr.write(s); };
 const jsonLine = obj => { if (!printed) { process.stdout.write(JSON.stringify(obj) + "\n"); printed = true; } };
 
-/** Every call to vyred goes through here, so --json can print the reply the command acted on. */
+/**
+ * Every call to vyred goes through here, so --json can print the reply the command acted on. A
+ * tool that needs the person (put, grant, reveal, copy and the rest) asks for their proof at this
+ * terminal, as `vyre learn` does; a tool that does not answers the first call as before.
+ */
 async function tool(name, input = {}, opts) {
-  const r = await call(name, input, opts);
+  const r = await callAsPerson(name, input, { timeout: opts && opts.timeout });
   last = r;
   return r;
 }
 
-const PRESENCE = new Set(["presence_required", "presence_refused", "presence_denied"]);
+const PRESENCE = new Set(["presence_required", "presence_refused", "presence_denied", "no_terminal"]);
 /** The exit code for a reply: 3 when a person must prove presence, 4 when the vault is locked. */
 export function exitFor(r) {
   if (!r || !r.error) return 0;
@@ -1169,6 +1174,8 @@ const SUBS = {
 
 export default {
   name: "vault", order: 40, usage: "vyre vault <command>", summary: "credentials, sealed; shared by pass; used without being seen",
+  // `vyre help vault` and `vyre vault <sub> --help` show the vault's own list of commands.
+  help: () => help(),
   /** @param {string[]} argv */
   async run(argv) {
     // --json anywhere before a `--` (after it, the flag belongs to run's child).

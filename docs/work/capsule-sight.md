@@ -1,6 +1,6 @@
 # capsule-sight
 
-Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claimed in README.md)
+Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claimed in README.md; capsule-pro moved to 0017, so the numbers no longer clash)
 
 ## Scope
 
@@ -28,6 +28,22 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
   (174 pass, 1 fail: capsule-pro's own contact-photo icon test).
 
 ## Doing
+- SendAttaching adopted (capsule-pro c61e3af): the screen chip in the Capsule's box. Combined on
+  c61e3af: 218 pass, 0 fail; app links. Waiting on capsule-pro to merge it.
+- Adopted capsule-pro 3882f65's seams in the sight extension: the panel slides in ease-out and out
+  ease-in (SessionWindowCurve); the "Side view: <name>" rows and the panel's tabs re-read the
+  session list on thread.started / thread.stopped and call host.commandsChanged() only when it
+  changed (following stops on hide unless the panel is open); live terminal sessions (from
+  projects.catalog, active in the last 15 min, not run by the switchboard) get a tab whose
+  history is read from recall.thread and marked "History from the index, may be a few seconds
+  behind"; words to them go through threads.send, which queues. Combined tree on 3882f65:
+  208 pass, 1 fail (capsule-pro's contact-photo icon test).
+- Screen context on Ask (ScreenAttach.swift): done in the sight extension and the session panel;
+  combined tree 203 pass, 1 fail (capsule-pro's icon test). Waiting on capsule-pro's host hook
+  (proposed SendAttaching / SendAttachment in Kit) to show the chip in the Capsule's own box;
+  the adapter wraps `SightExtension.screenAttachment(for:) async -> (id, chip, bundle, body)?`.
+- hands asks from capsule-apps (WhatsApp ax adapter): hands.find + observe match, settleMs cap
+  5000, needs_front for a key to a background app. hands tests on the test box: 53 pass, 6 skip.
 - e263e22 + f7830bd: session panel in the sight extension (Capsule-owned window slides in at 29%,
   Chrome fitted by sideview.open `panel`). Combined tree 191 pass, 1 fail (capsule-pro's icon
   test); the test box: sideview 15 pass, 1 skip. Builds only against capsule-pro's UNCOMMITTED host
@@ -53,6 +69,8 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
     ./bin/vyre voice               # Enter to talk, Enter to stop, Ctrl-C to quit
 
 ## Needs from others
+- chat team: `recall.watch {session, from?}` + `session.turn` events (+ optional `session.state`) for
+  live terminal tabs in the session panel. Asked 2026-09-27; wire it up when it lands.
 - capsule-pro: the native Capsule host (Sources/Host, UI) so the extension can run in the app.
   Until then the extension compiles and tests but does not run. Also asked of capsule-pro:
   `VyredLink.stream(path:)` for WebSocket streams (sight reuses the internal VySock today),
@@ -60,6 +78,7 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
   window (the side view's left side for the assistant, animated tiling).
 
 ## Changed contracts
+- hands: new tool hands.find; hands.observe takes match; hands.act/commit can fail needs_front.
 - New CLI files only: core/cli/commands/sideview.js, core/cli/commands/voice.js (auto-discovered).
 
 ## Test windows

@@ -1,0 +1,33 @@
+#!/usr/bin/env node
+// e2e shim, test harness only (never shipped): headscale has no `tailscale cert` and no
+// CertDomains, so this passes every command to the real CLI except those two. `cert` copies a
+// certificate from a local test CA; `status --json` gains CertDomains for this node's name.
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+if (args[0] === "cert") {
+  let crt, key, domain;
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === "--cert-file") crt = args[++i];
+    else if (args[i] === "--key-file") key = args[++i];
+    else if (!args[i].startsWith("-")) domain = args[i];
+  }
+  try {
+    fs.copyFileSync(`/e2e-certs/${domain}.crt`, crt);
+    fs.copyFileSync(`/e2e-certs/${domain}.key`, key);
+    fs.appendFileSync("/tmp/e2e-shim.log", `cert ${domain}\n`);
+    process.exit(0);
+  } catch (e) { process.stderr.write(`e2e shim: no test certificate for ${domain}: ${e.message}\n`); process.exit(1); }
+}
+const r = spawnSync("/usr/local/bin/tailscale", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+let out = r.stdout || "";
+if (args[0] === "status" && args.includes("--json") && r.status === 0) {
+  try {
+    const s = JSON.parse(out);
+    if (s.Self && s.Self.DNSName) s.CertDomains = [String(s.Self.DNSName).replace(/\.$/, "")];
+    out = JSON.stringify(s);
+  } catch {}
+}
+process.stdout.write(out);
+process.stderr.write(r.stderr || "");
+process.exit(r.status === null ? 1 : r.status);

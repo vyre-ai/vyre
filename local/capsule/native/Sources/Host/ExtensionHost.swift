@@ -35,6 +35,7 @@ final class ExtensionHost: CapsuleHost {
             if let why = e.runsHidden { log("\(t.id) runs while hidden: \(why)") }
         }
         reread()
+        model.attachers = extensions.compactMap { $0 as? SendAttaching }
         model.extensionMentions = { [weak self] q, parent in self?.mentions(q, parent: parent) ?? [] }
         refreshing = Set(extensions.filter(\.refreshesMentions).map { type(of: $0).id })
         model.extensionRefreshers = { [weak self] q, parent in self?.refreshers(q, parent: parent) ?? [] }

@@ -9,11 +9,11 @@
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { callAsPerson } from "../presence.js";
+import { json, emit, failTool, usage, EXIT } from "../kit.js";
 
 const LEVELS = ["remind", "ask", "block"];
-const USAGE = "vyre learn [show|add|accept|retire|level|scope|relax|stats|signals|skills]";
-const unreachable = r => r.error && ["unreachable", "timeout"].includes(r.error.code);
-const fail = r => { out(unreachable(r) ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message); return 1; };
+const USAGE = "vyre learn [show|add|accept|retire|level|scope|relax|stats|signals|skills] [--json]";
+const fail = r => failTool(r.error);
 
 /** A lesson's effect, in a word. */
 const effect = s => (!s ? "" : s.verdict === "working" ? signal("working") : s.verdict === "not working" ? beacon("not working") : dim("measuring"));
@@ -31,9 +31,9 @@ function line(l, stats) {
 }
 
 /** An id from args, or a usage line and null. */
-const idOf = (args, usage) => {
+const idOf = (args, line) => {
   const id = Number(args[0]);
-  if (!Number.isInteger(id) || id < 1) { out(`  ${usage}`); return null; }
+  if (!Number.isInteger(id) || id < 1) { usage(line, "vyre learn lists them with their numbers"); return null; }
   return id;
 };
 
@@ -41,6 +41,7 @@ const idOf = (args, usage) => {
 async function one(tool, input, said) {
   const r = await callAsPerson(tool, input);
   if (r.error) return fail(r);
+  if (json()) return emit(r.data);
   out(`  ${said} ${bold(String(r.data.id))}`);
   line(r.data);
   return 0;
@@ -154,9 +155,9 @@ async function skills(args) {
     out("");
     return 0;
   }
-  if (!["show", "install", "retire", "dismiss"].includes(sub)) { out(`  vyre learn skills [show|install|retire|dismiss] <id>`); return 1; }
+  if (!["show", "install", "retire", "dismiss"].includes(sub)) { return usage(`vyre learn skills ${sub}: not a subcommand`, "vyre learn skills show, install, retire or dismiss <id>"); }
   const id = idOf(rest, `vyre learn skills ${sub} <id>`);
-  if (id === null) return 1;
+  if (id === null) return EXIT.USAGE;
   if (sub === "show") {
     const r = await call("learn.skills", {});
     if (r.error) return fail(r);
@@ -189,10 +190,11 @@ async function skills(args) {
 export default {
   name: "learn", aliases: ["lessons"], order: 32, usage: USAGE, summary: "the lessons Vyre learned from you, and what it proposed",
   async run(args) {
-    const [sub, ...rest] = args;
-    if (!sub) {
+    const [sub, ...rest] = args.filter(a => a !== "--json");
+    if (!sub || sub === "list" || sub === "ls") {
       const r = await call("learn.lessons", {});
       if (r.error) return fail(r);
+      if (json()) return emit(r.data);
       const active = r.data.filter(l => l.status === "active"), proposed = r.data.filter(l => l.status === "proposed");
       if (!r.data.length) { out(dim("  no lessons yet · vyre learn add <what Claude should always or never do>")); return 0; }
       const by = await statsById();
@@ -204,19 +206,19 @@ export default {
     }
     if (sub === "add") {
       const text = rest.join(" ").trim();
-      if (!text) { out("  vyre learn add <text>"); return 1; }
+      if (!text) return usage("vyre learn add needs the lesson", "vyre learn add <what Claude should always or never do>");
       return one("learn.add", { text }, "learned lesson");
     }
     if (sub === "accept" || sub === "retire") {
       const id = idOf(rest, `vyre learn ${sub} <id>`);
-      if (id === null) return 1;
+      if (id === null) return EXIT.USAGE;
       const l = await current(id);
       if (!l) return 1;
       return one(`learn.${sub}`, { id }, sub === "accept" ? "accepted lesson" : "retired lesson");
     }
     if (sub === "show") {
       const id = idOf(rest, "vyre learn show <id>");
-      if (id === null) return 1;
+      if (id === null) return EXIT.USAGE;
       const l = await current(id);
       if (!l) return 1;
       const s = await call("learn.stats", { id });
@@ -230,8 +232,8 @@ export default {
     }
     if (sub === "level") {
       const id = idOf(rest, "vyre learn level <id> <remind|ask|block>");
-      if (id === null) return 1;
-      if (!LEVELS.includes(rest[1])) { out("  vyre learn level <id> <remind|ask|block>"); return 1; }
+      if (id === null) return EXIT.USAGE;
+      if (!LEVELS.includes(rest[1])) return usage("vyre learn level <id> remind|ask|block", `vyre learn level ${id} remind`);
       const all = await call("learn.lessons", { status: "all" });
       if (all.error) return fail(all);
       const now = all.data.find(l => l.id === id);
@@ -240,7 +242,7 @@ export default {
     }
     if (sub === "scope") {
       const id = idOf(rest, "vyre learn scope <id> all|project [slug]|agent <name>");
-      if (id === null) return 1;
+      if (id === null) return EXIT.USAGE;
       const scope = await scopeOf(rest.slice(1));
       if (!scope) return 1;
       // Everywhere is stricter, and free; anything narrower is the user's, with presence.
@@ -251,7 +253,7 @@ export default {
     }
     if (sub === "relax") {
       const id = idOf(rest, "vyre learn relax <id> <what>");
-      if (id === null) return 1;
+      if (id === null) return EXIT.USAGE;
       const l = await current(id);
       if (!l) return 1;
       const change = await relaxOf(l, rest.slice(1));
@@ -261,7 +263,6 @@ export default {
     if (sub === "stats") return stats();
     if (sub === "signals") return signals();
     if (sub === "skills") return skills(rest);
-    out(`  vyre learn ${sub}: ${dim("show, add, accept, retire, level, scope, relax, stats, signals or skills")}`);
-    return 1;
+    return usage(`vyre learn ${sub}: not a subcommand`, "vyre learn show, add, accept, retire, level, scope, relax, stats, signals or skills");
   },
 };

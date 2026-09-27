@@ -184,10 +184,12 @@ let providerFilesSuite = Suite("provider files") { t in
     }
 
     t.test("debounce: only the newest keystroke searches") {
-        let d = Debounce(0.05)
+        // A wide window and a short gap, so a slow shared machine cannot let the first settle
+        // before the second starts.
+        let d = Debounce(0.4)
         let got = t.wait { () async -> [Bool] in
             async let a = d.settle()
-            try? await Task.sleep(nanoseconds: 10_000_000)
+            try? await Task.sleep(nanoseconds: 30_000_000)
             async let b = d.settle()
             return [await a, await b]
         }

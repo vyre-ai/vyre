@@ -10,6 +10,10 @@
 //     are shown as they are, success or failure.
 //   - "Ask about my screen" calls screen.context once, shows a summary in the side panel, and
 //     puts "About <window>: " in the box. A blind place or a secure field is shown as such.
+//   - Words that point at the screen ("summarize this"), or a selection in the app in front,
+//     get screen context attached as a chip the user sees and can remove (ScreenAttach.swift).
+//     The Capsule's send path asks attachment(for:to:) (SendAttaching) and owns the chip; the
+//     session panel does the same for its own prompt.
 //   - The talk chord (Option-Return, while the Capsule is open and key) starts vyre-mic and
 //     streams it to voice's listen stream; pressed again, it stops and leaves the words in the
 //     box. Hiding the Capsule stops the mic.
@@ -71,7 +75,7 @@ final class SightModel: ObservableObject {
 
 // capsule-extension: SightExtension
 @MainActor
-final class SightExtension: CapsuleExtension {
+final class SightExtension: CapsuleExtension, SendAttaching {
     static let id = "sight"
     /// Option-Return: Option-Space is the Capsule's own hot key, and Return with Command or Shift
     /// is taken by its row actions.
@@ -98,12 +102,25 @@ final class SightExtension: CapsuleExtension {
     private var window: SessionWindow?
     /// Sessions seen at the last show, for the "Side view: <name>" rows.
     private(set) var known: [PanelSession] = []
+    /// Following session starts and stops, so the rows (and the panel's tabs) stay current.
+    private var sessionSubs: [VyredSubscription] = []
+    private var sessionRefresh: Task<Void, Never>?
     /// Where spoken words go: the Capsule's box, or the panel's prompt.
     private var talkToPanel = false
+
+    /// How long the words must rest before the screen is asked about them. Tests shorten it.
+    var attachDebounce: Duration = .milliseconds(150)
+    /// The newest attachment question: an older one answers with the newest one's answer.
+    private var attachSeq = 0
+    private var attachLatest: Task<SendAttachment?, Never>?
+
+    /// Screen context for the Capsule's box: read once per show, cleared on hide.
+    private(set) lazy var attacher = ScreenAttacher(vyred: host.vyred) { [weak self] in self?.host.log($0) }
 
     init(host: CapsuleHost) {
         self.host = host
         panel = SessionPanelModel(vyred: host.vyred)
+        panel.attacher = ScreenAttacher(vyred: host.vyred) { [weak host] in host?.log($0) }
         panel.onTalk = { [weak self] in self?.toggleTalk(toPanel: true) }
     }
 
@@ -114,8 +131,41 @@ final class SightExtension: CapsuleExtension {
     }
 
     func capsuleWillShow(front: FrontApp?) {
-        // Once per show, for the rows below; never on a timer.
-        Task { @MainActor in known = await loadSessions() }
+        // Once per show, for the rows below; then only when a session starts or stops. Never on a timer.
+        followSessions()
+        refreshSessions()
+        // The light read, for a selection in the app in front. Nothing is sent from it.
+        attacher.prime()
+    }
+
+    /// What an Ask from the Capsule's box carries about the screen, or nil. The host shows `chip`
+    /// before sending, lets one key remove it, and appends `body` to the words only if it stayed.
+    func screenAttachment(for words: String) async -> (id: String, chip: String, bundle: String?, body: String)? {
+        guard let c = await attacher.attachment(for: words) else { return nil }
+        return (ScreenChip.id, c.chip, c.bundle, c.body)
+    }
+
+    /// SendAttaching: the host asks as the words change. Waits for them to rest, then answers from
+    /// the snapshot; a newer question supersedes an older one, which gets the newer answer. The
+    /// same chip for every kind of send.
+    func attachment(for words: String, to: SendTargetKind) async -> SendAttachment? {
+        attachSeq += 1
+        let mine = attachSeq, wait = attachDebounce
+        let task = Task { @MainActor [weak self] () -> SendAttachment? in
+            try? await Task.sleep(for: wait)
+            guard let self, !Task.isCancelled, mine == self.attachSeq else { return nil }
+            guard let a = await self.screenAttachment(for: words), mine == self.attachSeq else { return nil }
+            return SendAttachment(id: a.id, chip: a.chip, icon: a.bundle.map { IconSpec.bundle($0) }, body: a.body)
+        }
+        attachLatest = task
+        var answer = await task.value
+        // Superseded while waiting: answer with the newest question's answer, until none is newer.
+        while mine != attachSeq, let latest = attachLatest, latest != task {
+            let seen = attachSeq
+            answer = await latest.value
+            if seen == attachSeq { break }
+        }
+        return answer
     }
 
     var commands: [CapsuleCommand] {
@@ -156,6 +206,11 @@ final class SightExtension: CapsuleExtension {
     }
 
     func capsuleDidHide() {
+        attachSeq += 1
+        attachLatest?.cancel(); attachLatest = nil
+        attacher.reset()
+        // The panel's tabs keep following while it is open; otherwise nothing runs hidden.
+        if !panelOpen { unfollowSessions() }
         // Talk started from the panel keeps going: the panel is where its words land.
         if talkToPanel && panelOpen { return }
         stopTalk()
@@ -175,9 +230,45 @@ final class SightExtension: CapsuleExtension {
     func loadSessions() async -> [PanelSession] {
         async let a = host.vyred.has("agents.list") ? host.vyred.call("agents.list", [:], presence: false) : nil
         async let t = host.vyred.has("threads.list") ? host.vyred.call("threads.list", [:], presence: false) : nil
-        let (agents, threads) = await (a, t)
-        return PanelSession.load(agents: agents?.data, threads: threads?.data)
+        async let c = host.vyred.has("projects.catalog") ? host.vyred.call("projects.catalog", ["limit": 30, "human": true], presence: false) : nil
+        let (agents, threads, catalog) = await (a, t, c)
+        return PanelSession.load(agents: agents?.data, threads: threads?.data, catalog: catalog?.data)
     }
+
+    /// Session starts and stops, from vyred's events. A terminal session vyred does not run shows
+    /// up on the next show (the index has no event of its own).
+    func followSessions() {
+        guard sessionSubs.isEmpty else { return }
+        for pattern in ["thread.started", "thread.stopped"] {
+            sessionSubs.append(host.vyred.on(pattern) { [weak self] _ in self?.refreshSessions() })
+        }
+    }
+
+    func unfollowSessions() {
+        sessionSubs.forEach { $0.cancel() }
+        sessionSubs = []
+        sessionRefresh?.cancel(); sessionRefresh = nil
+    }
+
+    var followingSessions: Bool { !sessionSubs.isEmpty }
+
+    /// Read the sessions again and, if the list changed, tell the Capsule its rows changed and
+    /// give the panel its new tabs.
+    func refreshSessions() {
+        sessionRefresh?.cancel()
+        sessionRefresh = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let next = await loadSessions()
+            guard !Task.isCancelled else { return }
+            let changed = next.map { "\($0.id) \($0.label)" } != known.map { "\($0.id) \($0.label)" }
+            known = next
+            if panelOpen { panel.sessions = next }
+            if changed { host.commandsChanged() }
+        }
+    }
+
+    /// Waits for a refresh started by an event or a show, for tests.
+    func sessionsSettled() async { await sessionRefresh?.value }
 
     private func currentScreen() -> (visible: NSRect, primaryMaxY: CGFloat)? {
         if let screen { return screen() }
@@ -200,12 +291,13 @@ final class SightExtension: CapsuleExtension {
         window = w
         panel.sessions = sessions
         panel.start()
+        followSessions()
         if w.isOpen {
-            w.setFrame(target, duration: SideGeometry.duration)
+            w.setFrame(target, duration: SideGeometry.duration, curve: .easeOut)
         } else {
             w.show(AnyView(SessionPanelView(model: panel) { [weak self] in Task { @MainActor in _ = await self?.closeSideView() } }),
                    frame: SideGeometry.offscreen(target))
-            w.setFrame(target, duration: SideGeometry.duration)
+            w.setFrame(target, duration: SideGeometry.duration, curve: .easeOut)
         }
         let history = Task { @MainActor in await panel.show(pick) }
         if settle > .zero { try? await Task.sleep(for: settle) }
@@ -238,10 +330,11 @@ final class SightExtension: CapsuleExtension {
         if let w = window, w.isOpen {
             hadPanel = true
             if talkToPanel { stopTalk() }
-            w.setFrame(SideGeometry.offscreen(w.frame), duration: SideGeometry.duration)
+            w.setFrame(SideGeometry.offscreen(w.frame), duration: SideGeometry.duration, curve: .easeIn)
             panel.stop()
             if settle > .zero { try? await Task.sleep(for: settle) }
             w.close()
+            if !host.isShown { unfollowSessions() }
         }
         let r = await host.vyred.call("sideview.close", [:], presence: false)
         if let e = r.error { return .failed(e) }

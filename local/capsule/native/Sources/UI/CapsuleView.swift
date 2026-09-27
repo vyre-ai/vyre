@@ -8,6 +8,7 @@
 // raised plate with the signal pill at its left edge. The top hit is larger, like Spotlight's.
 
 import AppKit
+import LocalAuthentication
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -27,13 +28,20 @@ struct CapsuleView: View {
                 // One area of fixed height below the bar, like Spotlight's: results, memory and
                 // answers arrive in waves inside it and never resize the panel mid-word.
                 VStack(spacing: 0) {
-                    if model.asked != nil && model.groups.isEmpty && side == nil {
+                    if let a = model.presenceAsk {
+                        PresenceView(ask: a, hasTouchID: LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil))
+                    } else if AgentLayout.deskShown(model) {
+                        // What waits on the user (the list, a card) or ⌘K takes the whole area (Agent/).
+                        AgentLayout.desk(model)
+                    } else if model.answerAlone && side == nil {
                         // An answer alone gets the whole area, and scrolls in it.
                         ScrollView(.vertical, showsIndicators: false) { answer }
                             .frame(maxHeight: .infinity, alignment: .top)
                     } else {
-                        if model.asked != nil { answer.frame(maxHeight: 260, alignment: .top).clipped(); Rule() }
-                        if model.showsMemory, let m = model.memory { MemoryBox(memory: m).padding(.vertical, 4); Rule() }
+                        // Offline, and the conversation with an @agent above its rows (Agent/).
+                        AgentLayout.above(model)
+                        if model.asked != nil { answer.frame(maxHeight: 200, alignment: .top).clipped(); Rule() }
+                        if model.showsMemory, let m = model.memory { MemoryLine(memory: m, expanded: $model.memoryExpanded); Rule() }
                         HStack(alignment: .top, spacing: 0) {
                             if !model.groups.isEmpty { results } else { Spacer(minLength: 0) }
                             if let side {
@@ -49,6 +57,8 @@ struct CapsuleView: View {
                 .clipped()
             } else if let line = model.line, !line.isEmpty {
                 Rule(); lineView(line)
+            } else if AgentLayout.slim(model) {
+                AgentLayout.slimView(model)
             }
         }
         .frame(width: Theme.width, height: CapsuleLayout.panelHeight(model), alignment: .top)
@@ -93,7 +103,22 @@ struct CapsuleView: View {
                 .font(Theme.query)
                 .foregroundColor(Theme.bone)
                 .focused($boxFocused)
-            if let item = model.current, let s = item.sendsTo {
+            ForEach(model.attachments, id: \.id) { a in
+                HStack(spacing: 5) {
+                    Image(systemName: "rectangle.dashed.and.paperclip").font(.system(size: 10, weight: .semibold))
+                    Text(a.chip).lineLimit(1).truncationMode(.middle)
+                    Button { model.removeAttachment(a.id) } label: { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
+                        .buttonStyle(.plain).help("Leave it off (⌘⌫)")
+                }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Theme.bone)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Capsule().fill(Theme.signal.opacity(0.12)))
+                .overlay(Capsule().strokeBorder(Theme.signal.opacity(0.4), lineWidth: 1))
+                .frame(maxWidth: 230)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            if model.attachments.isEmpty, let item = model.current, let s = item.sendsTo {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .semibold))
                     Text(s).lineLimit(1)
@@ -133,11 +158,13 @@ struct CapsuleView: View {
             }
             HStack(spacing: 7) {
                 if let r = model.reply, !r.finished || model.pending { Pulse() } else { MarkView(size: 13) }
-                Text(model.reply?.queued.map { $0.name } ?? "Claude").font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.bone)
+                Text(model.replyWho).font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.bone)
                 Text(replyState).font(Theme.label).foregroundColor(Theme.ash)
                 Spacer()
             }
-            if let m = model.askedMemory { MemoryBox(memory: m, inset: false) }
+            // Before the answer is in, what memory said is the answer so far; once it is in, the
+            // answer already uses it, so it folds into one line under the answer.
+            if let m = model.askedMemory, model.replyText.isEmpty { MemoryLine(memory: m, expanded: $model.memoryExpanded, inset: false) }
             if let q = model.reply?.queued {
                 Label(q.delivered ? "Handed over to \(q.name). Its answer comes when this turn ends." : "Queued for \(q.name): it gets this when its current turn ends.",
                       systemImage: q.delivered ? "checkmark.circle" : "clock")
@@ -150,6 +177,9 @@ struct CapsuleView: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let m = model.askedMemory, !model.replyText.isEmpty, !m.sources.isEmpty {
+                MemorySources(memory: m, expanded: $model.memoryExpanded)
             }
             if let r = model.reply, r.finished, let e = r.error {
                 Label(e == "stopped" ? "Stopped." : e, systemImage: "exclamationmark.circle").font(Theme.subtitle).foregroundColor(Theme.beacon)
@@ -224,12 +254,19 @@ struct CapsuleView: View {
                 if n > 0 { Text(n == 1 ? "1 result" : "\(n) results").font(.system(size: 11.5)).foregroundColor(Theme.ash) }
             }
             Spacer(minLength: 8)
-            if let item = model.current {
+            if model.answerAlone {
+                if model.flat.contains(where: { $0.kind == "ask" }) { KeyHint(title: "Follow up", keys: ["⏎"]) }
+                if !model.replyText.isEmpty { KeyHint(title: "Copy", keys: ["⌘", "C"]) }
+                if model.canGoDeeper { KeyHint(title: "Deeper", keys: ["⌘", "D"]) }
+            } else if let item = model.current {
                 if let first = item.actions.first {
                     KeyHint(title: model.confirming != nil ? "Confirm" : first.title, keys: ["⏎"])
                 }
                 if let alt = item.actions.dropFirst().first(where: { $0.shortcut == KeyShortcut("return", command: true) }) {
                     KeyHint(title: alt.title, keys: ["⌘", "⏎"])
+                }
+                if let send = item.actions.first(where: { $0.id == "send-box" }) {
+                    KeyHint(title: send.title, keys: ["⌘", "S"])
                 }
             }
         }
@@ -252,13 +289,14 @@ enum CapsuleLayout {
     static let lineHeight: CGFloat = 30
 
     @MainActor static func isOpen(_ m: CapsuleModel) -> Bool {
-        m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil
+        m.presenceAsk != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
     }
 
     /// The panel's height: the bar alone, the bar and a line, or the bar and the fixed area.
     @MainActor static func panelHeight(_ m: CapsuleModel) -> CGFloat {
         if isOpen(m) { return Theme.barHeight + 1 + area }
         if let l = m.line, !l.isEmpty { return Theme.barHeight + 1 + lineHeight }
+        if AgentLayout.slim(m) { return Theme.barHeight + 1 + lineHeight }
         return Theme.barHeight
     }
 
@@ -374,6 +412,99 @@ struct MemoryBox: View {
     /// Its height, for sizing before SwiftUI lays it out.
     static func height(_ m: MemoryAnswer) -> CGFloat {
         20 + 18 + Memo.items(m).reduce(0) { $0 + ($1.kind == .quote ? 36 : 22) }
+    }
+}
+
+/// Memory's answer as one line (the user asked for that over a wall of quotes): the answer, how
+/// sure memory is, and how many conversations it comes from; the sources fold away behind a click
+/// or ⌘→. Recall's colour says it came from memory, where no model was used. Shown only when there
+/// is an answer at all (CapsuleModel.showsMemory).
+struct MemoryLine: View {
+    let memory: MemoryAnswer
+    @Binding var expanded: Bool
+    var inset = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { withAnimation(.easeOut(duration: 0.14)) { expanded.toggle() } } label: {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "sparkle.magnifyingglass").font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.recall)
+                    Text(memory.answer ?? "").font(.system(size: 15, weight: .medium)).foregroundColor(Theme.bone).lineLimit(2)
+                    Spacer(minLength: 10)
+                    Sureness(value: memory.answerKind == .said ? nil : memory.confidence)
+                    let n = memory.conversationCount
+                    if n > 0 {
+                        Text(n == 1 ? "from 1 conversation" : "from \(n) conversations").font(.system(size: 11.5)).foregroundColor(Theme.ash).lineLimit(1)
+                    }
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .bold)).foregroundColor(Theme.ash)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(expanded ? "Fold the sources (⌘→)" : "Show where this comes from (⌘→)")
+            if expanded { SourceList(memory: memory).padding(.leading, 23) }
+        }
+        .padding(.horizontal, inset ? 18 : 0).padding(.vertical, inset ? 11 : 0)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Under an answer that used memory: "from 2 of your sessions", which unfolds into where.
+struct MemorySources: View {
+    let memory: MemoryAnswer
+    @Binding var expanded: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button { withAnimation(.easeOut(duration: 0.14)) { expanded.toggle() } } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "sparkle.magnifyingglass").font(.system(size: 10, weight: .semibold)).foregroundColor(Theme.recall)
+                    let n = memory.conversationCount
+                    Text(n == 1 ? "from 1 of your sessions" : "from \(n) of your sessions")
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 8, weight: .bold))
+                }
+                .font(.system(size: 11.5)).foregroundColor(Theme.ash)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if expanded { SourceList(memory: memory) }
+        }
+    }
+}
+
+/// Where memory's answer comes from: quotes as quotes, with who said them and when.
+struct SourceList: View {
+    let memory: MemoryAnswer
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(Memo.items(memory).filter { $0.kind == .quote || !$0.said && $0.text != memory.answer }) { it in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(it.kind == .quote ? "\u{201C}\(it.text)\u{201D}" : it.text).font(.system(size: 12.5)).foregroundColor(Theme.stone).lineLimit(2)
+                    HStack(spacing: 6) {
+                        Text(it.kind == .quote ? "\(it.who ?? "You") said\(it.age.isEmpty ? "" : ", " + Memo.ago(it.age))" : "noted\(it.age.isEmpty ? "" : " " + Memo.ago(it.age))")
+                        if let s = it.source { Text("·"); Text(s.name).lineLimit(1) }
+                    }
+                    .font(.system(size: 11)).foregroundColor(Theme.ash)
+                }
+            }
+        }
+        .padding(.leading, 10)
+        .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 1).fill(Theme.recall.opacity(0.6)).frame(width: 2) }
+    }
+}
+
+/// How sure memory is, as three small bars (nil: a line made from the user's own words, which is
+/// as sure as the words were).
+struct Sureness: View {
+    let value: Double?
+    var body: some View {
+        let n = value.map { $0 >= 0.8 ? 3 : $0 >= 0.6 ? 2 : 1 } ?? 2
+        HStack(spacing: 2) {
+            ForEach(0..<3, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 1).fill(i < n ? Theme.recall : Theme.ruleStrong).frame(width: 3, height: 5 + CGFloat(i) * 3)
+            }
+        }
+        .frame(height: 11, alignment: .bottom)
+        .help(value.map { String(format: "Memory is %.0f%% sure", $0 * 100) } ?? "From your own words")
     }
 }
 

@@ -24,7 +24,17 @@ public final class CapsuleModel: ObservableObject {
     @Published public var selected = 0
     /// One line under the bar ("Copied", an error), cleared on the next keystroke.
     @Published public var line: String?
-    @Published public internal(set) var reply: Reply?
+    @Published public internal(set) var reply: Reply? {
+        didSet {
+            // An answer that lands while the Capsule is hidden is a banner, top right.
+            if let r = reply, r.finished, oldValue?.finished == false, oldValue?.thread == r.thread, !r.cancelled, !isShown() {
+                let who = self.replyWho
+                let text = VyState.replyText(r).split(separator: "\n").first.map(String.init) ?? ""
+                Notifier.shared.post(title: r.ok == false ? "\(who) stopped" : "\(who) answered",
+                                     body: text.isEmpty ? (asked ?? "") : String(text.prefix(180)))
+            }
+        }
+    }
     @Published public internal(set) var asked: String?
     @Published public internal(set) var pending = false
     /// What memory says about the words in the box (recall.search and memory.relevant), or nil.
@@ -39,7 +49,7 @@ public final class CapsuleModel: ObservableObject {
             // The outer chip stays only while `target` is its child; any other change (nil, an
             // agent, another app) makes the chip one level again, so the two never disagree.
             if let p = targetParent, target.map({ $0.id.hasPrefix(Self.childID(p.id, "")) }) != true { targetParent = nil }
-            if target != oldValue { search() }
+            if target != oldValue { targetChanged(); search() }
         }
     }
     /// The outer chip when `target` was picked inside it: WhatsApp for "WhatsApp › juno". Set
@@ -67,6 +77,17 @@ public final class CapsuleModel: ObservableObject {
     /// A child target's id under its chip's: joined with NUL, which no label or id carries, so no
     /// pair of ids can make the same child id ("a:b" + "c" and "a" + "b:c" stay apart).
     nonisolated static func childID(_ parent: String, _ child: String) -> String { parent + "\u{0}" + child }
+
+    /// Chips for what extensions attach to this send ("with your screen"), and the ones the user
+    /// removed for it.
+    @Published var attachments: [SendAttachment] = []
+    private var removedAttachments = Set<String>()
+    var attachers: [SendAttaching] = []
+    private var attachTask: Task<Void, Never>?
+    /// The memory line's sources, shown (a click or ⌘→) or folded.
+    @Published var memoryExpanded = false
+    /// A human-only call waiting for the person to prove they are here (Presence.swift).
+    @Published var presenceAsk: PresenceAsk?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
     @Published var panelTick = 0
 
@@ -76,6 +97,28 @@ public final class CapsuleModel: ObservableObject {
     let frecency: Frecency
     let vyred: VyredClient
     let home: String
+    /// The threads the Capsule holds, released and stopped on hide (Agent/AgentKeeper.swift).
+    lazy var keeper = Keeper(vyred: vyred)
+    /// The conversation with the agent in the chip (Agent/AgentDirect.swift).
+    public lazy var direct: Direct = {
+        let d = Direct(vyred: vyred)
+        d.changed = { [weak self] in self?.objectWillChange.send() }
+        d.projectName = { [weak self] s in self?.catalog.projectName(s) ?? s }
+        d.onError = { [weak self] why in self?.line = why }
+        return d
+    }()
+    /// ⌘K: the highlighted row's verbs (Agent/AgentWiring.swift).
+    lazy var actionMenu: ActionMenu = { let a = ActionMenu(); a.changed = { [weak self] in self?.objectWillChange.send() }; return a }()
+    /// Each agent's threads, for where @agent sends (Agent/AgentDestinations.swift).
+    lazy var routes = RouteCache()
+    /// What waits on the user and the card that answers it (Agent/AgentDesk.swift).
+    public lazy var desk: Desk = {
+        let d = Desk(vyred: vyred)
+        d.changed = { [weak self] in self?.objectWillChange.send() }
+        d.who = { [weak self] t in self?.catalog.who(t) }
+        d.projectName = { [weak self] s in self?.catalog.projectName(s) ?? s }
+        return d
+    }()
     private var token = 0
     private var partial: [String: [ResultItem]] = [:]
     private var replySub: VyredSubscription?
@@ -85,6 +128,8 @@ public final class CapsuleModel: ObservableObject {
     private var staleTimer: Timer?
     /// Asked to close the panel (an action finished with .close).
     public var onClose: ((String?) -> Void)?
+    /// Whether the panel is on screen (a reply that finishes while it is not gets a banner).
+    var isShown: () -> Bool = { false }
     /// Asked to step aside for the front app.
     public var onStepAside: (() async -> Bool)?
 
@@ -104,6 +149,7 @@ public final class CapsuleModel: ObservableObject {
         self.front = front
         shown = true
         (providers + extensionProviders).forEach { $0.warm() }
+        keeper.shown()
         vyred.follower.setShown(true)
         if !vyred.follower.started { vyred.follower.start() }
         Task { @MainActor [vyred] in
@@ -111,6 +157,10 @@ public final class CapsuleModel: ObservableObject {
             guard vyred.isUp else { return }
             self.catalog = await CatalogLoader.load(vyred)
             if self.mentionQuery != nil { self.search() }
+            self.targetChanged()
+            await self.loadBox()
+            self.desk.follow()
+            await self.desk.load()
         }
         if !text.isEmpty { search() }
     }
@@ -120,6 +170,11 @@ public final class CapsuleModel: ObservableObject {
         icons.cool()
         frecency.flush()
         vyred.follower.setShown(false)
+        attachTask?.cancel(); attachments = []; removedAttachments = []
+        keeper.hidden(busy: reply.flatMap { $0.finished ? nil : $0.thread })
+        desk.hidden()
+        direct.close()
+        actionMenu.close()
         token += 1
         shown = false
         cancelMentionRefresh()
@@ -136,6 +191,58 @@ public final class CapsuleModel: ObservableObject {
     }
 
     // MARK: searching
+
+    // MARK: attachments
+
+    func refreshAttachments(_ words: String, to kind: SendTargetKind) {
+        attachTask?.cancel()
+        let w = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !attachers.isEmpty, !w.isEmpty else { if !attachments.isEmpty { attachments = [] }; return }
+        let t = token
+        attachTask = Task { @MainActor in
+            var got: [SendAttachment] = []
+            for a in self.attachers {
+                if let x = await a.attachment(for: w, to: kind), !self.removedAttachments.contains(x.id) { got.append(x) }
+            }
+            guard !Task.isCancelled, t == self.token else { return }
+            if got != self.attachments { self.attachments = got }
+        }
+    }
+
+    /// Take a chip off this send (its x, or ⌘⌫). It stays off until the Capsule closes.
+    func removeAttachment(_ id: String? = nil) {
+        guard let x = id.flatMap({ i in attachments.first { $0.id == i } }) ?? attachments.last else { return }
+        removedAttachments.insert(x.id)
+        attachments.removeAll { $0.id == x.id }
+    }
+
+    /// The words with every chip still on screen appended, as they go.
+    func withAttachments(_ words: String) -> String {
+        attachments.isEmpty ? words : ([words] + attachments.map(\.body)).joined(separator: "\n\n")
+    }
+
+    /// Show "Confirm it's you" and wait for Touch ID (or the Mac's password), or a cancel.
+    func askPresence(_ a: PresenceAsk) async -> Bool {
+        presenceAsk?.done?(false)
+        presenceAsk = a
+        // The view starts the evaluation once Touch ID's glyph is on screen (PresenceView), so
+        // macOS draws the prompt in the panel rather than as a dialog.
+        let ok: Bool = await withCheckedContinuation { k in
+            var once = false
+            a.done = { v in if !once { once = true; k.resume(returning: v) } }
+        }
+        if presenceAsk === a { presenceAsk = nil }
+        return ok
+    }
+
+    /// Esc while "Confirm it's you" shows.
+    func cancelPresence() {
+        guard let a = presenceAsk else { return }
+        a.context.invalidate()
+        a.done?(false)
+        presenceAsk = nil
+        line = "Not approved. Nothing was done."
+    }
 
     /// Search again for the same words (an extension's commands changed).
     func refresh() { search() }
@@ -159,26 +266,17 @@ public final class CapsuleModel: ObservableObject {
             return
         }
         cancelMentionRefresh()
-        if target != nil {
+        if let c = target {
             recallTask?.cancel(); memory = nil
-            groups = q.normalized.isEmpty ? [] : [Group(section: .vyre, items: [askItem(q)])]
+            groups = q.normalized.isEmpty ? [] : [Group(section: .vyre, items: askItems(q))]
             selected = 0
+            if c.kind == .app { attachments = [] } else { refreshAttachments(q.text, to: c.kind == .agent ? .agent : c.kind == .project ? .project : .thread) }
             return
         }
+        refreshAttachments(q.text, to: .ask)
         recall(q.text, token: t)
         if q.normalized.isEmpty { partial = [:]; groups = []; selected = 0; return }
-        if var c = calcResult(q) {
-            // Enter copies the answer, as the footer says.
-            let copy = c.copyText ?? c.title
-            c.actions = [ResultAction(id: "copy", title: "Copy", symbol: "doc.on.doc", shortcut: KeyShortcut("return")) { _, _ in
-                await MainActor.run {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(copy, forType: .string)
-                }
-                return .close("Copied \(copy)")
-            }]
-            partial["calc"] = [c]
-        }
+        if let c = calcResult(q) { partial["calc"] = [withCopy(c)] }
         partial["commands"] = SystemCommands.match(q.normalized).prefix(3).map { commandItem($0.command, score: $0.score) }
         partial["ext-commands"] = extensionCommands.compactMap { c in
             let s = Match.score(q.normalized, c.title, synonyms: c.keywords)
@@ -217,8 +315,15 @@ public final class CapsuleModel: ObservableObject {
     func publish() {
         let q = Query(text, front: front)
         var all = partial.values.flatMap { $0 }
-        for i in all.indices { all[i].score += frecency.boost(all[i].id, query: q.normalized) }
+        let canSend = vyred.has("files.send")
+        for i in all.indices {
+            all[i].score += frecency.boost(all[i].id, query: q.normalized)
+            if canSend, all[i].kind == "file", let url = all[i].fileURL, !all[i].actions.contains(where: { $0.id == "send-box" }) {
+                all[i].actions.append(sendToBox(url))
+            }
+        }
         all.sort { $0.score > $1.score }
+        let best = all.first { $0.section != .answer }
         var out: [Group] = []
         if let top = all.first, top.score >= 0.6, top.section != .answer {
             out.append(Group(section: .top, items: [top]))
@@ -231,10 +336,27 @@ public final class CapsuleModel: ObservableObject {
         }
         // Answers (calc) sit first: they are what the user typed, worked out.
         if let i = out.firstIndex(where: { $0.section == .answer }), i != 0 { out.insert(out.remove(at: i), at: 0) }
-        out.append(Group(section: .vyre, items: [askItem(q)]))
+        // Where the words go (Agent/AgentDestinations.swift): first for a question nothing here answers,
+        // or with a chip or an answer on screen; last otherwise.
+        var asks = Group(section: .vyre, items: askItems(q))
+        // One Vyre group: rows from Vyre's own providers (Glass, watch) join the destinations.
+        if let i = out.firstIndex(where: { $0.section == .vyre }) { asks.items += out.remove(at: i).items }
+        if asksFirst(q, top: best) { out.insert(asks, at: out.first?.section == .answer ? 1 : 0) } else { out.append(asks) }
         let keep = current?.id
         groups = out
         if let keep, let i = flat.firstIndex(where: { $0.id == keep }) { selected = i } else { selected = 0 }
+    }
+
+    /// Taildrop a file to the paired box (files.send). vyred's guard decides whether it may
+    /// leave (secrets and dotfiles are refused), and its words are shown as they are.
+    func sendToBox(_ url: URL) -> ResultAction {
+        ResultAction(id: "send-box", title: "Send to box", symbol: "paperplane", shortcut: KeyShortcut("s", command: true)) { [vyred] _, _ in
+            let r = await vyred.call("files.send", ["path": url.path], timeout: 120)
+            if let d = r.data as? [String: Any], let sent = VJ.nonEmpty(d["sent"]) {
+                return .said("Sent \(sent) to \(VJ.nonEmpty(d["to"]) ?? "your box"). It is in the box's inbox.")
+            }
+            return .failed("Could not send it: \(Bridge.explain(r) ?? "nothing came back").")
+        }
     }
 
     func commandItem(_ c: SystemCommand, score: Double) -> ResultItem {
@@ -431,21 +553,17 @@ public final class CapsuleModel: ObservableObject {
         if let p = targetParent { targetParent = nil; target = p } else { target = nil }
     }
 
-    func askItem(_ q: Query) -> ResultItem {
+    /// The one row for an extension's @ target: "Send to Notes", through the extension. A child
+    /// target ("WhatsApp › juno") sends through its chip's extension.
+    func appSendItem(_ q: Query, _ c: VyreCandidate) -> ResultItem {
         let words = q.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let c = target {
-            let p = targetParent
-            let to = c.kind == .project ? "a new thread in \(c.label)" : c.label
-            let via = c.kind == .app ? (appTargets[c.id]?.sendsTo ?? c.label) : c.label
-            return ResultItem(id: "send", kind: "ask", title: "Send to \(to)", subtitle: words, icon: .mark, section: .vyre, score: 0,
-                              actions: [ResultAction(id: "send", title: "Send", symbol: "paperplane") { [weak self] _, _ in
-                                  await self?.send(words, to: c, in: p) ?? .failed("The Capsule closed.")
-                              }], sendsTo: via)
-        }
-        return ResultItem(id: "ask", kind: "ask", title: "Ask", subtitle: words, icon: .mark, section: .vyre, score: 0,
-                          actions: [ResultAction(id: "ask", title: "Ask", symbol: "sparkle") { [weak self] _, _ in
-                              await self?.ask(words) ?? .failed("The Capsule closed.")
-                          }], sendsTo: "a model, through vyred")
+        let p = targetParent
+        let via = appTargets[c.id]?.sendsTo ?? p.flatMap { appTargets[$0.id]?.sendsTo } ?? c.label
+        return ResultItem(id: "send:\(c.id)", kind: "ask", title: "Send to \(c.label)", subtitle: words, icon: appTargets[c.id]?.icon ?? .mark,
+                          section: .vyre, score: 0,
+                          actions: [ResultAction(id: "send", title: "Send", symbol: "paperplane") { [weak self] _, _ in
+                              await self?.send(words, to: c, in: p) ?? .failed("The Capsule closed.")
+                          }], sendsTo: via)
     }
 
     // MARK: moving and picking
@@ -501,12 +619,32 @@ public final class CapsuleModel: ObservableObject {
         return true
     }
 
+    // MARK: who answers
+
+    /// The assistant's name from onboarding (agents.list, kind assistant), else "Vyre". Never a
+    /// model's brand: the model is small metadata beside it.
+    public var assistantName: String { catalog.assistant?.name ?? "Vyre" }
+
+    /// Who the reply on screen is from: the session or agent it went to, else the assistant.
+    public var replyWho: String {
+        if let q = reply?.queued { return q.name }
+        if let c = target, c.kind != .app { return c.label }
+        return assistantName
+    }
+
+    /// An answer is on screen and the only rows are where the next words would go: the answer
+    /// takes the whole area, and Enter follows up.
+    public var answerAlone: Bool {
+        asked != nil && reply != nil && groups.allSatisfy { $0.items.allSatisfy { $0.kind == "ask" } }
+    }
+
     // MARK: memory
 
     /// Whether the memory box sits above the results: it has something, and the words read as a
     /// question or nothing on this Mac matches them well.
     public var showsMemory: Bool {
-        guard asked == nil, let m = memory, !m.isEmpty, m.text == text.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+        // One confident answer or nothing: a wall of loosely matching quotes is not shown.
+        guard asked == nil, let m = memory, m.answer != nil, m.text == text.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
         return Route.asksQuestion(m.text) || !(flat.contains { $0.score >= 0.6 && $0.kind != "ask" })
     }
 
@@ -528,13 +666,14 @@ public final class CapsuleModel: ObservableObject {
             if Task.isCancelled || t != self.token { return }
             var m = Memo.fold(text: words, facts: (f.data as? [[String: Any]]) ?? [], hits: (h.data as? [[String: Any]]) ?? [], scratch: scratch)
             m.ms = max(1, vyNowMs() - t0)
+            if m != self.memory { self.memoryExpanded = false }
             self.memory = m
         }
     }
 
     // MARK: asking
 
-    func ask(_ words: String) async -> ActionOutcome {
+    func ask(_ words: String, model: String = "haiku") async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type a question first.") }
         let dir = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask")
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch {
@@ -543,7 +682,9 @@ public final class CapsuleModel: ObservableObject {
         asked = words
         // What memory showed for these same words goes with the question, and only that.
         askedMemory = memory?.text == words && !(memory?.isEmpty ?? true) ? memory : nil
-        let append = Memo.append(askedMemory)
+        // The prompt stays the user's words (capsule-now rule 1); what a chip attaches goes with
+        // the instructions, after memory.
+        let append = ([Memo.append(askedMemory)] + attachments.map(\.body)).joined(separator: "\n\n")
         pending = true
         reply = nil
         replySub?.cancel()
@@ -552,18 +693,20 @@ public final class CapsuleModel: ObservableObject {
         var thread: String?
         replySub = vyred.on("thread.*") { [weak self] e in
             guard let self else { return }
+            self.keeper.heard(e)
             guard let t = thread else { early.append(e); return }
             if e.thread == t, let r = self.reply { self.reply = VyState.applyReply(r, e) }
         }
         let name = "Capsule: " + String(words.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(40))
-        let r = await vyred.call("threads.start", ["prompt": words, "append": append, "lean": true, "model": "haiku",
+        let r = await vyred.call("threads.start", ["prompt": words, "append": append, "lean": true, "model": model,
                                                    "cwd": dir.path, "surface": "capsule", "name": name], presence: false)
         pending = false
         if let why = Bridge.explain(r) { asked = nil; replySub?.cancel(); replySub = nil; return .failed(why) }
         guard let d = r.data as? [String: Any], let id = d["id"].map({ "\($0)" }) else { asked = nil; return .failed("vyred did not say which thread it started.") }
         thread = id
+        keeper.startedQuick(id)
         var rep = VyState.reply(id)
-        rep.model = "haiku"
+        rep.model = model
         for e in early where e.thread == id { rep = VyState.applyReply(rep, e) }
         reply = rep
         return .said("")
@@ -575,7 +718,9 @@ public final class CapsuleModel: ObservableObject {
     private func follow(_ thread: @escaping () -> String?) {
         replySub?.cancel()
         replySub = vyred.on("thread.*") { [weak self] e in
-            guard let self, let r = self.reply else { return }
+            guard let self else { return }
+            self.keeper.heard(e)
+            guard let r = self.reply else { return }
             let t = thread() ?? (r.thread.isEmpty ? nil : r.thread)
             if r.thread.isEmpty, e.type == "thread.sent", VJ.str(e.payload["surface"]) == "capsule", let et = e.thread {
                 var x = r; x.thread = et; self.reply = VyState.applyReply(x, e); return
@@ -585,7 +730,7 @@ public final class CapsuleModel: ObservableObject {
     }
 
     /// `parent` is the outer chip of a two-level one (only extensions' targets have one).
-    func send(_ words: String, to c: VyreCandidate, in parent: VyreCandidate? = nil) async -> ActionOutcome {
+    func send(_ words: String, to c: VyreCandidate, in parent: VyreCandidate? = nil, model: String? = nil) async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type what to send first.") }
         asked = words
         askedMemory = nil
@@ -598,8 +743,9 @@ public final class CapsuleModel: ObservableObject {
             return await send(words, c, parent, Query(words, front: front))
         case .thread:
             reply = VyState.reply(c.id)
+            reply?.model = model
             follow { c.id }
-            let r = await vyred.call("threads.send", ["thread": c.id, "text": words, "surface": "capsule"], presence: false)
+            let r = await vyred.call("threads.send", ["thread": c.id, "text": withAttachments(words), "surface": "capsule"], presence: false)
             pending = false
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
             let d = (r.data as? [String: Any]) ?? [:]
@@ -614,28 +760,31 @@ public final class CapsuleModel: ObservableObject {
                 if let h = VJ.nonEmpty(d["holder"]) { return .failed("\(h) has the keyboard in this thread.") }
                 return .failed(VJ.nonEmpty(d["note"]) ?? "This thread could not be typed into.")
             }
+            keeper.typed(into: c.id)
             return .said("")
         case .agent:
             reply = VyState.reply("")
             var thread: String?
             follow { thread }
-            let r = await vyred.call("agents.ask", ["agent": c.id, "text": words, "surface": "capsule", "wait": false], presence: false)
+            let r = await vyred.call("agents.ask", ["agent": c.id, "text": withAttachments(words), "surface": "capsule", "wait": false], presence: false)
             pending = false
             let d = (r.data as? [String: Any]) ?? [:]
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
             if VJ.bool(d["ok"]) == false { reply = nil; asked = nil; return .failed(VJ.nonEmpty(d["note"]) ?? "\(c.label) did not get it.") }
             thread = VJ.nonEmpty(d["thread"]) ?? reply?.thread
             if let t = thread, reply?.thread.isEmpty == true { reply?.thread = t }
+            if let t = thread, !t.isEmpty { keeper.typed(into: t) }
             return .said("")
         case .project:
             reply = VyState.reply("")
             var thread: String?
             follow { thread }
-            let r = await vyred.call("threads.start", ["project": c.id, "prompt": words, "surface": "capsule"], presence: false)
+            let r = await vyred.call("threads.start", ["project": c.id, "prompt": withAttachments(words), "surface": "capsule"], presence: false)
             pending = false
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
             thread = (r.data as? [String: Any]).flatMap { VJ.nonEmpty($0["id"]) }
             if let t = thread, reply?.thread.isEmpty == true { reply?.thread = t }
+            if let t = thread { keeper.typed(into: t) }
             return .said("")
         }
     }
@@ -648,8 +797,8 @@ public final class CapsuleModel: ObservableObject {
         // A queued message has no interrupt path into a terminal session: stop following only.
         if r.queued != nil { line = "Stopped following. \(r.queued!.name) still gets the message when its turn ends."; return }
         if r.thread.isEmpty { return }
-        let t = r.thread
-        Task { _ = await vyred.call("threads.stop", ["id": t], presence: false) }
+        // threads.stop takes {thread}: with {id} it was refused and the process ran on.
+        keeper.stop(r.thread)
     }
 }
 

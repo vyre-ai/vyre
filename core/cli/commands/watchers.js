@@ -4,9 +4,9 @@
 
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
+import { json, emit, failTool, usage } from "../kit.js";
 
-const unreachable = r => r.error && ["unreachable", "timeout"].includes(r.error.code);
-const fail = r => { out(unreachable(r) ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message); return 1; };
+const fail = r => failTool(r.error);
 const ago = iso => { if (!iso) return null; const m = Math.round((Date.now() - Date.parse(iso)) / 60_000); return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
 const until = iso => { if (!iso) return null; const m = Math.round((Date.parse(iso) - Date.now()) / 60_000); return m <= 0 ? "due now" : m < 60 ? `in ${m}m` : `in ${Math.round(m / 60)}h`; };
 /** A time as the user reads it: local, to the minute. */
@@ -21,6 +21,7 @@ function item(i) {
 async function list() {
   const r = await call("watchers.list");
   if (r.error) return fail(r);
+  if (json()) return emit(r.data);
   const { dir, watchers } = r.data;
   if (!watchers.length) { out(`  no watchers yet ${dim(`· ask Claude to watch something; they live in ${dir}`)}`); return 0; }
   out("");
@@ -38,17 +39,18 @@ async function list() {
 }
 
 export default {
-  name: "watchers", order: 40, usage: "vyre watchers [test|create|pause|resume|logs|items] [name]",
+  name: "watchers", order: 40, usage: "vyre watchers [list|test|create|pause|resume|logs|items] [name] [--json]",
   summary: "what the watchers are doing, and turning them on and off",
   async run(args) {
-    const [verb, ...rest] = args;
+    const [verb, ...rest] = args.filter(a => a !== "--json");
     const name = rest.join(" ").trim();
-    if (!verb || verb === "list") return list();
-    if (["test", "create", "pause", "resume", "logs"].includes(verb) && !name) { out(`  vyre watchers ${verb} <name>`); return 1; }
+    if (!verb || verb === "list" || verb === "ls") return list();
+    if (["test", "create", "pause", "resume", "logs"].includes(verb) && !name) return usage(`vyre watchers ${verb} needs a watcher's name`, "vyre watchers lists them");
     if (verb === "test") {
       const r = await call("watchers.test", { name }, { timeout: 330_000 });
       if (r.error) return fail(r);
       const d = r.data;
+      if (json()) { emit(d); return d.ok ? 0 : 1; }
       if (!d.ok) { for (const p of d.problems || [d.error]) out(beacon("  " + p)); for (const l of d.logs || []) out(dim("    " + l)); return 1; }
       out(`\n  ${bold(name)} would file ${signal(d.count + " items")} ${dim(`into ${d.project || "?"} · ${d.every} · ${d.ms}ms`)}`);
       if (d.warning) out(beacon("  " + d.warning));
@@ -61,6 +63,7 @@ export default {
       const r = await call(`watchers.${verb}`, { name });
       if (r.error) return fail(r);
       const d = r.data;
+      if (json()) return emit(d);
       out(`  ${bold(name)} ${(STATE[/** @type {keyof typeof STATE} */ (d.state)] || dim)(d.state)}${d.every ? dim(" · " + d.every) : ""}${d.why ? dim(" · " + d.why) : ""}`);
       if (d.hook) out(dim(`  webhook: ${d.hook.method} ${d.hook.path} with header ${d.hook.header}: ${d.hook.token}`));
       return 0;
@@ -68,6 +71,7 @@ export default {
     if (verb === "logs") {
       const r = await call("watchers.logs", { name, limit: 10 });
       if (r.error) return fail(r);
+      if (json()) return emit(r.data);
       if (!r.data.length) { out(dim(`  ${name} has not run yet`)); return 0; }
       for (const run of r.data) {
         const head = `${local(run.at)} ${run.trigger}`;
@@ -83,11 +87,11 @@ export default {
       const isWatcher = known.data.watchers.some(w => w.name === name);
       const r = await call("watchers.items", name ? (isWatcher ? { name } : { project: name }) : {});
       if (r.error) return fail(r);
+      if (json()) return emit(r.data);
       if (!r.data.length) { out(dim("  nothing filed yet")); return 0; }
       for (const i of r.data) item(i);
       return 0;
     }
-    out(`  vyre watchers ${verb}: not a verb ${dim("· test, create, pause, resume, logs, items")}`);
-    return 1;
+    return usage(`vyre watchers ${verb}: not a subcommand`, "vyre watchers list, test, create, pause, resume, logs or items");
   },
 };

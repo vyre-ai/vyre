@@ -1,0 +1,34 @@
+/* Set up this phone: the card at the top of Now on a phone (deck/js/phone-setup.js). Added by
+   that module with a <link>, the way app.js adds a view's stylesheet. Tokens only. */
+
+.ps-card { margin: 0 0 20px; padding: 14px 16px 6px; border: 1px solid var(--rule); border-radius: var(--r-3); background: var(--panel); }
+.ps-card[hidden] { display: none; }
+.ps-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ps-title { font-size: 16px; line-height: 22px; font-weight: 600; margin: 0; }
+.ps-top .btn { margin-right: -10px; }
+.ps-lede { margin: 2px 0 4px; }
+
+.ps-steps { list-style: none; margin: 0; padding: 0; }
+.ps-step { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.ps-step:first-child { border-top: 0; }
+.ps-dot { width: 20px; height: 20px; margin-top: 1px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 10px; border: 1.5px solid var(--rule-strong); color: var(--primary-ink); }
+.ps-step[data-state="done"] .ps-dot { background: var(--primary-bg); border-color: var(--primary-bg); }
+.ps-step[data-state="blocked"] .ps-dot { border-style: dashed; }
+.ps-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ps-step-title { font-size: 15px; line-height: 22px; font-weight: 500; }
+.ps-step[data-state="done"] .ps-step-title { color: var(--text-2); }
+.ps-line { margin: 0; }
+.ps-share { display: inline-block; vertical-align: -2px; color: var(--text); }
+.ps-status { margin: 4px 0 0; color: var(--text-2); }
+.ps-status:empty { display: none; }
+.ps-act { flex-shrink: 0; }
+
+.ps-form { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.ps-label { color: var(--text-2); margin-top: 4px; }
+.ps-label code { font-family: var(--mono); font-size: 12px; padding: 1px 4px; border-radius: var(--r-1); background: var(--code-bg); }
+/* 16px keeps iOS from zooming into the field. */
+.ps-form .input { font-size: 16px; }
+.ps-form-act { display: flex; gap: 8px; margin-top: 6px; }
+
+.ps-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

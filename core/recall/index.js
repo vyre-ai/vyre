@@ -2,7 +2,7 @@
 // recall — search over every turn of every Claude Code session on this machine.
 //
 // Full-text search (FTS5) over every user and assistant turn, re-ranked by local embeddings
-// when the optional model is installed. The index is built from the transcript files by
+// once the search model is installed (on first use, or `vyre recall --setup`; see embed.js). The index is built from the transcript files by
 // core/transcripts, the only code that reads them, and lives in Recall's tables
 // (core/recall/schema.js), which Memory and Projects read directly.
 //
@@ -14,8 +14,14 @@
 // Settings, all optional, under "recall" in config.json:
 //   every      minutes between passes (default 5; 0 turns the timer off)
 //   vectors    false to never load the model
-//   download   false to never fetch the model weights (then they must already be in `models`)
+//   download   false to never fetch the library or the weights (then they must already be in
+//              `embedder` and `models`)
 //   models     where the weights live (default <VYRE_HOME>/models)
+//   embedder   where the library that runs them is installed (default <VYRE_HOME>/embedder)
+//   npm        the npm that installs it (default the one next to node, else npm on PATH)
+//   duty       the most of the wall clock background indexing may use, per piece of work
+//              (default 0.5: as long again asleep as awake); see pace.js
+//   lowBattery pause background indexing on battery under this percent (default 30; 0 never)
 //   maxChunks  the dense index's hard cap in chunk vectors (default 50,000, ~78MB); past it the
 //              oldest sessions drop out of ranking by meaning and fall back to full-text search
 
@@ -25,8 +31,10 @@ import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
 import { search, thread, sessions } from "./search.js";
 import { evaluate } from "./eval.js";
-import { load as loadModel, cached } from "./embed.js";
+import { spawnEmbedder, cached, installed, DOWNLOAD_MB } from "./embed.js";
+import { pacer, gate } from "./pace.js";
 import { Dense } from "./dense.js";
+import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -72,6 +80,19 @@ export default {
     let stopped = false;
     const isStopped = () => stopped;
 
+    // Background work is a trickle (pace.js): paced to `duty` of the clock, and paused on a low
+    // battery or a busy machine. Under tests it runs flat out and never pauses unless a test
+    // asks, so a loaded CI machine cannot make a test wait a minute.
+    const testing = Boolean(process.env.NODE_TEST_CONTEXT);
+    const pace = pacer({ duty: opts.duty ?? (testing ? 1 : 0.5) });
+    const g = testing && !opts.gate ? null : gate({ lowBattery: opts.lowBattery ?? 30, ...(opts.gate || {}) });
+    const paused = () => Boolean(g && g.why);
+    const paced = async (/** @type {number} */ spent) => { await pace(spent); if (g) await g.check(); };
+    /** Where the index stands, for `vyre status` and `vyre doctor`. */
+    const progress = { done: 0, total: 0 };
+    /** @type {any} */
+    let retry = null;
+
     // One pass at a time. A caller that asks while one is running gets the next pass, which
     // starts when the current one ends and skips everything that one already did.
     /** @type {Promise<any>} */
@@ -84,7 +105,7 @@ export default {
         if (stopped) return null;
         running = true;
         try {
-          const s = await indexer.run(folders, { stopped: isStopped });
+          const s = await indexer.run(folders, { stopped: isStopped, pace: paced, onProgress: (d, t) => { progress.done = d; progress.total = t; } });
           return s;
         }
         finally { running = false; vectorLoop(); }
@@ -117,11 +138,15 @@ export default {
           return Promise.resolve(null);
         }
         const models = opts.models || path.join(ctx.paths.root, "models");
-        // The one network call Recall ever makes, once. Said out loud, so a first `vyre status`
+        const runtime = opts.embedder || path.join(ctx.paths.root, "embedder");
+        // The only network calls Recall ever makes, once. Said out loud, so a first `vyre status`
         // explains the wait instead of looking stuck.
-        vec.why = injected || cached(models) ? "loading the model" : "downloading the search model (23 MB, once)";
+        const mb = (installed(runtime) ? 0 : DOWNLOAD_MB.runtime) + (cached(models) ? 0 : DOWNLOAD_MB.model);
+        vec.why = injected || !mb ? "loading the model" : `downloading the search model (about ${mb} MB, once); search is by keyword until then`;
+        if (!injected && mb) ctx.log(vec.why);
+        // The model runs in a process of its own at the lowest priority, on one thread.
         vec.loading = (injected ? Promise.resolve({ embedder: injected })
-          : loadModel({ cacheDir: models, download: opts.download !== false }))
+          : spawnEmbedder({ cacheDir: models, runtime, download: opts.download !== false, npm: opts.npm }))
           .then(r => {
             if (r.embedder) { vec.embedder = r.embedder; vec.why = `on (${r.embedder.model})`; return r.embedder; }
             vec.on = false; vec.why = r.why || "unavailable";
@@ -140,44 +165,80 @@ export default {
           do {
             vec.again = false;
             if (!indexer.pending().length) continue;
+            if (g && await g.check()) break;
             const e = await embedder();
             if (!e || stopped) break;
-            const r = await indexer.vectorize(e, { stopped: isStopped });
+            const r = await indexer.vectorize(e, { stopped: () => stopped || paused(), pace: paced });
             if (r.turns) ctx.log(`embedded ${r.turns} turns into ${r.chunks} vectors in ${r.ms}ms`);
           } while (vec.again && !stopped);
           // Build the dense index now, in the background, so the first search does not pay for it.
           if (!stopped && !dense.stats() && db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get()) await dense.build();
         } catch (e) { vec.why = `embedding failed: ${/** @type {Error} */ (e).message}`; ctx.log(vec.why); }
-        finally { vec.busy = false; }
+        finally {
+          vec.busy = false;
+          // Paused: look again in a minute, no sooner (SPEC principle 8).
+          if (paused() && !stopped) { clearTimeout(retry); retry = setTimeout(vectorLoop, 60_000); retry.unref?.(); }
+        }
       })();
     };
 
     const stringArray = { type: "array", items: { type: "string" } };
+    // On the box, "all" takes in the paired Macs' rows too (the default for the person), "local" only the box's.
+    const machines = { type: "string", enum: ["all", "local"] };
     ctx.tool("recall.search", {
       description: "Search every Claude Code session on this machine for turns about something. Returns the best turns with their session's name, title and folder.",
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
-        per_session: { type: "integer" },
+        per_session: { type: "integer" }, machines,
       } },
-      run: async input => {
-        // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
-        const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
-        const e = input.hybrid === false || !any ? null : await embedder();
-        return (await search(db, input, e, dense)).hits;
+      run: async (input, { caller } = {}) => {
+        const { machines: _, ...q } = input;
+        const here = async () => {
+          // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
+          const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
+          const e = q.hybrid === false || !any ? null : await embedder();
+          return (await search(db, q, e, dense)).hits;
+        };
+        if (!wantsMacs(ctx, input, caller)) return here();
+        // On the box, for the person: the Macs' best turns too, by score, capped at the limit.
+        const [own, answers] = await Promise.all([here(), askMacs(ctx, "recall.search", q)]);
+        return mergeRows(ctx, own, answers, { compare: (a, b) => b.score - a.score, limit: Math.max(1, Math.min(100, q.limit || 10)) });
       },
     });
     ctx.tool("recall.thread", {
       description: "One session and its turns, in order. Takes a session id or an unambiguous prefix of one.",
       input: { type: "object", required: ["session"], properties: {
-        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" } } },
-      run: async input => thread(db, input),
+        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, machines,
+        source: { type: "string", enum: ["box", "mac"] } } },
+      run: async (input, { caller } = {}) => {
+        const { machines: _, source, ...q } = input;
+        if (!wantsMacs(ctx, input, caller)) return thread(db, q);
+        // On the box, for the person: the box's own session first. A session the box does not
+        // have, or one the caller says is on the Mac, is asked of the Macs, and the first that
+        // has it answers. Its turns go back to the caller and are never stored here.
+        if (source !== "mac") {
+          try { return { ...thread(db, q), ...boxLabel(ctx) }; }
+          catch (e) { if (!/^no session /.test(/** @type {Error} */ (e).message)) throw e; }
+        }
+        const answers = await askMacs(ctx, "recall.thread", q);
+        const found = answers.find(a => a.ok && a.data);
+        if (found) return { ...found.data, ...macLabel(found) };
+        const why = answers.length ? answers.map(a => `${a.name}: ${a.error ? a.error.code : "no answer"}`).join(", ") : "no Mac is paired";
+        throw new Error(`no session ${q.session} (${why})`);
+      },
     });
     ctx.tool("recall.sessions", {
-      description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, or started by a person.",
+      description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
-        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" } } },
-      run: async input => sessions(db, input),
+        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines } },
+      run: async (input, { caller } = {}) => {
+        const { machines: _, ...q } = input;
+        if (!wantsMacs(ctx, input, caller)) return sessions(db, q);
+        // On the box, for the person: the Macs' sessions too, newest first, capped at the limit.
+        const [own, answers] = await Promise.all([sessions(db, q), askMacs(ctx, "recall.sessions", q)]);
+        return mergeRows(ctx, own, answers, { compare: (a, b) => (b.ended || 0) - (a.ended || 0), limit: Math.max(1, Math.min(1000, q.limit || 50)) });
+      },
     });
     ctx.tool("recall.index", {
       description: "Index new and changed transcripts now. Returns what the pass did.",
@@ -195,8 +256,22 @@ export default {
         return {
           sessions: n("SELECT COUNT(*) n FROM recall_sessions"), turns,
           folders, every, indexing: running, last: last ? JSON.parse(String(last.v)) : null, error: lastError,
-          vectors: { on: vec.on, why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
+          progress: { sessions: progress.total ? { done: progress.done, total: progress.total } : null, paused: g ? g.why : null, priority: "low" },
+          vectors: { on: vec.on, ready: Boolean(vec.embedder), why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
         };
+      },
+    });
+
+    ctx.tool("recall.setup", {
+      description: "Install the search model now (the library and its weights, once) and load it, so search ranks by meaning. Resolves when it is ready or has failed, and says which.",
+      input: { type: "object", properties: {} },
+      run: async () => {
+        if (opts.vectors === false) return { ready: false, why: vec.why };
+        // A failed install or load is not final: setup is the way to try again.
+        if (!vec.embedder && !vec.on) { vec.on = true; vec.loading = null; }
+        const e = await embedder();
+        if (e) vectorLoop();
+        return { ready: Boolean(e), why: vec.why, model: e ? e.model : null };
       },
     });
 
@@ -239,6 +314,7 @@ export default {
       async stop() {
         stopped = true;
         clearTimeout(first);
+        clearTimeout(retry);
         for (const off of offs) if (typeof off === "function") off();
         for (const t of soon.values()) clearTimeout(t);
         if (timer) clearInterval(timer);
@@ -246,6 +322,8 @@ export default {
         await vec.done;
         // A model load in flight writes into the home; let it settle before the home can go.
         if (vec.loading) await Promise.race([vec.loading.catch(() => null), new Promise(r => setTimeout(r, 5000).unref())]);
+        const e = /** @type {any} */ (vec.embedder);
+        if (e && typeof e.close === "function") e.close();
       },
     };
   },

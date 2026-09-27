@@ -8,6 +8,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import UserNotifications
 
 final class CapsulePanel: NSPanel {
     init() {
@@ -38,7 +39,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var keys: Any?
     private var clickAway: Any?
     private var observe: AnyCancellable?
-    private var top: CGFloat = 0
+    /// The panel's top edge, which stays put while it grows downward.
+    var top: CGFloat = 0
     private var hiddenAt = Date.distantPast
     var onShownChange: ((Bool) -> Void)?
     var extensions: ExtensionHost?
@@ -52,7 +54,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         host.sizingOptions = []
         panel.contentView = host
         panel.delegate = self
-        model.onClose = { [weak self] note in self?.hide(); if let note { Notifier.shared.post(title: "Vyre", body: note) } }
+        // A note on close ("Copied 87") needs no banner: the user just did it and saw it.
+        model.onClose = { [weak self] _ in self?.hide() }
+        model.isShown = { [weak self] in self?.isShown ?? false }
         model.onStepAside = { [weak self] in await self?.stepAside() ?? false }
         observe = model.objectWillChange.sink { [weak self] in DispatchQueue.main.async { self?.fit() } }
     }
@@ -156,7 +160,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         // A click in another app closes the Capsule, as Spotlight does.
         clickAway = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            MainActor.assumeIsolated { self?.hide() }
+            // Not while a reply streams or a card is open: the user is reading or editing (pinned).
+            MainActor.assumeIsolated { if self?.model.pinned == true { return }; self?.hide() }
         }
     }
 
@@ -179,9 +184,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         return KeyShortcut(key, command: f.contains(.command), option: f.contains(.option), shift: f.contains(.shift), control: f.contains(.control))
     }
 
-    /// One key while the panel is key. Internal, not private, so a test can hand it an event
-    /// made with NSEvent.keyEvent (never posted) without a window on screen.
+    /// One key while shown. Internal so the driven mode (Agent/AgentDrive.swift) can press keys in this
+    /// window alone, never system-wide.
     func key(_ e: NSEvent) -> Bool {
+        // The waiting list and its cards take their keys first (Agent/AgentPanelKeys.swift).
+        if agentKey(e) { return true }
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
         // Chords with Option or Control are the extensions' (Option-Return talks). The Capsule's own
         // keys use Command and Shift only, so they win a clash by never reaching here.
@@ -189,14 +196,21 @@ final class PanelController: NSObject, NSWindowDelegate {
            extensions?.handle(chord: c) == true { return true }
         switch e.keyCode {
         case 53: // escape
+            if model.presenceAsk != nil { model.cancelPresence(); return true }
             if model.confirming != nil { model.confirming = nil; model.line = nil; return true }
             if let r = model.reply, !r.finished { model.stopReply(); return true }
             if !model.text.isEmpty { model.text = ""; return true }
             hide(); return true
+        case 51 where e.modifierFlags.contains(.command) && !model.attachments.isEmpty: // ⌘⌫ takes the last attachment off
+            model.removeAttachment(); return true
         case 51 where model.text.isEmpty && model.target != nil: // delete on an empty box drops the chip (a child first)
             model.dropChip(); return true
         case 48 where model.current?.kind == "mention": // tab picks the @ row
             model.run(); return true
+        case 124 where cmd && (model.showsMemory || model.askedMemory != nil): // ⌘→ shows or folds memory's sources
+            model.memoryExpanded.toggle(); return true
+        case 2 where cmd && !shift && model.canGoDeeper: // ⌘D: the same question to the deeper model
+            model.deeper(); return true
         case 125: model.move(1); return true   // down
         case 126: model.move(-1); return true  // up
         case 36, 76: // return
@@ -216,22 +230,46 @@ final class PanelController: NSObject, NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
         // Losing key to another app's window is the user moving on.
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.panel.isVisible, !self.panel.isKeyWindow, NSApp.keyWindow == nil else { return }
+            guard let self, self.panel.isVisible, !self.panel.isKeyWindow, NSApp.keyWindow == nil, !self.model.pinned else { return }
             self.hide()
         }
     }
 }
 
-/// Top-right banners, through the Notification Center. Only when the Capsule is hidden; while it
-/// is shown a note is said under the box instead.
+/// Top-right banners, through the Notification Center (UNUserNotificationCenter), only while the
+/// Capsule is hidden; while it is shown a note is said in its footer instead. macOS asks the
+/// person once whether Vyre may show banners, the first time there is one to show, and never
+/// under tests (dialogsAllowed()).
 @MainActor final class Notifier {
     static let shared = Notifier()
+    private var asked = false
+
     func post(title: String, body: String) {
-        guard dialogsAllowed() else { return }
-        let n = NSUserNotification()
-        n.title = title
-        n.informativeText = body
-        NSUserNotificationCenter.default.deliver(n)
+        guard dialogsAllowed(), Bundle.main.bundleIdentifier != nil else { return }
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            let status = settings.authorizationStatus
+            Task { @MainActor in
+                switch status {
+                case .authorized, .provisional: Self.deliver(title: title, body: body)
+                case .notDetermined:
+                    guard !self.asked else { return }
+                    self.asked = true
+                    center.requestAuthorization(options: [.alert, .sound]) { ok, _ in
+                        if ok { Task { @MainActor in Self.deliver(title: title, body: body) } }
+                    }
+                default: break
+                }
+            }
+        }
+    }
+
+    private static func deliver(title: String, body: String) {
+        let c = UNMutableNotificationContent()
+        c.title = title
+        c.body = body
+        c.threadIdentifier = "vyre.capsule"
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
     }
 }
 

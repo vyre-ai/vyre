@@ -28,6 +28,12 @@ const selector = {
   description: "Copy it from an element of hands.observe. It is matched against a fresh observation, never used as a location.",
   properties: { role: str, name: str, identifier: str, container: str, path: str },
 };
+const filter = {
+  role: { type: "string", description: "Only controls with this role, e.g. AXTextField or TextField (the AX prefix is optional)." },
+  name: { type: "string", description: "Only controls whose label or identifier contains this, ignoring case. Never matched against values." },
+  near: { type: "string", description: "Another control's label or selector path: matches come closest to it first." },
+  limit: { type: "integer", description: "Most matches to return, 1-500. Default 20." },
+};
 const actInput = {
   type: "object", required: ["selector", "kind"],
   properties: {
@@ -37,7 +43,7 @@ const actInput = {
     key: { type: "string", description: "For key: return, enter, tab, space, delete, forwarddelete, escape, home, end, pageup, pagedown, left, right, up, down." },
     modifiers: { type: "array", items: { type: "string", enum: ["cmd", "shift", "option", "control"] } },
     ...where,
-    settleMs: { type: "integer", description: "How long to keep re-observing for the effect. Default 1500." },
+    settleMs: { type: "integer", description: "How long to keep re-observing for the effect, in ms. Default 1500, at most 5000 (a larger value is clamped); slow apps such as WhatsApp may want 3000-4000." },
     resume: { type: "boolean", description: "Carry on after the person (or hands.stop) stopped Vyre's control. Pass it only after asking the person." },
   },
 };
@@ -71,12 +77,24 @@ export default {
 
     ctx.tool("hands.observe", {
       description: "Read the accessibility tree of the frontmost app (or a named app or pid): its window title, a bounded list of controls, each with a selector to hand to hands.act, its value, enabled and focus state, frame and actions, and the text on screen. truncated says the list was capped. In a place Vyre may not look (its own surfaces, sign-in dialogs, password managers, security settings) it returns the app and window only, with blind saying why.",
-      input: { type: "object", properties: { ...where, limit: { type: "integer", description: "Most controls to return, 1-500. Default 120." } } },
+      input: { type: "object", properties: { ...where, limit: { type: "integer", description: "Most controls to return, 1-500. Default 120." },
+        match: { type: "object", properties: filter, description: "Return only the controls that match, read from up to 500 so a match past the default cap is still found." } } },
       run: wrap(input => hands.observe(input)),
     });
 
+    ctx.tool("hands.find", {
+      description: "Find controls in an app by role, label and nearness without reading the whole list: the same as hands.observe with match. Returns the app, window, whether it is in front (front), and the matching controls with selectors for hands.act, closest to near first. Works on an app in the background without raising it. The floor applies as in hands.observe.",
+      input: { type: "object", properties: { ...where, ...filter } },
+      run: wrap(async input => {
+        const { app, pid, window, role, name, near, limit } = input;
+        const o = await hands.observe({ app, pid, window, match: { role, name, near, limit } });
+        const { texts, ...rest } = o;
+        return rest;
+      }),
+    });
+
     ctx.tool("hands.act", {
-      description: "Do one thing to one control, found by selector in a fresh observation: press it, set its value, focus it, perform one of its accessibility actions, type text into it, or send it a key. Then observe again and verify the effect. verified is true only when the re-observation shows it. An act that sends something as the person (a Send button, Return in a chat) is held, not done: the answer has held: true, and hands.commit with the same input does it once a person allows it. Refuses with code floor where Vyre may not act, secure on a password field (use vault.fill), stopped after the person stopped Vyre (pass resume: true only after asking them), and no_indicator when the on-screen indicator cannot be shown.",
+      description: "Do one thing to one control, found by selector in a fresh observation: press it, set its value, focus it, perform one of its accessibility actions, type text into it, or send it a key. The app is never raised or activated: press, set, focus and type work on an app in the background, but a key needs the app in front and is refused with code needs_front otherwise (press the control instead). Then observe again and verify the effect. verified is true only when the re-observation shows it. An act that sends something as the person (a Send button, Return in a chat) is held, not done: the answer has held: true, and hands.commit with the same input does it once a person allows it. Refuses with code floor where Vyre may not act, secure on a password field (use vault.fill), stopped after the person stopped Vyre (pass resume: true only after asking them), and no_indicator when the on-screen indicator cannot be shown.",
       input: actInput,
       run: wrap(input => hands.act(input)),
     });

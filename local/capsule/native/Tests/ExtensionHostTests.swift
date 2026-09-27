@@ -1,5 +1,6 @@
 // capsule-suite: extensionHostSuite
 // capsule-suite: extensionMentionSuite
+// capsule-suite: attachSuite
 // The seam from the host's side: a registered extension is made once, its commands are rows, its
 // chords reach it only with Option or Control, its side panel is drawn for its own rows, and hide
 // reaches it.
@@ -91,5 +92,42 @@ let extensionMentionSuite = Suite("extension mentions") { t in
             return rows + [via, line] + sent
         }
         t.eq(r, ["Notes", "Notes on this Mac", "Added to Notes", "notes: buy flour for Northwind"])
+    }
+}
+
+@MainActor
+final class ScreenProbe: CapsuleExtension, SendAttaching {
+    static let id = "screenprobe"
+    init(host: CapsuleHost) {}
+    func attachment(for words: String, to: SendTargetKind) async -> SendAttachment? {
+        words.contains("this") ? SendAttachment(id: "sight:screen", chip: "with your screen: Safari · Northwind Bakery", body: "Screen: Safari, Northwind Bakery menu") : nil
+    }
+}
+
+let attachSuite = Suite("attachments") { t in
+    t.test("a chip shows while the words point at the screen, goes with the send, and ⌘⌫ keeps it off") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        v.tool("threads.send") { _ in ["sent": true, "thread": "t1"] }
+        let r: [String]? = t.wait {
+            let (m, h) = await MainActor.run { () -> (CapsuleModel, ExtensionHost) in
+                let m = CapsuleModel(home: vyScratch("attach"), vyred: VyredClient(socket: v.socket), providers: [])
+                let h = ExtensionHost(model: m)
+                h.load([ScreenProbe.self])
+                m.catalog = VyreCatalog(threads: [VyreThread(id: "t1", label: "Northwind menu rebuild")])
+                m.target = VyreCandidate(kind: .thread, id: "t1", label: "Northwind menu rebuild")
+                m.text = "fix this price"
+                return (m, h)
+            }
+            for _ in 0..<100 where await MainActor.run(body: { m.attachments.isEmpty }) { try? await Task.sleep(nanoseconds: 10_000_000) }
+            let chip = await MainActor.run { m.attachments.first?.chip ?? "" }
+            await MainActor.run { m.run() }
+            for _ in 0..<100 where v.callsOf("threads.send").isEmpty { try? await Task.sleep(nanoseconds: 10_000_000) }
+            let first = VJ.s(v.callsOf("threads.send").first?["text"])
+            await MainActor.run { m.removeAttachment(); m.text = "and this one too" }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            let after = await MainActor.run { withExtendedLifetime(h) { m.attachments.count } }
+            return [chip, first, "\(after)"]
+        }
+        t.eq(r, ["with your screen: Safari · Northwind Bakery", "fix this price\n\nScreen: Safari, Northwind Bakery menu", "0"])
     }
 }

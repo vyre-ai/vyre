@@ -8,9 +8,11 @@
 // agents.update (switchboard), link.health (link), files.drive.status and files.drive.audit (files), hooks.list and hooks.status (hooks),
 // network.guests.list (network), computers.tailnet.status and computers.egress.status (computers), recall.status, recall.index, memory.stats, memory.curate,
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
+// Connections is drawn by views/connections.js (the connectors workstream, ADR 0016).
 
 import { h, put, link, head, empty } from "../js/dom.js";
-import { attempt, modules, canProve, callWithCode } from "../js/api.js";
+import { attempt, modules, canProve } from "../js/api.js";
+import { pushState, subscribePush, unsubscribePush, enrollPasskey, passkeyState, deviceName, deniedHelp } from "../js/phone-setup.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { when, since, plural } from "../js/fmt.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
@@ -21,7 +23,9 @@ const SECTIONS = [
   ["you", "You and your address"],
   ["assistant", "The assistant"],
   ["claude", "Claude Code"],
+  ["connections", "Connections"],
   ["network", "Network"],
+  ["devices", "Your devices"],
   ["history", "History and memory"],
   ["lessons", "Lessons"],
   ["notifications", "Notifications"],
@@ -31,14 +35,15 @@ const SECTIONS = [
   ["machine", "This machine"],
 ];
 
-/** The onboarding's steps (deck/onboard/onboard.js), each with the command that does the same. */
+/** The onboarding's steps (deck/onboard/onboard.js), each with the command that does the same.
+ * `vyre up` picks up at the first step not finished; it has no flag for one step (asked polish-cli). */
 const STEPS = [
   { id: "you", title: "You", cmd: "vyre up" },
-  { id: "claude", title: "Claude Code", cmd: "vyre up --step claude" },
-  { id: "tailscale", title: "Tailscale", cmd: "vyre up --step tailscale" },
-  { id: "name", title: "Your address", cmd: "vyre up --step name" },
+  { id: "claude", title: "Claude Code", cmd: "vyre up" },
+  { id: "tailscale", title: "Tailscale", cmd: "vyre up" },
+  { id: "name", title: "Your address", cmd: "vyre up" },
   { id: "history", title: "Your history", cmd: "vyre index" },
-  { id: "devices", title: "Your devices", cmd: "vyre up --step devices" },
+  { id: "devices", title: "Your devices", cmd: "vyre up" },
 ];
 
 const onTailnet = () => /\.vyre\.run$|\.ts\.net$/.test(location.hostname);
@@ -88,7 +93,9 @@ export default async function settings(ctx) {
 
   const loads = [
     drawSetup(body.setup), drawYou(body.you), drawAssistant(body.assistant, ctx), drawClaude(body.claude),
-    drawNetwork(body.network, ctx), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
+    // Imported on its own, so a problem in that file shows here and never blanks Settings.
+    import("./connections.js").then(m => m.drawConnections(body.connections, ctx)).catch(e => put(body.connections, empty("Connections did not load.", e))),
+    drawNetwork(body.network, ctx), drawDevices(body.devices), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
   ];
@@ -156,7 +163,8 @@ async function drawYou(el) {
   const name = r.data?.name || "";
   put(el, h("div", { class: "rows" },
     row("Name", name ? h("span", null, name) : h("span", { class: "muted" }, "Not chosen yet"), name ? null : toOnboard("you")),
-    row("Address", name ? mono(`${name}.vyre.run`) : h("span", { class: "muted" }, "None until you pick a name"),
+    // The address it is served at: a ts.net name when there is no vyre.run name (ADR 0008).
+    row("Address", r.data?.address ? mono(String(r.data.address).replace(/^https:\/\//, "")) : name ? mono(`${name}.vyre.run`) : h("span", { class: "muted" }, "None until you pick a name"),
       r.data?.steps?.name === "done" || !name ? null : toOnboard("name")),
     here));
 }
@@ -187,7 +195,7 @@ async function drawAssistant(el, ctx) {
       if (ins.value !== (a.instructions || "")) input.instructions = ins.value;
       if (Object.keys(input).length === 1) { show(); return; }
       /** @type {HTMLButtonElement} */ (save).disabled = true;
-      const u = await attempt("agents.update", input);
+      const u = await attempt("agents.update", input, { presence: true });
       if (u.error) { put(st, errText(u.error)); /** @type {HTMLButtonElement} */ (save).disabled = false; return; }
       Object.assign(a, u.data && u.data.name ? u.data : { name: input.name || a.name, instructions: input.instructions ?? a.instructions });
       show();
@@ -432,6 +440,49 @@ async function drawLock(el) {
     h("div", { class: "small faint" }, LOCK.what), h("div", { class: "small faint" }, LOCK.cost), foot(toggle), steps));
 }
 
+// ---- 5b. Your devices ----------------------------------------------------------------------
+
+/**
+ * What a tailnet node is, by the OS Tailscale reports. Tailscale says iOS for an iPad too, so the
+ * node's name tells them apart. handheld: a phone or tablet, the ones the offline line is for.
+ * @param {string} os @param {string} [name]
+ */
+function deviceKind(os, name = "") {
+  const o = String(os || "").toLowerCase();
+  if (o === "ios") return { kind: /ipad/i.test(name) ? "iPad" : "iPhone", handheld: true };
+  if (o === "android") return { kind: "Android phone", handheld: true };
+  const k = { macos: "Mac", windows: "Windows PC", linux: "Linux computer" }[o];
+  return { kind: k || os || "Device", handheld: false };
+}
+
+/** The owner's devices on the tailnet (onboard.status detail.devices.peers) and the paired Macs (link.peers). */
+async function drawDevices(el) {
+  const [st, macs] = await Promise.all([attempt("onboard.status"), attempt("link.peers")]);
+  if (st.error) { put(el, empty("Your devices are read by the box module.", st.error), foot(toOnboard("devices", "Open"))); return; }
+  const peers = st.data?.detail?.devices?.peers || [];
+  const paired = Array.isArray(macs.data) ? macs.data : [];
+  const same = (m, p) => (m.node && (m.node === p.dns || String(m.node).split(".")[0] === p.name)) || m.name === p.name;
+  const pairedHere = p => paired.some(m => same(m, p));
+  const order = p => (deviceKind(p.os, p.name).handheld ? 0 : 1) * 2 + (p.online ? 0 : 1);
+  const rows = [...peers].sort((a, b) => order(a) - order(b)).map(p => {
+    const { kind, handheld } = deviceKind(p.os, p.name);
+    return row(kind,
+      h("span", { class: "set-inline" }, mono(p.name), stateLbl(p.online ? "Online" : "Offline", p.online ? "" : "faint")),
+      pairedHere(p) ? h("div", { class: "small muted" }, "Paired with this box") : null,
+      handheld && !p.online ? h("div", { class: "set-off small" }, icon("phone", 14),
+        h("span", null, `Your ${kind} is offline in Tailscale. Open the Tailscale app and turn it on.`)) : null);
+  });
+  // A paired Mac Tailscale did not list (Tailscale not running here, say) still shows.
+  for (const m of paired) {
+    if (peers.some(p => same(m, p))) continue;
+    rows.push(row("Mac", h("span", { class: "set-inline" }, mono(m.name || m.node || "A Mac"), stateLbl("Paired", "faint"))));
+  }
+  put(el,
+    rows.length ? h("div", { class: "rows" }, rows)
+      : note("No other devices on your tailnet yet. The setup's last step adds your phone and pairs your Mac."),
+    foot(toOnboard("devices", rows.length ? "Add a device" : "Open")));
+}
+
 // ---- 6. History and memory -----------------------------------------------------------------
 
 async function drawHistory(el, ctx) {
@@ -607,84 +658,58 @@ function lessonRow(l, reload) {
 }
 
 // ---- notifications ---------------------------------------------------------------------------
-
-/** base64url (as push.key gives it) to the raw bytes pushManager.subscribe wants. */
-const b64 = s => {
-  const pad = "=".repeat((4 - (s.length % 4)) % 4);
-  const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
-  return Uint8Array.from(raw, c => c.charCodeAt(0));
-};
-const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
-const isStandalone = () => !!(window.matchMedia?.("(display-mode: standalone)").matches || /** @type {any} */ (window.navigator).standalone);
-/** push.devices never gives back an endpoint to match against, so this device's id is kept here,
- * set once from push.subscribe's own answer. */
-const DEVICE_KEY = "vyre.push.device";
-const myDevice = () => { try { return localStorage.getItem(DEVICE_KEY); } catch { return null; } };
-const setMyDevice = id => { try { id ? localStorage.setItem(DEVICE_KEY, id) : localStorage.removeItem(DEVICE_KEY); } catch {} };
+// Subscribing, unsubscribing and "is this device on" live in js/phone-setup.js, shared with the
+// phone's setup card, so there is one implementation.
 
 async function drawNotifications(el, ctx) {
-  // iOS only delivers Web Push to an installed (Home Screen) app; asking for permission from an
-  // ordinary Safari tab silently cannot work, so say so instead of showing a button that fails.
-  if (isIOS() && !isStandalone()) {
-    put(el, note('iOS only delivers notifications to an installed app. Add Vyre to your Home Screen first — the Share button, then "Add to Home Screen" — then open it from there and come back here.'));
-    return;
-  }
-  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
-    put(el, note("This browser does not support push notifications."));
-    return;
-  }
   const deviceBox = h("div");
   const settingsBox = h("div");
   const st = status();
-  put(el, deviceBox, settingsBox, st);
 
   const draw = async () => {
-    const [devicesR, settingsR] = await Promise.all([attempt("push.devices"), attempt("push.settings")]);
+    const p = await pushState();
     if (!ctx.alive()) return;
-    if (devicesR.error) { put(deviceBox, empty("Push is kept by its own module.", devicesR.error)); return; }
-    const reg = await navigator.serviceWorker.ready.catch(() => null);
-    const sub = reg ? await reg.pushManager.getSubscription().catch(() => null) : null;
-    const devices = devicesR.data || [];
+    // iOS only delivers Web Push to the Home Screen app; asking from a Safari tab cannot work, so
+    // say why instead of showing a switch that does nothing.
+    if (!p.ok && p.why === "install") {
+      put(el, note("iOS only delivers notifications to the Home Screen app (iOS 16.4 or later). Add Vyre to your Home Screen: tap Share, then Add to Home Screen. Open it from there and turn notifications on here."));
+      return;
+    }
+    if (!p.ok) { put(el, note("This browser does not support push notifications.")); return; }
+    if (!el.contains(deviceBox)) put(el, deviceBox, settingsBox, st);
+    if (p.error) { put(deviceBox, empty("Push is kept by its own module.", p.error)); put(settingsBox); return; }
+    const sub = p.sub;
+    const mine = p.device;
 
-    const subscribe = async () => {
-      put(st, "Asking for permission…");
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") { put(st, "Notifications were not allowed."); return; }
-      const key = await attempt("push.key");
-      if (key.error) { put(st, errText(key.error)); return; }
-      put(st, "Turning on…");
-      let newSub;
-      try { newSub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key.data.public_key) }); }
-      catch (e) { put(st, String(/** @type {any} */ (e)?.message || e)); return; }
-      const label = isIOS() ? "iPhone" : /Android/.test(navigator.userAgent) ? "Android" : "This browser";
-      const r = await attempt("push.subscribe", { subscription: newSub.toJSON(), label });
-      if (r.error) { put(st, errText(r.error)); newSub.unsubscribe().catch(() => {}); return; }
-      setMyDevice(r.data?.device || null);
-      put(st, "");
-      draw();
+    // Called straight from the click: subscribePush asks for permission before it awaits
+    // anything, which iOS needs.
+    const subscribe = () => {
+      put(st, "Asking for permission.");
+      subscribePush(deviceName()).then(() => { put(st, ""); draw(); }, e => put(st, errText(e)));
     };
     // "This device" unsubscribes by the id push.subscribe gave; if that was lost (another tab,
     // cleared storage) but the browser still holds a live subscription, the endpoint still
-    // identifies it server-side. A listed device unsubscribes by its id, browser-side or not.
+    // identifies it on the box. A listed device unsubscribes by its id.
     const unsubscribe = async (device, endpoint) => {
-      put(st, "Turning off…");
-      const r = await attempt("push.unsubscribe", device ? { device } : { endpoint });
-      if (r.error) { put(st, errText(r.error)); return; }
-      if (device && device === myDevice()) setMyDevice(null);
-      if (sub && (device === myDevice() || endpoint === sub.endpoint)) await sub.unsubscribe().catch(() => {});
+      put(st, "Turning off.");
+      try { await unsubscribePush({ device, endpoint, sub }); } catch (e) { put(st, errText(e)); return; }
       put(st, "");
       draw();
     };
 
-    const mine = myDevice();
     put(deviceBox, h("div", { class: "rows" },
       sub
         ? row("This device", stateLbl("On"), h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => unsubscribe(mine, sub.endpoint) }, "Turn off"))
-        : row("This device", h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: subscribe }, "Turn on notifications")),
-      ...devices.filter(d => d.device !== mine).map(d => row(d.label || "A device",
+        : p.permission === "denied"
+          ? row("This device", stateLbl("Blocked", "faint"), h("div", { class: "small muted" }, deniedHelp()))
+          : row("This device", h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: subscribe }, "Turn on notifications"),
+            h("div", { class: "small faint" }, "Only that something needs you, never what: asks and held drafts.")),
+      ...p.devices.filter(d => d.device !== mine).map(d => row(d.label || "A device",
         h("span", { class: "small faint" }, d.fails ? "failing" : d.last_ok ? `last delivered ${since(d.last_ok)} ago` : "not tried yet"),
         h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => unsubscribe(d.device) }, "Remove")))));
 
+    const settingsR = await attempt("push.settings");
+    if (!ctx.alive()) return;
     if (settingsR.error) { put(settingsBox); return; }
     const s = settingsR.data || {};
     const quietOn = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: !!s.quiet }));
@@ -704,65 +729,55 @@ async function drawNotifications(el, ctx) {
         return row(label, box);
       })),
       sub ? foot(h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
-        put(st, "Sending…"); const t = await attempt("push.test");
+        put(st, "Sending."); const t = await attempt("push.test");
         put(st, t.error ? errText(t.error) : t.data?.sent ? "Sent." : "Not sent.");
       } }, "Send a test")) : null);
   };
-  draw();
+  await draw();
 }
 
 // ---- security (passkeys, ADR 0004) -------------------------------------------------------------
 
-/** WebAuthn's own base64url, for the enrollment call (api.js's is not exported; this one is
- * small enough to keep local rather than widen api.js's surface for one call site). */
-const b64url = buf => btoa(String.fromCharCode(.../** @type {any} */ (new Uint8Array(buf)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
 /**
  * Add a passkey: proves a person is here for a Gate approval or a Glass take-over (ADR 0004).
  * The first one needs a one-time code from `vyre presence code`, typed on the box, since there
- * is no passkey yet to prove with.
+ * is no passkey yet to prove with. The enrollment itself is js/phone-setup.js's enrollPasskey,
+ * shared with the phone's setup card.
  */
 function drawSecurity(el, ctx) {
   if (!canProve()) { put(el, note("This browser cannot create or use a passkey. Open the Deck in Safari or Chrome over your tailnet.")); return; }
-  const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-code", autocomplete: "off", spellcheck: "false",
-    placeholder: "from vyre presence code, on the box" }));
-  const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-name", autocomplete: "off", placeholder: "e.g. My MacBook" }));
+  const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-code", autocomplete: "one-time-code", spellcheck: "false",
+    autocapitalize: "off", placeholder: "from vyre presence code, on the box" }));
+  const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-name", autocomplete: "off", placeholder: deviceName() }));
   const st = status();
+  const keysBox = h("div");
   const btn = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: enroll }, "Add a passkey"));
-  async function enroll() {
-    const code = codeIn.value.trim();
-    if (!code) { put(st, "Paste the code first."); return; }
+  // Called straight from the click: Safari makes a passkey only inside a user gesture.
+  function enroll() {
+    if (!codeIn.value.trim()) { put(st, "Paste the code first."); return; }
     btn.disabled = true;
-    put(st, "Waiting for your passkey…");
-    /** @type {any} */ let cred;
-    try {
-      cred = await navigator.credentials.create({ publicKey: {
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rp: { name: "Vyre", id: location.hostname },
-        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: nameIn.value.trim() || "you", displayName: nameIn.value.trim() || "you" },
-        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-        authenticatorSelection: { userVerification: "required" }, timeout: 60_000,
-      } });
-    } catch (e) { btn.disabled = false; put(st, `The passkey was not created: ${/** @type {any} */ (e)?.message || e}`); return; }
-    if (!cred) { btn.disabled = false; put(st, "The passkey was cancelled."); return; }
-    const r = cred.response;
-    try {
-      await callWithCode("presence.enroll", {
-        kind: "passkey", name: nameIn.value.trim() || "This device",
-        public_key: b64url(r.getPublicKey()), alg: r.getPublicKeyAlgorithm(),
-        rp_id: location.hostname, credential_id: b64url(cred.rawId),
-      }, code);
-    } catch (e) { btn.disabled = false; put(st, errText(e)); return; }
-    codeIn.value = "";
-    btn.disabled = false;
-    put(st, "Passkey added.");
+    put(st, "Waiting for your passkey.");
+    enrollPasskey({ name: nameIn.value, code: codeIn.value }).then(() => {
+      codeIn.value = "";
+      btn.disabled = false;
+      put(st, "Passkey added.");
+      drawKeys();
+    }, e => { btn.disabled = false; put(st, errText(e)); });
   }
+  const drawKeys = async () => {
+    const k = await passkeyState();
+    if (!ctx.alive()) return;
+    put(keysBox, k.keys.length ? h("div", { class: "rows" }, row("Passkeys", h("div", { class: "set-list" }, k.keys.map(x =>
+      h("span", null, x.name || "A passkey", h("span", { class: "small faint" }, x.last_used ? `  used ${since(x.last_used)} ago` : "  not used yet")))))) : null);
+  };
   put(el,
-    note("A passkey (Touch ID, Face ID, a security key) proves you're the one approving a Gate item or taking over a session in Glass — never typed, never phished."),
+    note("A passkey (Touch ID, Face ID, a security key) proves you are the one approving a Gate item or taking over a session in Glass. It is never typed, so it cannot be phished."),
+    keysBox,
     h("div", { class: "rows" },
       row("Code", codeIn),
       row("Name this device", nameIn)),
     foot(btn), st);
+  drawKeys();
 }
 
 // ---- 8. Modules ----------------------------------------------------------------------------

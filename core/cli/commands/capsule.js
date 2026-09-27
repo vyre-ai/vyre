@@ -7,7 +7,8 @@
 //                           VYRE_CAPSULE=electron) runs the Electron one until it is retired.
 //   vyre capsule --dev      run it from source in this terminal, with its log here; ctrl-C quits
 //   vyre capsule build      build the Swift helpers; --app also packages Vyre.app
-//   vyre capsule install    download the packaged app into ~/Applications (capsule-install.js)
+//   vyre capsule install    build the native Capsule on this Mac now, without opening it. There
+//                           is no download any more: the app is built here, from this package.
 //
 // The trap this command exists to close: a packaged Electron app runs app.asar, so an edit to
 // the source does nothing until the app is packaged again, and nothing says so. The prototype
@@ -27,6 +28,7 @@ import { REPO } from "../../daemon/index.js";
 import { ensureUp } from "../daemonctl.js";
 import { out, dim, signal, beacon } from "../style.js";
 import * as native from "./capsule-native.js";
+import { usage } from "../kit.js";
 
 export const CAPSULE = path.join(REPO, "local", "capsule");
 export const NATIVE = path.join(CAPSULE, "native");
@@ -80,6 +82,11 @@ function env({ own = false } = {}) {
   return e;
 }
 
+/** Whether `vyre capsule` runs the native Capsule here: a Mac, its source, and no Electron override. */
+export function nativeAvailable({ platform = process.platform, env = process.env, dir = NATIVE } = {}) {
+  return platform === "darwin" && env.VYRE_CAPSULE !== "electron" && fs.existsSync(path.join(dir, "build.sh"));
+}
+
 function helpersBuilt() { return fs.existsSync(path.join(CAPSULE, "bin", "hotkey")); }
 
 async function open(flags) {
@@ -122,6 +129,22 @@ async function open(flags) {
   const child = spawn(bin, argv, { detached: true, stdio: ["ignore", fd, fd], env: env({ own }) });
   child.unref();
   out(`  Capsule ${signal("open")} ${dim("· press Control twice anywhere · log " + log)}`);
+  return 0;
+}
+
+/**
+ * `vyre capsule install`: the local build, and nothing downloaded. It was a zip from vyre.run;
+ * now the app is built here with swiftc (capsule-native.js), so install means build now.
+ */
+async function installNative() {
+  if (process.platform !== "darwin") { out("  The Capsule runs on macOS. On this machine, use vyre or the Deck."); return 1; }
+  out(dim("  vyre capsule install builds the Capsule on this Mac; nothing is downloaded."));
+  const home = config.paths().root;
+  const said = await native.offerIdentity({ home, ask: askYesNo });
+  if (said) out(dim("  " + said));
+  const b = native.ensureBuilt({ dir: NATIVE, home, say: s => out(dim("  " + s)) });
+  if (!b.ok) { out(beacon("  " + b.message)); return 1; }
+  out(`  Capsule ${signal(b.built ? "built" : "up to date")} ${dim("· " + b.app + " · vyre capsule opens it")}`);
   return 0;
 }
 
@@ -241,7 +264,9 @@ export default {
   async run(args) {
     const flags = { dev: args.includes("--dev"), electron: args.includes("--electron"), hidden: args.includes("--hidden"), app: args.includes("--app") };
     if (args[0] === "build") return build(flags);
-    if (args[0] === "install") return (await import("./capsule-install.js")).install(args.slice(1));
+    if (args[0] === "install") return installNative();
+    // A mistyped word ("biuld") used to open the Capsule; now it says so.
+    if (args[0] && !args[0].startsWith("--")) return usage(`vyre capsule ${args[0]}: not a subcommand`, "vyre capsule, vyre capsule build [--app] or vyre capsule install");
     return open(flags);
   },
 };

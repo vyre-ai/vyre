@@ -335,6 +335,7 @@ public enum VyState {
         guard let thread, thread == d.thread else { return d }
         let last = hasId ? e.id : d.last
         let msgs = d.messages
+        if e.type == "thread.text" && VJ.truthy(p["notice"]) { d.last = last; d.notice = s(p["text"]); return d }
 
         switch e.type {
         case "thread.sent":
@@ -557,11 +558,13 @@ public struct Dm: Sendable, Equatable {
     public var last = 0
     public var limit = 30
     public var loading = false
+    /// vyred's own words in this thread (a usage limit): a status line, never a message (rule 3).
+    public var notice: String?
     public init(agent: String, thread: String? = nil, limit: Int = 30) { self.agent = agent; self.thread = thread; self.limit = limit }
 
     /// Whether a fold changed anything the UI draws (not only the event cursor).
     func visiblyDiffers(from b: Dm) -> Bool {
-        messages != b.messages || asks != b.asks || busy != b.busy || holder != b.holder || thread != b.thread || loading != b.loading
+        messages != b.messages || asks != b.asks || busy != b.busy || holder != b.holder || thread != b.thread || loading != b.loading || notice != b.notice
     }
 }
 

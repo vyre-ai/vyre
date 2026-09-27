@@ -184,3 +184,21 @@ test("state: a lesson scoped to a project or an agent reads in words", () => {
   const a = fromLesson({ id: 8, rule: "Ask before deploying.", scope: { agent: "kit" }, source: { kind: "edit" }, created: 2 });
   assert.ok(a.where && !/object/.test(a.where), a.where);
 });
+
+test("state: a Vyre notice is a status line, never part of the answer or the DM's messages", () => {
+  const limit = { type: "thread.text", thread: "t1", payload: { message: "vyre", text: "Claude's seven-day usage limit is at 85%.", done: true, notice: true } };
+  let r = reply("t1");
+  r = applyReply(r, { type: "thread.text", thread: "t1", payload: { message: "m1", delta: "Paris." } });
+  r = applyReply(r, limit);
+  assert.equal(replyText(r), "Paris.", "the answer is the model's words only");
+  assert.equal(r.notice, "Claude's seven-day usage limit is at 85%.");
+  assert.deepEqual(r.order, ["m1"]);
+
+  let d = /** @type {any} */ (dm("juno", "t1"));
+  d = applyDm(d, { id: 1, type: "thread.sent", thread: "t1", payload: { text: "hi", surface: "deck" } });
+  d = applyDm(d, { id: 2, ...limit });
+  d = applyDm(d, { id: 3, type: "thread.text", thread: "t1", payload: { message: "m1", text: "Hello.", done: true } });
+  const v = dmView(d);
+  assert.deepEqual(v.messages.map(m => [m.role, m.text]), [["user", "hi"], ["agent", "Hello."]]);
+  assert.equal(v.notice, "Claude's seven-day usage limit is at 85%.");
+});
