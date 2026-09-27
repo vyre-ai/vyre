@@ -75,32 +75,28 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
     work/* only; vault/* and wip/* stay local. The pre-push guard is installed in the repo's hooks.
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
-## Doing (2026-09-27, after logout 3)
-- Workflows now: node, capsule-mac, ios, android, plus new box-image, sessions-sdk, app (all on
-  work/ci, not on main until the integrator merges).
-- box-image.yml builds box/Dockerfile from the `npm pack` tarball (what a deploy builds; a
-  checkout build fails on .dockerignore dropping scripts/postinstall.mjs, fix given to
-  resilience), then: health over the socket, tini PID 1, SIGKILL vyred -> loop.sh restarts it,
-  `docker stop` exits 0 fast. Proven green on resilience c8f5654 (run 36315578355: image 609 MB,
-  pid 9 -> 85, stopped in 0 s exit 0). Throwaway branches work/ci-box, work/ci-box-main (main
-  15e82dd7 + workflow) and work/ci-diag: delete from origin once box-image is on main.
-- Node 22 hang: every branch's node (22) job hangs to its 30-min timeout after hands-chrome
-  tests fail at random (runner image sets CHROME_BIN, so Chrome tests run). Proxy-pipe fix
-  aac42f8 was not enough. work/ci-diag runs the chrome file alone and the suite with
-  --test-timeout to name the stuck test.
-- onboard-page leaked a temp home (tmp-guard red on Node 24): fixed 1e614150, unproven in CI.
-- capsule-mac signing step: sudo -n -d trust, /dev/null, 5-min timeout (d8ecff6a); capsule-pro
-  may cherry-pick.
-- sessions-sdk.yml (gated on the SDK in package.json) and --omit=optional in node/capsule-mac;
-  asked sessions for dependency kind, test paths and smoke command.
-- app.yml for apps/app agreed with mobile. The Playwright perf job (4x throttle, world.js,
-  >20% regression vs last green artifact) waits for mobile's ping.
+## Doing (2026-09-27 afternoon)
+- work/ci holds: box-image.yml, sessions-sdk.yml, app.yml, the capsule-mac signing fix, the Chrome
+  test cleanup (Node 22 hang FIXED: 2424 pass, 4 min), tmp-guard listing, node skipping work/ci-*.
+  Waiting for the integrator to merge work/ci.
+- box-image green on main 15e82dd7, 9efbddc0; c8fb9aae running (work/ci-box-c8fb9aa).
+- work/ci-pid1 0f804c11: compose PID-1 = tini check, merges in batch 3 WITH resilience d0129781
+  (fails on a compose with `init: true`). Proof on work/ci-pid1-proof (d0129781 + workflow).
+- APK: OWNER-KEY model (lead's final call). CI builds UNSIGNED vyre-<v>-<sha7>.apk + android.json;
+  a throwaway-signed copy and mobile's JS signer output (apps/app/scripts/sign-apk.mjs, CLI
+  guessed, asked mobile) are checked with apksigner verify. No Vyre key, nothing in the vault.
+  Proof on work/ci-app (mobile + app.yml).
+- sessions-sdk proof on work/ci-sessions (sessions + workflow).
+- perf RSS max: not a merge. vyred holds ~160 MB for ~23 s after indexing, then 92 MB flat.
+  Sent to lead (harness choice) and memory-iq (release buffers after the pass).
+- Flaky tmp-guard leak from test/onboard.test.js "reserve goes to ts.net": wait for tmp-guard to
+  name the writer.
 
 ## Next
-- Report box-image on main (work/ci-box-main) to lead + integrator.
-- Read work/ci-diag, fix the Node 22 hang, then push work/ci and confirm node green on both.
+- Report c8fb9aae box-image; pid1 proof; app and sessions proofs to their teams.
+- Delete throwaway branches once their workflows are on main.
 - Recheck: `gh run list -R vyre-ai/vyre --branch <b> --workflow <wf>`. In zsh, `set -- $var`
-  does not split: wrap loops in `bash -c`.
+  does not split: wrap loops in `bash -c`. actionlint lives in the scratchpad, fetch v1.7.7 again.
 
 ## Needs from others
 - None.

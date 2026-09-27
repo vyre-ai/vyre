@@ -55,6 +55,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   and the file never exited (the node 22 job hung to its 30-minute timeout on every branch). On
   Node 24 a late write recreated the temp home and tmp-guard failed the job.
 - test/tmp-guard.mjs lists up to 20 paths inside each leaked dir, so a late writer names itself.
+- node.yml skips pushes to `work/ci-*`, ci's throwaway branches that prove one other workflow.
 
 #### A stopped vyred leaves a removed home removed
 
