@@ -65,6 +65,8 @@ test("usageLine: tokens, cost and context from whichever fields are there", () =
   assert.equal(usageLine({ input_tokens: 1200, output_tokens: 34_000, cost_usd: 0.0123, context: { used: 50_000, max: 200_000 } }), "1200 in, 34k out · $0.0123 · context 25%");
   assert.equal(usageLine({ tokens: { input: 10, output: 5 } }), "10 in, 5 out");
   assert.equal(usageLine({ tokens: 900, cost: 0.5, context: 0.4 }), "900 tokens · $0.5000 · context 40%");
+  // The sessions shape: this turn's cost and the session's so far.
+  assert.equal(usageLine({ cost_usd: 0.01, total_cost_usd: 0.25, tokens: { input: 100, output: 20, cache_read: 5, cache_write: 0 } }), "100 in, 20 out · $0.0100 ($0.2500 so far)");
   assert.equal(usageLine({}), null);
 });
 
@@ -87,10 +89,12 @@ test("formatEvent: the new session events render, unknown ones are ignored", () 
   assert.equal(f({ type: "thread.turn", payload: { turn: "t1:3", text: "hi" } }), "  turn 3\n");
   assert.equal(f({ type: "thread.steered", payload: { text: "also the prices" } }), "  > joined the running turn: also the prices\n");
   assert.equal(f({ type: "thread.queued", payload: { queued: 4, text: "the hours too" } }), "  queued 4: the hours too\n");
+  assert.equal(f({ type: "thread.queued", payload: { queued: 4, text: "the hours, and Sundays", edited: true } }), "  changed 4: the hours, and Sundays\n");
   assert.equal(f({ type: "thread.unqueued", payload: { queued: 4 } }), "  took back 4\n");
   assert.equal(f({ type: "thread.usage", payload: { input_tokens: 10, output_tokens: 20 } }), "  10 in, 20 out\n");
   assert.equal(f({ type: "thread.state", payload: { state: "running" } }), null);
   assert.equal(f({ type: "thread.state", payload: { state: "waiting" } }), "  waiting\n");
+  assert.equal(f({ type: "thread.state", payload: { state: "failed", error: "the model failed" } }), "  failed: the model failed\n");
   assert.equal(f({ type: "mode.changed", payload: { mode: "plan" } }), "  mode: plan\n");
   assert.equal(f({ type: "thread.finished", payload: { canceled: true, reason: "interrupt" } }), "  interrupted\n");
   assert.match(f({ type: "thread.finished", payload: { error: { code: "x", message: "the model failed" } } }), /failed · the model failed/);

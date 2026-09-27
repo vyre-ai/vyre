@@ -13,6 +13,7 @@
 
 import { follow as followStream } from "../../resilience/stream.js";
 import { open } from "../../resilience/node.js";
+import crypto from "node:crypto";
 import path from "node:path";
 import readline from "node:readline";
 import { call } from "../../daemon/client.js";
@@ -53,6 +54,18 @@ async function tool(name, input) {
   const r = await call(name, input);
   if (r.error) { toolError(r.error, name); return null; }
   return r.data;
+}
+/**
+ * What waits for the turn to end: threads.queue, or, on a vyred without it, rebuilt from the
+ * thread's last 1000 events. Null after printing the error.
+ * @param {string} thread @returns {Promise<{ rows: any[], fromEvents: boolean } | null>}
+ */
+async function queueOf(thread) {
+  const q = await call("threads.queue", { thread });
+  if (!q.error) return { rows: (q.data && q.data.queued) || [], fromEvents: false };
+  if (q.error.code !== "no_such_tool") { toolError(q.error, "threads.queue"); return null; }
+  const g = await tool("threads.get", { thread, limit: 1000 });
+  return g ? { rows: pendingQueue(g.events), fromEvents: true } : null;
 }
 const cut = (s, n) => { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 const tail = (s, n) => { const t = String(s || ""); return t.length > n ? "…" + t.slice(t.length - n + 1) : t; };
@@ -140,7 +153,7 @@ export function formatEvent(e, streamed = new Set()) {
     case "thread.steered":
       return dim(`  > joined the running turn: ${cut(p.text, 160)}`) + "\n";
     case "thread.queued":
-      return dim(`  queued${p.queued != null ? " " + p.queued : ""}: ${cut(p.text, 160)}`) + "\n";
+      return dim(`  ${p.edited ? "changed" : "queued"}${p.queued != null ? " " + p.queued : ""}: ${cut(p.text, 160)}`) + "\n";
     case "thread.unqueued":
       return dim(`  took back${p.queued != null ? " " + p.queued : ""}${p.text ? ": " + cut(p.text, 120) : ""}`) + "\n";
     case "thread.usage": {
@@ -149,6 +162,7 @@ export function formatEvent(e, streamed = new Set()) {
     }
     case "thread.state":
       // running and idle are what sent and done already say; the rest is news.
+      if (p.state === "failed") return beacon(`  failed${p.error ? ": " + cut(typeof p.error === "string" ? p.error : p.error.message, 160) : ""}`) + "\n";
       return p.state && !["running", "idle", "working"].includes(p.state) ? dim(`  ${p.state}`) + "\n" : null;
     case "thread.limit":
       return p.note || p.text ? beacon(`  ${cut(p.note || p.text, 200)}`) + "\n" : null;
@@ -194,8 +208,9 @@ export function usageLine(p) {
   const bits = [];
   if (inp !== null || outp !== null) bits.push(`${inp !== null ? k(inp) : "?"} in, ${outp !== null ? k(outp) : "?"} out`);
   else if (n(p.tokens) !== null) bits.push(`${k(p.tokens)} tokens`);
-  const usd = n(p.cost_usd ?? p.cost);
-  if (usd !== null) bits.push(`$${usd.toFixed(4)}`);
+  const usd = n(p.cost_usd ?? p.cost), total = n(p.total_cost_usd);
+  if (usd !== null) bits.push(`$${usd.toFixed(4)}${total !== null && total !== usd ? ` ($${total.toFixed(4)} so far)` : ""}`);
+  else if (total !== null) bits.push(`$${total.toFixed(4)} so far`);
   const c = p.context;
   if (c && typeof c === "object" && n(c.used) !== null && n(c.max)) bits.push(`context ${Math.round(c.used / c.max * 100)}%`);
   else if (n(c) !== null) bits.push(`context ${c <= 1 ? Math.round(c * 100) : Math.round(c)}%`);
@@ -205,7 +220,7 @@ export function usageLine(p) {
 /**
  * What is queued for a thread and not yet handed over, from its events: thread.queued adds one,
  * thread.sent with that queued id (handed over), thread.unqueued (taken back) or a steer of it
- * remove it, and a later thread.queued or thread.edited with the same id changes its text.
+ * remove it, and a later thread.queued with the same id (edited: true) changes its text.
  * @param {{ type: string, id?: number, at?: number, payload?: any }[]} events
  * @returns {{ queued: number|string, text: string, surface: string|null, at: number|null }[]}
  */
@@ -488,9 +503,16 @@ const run = {
     const f = await resolveThread(ref);
     if ("error" in f) return missed(f);
     // No flag: vyred decides (a running turn of a session it owns is steered, ADR 0030).
-    const r = await tool("threads.send", { thread: f.id, text: words.join(" "), surface: SURFACE, ...(how ? { mode: how } : {}) });
-    if (!r) return 1;
-    if (json()) { emit(r); return r.sent || r.queued ? 0 : 1; }
+    // One key for this send: a retry after a dropped answer returns {already:true} and never
+    // starts a second turn (ADR 0029 R2), so a lost reply is retried once.
+    const input = { thread: f.id, text: words.join(" "), surface: SURFACE, ...(how ? { mode: how } : {}) };
+    const opts = { headers: { "idempotency-key": crypto.randomUUID() } };
+    let sent = await call("threads.send", input, opts);
+    if (sent.error && ["unreachable", "timeout"].includes(sent.error.code)) sent = await call("threads.send", input, opts);
+    if (sent.error) { toolError(sent.error, "threads.send"); return 1; }
+    const r = sent.data;
+    if (json()) { emit(r); return r.sent || r.queued || r.already ? 0 : 1; }
+    if (r.already) { out(dim("  already sent (a retry of the same message)")); return 0; }
     const qid = queuedId(r);
     if (r.queued) {
       // Held until the turn ends (a terminal session always queues): it can still be changed.
@@ -591,7 +613,7 @@ const run = {
     const r = await tool("threads.rewind", { thread: f.id, uuid });
     if (!r) return 1;
     if (json()) { emit(r); return 0; }
-    out(`  ${signal("rewound")} ${dim(`${id8(f.id)} to ${id8(uuid)}${r.note ? " · " + r.note : ""}`)}`);
+    out(`  ${signal("rewound")} ${dim(`${id8(f.id)} to ${id8(uuid)}${r.text ? " · " + cut(r.text, 80) : ""}${r.note ? " · " + r.note : ""}`)}`);
     return 0;
   },
 
@@ -635,13 +657,12 @@ const run = {
   async queue(args) {
     const f = await resolveThread(args[0]);
     if ("error" in f) return missed(f);
-    const g = await tool("threads.get", { thread: f.id, limit: 1000 });
-    if (!g) return 1;
-    const list = pendingQueue(g.events);
-    if (json()) { emit(list); return 0; }
-    if (!list.length) { out(dim("  nothing is queued")); return 0; }
-    for (const q of list) out(`  ${beacon(String(q.queued))}  ${cut(q.text, 90)}${q.surface ? dim("  " + q.surface) : ""}`);
-    out(dim(`  from the thread's last 1000 events · take-back, edit or send-now <thread> <queued>`));
+    const list = await queueOf(f.id);
+    if (!list) return 1;
+    if (json()) { emit(list.rows); return 0; }
+    if (!list.rows.length) { out(dim("  nothing is queued")); return 0; }
+    for (const q of list.rows) out(`  ${beacon(String(q.queued))}  ${cut(q.text, 90)}${q.surface ? dim("  " + q.surface) : ""}`);
+    out(dim(`  ${list.fromEvents ? "from the thread's last 1000 events · " : ""}take-back, edit or send-now <thread> <queued>`));
     return 0;
   },
 
@@ -656,9 +677,9 @@ const run = {
     let text = words.join(" ");
     if (!text) {
       if (json()) return usage("vyre threads edit needs the new text with --json");
-      const g = await tool("threads.get", { thread: f.id, limit: 1000 });
-      if (!g) return 1;
-      const was = pendingQueue(g.events).find(q => String(q.queued) === qid);
+      const list = await queueOf(f.id);
+      if (!list) return 1;
+      const was = list.rows.find(q => String(q.queued) === qid);
       let edited;
       try { edited = editText(was ? was.text : "", "message.md"); } catch (e) { return kitFail(/** @type {Error} */ (e).message); }
       if (edited === null) return usage("no editor here (set $EDITOR), or give the new text", "vyre help threads");
