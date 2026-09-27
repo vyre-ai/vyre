@@ -162,7 +162,12 @@ public struct SendAttachment: Sendable, Equatable {
     public var icon: IconSpec?
     /// Appended to the words on send, already redacted and trimmed by the extension.
     public var body: String
-    public init(id: String, chip: String, icon: IconSpec? = nil, body: String) { self.id = id; self.chip = chip; self.icon = icon; self.body = body }
+    /// The words are about this attachment (they point at the screen, or text is selected): a
+    /// question goes to a model that reads it, never to memory.ask, which cannot.
+    public var aboutIt: Bool
+    public init(id: String, chip: String, icon: IconSpec? = nil, body: String, aboutIt: Bool = false) {
+        self.id = id; self.chip = chip; self.icon = icon; self.body = body; self.aboutIt = aboutIt
+    }
 }
 
 /// Where the words are headed: an agent, a session, a project's new thread, or a quick Ask.

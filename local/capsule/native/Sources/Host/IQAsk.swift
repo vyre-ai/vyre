@@ -59,6 +59,11 @@ extension CapsuleModel {
     /// takes the old path.
     func askIQ(_ words: String) async -> ActionOutcome? {
         guard vyred.has("memory.ask") else { return nil }
+        // The screen chip may still be settling for these words (sight waits 150 ms): let it.
+        if let t = attachTask { _ = await vyWithin(1) { await t.value } }
+        // Words about the screen, or a selection: memory cannot see it. The fast model with the
+        // screen context answers instead (the lead, 2026-09-27: the Capsule always knows the screen).
+        if attachments.contains(where: \.aboutIt) { return nil }
         asked = words
         askedMemory = nil
         pending = true

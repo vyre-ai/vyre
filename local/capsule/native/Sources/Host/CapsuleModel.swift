@@ -146,7 +146,7 @@ public final class CapsuleModel: ObservableObject {
     @Published var attachments: [SendAttachment] = []
     private var removedAttachments = Set<String>()
     var attachers: [SendAttaching] = []
-    private var attachTask: Task<Void, Never>?
+    var attachTask: Task<Void, Never>?
     /// The memory line's sources, shown (a click or ⌘→) or folded.
     @Published var memoryExpanded = false
     /// A human-only call waiting for the person to prove they are here (Presence.swift).

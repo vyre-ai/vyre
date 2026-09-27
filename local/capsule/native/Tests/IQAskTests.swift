@@ -17,7 +17,56 @@ private func until(_ cond: @escaping @MainActor () -> Bool) async -> Bool {
     return false
 }
 
+/// Stands in for sight's screen chip: about the screen when the words point at it (ScreenAttach's
+/// own check) or when text is "selected".
+@MainActor private final class FakeScreen: SendAttaching {
+    var selected = false
+    func attachment(for words: String, to: SendTargetKind) async -> SendAttachment? {
+        SendAttachment(id: "sight:screen", chip: "sees: Safari · Northwind Bakery", body: "Screen: Safari, Northwind Bakery orders",
+                       aboutIt: selected || ScreenAttach.refersToScreen(words))
+    }
+}
+
 let iqAskSuite = Suite("iq ask") { t in
+    t.test("words that point at the screen, and ones that do not") {
+        for w in ["what is this error", "what am I looking at", "explain the selected text", "summarize what's on screen", "what does this mean",
+                  "translate the selection"] {
+            t.ok(ScreenAttach.refersToScreen(w), "points at the screen: \(w)")
+        }
+        for w in ["which car do I drive", "what is my wife's name", "when is the Harlow Legal renewal", "who did I meet this week"] {
+            t.ok(!ScreenAttach.refersToScreen(w), "about memory: \(w)")
+        }
+    }
+
+    t.test("a question about the screen, or with text selected, goes to the fast model with the screen; others to memory.ask") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        v.tool("memory.ask") { _ in ["answer": "You drive a blue Volvo XC40.", "confidence": 0.9, "abstained": false, "known": [Any](), "sources": [Any]()] }
+        v.tool("threads.start") { _ in ["id": "q9"] }
+        let screen = MainActor.assumeIsolated { FakeScreen() }
+        func run(_ words: String, selected: Bool = false) async -> (iq: Int, start: [String: Any]?) {
+            let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.attachers = [screen]; m.willShow(front: nil); return m }
+            await MainActor.run { screen.selected = selected }
+            _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
+            let before = (v.callsOf("memory.ask").count, v.callsOf("threads.start").count)
+            await MainActor.run { m.text = words }
+            _ = await until { !m.attachments.isEmpty }
+            _ = await MainActor.run { m.handleReturn(command: false) }
+            _ = await until { v.callsOf("memory.ask").count > before.0 || v.callsOf("threads.start").count > before.1 }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            await MainActor.run { m.didHide() }
+            let starts = v.callsOf("threads.start")
+            return (v.callsOf("memory.ask").count - before.0, starts.count > before.1 ? starts.last : nil)
+        }
+        let r: [String]? = t.wait {
+            let err = await run("what is this error")
+            let sel = await run("explain it simply", selected: true)
+            let mem = await run("which car do I drive")
+            return ["\(err.iq)", VJ.s(err.start?["model"]), "\(VJ.s(err.start?["append"]).contains("Screen: Safari"))",
+                    "\(sel.iq)", "\(sel.start != nil)", "\(mem.iq)", "\(mem.start == nil)"]
+        }
+        t.eq(r, ["0", "haiku", "true", "0", "true", "1", "true"])
+    }
+
     t.test("memory.ask's three answers, as drawn") {
         let now = vyNowMs()
         let ok = IQAnswer.from("which car do I own", ["answer": "You drive a blue Volvo XC40.", "confidence": 0.82, "abstained": false, "known": [Any](),

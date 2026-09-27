@@ -10,11 +10,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   Capsule's own prompt: memory-iq's grounded answer with a chip "confidence 0.82 · from 2
   sessions" that unfolds up to three sources; "Not sure yet." with what memory does know and
   "Ask Claude instead: ⌘⏎"; at the day's cap, memory's message exactly. No streaming yet (0.1.1).
+- A question about the screen ("what is this error", "what am I looking at", "the selected
+  text") or with text selected goes to the fast model with the screen context, not memory.ask,
+  which cannot see it. Sight marks its chip `aboutIt` (Kit `SendAttachment.aboutIt`, additive);
+  the Capsule waits up to 1 s for the chip to settle before choosing.
 - A follow-up or ⌘⏎ after an IQ answer starts a session told the conversation. The old path
   (threads.start, lean) runs only when vyred has no memory.ask (no_such_tool).
 - `Sources/Host/IQAsk.swift` (new), `Sources/Host/CapsuleModel.swift`, `Sources/Host/AutoAsk.swift`,
   `Sources/Vyred/MemoryBox.swift`, `Sources/UI/CapsuleView.swift`; `Tests/IQAskTests.swift`. The
-  frecency file test waits for the write (a CI flake). Swift 329/329.
+  frecency file test waits for the write (a CI flake). Swift 331/331.
 
 #### rc.2: no gold, no epoch ages, one placeholder
 

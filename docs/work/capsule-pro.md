@@ -273,6 +273,8 @@ If a step fails, note its number and what the screen said. Screenshots of the Ca
 ## Changed contracts
 - core/daemon GET /v1/health: `cli` [node, <repo>/bin/vyre], additive, so the Capsule runs the same
   vyred's CLI for `vyre ...` typed in the box (by argv, with --view).
+- Kit: `SendAttachment.aboutIt` (default false): the words are about the attachment, so a
+  question skips memory.ask for the fast model (sight sets it for screen words and selections).
 - Kit: `CapsuleHost.askCredential(_:saved:)` and `CredentialNeed` (default does nothing, so fakes conform).
 - Kit (Sources/Kit/Extension.swift), for extensions: `VyredLink.stream(_:onMessage:onClose:)`
   with `VyredStream` and `VyredStreamFailure` (default fails, so fakes conform);
