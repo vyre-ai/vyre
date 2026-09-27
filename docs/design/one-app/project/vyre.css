@@ -397,3 +397,55 @@ code.ic-code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; fo
 /* A terminal window for the CLI. */
 .cli { border-radius: 12px; border: 1px solid var(--rule-strong); background: var(--code-bg); overflow: hidden; display: flex; flex-direction: column; }
 .cli .term { padding: 14px 16px; background: transparent; }
+
+/* CapsuleSearch and CapsuleIQ (k1, 27 Sep): the Design A Capsule panel, shared by every Capsule board.
+   Panel 680 wide, radius 14 (sheet), opaque panel fill, 1 px rule-strong, the float shadow.
+   Input 56, group header 28, row 44, collapsed line 32, footer 32 (key hints only). Max 560. */
+.kc-desk { width: 760px; border-radius: 12px; border: 1px solid var(--rule-strong); background: var(--bg); position: relative; overflow: hidden; flex: none; }
+.kc-mb { height: 24px; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--rule); }
+.kc-win { position: absolute; border-radius: 10px; background: var(--panel); border: 1px solid var(--rule); }
+.kc-blk { position: absolute; border-radius: 10px; background: var(--hover); }
+.kc-p { position: absolute; left: 39px; top: 56px; width: 680px; max-height: 560px; border-radius: 14px; background: var(--panel); border: 1px solid var(--rule-strong);
+  box-shadow: var(--float); display: flex; flex-direction: column; overflow: hidden; z-index: 2; }
+.kc-in { height: 56px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--rule); }
+.kc-q { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; font-size: 15px; line-height: 22px; color: var(--text); white-space: nowrap; }
+.kc-ph { color: var(--label); }
+.kc-body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+.kc-g { height: 28px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--label); }
+.kc-r { min-height: 44px; flex: none; display: flex; align-items: center; gap: 12px; padding: 4px 16px; }
+.kc-r-on { background: var(--signal-wash); }
+.kc-r-on .t3, .kc-r-on .kbd { color: var(--text-2); }
+.kc-lead { width: 24px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--text-2); }
+.kc-f { height: 32px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-top: 1px solid var(--rule); font-size: 12px; line-height: 16px; color: var(--label); }
+.kc-k { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.kc-iq { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 16px; border-bottom: 1px solid var(--rule); }
+.kc-src { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 4px 0 10px; border-radius: 14px; border: 1px solid var(--rule-strong);
+  font-size: 13px; line-height: 18px; color: var(--text-2); white-space: nowrap; max-width: 100%; }
+.kc-more { height: 32px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 12px; line-height: 16px; color: var(--label); }
+.kc-bub { align-self: flex-end; max-width: 78%; background: var(--hover); border-radius: 12px; padding: 6px 12px; font-size: 13px; line-height: 18px; color: var(--text); }
+.kc-thk { display: flex; align-items: center; gap: 8px; height: 28px; font-size: 13px; line-height: 18px; color: var(--text-2); }
+.kc-thumb { position: absolute; right: 3px; width: 4px; border-radius: 2px; background: var(--rule-strong); }
+
+/* CapsuleAct (k2, 27 Sep): asks, held sends and agents in the Capsule panel.
+   Waiting row one meta line, inline answers 28, target chip 24, tool row 28, thread block. */
+.kc-nr { display: flex; align-items: flex-start; gap: 12px; padding: 10px 16px; flex: none; }
+.kc-nr .av-32 { margin-top: 2px; }
+.kc-acts { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.kc-r-on .btn .k { color: var(--text-2); }
+.kc-r-on .btn-p .k { color: var(--primary-ink); }
+.kc-tgt { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 12px; background: var(--hover);
+  font-size: 13px; line-height: 18px; font-weight: 600; color: var(--text); white-space: nowrap; flex: none; }
+.kc-th { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 16px; }
+.kc-tr { display: flex; align-items: center; gap: 8px; height: 28px; font-size: 13px; line-height: 18px; color: var(--text-2); min-width: 0; }
+.kc-tr .mono { font-size: 12px; line-height: 16px; }
+.kc-dc { display: flex; flex-direction: column; padding: 0 16px 12px 60px; flex: none; }
+.kc-pl { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 12px; line-height: 16px; color: var(--text-2); }
+
+/* CapsuleModules (k3, 27 Sep): voice and computer use in the Capsule panel.
+   Level meter (neutral bars), the "using your Mac" strip (36, in flow under the input), the menu-bar mark ring and tooltip. */
+.kc-meter { display: inline-flex; align-items: center; gap: 2px; height: 20px; flex: none; }
+.kc-meter span { width: 2px; border-radius: 1px; background: var(--text-2); }
+.kc-strip { height: 36px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: var(--hover); border-bottom: 1px solid var(--rule); font-size: 13px; line-height: 18px; color: var(--text); }
+.kc-strip .kbd { color: var(--text-2); }
+.kc-mkr { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 11px; box-shadow: inset 0 0 0 1.5px var(--focus); flex: none; }
+.kc-tip { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 6px; background: var(--panel); border: 1px solid var(--rule-strong); box-shadow: var(--float); font-size: 12px; line-height: 16px; color: var(--text); white-space: nowrap; }
