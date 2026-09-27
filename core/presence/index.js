@@ -52,17 +52,18 @@ export const HUMAN_ONLY = new Set([
  * Vyre does not nag (ADR 0024, user rule 27 Sep): answering a session's ask, opening a terminal,
  * making and changing agents, changing or discarding a held draft (gate.revise, gate.reject send
  * nothing), the owner's hands on an agent's computer (taking the keyboard pauses the agent,
- * handing it back returns what it had), the user's own lessons, and switching one of the box's
+ * handing it back returns what it had), the user's own lessons, switching one of the box's
  * VyreDrive shares between read-only and read-write (files.drive.access: the share already exists
- * and reaches no one new). None sends, pays, pairs or releases a secret. The tools' caller checks
- * keep models, agents and guests out (computers ownSurface, glass surfaceOf, drive's owner check,
- * the allowlists), the harness floor refuses a model's shell that names one of these, as it does
- * the list above, and vyred refuses a socket call to one from any process under a `claude` or a
- * thread's process (core/daemon/peer.js).
+ * and reaches no one new), and moving a box's project homes to /work/projects (projects.move).
+ * None sends, pays, pairs or releases a secret. The tools' caller checks keep models, agents and
+ * guests out (computers ownSurface, glass surfaceOf, drive's owner check, the allowlists), the
+ * harness floor refuses a model's shell that names one of these, as it does the list above, and
+ * vyred refuses a socket call to one from any process under a `claude` or a thread's process
+ * (core/daemon/peer.js).
  */
 export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach", "gate.revise", "gate.reject",
   "agents.create", "agents.update",
-  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access",
+  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access", "projects.move",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
   "learn.accept", "learn.retire", "learn.relax",
   // Signing a browser or app out (core/presence/person.js).

@@ -484,7 +484,7 @@ const MEANING = {
   "theme.colors": "`{ dark: { token: colour }, light: { role: colour } }`, keys as on the design tokens page. A value that is not a plain CSS colour is ignored. Reload the Deck to see a change.",
   name: "This box's name: its address is `<name>.vyre.run`. Set by `vyre name claim`.",
   role: "`box` for the always-on server, `local` for a Mac. Decides which modules start.",
-  projectsDir: "The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects`, so VyreDrive can share it; the first start there moves homes from `~/Vyre/projects` once, leaving links behind.",
+  projectsDir: "The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects` when the box is new (nothing in `~/Vyre/projects`) or its homes were moved with `projects.move`; otherwise `~/Vyre/projects`.",
   roots: "More folders to look in for projects.",
   me: "Who you are, so memory can tell your own people and domains from everyone else's.",
   "me.domains": "Domains that are yours.",
@@ -505,7 +505,7 @@ const MEANING = {
   "network.box": "On a Mac: the address of the box it is paired with.",
   "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset.",
   "network.ownerSeen": "When the owner was first seen on the tailnet. Written by Vyre.",
-  "network.origins": "Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `[\"https://app.vyre.run\"]` when unset; `[]` turns it off. Each call but the reachability probe needs a web session.",
+  "network.origins": "Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `[\"https://app.vyre.run\"]` when unset; `[]` turns it off. Each call but the reachability probe and the token exchange needs a person session.",
   term: "Terminals in the browser. `keep_hours`: how long a terminal nobody is looking at is kept before it ends (12). `max`: how many may be open at once (8). `shell`: the shell to run, in place of your login shell.",
 };
 

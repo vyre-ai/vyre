@@ -13,12 +13,12 @@ export const GUEST_CAP = "vyre.run/cap/guest";
 
 /**
  * The only tools a guest can ever reach, whatever the config or a grant says. View only: the list
- * of threads, and closing a Glass session. glass.open is not here: tailnet streams are the owner's
- * alone, so a Glass ticket a guest opened could never be used. glass.take, and anything that
+ * of threads. No Glass: tailnet streams are the owner's alone, so a Glass ticket a guest opened
+ * could never be used, and a guest has no session of its own to close. glass.take, and anything that
  * approves, is never here. (threads.read does not exist; threads.get, which reads one thread's recent
  * events, is left out until the owner decides a guest should see that much.)
  */
-export const GUEST_SAFE = Object.freeze(new Set(["glass.close", "threads.list"]));
+export const GUEST_SAFE = Object.freeze(new Set(["threads.list"]));
 
 /** network.guests with its defaults: off, nobody listed. */
 export function settings(network) {

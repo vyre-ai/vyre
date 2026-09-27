@@ -44,7 +44,7 @@ test("presence: the floor's list holds every human-only tool", () => {
   assert.ok(HUMAN_ONLY.size >= 10);
   // The owner's own actions ask no proof (no nagging), but stay off a model's shell (PERSON_ONLY).
   for (const t of ["threads.answer", "term.open", "gate.revise", "gate.reject", "agents.create", "agents.update", "computers.takeover",
-    "files.drive.access", "learn.accept", "learn.retire", "learn.relax"]) assert.ok(!HUMAN_ONLY.has(t) && PERSON_ONLY.has(t), t);
+    "files.drive.access", "learn.accept", "learn.retire", "learn.relax", "projects.move", "presence.person.revoke"]) assert.ok(!HUMAN_ONLY.has(t) && PERSON_ONLY.has(t), t);
   assert.ok(!HUMAN_ONLY.has("memory.correct"));
 });
 
