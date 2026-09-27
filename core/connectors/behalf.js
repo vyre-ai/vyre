@@ -3,9 +3,9 @@
 //
 // mail passes the chat or agent it acts for as `on_behalf: {thread, agent}` to google.mail.send and
 // mcp.call, so a held item lands in the thread that asked. That input is trusted only this far:
-// - Only from one of Vyre's own modules. The registry sets `meta.firstParty` for a caller whose
-//   folder is under core/, over anything passed in, so a module installed into a home cannot
-//   claim it and gets nothing from `on_behalf`.
+// - Only from one of Vyre's own modules. The registry sets `meta.firstParty` by the loader's own
+//   rule, over anything passed in. Anyone else who passes `on_behalf` (a home module, a model, a
+//   person's CLI) is refused, not quietly ignored, so a mistake shows.
 // - A thread must exist, and when it belongs to an agent, the agent named must be that one. A
 //   mismatch is refused rather than filed, so a held item never lands in someone else's chat.
 // No state; the one lookup goes through the `call` it is given (threads.get).
@@ -17,10 +17,12 @@ const named = v => (typeof v === "string" && v ? v : undefined);
  * @param {(tool: string, input: any) => Promise<any>} call ctx.call
  * @param {{ firstParty?: boolean }} meta the registry's meta for this call
  * @param {any} behalf the input's on_behalf
- * @returns {Promise<{ thread?: string, agent?: string } | null>} null when on_behalf does not apply
+ * @returns {Promise<{ thread?: string, agent?: string } | null>} null when there is no on_behalf
  */
 export async function checkBehalf(call, meta, behalf) {
-  if (!meta || meta.firstParty !== true || !behalf || typeof behalf !== "object") return null;
+  if (behalf === undefined || behalf === null) return null;
+  if (!meta || meta.firstParty !== true) throw fail("on_behalf is for Vyre's own modules only", "denied");
+  if (typeof behalf !== "object") throw fail("on_behalf must be { thread, agent }");
   const thread = named(behalf.thread), agent = named(behalf.agent);
   if (!thread) return agent ? { agent } : null;
   const r = await call("threads.get", { thread, limit: 1 });

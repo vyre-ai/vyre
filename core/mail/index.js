@@ -75,6 +75,7 @@ export default {
       // on_behalf counts only from one of Vyre's own modules, and its thread is checked against
       // the Switchboard (connectors/behalf.js) before anything is filed under it.
       let bh;
+      if (input && input.on_behalf !== undefined && meta.firstParty !== true) throw fail("on_behalf is for Vyre's own modules only", "denied");
       if (meta.firstParty === true && input && input.on_behalf && typeof input.on_behalf === "object") {
         const checked = await checkBehalf((tool, x) => ctx.call(tool, x), meta, input.on_behalf);
         bh = { surface: input.on_behalf.surface, ...(checked || {}) };

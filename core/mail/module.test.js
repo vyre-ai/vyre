@@ -328,9 +328,14 @@ test("mail: on_behalf is heard only from Vyre's own modules, and its thread must
 
   // One of Vyre's own modules acting for the Capsule sees the Capsule's accounts.
   assert.deepEqual((await own("mail.accounts", { on_behalf: { surface: "capsule" } })).data.map(a => a.account), ["cn_imap_alex"]);
-  // A module installed into a home sees nothing, whatever it claims.
-  assert.deepEqual((await home("mail.accounts", { on_behalf: { surface: "capsule" } })).data, []);
-  assert.equal((await home("mail.send", { to: "dana@northwind-bakery.example", subject: "Hi", body: "Hi", on_behalf: { surface: "capsule" } })).error.code, "no_account");
+  // A module installed into a home is refused on_behalf, and without it sees no account.
+  assert.equal((await home("mail.accounts", { on_behalf: { surface: "capsule" } })).error.code, "denied");
+  assert.equal((await home("mail.search", { q: "order", on_behalf: { surface: "capsule" } })).error.code, "denied");
+  assert.equal((await home("mail.send", { to: "dana@northwind-bakery.example", subject: "Hi", body: "Hi", on_behalf: { surface: "capsule" } })).error.code, "denied");
+  assert.deepEqual((await home("mail.accounts")).data, []);
+  assert.equal((await home("mail.send", { to: "dana@northwind-bakery.example", subject: "Hi", body: "Hi" })).error.code, "no_account");
+  // So is a model that passes it.
+  assert.equal((await w.as("mcp", { thread: "t-7" })("mail.accounts", { on_behalf: { surface: "capsule" } })).error.code, "denied");
 
   // A chat thread that exists files the item there; one that does not is refused.
   const ok = await own("mail.send", { to: "dana@northwind-bakery.example", subject: "Hi", body: "Hi", on_behalf: { surface: "chat", thread: "t-7" } });

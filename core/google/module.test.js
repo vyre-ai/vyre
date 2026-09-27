@@ -411,7 +411,7 @@ test("google: a sign-in finished by the pasted address works once, and a cancell
   assertNoLeak(v, [client.client_secret, ...fake.issued.keys(), ...fake.tokens.keys(), new URL(back).searchParams.get("code") || ""]);
 });
 
-test("google: on_behalf files a module's held send under the thread and agent it names; from a model it is ignored", async t => {
+test("google: on_behalf files a first-party module's held send under the thread and agent it names; anyone else is refused", async t => {
   const fake = await startFakeGoogle(t);
   const v = await vyred(t);
   await item(v, "work-google", "secret", { value: fake.serviceAccount(ME) });
@@ -426,22 +426,17 @@ test("google: on_behalf files a module's held send under the thread and agent it
   const a = (await v.local("gate.get", { id: fromModule.data.held })).data;
   assert.deepEqual([a.via, a.thread, a.agent], ["google:work", "t-9", "kit"]);
 
-  // A model naming another thread and agent: filed under its own verified thread, no agent.
-  const fromModel = await v.model("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } });
-  assert.ok(fromModel.data?.held, JSON.stringify(fromModel));
-  const b = (await v.local("gate.get", { id: fromModel.data.held })).data;
-  assert.deepEqual([b.via, b.thread, b.agent ?? null], ["google:work", "t-1", null]);
+  // Anyone else who passes on_behalf is refused: a model, a person's CLI, a module label the
+  // loader does not count as shipped (and passing firstParty in changes nothing).
+  assert.equal((await v.model("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } })).error.code, "denied");
+  assert.equal((await v.cli("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } })).error.code, "denied");
+  assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } }, "module:bakery-helper", { firstParty: true })).error.code, "denied");
+  // Without on_behalf a model's send is filed under its own verified thread, as before.
+  const fromModel = await v.model("google.mail.send", mail);
+  assert.equal((await v.local("gate.get", { id: fromModel.data.held })).data.thread, "t-1");
 
-  // From cli, a person, it is ignored as well.
-  const fromCli = await v.cli("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } });
-  const c = (await v.local("gate.get", { id: fromCli.data.held })).data;
-  assert.ok(!c.thread && !c.agent, JSON.stringify(c));
   // A thread that does not exist, or that is another agent's, is refused.
   assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-none" } }, "module:mail", {})).error.code, "bad_input");
   assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "juno" } }, "module:mail", {})).error.code, "denied");
-  // A module installed into a home (not under core/) is heard as no one's: on_behalf dropped.
-  const fromHome = await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } }, "module:bakery-helper", { firstParty: true });
-  const d = (await v.local("gate.get", { id: fromHome.data.held })).data;
-  assert.ok(!d.thread && !d.agent, JSON.stringify(d));
   assert.equal(fake.mail.sent.length, 0, "a held send reached Gmail");
 });

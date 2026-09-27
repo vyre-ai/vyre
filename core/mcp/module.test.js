@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { tempHome, present, writeModule } from "../../test/helpers.js";
 import { startFakeMcpHttp } from "./testing/fake-mcp.js";
 
 const FAKE = path.join(import.meta.dirname, "testing", "fake-mcp.js");
@@ -323,57 +323,32 @@ test("mcp: hold and on_behalf are for modules only", async t => {
   assert.ok(!it2.agent);
   assert.equal(calls(log).length, 1, "a held get_issue reached the server");
 
-  // A model in a person's session: hold on a read is ignored (it runs), on_behalf never refiles.
+  // Anyone but one of Vyre's own modules: hold on a read is ignored (it runs), and on_behalf is
+  // refused outright, never quietly dropped.
   const s = v.session("t-1");
-  const r3 = await s("mcp.call", { server: "chat", tool: "list_issues", hold: true, on_behalf: behalf });
+  const r3 = await s("mcp.call", { server: "chat", tool: "list_issues", hold: true });
   assert.equal(r3.data?.held, undefined, JSON.stringify(r3));
-  assert.equal(r3.data.structuredContent.issues.length, 2);
   assert.equal(calls(log).length, 2);
-  const r4 = await s("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "Oven rota" }, on_behalf: behalf });
-  const it4 = await gateGet(r4.data.held);
-  assert.deepEqual([it4.thread, it4.agent ?? null], ["t-1", null]);
-  // A session with no thread claims one through on_behalf: still filed under none.
-  const r4b = await v.session()("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "x" }, on_behalf: behalf });
-  const it4b = await gateGet(r4b.data.held);
-  assert.ok(!it4b.thread && !it4b.agent, JSON.stringify(it4b));
-
-  // An agent: the same, filed under its own verified thread and name.
+  assert.equal((await s("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "Oven rota" }, on_behalf: behalf })).error.code, "denied");
+  assert.equal((await v.session()("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "x" }, on_behalf: behalf })).error.code, "denied");
   const kit = v.agent("kit", "t-k");
-  const r5 = await kit("mcp.call", { server: "chat", tool: "list_issues", hold: true, on_behalf: { thread: "t-9", agent: "juno" } });
-  assert.equal(r5.data?.held, undefined, JSON.stringify(r5));
+  assert.equal((await kit("mcp.call", { server: "chat", tool: "list_issues", hold: true })).data?.held, undefined);
   assert.equal(calls(log).length, 3);
-  const r6 = await kit("mcp.call", { server: "chat", tool: "send_message", arguments: { to: "dana@northwind-bakery.example", text: "Rota is up." }, on_behalf: { thread: "t-9", agent: "juno" } });
-  const it6 = await gateGet(r6.data.held);
-  assert.deepEqual([it6.thread, it6.agent], ["t-k", "kit"]);
-  // The in-process caller string alone, with no meta: still the agent, never the claim.
-  const r6b = await v.d.registry.call("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "y" }, on_behalf: { thread: "t-9", agent: "juno" } }, "mcp:agent:kit", {});
-  const it6b = await gateGet(r6b.data.held);
-  assert.equal(it6b.agent, "kit");
-  assert.notEqual(it6b.thread, "t-9");
-
-  // cli: a person, but not a module; both fields are ignored too.
-  const r7 = await v.cli("mcp.call", { server: "chat", tool: "list_issues", hold: true, on_behalf: behalf });
-  assert.equal(r7.data?.held, undefined, JSON.stringify(r7));
+  assert.equal((await kit("mcp.call", { server: "chat", tool: "send_message", arguments: { to: "dana@northwind-bakery.example", text: "Rota is up." }, on_behalf: { thread: "t-9", agent: "juno" } })).error.code, "denied");
+  assert.equal((await v.d.registry.call("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "y" }, on_behalf: behalf }, "mcp:agent:kit", {})).error.code, "denied");
+  assert.equal((await v.cli("mcp.call", { server: "chat", tool: "list_issues", hold: true })).data?.held, undefined);
   assert.equal(calls(log).length, 4);
-  const r8 = await v.cli("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "z" }, on_behalf: behalf });
-  const it8 = await gateGet(r8.data.held);
-  assert.ok(!it8.thread && !it8.agent, JSON.stringify(it8));
+  assert.equal((await v.cli("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "z" }, on_behalf: behalf })).error.code, "denied");
 
   // A thread that does not exist, or one that is another agent's, is refused, not filed.
   assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "a" }, on_behalf: { thread: "t-none" } })).error.code, "bad_input");
   assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "b" }, on_behalf: { thread: "t-9", agent: "juno" } })).error.code, "denied");
   assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "c" }, on_behalf: { thread: "t-8", agent: "kit" } })).error.code, "denied");
 
-  // A module that is not one of Vyre's own (no folder under core/): on_behalf is dropped, and
-  // hold still holds, since it only makes a call stricter.
-  const home = (tool, input = {}) => v.d.registry.call(tool, input, "module:bakery-helper", {});
-  const r9 = await home("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "d" }, on_behalf: behalf });
-  const it9 = await gateGet(r9.data.held);
-  assert.ok(!it9.thread && !it9.agent, JSON.stringify(it9));
-  assert.ok((await home("mcp.call", { server: "chat", tool: "list_issues", hold: true })).data.held);
-  // Nor can a caller pass firstParty in: the registry sets it.
-  const r10 = await v.d.registry.call("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "e" }, on_behalf: behalf }, "module:bakery-helper", { firstParty: true });
-  assert.ok(!(await gateGet(r10.data.held)).thread);
+  // A module label the loader does not count as shipped is refused, and passing firstParty in
+  // changes nothing: the registry sets it.
+  assert.equal((await v.d.registry.call("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "d" }, on_behalf: behalf }, "module:bakery-helper", { firstParty: true })).error.code, "denied");
+  assert.ok((await v.d.registry.call("mcp.call", { server: "chat", tool: "list_issues", hold: true }, "module:bakery-helper", {})).data.held, "hold only makes a call stricter");
 
   // on_behalf an agent scopes the call to that agent: kit never reaches a server only juno may use.
   assert.equal((await v.cli("mcp.add", stdio("juno-only", log, {}, { scope: { agents: ["juno"] } }))).data.test.ok, true);
@@ -381,4 +356,29 @@ test("mcp: hold and on_behalf are for modules only", async t => {
 
   assert.equal(calls(log).length, 4, "a held call reached the server");
   assert.ok(calls(log).every(l => l.startsWith("call list_issues ")));
+});
+
+test("mcp: a module installed into a home is refused on_behalf through its own ctx.call", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
+  // A third-party module in the home's modules folder, calling the hub the only way a module can.
+  writeModule(path.join(root, "modules"), "bakery", { does: { tools: ["bakery.try"] } }, `export default { async start(ctx) {
+    ctx.tool("bakery.try", { input: { type: "object", properties: { on_behalf: { type: "object" }, hold: { type: "boolean" } } },
+      run: async input => ctx.call("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "Rye" }, ...input }) });
+    return { async stop() {} };
+  } };`);
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const log = path.join(root, "chat.log");
+  const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
+  assert.equal((await cli("mcp.add", stdio("chat", log))).data.test.ok, true);
+  assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running");
+
+  const refused = (await cli("bakery.try", { on_behalf: { surface: "capsule" } })).data;
+  assert.equal(refused.error.code, "denied", JSON.stringify(refused));
+  const plain = (await cli("bakery.try", {})).data;
+  assert.ok(plain.data.held, "without on_behalf its outward call is held as usual");
+  const it = (await cli("gate.get", { id: plain.data.held })).data;
+  assert.ok(!it.thread && !it.agent);
+  assert.deepEqual(calls(log), []);
 });
