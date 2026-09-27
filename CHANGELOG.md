@@ -57,6 +57,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   Node 24 a late write recreated the temp home and tmp-guard failed the job.
 - test/tmp-guard.mjs lists up to 20 paths inside each leaked dir, so a late writer names itself.
 - node.yml skips pushes to `work/ci-*`, ci's throwaway branches that prove one other workflow.
+- scripts/perf-check: the idle RSS budget (150 MB) reads the settled size, the highest of the last
+  8 samples once they sit within 3 MB (the window runs on to 120 s until they do); a new startup
+  budget holds the first 30 s from spawn under 200 MB. vyred kept the indexing pass's heap
+  (about 160 MB) for some 20 s and then settled near 90 MB, so RSS max failed every run. Mean and
+  max RSS still print. On testbox: settled 87.3 / 84.0 MB, startup peak 150.3 / 154.2 MB.
 
 #### A stopped vyred leaves a removed home removed
 

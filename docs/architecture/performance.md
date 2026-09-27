@@ -51,10 +51,14 @@ What it gates on:
 |---|---|
 | CPU, p95 of the samples | under 0.5% |
 | CPU, sustained: the highest mean over any 5 consecutive samples (7.5 s) | under 1% |
-| RSS, mean and max | under 150 MB |
+| RSS, settled: the highest of the last 8 samples, once they sit within 3 MB (the window runs on to 120 s until they do) | under 150 MB |
+| RSS, startup peak: the highest in the first 30 s from spawn, indexing included | under 200 MB |
 | Fastest recurring timer (a `setInterval`, or a `setTimeout` seen 3 or more times) | 60 s or slower |
 
-Mean and max CPU are printed but do not gate. The output also prints the host's load average,
+Mean and max CPU, and mean and max RSS, are printed but do not gate. After the startup indexing
+pass V8 keeps its heap (about 160 MB on the synthetic corpus) for some 20 s before it gives it
+back and settles near 90 MB, so the idle budget reads the settled size and the startup peak has its
+own budget. The output also prints the host's load average,
 so you can tell contention from a regression.
 
 > [!WHY] Why p95 and a sustained window, not the maximum?

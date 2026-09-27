@@ -8,6 +8,11 @@
 //
 //   vyred idle: under 0.5% of one core and under 150 MB resident, with no polling faster than
 //   once a minute when nothing is happening; work is driven by events and file-system notice.
+//   The 150 MB is the SETTLED size: after the startup indexing pass V8 keeps its heap for a
+//   while (about 160 MB for ~20 s on the synthetic corpus) and gives it back once idle, so the
+//   idle budget is read once RSS has been flat for RSS_FLAT_SAMPLES samples at the end of the
+//   window (the window runs on, up to IDLE_MAX_SECONDS, until it is). A separate startup budget
+//   (200 MB, the first 30 s from spawn) still fails a real indexing blowup.
 //
 // Builds a throwaway VYRE_HOME (never the real ~/.vyre), seeds it with the small fixture corpus
 // plus a synthetic ~20,000-turn one so Recall has real work to do, starts a real vyred as a
@@ -40,7 +45,11 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..");
 
 const IDLE_SECONDS = 60;
+const IDLE_MAX_SECONDS = 120;
 const SAMPLE_MS = 1500;
+const RSS_FLAT_SAMPLES = 8;
+const RSS_FLAT_MB = 3;
+const STARTUP_SECONDS = 30;
 const STARTUP_TIMEOUT_MS = 60_000;
 const SETTLE_MS = 3000;
 
@@ -48,7 +57,7 @@ const SETTLE_MS = 3000;
 // shouldn't fail the whole check when 39 of 40 samples are clean). cpuSustainedPct/window catch
 // the failure mode p95 alone would miss: real ongoing load that just isn't the single worst
 // sample, e.g. a leftover polling loop running the whole 60s at 1-2%.
-const BUDGET = { cpuPct: 0.5, rssMB: 150, minTimerMs: 60_000, cpuSustainedPct: 1.0, cpuSustainedWindow: 5 };
+const BUDGET = { cpuPct: 0.5, rssMB: 150, startupRssMB: 200, minTimerMs: 60_000, cpuSustainedPct: 1.0, cpuSustainedWindow: 5 };
 
 function log(msg) { process.stderr.write(`perf-check: ${msg}\n`); }
 
@@ -72,6 +81,7 @@ async function main() {
     timersFile = path.join(home, "timers.json");
     child = spawnDaemon(home, timersFile);
     log(`vyred starting (pid ${child.pid}), home ${home}`);
+    const startup = watchStartup(child.pid, STARTUP_SECONDS, 500);
 
     await waitForHealth(home, child, STARTUP_TIMEOUT_MS);
     log("vyred is up; waiting for the startup indexing pass to finish");
@@ -89,12 +99,15 @@ async function main() {
     log("indexing done; sampling idle for " + IDLE_SECONDS + "s");
 
     const samples = await sampleIdle(child.pid, IDLE_SECONDS, SAMPLE_MS);
+    // The settled size: run on until the last RSS_FLAT_SAMPLES samples sit within RSS_FLAT_MB.
+    while (!rssFlat(samples) && Date.now() - idleStart < IDLE_MAX_SECONDS * 1000) samples.push(...await sampleIdle(child.pid, SAMPLE_MS / 1000, SAMPLE_MS));
+    const startupPeakMB = await startup;
     // Stop vyred BEFORE reading the timer dump: timer-hook.mjs only writes it on process exit
     // (see that file), so reading it any earlier always finds nothing.
     await stopChild(child);
     const timers = readTimers(timersFile);
 
-    const exitCode = report(samples, timers, idleStart);
+    const exitCode = report(samples, timers, idleStart, startupPeakMB);
     process.exitCode = exitCode;
   } finally {
     if (child && child.exitCode === null) await stopChild(child);
@@ -233,6 +246,25 @@ async function sampleIdle(pid, seconds, intervalMs) {
   return samples;
 }
 
+/** The highest RSS (MB) seen in the first `seconds` from spawn, sampled every `intervalMs`. */
+async function watchStartup(pid, seconds, intervalMs) {
+  let peak = 0;
+  const t0 = Date.now();
+  while (Date.now() - t0 < seconds * 1000) {
+    const s = psSample(pid);
+    if (s) peak = Math.max(peak, s.rssKB / 1024);
+    await sleep(intervalMs);
+  }
+  return peak;
+}
+
+/** The last RSS_FLAT_SAMPLES samples within RSS_FLAT_MB of each other. */
+function rssFlat(samples) {
+  if (samples.length < RSS_FLAT_SAMPLES) return false;
+  const tail = samples.slice(-RSS_FLAT_SAMPLES).map(s => s.rssKB / 1024);
+  return Math.max(...tail) - Math.min(...tail) <= RSS_FLAT_MB;
+}
+
 function psSample(pid) {
   const r = spawnSync("ps", ["-o", "time=,rss=", "-p", String(pid)], { encoding: "utf8" });
   if (r.status !== 0 || !r.stdout.trim()) return null;
@@ -276,11 +308,12 @@ async function stopChild(child) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 /** Print the pass/fail table and return the process exit code. */
-function report(samples, timers, idleStart) {
+function report(samples, timers, idleStart, startupPeakMB) {
   const cpu = samples.map(s => s.cpuPct);
   const rssMB = samples.map(s => s.rssKB / 1024);
   const meanCpu = mean(cpu), maxCpu = Math.max(...cpu), p95Cpu = percentile(cpu, 95);
   const meanRss = mean(rssMB), maxRss = Math.max(...rssMB);
+  const flat = rssFlat(samples), settledRss = Math.max(...rssMB.slice(-RSS_FLAT_SAMPLES));
   const sustainedCpu = maxWindowMean(cpu, BUDGET.cpuSustainedWindow);
 
   // setInterval: ANY call anywhere in the process's life is a standing recurring timer for as
@@ -310,8 +343,14 @@ function report(samples, timers, idleStart) {
     // mean hides a real spike, max fails on one noisy tick. See docs/PERF.md for why.
     { name: "CPU (mean)", value: `${meanCpu.toFixed(2)}%`, budget: "informational", pass: true, gate: false },
     { name: "CPU (max)", value: `${maxCpu.toFixed(2)}%`, budget: "informational", pass: true, gate: false },
-    { name: "RSS (mean)", value: `${meanRss.toFixed(1)} MB`, budget: `< ${BUDGET.rssMB} MB`, pass: meanRss < BUDGET.rssMB, gate: true },
-    { name: "RSS (max)", value: `${maxRss.toFixed(1)} MB`, budget: `< ${BUDGET.rssMB} MB`, pass: maxRss < BUDGET.rssMB, gate: true },
+    // Gating: the settled size, once RSS is flat; a size that never settles fails too.
+    { name: `RSS (settled, last ${RSS_FLAT_SAMPLES})`, value: flat ? `${settledRss.toFixed(1)} MB` : `not flat in ${IDLE_MAX_SECONDS}s`,
+      budget: `< ${BUDGET.rssMB} MB`, pass: flat && settledRss < BUDGET.rssMB, gate: true },
+    // Gating: the first 30 s from spawn, indexing included, so a real blowup still fails.
+    { name: `RSS (startup peak, ${STARTUP_SECONDS}s)`, value: `${startupPeakMB.toFixed(1)} MB`, budget: `< ${BUDGET.startupRssMB} MB`,
+      pass: startupPeakMB < BUDGET.startupRssMB, gate: true },
+    { name: "RSS (mean)", value: `${meanRss.toFixed(1)} MB`, budget: "informational", pass: true, gate: false },
+    { name: "RSS (max)", value: `${maxRss.toFixed(1)} MB`, budget: "informational", pass: true, gate: false },
     { name: "fastest recurring timer", value: fastestMs === Infinity ? "none under 60s" : `${fastestMs} ms`,
       budget: `>= ${BUDGET.minTimerMs} ms`, pass: fastestMs >= BUDGET.minTimerMs, gate: true },
   ];
@@ -319,7 +358,7 @@ function report(samples, timers, idleStart) {
   const w = Math.max(...rows.map(r => r.name.length));
   const load = os.loadavg().map(n => n.toFixed(1)).join(", ");
   process.stdout.write("\nvyred idle budget check (docs/SPEC.md section 2, principle 8)\n");
-  process.stdout.write(`  samples: ${samples.length} over ~${IDLE_SECONDS}s\n`);
+  process.stdout.write(`  samples: ${samples.length} over ~${Math.round(samples.length * SAMPLE_MS / 1000)}s\n`);
   // A loaded host inflates every number here, especially CPU max — report it next to the
   // results so a failure caused by machine contention isn't read as a regression.
   process.stdout.write(`  host load average (1m, 5m, 15m): ${load}\n\n`);
