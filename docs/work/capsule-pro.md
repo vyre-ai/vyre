@@ -91,18 +91,33 @@ without editing Capsule files:
 ## Doing
 - Footprint. The 93 MB figure is RSS, which counts shared AppKit and SwiftUI pages.
   phys_footprint (Activity Monitor's Memory) is what the 60 MB target means: 17 MB hidden in
-  headless mode on the Mac, RSS 72 MB. Merged capsule-pro-footprint 286ad05 (the check reports
-  both, plus vmmap and heap on CI). CI run 36313677709 on work/capsule-pro gives the shown-then-
-  hidden number.
+  headless mode on the Mac, RSS 72 MB. capsule-pro-footprint 286ad05 is merged, so the check
+  reports both, plus vmmap and heap on CI. Waiting on capsule-mac CI run 36314455924 (61dd9dc)
+  for the shown-then-hidden number. GitHub queues slowly, and each push cancels the queued run,
+  so push sparingly.
+
+## Also done 2026-09-27 (session 4, later)
+- ci's signing-hang fix, cherry-picked (63399a1), and the duplicate app build step removed.
+  createIdentity refuses with no TTY unless a runner is given (feb1a11).
+- capsule-apps-native 7423c8c merged (6ff7185): AppsExtension and the row for words without @.
+- Tokens: gen-tokens writes Tokens.generated.swift (work/capsule-pro-tokens 450cd16, handed to
+  mobile), and Theme.swift reads colours, the status model and the card radius from it (544d27f).
+- Planner by key (61dd9dc): the notification id is the key. planner.ringing {cursor} is read,
+  planner.upcoming 48 h is scheduled locally, and answers given while the box was away are sent
+  by key. Degrades with no planner.upcoming. Built against planner 3c75e47's contract, which is
+  not on main yet.
+- Sessions (61dd9dc): Esc uses threads.interrupt, thread.stopped idle is not a failure, busy is
+  said in words, and the terminal-only "not one vyred runs" wording. Swift 284/284.
 
 ## Next
-1. Read CI 36313677709. If the shown-then-hidden phys_footprint is over 60 MB, trim what
-   survives a hide: SwiftUI view trees, icon caches, the extension panels.
-2. Planner banners on the Agent SDK sessions event model, and Capsule sessions (ADR 0030): quick
-   answers on the fast model, project sessions where the work lives. The sessions team owns the
-   event model; consume it for streaming, stop and the queue.
-3. Direction A tokens: import tokens.json (app-design, docs/design/one-app) into Theme.swift.
-4. Switch the "live in terminal" badge to capsule-now's `live` flag (on main via fc7fa70).
+1. Read CI 36314455924. If the shown-then-hidden phys_footprint is over 60 MB, trim what
+   survives a hide: SwiftUI view trees, icon caches, extension panels.
+2. When sessions lands thread.state, thread.tool {call, status}, thread.turn and thread.usage:
+   tool rows by call id, "idle" on @ session rows (VyreThread has no state yet), and "send now".
+3. Switch the "live in terminal" badge to capsule-now's `live` flag (threads.list and
+   projects.catalog rows carry it via fc7fa70).
+4. Local ring answers kept only in memory (PlannerBanners.unsent). Persist them to
+   <home>/capsule/ if a quit before the box returns matters.
 5. Prove enrolment and the in-panel Touch ID with the user at the Mac.
 
 ## Needs from others
