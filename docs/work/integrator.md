@@ -58,7 +58,7 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   vault f3d39f3f + 17dd7a05 and connectors 8be461a9 merged Six edges frozen as 0.1.1 debt
   (lead OK, 30416e64 + boundaries.md), Capsule IQ model names in the drift list. Waiting only on glass-live.
 - memory-iq aaf4fcb5 merged (9cac53a0). main's two node reds fixed (09f5e02a).
-- rc.2 waits on: glass 14f1824c (HIGH fixes only; its latency badge 47d90b0c is 0.1.1) and e2e's fix
+- rc.2 waits on: glass (14f1824c HELD by reviewer, 2 HIGH; take only a sha reviewer signs off) and e2e's fix
   sha for the macOS hang in 1941f2cf's per-connection peer check (ps or perl).
   MUST also take glass-live's rebased sha (two e2e HIGHs: container Env secrets, unfenced CDP), via
   e2e; its computer image rollout goes with box-deploy. Waiting: vault-next
@@ -135,6 +135,10 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   Capsule change that depends on it; memory-iq coordinates, target 30 Sep.
 - mac test guard: branch work/mac-test-guard 6a2bb019 (worktree ../vyre-integrator-guard): tempHome and
   tmp-guard refuse on darwin unless VYRE_ALLOW_MAC_TESTS=1; capsule-mac sets it. Mac refuses, testbox 34/34.
+- HOTFIX first when it comes: work/glass-hotfix (vyred-only bearer on docker-api). After reviewer's
+  sign-off: fast-forward main, targeted run, tell box-deploy to redeploy (backup first). Then merge into pre/rc.
+- Reviewer (security) now signs off shas. Cleared for 0.1.1: teammates 20d0f121 (supersedes b19f10c2),
+  memory-iq d0b916b9 + 7ee03df6 (together). HELD: windows cac517d4 (MEDIUM).
 - teammates b19f10c2 (core/team, ADR 0031 step 1; e2e signed off). It carries a cherry-pick of 1941f2cf
   in core/daemon/index.js, already on main: expect a trivial conflict there.
 
