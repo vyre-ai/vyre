@@ -53,6 +53,17 @@ vyre call sessions.models.set '{"scope":"project:northwind-bakery","model":"opus
 `sessions.models` in `config.json` sets the defaults per purpose (`chat`, `agent`, `project`,
 `capsule`, `job`, `memory`, `planner`, `learn`). A thread shows its model on its chip.
 
+**Effort**, as `/effort` in Claude Code: `low`, `medium`, `high`, `xhigh` or `max` (the model's
+own limits apply). An agent's saved Effort is used for its sessions. Change a running session's
+at once, and it stays with the session when it comes back:
+
+```sh
+vyre call threads.effort '{"thread":"<id>","effort":"high"}'
+```
+
+A send can switch both first, which is what the Capsule's Cmd-Return does to go deeper on the
+same thread: `threads.send {thread, text, model: "opus", effort: "max"}`.
+
 ## Your existing sessions
 
 Every session is in one list, whether a terminal, Vyre, your Mac or your box started it. Send one
@@ -64,8 +75,26 @@ conversation as a copy, and the terminal's session is never touched.
 ## Permission modes
 
 `threads.mode` puts a running session in `default` (asks), `acceptEdits` (edits without asking)
-or `plan` (reads and plans only), as Shift+Tab does in Claude Code. Only you can change a mode; a
-session or an agent never can, and Vyre never offers the mode that skips every question.
+or `plan` (reads and plans only), as Shift+Tab does in Claude Code, or "Doesn't ask" (below). Only
+you can change a mode; a session or an agent never can, and no answer to a question ever does.
+
+### Doesn't ask
+
+"Doesn't ask" (Claude Code's `bypassPermissions`) runs a session without permission questions.
+You turn it on yourself, with no Touch ID: for one session, as Shift+Tab does, or as a project's
+default for new sessions there.
+
+```sh
+vyre call threads.mode '{"thread":"<id>","mode":"bypassPermissions"}'
+vyre call sessions.mode.set '{"project":"northwind-bakery","mode":"bypassPermissions"}'
+vyre call sessions.mode.set '{"project":"northwind-bakery"}'    # back to asking
+```
+
+What still holds: Vyre's security floor runs before every tool call (writes to your settings or
+Vyre's state, secrets, and the rest of its rules are refused), and the Gate still holds outbound
+actions. Only a person sets it: no answer to a question, no model and no agent can, and a
+session's own tools cannot. A session started without Vyre's plugin (a quick answer) refuses it.
+The mode carries over when an idle session comes back.
 
 ## Closed when idle, back on the next message
 
@@ -73,6 +102,27 @@ An idle session costs about 180 MB of memory. So a session with no turn running,
 waiting, nobody at its keyboard and no watch on it is closed after `idle_minutes`. Its thread
 shows "stopped (idle)", and your next message resumes it where it was: the same conversation, the
 same transcript. Nothing is lost; the first reply takes about a second longer.
+
+## Messages while it works
+
+A message you send while a session is working joins the running turn at Claude's next step, as in
+Claude Code (steering). Send with `mode: "queue"` to wait for the turn to end instead; a queued
+message can be edited, taken back or sent now until then. Pasted images go with either. Steered
+words that a stop or a restart cut off before Claude took them in are kept, and run first when
+the session comes back.
+
+## Near your plan's limit
+
+Claude Code reports how much of your plan's window is used. When a sign-in is near its limit (a
+warning, 80 percent used, or refused), Vyre stops starting new subagents and teammates on it until
+the window resets; sessions already running carry on. To go on anyway, or to turn the pause off:
+
+```sh
+vyre call sessions.usage.get
+vyre call sessions.usage.resume '{"auth":"subscription"}'
+```
+
+`"pause_at_warning": false` under `sessions` in `config.json` turns it off.
 
 ## Stop a turn
 
@@ -116,24 +166,6 @@ questions) are still added after your text.
 Only you can edit a system prompt. No agent, model or tool call from inside a session can, its own
 least of all.
 
-### Doesn't ask
-
-"Doesn't ask" (Claude Code's `bypassPermissions`) runs a session without permission questions.
-You turn it on yourself, with no Touch ID: for one session, as Shift+Tab does, or as a project's
-default for new sessions there.
-
-```sh
-vyre call threads.mode '{"thread":"<id>","mode":"bypassPermissions"}'
-vyre call sessions.mode.set '{"project":"northwind-bakery","mode":"bypassPermissions"}'
-vyre call sessions.mode.set '{"project":"northwind-bakery"}'    # back to asking
-```
-
-What still holds: Vyre's security floor runs before every tool call (writes to your settings or
-Vyre's state, secrets, and the rest of its rules are refused), and the Gate still holds outbound
-actions. Only a person sets it: no answer to a question, no model and no agent can, and a
-session's own tools cannot. A session started without Vyre's plugin (a quick answer) refuses it.
-The mode carries over when an idle session comes back.
-
 ### The Capsule's quick answer (Vyre IQ)
 
 A question you ask in the Capsule runs as a small session on the fast model with its own prompt:
@@ -153,6 +185,15 @@ vyre call sessions.prompt.preview '{"purpose":"capsule"}'
 
 `npm run eval:iq` asks the model eleven fixed questions twice each with your own Claude sign-in
 and says which answers break a rule or change between runs.
+
+## Each session's own line to Vyre
+
+On a box that runs sessions as their own user, a session cannot open vyred's socket. vyred opens
+one for each session instead and hands it over as `VYRE_SOCKET`: the session's Vyre tools, its
+hooks and any `vyre` command it runs go through it, as that session, whatever they claim to be,
+and your own tools (answering, approving, modes) are never reachable from it. It closes when the
+session stops. `sessions.thread_socket` (`auto`, `on`, `off`) controls it; `auto` opens one only
+where sessions run as their own user.
 
 ## Open in terminal
 
