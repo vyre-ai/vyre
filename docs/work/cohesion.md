@@ -41,8 +41,10 @@ belong to another team. Map: docs/design/cohesion.md (19 ranked items, approved 
   router + attach-a-session-to-a-project-later + Vyre Drive UI credit. Owners: projects and files
   (router + layout), projects and memory-iq (the attach, shaped like projects.move, and the graph
   join), federation (Vyre Drive credit on the moved-file event). Chat's upload/attach UI spec'd for
-  hand-over, chat is paused. Sent the lead a summary; not built, direction and owners only. Needs
-  federation and memory-iq to settle the router's exact contract next.
+  hand-over, chat is paused. Sent the lead a summary; not built, direction and owners only. Lead
+  decided attach is person-only (09ac1d0f): a preview, then one confirm, no Touch ID; an agent may
+  suggest attaching, never call the tool. Cohesion's part on item 19 is done; needs federation and
+  memory-iq to settle the router's exact contract and the graph mechanics next.
 - SAVED for restart. Integrator has 0f4d1105 (release candidate; supersedes f5cd36f7): glue modules,
   drift test, hands privacy fix (e2e signed off), sight.frame, context view/now {surface}, Mac asks,
   suggest account ranking, Chrome teardown fix. testbox: 156 targeted pass; hands-chrome 8/8 on
