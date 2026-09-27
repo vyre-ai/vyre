@@ -528,6 +528,20 @@
       "w": 1900,
       "x": 4900,
       "y": 30300
+    },
+    "Connections.dc.html": {
+      "h": 1200,
+      "title": "Connections \u2014 every account looks the same, one tap to grant",
+      "w": 2500,
+      "x": 7100,
+      "y": 28000
+    },
+    "Connections-paper.dc.html": {
+      "h": 1200,
+      "title": "Connections \u2014 every account looks the same, one tap to grant \u00b7 paper",
+      "w": 2500,
+      "x": 7100,
+      "y": 29300
     }
   },
   "createdOnFiles": {

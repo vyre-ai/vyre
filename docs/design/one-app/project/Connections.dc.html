@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Connections — every account looks the same, one tap to grant</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2500px; height: 1200px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1500px;">
+      <span class="lbl">Settings · Connections</span>
+      <h1 class="t28 w6">Google, mail, Apps Script and every MCP server, in the one list, the same shape.</h1>
+      <p class="t15 t2">From vault.connections.list: one row style whatever the provider. Each shows what it's granted to and lets you flip a surface on or off with one tap; a wrong account is one link away, never a support ticket.</p>
+    </div>
+  </div>
+
+  <div class="frames">
+    <div class="row" style="gap: 30px; align-items: flex-start;">
+
+      <div class="cap">
+        <span class="cap-t">Desktop, 1280 wide · Settings, Connections · ready, needs sign-in and expired side by side</span>
+        <div class="win" style="width: 1280px; height: 1020px;">
+          <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+          <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+            <nav class="rail" aria-label="Vyre">
+              <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg></a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+              <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>Devices</a>
+                <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+                <span class="av av-32 av-me" style="margin-top: 6px;">a</span>
+              </div>
+            </nav>
+            <main class="main">
+              <header class="top" style="grid-template-columns: minmax(0, 1fr) 360px minmax(0, 1fr);">
+                <div class="top-l"><h1 class="t15 w6">Connections</h1><span class="t12 t3">6 connected · 1 needs a fix</span></div>
+                <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow">Jump to anything, or ask juno</span><span class="kbd">⌘K</span></div>
+                <div class="top-r"></div>
+              </header>
+              <div class="col" style="padding: 20px 28px; gap: 14px; overflow: hidden; flex: 1 1 auto; min-height: 0;">
+
+                <section class="card" aria-label="alex@harlowlegal.com, Google">
+                  <div class="row" style="gap: 12px; padding: 14px 16px;">
+                    <span class="av" style="width: 32px; height: 32px; border-radius: 8px;"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg></span>
+                    <div class="col grow" style="gap: 2px; min-width: 0;"><span class="t15 trunc">alex@harlowlegal.com</span><span class="t12 t3 trunc">Harlow Legal · Google · Default</span></div>
+                    <span class="t12 t3">Last used 6m ago</span>
+                  </div>
+                  <div class="row" style="gap: 8px; padding: 0 16px 12px; flex-wrap: wrap;">
+                    <span class="lbl" style="margin-right: 2px;">Granted to</span>
+                    <span class="chip chip-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</span>
+                    <span class="chip chip-on"><svg class="ic ic-12" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</span>
+                    <span class="chip"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</span>
+                  </div>
+                  <div class="card-f"><span class="steplink">Wrong account?</span><span class="t12 t3" style="margin-left: auto;">Connected 3 Jan</span></div>
+                </section>
+
+                <section class="card" aria-label="Harlow Legal mail">
+                  <div class="row" style="gap: 12px; padding: 14px 16px;">
+                    <span class="av" style="width: 32px; height: 32px; border-radius: 8px;"><svg class="ic" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg></span>
+                    <div class="col grow" style="gap: 2px; min-width: 0;"><span class="t15 trunc">alex@harlowlegal.com</span><span class="t12 t3 trunc">Harlow Legal · Mail login · IMAP</span></div>
+                    <span class="t12 t3">Last used yesterday</span>
+                  </div>
+                  <div class="row" style="gap: 8px; padding: 0 16px 12px; flex-wrap: wrap;">
+                    <span class="lbl" style="margin-right: 2px;">Granted to</span>
+                    <span class="chip chip-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</span>
+                  </div>
+                  <div class="card-f"><span class="steplink">Wrong account?</span><span class="t12 t3" style="margin-left: auto;">Connected 3 Jan</span></div>
+                </section>
+
+                <section class="card" aria-label="Google Sheets MCP">
+                  <div class="row" style="gap: 12px; padding: 14px 16px;">
+                    <span class="av" style="width: 32px; height: 32px; border-radius: 8px;"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg></span>
+                    <div class="col grow" style="gap: 2px; min-width: 0;"><span class="t15 trunc">Google Sheets MCP</span><span class="t12 t3 trunc">Northwind Bakery · MCP server</span></div>
+                    <span class="t12 t3">Last used 2h ago</span>
+                  </div>
+                  <div class="row" style="gap: 8px; padding: 0 16px 12px; flex-wrap: wrap;">
+                    <span class="lbl" style="margin-right: 2px;">Granted to</span>
+                    <span class="chip chip-on"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</span>
+                  </div>
+                  <div class="card-f"><span class="steplink">Wrong account?</span><span class="t12 t3" style="margin-left: auto;">Connected 2 Mar</span></div>
+                </section>
+
+                <section class="card" aria-label="Apps Script, needs sign-in">
+                  <div class="row" style="gap: 12px; padding: 14px 16px; align-items: center;">
+                    <span class="av" style="width: 32px; height: 32px; border-radius: 8px;"><svg class="ic" viewBox="0 0 16 16"><path d="M2 4l6 3.5L14 4M2 4v8l6 3.5L14 12V4"></path></svg></span>
+                    <div class="col grow" style="gap: 2px; min-width: 0;"><span class="t15 t2 trunc">Apps Script</span><span class="t12 t3 trunc">Harlow Legal · Needs sign-in</span></div>
+                    <button class="btn btn-s btn-sm" type="button">Sign in</button>
+                  </div>
+                </section>
+
+                <section class="card" aria-label="Stripe MCP, expired">
+                  <div class="row" style="gap: 12px; padding: 14px 16px; align-items: center;">
+                    <span class="av" style="width: 32px; height: 32px; border-radius: 8px;"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M5.5 5.5l5 5M10.5 5.5l-5 5"></path></svg></span>
+                    <div class="col grow" style="gap: 2px; min-width: 0;"><span class="t15 t2 trunc">Stripe MCP</span><span class="t12 t3 trunc">Northwind Bakery · Expired 3d ago</span></div>
+                    <button class="btn btn-s btn-sm" type="button">Sign in again</button>
+                  </div>
+                </section>
+
+                <div class="row" style="gap: 12px; padding: 12px 16px; border: 1px dashed var(--rule-strong); border-radius: 12px; cursor: pointer;">
+                  <span class="av" style="width: 32px; height: 32px; border-radius: 8px;"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></span>
+                  <div class="col grow" style="gap: 2px;"><span class="t15">Connect another account</span><span class="t12 t3">Google, Microsoft, a mail login or any MCP server</span></div>
+                </div>
+
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+
+      <div class="cap">
+        <span class="cap-t">Phone, 390 wide · Connections, the same row shape</span>
+        <div class="phone">
+          <div class="island"></div>
+          <div class="safe-t"></div>
+          <div class="ph-nav" style="position: relative;">
+            <a class="row" href="#" style="gap: 2px; height: 44px; padding-right: 8px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg><span class="t17">Settings</span></a>
+            <span class="t17 w6" style="position: absolute; left: 0; right: 0; text-align: center; pointer-events: none;">Connections</span>
+          </div>
+          <div class="ph-body">
+            <span class="t12 t3">6 connected · 1 needs a fix</span>
+            <div class="ph-card">
+              <div class="ph-row" style="align-items: flex-start; flex-direction: column; gap: 8px; padding: 12px 14px;">
+                <div class="row" style="gap: 10px; width: 100%;"><span class="av" style="width: 32px; height: 32px; border-radius: 8px;"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg></span><div class="col grow" style="gap: 0; min-width: 0;"><span class="t15 trunc">alex@harlowlegal.com</span><span class="t12 t3 trunc">Harlow Legal · Google · Default</span></div></div>
+                <div class="row" style="gap: 6px; flex-wrap: wrap;"><span class="chip chip-on">Chat</span><span class="chip chip-on">Planner</span><span class="chip">Agents</span></div>
+                <span class="steplink">Wrong account?</span>
+              </div>
+              <div class="ph-row" style="align-items: flex-start; flex-direction: column; gap: 8px; padding: 12px 14px;">
+                <div class="row" style="gap: 10px; width: 100%;"><span class="av" style="width: 32px; height: 32px; border-radius: 8px;"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg></span><div class="col grow" style="gap: 0; min-width: 0;"><span class="t15 trunc">Google Sheets MCP</span><span class="t12 t3 trunc">Northwind Bakery · MCP server</span></div></div>
+                <div class="row" style="gap: 6px; flex-wrap: wrap;"><span class="chip chip-on">Agents</span></div>
+                <span class="steplink">Wrong account?</span>
+              </div>
+              <div class="ph-row" style="align-items: center;">
+                <span class="av" style="width: 32px; height: 32px; border-radius: 8px;"><svg class="ic" viewBox="0 0 16 16"><path d="M2 4l6 3.5L14 4M2 4v8l6 3.5L14 12V4"></path></svg></span>
+                <div class="col grow" style="gap: 0; min-width: 0;"><span class="t15 t2 trunc">Apps Script</span><span class="t12 t3 trunc">Needs sign-in</span></div>
+                <button class="btn btn-s btn-sm" type="button">Sign in</button>
+              </div>
+            </div>
+            <button class="btn btn-s ph-btn" type="button"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>Connect another account</button>
+          </div>
+          <div class="capsule"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg><span class="ph">Ask juno, find, or run</span><button class="mic" type="button" aria-label="Hold to talk"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="8" rx="2"></rect><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"></path></svg></button></div>
+          <div class="home-ind"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2500,"height":1200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>
