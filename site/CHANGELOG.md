@@ -5,6 +5,23 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
+### OS-aware install tab, robots.txt, sitemap.xml (2026-09-28)
+
+- Cheap first-impression fixes the lead asked for: the install tabs (Linux box / Mac / What it
+  needs) always defaulted to Linux box, so a Mac reader's first look at the page showed the wrong
+  command. `app.js` now guesses from `navigator.userAgentData`/`navigator.platform`/
+  `navigator.userAgent` (checked against both platform and the UA string, since a `--user-agent`
+  override does not always change `navigator.platform`, which is how the first pass of this fix
+  tested wrong under headless Chrome) and defaults to Mac there. Verified with `vyre-chrome
+  --headless=new --user-agent=...` under both a Mac and a Linux UA string.
+- Whichever tab a person actually clicks is remembered (`localStorage`, wrapped in `try`/`catch`
+  so private browsing or a blocked store never breaks the page) and wins over the guess on a
+  later visit. Verified by code review against the existing `navigator.clipboard` try/catch
+  pattern already in this file, rather than a scripted two-navigation browser test (no test
+  harness exists for `site/app.js`'s runtime and building one wasn't worth it for this).
+- Added `site/robots.txt` and `site/sitemap.xml` (just `/` and `/start`; `/404` is excluded).
+  Neither existed before. `theme-color` was already set on all three pages, so nothing to do there.
+
 ### .lbl's weight, and the selected tab's text colour (2026-09-27)
 
 - app-design's re-review caught a detail the sentence-case pass got wrong: `.lbl` should be weight
