@@ -4,7 +4,7 @@
   "description": "Project teammates (ADR 0031): a named, persistent agent per role per project, a notes file that is its memory of record, and a serial inbox any session in the project summons it through.",
   "roles": ["box", "local"],
   "requires": ["threads", "projects", "sessions"],
-  "does": { "tools": ["team.add", "team.list", "team.ask", "team.status", "team.cancel", "team.done", "team.fail", "team.notes"] },
+  "does": { "tools": ["team.add", "team.list", "team.ask", "team.status", "team.cancel", "team.done", "team.fail", "team.notes", "team.notes.edit"] },
   "watches": { "emits": ["teammate.created", "summon.queued", "summon.started", "summon.finished", "summon.cancelled"] },
   "shows": { "cli": ["team"] },
   "needs": {},

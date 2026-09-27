@@ -8,14 +8,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - New module `core/team` (ADR 0031 Migration step 1): a named teammate per role per project, a
   priority-ordered serial inbox (one request running per teammate at a time), a versioned notes
-  file written to `<project home>/.vyre/team/<role>/notes.md`, and `vyre team`. Tools `team.add`
-  (person-only), `team.list`, `team.ask`, `team.status`, `team.cancel`, `team.done`, `team.fail`,
-  `team.notes`. A request takes a `sessions.slots` teammate slot in the requesting project before
-  it launches, and the slot (and the next request) is never stuck behind a teammate's turn ending
-  without `team.done`/`team.fail`. Tested against the fake claude driver.
-- core/switchboard/testing/fake-claude.js (test-only): its `"vyre <tool> <json>"` scripted prompt
-  is now found anywhere in the prompt, not only when the whole prompt starts with it, so a
-  teammate's `<vyre-request>`-wrapped text can still script a tool call in a test.
+  file written to `<project home>/.vyre/team/<role>/notes.md`, and `vyre team`. Tools `team.add`,
+  `team.list`, `team.ask`, `team.status`, `team.cancel`, `team.notes` (person-only) plus
+  `team.done`, `team.fail`, `team.notes.edit`. A request takes a `sessions.slots` teammate slot in
+  the requesting project before it launches, and the slot (and the next request) is never stuck
+  behind a teammate's turn ending without `team.done`/`team.fail`. The next request is dispatched
+  only once the current one's turn has genuinely finished, never from inside team.done/team.fail
+  (which run mid-turn) — an earlier version raced the two, and a low-priority request could close
+  with an unrelated urgent one's result. Tested against the fake claude driver, including an e2e
+  security review's three HIGH findings (a forgeable caller label on several "or a person may..."
+  branches; a notes path that did not validate its `part`; a result wrapper a teammate's own
+  output could break out of), each with a regression test.
+- core/switchboard/testing/fake-claude.js (test-only): its `"vyre <tool> <json>"` and
+  `"forge"`/new `"bareforge"` scripted prompt lines are now found anywhere in the prompt, not only
+  when the whole prompt starts with it, so a teammate's `<vyre-request>`-wrapped text can still
+  script a tool call (or a forged one) in a test.
 
 #### On a Mac, waiting leaves the planner to the box
 
