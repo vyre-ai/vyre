@@ -231,6 +231,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Docs drift: SPEC's `requires` example named the store and events (never modules), its entry file
   imported a type that didn't exist, `ctx.events.latestId` was undocumented, and module-contract
   said the Deck reads `shows.deck` (it doesn't yet).
+#### Vyre IQ: memory.ask, memory.retrieve and memory.suggest
+
+- `memory.ask {question, project_cwds?, context?: {project, thread}}` (ADR 0034): a personal fact
+  memory is sure of answers at once. Otherwise the fast model reads the 8 passages memory.retrieve
+  finds and replies in JSON with citations. Code then checks every citation and every name,
+  number, path and quoted word against what it cites, and a failed check abstains. Returns
+  { answer, confidence, abstained, known, sources, via, latency_ms, cost_usd }. Replies are kept by
+  the prompt's hash (memory_iq_asks): the same question over the same passages answers the same
+  way, and CI replays them. Questions have their own daily cap (config.memory.model.askDailyUsd, $0.10).
+- `memory.retrieve {question}`: Recall's searches for the question and for the names memory and
+  the graph know in it, fused by rank, with time words and a small recency prior. The Capsule's
+  ask threads are never read. scripts/eval-iq.js measures it (recall@8 and ablations) and
+  memory.ask (`--answer`, `--record`) on the open and sealed sessions worlds.
+- `memory.suggest {prefix}`: names memory knows for completion. Personal ones only for the user's
+  own surfaces. `recall.search {prefix: true}` treats each typed word as a prefix (FTS5 term*).
+
 #### Memory learns only from the person's own words, and a trial home never reads ~/.claude
 
 - Recall reads the person's Claude Code folder (~/.claude or CLAUDE_CONFIG_DIR) only for their own

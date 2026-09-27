@@ -495,3 +495,23 @@ test("context: one call per prompt, the sure answer first, then the graph's line
   assert.equal(p.data.answer, null);
   assert.ok(Array.isArray(p.data.lines));
 });
+
+test("vyre iq: memory.suggest, memory.retrieve and memory.ask through the module, scoped by caller", async t => {
+  const { call } = await world(t);
+  const sug = (await call("memory.suggest", { prefix: "jor" })).data.suggestions;
+  assert.ok(sug.some(s => /jordan/i.test(s.text) && s.via === "personal"), JSON.stringify(sug));
+  // A project's agent gets no personal names.
+  const kit = await call("memory.suggest", { prefix: "jor", agent: "kit", project_cwds: ["/home/alex/Work/harlow-site"] });
+  assert.ok(!kit.error, kit.error);
+  assert.ok(!kit.data.suggestions.some(s => s.via === "personal"));
+  const r = (await call("memory.retrieve", { question: "who signed off on the homepage" })).data;
+  assert.ok(r.passages.some(p => /signed off on the homepage/.test(p.text)));
+  assert.ok(!r.passages.some(p => /^Capsule: /.test(String(p.name || ""))));
+  // No model under test: a sure fact answers, anything else abstains with nothing made up.
+  const wife = (await call("memory.ask", { question: "what is my wife's name" })).data;
+  assert.equal(wife.answer, "Your wife is Jordan.");
+  assert.equal(wife.via, "fact");
+  const none = (await call("memory.ask", { question: "who signed off on the homepage" })).data;
+  assert.equal(none.abstained, true);
+  assert.equal(none.answer, null);
+});

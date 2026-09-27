@@ -25,7 +25,6 @@
 //   maxChunks  the dense index's hard cap in chunk vectors (default 50,000, ~78MB); past it the
 //              oldest sessions drop out of ranking by meaning and fall back to full-text search
 
-import os from "node:os";
 import path from "node:path";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
@@ -36,8 +35,7 @@ import { pacer, gate } from "./pace.js";
 import { Dense } from "./dense.js";
 import { Watches } from "./watch.js";
 import { blocks, find, peek } from "../transcripts/index.js";
-import { claudeHome, untilde } from "../config/index.js";
-import { isRealHome } from "../config/dialogs.js";
+import { transcriptFolders } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 
 /** @type {import("./embed.js").Embedder | null} */
@@ -51,25 +49,11 @@ let injected = null;
 export function useEmbedder(e) { injected = e; }
 
 /**
- * The transcript folders to read. The person's own Claude Code folder (~/.claude, or
- * CLAUDE_CONFIG_DIR) is read only by their own Vyre home (~/.vyre): a dev world, a demo, a trial
- * or a temp home indexing every real conversation on the machine is how a trial Capsule once
- * answered from the person's dev sessions. Such a home reads its own folders (claudeHome(root),
- * <root>/claude), or the real one when VYRE_ALLOW_REAL_TRANSCRIPTS=1 says so on purpose. Under
- * `node --test` the real one is never read, whatever the config or the environment says.
+ * The transcript folders to read: the kernel's rule (core/config transcriptFolders). The person's
+ * own ~/.claude only for their own ~/.vyre, never under `node --test`, symlinks followed.
  * @param {string[]} folders @param {string} [root] the Vyre home @param {NodeJS.ProcessEnv} [env]
  */
-export function readable(folders, root = "", env = process.env) {
-  const real = [path.join(os.homedir(), ".claude"), env.CLAUDE_CONFIG_DIR ? untilde(env.CLAUDE_CONFIG_DIR) : null]
-    .filter(Boolean).map(d => path.resolve(/** @type {string} */ (d)) + path.sep);
-  const under = f => { const p = path.resolve(untilde(f)) + path.sep; return real.some(r => p.startsWith(r)); };
-  if (env.NODE_TEST_CONTEXT) return folders.filter(f => !under(f));
-  if (root && isRealHome(root)) return folders;
-  if (env.VYRE_ALLOW_REAL_TRANSCRIPTS === "1") return folders;
-  // A home kept elsewhere on purpose names its folder outright (VYRE_CLAUDE_HOME): that one is its own.
-  const own = root ? path.resolve(claudeHome(root, env)) + path.sep : null;
-  return folders.filter(f => !under(f) || (own && (path.resolve(untilde(f)) + path.sep).startsWith(own)));
-}
+export const readable = (folders, root = "", env = process.env) => transcriptFolders(folders, root, env);
 
 /**
  * A session's row by id or an unambiguous prefix of one, the way recall.thread finds it, or null.
@@ -218,7 +202,7 @@ export default {
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
-        per_session: { type: "integer" }, machines,
+        per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines,
       } },
       run: async (input, { caller } = {}) => {
         const { machines: _, ...q } = input;

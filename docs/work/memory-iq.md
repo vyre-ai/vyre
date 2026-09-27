@@ -117,24 +117,44 @@ facts are not a project's.
   precision 0.057, 4 confident wrong (the husband answered as "Claire", Owen's wife from a
   pasted email). The held-out world is the real number.
 
-## Doing
-- Round 4 (27 Sep), pushed at 8478379a. The reader makes two readings per batch and takes a
-  second look at who someone is. Scores: sealed 0.577 (6 confident wrong), fresh 0.76, blind
-  0.959, personal 1.0, heldout 1.0.
-- Evaluation worlds: `sealed` (40c1f23c) is the honest number; never open it (the eval refuses
-  --facts, --claims and --ask on it). `fresh` is now a tuning world, opened on 27 Sep.
-- Cost is about $0.30 per 1,000 turns per reading, plus the second look, so about $0.65 per
-  1,000 with two readings.
+## Doing (27 Sep, after LOGOUT 4; ADR 0034 approved with amendments)
+- DONE this session, on work/memory-iq (handed to the integrator at 0f0c17a2):
+  - A temp, dev or trial home never reads the person's ~/.claude (core/recall/index.js readable(),
+    on e2e's claudeHome and guard test). This is how the trial Capsule got "Jordan".
+  - Source trust: core/memory/personal/trust.js plus the memory_me_trust migration. Only the user's
+    own words teach personal facts. No Claude turns, subagents, headless runs, Capsule asks, Vyre
+    folders, sessions about building memory (2 turns with DEV words), skipCwds, or harness blocks.
+    The said path is filtered the same way.
+  - Eval: `--world trust` (the Jordan trap) at 1.0. Every question is asked 3 times
+    (inconsistent 0 everywhere) and ungrounded is counted (0 everywhere). Both are in BAR.
+  - People bar PEOPLE_SURE 0.6, from a sweep over 0.5 to 0.75 in which no world moved. Yes/no
+    questions about a relative ("does my wife like hiking") abstain.
+- After 0f0c17a2 (WIP, not yet handed over): a sold thing was owned (ended:owns -> owns, and the
+  object is the user's entity); DEV words narrowed ("seed data" is a dev job's, not memory's);
+  Claude's turns still set pronoun focus; memory.retrieve (core/memory/iq/retrieve.js) and
+  scripts/eval-iq.js (phase 2, ablations bm25/hybrid/dense/+expand/+when/full, recall@8).
+- Scores now (replayed reads): personal 1.0, heldout 1.0, blind 0.959, fresh 0.76, trust 1.0, sealed
+  0.551 with 7 confident wrong. Before this session sealed was 0.577 with 6. Two sealed answers
+  were lost because Claude's words no longer count: a past home that only Claude had named, and a
+  brother's home read in the same batch that first learned his name. The past-home one is now a
+  confident wrong answer (two model lives_in facts, and the older one is not picked for "before").
+  Not tuned on sealed.
+- Sessions worlds: test/fixtures/iq-sealed.js (61 sessions, 100 q, written blind and never opened;
+  only counts were checked) and iq-open.js (52 sessions, 90 q, tuning).
 
 ## Next
-- Model-backed answering with evidence (asked by the lead): too slow for memory.answer's 150 ms
-  bar, so a separate `deep` path the Capsule can call when there's no fact. Design it after the
-  numbers.
-- Once ADR 0030 lands, route the reader's model calls through the sessions layer as a background
-  job: its per-purpose model map, concurrency slots and budget. Today reader.js runs `claude -p` itself.
-  The runner is injected (deps.runner), so this is a swap of one function.
-- CI step for `npm run eval:answer` (replay only), ADR 0023, and contract notes for capsule-pro,
-  pwa and mobile.
+- The real-embedder ablation numbers into ADR 0034 (running on testbox: VYRE_EVAL_EMBEDDER_DIR
+  under ~/vyre-ci/miq-embedder).
+- Phase 3: memory.ask, the answer step (fast model, JSON with citations, names and numbers checked
+  by code, abstain), replayed in CI from recorded calls. Then phase 4 (second look, answer cache by
+  fact-set version).
+- Cohesion (agreed 27 Sep): memory.suggest {prefix, context} under 25 ms; recall.search {prefix}
+  (FTS5 term*), as a listed change since recall has no active team; memory.ask context.
+- "Before" for places: pick the newest place before the current one.
+- Full backfill cost for the user: about $0.65 per 1,000 user turns (2 readings plus the second
+  look). The repo's recall notes count about 3,900 user turns on the real corpus, minus the dev
+  sessions now left out: about $1.50 to $2.60. The $2 pool covers most of it, and the $0.25/day
+  cap finishes the rest in 1 to 3 days.
 
 ## Needs from others
 - main: OK a fast-model (haiku) extraction pass over every personal-signal user turn (a one-time
@@ -143,8 +163,7 @@ facts are not a project's.
   per-turn memory.answer or a combined memory.context tool (message sent 27 Sep).
 - polish-cli: the contract of the low-priority index worker. Until then extraction runs in the
   memory curator's background pass, in bounded batches that yield.
-- main/integrator: core/memory/rooms.test.js:227 fails on main's code. agents.create now needs
-  presence ("Making or changing an agent needs a person"), and the test does not provide it.
 
 ## Changed contracts
+- core/recall/index.js readable(folders, root, env): the person's ~/.claude only for the real ~/.vyre (or VYRE_ALLOW_REAL_TRANSCRIPTS=1). New tool memory.retrieve. Table memory_me_trust. Config memory.personal.skipCwds.
 - New tools `memory.answer`, `memory.profile`, `memory.remember` (see above); event `memory.remembered`; table `memory_me_told`. New table family `memory_me_*` (memory's own).
