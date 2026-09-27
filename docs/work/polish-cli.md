@@ -84,9 +84,10 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 - Session verbs: start, send, send-now, queue edit/drop, stop/interrupt, take back, open in
   terminal, watch, all with --json, once sessions answers.
-- `vyre phone add`: box-side signals are missing for the full five checks (reported to the lead:
-  push.subscribed event, push delivery ack, phone path direct/relayed, a linked Mac minting the
-  box's code, a Deck /pair route, relay tools, an APK the box serves).
+- `vyre phone add`: the relay is the default (lead). Built against work/relay 0dfbd12 (path, rtt,
+  node, device.moved); retest once relay lands on main. A Mac is sent to the box/Deck to pair
+  (ADR 0032: link.call refuses human-only tools). One QR encoder: asked relay to use core/cli/qr.js.
+  Still missing box-side: push.subscribed event, push delivery ack, an APK the box serves.
 - When the integrator says testbox is free: a 30 min stress run at nice -n 19 to confirm the
   second-half RSS slope is under 1 MB/10 min.
 - Deck/Capsule clients: to ride a session for approve/grant they need e2e's
