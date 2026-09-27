@@ -340,7 +340,14 @@ async function turn(prompt, uuid = null) {
     await say(String(r));
     return result(true, String(r));
   }
-  const tool = /^vyre (\S+)\s*(.*)$/s.exec(p);
+  // A prompt with a "vyre <tool> <json>" line anywhere in it, not only at the very start, so a
+  // teammate's wrapped <vyre-request> text (core/team, ADR 0031) can still script a tool call. At
+  // the very start the rest of the prompt is the call, as before (a multi-line JSON body works);
+  // found further in, only that one line is the call, so text that follows it (a wrapper's
+  // closing tag) is never swallowed into the JSON.
+  const lines = p.split("\n");
+  const vyreAt = lines.findIndex(l => /^vyre \S/.test(l));
+  const tool = vyreAt < 0 ? null : vyreAt === 0 ? /^vyre (\S+)\s*(.*)$/s.exec(p) : /^vyre (\S+)\s*(.*)$/.exec(lines[vyreAt]);
   if (tool) {
     const { call } = await import("../../daemon/client.js");
     const caller = process.env.VYRE_AGENT ? `mcp:agent:${process.env.VYRE_AGENT}` : "mcp";

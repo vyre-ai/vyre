@@ -63,6 +63,8 @@ export const HUMAN_ONLY = new Set([
  */
 export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach", "gate.revise", "gate.reject",
   "agents.create", "agents.update", "agents.resume",
+  // A teammate is made by a person (ADR 0031 section 4); a session or another teammate never can.
+  "team.add",
   "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access", "projects.move",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
   "learn.accept", "learn.retire", "learn.relax",

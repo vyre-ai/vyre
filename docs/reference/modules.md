@@ -54,6 +54,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
+| [`team`](#team) | `core/team` | `box`, `local` | 8 | 5 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 40 | 26 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
@@ -470,6 +471,18 @@ Predictive text for every surface: names after @, commands after /, entities, ac
 - Tools: [2](tools.md#system)
 - Emits: [1 events](events.md#system)
 - Shows on: cli
+
+## team
+
+Project teammates (ADR 0031): a named, persistent agent per role per project, a notes file that is its memory of record, and a serial inbox any session in the project summons it through.
+
+- Folder: `core/team`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: `threads`, `projects`, `sessions`
+- Tools: [8](tools.md#team)
+- Emits: [5 events](events.md#team)
+- Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## term
 
