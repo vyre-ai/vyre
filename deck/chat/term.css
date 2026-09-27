@@ -74,7 +74,7 @@
    the key bar sits on the home indicator (its safe area painted --panel). With the keyboard up
    (js/keyboard.js: --kb, data-kb) the page leaves exactly --kb-lift, so the key bar sits on the
    keyboard and xterm refits to the rows left above it. */
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .view > .page:has(> .chat-term), .pager .page:has(> .chat-term) { padding-bottom: 0; overflow: hidden; }
   :root[data-kb] .view > .page:has(> .chat-term), :root[data-kb] .pager .page:has(> .chat-term) { padding-bottom: var(--kb-lift); }
   .term-watch { min-height: 44px; padding: 6px 12px 6px 16px; border-top: 0; }

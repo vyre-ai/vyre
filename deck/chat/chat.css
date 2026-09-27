@@ -204,7 +204,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .thread-row .meta { min-width: 0; }
 .rows > .thread-row { border-radius: 0; }
 .thread-row .av-agent { flex-shrink: 0; color: var(--text-2); }
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .thread-row .av-agent { width: 32px; height: 32px; border-radius: 8px; font-size: 13px; line-height: 18px; }
 }
 .thread-row .meta > span { flex-shrink: 0; }
@@ -563,7 +563,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 @media (prefers-reduced-motion: reduce) { .cv-ask-spin { animation: none; } }
 /* Key hints only 720 and wider, and not on a touch-only device (key-hint.md). A touch-only device
    is "no hover and a coarse pointer": headless Chrome reports no hover either, but no coarse pointer. */
-@media (max-width: 719px), (any-hover: none) and (pointer: coarse) { .cv-ask-key, .cv-q-num.kbd { display: none; } }
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse), (hover: none) { .cv-ask-key, .cv-q-num.kbd { display: none; } }
 .cv-deny-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cv-why, .cv-q-input { flex-grow: 1; min-width: 180px; height: 32px; padding: 0 10px; border: 1px solid var(--rule-strong); border-radius: 6px;
   background: var(--panel); color: var(--text); font: inherit; font-size: 14px; }
@@ -635,7 +635,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-tool-time { font-variant-numeric: tabular-nums; }
 .cv-turn-err { color: var(--text); }
 @media (prefers-reduced-motion: reduce) { .cv-run .cv-chev { transition: none; } }
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .cv-run { margin-left: 0; max-width: 100%; }
   .cv-run-body { padding-left: 8px; margin-left: 7px; }
 }

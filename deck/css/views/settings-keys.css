@@ -103,7 +103,7 @@
 .sk-json { font-family: var(--mono); font-size: 12px; line-height: 18px; width: 100%; background: var(--bg); border-radius: var(--radius-field, var(--radius-field, 8px)); }
 
 /* Phone: label and control on one line, the reserved line under them, every target 44. */
-@media (max-width: 760px) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .sk-top { padding-top: 40px; }
   .sk-bar { position: static; }
   .sk-find, .sk-proj { height: 44px; font-size: 16px; }

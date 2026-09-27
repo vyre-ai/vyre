@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Chat's Design A styles on pwa's tokens and phone query
+
+- deck/chat/chat.css, term.css and deck/css/views/settings-keys.css: the phone breakpoints use the
+  one phone query at 719 px (dom.js PHONE_QUERY), and the old --r-1..4 radii map to the radius
+  roles (chip 4, field 8, card 12, sheet 14), since pwa's token pass removed --r-*. Keyboard hints
+  hide on the phone query or with no hover.
+
 #### Batch 4 fits together: the module schema knows settings' secret and labels, and tips' about
 
 - packages/module-sdk: a setting may say `secret` (masked, native-core) and `labels` (one label
