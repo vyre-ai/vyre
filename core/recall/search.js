@@ -48,21 +48,23 @@ export function prefixOf(/** @type {string} */ q) {
 }
 
 /**
- * @typedef {{ q: string, limit?: number, project_cwds?: string[], role?: "user"|"assistant", hybrid?: boolean,
+ * @typedef {{ q: string, limit?: number, project_cwds?: string[], sessions?: string[], role?: "user"|"assistant", hybrid?: boolean,
  *             per_session?: number, candidates?: number, floor?: number, dense_weight?: number, prefix?: boolean }} Query
  * @typedef {{ session: string, seq: number, role: string, ts: number, text: string, snippet: string,
  *             score: number, name: string|null, title: string|null, cwd: string|null }} Hit
  */
 
-/** SQL that keeps sessions whose cwd is one of the folders or inside one. */
-function underAny(/** @type {string[]} */ cwds) {
-  if (!cwds.length) return { sql: "", args: [] };
+/**
+ * SQL that keeps sessions whose cwd is one of the folders or inside one, or that are one of the
+ * sessions named (a project's attached sessions, wherever they ran).
+ */
+function underAny(/** @type {string[]} */ cwds, /** @type {string[]} */ sessions = []) {
+  if (!cwds.length && !sessions.length) return { sql: "", args: [] };
   const clean = cwds.map(c => String(c).replace(/\/+$/, "")).filter(Boolean);
-  if (!clean.length) return { sql: " AND 0", args: [] };
-  return {
-    sql: " AND (" + clean.map(() => "s.cwd = ? OR substr(s.cwd, 1, ?) = ?").join(" OR ") + ")",
-    args: clean.flatMap(c => [c, c.length + 1, c + "/"]),
-  };
+  const ids = sessions.map(String).filter(Boolean);
+  if (!clean.length && !ids.length) return { sql: " AND 0", args: [] };
+  const parts = [...clean.map(() => "s.cwd = ? OR substr(s.cwd, 1, ?) = ?"), ...(ids.length ? [`s.id IN (${ids.map(() => "?").join(",")})`] : [])];
+  return { sql: " AND (" + parts.join(" OR ") + ")", args: [...clean.flatMap(c => [c, c.length + 1, c + "/"]), ...ids] };
 }
 
 /**
@@ -71,8 +73,8 @@ function underAny(/** @type {string[]} */ cwds) {
  * the query runs as given (someone who knows the grammar still gets it) and, when FTS5 refuses
  * it, as the literal phrase instead of crashing.
  */
-function match(db, expr, { role, cwds, limit }) {
-  const where = underAny(cwds);
+function match(db, expr, { role, cwds, sessions, limit }) {
+  const where = underAny(cwds, sessions);
   const sql = `SELECT t.rowid AS rid, t.session, t.seq, t.role, t.ts, t.text, t.rank AS rank,
       snippet(recall_turns, 4, '«', '»', '…', 16) AS snippet,
       s.name, s.title, s.cwd
@@ -172,7 +174,7 @@ export async function search(db, query, embedder = null, dense = null) {
   const limit = Math.max(1, Math.min(100, query.limit || 10));
   const cap = query.per_session === undefined ? 3 : query.per_session;
   if (!q) return { hits: [], hybrid: false };
-  const opts = { role: query.role, cwds: query.project_cwds || [] };
+  const opts = { role: query.role, cwds: query.project_cwds || [], sessions: query.sessions || [] };
   const wide = Math.max(query.candidates || 300, limit * 4);
   if (query.prefix) {
     const expr = prefixOf(q);
@@ -210,7 +212,8 @@ export async function search(db, query, embedder = null, dense = null) {
     try {
       const qv = await embedder.embed(q);
       const cwds = opts.cwds.map(c => String(c).replace(/\/+$/, "")).filter(Boolean);
-      const keep = cwds.length ? (/** @type {string|null} */ cwd) => !!cwd && cwds.some(c => cwd === c || cwd.startsWith(c + "/")) : undefined;
+      const ids = new Set(opts.sessions.map(String));
+      const keep = cwds.length || ids.size ? (/** @type {string|null} */ cwd, /** @type {string} */ session) => ids.has(session) || (!!cwd && cwds.some(c => cwd === c || cwd.startsWith(c + "/"))) : undefined;
       const floor = query.floor ?? floorFor(await dense.size());
       const z = query.z ?? Z;
       // Unfiltered by the floor: agreement with keyword is itself a way past it, decided below.

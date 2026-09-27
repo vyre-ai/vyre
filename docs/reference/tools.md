@@ -2092,6 +2092,7 @@ The turns Vyre IQ would read to answer a question: { passages: [{ id, session, s
   - `knobs` object: evaluation only: passed to recall.search
   - `project_cwds` list of string
   - `recency` boolean
+  - `replies` boolean
   - `when` boolean
 - Callers: any caller
 
@@ -2848,6 +2849,7 @@ Search every Claude Code session on this machine for turns about something. Retu
   - `prefix` boolean: each word as a prefix, all of them, keyword only: for completion while typing
   - `project_cwds` list of string
   - `role` "user" or "assistant"
+  - `sessions` list of string: also these sessions wherever they ran (a project's attached sessions); from modules and the person's surfaces only
 - Callers: any caller
 
 ### `recall.sessions`

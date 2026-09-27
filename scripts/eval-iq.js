@@ -57,6 +57,7 @@ export const ABLATIONS = {
   dense: { expand: false, when: false, recency: false, knobs: { dense_weight: 1 } },
   "+expand": { when: false, recency: false },
   "+when": { recency: false },
+  "-replies": { replies: false },
   full: {},
 };
 
@@ -78,11 +79,12 @@ export function scoreRetrieval(questions, got, ms) {
     if (!q.expect) return;
     n++;
     const t = targets(q), ps = got[i].slice(0, K);
-    const rank = ps.findIndex(p => t.turns.has(`${p.session}:${p.seq}`));
+    // A passage holds its turn and, for a user turn, the reply that followed.
+    const rank = ps.findIndex(p => t.turns.has(`${p.session}:${p.seq}`) || (p.reply && t.turns.has(`${p.session}:${p.reply.seq}`)));
     const h = rank >= 0;
     if (h) { hit++; rr += 1 / (rank + 1); }
     if (ps.some(p => t.sessions.has(p.session))) sess++;
-    if (ps.some(p => correct(p.text, q.expect))) ans++;
+    if (ps.some(p => correct(`${p.text}\n${p.reply ? p.reply.text : ""}`, q.expect))) ans++;
     const k = kinds[q.kind] || (kinds[q.kind] = { n: 0, hit: 0 });
     k.n++; if (h) k.hit++;
   });
@@ -172,7 +174,10 @@ export async function runIq(opts = {}) {
           const ps = (await mem.call("memory.retrieve", { question: q.q, k: K })).passages || [];
           const t = targets(q);
           misses.push({ kind: q.kind, q: q.q, expect: q.expect, answer: r.answer, confidence: r.confidence, why: r.why || null, known: r.known,
-            gold_in_8: ps.some(p => t.turns.has(`${p.session}:${p.seq}`)), answer_in_8: q.expect ? ps.some(p => correct(p.text, q.expect)) : null });
+            gold_in_8: ps.some(p => t.turns.has(`${p.session}:${p.seq}`) || (p.reply && t.turns.has(`${p.session}:${p.reply.seq}`))), answer_in_8: q.expect ? ps.some(p => correct(p.text, q.expect)) : null,
+            // How far the nearest retrieved turn of the gold's session is from the gold turn.
+            near: Math.min(99, ...(q.where || []).flatMap(g => ps.filter(p => p.session === g.session).map(p => Math.abs(p.seq - g.seq)))),
+            gold_role: (q.where || []).map(g => /** @type {any} */ (db.prepare("SELECT role FROM recall_turns WHERE session = ? AND seq = ?").get(g.session, g.seq))?.role).join(",") });
         }
       }
       answered = { accuracy: round(right / questions.length), confident_wrong: cw, abstain_rate: round(abst / questions.length), ungrounded, inconsistent: incons,

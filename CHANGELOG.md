@@ -18,6 +18,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Corrections (memory.correct, uncorrect, merge, split, and IQ answer fixes) follow one rule: the
   person's own surfaces, or their phone or paired device with a person session (a passkey,
   ADR 0032). A device without one gets `person_session_required`; agents are always refused.
+- Vyre IQ reads the answer, not only the question: a user turn it finds carries the assistant turn
+  that followed (the open world's misses were mostly the right session's question turn, with the
+  answer one turn later). Retrieval, no model: open recall@8 0.819 to 0.917, sealed 0.613 to 0.75.
+- A project's IQ reads its attached sessions: `recall.search {sessions}` also keeps these sessions
+  wherever they ran (from modules and the person's surfaces only; a model's `sessions` is dropped),
+  and memory.retrieve and memory.ask scope a project by its folders plus its picked threads.
 - Vyre IQ's check counts what the model was shown for a cited passage: its date, project folder
   and session name, and a name of several words when each word is there. It had been refusing
   grounded answers ("it went live on 2026-06-12" from the passage's date). Replayed, no new model
