@@ -73,19 +73,86 @@ function count(/** @type {string} */ hay, /** @type {string} */ needle) {
   return n;
 }
 
+/** The accessibility actions hands will perform, beside press, set, focus, type and key. */
+export const ACTIONS = ["AXShowMenu", "AXIncrement", "AXDecrement", "AXConfirm", "AXCancel", "AXRaise", "AXPick", "AXScrollToVisible"];
+
+const num = (/** @type {unknown} */ v) => {
+  if (v == null || String(v).trim() === "") return null;
+  const n = Number(String(v).replace(/[^0-9.eE+-]/g, ""));
+  return Number.isFinite(n) ? n : null;
+};
+const isMenu = (/** @type {Element} */ e) => e.role === "AXMenuItem" || e.role === "AXMenu";
+const sameFrame = (/** @type {Element|null|undefined} */ a, /** @type {Element|null|undefined} */ b) =>
+  JSON.stringify(a && a.frame || null) === JSON.stringify(b && b.frame || null);
+
+/**
+ * One rule per accessibility action. Each names the effect it looks for; where an action has no
+ * effect this module can see, the rule says that instead of crediting a change nobody can tie
+ * to it.
+ *
+ * @param {{ action: string, moved: boolean, before: Snap, after: Snap, target: Element | null, was: Element | null, found: any }} a
+ * @returns {{ verified: boolean, reason: string, target: Element | null }}
+ */
+function actionVerdict({ action, moved, before, after, target, was, found }) {
+  switch (action) {
+    case "AXShowMenu": {
+      // A menu is a visible, checkable end state: menu items that were not there before.
+      const had = new Set((before.elements || []).filter(isMenu).map(e => e.path));
+      const opened = (after.elements || []).some(e => isMenu(e) && !had.has(e.path));
+      return opened
+        ? { verified: true, reason: "a menu opened", target }
+        : { verified: false, reason: "no menu appeared in the app after the action (a menu drawn outside the app's accessibility tree cannot be seen)", target };
+    }
+    case "AXIncrement":
+    case "AXDecrement": {
+      if (!target) return { verified: false, reason: `the control could not be found again after the action: ${"why" in found ? found.why : ""}`, target: null };
+      const from = num(was && was.value), to = num(target.value);
+      if (from == null || to == null) return { verified: false, reason: "the control does not publish a numeric value, so the step cannot be confirmed", target };
+      const up = action === "AXIncrement";
+      if (up ? to > from : to < from) return { verified: true, reason: `the value went ${up ? "up" : "down"}`, target };
+      return { verified: false, reason: to === from ? "the value did not change (it may be at its limit)" : `the value went the wrong way`, target };
+    }
+    case "AXRaise": {
+      // The end state is checkable: the window is the app's main window afterwards.
+      if (!target) return { verified: false, reason: `the window could not be found again after the action: ${"why" in found ? found.why : ""}`, target: null };
+      if (target.focused) return { verified: true, reason: was && was.focused ? "the window was already the main window and still is" : "the window is the main window now", target };
+      return { verified: false, reason: "the window is not the main window after the action", target };
+    }
+    case "AXScrollToVisible": {
+      // Frames are out of the window signature on purpose; here the control's own frame is the
+      // effect. An unmoved frame is not a failure the code can prove, nor a success: the control
+      // may already have been in view.
+      if (!target) return { verified: false, reason: `the control could not be found again after the action: ${"why" in found ? found.why : ""}`, target: null };
+      if (!sameFrame(was, target)) return { verified: true, reason: "the control moved, so it was scrolled", target };
+      return { verified: false, reason: "the control did not move; it may already have been in view, which this cannot tell apart from a scroll that did nothing", target };
+    }
+    case "AXConfirm":
+    case "AXPick":
+    case "AXCancel":
+      // Like a press: what these do is the app's business, so the window must be different.
+      return moved
+        ? { verified: true, reason: "the window changed after the action", target }
+        : { verified: false, reason: "nothing observed changed after the action, so it did not land (or its effect is outside what the accessibility tree shows)", target };
+    default:
+      return { verified: false, reason: `no rule to verify ${action}`, target };
+  }
+}
+
 /**
  * The verdict on one action, from the observation taken just before it and the one after.
  * Always returns a reason, because "it did not work" and "it worked" are both things the
  * caller has to say out loud, and a bare boolean makes for a useless message.
  *
- * @param {{ kind: string, value?: string, selector: Selector, before: Snap, after: Snap }} a
+ * @param {{ kind: string, value?: string, action?: string, selector: Selector, before: Snap, after: Snap }} a
  * @returns {{ verified: boolean, reason: string, target: Element | null }}
  */
-export function verdict({ kind, value, selector, before, after }) {
+export function verdict({ kind, value, action, selector, before, after }) {
   const moved = signature(before) !== signature(after);
   const found = resolve(selector, after.elements || []);
   const target = found.element;
   const was = resolve(selector, before.elements || []).element;
+
+  if (kind === "action") return actionVerdict({ action: String(action || ""), moved, before, after, target, was, found });
 
   if (kind === "press" || kind === "key") {
     if (moved) return { verified: true, reason: "the window changed after the action", target };
