@@ -46,11 +46,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      # The context a deploy builds from: install-box.sh unpacks the npm pack tarball into src/
+      # and compose.build.yml builds that, so a file missing from package.json "files" fails here.
+      - name: Pack like a deploy
+        run: |
+          mkdir -p "$RUNNER_TEMP/src"
+          tgz=$(npm pack --silent --pack-destination "$RUNNER_TEMP")
+          tar -xzf "$RUNNER_TEMP/$tgz" -C "$RUNNER_TEMP/src" --strip-components=1
+          echo "SRC=$RUNNER_TEMP/src" >> "$GITHUB_ENV"
       - name: Build box/Dockerfile
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: box/Dockerfile
+          context: ${{ env.SRC }}
+          file: ${{ env.SRC }}/box/Dockerfile
           tags: vyre-box:ci
           load: true
           push: false
