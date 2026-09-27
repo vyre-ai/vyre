@@ -1,8 +1,8 @@
 # The one Expo app (ADR 0027), apps/app, with its own package.json and lockfile outside the root;
 # it imports core/resilience (Metro watchFolders), so jobs check out the whole repo
 # (the box's npm ci never pulls Expo). Tests and typecheck on every push; the web export with its
-# gzipped size; an Android debug APK and a release APK (minify and Hermes exercised) signed in CI with the
-# Vyre release key, vyre-<version>-<sha7>.apk with android.json, published as a release on main. iOS is
+# gzipped size; an Android debug APK and an UNSIGNED release APK (minify and Hermes exercised),
+# vyre-<version>-<sha7>.apk with android.json, for the box to sign with the owner's key. iOS is
 # the fallback only: run by hand with the ios input, simulator build, no signing. Plain prebuild
 # plus gradle/xcodebuild: no EAS, no Expo account. Skips (on a cheap runner) while
 # apps/app/package.json is absent.
@@ -91,8 +91,6 @@ jobs:
     needs: detect
     if: needs.detect.outputs.present == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write  # the release on main
     timeout-minutes: 60
     defaults:
       run:
@@ -119,11 +117,12 @@ jobs:
           key: android-ndk-27.1.12297006-cmake-3.22.1
       - run: npm ci --no-audit --no-fund
       - run: npx expo prebuild -p android --no-install --clean
-      # gradle builds the release unsigned (prebuild points it at the debug keystore; that one
-      # line goes), then apksigner signs it with the one Vyre release key, a repo secret. With no
-      # secret (a fork, or before the key exists) a throwaway key signs it, android.json says
-      # "signer": "throwaway", and nothing is published. The box serves the APK as built here and
-      # never re-signs it.
+      # The release APK ships UNSIGNED, with android.json: the box signs it with the owner's own
+      # key from its vault (the box is the root of trust; there is no Vyre-wide release key).
+      # prebuild points release at the debug keystore; that one line goes. A copy signed with a
+      # throwaway per-run key proves the APK signs and verifies with the platform's apksigner, and
+      # when apps/app has the box's pure-JS signer (scripts/sign-apk.mjs), its output is verified
+      # with apksigner too.
       - name: Release build unsigned
         run: |
           node -e '
@@ -131,27 +130,15 @@ jobs:
             const bt = s.indexOf("buildTypes"), rel = s.indexOf("release {", bt), line = "signingConfig signingConfigs.debug";
             const at = s.indexOf(line, rel);
             if (bt < 0 || rel < 0 || at < 0) { console.error("no release signingConfig to drop in " + f); process.exit(1); }
-            fs.writeFileSync(f, s.slice(0, at) + "// signed after the build, by apksigner" + s.slice(at + line.length));'
+            fs.writeFileSync(f, s.slice(0, at) + "// unsigned: the box signs it with the owner's key" + s.slice(at + line.length));'
       - run: ./gradlew --no-daemon assembleDebug assembleRelease
         working-directory: apps/app/android
-      - name: Sign the release and write android.json
-        id: sign
-        env:
-          KEYSTORE_B64: ${{ secrets.VYRE_ANDROID_KEYSTORE_B64 }}
-          KEYSTORE_PASS: ${{ secrets.VYRE_ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.VYRE_ANDROID_KEY_ALIAS }}
+      - name: Name the release and write android.json
         run: |
           out=android/app/build/outputs/apk
           unsigned=$(ls $out/release/*-unsigned.apk | head -1)
           test -f "$unsigned" || { echo "no unsigned release APK"; ls -R $out; exit 1; }
           bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          ks="$RUNNER_TEMP/release.keystore"
-          if [ -n "$KEYSTORE_B64" ]; then
-            signer=vyre; echo "$KEYSTORE_B64" | base64 -d > "$ks"; pass="$KEYSTORE_PASS"; alias="${KEY_ALIAS:-vyre}"
-          else
-            signer=throwaway; pass=$(openssl rand -hex 16); alias=vyre
-            keytool -genkeypair -keystore "$ks" -storetype PKCS12 -storepass "$pass" -alias "$alias" -keyalg RSA -keysize 4096 -validity 3650 -dname "CN=Vyre throwaway CI" >/dev/null 2>&1
-          fi
           badging=$("$bt/aapt2" dump badging "$unsigned")
           version=$(echo "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
           code=$(echo "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)
@@ -159,36 +146,36 @@ jobs:
           sha7=$(echo "$GITHUB_SHA" | cut -c1-7)
           mkdir -p dist-android
           name="vyre-$version-$sha7.apk"
-          "$bt/zipalign" -p -f 4 "$unsigned" "$RUNNER_TEMP/aligned.apk"
-          export APKPASS="$pass"  # apksigner reads it from the environment, never argv
-          "$bt/apksigner" sign --ks "$ks" --ks-pass env:APKPASS --ks-key-alias "$alias" --out "dist-android/$name" "$RUNNER_TEMP/aligned.apk" </dev/null
-          rm -f "$ks"
-          "$bt/apksigner" verify --print-certs "dist-android/$name" | tee "$RUNNER_TEMP/certs.txt"
-          cert=$(sed -n 's/.*certificate SHA-256 digest: //p' "$RUNNER_TEMP/certs.txt" | head -1)
+          cp "$unsigned" "dist-android/$name"
           cp $out/debug/*.apk dist-android/
           sum=$(sha256sum "dist-android/$name" | cut -d' ' -f1)
           size=$(stat -c %s "dist-android/$name")
-          node -e 'const [v,c,sha,sum,size,min,file,signer,cert]=process.argv.slice(1); console.log(JSON.stringify({ version: v, versionCode: Number(c), sha, sha256: sum, size: Number(size), minSdk: Number(min), built: new Date().toISOString(), file, signer, cert_sha256: cert }, null, 2))' \
-            "$version" "$code" "$GITHUB_SHA" "$sum" "$size" "$minsdk" "$name" "$signer" "$cert" > dist-android/android.json
+          node -e 'const [v,c,sha,sum,size,min,file]=process.argv.slice(1); console.log(JSON.stringify({ version: v, versionCode: Number(c), sha, sha256: sum, size: Number(size), minSdk: Number(min), built: new Date().toISOString(), file }, null, 2))' \
+            "$version" "$code" "$GITHUB_SHA" "$sum" "$size" "$minsdk" "$name" > dist-android/android.json
           cat dist-android/android.json
           ls -l dist-android | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "signer=$signer" >> "$GITHUB_OUTPUT"; echo "version=$version" >> "$GITHUB_OUTPUT"; echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "APK=dist-android/$name" >> "$GITHUB_ENV"
+      - name: Signs and verifies (throwaway key; and the box's JS signer when present)
+        run: |
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          ks="$RUNNER_TEMP/throwaway.p12"; export APKPASS=$(openssl rand -hex 16)
+          keytool -genkeypair -keystore "$ks" -storetype PKCS12 -storepass "$APKPASS" -alias ci -keyalg RSA -keysize 2048 -validity 30 -dname "CN=Vyre throwaway CI" >/dev/null 2>&1
+          "$bt/zipalign" -p -f 4 "$APK" "$RUNNER_TEMP/aligned.apk"
+          "$bt/apksigner" sign --ks "$ks" --ks-pass env:APKPASS --ks-key-alias ci --out "$RUNNER_TEMP/platform-signed.apk" "$RUNNER_TEMP/aligned.apk" </dev/null
+          "$bt/apksigner" verify -v "$RUNNER_TEMP/platform-signed.apk" | head -6
+          if [ -f scripts/sign-apk.mjs ]; then
+            openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj "/CN=Vyre throwaway CI" -keyout "$RUNNER_TEMP/k.pem" -out "$RUNNER_TEMP/c.pem" 2>/dev/null
+            node scripts/sign-apk.mjs --key "$RUNNER_TEMP/k.pem" --cert "$RUNNER_TEMP/c.pem" --in "$APK" --out "$RUNNER_TEMP/js-signed.apk" </dev/null
+            "$bt/apksigner" verify -v "$RUNNER_TEMP/js-signed.apk" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "apps/app/scripts/sign-apk.mjs not here yet: platform signing only" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          rm -f "$ks" "$RUNNER_TEMP/k.pem"
       - uses: actions/upload-artifact@v4
         with:
           name: app-android-${{ github.sha }}
           path: apps/app/dist-android/
           retention-days: 14
-      # A push to main with the real key publishes a GitHub release the box downloads from:
-      # tag android-<version>-<sha7>, the signed APK and android.json.
-      - name: Publish the release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.sign.outputs.signer == 'vyre'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="android-${{ steps.sign.outputs.version }}-$(echo "$GITHUB_SHA" | cut -c1-7)"
-          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Android $tag" \
-            --notes "The Vyre Android app, signed with the Vyre release key. android.json has the sha256." \
-            "dist-android/${{ steps.sign.outputs.name }}" dist-android/android.json
 
   ios:
     needs: detect
