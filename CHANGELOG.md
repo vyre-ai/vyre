@@ -78,6 +78,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - apps.targets for Slack lists live channels (#name) and real people (no bots, no deactivated
   accounts). "Which app?" offers Slack as an app Vyre sends through only when a Slack server is
   in the hub.
+#### Boundaries: parts import only the kernel, or a frozen exception
+
+- test/boundaries.test.js scans every runtime file under core/, local/ and modules/ for relative
+  imports (static, dynamic, require) into another part. The kernel (core/config, store, events,
+  modules, presence, daemon) is open to all. Today's 26 other edges are frozen in an allowlist,
+  down to the files imported; a new edge or a new file behind one fails, and so does an entry
+  nothing uses any more (the list only shrinks). Tests, testing/ and fixtures are out of scope.
+- docs/architecture/boundaries.md: the rule, and each frozen edge with why it exists and what it
+  becomes (17 lib, 8 ctx.call, 1 surface). In the nav; reference regenerated.
+
 #### The answer eval runs without the Electron Capsule
 #### Onboarding: the first steps load the theme and fonts
 

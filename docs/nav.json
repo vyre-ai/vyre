@@ -54,6 +54,7 @@
       "architecture/index.md",
       "architecture/spec.md",
       "architecture/performance.md",
+      "architecture/boundaries.md",
       "adr/0001-vault-crypto.md",
       "adr/0002-network-and-identity.md",
       "adr/0003-glass-stream.md",
