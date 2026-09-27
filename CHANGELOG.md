@@ -19,6 +19,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   reader's intent detaches (an upward wheel, PageUp / ArrowUp / Home, a touch drag, the
   scrollbar, within 100 ms of the scroll); within 1 px of the bottom sticks again. The windowed
   view's anchoring and the Jump to latest pill are kept.
+- Live text (live-text.js): finished blocks are rendered once and frozen; only the block being
+  written re-parses each frame. Block ends are found by a line scan that resumes where it
+  stopped, so a long open code fence is no longer scanned quadratically (settledEnd is linear). A
+  code block shows plain text while its fence is open and is highlighted once, when it closes.
 
 #### Chat: matched to the sessions team's real Switchboard (work/sessions)
 
