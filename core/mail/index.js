@@ -22,8 +22,8 @@
 //   can ask the person. Never a value.
 // - Nothing runs in the background: no timer, no poll, no child.
 
-import { addresses, checkContent, parseQuery, addressOf, nameOf } from "../connectors/message.js";
-import { checkBehalf } from "../connectors/behalf.js";
+import { addresses, checkContent, parseQuery, addressOf, nameOf } from "../../lib/connectors/message.js";
+import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { MIGRATIONS, ID, callerFor, filingFor, adapterOf, imapConfig, view, pickFor } from "./accounts.js";
 import { guess, checkMap, sendArgs, messagesOf, messageOf } from "./mcpmap.js";
 import { parse, composeId, parseComposeId, messageId, parseMessageId } from "./capsule.js";

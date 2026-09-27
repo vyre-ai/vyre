@@ -18,8 +18,8 @@
 // item held before a restart can still be approved once this module has started again. A removed
 // server's sender stays offered until vyred restarts; release refuses it.
 
-import { Credentials } from "../connectors/auth.js";
-import { checkBehalf } from "../connectors/behalf.js";
+import { Credentials } from "../../lib/connectors/auth.js";
+import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { connect } from "./client.js";
 import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom } from "./hub.js";
 

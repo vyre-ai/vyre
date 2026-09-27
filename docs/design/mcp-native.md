@@ -53,7 +53,7 @@ user), `$CLAUDE_CONFIG_DIR/settings*.json`, or a plugin's bundled MCP config. Th
 already exists, but only as a defence: `core/harness/rules.js` (`ccFile`, `hardLinked`, lines
 272-330) walks this same set of paths so the floor can refuse a model editing them or hard-linking
 around them. It is read-only-for-protection code in a module connectors does not own; the
-discovery feature needs its own reader, in `core/mcp/` or `core/connectors/`, that parses these
+discovery feature needs its own reader, in `core/mcp/` or `lib/connectors/`, that parses these
 files for `mcpServers` entries (and each `.mcp.json` in `plugins/*/`) and reports servers Vyre does
 not yet have a row for. The walk pattern (home file, `.claude/settings*.json` at every directory
 from cwd up to `/`, project `.mcp.json`, `$CLAUDE_CONFIG_DIR`) is proven there and should be

@@ -15,7 +15,7 @@
 // - A send with no account names the only one or asks. It never guesses: an email from the wrong
 //   address is a mistake the person sees.
 
-import { EMAIL } from "../connectors/message.js";
+import { EMAIL } from "../../lib/connectors/message.js";
 
 /** mail's own table: the tool map of an MCP-served account, by connection id. Nothing secret. */
 export const MIGRATIONS = [
