@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Any surface's label from a model's shell is the model's; one list of surfaces
+
+- core/modules exports SURFACE_LABELS (cli, local, deck, capsule, mobile): the one list of the
+  surfaces' own labels, for modules to import. vyred now takes any label but a model's own (mcp,
+  harness) from under a `claude` or a thread as the session's own, so "mobile" and any surface
+  name added later are covered without a list to keep up. "anonymous" stays as it is.
+
 ## 0.1.0
 
 The first release, previewed as 0.1.0-rc.1. Everything below landed before it.

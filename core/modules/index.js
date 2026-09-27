@@ -174,6 +174,15 @@ export function checkInput(schema, value, where = "input") {
  * that names an agent ("mcp:agent:kit", "harness:agent:kit") is the kind before the name, so an
  * agent's MCP server is still "mcp" to every allowlist and rule. vyred has already checked the name.
  */
+/**
+ * The surfaces' own labels: the person at a terminal (cli, local), their Deck and Capsule, and
+ * the phone app (mobile). The one list; a module that trusts a surface's label imports it rather
+ * than keeping its own copy. On the socket every such label is only a claim, and vyred takes any
+ * label but a model's own (mcp, harness) from under a `claude` or a thread as that session's
+ * (core/daemon asTaken), whether or not it is listed here.
+ */
+export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", "mobile"]);
+
 export const callerKind = caller => {
   const c = String(caller);
   // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
