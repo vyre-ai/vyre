@@ -64,24 +64,24 @@ final class AppsWordsProvider: ResultProvider, @unchecked Sendable {
             return [ResultItem(id: "apps:send:\(app):\(words)", kind: "apps", title: said, subtitle: "sends as you, through \(app)",
                                icon: icon(app, action), section: .commands, score: 0.95,
                                actions: [ResultAction(id: "send", title: "Send", symbol: "paperplane", confirm: "\(said) · Enter again to send") { _, _ in
-                                   await commit(input, app: app, gated: gated, vyred: vyred)
+                                   await commit(input, app: app, gated: gated, said: said, vyred: vyred)
                                }], sendsTo: app)]
         }
     }
 
     /// apps.send with the proof, or for a Gate-held send apps.act then gate.approve as the proof.
-    nonisolated static func commit(_ input: UncheckedBox, app: String, gated: Bool, vyred: VyredLink) async -> ActionOutcome {
+    nonisolated static func commit(_ input: UncheckedBox, app: String, gated: Bool, said: String, vyred: VyredLink) async -> ActionOutcome {
         if gated {
             let r = await vyred.call("apps.act", input.value)
             if let why = r.error { return .failed(why) }
             guard let held = (r.data as? [String: Any])?["held"] as? [String: Any], let id = VJ.nonEmpty(held["id"]) else {
                 return .failed("\(app) did not hold the message for approval, so Vyre stopped. Check \(app) before trying again.")
             }
-            let g = await vyred.call("gate.approve", ["id": id], presence: true)
+            let g = await vyred.call("gate.approve", ["id": id], presence: true, summary: said)
             if let why = g.error { return .failed(why) }
             return .said(VJ.nonEmpty((g.data as? [String: Any])?["said"]) ?? "Sent through \(app).")
         }
-        let r = await vyred.call("apps.send", input.value, presence: true)
+        let r = await vyred.call("apps.send", input.value, presence: true, summary: said)
         if let why = r.error { return .failed(why) }
         return .said(VJ.nonEmpty((r.data as? [String: Any])?["said"]) ?? "Sent through \(app).")
     }

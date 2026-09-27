@@ -257,7 +257,7 @@ final class AppsExtension: CapsuleExtension {
     /// Run a route: apps.act for what sends nothing, apps.send with the person's proof for what
     /// sends, apps.act then gate.approve (the proof) for what the Gate holds.
     private func commit(_ route: AppsRoute, _ v: VyredLink) async -> ActionOutcome {
-        guard case .action(let app, let action, let args, let sends, let gated, _) = route else { return .failed("Nothing to send.") }
+        guard case .action(let app, let action, let args, let sends, let gated, let said) = route else { return .failed("Nothing to send.") }
         let input: [String: Any] = ["app": app, "action": action, "args": args]
         if !sends || gated {
             let r = await v.call("apps.act", input)
@@ -266,13 +266,14 @@ final class AppsExtension: CapsuleExtension {
             if gated && d["held"] == nil { return .failed("\(app) did not hold the message for approval, so Vyre stopped. Check \(app) before trying again.") }
             if let held = d["held"] as? [String: Any] {
                 guard let id = VJ.nonEmpty(held["id"]) else { return .failed("\(app) held the message but gave no id to approve.") }
-                let g = await v.call("gate.approve", ["id": id], presence: true)
+                // The words above Touch ID are the message's own line ("WhatsApp → juno: running late").
+                let g = await host.prove(tool: "gate.approve", input: ["id": id], summary: said)
                 if let why = g.error { return .failed(why) }
                 return .said(VJ.nonEmpty((g.data as? [String: Any])?["said"]) ?? "Sent through \(app).")
             }
             return .said(VJ.nonEmpty(d["said"]) ?? "Done in \(app).")
         }
-        let r = await v.call("apps.send", input, presence: true)
+        let r = await host.prove(tool: "apps.send", input: input, summary: said)
         if let why = r.error { return .failed(why) }
         return .said(VJ.nonEmpty((r.data as? [String: Any])?["said"]) ?? "Sent through \(app).")
     }
