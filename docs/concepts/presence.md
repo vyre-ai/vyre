@@ -68,22 +68,11 @@ vyre presence remove <id>
 
 ## Sessions in the Deck
 
-Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, a Capsule signature or a passkey) returns a secret that lasts 5 minutes idle and 30 minutes at most, bound to the tailnet node that opened it.
+Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, a Capsule signature or a passkey) returns a secret that lasts 30 minutes from the proof, bound to the tailnet node that opened it. It covers revealing, copying, one-time codes, approving and granting vault items, for an item that does not ask every time.
 
-## One proof lasts about 30 minutes
+A session serves the Deck and the Capsule only, the surfaces you are in front of. `vyre vault` in a terminal asks for its own proof every time: Claude's shell is a terminal too, and nothing tells the two apart. Reading a secret from the CLI is rare, so one prompt each is the price. A Claude session's MCP tools and an agent are refused, and never asked.
 
-After Touch ID, a Capsule signature or a passkey for revealing, copying, a one-time code,
-approving or granting a vault item, the same device asks nothing more for those for 30 minutes:
-`vyre vault get` twice in a row asks once. vyred keeps the window in memory, per device (this
-machine, or the tailnet node that proved it), so restarting vyred ends it. It serves your own
-surfaces only: the CLI, the Deck and the Capsule. A Claude session's MCP tools, an agent and a
-guest are refused as before, and an item marked to ask every time still asks. A terminal code
-proves one call and opens no window.
-
-> [!WHY] Why can Claude's own Bash ride the window?
-> Claude Code runs as you, on your Mac, and `vyre` in its Bash is the CLI. Nothing a program on
-> that Mac can do tells the two apart, so a window on the device covers both. The window starts
-> only from a proof Claude cannot make, and lasts 30 minutes.
+Your own memory and lessons ask nothing: `vyre memory correct`, `merge` and `split`, and `vyre learn accept`, `retire` and `relax`. Their callers lists keep models and agents out.
 
 ## What a tool sees
 
