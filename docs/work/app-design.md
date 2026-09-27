@@ -29,7 +29,10 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 ## Next
 
-- Phase 4 of ADR 0033 (platform): a board for module UI slots. Rules already sent 27 Sep: Now card =
+- Phase 4 of ADR 0033 (platform; rules adopted in ADR 0033 section 2 at work/platform bebccaee):
+  add theme-override validation to scripts/gen-tokens (refuse AA or focus-ring failures, attention
+  role or status model changes, text under 12, targets under 44; reject module overrides of global
+  tokens), waiting on platform's override file shape. Also a board for module UI slots. Rules already sent 27 Sep: Now card =
   the Needs row, tool card = the tool row plus a template, iframes get theme.css + tokens.json and a
   theme message, a "Modules" rail section (3 pinned), one Settings group per module, and tokens a
   theme may never override (attention role, status model, focus ring, 12 px text, 44 targets, AA).
