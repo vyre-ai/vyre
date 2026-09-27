@@ -175,7 +175,12 @@ test("contradictions: the person sees and settles them; a model never does", asy
   assert.ok(home, JSON.stringify(list));
   assert.equal(home.subject, undefined, "only what a surface shows");
   assert.equal((await call("memory.contradictions", {}, "mcp")).code, "denied");
-  assert.equal((await call("memory.settle", { id: home.id, pick: "Porto" }, "mcp")).code, "denied");
+  // Settling is the person's own words, which outweigh everything: never an agent, a model, a
+  // module or a device nobody signed in on.
+  for (const [caller, meta] of [["mcp", {}], ["mcp:agent:kit", {}], ["deck agent:kit", {}], ["module:harness", {}], ["tailnet:agent:kit", { person: { id: "s1" } }], [TAILNET, {}]]) {
+    const r = await call("memory.settle", { id: home.id, pick: "Lisbon" }, caller, meta);
+    assert.ok(["denied", "person_session_required"].includes(r.code), `${caller}: ${JSON.stringify(r)}`);
+  }
   const r = await call("memory.settle", { id: home.id, pick: "Porto" }, "deck");
   assert.equal(r.data.text, "I live in Porto", JSON.stringify(r));
   assert.equal((await call("memory.contradictions", {}, "deck")).data.contradictions.find(c => c.rel === "lives_in"), undefined);

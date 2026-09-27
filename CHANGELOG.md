@@ -46,7 +46,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   and reads, graph evidence, IQ answers, kept replies and corrections) and Recall forgets its
   sessions (`recall.forget`), then says how much went (`memory.forgot`). `memory.device {machine}`
   is the preview, in counts. Only federation's own module may say `sync.deleted`: memory ignores it from any
-  other, and core/modules reserves the `sync.*` events for the first-party `sync` or `link` module. import.scan never offers the synced folder as this device's own.
+  other, and core/modules reserves the `sync.*` events for the first-party `sync` module (core/sync). import.scan never offers the synced folder as this device's own.
 - Import, first part (docs/design/import.md): `import.scan {folders?}` lists this device's Claude Code
   sessions by source (projects, the archive, folders the person adds) and by the folder each ran
   in, with counts, sizes and dates, and suggests only the person's own work (never work on Vyre
