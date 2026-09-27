@@ -178,6 +178,10 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   drawn, feature-detected); federation v2 (batch 4): /needs/<ask> falls back to the relayed
   ask.raised for a Mac-owned ask; platform ADR 0033 P4 slot seam (proposed deck/js/slots.js,
   /m/ network-only in the SW).
+- api.js (lead, tonight): chat's reconnect fix 30a9f81 ships on main tonight; when merging main
+  after it, resolve deck/js/api.js's event-stream section in pwa's favour (the resilience
+  rewrite replaces it in batch 4; onResume f776e89 keeps chat's session view working); drop
+  deck/chat/api-stream.test.js or retarget it to onResume (asked chat).
 - Lead decisions: keep JS row swipes until mobile's iPhone spike; no merging other teams'
   branches, wait for main; pwa owns deck/sw.js (told chat and e2e).
 - Waiting (old line): the lead on e2e 8ad92a73 and app-design 99820a16 reaching main (items 2 and 3);
