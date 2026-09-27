@@ -73,12 +73,12 @@ pick_look() {
   [ "${TERM:-dumb}" != dumb ] || return 0
   COLOR=1
   e=$(printf '\033')
-  BONE="$e[38;2;241;238;230m"
-  SIGNAL="$e[38;2;198;243;107m"
-  ASH="$e[38;2;140;135;125m"
-  BEACON="$e[38;2;184;164;255m"
-  BOLD="$e[1m"
-  RESET="$e[0m"
+  BONE="${e}[38;2;241;238;230m"
+  SIGNAL="${e}[38;2;198;243;107m"
+  ASH="${e}[38;2;140;135;125m"
+  BEACON="${e}[38;2;184;164;255m"
+  BOLD="${e}[1m"
+  RESET="${e}[0m"
   OK=$(printf '\342\234\223')
 }
 
@@ -103,7 +103,7 @@ hello() {
 step() {
   STEP=$((STEP + 1))
   [ "$STEP" = 1 ] || say ""
-  say "$ASH[$STEP/$STEPS]$RESET $BOLD$1$RESET"
+  say "${ASH}[$STEP/$STEPS]$RESET $BOLD$1$RESET"
 }
 
 # done_step TEXT: the step finished, with a check mark (or "ok" in plain text).

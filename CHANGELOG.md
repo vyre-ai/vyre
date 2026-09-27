@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### main's node job green again: install-box.sh passes shellcheck; the side view test has no read race
+
+- scripts/install-box.sh: the colour escapes and the step counter brace their variables
+  (`${e}[`, `${ASH}[`), which shellcheck read as array expansions (SC1087).
+- local/sideview: the test's fake window list and the fake tile write windows.json whole and
+  rename it into place, so the fake never reads half a file and exits 1 (a CI-only flake).
+
 #### rc.2 freezes: six helper imports and two Capsule model names, owed for 0.1.1
 
 - test/boundaries.test.js freezes the edges vault and connectors added (the lead's OK): core/cli to

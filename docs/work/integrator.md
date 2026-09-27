@@ -72,6 +72,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   e2e 88610b5e, capsule-pro a127335d, ci 35bfed5f.
 - Waiting: vault work/vault-next (green sha from the vault team) with connectors 8be461a9.
 - Then: full suite once on testbox, ci-rc 1d8ae652 LAST, push main, report to the lead.
+- testbox has no shellcheck; a user copy is at ~/.local/sc/shellcheck-v0.10.0 (put it on PATH for the
+  full suite, as CI has it).
 - Generated docs on a conflict: take ours, rerun `node scripts/gen-docs-reference`.
 - Fixes on pre/rc: 75148174 onboard reserve test waits for its claim (tmp-guard leak), ae6fe249
   switchboard fake key built at run time (hygiene), 2913b069 drift allowlist shrinks. Targeted run
