@@ -19,6 +19,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Shared pure mail helpers moved to core/connectors/message.js; google/mail.js uses them.
 - Tests: fake IMAP and SMTP servers, a fake Apps Script web app (it runs the real script), two
   instances of one MCP server with their own credentials.
+#### A vyred killed by a signal is started again in the box
+
+- core/daemon/loop.sh waited again on a vyred that died by a signal (SIGKILL, the OOM killer)
+  until the status changed. The image's /bin/sh (dash) answers the same 137 forever, so the loop
+  spun at a full core and vyred never came back while the container looked healthy. The same status
+  twice now ends the wait. Found by the box-image smoke on testbox; loop.test.js has the case.
+
+#### The box image builds again with the Agent SDK pin
+
+- box/Dockerfile read the SDK version by importing core/sessions/sdk.js on its own, and 8aed4887
+  gave that file an import (config/dialogs.js), so the image build stopped at the SDK layer. The
+  pin now lives in core/sessions/sdk-pin.js, which imports nothing; sdk.js re-exports it, and a
+  test copies the file the Dockerfile names on its own and imports it.
 
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
