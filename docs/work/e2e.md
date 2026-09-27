@@ -254,8 +254,10 @@ Plan (to the lead before building):
   testbox, cached per keep-alive connection) exposes it.
 - rc.2 follow-up (lead): work/e2e-surfaces c7dfcd26 (on 1941f2cf, worktree ../vyre-e2e-label).
   SURFACE_LABELS in core/modules (cli, local, deck, capsule, mobile); vyred downgrades ANY non-model
-  label (not mcp/harness/anonymous) from under a claude. 132/132 on testbox. TODO when rc.1 is on
-  main: `git rebase main` (1941f2cf drops out), rerun peer, send the sha to the integrator.
+  label (not mcp/harness/anonymous) from under a claude. REBASED on main 476fe5fc (rc.1 at
+  ac60d3c5) as 5a646023: 193/193 on testbox, sent to the integrator for rc.2. box-deploy told to
+  run rc-smoke from acfef955 (scripts unchanged since 88610b5e) for the rc.1 redeploy.
+  Note: local `main` in the shared repo lags; rebase onto origin/main.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
