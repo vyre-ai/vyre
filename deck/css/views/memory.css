@@ -172,7 +172,7 @@
 }
 
 /* Phone: the list only; the panel is a full-screen sheet with a way back. */
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .mem-head { height: auto; flex-wrap: wrap; gap: 10px 12px; padding: 14px 16px 12px; }
   .mem-tab { font-size: 26px; line-height: 32px; letter-spacing: -0.02em; height: 40px; }
   .mem-tabs { order: 1; }

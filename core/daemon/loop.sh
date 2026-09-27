@@ -20,8 +20,15 @@ while :; do
   pid=$!
   wait "$pid"
   code=$?
-  # A trapped signal ends `wait` early; wait for vyred itself to finish draining.
-  while kill -0 "$pid" 2>/dev/null; do wait "$pid"; code=$?; done
+  # A trapped signal ends `wait` early with 128+n, whether or not vyred is done: wait again
+  # until it answers with vyred's own status. 127 means that status was already collected, so
+  # the last one stands (a vyred killed by a signal really is 128+n).
+  while [ "$code" -gt 128 ]; do
+    wait "$pid"
+    again=$?
+    [ "$again" = 127 ] && break
+    code=$again
+  done
   pid=
   [ "$stopping" = 1 ] && exit "$code"
   now=$(date +%s)

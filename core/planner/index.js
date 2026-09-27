@@ -604,13 +604,7 @@ export default {
      * The event cursor a read is current to (ADR 0029, R1), read before the data: a surface that
      * loads with it and follows the stream from it misses nothing.
      */
-    const cursor = () => {
-      try {
-        const ev = /** @type {any} */ (ctx.events);
-        if (typeof ev.latestId === "function") return Number(ev.latestId()) || 0;
-        return Number(/** @type {any} */ (db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM events").get()).id) || 0;
-      } catch { return 0; }
-    };
+    const cursor = () => Number(ctx.events.latestId()) || 0;
 
     const RINGS = ["alarm", "timer", "reminder", "todo", "event"];
     /**

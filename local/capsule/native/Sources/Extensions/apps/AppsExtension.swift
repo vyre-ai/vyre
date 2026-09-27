@@ -263,13 +263,12 @@ final class AppsExtension: CapsuleExtension {
             let r = await v.call("apps.act", input)
             if let why = r.error { return .failed(why) }
             let d = (r.data as? [String: Any]) ?? [:]
-            if gated && d["held"] == nil { return .failed("\(app) did not hold the message for approval, so Vyre stopped. Check \(app) before trying again.") }
-            if let held = d["held"] as? [String: Any] {
-                guard let id = VJ.nonEmpty(held["id"]) else { return .failed("\(app) held the message but gave no id to approve.") }
-                // The words above Touch ID are the message's own line ("WhatsApp → juno: running late").
-                let g = await host.prove(tool: "gate.approve", input: ["id": id], summary: said)
-                if let why = g.error { return .failed(why) }
-                return .said(VJ.nonEmpty((g.data as? [String: Any])?["said"]) ?? "Sent through \(app).")
+            if gated || d["held"] != nil {
+                // The words above Touch ID are the message's own line ("Slack → #general: shipped").
+                let host = self.host
+                return await AppsWordsProvider.approveHeld(r.data, input: input, app: app, said: said, vyred: v) { id in
+                    await host.prove(tool: "gate.approve", input: ["id": id], summary: said)
+                }
             }
             return .said(VJ.nonEmpty(d["said"]) ?? "Done in \(app).")
         }

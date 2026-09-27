@@ -33,7 +33,39 @@ public final class CapsuleModel: ObservableObject {
                 Notifier.shared.post(title: r.ok == false ? "\(who) stopped" : "\(who) answered",
                                      body: text.isEmpty ? (asked ?? "") : String(text.prefix(180)))
             }
+            if reply?.thread != oldValue?.thread || reply == nil { revealed = 0 }
+            pace()
         }
+    }
+    /// Characters of the answer on screen. The stream arrives in bursts; the screen reveals it at
+    /// a steady rate that drains any backlog in about a quarter second (Paseo's paced reveal,
+    /// native-core budget 4). The frame timer runs only while there is a backlog and the panel
+    /// is shown; hidden, or stopped, everything is shown at once.
+    @Published public private(set) var revealed = 0
+    private var revealTimer: Timer?
+    public var visibleReplyCount: Int { min(revealed, replyText.count) }
+    public var shownReplyText: String { let t = replyText; return revealed >= t.count ? t : String(t.prefix(revealed)) }
+
+    private func pace() {
+        let total = replyText.count
+        guard revealed < total else { revealTimer?.invalidate(); revealTimer = nil; return }
+        if !isShown() || reply?.cancelled == true || (reply?.finished == true && reply?.ok == false) {
+            revealed = total; revealTimer?.invalidate(); revealTimer = nil; return
+        }
+        guard revealTimer == nil else { return }
+        let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.revealFrame() }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        revealTimer = t
+    }
+
+    func revealFrame() {
+        let total = replyText.count
+        let backlog = total - revealed
+        guard backlog > 0 else { revealTimer?.invalidate(); revealTimer = nil; return }
+        revealed += max(2, Int((Double(backlog) / 15).rounded(.up)))
+        if revealed >= total { revealed = total; revealTimer?.invalidate(); revealTimer = nil }
     }
     @Published public internal(set) var asked: String?
     @Published public internal(set) var pending = false

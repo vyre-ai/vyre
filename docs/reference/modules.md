@@ -24,7 +24,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`computers`](#computers) | `core/computers` | `box` | 23 | 15 | cli, deck |
 | [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
-| [`gate`](#gate) | `core/gate` | `box`, `local` | 9 | 5 | capsule, cli, deck |
+| [`gate`](#gate) | `core/gate` | `box`, `local` | 10 | 6 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
 | [`hands`](#hands) | `local/hands-mac` | `local` | 5 | 3 | none |
@@ -41,16 +41,16 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 6 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 11 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 9 | 5 | cli |
-| [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
+| [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
-| [`relay`](#relay) | `core/relay` | `box` | 9 | 4 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box` | 13 | 5 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 15 | 5 | cli |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 32 | 20 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 40 | 26 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
@@ -78,7 +78,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 
 ## apps
 
-Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders and the weather. Actions that send as the person go through apps.send, with a proof per call.
+Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders, the weather and Slack. Actions that send as the person go through apps.send, with a proof per call, or are held at the Gate for the person to approve (Slack).
 
 - Folder: `local/apps`, version 0.1.0
 - Runs on: `local`
@@ -134,8 +134,8 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/gate`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [9](tools.md#gate), 2 of them only for other modules
-- Emits: [5 events](events.md#gate)
+- Tools: [10](tools.md#gate), 2 of them only for other modules
+- Emits: [6 events](events.md#gate)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-sender`
 - Teaches memory: `draft.edited`
@@ -304,8 +304,8 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/push`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [6](tools.md#push)
-- Emits: no events
+- Tools: [8](tools.md#push)
+- Emits: [3 events](events.md#push)
 - Shows on: capsule, cli, deck
 - Needs vault: `push-vapid`
 
@@ -325,8 +325,8 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [9](tools.md#relay)
-- Emits: [4 events](events.md#relay)
+- Tools: [13](tools.md#relay), 1 of them only for other modules
+- Emits: [5 events](events.md#relay)
 - Shows on: capsule, cli, deck
 
 ## screen
@@ -397,8 +397,8 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [32](tools.md#threads), 12 of them only for other modules
-- Emits: [20 events](events.md#threads)
+- Tools: [40](tools.md#threads), 13 of them only for other modules
+- Emits: [26 events](events.md#threads)
 - Shows on: cli
 - Needs vault: `claude-setup-token`, `anthropic-api-key`
 
