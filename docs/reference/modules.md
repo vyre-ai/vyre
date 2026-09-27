@@ -17,6 +17,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
+| [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 10 | 0 | cli |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
@@ -47,6 +48,17 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 22 | 13 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
+
+## about
+
+A few lines on who the user is, cached for every Claude Code session to start with.
+
+- Folder: `core/about`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [1](tools.md#about)
+- Emits: no events
+- Shows on: cli
 
 ## agents
 
