@@ -182,4 +182,35 @@ export const MIGRATIONS = [
   CREATE INDEX memory_aliases_alias ON memory_aliases (room, alias);
   INSERT OR REPLACE INTO memory_meta (k, v) VALUES ('rederive', 1);
   `,
+  `
+  -- Personal facts (docs/work/memory-iq.md): what the user's own turns say about them and the
+  -- people and things in their life. Claims are per turn; everything below them is derived.
+  CREATE TABLE memory_me_claims (
+    session TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL DEFAULT 0,
+    subj TEXT NOT NULL, rel TEXT NOT NULL, obj TEXT NOT NULL,
+    conf REAL NOT NULL, method TEXT NOT NULL,   -- rule | indirect | assistant | model
+    PRIMARY KEY (session, seq, subj, rel, obj)
+  ) WITHOUT ROWID;
+  -- How far each session has been read, and who "she" meant at that point (JSON), so a session
+  -- that grows by one turn carries its focus into it.
+  CREATE TABLE memory_me_cursor (session TEXT PRIMARY KEY, upto INTEGER NOT NULL, at INTEGER NOT NULL, focus TEXT);
+  CREATE TABLE memory_me_entities (id TEXT PRIMARY KEY, kind TEXT NOT NULL, label TEXT NOT NULL, first_seen INTEGER, last_seen INTEGER);
+  CREATE TABLE memory_me_aliases (alias TEXT NOT NULL, entity TEXT NOT NULL, PRIMARY KEY (alias, entity)) WITHOUT ROWID;
+  CREATE TABLE memory_me_facts (
+    id TEXT PRIMARY KEY, subj TEXT NOT NULL, rel TEXT NOT NULL, obj TEXT NOT NULL, obj_label TEXT NOT NULL,
+    confidence REAL NOT NULL, first_seen INTEGER, last_seen INTEGER,
+    mentions INTEGER NOT NULL, sessions INTEGER NOT NULL, current INTEGER NOT NULL
+  );
+  CREATE INDEX memory_me_facts_subj ON memory_me_facts (subj, rel);
+  CREATE INDEX memory_me_facts_obj ON memory_me_facts (obj);
+  CREATE TABLE memory_me_evidence (fact TEXT NOT NULL, session TEXT NOT NULL, seq INTEGER NOT NULL, PRIMARY KEY (fact, session, seq)) WITHOUT ROWID;
+  -- The model pass's spend per day, for its daily cap.
+  CREATE TABLE memory_me_budget (day TEXT PRIMARY KEY, usd REAL NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0);
+  -- Sentences with a personal cue that no rule understood: the model pass's candidates.
+  CREATE TABLE memory_me_cues (session TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL DEFAULT 0, text TEXT NOT NULL, PRIMARY KEY (session, seq, text)) WITHOUT ROWID;
+  `,
+  // The model pass (personal/model.js): its runs, and the cues it has read, kept apart from the cues so a full re-read never pays for them twice.
+  `CREATE TABLE memory_me_model (id INTEGER PRIMARY KEY, thread TEXT, started INTEGER NOT NULL, finished INTEGER, status TEXT NOT NULL, cues TEXT NOT NULL, facts INTEGER NOT NULL DEFAULT 0, result TEXT); CREATE TABLE memory_me_cues_done (session TEXT NOT NULL, seq INTEGER NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL, how TEXT NOT NULL, PRIMARY KEY (session, seq, text)) WITHOUT ROWID;`,
+  // What the person or their assistant told memory outright (memory.remember): read as session told:<id>.
+  `CREATE TABLE memory_me_told (id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, text TEXT NOT NULL, room TEXT, who TEXT);`,
 ];

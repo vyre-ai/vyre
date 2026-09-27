@@ -30,6 +30,24 @@ export class Events {
       );
       CREATE INDEX events_type ON events(type, id);
       CREATE INDEX events_project ON events(project, id);
+    `,
+    // AUTOINCREMENT: an id is a surface's cursor, so it must never be handed out twice, even when
+    // the newest rows are pruned or the table is emptied (docs/adr/0029-resilience.md, R1).
+    `
+      CREATE TABLE events_v2 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        at INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        source TEXT NOT NULL,
+        project TEXT,
+        thread TEXT,
+        payload TEXT NOT NULL
+      );
+      INSERT INTO events_v2 (id, at, type, source, project, thread, payload) SELECT id, at, type, source, project, thread, payload FROM events;
+      DROP TABLE events;
+      ALTER TABLE events_v2 RENAME TO events;
+      CREATE INDEX events_type ON events(type, id);
+      CREATE INDEX events_project ON events(project, id);
     `]);
     /** @type {Map<string, Set<(e: any) => void>>} */
     this.listeners = new Map();
@@ -84,9 +102,21 @@ export class Events {
     return Number(this.db.prepare(`DELETE FROM events WHERE ${where.join(" AND ")}`).run(...args).changes);
   }
 
-  /** The newest event's id, or 0 on an empty log. */
+  /** The newest id handed out, or 0 on a fresh log. Counts pruned ids too: a cursor never goes back. */
   latestId() {
-    return Number(this.db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM events").get().id);
+    const seq = /** @type {any} */ (this.db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'events'").get());
+    return Math.max(Number(seq?.seq || 0), Number(this.db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM events").get().id));
+  }
+
+  /**
+   * Whether a surface resuming from `cursor` can be caught up by replay. A cursor past the newest
+   * id (the box's log was reset, or the surface followed another box) cannot: the surface must
+   * reload its state through tools and follow from `from` (ADR 0029, R1).
+   * @param {number} cursor @returns {{ ok: true } | { ok: false, from: number }}
+   */
+  resumable(cursor) {
+    const latest = this.latestId();
+    return cursor > latest ? { ok: false, from: latest } : { ok: true };
   }
 
   /** Events after a cursor, oldest first. How a surface catches up after being away. */

@@ -1,5 +1,5 @@
 // @ts-check
-// files — find, look at and bring over files, on this machine and across the link to the box.
+// files: find, look at and bring over files, on this machine and across the link to the box.
 //
 // The same module runs on both machines. On the box it answers for the box's folders (default
 // /work). On the Mac it answers for the Mac's folders (default the home folder, searched with
@@ -315,7 +315,7 @@ export default {
 
     // Taildrop: files.send on the Mac, the inbox receiver on the box (drop.js).
     const dropped = drop(ctx, { role, g, cfg });
-    // Taildrive: the box's chosen folders, mounted on the paired Mac (drive.js).
+    // VyreDrive (Taildrive underneath): the box's chosen folders, mounted on the paired Mac (drive.js).
     drive(ctx, { role, guard: g, roots });
     // The folders, for a new session or a terminal (dirs.js).
     dirs(ctx, { role, g, target, forward });

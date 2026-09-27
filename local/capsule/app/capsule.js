@@ -417,7 +417,7 @@ function paint() {
   const nWait = snap.waiting.length;
   // A proposed lesson waits quietly: it never turns the dot Beacon on its own.
   const loud = snap.waitingLoud ?? nWait;
-  $("dot").setAttribute("fill", loud ? "#FF7A59" : "#C6F36B");
+  $("dot").setAttribute("fill", loud ? "#B8A4FF" : "#C6F36B");
   $("chip").hidden = !S.chip;
   if (S.chip) $("chip").textContent = "@" + S.chip.label;
   hint.replaceChildren();
@@ -735,7 +735,7 @@ const GLYPHS = {
   memory: `<path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M6 8h4M6 11h4"/>`,
   vault: `<rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>`,
   boxfile: `<rect x="2.5" y="3" width="11" height="4" rx="1"/><rect x="2.5" y="9" width="11" height="4" rx="1"/><path d="M5 5h.01M5 11h.01"/>`,
-  held: `<circle cx="8" cy="8" r="3" fill="#FF7A59" stroke="none"/>`,
+  held: `<circle cx="8" cy="8" r="3" fill="#B8A4FF" stroke="none"/>`,
   glass: `<rect x="2" y="3" width="12" height="8" rx="1.5"/><path d="M6 14h4M8 11v3"/>`,
   quick: `<path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l1.8 1.8M10.2 10.2L12 12M12 4l-1.8 1.8M5.8 10.2L4 12"/>`,
   define: `<path d="M3 13V3.5A1.5 1.5 0 0 1 4.5 2H13v9H4.5A1.5 1.5 0 0 0 3 12.5 1.5 1.5 0 0 0 4.5 14H13"/>`,
@@ -747,7 +747,7 @@ const GLYPHS = {
   clip: `<rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><path d="M6 2.5V1.5h4v1M6 7h4M6 10h3"/>`,
   clipclear: `<rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><path d="M6 7l4 4M10 7l-4 4"/>`,
 };
-const TONE = { memory: "#EBC76B", held: "#FF7A59", quick: "#C6F36B", calc: "#C6F36B" };
+const TONE = { memory: "#EBC76B", held: "#B8A4FF", quick: "#C6F36B", calc: "#C6F36B" };
 
 function glyph(kind) {
   const inner = GLYPHS[kind] || GLYPHS.file;
