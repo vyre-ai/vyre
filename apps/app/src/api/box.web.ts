@@ -22,9 +22,14 @@ export function configure(o: { base?: string; paths?: string[] }): void {
 const boxOrigin = () => (base ? new URL(base).origin : location.origin);
 const crossOrigin = () => boxOrigin() !== location.origin;
 
+/** The box's host name: what its stores on this device (outbox, cursor, view cache) are keyed by. */
+export function boxName(): string {
+  return new URL(boxOrigin()).host;
+}
+
 const b = makeBox(async () => {
   const origin = boxOrigin();
-  const name = new URL(origin).host;
+  const name = boxName();
   person = crossOrigin() ? webPerson(origin, () => connection.signIn(true)) : null;
   const cursor = cursorStore(name);
   return {

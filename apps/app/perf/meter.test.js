@@ -94,6 +94,16 @@ test("gap records nothing on its first call", () => {
   assert.deepEqual(m.report().gaps.stream, { n: 2, p50: 30, p95: 40, max: 40 });
 });
 
+test("endGap ends a run: the idle time before the next run is not a gap", () => {
+  const m = createMeter({ now: () => 0 });
+  m.gap("stream", 0);
+  m.gap("stream", 16);
+  m.endGap("stream");
+  m.gap("stream", 5000);
+  m.gap("stream", 5020);
+  assert.deepEqual(m.report().gaps.stream, { n: 2, p50: 16, p95: 20, max: 20 });
+});
+
 test("every BAR id is present and null with no samples", () => {
   const m = createMeter({ now: () => 0 });
   const v = m.report().verdict;

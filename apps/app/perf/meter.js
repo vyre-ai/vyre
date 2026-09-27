@@ -153,6 +153,9 @@ export function createMeter({ refreshHz = 60, now = () => performance.now() } = 
     if (last !== undefined) push(gaps, name, t - last);
   }
 
+  /** The run of updates is over (a reply finished): the next gap(name) starts a new run, so the idle time between runs is not a gap. @param {string} name */
+  function endGap(name) { lastGap.delete(name); }
+
   /** t is the task's start, taken for the caller's timeline; the verdict uses only ms. @param {number} ms @param {number} [t] */
   function longTask(ms, t) {
     longTasks.push(ms);
@@ -203,5 +206,5 @@ export function createMeter({ refreshHz = 60, now = () => performance.now() } = 
     longTasks = [];
   }
 
-  return { frame, pause, window, mark, measure, record, gap, longTask, report, reset };
+  return { frame, pause, window, mark, measure, record, gap, endGap, longTask, report, reset };
 }

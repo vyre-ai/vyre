@@ -48,8 +48,17 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   or https App Links / universal links); the box ignores the `human` key and `x-vyre-human`
   (human prompt is off until e2e maps it to presence).
 
+- Spike screens built (web first): Now, approve swipe, session, ?perf=1 badge. Desktop headless
+  Chrome sanity (not the bar): 60 fps 0% dropped, tab.switch p95 23 ms, open.cold 86 ms,
+  approve.collapse 2.7 ms; keyboard.jump and stream gaps need a real phone and a streaming reply.
+  70/70 app tests, tsc clean after merging work/chat 24855bac.
+- Gaps: Undo holds the answer 4 s before the outbox (resilience outbox has no cancel(key));
+  threads.unqueue/interrupt not on the box yet (Stop falls back to threads.stop); threads.get
+  cannot page backwards; no presence proof from the web app yet (held sends open the item);
+  native not run.
+
 ## One app: Doing
-- Plan the one-week spike with pwa (Now, a session, the approve swipe) and scaffold apps/app.
+- The real-iPhone run of the spike: needs the box to serve /app/ (pwa) and the user's phone.
 
 ## One app: Next
 1. The spike plan with pwa; then scaffold `apps/app` (Expo 54, expo-router, RN Web, Reanimated,

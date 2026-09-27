@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One app: the spike screens (Now, the approve swipe, a session)
+
+- Now: Needs you (held Gate items and open asks, oldest first) painted from the cache, then kept
+  live by the stream; one row component; windowed above 100 rows.
+- The approve swipe: a scroll-snap row on the web (the gesture runs on the compositor), Gesture
+  Handler on native. Right approves, left denies; the row collapses on the commit frame, the
+  answer is held 4 s for Undo, then goes through the outbox. A swipe that needs Face ID on this
+  device, or a question, opens the item instead; a refusal brings the row back with the reason.
+- A session: an inverted, windowed transcript on chat's shared core (deck/chat/core: session
+  state, window, paced reveal, grouping, composer), imported through Metro, not copied; the
+  composer follows the keyboard with one visualViewport inset; queued messages, Stop, and idle
+  shown as idle.
+- `?perf=1`: a small badge (fps, dropped, verdict) that copies the meter's report; tab.switch,
+  open.cold, open.warm, approve.collapse, stream gaps and keyboard.jump are marked. The meter
+  gains endGap. JS is 518 KB gzipped (+32 KB).
+- Merged work/chat (24855bac) for the shared core.
+
 #### One app: a native signer for the person session
 
 - apps/app/modules/vyre-signer: a local Expo module. Android Keystore P-256 (StrongBox when

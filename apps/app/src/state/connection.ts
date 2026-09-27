@@ -77,6 +77,8 @@ export const useConnection = () => useConnectionStore((s) => s.status);
 export const useLastSeen = () => useConnectionStore((s) => s.lastSeen);
 export const useOutbox = () => useConnectionStore((s) => s.outbox);
 export const useSignInNeeded = () => useConnectionStore((s) => s.signIn);
+/** Hear every change outside React (the answers watch their outbox rows). Returns the unsubscribe. */
+export const onConnection = (f: (s: ConnectionState) => void) => useConnectionStore.subscribe(f);
 
 // Writers, called by the box wiring (src/api/box.*.ts).
 export const connection = {

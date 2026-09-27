@@ -1,5 +1,6 @@
 import { Tabs } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
+import { tabPressed } from "../../src/perf/tabs";
 import { useNeedsCount } from "../../src/state/needs";
 import { useTheme } from "../../src/theme/theme";
 import { tokens } from "../../src/theme/tokens";
@@ -30,6 +31,7 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: color.label,
         tabBarIconStyle: { display: "none" },
       }}
+      screenListeners={{ tabPress: tabPressed }}
     >
       <Tabs.Screen
         name="index"
