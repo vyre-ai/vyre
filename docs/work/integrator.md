@@ -127,6 +127,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 ## Next: 0.1.1 batch 1 (right after rc.2 lands)
 
 - federation 9338a6a5 (supersedes aa9cb40c; e2e signed off: fail-closed ask checks, persisted nonces, files.deliver opt-in).
+- windows 63156fe9 (Tier A+B, ADR 0037, test-windows job non-blocking), AFTER e2e reads the win32
+  role-default change in core/config; windows will ping.
 - teammates b19f10c2 (core/team, ADR 0031 step 1; e2e signed off). It carries a cherry-pick of 1941f2cf
   in core/daemon/index.js, already on main: expect a trivial conflict there.
 
