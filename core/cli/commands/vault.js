@@ -22,7 +22,7 @@ import os from "node:os";
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { emit, viewing, nextFor, EXIT } from "../kit.js";
-import { derive } from "../view.js";
+import { derive, prompt } from "../view.js";
 import fs from "node:fs";
 import { hiddenPrompt, visiblePrompt, Scrubber, parseRunArgs, flags } from "../../vault/cli-io.js";
 import { inspect } from "../../vault/backup.js";
@@ -1525,8 +1525,8 @@ const VIEWS = {
 /** The view of the one line vault prints: its {data}, {error} or a prompt for a secret. @param {any} obj */
 function viewOf(obj) {
   if (obj && obj.prompt) {
-    return { kind: "prompt", name: "secret", label: String(obj.label), secret: true,
-      args: [...AGAIN.filter(a => a !== "--stdin"), "--stdin"] };
+    return prompt({ name: "secret", label: String(obj.label), secret: true,
+      args: [...AGAIN.filter(a => a !== "--stdin"), "--stdin"], answer: "stdin" });
   }
   if (obj && obj.error) {
     const next = nextFor(obj.error);

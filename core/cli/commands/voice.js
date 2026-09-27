@@ -14,6 +14,7 @@ import { callAsPerson } from "../presence.js";
 import { talkLoop } from "../../../local/voice/talk.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { EXIT, json, emit, fail as kitFail, failTool, usage, viewing } from "../kit.js";
+import { prompt } from "../view.js";
 
 const USAGE = "vyre voice [talk [--send <thread>] | status | key [provider] [--stdin]] [--json]";
 const SURFACE = "cli:" + process.pid;
@@ -42,7 +43,7 @@ async function key(rest) {
   if (!item || words.length > 1) return usage(`vyre voice key [${Object.keys(ITEMS).join("|")}]: the key comes from the prompt, or piped in with --stdin`, "vyre help voice");
   // A surface has no terminal to type a secret into: it is told how to pipe it in instead.
   if (viewing() && !stdin) {
-    emit({ prompt: "key", provider }, { kind: "prompt", name: "key", label: `The ${provider} key`, secret: true, args: ["voice", "key", provider, "--stdin"] });
+    emit({ prompt: "key", provider }, prompt({ name: "key", label: `The ${provider} key`, secret: true, args: ["voice", "key", provider, "--stdin"], answer: "stdin" }));
     return EXIT.USAGE;
   }
   let value = "";

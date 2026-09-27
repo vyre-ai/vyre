@@ -27,6 +27,7 @@ import { printEnding } from "../ending.js";
 import { out, dim, signal, beacon } from "../style.js";
 import { INSTALL } from "../brand.js";
 import { json, emit, usage as usageError, viewing, EXIT } from "../kit.js";
+import { prompt } from "../view.js";
 
 const INSTALLER = fileURLToPath(new URL("../../../scripts/install-box.sh", import.meta.url));
 const VOLUMES = ["vyre-home", "vyre-work", "tailscale-state"];
@@ -135,7 +136,7 @@ async function agree(lines, question, yes) {
   out("");
   if (!yes && viewing()) {
     // A surface asks the person, then runs the verb again with --yes.
-    emit({ plan: lines, question }, { kind: "prompt", name: "yes", label: `${lines.join("; ")}. ${question}`, choices: ["yes", "no"], args: [...AGAIN.filter(a => a !== "--yes"), "--yes"] });
+    emit({ plan: lines, question }, prompt({ name: "yes", label: `${lines.join("; ")}. ${question}`, choices: ["yes", "no"], args: [...AGAIN.filter(a => a !== "--yes"), "--yes"], answer: "confirm" }));
     return EXIT.USAGE;
   }
   const ok = await ask(question, yes);

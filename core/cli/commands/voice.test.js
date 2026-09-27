@@ -47,7 +47,7 @@ test("voice --view: key is a secret prompt naming the command to pipe it to; pus
   const k = await run(root, ["voice", "key", "openai", "--view"]);
   assert.equal(k.code, 2, k.all);
   const f = frames(k.stdout);
-  assert.deepEqual(f[0].view, { kind: "prompt", name: "key", label: "The openai key", secret: true, args: ["voice", "key", "openai", "--stdin"] });
+  assert.deepEqual(f[0].view, { kind: "prompt", name: "key", label: "The openai key", args: ["voice", "key", "openai", "--stdin"], answer: "stdin", secret: true });
   assert.deepEqual(f[0].data, { prompt: "key", provider: "openai" });
   assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 2 });
 

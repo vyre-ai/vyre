@@ -200,7 +200,7 @@ test("statusline install --view: a yes/no prompt whose args say what yes runs; n
   assert.equal(r.status, 2, r.stdout + r.stderr);
   const f = r.stdout.trim().split("\n").map(l => JSON.parse(l));
   assert.equal(f[0].cmd, "statusline install");
-  assert.deepEqual(f[0].view, { kind: "prompt", name: "yes", choices: ["yes", "no"], args: ["statusline", "install", "--chain", "--yes"],
+  assert.deepEqual(f[0].view, { kind: "prompt", name: "yes", choices: ["yes", "no"], args: ["statusline", "install", "--chain", "--yes"], answer: "confirm",
     label: `Set Claude Code's status line to Vyre's, keeping yours above it (${c.file})?` });
   assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 2 });
   assert.deepEqual(JSON.parse(fs.readFileSync(c.file, "utf8")), { statusLine: THEIRS }, "nothing was changed");

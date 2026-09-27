@@ -29,12 +29,18 @@ export const json = () => JSON_MODE;
 /** @param {boolean} on */
 export function setJson(on) { JSON_MODE = Boolean(on); }
 
-/** @type {{ cmd: string, frames: number } | null} */
+/** @type {{ cmd: string, frames: number, argv: string[] } | null} */
 let VIEW = null;
 /** Whether this run prints frames (--view). */
 export const viewing = () => Boolean(VIEW);
-/** Turn frames on for `cmd` ("threads list"), or off. @param {string|null} cmd */
-export function setView(cmd) { VIEW = cmd ? { cmd, frames: 0 } : null; if (cmd) JSON_MODE = true; }
+/**
+ * Turn frames on for `cmd` ("threads list"), or off. `argv` is the run's words after `vyre`,
+ * without --view or --json: what a prompt frame's args start from (again()).
+ * @param {string|null} cmd @param {string[]} [argv]
+ */
+export function setView(cmd, argv = []) { VIEW = cmd ? { cmd, frames: 0, argv } : null; if (cmd) JSON_MODE = true; }
+/** The words of this run after `vyre`, without --view or --json, for a prompt frame to rerun. */
+export const again = () => (VIEW ? [...VIEW.argv] : []);
 /** How many frames this run printed. */
 export const framesOut = () => (VIEW ? VIEW.frames : 0);
 

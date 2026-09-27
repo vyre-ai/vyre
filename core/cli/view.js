@@ -10,8 +10,16 @@
 //   text   {kind, lines}
 //   qr     {kind, text, caption?}
 //   checks {kind, items:[{id,label,state,note?}], title?}
-//   prompt {kind, name, label, choices?, secret?, args}
+//   prompt {kind, name, label, choices?, secret?, args, answer, flag?}
 //   error  {kind, code, message, next?}
+//
+// A prompt is how a verb asks under --view: it never reads a terminal, it exits 2 with a prompt
+// frame, and the surface runs `vyre <args...>` again with the answer. `args` is the whole argv
+// after `vyre` (kit.again() gives this run's). `answer` says where the answer goes:
+//   word     appended as the last word            (threads rewind <thread> 3)
+//   flag     appended as --<flag> <answer>        (gate revise <id> --text "...")
+//   stdin    written to its stdin, never an arg   (secrets; args already carry --stdin)
+//   confirm  run args as they are on yes, nothing on no (args already carry --yes)
 //
 // A verb picks its view (kit.emit(data, view)); one that does not gets one derived from its data
 // here. A verb with no JSON at all still answers: its normal output, as a text frame.
@@ -89,6 +97,20 @@ export function derive(data) {
  */
 export function frame(cmd, data, view) {
   return { v: VERSION, cmd, view: view && typeof view === "object" && view.kind ? view : derive(data), data: data === undefined ? null : data };
+}
+
+/** How a prompt's answer goes back in. */
+export const ANSWERS = Object.freeze(["word", "flag", "stdin", "confirm"]);
+
+/**
+ * A prompt frame's view, checked: a verb builds it here so every prompt says where its answer goes.
+ * @param {{ name: string, label: string, args: string[], answer: string, flag?: string, choices?: string[], secret?: boolean }} p
+ */
+export function prompt(p) {
+  if (!ANSWERS.includes(p.answer)) throw new Error(`a prompt's answer is one of ${ANSWERS.join(", ")}`);
+  if (p.answer === "flag" && !p.flag) throw new Error("a flag prompt names its flag");
+  return { kind: "prompt", name: p.name, label: p.label, args: p.args, answer: p.answer, ...(p.flag ? { flag: p.flag } : {}),
+    ...(p.choices ? { choices: p.choices } : {}), ...(p.secret || p.answer === "stdin" ? { secret: true } : {}) };
 }
 
 /** The last frame. @param {number} exit */

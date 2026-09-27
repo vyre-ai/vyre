@@ -153,8 +153,8 @@ test("apps cli: with --json a send's preview goes to stderr before the proof, an
 // ---- Questions: an unclear app or recipient is asked about, never dropped -------------------
 
 const WHO = { ambiguous: true, reason: "who is the WhatsApp message for?", ask: "Who should get this?", text: "dinner at 8?", app: "WhatsApp", action: "send", to: "ammi",
-  needs: { recipient: [{ id: "c3", title: "Ammi jee", app: "WhatsApp", score: 0.9 }, { id: "c9", title: "Amir", app: "WhatsApp", score: 0.7 }] },
-  didYouMean: "Did you mean Ammi jee on WhatsApp?" };
+  needs: { recipient: [{ id: "c3", title: "alex", app: "WhatsApp", score: 0.9 }, { id: "c9", title: "kit", app: "WhatsApp", score: 0.7 }] },
+  didYouMean: "Did you mean alex on WhatsApp?" };
 const WHICH = { ambiguous: true, reason: "which app should this go through?", ask: "Which app?", text: "I'm running late", action: "send", to: "juno",
   needs: { app: [{ name: "WhatsApp", hint: "Vyre sends through it" }, { name: "Messages", hint: "installed; Vyre cannot send through it yet" }] } };
 /** The route vyred gives once the person has picked. @param {string} app @param {string} to @param {string} text */
@@ -165,25 +165,25 @@ const terminal = answers => ({ isTTY: true, asked: /** @type {string[]} */ ([]),
 
 test("apps cli: with no terminal a question is printed with its candidates and exits 3; --json prints its shape", async () => {
   const f = fake({ "apps.route": WHO });
-  assert.equal(await runApps(["whatsapp", "ammi:", "dinner", "at", "8?"], f.deps), ASKED);
+  assert.equal(await runApps(["whatsapp", "alx:", "dinner", "at", "8?"], f.deps), ASKED);
   assert.equal(ASKED, 3);
-  assert.deepEqual(f.lines.slice(0, 4), ["  Who should get this? · dinner at 8?", "  Did you mean Ammi jee on WhatsApp?", "   1  Ammi jee", "   2  Amir"]);
+  assert.deepEqual(f.lines.slice(0, 4), ["  Who should get this? · dinner at 8?", "  Did you mean alex on WhatsApp?", "   1  alex", "   2  kit"]);
   assert.equal(f.calls.length, 1, "nothing but the route ran");
 
   const j = fake({ "apps.route": WHO });
-  assert.equal(await runApps(["--json", "whatsapp", "ammi:", "dinner", "at", "8?"], { ...j.deps, ...terminal(["1"]) }), ASKED, "--json never prompts");
+  assert.equal(await runApps(["--json", "whatsapp", "alx:", "dinner", "at", "8?"], { ...j.deps, ...terminal(["1"]) }), ASKED, "--json never prompts");
   assert.deepEqual(JSON.parse(j.lines.join("\n")), WHO);
 });
 
 test("apps cli: on a terminal Enter takes the Did you mean, then the send is previewed and proved", async () => {
-  const f = fake({ "apps.route": (/** @type {any} */ i) => (i.to ? picked(i.app, i.to, i.text) : WHO), "apps.send": { said: "Sent to Ammi jee" } });
+  const f = fake({ "apps.route": (/** @type {any} */ i) => (i.to ? picked(i.app, i.to, i.text) : WHO), "apps.send": { said: "Sent to alex" } });
   const tty = terminal(["", ""]);
-  assert.equal(await runApps(["whatsapp", "ammi:", "dinner", "at", "8?"], { ...f.deps, ...tty }), 0);
+  assert.equal(await runApps(["whatsapp", "alx:", "dinner", "at", "8?"], { ...f.deps, ...tty }), 0);
   assert.deepEqual(tty.asked, ["  pick one (Enter for the first): ", "  Enter to send, n to cancel: "]);
   assert.deepEqual(f.calls.map(c => [c.tool, c.as]), [["apps.route", "call"], ["apps.route", "call"], ["apps.send", "person"]]);
   assert.deepEqual(f.calls[1].input, { text: "dinner at 8?", app: "WhatsApp", to: "c3" }, "the id goes back, not the name");
   assert.deepEqual(f.calls[2].input, { app: "WhatsApp", action: "send", args: { to: "c3", text: "dinner at 8?" } });
-  assert.deepEqual(f.lines.slice(-2), ["  WhatsApp → c3: dinner at 8?", "  ● Sent to Ammi jee"]);
+  assert.deepEqual(f.lines.slice(-2), ["  WhatsApp → c3: dinner at 8?", "  ● Sent to alex"]);
 });
 
 test("apps cli: an unclear app is asked, then who; a number out of range asks again", async () => {
@@ -203,7 +203,7 @@ test("apps cli: an unclear app is asked, then who; a number out of range asks ag
 test("apps cli: an empty answer with no Did you mean, no, a closed terminal, or n at the preview sends nothing", async () => {
   for (const [answers, dym] of /** @type {[string[], any][]} */ ([[[""], undefined], [["no"], WHO.didYouMean], [[], WHO.didYouMean], [["", "n"], WHO.didYouMean], [["", ], WHO.didYouMean]])) {
     const f = fake({ "apps.route": (/** @type {any} */ i) => (i.to ? picked(i.app, i.to, i.text) : { ...WHO, didYouMean: dym }), "apps.send": { said: "Sent" } });
-    assert.equal(await runApps(["whatsapp", "ammi:", "dinner"], { ...f.deps, ...terminal(answers) }), 1);
+    assert.equal(await runApps(["whatsapp", "alx:", "dinner"], { ...f.deps, ...terminal(answers) }), 1);
     assert.equal(f.lines.at(-1), "  nothing sent");
     assert.equal(f.calls.some(c => c.tool === "apps.send"), false);
   }
@@ -266,13 +266,13 @@ test("apps cli: under --view a question is a prompt frame with the candidates, e
   const emitted = [];
   let asked = 0;
   const deps = { ...f.deps, viewing: true, isTTY: true, ask: async () => { asked++; return "1"; }, emit: (/** @type {any} */ d, /** @type {any} */ v) => { emitted.push([d, v]); } };
-  assert.equal(await runApps(["--json", "whatsapp", "ammi:", "dinner", "at", "8?"], deps), 2);
+  assert.equal(await runApps(["--json", "whatsapp", "alx:", "dinner", "at", "8?"], deps), 2);
   assert.equal(asked, 0, "never a terminal question");
   assert.deepEqual(emitted[0][0], WHO, "data is what --json prints");
-  assert.deepEqual(emitted[0][1], { kind: "prompt", name: "to", label: "Who should get this? Did you mean Ammi jee on WhatsApp?",
-    choices: ["Ammi jee", "Amir"], args: ["apps", "--app", "WhatsApp", "dinner", "at", "8?"] });
-  assert.deepEqual(promptFor(WHICH), { kind: "prompt", name: "app", label: "Which app?", choices: ["WhatsApp", "Messages"],
-    args: ["apps", "--to", "juno", "I'm", "running", "late"] });
+  assert.deepEqual(emitted[0][1], { kind: "prompt", name: "to", label: "Who should get this? Did you mean alex on WhatsApp?",
+    args: ["apps", "--app", "WhatsApp", "dinner", "at", "8?"], answer: "flag", flag: "to", choices: ["alex", "kit"] });
+  assert.deepEqual(promptFor(WHICH), { kind: "prompt", name: "app", label: "Which app?",
+    args: ["apps", "--to", "juno", "I'm", "running", "late"], answer: "flag", flag: "app", choices: ["WhatsApp", "Messages"] });
   // The prompt's args with --to <choice> added route to exactly what a pick at a terminal would.
   const again = parseArgs([...promptFor(WHICH).args.slice(1), "--app", "WhatsApp"]);
   assert.deepEqual([again.flags.app, again.flags.to, again.words.join(" ")], ["WhatsApp", "juno", "I'm running late"]);

@@ -13,7 +13,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, fail, failTool, usage, parse, viewing, EXIT } from "../kit.js";
+import { json, emit, fail, failTool, usage, parse, viewing, again, EXIT } from "../kit.js";
+import { prompt as promptView } from "../view.js";
 import { up } from "./projects.js";
 
 /** The kinds of session a model is set for (core/sessions/config.js PURPOSES). */
@@ -254,7 +255,7 @@ async function prompt(args) {
   if (text === undefined && words.length) text = words.join(" ");
   if (text === undefined) {
     // Nothing is read or opened for a surface: it asks for the text, then runs this again with it.
-    if (viewing()) { emit(null, { kind: "prompt", name: "text", label: "The new system prompt", args: ["--text"] }); return EXIT.USAGE; }
+    if (viewing()) { emit(null, promptView({ name: "text", label: "The new system prompt", args: again(), answer: "flag", flag: "text" })); return EXIT.USAGE; }
     if (json()) return usage("vyre sessions prompt set needs --text or --file with --json");
     const cur = await tool("sessions.prompt.get", { scope });
     if (!cur) return 1;

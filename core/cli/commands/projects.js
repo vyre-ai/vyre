@@ -314,8 +314,15 @@ async function moveHomes(args) {
 
 export default [
   {
-    name: "projects", order: 20, usage: "vyre projects [--json] | vyre projects move [--dry-run]", summary: "every project; on a box, move moves the homes to /work/projects",
+    name: "projects", order: 20, usage: "vyre projects [list|move [--dry-run]] [--json]", summary: "every project; on a box, move moves the homes to /work/projects",
+    verbs: [
+      // --json: projects.list's rows [{ slug, name, home, threads, ... }]
+      { verb: "list", summary: "every project", usage: "", read: true },
+      // --json: { moved: [slug], skipped: [{ slug, why }], from, to, rewrites?, next?, done? }
+      { verb: "move", summary: "on a box, move the project homes to /work/projects", usage: "[--dry-run]" },
+    ],
     async run(args) {
+      if (args[0] === "list") args = args.slice(1);
       if (args[0] === "move") return moveHomes(args.slice(1));
       parse(args, { values: [], cmd: "projects" });
       if (!(await up())) return 5;
@@ -341,7 +348,11 @@ export default [
   },
   {
     name: "threads", order: 23, usage: "vyre threads [search] [--project p] [--all] [--json]", summary: "every session on this machine, searched by what was said",
+    // --json: projects.catalog's { sessions: [{ id, label, said, last, cwd, projects }], total, note? },
+    // or with --project, projects.threads' rows.
+    verbs: [{ verb: "search", summary: "every session on this machine, by what was said", usage: "[<words...>] [--project p] [--all]", read: true }],
     async run(args) {
+      if (args[0] === "search") args = args.slice(1);
       const { flags, pos } = parse(args, { bool: ["all"], values: ["project"], cmd: "threads" });
       if (!(await up())) return 5;
       if (flags.project) {

@@ -18,6 +18,7 @@ import { call } from "../../daemon/client.js";
 import { callAsPerson } from "../presence.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { EXIT, json, emit, fail, failTool, usage, parse, viewing } from "../kit.js";
+import { prompt } from "../view.js";
 import { up } from "./projects.js";
 import { id8, cut, age, sourceOf } from "./needs.js";
 
@@ -228,8 +229,8 @@ const run = {
     if (!Object.keys(edited).length && viewing()) {
       // A surface has no editor to open: it asks for the new words, and runs args with --text.
       const was = c[key];
-      emit({ id: f.id, field: key, current: was ?? "" }, { kind: "prompt", name: "text", label: `The new words for ${id8(f.id)}`,
-        args: ["gate", "revise", id8(f.id)] });
+      emit({ id: f.id, field: key, current: was ?? "" }, prompt({ name: "text", label: `The new words for ${id8(f.id)}`,
+        args: ["gate", "revise", id8(f.id)], answer: "flag", flag: "text" }));
       return EXIT.USAGE;
     }
     if (!Object.keys(edited).length) {

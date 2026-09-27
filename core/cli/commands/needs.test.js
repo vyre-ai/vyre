@@ -197,7 +197,7 @@ test("needs and gate: list, show, revise (flags and $EDITOR), approve needs a pe
   const rv = await vyre(["gate", "revise", s, "--view"], { ...env, EDITOR: "false", VISUAL: "" });
   assert.equal(rv.code, 2, rv.stdout);
   const rp = JSON.parse(rv.stdout.split("\n")[0]);
-  assert.deepEqual([rp.view.kind, rp.view.name, rp.view.args], ["prompt", "text", ["gate", "revise", s]]);
+  assert.deepEqual([rp.view.kind, rp.view.name, rp.view.args, rp.view.answer, rp.view.flag], ["prompt", "text", ["gate", "revise", s], "flag", "text"]);
   assert.equal(rp.data.current, "The shop opens at 7 from Monday.");
 
   const byFlag = await vyre(["gate", "revise", s, "--text", "The shop opens at 8 from Monday.", "--subject", "New opening hours"], env);

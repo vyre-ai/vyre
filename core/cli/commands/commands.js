@@ -27,7 +27,10 @@ export async function listing({ all = false, only } = {}) {
     if (c.hidden && !all) continue;
     if (only && c.name !== only && !(c.aliases || []).includes(only)) continue;
     const verbs = verbsOf(/** @type {any} */ (c));
-    const own = verbs.length ? null : ownArgs(c);
+    // A command with verbs may also take free words (vyre apps <words...>): it says so with its
+    // own `args`, since its usage line's words are the verbs.
+    const declared = /** @type {any} */ (c).args;
+    const own = Array.isArray(declared) ? { args: declared, flags: /** @type {any} */ (c).flags || [] } : verbs.length ? null : ownArgs(c);
     const row = /** @type {any} */ ({ name: c.name, ...(c.aliases && c.aliases.length ? { aliases: c.aliases } : {}), summary: c.summary,
       group: groupOf(c.name), usage: c.usage || `vyre ${c.name}`, verbs });
     if (own) { row.args = own.args; row.flags = own.flags; }

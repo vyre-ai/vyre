@@ -102,6 +102,6 @@ test("sessions cli: --view draws status as a card, models as a table, and asks f
   const p = await vyre("sessions", "prompt", "set", "--view");
   assert.equal(p.code, 2, p.out);
   const pf = frames(p.stdout);
-  assert.deepEqual(pf[0].view, { kind: "prompt", name: "text", label: "The new system prompt", args: ["--text"] });
+  assert.deepEqual(pf[0].view, { kind: "prompt", name: "text", label: "The new system prompt", args: ["sessions", "prompt", "set"], answer: "flag", flag: "text" });
   assert.deepEqual(pf.at(-1), { v: 1, done: true, exit: 2 });
 });

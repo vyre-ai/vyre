@@ -152,7 +152,7 @@ export async function viewRun(c, rest) {
   const at = rest.indexOf("--");
   const head = (at < 0 ? rest : rest.slice(0, at)).filter(a => a !== "--view");
   const args = [...(head.includes("--json") ? head : [...head, "--json"]), ...(at < 0 ? [] : rest.slice(at))];
-  setView(verbWords(c.name, head));
+  setView(verbWords(c.name, head), [c.name, ...(at < 0 ? head : [...head, ...rest.slice(at)]).filter(a => a !== "--json")]);
   const write = process.stdout.write.bind(process.stdout);
   /** @type {string[]} */
   const text = [];

@@ -23,6 +23,7 @@ import { out, dim, bold, signal, beacon } from "../style.js";
 import catalogue, { parse, up, resume } from "./projects.js";
 import { editText, toolError, PURPOSES } from "./sessions.js";
 import { json, emit, fail as kitFail, usage, viewing, EXIT } from "../kit.js";
+import { prompt } from "../view.js";
 
 const SURFACE = "cli:" + process.pid;
 export const SUBS = ["start", "send", "list", "ls", "get", "show", "watch", "lease", "release", "asks", "answer", "stop",
@@ -825,8 +826,8 @@ const run = {
         // --json: [{ n, uuid, text, at }] (the messages to go back to, oldest first)
         if (viewing()) {
           if (!turns.length) { emit(turns, { kind: "text", lines: ["No messages to rewind to in the thread's last 1000 events"] }); return 0; }
-          emit(turns, { kind: "prompt", name: "turn", label: "Rewind to which message?", choices: turns.map(t => String(t.n)),
-            args: ["threads", "rewind", id8(f.id), ...(flags.restore ? ["--restore", flags.restore] : [])] });
+          emit(turns, prompt({ name: "turn", label: "Rewind to which message?", choices: turns.map(t => String(t.n)), answer: "word",
+            args: ["threads", "rewind", id8(f.id), ...(flags.restore ? ["--restore", flags.restore] : [])] }));
           return EXIT.USAGE;
         }
         if (json()) { emit(turns); return 0; }
@@ -1060,7 +1061,7 @@ const run = {
         const list = await queueOf(f.id);
         if (!list) return 1;
         const was = list.rows.find(q => String(q.queued) === qid);
-        emit({ thread: f.id, queued: queuedArg(qid), current: was ? was.text : "" }, { kind: "prompt", name: "text", label: `The new words for queued ${qid}`, args: ["threads", "edit", id8(f.id), qid] });
+        emit({ thread: f.id, queued: queuedArg(qid), current: was ? was.text : "" }, prompt({ name: "text", label: `The new words for queued ${qid}`, args: ["threads", "edit", id8(f.id), qid], answer: "word" }));
         return EXIT.USAGE;
       }
       if (json()) return usage("vyre threads edit needs the new text with --json");
@@ -1169,7 +1170,7 @@ const run = {
           const q = got.missing[0];
           const kept = (a.questions || []).flatMap((x, i) => (x.question in got.answers ? ["--answer", `${i + 1}=${got.answers[x.question]}`] : []));
           emit({ ask: f.id, question: q.question, header: q.header || null, multiSelect: Boolean(q.multiSelect), options: (q.options || []).map(o => o.label), answers: got.answers },
-            { kind: "prompt", name: "answer", label: q.question, choices: (q.options || []).map(o => o.label), args: ["threads", "answer", f.id, ...kept] });
+            prompt({ name: "answer", label: q.question, choices: (q.options || []).map(o => o.label), args: ["threads", "answer", f.id, ...kept], answer: "word" }));
           return EXIT.USAGE;
         }
         if (got.missing.length) {
@@ -1193,8 +1194,8 @@ const run = {
       if (!decision && viewing() && a) {
         // The decision as a prompt frame: allow, deny, and always where it is on offer.
         emit({ ask: f.id, tool: a.tool, summary: a.summary || "", destination: a.destination || null, always: Boolean(a.always) },
-          { kind: "prompt", name: "decision", label: `Allow ${a.tool}: ${cut(a.summary, 160)}?`, choices: ["allow", "deny", ...(a.always ? ["always"] : [])],
-            args: ["threads", "answer", f.id, ...(message ? ["--message", message] : [])] });
+          prompt({ name: "decision", label: `Allow ${a.tool}: ${cut(a.summary, 160)}?`, choices: ["allow", "deny", ...(a.always ? ["always"] : [])], answer: "word",
+            args: ["threads", "answer", f.id, ...(message ? ["--message", message] : [])] }));
         return EXIT.USAGE;
       }
       if (!decision) return usage("vyre threads answer <ask> allow|deny|always [message]", "vyre threads asks lists the open ones");

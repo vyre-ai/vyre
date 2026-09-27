@@ -20,6 +20,7 @@ import { callAsPerson } from "../presence.js";
 import { createInterface } from "node:readline/promises";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { EXIT, emit as kitEmit, viewing } from "../kit.js";
+import { prompt } from "../view.js";
 
 /** The exit code for "vyred asked a question and no one was there to answer it". */
 export const ASKED = 3;
@@ -156,7 +157,7 @@ export function promptFor(r) {
   const words = String(r.text || "").split(/\s+/).filter(Boolean);
   const name = r.needs.app ? "app" : "to";
   const args = r.needs.app ? ["apps", ...(r.to ? ["--to", r.to] : []), ...words] : ["apps", "--app", r.app, ...words];
-  return { kind: "prompt", name, label: [r.ask, r.didYouMean].filter(Boolean).join(" "), choices: candidates(r).map(c => c.label), args };
+  return prompt({ name, label: [r.ask, r.didYouMean].filter(Boolean).join(" "), choices: candidates(r).map(c => c.label), args, answer: "flag", flag: name });
 }
 
 /**
@@ -305,5 +306,8 @@ export default {
   name: "apps", order: 47, usage: "vyre apps [list | find <words...> | targets <app> [words...] | setup <app> | <words...>] [--app <App>] [--to <who>] [--model] [--json]",
   summary: "drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow",
   verbs: VERBS,
+  // Free words go to the right app as an ask: vyre apps whatsapp juno: running late.
+  args: [{ name: "words", required: false, repeat: true }],
+  flags: [{ name: "app", value: "app" }, { name: "to", value: "who" }],
   run: (/** @type {string[]} */ args) => runApps(args),
 };

@@ -9,7 +9,7 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempHome } from "../../test/helpers.js";
-import { derive, frame, done, verbWords, textLines, label, KINDS } from "./view.js";
+import { derive, frame, done, verbWords, textLines, label, prompt, KINDS, ANSWERS } from "./view.js";
 import { parseUsage, verbsOf, argsOf } from "./verbs.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "bin", "vyre");
@@ -50,6 +50,16 @@ test("view: a frame keeps the data as --json prints it, and a verb's own view wi
   assert.equal(verbWords("threads", ["--json", "list", "--all"]), "threads list");
   assert.equal(verbWords("send", ["./notes.txt"]), "send");
   assert.deepEqual(textLines(["\n\x1b[2m  hello\x1b[0m\r\n", "  world\n\n"]), ["  hello", "  world"]);
+});
+
+test("view: every prompt says where its answer goes", () => {
+  assert.deepEqual(ANSWERS, ["word", "flag", "stdin", "confirm"]);
+  assert.deepEqual(prompt({ name: "text", label: "New words", args: ["gate", "revise", "d1"], answer: "flag", flag: "text" }),
+    { kind: "prompt", name: "text", label: "New words", args: ["gate", "revise", "d1"], answer: "flag", flag: "text" });
+  assert.equal(prompt({ name: "key", label: "Key", args: ["voice", "key", "--stdin"], answer: "stdin" }).secret, true, "stdin answers are secret");
+  assert.deepEqual(prompt({ name: "turn", label: "Which?", args: ["threads", "rewind", "t1"], answer: "word", choices: ["1", "2"] }).choices, ["1", "2"]);
+  assert.throws(() => prompt({ name: "x", label: "x", args: [], answer: "maybe" }), /word, flag, stdin, confirm/);
+  assert.throws(() => prompt({ name: "x", label: "x", args: [], answer: "flag" }), /names its flag/);
 });
 
 test("verbs: the usage grammar gives verbs, arguments, flags and choices", () => {

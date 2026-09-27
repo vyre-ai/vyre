@@ -20,6 +20,7 @@ import { REPO } from "../../daemon/index.js";
 import * as config from "../../config/index.js";
 import { out, dim, signal, beacon } from "../style.js";
 import { EXIT, json, emit, fail, failTool, usage, viewing } from "../kit.js";
+import { prompt } from "../view.js";
 
 export const TEMPLATE = path.join(REPO, "harness", "statusline", "statusline.sh");
 
@@ -135,8 +136,8 @@ export async function install(args, deps = {}) {
   if (!yes) {
     // A surface has no terminal to answer y/N on: it is asked as a prompt, and runs args on yes.
     if (viewing()) {
-      emit({ state: "asked", file, what }, { kind: "prompt", name: "yes", label: what[0].toUpperCase() + what.slice(1) + "?", choices: ["yes", "no"],
-        args: ["statusline", "install", ...(chain ? ["--chain"] : []), "--yes"] });
+      emit({ state: "asked", file, what }, prompt({ name: "yes", label: what[0].toUpperCase() + what.slice(1) + "?", choices: ["yes", "no"],
+        args: ["statusline", "install", ...(chain ? ["--chain"] : []), "--yes"] , answer: "confirm" }));
       return EXIT.USAGE;
     }
     if (!io.tty) return report(0, { state: "would", file, what, next: `vyre statusline install${chain ? " --chain" : ""} --yes` }, [`  would ${what}`, dim("  run it again with --yes to do it. Nothing was changed.")]);
