@@ -172,19 +172,31 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   capsule bridge, deck/chat, deck/test, guests, hygiene: 247/247 after one test fix.
 - composer.js "Claude Code's commands" was already fixed (f857520); only a code comment remains.
 
-## Doing
-- Waiting on tailnet: frozen shas for the WebSocket upgrade (work/tailnet f309059?) and the rich
-  Mac transcripts (work/federation-transcript 6731af9, off work/chat). Asked 27 Sep.
+## Doing (27 Sep, after logout 3)
+New direction: ADR 0030 (Agent SDK sessions are the default) and Direction A (docs/design/one-app on
+work/app-design, Session board). Chat is a native chat over Vyre's event stream; the terminal stays.
+- Done this session: fb22bad (pre-logout WIP committed), 231221b merged main ef51363, 7f49979 diff
+  summary on the permission card (changesRow, exported for pwa's needs.js), b20fec2 live text keys
+  (message, block) equal the transcript's (verified against one real Claude Code 2.1.268 run on
+  testbox; user blocks carry uuid), f2c5b62 core tests + 2 bug fixes (tool-detail Task threw,
+  line-diff dropped "-- x" lines), 7fa868e deck/chat/core/session-state.js, pace.js, grouping.js.
+  Tests: core 45/45, transcripts+switchboard 98/98, deck/chat 87/87 (testbox).
+- Event shapes proposed to sessions (27 Sep): thread.text block, thread.tool call/status,
+  thread.turn uuid = SDK message uuid = transcript uuid, thread.queued uuid, thread.unqueued,
+  thread.state, thread.usage, thread.started provider/model/auth, finished canceled. Tools asked:
+  threads.unqueue, threads.edit, threads.send {now}, threads.interrupt. Awaiting reply.
+- Now: session view (deck/chat/session.js) rendered from session-state + grouping + pace, with the
+  Session board's provider chip, state word, Stop (Esc), queued rows (Edit, Take back, Send now),
+  inline ask and question cards at the tail, A/D keys.
 
 ## Next
-- Merge tailnet's WebSocket sha, then reshoot (CHAT_DEMO=1 node deck/test/world.js 4791 from a
-  `git archive HEAD` snapshot on testbox; deck/test/shoot.js with CHROME=/usr/local/bin/vyre-chrome):
-  the terminal (no unlock now) and the whole flow; time Back with deck/test/pwa-perf.js (< 100 ms).
-- Merge federation-transcript so Mac replies keep tool cards after the re-read (priority 5).
-- Try Mac messaging against a paired Mac once federation is on main.
-- Folder rows: names truncate ("harlow-si..."); put the path on a second line.
-- Show detail.totals/changes on the permission card (phone-design's Changes row consumes it).
-- Restyle with deck-design once the user picks a direction.
+- Screenshots in one world on port 4795 (load rule), time Back (< 100 ms).
+- Virtualize long sessions (windowed rows above 100), mounted tabs.
+- Terminal P4 (core/term/holder.js + ring.js exist, untested; ADR 0029 R4): tests, wire into term.
+- ask.raised should carry tool_use_id so an inline ask anchors to its tool row (ask sessions/switchboard).
+- deck/chat/lib/diff.js may share line-diff's "-- x" header bug: check.
+- Folder rows: path on a second line.
+- Test command on testbox: node 22 needs globs, `node --test "deck/chat/**/*.test.js"`, not a folder.
 
 ## Needs from others
 - deck-design: visual direction for the cards and the terminal; behaviour is built first.
