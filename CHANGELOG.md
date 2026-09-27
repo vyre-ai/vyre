@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Deck's phone switch point is 720 (Design A v1)
+
+- The phone query is now `(max-width: 719px), (max-height: 500px) and (pointer: coarse)` and the
+  desk-only query starts at `min-width: 720px`, in every CSS file under deck/ and in
+  PHONE_QUERY (deck/js/dom.js), per docs/design/system/layout.md. Column widths such as
+  `.set-col` (760) are layout, not the switch point, and stay.
+- deck/test/pwa.test.js fails on any @media still at 760 or 761, and on a bare 719 or 720 width
+  query that is not the phone query or its complement.
+
 #### One toast in the Deck (Design A v1)
 
 - deck/js/toast.js is the Deck's one toast (styles deck/css/toast.css): 4 s, role status and

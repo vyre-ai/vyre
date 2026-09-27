@@ -74,7 +74,7 @@
 .button-full, .sb-full { width: 100%; }
 
 /* On the phone nothing a finger taps is under 44: every button takes the touch size. */
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .button, .btn { height: auto; min-height: var(--control-touch, 44px); padding: 0 16px; border-radius: var(--radius-button-touch, 10px);
     font-size: var(--size-read, 17px); line-height: var(--line-read, 24px); }
   .button-touch-lg { min-height: var(--control-touch-lg, 54px); border-radius: var(--radius-card, 12px); }
@@ -131,7 +131,7 @@
   cursor: default; background: transparent; color: var(--label); }
 .icon-button[aria-busy="true"], .ibtn[aria-busy="true"] { pointer-events: none; }
 /* On the phone a 28 or 32 drawing still gets a 44 hit area. :where() keeps a view's own position. */
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   :where(.icon-button, .ibtn) { position: relative; }
   .icon-button::after, .ibtn::after { content: ""; position: absolute;
     inset: min(0px, calc((100% - var(--control-touch, 44px)) / 2)); }

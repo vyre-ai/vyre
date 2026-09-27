@@ -80,7 +80,7 @@ test("buttons: the old classes are aliases of the new system", () => {
 
 test("buttons: on the phone every button and icon button is at least 44", () => {
   const css = read("css/buttons.css");
-  const phone = noComments(css).split("@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {").slice(1).join("\n");
+  const phone = noComments(css).split("@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {").slice(1).join("\n");
   assert.match(phone, /\.button, \.btn \{[^}]*min-height: var\(--control-touch, 44px\)/);
   assert.match(phone, /\.ibtn::after \{[^}]*inset: min\(0px, calc\(\(100% - var\(--control-touch, 44px\)\) \/ 2\)\)/);
 });

@@ -39,7 +39,7 @@
 .pl-pin { flex-shrink: 0; }
 .pl-body { margin: 4px 0 0; white-space: pre-wrap; }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .pl-col { padding: 20px 16px 96px; }
   .pl-banner .pl-acts { width: 100%; }
   .pl-banner .pl-acts .btn { flex: 1; height: 44px; }

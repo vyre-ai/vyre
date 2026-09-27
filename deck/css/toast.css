@@ -31,7 +31,7 @@
 @keyframes toast-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 
 /* On the phone: 16 from the sides and 24 above the Capsule, in the read size. Undo is 44. */
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .toast-float { left: 16px; right: 16px; width: auto; max-width: none; transform: none;
     bottom: calc(var(--cap-bottom, 12px) + var(--cap-h, 56px) + 24px);
     font-size: var(--size-read, 17px); line-height: var(--line-read, 24px); animation-name: toast-rise; }

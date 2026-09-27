@@ -43,7 +43,7 @@
 .nd-draft .nd-actions .nd-btn { width: auto; flex: 1; }
 .nd-draft .nd-actions .nd-grow { flex: 1.4; }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .nd { padding: 20px 16px 24px; }
   .nd-draft { padding-bottom: 96px; }
   .nd-sticky { position: fixed; left: 0; right: 0; bottom: 76px; margin: 0; padding: 12px 16px; background: var(--bg);

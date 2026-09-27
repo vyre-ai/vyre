@@ -253,7 +253,7 @@
 }
 
 /* Phone (390): chip scroller, two-column rows, the item as a full-screen sheet with Back. */
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .vt { height: auto; display: block; }
   .vt-main { overflow: visible; padding: 16px 16px 24px; }
   .vt-head { align-items: flex-start; flex-direction: column; gap: 12px; padding-bottom: 14px; }

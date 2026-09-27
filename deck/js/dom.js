@@ -8,7 +8,7 @@
  * phone turned sideways), get the phone shell; a short desktop window does not. The CSS phone
  * blocks use the same query text (deck/test/pwa.test.js checks they match).
  */
-export const PHONE_QUERY = "(max-width: 760px), (max-height: 500px) and (pointer: coarse)";
+export const PHONE_QUERY = "(max-width: 719px), (max-height: 500px) and (pointer: coarse)";
 /** @param {any} [win] */
 export const isPhone = (win = globalThis) => !!win.matchMedia?.(PHONE_QUERY).matches;
 

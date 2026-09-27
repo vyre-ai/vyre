@@ -16,7 +16,7 @@
 .pair-note:empty { display: none; }
 .pair-note { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; color: var(--text-2); }
 .pair-err { color: var(--beacon-ink); }
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .pair-form { grid-template-columns: 1fr; gap: 8px; }
   .pair-code { font-size: 20px; }
   .pair-actions .btn { flex: 1 1 0; }

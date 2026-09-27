@@ -41,7 +41,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .session-head .title { font-size: 16px; line-height: 22px; font-weight: 600; }
 .session-head .sub { font-size: 12px; line-height: 16px; color: var(--label); }
 .session-back { display: none; }
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) { .session-back { display: inline-flex; } }
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) { .session-back { display: inline-flex; } }
 
 .thread-view { flex-grow: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 16px 20px 24px; }
 /* The timeline's frame, so the "Jump to latest" pill can sit over its bottom edge. */
@@ -162,7 +162,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .thread-row .meta { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--label); }
 .thread-row .meta .needs { display: flex; align-items: center; gap: 6px; color: var(--beacon-ink); }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .session-head, .lease-bar, .composer { padding-left: 16px; padding-right: 16px; }
   .thread-view { padding-left: 16px; padding-right: 16px; }
   .composer-menu { left: 16px; right: 16px; }
@@ -201,7 +201,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .chat-problem .err { color: var(--beacon-ink); }
 .ask-card.answered { background: var(--panel); border-color: var(--rule); }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .chat-pad { padding: 16px 16px 24px; gap: 16px; }
   .chat-back { display: inline-flex; }
   .chat-projects { display: block; }
@@ -299,7 +299,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .fb-when { font-size: 12px; flex-shrink: 0; margin-left: auto; }
 .fb-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .fb-hint { font-size: 12px; }
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .fb-row { flex-wrap: wrap; }
   .fb-actions { width: 100%; padding-left: 30px; }
   .fb-actions .btn { height: 36px; }
@@ -489,7 +489,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   background: var(--panel); color: var(--text); font: inherit; font-size: 14px; }
 .cv-why:focus, .cv-q-input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--signal-wash); }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .cv-text, .cv-think, .cv-tool, .cv-turn { margin-left: 0; max-width: 100%; }
   .cv-q-review, .cv-q-done, .cv-kv { grid-template-columns: 1fr; }
   .cv-choice { min-height: 44px; }
