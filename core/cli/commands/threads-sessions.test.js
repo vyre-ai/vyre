@@ -204,7 +204,7 @@ test("threads verbs: start with a purpose, one-shot get, interrupt, mode, queue 
   assert.match(ql.out, /nothing is queued|from the thread's last 1000 events/);
   assert.ok(Array.isArray(JSON.parse((await vyre(["threads", "queue", id, "--json"], w.env)).stdout)));
 
-  for (const [verb, name, extra] of [["take-back", "threads.unqueue", []], ["send-now", "threads.send_now", []], ["edit", "threads.edit", ["the", "fax"]], ["rewind", "threads.rewind", []]]) {
+  for (const [verb, name, extra] of [["take-back", "threads.unqueue", []], ["send-now", "threads.send-now", []], ["fork", "threads.fork", []], ["edit", "threads.edit", ["the", "fax"]], ["rewind", "threads.rewind", []]]) {
     const r = await vyre(["threads", verb, id, verb === "rewind" ? "00000000-0000-4000-8000-000000000000" : "999999", ...extra], w.env);
     if (w.have.has(name)) assert.notEqual(r.code, 2, r.out);
     else coming(r, name);

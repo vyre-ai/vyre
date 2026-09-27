@@ -89,6 +89,14 @@ const list = r => (Array.isArray(r.data) ? r.data : []);
 /** relay.devices.list's devices, or [] when the box has no relay (no_such_tool) or it fails. */
 const relayDevices = r => (r && r.data && Array.isArray(r.data.devices) ? r.data.devices : []);
 
+/**
+ * Whether the box serves a page: one HEAD, 3 s, no retry. Any failure is "no".
+ * @param {string} url @param {typeof fetch} f
+ */
+async function hasPage(url, f) {
+  try { const r = await f(url, { method: "HEAD", signal: AbortSignal.timeout(3000) }); return r.ok; } catch { return false; }
+}
+
 // ------------------------------------------------------------ the checks
 
 /**
@@ -240,14 +248,17 @@ export async function add(flags, deps = {}) {
   const before = { devices: list(d0), keys: list(k0), relay: relayDevices(r0) };
 
   const phone = flags.iphone ? "iPhone" : flags.android ? "Android" : null;
-  const tailscale = { tailnet: tailnetOf(address), login: ts && ts.login ? ts.login : null, address: address + "/" };
+  // The Deck's /pair screen (code, notifications, install, the same checks) when this box has it;
+  // an older box gets its home page, where the passkey step is under Settings.
+  const pairPage = !offer && await hasPage((deps.base || address).replace(/\/$/, "") + "/pair", deps.fetch || globalThis.fetch) ? address + "/pair" : address + "/";
+  const tailscale = { tailnet: tailnetOf(address), login: ts && ts.login ? ts.login : null, address: pairPage };
   const install = {
     iphone: "Safari: Share, then Add to Home Screen. Open Vyre from the Home Screen: notifications work only there.",
     android: "Chrome: the menu, then Install app. Or the native app over a cable: vyre phone add --android --usb",
   };
   const installFor = flags.iphone ? { iphone: install.iphone } : flags.android ? { android: install.android } : install;
   if (json()) {
-    return emit({ box: address, phone, network: offer ? "relay" : "tailscale", url: offer || address + "/", code, expires,
+    return emit({ box: address, phone, network: offer ? "relay" : "tailscale", url: offer || pairPage, code, expires,
       install: installFor, ...(app ? { app } : {}), tailscale, ...(noRelay ? { relay: "this box has no relay yet" } : {}),
       checks: evaluate(before, before, { address }) });
   }
@@ -267,8 +278,8 @@ export async function add(flags, deps = {}) {
   } else {
     out(`  ${n++} ${pad("Network")}Tailscale${tailscale.tailnet ? ", tailnet " + tailscale.tailnet : ""}`);
     out(dim(`${indent}Get Tailscale on the phone, and sign in as ${tailscale.login || "the same account as the box"}`));
-    out(`  ${n++} ${pad("Open Vyre")}${address}`);
-    if (colour) for (const l of terminal(qr(address + "/"), { indent: "     " })) out(l);
+    out(`  ${n++} ${pad("Open Vyre")}${pairPage.replace(/\/$/, "")}`);
+    if (colour) for (const l of terminal(qr(pairPage), { indent: "     " })) out(l);
     else out(dim(`${indent}Type this address on the phone (the QR code shows in a colour terminal)`));
     out(code ? `${indent}${dim("When it asks for a code (Passkey, Add), type")} ${signal(spaced(code))}`
       : dim(`${indent}The passkey code comes from the box: vyre presence code there, then type it on the phone`));
@@ -401,7 +412,8 @@ function watch(t, { address, before, expires }, deps) {
     };
     const onEvent = (/** @type {string} */ type, /** @type {any} */ p) => {
       if (type === "push.delivered") { if (p.receipt) receipts.add(String(p.receipt)); settle(); }
-      else if (type === "push.seen") { if (p.standalone === true && !standalone) { standalone = true; settle(); } }
+      // A phone that was already here saying it runs installed is not the new one.
+      else if (type === "push.seen") { if (p.standalone === true && !standalone && !(p.device && before.devices.some(b => b.device === p.device))) { standalone = true; settle(); } }
       else check();
     };
     const onKey = chunk => { if (/[\r\n]/.test(String(chunk))) check(); };

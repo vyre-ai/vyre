@@ -25,7 +25,7 @@ import { json, emit, fail as kitFail, usage } from "../kit.js";
 
 const SURFACE = "cli:" + process.pid;
 const SUBS = ["start", "send", "list", "ls", "get", "show", "watch", "lease", "release", "asks", "answer", "stop",
-  "interrupt", "mode", "rewind", "open", "queue", "take-back", "edit", "send-now"];
+  "interrupt", "mode", "rewind", "fork", "open", "queue", "take-back", "edit", "send-now"];
 /** Subcommands whose words are free text (what is sent), so their flags are read by hand. */
 const FREE = ["send", "edit"];
 /** The permission modes a person can put a session in (threads.mode); bypassPermissions never. */
@@ -595,6 +595,22 @@ const run = {
     return 0;
   },
 
+  /** A new session from this one's history, optionally with a first prompt (threads.fork). */
+  async fork(args) {
+    const [ref, ...words] = args;
+    if (!ref) return usage("vyre threads fork <thread> [prompt]");
+    const f = await resolveThread(ref);
+    if ("error" in f) return missed(f);
+    const prompt = words.join(" ");
+    const r = await tool("threads.fork", { thread: f.id, ...(prompt ? { prompt } : {}) });
+    if (!r) return 1;
+    if (json()) { emit(r); return 0; }
+    const id = r.thread || r.id;
+    out(`  ${signal("forked")} ${dim(`${id8(f.id)} → ${id ? id8(String(id)) : "a new session"}`)}`);
+    if (id) out(dim(`  vyre threads watch ${id8(String(id))} follows it`));
+    return 0;
+  },
+
   /** Open the thread in `claude` in this terminal, where it ran (vyre resume hands it over). */
   async open(args) {
     const f = await resolveThread(args[0]);
@@ -630,7 +646,7 @@ const run = {
   },
 
   async "take-back"(args) { return queued(args, "take-back", "threads.unqueue", "taken back"); },
-  async "send-now"(args) { return queued(args, "send-now", "threads.send_now", "sent now"); },
+  async "send-now"(args) { return queued(args, "send-now", "threads.send-now", "sent now"); },
 
   async edit(args) {
     const [ref, qid, ...words] = args;
@@ -830,6 +846,7 @@ export default {
     "  vyre threads get <thread> [--since ID] [--limit N]  one read: the record, open asks, events",
     "  vyre threads watch <thread>                       follow it live; reconnects on its own",
     "  vyre threads interrupt <thread>                   stop the turn (Escape); the session stays",
+    "  vyre threads fork <thread> [prompt]               a new session from this one's history",
     `  vyre threads mode <thread> [${MODES.join("|")}]`,
     "                                                    say or set the permission mode",
     "  vyre threads rewind <thread> <uuid>               back to a message, files too",

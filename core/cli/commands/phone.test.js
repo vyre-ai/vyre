@@ -173,6 +173,20 @@ test("phone add --json: the address, the code and the steps as one value, withou
   assert.deepEqual(v.checks.map(c => [c.id, c.state]), [["reached", "wait"], ["https", "wait"], ["app", "wait"], ["push", "wait"], ["passkey", "wait"]]);
 });
 
+test("phone add --json: a box with the Deck's /pair screen gets the QR pointed there", async t => {
+  const { io } = await box(t);
+  const lines = capture(t);
+  setJson(true);
+  t.after(() => setJson(false));
+  const asked = [];
+  const withPair = /** @type {any} */ (async (url, o) => { asked.push([String(url), o && o.method]); return String(url).endsWith("/pair") ? { ok: true, status: 200 } : { ok: false, status: 404, json: async () => ({}) }; });
+  assert.equal(await add({}, { io, fetch: withPair }), 0);
+  const v = JSON.parse(lines.at(-1));
+  assert.equal(v.url, BOX + "/pair");
+  assert.equal(v.tailscale.address, BOX + "/pair");
+  assert.ok(asked.some(([u, m]) => u === BOX + "/pair" && m === "HEAD"), "one HEAD for the page");
+});
+
 test("phone add: without a person at a terminal the code is refused, exit 3", async t => {
   await box(t);
   capture(t);
