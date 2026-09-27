@@ -182,5 +182,6 @@ test("teach: a preference about the user lands on the user's own node", async t 
   const edge = db.prepare("SELECT src, rel FROM memory_edges WHERE rel = 'prefers'").get();
   assert.equal(edge?.src, "me:you");
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM memory_nodes WHERE label = 'the user'").get().n, 0);
-  assert.ok(graph.facts({}).facts.some(f => f.rel === "prefers" && /pnpm/.test(f.text)), "the preference is a fact");
+  // The main list ranks by sessions; the user's own view has it, in the user's grammar.
+  assert.ok(graph.facts({ about: "me:you" }).facts.some(f => f.rel === "prefers" && f.text === "you prefer pnpm"), "the preference is a fact about the user");
 });
