@@ -119,11 +119,13 @@ function only(body, shape, what) {
   }
 }
 
-// Exec runs as the container's own user, unprivileged, with no stdin: `Privileged` would hand it
-// every capability the container dropped, and `User: "0"` root inside it.
+// Exec runs as the agent's own uid, unprivileged, with no stdin. A computer starts as root to
+// switch users (entrypoint.sh), so an exec without a User would be root in it; `User` is required
+// and must be exactly the agent's uid, never vyre's (1001, computerd and Chrome) or root.
+// `Privileged` would hand it every capability the container dropped.
 const EXEC_SHAPE = { AttachStdin: v => v === false, AttachStdout: isBool, AttachStderr: isBool, Tty: isBool,
   Cmd: v => isStrs(v) && v.length > 0, Env: isStrs, WorkingDir: v => typeof v === "string", ConsoleSize: isSize,
-  Privileged: v => v === false };
+  Privileged: v => v === false, User: v => v === "1000:1000" };
 const EXEC_START_SHAPE = { Detach: isBool, Tty: isBool, ConsoleSize: isSize };
 
 /**
@@ -360,6 +362,7 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, l
     if (name === "exec") {
       only(body, EXEC_SHAPE, "exec");
       if (!body.Cmd) refuse("exec needs a Cmd");
+      if (body.User !== "1000:1000") refuse("exec must name User 1000:1000 (the agent's uid)");
       const verdict = policy.allowExec(c.Config.Labels, body.Cmd);
       if (!verdict.ok) refuse(`exec: ${verdict.why}`);
       return forward(res, "POST", `${ver}/containers/${id}/exec`, body);

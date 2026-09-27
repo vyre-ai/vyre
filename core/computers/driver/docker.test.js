@@ -89,12 +89,16 @@ test("docker: create sends exactly the container Vyre means, and nothing is publ
       PublishAllPorts: false,
       Privileged: false,
       CapDrop: ["ALL"],
+      CapAdd: ["SETUID", "SETGID"],
       Devices: [],
       SecurityOpt: ["no-new-privileges"],
       ReadonlyRootfs: true,
       Tmpfs: { "/tmp": "mode=1777,exec", "/run": "mode=0755", "/var/run": "mode=0755" },
       ShmSize: 1024 * 1024 * 1024,
-      Mounts: [{ Type: "volume", Source: "vyre-home-kit", Target: "/home/agent", VolumeOptions: { Labels: { "vyre.managed": "true", "vyre.computer": "kit", "run.vyre": "1" } } }],
+      Mounts: [
+        { Type: "volume", Source: "vyre-home-kit", Target: "/home/agent", VolumeOptions: { Labels: { "vyre.managed": "true", "vyre.computer": "kit", "run.vyre": "1" } } },
+        { Type: "volume", Source: "vyre-browser-kit", Target: "/var/lib/vyre", VolumeOptions: { Labels: { "vyre.managed": "true", "vyre.computer": "kit", "run.vyre": "1" } } },
+      ],
       RestartPolicy: { Name: "no" },
     },
   });
@@ -112,8 +116,10 @@ test("docker: never privileged, never a host mount, never host network or PID, a
   assert.deepEqual(body.HostConfig.Devices, []);
   assert.equal(body.HostConfig.ReadonlyRootfs, true);
   assert.ok(body.HostConfig.Tmpfs && Object.keys(body.HostConfig.Tmpfs).length > 0, "a read-only root needs somewhere to write");
-  // The only mount is the agent's own named volume: never a bind, and never the docker socket.
-  assert.equal(body.HostConfig.Mounts.length, 1);
+  // The only mounts are the agent's own two named volumes: never a bind, never the docker socket.
+  assert.equal(body.HostConfig.Mounts.length, 2);
+  // Every capability dropped but the two the entrypoint switches users with.
+  assert.deepEqual(body.HostConfig.CapAdd, ["SETUID", "SETGID"]);
   for (const m of body.HostConfig.Mounts) {
     assert.equal(m.Type, "volume", "no bind mount ever reaches a create body");
     assert.doesNotMatch(String(m.Source), /docker\.sock/);

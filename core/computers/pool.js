@@ -276,11 +276,12 @@ export class Pool {
     }
   }
 
-  /** Who holds the screens, for a person to read: "kit (watched by 1), juno (taken over by glass:laptop)". */
+  /** Who holds the screens, for a person to read: "kit (watched by 1), juno (taken over by you)". */
   holders() {
     return [...this.checkouts.values()].map(c => {
       const h = this.heldBy(c.agent);
-      return `${c.agent} (${h ? `taken over by ${h}` : c.viewers ? `watched by ${c.viewers}` : "working"})`;
+      // Only the owner can take over, so a held screen is theirs: "taken over by you".
+      return `${c.agent} (${h ? "taken over by you" : c.viewers ? `watched by ${c.viewers}` : "working"})`;
     }).join(", ");
   }
 
@@ -360,6 +361,7 @@ export class Pool {
         env: { VNC_PASSWORD: r.vnc_password, COMPUTERD_TOKEN: r.helper_token, SCREEN: `${w}x${h}`, ...egress },
         labels: { [`${this.opts.prefix}.computer`]: agent, [`${this.opts.prefix}.managed`]: "true" },
         volume: `${this.opts.prefix}-home-${agent}`,
+        browserVolume: `${this.opts.prefix}-browser-${agent}`,
       });
       this.set(agent, { container: id, state: "stopped", egress: want });
       this.emit("computer.created", { agent });

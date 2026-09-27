@@ -10,13 +10,14 @@
       "computers.endpoint", "computers.may-act", "computers.helper", "computers.shield",
       "computers.egress.status", "computers.egress.set",
       "computers.tailnet.status", "computers.tailnet.set", "computers.node.agent",
-      "computers.handback.status", "computers.handback.set"
+      "computers.handback.status", "computers.handback.set",
+      "computers.fill.begin", "computers.fill.end"
     ]
   },
   "watches": {
     "emits": [
       "computer.created", "computer.checked-out", "computer.released", "computer.frozen", "computer.thawed",
-      "computer.stopped", "computer.paused", "computer.resumed", "computer.taken-over", "computer.handed-back", "computer.idle-warning",
+      "computer.stopped", "computer.paused", "computer.resumed", "computer.taken-over", "computer.handed-back", "computer.idle-warning", "computer.fill-began", "computer.fill-ended",
       "computer.shielded", "computer.unshielded", "computer.joined", "computer.left"
     ]
   },

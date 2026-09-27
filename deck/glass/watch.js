@@ -13,7 +13,7 @@
 
 import { h, put, link as anchor } from "../js/dom.js";
 import { attempt, call } from "../js/api.js";
-import { gicon, errText, viewerCount, holderOf, surfaceKind } from "./util.js";
+import { gicon, errText, viewerCount, holderOf, surfaceKind, yourDevice } from "./util.js";
 import { takeover } from "./takeover.js";
 import { attach } from "./input.js";
 import { pinchZoom, softKeyboard } from "./phone.js";
@@ -197,6 +197,22 @@ export function mountScreen(o) {
     }
   }
 
+  /**
+   * One line from computer.handed-back's fields (by, device, reason), phrased for the owner, who
+   * is the only one who can take over: "your", never a name.
+   * @param {any} p @param {string} agent
+   */
+  function handedBack(p, agent) {
+    const from = p.device ? ` (from ${p.device})` : "";
+    switch (p.reason || "") {
+      case "idle": return `Handed back to ${agent} after ${Math.round(Number(p.idle_ms) / 60_000)} min idle.`;
+      case "chat": return `Your take-over ended when the thread moved to chat${from}.`;
+      case "released": return `Your take-over ended when the thread's lease was released${from}.`;
+      case "expired": return `Your take-over lapsed after 90 s without a signal${from}.`;
+      default: return p.surface === surface ? `You handed back to ${agent}.` : `The keyboard went back to ${agent}.`;
+    }
+  }
+
   let lastLog = { text: "", at: 0 };
   function addLog(text) {
     // A take-over arrives twice, as computer.taken-over and glass.taken (and a hand-back as
@@ -347,7 +363,7 @@ export function mountScreen(o) {
     if (dead) return;
     if (agentOf(e) !== name && e.payload?.target !== target) return;
     const p = e.payload || {};
-    const who = p.surface === surface ? "You" : `Someone on ${surfaceKind(p.surface)}`;
+    const who = p.surface === surface ? "You" : yourDevice(p.surface);
     switch (e.type) {
       case "computer.taken-over": case "glass.taken":
         if (!s.holder || s.holder.surface !== p.surface) s.holder = { surface: p.surface, since: p.since || e.at || Date.now(), private: !!p.private };
@@ -361,12 +377,10 @@ export function mountScreen(o) {
       case "computer.handed-back": case "glass.released":
         if (s.holder && (!p.surface || s.holder.surface === p.surface)) s.holder = null;
         if (p.surface === surface) s.idleAt = 0;
-        if (p.why === "idle") {
-          addLog(`Handed back to ${name} after ${Math.round(Number(p.idle_ms) / 60_000)} min idle.`);
-          if (p.surface === surface) tk.idled(p.idle_ms);
-        } else addLog(`${p.surface === surface ? "You" : "The keyboard"} ${p.surface === surface ? "handed back" : "went back"} to ${name}.`);
+        addLog(handedBack(p, name));
+        if (p.why === "idle" && p.surface === surface) tk.idled(p.idle_ms);
         break;
-      case "computer.shielded": addLog(`${name} cannot see the page while someone signs in.`); break;
+      case "computer.shielded": addLog(p.reason === "fill" ? `The Vault is signing ${name} in; ${name} cannot see the page until it is done.` : `${name} cannot see the page while someone signs in.`); break;
       case "computer.unshielded": addLog(`${name} can see the page again${p.origin ? ` (${p.origin})` : ""}.`); break;
       case "glass.opened": if (p.surface !== surface) addLog(`Someone started watching from ${surfaceKind(p.surface)}.`); refresh(); return;
       case "glass.closed": refresh(); return;

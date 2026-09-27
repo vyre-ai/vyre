@@ -13,6 +13,7 @@
 
 import http from "node:http";
 import { PORTS, SIZE } from "./index.js";
+import { REQUIRED_CAPS } from "./policy.js";
 
 const API = "/v1.43";
 
@@ -25,9 +26,10 @@ export class DockerDriver {
     this.name = "docker";
     this.prefix = opts.labelPrefix || "vyre";
     this.network = opts.network || null;
-    // The image runs as an unprivileged user and needs no capability; a box that finds otherwise
-    // adds exactly the one it needs through computers.capAdd rather than this file growing a list.
-    this.capAdd = Array.isArray(opts.capAdd) ? opts.capAdd.map(String) : [];
+    // The image starts as root only to put the agent and Chrome under different users, which
+    // needs SETUID and SETGID (REQUIRED_CAPS) and nothing more; a box that finds it needs another
+    // adds exactly that one through computers.capAdd rather than this file growing a list.
+    this.capAdd = [...new Set([...REQUIRED_CAPS, ...(Array.isArray(opts.capAdd) ? opts.capAdd.map(String) : [])])];
     this.timeoutMs = opts.timeoutMs || 30_000;
     const u = String(opts.url);
     if (u.startsWith("unix://")) this.target = { socketPath: u.slice("unix://".length) };
@@ -139,14 +141,13 @@ export class DockerDriver {
         Memory: Math.round((spec.memoryMb || 3072) * 1024 * 1024),
         PortBindings: {},
         PublishAllPorts: false,
-        // Never privileged, never a capability beyond the default runtime set. The image runs
-        // Xvnc, Chrome (--no-sandbox, already unprivileged), AT-SPI and xdotool as a normal user
-        // and needs no capability at all; a box that finds otherwise adds exactly the one it
-        // needs through computers.capAdd rather than this file growing a list. Privileged is not
+        // Never privileged. Every capability is dropped but SETUID and SETGID, which entrypoint.sh
+        // uses once to start Xvnc, computerd and Chrome as one user and the agent's desktop as
+        // another; setpriv leaves each of those processes no capability at all. Privileged is not
         // a field CreateSpec has, and never will be: there is no parameter that can turn it on.
         Privileged: false,
         CapDrop: ["ALL"],
-        ...(this.capAdd.length ? { CapAdd: this.capAdd } : {}),
+        CapAdd: this.capAdd,
         // No host devices: an agent's computer has no business touching /dev on the box.
         Devices: [],
         SecurityOpt: ["no-new-privileges"],
@@ -165,8 +166,14 @@ export class DockerDriver {
         Tmpfs: { "/tmp": "mode=1777,exec", "/run": "mode=0755", "/var/run": "mode=0755" },
         // Chrome keeps its renderers' shared memory in /dev/shm; Docker's 64 MB default crashes tabs.
         ShmSize: 1024 * 1024 * 1024,
-        Mounts: [{ Type: "volume", Source: spec.volume, Target: "/home/agent",
-          VolumeOptions: { Labels: { [this.managedLabel]: "true", [this.computerLabel]: agent, "run.vyre": "1" } } }],
+        // Two named volumes: the agent's home, and computerd's and Chrome's own (the Chrome profile,
+        // the VNC password), which the agent's uid cannot open.
+        Mounts: [
+          { Type: "volume", Source: spec.volume, Target: "/home/agent",
+            VolumeOptions: { Labels: { [this.managedLabel]: "true", [this.computerLabel]: agent, "run.vyre": "1" } } },
+          { Type: "volume", Source: spec.browserVolume || `${this.prefix}-browser-${agent}`, Target: "/var/lib/vyre",
+            VolumeOptions: { Labels: { [this.managedLabel]: "true", [this.computerLabel]: agent, "run.vyre": "1" } } },
+        ],
         RestartPolicy: { Name: "no" },
       },
     };

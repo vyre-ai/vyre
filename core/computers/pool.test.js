@@ -161,7 +161,7 @@ test("pool: when every screen is watched or taken over, a checkout waits, then n
   await assert.rejects(pool.checkout("pax"), /every screen is in use \(kit \(watched by 1\)\)/);
   assert.ok(Date.now() - t0 >= 70, "it did not wait");
   pool.heldBy = a => (a === "kit" ? "glass:laptop" : null);
-  await assert.rejects(pool.checkout("pax"), /kit \(taken over by glass:laptop\)/);
+  await assert.rejects(pool.checkout("pax"), /kit \(taken over by you\)/);
 });
 
 test("pool: a waiting checkout gets the screen as soon as one is released", async t => {

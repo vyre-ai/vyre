@@ -36,12 +36,21 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
   Tests after merge (15 files): 187 run, 181 pass, 0 fail, 6 skipped.
 
 ## Doing
-- Idle hand-back (lead's go, 27 Sep): built and tested (below). Pushed work/glass-live; app-design told.
-- Nothing in flight. Waiting for the next live-box deploy (the lead says when).
-- 27 Sep: docs told 71503ab is on main (apply the no-passkey glass.md/presence.md text).
-  app-design sent notes on the one-app Agents board: drop Face ID on private sign-in, "Fill a
-  login" only in Sign in privately, no 5 min idle hand-back exists (offer to build it), no 4-viewer
-  cap (the cap is 2 screens), plus missing take-over/hand-back states.
+- Nothing in flight. Uid split, freeze and untrusted X are validated; computers.fill waits on vault.
+
+## Done (27 Sep, after the testbox freeze)
+- Targeted tests green on testbox: computerd + hands-chrome 44 (38 pass, 6 Mac-only skipped),
+  driver + dockerproxy 43/43, fill/shield/keyboard/pool 60/60, computers/glass/deck 50/50,
+  shield + docs 55/55.
+- Throwaway stack /srv/vyre-glass with image vyre/computer:glass-uid (never :0.1):
+  isolation.test.js 6/6 on a live computer (uids, no CDP reach, no environ/ptrace/token, 401s,
+  frozen while shielded, untrusted X). hands-chrome over the pipe (open, snapshot, screenshot),
+  hands-desktop (screenshot, AT-SPI tree), VNC banner. Fill path at computerd: shield + freeze,
+  agent 423, fill token CDP + new context + Input.insertText, then socket cut, token 401, agent
+  resumed and sees the tab. Found and fixed: no kill binary (freezer), DevTools policy blocked CDP,
+  fluxbox wallpaper dialog, box/Dockerfile checkout build (.dockerignore, 37370a18). Torn down.
+- Live box (9efbddc0) read-only checks: computers.limits exists; Glass WS upgrade with a bogus
+  ticket is 403, not 404.
 
 ## Next
 1. After the live box is redeployed, two read-only checks only (no agents or computers made):
