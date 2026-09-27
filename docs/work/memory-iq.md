@@ -118,12 +118,13 @@ facts are not a project's.
   pasted email). The held-out world is the real number.
 
 ## Doing
-- The reader (4a361881, WIP, untested because of the testbox freeze). Next on testbox:
-  reader.test.js, the personal suite, daemon.test.js, docs:ref (new tool memory.read) and a
-  single `claude -p` smoke call. Then record reads for personal/heldout/blind/fresh, score all
-  four and report fresh and the cost per 1,000 turns to main.
-- Extraction round 1 is WIP at 37c10f86, untested, its subagent interrupted by the user. Review it
-  with the same test run.
+- Round 4 (27 Sep), pushed at 8478379a. The reader makes two readings per batch and takes a
+  second look at who someone is. Scores: sealed 0.577 (6 confident wrong), fresh 0.76, blind
+  0.959, personal 1.0, heldout 1.0.
+- Evaluation worlds: `sealed` (40c1f23c) is the honest number; never open it (the eval refuses
+  --facts, --claims and --ask on it). `fresh` is now a tuning world, opened on 27 Sep.
+- Cost is about $0.30 per 1,000 turns per reading, plus the second look, so about $0.65 per
+  1,000 with two readings.
 
 ## Next
 - Model-backed answering with evidence (asked by the lead): too slow for memory.answer's 150 ms
