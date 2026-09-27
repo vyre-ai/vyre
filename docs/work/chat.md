@@ -172,7 +172,9 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   capsule bridge, deck/chat, deck/test, guests, hygiene: 247/247 after one test fix.
 - composer.js "Claude Code's commands" was already fixed (f857520); only a code comment remains.
 
-## Doing (27 Sep, late)
+## Doing (27 Sep, late; saved for restart)
+- Handed off: integrator has 0b6f9091 (batch 5 / RC). Nothing uncommitted. Resume: merge main, then perf
+  (fling, cold open) when testbox load < 2, then cohesion 5 when cohesion says P1 + Render are on main.
 - Batch 4 landed (main bc751624, notes 68463d04), merged into work/chat; next sha 0b6f9091 (pushed):
   plan card, tips line, cohesion 1 and 9, raw relative paths, send-to-row, shots on vyre-chrome
   --headless=new. Tests: 598/598 targeted (1 skipped) after the merge. Shots: team/chat-shots/2026-09-27/after/.
