@@ -275,7 +275,7 @@ export default {
         let finish;
         const done = new Promise(r => { finish = r; });
         const offs = [
-          ctx.events.on("thread.text", e => { if (e.thread === thread && e.payload.done && !e.payload.notice) heard.text = e.payload.text; }),
+          ctx.events.on("thread.text", e => { if (e.thread === thread && e.payload.done && !e.payload.notice && e.payload.kind !== "reasoning") heard.text = e.payload.text; }),
           ctx.events.on("thread.finished", e => { if (e.thread === thread) finish({ ok: e.payload.ok, cost_usd: e.payload.cost_usd, ...(e.payload.error ? { note: e.payload.error } : {}) }); }),
           ctx.events.on("ask.raised", e => { if (e.thread === thread) finish({ ok: false, ask: { id: e.payload.ask, tool: e.payload.tool, summary: e.payload.summary, destination: e.payload.destination }, note: "waiting on your answer" }); }),
           ctx.events.on("thread.stopped", e => { if (e.thread === thread) finish({ ok: false, note: `the thread stopped: ${e.payload.reason}` }); }),

@@ -12,6 +12,8 @@ import { authMessage, signRoute, CLOSE } from "./wire.js";
 const PING_MS = 60_000;
 const BACKOFF_MIN = 1_000;
 const BACKOFF_MAX = 5 * 60_000;
+/** A control socket not ready by then is abandoned and redialled. */
+const DIAL_MS = 30_000;
 
 /** The WebSocket API accepts only 1000 and 3000 to 4999 from an application. */
 const closeCode = code => code === 1000 || (code >= 3000 && code <= 4999) ? code : 4000;
@@ -55,6 +57,11 @@ export function relayLink(o) {
     const ws = new WS(`${base}/v1/box?route=${o.route}`);
     control = ws;
     let missed = 0;
+    // On Node 22 a refused WebSocket fires only `error`, never `close`, and can sit connecting:
+    // either way counts as a failed dial, handled once.
+    let settled = false;
+    const dial = setTimeout(() => { log("relay: no answer from the relay; redialling"); gone({ code: 1006, reason: "dial timed out" }); }, DIAL_MS);
+    dial.unref?.();
     ws.onmessage = e => {
       if (typeof e.data !== "string") return;
       if (e.data === "pong") { missed = 0; return; }
@@ -64,6 +71,7 @@ export function relayLink(o) {
         const sig = signRoute(o.routeKey.priv, authMessage(o.route, Buffer.from(String(m.n), "base64url")));
         ws.send(JSON.stringify({ t: "auth", pub: o.routeKey.pub.toString("base64url"), sig: sig.toString("base64url") }));
       } else if (m.t === "ready") {
+        clearTimeout(dial);
         ticket = String(m.ticket || "");
         backoff = BACKOFF_MIN;
         state("connected");
@@ -77,7 +85,11 @@ export function relayLink(o) {
       } else if (m.t === "open") openData(String(m.c));
       else if (m.t === "close") { data.get(String(m.c))?.close(1000); data.delete(String(m.c)); }
     };
-    ws.onclose = e => {
+    const gone = e => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(dial);
+      try { ws.close(); } catch {}
       if (control !== ws) return;
       control = null;
       clearInterval(pinger);
@@ -90,7 +102,8 @@ export function relayLink(o) {
       retry.unref?.();
       backoff = Math.min(backoff * 2, BACKOFF_MAX);
     };
-    ws.onerror = () => {};
+    ws.onclose = gone;
+    ws.onerror = () => gone({ code: 1006, reason: "could not reach the relay" });
   }
 
   function openData(c) {
@@ -103,8 +116,10 @@ export function relayLink(o) {
       close: (code, reason) => { try { ws.close(closeCode(code), String(reason || "").slice(0, 120)); } catch {} },
     }, { s: o.boxKey, route: o.route, admit: o.admit });
     ws.onmessage = e => { if (typeof e.data !== "string") side.receive(Buffer.from(e.data)); };
-    ws.onclose = e => { data.delete(c); side.gone(e && e.reason ? String(e.reason) : "relay closed the connection"); };
-    ws.onerror = () => {};
+    let ended = false;
+    const end = why => { if (ended) return; ended = true; if (data.get(c) === ws) data.delete(c); try { ws.close(); } catch {} side.gone(why); };
+    ws.onclose = e => end(e && e.reason ? String(e.reason) : "relay closed the connection");
+    ws.onerror = () => end("could not reach the relay");
     side.ready.then(({ channel, hello, reply }) => o.onchannel(channel, { hello, reply }), e => log(`relay: refused a device: ${e.message}`));
   }
 

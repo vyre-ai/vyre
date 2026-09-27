@@ -29,13 +29,19 @@ export async function until(fn, ms = 20_000) {
   for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out waiting"); await wait(20); }
 }
 
-/** The box's tailnet listener, simulated: identity comes from `net.who`, never from a header. */
-export function tailnet(box, net, port = 0) {
+/**
+ * The box's tailnet listener, simulated: identity comes from `net.who`, never from a header.
+ * With `router`, every request but health goes to vyred's real router, as the names listener
+ * hands it (person sessions, /v1/person/token); without, straight to the registry.
+ */
+export function tailnet(box, net, port = 0, { router = false } = {}) {
+  const handle = router ? box.registry.deps.handler({}) : null;
   const server = http.createServer(async (req, res) => {
     const who = net.who;
     const json = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     if (!who || who.login !== OWNER) return json(403, { error: { code: "not_owner", message: "not served" } });
     const url = new URL(req.url || "/", "http://box");
+    if (handle && url.pathname !== "/v1/health") return handle(req, res, `tailnet:${who.login}`, who);
     if (req.method === "GET" && url.pathname === "/v1/health") return json(200, { data: { role: box.config.role, version: "0.0.0" } });
     if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
       let raw = "";
@@ -72,10 +78,11 @@ export function tailnet(box, net, port = 0) {
  *   federated read has rows from both; health: the Mac's link.health check (a fake tailscale), for
  *   link.health's tests; boxName, macHost: the box's config name and the Mac's hostname (the name
  *   the box knows it by); heartbeat: the Mac's check-in interval in ms; boxConfig: more of the
- *   box's config.json.
+ *   box's config.json; router: the box's tailnet goes through vyred's real router; boxPresence:
+ *   the box's presence verifier.
  */
 export async function pair(t, { approve = true, hold = 300, allow, macTranscripts = false, boxTranscripts, health = undefined,
-  boxName = "testbox", macHost = "test-mac", heartbeat = 100, boxConfig = {} } = {}) {
+  boxName = "testbox", macHost = "test-mac", heartbeat = 100, boxConfig = {}, router = false, boxPresence = present, macSeam = {} } = {}) {
   const boxRoot = tempHome(t), macRoot = tempHome(t);
   const boxWork = fs.mkdtempSync(path.join(boxRoot, "..", "vyre-boxwork-"));
   const macWork = fs.mkdtempSync(path.join(macRoot, "..", "vyre-macwork-"));
@@ -91,7 +98,7 @@ export async function pair(t, { approve = true, hold = 300, allow, macTranscript
   const net = { who: /** @type {any} */ (MAC), box: /** @type {any} */ (BOX), address: "" };
   // Two peers on the simulated tailnet: the box, and the phone, whose node the box's address does not match.
   linkSeams.set(macRoot, { peers: async () => [{ ip: "127.0.0.1", dns: "test-box", stableId: "nBOX" }, { ip: "127.0.0.1", dns: "test-phone", stableId: "nPHONE" }],
-    certNames: async () => [], addressOf: () => net.address, insecure: true, verify: async () => net.box, pollMs: 20, heartbeat, hostname: macHost, timeout: 1500, ttl: 0, hold, ...(health ? { health } : {}) });
+    certNames: async () => [], addressOf: () => net.address, insecure: true, verify: async () => net.box, pollMs: 20, heartbeat, hostname: macHost, timeout: 1500, ttl: 0, hold, ...(health ? { health } : {}), ...macSeam });
   linkSeams.set(boxRoot, { hold, ...(allow ? { allow } : {}) });
   // Spotlight, simulated: every file under the Mac's work folder whose name holds the query.
   fileSeams.set(macRoot, { platform: "darwin", remoteTimeout: 1500,
@@ -105,8 +112,8 @@ export async function pair(t, { approve = true, hold = 300, allow, macTranscript
     if (server) await new Promise(r => { server.closeAllConnections(); server.close(() => r(undefined)); });
     if (box) await box.stop();
   });
-  box = await start({ presence: present, root: boxRoot, log: () => {} });
-  server = await tailnet(box, net);
+  box = await start({ presence: boxPresence, root: boxRoot, log: () => {} });
+  server = await tailnet(box, net, 0, { router });
   mac = await start({ presence: present, root: macRoot, log: () => {} });
   const address = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
   net.address = address;
@@ -128,5 +135,5 @@ export async function pair(t, { approve = true, hold = 300, allow, macTranscript
   }
   return { box, mac, net, macCall, boxCall, boxWork, macWork, macRoot, boxRoot, address, code,
     stopTailnet: () => new Promise(r => { server.closeAllConnections(); server.close(() => r(undefined)); }),
-    startTailnet: async () => { server = await tailnet(box, net, Number(new URL(address).port)); } };
+    startTailnet: async () => { server = await tailnet(box, net, Number(new URL(address).port), { router }); } };
 }

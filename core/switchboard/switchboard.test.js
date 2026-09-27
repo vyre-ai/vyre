@@ -14,6 +14,7 @@ import { start } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
 import * as config from "../config/index.js";
 import { tempHome, writeModule, present } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
 import { Leases, TTL } from "./lease.js";
@@ -33,9 +34,12 @@ test("translate: real stream-json lines become small thread events", () => {
   assert.equal(translate({ type: "system", subtype: "hook_response", output: "the user's own hook output" }).events.length, 0, "hook output never reaches an event");
   assert.equal(translate({ type: "stream_event", event: { type: "message_start", message: { id: "m1" } } }).message, "m1");
   assert.equal(translate({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "hel" } }, parent_tool_use_id: null }).delta, "hel");
+  assert.equal(translate({ type: "stream_event", event: { type: "content_block_delta", index: 2, delta: { type: "text_delta", text: "hel" } }, parent_tool_use_id: null }).block, 2, "a delta keeps its content block index");
   assert.equal(translate({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "x" } }, parent_tool_use_id: "toolu_9" }).delta, undefined, "a subagent's text is not the thread's");
   const tool = translate({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "t1", name: "Write", input: { file_path: "/w/a.txt", content: "x".repeat(50000) } }] } });
-  assert.deepEqual(tool.events[0], { type: "thread.tool", payload: { id: "t1", tool: "Write", phase: "started", summary: "Write /w/a.txt", destination: "/w/a.txt" } });
+  // call and status (ADR 0030): the row is keyed by call, id kept equal during the migration.
+  assert.deepEqual(tool.events[0], { type: "thread.tool", payload: { id: "t1", call: "t1", tool: "Write", name: "Write", phase: "started", status: "running", block: 0,
+    summary: "Write /w/a.txt", destination: "/w/a.txt" } });
   const ask = translate({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "ls -la" }, tool_use_id: "t2" } });
   assert.equal(ask.ask.summary, "ls -la");
   assert.equal(ask.ask.request_id, "r1");
@@ -44,6 +48,66 @@ test("translate: real stream-json lines become small thread events", () => {
   assert.equal(fin.events[0].payload.cost_usd, 0.01);
   assert.equal(translate({ type: "rate_limit_event", rate_limit_info: { status: "allowed", overageStatus: "rejected" } }).limited, undefined, "overage being off is not the limit");
   assert.equal(translate({ type: "rate_limit_event", rate_limit_info: { status: "rejected" } }).limited, true);
+});
+
+/**
+ * translate as the Switchboard runs it: a whole line's text blocks keyed across the lines of one
+ * message. Either translate(m, seen) counts them itself (work/chat), or it names the line's own
+ * blocks (`blocks`) and the Switchboard adds the lines before (work/sessions, onMessage's ord).
+ */
+const keyed = () => {
+  const seen = new Map(), ord = new Map();
+  return (/** @type {any} */ m) => {
+    const t = /** @type {any} */ (translate)(m, seen);
+    if (typeof t.blocks === "number" && m && m.message && m.message.id) {
+      const id = String(m.message.id), base = ord.get(id) || 0;
+      for (const e of t.events) if (typeof e.payload.block === "number") e.payload.block += base;
+      ord.set(id, base + t.blocks);
+    }
+    return t;
+  };
+};
+
+test("translate: text keys (message, block) count content blocks across the lines of one message, as the transcript does", () => {
+  const fix = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "transcripts", "fixtures");
+  const tr = keyed();
+  let message = "";
+  // Text keys are compared with text keys, reasoning with reasoning: a box that streams thinking
+  // adds reasoning keys (thread.thinking, or thread.text kind "reasoning" on sessions 034c71e5),
+  // never text ones.
+  const done = [], partial = [], rdone = [], rpartial = [];
+  for (const line of fs.readFileSync(path.join(fix, "split.stream.jsonl"), "utf8").split("\n").filter(Boolean)) {
+    const t = tr(JSON.parse(line));
+    if (t.message !== undefined) message = t.message;
+    if (t.delta) partial.push(`${message}#${t.block}`);
+    if (t.reasoning) rpartial.push(`${message}#${t.block}`);
+    for (const e of t.events) {
+      if (e.type === "thread.thinking" || (e.type === "thread.text" && e.payload.kind === "reasoning")) rdone.push(`${e.payload.message}#${e.payload.block}`);
+      else if (e.type === "thread.text") done.push(`${e.payload.message}#${e.payload.block}`);
+    }
+  }
+  // msg_03A is thinking, text, tool_use, text (one line each); msg_03B is one text.
+  const want = ["msg_03A#1", "msg_03A#3", "msg_03B#0"];
+  assert.deepEqual(done, want);
+  assert.deepEqual([...new Set(partial)], want);
+  // Thinking, where the box streams it: msg_03A's block 0, its deltas and its whole, never a text key.
+  if (rdone.length || rpartial.length) {
+    assert.deepEqual(rdone, ["msg_03A#0"]);
+    assert.deepEqual([...new Set(rpartial)], ["msg_03A#0"]);
+  }
+  for (const k of [...rdone, ...rpartial]) assert.ok(!want.includes(k), `reasoning ${k} shares a text key`);
+  // The same keys the transcript read gives for the matching transcript (fixtures/split.jsonl).
+  const tx = fs.readFileSync(path.join(fix, "split.jsonl"), "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
+  const counts = new Map(), keys = [];
+  for (const o of tx) {
+    if (o.type !== "assistant") continue;
+    const n = counts.get(o.message.id) || 0;
+    o.message.content.forEach((p, i) => { if (p.type === "text") keys.push(`${o.message.id}#${n + i}`); });
+    counts.set(o.message.id, n + o.message.content.length);
+  }
+  assert.deepEqual(keys, want);
+  // Without a shared count a line counts on its own, as before.
+  assert.equal(translate({ type: "assistant", message: { id: "m9", content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] } }).events[1].payload.block, 1);
 });
 
 test("describe: a sending tool names where it goes", () => {
@@ -178,8 +242,11 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
   }
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  // realpath: on the Mac the temp dir sits under /var, which vyred and fake claude see as /private/var.
-  const work = fs.realpathSync(fs.mkdtempSync(path.join(root, "work-")));
+  // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
+  // Vyre's own state, as it does on a real machine. realpath: on the Mac the temp dir sits under
+  // /var, which vyred and fake claude see as /private/var.
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
   const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   for (const [name, value] of Object.entries(vault || {})) {
@@ -221,11 +288,13 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   await until(() => of(a.got, id, "thread.finished").length && of(b.got, id, "thread.finished").length, "both clients to see the turn end");
 
   for (const c of [a, b]) {
-    const done = of(c.got, id, "thread.text").find(e => e.payload.done);
+    const done = of(c.got, id, "thread.text").find(e => e.payload.done && e.payload.kind !== "reasoning");
     assert.equal(done.payload.text, "echo: hello there, this is a longer prompt");
-    const deltas = of(c.got, id, "thread.text").filter(e => e.payload.delta);
+    const deltas = of(c.got, id, "thread.text").filter(e => e.payload.delta && e.payload.kind !== "reasoning");
     assert.equal(deltas.map(e => e.payload.delta).join(""), done.payload.text, "the deltas add up to the text");
     assert.ok(deltas.length < Math.ceil(done.payload.text.length / 6), "partial text is throttled, not one event per chunk");
+    assert.ok(deltas.every(e => e.payload.message === done.payload.message && e.payload.block === done.payload.block && done.payload.block === 0),
+      "partial and whole text share one key (message, block)");
     assert.ok(of(c.got, id, "thread.started")[0].payload.headless);
   }
   assert.deepEqual(a.got.map(e => e.id), b.got.map(e => e.id), "both clients see the same thread");
@@ -274,6 +343,8 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   await until(() => fs.existsSync(target), "the file the answer allowed");
   assert.deepEqual((await tool("threads.asks", { thread: id })).data, []);
   assert.equal((await tool("threads.answer", { ask: raised.payload.ask, decision: "deny" })).data.answered, false, "an answered ask stays answered");
+  assert.deepEqual((await tool("threads.answer", { ask: raised.payload.ask, decision: "allow" })).data,
+    { ask: raised.payload.ask, answered: true, decision: "allow", already: true }, "the same answer again is the earlier outcome (ADR 0029 R2)");
 
   // The lease: the other surface is read-only until it takes the keyboard.
   const refused = (await tool("threads.send", { thread: id, text: "from the phone", surface: "phone" })).data;
@@ -309,7 +380,7 @@ test("switchboard: a finished turn's partial text is pruned after the grace; the
   const texts = async () => (await tool("threads.get", { thread: id, limit: 1000 })).data.events.filter(e => e.type === "thread.text");
   assert.ok((await texts()).some(e => e.payload.delta), "the deltas are there during the grace");
   await until(async () => !(await texts()).some(e => e.payload.delta), "the deltas to go");
-  const done = (await texts()).filter(e => e.payload.done);
+  const done = (await texts()).filter(e => e.payload.done && e.payload.kind !== "reasoning");
   assert.deepEqual(done.map(e => e.payload.text), ["echo: hello there, this is a longer prompt"]);
   const got = (await tool("threads.get", { thread: id })).data;
   assert.equal(got.thread.turns, 1);
@@ -671,7 +742,7 @@ test("lean and one-shot threads: no plugin, tools or settings, kept on resume; a
   const stopped = await until(async () => (await tool("threads.get", { thread: job.id })).data.events.find(e => e.type === "thread.stopped"), "the job to stop");
   assert.equal(stopped.payload.reason, "done");
   const events = (await tool("threads.get", { thread: job.id })).data.events;
-  assert.equal(events.find(e => e.type === "thread.text" && e.payload.done).payload.text, "echo: distil this");
+  assert.equal(events.find(e => e.type === "thread.text" && e.payload.done && e.payload.kind !== "reasoning").payload.text, "echo: distil this");
   const jobArgv = launches().at(-1).argv;
   assert.ok(!jobArgv.includes("--plugin-dir") && jobArgv.includes("--strict-mcp-config") && jobArgv[jobArgv.indexOf("--model") + 1] === "haiku");
 });
@@ -749,7 +820,9 @@ test("usage on the subscription: turns and time, no dollars, and the rate-limit 
   await tool("agents.create", { name: "juno", kind: "assistant" });
   const r = (await tool("agents.ask", { agent: "juno", text: "nearlimit" })).data;
   const limit = await until(() => of(s.got, r.thread, "thread.limit")[0], "thread.limit");
-  assert.deepEqual(limit.payload, { thread: r.thread, status: "allowed_warning", kind: "five_hour", resets_at: 1790000000, utilization: 0.85 });
+  const { turn, ...rest } = limit.payload;
+  assert.equal(turn, `${r.thread}:1`, "every event of a turn says which turn (ADR 0030)");
+  assert.deepEqual(rest, { thread: r.thread, status: "allowed_warning", kind: "five_hour", resets_at: 1790000000, utilization: 0.85 });
   const said = await until(() => of(s.got, r.thread, "thread.text").find(e => e.payload.notice), "the notice");
   assert.match(said.payload.text, /^Claude's five-hour usage limit is at 85%; it resets at \d\d:\d\d UTC\.$/);
   const all = (await tool("agents.usage", {})).data;
@@ -923,7 +996,7 @@ test("switchboard: a question is raised small, read whole, answered (single and 
 
   const answers = { [ask.questions[0].question]: "Warm crust", [ask.questions[1].question]: "Breads, Specials" };
   assert.deepEqual((await tool("threads.answer", { ask: ask.id, decision: "allow", answers, surface: "deck" })).data, { ask: ask.id, answered: true, decision: "allow" });
-  const said = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the fake to say the answers");
+  const said = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done && e.payload.kind !== "reasoning"), "the fake to say the answers");
   assert.equal(said.payload.text, `answers: ${JSON.stringify(answers)}`);
   const [r] = got();
   assert.equal(r.behavior, "allow");
@@ -943,7 +1016,7 @@ test("switchboard: a question can be declined", async t => {
   const id = (await tool("threads.start", { cwd: work, prompt: "ask" })).data.id;
   const raised = await until(() => of(s.got, id, "ask.raised")[0], "ask.raised");
   assert.equal((await tool("threads.answer", { ask: raised.payload.ask, decision: "deny", message: "Not now." })).data.answered, true);
-  const said = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the reply");
+  const said = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done && e.payload.kind !== "reasoning"), "the reply");
   assert.equal(said.payload.text, "You declined the question: Not now.");
   assert.equal(got()[0].behavior, "deny");
   assert.equal(of(s.got, id, "ask.answered")[0].payload.answers, undefined);
@@ -977,6 +1050,7 @@ test("demo: Edit and Bash asks carry their detail, always hands back the suggest
   assert.equal(bash.always, true);
   await tool("threads.answer", { ask: bash.id, decision: "allow", surface: "deck" });
   const reply = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the reply");
+  assert.match(of(s.got, id, "thread.thinking")[0].payload.text, /^alex wants the autumn specials/, "thinking is its own event, before the reply");
   assert.match(reply.payload.text, /^## Autumn specials/);
   assert.match(reply.payload.text, /```sh\nnpm test/);
 
@@ -996,7 +1070,7 @@ test("demo: Edit and Bash asks carry their detail, always hands back the suggest
   for (const l of lines) { assert.equal(l.sessionId, id); assert.equal(l.cwd, work); assert.ok(!Number.isNaN(Date.parse(l.timestamp))); }
   const blocks = lines.flatMap(l => l.message.content instanceof Array ? l.message.content.map(b => ({ type: l.type, b, l })) : []);
   assert.deepEqual(blocks.map(x => x.b.type), ["thinking", "tool_use", "tool_result", "tool_use", "tool_result", "tool_use", "tool_result", "tool_use", "tool_result", "text"]);
-  for (const x of blocks.filter(x => x.type === "assistant")) { assert.equal(x.l.message.model, "fake-model"); assert.ok(x.l.message.usage.output_tokens > 0); }
+  for (const x of blocks.filter(x => x.type === "assistant")) { assert.equal(x.l.message.model, "opus", "a chat session runs on the work model (sessions.models)"); assert.ok(x.l.message.usage.output_tokens > 0); }
   const todo = blocks.find(x => x.b.name === "TodoWrite").b.input.todos;
   assert.deepEqual(todo.map(t => t.status), ["completed", "in_progress", "pending"]);
   const bashResult = blocks.filter(x => x.b.type === "tool_result")[2];

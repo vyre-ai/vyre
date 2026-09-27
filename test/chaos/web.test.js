@@ -7,7 +7,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { idbStore, cursorStore, cacheStore, lifecycle, open } from "../../core/resilience/web.js";
+import { idbStore, cursorStore, cacheStore, lifecycle, open, over } from "../../core/resilience/web.js";
+import { follow } from "../../core/resilience/stream.js";
 import { outbox, memoryStore } from "../../core/resilience/outbox.js";
 import { backoff } from "../../core/resilience/backoff.js";
 
@@ -287,4 +288,41 @@ test("R1, R5: the browser transport sends the caller's auth and cursor headers, 
   assert.equal(missing.status, 404);
   for await (const _ of missing.chunks) assert.fail("a refused open yields nothing");
   await assert.rejects(open({ base: "unix:/tmp/vyred.sock", path: "/v1/health", headers: {}, signal: ac.signal }), /http\(s\)/);
+});
+
+test("R5: over() runs follow and the outbox on a path-fetch (relay/client's paths), with one logical path and the key kept", async t => {
+  /** @type {{ path: string, init: any }[]} */
+  const seen = [];
+  const enc = new TextEncoder();
+  let opens = 0;
+  // A stand-in for createPaths().fetch: it takes a path, not a URL, and answers a Response.
+  const pathFetch = async (/** @type {string} */ path, /** @type {any} */ init) => {
+    seen.push({ path, init });
+    if (path.startsWith("/v1/tools/")) return new Response(JSON.stringify({ data: { ok: true } }), { status: 200 });
+    opens++;
+    const body = new ReadableStream({ start(c) {
+      c.enqueue(enc.encode("id: 4\n\n"));
+      c.enqueue(enc.encode(`id: 5\ndata: ${JSON.stringify({ id: 5, type: "thread.text", payload: { n: 5 } })}\n\n`));
+      if (opens > 1) c.close();
+    } });
+    return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+  const { open: openOver, caller } = over(pathFetch);
+  const got = [];
+  const s = follow({ paths: ["box"], open: openOver, cursor: 3, onEvent: e => got.push(e.id), backoff: backoff({ min: 20, max: 40, jitter: 0 }) });
+  t.after(() => s.stop());
+  for (let i = 0; i < 100 && !got.length; i++) await sleep(10);
+  assert.deepEqual(got, [5]);
+  assert.match(seen[0].path, /^\/v1\/events\/stream\?/, "a path, not a URL: the paths layer picks the way");
+  assert.equal(seen[0].init.headers["last-event-id"], "3");
+
+  const box = await outbox({ store: memoryStore(), call: caller({ headers: { authorization: "Bearer t" } }), newKey: () => "k-1" });
+  t.after(() => box.stop());
+  await box.add("threads.send", { thread: "t1", text: "hi kit" });
+  for (let i = 0; i < 100 && !seen.some(x => x.path.startsWith("/v1/tools/")); i++) await sleep(10);
+  const post = seen.find(x => x.path === "/v1/tools/threads.send");
+  assert.ok(post);
+  assert.equal(post.init.method, "POST");
+  assert.equal(post.init.headers["idempotency-key"], "k-1", "the key rides with the write, for the paths layer to keep on a move");
+  assert.equal(post.init.headers.authorization, "Bearer t");
 });

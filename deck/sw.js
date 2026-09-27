@@ -37,6 +37,9 @@ const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/app
   "/chat/presence.js", "/chat/chat.css", "/chat/lib/routes.js", "/chat/lib/sessions.js", "/chat/lib/markdown.js",
   "/chat/lib/highlight.js", "/chat/lib/diff.js", "/chat/blocks.js", "/chat/question.js", "/chat/lib/blocks.js", "/chat/lib/names.js",
   "/chat/lib/answers.js", "/chat/newsession.js", "/chat/folders.js", "/chat/term.js", "/chat/term.css", "/chat/lib/term-link.js",
+  "/chat/live-text.js", "/chat/core/session-state.js", "/chat/core/tool-detail.js", "/chat/core/grouping.js", "/chat/core/pace.js",
+  "/chat/window-view.js", "/chat/core/window.js", "/chat/pickers.js", "/chat/tray.js", "/chat/core/composer-state.js",
+  "/chat/core/caps.js", "/chat/core/commands.js", "/chat/core/match.js",
   "/core/resilience/stream.js", "/core/resilience/sse.js", "/core/resilience/backoff.js", "/core/resilience/outbox.js", "/core/resilience/web.js"];
 
 self.addEventListener("install", e => e.waitUntil((async () => {
@@ -154,10 +157,11 @@ self.addEventListener("fetch", e => {
     // Every other tool call, read or write: untouched, network only. No cache, ever.
     return;
   }
+  // Pages of their own, never the shell: onboarding, and the person's sign-in (/person/signin).
   // /app/ is the one app's own export with its own worker (scope /app/): never answer for it,
   // or a first visit there would get the Deck's shell.
   if (url.pathname === "/app" || url.pathname.startsWith("/app/")) return;
-  if (e.request.method !== "GET" || url.pathname.startsWith("/v1/") || url.pathname.startsWith("/fixtures/") || url.pathname.startsWith("/onboard")) return;
+  if (e.request.method !== "GET" || url.pathname.startsWith("/v1/") || url.pathname.startsWith("/fixtures/") || url.pathname.startsWith("/onboard") || url.pathname.startsWith("/person/")) return;
   // The Deck's own files: from the cache at once, and fetched behind it so the next launch has
   // whatever changed (stale-while-revalidate). A phone on the tailnet would otherwise wait a round
   // trip per module on every tab it opens. Every page address is the one shell, index.html.

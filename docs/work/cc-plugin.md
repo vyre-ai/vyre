@@ -126,7 +126,7 @@ Perf:
   server's `memory_answer` "who is my wife" -> "Your wife is Jordan." (also with project_cwds);
   VYRE_AGENT=kit is refused both. On a scratch tree of this branch + work/memory-iq 6f2c57c:
   cc-plugin, core/memory/personal/answer, core/about: 26/26. This branch alone: 13 pass, that
-  test skips with the reason. Drop the skip once 6f2c57c is on main.
+  test skipped with the reason. Both on main (9efbddc0); skip removed, testbox 14/14.
 
 ## Done: the Mac-only planner test failure (27 Sep)
 
@@ -135,28 +135,29 @@ Perf:
   (sent in the same batch) answered first. `mcp()` now sends each request after the previous
   reply. Mac 5 runs 13 pass / 1 skip each; testbox 13 / 1.
 
+## Done: the Linux bind, checked (27 Sep)
+
+- sessions fixed the dash bind in work/sessions e20f459 (Sessions.bind walks past one `sh -c`;
+  the hook writes the key under the pid bound). Parity on this branch + that fix's sessions.js
+  and hook.js, testbox, all three modes: 1 bind each; the MCP server's parent is the claude
+  binary itself (no `sh -c`), and it is the bound pid, so readKey(process.ppid) finds the key.
+  No walk needed in the MCP server (Claude Code 2.1.283). Everything else as before.
+- `scripts/cc-plugin-parity/fake-api.mjs` exports `fakeApi(steps, { isMain })` for other teams
+  (sessions/e2e: do Bash children inherit the auth env).
+
 ## Doing
 
 - Nothing running.
 
 ## Next
 
-- After memory-iq 6f2c57c merges: remove the skip in the memory test.
 - When vyre is on npm: set `ON_NPM = true` in `harness/lib/vyre.js`.
 - If the hook's p95 creeps past 50 ms: import core/daemon/client.js lazily in hook.js (harness
   owner's file; ask first).
 
 ## Needs from others
 
-- switchboard/sessions: on Linux (testbox, and so the box) /bin/sh is dash, which forks for
-  `sh -c 'node .../run.js brief'`, so the hook's parent is `/bin/sh`, not claude. threads.bind
-  refuses it ("not a running claude") and no session binds (0 rows in every parity mode), so the
-  MCP server cannot name the session its calls come from. Suggested fix, daemon side (no cost to
-  the hook): Sessions.bind accepts a pid that is `sh -c` whose parent is claude and binds that
-  parent. The Mac's /bin/sh execs, so it binds there.
 
-- integrator: merge memory-iq 6f2c57c (the bare-mcp gate) with or before this branch; the memory
-  test skips until then.
 - planner (settled 28 Sep): shapes adopted as merged; no {day, days} sugar needed. Told them a bare
   "mcp" caller is the user's own session (no label, may edit what it added); mcp:agent:<name> is
   an agent. Delivery of a due reminder: push + Capsule + Deck, not a Claude session. The agent

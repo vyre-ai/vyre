@@ -23,7 +23,7 @@ const HSTS = "max-age=31536000";
 export const HOSTED_ORIGINS = Object.freeze(["https://app.vyre.run"]);
 /** What the hosted app may send. Anything else fails its preflight. */
 const CORS_METHODS = "GET, POST";
-const CORS_HEADERS = "content-type, authorization, x-vyre-session";
+const CORS_HEADERS = "content-type, authorization, x-vyre-proof, x-vyre-presence, idempotency-key, last-event-id";
 const DAY = 86_400_000;
 
 /** Is this a name someone can have? Pure, so the Deck's check and the claim agree. */
@@ -44,7 +44,6 @@ const sha = s => crypto.createHash("sha256").update(s).digest("hex");
  *   issue: (o: { names: string[], dns: any }) => Promise<{ cert: string, key: string, expires: number }>,
  *   certs: { load(dir: string, name: string): any, save(dir: string, name: string, c: any): void },
  *   agentOf?: (stableId: string) => Promise<string|null>,
- *   webSession?: (req: import("node:http").IncomingMessage, who: any) => Promise<object|null>,
  *   listen?: (server: import("node:https").Server, where: { fd?: number, host?: string, port?: number }) => Promise<void>,
  *   now?: () => number }} deps
  */
@@ -230,9 +229,8 @@ export function names(deps) {
       return res.end(JSON.stringify({ error: { code: "misdirected", message: "not this box's address" } }));
     }
     // Vyre's hosted app (app.vyre.run) is another site that may call in, with CORS, from the
-    // owner's own browser. Whois must still say owner, and every call but the reachability probe
-    // needs a web session: a page on the hosted origin must never hold the owner's power on a box
-    // just because the owner opened it.
+    // owner's own browser. Whois must still say owner, and vyred's router wants a person session
+    // for every call from it (core/presence/person.js).
     const origin = String(req.headers.origin || "").toLowerCase();
     if (origin && origin !== `https://${host}` && hosted(origin)) return crossOrigin(req, res, url, who, origin);
     if (req.method !== "GET" && req.method !== "HEAD") {
@@ -260,15 +258,14 @@ export function names(deps) {
     const list = Array.isArray(net().origins) ? net().origins : HOSTED_ORIGINS;
     return list.some(o => String(o).toLowerCase().replace(/\/+$/, "") === origin);
   };
-  /** The web session a hosted-app request carries (e2e's rule), or null. None until it is wired. */
-  const webSession = async (req, who) => deps.webSession ? deps.webSession(req, who) : null;
 
   /**
    * A request from the hosted app's origin. Only the owner gets CORS headers at all; a guest or an
    * agent's node gets the same 403 as any other site. The preflight carries no credentials and is
    * answered here. GET /v1/health answers only that the box is reachable (the app's probe for the
-   * tailnet path), without asking vyred. Everything else needs a web session, and reaches the router
-   * with the origin and the session beside the caller, never in the input.
+   * tailnet path), without asking vyred. Everything else goes to the router untouched (the body
+   * unread, since the session's proof signs its hash), with the origin beside the caller, never in
+   * the input; the router refuses it without a person session.
    */
   async function crossOrigin(req, res, url, who, origin) {
     const json = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
@@ -288,11 +285,9 @@ export function names(deps) {
     }
     if (req.method === "GET" && url.pathname === "/v1/health") return json(200, { data: { reachable: true } });
     if (req.method !== "GET" && req.method !== "HEAD" && !/^application\/json\b/.test(String(req.headers["content-type"] || ""))) return json(403, { error: { code: "denied", message: "cross-site request" } });
-    const session = await webSession(req, who);
-    if (!session) return json(401, { error: { code: "web_session_required", message: "Sign in to this box from the app first." } });
     if (!handle) handle = ctx.handler({});
     const peer = { node: who.node, stableId: who.stableId || null, login: who.login, tags: who.tags || [], caps: who.caps || {},
-      kind: who.kind, origin, webSession: session };
+      kind: who.kind, origin };
     return handle(req, res, callerOf(who), peer);
   }
 
@@ -314,10 +309,10 @@ export function names(deps) {
     if (!mine.some(h => host === h || host === `${h}:${bound()}` || host === `[${h}]:${bound()}`)) return refuse(421, "Misdirected Request");
     // A browser sends Origin on every WebSocket, and a page on another site could open one with
     // the owner's address: only this box's own page may.
-    // The hosted app's page may too, with a web session (browsers cannot set headers on a
-    // WebSocket, so e2e's rule reads it from the request line or the subprotocol).
+    // The hosted app's page may too: every stream opens with a ticket a tool minted, and minting
+    // one already needed the person session.
     const origin = String(req.headers.origin || "").toLowerCase();
-    if (origin && origin !== `https://${host}` && !(hosted(origin) && await webSession(req, who))) return refuse(403, "Forbidden");
+    if (origin && origin !== `https://${host}` && !hosted(origin)) return refuse(403, "Forbidden");
     if (!upgrade) upgrade = ctx.upgrader({});
     upgrade(req, socket, head, callerOf(who));
   }

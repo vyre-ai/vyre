@@ -116,6 +116,656 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   kept. Only asks and questions are kept, never what is held at the Gate. Out of reach, both keep
   their last contents instead of going empty. Chats already opened from its own snapshot.
 
+#### The Agent SDK installs itself only in the person's own home, and never outlives vyred
+
+- vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or
+  NODE_ENV=test, and never in a temp or dev home, unless VYRE_SESSIONS_SDK_INSTALL=1
+  (`vyre sessions setup` still installs on request). A test rig stopped vyred and found npm still
+  writing into its fake Mac's cache.
+- An install in flight runs in its own process group and ends with vyred's stop (abortInstalls),
+  npm's own children included, and what it left half done is removed.
+
+#### Sessions: images, ! shell, # memory, thinking and background tasks (parity with Claude Code)
+
+- `threads.send {images: [{media_type, data}]}`: pasted images (png, jpeg, gif, webp; at most 5,
+  5 MB each) go to Claude Code as image blocks before the words. `thread.sent` says how many.
+- `threads.shell {thread, command}` (person-only, PERSON_ONLY): Claude Code's `!` mode. The line
+  runs in the thread's folder as the person, under the security floor (a denied command is refused
+  before it runs), its output shows (`thread.shell {command, code, output}`) and goes to Claude with
+  the next message as Claude Code's `<bash-input>`/`<bash-stdout>` blocks.
+- `threads.remember {thread, text, scope}` (person-only): Claude Code's `#` mode, a line in the
+  project's CLAUDE.md, the user's own or the folder's CLAUDE.local.md. `thread.remembered`.
+- Thinking: its own event, `thread.thinking {message, block, delta | text + done}`, as it grows and
+  whole, so a surface that does not show thinking never takes it for the reply; `threads.thinking
+  {thread, on}` turns it on (the model decides how much) or off; `thinking.switched`.
+- Background tasks: `thread.task {id, kind: shell|agent, title, status, background, summary}` from
+  Claude Code's task_started, task_updated and task_notification; `threads.tasks {thread}` lists them;
+  `threads.kill-task {thread, task}` stops one.
+
+#### Sessions: /model, the / menu, and rewinding code (parity with Claude Code)
+
+- `threads.model {thread, model}` (a person's surface): switches a running thread's model, as
+  `/model` does (the CLI's `set_model` control, the SDK's `setModel`); the record and the chip
+  follow; event `model.switched`. A stopped thread takes it when it next runs.
+- `threads.commands {thread}`: the slash commands a running thread offers (Claude Code's own, the
+  user's, the project's and plugins'), with descriptions on the SDK driver, names from init on the
+  CLI runner. A command is sent as a message.
+- `threads.rewind {restore: "code" | "both"}`: Claude Code puts back the files its tools changed
+  since that message (its file checkpoints, now on for every session Vyre runs:
+  `enableFileCheckpointing` on the SDK, `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING` on the CLI);
+  "code" keeps the conversation, "both" also rewinds it. The answer and `thread.rewound` say which
+  files changed.
+- Both drivers answer control requests Vyre sends (`control()`: the runner waits for Claude Code's
+  control_response; the SDK driver calls the SDK's own method). The fake `claude` switches models,
+  lists commands and keeps checkpoints of what its "write" turns changed.
+
+#### Sessions: context in use, and teammates' results
+
+- `thread.usage` carries `context: {used, max, share}`: what the last request held (its input,
+  cache and output tokens) and the model's window (the result's `modelUsage.contextWindow`), so
+  teammates can rotate at 60 percent (ADR 0031).
+- Internal `threads.post {thread, text, kind, from}` (teammates' `teammate-result`): a turn of its
+  own when the thread is idle, else queued for the running turn's end; never steers and never
+  needs the keyboard. Queued rows carry `kind` (new column), and `thread.queued` and
+  `thread.sent` say it.
+
+
+#### Chat: images, ! shell, # memory, thinking and background tasks on the box's real shapes
+
+Wires sessions 034c71e5 and db44749b (thinking as its own event) in deck/chat.
+- caps.js: threads.shell, threads.remember, threads.thinking, threads.tasks and threads.kill-task
+  are live (SESSION_TOOLS); NOT_OFFERED is empty. threads.tasks' answer (asked when a session
+  opens) says it for images, "!", "#", thinking and Stop (RELEASE_034, LINKED), so an older box
+  keeps all of them off from its first "no such tool".
+- Images: threads.send {images: [{media_type, data}]}, the box's caps (5, 5 MB each as base64
+  length * 3/4; png, jpeg, gif, webp). Paste, an attach button or a drop; a box that has not said
+  yet is asked first, so images never go to one that would drop them. thread.sent {images} and a
+  steer drawn on send show "N images" on the message.
+- "!": threads.shell {thread, command} answers {code, output}; thread.shell is the same row, not a
+  second one, and another screen's is a row of its own. A transcript read splits the next
+  message's <bash-input>/<bash-stdout>/<bash-stderr> blocks back into shell rows and the words.
+- "#": threads.remember {thread, text, scope} answers {scope, file}: the note names the file;
+  thread.remembered is a notice in the timeline.
+- Thinking: threads.thinking {thread, on} ({thinking: null, note} when not running puts the chip
+  back); thinking.switched moves the chip. Reasoning rows from thread.thinking {message, block,
+  delta | text + done} (and 034c71e5's thread.text kind "reasoning", the same row) are keyed
+  r:<message>:<block>, apart from text's m:.
+- Background tasks: thread.task merges only the fields each event carries (kind and title from
+  the start, summary and error at the end; stopped reads killed); threads.tasks seeds the tray;
+  Stop sends threads.kill-task {thread, task} (was {id}). The tray says done, failed or stopped
+  and the summary.
+- Tests: the live-key tests in core/switchboard and core/transcripts compare text keys with text
+  keys and reasoning (thread.thinking, or kind "reasoning") with reasoning, so they pass with or
+  without thinking deltas. The stuck-scroll window tests wait for the reveal and the stick frame,
+  not a fixed 60 ms, so a loaded machine does not fail them.
+  test/chat-sessions-contract: the 034c71e5 tools and events are AHEAD (remove when on main),
+  and their payload keys are checked on both sides, strictly once core has them.
+
+#### Chat: the model picker, the session's commands, rewind with code, the context meter
+
+Wires sessions 7543952e and 468af69f in deck/chat.
+- caps.js: threads.model, threads.commands and sessions.models.get are live (SESSION_TOOLS, learnt
+  lazily, so an older box switches them off on its first "no such tool"), out of NOT_OFFERED.
+  REWIND_CODE (threads.rewind's restore "code"/"both") is learnt with them (LINKED).
+- Model chip and picker (composer.js, composer-state.js modelChoices): the aliases opus, sonnet
+  and haiku, then every id sessions.models.get names per purpose ("Used for chat, agent") and the
+  thread's own, "now" on the thread's. threads.model switches it; a stopped thread's note is shown.
+  session-state reduces model.switched, and model.changed only without a scope (a scoped one is
+  sessions.models.set's per-purpose default, not the thread's).
+- "/" menu: threads.commands' {commands: [{name, description, argumentHint}]}, with the static
+  core/commands.js list while the thread is not running (asked again after 15 s) or on an older box.
+- Rewind sheet (pickers.js): Claude Code's "Restore code and conversation" (the default),
+  "Restore conversation" and "Restore code". Code keeps the conversation, the view and the
+  composer's words; a notice says "Restored N files" (or why not). Both adds it to the rewind's
+  notice. Code choices are off, with "Needs the sessions update", on a box that restores the
+  conversation only. A code restore is never noted as an abandoned branch.
+- Header: "62% of context" from thread.usage context, only when the box gives the share.
+- test/chat-sessions-contract: AHEAD_TOOLS and AHEAD_EVENTS allow threads.model,
+  threads.commands and model.switched to be missing from this tree's core until sessions merges;
+  strict once core has them. Dotted tool names (sessions.models.get) are read whole.
+
+#### Chat: the stream resumes, and long replies stay smooth
+
+- Reconnect (deck/js/api.js, ADR 0029 R1): the shared stream hears `stream.reset` and lowers its
+  cursor to vyred's id, so events after a box's log reset are no longer all dropped as seen. A
+  stream the browser gave up on (CLOSED) is opened again from the last id seen, 1 s doubling to
+  30 s, only while the page is visible. `onResume(fn)` tells a view the stream came back or was
+  reset; the session view then re-reads threads.get (events since the last one applied),
+  threads.asks and the transcript from `next`, merged through session-state, so nothing is missing
+  or shown twice.
+- Stick to the bottom (window-view.js createStick, after Paseo's web stream): a ResizeObserver on
+  the scroller and every mounted row, and at most one frame per burst setting scrollTop, replace
+  reading scrollHeight around every live event and scrolling on every reveal frame. Only the
+  reader's intent detaches (an upward wheel, PageUp / ArrowUp / Home, a touch drag, the
+  scrollbar, within 100 ms of the scroll); within 1 px of the bottom sticks again. The windowed
+  view's anchoring and the Jump to latest pill are kept.
+- Live text (live-text.js): finished blocks are rendered once and frozen; only the block being
+  written re-parses each frame. Block ends are found by a line scan that resumes where it
+  stopped, so a long open code fence is no longer scanned quadratically (settledEnd is linear). A
+  code block shows plain text while its fence is open and is highlighted once, when it closes.
+- Pace (core/pace.js, after Paseo's text-reveal): each frame reveals ceil(backlog * dt / 150 ms)
+  characters, at least one, at most once per 60 Hz frame; a stall counts as 250 ms at most. The
+  pacer's API is unchanged (maxLagMs still reads as the horizon); live-text draws nothing on a
+  faster display's extra frames.
+- Grouping (core/grouping.js createGrouper): the session view no longer folds every item on each
+  tool event. Given the changed keys it regroups from the row before the first change and stops
+  at the first old row boundary past the last one; unchanged rows stay the same objects.
+  groupItems stays the pure full pass, and a test checks both agree on random sequences.
+#### Sessions: concurrency slots for teammates and subagents (the user's usage control)
+
+#### The floor follows links
+
+- Every write target is checked as named and as the kernel walks it: a symlink anywhere on the
+  way, and `..` after one (`x/../settings.json` where x links into `.claude`), are resolved with
+  realpath(3) from the raw string; a file not there yet by its folder's real path. This covers
+  rule 1 (Claude Code's settings, .mcp.json, ~/.claude.json) and rule 8 (VYRE_HOME, other agents'
+  folders), for the file tools and Bash write forms. A write to an existing file with more than
+  one link is compared by inode with the settings files and with VYRE_HOME outside the places a
+  model may work; a hard link to one of them is refused. It runs in the PreToolUse floor, so it
+  holds in every permission mode, bypassPermissions included.
+
+#### One socket per Vyre-owned session (ADR 0030 phase 3, option A)
+
+- core/daemon/threadsock.js: `openThreadSocket({ handler: ctx.handler, thread, agent, pids, dir })`
+  opens a socket for one session, at a random name in /run/vyre-threads (vyre:vyre-work, 2710:
+  the agent can pass through, not list). vyred binds the caller (`mcp:thread:<id>`,
+  `harness:thread:<id>`, or `mcp:agent:<name>` / `harness:agent:<name>`; the client picks only
+  mcp or harness), the thread and the agent, and asks for no key; the kernel's peer pid must belong
+  to the session (its process, group, session or a descendant); person-only and human-only tools
+  and presence routes are refused. `close()` removes it. The router takes `thread` and `agent`
+  from a listener's policy.
+
+#### Phones over the relay: vault sessions, and the same key signing in again
+
+- A presence session serves vault reveal and copy for a device paired over the relay
+  (`device:<id>`) as it does for the Deck over the tailnet; the person session gate runs first.
+- The native trade with a biometric key that is enrolled already answers `human: { key }` with
+  its id (the key's fingerprint), not an error.
+
+#### The uid split, wired: sessions start through the spawner on the box
+
+- Off by default: `sessions.spawner` is "off" until ADR 0030 phase 3 (sessions reach Vyre's tools
+  in process); "on", or VYRE_SESSIONS_SPAWNER=on, turns it on. ADR 0032 records the gap, dated.
+- The spawner changes directory as the agent (root there cannot enter the agent's home), allows
+  programs by real path, and finds the Agent SDK's binary in the image or /opt/vyre-sessions-sdk.
+
+- core/sessions/spawn.js starts every session through the box's spawner when its socket is there
+  (as uid vyre-agent, under the spawner's `tini -s`, its own group and session), and directly
+  elsewhere. The handle looks like a ChildProcess at once; the pid, group and session reach
+  onSpawn before anything written to stdin does; the API key goes on fd 3 (the spawner writes it
+  there), never in the environment; kill goes to the spawner, which signals the whole group. An
+  agent's folder under VYRE_HOME maps to the same place in the agent's own home, which the spawner
+  makes as the agent. The spawner allows the Agent SDK's bundled Claude Code binary. The runner's
+  pid is a getter.
+- scripts/e2e-split/check.sh adds: a session runs as vyre-agent in its own home with the key on
+  fd 3 only, cannot reach vyred's socket, and the SDK's binary runs through the spawner.
+
+#### The Mac proves human-only actions to its box (Secure Enclave)
+
+- core/sessions/slots.js: a ledger of two kinds of slot, `teammate` and `subagent`, each with a
+  box-wide limit (`sessions.limits` in config: `max_active_teammates` 6, `max_subagents` 8) and a
+  per-project one (person-only `sessions.limits.set {project, max_active, max_subagents}`). A take
+  with no room waits its turn: oldest first within a project, projects in turn across the box.
+  Events `slot.taken`, `slot.released`, `slot.queued {kind, project, owner, key, position}`. Reads:
+  `sessions.slots.status`, `sessions.limits.get`. Internal `sessions.slots` (take, release,
+  release-owner, status) for the Switchboard and for teammates (ADR 0031), which holds a teammate
+  slot for a summon.
+- A subagent (Claude Code's Agent or Task tool) in a session Vyre runs on the Agent SDK waits for
+  a subagent slot in an in-process PreToolUse hook (up to 10 minutes, then it is refused with the
+  reason). The slot comes back when the Agent call ends, the turn ends or the session stops.
+  Terminal sessions and sessions on the CLI runner take theirs through the plugin: harness.rules
+  refuses an Agent or Task call at once when there is no room, with its place in line (a hook
+  cannot wait); harness.learn (now also on Agent and Task in hooks.json) gives the slot back when
+  the call ends, and harness.stop at the turn's end.
+- Purposes `teammate` (opus) and `helper` (haiku) for ADR 0031.
+- The fake `claude` runs the host's PreToolUse hooks (hook_callback) before a tool, and has an
+  Agent tool ("subagent <task>").
+
+#### Sessions: a retried send is the same message; the queue and the mode can be read
+
+- `threads.send` takes the caller's Idempotency-Key (ADR 0029 R2, resilience's `keyUuid`) as the
+  message's uuid. A send whose uuid was already handed to Claude Code (new table `threads_sent`)
+  or queued answers `{sent: true, already: true}` and starts nothing, even after a restart.
+- `threads.queue {thread}`: the words queued and not handed over yet (queued, uuid, text, surface, at).
+- Thread records carry `mode` (default, acceptEdits, plan), kept by `threads.mode`.
+
+
+#### The phone's biometric key proves presence
+
+- The native app's token trade (vyre://) may carry `human`, the public JWK of its biometric-bound
+  P-256 key (Keystore, Secure Enclave). The box enrolls it as a device presence key and answers
+  `human: { key }`; the phone then proves HUMAN_ONLY calls with `x-vyre-presence: device key=..
+  ts=.. nonce=.. sig=..` (DER ECDSA over vyre-presence-v1, tool, input hash, ts, nonce), and one
+  proof opens the same 30-minute presence session as Touch ID.
+
+#### Floor rule 8: an agent's own folder
+
+- An agent without a project runs in VYRE_HOME/agents/<name>. Its session may now read and write
+  there (files, shell, globs inside it), as in watchers/. Only for the agent vyred vouched for
+  (harness:agent:<name> with its key, or VYRE_AGENT in the hook when vyred is down); another
+  agent's folder, the vault, config, keys and the store stay internal.
+
+#### Security: batch 3 reconcile (main, tailnet, relay, one init)
+
+- The person gate covers relayed devices (`device:<id>`, ownerDevice) as it covers tailnet nodes.
+  A relayed device signs in with its enrolled device key over the channel and gets a token bound
+  to its request-signing key, pinned to its device id (relay.device.presence, relay to add).
+- From the hosted app's origin, nothing without a person session: no tool, tool list, events,
+  stream or module list; /v1/health says only `reachable`; the token trade is the one exception.
+- The native app's `vyre://person/signin` return, for PKCE only; the trade needs no Origin and
+  must be signed by the key it registers.
+- The router reads a request's body once (a signed session covers it); main's CLI terminal
+  resolver is `terminalOf`; resilience's drain and idempotency stay.
+- One init: tini is PID 1, the spawner runs the restart loop (loop.sh) as vyre, sessions run
+  under `tini -s` as vyre-agent. No `init: true` on any service on the vyre image.
+  scripts/e2e-split/check.sh: 24 checks, including ci's smoke (PID 1, kill-restart, drain), as
+  root with the split and as a plain `docker run`.
+
+#### Security: the headscale run of the person session; orphans
+
+- The socket's person check refuses a caller whose chain tops out, under init, in a process that
+  does not lead its own group: a `nohup .. &` left behind by a shell that is gone. Apps, terminals,
+  sshd and tmux servers lead their own group and pass. Checked on the stand-in Mac: the person's
+  shell passes, a call under a claude and its orphan are refused.
+- The Deck's service worker leaves /person/ alone, as it does /onboard: it served the shell for
+  the sign-in page, and would have cached the page as the shell.
+- scripts/e2e-headscale runs the box in the split (0:0, three capabilities, vyre-agent-home).
+
+#### Security: the uid split on the box (ADR 0032 part 3)
+
+- The box container's first process is the spawner (core/spawner), root with only SETUID,
+  SETGID and KILL. It runs vyred as uid vyre (umask 002) and, when vyred asks over
+  /run/vyre/spawner.sock (root:vyre, 2750, so vyre-agent cannot enter), starts a Vyre-owned
+  session's claude as uid vyre-agent under tini as a subreaper, in /work, with a cut-down
+  environment, handing stdio back as connections (core/spawner/client.js spawnAsAgent). Only
+  allowed programs start. vyre-agent cannot open vyred's socket or enter /home/vyre (now 700).
+- /work is shared through the vyre-work group (2775, setgid); an older volume is converted once
+  on start, as vyre. vyre-agent's home is its own volume (vyre-agent-home), readable by vyred.
+- `vyre` inside the container drops from root to uid vyre by itself, so `docker compose exec`
+  and the healthcheck work as before. compose.yml: the vyre service runs as 0:0 with
+  cap_drop ALL and no-new-privileges. The image gains tini.
+- .dockerignore lets scripts/postinstall.mjs through: `docker build -f box/Dockerfile .` from a
+  checkout failed at npm ci since the postinstall landed.
+- scripts/e2e-split/check.sh: 15 checks in a throwaway container (uids, homes, sockets, /work,
+  environment, refusals, an old volume, a clean stop).
+
+#### Security: a Mac's person session; the fill listener's pairing
+
+- `vyre link signin` (link.signin, link.signout): the Mac's command line and Capsule answer asks
+  and approve on the box after the person confirms with a passkey on the box's page, for 30 days.
+  The Mac's vyred listens on a one-time loopback address, trades the code with its PKCE verifier
+  and a new ES256 key, and signs every person call it forwards. Only the person's callers (cli,
+  local, capsule, deck) carry it through link.call; a model, a module or a guest never does, and
+  human-only tools stay the Deck's. `vyre link` says whether the Mac is signed in.
+- The vault fill listener: `vault.fill.extensions` lists the extension origins that may pair; a
+  paired extension's Origin is kept and another extension's is refused; an extension that sends
+  an ES256 `key` when it pairs must sign every request (`x-vyre-proof`), so a copied token is not
+  enough. vault.devices and vault.device.revoke are the person's surfaces only.
+- The socket's person check also catches an orphan by its process group or session: a thread
+  vyred spawns as its own group keeps what it leaves behind after its parent ends. ADR 0032, the
+  person and the device.
+
+#### Security: the person session over the tailnet
+
+- A node signed in as the owner is the owner's device, not the person. Over the tailnet,
+  PERSON_ONLY, HUMAN_ONLY and presence-needing tools answer 401 `person_session_required` until
+  the browser signs in with a passkey (`presence.person.start`). The Deck gets an HttpOnly,
+  Secure, SameSite=Strict cookie `__Host-vyre_person`, pinned to the node, 30 days from last use
+  and 90 at most. The hosted app gets a one-time code on the box's page (`cc`, PKCE S256), trades
+  it at POST /v1/person/token with the verifier and an ES256 public key, and signs every request
+  (`authorization: Vyre <token>`, `x-vyre-proof: t n sig`). POST /v1/person/end signs out;
+  `presence.person.sessions`, `presence.person.revoke` and `presence.person.status` list, revoke
+  and check. The Deck signs in by itself the first time a call needs it. core/presence/person.js.
+- The hosted app's code goes back only to an allowed app (`network.origins`, default
+  https://app.vyre.run), with `return` checked by the box and the code bound to that origin. The
+  box's own sign-in page is /person/signin?cc=..&return=.. (plain; pwa styles it).
+
+#### Security: the person's actions never ride the link
+
+- link.call and ctx.remote on a Mac refuse PERSON_ONLY and HUMAN_ONLY tools on the box
+  (`person_session_required`): the box took them as the owner's device, so a model on the Mac
+  could answer its own ask on the box. The socket's person check now looks at the tool link.call
+  carries. The Mac CLI gets them back through a Mac person session (next).
+
+#### Sessions: concurrency slots for teammates and subagents (the user's usage control)
+
+#### Chat: the stream resumes, and long replies stay smooth
+
+- Reconnect (deck/js/api.js, ADR 0029 R1): the shared stream hears `stream.reset` and lowers its
+  cursor to vyred's id, so events after a box's log reset are no longer all dropped as seen. A
+  stream the browser gave up on (CLOSED) is opened again from the last id seen, 1 s doubling to
+  30 s, only while the page is visible. `onResume(fn)` tells a view the stream came back or was
+  reset; the session view then re-reads threads.get (events since the last one applied),
+  threads.asks and the transcript from `next`, merged through session-state, so nothing is missing
+  or shown twice.
+- Stick to the bottom (window-view.js createStick, after Paseo's web stream): a ResizeObserver on
+  the scroller and every mounted row, and at most one frame per burst setting scrollTop, replace
+  reading scrollHeight around every live event and scrolling on every reveal frame. Only the
+  reader's intent detaches (an upward wheel, PageUp / ArrowUp / Home, a touch drag, the
+  scrollbar, within 100 ms of the scroll); within 1 px of the bottom sticks again. The windowed
+  view's anchoring and the Jump to latest pill are kept.
+- Live text (live-text.js): finished blocks are rendered once and frozen; only the block being
+  written re-parses each frame. Block ends are found by a line scan that resumes where it
+  stopped, so a long open code fence is no longer scanned quadratically (settledEnd is linear). A
+  code block shows plain text while its fence is open and is highlighted once, when it closes.
+- Pace (core/pace.js, after Paseo's text-reveal): each frame reveals ceil(backlog * dt / 150 ms)
+  characters, at least one, at most once per 60 Hz frame; a stall counts as 250 ms at most. The
+  pacer's API is unchanged (maxLagMs still reads as the horizon); live-text draws nothing on a
+  faster display's extra frames.
+- Grouping (core/grouping.js createGrouper): the session view no longer folds every item on each
+  tool event. Given the changed keys it regroups from the row before the first change and stops
+  at the first old row boundary past the last one; unchanged rows stay the same objects.
+  groupItems stays the pure full pass, and a test checks both agree on random sequences.
+
+#### Sessions: a retried send is the same message; the queue and the mode can be read
+
+- `threads.send` takes the caller's Idempotency-Key (ADR 0029 R2, resilience's `keyUuid`) as the
+  message's uuid. A send whose uuid was already handed to Claude Code (new table `threads_sent`)
+  or queued answers `{sent: true, already: true}` and starts nothing, even after a restart.
+- `threads.queue {thread}`: the words queued and not handed over yet (queued, uuid, text, surface, at).
+- Thread records carry `mode` (default, acceptEdits, plan), kept by `threads.mode`.
+
+
+#### Sessions: the Agent SDK is the default driver (ADR 0030)
+
+- `sessions.driver` defaults to `sdk`: every session Vyre starts (Chat, agents, the Capsule, the
+  phone, the planner, learning jobs) runs on the Claude Agent SDK; terminal sessions stay plain
+  `claude`. `cli` keeps the runner by choice, and sessions fall back to it while the SDK is not
+  installed yet (the box image carries it; a Mac installs it on first use). Flipped after the
+  full suite passed on the SDK driver on testbox (2551 tests: 2499 pass, 45 skipped, 2 todo;
+  the five failures were stale generated docs, a test that wrote inside VYRE_HOME, now fixed, and
+  two journey tests that hit "database is locked" under load and pass on a rerun).
+- `ask.raised` carries `tool_use_id`, so an inline ask attaches to its tool row; `thread.steered`
+  carries `step`, the tool calls the turn had finished when Claude took the words in.
+- The fake `claude`'s error results list `errors`, as Claude Code's do; the SDK reads them.
+- core/cli/screen/screen-live.test.js runs its thread outside the temp home (the floor refuses
+  writes inside VYRE_HOME before anyone is asked).
+
+#### Sessions: an API key never reaches a session's Bash
+
+- Measured against the real bundled Claude Code 2.1.283 and a fake Messages API
+  (scripts/sessions-proof/env-leak.mjs, with cc-plugin's fake-api.mjs): Claude Code keeps
+  `CLAUDE_CODE_OAUTH_TOKEN` from the tools it runs, but a Bash tool call's `env` printed
+  `ANTHROPIC_API_KEY`, so a model could read the key and send it out. Claude Code's own
+  `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` needs bubblewrap and exits without it.
+- core/sessions/spawn.js now takes an API key out of the environment and writes it once to a pipe
+  on fd 3 (`CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR`), which Claude Code reads at start and its tools
+  do not see. Same measurement after: authenticated, not in Bash's environment; a control run
+  with no credential fails "Not logged in". Both drivers; tested in core/sessions.
+- Event gaps chat and the Capsule need: a tool call a turn left open when it was interrupted or
+  stopped is `thread.tool {status: "canceled"}`; a failed turn is `thread.state {state: "failed",
+  turn, error}` before the thread goes idle; `thread.state` carries `turn`. ADR 0030's event
+  table now says what is live.
+- `recover()` emits `thread.stopped {reason: "restart"}` for each thread a crash left live
+  (ADR 0029 R7), not only the row.
+- Merged main c8fb9aae; its threads.unqueue is folded into this branch's (a superset: uuid,
+  reason, a `denied` code).
+
+#### Sessions: rewind, as a double Esc does; a smoke for the bundled Claude Code
+
+- scripts/sessions-smoke.mjs: with `VYRE_SESSIONS_SDK_DIR` pointing at the pinned SDK installed
+  with its bundled binary, starts that Claude Code through the driver with no credentials and no
+  turn, and reports the spawn, init time and idle RSS and CPU (for CI's sdk-real job). On testbox:
+  spawned in 219 ms, 189 MB.
+
+- `threads.rewind {thread, uuid}` (a person's surface only): the session goes back to just before
+  that user message and carries on from there in the same thread and transcript (the CLI's
+  `--resume-session-at`, the SDK's `resumeSessionAt`); the message's words come back as `text` for
+  the composer. A running turn is stopped first. Emits `thread.rewound {uuid, at}`. Rewinding to
+  the first message says to start a new session instead. A user message's transcript uuid is the
+  one `thread.turn` gave, so a surface names it from the live stream or the history.
+
+#### Sessions: steering, turns, the queue, state and usage (ADR 0030, step 6's events)
+
+- Steering is the default (the user: Chat must feel like Claude Code in the terminal). A message
+  sent while a turn runs joins that turn at Claude's next step (`priority: "next"`), returns
+  `{steered: true, uuid, turn}`, emits `thread.sent {via: "steer"}`, and `thread.steered {uuid}`
+  when Claude Code takes it in (its `user_message_uuid` echo). Steered words a turn never reached
+  run as the next turn (`thread.turn {steered: true}`).
+- The queue is the alternative: `threads.send {mode: "queue"}` keeps the words until the turn
+  ends ("<name> is working on something", never "terminal" for a session Vyre runs), then hands
+  every row over as one turn, each announced first (`thread.sent {queued, uuid, via: "turn"}`) and
+  marked delivered in the same step. New `threads.unqueue` (the same shape as capsule-now's),
+  `threads.edit` (re-emits `thread.queued` with the same ids, `edited: true`) and
+  `threads.send-now` (steers a queued row in, `via: "now"`). Queued rows carry a `uuid`;
+  `threads.send` answers with `queued_id` and `uuid`.
+- Turns: `thread.turn {turn: "<thread>:<n>", uuid, text}` starts each turn, and every event of a
+  turn carries `turn`. `thread.state {state}` on every change (starting, running, waiting, idle,
+  stopped). `thread.usage {cost_usd, total_cost_usd, tokens}` per turn. `thread.finished` says
+  `canceled: true, reason: "interrupt"` after `threads.interrupt`.
+- Keys: `thread.text` carries `block` (the content block's place in its message across the lines
+  Claude Code writes, so live and transcript rows share `message:block`); `thread.tool` carries
+  `call` (= `id`), `name` and `status` (running, then completed or failed).
+- User messages carry their own `uuid` to Claude Code (runner.js `userLine`). The fake `claude`
+  folds steered messages into its next reply, stamps `user_message_uuid`, lists
+  `user_message_uuids` on its result, and runs unreached steered words as the next turn.
+
+#### Sessions: a turn's cost is its own
+
+- Claude Code reports `total_cost_usd` as the running total of a session's process (continued
+  from the transcript's saved total on a resume), not the turn's own cost. The Switchboard added
+  it up per turn, so a thread's cost, `threads.usage` and agents' API-key budgets counted every
+  earlier turn again. It now keeps the last total per thread (`cost_total`) and records the
+  difference; `thread.finished` says `cost_usd` (the turn's) and `total_cost_usd`. A fork starts
+  from its source's total. The fake `claude` reports a running total as Claude Code does.
+
+#### Sessions: adopting existing sessions, fork, and ADR 0030's settled contract
+
+- `threads.fork {thread, prompt?, name?}`: a new thread that carries on another session's
+  conversation as a copy, in its folder, never touching its process or transcript (the CLI's
+  `--resume <id> --fork-session --session-id <new>`, the SDK's `forkSession`). `thread.started`
+  says `forked_from`. For a session busy in a terminal, the way to go on without two writers.
+- Adopting: a session a terminal started (an older Claude Code's transcript included) is resumed
+  through Vyre on the first message from Chat, in its own folder, and stays one row; a session
+  live in a terminal is queued, never typed into. Tested on both drivers.
+- `threads.answer` with the same decision again returns the earlier outcome
+  (`{answered: true, already: true}`, ADR 0029 R2); a different one is still refused.
+- ADR 0030: the event contract agreed with chat, capsule-now and capsule-sight; the provider
+  contract as built; steering as the default with the queue as the alternative; security as
+  built for e2e's blockers; models per purpose; adopting existing sessions; the parity list with
+  Claude Code in the terminal (SDK-native or ours); decided and open questions.
+- The fake `claude` copies the source transcript on a fork.
+
+#### Sessions: security before the flip, models per purpose, providers as modules (ADR 0030)
+
+- Security (e2e's blockers). core/sessions/spawn.js spawns every session process, on either
+  driver, in its own process group and session, under `tini -s` where installed (the box image now
+  has tini), optionally as another uid/gid (`sessions.uid`, `sessions.gid`), and reports pid, pgid
+  and sid before the process can run anything. `threads.pids` returns `{ pids, pgids, sids }`; a
+  group stays listed until its last process is gone, so a detached orphan is still known. The
+  floor runs before any question is put to the person (the Switchboard refuses what it denies,
+  with a notice), and floor rule 1 now denies a session's writes (file tools and Bash write forms)
+  to Claude Code's settings files, `.mcp.json` and `.claude.json` (core/harness/rules.js, tests in
+  core/harness/floor.test.js). An answer never hands back a switch to bypassPermissions
+  (`safePermissions`); new person-only `threads.mode` (default, acceptEdits, plan; event
+  `mode.changed`).
+- Fixes. `Sessions.bind` walks past dash's `sh -c` to the claude above it (no session bound on
+  Linux before), and returns the pid it bound, which the hook uses for the key file.
+  `callerKind("mcp:thread:<id>")` is "mcp". Threads a restart cut say `restart` (ADR 0029 R7).
+- Models (the user's decision): each session has a purpose (chat, agent, project, capsule, job,
+  memory, planner, learn; inferred when not given: a lean or one-shot thread is a job). Opus for
+  chat, agent and project; haiku for the rest. `sessions.models` in config overrides a purpose;
+  person-only `sessions.models.set` overrides a purpose or a project; an agent's model and an
+  explicit one win. `sessions.models.get`, internal `sessions.models.resolve`, event
+  `model.changed`. `thread.started` says `provider`, `model`, `auth` and `purpose` for the chip;
+  records carry `provider` and `purpose`.
+- Providers: a module adds a session provider through its manifest (`does.providers`) and
+  `ctx.provider(name, driver)`, with no core change; `threads.start { provider }` runs a session on
+  it. The contract and the test every provider must pass are core/sessions/conformance.js; the
+  CLI runner and the SDK driver pass it, and a sample module's provider runs a session end to end.
+- The box image carries the pinned SDK with its bundled Claude Code in /opt/vyre-sessions-sdk
+  (`VYRE_SESSIONS_SDK_DIR`), so a box never downloads it; about 410 MB more. `.dockerignore` keeps
+  scripts/postinstall.mjs, without which `npm ci` in the image failed.
+- Tests: the switchboard and sessions tests keep their work folders outside the temp home (the
+  floor treats the home as Vyre's own, as on a real machine).
+
+#### Sessions: Vyre-owned sessions on the Claude Agent SDK (ADR 0030, steps 1 to 3)
+
+- core/sessions (new module `sessions`): the Claude driver on the Agent SDK (`claude.js`), with the
+  same contract as the CLI runner, so the Switchboard's stream, asks, "always in project", the
+  limit fallback and the watches work unchanged on either. Permission questions come through
+  `canUseTool` into the existing asks; a cancelled one becomes `ask.cancelled`.
+- `sessions.driver` (`cli` or `sdk`; `VYRE_SESSIONS_DRIVER` overrides it for a test run) picks the
+  driver. The SDK is not an npm dependency: it installs on first use into
+  `<VYRE_HOME>/sessions-sdk` (pinned 0.3.283; about 25 MB, plus 230 MB for the bundled Claude Code
+  where `sessions.claude` is `bundled`), never from a test run, and loads with the first session
+  (the import is about 40 MB). New tools `sessions.status` and `sessions.setup`.
+- The box's own credential: a session no agent runs uses `sessions.auth` (the box: the vault's
+  `claude-setup-token`, with `anthropic-api-key` as the limit fallback; the Mac: Claude Code's own
+  login). The vault is asked only once onboarding stored a token or `sessions.auth` is set. The
+  onboarding now grants both items to module `threads` as well as `agents`.
+- The system prompt at three levels (`assistant`, `agent:<name>`, `project:<slug>`), appended to
+  Claude Code's own by default, `replace` as a marked advanced option, every edit a version:
+  `sessions.prompt.get`, `set`, `history`, `revert`, `preview` (and internal `compose`). Event
+  `prompt.changed`. `set` and `revert` are person-only (core/presence PERSON_ONLY). The CLI runner
+  passes a replace as `--system-prompt`.
+- Idle close and a cap: `sessions.idle_minutes` (10) closes a session nobody is using
+  (`thread.stopped` reason `idle`), and the next message resumes it; `sessions.max_live` (box 6)
+  closes the longest-idle one to make room, or refuses a start with `busy`.
+- `threads.interrupt`: stop the running turn; its open questions are cancelled. Thread records say
+  their `driver`.
+- `vyre resume` hands an idle vyred session over to the terminal (stops it first) and leaves one
+  mid-turn alone.
+- Tests: core/sessions/sessions.test.js runs every case on both drivers (the SDK ones need
+  `VYRE_SESSIONS_SDK_DIR`, and skip without it); the switchboard, agents, learn, computers,
+  harness, presence, federation and onboarding suites pass on both. The fake `claude` logs a
+  launch at its initialize request, with what the SDK sends there added as the flags it stands
+  for, and handles an interrupt. Docs: docs/using/sessions.md.
+
+#### Sessions: ADR 0030, Vyre-owned sessions and the provider router (proposed)
+
+- docs/adr/0030-sessions.md (draft): Vyre runs the sessions it starts through the Claude Agent
+  SDK behind a provider router (Claude now, Codex and ACP later), with one session and event
+  model, `canUseTool` into the existing asks, swappable auth from the vault, idle close, and a
+  migration order per team. Joins the nav.
+- scripts/sessions-proof/: a prototype Claude driver and a proof run on testbox with the real
+  SDK driving the fake `claude` (start, stream, an ask answered, the floor, a question, a queued
+  message, resume), plus RSS and CPU of the real binary idle. Not wired into vyred; its SDK
+  dependency is installed only in the proof's own folder.
+- core/switchboard/testing/fake-claude.js reads `--flag=value` as well as `--flag value`, since
+  the Agent SDK passes `--session-id=<id>` and `--resume=<id>`.
+
+#### CI: the box image is built and booted on every change to it
+
+- .github/workflows/box-image.yml (from ci 0f804c11): builds the image from the npm pack, boots
+  vyre through box/compose.yml (with its tailscale), checks PID 1 is tini and the log has no "not
+  running as PID 1", that vyred answers health, restarts through loop.sh and drains on stop;
+  docker-api and egress (computers profile) are created and inspected: no Docker init. Lands with
+  resilience's compose change (no `init: true` on the vyre image's services).
+
+#### ⌘A and every standard shortcut work in the Capsule
+
+- The Capsule had no main menu (an accessory app with a non-activating panel), so ⌘A, ⌘Z, ⌘V and
+  the other key equivalents never reached the box. `Sources/Host/MainMenu.swift` installs the
+  standard menus, never shown: Undo, Redo, Cut, Copy, Paste, Paste and Match Style, Delete,
+  Select All, Find (focuses the box), Emoji & Symbols, Services, Settings (⌘, opens the menu-bar
+  popover), Close (⌘W) and ⌘Q, which hides rather than quits. CapsulePanel.performKeyEquivalent
+  routes to them up the field's responder chain, since the app is never the active one.
+- The Capsule's key handler lets ⌘↑/↓, ⇧↑/↓, ⌥↑/↓ and ⌘→ (except at the end of the box) through to
+  the field, and never gives a row a ⌘ key the menus own.
+- `Tests/ShortcutTests.swift`: the menu table, ⌘A then ⌘Z through the panel into the box, and 26
+  text and window keys passed through while ↑↓, Esc and ⏎ stay the Capsule's. The full shortcut
+  table is in docs/work/capsule-pro.md.
+
+#### The Capsule reads Agent SDK session events, and streams at a steady pace
+
+- Tool rows by call id (thread.tool {call, status}): running, done, failed and canceled, one
+  quiet line each with a mark, the newest three and a count of earlier ones; a status update
+  changes its row in place. The same rows in a DM. A canceled turn (thread.finished canceled)
+  marks its running tools canceled and reads "stopped", not failed.
+- thread.turn fixes a reply's turn, and events of another turn of the thread are not this
+  reply's. thread.state: waiting reads "needs you" (the status model's word), failed carries its
+  error and stays failed through the idle that follows, and a clean finish then idle reads
+  "done · idle". thread.usage sets the turn's cost (not added twice with thread.finished) and
+  the session total. The older phase/error shape still folds.
+- Paced reveal: bursts are revealed at a rate that drains the backlog in about a quarter second,
+  with a frame timer that runs only while there is a backlog and the panel is shown.
+- `Tests/StreamPerfTests.swift` measures native-core's budgets on a bursty fake stream, off
+  screen. Optimised build: event to paint p95 1.1 ms, first token 2.2 ms (budget 100),
+  characters per frame CV 0.47 (budget 2), visible-update gap p95 18 ms (budget 250), no size
+  change while streaming (budget 5), Esc to stopped 1.5 ms (budget 100).
+
+#### An app send whose approval failed is not reported as sent
+
+- capsule-apps (7b08a18): gate.approve answers a failed send as data (state "failed"), which the
+  Capsule showed as "Sent". AppsWordsProvider.approveHeld, used by the @App path and the words
+  row, now asks apps.act Slack "sent" after a failure or before retrying one that failed: "It
+  went out" when it did, otherwise it stays at the Gate and Enter tries again. 95aad5f: a post
+  found to have gone out is settled at the Gate (gate.settle, from work/capsule-apps; a vyred
+  without it answers no_such_tool and the item stays held), and reached "no" skips the check.
+
+#### CI: capsule-mac runs when the Capsule's check or CLI changes
+
+- capsule-mac.yml also triggers on scripts/capsule-native-check.mjs and core/cli/commands/capsule*,
+  which it runs; a change there alone used to need a manual dispatch.
+
+#### The answer eval runs without the Electron Capsule
+
+- scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
+  (and route.js's words) kept for the eval; the native Capsule has it as Said.swift.
+- test/federation-send: threads.send's queued reply carries queued_id (threads.unqueue's handle).
+#### Scripts: the fake Messages API is a module
+
+- scripts/cc-plugin-parity/fake-api.mjs exports `fakeApi(steps, { isMain })`, for driving a real
+  Claude Code binary with no credentials. parity.mjs also checks that the MCP server's parent is
+  the pid the brief bound (it is: Claude Code starts the server directly, with no `sh -c`).
+
+#### Tests: the plugin's memory test always runs
+
+- test/cc-plugin.test.js: memory-iq's bare-mcp gate is on main, so the remember-then-answer test
+  no longer skips.
+#### ADR 0031: project teammates (draft)
+
+- docs/adr/0031-teammates.md: persistent, project-bound agents with durable notes, a serial inbox
+  and a summon tool for every session in the project. Design only; the build waits on ADR 0030
+  steps 1 to 3. docs/work/teammates.md tracks it. Section 14 sets per-project concurrency limits
+  (active teammates, subagents), a box-wide ceiling, a fair queue and a usage-aware pause. The
+  user's decisions: an integrator teammate auto-merges green branches, teammates can be shared
+  with other projects or assigned to the assistant, Balanced is the default preset.
+#### Gate: settle a send whose answer was lost; the hub says whether a call may have reached the server
+
+- `gate.settle {id, outcome: "sent", evidence}` marks an approved item whose send failed as sent,
+  once, with what the app showed (a Slack message's ts), and emits `gate.settled`. Only for an
+  item that was approved and failed, and only by a person or the module whose sender holds it.
+- An MCP hub error carries `detail.reached`: "no" when the request never reached the server or it
+  refused, "maybe" when it dropped mid-call. A failed gate.approve says `reached` too, so a
+  surface looks in the app only when the send may have gone out.
+
+#### Apps: Slack replies in threads, and a Slack send is never posted twice (ADR 0022, ADR 0029)
+
+- Slack `reply {to, thread, text}` answers in a thread (the server's reply tool, or its post tool
+  with `thread_ts`), held at the Gate like a send. `recent {to, thread?}` lists a channel's
+  messages or a thread's replies with their ts, newest first, to pick a thread from.
+- The same words to the same place already waiting at the Gate are that item again (`again:
+  true`), so a retried apps.act, from an outbox or after a lost answer, never holds a second post.
+- A Slack server that does not answer is code `unreachable` (an outbox retries it), never "no
+  channel called #general".
+- An approval whose answer was lost when the server dropped mid-send may have posted. `sent {to,
+  text, thread?, since}` reads Slack for those words since the item was held. The Capsule asks it
+  when gate.approve comes back failed, and before approving an item whose earlier approval failed
+  (`tried`): "It went out" when it did, otherwise the message waits at the Gate and Enter tries it
+  again. The Capsule no longer reads a failed approval as sent.
+
+#### Apps: Slack messages through the MCP hub, held at the Gate (ADR 0022, slice 3)
+
+- "slack #general: the ovens are in", "tell juno on slack ..." and the Capsule's @Slack now send
+  through the Slack MCP server the person added to Vyre's hub (local/apps/adapters/slack.js). No
+  Slack token lives in the apps module.
+- A Slack send is `gated`: apps.route marks it `gated: true`, apps.act runs it and returns
+  `{ held: {id, message}, preview }`, and nothing reaches Slack until the person approves the item
+  with gate.approve (their proof); the hub then releases exactly those arguments, once.
+  apps.send refuses a gated action with code `gated`.
+- The server is config apps.slack.server, or the only one whose tools look like Slack's; two
+  are a question for settings. Argument keys come from the post tool's own schema, so the
+  official server (slack_post_message) and others (conversations_add_message) both work.
+- Refused before anything is sent: a post tool the hub would run unapproved, a channel or person
+  Slack does not have, and an answer that comes back without `held`.
+- The Gate's presence line for an MCP call held by the hub now shows its words (the post's text
+  or payload in `arguments`), where it showed a blank, and the hub reads `conversation_id` as
+  where a call goes, so the line names the channel and an edited destination is honoured.
+- apps.targets for Slack lists live channels (#name) and real people (no bots, no deactivated
+  accounts). "Which app?" offers Slack as an app Vyre sends through only when a Slack server is
+  in the hub.
 #### /pair: finishing `vyre phone add --tailscale-only` on the phone
 
 - A new Deck route, /pair, on one screen: the code the laptop shows (XXXX-XXXX, dash optional)
@@ -328,6 +978,124 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   fail over 100 ms.
 - The owner's phone over the tailnet queues for a session busy in the terminal, and an agent's
   tailnet node does not (queuesFor in core/switchboard).
+
+#### The Mac proves human-only actions to its box (Secure Enclave)
+
+- `vyre link signin` also makes a P-256 key in the Mac's Secure Enclave (core/link/se, CryptoKit,
+  usable only with Touch ID, Apple Watch or the password; vyred keeps only an opaque handle that
+  works on this Mac alone) and sends its public half with the sign-in; the box enrolls it as a
+  device presence key. A human-only tool through link.call is then signed on the Mac after Touch
+  ID and carried with the person session, so `vyre phone add`, vault reveals and the like work from
+  the Mac's CLI and Capsule. Only the person's callers ask for the signature; a model or module
+  never does. `vyre link` shows `touchId`. The helper is built on first use and hash-checked.
+
+#### A relayed browser's passkey
+
+- presence.enroll takes `device` (a relay device id) from the relay module only: a passkey the
+  browser made at pairing, for an allowed app's name (app.vyre.run), bound to that device
+  (presence_key_devices) and checked against that app's origin. A challenge from that device
+  offers only its own passkey; every other caller is offered only the passkeys bound to no
+  device. presence.person.start from a relayed device takes that passkey or its device key.
+  Removing a key removes its binding.
+
+#### The phone's biometric key proves presence
+
+- The native app's token trade (vyre://) may carry `human`, the public JWK of its biometric-bound
+  P-256 key (Keystore, Secure Enclave). The box enrolls it as a device presence key and answers
+  `human: { key }`; the phone then proves HUMAN_ONLY calls with `x-vyre-presence: device key=..
+  ts=.. nonce=.. sig=..` (DER ECDSA over vyre-presence-v1, tool, input hash, ts, nonce), and one
+  proof opens the same 30-minute presence session as Touch ID.
+
+#### Floor rule 8: an agent's own folder
+
+- An agent without a project runs in VYRE_HOME/agents/<name>. Its session may now read and write
+  there (files, shell, globs inside it), as in watchers/. Only for the agent vyred vouched for
+  (harness:agent:<name> with its key, or VYRE_AGENT in the hook when vyred is down); another
+  agent's folder, the vault, config, keys and the store stay internal.
+
+#### Security: batch 3 reconcile (main, tailnet, relay, one init)
+
+- The person gate covers relayed devices (`device:<id>`, ownerDevice) as it covers tailnet nodes.
+  A relayed device signs in with its enrolled device key over the channel and gets a token bound
+  to its request-signing key, pinned to its device id (relay.device.presence, relay to add).
+- From the hosted app's origin, nothing without a person session: no tool, tool list, events,
+  stream or module list; /v1/health says only `reachable`; the token trade is the one exception.
+- The native app's `vyre://person/signin` return, for PKCE only; the trade needs no Origin and
+  must be signed by the key it registers.
+- The router reads a request's body once (a signed session covers it); main's CLI terminal
+  resolver is `terminalOf`; resilience's drain and idempotency stay.
+- One init: tini is PID 1, the spawner runs the restart loop (loop.sh) as vyre, sessions run
+  under `tini -s` as vyre-agent. No `init: true` on any service on the vyre image.
+  scripts/e2e-split/check.sh: 24 checks, including ci's smoke (PID 1, kill-restart, drain), as
+  root with the split and as a plain `docker run`.
+
+#### Security: the headscale run of the person session; orphans
+
+- The socket's person check refuses a caller whose chain tops out, under init, in a process that
+  does not lead its own group: a `nohup .. &` left behind by a shell that is gone. Apps, terminals,
+  sshd and tmux servers lead their own group and pass. Checked on the stand-in Mac: the person's
+  shell passes, a call under a claude and its orphan are refused.
+- The Deck's service worker leaves /person/ alone, as it does /onboard: it served the shell for
+  the sign-in page, and would have cached the page as the shell.
+- scripts/e2e-headscale runs the box in the split (0:0, three capabilities, vyre-agent-home).
+
+#### Security: the uid split on the box (ADR 0032 part 3)
+
+- The box container's first process is the spawner (core/spawner), root with only SETUID,
+  SETGID and KILL. It runs vyred as uid vyre (umask 002) and, when vyred asks over
+  /run/vyre/spawner.sock (root:vyre, 2750, so vyre-agent cannot enter), starts a Vyre-owned
+  session's claude as uid vyre-agent under tini as a subreaper, in /work, with a cut-down
+  environment, handing stdio back as connections (core/spawner/client.js spawnAsAgent). Only
+  allowed programs start. vyre-agent cannot open vyred's socket or enter /home/vyre (now 700).
+- /work is shared through the vyre-work group (2775, setgid); an older volume is converted once
+  on start, as vyre. vyre-agent's home is its own volume (vyre-agent-home), readable by vyred.
+- `vyre` inside the container drops from root to uid vyre by itself, so `docker compose exec`
+  and the healthcheck work as before. compose.yml: the vyre service runs as 0:0 with
+  cap_drop ALL and no-new-privileges. The image gains tini.
+- .dockerignore lets scripts/postinstall.mjs through: `docker build -f box/Dockerfile .` from a
+  checkout failed at npm ci since the postinstall landed.
+- scripts/e2e-split/check.sh: 15 checks in a throwaway container (uids, homes, sockets, /work,
+  environment, refusals, an old volume, a clean stop).
+
+#### Security: a Mac's person session; the fill listener's pairing
+
+- `vyre link signin` (link.signin, link.signout): the Mac's command line and Capsule answer asks
+  and approve on the box after the person confirms with a passkey on the box's page, for 30 days.
+  The Mac's vyred listens on a one-time loopback address, trades the code with its PKCE verifier
+  and a new ES256 key, and signs every person call it forwards. Only the person's callers (cli,
+  local, capsule, deck) carry it through link.call; a model, a module or a guest never does, and
+  human-only tools stay the Deck's. `vyre link` says whether the Mac is signed in.
+- The vault fill listener: `vault.fill.extensions` lists the extension origins that may pair; a
+  paired extension's Origin is kept and another extension's is refused; an extension that sends
+  an ES256 `key` when it pairs must sign every request (`x-vyre-proof`), so a copied token is not
+  enough. vault.devices and vault.device.revoke are the person's surfaces only.
+- The socket's person check also catches an orphan by its process group or session: a thread
+  vyred spawns as its own group keeps what it leaves behind after its parent ends. ADR 0032, the
+  person and the device.
+
+#### Security: the person session over the tailnet
+
+- A node signed in as the owner is the owner's device, not the person. Over the tailnet,
+  PERSON_ONLY, HUMAN_ONLY and presence-needing tools answer 401 `person_session_required` until
+  the browser signs in with a passkey (`presence.person.start`). The Deck gets an HttpOnly,
+  Secure, SameSite=Strict cookie `__Host-vyre_person`, pinned to the node, 30 days from last use
+  and 90 at most. The hosted app gets a one-time code on the box's page (`cc`, PKCE S256), trades
+  it at POST /v1/person/token with the verifier and an ES256 public key, and signs every request
+  (`authorization: Vyre <token>`, `x-vyre-proof: t n sig`). POST /v1/person/end signs out;
+  `presence.person.sessions`, `presence.person.revoke` and `presence.person.status` list, revoke
+  and check. The Deck signs in by itself the first time a call needs it. core/presence/person.js.
+- The hosted app's code goes back only to an allowed app (`network.origins`, default
+  https://app.vyre.run), with `return` checked by the box and the code bound to that origin. The
+  box's own sign-in page is /person/signin?cc=..&return=.. (plain; pwa styles it).
+
+#### Security: the person's actions never ride the link
+
+- link.call and ctx.remote on a Mac refuse PERSON_ONLY and HUMAN_ONLY tools on the box
+  (`person_session_required`): the box took them as the owner's device, so a model on the Mac
+  could answer its own ask on the box. The socket's person check now looks at the tool link.call
+  carries. The Mac CLI gets them back through a Mac person session (next).
+
+
 #### The answer eval runs without the Electron Capsule
 
 - scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
@@ -341,6 +1109,99 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   10 MB cap with docs/design/one-app (620 KB, 46 files) in it, and 10.3 MB without it, so
   the cap is 12 MB now: the growth is code (memory/personal, apps, relay, resilience).
 
+
+#### Chat: matched to the sessions team's real Switchboard (work/sessions)
+
+- Steer now is `threads.send-now` (a dash) {thread, queued}. A queued send answers {queued: true,
+  queued_id, uuid}: the row is `queued_id`. The box mints every uuid: the send's answer and its
+  echo (same words) tie a steer or a row drawn under the Deck's uuid to the box's, so nothing shows
+  twice. threads.unqueue / send-now that find the row already handed over say so.
+- Steered words the turn never reached run as the next turn (thread.turn {steered: true}): their
+  "Steering" markers go and they read as one plain message with the joined words.
+- Rewind is not a fork: threads.rewind {thread, uuid} rewinds this thread. The message and
+  everything after it leave the view, its words come back to the composer, and {rewound: false,
+  note} (the first message) shows the note. Re-reads skip the abandoned branch: session-state
+  filters by thread.rewound (also read back from threads.get on open), and core/transcripts skips
+  a branch once the next message makes it one (two person's lines under one parentUuid).
+- Mode is `mode.changed` {mode} (heard on its own, not under thread.*); threads.mode answering
+  {mode: null, note} puts the chip back and shows the note. States are starting, running,
+  waiting, idle, stopped (no "failed"; a record's raw "working" reads running). thread.usage keeps
+  the turn's cost_usd and the session's total_cost_usd apart.
+- Mac asks (federation v2): person_session_required links to the box's /person/signin page and
+  Try again, instead of a passkey proof on the answer; "no ask <id>" no longer falls back to
+  "Answer it on <mac>" (only no_such_tool, bad_input, unsupported do).
+
+#### Chat: the composer speaks the final sessions contract
+
+- Queue rows are named by the box's row id (`queued`): Take back is threads.unqueue {thread,
+  queued}, Edit is threads.edit {thread, queued, text} (thread.queued comes back under the same
+  id), Steer now is threads.send_now {thread, queued} (was threads.steer). A row drawn on send has
+  its buttons off until threads.send answers {queued: <id>, uuid}. A hand-over at a turn's end
+  (thread.sent {queued, uuid, via: "turn"}) takes its words from the row.
+- thread.steered carries no step: the Deck counts the turn's finished tool calls when it arrives.
+  thread.sent via "steer" or "now" draws a steer; a steer the box took as a plain message loses
+  its marker.
+- Esc Esc lists your messages from the session and forks there (threads.rewind {thread, uuid} ->
+  thread.rewound {uuid, fork}): the fork opens with the words back in its composer; this session
+  keeps every word. No conversation / code / both choice, no threads.checkpoints.
+- Shift+Tab cycles default, acceptEdits and plan only. threads.start answering "busy" says "All
+  sessions are busy; one will free up shortly" with Try again. thread.started's purpose is kept.
+- Model, commands, shell, memory, thinking, killing a task and images on send start off
+  (core/caps.js NOT_OFFERED) instead of being learnt on first use.
+
+#### Chat: the composer works like Claude Code in the terminal
+
+- Typing while a turn runs steers it: Enter hands the words to the running turn at its next step
+  (threads.send mode "steer"), drawn at once as "Steering" and confirmed as "Steered at step N"
+  where they joined (thread.steered). Alt+Enter, a "Queue for after this turn" toggle, or a hold
+  on the send button queues them instead: a row above the composer with Edit, Take back and
+  Steer now. Up in an empty composer recalls the last message (per thread, the last 100) or takes
+  the newest queued one back to edit.
+- Esc stops at once; Esc Esc opens a rewind sheet (restore the conversation, the code or both;
+  the words come back to edit). Shift+Tab cycles the permission mode (a chip under the box: Asks
+  first, Accepts edits, Plan mode; Doesn't ask only when the session offers it); a model chip and
+  /model open a picker; a thinking chip turns thinking on or off; Ctrl+O hides or shows it.
+- "/" opens the session's commands with source badges (threads.commands, else a static list),
+  "@" files in the session's folder (files.search), "!" runs a shell command there with its
+  output as a row, "#" saves a memory to this project or about you. A pasted image is attached
+  (at most 4, 5 MB each). The live todo list is pinned above the composer; a tray lists
+  background shells and subagents with View output and Stop.
+- The rules live in deck/chat/core/composer-state.js (no DOM), with one key map the Deck and the
+  phone both read. Tools the sessions team has not shipped are learnt from their first "no such
+  tool" (deck/chat/core/caps.js): that control turns off and says "Needs the sessions update".
+- core/transcripts: a person's line inside an open turn (after a tool call, before the reply) is a
+  steer, `steered: true, step: <calls finished before it>`, and starts no turn, so a re-read shows
+  the same marker as live.
+
+#### Chat: long sessions and terminals that outlive vyred
+
+- Long sessions render windowed above 100 rows (deck/chat/core/window.js, deck/chat/window-view.js):
+  rows near the viewport are mounted, the rest are measured spacers; the reading position holds
+  while a reply streams and while history loads above. A 2,000-turn session keeps under 150 rows
+  mounted (46 at most in the test); a 3,500-block history page applies in 40 ms (was 817 ms).
+- The Deck terminal follows resilience's durable terminal (ADR 0029 R4): it counts the bytes it
+  drew and reattaches with from=<offset> after a vyred restart (1012), redraws under a line when
+  older output was cut, holds up to 4 KB of keys typed while away, and phones get a key bar (Esc,
+  Tab, Ctrl, Alt, arrows, Paste).
+
+#### Chat: a session reads as a native chat over the event stream (ADR 0030)
+
+- deck/chat/session.js renders from deck/chat/core/session-state.js: the transcript read and
+  live thread.* and ask.* events go into one keyed state, and only the rows whose keys changed
+  are patched. Runs of tool calls fold into one row ("Edited 3 files, ran 2 commands · 12 s")
+  that opens to the calls; a running call counts up ("Running npm run build · 0:42"); thinking
+  shows its length; a todo list is never folded. Replies stream paced to the display
+  (deck/chat/live-text.js, core/pace.js), frames only while the page is on screen, and only the
+  growing paragraph re-parses. Rows off screen use content-visibility.
+- The header shows the provider, model and auth ("Claude · opus · subscription") and the state
+  word; a session closed for idleness says "Resumes on your next message".
+- Stop (Esc) while a turn runs: threads.interrupt, or threads.stop on a Switchboard without it;
+  the turn reads "Stopped by you". Queued messages sit above the composer with Edit, Take back
+  and Send now, disabled ("Needs the sessions update") until the Switchboard has
+  threads.edit, threads.unqueue and threads.send `now`.
+- Permission cards: A allows once, D denies. An ask answered on another screen says so
+  ("Answered from the Capsule · 14:31").
+- deck/sw.js SHELL keeps the new modules. Tests in deck/chat/session.test.js and core tests.
 #### A stopped vyred leaves a removed home removed
 
 - core/term: the terminal table is not written when the home is gone, or when there is nothing to
@@ -351,19 +1212,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### Apps: the planner is the one reader of time (ADR 0022, ADR 0025)
 #### A box keeps projects in /work/projects
 
-- On a box with a `/work` folder and no `projectsDir` in config.json, projects live in
-  `/work/projects`, where VyreDrive can share them. The first start moves homes out of
-  `~/Vyre/projects` once (copying across volumes), leaves a link at each old folder so Claude
-  sessions keyed by the old path still resume, rewrites the stored rows and markers, records the
-  outcome in `projects-moved.json`, and emits `projects.moved`. A Mac is unchanged.
+- Projects on a box: nothing moves on its own. A new box (no homes in `~/Vyre/projects`) keeps
+  projects in `/work/projects`, where VyreDrive can share them; an existing box stays on
+  `~/Vyre/projects` until the owner runs `projects.move` (`vyre projects move [--dry-run]`,
+  PERSON_ONLY). The dry run answers what would move, what would be skipped and why, and the
+  marker and row rewrites, and changes nothing. The real move runs once, only with
+  `VYRE_PROJECTS_MOVE=1` or config `projects.move` set to `"enabled"` (off until box-deploy
+  validates it on a copy), leaves a link at each old folder so Claude sessions still resume,
+  records `projects-moved.json`, emits `projects.moved`, and asks for a vyred restart. It refuses
+  a Mac (`not_box`), agents, a second run (`already_moved`) and a box without `/work`
+  (`no_work_folder`).
 
 #### The hosted app may call the box from the owner's browser
 
 - The tailnet listener answers CORS for `https://app.vyre.run` (config `network.origins`), to the
   owner only: an exact origin, GET and POST, no credentials, and Chrome's private-network ask.
-  `GET /v1/health` from it answers only `{ reachable: true }`; every other call and WebSocket
-  needs a web session (`deps.webSession`, e2e's rule), else `401 web_session_required`. The call
-  reaches the router with `peer.origin` and `peer.webSession`.
+  Allowed headers: content-type, authorization, x-vyre-proof, x-vyre-presence, idempotency-key,
+  last-event-id (the same set the relay path carries). `GET /v1/health` from it answers
+  only `{ reachable: true }`. Every other request goes to vyred's router untouched (the body
+  unread) with `peer.origin`, where e2e's person session decides (`401 person_session_required`
+  without one). WebSockets from it are the owner's (every stream needs a ticket a tool minted).
+- Guests: GUEST_SAFE is `threads.list` only (`glass.close` dropped too).
 - Tailscale docs: the iPhone DNS failure behind tailscale#19147 in "When a device cannot connect".
 
 #### VyreDrive: the name, a lighter secrets scan, no proof to switch a share, and no guest Glass
@@ -404,7 +1273,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - planner.schedule event: the rings moved with no item changed (a zone or lead change, a calendar
   sync that changed the copy).
 - last_event (ADR 0029, R1) on planner.agenda and planner.upcoming, and on planner.list and
-  planner.ringing with `cursor: true`.
+  planner.ringing with `cursor: true`. It is ctx.events.latestId(), the cursor vyred's stream uses.
 - A Vyre-owned session's thread (`mcp:thread:<id>`, ADR 0030) counts as the assistant, as an
   unnamed terminal session does.
 - Tests: core/planner/planner.test.js, calendar.test.js, core/push/push.test.js.
@@ -1027,6 +1896,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (the Registry's callerAllowed), never a guest.
 #### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
 
+- vyred's entry (core/daemon/main.js) takes SIGTERM and SIGINT before it loads: a stop while it
+  is still starting waits for start, drains and exits 0, instead of dying by the signal (143).
+  core/daemon/loop.sh passes on vyred's own exit code when a stop's trapped `wait` returns 143.
+  Found by e2e; tests in core/daemon/main.test.js and loop.test.js.
+- term: one socket owns a terminal's size (the first to attach). `{"t":"take"}` moves it; size
+  frames from other sockets are kept, not applied; when the owner leaves, the oldest socket left
+  takes over at the size it last asked for. Sockets on the offset protocol hear
+  `{"t":"size","cols","rows","owner"}`; clients without from= still get no text frames.
+- test/chaos/relay.test.js runs R1, R2 and R5 over the real Node relay and a real vyred: a stream
+  survives a dropped device socket and a relay restart, an outbox write whose answer the relay
+  lost lands once, and createPaths moves a stream from direct to the relay and back with nothing
+  lost or doubled. web.js over() now reads relay/client's async-iterable bodies (before, it could
+  not open a stream over the relay at all). Two relay redial bugs are recorded as todo tests.
+- One init in the box: no compose service on the vyre image sets `init: true` any more (vyre,
+  docker-api, egress), so the image's tini is PID 1 instead of a second init behind docker-init.
+  test/box-init.test.js guards it; the tailscale service is unchanged.
+- web.js `over(pathFetch)`: the stream client and the outbox run on any fetch(path, init), such
+  as relay/client's createPaths().fetch (the relay is Noise over a WebSocket, not an HTTP proxy);
+  the paths layer picks the way, follow() keeps the cursor on one logical path.
+- R6 chaos test: a ring answered by key from a device's outbox while the box was out of reach is
+  never rung by the box, is acked once with `unrung: true`, and a retry says `already`.
 - The CLI's writes run once: `write()` in core/daemon/client.js sends an Idempotency-Key per
   intent and retries with it for up to 20 s while vyred is unreachable or restarting, so
   `vyre threads send`, `threads answer` and the live screen's send ride out a restart.
@@ -1129,6 +2019,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   carry its kind, its release and whether the build is one this box knows (core/relay/releases.json).
 - The box's bridge passes `Idempotency-Key`. A box replaced on its route by another copy of
   itself waits 5 minutes before retrying, instead of trading places with the copy.
+- The box names the web app build its browsers load: `relay.web.release` (the owner's pin, or the
+  newest release in core/relay/releases.json) and `relay.web.pin`. relay/app/ hosts app.vyre.run.
+  A fixed loader acts as trust root: it asks the box, then checks the build's Ed25519-signed
+  manifest and loads it under SRI. A service worker refuses tampered or rolled-back loaders. The
+  CSP allows no unsafe-* sources. The vyre.run/pair page makes no requests, and release.js does
+  keygen, build, loader and verify.
+- `vyre relay`: status, pair (the QR drawn in the terminal), devices, remove, rename, trust, on,
+  off, pin, unpin.
+- Devices report their path (`relay.devices.path`). The box measures the relay round trip with a
+  ping frame over the channel, on demand. A one-time code links a device to its tailnet node, so
+  the list shows `path` (relay or direct), `rtt` and `node`, and `device.moved` fires on each switch.
+- `relay.device.presence` (internal, modules only): the presence key a relayed device enrolled at
+  pairing, so presence.person.start (ADR 0032) signs a relayed device in only with its own key.
+- Fixed: the pairing offer named the box by the machine's hostname when no box name was set, so a
+  real host's name reached QR codes and screenshots. It now uses the box's name (config.name, as the names module has it), else "Vyre box".
+- Fixed: a box could stay off the relay until vyred restarted. On Node 22 a refused WebSocket
+  fires only `error`, never `close`, and the relay link retried only on `close`. Now an error
+  before open counts as a failed dial (handled once), and a control socket not ready in 30 s is
+  redialled. A device dialling a dead relay backs off at once instead of waiting 15 s. Found by
+  resilience's R5 chaos tests.
+- The bridge passes `authorization` and `x-vyre-proof`, so a person session (ADR 0032) crosses
+  the relay unchanged.
 - ADR 0026 accepted. It gains section 10, the hosted web app at app.vyre.run, and its trust
   mitigations, and section 2 now matches the code (4429, the ticket, text pings).
 #### Onboarding: the first steps load the theme and fonts
