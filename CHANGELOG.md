@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: the server's time on text
+
+- `thread.text` and `thread.thinking` carry `t` (ms since the epoch, vyred's clock), for mobile's
+  words-per-second meter.
+
 #### Sessions: a warm session for Vyre IQ, and the usage pause
 
 - `threads.quick {purpose, prompt, system?, model?}` (internal, for modules: memory's Vyre IQ,

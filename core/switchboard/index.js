@@ -326,6 +326,8 @@ export class Switchboard {
     // Every event of a turn says which turn (ADR 0030): a surface follows one turn's events.
     const st = this.live.get(thread);
     if (st && st.turn && payload && payload.turn === undefined && /^(thread|ask)\./.test(type) && type !== "thread.stopped") payload = { ...payload, turn: st.turn };
+    // The server's clock on every piece of text (ms epoch), for a surface's words-per-second meter.
+    if ((type === "thread.text" || type === "thread.thinking") && payload && payload.t === undefined) payload = { ...payload, t: Date.now() };
     const ev = this.emitRaw(type, payload, thread, project);
     if (WATCHED[type]) this.fire(type, thread, payload, project);
     return ev;

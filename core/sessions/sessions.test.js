@@ -641,6 +641,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(ev.some(e => e.type === "thread.usage" && typeof e.payload.cost_usd === "number"));
     const text = ev.filter(e => e.type === "thread.text" && e.payload.done && !e.payload.notice);
     assert.ok(text.every(e => typeof e.payload.block === "number"), "done text carries its block");
+    assert.ok(ev.filter(e => e.type === "thread.text").every(e => typeof e.payload.t === "number" && Math.abs(e.payload.t - e.at) < 5000), "text carries the server's time");
   });
 
   test(`${driver}: queued for after the turn: edited, taken back, sent now, or handed over as one turn`, { skip }, async t => {
