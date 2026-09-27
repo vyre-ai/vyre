@@ -25,8 +25,10 @@ writes its own question rules, its own prompt or its own model choice. The hard 
   sources. Replies are kept by the prompt's hash.
 - **The graph is first-class.** People, projects and decisions stay visible and editable wherever
   IQ shows an answer: a source links to the turn, and a person links to the Memory view.
-- **Cost is visible.** Questions have their own daily cap ($0.50, about 150 questions). At the cap
-  `memory.ask` returns `limited: true` and a `message`, and every surface shows that message.
+- **Caps in plan terms.** Questions have their own daily share of the person's Claude plan (about
+  150 questions at the default share). At the cap `memory.ask` returns `limited: true` and a
+  `message` in plan terms, and every surface shows that message. No surface ever shows a dollar
+  figure (`cost_usd` is internal): nothing is a charge, the reads run on the person's Claude plan.
 
 ## The contract every surface uses
 

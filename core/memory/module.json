@@ -23,6 +23,6 @@
   },
   "settings": [
     {"key": "memory.model", "group": "memory", "label": "Use a model to learn facts", "type": "bool", "default": true, "levels": ["account"], "apply": "restart", "store": {"config": "memory.model.on"}},
-    {"key": "memory.daily_usd", "group": "memory", "label": "Memory spend per day (USD)", "type": "number", "min": 0, "default": 0.05, "levels": ["account"], "apply": "restart", "store": {"config": "memory.model.dailyUsd"}}
+    {"key": "memory.plan_share", "group": "memory", "label": "How much of your Claude plan memory may use each day", "help": "It never costs money: memory reads on your Claude plan, and this is the share of its usage it may take. More learns faster.", "type": "enum", "enum": ["small", "medium", "large"], "labels": {"small": "A little", "medium": "A small share", "large": "More, to learn faster"}, "default": "medium", "levels": ["account"], "apply": "restart", "store": {"config": "memory.model.share"}}
   ]
 }

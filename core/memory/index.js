@@ -706,7 +706,9 @@ export default {
       // Fails closed (e2e, 28 Sep): a session counts only once recall says a person started it.
       trusted: session => /** @type {any} */ (trustOf.get(session))?.ok !== 0 && /** @type {any} */ (humanOf()?.get(session))?.human === 1, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
       budget: {
-        allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd) : ASK_DAILY_USD) + 1e-9,
+        // The person's plan share (memory.plan_share) scales IQ's day too; an explicit figure wins.
+        allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd)
+          : ASK_DAILY_USD * ({ small: 0.5, medium: 1, large: 4 }[String(ctx.config.memory?.model?.share || "medium")] ?? 1)) + 1e-9,
         charge: usd => void ctx.store.db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
           ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(askDay(), usd),
       } });

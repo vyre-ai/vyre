@@ -6,7 +6,7 @@ import path from "node:path";
 import { open, migrate } from "../../store/index.js";
 import { MIGRATIONS } from "../schema.js";
 import { tempHome } from "../../../test/helpers.js";
-import { asker, checkAsk, mustAppear, askPrompt, askHash } from "./ask.js";
+import { asker, checkAsk, mustAppear, askPrompt, askHash, LIMIT_MESSAGE } from "./ask.js";
 
 const P = [
   { session: "s1", seq: 3, role: "assistant", ts: Date.parse("2026-06-12T10:00:00Z"), name: "Northwind invoices", text: "Fixed the rounding in src/billing/refund.ts: totals now round half up. Deployed to staging on port 8443." },
@@ -102,7 +102,8 @@ test("ask: no passages, no model, a spent budget or a made-up answer all abstain
   const capped = await broke({ question: "what port does staging use" });
   assert.equal(capped.abstained, true);
   assert.equal(capped.limited, true);
-  assert.equal(capped.message, "Vyre IQ's daily limit is reached, change it in Settings");
+  assert.equal(capped.message, LIMIT_MESSAGE);
+  assert.doesNotMatch(capped.message, /\$|USD|dollar/i, "a cap in plan terms, never money");
   assert.equal(calls, 0);
   const liar = asker({ db: d, answer: async () => ({}), retrieve: async () => ({ passages: P }),
     runner: async () => ({ text: JSON.stringify({ answer: "Staging runs on port 9000.", cite: [1], confidence: 0.9 }), usd: 0.001 }) });
