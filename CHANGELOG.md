@@ -6,7 +6,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory answers the user's own Claude Code session
 
-- A bare `mcp` caller (Vyre's MCP server with no agent: the user's own Claude Code session) may
+- A bare `mcp` caller (Vyre's MCP server with no agent: the user's own Claude Code session), and
+  `mcp:thread:<id>` (a session Vyre runs for the user, ADR 0030), may
   call `memory.answer`, `memory.profile` and `memory.remember`, in any folder. An agent's thread
   (`mcp:agent:<name>`, or `agent` in the input) still needs every project, and bare `harness`
   is still refused. The main graph's other reads are unchanged.

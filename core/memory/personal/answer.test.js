@@ -188,12 +188,12 @@ test("answer: the user's surfaces, their devices, modules and all-projects agent
   const { call, tools } = await world(t);
   // Bare "mcp" is the user's own Claude Code session, in whatever folder it runs.
   for (const [caller, input] of [["cli"], ["deck"], ["capsule"], ["local"], ["module:watch"], ["tailnet:alex@example.com"], ["mcp:agent:juno"], ["harness:agent:hal"],
-    ["mcp"], ["mcp", { project_cwds: ["/home/alex/Work/harlow-site"] }]]) {
+    ["mcp"], ["mcp", { project_cwds: ["/home/alex/Work/harlow-site"] }], ["mcp:thread:t_42"]]) {
     const r = await call("memory.answer", { q: "who is my wife", ...input }, caller);
     assert.ok(!r.error, `${caller}: ${r.error}`);
     assert.equal(r.data.answer, "Your wife is Jordan.");
   }
-  for (const [caller, input] of [["mcp:agent:kit", {}], ["mcp", { agent: "kit" }], ["tailnet:agent:kit", {}], ["cli", { agent: "kit" }], ["harness", {}], ["mcp:agent:nobody", {}]]) {
+  for (const [caller, input] of [["mcp:agent:kit", {}], ["mcp", { agent: "kit" }], ["tailnet:agent:kit", {}], ["cli", { agent: "kit" }], ["harness", {}], ["mcp:agent:nobody", {}], ["mcp:thread:t_42 agent:kit", {}], ["mcp:thread:", {}]]) {
     const r = await call("memory.answer", { q: "who is my wife", ...input }, caller);
     assert.equal(r.code, "denied", `${caller} ${JSON.stringify(input)}: ${JSON.stringify(r)}`);
   }
