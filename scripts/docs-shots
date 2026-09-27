@@ -557,15 +557,18 @@ try {
     const order = ["you", "claude", "tailscale", "name", "history", "devices", "ready"];
     for (const step of order) {
       const shot = obs.find(s => s.url === "#" + step);
+      if (process.env.DOCS_SHOTS_TRACE) log(`  step ${step} at ${await page.run("return location.href").catch(() => "?")}`);
       if (step !== "ready") await page.run(`if (location.hash !== "#${step}") location.hash = "${step}"; await wait(1200);`);
-      // alex's Mac asks to pair while the devices step is open, as it does after `vyre up`.
-      if (step === "devices") { await pairFrom(ob); await page.run(`location.reload(); await wait(10);`).catch(() => {}); await sleep(3000); }
+      // alex's Mac asks to pair while the devices step is open, as it does after `vyre up`. That
+      // request is the owner reaching the box over the tailnet, so the loopback door closes, and
+      // the setup carries on at the box's own address, as a person's browser does.
+      if (step === "devices") { await pairFrom(ob); target = ob.socket; await page.goto(`http://${HOST}/onboard#devices`, 3000); await sleep(3000); }
       if (shot) {
         log(`${shot.name}`);
         try { await save(shot, "dark", await capture(page, shot, { navigate: null, homes })); report(shot, page); }
         catch (e) {
           log(`  ${shot.name}: FAILED: ${/** @type {Error} */ (e).message}`); process.exitCode = 1;
-          log("  the page said: " + String(await page.run("return document.body.innerText").catch(() => "")).slice(0, 800).replace(/\n+/g, " | "));
+          log("  at " + String(await page.run("return location.href").catch(() => "")) + ", the page said: " + String(await page.run("return document.body.innerText").catch(() => "")).slice(0, 800).replace(/\n+/g, " | "));
         }
       }
       // Finish the step, so the next screen is the one a person reaches.
