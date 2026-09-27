@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Agent SDK installs itself only in the person's own home, and never outlives vyred
+
+- vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or
+  NODE_ENV=test, and never in a temp or dev home, unless VYRE_SESSIONS_SDK_INSTALL=1
+  (`vyre sessions setup` still installs on request). A test rig stopped vyred and found npm still
+  writing into its fake Mac's cache.
+- An install in flight runs in its own process group and ends with vyred's stop (abortInstalls),
+  npm's own children included, and what it left half done is removed.
+
 #### Sessions: images, ! shell, # memory, thinking and background tasks (parity with Claude Code)
 
 - `threads.send {images: [{media_type, data}]}`: pasted images (png, jpeg, gif, webp; at most 5,
