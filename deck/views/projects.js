@@ -17,7 +17,7 @@
 // recall.thread with no reply, keyboard or Take. Picking a Mac session into a box project is fine.
 
 import { h, put, link, go, head, empty } from "../js/dom.js";
-import { attempt, call } from "../js/api.js";
+import { attempt, queue, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { when, clock, since, base, initial, initials, plural } from "../js/fmt.js";
@@ -638,7 +638,7 @@ function heldBlock(a, threadId) {
     try {
       const n = needs.current().find(x => x.id === a.id);
       if (n) await needs.answer(n, opt);
-      else await call("threads.answer", { ask: a.id, decision: opt.decision, ...(opt.input ? { input: opt.input } : {}) });
+      else await queue("threads.answer", { ask: a.id, decision: opt.decision, ...(opt.input ? { input: opt.input } : {}) });
       settle(el, opt.label);
     } catch (e) {
       const err = /** @type {any} */ (e);
@@ -738,7 +738,7 @@ function drawComposer(ctx, box, o) {
       holder = l.data?.holder || l.data?.surface || "deck";
       if (holder !== "deck") { draw(); return; }
     }
-    const r = await attempt("threads.send", { thread: o.id, text });
+    const r = await queued("threads.send", { thread: o.id, text });
     send.disabled = false;
     if (r.error) { put(note, r.error.missing ? "The switchboard module is not running." : String(r.error.message)); return; }
     // threads.send answers {sent:false,...} rather than an error when the lease was taken back

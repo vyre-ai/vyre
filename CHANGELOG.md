@@ -19,6 +19,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Writes carry an Idempotency-Key (R2): call(name, input, { write: true }) makes one per call,
   or { key } passes one; the retry after a person sign-in and the passkey retry of an owner's
   answer reuse it, so the box runs the write once. Reads carry none (the box keeps keyed answers).
+- An outbox (R2), kept in IndexedDB (web.js idbStore): the Chat composer's send, Find's and the
+  projects view's send, every answer (Now, the needs sheet, Chat's ask and question cards), a
+  Discard at the Gate, and the planner's add and todo done go through api.js queue()/queued().
+  They show as sending at once; a box out of reach keeps them on the device and they go once,
+  with the same key, when the stream is back, the page is in front or the network changes (at
+  most once a minute otherwise). The composer says "Sending when your box answers" and takes the
+  next message. A refusal (4xx, or a tool's own error such as a Mac's timeout) is the view's error
+  as before, never retried. A Send at the Gate (a passkey) is never queued: offline it fails at
+  once with the usual offline error.
 
 #### /pair: finishing `vyre phone add --tailscale-only` on the phone
 

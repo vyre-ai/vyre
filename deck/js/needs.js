@@ -11,7 +11,7 @@
 // "question") is its own kind here, answered allow with `answers`, or deny to decline.
 // Only Send proves presence; every answer is the owner's own act (the no-nag rule).
 
-import { attempt, call } from "./api.js";
+import { attempt, queue } from "./api.js";
 
 /**
  * @typedef {{ label: string, decision: string, primary?: boolean }} Option
@@ -108,15 +108,15 @@ export async function answer(n, opt, edited) {
   if (n.source === "mac" && n.kind !== "draft") throw new Error(`Answer it on ${n.machine || "your Mac"}.`);
   if (n.kind === "draft") {
     // Sending goes outside as the person, so it proves presence; discarding is the owner's own act.
-    if (opt.decision === "reject") await call("gate.reject", { id: n.id }, { presence: "asked" });
+    if (opt.decision === "reject") await queue("gate.reject", { id: n.id }, { presence: "asked" });
     else {
-      const r = await call("gate.approve", edited ? { id: n.id, edited } : { id: n.id }, { presence: true });
+      const r = await queue("gate.approve", edited ? { id: n.id, edited } : { id: n.id }, { presence: true });
       // Approved, but the sender failed: the item stays held and can be sent again. gate.js keeps
       // the edit as `final` even on failure, so the next gate.get must be re-read, not reused.
       if (r && r.state === "failed") { got.delete(n.id); throw Object.assign(new Error(r.error || "the sender failed; it is still held"), { failed: true }); }
     }
   } else {
-    await call("threads.answer", answerInput(n, opt), { presence: "asked" });
+    await queue("threads.answer", answerInput(n, opt), { presence: "asked" });
   }
   cache = cache.filter(x => x.id !== n.id);
   got.delete(n.id);

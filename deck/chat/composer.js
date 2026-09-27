@@ -25,7 +25,7 @@
 // through clears it. opts.onQueue hears the queue change (how many wait, and for whom).
 
 import { h, put } from "../js/dom.js";
-import { attempt, on } from "../js/api.js";
+import { attempt, queued as viaOutbox, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 
 const touch = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
@@ -86,9 +86,16 @@ export function mountComposer(opts) {
     ta.value = ""; grow();
     send.disabled = true;
     put(note); note.classList.remove("soft");
-    const r = await attempt("threads.send", sendInput(text));
-    sending = false;
-    send.disabled = false;
+    // Through the outbox (ADR 0029): a box out of reach keeps the words on this device and sends
+    // them, once, when it is back. Meanwhile the note says so and the composer takes the next one.
+    let waited = false;
+    const r = await viaOutbox("threads.send", sendInput(text), { onWait: () => {
+      waited = true; sending = false; send.disabled = false;
+      note.classList.add("soft");
+      put(note, icon("clock", 12), " Sending when your box answers: ", h("span", { class: "faint" }, text.length > 60 ? text.slice(0, 59) + "…" : text));
+    } });
+    if (!waited) { sending = false; send.disabled = false; }
+    else if (!r.error) { put(note); note.classList.remove("soft"); }
     const back = () => { if (!ta.value) { ta.value = text; grow(); } };
     // One note, replaced each time, and the words go back in the box so nothing typed is lost.
     if (r.error && r.error.code === "mac_offline") {

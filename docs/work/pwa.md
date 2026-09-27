@@ -264,6 +264,12 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   `deck:stream` (detail: follow's state), exports `streamState`, `kick()`, `stopEvents()`.
 - deck/js/api.js call(): opts `key` (Idempotency-Key header) and `write: true` (a fresh key);
   export `newKey()`. Reads send no key.
+- deck/js/api.js: `queue(name, input, { presence, onWait })` (data or ApiError) and `queued()`
+  ({data}|{error}) through the outbox; `hear(event)` hands an event to listeners by hand (tests;
+  chat/session.test.js and chat/mac.test.js use it instead of a fake EventSource). Call sites in
+  chat's (composer, ask-item, question, gate-item), find.js, projects.js and planner.js changed to
+  them (the chat team's files: one-line swaps, same inputs). planner's drawPlanner deps take
+  `write`. IndexedDB database "vyre-resilience", object store per host.
 
 ## Perf
 - No timers or polls added. The offline line rechecks only on `online`, on becoming visible while

@@ -39,12 +39,10 @@ E.insertBefore = function (n, ref) { if (!ref) { this.append(n); return n; } n.r
 E.replaceWith = function (n) { const p = this.parentNode; if (!p) return; p.insertBefore(n, this); this.remove(); };
 E.after = function (n) { this.parentNode.insertBefore(n, this.nextSibling); };
 
-/** The event stream: one fake EventSource, fed by hand. */
+/** The event stream, fed by hand: api.js hear() hands an event to the listeners as the stream does. */
 let evId = 0;
-class FakeES { constructor() { FakeES.last = this; this.l = new Map(); this.readyState = 1; } addEventListener(t, f) { (this.l.get(t) || this.l.set(t, []).get(t)).push(f); } }
-/** @type {any} */ (FakeES).OPEN = 1;
-Object.assign(globalThis, { EventSource: FakeES });
-const emit = (type, payload, thread = SID) => { for (const f of FakeES.last.l.get(type) || []) f({ data: JSON.stringify({ id: ++evId, type, thread, at: Date.now(), payload }) }); };
+const { hear } = await import("../js/api.js");
+const emit = (type, payload, thread = SID) => hear(/** @type {any} */ ({ id: ++evId, type, thread, at: Date.now(), payload }));
 
 const fx = JSON.parse(readFileSync(new URL("./fixtures/session-blocks.json", import.meta.url), "utf8"));
 const SID = fx.session.id;

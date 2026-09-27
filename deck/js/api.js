@@ -18,7 +18,9 @@
 // (core/daemon), and in Node the repo's own files, so there is one copy.
 
 import { follow } from "../../core/resilience/stream.js";
-import { open, cursorStore, lifecycle } from "../../core/resilience/web.js";
+import { open, cursorStore, lifecycle, idbStore } from "../../core/resilience/web.js";
+import { outbox } from "../../core/resilience/outbox.js";
+import { backoff } from "../../core/resilience/backoff.js";
 
 const store = (() => { try { return window.sessionStorage; } catch { return null; } })();
 const q = new URLSearchParams(location.search);
@@ -280,6 +282,79 @@ async function presenceProof(tool, input) {
   return `passkey id=${ch.data.challenge} cred=${b64url(cred.rawId)} ad=${b64url(r.authenticatorData)} cd=${b64url(r.clientDataJSON)} sig=${b64url(r.signature)}`;
 }
 
+// ---- the outbox (ADR 0029, R2): the person's writes survive a lost box ------------------------
+// Sends, answers, discards, todos and notes go through queue(): into an outbox kept in IndexedDB,
+// with one Idempotency-Key, and delivered in order. The view shows the write as sending at once
+// (it awaits queue()). A write the box cannot take yet (offline, restarting, a 5xx) stays in the
+// outbox and goes again, with the same key, when the stream is back, the page is in front again or
+// the network changes, and at most once a minute otherwise; queue() resolves then. A refusal on
+// its merits (a 4xx: already answered, bad input) rejects with the ApiError, as call() does, and
+// is never tried again. A write that needs a passkey (presence: true) is never queued: the proof
+// is bound to the moment, so it goes now or fails now.
+
+/** The owner's own acts: they go without a proof and ask for one only if the box insists. */
+const ASKED = new Set(["threads.answer", "gate.reject"]);
+/** This page's writes: the presence each asked for, and who hears that it is waiting. */
+const modes = new Map(), waits = new Map();
+/** @type {Promise<Awaited<ReturnType<typeof outbox>>> | null} */
+let outboxReady = null;
+
+function getOutbox() {
+  return outboxReady ??= outbox({
+    store: idbStore(BOX),
+    call: async (tool, input, key) => {
+      try { return { data: await call(tool, input, { key, presence: modes.get(key) ?? (ASKED.has(tool) ? "asked" : undefined) }) }; }
+      catch (e) {
+        const err = /** @type {any} */ (e);
+        // Not now: the box was not reached (post's "offline"), it is restarting (its 503), or
+        // something in front of it answered 5xx without a word from the box.
+        if (err?.code === "offline" || err?.code === "restarting") return { error: { code: err.code, message: String(err.message || "") } };
+        if (/^http_5\d\d$/.test(String(err?.code))) return { error: { code: "unreachable", message: String(err.message || "") } };
+        // Anything else is the box's answer on the merits, never tried again: under its own code a
+        // tool's "timeout" (a Mac that did not answer) would read as "not now" to the outbox, and a
+        // presence_required would park it until someone proves presence.
+        return { error: { code: "refused:" + String(err?.code || "failed"), message: String(err?.message || err), apiError: err } };
+      }
+    },
+    onChange: ({ pending }) => {
+      for (const e of pending) if (e.state === "waiting" && waits.has(e.key)) { const f = waits.get(e.key); waits.delete(e.key); try { f(); } catch {} }
+    },
+    newKey,
+    backoff: backoff({ min: 60_000 }),
+  });
+}
+
+/**
+ * A write the person makes, through the outbox. Resolves to its data once the box has it;
+ * rejects with an ApiError when the box refuses it (never retried).
+ * @param {string} name @param {Record<string, any>} [input]
+ * @param {{ presence?: boolean | "asked", onWait?: () => void }} [opts] onWait: called once if the
+ *   first try did not reach the box and the write waits in the outbox, so a view can let the
+ *   person go on (the composer takes the next message).
+ * @returns {Promise<any>}
+ */
+export async function queue(name, input = {}, { presence, onWait } = {}) {
+  if (presence === true) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) throw new ApiError("offline", "vyred did not answer", name);
+    return call(name, input, { presence: true, write: true });
+  }
+  const box = await getOutbox();
+  const key = newKey();
+  if (presence) modes.set(key, presence);
+  if (onWait) waits.set(key, onWait);
+  const { answered } = await box.add(name, input, { key });
+  const r = /** @type {any} */ (await answered);
+  modes.delete(key); waits.delete(key);
+  if (!r.error) return r.data;
+  throw r.error.apiError instanceof ApiError ? r.error.apiError : new ApiError(r.error.code, r.error.message, name, r.error);
+}
+
+/** queue(), resolving to { data } or { error } like attempt().
+ * @param {string} name @param {Record<string, any>} [input] @param {Parameters<typeof queue>[2]} [opts] */
+export async function queued(name, input = {}, opts = {}) {
+  try { return { data: await queue(name, input, opts) }; } catch (error) { return { error }; }
+}
+
 /** Call, but resolve to { data } or { error } so a view can render either without try/catch. */
 export async function attempt(name, input = {}, opts = {}) {
   try { return { data: await call(name, input, opts) }; } catch (error) { return { error }; }
@@ -400,13 +475,16 @@ function startStream() {
     onReset: () => { if (typeof window !== "undefined") window.dispatchEvent(new Event("deck:navigate")); },
     onState: s => {
       streamState = s;
-      if (s.state === "open") reach(true);
+      // Back: the outbox goes now, not at its next minute.
+      if (s.state === "open") { reach(true); void outboxReady?.then(o => o.kick()); }
       else if (s.state === "reconnecting") reach(false);
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:stream", { detail: s }));
     },
     save: n => cursor.save(n),
   });
-  unwire = lifecycle(stream);
+  // A write left in the outbox by the last visit goes as soon as the page is up.
+  getOutbox();
+  unwire = lifecycle(stream, { outbox: { kick: () => { void outboxReady?.then(o => o.kick()); } } });
 }
 
 /** Reconnect now (the pill's Retry): a no-op while the page is hidden or before any view listens. */
@@ -414,6 +492,10 @@ export function kick() { stream?.kick(); }
 
 /** Close the stream for good (a test's end; a sign-out). The next on() opens a new one. */
 export function stopEvents() { stream?.stop(); unwire?.(); stream = null; unwire = null; }
+
+/** Hand one event to the listeners, as the stream does (tests feed events through it by hand).
+ * @param {{ id: number, type: string }} e */
+export function hear(e) { deliver(e); }
 
 /** @param {{ id: number, type: string }} e */
 function deliver(e) {

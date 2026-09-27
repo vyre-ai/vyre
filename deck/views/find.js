@@ -31,7 +31,7 @@
 // crosses 760 px; the desktop column is unchanged.
 
 import { h, put, link, empty, go, back, PHONE_QUERY } from "../js/dom.js";
-import { attempt } from "../js/api.js";
+import { attempt, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { when, base, initial } from "../js/fmt.js";
 import { mergeSessions, title } from "../chat/lib/sessions.js";
@@ -293,7 +293,7 @@ export default async function find(ctx) {
     const name = title(s);
     if (c.kind === "drive") {
       put(planLine, `Typing into ${name}…`);
-      const r = await attempt("threads.send", { thread: s.id, text: c.text, surface: "deck" });
+      const r = await queued("threads.send", { thread: s.id, text: c.text, surface: "deck" });
       if (!ctx.alive()) return;
       if (r.error) { done_ = why(r.error); drawPlan(); return; }
       // Another keyboard has it and nothing queued: say so, keep the words, watch nothing.

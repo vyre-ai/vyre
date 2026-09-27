@@ -12,7 +12,7 @@
 // .update() once session.js has read threads.asks.
 
 import { h, put } from "../js/dom.js";
-import { attempt } from "../js/api.js";
+import { queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { problemLine } from "./presence.js";
 import { renderUnified } from "./lib/diff.js";
@@ -86,7 +86,7 @@ export function askCard(ask) {
     if (state.busy || state.decided) return;
     state.busy = true; state.error = null; draw();
     const input = { ask: ask.id, decision, surface: "deck", ...extra, ...(decision === "deny" && state.why.trim() ? { message: state.why.trim() } : {}) };
-    const r = await attempt("threads.answer", input);
+    const r = await queued("threads.answer", input);
     state.busy = false;
     if (r.error) state.error = r.error; else state.decided = decision;
     draw();

@@ -124,4 +124,70 @@ test("idempotency: an owner's answer the box wants a passkey for goes again with
   assert.match(tools[1].headers["x-vyre-presence"], /^passkey /);
 });
 
+/** End the open stream and bring a new one up, as a box that comes back does. */
+async function reconnect() {
+  streams.at(-1)?.end();
+  await tick();
+  api.kick();
+  await tick();
+  streams.at(-1)?.push(`retry: 2000\nid: 8\n\n`);
+  await tick();
+}
+const tools = (/** @type {string} */ t) => sent.filter(x => x.url === "/v1/tools/" + t);
+
+test("outbox: a send the box did not get waits, says so, and goes once when the stream is back, with the same key", async () => {
+  sent.length = 0;
+  let up = false;
+  box = url => (url === "/v1/tools/threads.send" && !up ? "down" : { status: 200, body: { data: { sent: true } } });
+  let waited = 0;
+  const p = api.queued("threads.send", { thread: "t1", text: "the Northwind Bakery order is in", surface: "deck" }, { onWait: () => { waited++; } });
+  await tick();
+  assert.equal(waited, 1, "the view hears that it waits, once");
+  assert.equal(tools("threads.send").length, 1);
+  const key = tools("threads.send")[0].headers["idempotency-key"];
+  assert.ok(key);
+  up = true;
+  await reconnect();
+  assert.deepEqual(await p, { data: { sent: true } });
+  assert.equal(tools("threads.send").length, 2, "tried, then delivered once");
+  assert.equal(tools("threads.send")[1].headers["idempotency-key"], key, "the replay is the same write");
+  await reconnect();
+  assert.equal(tools("threads.send").length, 2, "nothing goes twice");
+  assert.equal(waited, 1);
+});
+
+test("outbox: a refusal on its merits (4xx) is the view's error and is never tried again", async () => {
+  sent.length = 0;
+  box = () => ({ status: 400, body: { error: { code: "bad_input", message: "ask a9 was already answered" } } });
+  const r = await api.queued("threads.answer", { ask: "a9", decision: "allow", surface: "deck" });
+  assert.ok(r.error instanceof api.ApiError);
+  assert.equal(r.error.code, "bad_input");
+  assert.equal(r.error.message, "ask a9 was already answered");
+  // A tool's own "timeout" (a Mac that did not answer) is an answer too, not "not now".
+  box = () => ({ status: 500, body: { error: { code: "timeout", message: "alex-mac did not answer in time" } } });
+  const t = await api.queued("threads.send", { thread: "t2", text: "hello", surface: "deck", machine: "alex-mac" });
+  assert.equal(t.error.code, "timeout");
+  box = () => ({ status: 200, body: { data: {} } });
+  await reconnect();
+  assert.equal(tools("threads.answer").length, 1);
+  assert.equal(tools("threads.send").length, 1);
+});
+
+test("outbox: a write that needs a passkey is never queued; offline it fails at once", async () => {
+  sent.length = 0;
+  /** @type {any} */ (navigator).onLine = false;
+  const r = await api.queued("gate.approve", { id: "g1" }, { presence: true });
+  assert.equal(r.error.code, "offline");
+  assert.equal(sent.length, 0, "no challenge, no passkey, nothing sent");
+  /** @type {any} */ (navigator).onLine = true;
+  box = url => (url === "/v1/presence/challenge" ? { status: 200, body: { data: { challenge: "c2", webauthn: { challenge: "AAAA", rpId: "localhost" } } } } : "down");
+  const down = await api.queued("gate.approve", { id: "g1" }, { presence: true });
+  assert.equal(down.error.code, "offline", "the box went away after the passkey: the existing offline error");
+  assert.equal(tools("gate.approve").length, 1);
+  assert.ok(tools("gate.approve")[0].headers["idempotency-key"]);
+  box = () => ({ status: 200, body: { data: {} } });
+  await reconnect();
+  assert.equal(tools("gate.approve").length, 1, "not replayed: the proof was for that moment");
+});
+
 after(() => api.stopEvents());
