@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Security: a Mac's person session; the fill listener's pairing
+
+- `vyre link signin` (link.signin, link.signout): the Mac's command line and Capsule answer asks
+  and approve on the box after the person confirms with a passkey on the box's page, for 30 days.
+  The Mac's vyred listens on a one-time loopback address, trades the code with its PKCE verifier
+  and a new ES256 key, and signs every person call it forwards. Only the person's callers (cli,
+  local, capsule, deck) carry it through link.call; a model, a module or a guest never does, and
+  human-only tools stay the Deck's. `vyre link` says whether the Mac is signed in.
+- The vault fill listener: `vault.fill.extensions` lists the extension origins that may pair; a
+  paired extension's Origin is kept and another extension's is refused; an extension that sends
+  an ES256 `key` when it pairs must sign every request (`x-vyre-proof`), so a copied token is not
+  enough. vault.devices and vault.device.revoke are the person's surfaces only.
+
 #### Security: the person session over the tailnet
 
 - A node signed in as the owner is the owner's device, not the person. Over the tailnet,

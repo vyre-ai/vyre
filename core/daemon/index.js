@@ -317,7 +317,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const def = registry.tools.get(name);
     // link.call carries another tool to the box: what it carries is what counts.
     const inner = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
-    const personal = PERSON_ONLY.has(name) || Boolean(req.headers["x-vyre-presence"])
+    const personal = PERSON_ONLY.has(name) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"])
       || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));
     if (socket && personal && !MODEL_LABEL.test(caller)) {

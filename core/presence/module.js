@@ -81,7 +81,7 @@ export default {
       presence: { summary: async input => {
         if (!input.cc) return "Sign this browser in for 30 days";
         let at = "an app";
-        try { at = new URL(String(input.return || "")).host; } catch {}
+        try { const u = new URL(String(input.return || "")); at = u.hostname === "127.0.0.1" ? "the vyre command line and Capsule on this Mac" : u.host; } catch {}
         return `Sign ${at} in on this device for 30 days`;
       } },
       callers: ["deck", "capsule"],
@@ -96,8 +96,11 @@ export default {
           let back;
           try { back = new URL(String(input.return || "")); } catch { throw Object.assign(new Error("return must be the app's address"), { code: "bad_input" }); }
           const allowed = ((ctx.config.network || {}).origins || ["https://app.vyre.run"]).map(String);
-          if (back.protocol !== "https:" || !allowed.includes(back.origin)) throw Object.assign(new Error(`${back.origin} is not an app this box signs in to`), { code: "denied" });
-          const c = people.code({ node, cc: input.cc, origin: back.origin, label });
+          // A paired Mac's vyred (`vyre link signin`) listens on its own loopback, as a native
+          // app does (RFC 8252). Its code is traded by vyred itself, never by a browser page.
+          const loop = back.protocol === "http:" && back.hostname === "127.0.0.1" && /^\/cb\/[\w-]{16,}$/.test(back.pathname);
+          if (!loop && (back.protocol !== "https:" || !allowed.includes(back.origin))) throw Object.assign(new Error(`${back.origin} is not an app this box signs in to`), { code: "denied" });
+          const c = people.code({ node, cc: input.cc, origin: loop ? "loopback" : back.origin, label });
           back.searchParams.set("code", c.code);
           return { kind: "code", code: c.code, expires: c.expires, redirect: back.href };
         }

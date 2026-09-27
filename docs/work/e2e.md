@@ -261,6 +261,15 @@ event stream's first byte. Tear down afterwards.
 
 ## Changed contracts
 
+- link: link.signin / link.signout (callers cli, local, capsule), link.status.signedIn,
+  events link.signed-in / link.signed-out. remote() carries PERSON_ONLY tools with the Mac's
+  person session for person callers only; HUMAN_ONLY never rides the link. presence.person.start
+  accepts `return` = http://127.0.0.1:<port>/cb/<nonce> (a Mac's vyred, traded with no Origin).
+- vault fill: Fill({ extensions }) from vault.fill.extensions; pair(body, headers) keeps the
+  Origin and an optional ES256 `key` (vault_meta device-origin:/device-key:); a key-bound
+  device must send `x-vyre-proof` (same format as the person session). vault.devices and
+  vault.device.revoke callers cli, local, deck, capsule. handle(route, body, headers, { raw, path }).
+
 - Person session (core/presence/person.js). Over the tailnet (`tailnet:<login>` callers) the
   registry refuses PERSON_ONLY and presence-needing tools without `meta.person`, which only the
   router sets, from the cookie `__Host-vyre_person` or `authorization: Vyre <id>.<secret>` plus

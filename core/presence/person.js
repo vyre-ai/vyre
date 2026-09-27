@@ -117,7 +117,8 @@ export class PersonSessions {
     if (row) this.db.prepare("DELETE FROM presence_person_codes WHERE hash = ?").run(row.hash);
     if (!row || row.expires <= this.now()) return { error: { code: "denied", message: "that sign-in code is used or expired; sign in again" } };
     if (row.node !== node) return { error: { code: "denied", message: "that sign-in code was made on another device" } };
-    if (!origin || row.origin !== origin) return { error: { code: "denied", message: "that sign-in code is for another app" } };
+    // A loopback code is traded by the Mac's vyred, which sends no Origin; any other only by its app.
+    if (row.origin === "loopback" ? origin : (!origin || row.origin !== origin)) return { error: { code: "denied", message: "that sign-in code is for another app" } };
     const cc = crypto.createHash("sha256").update(String(verifier || "")).digest("base64url");
     if (!same(cc, row.cc)) return { error: { code: "denied", message: "the verifier does not match the sign-in" } };
     if (!key || key.kty !== "EC" || key.crv !== "P-256" || typeof key.x !== "string" || typeof key.y !== "string" || key.d) {
