@@ -158,6 +158,10 @@ export class Scheduler {
       } else patch.next_fire = null;
     }
     st.patch(item.id, patch);
+    // Answered on a device that rang it while the box was out of reach (planner.done with a key):
+    // the box does not ring that moment again (ADR 0029, R6).
+    const pre = st.firingAt(item.id, dueAt);
+    if (pre && pre.state === "acked") return;
     // A new ring for an item replaces one still ringing from before.
     this.d.db.prepare("UPDATE planner_firings SET state = 'superseded', next_ring = NULL WHERE item = ? AND state = 'ringing'").run(item.id);
     const missed = now - dueAt > LATE_MS;
