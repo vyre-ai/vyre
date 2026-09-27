@@ -47,7 +47,13 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
    (read, then follow from last_event, nothing missed) once they land.
 4. pwa and mobile adopting web.js (outbox, cursor, cache, lifecycle; over(createPaths().fetch)
    for the phone): chaos tests against their clients when they ask.
-5. After batch 3 deploys: confirm on the live box that PID 1 is tini (ci smoke asserts it) and
+5. mobile asks (work/mobile 3dd724c5, src/state/answers.ts; not urgent): outbox.js
+   `cancel(key)`: drop an entry not yet handed to the transport and return true; false if it
+   is in flight or done. Optional `add(tool, input, { holdMs })`: persisted at once, delivered
+   after holdMs unless cancelled, so a 4 s Undo on the approve swipe can put the answer in the
+   outbox the moment it commits (a killed app still sends it). Keep lifecycle's flush on hide
+   delivering held entries early only if mobile wants that; ask.
+6. After batch 3 deploys: confirm on the live box that PID 1 is tini (ci smoke asserts it) and
    that a vyred restart keeps an open terminal.
 
 ## Audit (27 Sep 2026)
