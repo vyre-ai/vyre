@@ -162,7 +162,12 @@ public struct SendAttachment: Sendable, Equatable {
     public var icon: IconSpec?
     /// Appended to the words on send, already redacted and trimmed by the extension.
     public var body: String
-    public init(id: String, chip: String, icon: IconSpec? = nil, body: String) { self.id = id; self.chip = chip; self.icon = icon; self.body = body }
+    /// The words are about this attachment (they point at the screen, or text is selected): a
+    /// question goes to a model that reads it, never to memory.ask, which cannot.
+    public var aboutIt: Bool
+    public init(id: String, chip: String, icon: IconSpec? = nil, body: String, aboutIt: Bool = false) {
+        self.id = id; self.chip = chip; self.icon = icon; self.body = body; self.aboutIt = aboutIt
+    }
 }
 
 /// Where the words are headed: an agent, a session, a project's new thread, or a quick Ask.
@@ -174,6 +179,13 @@ public enum SendTargetKind: Sendable { case agent, thread, project, ask }
 @MainActor
 public protocol SendAttaching: AnyObject {
     func attachment(for words: String, to: SendTargetKind) async -> SendAttachment?
+    /// At once, with no reads: could these words' attachment be about them (`aboutIt`)? False lets
+    /// a quick question go to memory.ask without waiting for the chip.
+    func mayBeAbout(_ words: String) -> Bool
+}
+
+extension SendAttaching {
+    public func mayBeAbout(_ words: String) -> Bool { false }
 }
 
 /// Something `@` can name that an extension sends to: an app, a service, a person in it.

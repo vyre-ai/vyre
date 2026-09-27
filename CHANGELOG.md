@@ -4,6 +4,37 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### rc.2: Capsule questions are Vyre IQ (memory.ask)
+
+- A quick question (after the pause, or ⏎) goes to memory.ask, not a lean model session with the
+  Capsule's own prompt: memory-iq's grounded answer with a chip "confidence 0.82 · from 2
+  sessions" that unfolds up to three sources; "Not sure yet." with what memory does know and
+  "Ask Claude instead: ⌘⏎"; at the day's cap, memory's message exactly. No streaming yet (0.1.1).
+- A question about the screen ("what is this error", "what am I looking at", "the selected
+  text") or with text selected goes to the fast model with the screen context, not memory.ask,
+  which cannot see it. Sight marks its chip `aboutIt` (Kit `SendAttachment.aboutIt`, additive);
+  only words that may be about the screen (a local word check, or text may be selected: Kit
+  `SendAttaching.mayBeAbout`, default false) wait for the chip; any other question goes to
+  memory.ask at once (a test holds the chip 600 ms and memory.ask is still called under 300 ms).
+- A follow-up or ⌘⏎ after an IQ answer starts a session told the conversation. The old path
+  (threads.start, lean) runs only when vyred has no memory.ask (no_such_tool).
+- `Sources/Host/IQAsk.swift` (new), `Sources/Host/CapsuleModel.swift`, `Sources/Host/AutoAsk.swift`,
+  `Sources/Vyred/MemoryBox.swift`, `Sources/UI/CapsuleView.swift`; `Tests/IQAskTests.swift`. The
+  frecency file test waits for the write (a CI flake). Swift 331/331.
+
+#### rc.2: no gold, no epoch ages, one placeholder
+
+- Design A retired the gold: memory's colour (`Theme.recall`, the icon tint) is neutral text, and
+  "from 2 of your sessions" under an answer is a source chip (28 tall, radius 14, 1 px
+  `ruleStrong`, 13/18 `text2`).
+- A missing, zero or pre-2001 time shows no age ("691 months" came from a test's `at: 1000`); a
+  row under a minute old says "just now" (copy.md). The test fixtures use real times.
+- The placeholder is capsule.md's "Ask Vyre, find, or run" in every state; the other line was in
+  stale pictures, and capsule-mac.md's checklist still says the old words (app-design's file).
+- `Sources/UI/Theme.swift`, `Sources/UI/CapsuleView.swift`, `Sources/Providers/IconCache.swift`,
+  `Sources/Vyred/Route.swift`, `Sources/Vyred/State.swift`; `Tests/DesignATests.swift`,
+  `Tests/RouteTests.swift`. Swift 326/326.
+
 #### Mail: send an email from any connected account (ADR 0016 decision 8)
 
 - New module `mail` (core/mail): `mail.accounts`, `mail.send`, `mail.search`, `mail.read`,

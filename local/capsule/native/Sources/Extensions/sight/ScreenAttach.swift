@@ -60,6 +60,8 @@ struct ScreenChip: Equatable {
     var chip: String
     var bundle: String?
     var body: String
+    /// The words point at the screen, or text is selected (SendAttachment.aboutIt).
+    var pointedAt = false
 }
 
 enum ScreenAttach {
@@ -128,6 +130,11 @@ enum ScreenAttach {
                 return true
             case "screen":
                 if prev == "my" || prev == "the" || prev == "on" { return true }
+            case "looking":
+                // "what am I looking at", "what's this I'm looking at".
+                if next == "at", i + 2 >= w.count { return true }
+            case "selected", "selection", "highlighted":
+                if prev == "the" || prev == "this" || prev == "my" || next == "text" || i == w.count - 1 { return true }
             default:
                 break
             }
@@ -247,6 +254,8 @@ final class ScreenAttacher {
     init(vyred: VyredLink, log: @escaping (String) -> Void = { _ in }) { self.vyred = vyred; self.log = log }
 
     var available: Bool { vyred.has("screen.context") }
+    /// Text may be selected: the light read says so, or has not come back yet.
+    var selectionPossible: Bool { available && (light.map(\.hasSelection) ?? true) }
 
     /// The cheap read, started now so the first keystroke does not wait on it.
     func prime() {
@@ -285,7 +294,8 @@ final class ScreenAttacher {
             full = s
         }
         guard let f = full, f.blind == nil else { return nil }
-        return ScreenChip(chip: ScreenAttach.chip(f), bundle: f.bundle, body: ScreenAttach.body(f))
+        return ScreenChip(chip: ScreenAttach.chip(f), bundle: f.bundle, body: ScreenAttach.body(f),
+                          pointedAt: ScreenAttach.refersToScreen(words) || l.hasSelection || f.hasSelection)
     }
 
     private func read(text: Bool) async -> ScreenSnapshot? {
