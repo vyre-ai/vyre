@@ -48,6 +48,8 @@ export default {
       },
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
       senders: opts.senders || {},
+      // A module's own sender (gate.offer) sends through its tool, called as module:gate.
+      call: (t, i) => ctx.call(t, i),
       log: m => ctx.log(m),
     });
 
@@ -85,9 +87,12 @@ export default {
 
     ctx.tool("gate.request", {
       description: "Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here. See gate.senders for the `via` values and what each takes.",
-      input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str },
+      input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str, agent: str },
         ["kind", "via", "to", "content"]),
-      run: async (input, { caller, thread, agent }) => gate.request({ ...input, ...(await filed(input, caller, thread)) }, { agent: agent || agentOf(caller) }),
+      // `agent` in the input is heard only from a module, which files a request for the agent it
+      // verified (the MCP hub, whose ctx.call runs as module:mcp). A model's claim is ignored.
+      run: async (input, { caller, thread, agent }) => gate.request({ ...input, ...(await filed(input, caller, thread)) },
+        { agent: agent || agentOf(caller) || (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) }),
     });
 
     ctx.tool("gate.senders", {
@@ -131,6 +136,13 @@ export default {
       callers: ["cli", "local", "module", "deck", "capsule"],
       presence: { summary: async ({ id }) => { const it = gate.get({ id }); return `Discard the ${it.kind} to ${destOf(null, it)}: "${it.summary}"`; } },
       run: (input, { caller }) => { const c = person(caller); return gate.reject({ ...input, by: input.by || c }); },
+    });
+
+    ctx.tool("gate.offer", {
+      internal: true,
+      description: "A module offers a sender of its own: `name` in its namespace (<module>, <module>:<x> or <module>-<x>), and `tool`, one of its own internal tools, which the Gate calls with { id, to, content } once the user approves. Offer again at every start; it replaces the last.",
+      input: obj({ name: str, tool: str, kinds: { type: "array", items: { type: "string", enum: KINDS } }, content: { type: "object" } }, ["name", "tool"]),
+      run: (input, { caller }) => gate.offer(input, caller),
     });
 
     ctx.tool("gate.route", {

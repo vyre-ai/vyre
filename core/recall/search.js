@@ -265,12 +265,19 @@ export function thread(db, { session, from = 0, limit = 200 }) {
 }
 
 /**
- * Sessions, newest first.
+ * Sessions, newest first. ids keeps only those exact session ids (at most 1000), which is how
+ * the box resolves a Mac session picked into one of its projects.
  * @param {import("node:sqlite").DatabaseSync} db
- * @param {{ cwd?: string, since?: number, human?: boolean, limit?: number }} [opts]
+ * @param {{ cwd?: string, since?: number, human?: boolean, limit?: number, ids?: string[] }} [opts]
  */
-export function sessions(db, { cwd, since, human, limit = 50 } = {}) {
+export function sessions(db, { cwd, since, human, limit = 50, ids } = {}) {
   const where = [], args = [];
+  if (Array.isArray(ids)) {
+    const list = [...new Set(ids.map(String).filter(Boolean))].slice(0, 1000);
+    if (!list.length) return [];
+    where.push(`s.id IN (${list.map(() => "?").join(",")})`);
+    args.push(...list);
+  }
   if (cwd) { const u = underAny([cwd]); where.push(u.sql.replace(/^ AND /, "")); args.push(...u.args); }
   if (since) { where.push("s.ended >= ?"); args.push(since); }
   if (human !== undefined) { where.push("s.human = ?"); args.push(human ? 1 : 0); }

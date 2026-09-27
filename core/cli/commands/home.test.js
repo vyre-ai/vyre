@@ -7,7 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { PassThrough, Writable } from "node:stream";
+import { fakeTerminal } from "../screen/testing.js";
+import { stripAnsi } from "../screen/width.js";
 import { tempHome } from "../../../test/helpers.js";
 import { open } from "../../store/index.js";
 import { SESSIONS, HOME, seedRecall } from "../../../test/fixtures/corpus.js";
@@ -119,34 +120,22 @@ require("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv:
 }
 
 /**
- * A stand-in terminal. Each time the screen is drawn, the next key is typed, the way a person
- * waits to see the list before pressing anything. Keys typed while no list is waiting are held,
- * as a real terminal holds them, until the next list reads.
+ * Run the live screen on a stand-in terminal: wait for its first frame, type the keys, and
+ * resolve to the exit code and the terminal (whose `raw` holds everything drawn).
  */
-function terminal(keys) {
-  const input = /** @type {any} */ (new PassThrough());
-  input.setRawMode = () => input;
-  input.isTTY = true;
-  let screen = "";
-  const output = /** @type {any} */ (new Writable({ write(chunk, _e, cb) {
-    const s = String(chunk);
-    screen += s;
-    // A draw clears to the end of the screen; the clean-up when a list closes also shows the
-    // cursor again, and is not a list waiting for a key.
-    const key = s.includes("\x1b[J") && !s.endsWith("\x1b[?25h") ? keys.shift() : undefined;
-    if (key !== undefined) setImmediate(() => input.write(key));
-    cb();
-  } }));
-  output.columns = 100;
-  output.rows = 30;
-  return { input, output, screen: () => screen.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "") };
+async function drive(keys) {
+  const term = fakeTerminal({ columns: 100, rows: 30 });
+  const done = interactive(term);
+  await term.waitFor(/vyre/);
+  term.type(...keys);
+  const code = await done;
+  return { code, term, drawn: stripAnsi(term.raw) };
 }
 
 test("home (interactive): New session without a project runs claude in this folder, with the Harness when there is one", async t => {
   const w = await world(t);
   process.chdir(w.root);
-  const term = terminal([..."without", "\r"]);
-  assert.equal(await interactive(term), 0);
+  assert.equal((await drive(["without", "\r"])).code, 0);
   const [c] = w.calls();
   assert.deepEqual(c.argv, [], "no brief and no plugin: plain claude");
   assert.equal(fs.realpathSync(c.cwd), w.root);
@@ -155,7 +144,7 @@ test("home (interactive): New session without a project runs claude in this fold
   fs.mkdirSync(path.join(harness, ".claude-plugin"), { recursive: true });
   fs.writeFileSync(path.join(harness, ".claude-plugin", "plugin.json"), "{}");
   process.env.VYRE_HARNESS_DIR = harness;
-  await interactive(terminal([..."without", "\r"]));
+  await drive(["without", "\r"]);
   assert.deepEqual(w.calls()[1].argv, ["--plugin-dir", harness]);
 });
 
@@ -167,11 +156,10 @@ test("home (interactive): inside a project folder it is preselected; Enter opens
   process.chdir(harlow);
   // Enter on the preselected project; Esc back to the home; Enter again; down past "New
   // session in" and the header to the newest session; Enter resumes it.
-  const term = terminal(["\r", "\x1b", "\r", "\x1b[B", "\r"]);
-  assert.equal(await interactive(term), 0);
-  const screen = term.screen();
-  assert.match(screen, /New session in Harlow Legal/);
-  assert.match(screen, /Sessions \(2\)/);
+  // The screen paints at most 30 times a second, so keys typed at once may never show every
+  // step; what they chose is in the calls below.
+  const { code } = await drive(["\r", "\x1b", "\r", "\x1b[B", "\r"]);
+  assert.equal(code, 0);
   const [c] = w.calls();
   assert.deepEqual(c.argv.slice(0, 2), ["--resume", SESSIONS[3].id], "the newest session was not the one resumed");
   assert.equal(fs.realpathSync(c.cwd), w.work);
@@ -183,17 +171,17 @@ test("home (interactive): New session in a project starts claude in its home; th
   const harlow = path.join(w.work, "harlow-site");
   await w.d.registry.call("projects.create", { name: "Harlow Legal", home: harlow });
   process.chdir(w.root);
-  await interactive(terminal(["\r", "\r"]));
+  await drive(["\r", "\r"]);
   const [c] = w.calls();
   assert.equal(fs.realpathSync(c.cwd), fs.realpathSync(harlow));
   assert.match(c.argv[c.argv.indexOf("--append-system-prompt") + 1], /"Harlow Legal"/);
 
   // The switchboard's agents.list answers: none yet, then the one made; q still quits.
-  const term = terminal(["q"]);
-  assert.equal(await interactive(term), 0);
-  assert.match(term.screen(), /Agents\r\n    none yet/);
+  const first = await drive(["q"]);
+  assert.equal(first.code, 0);
+  assert.match(first.term.screen(), /Agents[^\n]*\n\s+none yet/);
   await w.d.registry.call("agents.create", { name: "juno", kind: "assistant" });
-  const again = terminal(["q"]);
-  assert.equal(await interactive(again), 0);
-  assert.match(again.screen(), /juno  not started/);
+  const again = await drive(["q"]);
+  assert.equal(again.code, 0);
+  assert.match(again.term.screen(), /juno\s+not started/);
 });

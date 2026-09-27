@@ -27,6 +27,10 @@ Branch: work/<stream> · Worktree: ../vyre-<stream> · Owner session: <name>
 - <any change to a manifest, tool schema, event or API route that others use>
 ```
 
+## ADR numbers
+
+- 0019: docs (the docs.vyre.run site).
+
 ## Rules
 
 - Touch only the folders your workstream owns. Use another stream's work through `ctx` or the
@@ -35,13 +39,15 @@ Branch: work/<stream> · Worktree: ../vyre-<stream> · Owner session: <name>
   merges, so dependents see it.
 - Merge to `main` only with the full suite green: `npm test`.
 
-## ADR numbers claimed
+## ADR numbers
 
-Claim the next number here before writing the ADR, so two teams never take the same one.
+Claim the next number here before writing the ADR, so two workstreams never take the same one.
 
-- 0013 box sessions (box)
-- 0014 tailnet (tailnet)
-- 0015 capsule-sight: screen context and computer use on the Mac
-- 0016 connectors: the MCP hub and native accounts
-- 0017 native Capsule (capsule-pro; was claimed as 0015 here, which capsule-sight had written)
-- 0020 cc-plugin: Vyre as an installable Claude Code plugin
+| ADR | Workstream | Title |
+|---|---|---|
+| 0013 | box | box sessions |
+| 0014 | tailnet | tailnet |
+| 0015 | capsule-sight | screen context and computer use on the Mac |
+| 0016 | connectors | Connectors: the MCP hub and native accounts |
+| 0017 | capsule-pro | native Capsule (was claimed as 0015 here, which capsule-sight had written) |
+| 0020 | cc-plugin | Vyre as an installable Claude Code plugin, and the status line |

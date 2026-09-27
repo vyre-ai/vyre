@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempHome, upPresent } from "./helpers.js";
@@ -22,7 +23,8 @@ const REFUSED = /needs a person at a terminal|needs presence by/;
 test("cli: up, status, call, down against a temp home", async t => {
   const env = { VYRE_HOME: tempHome(t) };
   t.after(() => run(["down"], env));
-  assert.match((await run(["up"], env)).out, /vyred running/);
+  // A fresh home gets the welcome; an existing one the status line.
+  assert.match((await run(["up"], env)).out, /Vyre is installed|vyred running/);
   assert.match((await run(["up"], env)).out, /already running/);
   assert.match((await run(["status"], env)).out, /modules running/);
   const echo = await run(["call", "system.echo", '{"text":"hi"}'], env);
@@ -33,7 +35,7 @@ test("cli: up, status, call, down against a temp home", async t => {
   assert.match(bad.out, /bad_input/);
   assert.match((await run(["down"], env)).out, /vyred stopped/);
   const after = await run(["status"], env);
-  assert.equal(after.code, 1);
+  assert.equal(after.code, 5, "vyred not running is exit 5");
   assert.match(after.out, /not running/);
 });
 
@@ -42,7 +44,7 @@ test("cli: help lists commands found in the commands folder; unknown commands sa
   const h = await run(["help"], env);
   for (const c of ["vyre up", "vyre status", "vyre call"]) assert.ok(h.out.includes(c), `help is missing ${c}`);
   const u = await run(["frobnicate"], env);
-  assert.equal(u.code, 1);
+  assert.equal(u.code, 2, "an unknown command is a usage error");
   assert.match(u.out, /not a command/);
 });
 
@@ -61,11 +63,11 @@ test("cli: learn adds, lists, re-levels and retires lessons", async t => {
   assert.match(list.out, /1 Never use em dashes\. \[block\]/);
   assert.match(list.out, /checks an em dash .* applied 0 · caught 0 · broken 0/);
   assert.match((await run(["learn", "level", "1", "block"], env)).out, /\[block\]/, "raising is free");
-  assert.equal((await run(["learn", "level", "1", "loud"], env)).code, 1);
+  assert.equal((await run(["learn", "level", "1", "loud"], env)).code, 2, "a level that is not one is a usage mistake");
   // Lowering and retiring are the user's: without a person's proof they refuse.
   for (const args of [["learn", "level", "1", "remind"], ["learn", "retire", "1"], ["call", "learn.retire", '{"id":1}'], ["call", "learn.relax", '{"id":1,"level":"remind"}']]) {
     const r = await run(args, env);
-    assert.equal(r.code, 1, args.join(" "));
+    assert.equal(r.code, 3, args.join(" ") + ": a person must prove presence");
     assert.match(r.out, REFUSED, args.join(" "));
   }
   assert.match((await run(["learn"], env)).out, /1 Never use em dashes\. \[block\]/, "nothing changed");
@@ -98,8 +100,8 @@ test("cli: learn show, scope, relax, stats, signals and skills", async t => {
   assert.match((await run(["learn", "signals"], env)).out, /nothing heard yet|signals/);
   assert.match((await run(["learn", "skills"], env)).out, /no skills yet/);
   assert.equal((await run(["learn", "skills", "show", "3"], env)).code, 1);
-  assert.equal((await run(["learn", "skills", "frob", "3"], env)).code, 1);
-  assert.equal((await run(["learn", "frob"], env)).code, 1);
+  assert.equal((await run(["learn", "skills", "frob", "3"], env)).code, 2);
+  assert.equal((await run(["learn", "frob"], env)).code, 2);
 });
 
 test("cli: with a person's proof, relax, scope and retire go through, and say what changed", async t => {
@@ -117,4 +119,19 @@ test("cli: with a person's proof, relax, scope and retire go through, and say wh
   assert.match((await run(["learn", "level", "1", "remind"], env)).out, /\[remind\]/);
   assert.match((await run(["learn", "retire", "1"], env)).out, /retired lesson 1/);
   assert.match((await run(["learn"], env)).out, /no lessons yet/);
+});
+
+test("cli: vyre threads with nothing to show says so and what to do, never a blank screen", async t => {
+  const root = tempHome(t);
+  fs.mkdirSync(path.join(root, "tx"));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [path.join(root, "tx")], vault: { keystore: "file" } }));
+  const env = { VYRE_HOME: root };
+  t.after(() => run(["down"], env));
+  const empty = await run(["threads"], env);
+  assert.equal(empty.code, 0);
+  assert.match(empty.out, /no Claude Code sessions on this machine yet|indexing your Claude Code sessions now/);
+  assert.match((await run(["threads", "croissant"], env)).out, /nothing said matches "croissant"/);
+  const help = await run(["threads", "--help"], env);
+  assert.equal(help.code, 0);
+  assert.match(help.out, /vyre threads \[search\]/);
 });

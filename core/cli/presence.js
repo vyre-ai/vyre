@@ -42,11 +42,12 @@ const needsProof = r => r?.error?.code === "presence_required";
  * error other than presence_required comes back as it is.
  * @param {string} tool
  * @param {any} [input]
- * @param {{ root?: string, io?: PresenceIO, tty?: boolean }} [opts] tty forces the terminal method.
+ * @param {{ root?: string, io?: PresenceIO, tty?: boolean, timeout?: number }} [opts] tty forces the terminal method.
  */
-export async function callAsPerson(tool, input = {}, { root = config.home(), io = realIO, tty = false } = {}) {
-  const as = (/** @type {string} */ proof) => call(tool, input, { root, headers: { "x-vyre-presence": proof } });
-  let r = await call(tool, input, { root });
+export async function callAsPerson(tool, input = {}, { root = config.home(), io = realIO, tty = false, timeout } = {}) {
+  const t = timeout ? { timeout } : {};
+  const as = (/** @type {string} */ proof) => call(tool, input, { root, ...t, headers: { "x-vyre-presence": proof } });
+  let r = await call(tool, input, { root, ...t });
   if (!needsProof(r)) return r;
   const methods = r.error.methods || [];
 

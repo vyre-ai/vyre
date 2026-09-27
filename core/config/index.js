@@ -48,10 +48,22 @@ export function paths(root = home()) {
  * pose as vyred. `privateSocketDir` checks that before anything uses it.
  */
 export function socketPath(root) {
-  const near = path.join(root, "vyred.sock");
+  // The real folder, so a home reached through a symlink has the same socket as its target.
+  const real = realFolder(root);
+  const near = path.join(real, "vyred.sock");
   if (Buffer.byteLength(near) <= 100) return near;
-  const hash = crypto.createHash("sha256").update(path.resolve(root)).digest("hex").slice(0, 16);
+  const hash = crypto.createHash("sha256").update(real).digest("hex").slice(0, 16);
   return path.join(sharedSocketDir(), `${hash}.sock`);
+}
+
+/** A folder's real path; for one not made yet, its nearest existing parent's real path plus the rest. */
+function realFolder(/** @type {string} */ p) {
+  const abs = path.resolve(p);
+  const rest = [];
+  for (let at = abs; ; at = path.dirname(at)) {
+    try { return path.join(fs.realpathSync(at), ...rest.reverse()); }
+    catch { if (path.dirname(at) === at) return abs; rest.push(path.basename(at)); }
+  }
 }
 
 const sharedSocketDir = () => path.join("/tmp", `vyre-${typeof process.getuid === "function" ? process.getuid() : "user"}`);
@@ -79,7 +91,8 @@ export function privateSocketDir() {
  *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any,
  *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
  *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any },
- *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> } }} Config */
+ *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> },
+ *   theme?: { colors?: { dark?: Record<string, string>, light?: Record<string, string> } } }} Config */
 
 /** Defaults: one person on one Mac, nothing enabled that needs setting up. */
 function defaults() {
