@@ -17,7 +17,7 @@
 // Views never touch the shell; they reach vyred only through js/api.js.
 
 import { h, put, link, go, back, isPhone, PHONE_QUERY } from "./dom.js";
-import { attempt, on, fromFixtures, fixturesOn } from "./api.js";
+import { attempt, on, onResume, fromFixtures, fixturesOn } from "./api.js";
 import { icon, mark } from "./icons.js";
 import * as needs from "./needs.js";
 import { when, base, initials } from "./fmt.js";
@@ -31,6 +31,7 @@ import { installPersonHandler } from "./person.js";
 import { rail, placeForKey, macKeys } from "./rail.js";
 import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
+import { followTheme } from "./theme-live.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -766,6 +767,8 @@ window.addEventListener("deck:navigate", route);
 (async () => {
   // A box that asks for a person session gets a sign-in sheet, and the call goes again once.
   installPersonHandler();
+  // The theme and scheme from the settings hub, live (ADR 0035); a box without the hub keeps /theme.css.
+  followTheme({ attempt, on, onResume });
   // What needed the user last time, from this device, while the box is asked (ADR 0029 R3).
   void needs.restore();
   const status = attempt("onboard.status");

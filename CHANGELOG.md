@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Deck follows the settings hub's theme (ADR 0035)
+
+- deck/js/theme-live.js reads settings.snapshot at start and links /theme.css with this device
+  and the hub's rev (the device only when the snapshot names it). A settings.changed for an
+  appearance.* key of this device, or a reconnect whose rev moved, swaps the link: the new sheet
+  loads beside the old one, which goes once it has loaded, so there is no reload and no flash.
+  appearance.scheme sets paper or dark ("system" follows the OS). No polling.
+- A box without the hub (settings.snapshot unknown) keeps /theme.css and this device's own scheme,
+  and is not asked again. Tests: deck/js/theme-live.test.js (7).
+
 #### The phone's avatar opens the Places sheet, and a held place becomes a fourth page (Design A v1)
 
 - Under 720 px the header's avatar ("Places and account") opens the Places sheet in the Deck's one
