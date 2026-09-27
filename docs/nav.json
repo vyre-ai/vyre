@@ -108,7 +108,8 @@
       "design/interaction.md",
       "design/iq-everywhere.md",
       "design/import.md",
-      "design/mcp-native.md"
+      "design/mcp-native.md",
+      "design/onboarding-v2.md"
     ]},
     { "title": "Design system", "pages": [
       "design/system/README.md",

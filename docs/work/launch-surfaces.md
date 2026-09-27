@@ -8,6 +8,13 @@
 - `scripts/install-box.sh` terminal experience (look only; flags, exit codes and `VYRE_NO_UP=1` unchanged).
 - Look and copy of the onboard loopback pages (core/onboard). Logic stays with sessions.
 - Brand surfaces and easter eggs listed below.
+- 0.1.1 (lead, 28 Sep): the interactive import flow in onboarding: after a device pairs, show
+  discovered Claude Code sessions (counts, date ranges, projects, dev folders unticked), let the
+  person pick and confirm once, show live three-stage progress (searchable now / understood / the
+  graph growing), let them start using Vyre right away. Full owner this time, not look-only: the
+  step's state machine too. Use "server" and "devices", not "box"/"Mac" (see below: this wording
+  is net-new, not an in-progress rename elsewhere). Work with memory-iq, federation (owned by
+  tailnet, ADR 0021) and app-design. See "The import flow" below.
 
 ## Surfaces
 
@@ -29,6 +36,36 @@
 | Deck first run | pwa | spec to hand over |
 | Phone first run | mobile | spec to hand over |
 | Capsule first run | capsule-pro | spec to hand over |
+
+## The import flow (0.1.1)
+
+What exists today (researched before writing any code):
+
+- Onboarding already has a `history` step: `core/onboard/index.js` `STEPS` (server) and
+  `deck/onboard/onboard.js` `STEPS` (UI). The UI's `history` render already shows a session count,
+  a live progress bar, and a search/checkbox picker to build a project from picked sessions, the
+  closest existing analog, but it is post-hoc project-building, not a pre-import selection screen,
+  and has no dev-folder-unticked-by-default concept.
+- Federation (tailnet, ADR 0021, `core/link/` + `core/modules/federate.js`) already federates
+  session data across a paired device (`recall.sessions`, `projects.catalog` with a `machines`
+  param) and can answer session counts per source, but not yet a per-project/date-range breakdown
+  for a single newly-paired device, which this flow needs for the picker.
+  federation.md flags onboarding's history meter as a known gap: it reads only the local
+  `recall.status` today, ignoring a paired device's sessions.
+- memory-iq (ADR 0023, `core/memory/personal/*`) is personal-fact extraction today
+  (`memory.answer`), not a session-import/graph-progress signal. Nothing exists yet for
+  "searchable now / understood / the graph growing" as an onboarding-visible state machine.
+- "Server" and "devices" is new wording, not an in-progress rename: zero hits for it anywhere in
+  docs today. Scoping this rename to the import flow's own copy, not a repo-wide pass.
+- Reusable UI: `progressRow(label, state, note, since)` in `deck/onboard/onboard.js` already
+  renders a todo/doing/done/failed checklist row with a spinner/check and elapsed time: a
+  straight fit for the three progress stages, not built from scratch.
+
+Needed from others before building the state machine (asked, see Needs from others): a
+per-project/date-range session-discovery tool from federation/tailnet, and an import-progress
+signal (or the three stages modeled as onboard-local state, if memory-iq has no such signal yet)
+from memory-iq. Look/copy and the picker UI can start without waiting; the live-progress wiring
+needs an answer first.
 
 ## Easter eggs (for the lead's list; keep quiet publicly)
 
@@ -111,14 +148,83 @@ Filled in as each lands.
   label's underlying text was already sentence case, so this was CSS-only, no copy rewrites
   needed. Screenshotted the single theme the landing page has (it's dark-only, no light/paper
   mode in site/ at all, unlike the docs/brand art or the app itself).
+- app-design's re-review confirmed btn/chip/dtab/404.html and agreed on `.lbl` (citing
+  `docs/design/one-app/project/vyre.css` as the canonical board CSS and `docs/design/system/`
+  as the system of record over root-level TOKENS.md). Caught two more: `.lbl` should be weight
+  600, not the 400 used in the first pass (fixed in `site/styles.css`, `site/404.html`,
+  `deck/onboard/onboard.css`'s `.progress .state`); and `.dtab[aria-pressed="true"]`'s selected
+  text was lime (`--signal`), a pre-existing nit (not from this session) that tabs.md/chip.md say
+  should be neutral text with only the ring/fill carrying colour. Fixed to `--bone`.
+- The user asked for a cheap-opportunities list (top 8, sent to the lead, not in this doc since it
+  wasn't a build ask). Lead greenlit 4 for rc.2, gave item 2 (GitHub social-preview upload) to
+  the user directly since only the repo owner can do it, and deferred the rest to 0.1.1:
+  - OS-aware install-tab default (Mac on a Mac, Linux box otherwise), remembered per visitor
+    after their first real choice. `app.js`'s OS guess checks both `navigator.platform` and the
+    UA string (the first pass checked platform only and tested wrong under a `--user-agent`
+    override in headless Chrome, since Chrome doesn't always change `navigator.platform` to
+    match). Verified with real Mac and Linux UA strings on testbox; the remember path is a
+    straightforward `localStorage` get/set already wrapped in `try`/`catch`, verified by code
+    review rather than a scripted browser test (no harness exists for `site/app.js`).
+  - `site/robots.txt`, `site/sitemap.xml`: added, neither existed.
+  - `theme-color`: already present on all three pages, turned out to need nothing.
 
 ## Doing
 
-- Nothing in progress right now.
+- Built onboarding-v2 step 4 (import your sessions) against memory-iq's docs/design/import.md
+  spec plus the lead's later decisions (sync checkbox unticked, Fast/Gentle pace neither
+  preselected, 30-day Claude Code retention note): `deck/onboard/onboard.js`'s `history()`
+  rewritten into Discover/Choose/Watch, `core/onboard/loopback.js`'s tool allowlist extended
+  (`import.scan/plan/start/status`, `memory.answer`), fixtures added
+  (`deck/fixtures/import.json`, a `memory.answer` entry in `deck/fixtures/memory.json`). Then
+  memory-iq shipped `core/import/` for real (959e8e2f) with shapes that differed from the design
+  doc's guess (two-level scan: source then folders, suggested/why on the folder; plan.folders is
+  the path array, not a count; status has no "upload" stage and graph is a live count, not a
+  done/total); corrected the UI and the fixture to match. `import.start` still does not exist
+  (waits on federation's transport), so it still degrades through the missing-module pattern.
+  Not yet screenshot-verified with fixtures (`?fixtures=1`): would need a temp vyred + browser
+  session on the test box, deferred as disproportionate effort while the contract keeps moving;
+  `test/onboard*.test.js` (16/16) confirms the daemon/loopback side is unaffected.
+- Terminology sweep for ADR 0038 (server/device, no "box"): `site/index.html`,
+  `site/start/index.html`, `README.md`, `scripts/install-box.sh`'s terminal copy. Left URL paths
+  and one literal quote of `vyre up`'s live CLI menu text alone (the CLI itself has not renamed
+  that string), and left `role: "box"` config/status output alone (the ADR keeps it for 0.1.1,
+  that rename is platform/native-core's). Updated `core/names/system.test.js`'s two assertions
+  that matched install-box.sh's exact old wording.
+- `docs/design/onboarding-v2.md` updated: the lead's "one onboarding for every device" scoping
+  decision, a new step 7 (Vyre Drive, not designed yet), renumbered phone/Capsule to 8/9, and
+  app-design's three new boards noted against their steps.
+- `test/journey.test.js` failed on this branch at journey 1's very first `vyre up` (before
+  onboarding's browser is ever reached, "vyred is already running" / "onboarding is not
+  available: links are made only from the box's own terminal"), which looks like pre-existing
+  test-environment state, not this change; did not chase further since it is e2e's suite.
+
+- Applied memory-iq's two follow-ups: the ask box calls `memory.ask` (not `memory.answer`,
+  which can't see freshly-imported sessions), handling `abstained`/`known`/`limited`/`sources`;
+  the Choose screen reads real `import.plan` pace estimates and `import.scan`'s
+  `claude_keeps_days` instead of placeholder copy; Discover now notes `left_out` counts.
+  `core/onboard/loopback.js`'s allowlist swapped accordingly.
+- `test/journey.test.js`: e2e confirmed the failure was a real, unrelated Mac-only bug (a caller
+  check leaving vyred's socket blocking on a large answer), already fixed on `work/e2e-peerfix`
+  and heading into rc.2. Not mine, no action needed.
+- tailnet is being revived (the lead, 29 Sep) to work on Tailscale install/onboarding
+  simplicity. Messaged it directly (not waiting) about steps 1-2 and `install-box.sh`; no reply
+  yet.
+- Landing page: the "Make it yours" section now tells the module story (Capsule/Glass/memory/
+  vault as pieces, `vyre module new`), on top of the earlier terminology pass.
+- Three more onboarding steps: `secrets` and `drive` stubbed ("Coming soon" cards); `computers`
+  ("Agent computers": Off/Browser only/Browser + desktops) fully built, server sizes as
+  placeholders pending glass-live's `docs/design/agent-browsers.md` and e2e's measurements.
+  `docs/design/onboarding-v2.md` now documents ten steps; the client `STEPS` array still has
+  nine (noted as unreconciled).
 
 ## Next
 
-- Nothing blocking.
+- Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
+- Start building the step-shell's new pieces (per-step celebration, the final summary) once more
+  steps exist to celebrate; premature to scaffold against only 5 of 9 steps today.
+- Coordinate with tailnet once it replies about steps 1-2 and install-box.sh.
+- Reconcile the client STEPS array's 9 entries against onboarding-v2.md's 10-step table.
+- Design step 7 (Vyre Drive) once federation's options and the user's choices come back.
 
 ## Needs from others
 
@@ -132,6 +238,23 @@ Filled in as each lands.
   canvas.json, e95897c3). Left launch's .html sources as-is rather than trying to reconcile two
   branches; worth cleaning up docs/brand/ to point at or drop in favour of the canvas boards once
   both branches are merged.
+- ~~federation: per-project/date-range session breakdown~~ answered: memory-iq's `import.scan`
+  covers this for real now (core/import/, 959e8e2f).
+- ~~federation: standalone flow or an entry point into onboarding-v2?~~ answered by the lead: one
+  onboarding for every device (docs/design/onboarding-v2.md "One onboarding for every device").
+- vault (onboarding-v2 step 5 and part of step 6): tool shapes for discovering and importing
+  secrets per source (`.env`, shell exports, password managers, Chrome, SSH keys, MCP/Claude env).
+  app-design's sent the step 5 board (`VaultImport.dc.html`, 19a96abd) ahead of the tool shapes;
+  asked; not yet answered.
+- connectors (onboarding-v2 step 6): confirm scope, which existing connector flows this step
+  wraps. app-design's `Connections.dc.html` (db3dbbfa) is available if it helps.
+- app-design: still owed the step-shell's shared progress/celebration board (the step 5 and
+  step 4 boards landed).
+- mobile: confirm step 8 (phone pairing, renumbered from 7) is fine as a stub for 0.1.1.
+- federation: step 7's drafted Vyre Drive options, once the lead brings the user's decisions
+  back; step 2's existing-server detection contract for the "add this device" path.
+- windows: `docs/using/windows.md` (in progress) needs to cover what onboarding-v2 step 2 points
+  a fresh Windows PC at for install.
 
 ## Changed contracts
 

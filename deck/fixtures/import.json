@@ -1,0 +1,86 @@
+{
+  "import.scan": {
+    "sources": [
+      {
+        "id": "src_claude",
+        "path": "~/.claude/projects",
+        "kind": "claude",
+        "sessions": 214,
+        "bytes": 18900000,
+        "from": "$ago:180d",
+        "to": "$ago:1h",
+        "folders": [
+          {
+            "cwd": "/Users/alex/Work/harlow-site",
+            "sessions": 96,
+            "bytes": 8100000,
+            "from": "$ago:170d",
+            "to": "$ago:1h",
+            "project": "harlow-legal",
+            "name": "Harlow Legal",
+            "suggested": true
+          },
+          {
+            "cwd": "/Users/alex/Work/northwind",
+            "sessions": 78,
+            "bytes": 6400000,
+            "from": "$ago:120d",
+            "to": "$ago:2d",
+            "project": "northwind-bakery",
+            "name": "Northwind Bakery",
+            "suggested": true
+          },
+          {
+            "cwd": "/Users/alex/Code/vyre",
+            "sessions": 40,
+            "bytes": 4400000,
+            "from": "$ago:90d",
+            "to": "$ago:3d",
+            "suggested": false,
+            "why": "work on Vyre itself"
+          }
+        ]
+      },
+      {
+        "id": "src_archive",
+        "path": "~/Archive/claude-2025",
+        "kind": "archive",
+        "sessions": 96,
+        "bytes": 7400000,
+        "from": "$ago:400d",
+        "to": "$ago:190d",
+        "folders": [
+          {
+            "cwd": "/Users/alex/Work/harlow-site-old",
+            "sessions": 96,
+            "bytes": 7400000,
+            "from": "$ago:400d",
+            "to": "$ago:190d",
+            "project": "harlow-legal",
+            "name": "Harlow Legal",
+            "suggested": true
+          }
+        ]
+      }
+    ],
+    "left_out": { "vyre": 40, "excluded": 3 },
+    "capped": false,
+    "claude_keeps_days": 30
+  },
+  "import.plan": {
+    "plan": "plan_sample",
+    "sessions": 270,
+    "bytes": 21900000,
+    "folders": ["/Users/alex/Work/harlow-site", "/Users/alex/Work/northwind", "/Users/alex/Work/harlow-site-old"],
+    "pace": { "turns": 1095, "usd": 0.33, "fast": { "hours": 1 }, "gentle": { "days": 2 } }
+  },
+  "import.start": { "run": "run_sample", "sessions": 270, "mode": "once", "pace": "fast" },
+  "import.status": {
+    "upload": { "done": 270, "total": 270, "failed": 0, "quarantined": 2, "state": "done", "mode": "once", "pace": "fast" },
+    "search": { "done": 270, "total": 270 },
+    "meaning": { "done": 180, "total": 270 },
+    "graph": { "people": 6, "orgs": 2, "facts": 22, "sessions": 96 },
+    "personal": { "done": 40, "total": 96 },
+    "searchable_sessions": 270
+  }
+}

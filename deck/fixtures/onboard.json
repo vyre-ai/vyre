@@ -135,6 +135,22 @@
   "onboard.tailscale": {
     "$by": "action",
     "cases": {
+      "policy": {
+        "ready": true,
+        "why": null,
+        "policy": {
+          "nodeAttrs": [{ "target": ["alex-box"], "attr": ["drive:share"] }],
+          "grants": [
+            { "src": ["autogroup:member"], "dst": ["alex-box"], "app": { "tailscale.com/cap/files": [{}] } },
+            { "src": ["autogroup:member"], "dst": ["tag:vyre-owner"], "ip": ["22"] }
+          ],
+          "ssh": [{ "action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self"], "users": ["autogroup:nonroot"] }]
+        },
+        "notes": [
+          "Merges Taildrive, Taildrop and SSH; egress joins once a device turns it on.",
+          "Paste this into Access Controls in the Tailscale admin console."
+        ]
+      },
       "lock": {
         "enabled": false,
         "nodeKey": "tlpub:b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",

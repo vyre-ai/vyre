@@ -221,6 +221,45 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Tests: fake IMAP and SMTP servers, a fake Apps Script web app (it runs the real script), two
   instances of one MCP server with their own credentials.
 
+#### Three more onboarding steps: secrets and Vyre Drive stubbed, Agent computers built
+
+- deck/onboard/onboard.js's client STEPS array grows from 6 to 9: `secrets` and `drive` are stubs
+  (a "Coming soon" card, Skip/Continue, no backend yet: vault hasn't sent tool shapes, federation
+  is still drafting Vyre Drive's options with the user), `computers` ("Agent computers") is a
+  full build, the lead's Off / Browser only / Browser + desktops choice, with server-size numbers
+  left as "still measuring" placeholders since Glass's backend (docs/design/agent-browsers.md)
+  doesn't exist yet. None of the three call a server tool to save the choice: `stepState()`
+  already defaults an unknown step id to "todo" and `mark_()` only tries the server when a step
+  is skipped, so a client-only step marks, skips and counts toward the step bar and the total
+  correctly today, and will save for real once each owning team's tool lands, no shell rework
+  needed.
+
+
+#### Onboarding's session-import step: discover, choose, watch (0.1.1, provisional)
+
+- deck/onboard/onboard.js's `history` step rewritten from the old post-hoc project-picker into
+  the three screens docs/design/import.md (memory-iq) and docs/design/onboarding-v2.md spec:
+  Discover (`import.scan`, sources with counts/size/date range, dev/Vyre folders unticked with
+  the reason), Choose (`import.plan`, a "Keep them in sync" checkbox unticked by default, a
+  Fast/Gentle reading-pace choice with neither preselected, and the 30-day Claude Code retention
+  note: Vyre never changes Claude Code's own settings, it only explains why to import now),
+  Watch (`import.status`, polled every 5 s, three plain-language stages via the existing
+  `progressRow()` component, and a question box wired to `memory.answer` as soon as the first
+  sessions are searchable).
+- core/onboard/loopback.js: added `import.scan`, `import.plan`, `import.start`, `import.status`
+  and `memory.answer` to the onboarding page's tool allowlist (`TOOLS`), the same way
+  `projects.catalog`/`recall.status` were already let through.
+- deck/fixtures/import.json (new) and a `memory.answer` entry added to deck/fixtures/memory.json,
+  sample world, so the new screens render with `?fixtures=1` before memory-iq's tools exist.
+- Provisional: memory-iq had not shipped `import.*` yet at the time of this commit (checked their
+  branch), so every call degrades through the existing `empty()`/missing-module pattern; nothing
+  breaks today, and it lights up once they ship. `import.start`'s `pace` field is not in
+  memory-iq's spec; flagged to them as a needed addition. Not yet screenshot-verified against
+  fixtures (proportionate to how provisional the underlying contract still is);
+  `test/onboard*.test.js` (16/16) still green, confirming the daemon/loopback side is untouched.
+  Server-side `history` step "done" detection (core/onboard/index.js) intentionally left as-is
+  this round, to avoid destabilizing its existing test coverage before the real contract lands.
+
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at
@@ -503,7 +542,9 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   "Sentence case everywhere: titles, buttons, labels, menus. No caps labels and no letter-spaced
   mono captions"; TOKENS.md's older role is being retired). Changed to the meta step in Sans
   (12/16, no tracking), matching the rest of the file's `.progress .x span + span`. The text it
-  shows ("failed", or a timing string) was already sentence case.
+  shows ("failed", or a timing string) was already sentence case. Weight 600, not 400: the first
+  pass at this fix got the weight wrong; app-design's re-review caught it against the canon,
+  `docs/design/one-app/project/vyre.css`'s `.lbl`.
 
 #### Mail rows in the Capsule (connectors 8be461a9)
 

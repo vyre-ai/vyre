@@ -80,22 +80,22 @@
               </button>
             </div>
             <div class="itabs" role="tablist" aria-label="Where you install Vyre">
-              <button class="itab" type="button" role="tab" id="h-tab-linux" aria-controls="h-pan-linux" aria-selected="true">Linux box</button>
+              <button class="itab" type="button" role="tab" id="h-tab-linux" aria-controls="h-pan-linux" aria-selected="true">Linux server</button>
               <button class="itab" type="button" role="tab" id="h-tab-mac" aria-controls="h-pan-mac" aria-selected="false" tabindex="-1">Mac</button>
               <button class="itab" type="button" role="tab" id="h-tab-needs" aria-controls="h-pan-needs" aria-selected="false" tabindex="-1">What it needs</button>
             </div>
             <div class="ipanel" role="tabpanel" id="h-pan-linux" aria-labelledby="h-tab-linux" tabindex="0">
-              <p>Run the line above on your Linux box. It needs Docker (the installer asks before adding it), sets up in <code>/srv/vyre</code>, then hands you your onboarding link. The rest happens in your browser.</p>
+              <p>Run the line above on your Linux server. It needs Docker (the installer asks before adding it), sets up in <code>/srv/vyre</code>, then hands you your onboarding link. The rest happens in your browser.</p>
             </div>
             <div class="ipanel" role="tabpanel" id="h-pan-mac" aria-labelledby="h-tab-mac" tabindex="0" hidden>
               <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-hero-mac">npm install -g https://vyre.run/box/vyre.tgz</code><button class="btn btn-line btn-sm copy" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" data-copy-target="cmd-hero-mac" aria-label="Copy the Mac install command">Copy</button></div>
               <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-hero-up">vyre up</code><button class="btn btn-line btn-sm copy" type="button" data-copy="vyre up" data-copy-target="cmd-hero-up" aria-label="Copy vyre up">Copy</button></div>
-              <p>Vyre is not on npm yet, so it installs from the same tarball the box uses.</p>
+              <p>Vyre is not on npm yet, so it installs from the same tarball the server uses.</p>
             </div>
             <div class="ipanel" role="tabpanel" id="h-pan-needs" aria-labelledby="h-tab-needs" tabindex="0" hidden>
               <ul class="needs">
                 <li><span class="lbl">Mac</span><span>Node 22.5 or newer</span></li>
-                <li><span class="lbl">Linux box</span><span>Docker Compose 2.24 or newer</span></li>
+                <li><span class="lbl">Linux server</span><span>Docker Compose 2.24 or newer</span></li>
                 <li><span class="lbl">Claude</span><span>A subscription or an API key</span></li>
                 <li><span class="lbl">Network</span><span>Tailscale (the free plan is enough)</span></li>
               </ul>
@@ -274,7 +274,7 @@
           <div class="t rv">
             <p class="lbl num"><span>03</span>Vault and connections</p>
             <h2 id="vault-h" class="h1">Every account, one place.</h2>
-            <p class="body">Keep logins with their one-time codes, and your API keys, in one vault on your own box. Agents use a credential without ever seeing it.</p>
+            <p class="body">Keep logins with their one-time codes, and your API keys, in one vault on your own server. Agents use a credential without ever seeing it.</p>
             <dl class="feats">
               <div><dt>Connect once</dt><dd>Connect Google and your other accounts once. Every agent can use them, with your permission.</dd></div>
               <div><dt>Sealed values</dt><dd>No vault value shows on any screen, log or event.</dd></div>
@@ -287,7 +287,7 @@
             <div class="vault-row"><span class="nm">Northwind payments<span class="k">API key</span></span><span class="val">never shown</span><span class="use">used by kit</span></div>
             <div class="vault-row"><span class="nm">Google<span class="k">Connection &#183; mail, calendar, drive</span></span><span class="val sig-t">connected</span><span class="use">juno, kit</span></div>
             <div class="vault-row" data-share><span class="nm">harlow-site env<span class="k">Env set &#183; 9 keys</span></span><span class="val" data-share-state>shared with Harlow Legal</span><span class="use"><button class="btn btn-line btn-sm" type="button" data-revoke aria-label="Revoke the harlow-site env share">Revoke</button></span></div>
-            <div class="vault-foot" data-share-note>A shared item keeps its value on your box. Revoke ends access at once.</div>
+            <div class="vault-foot" data-share-note>A shared item keeps its value on your server. Revoke ends access at once.</div>
           </div>
         </div>
       </section>
@@ -385,11 +385,12 @@
         <div class="split">
           <div class="t rv">
             <p class="lbl num"><span>06</span>Make it yours</p>
-            <h2 id="yours-h" class="h1">Open source, and built to be changed.</h2>
-            <p class="body">Vyre is a Claude Code plugin plus one small daemon. It plugs into Claude Code the way any plugin does and never forks it, so each time Claude Code gets better, Vyre does too.</p>
+            <h2 id="yours-h" class="h1">Open source, and built from pieces.</h2>
+            <p class="body">Vyre is a Claude Code plugin plus one small daemon, built as modules: Capsule, Glass, memory, the vault, each its own piece with its own switch. Turn off what you don't use, and every piece talks to the others only through the same open door you'd use yourself.</p>
             <dl class="feats">
               <div><dt>One settings page</dt><dd>Every setting in one place, on your Deck.</dd></div>
               <div><dt>Modules</dt><dd>Switch the parts you use on, and the rest off.</dd></div>
+              <div><dt>Build your own</dt><dd><code>vyre module new</code> scaffolds one: a tool, a setting, a Now card, tested in minutes.</dd></div>
               <div><dt>Stays current</dt><dd><code>vyre update</code> brings the latest release. <code>vyre update --rollback</code> takes you back.</dd></div>
               <div><dt>Apache 2.0</dt><dd>Read every line, change what you like, send it back if you want.</dd></div>
             </dl>
@@ -457,11 +458,11 @@
           </details>
           <details>
             <summary>Where does my data live?</summary>
-            <p>On your box and your Mac. vyre.run only holds one DNS record for your name, so your address can find your box. None of your sessions, memory or vault pass through it.</p>
+            <p>On your server and your Mac. vyre.run only holds one DNS record for your name, so your address can find your server. None of your sessions, memory or vault pass through it.</p>
           </details>
           <details>
             <summary>Do I need a server?</summary>
-            <p>A Linux box with Docker is the best home for Vyre, since your agents keep working when your Mac sleeps. You can also start on your Mac and add a box later.</p>
+            <p>A Linux server with Docker is the best home for Vyre, since your agents keep working when your Mac sleeps. You can also start on your Mac and add a server later.</p>
           </details>
           <details>
             <summary>Does it replace Claude Code?</summary>
@@ -469,7 +470,7 @@
           </details>
           <details>
             <summary>What is Tailscale for?</summary>
-            <p>Tailscale joins your box, your Mac and your phone into one private network. Your address only opens from devices on it, and Tailscale already knows it&#39;s you, so there is no separate login. The free plan is enough.</p>
+            <p>Tailscale joins your server, your Mac and your phone into one private network. Your address only opens from devices on it, and Tailscale already knows it&#39;s you, so there is no separate login. The free plan is enough.</p>
           </details>
           <details>
             <summary>Is it ready?</summary>
@@ -477,7 +478,7 @@
           </details>
           <details>
             <summary>Does it run on Windows?</summary>
-            <p>Not yet. The box runs on Linux and the Capsule on macOS. The Deck opens in any browser on your network.</p>
+            <p>Not yet. The server runs on Linux and the Capsule on macOS. The Deck opens in any browser on your network.</p>
           </details>
         </div>
       </div>
@@ -499,22 +500,22 @@
             </button>
           </div>
           <div class="itabs" role="tablist" aria-label="Where you install Vyre">
-            <button class="itab" type="button" role="tab" id="e-tab-linux" aria-controls="e-pan-linux" aria-selected="true">Linux box</button>
+            <button class="itab" type="button" role="tab" id="e-tab-linux" aria-controls="e-pan-linux" aria-selected="true">Linux server</button>
             <button class="itab" type="button" role="tab" id="e-tab-mac" aria-controls="e-pan-mac" aria-selected="false" tabindex="-1">Mac</button>
             <button class="itab" type="button" role="tab" id="e-tab-needs" aria-controls="e-pan-needs" aria-selected="false" tabindex="-1">What it needs</button>
           </div>
           <div class="ipanel" role="tabpanel" id="e-pan-linux" aria-labelledby="e-tab-linux" tabindex="0">
-            <p>Run the line above on your Linux box. It needs Docker (the installer asks before adding it), sets up in <code>/srv/vyre</code>, then hands you your onboarding link.</p>
+            <p>Run the line above on your Linux server. It needs Docker (the installer asks before adding it), sets up in <code>/srv/vyre</code>, then hands you your onboarding link.</p>
           </div>
           <div class="ipanel" role="tabpanel" id="e-pan-mac" aria-labelledby="e-tab-mac" tabindex="0" hidden>
             <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-end-mac">npm install -g https://vyre.run/box/vyre.tgz</code><button class="btn btn-line btn-sm copy" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" data-copy-target="cmd-end-mac" aria-label="Copy the Mac install command">Copy</button></div>
             <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-end-up">vyre up</code><button class="btn btn-line btn-sm copy" type="button" data-copy="vyre up" data-copy-target="cmd-end-up" aria-label="Copy vyre up">Copy</button></div>
-            <p>Vyre is not on npm yet, so it installs from the same tarball the box uses.</p>
+            <p>Vyre is not on npm yet, so it installs from the same tarball the server uses.</p>
           </div>
           <div class="ipanel" role="tabpanel" id="e-pan-needs" aria-labelledby="e-tab-needs" tabindex="0" hidden>
             <ul class="needs">
               <li><span class="lbl">Mac</span><span>Node 22.5 or newer</span></li>
-              <li><span class="lbl">Linux box</span><span>Docker Compose 2.24 or newer</span></li>
+              <li><span class="lbl">Linux server</span><span>Docker Compose 2.24 or newer</span></li>
               <li><span class="lbl">Claude</span><span>A subscription or an API key</span></li>
               <li><span class="lbl">Network</span><span>Tailscale (the free plan is enough)</span></li>
             </ul>
