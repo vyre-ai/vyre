@@ -1,5 +1,6 @@
-// The menu-bar mark says when something waits: the Beacon dot beside it while anything held or
-// asking waits (proposed lessons are quiet and do not count), and the menu names how many.
+// The menu-bar mark says when something waits: the mark carries the Beacon dot while anything
+// held or asking waits (proposed lessons are quiet and do not count), and the menu names how many.
+// The small corner dot stays capsule-pro's health dot (Host/MenuBar.swift); Beacon is this one.
 
 import AppKit
 import Combine
@@ -11,7 +12,9 @@ extension CapsuleApp {
         paintStatus()
         // vyred coming and going: the mark, the offline line, and the list read again (what was
         // raised while it was down is not in the stream).
+        let before = vyred.follower.onState
         vyred.follower.onState = { [weak self] st in
+            before?(st)
             guard let self else { return }
             self.health.set(up: st == .open)
             self.paintStatus()
@@ -29,8 +32,9 @@ extension CapsuleApp {
 
     func paintStatus() {
         let loud = model.desk.loud
-        status?.button?.image = loud > 0 ? Self.menuBarMarkWaiting() : Self.menuBarMark()
-        status?.button?.toolTip = !vyred.isUp ? "Vyre: vyred is not running" : loud > 0 ? "Vyre: \(loud) waiting on you" : "Vyre"
+        guard let bar = menuBar else { return }
+        bar.item.button?.image = loud > 0 ? Self.menuBarMarkWaiting() : Self.menuBarMark()
+        bar.item.button?.toolTip = "Vyre · \(health.summary)" + (loud > 0 ? " · \(loud) waiting on you" : "")
     }
 
     /// "Waiting on you · N", which opens the list; "Nothing waiting" when nothing does.

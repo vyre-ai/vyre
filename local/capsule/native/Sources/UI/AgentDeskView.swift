@@ -2,7 +2,7 @@
 //
 // Beacon for anything held or asking, quiet for a proposed lesson. The list is oldest first. A
 // mail draft is edited in place and ⌘⏎ sends exactly what the card shows; an ask or a lesson is a
-// yes or a no. Keys are the panel's (Agent/PanelKeys.swift); this view only draws.
+// yes or a no. Keys are the panel's (Agent/AgentPanelKeys.swift); this view only draws.
 
 import SwiftUI
 

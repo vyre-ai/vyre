@@ -17,7 +17,4 @@ extension CapsuleModel {
         }]
         return x
     }
-
-    /// vyred was looked for and is not there: say so, once, above what still works on this Mac.
-    var offline: Bool { !vyred.isUp && vyred.follower.isWaiting }
 }

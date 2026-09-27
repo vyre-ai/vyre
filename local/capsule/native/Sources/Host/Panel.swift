@@ -184,10 +184,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         return KeyShortcut(key, command: f.contains(.command), option: f.contains(.option), shift: f.contains(.shift), control: f.contains(.control))
     }
 
-    /// One key while shown. Internal so the driven mode (Agent/Drive.swift) can press keys in this
+    /// One key while shown. Internal so the driven mode (Agent/AgentDrive.swift) can press keys in this
     /// window alone, never system-wide.
     func key(_ e: NSEvent) -> Bool {
-        // The waiting list and its cards take their keys first (Agent/PanelKeys.swift).
+        // The waiting list and its cards take their keys first (Agent/AgentPanelKeys.swift).
         if agentKey(e) { return true }
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
         // Chords with Option or Control are the extensions' (Option-Return talks). The Capsule's own

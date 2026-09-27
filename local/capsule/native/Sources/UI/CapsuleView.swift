@@ -31,14 +31,14 @@ struct CapsuleView: View {
                     if let a = model.presenceAsk {
                         PresenceView(ask: a, hasTouchID: LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil))
                     } else if AgentLayout.deskShown(model) {
-                        // What waits on the user (the list, a card) takes the whole area while open.
+                        // What waits on the user (the list, a card) or ⌘K takes the whole area (Agent/).
                         AgentLayout.desk(model)
                     } else if model.answerAlone && side == nil {
                         // An answer alone gets the whole area, and scrolls in it.
                         ScrollView(.vertical, showsIndicators: false) { answer }
                             .frame(maxHeight: .infinity, alignment: .top)
                     } else {
-                        // The conversation with an @agent sits above the rows (Agent/, UI/Agent*).
+                        // Offline, and the conversation with an @agent above its rows (Agent/).
                         AgentLayout.above(model)
                         if model.asked != nil { answer.frame(maxHeight: 200, alignment: .top).clipped(); Rule() }
                         if model.showsMemory, let m = model.memory { MemoryLine(memory: m, expanded: $model.memoryExpanded); Rule() }

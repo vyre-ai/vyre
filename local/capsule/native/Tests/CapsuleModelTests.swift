@@ -3,6 +3,7 @@
 // CapsuleModel against FakeVyred: the memory box goes with a quick question and nothing else does,
 // and a message to a session busy in a terminal is queued, said so, and marked handed over.
 
+import AppKit
 import Foundation
 
 @MainActor private func model(_ v: FakeVyred) -> CapsuleModel {
@@ -17,6 +18,23 @@ private func until(_ cond: @escaping @MainActor () -> Bool) async -> Bool {
 }
 
 let capsuleModelSuite = Suite("capsule model") { t in
+    t.test("Enter on a sum copies the answer and closes the Capsule") {
+        let got: (String?, Bool)? = t.wait {
+            await MainActor.run { CapsuleModel.replyBoard = NSPasteboard.withUniqueName() }
+            let m = await MainActor.run { CapsuleModel(home: vyScratch("calc-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: vyScratch("nosock") + "/none.sock"), providers: []) }
+            var closed = false
+            await MainActor.run { m.onClose = { _ in closed = true }; m.text = "200 + 10%"; m.selected = 0; m.run() }
+            _ = await until { closed }
+            let s = await MainActor.run { () -> String? in
+                defer { CapsuleModel.replyBoard.releaseGlobally(); CapsuleModel.replyBoard = .general }
+                return CapsuleModel.replyBoard.string(forType: .string)
+            }
+            return (s, closed)
+        }
+        t.eq(got?.0, "220")
+        t.ok(got?.1 == true)
+    }
+
     t.test("memory on screen goes with the quick question; the prompt stays the user's words") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         let now = Date().timeIntervalSince1970 * 1000
