@@ -21,7 +21,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | --- | --- | --- | --- |
 | `name` | `string` | unset | This box's name: its address is `<name>.vyre.run`. Set by `vyre name claim`. |
 | `role` | `'box'\|'local'` | `"local" on macOS, "box" elsewhere` | `box` for the always-on server, `local` for a Mac. Decides which modules start. |
-| `projectsDir` | `string` | `"~/Vyre/projects"` | The folder new projects are made in. |
+| `projectsDir` | `string` | `"~/Vyre/projects"` | The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects`, so VyreDrive can share it; the first start there moves homes from `~/Vyre/projects` once, leaving links behind. |
 | `roots` | `string[]` | `[]` | More folders to look in for projects. |
 | `me` | `object` | see below | Who you are, so memory can tell your own people and domains from everyone else's. |
 | `me.domains` | `string[]` | `[]` | Domains that are yours. |

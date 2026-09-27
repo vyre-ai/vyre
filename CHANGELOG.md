@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A box keeps projects in /work/projects
+
+- On a box with a `/work` folder and no `projectsDir` in config.json, projects live in
+  `/work/projects`, where VyreDrive can share them. The first start moves homes out of
+  `~/Vyre/projects` once (copying across volumes), leaves a link at each old folder so Claude
+  sessions keyed by the old path still resume, rewrites the stored rows and markers, records the
+  outcome in `projects-moved.json`, and emits `projects.moved`. A Mac is unchanged.
+
 #### The hosted app may call the box from the owner's browser
 
 - The tailnet listener answers CORS for `https://app.vyre.run` (config `network.origins`), to the

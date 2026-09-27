@@ -488,7 +488,7 @@ const MEANING = {
   "theme.colors": "`{ dark: { token: colour }, light: { role: colour } }`, keys as on the design tokens page. A value that is not a plain CSS colour is ignored. Reload the Deck to see a change.",
   name: "This box's name: its address is `<name>.vyre.run`. Set by `vyre name claim`.",
   role: "`box` for the always-on server, `local` for a Mac. Decides which modules start.",
-  projectsDir: "The folder new projects are made in.",
+  projectsDir: "The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects`, so VyreDrive can share it; the first start there moves homes from `~/Vyre/projects` once, leaving links behind.",
   roots: "More folders to look in for projects.",
   me: "Who you are, so memory can tell your own people and domains from everyone else's.",
   "me.domains": "Domains that are yours.",
