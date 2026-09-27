@@ -254,3 +254,18 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   them to re-fetch. Also checked core/config/theme.js and every deck/*.css on origin/main for the
   "sanctioned wash pattern elsewhere" they held back from flagging: zero hits there too, so that
   may be stale as well. Nothing open.
+
+- Lead (connectors feedback): Connections board's grant chips were Chat/Planner/Agents, should be
+  the vault's real surfaces (Capsule/Chat/Agents/Phone). Fixed both frames (f79b6cad), re-audited
+  clean. Also asked to finish card.md and chip.md including "the Connections card row": added the
+  Connections card as a named variant in card.md (the account-row grown into a card: the row, a
+  "Granted to" filter-chip row per surface, a footer with "Wrong account?" and the connected date)
+  and the surface-grant chip as a named filter-chip use in chip.md, cross-linked from
+  account-row.md both ways (f65d51e5). While in there, ran npm run docs:check and found it had
+  been failing on my own recent edits: 10 em dashes and 3 unregistered `memory.ask` mentions
+  across card.md/chip.md/result-card.md, going back to the Answer-card write-up. Fixed all of it;
+  docs:check is clean on every file I own now (265 remaining problems are pre-existing shot/
+  reference staleness, none mine). Should run docs:check after every spec edit from now on, not
+  just at the end.
+- Connectors is building the Connections card against production tokens now; watching for their
+  Deck card to review when it lands.
