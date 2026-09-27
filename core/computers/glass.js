@@ -247,8 +247,8 @@ export class Glass {
       for (const m of msgs) {
         if (INPUT.has(m.type)) {
           if (!this.keyboard.canType(agent, surface)) continue;
-          // The holder is at the keyboard: that keeps the take-over alive.
-          this.keyboard.renew?.(agent, surface);
+          // The holder is at the keyboard: that keeps the take-over alive and restarts its idle clock.
+          this.keyboard.renew?.(agent, surface, true);
         }
         // On a slow link only incremental update requests wait; input and a full-frame request
         // (the viewer has lost its picture) always go straight through.

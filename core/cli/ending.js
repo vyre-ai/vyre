@@ -16,7 +16,8 @@ export function ending({ address, assistant }) {
     address ? "  Vyre is ready." : "  Almost there: your box has no address yet.",
     "",
     `    your box        ${address || "not set up yet"}`,
-    `    your assistant  ${assistant || "not set up yet"}`,
+    // Not a dead end: the one command that makes it.
+    assistant ? `    your assistant  ${assistant}` : "    your assistant  none yet: vyre assistant <name>, e.g. vyre assistant Juno",
     "    next            vyre      (your projects and threads)",
   ];
 }

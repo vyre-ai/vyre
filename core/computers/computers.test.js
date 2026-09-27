@@ -81,6 +81,7 @@ test("computers: the manifest loads on the box with its tools and the glass stre
   const s = await boot(t);
   const tools = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("computers."));
   assert.deepEqual(tools.sort(), ["computers.checkout", "computers.egress.set", "computers.egress.status", "computers.get", "computers.giveback",
+    "computers.handback.set", "computers.handback.status",
     "computers.limits", "computers.list", "computers.pause", "computers.release", "computers.restart", "computers.resume", "computers.stop",
     "computers.tailnet.set", "computers.tailnet.status", "computers.takeover", "computers.watch"]);
   assert.equal((await s.cli("computers.endpoint", { agent: "kit" })).error.code, "no_such_tool", "an internal tool was reachable from the socket");
@@ -487,6 +488,31 @@ test("computers: tailnet.set and status are the owner's, refused to agents and t
   assert.deepEqual(saved.computers.tailnet, { enabled: true, tag: "tag:vyre-agent" });
   assert.equal(saved.computers.driver, "fake", "saving the switch dropped another computers key");
   assert.equal((await s.cli("computers.tailnet.status")).data.enabled, true);
+});
+
+test("computers: idle hand-back is 5 min by default, the owner's to change, live, and ends a take-over with why idle", async t => {
+  const s = await boot(t);
+  assert.deepEqual((await s.cli("computers.handback.status")).data, { minutes: 5, choices: [0, 2, 5, 15], warn_s: 10 });
+  assert.match((await s.kit("computers.handback.set", { minutes: 0 })).error.message, /is an agent/);
+  assert.ok((await s.cli("computers.handback.set", { minutes: 7 })).error, "a minutes value that is not a choice was saved");
+  await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
+  const ok = await s.cli("computers.handback.set", { minutes: 2 });
+  assert.equal(ok.error, undefined, JSON.stringify(ok.error));
+  assert.equal(ok.data.minutes, 2);
+  const saved = JSON.parse(fs.readFileSync(path.join(s.root, "config.json"), "utf8"));
+  assert.equal(saved.computers.handbackIdleMin, 2);
+  assert.equal(saved.computers.driver, "fake", "saving the setting dropped another computers key");
+  // The stream's pongs keep the lease (renew without input); the idle clock runs regardless.
+  s.clock.t += 60_000; s.h.keyboard.renew("kit", "glass:laptop");
+  s.clock.t += 50_000; await s.h.sweep();
+  const warn = s.events().filter(e => e.type === "computer.idle-warning");
+  assert.deepEqual(warn.map(e => e.payload), [{ agent: "kit", surface: "glass:laptop", at: 1_000 + 120_000 }]);
+  assert.equal(warn[0].thread, s.kitThread);
+  s.clock.t += 10_000; await s.h.sweep();
+  assert.deepEqual((await s.module("computers.may-act", { agent: "kit" })).data, { ok: true });
+  const back = s.events().filter(e => e.type === "computer.handed-back");
+  assert.deepEqual(back.map(e => e.payload), [{ agent: "kit", surface: "glass:laptop", why: "idle", idle_ms: 120_000 }]);
+  assert.equal((await s.cli("computers.handback.set", { minutes: 0 })).data.minutes, 0);
 });
 
 test("computers: node.agent is internal and for modules only, and knows no node that never joined", async t => {

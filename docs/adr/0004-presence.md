@@ -287,6 +287,19 @@ already carries those edits for the gate, vault, watchers, switchboard, Capsule 
 computers, glass, hands, link and CLI tests. A branch that merges after it keeps them, and adds
 the same line to any new test of that kind.
 
+## Addendum, 27 Sep 2026: device keys for the phone apps
+
+ADR 0018 adds a seventh method, `device`, for the native iOS and Android apps. A phone holds an
+ECDSA P-256 key in its Secure Enclave or StrongBox, behind a biometric prompt, and enrolls it
+with `presence.enroll {kind: "device", name, public_key, alg: -7}` under a passkey or one-time
+code proof. Its id is the key's fingerprint, as a Capsule key's is, and it has no relying party. A
+call then carries `x-vyre-presence: device key=<id> ts=<ms> nonce=<n> sig=<DER ECDSA>` over the
+Capsule's message, with the same 60-second window and the same single-use nonce set; the Capsule
+and device checks are one code path. `device` counts as a strong proof: it is offered on the box,
+and it opens `presence.session.open`. It is listed in `presence_required` methods only once a
+device key is enrolled. The floor already denies a command that writes any `x-vyre-presence`
+header, a device one included.
+
 ## Addendum, 27 Sep 2026: no proof for the keyboard
 
 The user's rule: Touch ID or a passkey only for pairing, vault secrets, and sending, posting or
