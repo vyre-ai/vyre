@@ -67,6 +67,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   this terminal or Touch ID (callAsPerson); from a Mac through the link, the Deck at the box's
   address asks for the passkey, and `vyre assistant` says so. The home screen tests start vyred
   with the test verifier, since they make an agent.
+#### Memory answers the user's own Claude Code session
+
+- A bare `mcp` caller (Vyre's MCP server with no agent: the user's own Claude Code session) may
+  call `memory.answer`, `memory.profile` and `memory.remember`, in any folder. An agent's thread
+  (`mcp:agent:<name>`, or `agent` in the input) still needs every project, and bare `harness`
+  is still refused. The main graph's other reads are unchanged.
+
+#### Memory takes a fact when it is told, and gives a profile for a prompt
+
+- `memory.remember {text, room?}` keeps a fact the user or their assistant states outright ("my
+  brother Leo lives in Denver"), with no prompt. The conversation rules read it at confidence
+  0.95. In a single-valued slot (where the user lives, a spouse's name) it outweighs everything
+  said before it, and a full re-read keeps it. A line no rule can read is kept as a note that
+  `memory.answer` finds by its words. Answers built on it cite "told to memory". It is stored in
+  the new `memory_me_told` table and emits `memory.remembered` (ids and counts only).
+- `memory.profile {limit?}` returns the user's durable facts as second-person lines for about.md
+  ("Your wife is Jordan.", "You drive a blue Volvo XC40."), each with a kind and a weight. It
+  includes only what still holds at 0.5 or more. It leaves out birthdays and dates,
+  account-like numbers, street addresses, emails and health.
+- `memory.answer` also takes `question` as another name for `q`. The three tools share one gate:
+  the user's surfaces, their tailnet devices, modules, and the assistant or an agent granted
+  every project. A project's agent is refused.
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and

@@ -243,6 +243,8 @@ What memory holds, or everything about one thing.
 vyre memory [about] [--project <slug>] [--json]
 ```
 
+Ask it:
+  vyre memory ask "<question>" [--sources]   one line about your life, from what you have said
 Change what it holds:
   vyre memory correct <fact> wrong|ended|replace|confirm [new object] [--at <date>] [--note <why>] [--project <slug>]
   vyre memory correct '<subject>|<rel>|<object>' add [--project <slug>]

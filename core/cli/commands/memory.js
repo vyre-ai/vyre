@@ -1,5 +1,6 @@
 // @ts-check
-// `vyre memory [about]`, `vyre memory correct|merge|split|pin|mute ...` and `vyre why <fact>`.
+// `vyre memory [about]`, `vyre memory ask "<question>"`, `vyre memory correct|merge|split|pin|mute ...`
+// and `vyre why <fact>`.
 // Everything shown here came from memory rather than a model, so it is drawn in the Recall gold.
 // --project <slug> reads (or corrects) one project's room; "unfiled" is the room of no project.
 
@@ -21,7 +22,7 @@ function line(f) {
 }
 
 /** Flags that take no value. */
-const BOOLEAN = new Set(["all", "off", "json"]);
+const BOOLEAN = new Set(["all", "off", "json", "sources"]);
 /** Pull --name value flags (and bare --flag) out of args. */
 function flags(args, names) {
   const rest = [], opt = /** @type {Record<string, string|true>} */ ({});
@@ -112,12 +113,31 @@ async function change(sub, args) {
 }
 const CHANGES = new Set(["correct", "corrections", "uncorrect", "merge", "split", "pin", "mute"]);
 
+/** `vyre memory ask "<question>"`: one line about the user's life, how sure, and where it came from. */
+async function ask(args) {
+  const { rest, opt } = flags(args, ["sources"]);
+  const q = rest.join(" ").trim();
+  if (!q) return usage("vyre memory ask needs a question", 'vyre memory ask "what car do I drive"');
+  const r = await call("memory.answer", { q, ...(opt.sources === true ? { sources: true } : {}) });
+  if (r.error) return fail(r);
+  const d = r.data;
+  if (json()) { emit(d); return d.answer ? 0 : 1; }
+  if (!d.answer) { out(dim("  memory does not know that yet")); return 1; }
+  out(`\n  ${bold(recall(d.answer))}`);
+  const from = d.from ? `from ${d.from} conversation${d.from === 1 ? "" : "s"}` : d.kind === "fact" ? "from your setup" : "";
+  out(dim(`  ${[d.kind === "said" ? "your own words" : null, "confidence " + d.confidence, from].filter(Boolean).join(" · ")}`));
+  for (const s of d.sources || []) out(dim(`    ${s.name || s.session.slice(0, 8)} #${s.seq}: `) + s.quote);
+  out("");
+  return 0;
+}
+
 export default [
   {
     name: "memory", order: 30, usage: "vyre memory [about] [--project <slug>] [--json]",
-    help: "Change what it holds:\n  " + USAGE.correct + "\n  vyre memory corrections [--all] · vyre memory uncorrect <id>\n  " + USAGE.merge + "\n  " + USAGE.split + "\n  vyre memory pin|mute <node> [--off]", summary: "what memory holds, or everything about one thing",
+    help: "Ask it:\n  vyre memory ask \"<question>\" [--sources]   one line about your life, from what you have said\nChange what it holds:\n  " + USAGE.correct + "\n  vyre memory corrections [--all] · vyre memory uncorrect <id>\n  " + USAGE.merge + "\n  " + USAGE.split + "\n  vyre memory pin|mute <node> [--off]", summary: "what memory holds, or everything about one thing",
     async run(args0) {
       if (CHANGES.has(args0[0])) return change(args0[0], args0.slice(1));
+      if (args0[0] === "ask") return ask(args0.slice(1));
       const { rest: args, opt } = flags(args0, ["project"]);
       const project = typeof opt.project === "string" ? { project: opt.project } : {};
       const about = args.join(" ").trim();

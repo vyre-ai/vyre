@@ -9,11 +9,18 @@
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 import { floorPlan } from "./floor.js";
+import fs from "node:fs";
 import path from "node:path";
 import { within } from "./teach.js";
+import { Personal } from "./personal/store.js";
+import { answerer } from "./personal/answer.js";
+import { profile } from "./personal/profile.js";
+import { createModelPass } from "./personal/model.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
+/** Turns the personal pass reads before it yields to the event loop. */
+const PERSONAL_BATCH = 2000;
 
 const cwds = { type: "array", items: { type: "string" } };
 
@@ -24,6 +31,49 @@ export default {
     // evaluation (docs/adr/0007-intelligence.md, decision 2). Both are off by default.
     const curator = new Curator(ctx.store.db, { me: ctx.config.me, log: ctx.log, relations: ctx.config.memory?.relations });
     const graph = new Graph(ctx.store.db, curator);
+    // Personal facts (docs/work/memory-iq.md): read after each curator pass, in batches that yield.
+    const personal = new Personal(ctx.store.db, { log: ctx.log });
+    /** Read every unread turn for personal facts, then derive if anything changed. */
+    const personalPass = async ({ full = false } = {}) => {
+      let turns = 0, claims = 0;
+      while (!stopping) {
+        const r = await personal.pass({ limit: PERSONAL_BATCH, stopped: () => stopping, full });
+        full = false;
+        turns += r.turns; claims += r.claims;
+        if (!r.more) break;
+        await new Promise(r => setImmediate(r));
+      }
+      const d = stopping ? { changed: false } : personal.derive();
+      // New turns may have left sentences no rule could read: the model pass may take them.
+      if (turns && !stopping) void model.pump();
+      return { turns, claims, changed: d.changed };
+    };
+    // What the rules cannot read goes to a budgeted haiku pass through the Switchboard, run like
+    // learn's jobs: on events only, one at a time, under a daily cost cap (config.memory.model).
+    const model = createModelPass({
+      db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log,
+      config: () => ctx.config,
+      dir: () => {
+        const root = ctx.paths && ctx.paths.root;
+        if (!root) return null;
+        const d = path.join(root, "memory-jobs");
+        try { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); return d; } catch { return null; }
+      },
+    });
+    const threadOf = e => e.thread || (e.payload && e.payload.thread);
+    const modelOffs = [
+      ctx.events.on("thread.text", e => {
+        const p = e.payload || {}, thread = threadOf(e);
+        if (p.done !== true || p.notice || p.message === "vyre" || typeof p.text !== "string" || !thread || !model.owns(thread)) return;
+        model.answered(thread, p.text).catch(err => ctx.log("memory model answer not read: " + err.message));
+      }),
+      ctx.events.on("thread.stopped", e => {
+        const thread = threadOf(e);
+        if (thread && model.owns(thread)) model.stopped(thread).catch(err => ctx.log("memory model run not closed: " + err.message));
+        else void model.pump();
+      }),
+      ctx.events.on("thread.finished", e => { const thread = threadOf(e); if (!thread || !model.owns(thread)) void model.pump(); }),
+    ];
     let running = null, again = false, stopping = false, timer = null;
     // Rooms are stored, so a restart reuses the last list; they are read again from Projects on
     // the first pass and whenever a project or a pick changes.
@@ -38,6 +88,8 @@ export default {
           again = false;
           if (roomsStale) { roomsStale = false; await syncRooms().catch(e => ctx.log("could not read projects: " + e.message)); }
           result = await curator.curate({ ...opts, stopped: () => stopping });
+          try { result.personal = await personalPass({ full: Boolean(opts.full) }); }
+          catch (e) { ctx.log("personal facts failed: " + /** @type {Error} */ (e).message); }
           opts = {};
           if (result.changed) ctx.events.emit("memory.curated", { nodes: result.nodes, edges: result.edges, ms: result.ms, updated: curator.updated() });
         } while (again && !stopping);
@@ -56,7 +108,7 @@ export default {
     // before it is read again. A grown one only needs its new turns, which the cursor finds.
     const off = ctx.events.on("session.indexed", e => {
       const p = e.payload || {};
-      if (p.rewritten && p.session) curator.reset(String(p.session));
+      if (p.rewritten && p.session) { curator.reset(String(p.session)); personal.reset(String(p.session)); }
       soon();
     });
     // A project made, changed or a thread picked changes the rooms.
@@ -247,8 +299,8 @@ export default {
       return run(input, extra);
     });
     /** Reading corrections: the owner's surfaces, or the user on a tailnet device. Never an agent. */
-    const readerOnly = run => ownerOnly(async (input, extra = {}) => {
-      if (!reader(extra.caller)) throw denied(`memory.corrections is for the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`);
+    const readerOnly = (run, name = "memory.corrections") => ownerOnly(async (input, extra = {}) => {
+      if (!reader(extra.caller)) throw denied(`${name} is for the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`);
       return run(input, extra);
     });
     /** The scope a correction applies in: a room's slug, or '*' for everywhere. */
@@ -303,6 +355,66 @@ export default {
       description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones.",
       input: { type: "object", properties: { all: { type: "boolean" }, ...roomField } },
       run: readerOnly(async input => curator.corrections({ scope: roomOf(input), all: Boolean(input.all) })),
+    });
+    // Personal facts are the user's, not a project's: owner surfaces and the user's tailnet
+    // devices read them; agents never do.
+    ctx.tool("memory.me", {
+      description: "What memory knows about the user and the people and things in their life: facts like \"your wife is Jordan\", each with confidence, how many conversations said it and whether it still holds. about names one of them (\"my wife\", \"Jordan\", \"car\"); without it, the strongest facts.",
+      input: { type: "object", properties: { about: { type: "string" }, limit: { type: "integer" } } },
+      run: readerOnly(async ({ about, limit }) => {
+        const n = Math.min(200, Math.max(1, limit ?? 50));
+        if (about) {
+          const a = personal.about(String(about));
+          return { about: a ? { ...a.entity, aliases: a.aliases } : null, facts: a ? [...a.links, ...a.facts].slice(0, n) : [] };
+        }
+        return { about: null, facts: personal.facts({ limit: n }) };
+      }, "memory.me"),
+    });
+    // One line about the user's life from what they have said (docs/work/memory-iq.md). Personal
+    // facts are the user's, not a project's: the user's surfaces, their tailnet devices, modules,
+    // and the assistant or an agent granted every project ask it; a project's agent is refused.
+    /**
+     * Personal facts are the user's, not a project's: the user's surfaces, their tailnet devices,
+     * modules, and the assistant or an agent granted every project. A project's agent is refused.
+     */
+    // A bare "mcp" caller is the user's own Claude Code session (an agent's thread says
+    // mcp:agent:<name>), so it asks about the user's life as the user's surfaces do.
+    const personalOnly = async (input, caller, name) => {
+      const r = await reach(input.agent, caller);
+      if (r.agent ? !r.all : !(reader(caller) || String(caller) === "mcp")) {
+        throw denied(r.agent ? `personal facts are not a project's: ${r.agent} is granted only some projects` : `${name} is for the user's own surfaces and agents granted every project, not ${plain(caller || "an unnamed caller", 60)}`);
+      }
+    };
+    const answer = answerer({ personal, graph, db: ctx.store.db, me: ctx.config.me || null, call: (tool, input) => ctx.call(tool, input),
+      scratch: ctx.paths?.root ? path.join(String(ctx.paths.root), "capsule", "ask") : null });
+    ctx.tool("memory.answer", {
+      description: "Answer a question about the user's own life in one line (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\") from personal facts, the graph, then the user's own words. Returns { answer, confidence, kind: fact|said|null, from (conversations), facts, sources, via: fact|meaning|keyword|null, ms }; answer is null when memory does not know. sources: true lists more of the turns it came from.",
+      input: { type: "object", properties: { q: { type: "string" }, question: { type: "string", description: "the same as q" }, project_cwds: cwds, ...roomField, sources: { type: "boolean" }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        await personalOnly(input, caller, "memory.answer");
+        return answer({ q: String(input.q ?? input.question ?? ""), project_cwds: clean(input.project_cwds), sources: Boolean(input.sources) });
+      },
+    });
+    ctx.tool("memory.profile", {
+      description: "The user's durable facts as short lines for a system prompt (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\"): only what still holds at confidence 0.5 or more, and nothing sensitive (no dates, account-like numbers, addresses or health). Returns { facts: [{ text, kind: person|place|vehicle|work|client|preference|other, weight, id, rel, from }] }, strongest first.",
+      input: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 50 }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        await personalOnly(input, caller, "memory.profile");
+        if (running) await running.catch(() => {});
+        return profile(personal, { limit: input.limit ?? 12 });
+      },
+    });
+    // Told outright, by the person or their assistant: kept at once, no prompt (the no-nag rule).
+    ctx.tool("memory.remember", {
+      description: "Keep a fact the user or their assistant states outright (\"my wife is Jordan\", \"I moved to Lisbon\"). No confirmation. It is read like a conversation at confidence 0.95 and kept as a note either way, so memory.answer finds a line no rule reads by its words. room is kept as where it was said; personal facts are not a project's. Returns { id, text, facts: [{ id, subject, rel, object, confidence }] }.",
+      input: { type: "object", properties: { text: { type: "string" }, room: { type: "string" }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        await personalOnly(input, caller, "memory.remember");
+        if (running) await running.catch(() => {});
+        const r = personal.remember(String(input.text ?? ""), { room: typeof input.room === "string" && input.room ? input.room : null, who: caller ? plain(caller, 60) : null });
+        ctx.events.emit("memory.remembered", { id: r.id, facts: r.facts.length });
+        return { id: r.id, text: r.text, facts: r.facts.map(f => ({ id: f.id, subject: f.subject, rel: f.rel, object: f.object, confidence: f.confidence })) };
+      },
     });
     ctx.tool("memory.uncorrect", {
       callers: OWNERS,
@@ -361,7 +473,7 @@ export default {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",
       input: { type: "object", properties: { ...agentField } },
       // Counts over everything are the main graph's.
-      run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { tailnet: true }), graph.stats()),
+      run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { tailnet: true }), { ...graph.stats(), personal: { ...personal.stats(), model: model.status() } }),
     });
 
     return {
@@ -370,6 +482,7 @@ export default {
         clearTimeout(timer);
         off();
         for (const o of offs) o();
+        for (const o of modelOffs) if (typeof o === "function") o();
         if (running) await running.catch(() => {});
       },
     };
