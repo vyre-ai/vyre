@@ -321,3 +321,68 @@ test("connections: several email accounts, one list, granted per surface", async
   const listing = JSON.stringify(ok(await cli("vault.connections.list")));
   for (const f of ["imap_host", "smtp_port", "username", "\"value\""]) assert.ok(!listing.includes(f), `a field name (${f}) in a listing`);
 });
+
+const FAKE_MCP = path.join(import.meta.dirname, "..", "mcp", "testing", "fake-mcp.js");
+const stdio = (name, log) => ({ name, transport: "stdio", command: process.execPath, args: [FAKE_MCP, "--stdio"], vars: { FAKE_MCP_LOG: log } });
+
+test("connections: google.accounts and mcp.servers are read on their events; registered rows are left alone", async t => {
+  const { root, d, as, inproc, events } = await boot(t);
+  const cli = as("cli"), capsule = as("capsule");
+  const google = inproc("module:google"), mail = inproc("module:mail");
+  const ok = r => { assert.ok(!r.error, JSON.stringify(r.error)); return r.data; };
+  const rows = async (caller = cli) => ok(await caller("vault.connections.list")).connections;
+  const find = async (source, ref) => (await rows()).find(r => r.source === source && r.ref === ref);
+
+  // A Google account whose service-account item is the account's, not a vault row of its own.
+  ok(await cli("vault.put", { name: "google-northwind-sa", kind: "api-key", fields: { value: hex(20) }, details: { provider: "google-dwd" } }));
+  assert.ok(await find("vault", "google-northwind-sa"));
+  ok(await cli("vault.grant", { name: "google-northwind-sa", module: "google" }));
+  ok(await cli("google.add", { name: "northwind", email: "kit@northwind.test", auth: { type: "service-account", item: "google-northwind-sa" } }));
+  let g = await find("google", "northwind");
+  assert.ok(g, "google.added resynced the google rows");
+  assert.match(g.id, ID);
+  assert.deepEqual({ provider: g.provider, account: g.account, auth: g.auth, state: g.state, surfaces: g.surfaces },
+    { provider: "google-dwd", account: "kit@northwind.test", auth: "service-account", state: "ready", surfaces: ["capsule", "chat"] });
+  assert.deepEqual(g.capabilities, ["send_mail", "read_mail", "calendar"]);
+  assert.deepEqual(g.uses, { send_mail: { tool: "mail.send", input: { account: g.id } }, read_mail: { tool: "mail.search", input: { account: g.id } },
+    calendar: { tool: "google.calendar.list", input: { account: "northwind" } } });
+  assert.equal(await find("vault", "google-northwind-sa"), undefined, "the item is claimed by the account");
+
+  // MCP servers: capabilities from the cached tools. A mail server's send_message sends mail.
+  ok(await cli("mcp.add", stdio("gmail-kit", path.join(root, "gmail.log"))));
+  ok(await cli("mcp.add", stdio("tracker", path.join(root, "tracker.log"))));
+  const gm = await find("mcp", "gmail-kit"), tr = await find("mcp", "tracker");
+  assert.deepEqual(gm.capabilities, ["send_mail"]);
+  assert.deepEqual(gm.uses.send_mail, { tool: "mail.send", input: { account: gm.id } });
+  assert.deepEqual(tr.capabilities, ["send_message"]);
+  assert.deepEqual(tr.uses.send_message, { tool: "mcp.call", input: { server: "tracker", tool: "send_message" } });
+  assert.deepEqual((ok(await capsule("vault.connections.list", { capability: "send_mail" })).connections).map(r => r.ref).sort(), ["gmail-kit", "northwind"]);
+
+  // A person's grant and label survive a resync; the id stays.
+  ok(await cli("vault.connections.grant", { id: g.id, surface: "agents" }));
+  ok(await cli("vault.connections.update", { id: g.id, label: "Northwind orders" }));
+  ok(await cli("google.add", { name: "northwind", email: "kit@northwind.test", auth: { type: "service-account", item: "google-northwind-sa" } }));
+  ok(await cli("vault.connections.sync"));
+  g = await find("google", "northwind");
+  assert.equal(g.label, "Northwind orders");
+  assert.deepEqual(g.surfaces, ["capsule", "chat", "agents"]);
+
+  // A row a module registered under the same source is its own: a sync leaves it.
+  const reg = ok(await google("vault.connections.register", { ref: "harlow", provider: "google-oauth", account: "alex@harlowlegal.test", auth: "oauth", capabilities: ["send_mail"] }));
+  ok(await cli("vault.connections.sync"));
+  assert.equal((await find("google", "harlow")).id, reg.id);
+
+  // A module (mail.release, after the Gate) reads a row by id with no surface attached.
+  const got = ok(await mail("vault.connections.get", { id: gm.id })).connection;
+  assert.equal(got.ref, "gmail-kit"); assert.deepEqual(got.uses.send_mail, { tool: "mail.send", input: { account: gm.id } });
+
+  // Gone from the source, gone from the table.
+  ok(await cli("google.remove", { name: "northwind" }));
+  ok(await cli("mcp.remove", { name: "tracker" }));
+  assert.equal(await find("google", "northwind"), undefined);
+  assert.equal(await find("mcp", "tracker"), undefined);
+  assert.ok(await find("vault", "google-northwind-sa"), "the item is a vault row again");
+  assert.ok(await find("google", "harlow"), "the registered row stays");
+  assert.ok(events("vault.connection-removed").some(e => e.payload.id === g.id));
+  void d;
+});

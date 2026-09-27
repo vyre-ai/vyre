@@ -45,8 +45,8 @@ export function register({ ctx, vault, tool }) {
     obj({ id: str, label: str, capabilities: strs }, ["id"]), (input, { caller }) => c.update(input, caller),
     presence("Change a connection", input => c.summary({ id: input.id })));
 
-  tool("vault.connections.sync", PEOPLE, "Resync the vault's own connections (items with a catalog provider) now. It happens on its own on every put, delete and connect.",
-    obj({}), async () => ({ vault: await c.resync() }));
+  tool("vault.connections.sync", PEOPLE, "Resync now: the vault's own items with a catalog provider, google.accounts, and mcp.servers with their cached tools. It happens on its own on each source's events.",
+    obj({}), () => c.resync());
 
   tool("vault.connections.register", ["module"], "A module registers one of its connections, or refreshes it: {ref, provider, account, auth, label?, capabilities? or tools?, items?, use?}. The source is the module's own name. Returns {id}, stable across calls.",
     obj({ ref: str, provider: str, account: str, auth: str, label: str, capabilities: strs, tools: strs, items: strs, use: { type: "object" } }, ["ref", "provider", "account", "auth"]),
@@ -58,8 +58,13 @@ export function register({ ctx, vault, tool }) {
   tool("vault.connections.allowed", ["module"], "May `caller` use this connection ({id}, or {source, ref})? {allowed, surface, reason?}. People are always allowed. Ask before acting on a connection.",
     obj({ id: str, source: str, ref: str, caller: str }, ["caller"]), input => c.allowed(input));
 
-  // The vault's own rows follow its items; nothing polls.
-  const offs = ["vault.connected", "vault.item-added", "vault.item-changed", "vault.item-deleted"]
-    .map(type => ctx.events.on(type, () => { c.resync().catch(() => {}); }));
+  // Each synced source follows its own events; nothing polls. A google or mcp row can claim a
+  // vault item, so the vault's rows follow those too.
+  const on = (types, sources) => types.map(type => ctx.events.on(type, () => { c.resync(sources).catch(() => {}); }));
+  const offs = [
+    ...on(["vault.connected", "vault.item-added", "vault.item-changed", "vault.item-deleted"], ["vault"]),
+    ...on(["google.added", "google.removed", "google.connected"], ["google", "vault"]),
+    ...on(["mcp.added", "mcp.updated", "mcp.removed", "mcp.refreshed"], ["mcp", "vault"]),
+  ];
   return { connections: c, stop: () => { for (const off of offs) off(); return c.chain; } };
 }

@@ -671,8 +671,8 @@ async function connectionsCmd(args) {
     if (rest.length) return oops("vyre vault connections sync");
     const r = await tool("vault.connections.sync");
     if (r.error) return fail(r);
-    const v = r.data.vault || {};
-    say(`  ${signal("synced")} ${dim(`· ${v.added || 0} added, ${v.changed || 0} changed, ${v.removed || 0} removed`)}`);
+    const sum = k => Object.values(r.data || {}).reduce((n, x) => n + Number((x && x[k]) || 0), 0);
+    say(`  ${signal("synced")} ${dim(`· ${sum("added")} added, ${sum("changed")} changed, ${sum("removed")} removed`)}`);
     return 0;
   }
   let f;

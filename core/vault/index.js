@@ -342,7 +342,8 @@ export default {
     needsTools.register({ ctx, vault, tool });
     // Every connection and which surface may use it (ADR 0028, decision 9b).
     const conns = connectionTools.register({ ctx, vault, tool });
-    if (!vault.guarded) conns.connections.resync().catch(() => {});
+    // Google and mcp start after the vault, so their rows sync on first read and on their events.
+    if (!vault.guarded) conns.connections.resync(["vault"]).catch(() => {});
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),

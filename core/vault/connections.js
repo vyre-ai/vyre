@@ -35,6 +35,8 @@ export const CONNECTIONS_MIGRATION = `CREATE TABLE vault_connections (
 /** The MACed columns: which connection it is, what it can do and who may use it. */
 export const CONNECTION_MACED = ["id", "source", "ref", "provider", "account", "auth", "capabilities", "surfaces"];
 
+/** Sources the vault reads itself, in sync order. */
+export const SYNCED = ["google", "mcp", "vault"];
 export const SURFACE_NAMES = /** @type {const} */ (["capsule", "chat", "agents", "phone"]);
 export const DEFAULT_SURFACES = ["capsule", "chat"];
 export const AUTHS = /** @type {const} */ (["oauth", "service-account", "api-key", "password", "bearer", "none"]);
@@ -117,6 +119,23 @@ export function toolCapabilities(tools, name = "") {
   return out;
 }
 
+/**
+ * A Google account's capabilities, trimmed by its scopes when the row lists them.
+ * @param {any} row
+ */
+export function googleCapabilities(row) {
+  const all = ["send_mail", "read_mail", "calendar"];
+  const raw = row && (Array.isArray(row.scopes) ? row.scopes : row.auth && Array.isArray(row.auth.scopes) ? row.auth.scopes : null);
+  if (!raw) return all;
+  const s = raw.map(x => String(x).replace(/^https:\/\/www\.googleapis\.com\/auth\//, ""));
+  const full = s.some(x => /mail\.google\.com/.test(x));
+  const out = [];
+  if (full || s.some(x => /^gmail\.(send|compose|modify)$/.test(x))) out.push("send_mail");
+  if (full || s.some(x => /^gmail\.(readonly|modify|metadata)$/.test(x))) out.push("read_mail");
+  if (s.some(x => /^calendar(\.|$)/.test(x))) out.push("calendar");
+  return out;
+}
+
 /** Mail capabilities with no `use` of their own go through the mail module, by connection id. */
 const MAIL_USE = { send_mail: "mail.send", read_mail: "mail.search" };
 
@@ -165,24 +184,97 @@ export class Connections {
     this.call = deps.call || null;
     this.modules = deps.modules || (() => []);
     this.log = deps.log || (() => {});
-    this.synced = false;
-    /** Resyncs of the vault rows run one at a time; readers wait for the queue. @type {Promise<any>} */
+    /** Sources synced since start; one not yet synced is synced before anything is read. */
+    this.synced = new Set();
+    /** Resyncs run one at a time, in order; readers wait for the queue. @type {Promise<any>} */
     this.chain = Promise.resolve();
   }
 
-  // ---- source "vault" ------------------------------------------------------------------
+  // ---- synced sources: vault, google, mcp ----------------------------------------------
 
-  /** Queue a resync of the vault rows. Errors are logged; the queue keeps going. */
-  resync() {
-    const run = this.chain.then(() => this.syncVault());
+  /**
+   * Queue a resync. Google and mcp go first: an item one of their rows signs in with is that
+   * row, not a second vault row. Errors are logged; the queue keeps going.
+   * @param {string[]} [sources]
+   */
+  resync(sources = SYNCED) {
+    const want = SYNCED.filter(s => sources.includes(s));
+    const run = this.chain.then(async () => {
+      /** @type {Record<string, any>} */
+      const out = {};
+      for (const s of want) {
+        const r = s === "vault" ? await this.syncVault() : s === "google" ? await this.syncGoogle() : await this.syncMcp();
+        if (r) out[s] = r;
+      }
+      return out;
+    });
     this.chain = run.catch(e => this.log(`vault connections: resync failed: ${/** @type {Error} */ (e).message}`));
     return run;
   }
 
-  /** Wait for queued resyncs, and sync once if nothing has since start. */
+  /** Wait for queued resyncs, and sync what has not been since start. */
   async ready() {
-    if (!this.synced) await this.resync().catch(() => {});
+    const missing = SYNCED.filter(s => !this.synced.has(s));
+    if (missing.length) await this.resync(missing).catch(() => {});
     await this.chain;
+  }
+
+  /** A read-only tool's list, [] for a module that is not running, or null for any other error. */
+  async ask(tool) {
+    if (!this.call) return [];
+    let r;
+    try { r = await this.call(tool, {}); } catch (e) { r = { error: { code: "failed", message: /** @type {Error} */ (e).message } }; }
+    if (r && r.error) {
+      if (r.error.code === "no_such_tool") return [];
+      this.log(`vault connections: ${tool} answered ${r.error.code || "an error"}: ${cut(r.error.message, 200)}`);
+      return null;
+    }
+    return Array.isArray(r && r.data) ? r.data : [];
+  }
+
+  /** Each google.accounts row is one connection: ref the account name, account its email. */
+  async syncGoogle() {
+    const rows = await this.ask("google.accounts");
+    if (rows === null) return null; // the source answered with an error: keep its rows
+    await this.v.key();
+    const found = rows.filter(a => a && typeof a.name === "string" && REF.test(a.name)).map(a => {
+      const sa = a.auth && a.auth.type === "service-account";
+      const capabilities = googleCapabilities(a);
+      return { ref: a.name, provider: sa ? "google-dwd" : "google-oauth", account: cut(a.email || a.name, 200), auth: sa ? "service-account" : "oauth",
+        label: cut(a.email || a.name, 200), capabilities: capabilities.length ? capabilities : ["other"],
+        items: a.auth && typeof a.auth.item === "string" && ITEM.test(a.auth.item) ? [a.auth.item] : [],
+        use: capabilities.includes("calendar") ? { calendar: { tool: "google.calendar.list", input: { account: a.name } } } : null };
+    });
+    const out = this.apply("google", found, { removeMissing: true });
+    this.synced.add("google");
+    return out;
+  }
+
+  /** Each mcp.servers row is one connection: ref the server name, capabilities from its cached tools. */
+  async syncMcp() {
+    const servers = await this.ask("mcp.servers");
+    if (servers === null) return null;
+    const tools = servers.length ? await this.ask("mcp.tools") : [];
+    if (tools === null) return null;
+    await this.v.key();
+    /** @type {Map<string, string[]>} */
+    const by = new Map();
+    for (const t of tools) if (t && typeof t.server === "string") by.set(t.server, [...(by.get(t.server) || []), String(t.tool || t.name)]);
+    const found = servers.filter(x => x && typeof x.name === "string" && REF.test(x.name)).map(x => {
+      const caps = toolCapabilities(by.get(x.name) || [], x.name);
+      const list = CAPABILITIES.filter(c => c in caps);
+      /** @type {Record<string, any>} */
+      const use = {};
+      // Mail goes through the mail module by connection id; everything else calls the server.
+      for (const c of list) if (!(c in MAIL_USE)) use[c] = { tool: "mcp.call", input: { server: x.name, tool: caps[c] } };
+      const auth = { bearer: "bearer", oauth: "oauth", "service-account": "service-account", env: "api-key" }[String(x.auth && x.auth.type)] || "none";
+      return { ref: x.name, provider: "mcp", account: cut(x.label || x.name, 200), auth, label: cut(x.label || x.name, 200),
+        capabilities: list.length ? list : ["other"], items: x.auth && typeof x.auth.item === "string" && ITEM.test(x.auth.item) ? [x.auth.item] : [],
+        use: Object.keys(use).length ? use : null };
+    });
+    const out = this.apply("mcp", found, { removeMissing: true });
+    this.synced.add("mcp");
+    return out;
   }
 
   async syncVault() {
@@ -197,16 +289,17 @@ export class Connections {
           label: cut(i.description || i.name, 200), capabilities: [...p.capabilities], items: [i.name], use: null };
       });
     const out = this.apply("vault", found, { removeMissing: true });
-    this.synced = true;
+    this.synced.add("vault");
     return out;
   }
 
   /**
    * Upsert rows of one source; with removeMissing, rows the source no longer has go. A person's
-   * edits are kept. Returns counts and the ids of the rows found.
-   * @param {string} source @param {any[]} found @param {{ removeMissing?: boolean }} [o]
+   * edits are kept. A row a module registered is its own: a sync neither changes nor removes it.
+   * Returns counts and the ids of the rows found.
+   * @param {string} source @param {any[]} found @param {{ removeMissing?: boolean, registered?: boolean }} [o]
    */
-  apply(source, found, { removeMissing = false } = {}) {
+  apply(source, found, { removeMissing = false, registered = false } = {}) {
     const t = Date.now();
     const old = new Map(/** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_connections WHERE source = ?").all(source)).map(r => [r.ref, r]));
     let added = 0, changed = 0, removed = 0;
@@ -217,11 +310,12 @@ export class Connections {
         const r = old.get(f.ref);
         old.delete(f.ref);
         const use = f.use ? JSON.stringify(f.use) : null;
+        if (r && !registered && json(r.edited, []).includes("registered")) { ids.push(r.id); continue; }
         if (!r) {
           const id = newId();
           this.db.prepare(`INSERT INTO vault_connections (id, source, ref, provider, account, auth, label, capabilities, surfaces, added, updated, items, use, edited)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'[]')`).run(id, source, f.ref, f.provider, f.account, f.auth, f.label, JSON.stringify(f.capabilities),
-            JSON.stringify(DEFAULT_SURFACES), t, t, JSON.stringify(f.items || []), use);
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, source, f.ref, f.provider, f.account, f.auth, f.label, JSON.stringify(f.capabilities),
+            JSON.stringify(DEFAULT_SURFACES), t, t, JSON.stringify(f.items || []), use, JSON.stringify(registered ? ["registered"] : []));
           this.v.sign("vault_connections", id);
           ids.push(id);
           events.push(["vault.connection-added", { id, source, provider: f.provider, account: f.account }]);
@@ -238,17 +332,20 @@ export class Connections {
           // A row someone else wrote is granted to nothing, and signed as that.
           surfaces: good ? r.surfaces : "[]",
           items: JSON.stringify(f.items || []), use,
+          edited: JSON.stringify(registered && !edited.includes("registered") ? [...edited, "registered"] : edited),
         };
         const fields = Object.keys(next).filter(k => (r[k] ?? null) !== next[k]);
         if (good && !fields.length) continue;
-        this.db.prepare("UPDATE vault_connections SET provider=?, account=?, auth=?, label=?, capabilities=?, surfaces=?, items=?, use=?, updated=? WHERE id=?")
-          .run(next.provider, next.account, next.auth, next.label, next.capabilities, next.surfaces, next.items, next.use, t, r.id);
+        this.db.prepare("UPDATE vault_connections SET provider=?, account=?, auth=?, label=?, capabilities=?, surfaces=?, items=?, use=?, edited=?, updated=? WHERE id=?")
+          .run(next.provider, next.account, next.auth, next.label, next.capabilities, next.surfaces, next.items, next.use, next.edited, t, r.id);
         this.v.sign("vault_connections", r.id);
         if (!good) this.v.audit("connection-reset", null, "vault", false, `connection ${r.id} failed its check; it is granted to no surface until a person grants it again`);
-        events.push(["vault.connection-changed", { id: r.id, fields: good ? fields : [...new Set([...fields, "surfaces"])] }]);
+        const shown = fields.filter(k => k !== "edited");
+        if (shown.length || !good) events.push(["vault.connection-changed", { id: r.id, fields: good ? shown : [...new Set([...shown, "surfaces"])] }]);
         changed++;
       }
       if (removeMissing) for (const r of old.values()) {
+        if (json(r.edited, []).includes("registered")) continue;
         this.db.prepare("DELETE FROM vault_connections WHERE id = ?").run(r.id);
         events.push(["vault.connection-removed", { id: r.id }]);
         removed++;
@@ -280,8 +377,8 @@ export class Connections {
       : tools !== undefined ? CAPABILITIES.filter(c => c in toolCapabilities(tools, `${ref} ${account}`)) : [];
     await this.v.key();
     const { ids } = this.apply(source, [{ ref: String(ref), provider, account: account.trim(), auth, label: cut((label || account).trim(), 200),
-      capabilities: caps.length ? caps : ["other"], items: items ? items.map(String) : [], use: uses }]);
-    if (items && items.length) await this.resync().catch(() => {});
+      capabilities: caps.length ? caps : ["other"], items: items ? items.map(String) : [], use: uses }], { registered: true });
+    if (items && items.length) await this.resync(["vault"]).catch(() => {});
     return { id: ids[0], source, capabilities: caps.length ? caps : ["other"] };
   }
 

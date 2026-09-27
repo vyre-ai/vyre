@@ -14,7 +14,7 @@ export const CAPABILITIES = /** @type {const} */ (["send_mail", "read_mail", "ca
 /**
  * @typedef {{ name: string, label: string, secret: boolean, pattern?: string, optional?: boolean }} Field
  * @typedef {{ name: string, label: string, kinds: string[], how: "field"|"file"|"oauth", fields: Field[],
- *   capabilities: string[], pick?: boolean, help: string|null, next?: { tool: string } }} Provider
+ *   capabilities: string[], pick?: boolean, help: string|null, next?: { tool: string, input?: Record<string, string> } }} Provider
  */
 
 const key = (label, pattern) => ({ name: "value", label, secret: true, ...(pattern ? { pattern } : {}) });
@@ -42,7 +42,7 @@ const LIST = [
   { name: "telegram", label: "Telegram bot", kinds: ["api-key"], how: "field", fields: [key("Bot token", "^\\d{6,12}:[A-Za-z0-9_-]{30,}$")],
     capabilities: ["send_message"], help: "https://t.me/BotFather" },
   { name: "google-oauth", label: "Google (sign in)", kinds: ["oauth"], how: "oauth", fields: [],
-    capabilities: ["send_mail", "read_mail", "calendar", "files"], help: "https://console.cloud.google.com/apis/credentials", next: { tool: "google.connect" } },
+    capabilities: ["send_mail", "read_mail", "calendar", "files"], help: "https://console.cloud.google.com/apis/credentials", next: { tool: "google.connect", input: { name: "" } } },
   { name: "google-dwd", label: "Google service account", kinds: ["cloud"], how: "file",
     fields: [{ name: "json", label: "Service-account JSON file", secret: true },
       { name: "subject", label: "Email to act as", secret: false, pattern: "^[^\\s@]{1,64}@[^\\s@]{1,255}$" },
