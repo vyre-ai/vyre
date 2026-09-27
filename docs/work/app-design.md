@@ -92,6 +92,18 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   `.lbl.beacon`/`.dot.beacon`). Full hex/rgba sweep of styles.css against tokens.json: every value
   matches, both themes. No regressions in the memory section or hotkey copy. Cleared for RC
   (msg_id e75a2677).
+- Fourth pass, launch 2b3f55ca: .btn/.chip/.dtab off mono/uppercase, checked against
+  button.md/chip.md/tabs.md, all exact including 404.html's copies. Ruled on .lbl (they'd held it
+  back, asking whether docs/design/TOKENS.md's mono/uppercase/+0.16em label spec still applies):
+  no — TOKENS.md is the stale pre-Design-A doc, already proven wrong by this same commit (its own
+  uppercase-mono button rule is what got overridden), and our canonical vyre.css already settles
+  .lbl as 12/16 600 sans in every board. Told them to fix all ~15 sites. Also flagged a small
+  pre-existing nit: `.dtab[aria-pressed=true]` inks the label lime instead of `--text` (only the
+  border/fill should carry signal colour per tabs.md/chip.md's On state) — not from this commit,
+  not blocking. (msg_id 55defeb5)
+- TOKENS.md itself (docs/design/TOKENS.md, root, owner "docs", status "stable") should probably be
+  retired or marked superseded now that two separate stale-carryover bugs have traced back to it.
+  Flag for after RC — not touching a doc I don't own mid-RC.
 
 ## Next
 
