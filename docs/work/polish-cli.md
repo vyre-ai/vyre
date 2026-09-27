@@ -73,40 +73,20 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Doing
 
-- Testbox HOLD (sessions' full suite). Untested since eecfb59c: 8c7bcdb1 (threads fork,
-  threads.send-now, /pair QR, push.seen device). Queued: threads-sessions, switchboard-cli, phone.
-- `vyre config` (native-core 77faf1e3): once it is on main I make 9 of my 10 review fixes, with tests:
-  kit parse (unknown flags exit 2, --project with --account refused), --project defaults to the
-  folder's project (projects.of) and the view is named, failTool with the "denied" next step,
-  closest() for unknown keys and groups, the loosens confirm (typed key, --yes; callAsPerson),
-  typed usage and --file/- for JSON values, help and GROUPS, `vyre config keys`, the restart hint as
-  a next: line. Native-core does the server side only. Contract: settings.schema lists `security`
-  ("loosens" = fresh proof: vault lock, Gate, presence length, devices/origins -> presence_required
-  -> callAsPerson) and `confirm` (permission allow rules, bypass: no proof, settings.set/reset
-  {confirm:true} else error confirm_required with what it loosens -> show it, typed key or --yes).
-  Live on work/native-core 42dcb98c: keys are module-named (sessions.mode, sessions.allow,
-  push.watch, planner.event_lead, vault.lock_idle, ...), schema names each key's module; confirm
-  keys: sessions.allow, sessions.folders, sessions.hooks, sessions.mode for bypassPermissions,
-  dontAsk or auto; `preview:true` -> {before, after, where, confirm?}, writes nothing (print the
-  "what changes" line from it before asking); vault.lock_* -> presence_required.
-- Chat parity next (native-core's order): per-session model (threads.model), rewind --restore
-  conversation|code|both, send --image <file>, effort/thinking per session, then ! and #. None of
-  these tools is on main at fb1ed1d1 (rewind is {thread, uuid} only); names asked of sessions.
-- platform (ADR 0033): does.commands [{verb, tool, summary, args?}] is in their manifest schema
-  (work/platform 2e6997dd). I write the P4 dispatcher in core/cli/index.js (unknown command ->
-  a module's does.commands -> the tool, args from its input schema). Source: GET /v1/modules rows
-  gain `commands` (running modules only); input types and presence from GET /v1/tools (what
-  `vyre tools` reads). Waits for platform's P1 sha. I review their module.js (P1)
-  and update.js (P2): `vyre modules` becomes an alias; plain --rollback asks nothing,
-  --rollback --restore-data asks a typed confirm (or --yes with --json).
-  Lead's rules: set/reset are person-only with no Touch ID, except keys marked security:"loosens"
-  (permission allow/bypass, the Gate, vault lock, presence length, new devices): a fresh proof plus
-  a typed confirm line. --project defaults to the current directory's project.
-- Chat parity (lead): `vyre threads` covers the whole composer: send/steer/queue, interrupt, mode,
-  model (per session), rewind, fork, answer. Asked sessions for the model/rewind tool names.
+- LOGOUT 4 save. Nothing in flight. 704d325e is in batch 3b; 7d2f9c32 (chat parity: threads
+  model/thinking/commands/shell !/remember #/tasks/kill-task, send --image, rewind list and
+  --restore) goes in batch 4. Tested 29/29 on work/polish-cli, 18/18 on a throwaway merge of
+  sessions db44749b.
 
 ## Next
 
+1. Batch 4: send the integrator the sha after merging main (7d2f9c32 or later).
+2. `vyre config`: once native-core's settings are on main, take over config.js/config.test.js
+   (77faf1e3, server side 42dcb98c) and make the nine review fixes with tests (see below).
+3. Module command dispatcher (ADR 0033 P4) when platform sends its P1 sha: GET /v1/modules rows
+   `commands`, input schemas and presence from GET /v1/tools; review platform's module.js/update.js.
+4. The 30-minute stress check at nice -n 19 when the lead says testbox is quiet (after a deploy).
+5. Sessions: the queue drops images (reported); switch the CLI's refusal off when fixed.
 - After 3a (sessions) lands: merge main, resolve modules/index.js, presence (PERSON_ONLY union),
   switchboard.test; targeted run; send the integrator the sha (batch 3b).
 - Modularity: core/cli/qr.js -> deck/vendor/qrcode.js is an OK'd allowlist entry (lead: a
