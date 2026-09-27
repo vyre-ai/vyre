@@ -155,7 +155,7 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
   if (input.thread === NEW || input.session === NEW) {
     if (tool === "threads.interrupt" && interruptMissing) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no tool threads.interrupt" } }) };
     if (MISSING.has(tool)) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no such tool here" } }) };
-    if (tool === "threads.get") data = { thread: { id: NEW, name: "Q3 report and Estate intake", cwd: "/home/alex/work/harlow-legal", status: "idle", holder: null, agent: "kit" }, events: [], asks: [] };
+    if (tool === "threads.get") data = { thread: { id: NEW, name: "Q3 report and Estate intake", cwd: "/home/alex/work/harlow-legal", status: "idle", holder: null, agent: "kit", project: "harlow-legal" }, events: [], asks: [] };
     else if (tool === "recall.transcript") data = { session: { id: NEW, cwd: "/home/alex/work/harlow-legal" }, blocks: [], next: 0, first: 0 };
     else if (tool === "threads.asks") data = [];
     else if (tool === "threads.answer") data = { answered: true };
@@ -338,9 +338,10 @@ const press3 = k => { const e = /** @type {any} */ (new Event("keydown")); e.key
 const stopBtn = () => $(box3, ".composer-stop");
 
 test("the header chip names provider, model and auth, and the state word follows the session", async () => {
-  stop3 = mountSession(box3, { thread: NEW, project: null, onBack() {} });
+  stop3 = mountSession(box3, { thread: NEW, project: null, projects: [{ slug: "harlow-legal", name: "Harlow Legal" }], onBack() {} });
   await wait(30);
   assert.equal($(box3, ".cv-chip"), null, "nothing known, no chip");
+  assert.equal(text($(box3, ".cv-project")), "Harlow Legal", "kit's own thread names its project, once threads.get says which (finding 6)");
   assert.match(text($(box3, ".cv-state")), /^idle$/);
   assert.equal(stopBtn().hidden, true, "no Stop while idle");
   at("thread.started", { provider: "claude", model: "claude-opus-4-5", auth: "subscription" });

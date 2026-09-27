@@ -172,6 +172,16 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   capsule bridge, deck/chat, deck/test, guests, hygiene: 247/247 after one test fix.
 - composer.js "Claude Code's commands" was already fixed (f857520); only a code comment remains.
 
+## Done (28 Sep)
+- Project chip (finding 6): session.js's header now shows which project a thread is in
+  (`projectName()`, from `record.current.project` - the only source for an agent's own thread,
+  falling back to the route's slug - name-mapped via `opts.projects`, else the slug itself).
+  index.js passes `projects: state.projects` and `project: project || known?.project`. New
+  `.tag.cv-project` in chat.css. The session-list rows already showed this (index.js's
+  `threadRow`'s `where`, unchanged). Test: session.test.js's kit/NEW thread now carries `project`
+  in its threads.get fixture and asserts the chip text. testbox: deck/chat + deck/test 480/481 (1
+  skip, pre-existing), 0 fail; session.test.js 16/16. Sent to reviewer-2 (no auth/presence touched).
+
 ## Doing (28 Sep, restart after cohesion's hand-over)
 
 - Merged origin/main clean (4032bf03; no conflicts). ADR 0038 (server, not box): renamed the
