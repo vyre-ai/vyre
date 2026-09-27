@@ -25,16 +25,12 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - ctx.events.latestId() for modules (planner.upcoming's last_event).
 - CLI write() with idempotency keys (threads send/answer, screen send); sse.js split-CRLF fix;
   strict-tsc JSDoc. c8f5654 is on main (15e82dd, with the integrator's term save() fix).
+- R6 chaos test and web.js over() (relay paths); 39/39 on testbox after main 9efbddc merge.
 - Tests on testbox (27 Sep, after main 15e82dd): 145 targeted pass, 0 fail. Earlier: 189 pass, 0 fail. Earlier: 124 pass, 0 fail across idempotency, switchboard, chaos, web, term
   (real dtach), daemon and modules tests.
 
 ## Doing
-- UNTESTED (testbox frozen for sessions' SDK suite; the lead announces the lift):
-  - R6 chaos test in test/chaos/chaos.test.js (planner.upcoming key, answer offline from the
-    outbox, the box never rings it, one planner.acked unrung:true, a retry is already:true).
-  - web.js over(pathFetch): open and caller over relay/client's createPaths().fetch (the relay
-    is Noise over a WebSocket, not an HTTP proxy); test in test/chaos/web.test.js.
-  Run: test/chaos/chaos.test.js test/chaos/web.test.js, then CHANGELOG, push, tell integrator.
+- Waiting on relay (R5 relay chaos) and chat (term extras: held keys, Take size, key bar).
 
 ## Next
 0. R5 relay chaos tests, once work/relay is on main (not at 9efbddc): test/chaos/relay.test.js
