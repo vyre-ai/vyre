@@ -23,7 +23,11 @@ import { EXIT, UsageError, closest, setJson, wantsJson, fail, usage } from "./ki
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "commands");
 
-/** @typedef {{ name: string, aliases?: string[], summary: string, usage?: string, help?: string | (() => number | Promise<number>), order?: number, hidden?: boolean, run(args: string[]): Promise<number> }} Command */
+/** @typedef {{ name: string, aliases?: string[], summary: string, usage?: string, help?: string | (() => number | Promise<number>), order?: number, hidden?: boolean, secret?: boolean, run(args: string[]): Promise<number> }} Command */
+// `hidden` leaves a command out of `vyre help`, but docs/reference/cli.md still documents it
+// under "Not listed by vyre help" (box service-manager commands, setup and recovery). `secret`
+// additionally leaves it out of every generated doc (scripts/lib/docs/reference.js), for the
+// rare command that is meant to stay found only by typing it.
 
 /** @returns {Promise<Command[]>} */
 export async function commands() {

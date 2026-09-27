@@ -4,6 +4,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A rare fortune line, and a hidden `vyre high-five`
+
+- core/cli/delight.js: the quiet things. `fortune()` returns a line for the screen's title bar,
+  and only 1 time in 200, only in a real terminal, and never for --json, CI, NO_COLOR or
+  `prefers-reduced-motion` (checked through `VYRE_REDUCED_MOTION`/`PREFERS_REDUCED_MOTION`, since
+  a terminal has no media query). No network, no sound, and every line is invented, never a name,
+  a project or anything from a real session. core/cli/screen/layout.js's title bar takes the line
+  only when there is nothing else to say (no filter, no working/asks/drafts count) so it never
+  crowds real status.
+- core/cli/commands/high-five.js: hidden from `vyre help`, found only by typing it.
+- Tests: core/cli/delight.test.js pins the odds and the gate with an injectable rand/env/stream,
+  so nothing here is flaky or touches a real terminal.
+
+#### The `npm install -g vyre` bug
+
+- README.md's quickstart named a package that is not published yet: 0.1.0 ships as the tgz from
+  vyre.run, not npm (see docs/work/launch-surfaces.md). install.sh and the landing page already
+  said the right thing; only the README quickstart was stale. Fixed to the curl installer, with
+  the Mac npm-tgz line underneath.
+
 #### On a Mac, waiting leaves the planner to the box
 
 - core/waiting reads planner.ringing only on the box. On a Mac the planner is the box's, reached

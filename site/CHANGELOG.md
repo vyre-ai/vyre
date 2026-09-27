@@ -5,6 +5,24 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
+### Landing, 404 and install polish for the 0.1.0 push (2026-09-27)
+
+- `index.html`, `styles.css`: reworked hero to lead with "Your best work, with a partner that
+  never drops the thread." and brought the rest of the page in line with the Design A boards and
+  `lib/theme/tokens.json`: no gold anywhere, violet reserved for "needs you" only.
+- `404.html`: rebuilt self-contained (does not load `/styles.css`, so a stylesheet change can
+  never break it) with its own small Capsule field and an orbiting dot around the "0" that quiets
+  under `prefers-reduced-motion`.
+- `install.sh` terminal look: numbered steps, a check per step, a calmer finish line; unchanged
+  flags, exit codes and `VYRE_NO_UP=1`. Verified with `test/install-box-look.test.js` and
+  `core/names/system.test.js` (65 passing, plain ASCII under NO_COLOR/CI, colour and the mark on
+  a real terminal).
+- `deck/onboard`: look and copy only (logic stays with sessions): a step progress bar, a polite
+  live-region announcement per step, softer copy when setup isn't running yet or the link needs
+  reopening.
+- Fixed the `npm install -g vyre` bug in `README.md`: 0.1.0 has no npm package; the quickstart now
+  matches install.sh and this page (curl installer, or the Mac npm-tgz line).
+
 ### The first landing page (2026-09-26)
 
 - `index.html`: the page, built from the Landing, LandingMobile and LandingCapsuleDemo boards in

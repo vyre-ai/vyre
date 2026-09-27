@@ -10,9 +10,11 @@ memory across every session, agents on your own quota, a vault, and your own add
 own Tailscale network, `<you>.vyre.run`.
 
 ```
-npm install -g vyre
+curl -fsSL https://vyre.run/install.sh | sh
 vyre up
 ```
+
+On a Mac: `npm install -g https://vyre.run/box/vyre.tgz && vyre up`.
 
 Vyre is a Claude Code plugin plus one small daemon. It does not fork or wrap Claude Code. When
 Claude Code improves, Vyre improves with it.
