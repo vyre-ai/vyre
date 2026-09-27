@@ -11,12 +11,16 @@
 // When the app or who a message is for is unclear, vyred asks rather than guesses, and so does
 // this: on a terminal it shows the question and the candidates and reads a pick; anywhere else it
 // prints the question (as JSON with --json) and exits 3, so a script can tell "asked" from "failed".
+// Under --view it is a prompt frame instead (exit 2): the choices, and the words to run with
+// `--app <choice>` or `--to <choice>` added.
 
 import { call as daemonCall } from "../../daemon/client.js";
 import { ensureUp } from "../daemonctl.js";
 import { callAsPerson } from "../presence.js";
 import { createInterface } from "node:readline/promises";
 import { out, dim, bold, signal, beacon } from "../style.js";
+import { EXIT, emit as kitEmit, viewing } from "../kit.js";
+import { prompt } from "../view.js";
 
 /** The exit code for "vyred asked a question and no one was there to answer it". */
 export const ASKED = 3;
@@ -34,6 +38,7 @@ export const USAGE = `
                                      or list, or with a dash
 
   --app <App>    read the words as that app's (like @Notes in the Capsule)
+  --to <who>     who a message is for, when the words do not say
   --model        let a small model try words the rules cannot place
   --json         print vyred's answer as JSON
 
@@ -44,12 +49,23 @@ export const USAGE = `
 const SUBCOMMANDS = new Set(["find", "targets", "setup", "list"]);
 
 /**
+ * Every verb runApps handles, for `vyre commands --json`. Any other words are routed as an ask
+ * (vyre apps timer 10 min), which a verb list cannot name.
+ */
+export const VERBS = [
+  { verb: "list", summary: "the apps on this Mac, and how Vyre reaches each (the default)", usage: "[--json]", read: true },
+  { verb: "find", summary: "apps whose name matches", usage: "<words...> [--json]", read: true },
+  { verb: "targets", summary: "what is inside an app: notes, reminder lists", usage: "<app> [words...] [--json]", read: true },
+  { verb: "setup", summary: "an app's one-time setup (clock: two shortcuts, one click each)", usage: "<app> [--json]" },
+];
+
+/**
  * Split argv into the subcommand, its words and flags.
  * @param {string[]} args
  */
 export function parseArgs(args) {
-  /** @type {{ json: boolean, help: boolean, model: boolean, app: string | null }} */
-  const flags = { json: false, help: false, model: false, app: null };
+  /** @type {{ json: boolean, help: boolean, model: boolean, app: string | null, to: string | null }} */
+  const flags = { json: false, help: false, model: false, app: null, to: null };
   /** @type {string | null} what was wrong with the flags, for a usage error */
   let error = null;
   /** @type {string[]} */
@@ -66,6 +82,11 @@ export function parseArgs(args) {
       const v = a === "--app" ? args[++i] : a.slice(6);
       if (!v || v.startsWith("-")) error = "--app needs an app name, like --app Notes";
       else flags.app = v;
+    }
+    else if (a === "--to" || a.startsWith("--to=")) {
+      const v = a === "--to" ? args[++i] : a.slice(5);
+      if (!v || v.startsWith("-")) error = "--to needs who it is for, like --to juno";
+      else flags.to = v;
     }
     else if (/^--?[a-z]/i.test(a)) error = `${a} is not a flag vyre apps knows; put words that start with a dash after --`;
     else words.push(a);
@@ -101,7 +122,8 @@ export function formatSetup(r) {
  * @typedef {{ data?: any, error?: { code: string, message: string } }} Answer
  * @typedef {{ call(tool: string, input: any, opts?: { timeout?: number }): Promise<Answer>, person(tool: string, input: any): Promise<Answer>,
  *   up(): Promise<boolean>, print(line: string): void, warn(line: string): void,
- *   isTTY?: boolean, ask?(question: string): Promise<string | null> }} Deps
+ *   isTTY?: boolean, ask?(question: string): Promise<string | null>,
+ *   emit?(data: any, view?: any): void, viewing?: boolean }} Deps
  */
 
 /** One line from the terminal, or null when it closed (Ctrl-D). @param {string} question */
@@ -123,7 +145,20 @@ const real = {
   warn: line => { process.stderr.write(line + "\n"); },
   isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
   ask: askTerminal,
+  emit: (data, view) => { kitEmit(data, view); },
+  get viewing() { return viewing(); },
 };
+
+/**
+ * A question as a prompt frame for a surface: the candidates as choices, and the words that
+ * answer it once `--app <choice>` (or `--to <choice>`) is added. @param {any} r
+ */
+export function promptFor(r) {
+  const words = String(r.text || "").split(/\s+/).filter(Boolean);
+  const name = r.needs.app ? "app" : "to";
+  const args = r.needs.app ? ["apps", ...(r.to ? ["--to", r.to] : []), ...words] : ["apps", "--app", r.app, ...words];
+  return prompt({ name, label: [r.ask, r.didYouMean].filter(Boolean).join(" "), choices: candidates(r).map(c => c.label), args, answer: "flag", flag: name });
+}
 
 /**
  * A question from apps.route, in words: what it asks, the Did you mean line, the numbered
@@ -181,12 +216,17 @@ export async function runApps(args, deps = real) {
   const { sub, words, flags, error } = parseArgs(args);
   const p = deps.print;
   if (flags.help) { p(USAGE); return 0; }
-  if (error) { deps.warn(`  ${error}`); deps.warn(USAGE); return 2; }
+  /** One JSON value on stdout: a frame under --view, one line otherwise. @param {any} data @param {any} [view] */
+  const put = (data, view) => deps.emit ? deps.emit(data, view) : p(JSON.stringify(data));
+  if (error) {
+    // Under --json the mistake is the one value on stdout too, so a surface sees it.
+    if (flags.json) put({ error: { code: "bad_input", message: error, next: "vyre help apps" } });
+    deps.warn(`  ${error}`); deps.warn(USAGE); return 2;
+  }
   if (!(await deps.up())) return 1;
-
   /** Print a refusal in words; the exit code says it failed. */
   const fail = (/** @type {{ code: string, message: string }} */ e) => {
-    if (flags.json) p(JSON.stringify({ error: e }, null, 2));
+    if (flags.json) put({ error: e });
     else if (e.code === "unreachable") p(`  vyred is not running ${dim("· vyre up to start it")}`);
     else p(`  ${beacon(e.code)}: ${e.message}`);
     return 1;
@@ -194,7 +234,7 @@ export async function runApps(args, deps = real) {
   /** @param {Answer} r @param {(d: any) => string[]} show */
   const done = (r, show) => {
     if (r.error) return fail(r.error);
-    if (flags.json) p(JSON.stringify(r.data, null, 2));
+    if (flags.json) put(r.data);
     else for (const line of show(r.data)) p(line);
     return 0;
   };
@@ -216,13 +256,15 @@ export async function runApps(args, deps = real) {
   }
 
   const text = words.join(" ");
-  const routed = await deps.call("apps.route", { text, ...(flags.app ? { app: flags.app } : {}), ...(flags.model ? { model: true } : {}) });
+  const routed = await deps.call("apps.route", { text, ...(flags.app ? { app: flags.app } : {}), ...(flags.to ? { to: flags.to } : {}), ...(flags.model ? { model: true } : {}) });
   if (routed.error) return fail(routed.error);
   let r = routed.data;
   let asked = false;
   for (let round = 0; r.needs; round++, asked = true) {
+    // A surface is asked with a prompt frame; it never gets a terminal question.
+    if (deps.viewing) { put(r, promptFor(r)); return EXIT.USAGE; }
     if (flags.json || !deps.isTTY || !deps.ask) {
-      if (flags.json) p(JSON.stringify(r, null, 2));
+      if (flags.json) put(r);
       else { for (const line of formatQuestion(r)) p(line); p(dim("  run it on a terminal to pick, or say it again with the name and app")); }
       return ASKED;
     }
@@ -239,7 +281,7 @@ export async function runApps(args, deps = real) {
     r = again.data;
   }
   if (r.ambiguous) {
-    if (flags.json) p(JSON.stringify(r, null, 2));
+    if (flags.json) put(r);
     else p(`  ${beacon("not sure")}: ${r.reason}`);
     return 1;
   }
@@ -261,6 +303,11 @@ export async function runApps(args, deps = real) {
 }
 
 export default {
-  name: "apps", order: 47, usage: "vyre apps <words...>", summary: "drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow",
+  name: "apps", order: 47, usage: "vyre apps [list | find <words...> | targets <app> [words...] | setup <app> | <words...>] [--app <App>] [--to <who>] [--model] [--json]",
+  summary: "drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow",
+  verbs: VERBS,
+  // Free words go to the right app as an ask: vyre apps whatsapp juno: running late.
+  args: [{ name: "words", required: false, repeat: true }],
+  flags: [{ name: "app", value: "app" }, { name: "to", value: "who" }],
   run: (/** @type {string[]} */ args) => runApps(args),
 };

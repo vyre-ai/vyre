@@ -1,0 +1,4 @@
+# npm pack reads this in place of .gitignore here, which ignores dist/: vyre.tgz ships the web
+# export (package.json "files": apps/app/dist, built by scripts/build-app.sh), and only that.
+node_modules/
+.expo/

@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["VyreSignerModule"]
+  },
+  "android": {
+    "modules": ["sh.vyre.signer.VyreSignerModule"]
+  }
+}

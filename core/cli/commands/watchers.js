@@ -13,6 +13,23 @@ const until = iso => { if (!iso) return null; const m = Math.round((Date.parse(i
 const local = t => { const d = new Date(t); const p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 const STATE = { on: signal, paused: beacon, changed: beacon, invalid: beacon, missing: beacon, draft: dim };
 
+/** Every verb run() handles, for `vyre commands --json`; run() refuses any other word. */
+export const VERBS = [
+  { verb: "list", aliases: ["ls"], summary: "every watcher: its state, schedule, what it filed and when it runs next (the default)", usage: "[--json]", read: true },
+  { verb: "test", summary: "a dry run: what it would file, filing nothing", usage: "<name> [--json]" },
+  { verb: "create", summary: "turn a watcher on", usage: "<name> [--json]" },
+  { verb: "pause", summary: "stop it running until it is resumed", usage: "<name> [--json]" },
+  { verb: "resume", summary: "run it again on its schedule", usage: "<name> [--json]" },
+  { verb: "logs", summary: "its last ten runs", usage: "<name> [--json]", read: true },
+  { verb: "items", summary: "what was filed, by one watcher or into one project", usage: "[name] [--json]", read: true },
+];
+
+/** The list as a table: one row per watcher, the columns a person scans. @param {{ dir: string, watchers: any[] }} d */
+const table = d => ({ kind: "table", title: "Watchers",
+  columns: [{ key: "name", label: "Watcher" }, { key: "state", label: "State" }, { key: "project", label: "Project" }, { key: "every", label: "Every" },
+    { key: "items", label: "Filed" }, { key: "lastRun", label: "Last run" }],
+  rows: d.watchers, empty: `No watchers yet: ask Claude to watch something; they live in ${d.dir}` });
+
 function item(i) {
   out(`  · ${i.title || i.id}${i.url ? dim("  " + i.url) : ""}`);
   out(dim(`      ${[i.watcher, i.kind, i.at && local(i.at)].filter(Boolean).join(" · ")}`));
@@ -21,7 +38,7 @@ function item(i) {
 async function list() {
   const r = await call("watchers.list");
   if (r.error) return fail(r);
-  if (json()) return emit(r.data);
+  if (json()) return emit(r.data, table(r.data));
   const { dir, watchers } = r.data;
   if (!watchers.length) { out(`  no watchers yet ${dim(`· ask Claude to watch something; they live in ${dir}`)}`); return 0; }
   out("");
@@ -41,6 +58,7 @@ async function list() {
 export default {
   name: "watchers", order: 40, usage: "vyre watchers [list|test|create|pause|resume|logs|items] [name] [--json]",
   summary: "what the watchers are doing, and turning them on and off",
+  verbs: VERBS,
   async run(args) {
     const [verb, ...rest] = args.filter(a => a !== "--json");
     const name = rest.join(" ").trim();

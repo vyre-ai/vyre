@@ -209,18 +209,105 @@ Plan (to the lead before building):
   cookie store is keychain-encrypted, Safari's is TCC-protected; IndexedDB keys are not). The
   session raises the bar from one curl to stealing a browser's store.
 
-## Doing (27 Sep, after logout 3)
+## Doing (27 Sep, after logout 4)
 
-Handed to the integrator: bb0415f8 on main fb1ed1d1 (the floor follows symlinks, `..` and hard
-links; the per-thread socket efb02b2c; phone fixes e5aaf881). Waiting: box-deploy's candidate
-sha for the headscale gate (setup in /srv/vyre-e2e: run1.sh, run2.sh <link>, run3.sh, then the
-person-session checks); sessions wiring VYRE_SOCKET, then the split on.
+Done this session:
+- Merged main 7880dfa6 into work/e2e (0856b9b9; changelog union, generated docs regenerated).
+- The candidate image did not build: box/Dockerfile imports core/sessions/sdk.js on its own to read
+  the SDK pin, and 8aed4887 gave it an import. Fixed in work/e2e-sdk 65cbc02a (pin in
+  core/sessions/sdk-pin.js, imports nothing; test on the Dockerfile's COPY line). Sent to the
+  integrator, box-deploy and the lead.
+- Headscale gate on main + 65cbc02a: PASS, 16 items (list sent to box-deploy). Glass not rerun.
+  Low: unknown ids at gate.get/agents.delete answer 500, not 404; `vyre link signin` prints nothing
+  on success. Harness: the image needs a build.json stamp, or the Deck's service worker keeps the
+  last run's files (same "v0.0.1" cache name) and the passkey page breaks on a stale api.js.
+- rooms.test.js:227 passes alone on testbox; asked the integrator for the failing text (likely a
+  run under a `claude` process, since agents.create is PERSON_ONLY on the socket).
+- Batch 4 sha sent: work/e2e 4e5a27f7 (was 0856b9b9).
+- native-core re-review of 62abf2cf (tip 87fb03d7): HIGH 1 and 2 fixed, store limits right, 60/60
+  on testbox. NOT signed off: new HIGH, settings.get has no callers, so mcp and agents read
+  sessions.env values (Claude Code's env, API keys). Asked for masked values for non-person
+  callers plus a test. MEDIUMs sent: firstParty = "under the repo" (dev home in a checkout),
+  env/plugins/deny-removal without confirm, asPerson's "deck" fallback. SIGNED OFF at 3ae4fc93
+  (env and hooks secret, masked for non-person callers; 63/63). MEDIUMs are theirs before 0.1.0.
 
+~/.claude from a temp home (lead, 27 Sep): platform saw a fresh temp home report "107 facts about
+you". recall's readable() guards only under node --test, so a dev world read the real transcripts
+(config default, core/config/index.js:135). Guard test on work/e2e-noclaude (52ac6576 + the next
+commit): vyred in a child with HOME = a planted fake home, NODE_TEST_CONTEXT cleared, every fs call on
+a .claude path recorded and refused. Red on main with exactly those 3 paths. FIXED by me (lead's call): claudeHome() in core/config, work/e2e-noclaude 32dc0956, guard
+green, sent to the integrator. memory-iq keeps its recall-side fix (I review it). One-line switches sent to sessions,
+polish-cli, native-core; learn done by me (lead OK): 399ca89f; the skills write guard keeps refusing the real ~/.claude too. Branch sent at 399ca89f. Other defaults to route through one kernel helper:
+learn/skills.js:414, switchboard/index.js:1333, cli statusline.js:22, native-core settings claudeDir.
 
+Reviews (27 Sep, testbox on hold at load 20 per the lead):
+- memory-iq 6a49c4bb (recall readable): OK. MEDIUM: realpath both sides (symlinks); the switchboard
+  reads config.transcripts unfiltered (index.js:1554), offered to move readable() into core/config.
+- cohesion c362505b (hands): nothing typed reaches events. MEDIUM scrub() bypass (quote or space in
+  a model URL keeps the query; build open's summary from new URL()); MEDIUM desktop takes
+  input.thread when meta has none. Chrome e2e needs a Mac slot from the lead.
+- connectors 04a5495e: HIGH any module (home ones too) passes on_behalf {surface:"capsule"} to mail
+  and reads mail as the Capsule; asked for registry meta.firstParty. MEDIUM on_behalf person=true
+  skips MCP scope; check on_behalf.thread against threads.get.
+- e2e-noclaude bf35f8ea: switchboard remember's user CLAUDE.md via claudeHome (sessions agreed).
+  TESTED 147 pass / 0 fail / 28 skip; sent to the integrator as the sha to land.
+Next when testbox is free: that test run, then rebuild 501ca3fc (+ sessions' callAsPerson fix) and
+run check.sh + thread.sh.
 
-/srv/vyre-e2e; `./run1.sh`, `./run2.sh <link>`, `./run3.sh`, then the person-session checks in
-the 27 Sep notes above). Follow up: sessions' three changes, glass-live's two HIGH, relay's
-relay.device.presence.
+- native-core ac34c322: my 3 MEDIUMs fixed (98412a66). Hub step 1 OK; MEDIUM secret non-store keys
+  would go to hub.json in clear (and backup); LOW same-uid edits of plain settings, file rev lags.
+
+- transcriptFolders (lead OK, memory-iq agreed): core/config/dialogs.js, realpath both ways,
+  switchboard reads through it; e2e-noclaude 88c90d56 green, sent to the integrator and memory-iq.
+- cohesion: SIGNED OFF at 533f84e2 (agent-label nit fixed); Chromium e2e result still to come.
+- connectors 7e648545: HIGH + MEDIUMs fixed, OK once tests run; build firstParty(name) on
+  native-core's firstParty(dir).
+
+RC SMOKE PROVEN: build-app.sh + npm pack of pre/batch4b 63d943f5 (build.json stamped): 21 pass,
+0 fail, 3 skip (pairing, mail, theme). /app/ 200. Rerun on ci's rc.1 dry-run artifact later.
+RC SMOKE (lead, 27 Sep): scripts/rc-smoke.sh <tgz> + scripts/rc-smoke/ (e62b0d22). Dry run on an
+npm pack of pre/batch4b 63d943f5: 19 pass, 2 FAIL (/app/ no_app: npm pack has no built app; a
+build-site tgz must pass), 3 skip (phone enrol needs a tailnet; mail and appearance not in b4).
+Mail step written (daf63e22: vault.connect, made-up hosts, mail.send held; on with vault-next +
+connectors). Next: ci sends the run id of release-dry-run-v0.1.0-rc.1 after batch 4 + the rc.1 bump;
+`gh run download <id> -R vyre-ai/vyre -n release-dry-run-v0.1.0-rc.1 -D <dir>`, check SHA256SUMS, run rc-smoke.
+Cleared: native-core fa349d31 + platform d62792d0; cohesion 0f4d1105 (Chromium 8/8).
+
+SPLIT VALIDATED on sessions db4af9c3 (callAsPerson ed2715ae) + main 53cd1326: check.sh 30/30,
+thread.sh 8/8; cleared to the integrator. MCP list 258 -> 239 (asked sessions to check the filter).
+connectors SIGNED OFF at 84f630c9 (226/226 + docs 50/50); firstParty dup with native-core at merge.
+memory-iq merged 88c90d56 (2dd6e83a).
+
+Split with sessions 501ca3fc (lead, 27 Sep): image from 501ca3fc merged with main 53cd1326.
+check.sh 30/30. New scripts/e2e-split/thread.sh (vyred starts a session through the spawner, CLI
+runner, VYRE_CLAUDE_BIN = a stand-in in /work): 6/7. FAIL `vyre call` inside a session: callAsPerson
+(core/cli/presence.js:47) pins root, so VYRE_SOCKET is ignored. Sent to sessions with the fix. Low:
+MCP offers 258 tools incl. person-only. NOT yet cleared for the integrator; rerun both on their sha.
+
+Batch 4 lows (lead, 27 Sep): DONE in 8b9b092c. Unknown ids at gate.* and agents.* answer 404
+not_found; `vyre link signin` at a terminal waits on the event stream and says "signed in on the
+box until <date>" (test/daemon.test.js, test/link-person.test.js; 115/115 + 88/88 on testbox).
+
+Next, in order:
+1. DONE (see above). To rerun the headscale gate on a new sha: Setup kept in
+   /srv/vyre-e2e (CA, NSS db). Build `docker build -t vyre-e2e:local -f box/Dockerfile .` from that
+   sha on testbox, then `./run1.sh`, `./run2.sh <link>`, `./run3.sh` (run3 uses `vyre up --connect`),
+   then the person-session checks (curl from the Mac node gets 401; the Deck's first action signs in;
+   `vyre link signin`; a claude-parented call and its orphan refused). A cloned passkey on the phone
+   makes the Mac's counter go backwards: bump signCount or re-add. Tear down: `docker compose
+   --profile mac --profile phone --profile computers down -v` in /srv/vyre-e2e; kill drive*.pid.
+   Report pass/fail per item to box-deploy and the lead.
+2. Re-review native-core when it sends a sha. Open: settings.set/reset into PERSON_ONLY and refuse
+   agent labels (HIGH 1); module-declared stores: home modules only own tools as module:<name>, own
+   config paths, no claude store, checked at load; CALL_AS scoped to core modules' declared setter
+   tools (HIGH 2). platform's settings.write e4515fb6 is approved, lands after.
+3. Batch 4: no auto-pair (9fc65458).
+4. Per-thread socket with sessions: they wire VYRE_SOCKET in spawnSession and client.js, then flip
+   sessions.spawner to "on"; rebuild the image and run scripts/e2e-split/check.sh (it now also checks
+   /run/vyre-threads).
+Also open: glass-live MEDIUMs (docs/work/glass-live.md); sessions' bypass checks (hook floor, refuse
+bypass without the harness plugin); the phone's two identities (tailnet node vs relay device) is a
+design item for the lead.
 
 ## Earlier (27 Sep, after the restart)
 
@@ -265,6 +352,10 @@ event stream's first byte. Tear down afterwards.
 - vault-deck: snag 16. polish-surfaces: snags 17 and 18.
 
 ## Changed contracts
+
+- core/config: `claudeHome(root, env?)`: Claude Code's folder for a Vyre home (real ~/.claude or
+  CLAUDE_CONFIG_DIR only for the real ~/.vyre; `<home>/claude` otherwise; VYRE_CLAUDE_HOME
+  overrides). Default `transcripts` use it.
 
 - core/spawner: spawnAsAgent(argv, { env, cwd }) -> ChildProcess-like (pid, stdin, stdout, stderr,
   kill, exit). VYRE_SPAWNER_SOCKET (/run/vyre/spawner.sock), VYRE_SPAWNER_ALLOW (extra programs,

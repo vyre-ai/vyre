@@ -102,9 +102,9 @@ const DECK_VIEWS_PAGE = "using/deck.md#what-is-on-each-view";
 // error there, so a page naming another one is stale. The rest take free words (a query, a name).
 const STRICT = new Set(["agents", "box", "capsule", "learn", "link", "name", "presence", "vault", "watchers"]);
 
-// Pages that legitimately name old or missing things: history, gaps and the spec. They are
-// indexed, but never fail the stale check.
-const HISTORY = [/^adr\//, /^changelog\.md$/, /^known-gaps\.md$/, /^architecture\/spec\.md$/];
+// Pages that legitimately name old or missing things: history, release notes (written before
+// the release lands), gaps and the spec. They are indexed, but never fail the stale check.
+const HISTORY = [/^adr\//, /^releases\//, /^changelog\.md$/, /^known-gaps\.md$/, /^architecture\/spec\.md$/];
 const GENERATED = /^reference\//;
 // A line carrying this comment is not checked, for a page that shows a stale name on purpose.
 const IGNORE = "<!-- terms: ignore -->";
@@ -178,7 +178,7 @@ function subsIn(text) {
 
 /**
  * Every `vyre` command, read from core/cli/commands without running it.
- * @returns {{ name: string, aliases: string[], file: string, subs: string[], strict: boolean }[]}
+ * @returns {{ name: string, aliases: string[], file: string, subs: string[], strict: boolean, secret: boolean }[]}
  */
 export function cliCommands(root) {
   const dir = path.join(root, "core/cli/commands");
@@ -199,6 +199,7 @@ export function cliCommands(root) {
       const usageRef = obj.match(/\busage(?:\s*:\s*([A-Za-z_$][\w$]*))?\s*[,}]/);
       const usage = usageLit ? usageLit[1] : usageRef ? [constString(text, usageRef[1] || "usage"), constString(text, "USAGE")].join(" ") : "";
       const order = Number((obj.match(/\border:\s*(\d+)/) || [])[1] ?? 50);
+      const secret = /\bsecret\s*:\s*true\b/.test(obj);
       const aliases = [...((obj.match(/\baliases:\s*\[([^\]]*)\]/) || [])[1] || "").matchAll(/"([^"]+)"/g)].map(a => a[1]);
       // Subcommands are compared in the command's own object, or in the run function it names
       // (box.js: `run` defined above the export). A file's SUBS table serves its one command.
@@ -207,7 +208,7 @@ export function cliCommands(root) {
       if (objs.length === 1 && /\bconst SUBS\s*=/.test(text)) body = text;
       const subs = new Set([...subsIn(body), ...usageWords(usage, name)]);
       const rec = found.get(name);
-      if (!rec) found.set(name, { name, aliases: new Set(aliases), file: `core/cli/commands/${f}`, order, subs });
+      if (!rec) found.set(name, { name, aliases: new Set(aliases), file: `core/cli/commands/${f}`, order, subs, secret });
       else {
         for (const a of aliases) rec.aliases.add(a);
         for (const s of subs) rec.subs.add(s);
@@ -222,7 +223,7 @@ export function cliCommands(root) {
     const block = wrapper.slice(wrapper.search(/\bcase "\$\{1:-\}" in\b/));
     for (const m of block.matchAll(/^\s{2}([a-z][a-z-]*)\)/gm)) if (!found.has(m[1])) found.set(m[1], { name: m[1], aliases: new Set(), file: "box/vyre", order: 99, subs: new Set() });
   } catch {}
-  const out = [...found.values()].map(c => ({ name: c.name, aliases: [...c.aliases].sort(byName), file: c.file, subs: [...c.subs].filter(s => s !== c.name).sort(byName), strict: STRICT.has(c.name) }));
+  const out = [...found.values()].map(c => ({ name: c.name, aliases: [...c.aliases].sort(byName), file: c.file, subs: [...c.subs].filter(s => s !== c.name).sort(byName), strict: STRICT.has(c.name), secret: Boolean(c.secret) }));
   out.push({ name: "help", aliases: ["--help", "-h"], file: "core/cli/index.js", subs: [], strict: false });
   out.push({ name: "version", aliases: ["--version", "-v"], file: "core/cli/index.js", subs: [], strict: false });
   return out.sort((a, b) => byName(a.name, b.name));
@@ -337,6 +338,9 @@ export function known(root) {
   const commands = cliCommands(root);
   /** @type {Map<string, { module: string, file: string }>} */ const tools = new Map();
   /** @type {Map<string, { module: string, file: string }>} */ const events = new Map();
+  // Settings keys a module declares (module.json "settings"): real names, served by the hub.
+  const settings = new Set();
+  for (const { manifest: m } of mods) for (const d of Array.isArray(m.settings) ? m.settings : []) if (d && typeof d.key === "string") settings.add(d.key);
   for (const { dir, manifest: m } of mods) {
     for (const t of new Set(m.does?.tools || [])) if (!tools.has(t)) tools.set(t, { module: m.name, file: firstFile(root, dir, t, `${dir}/module.json`) });
     for (const e of new Set(m.watches?.emits || [])) if (!events.has(e)) events.set(e, { module: m.name, file: firstFile(root, dir, e, `${dir}/module.json`) });
@@ -350,7 +354,7 @@ export function known(root) {
     for (const m of fs.readFileSync(file, "utf8").matchAll(/\bctx\.([a-z]\w*)\.([a-z]\w*)/g)) api.add(`${m[1]}.${m[2]}`);
   }
   // Every dotted name, and every prefix of one: `glass.files` is a real namespace.
-  const names = new Set([...tools.keys(), ...events.keys(), ...config.keys(), ...api]);
+  const names = new Set([...tools.keys(), ...events.keys(), ...config.keys(), ...api, ...settings]);
   const prefixes = new Set();
   for (const n of names) { const s = n.split("."); for (let i = 1; i < s.length; i++) prefixes.add(s.slice(0, i).join(".")); }
   // Namespaces whose children the code lists in full: a tool's or an event's, and config.json's
@@ -579,7 +583,10 @@ export function buildIndex({ root, reference = {} }) {
   /** @type {Map<string, { kind: string, name: string, definedIn: string | null, page: string | null, mentions: { page: string, line: number, anchor: string }[], [x: string]: any }>} */
   const things = new Map();
   const put = (kind, name, definedIn, page, extra = {}) => things.set(`${kind}\0${name}`, { kind, name, definedIn, page, ...extra, mentions: [] });
-  for (const c of k.commands) {
+  // A `secret` command (core/cli/index.js) gets no index entry at all: found only by typing it,
+  // never by reading a generated doc. known(root).commands still lists it, for the "terms: the
+  // real tree" parity check against the CLI's own command list.
+  for (const c of k.commands.filter(c => !c.secret)) {
     put("command", `vyre ${c.name}`, c.file, null, c.aliases.length ? { aliases: c.aliases } : {});
     for (const s of c.subs) put("command", `vyre ${c.name} ${s}`, c.file, null);
   }

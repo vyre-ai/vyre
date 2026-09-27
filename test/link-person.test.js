@@ -10,6 +10,7 @@ import http from "node:http";
 import { pair, OWNER, MAC } from "./link-harness.js";
 import crypto from "node:crypto";
 import { HUMAN_ONLY, inputHash } from "../core/presence/index.js";
+import { signedIn } from "../core/cli/commands/link.js";
 
 /**
  * Every human-only tool asks. A device proof is checked for real against the key enrolled for it
@@ -69,9 +70,15 @@ test("link: a Mac answers on the box only once the person signs it in, and only 
   assert.match(page.data.redirect, /^http:\/\/127\.0\.0\.1:\d+\/cb\/[\w-]+\?code=/);
   // Another loopback path is not a sign-in address.
   assert.equal((await s.boxCall("presence.person.start", { cc, return: "http://127.0.0.1:9/elsewhere" }, `tailnet:${OWNER}`, { peer: MAC })).error.code, "denied");
+  // `vyre link signin` at a terminal waits on the Mac's event stream for this.
+  const waiting = signedIn(Date.now() + 10_000, { root: s.macRoot });
   const landed = await get(page.data.redirect);
   assert.equal(landed.status, 200, landed.body);
-  assert.ok((await s.macCall("link.status")).data.signedIn);
+  const signed = (await s.macCall("link.status")).data.signedIn;
+  assert.ok(signed);
+  assert.equal(await waiting, signed.expires, "the waiting command hears the sign-in");
+  assert.equal(await signedIn(Date.now() + 300, { root: s.macRoot, before: signed.expires }), null, "the session it already had is not a new sign-in");
+  assert.equal(await signedIn(Date.now() + 5_000, { root: s.macRoot }), signed.expires, "a sign-in that landed before the stream opened still counts");
   await assert.rejects(get(page.data.redirect), /ECONNREFUSED|hang up/, "the loopback closes after one use");
 
   // Signed in: the person's terminal and Capsule reach the box's person-only tools.

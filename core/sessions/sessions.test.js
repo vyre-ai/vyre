@@ -564,6 +564,8 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(e.model, "haiku", "an explicit model wins");
     const map = (await w.tool("sessions.models.get", {})).data;
     assert.deepEqual([map.purposes.chat.model, map.purposes.memory.model, map.purposes.capsule.model, map.projects["harlow-legal"]], ["opus", "haiku", "claude-haiku-4-5", "sonnet"]);
+    // The box's one list of aliases, for every surface's model picker (test/cohesion-drift.test.js).
+    assert.deepEqual(map.aliases.map((/** @type {any} */ m) => m.id), ["opus", "sonnet", "haiku"]);
   });
 
   test(`${driver}: a session a terminal started, by an older Claude Code, is resumed through Vyre on the first message, once in the list`, { skip }, async t => {
@@ -955,6 +957,9 @@ for (const driver of ["cli", "sdk"]) {
     const rem = (await w.tool("threads.remember", { thread: th.id, text: "Prices have two decimals." }, "deck")).data;
     assert.equal(rem.file, path.join(w.work, "CLAUDE.md"));
     assert.match(fs.readFileSync(rem.file, "utf8"), /^- Prices have two decimals\.$/m);
+    // The user's own CLAUDE.md, for a temp home, is the home's own (claudeHome), never ~/.claude.
+    const mine = (await w.tool("threads.remember", { thread: th.id, text: "Call me alex.", scope: "user" }, "deck")).data;
+    assert.equal(mine.file, path.join(w.root, "claude", "CLAUDE.md"));
     // Thinking off
     assert.deepEqual((await w.tool("threads.thinking", { thread: th.id, on: false }, "deck")).data, { thread: th.id, thinking: false });
     await until(() => w.launches().some(l => l.thinking === 0), "thinking off to reach Claude Code");

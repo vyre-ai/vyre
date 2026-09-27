@@ -507,6 +507,6 @@ Still open:
   `<home>/agents/<name>`, cannot write files in its own folder. e2e decides.
 - **Mac-owned sessions** wait for e2e's HTTP person session and tailnet's signed answer forward
   (migration step 7).
-- The SDK is pre-1.0 and changes weekly; it is pinned in `core/sessions/sdk.js`, and a bump runs
+- The SDK is pre-1.0 and changes weekly; it is pinned in `core/sessions/sdk-pin.js`, and a bump runs
   the switchboard and sessions suites on the SDK driver first.
 - The plugin inside an owned session and in-process hooks must never both run the same piece.

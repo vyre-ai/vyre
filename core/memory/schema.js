@@ -213,4 +213,17 @@ export const MIGRATIONS = [
   `CREATE TABLE memory_me_model (id INTEGER PRIMARY KEY, thread TEXT, started INTEGER NOT NULL, finished INTEGER, status TEXT NOT NULL, cues TEXT NOT NULL, facts INTEGER NOT NULL DEFAULT 0, result TEXT); CREATE TABLE memory_me_cues_done (session TEXT NOT NULL, seq INTEGER NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL, how TEXT NOT NULL, PRIMARY KEY (session, seq, text)) WITHOUT ROWID;`,
   // What the person or their assistant told memory outright (memory.remember): read as session told:<id>.
   `CREATE TABLE memory_me_told (id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, text TEXT NOT NULL, room TEXT, who TEXT);`,
+  // The reader (personal/reader.js): user turns waiting for the fast model, and what it said about
+  // each text, kept by hash so no turn is paid for twice.
+  `CREATE TABLE memory_me_queue (session TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL DEFAULT 0, hash TEXT NOT NULL, pri INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (session, seq)) WITHOUT ROWID;
+  CREATE INDEX memory_me_queue_hash ON memory_me_queue (hash);
+  CREATE TABLE memory_me_reads (hash TEXT PRIMARY KEY, v INTEGER NOT NULL, at INTEGER NOT NULL, facts TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0) WITHOUT ROWID;`,
+  // Source trust (personal/trust.js, ADR 0034): which sessions may teach personal facts. Claude's
+  // words no longer do, and every session is read again under the new rules.
+  `CREATE TABLE memory_me_trust (session TEXT PRIMARY KEY, ok INTEGER NOT NULL, why TEXT, dev INTEGER NOT NULL DEFAULT 0, v INTEGER NOT NULL) WITHOUT ROWID;
+  DELETE FROM memory_me_claims WHERE method NOT IN ('model', 'told');
+  DELETE FROM memory_me_cues; DELETE FROM memory_me_cursor;`,
+  // Vyre IQ (core/memory/iq/ask.js): the model's reply to each exact answer prompt, kept by its
+  // hash, so a question over the same passages is answered the same way and never paid twice.
+  `CREATE TABLE memory_iq_asks (hash TEXT PRIMARY KEY, v INTEGER NOT NULL, at INTEGER NOT NULL, reply TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0) WITHOUT ROWID;`,
 ];

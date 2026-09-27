@@ -1,0 +1,82 @@
+[
+  {
+    "input": "{}",
+    "canonical": "{}",
+    "hash": "RBNvo1WzZ4oRRq0W9-hknpT7T8If536DEMBg9hyq_4o"
+  },
+  {
+    "input": "[]",
+    "canonical": "[]",
+    "hash": "T1PNoYwrqgwDVLtfmj7L5e0Sq02OEbqHPC8RFhICuUU"
+  },
+  {
+    "input": "{\"b\":1,\"a\":2}",
+    "canonical": "{\"a\":2,\"b\":1}",
+    "hash": "02JqwwqH5vemQoIzs8aCmZdoZfpVCOQmfFQVx2r3p3I"
+  },
+  {
+    "input": "{\"id\":\"a1b2c3\",\"edited\":{\"subject\":\"Q3 report, the short version\",\"to\":[\"dana@harlowlegal.com\"]}}",
+    "canonical": "{\"edited\":{\"subject\":\"Q3 report, the short version\",\"to\":[\"dana@harlowlegal.com\"]},\"id\":\"a1b2c3\"}",
+    "hash": "KmM0nFjm12HJUslwu8i8JDLBhe8APcT5JchXCDfYkhs"
+  },
+  {
+    "input": "{\"z\":{\"y\":{\"x\":[3,2,{\"d\":1,\"c\":[{\"b\":true,\"a\":null}]}]}},\"a\":false}",
+    "canonical": "{\"a\":false,\"z\":{\"y\":{\"x\":[3,2,{\"c\":[{\"a\":null,\"b\":true}],\"d\":1}]}}}",
+    "hash": "n7m6NF2KDPldehIB_nLXb4fXD8jWYne4gvvEFIP3BL4"
+  },
+  {
+    "input": "{\"text\":\"line one\\nline two\\ttab \\\"quoted\\\" back\\\\slash\"}",
+    "canonical": "{\"text\":\"line one\\nline two\\ttab \\\"quoted\\\" back\\\\slash\"}",
+    "hash": "CSG47dGDq9A0URYGvq-BKtJoBRKrGubm_5YHbEgp3iI"
+  },
+  {
+    "input": "{\"ctl\":\"\\u0000\\u0001\\u001f\\u007f\\b\\f\\r\"}",
+    "canonical": "{\"ctl\":\"\\u0000\\u0001\\u001f\\b\\f\\r\"}",
+    "hash": "4iiuW087539kGcVfB_GZ0LHD63BQr2GLngUOJ4IB1ag"
+  },
+  {
+    "input": "{\"uni\":\"caf\\u00e9 \\u2028 \\u2029 \\ud83d\\ude00 \\u00a0\",\"slash\":\"a/b\"}",
+    "canonical": "{\"slash\":\"a/b\",\"uni\":\"café     😀  \"}",
+    "hash": "WsDlXjMUyKSD8PNVVwB8ooxHEPJRUJcW_eqhskNVbkg"
+  },
+  {
+    "input": "{\"lone\":\"\\ud800 and \\udfff\"}",
+    "canonical": "{\"lone\":\"\\ud800 and \\udfff\"}",
+    "hash": "KWl8kyP4SLG78MATF2KfNsVgtbfQBn3Vg7FVgEKFVDw"
+  },
+  {
+    "input": "{\"n\":[0,-0,1,-1,1.5,0.1,1e21,1e20,123456789012345680000,1e-6,1e-7,2.5e-8,3.14159,100,1.0,2.50,-0.000001,5e-324,1.7976931348623157e308]}",
+    "canonical": "{\"n\":[0,0,1,-1,1.5,0.1,1e+21,100000000000000000000,123456789012345680000,0.000001,1e-7,2.5e-8,3.14159,100,1,2.5,-0.000001,5e-324,1.7976931348623157e+308]}",
+    "hash": "1d8KJNnqKFDFY6fA3IJ1KX8gpN7zxOeVtNQYH1JtMEk"
+  },
+  {
+    "input": "{\"B\":1,\"a\":2,\"_\":3,\"é\":4,\"Z\":5,\"aa\":6,\"a_\":7,\"10\":8,\"9\":9}",
+    "canonical": "{\"10\":8,\"9\":9,\"B\":1,\"Z\":5,\"_\":3,\"a\":2,\"a_\":7,\"aa\":6,\"é\":4}",
+    "hash": "UHMiJ4MEbs1Pg_r2m72owt0bWbl8rSIo9RcYLO4zu2s"
+  },
+  {
+    "input": "{\"ask\":\"4f1e2d3c4b5a697887\",\"decision\":\"allow\",\"surface\":\"android\"}",
+    "canonical": "{\"ask\":\"4f1e2d3c4b5a697887\",\"decision\":\"allow\",\"surface\":\"android\"}",
+    "hash": "fIcG8d_lQydNfHfhoIIgyA1YB69jf0Z-eg9n7ME4Eek"
+  },
+  {
+    "input": "{\"thread\":\"5b0c6a1e-8d2f-4b7a-9c3e-1f2a3b4c5d6e\",\"text\":\"run the tests\",\"surface\":\"android\"}",
+    "canonical": "{\"surface\":\"android\",\"text\":\"run the tests\",\"thread\":\"5b0c6a1e-8d2f-4b7a-9c3e-1f2a3b4c5d6e\"}",
+    "hash": "N1CEGeA647cQ7jf-Y2TLSI3wqph1_orPMrmFt7YdYDI"
+  },
+  {
+    "input": "{\"name\":\"harlow-gmail\",\"field\":\"password\"}",
+    "canonical": "{\"field\":\"password\",\"name\":\"harlow-gmail\"}",
+    "hash": "WW5KNF_2GGkl8aNScxVAbI94g-I2eIOm6lE0yWOQX6E"
+  },
+  {
+    "input": "{\"kind\":\"device\",\"name\":\"Pixel 7\",\"public_key\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE\",\"alg\":-7}",
+    "canonical": "{\"alg\":-7,\"kind\":\"device\",\"name\":\"Pixel 7\",\"public_key\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE\"}",
+    "hash": "MLEXZMatTKC3Jz2M-L1S08RBob-8zhIB1OhYFGv22ZU"
+  },
+  {
+    "input": "{\"deep\":[[[[[]]]],{\"\":\"\"}],\"empty\":\"\"}",
+    "canonical": "{\"deep\":[[[[[]]]],{\"\":\"\"}],\"empty\":\"\"}",
+    "hash": "H35faRKcV4M3pP5mCoGJZKr6g54_sWH04NkVSuNPsQY"
+  }
+]

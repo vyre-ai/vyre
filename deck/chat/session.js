@@ -61,16 +61,19 @@ import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
 import { healthDot } from "../js/health.js";
 import { gateCard } from "./gate-item.js";
+import { mountTip } from "./tip-line.js";
+import { planCard } from "./plan-card.js";
+import { isPlanAsk } from "./core/plan.js";
 import { askCard } from "./ask-item.js";
 import { questionCard } from "./question.js";
 import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
-import { duration, elapsed, toolTitle } from "./lib/blocks.js";
+import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl } from "./blocks.js";
 import { textItemRow } from "./live-text.js";
-import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks } from "./core/session-state.js";
+import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks, pendingEvents } from "./core/session-state.js";
 import { CAPS, NEEDS_UPDATE, REWIND_CODE } from "./core/caps.js";
 import { rewindSheet } from "./pickers.js";
 import { todoPin, tasksTray } from "./tray.js";
@@ -158,6 +161,8 @@ export function mountSession(container, opts) {
   /** Long sessions mount only the rows near the viewport (window-view.js); the bottom anchor is kept there. */
   const win = createWindowView(timeline, { following: () => stick.stuck, onUnmount: (k, el) => unmounted(k, el), resize: stick });
   const head = h("div", { class: "session-head" });
+  /** The composer hint line's tip (tip-line.js), once the view has opened. @type {ReturnType<typeof mountTip>|null} */
+  let tip = null;
   const leaseBar = h("div", { class: "lease-bar" });
   const queuedBox = h("div", { class: "cv-queued", role: "status", hidden: true });
   const record = { current: /** @type {any} */ (null) };
@@ -181,7 +186,8 @@ export function mountSession(container, opts) {
     onQueue: (n, name) => { mac.queued = n; mac.name = name; if (isMac(where)) drawHead(); },
     onOffline: m => { mac.offline = m; drawHead(); },
     onStop: () => stopTurn(),
-    session: S, patch: keys => patch(keys),
+    // A message drawn on send (its row key u:<uuid>) brings the reader down to it, as thread.sent does.
+    session: S, patch: keys => { const sent = !!booted && keys.some(k => k.startsWith("u:")); patch(keys); if (sent) toBottom(); },
     cwd: () => record.current?.cwd || recorded.session?.cwd || null,
     name: () => agentName(),
     onRewind: () => openRewind(),
@@ -275,9 +281,15 @@ export function mountSession(container, opts) {
         if (typeof e.id === "number") S.meta.lastId = Math.max(S.meta.lastId, e.id);
       }
       applyCosts(done);
+      // The queue and steers not taken in yet: the transcript holds neither, only the events do.
+      for (const e of pendingEvents(data.events)) applyStateEvent(S, e);
       for (const a of data.asks) upsertAsk(a);
     }
     booted = true;
+    report();
+    // The tip on the composer's hint line (tip-line.js): hidden while a turn runs or a card waits.
+    if (!recorded.on && !tip) tip = mountTip(composer.tipSlot, { busy: () => busy() || [...cards.values()].some(c => c.isOpen?.() && c.parentNode),
+      empty: () => !composer.value().trim(), input: composer.input, visible });
     layout();
     drawHead();
     drawQueued();
@@ -353,6 +365,7 @@ export function mountSession(container, opts) {
       health.el,
     );
     composer.setBusy(busy());
+    tip?.sync();
     // A Mac session: the keyboard is the Mac's own (the lease is not forwarded), so no Take.
     if (isMac(where)) { put(leaseBar, icon("laptop", 12), h("span", { class: "lease-note" }, `On ${macName()}` + (mac.queued ? ` · Queued for ${mac.name || "this session"}` : ""))); return; }
     const idleClosed = sb && S.state === "idle" && S.stopped === "idle";
@@ -541,6 +554,14 @@ export function mountSession(container, opts) {
 
   // ---- rows from items -----------------------------------------------------------------------
 
+  /** The session's folder, so paths inside it read relative ("menu.md", not the whole path). */
+  const sessionCwd = () => record.current?.cwd || recorded.session?.cwd || null;
+  /** A running call while the session waits on the person: its ask is open, so it is not working. */
+  const waitingOn = it => it.status === "running" && S.state === "waiting";
+
+  /** Is there a message of the person's after this item (from the tail, so a last turn costs little)? */
+  const saidAfter = it => { for (let i = S.items.length - 1; i >= 0; i--) { const x = S.items[i]; if (x === it) return false; if (x.kind === "user") return true; } return false; };
+
   /** An item as the block the renderers and the raw view know. */
   function asBlock(it) {
     const at = it.at;
@@ -550,8 +571,10 @@ export function mountSession(container, opts) {
       case "reasoning": return { kind: "thinking", text: it.text, ts: at };
       case "tool": return { kind: "tool", id: it.call, tool: it.name, input: it.input, output: it.output ?? null, summary: it.summary,
         error: it.status === "failed" || (!!it.error && it.status !== "running"), duration_ms: it.duration_ms ?? null, ts: at, patch: it.patch,
-        done: it.status !== "running", canceled: it.status === "canceled" };
-      case "turn": return { kind: "turn", ts: at, duration_ms: it.duration_ms, tokens: it.tokens, cost_usd: it.cost_usd, open: it.open,
+        done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it) };
+      // A turn the transcript has not closed is still going only while the session is busy and
+      // nothing was said after it (a message sent now closes the one before, even unread yet).
+      case "turn": return { kind: "turn", ts: at, duration_ms: it.duration_ms, tokens: it.tokens, cost_usd: it.cost_usd, open: !!it.open && busy() && !saidAfter(it),
         canceled: it.canceled, byMe: byMe.has(it.key), error: it.error || (it.ok === false && !it.canceled ? (it.reason || "error") : null) };
       default: return null;
     }
@@ -603,7 +626,7 @@ export function mountSession(container, opts) {
   function syncEl(el, it) {
     if (it.kind === "text") { el.sync(it); return el; }
     if (it.kind === "reasoning") { el.set(it.text, thinkLabel(it)); return el; }
-    const s = sig(it);
+    const s = sig(it) + (it.kind === "tool" && waitingOn(it) ? "w" : "");
     if (s === el._sig) return el;
     el._sig = s;
     if (it.kind === "tool") { el.update(asBlock(it)); return el; }
@@ -615,11 +638,11 @@ export function mountSession(container, opts) {
 
   /** Where typed words joined a running turn: "Steered at step 2 · 14:32", or "Steering" until it reads them. */
   function steerEl(it) {
-    const label = it.pending ? "Steering" : it.step != null ? `Steered at step ${it.step}` : "Steered here";
-    return h("div", { class: "cv-row cv-steer" + (it.pending ? " cv-steer-pending" : ""), role: "note" },
+    const words = it.pending ? `steering · ${agentName() || "Vyre"} reads it at its next step`
+      : ["you steered here", it.step != null ? `after ${it.step} ${it.step === 1 ? "step" : "steps"}` : null, it.at ? clock(it.at) : null].filter(Boolean).join(" · ");
+    return h("div", { class: "cv-row cv-steer" + (it.pending ? " cv-steer-pending" : ""), role: "separator", "aria-label": words },
       h("span", { class: "line" }),
-      h("span", { class: "cv-steer-lbl" }, label,
-        it.pending ? h("span", { class: "faint" }, " · joins at the next step") : it.at ? h("span", { class: "msg-when" }, " · " + clock(it.at)) : null),
+      h("span", { class: "cv-steer-lbl" }, words),
       h("span", { class: "line" }));
   }
   /** A "!" command run in the session's folder, and what it printed. */
@@ -639,7 +662,7 @@ export function mountSession(container, opts) {
   function askData(id, it) {
     const info = askInfo.get(id) || {};
     return { id, tool: it?.tool ?? info.tool ?? null, summary: it?.summary ?? info.summary ?? null, kind: info.kind || it?.askKind || "permission",
-      ...info, agent: agentName(), ...macOf(info) };
+      ...info, agent: agentName(), cwd: sessionCwd(), ...macOf(info) };
   }
   /** A Mac session's ask: answered from here with its machine (the relayed event's, else the row's),
    * unless this box has shown it cannot forward answers (presence.js macAnswersHeld). */
@@ -650,7 +673,7 @@ export function mountSession(container, opts) {
   }
   function askEl(it) {
     const full = askData(it.ask, it);
-    const el = /** @type {any} */ (full.kind === "question" ? questionCard(full) : askCard(full));
+    const el = /** @type {any} */ (isPlanAsk(full) ? planCard(full, { thread }) : full.kind === "question" ? questionCard(full) : askCard(full));
     el._ask = full;
     cards.set(it.ask, el);
     settleAsk(el, it);
@@ -724,15 +747,17 @@ export function mountSession(container, opts) {
         el._ts = items[0]?.at ?? null;
         const running = items.find(t => t.status === "running");
         const isOpen = openRuns.has(row.key);
+        const waiting = running && waitingOn(running);
         if (running) {
-          sum.replaceChildren("Running " + (running.input && Object.keys(running.input).length ? toolTitle(running.name, running.input) : running.summary || running.name));
-          meta.replaceChildren(running.at !== undefined ? " · " + elapsed(now - running.at) : "");
+          const what = running.input && Object.keys(running.input).length ? toolTitle(running.name, running.input, sessionCwd()) : running.summary || "";
+          sum.replaceChildren([toolVerb(running.name, "running"), what].filter(Boolean).join(" "));
+          meta.replaceChildren(waiting ? "waiting on you" : running.at !== undefined ? elapsed(now - running.at) : "");
         } else {
           sum.replaceChildren(row.summary);
           const ms = items.reduce((n, t) => n + (typeof t.duration_ms === "number" ? t.duration_ms : 0), 0);
-          meta.replaceChildren([ms ? duration(ms) : null, row.failed ? `${row.failed} failed` : null].filter(Boolean).map(s => " · " + s).join(""));
+          meta.replaceChildren([ms ? duration(ms) : null, row.failed ? `${row.failed} failed` : null].filter(Boolean).join(" · "));
         }
-        el.setAttribute("data-state", running ? "running" : row.failed ? "failed" : "done");
+        el.setAttribute("data-state", waiting ? "waiting" : running ? "running" : row.failed ? "failed" : "done");
         if (isOpen) el.setAttribute("data-open", ""); else el.removeAttribute("data-open");
         btn.setAttribute("aria-expanded", String(isOpen));
         body.hidden = !isOpen;
@@ -863,13 +888,30 @@ export function mountSession(container, opts) {
   /** Items changed since the last layout, for the incremental grouping. */
   const grouper = createGrouper();
   const changedKeys = new Set();
+  let lastState = /** @type {string|null} */ (null);
   /** Changed keys from session-state: rows patched in place; the order laid out again only when a row came, went or moved. */
   function patch(keys) {
     if (!keys.length) return;
     for (const k of keys) changedKeys.add(k);
     let order = false;
     for (const k of keys) {
-      if (k === "@session") { if (booted) drawHead(); continue; }
+      if (k === "@session") {
+        if (!booted) continue;
+        drawHead();
+        // Waiting on the person or working again: the running calls say which (no clock while waiting).
+        if (S.state !== lastState) {
+          lastState = S.state;
+          for (const it of S.items) {
+            if (!((it.kind === "tool" && it.status === "running") || (it.kind === "turn" && it.open))) continue;
+            const el = els.get(it.key);
+            if (!el) continue;
+            const nel = syncEl(el, it);
+            if (nel !== el) { els.set(it.key, nel); if (el.parentNode) el.replaceWith(nel); }
+          }
+          order = true;
+        }
+        continue;
+      }
       if (k === "@queued") { drawQueued(); continue; }
       if (k === "@todos") { pin.set(S.todos); continue; }
       if (k === "@tasks") { tray.set(S.tasks); continue; }
@@ -1139,10 +1181,10 @@ export function mountSession(container, opts) {
   /** The earlier view's cards: appended, then filled in. */
   function legacyAsk(a) {
     const info = askInfo.get(a.id) || {};
-    const full = { ...info, agent: agentName(), ...macOf(info) };
+    const full = { ...info, agent: agentName(), cwd: sessionCwd(), ...macOf(info) };
     let el = cards.get(a.id);
     if (el) { el.update(full); el._ask = { ...el._ask, ...full }; return; }
-    el = /** @type {any} */ (a.kind === "question" ? questionCard(full) : askCard(full));
+    el = /** @type {any} */ (isPlanAsk(full) ? planCard(full, { thread }) : a.kind === "question" ? questionCard(full) : askCard(full));
     el._ask = full;
     cards.set(a.id, el);
     timeline.append(el);
@@ -1166,6 +1208,8 @@ export function mountSession(container, opts) {
     if (editable(t)) return; // the composer (its own keys), the "Other" field, the deny reason: their own keys
     if (t && (t.tagName === "BUTTON" || t.tagName === "A") && (e.key === "Enter" || e.key === " ")) return; // the focused control's own press
     if (rewind && rewind.key(e)) { e.preventDefault(); return; }
+    // Cmd/Ctrl+Enter is a plan card's Start building (plan-card.md); every other modified key is the composer's.
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { const c = cardFor(t); if (c?.classList?.contains("cv-plan") && c.onKey(e)) { e.preventDefault(); return; } }
     // Ctrl+O, Ctrl+B, Alt+T and the like: the composer's page-wide keys, never a card's.
     if (e.metaKey || e.ctrlKey || e.altKey) { if (composer.key(e)) e.preventDefault(); return; }
     const card = cardFor(t);
@@ -1227,6 +1271,19 @@ export function mountSession(container, opts) {
 
   // ---- shared pieces ------------------------------------------------------------------------
 
+  /**
+   * Tell the box which thread is open here (cohesion's context.report), so "what am I working on"
+   * follows the screen. Once per open; a box without the tool answers no_such_tool and nothing
+   * changes. Only a person's surface calls it (the tool refuses a model).
+   */
+  let reported = false;
+  function report() {
+    if (reported || recorded.on) return;
+    reported = true;
+    const rec = record.current;
+    attempt("context.report", { surface: "chat", view: "chat", thread, ...(rec?.project ? { project: rec.project } : {}), ...(rec?.cwd ? { cwd: rec.cwd } : {}) });
+  }
+
   /** To the bottom now, and stuck there (Jump to latest, open, a sent message). */
   function toBottom() { stick.stick(); jump.hidden = true; }
   /**
@@ -1240,9 +1297,9 @@ export function mountSession(container, opts) {
     return h("div", { class: "gate-note cv-notice" }, icon("clock", 12), " ", text, " ", h("span", { class: "msg-when" }, clock(at)));
   }
 
-  // A gold fact, intelligence's real shape (memory.facts): {id, text, subject, rel, object,
+  // A memory fact, intelligence's real shape (memory.facts): {id, text, subject, rel, object,
   // confidence, age, stale, source, refs: [{seq}]}. Lessons are a different system and are never
-  // rendered gold; only what memory.facts returns is.
+  // rendered as memory facts; only what memory.facts returns is.
   function factCard(f) {
     const bits = [];
     if (f.age) bits.push(String(f.age));
@@ -1374,14 +1431,14 @@ export function mountSession(container, opts) {
   const onKb = () => {
     if (!timeline.isConnected) return;
     const p = padNow();
-    if (following) toBottom(); else if (pad >= 0) timeline.scrollTop += p - pad;
+    if (stick.stuck) toBottom(); else if (pad >= 0) timeline.scrollTop += p - pad;
     pad = p;
   };
   container.addEventListener("focusin", onFocus);
   window.addEventListener("deck:kb", onKb);
   offs.push(() => { container.removeEventListener("focusin", onFocus); window.removeEventListener("deck:kb", onKb); });
   return () => {
-    health.stop(); for (const off of offs) off(); composer.stop(); stick.stop(); win.stop();
+    health.stop(); for (const off of offs) off(); composer.stop(); stick.stop(); win.stop(); tip?.stop();
     document.removeEventListener("keydown", onKey);
     document.removeEventListener("visibilitychange", onVisible);
     if (rawTimer) clearTimeout(rawTimer);

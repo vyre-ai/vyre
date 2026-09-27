@@ -6,7 +6,8 @@
 //   signIn()                 the passkey sign-in itself: presence.person.start {} with a proof
 //                            bound to that tool and input. Call it from a tap (Safari asks for a
 //                            passkey only in a user gesture). Fires window "deck:person".
-//   needSignIn(retry?, err?) the sheet that asks for that tap. Resolves after a sign-in (to
+//   needSignIn(retry?, err?) the sheet that asks for that tap, naming what carries on after
+//                            it (carryOn). Resolves after a sign-in (to
 //                            retry() when given), rejects with the ApiError on "Not now". Two
 //                            calls at once share one sheet.
 //   installPersonHandler()   app.js runs it once: api.js hands person_session_required here and
@@ -19,16 +20,11 @@
 // Nothing here polls.
 
 import { h, put } from "./dom.js";
-import { call, attempt, endPerson, setPersonHandler, ApiError } from "./api.js";
+import { attempt, endPerson, setPersonHandler, signIn, ApiError } from "./api.js";
 import { openSheet } from "./sheet.js";
 
-/** Sign in on this device with a passkey. Resolves to { kind, id, expires }; throws an ApiError.
- * @returns {Promise<{ kind: string, id: string, expires: number }>} */
-export async function signIn() {
-  const r = await call("presence.person.start", {}, { presence: true });
-  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:person", { detail: r || null }));
-  return r;
-}
+// signIn lives in api.js (deck/person/signin/signin.js imports it from there too).
+export { signIn };
 
 /** The one sheet on screen, shared by every call that is waiting for it. @type {Promise<void> | null} */
 let pending = null;
@@ -42,13 +38,25 @@ let pending = null;
  * @returns {Promise<T | undefined>}
  */
 export async function needSignIn(retry, err) {
-  if (!pending) pending = ask().finally(() => { pending = null; });
+  if (!pending) pending = ask(err).finally(() => { pending = null; });
   try { await pending; } catch (e) { throw err || e; }
   return retry ? retry() : undefined;
 }
 
-/** @returns {Promise<void>} */
-function ask() {
+/** What the refused call was doing, in words, for the sheet's second line. Unknown tools say nothing. */
+const DOING = /** @type {Record<string, string>} */ ({
+  "threads.send": "sending your message", "threads.answer": "your answer", "gate.approve": "the send",
+  "gate.reject": "the discard", "gate.revise": "your edit", "term.open": "opening the terminal",
+  "agents.create": "making the agent", "agents.update": "saving the agent",
+});
+/** @param {ApiError | undefined} err */
+export function carryOn(err) {
+  const what = err && DOING[/** @type {any} */ (err).tool];
+  return what ? `Then Vyre carries on with ${what}.` : null;
+}
+
+/** @param {ApiError} [err] @returns {Promise<void>} */
+function ask(err) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const refused = () => new ApiError("person_session_required", "Not signed in on this device.", "presence.person.start");
@@ -72,7 +80,9 @@ function ask() {
             put(st, String(/** @type {any} */ (e)?.message || e));
           });
         });
-        put(body, h("p", { class: "person-line" }, "One passkey, and this device stays signed in for 30 days."), st);
+        const next = carryOn(err);
+        put(body, h("p", { class: "person-line" }, "One passkey, and this device stays signed in for 30 days."),
+          next ? h("p", { class: "small muted person-next" }, next) : null, st);
         put(actions, go, later);
       },
     });

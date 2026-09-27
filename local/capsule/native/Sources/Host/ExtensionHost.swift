@@ -161,12 +161,18 @@ final class ExtensionHost: CapsuleHost {
     func showPanel(_ extensionID: String) { shownPanel = extensionID; model.panelTick += 1 }
     func hidePanel() { shownPanel = nil; model.panelTick += 1 }
     func setQuery(_ text: String) { model.text = text }
+    func dictate(_ text: String, final: Bool) { model.dictate(text, final: final) }
+
+    /// A key came up: the first extension that wants it (hold-to-talk).
+    func handleUp(key: String) -> Bool { extensions.contains { $0.handleUp(key: key) } }
     func say(_ line: String) { model.line = line }
     func stepAside() async -> Bool { await panel?.stepAside() ?? false }
 
     func notify(title: String, body: String) {
         if isShown { say(body) } else { Notifier.shared.post(title: title, body: body) }
     }
+
+    func askCredential(_ need: CredentialNeed, saved: @escaping @MainActor () -> Void) { model.askCredential(need, saved: saved) }
 
     func log(_ message: String) { FileHandle.standardError.write(Data("capsule: \(message)\n".utf8)) }
 

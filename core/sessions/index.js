@@ -23,6 +23,12 @@ const MODEL = /^[A-Za-z0-9._:\[\]-]{1,80}$/;
 /** A project's default permission mode for new sessions (sessions.mode.set): "Doesn't ask" included. */
 const MODES_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_modes (project TEXT PRIMARY KEY, mode TEXT NOT NULL, by TEXT, at INTEGER NOT NULL)`;
 const SESSION_MODES = ["default", "acceptEdits", "plan", "bypassPermissions"];
+/** The model aliases Claude Code takes, the box's one list (surfaces read it from sessions.models.get). */
+export const MODEL_ALIASES = Object.freeze([
+  { id: "opus", label: "Opus", description: "The most capable" },
+  { id: "sonnet", label: "Sonnet", description: "Fast and capable" },
+  { id: "haiku", label: "Haiku", description: "The fastest" },
+]);
 import { installed, install, VERSION, DOWNLOAD_MB } from "./sdk.js";
 import { Slots, KINDS, BOX_DEFAULTS } from "./slots.js";
 
@@ -110,14 +116,14 @@ export default {
       { type: "object", properties: {} },
       async () => {
         const extra = ctx.config && ctx.config.sessions && Array.isArray(ctx.config.sessions.models_offered) ? ctx.config.sessions.models_offered : [];
-        const base = [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }, { id: "haiku", label: "Haiku" }];
+        const base = MODEL_ALIASES.map(({ id, label }) => ({ id, label }));
         const seen = new Set(base.map(m => m.id));
         return [...base, ...extra.filter(m => m && typeof m.id === "string" && !seen.has(m.id)).map(m => ({ id: String(m.id), label: String(m.label || m.id) }))];
       });
 
-    tool("sessions.models.get", "What each kind of session runs on: the model per purpose (chat, agent, project, teammate, capsule, job, memory, planner, learn, helper) and per project, and where each comes from. An agent's own model (agents.update) wins over these.",
+    tool("sessions.models.get", "What each kind of session runs on: the model per purpose (chat, agent, project, teammate, capsule, job, memory, planner, learn, helper) and per project, and where each comes from. An agent's own model (agents.update) wins over these. aliases is the list of model aliases to offer, with a label and a line each.",
       { type: "object", properties: {} },
-      async () => ({ purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p })])),
+      async () => ({ aliases: MODEL_ALIASES, purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p })])),
         projects: Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT scope, model FROM sessions_models WHERE scope LIKE 'project:%'").all()).map(r => [String(r.scope).slice(8), String(r.model)])) }));
 
     tool("sessions.models.set", "Set the model for a purpose (purpose:<chat|agent|project|teammate|capsule|job|memory|planner|learn|helper>) or a project (project:<slug>): an alias (opus, sonnet, haiku) or a full model id. model null removes the override. Applies from the next session.",

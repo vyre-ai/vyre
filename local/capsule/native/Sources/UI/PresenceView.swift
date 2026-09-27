@@ -19,25 +19,25 @@ struct PresenceView: View {
     var body: some View {
         VStack(spacing: 14) {
             HStack(spacing: 8) {
-                Image(systemName: "lock.shield").font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.signal)
-                Text("Confirm it's you").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.bone)
+                Image(systemName: "lock.shield").font(Theme.type(Tokens.TypeScale.base, .semibold)).foregroundColor(Theme.signal)
+                Text("Confirm it's you").font(Theme.type(Tokens.TypeScale.read, .semibold)).foregroundColor(Theme.bone)
                 Spacer()
             }
             Text(ask.summary)
-                .font(.system(size: 13.5)).foregroundColor(Theme.bone).lineSpacing(2)
+                .font(Theme.title).foregroundColor(Theme.bone).lineSpacing(Theme.lineGap(Tokens.TypeScale.base))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.raised))
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.rule, lineWidth: 1))
+                .background(RoundedRectangle(cornerRadius: Tokens.Radius.field, style: .continuous).fill(Theme.raised))
+                .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.field, style: .continuous).strokeBorder(Theme.rule, lineWidth: 1))
             HStack(spacing: 12) {
                 if hasTouchID { TouchIDGlyph(context: ask.context).frame(width: 44, height: 44) }
                 Text(hasTouchID ? "Touch ID to approve exactly this." : "Your Mac's password approves exactly this.")
-                    .font(.system(size: 12.5)).foregroundColor(Theme.stone)
+                    .font(Theme.title).foregroundColor(Theme.stone)
                 Spacer()
-                KeyHint(title: "Cancel", keys: ["esc"])
+                // Esc Cancel is in the panel's footer.
             }
         }
-        .padding(18)
+        .padding(Theme.inset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.carbon)
         // After the glyph is in the window, so the prompt is drawn in it.

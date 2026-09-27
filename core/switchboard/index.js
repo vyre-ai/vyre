@@ -14,16 +14,15 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { translate, cut, clip, CAPS } from "./translate.js";
 import { userLine, answerLine, run as defaultRun } from "./runner.js";
 import { claudeProvider } from "../sessions/providers.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
+import { claudeHome, transcriptFolders, privateSocketDir } from "../config/index.js";
 import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
-import { privateSocketDir } from "../config/index.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
@@ -36,7 +35,6 @@ import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
 import { wantsMacs, askMacs, mergeRows } from "../modules/federate.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const require_home = () => os.homedir();
 
 /** Usage per turn (for agents.usage), and the last rate-limit report Claude Code gave a thread. */
 const USAGE_MIGRATION = `CREATE TABLE threads_turns (thread TEXT NOT NULL, agent TEXT, auth TEXT NOT NULL, at INTEGER NOT NULL, ok INTEGER NOT NULL,
@@ -1544,7 +1542,7 @@ export class Switchboard {
    */
   remember(id, text, scope = "project") {
     const rec = this.must(id);
-    const file = scope === "user" ? path.join(process.env.CLAUDE_CONFIG_DIR || path.join(require_home(), ".claude"), "CLAUDE.md")
+    const file = scope === "user" ? path.join(claudeHome(this.deps.root), "CLAUDE.md")
       : path.join(rec.cwd, scope === "local" ? "CLAUDE.local.md" : "CLAUDE.md");
     const line = String(text).replace(/\s+/g, " ").trim();
     if (!line) throw Object.assign(new Error("nothing to remember"), { code: "bad_input" });
@@ -1771,7 +1769,7 @@ export default {
     };
     const sb = new Switchboard({
       db: ctx.store.db, call: ctx.call, root,
-      transcripts: (ctx.config && ctx.config.transcripts) || [],
+      transcripts: transcriptFolders((ctx.config && ctx.config.transcripts) || [], root),
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
       idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers,
@@ -1944,7 +1942,7 @@ export default {
       // No presence proof: answering is the owner's own action on their own screen, and Vyre does
       // not nag (ADR 0024, "No nagging"). The allowlist keeps models, agents and guests out, and the
       // harness floor refuses a model's Bash that names this tool (core/presence PERSON_ONLY).
-      ["cli", "local", "module", "deck", "capsule"]);
+      ["cli", "local", "module", "deck", "capsule", "tailnet"]);
 
     tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
       { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },
@@ -2087,6 +2085,8 @@ export default {
     ctx.tool("threads.launch", {
       description: "Start or resume a thread for an agent, with its credentials set only in that child.", internal: true,
       input: { type: "object", properties: { cwd: str, project: str, prompt: str, name: str, model: str, surface: str, resume: str,
+        // The agent's thinking effort (agents.effort), one of sessions.effort's values.
+        effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"] },
         agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, purpose: str, provider: str, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" },
         effort: { type: "string", enum: EFFORTS },
         // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the

@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 // @ts-check
-// gen-tokens: renders docs/design/one-app/tokens.json, the one token source, for every surface:
+// gen-tokens: renders lib/theme/tokens.json, the one token source, for every surface:
 // the Expo app's tokens.ts, the Capsule's Swift file and the Deck's custom properties. Never edit
 // an output by hand; change the JSON and run this.
 //
 //   node scripts/gen-tokens              write every file
 //   node scripts/gen-tokens --check      exit 1 if a file is stale, write nothing
+// Either way a surface whose root folder (apps/app, local/capsule/native, deck) is not in the
+// tree is skipped.
 //   --ts <path> --swift <path> --css <path>   write only these, to these paths
+//   node scripts/gen-tokens --validate <theme.json>   check a theme override (ADR 0033): exit 1 and
+//                                        name each failing rule, or print ok
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { swift, ts, css, load, TOKENS } from "./lib/tokens.js";
+import { applyOverride } from "./lib/theme.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const SOURCE = TOKENS;
@@ -18,6 +23,12 @@ export const OUTPUTS = {
   "apps/app/src/theme/tokens.ts": ts,
   "local/capsule/native/Sources/UI/Tokens.generated.swift": swift,
   "deck/css/tokens.css": css,
+};
+/** The folder each surface lives in: no folder, no surface in this tree, so nothing is written. */
+export const ROOTS = {
+  "apps/app/src/theme/tokens.ts": "apps/app",
+  "local/capsule/native/Sources/UI/Tokens.generated.swift": "local/capsule/native",
+  "deck/css/tokens.css": "deck",
 };
 
 /** @returns {Record<string, string>} repo path to contents */
@@ -28,6 +39,13 @@ export function generate() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const args = process.argv.slice(2);
+  if (args.includes("--validate")) {
+    const file = args[args.indexOf("--validate") + 1];
+    const { problems } = applyOverride(load(REPO), JSON.parse(fs.readFileSync(file, "utf8")));
+    for (const p of problems) console.error(`refused: ${p}`);
+    if (!problems.length) console.log("ok");
+    process.exit(problems.length ? 1 : 0);
+  }
   const check = args.includes("--check");
   let files = generate();
   const picked = [["--ts", ts], ["--swift", swift], ["--css", css]].filter(([f]) => args.includes(f));
@@ -38,6 +56,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
   let stale = 0;
   for (const [rel, body] of Object.entries(files)) {
     const file = path.resolve(REPO, rel);
+    // A surface that is not in this tree yet (its root folder is missing) is neither written nor checked.
+    if (!picked.length && !fs.existsSync(path.join(REPO, ROOTS[rel]))) continue;
     const now = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
     if (now === body) continue;
     if (check) { console.error(`${rel} is stale; run node scripts/gen-tokens`); stale++; continue; }

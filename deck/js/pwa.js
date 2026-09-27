@@ -13,10 +13,10 @@
 // It also starts the keyboard inset (js/keyboard.js), so a field on a phone is never under the keys.
 
 import { h, put, go, isPhone } from "./dom.js";
-import { attempt, call, reachable } from "./api.js";
+import { call, kick, streamState } from "./api.js";
+import { reconnectPill } from "./reconnect.js";
 import { surfaceId } from "../glass/util.js";
 import { icon } from "./icons.js";
-import { when } from "./fmt.js";
 import { watchKeyboard } from "./keyboard.js";
 
 const LAST = "vyre.last";
@@ -99,36 +99,20 @@ export function reopen() {
   return last.path;
 }
 
-/** One line under the header (the phone's) while the box does not answer. It never covers the view: the
- * view keeps showing what it last drew, or what the service worker kept. */
+/** One quiet pill under the header (the phone's) while the box does not answer (js/reconnect.js,
+ * ADR 0029 R3). It never covers the view: the view keeps what it last drew, and the stream, when
+ * it is back, replays what was missed from its cursor, so nothing is redrawn or remounted. */
 function offlineLine(/** @type {HTMLElement} */ deck) {
-  const since = { at: 0 };
-  const retry = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: check }, "Retry");
+  const retry = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: kick }, "Retry");
   const text = h("span", { class: "reach-text" });
   const bar = h("div", { class: "reach", role: "status", hidden: true }, h("span", { class: "dot" }), text, retry);
   const head = deck.querySelector(".ph-head");
   if (head) head.after(bar); else deck.prepend(bar);
-  const draw = (/** @type {boolean} */ ok) => {
-    if (ok) {
-      if (!bar.hidden) { bar.hidden = true; window.dispatchEvent(new Event("deck:navigate")); } // redraw the view from the box
-      return;
-    }
-    if (bar.hidden) since.at = Date.now();
-    put(text, navigator.onLine === false ? "This phone is offline." : "Can't reach your box.",
-      " ", `Showing what it said at ${when(since.at)}.`);
-    bar.hidden = false;
-  };
-  async function check() {
-    put(retry, "Checking");
-    await attempt("system.info");
-    put(retry, "Retry");
-  }
-  window.addEventListener("deck:reach", e => draw(!!/** @type {CustomEvent} */ (e).detail));
-  window.addEventListener("offline", () => draw(false));
-  window.addEventListener("online", check);
-  // Coming back to the app after the phone slept: ask once, not on a timer.
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !bar.hidden) check(); });
-  if (!reachable || navigator.onLine === false) draw(false);
+  const pill = reconnectPill({ show: words => { put(text, words); bar.hidden = false; }, hide: () => { bar.hidden = true; } });
+  window.addEventListener("deck:stream", e => pill.state(/** @type {CustomEvent} */ (e).detail));
+  window.addEventListener("offline", () => pill.net());
+  window.addEventListener("online", () => pill.net());
+  if (streamState) pill.state(streamState);
 }
 
 /** Pull down from the top of one of the three pages (Now, Chats, Agents) to open Find, the same
