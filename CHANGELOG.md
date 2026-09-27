@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### files.deliver: the box sends a file to a paired Mac with Taildrop (ADR 0021, "Mac and box as one")
+
+- core/files/drop.js: the reverse of files.send. The box names one paired Mac (mac: its id or
+  name), looks up its tailnet peer id from link.macs (stableId, not its name, which can be
+  reused), and hands the file to `tailscale file cp` the same way the Mac already does for the
+  box. A Mac now also runs its own `tailscale file get --loop` into its inbox (default
+  `~/Vyre/inbox`, or config files.inbox as on the box), so a delivery from the box lands there
+  and is announced with files.received, unchanged.
+- core/link/box.js: `link.macs` gains `stableId` (the Mac's tailnet peer id), additive; `node`
+  keeps meaning the paired name shown to surfaces.
+- core/files/module.json: files.deliver in "does", a teaching tip.
+
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at

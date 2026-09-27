@@ -243,6 +243,22 @@ box.
 
 ## Doing
 
+28 Sep 2026, after the merge (below): built the "Mac and box as one" pieces the lead ordered for
+0.1.x from docs/design/federation-plan.md (work/federation-transcript).
+
+- 1a (chat's Mac-session boot from recall.transcript): already done, by another stream, before
+  this merge landed it here. deck/chat/session.js's `boot()` already calls `recall.transcript`
+  with `source: "mac"` for a Mac session and falls back to `legacyBoot` only when the box has
+  neither the Switchboard record nor the transcript. No work needed; federation's own doc was
+  stale (it still listed this under "Next").
+- 1b (box→Mac file placement, the reverse of Taildrop): built. `files.deliver { path, mac }` on
+  the box; a Mac now also runs a receiver into its own inbox. `link.macs` gained `stableId` so
+  the box can find a named Mac among its own tailnet peers (see CHANGELOG). Tests: 13/13 on
+  core/files/drop.test.js (6 new), 97/97 on core/files/**/*.test.js + hygiene + docs-build,
+  on the test box, nice -n 15, load 1.6-2.6. `npm run docs:ref` regenerated for the new tool.
+  Not built (deferred to 1c/cohesion, per the plan): any drag-and-drop UI, and Chat/Deck surfacing
+  files.deliver — this round is the tool and the Mac's inbox only.
+
 28 Sep 2026: merged origin/main (a3a844e4, 0.1.0-rc.1 plus the post-rc `packages/module-sdk` fix)
 into work/federation (cd646008). Conflicts: CHANGELOG.md (append, both sides kept),
 core/daemon/index.js (FORBIDDEN_LABEL gained both `link:` and main's new `device:`; kept main's
@@ -335,6 +351,9 @@ loose ends (below); next is rich Mac transcripts (chat's ask), then Taildrive on
 
 ## Changed contracts
 
+- New box tool `files.deliver { path, mac }` (files module, CHANGELOG has detail): sends a file to
+  one paired Mac by Taildrop. `link.macs` gained `stableId` (additive). A Mac now also runs an
+  inbox receiver (default `~/Vyre/inbox`), where it had none before.
 - New box tools: `link.serve { key }` (answers `{ id, tool, input }`, `null` after the hold, or
   `{ paired: false }`), `link.reply { key, id, result }` (`{ ok }`, or `{ paired: false }`),
   `link.macs.call { tool, input?, timeout? }` (internal: modules only; refuses a tool outside the

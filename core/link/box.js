@@ -456,8 +456,11 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   ctx.tool("link.macs", {
     description: "The paired Macs and whether each is online for the box to read now.",
     input: { type: "object", properties: {} },
-    run: async () => /** @type {any[]} */ (db.prepare("SELECT id, name, node FROM link_peers ORDER BY paired_at").all()).map(m => ({
-      mac: m.id, name: m.name, node: m.node || null,
+    // stableId: the Mac's tailnet peer id (Tailscale status Peer.ID), for a module that needs to
+    // find it among the box's own tailnet peers (files.deliver, ADR 0021's "Mac and box as one").
+    // node is the paired name shown to surfaces; stableId is never shown, only matched against.
+    run: async () => /** @type {any[]} */ (db.prepare("SELECT id, name, node, stable_id FROM link_peers ORDER BY paired_at").all()).map(m => ({
+      mac: m.id, name: m.name, node: m.node || null, stableId: m.stable_id || null,
       online: waiting.has(m.id) || (lastServe.get(m.id) ?? -Infinity) >= now() - hold - 5000,
       lastServe: lastServe.get(m.id) ?? null })),
   });

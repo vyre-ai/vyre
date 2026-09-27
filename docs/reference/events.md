@@ -73,7 +73,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | --- | --- |
 | `drive.exposed` | `findings`, `unsafe` |
 | `files.received` | `bytes`, `name`, `path` |
-| `files.sent` | `bytes`, `name`, `to` |
+| `files.sent` | `bytes`, `name`, `to`; sometimes `mac` |
 
 ## gate
 
