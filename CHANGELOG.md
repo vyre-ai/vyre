@@ -707,6 +707,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (the Registry's callerAllowed), never a guest.
 #### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
 
+- web.js `over(pathFetch)`: the stream client and the outbox run on any fetch(path, init), such
+  as relay/client's createPaths().fetch (the relay is Noise over a WebSocket, not an HTTP proxy);
+  the paths layer picks the way, follow() keeps the cursor on one logical path.
+- R6 chaos test: a ring answered by key from a device's outbox while the box was out of reach is
+  never rung by the box, is acked once with `unrung: true`, and a retry says `already`.
 - The CLI's writes run once: `write()` in core/daemon/client.js sends an Idempotency-Key per
   intent and retries with it for up to 20 s while vyred is unreachable or restarting, so
   `vyre threads send`, `threads answer` and the live screen's send ride out a restart.
