@@ -75,14 +75,14 @@ lines each in capsule-pro's `Host/CapsuleModel.swift`, `Host/App.swift`, `Host/P
 - The native Capsule now calls capsule.report on hotkey state change (once at startup, then only
   on a change; caller capsule). `vyre doctor` reads it as before.
 - Theme.attention (#B8A4FF) is the "needs you" colour in the native Capsule; the Electron Capsule
-  has `--attention`. Beacon stays for errors and confirm lines (see Needs from others).
+  has `--attention`. Beacon orange is gone (lead, 2026-09-27): Kit's `Tint.beacon` is now
+  `Tint.attention` (violet), the held glyph is violet, and errors and status lines are neutral
+  (Stone, the `xmark.circle` crossed circle and a word: "Stopped.", "Failed. ...", "failed").
+  A destructive confirm line is Bone.
 
 ## Needs from others
-- Lead / deck-design: Beacon (#FF7A59) is still used for things that are not the waiting list:
-  native CapsuleView error line (Stopped.) and an action's confirm line, AgentDirectView and the
-  sight SessionPanel failed-turn label and error line, SightPanel and SessionPanel status lines,
-  Kit's `Tint.beacon` (IconCache); Electron `.ic.vy.hot` (held glyph wash), the held glyph and
-  TONE.held in capsule.js. Keep, or move to attention?
+- deck-design: docs/design/TOKENS.md still names Beacon #FF7A59 / #E5532F (lines 24, 87, 105,
+  149); it is theirs to change to the violet attention token.
 
 ## Tests
 - Local, through the build lock: `<team-dir>/buildlock.sh capsule-now local/capsule/native/build.sh test "hotkey report"`,

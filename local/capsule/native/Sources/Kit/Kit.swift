@@ -61,7 +61,7 @@ public enum IconSpec: Sendable, Equatable {
 
 /// The token colours an extension may tint with (docs/design/TOKENS.md). No others.
 public enum Tint: String, Sendable {
-    case bone, stone, ash, signal, recall, beacon
+    case bone, stone, ash, signal, recall, attention
 }
 
 /// Which group a row is listed under. Order here is the order groups are drawn in when scores tie.

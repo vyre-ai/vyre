@@ -368,11 +368,11 @@ struct SessionPanelView: View {
         } else {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(m.tools ?? [], id: \.id) { t in
-                    Label(t.summary, systemImage: t.error ? "exclamationmark.triangle" : t.done ? "checkmark" : "circle.dotted")
-                        .font(Theme.subtitle).foregroundColor(t.error ? Theme.beacon : Theme.ash).lineLimit(1)
+                    Label(t.summary, systemImage: t.error ? "xmark.circle" : t.done ? "checkmark" : "circle.dotted")
+                        .font(Theme.subtitle).foregroundColor(Theme.ash).lineLimit(1)
                 }
                 if !m.text.isEmpty { Text(m.text).font(Theme.reply).foregroundColor(Theme.bone).textSelection(.enabled) }
-                if let e = m.error { Text(e).font(Theme.subtitle).foregroundColor(Theme.beacon) }
+                if let e = m.error { Label("Failed. \(e)", systemImage: "xmark.circle").font(Theme.subtitle).foregroundColor(Theme.stone) }
             }
         }
     }
@@ -443,7 +443,7 @@ struct SessionPanelView: View {
                 Text(model.dm.holder.map { "\($0) has the keyboard" } ?? "idle").font(Theme.label).foregroundColor(Theme.ash)
             }
             Spacer(minLength: 0)
-            if let l = model.line { Text(l).font(Theme.label).foregroundColor(Theme.beacon).lineLimit(1).truncationMode(.tail) }
+            if let l = model.line { Text(l).font(Theme.label).foregroundColor(Theme.stone).lineLimit(1).truncationMode(.tail) }
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
     }

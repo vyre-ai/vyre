@@ -726,7 +726,7 @@ async function loadIcons() {
 }
 
 // One drawing per Vyre kind, on the 16 grid, in Bone on a Raised tile. Memory is Recall gold,
-// anything held is Beacon, the assistant and quick answers carry the Signal dot.
+// anything held is violet attention, the assistant and quick answers carry the Signal dot.
 const GLYPHS = {
   agent: `<circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13.5c.6-2.6 2.4-4 4.5-4s3.9 1.4 4.5 4"/>`,
   assistant: `<circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13.5c.6-2.6 2.4-4 4.5-4s3.9 1.4 4.5 4"/><circle cx="13" cy="3" r="1.6" fill="#C6F36B" stroke="none"/>`,
@@ -735,7 +735,7 @@ const GLYPHS = {
   memory: `<path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M6 8h4M6 11h4"/>`,
   vault: `<rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>`,
   boxfile: `<rect x="2.5" y="3" width="11" height="4" rx="1"/><rect x="2.5" y="9" width="11" height="4" rx="1"/><path d="M5 5h.01M5 11h.01"/>`,
-  held: `<circle cx="8" cy="8" r="3" fill="#FF7A59" stroke="none"/>`,
+  held: `<circle cx="8" cy="8" r="3" fill="#B8A4FF" stroke="none"/>`,
   glass: `<rect x="2" y="3" width="12" height="8" rx="1.5"/><path d="M6 14h4M8 11v3"/>`,
   quick: `<path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l1.8 1.8M10.2 10.2L12 12M12 4l-1.8 1.8M5.8 10.2L4 12"/>`,
   define: `<path d="M3 13V3.5A1.5 1.5 0 0 1 4.5 2H13v9H4.5A1.5 1.5 0 0 0 3 12.5 1.5 1.5 0 0 0 4.5 14H13"/>`,
@@ -747,7 +747,7 @@ const GLYPHS = {
   clip: `<rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><path d="M6 2.5V1.5h4v1M6 7h4M6 10h3"/>`,
   clipclear: `<rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><path d="M6 7l4 4M10 7l-4 4"/>`,
 };
-const TONE = { memory: "#EBC76B", held: "#FF7A59", quick: "#C6F36B", calc: "#C6F36B" };
+const TONE = { memory: "#EBC76B", held: "#B8A4FF", quick: "#C6F36B", calc: "#C6F36B" };
 
 function glyph(kind) {
   const inner = GLYPHS[kind] || GLYPHS.file;
@@ -781,7 +781,7 @@ function inDm() {
   return Boolean(S.chip && S.chip.kind === "agent" && d && S.mode === "ask" && String(d.agent).toLowerCase() === String(S.chip.id).toLowerCase());
 }
 
-/** The conversation: history, the reply streaming into it, and the agent's asks in Beacon. */
+/** The conversation: history, the reply streaming into it, and the agent's asks in violet attention. */
 function dmView(d) {
   const out = [];
   const state = d.loading ? "loading" : d.holder && d.holder !== "capsule" ? `${d.holder} has the keyboard` : d.busy ? "working" : "";

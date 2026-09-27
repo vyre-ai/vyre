@@ -725,7 +725,7 @@ export class Bridge extends EventEmitter {
         quick: this.has("threads.start"), stop: this.has("threads.stop"), send: this.has("files.send") && Boolean(this.catalog.box) },
       assistant: ((this.catalog.agents || []).find(a => a.kind === "assistant") || {}).name || null,
       waiting: this.waiting.map(w => ({ ...w, age: route.age(w.at, this.now()) })),
-      // What counts toward the Beacon dot and the tray badge: proposed lessons are quiet.
+      // What counts toward the attention dot and the tray badge: proposed lessons are quiet.
       waitingLoud: st.loud(this.waiting),
       reply: this.reply ? { thread: this.reply.thread, text: st.replyText(this.reply), tools: this.reply.tools, finished: this.reply.finished,
         ok: this.reply.ok, error: this.reply.error, lease: this.reply.lease, model: this.reply.model || null, notice: this.reply.notice || null,

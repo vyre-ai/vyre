@@ -6,7 +6,7 @@
 //   signal  vyred up (and the box, if paired, direct)
 //   recall  the box is reached through a relay (slower, still working)
 //   ash     vyred is not running
-// Beacon is not used here: it means "needs you", which is the waiting list's (capsule-now).
+// Attention (violet) is not used here: it means "needs you", which is the waiting list's (capsule-now).
 
 import AppKit
 import SwiftUI

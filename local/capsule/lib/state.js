@@ -3,12 +3,12 @@
 //
 // Two kinds of thing wait: a Gate hold (a draft or a send that needs a yes, spec 7.7) and a
 // permission question from a running session (ask.raised, spec 7.8). The Capsule shows both in
-// one Beacon list, oldest first, because whoever has waited longest should be answered first.
+// one attention list, oldest first, because whoever has waited longest should be answered first.
 // Only an explicit question asks for attention (floor rule 6).
 //
 // A third kind waits quietly: a lesson Vyre proposes (lesson.proposed, core/learn). It sits in
 // the same list for the user to accept or decline, marked quiet, and never raises attention on
-// its own: it does not count toward the Beacon dot or the tray badge (loud() counts what does).
+// its own: it does not count toward the attention dot or the tray badge (loud() counts what does).
 //
 // Pure: events in, plain objects out. The main process owns the one copy and sends it to the
 // window, so a hidden window that wakes up is shown the truth rather than what it last saw.

@@ -28,7 +28,7 @@ struct SightPanel: View {
                     if s.lines.isEmpty { Text("No visible text").font(Theme.subtitle).foregroundColor(Theme.ash) }
                 }
             }
-            if let line = model.line { Text(line).font(Theme.subtitle).foregroundColor(Theme.beacon) }
+            if let line = model.line { Text(line).font(Theme.subtitle).foregroundColor(Theme.stone) }
             Spacer(minLength: 0)
         }
         .padding(14)

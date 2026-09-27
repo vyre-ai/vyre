@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### No orange in the Capsule
+
+- Beacon orange is gone from both Capsules. Things that need you (the held glyph in results, Kit's
+  tint, formerly `Tint.beacon`, now `Tint.attention`) are violet #B8A4FF. Errors and status lines
+  (Stopped., failed turns and tools, the sight panels' status) are neutral: Stone text, a crossed
+  circle and a word. A destructive action's confirm line is Bone. `local/capsule/native/Sources/`
+  UI, Kit, Providers/IconCache.swift, Extensions/sight; `local/capsule/app/capsule.css`, `capsule.js`.
+
 #### The Capsule tells `vyre doctor` why Control twice is off, and waiting is violet
 
 - The native Capsule calls capsule.report once after its hot keys start and again only when

@@ -21,7 +21,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     lazy var planner = PlannerBanners(vyred: vyred)
     /// Clipboard, contacts, modules, Glass and watches (Agent/AgentWiring.swift).
     let wiring: AgentWiring
-    /// The menu-bar item's button, for the Beacon mark (Agent/AgentMenuBar.swift).
+    /// The menu-bar item's button, for the attention mark (Agent/AgentMenuBar.swift).
     var status: NSStatusItem? { menuBar?.item }
     /// Repaints the mark when the waiting list changes (Agent/AgentMenuBar.swift).
     var agentSink: AnyCancellable?
@@ -68,7 +68,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         vyred.follower.start()
         panel.onShownChange = { [weak self] shown in if shown { self?.health.refresh() } else { self?.menuBar?.close() } }
         if !headless { makeStatusItem() }
-        // The agent half (Agent/): the waiting list and its Beacon dot, the wired providers,
+        // The agent half (Agent/): the waiting list and its attention dot, the wired providers,
         // capsule.requested, and the driven mode.
         followWaiting()
         wiring.attach(model)

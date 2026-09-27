@@ -10,7 +10,6 @@
   --ash: #8C877D; --stone: #B3AEA4; --bone: #F1EEE6;
   --signal: #C6F36B; --signal-hover: #D4F88A; --signal-ink: #0E0D0C; --signal-wash: rgba(198,243,107,0.12);
   --recall: #EBC76B; --recall-wash: rgba(235,199,107,0.10);
-  --beacon: #FF7A59; --beacon-wash: rgba(255,122,89,0.12);
   --attention: #B8A4FF; --attention-wash: rgba(184,164,255,0.12); /* needs you: violet, as on the Deck and the phone */
   --sans: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
@@ -160,7 +159,7 @@ body { padding: 8px 24px 40px; font-family: var(--sans); color: var(--bone); -we
 .ic { width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; position: relative; }
 .ic.vy { border-radius: 6px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--rule-strong); }
 .ic.vy.gold { background: var(--recall-wash); box-shadow: inset 0 0 0 1px rgba(235,199,107,0.35); }
-.ic.vy.hot { background: var(--beacon-wash); }
+.ic.vy.hot { background: var(--attention-wash); }
 .ic.mac { border-radius: 6px; background: var(--raised); }
 .ic.mac.has { background: transparent; }
 .ic.mac.round { border-radius: 12px; }
@@ -201,7 +200,7 @@ body { padding: 8px 24px 40px; font-family: var(--sans); color: var(--bone); -we
 .dm .x.empty { font-size: 13px; color: var(--ash); }
 .dm .caret { display: inline-block; width: 2px; height: 16px; background: var(--signal); vertical-align: -2px; margin-left: 1px; }
 .dm .tools { padding: 0; }
-/* A proposed lesson: quiet, never Beacon. */
+/* A proposed lesson: quiet, never attention. */
 .badge.quiet { background: var(--raised); color: var(--stone); }
 .held .body.lesson { border-top: 0; padding-top: 0; font-size: 15px; }
 .srcm { margin-left: 6px; font-family: var(--mono); font-size: 11px; color: var(--ash); }
