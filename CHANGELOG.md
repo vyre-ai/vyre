@@ -34,7 +34,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `eval-iq --explain` lists each miss and why, and refuses a sealed world.
 - An agent corrects memory only with the person's own words: memory.correct from a model takes
   `from_turn: {seq}`, a turn of its own verified thread that the switchboard says the person typed
-  (`threads.said`), with the new value in their words. It is applied as theirs, undoable, with
+  (`threads.said`), one of their latest three and at most 10 minutes old, naming what is corrected,
+  with the new value in their words (or a "no" next to the old value). One correction per turn and
+  3 an hour per thread; suggestions are deduplicated, capped (5 a thread, 50 in all) and expire
+  after 14 days or when their target changes. It is applied as theirs, undoable, with
   `memory.updated`. Anything else waits as a suggestion (`memory.corrections {suggested}`; the
   person accepts with `memory.correct {suggestion}` or dismisses with `memory.uncorrect {suggestion}`).
 - Correct Vyre IQ where it appears: every memory.ask answer (a "not sure" too) has an

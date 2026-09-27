@@ -1950,7 +1950,7 @@ Correct a fact: wrong (never true), ended (stopped being true at `at`), replace 
 
 ### `memory.corrections`
 
-What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre IQ answers they corrected instead, as { fixes, week: { corrected, by_kind } }; suggested: true lists agents' corrections waiting for them, as { suggestions }.
+What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre IQ answers they corrected instead, as { fixes, week: { corrected, by_kind } }; suggested: true lists agents' corrections waiting for them and the ones agents applied from their words this week, as { suggestions, heard: [{ thread, seq, at, by, summary, undo }] }.
 
 - Input:
   - `all` boolean

@@ -20,7 +20,7 @@ import { profile } from "./personal/profile.js";
 import { createReader, claudeOnce, modelFor } from "./personal/reader.js";
 import { asker, ASK_DAILY_USD } from "./iq/ask.js";
 import { fixes as fixLog } from "./iq/fix.js";
-import { heard } from "./iq/heard.js";
+import { heard, contentWords } from "./iq/heard.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -399,21 +399,73 @@ export default {
     // ---- an agent corrects only with the person's own words behind it (core/memory/iq/heard.js)
     /** A model's caller: the user's own Claude Code session, a thread's, or a named agent's. */
     const agentCaller = caller => /^mcp(?::|$)/.test(String(caller || "")) || /^harness:agent:/.test(String(caller || ""));
+    /** Caps (e2e, 28 Sep): a thread applies at most this many an hour; suggestions wait this many a thread and in all, for this long. */
+    const AGENT = { perHour: 3, openPerThread: 5, openTotal: 50, expireMs: 14 * 86_400_000 };
+    /** What a suggestion is about, as it reads now: if it changes before the person decides, the suggestion expires. */
+    const targetOf = input => {
+      try {
+        if (typeof input.answer === "string" && input.answer) { const a = fixed.answer(input.answer); return a ? JSON.stringify([a.question, fixed.lookup(a.question)?.id ?? null]) : null; }
+        const { sc } = scopeOf(input);
+        const t = graph.target({ ...input, action: input.action === "add" ? "add" : input.action }, sc);
+        return JSON.stringify(t.row ? [t.row.id ?? `${t.src}|${t.rel}|${t.dst}`, t.row.valid_to ?? null, t.row.confidence ?? null] : [t.src, t.rel, t.dst]);
+      } catch { return null; }
+    };
     const suggest = (input, caller, meta, why) => {
       const { from_turn: _f, ...rest } = input;
-      const id = Number(ctx.store.db.prepare("INSERT INTO memory_iq_suggested (at, caller, thread, seq, input, why) VALUES (?,?,?,?,?,?)")
-        .run(Date.now(), plain(caller, 80), typeof meta.thread === "string" ? meta.thread : null, Number.isInteger(input.from_turn?.seq) ? input.from_turn.seq : null, JSON.stringify(rest), plain(why, 200)).lastInsertRowid);
+      const db = ctx.store.db, t = Date.now(), thread = typeof meta.thread === "string" ? meta.thread : null;
+      expireSuggestions(t);
+      const body = JSON.stringify(rest);
+      // The same suggestion again is the same row, seen once more.
+      const same = /** @type {any} */ (db.prepare("SELECT id FROM memory_iq_suggested WHERE state = 'open' AND input = ? AND thread IS ?").get(body, thread));
+      if (same) { db.prepare("UPDATE memory_iq_suggested SET at = ?, seen = seen + 1, why = ? WHERE id = ?").run(t, plain(why, 200), same.id); return { applied: false, suggestion: { id: Number(same.id), why: plain(why, 200) }, message: SUGGESTED }; }
+      const open = (/** @type {any} */ (db.prepare("SELECT COUNT(*) n FROM memory_iq_suggested WHERE state = 'open' AND thread IS ?").get(thread))).n;
+      const all = (/** @type {any} */ (db.prepare("SELECT COUNT(*) n FROM memory_iq_suggested WHERE state = 'open'").get())).n;
+      // The no-nag rule: an agent in a loop never fills "waiting on you".
+      if (open >= AGENT.openPerThread || all >= AGENT.openTotal) return { applied: false, dropped: true, why: plain(why, 200), message: "Not applied and not kept: enough suggestions already wait for the person." };
+      const id = Number(db.prepare("INSERT INTO memory_iq_suggested (at, caller, thread, seq, input, why, target) VALUES (?,?,?,?,?,?,?)")
+        .run(t, plain(caller, 80), thread, Number.isInteger(input.from_turn?.seq) ? input.from_turn.seq : null, body, plain(why, 200), targetOf(rest)).lastInsertRowid);
       ctx.events.emit("memory.suggested", { id });
-      return { applied: false, suggestion: { id, why: plain(why, 200) }, message: "Not applied: the person's own words do not say it. It waits for them to accept." };
+      return { applied: false, suggestion: { id, why: plain(why, 200) }, message: SUGGESTED };
     };
-    const suggestions = ({ all = false } = {}) => /** @type {any[]} */ (ctx.store.db.prepare("SELECT * FROM memory_iq_suggested WHERE (? OR state = 'open') ORDER BY id DESC LIMIT 100").all(all ? 1 : 0))
-      .map(r => ({ id: Number(r.id), at: Number(r.at), caller: String(r.caller), thread: r.thread, seq: r.seq, input: JSON.parse(String(r.input)), why: String(r.why), state: String(r.state) }));
+    const SUGGESTED = "Not applied: the person's own words do not say it. It waits for them to accept.";
+    const expireSuggestions = (t = Date.now()) => ctx.store.db.prepare("UPDATE memory_iq_suggested SET state = 'expired', settled = ? WHERE state = 'open' AND at < ?").run(t, t - AGENT.expireMs);
+    /** An agent's text, as a surface may show it: one plain line each. */
+    const shown = input => Object.fromEntries(Object.entries(input).map(([k, v]) => [k, typeof v === "string" ? plain(v, 200) : v]));
+    const suggestions = ({ all = false } = {}) => {
+      expireSuggestions();
+      return /** @type {any[]} */ (ctx.store.db.prepare("SELECT * FROM memory_iq_suggested WHERE (? OR state = 'open') ORDER BY id DESC LIMIT 100").all(all ? 1 : 0))
+        .map(r => ({ id: Number(r.id), at: Number(r.at), caller: String(r.caller), thread: r.thread, seq: r.seq, input: shown(JSON.parse(String(r.input))), why: String(r.why), state: String(r.state), seen: Number(r.seen) }));
+    };
     const settleSuggestion = (id, state) => {
-      const r = /** @type {any} */ (ctx.store.db.prepare("SELECT * FROM memory_iq_suggested WHERE id = ? AND state = 'open'").get(Number(id)));
-      if (!r) throw Object.assign(new Error(`no open suggestion ${id}`), { code: "not_found" });
+      expireSuggestions();
+      const r = /** @type {any} */ (ctx.store.db.prepare("SELECT * FROM memory_iq_suggested WHERE id = ?").get(Number(id)));
+      if (!r || r.state !== "open") throw Object.assign(new Error(r?.state === "expired" ? `suggestion ${id} expired: what it was about has changed or it is older than 14 days` : `no open suggestion ${id}`), { code: "not_found" });
+      const input = JSON.parse(String(r.input));
+      // What it targets changed since the agent suggested it: it expires rather than apply to something else.
+      if (state === "accepted" && r.target != null && targetOf(input) !== r.target) {
+        ctx.store.db.prepare("UPDATE memory_iq_suggested SET state = 'expired', settled = ? WHERE id = ?").run(Date.now(), Number(id));
+        throw Object.assign(new Error(`suggestion ${id} expired: what it was about has changed since`), { code: "not_found" });
+      }
       ctx.store.db.prepare("UPDATE memory_iq_suggested SET state = ?, settled = ? WHERE id = ?").run(state, Date.now(), Number(id));
       ctx.events.emit("memory.suggested", { id: Number(id), state });
-      return JSON.parse(String(r.input));
+      return input;
+    };
+    /** Corrections agents applied from the person's words this week, newest first, each with its undo. */
+    const heardList = () => /** @type {any[]} */ (ctx.store.db.prepare("SELECT * FROM memory_iq_heard WHERE at >= ? ORDER BY at DESC LIMIT 50").all(Date.now() - 7 * 86_400_000))
+      .map(r => ({ thread: String(r.thread), seq: Number(r.seq), at: Number(r.at), by: String(r.caller), summary: String(r.summary),
+        undo: r.kind === "fix" ? { tool: "memory.uncorrect", input: { fix: Number(r.ref) } } : { tool: "memory.uncorrect", input: { id: Number(r.ref) } } }));
+    /** What a correction is about, and what it says was wrong: the words the person's turn must name. */
+    const aboutOf = input => {
+      if (typeof input.answer === "string" && input.answer) {
+        const a = fixed.answer(input.answer);
+        if (!a) return null;
+        return { about: contentWords(a.question), old: a.answer, summary: `${a.question}: ${input.action === "replace" ? input.object : input.action}` };
+      }
+      const { sc } = scopeOf(input);
+      const t = graph.target(input, sc);
+      const label = id => graph.node(id, sc)?.label || String(id).replace(/^[a-z]+:/, "");
+      return { about: [...contentWords(label(t.src)), ...contentWords(String(t.rel).replace(/_/g, " "))], old: label(t.dst),
+        summary: `${label(t.src)} ${String(t.rel).replace(/_/g, " ")} ${input.action === "replace" || input.action === "add" ? input.object : `${label(t.dst)}: ${input.action}`}` };
     };
     const fromAgent = async (input, caller, meta, apply) => {
       if (typeof input.suggestion !== "undefined") throw denied("a suggestion is accepted by the person, not an agent");
@@ -423,14 +475,22 @@ export default {
       if (!thread) return suggest(input, caller, meta, "the call did not come from a thread vyred knows");
       // An agent granted only some projects never writes the person's memory, even with evidence.
       try { await personalOnly(input, caller, "memory.correct"); } catch { return suggest(input, caller, meta, "an agent granted only some projects suggests; the person decides"); }
+      if (!["replace", "add", "wrong", "forget", "ended"].includes(input.action)) return suggest(input, caller, meta, `an agent does not ${input.action}; the person does`);
       if (seq == null) return suggest(input, caller, meta, "no from_turn: which of the person's turns says this");
+      const db = ctx.store.db, t = Date.now();
+      if (db.prepare("SELECT 1 FROM memory_iq_heard WHERE thread = ? AND seq = ?").get(thread, seq)) return suggest(input, caller, meta, "one correction per turn of the person's; that turn already made one");
+      if ((/** @type {any} */ (db.prepare("SELECT COUNT(*) n FROM memory_iq_heard WHERE thread = ? AND at >= ?").get(thread, t - 3_600_000))).n >= AGENT.perHour) return suggest(input, caller, meta, "this thread has made enough corrections this hour");
+      let target;
+      try { target = aboutOf(input); } catch (e) { return suggest(input, caller, meta, `not a fact memory holds: ${/** @type {Error} */ (e).message}`); }
+      if (!target) return suggest(input, caller, meta, "no such answer");
       const r = await ctx.call("threads.said", { thread, seq });
       if (r?.error) return suggest(input, caller, meta, r.error.code === "no_such_tool" ? "vyred cannot tell who wrote that turn yet" : `that turn could not be read: ${r.error.message}`);
       const value = ["replace", "add"].includes(input.action) ? String(input.object ?? "") : null;
-      if (!["replace", "add", "wrong", "forget", "ended"].includes(input.action)) return suggest(input, caller, meta, `an agent does not ${input.action}; the person does`);
-      const h = heard(r.data, { action: input.action, value });
+      const h = heard(r.data, { action: input.action, value, old: value == null ? target.old : null, about: target.about }, t);
       if (!h.ok) return suggest(input, caller, meta, h.why);
       const out = await apply({ ...input, from_turn: undefined }, `heard:${thread}#${seq}`);
+      const kind = out.fix ? "fix" : "correction", ref = out.fix ? out.fix.id : out.correction.id;
+      db.prepare("INSERT INTO memory_iq_heard (thread, seq, at, caller, kind, ref, summary) VALUES (?,?,?,?,?,?,?)").run(thread, seq, t, plain(caller, 80), kind, Number(ref), plain(target.summary, 200));
       ctx.events.emit("memory.updated", { by: "agent", thread, ...(out.fix ? { fix: out.fix.id } : {}), ...(out.correction ? { correction: out.correction.id } : {}) });
       return { applied: true, heard: { thread, seq }, ...out };
     };
@@ -469,9 +529,9 @@ export default {
     // No callers list: the registry compares the whole "tailnet:<login>" string, so readerOnly
     // checks the owner surfaces and tailnet callers itself.
     ctx.tool("memory.corrections", {
-      description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre IQ answers they corrected instead, as { fixes, week: { corrected, by_kind } }; suggested: true lists agents' corrections waiting for them, as { suggestions }.",
+      description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre IQ answers they corrected instead, as { fixes, week: { corrected, by_kind } }; suggested: true lists agents' corrections waiting for them and the ones agents applied from their words this week, as { suggestions, heard: [{ thread, seq, at, by, summary, undo }] }.",
       input: { type: "object", properties: { all: { type: "boolean" }, answers: { type: "boolean" }, suggested: { type: "boolean" }, ...roomField } },
-      run: readerOnly(async input => input.suggested === true ? { suggestions: suggestions({ all: Boolean(input.all) }) }
+      run: readerOnly(async input => input.suggested === true ? { suggestions: suggestions({ all: Boolean(input.all) }), heard: heardList() }
         : input.answers === true ? { fixes: fixed.list({ all: Boolean(input.all) }), week: fixed.week() }
         : curator.corrections({ scope: roomOf(input), all: Boolean(input.all) })),
     });
