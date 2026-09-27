@@ -185,6 +185,35 @@ test("peer: an agent is named only as mcp:agent or harness:agent; a surface's la
   }
 });
 
+test("peer: after a peer check the connection stays non-blocking, so a large answer never stalls vyred", { timeout: 90_000 }, async t => {
+  // On macOS the peer check's child used to leave vyred's socket blocking; the next large write
+  // (the tool list) then blocked vyred's event loop, and with the client in the same process it
+  // never finished. In a child process, so a stall is a timeout here, not a hung test runner.
+  const root = tempHome(t);
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+  const js = path.join(root, "big.mjs");
+  fs.writeFileSync(js, `
+const { start } = await import(${JSON.stringify(path.join(repo, "core/daemon/index.js"))});
+const { request } = await import(${JSON.stringify(path.join(repo, "core/daemon/client.js"))});
+const d = await start({ root: ${JSON.stringify(root)}, log: () => {} });
+for (const who of ["cli", "deck", "capsule", "local", "deck", "capsule"]) {
+  const r = await request("GET", "/v1/tools", undefined, { root: ${JSON.stringify(root)}, caller: who });
+  if (!r.data || !r.data.length) { console.log("no tools for " + who + ": " + JSON.stringify(r).slice(0, 200)); process.exit(1); }
+}
+await d.stop();
+console.log("ok");
+`);
+  const r = await new Promise(res => {
+    const c = spawn(process.execPath, [js], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, VYRE_NO_DIALOGS: "1" } });
+    let out = "";
+    c.stdout.on("data", d => (out += d));
+    const timer = setTimeout(() => c.kill("SIGKILL"), 60_000);
+    c.on("close", code => { clearTimeout(timer); res({ code, out }); });
+  });
+  assert.equal(r.code, 0, `vyred stalled or failed: ${r.out}`);
+  assert.match(r.out, /ok/);
+});
+
 test("peer: a detached process has no controlling terminal, whatever it says", async () => {
   const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 2000)"], { detached: true, stdio: "ignore" });
   await new Promise(r => setTimeout(r, 200));

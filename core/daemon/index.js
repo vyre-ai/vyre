@@ -21,7 +21,7 @@ import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, fingerprint, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty } from "./peer.js";
+import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, canReadPeers } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -270,7 +270,9 @@ async function above(socket, registry) {
 async function asTaken(caller, socket, registry, thread) {
   if (MODEL_LABEL.test(caller) || caller === "anonymous") return { caller, model: false };
   let v = taken.get(socket);
-  if (!v) { v = above(socket, registry).then(w => w.inside); taken.set(socket, v); }
+  // A peer vyred cannot read where it normally can (perl failed or timed out) is not taken on its
+  // word: a surface's label then counts as a model's, so a stall never reopens the forged label.
+  if (!v) { v = above(socket, registry).then(w => w.inside || Boolean(w.nopid && canReadPeers)); taken.set(socket, v); }
   return await v ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true } : { caller, model: false };
 }
 /** @type {WeakMap<object, Promise<boolean>>} */
