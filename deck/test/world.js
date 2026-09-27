@@ -174,15 +174,17 @@ export function heldItems(threads) {
 
 async function main() {
   const PORT = Number(process.argv[2] || 4747);
-  const w = buildHome(fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-deck-"))), {},
-    fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-alex-"))));
-  const { root, alex, env, moved } = w;
+  // The folder is plainly "alex", so a shown path reads .../alex/Work, not a temp name.
+  const alexTmp = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-alex-")));
+  fs.mkdirSync(path.join(alexTmp, "alex"));
+  const w = buildHome(fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-deck-"))), {}, path.join(alexTmp, "alex"));
+  const { root, env, moved } = w;
 
   // Belt and suspenders on the vy-deck-* home: the "exit" event fires for every path out of
   // this process (Ctrl-C below, an uncaught exception, a thrown "vyred did not come up"), not just
   // a clean quit, so the temp dir does not outlive the process. fs.rmSync is sync, which "exit"
   // handlers require.
-  process.on("exit", () => { for (const d of [root, alex]) try { fs.rmSync(d, { recursive: true, force: true }); } catch {} });
+  process.on("exit", () => { for (const d of [root, alexTmp]) try { fs.rmSync(d, { recursive: true, force: true }); } catch {} });
 
   const { socketPath } = await import("../../core/config/index.js");
   const sock = socketPath(root);

@@ -72,7 +72,8 @@ desktop (list, transcript, side panel, a real terminal); C's single entry become
 
 ## Smooth: the bar
 
-Measured on an iPhone 12 (iOS 18) and a Pixel 6a, installed web app, direct over Tailscale.
+Measured on an iPhone 12 (iOS 18) and a Pixel 6a, installed web app, over the relay and direct
+over Tailscale.
 
 | What | Bar |
 |---|---|
@@ -123,22 +124,44 @@ system autofill). Android ships the native build from day one.
 
 ## Install and onboarding
 
-Options:
+Decided 27 Sep (tailnet's findings: tailscale#19147, an iOS DNS override, and #18889 and #19504,
+the tunnel dropping every few minutes, make the tailnet unreliable as the only phone path):
 
-1. **Box-served web app everywhere (recommended for iPhone).** Add to Home Screen from
-   `https://vyre.<tailnet>.ts.net`. No account, no expiry, push works; limits as above.
-2. **Native everywhere, sideloaded.** Android APK over adb (recommended for Android: full native,
-   exempt from Google's new verification, self-updates from the box). On iPhone it expires every
-   7 days and has no push, so it is only the advanced path or the smoothness fallback.
-3. **Hosted app over the relay (app.vyre.run).** The lowest friction (no Tailscale on the
-   phone), one extra hop. The fallback when Tailscale is not on the phone. The hosted page must be
-   pinned to the box's version so no new remote code enters the trust path.
+- **Every phone connects through the relay first** (app.vyre.run, sealed end to end, the relay
+  sees only ciphertext) and **switches to Tailscale by itself whenever it answers** (resilience
+  R5, silent). Tailscale on the phone is recommended ("faster and private"), never required.
+- **iPhone:** the web app, added to the Home Screen from app.vyre.run/pair. No account, no expiry,
+  push works; limits as above. The hosted page is pinned to the box's version so no new remote
+  code enters the trust path.
+- **Android:** the APK installed over adb (full native, exempt from Google's new verification,
+  self-updates from the box), or Chrome's Install app. Relay first, Tailscale when reachable.
+- **Native iPhone** (free Apple ID, 7 days, no push) stays the advanced path and the smoothness
+  fallback.
 
 The flow runs from the laptop ("Add your phone" in Devices, or `vyre phone add`): pick the phone, <!-- terms: ignore -->
-join the network (a QR for the Tailscale app, or a single-use relay QR), open Vyre on the phone,
-install it, then five live checks the laptop watches turn lime: reached the box, HTTPS works,
-opened as an app, test notification arrived, Face ID key saved. Android with a cable: `vyre
-phone add --android --usb` installs and opens the app in one step.
+scan the single-use relay QR (10 min), install, then live checks the laptop watches turn lime:
+reached the box (via relay), HTTPS works, opened as an app, test notification arrived, Face ID key
+saved. Then an optional card, "Faster and private: add Tailscale", whose check reads "Switched to
+Tailscale · direct 18 ms" once the phone reaches it. Android with a cable: `vyre phone add <!-- terms: ignore -->
+--android --usb` installs and opens the app in one step.
+
+## Chat feels like Claude Code
+
+User requirement, 27 Sep: a session in the app behaves like Claude Code in the terminal.
+
+- **Typing while the agent works steers it** (the default): the words join the running turn at
+  its next step, and the stream shows "you steered here". ⌥⏎ (a long press on the phone's send)
+  queues them for after the turn instead, where they can be edited or taken back.
+- **Esc** stops now. **Esc Esc** rewinds: pick an earlier message, fork from it, optionally undo
+  the file changes after it (a hold), and edit the message.
+- **⇧Tab** cycles the modes. **/** opens commands and skills, **@** files, **!** runs a shell
+  line in the session's folder, **#** saves a memory (this project or about you), **⌘V** pastes
+  an image, **↑** recalls the last message.
+- Thinking collapses to its length and expands; the todo list updates live (side panel on the
+  desktop, a pill above the composer on the phone); long commands move to the background (⌃B)
+  with Stop and View output.
+- On the phone the composer stays usable while the agent streams: Stop and a steer send sit side
+  by side.
 
 ## Key flows
 
@@ -152,8 +175,8 @@ phone add --android --usb` installs and opens the app in one step.
 
 ## Decisions for the user
 
-1. The direction: A (recommended), B or C.
-2. The install defaults: iPhone web app over Tailscale with the relay as fallback; Android APK
-   over adb.
+1. The direction: A (decided 27 Sep).
+2. The install defaults: relay first on every phone, switching to Tailscale when reachable;
+   iPhone web app; Android APK over adb. (Decided 27 Sep.)
 3. Run the one-week smoothness spike on a real iPhone before committing to the web app on iOS.
 4. Violet or teal for attention.
