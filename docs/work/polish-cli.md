@@ -80,7 +80,13 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
   folder's project (projects.of) and the view is named, failTool with the "denied" next step,
   closest() for unknown keys and groups, the loosens confirm (typed key, --yes; callAsPerson),
   typed usage and --file/- for JSON values, help and GROUPS, `vyre config keys`, the restart hint as
-  a next: line. Native-core does #3 only (settings.set enforcing "loosens" with presence).
+  a next: line. Native-core does the server side only. Contract: settings.schema lists `security`
+  ("loosens" = fresh proof: vault lock, Gate, presence length, devices/origins -> presence_required
+  -> callAsPerson) and `confirm` (permission allow rules, bypass: no proof, settings.set/reset
+  {confirm:true} else error confirm_required with what it loosens -> show it, typed key or --yes).
+- Chat parity next (native-core's order): per-session model (threads.model), rewind --restore
+  conversation|code|both, send --image <file>, effort/thinking per session, then ! and #. None of
+  these tools is on main at fb1ed1d1 (rewind is {thread, uuid} only); names asked of sessions.
 - platform (ADR 0033): does.commands [{verb, tool, summary, args?}] is in their manifest schema
   (work/platform 2e6997dd). I write the P4 dispatcher in core/cli/index.js (unknown command ->
   a module's does.commands -> the tool, args from its input schema). Source: GET /v1/modules rows
