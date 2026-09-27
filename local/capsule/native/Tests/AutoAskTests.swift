@@ -119,4 +119,42 @@ let autoAskSuite = Suite("auto ask") { t in
         }
         t.eq(r, ["what is archipelago", "sonnet", "told", "true", "false true []"])
     }
+
+    t.test("voice: partial words ask nothing; the final words are asked at once, as ⏎ would") {
+        let v = quietVyred(); defer { v.stop() }
+        let r: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.autoDelay = 0.05; m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp }
+            await MainActor.run { m.dictate("what is", final: false) }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            await MainActor.run { m.dictate("what is an archipelago", final: false) }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            let before = v.callsOf("threads.start").count
+            await MainActor.run { m.dictate("what is an archipelago", final: true) }
+            _ = await until { !v.callsOf("threads.start").isEmpty }
+            let state = await MainActor.run { "\(m.followUp) \(m.voiceTurn)" }
+            return ["\(before)"] + v.callsOf("threads.start").map { VJ.s($0["prompt"]) } + [state]
+        }
+        t.eq(r, ["0", "what is an archipelago", "true true"])
+    }
+
+    t.test("computer use: \"do …\" starts a full session told how to act; Esc stops the hands too") {
+        t.eq(CapsuleModel.doRequest("do open Notes and add milk"), "open Notes and add milk")
+        t.eq(CapsuleModel.doRequest("Do: "), nil)
+        t.eq(CapsuleModel.doRequest("what do you do"), nil)
+        let v = quietVyred(); defer { v.stop() }
+        v.tool("hands.stop") { _ in ["stopped": true] }
+        let r: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp && m.vyred.has("hands.stop") }
+            await MainActor.run { m.text = "do open Notes and add milk"; _ = m.handleReturn(command: false) }
+            _ = await until { m.reply?.thread == "q1" }
+            await MainActor.run { m.stopReply() }
+            _ = await until { !v.callsOf("hands.stop").isEmpty }
+            let s = v.callsOf("threads.start").first
+            return [VJ.s(s?["prompt"]), VJ.s(s?["purpose"]), s?["lean"] == nil ? "full" : "lean",
+                    VJ.s(s?["append"]).contains("hands.*") ? "told" : "not told", "\(v.callsOf("hands.stop").count)"]
+        }
+        t.eq(r, ["open Notes and add milk", "agent", "full", "told", "1"])
+    }
 }

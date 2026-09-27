@@ -155,7 +155,8 @@ box, and every key below passed through or kept.
 | ⌘→ at the end of the box | Show or fold memory's sources | Capsule |
 | ⌫ in an empty box | Drop the @ chip | Capsule |
 | A in the waiting list | Allow or accept the highlighted row | Capsule |
-| ⌥⏎ | Push to talk (sight) | extension |
+| ⌥⏎ | Talk into the box: hold to talk while down, or tap to start and tap to stop (sight) | extension |
+| "do …" then ⏎, or ⌘⏎ on an action | Computer use: an agent session with hands and screen, tool rows live, Esc stops the hands | Capsule |
 | ⌥Space, Control twice | Open or hide the Capsule from anywhere | hot keys |
 
 ## Real-Mac check for the native Capsule (the user, at the Mac, in their own terminal)

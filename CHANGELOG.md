@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Voice and computer use in the same box
+
+- Voice: Option-Return talks into the box. Hold it to talk while it is down; tap it to talk until
+  the next tap. The words show as they are heard and ask nothing until they are final. The final
+  words are then submitted as ⏎ would: a question answers at once, and in the follow-up box they
+  continue the thread. When spoken replies are on (voice.settings speak), the answer to a spoken
+  question is read aloud (voice.speak, played in the Capsule); Esc or a new answer stops it.
+  Kit: `CapsuleHost.dictate(_:final:)`, `CapsuleExtension.handleUp(key:)` (Return coming up, for
+  hold-to-talk).
+- Computer use: "do …" (⏎ or ⌘⏎), or ⌘⏎ on words that are not a question, starts a full agent
+  session (not lean, purpose agent), which gets hands.* and screen.* through the Vyre plugin. It is
+  told to act visibly and to leave sends, posts, payments and deletions to the Gate. Its tool rows
+  stream in the answer area, held items come to the waiting list with Touch ID in the panel, and
+  Esc interrupts the turn and calls hands.stop.
+
 #### A question answers itself, and the box becomes the follow-up box
 
 - The user's feedback (2026-09-27). Words that read as a question are answered on the fast model

@@ -166,8 +166,13 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     private func startKeys() {
         stopKeys()
-        keys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+        keys = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] e in
             guard let self, self.panel.isKeyWindow else { return e }
+            if e.type == .keyUp {
+                // Return coming up ends a held talk (hold-to-talk); nothing else listens to key-ups.
+                if e.keyCode == 36 || e.keyCode == 76, self.extensions?.handleUp(key: "return") == true { return nil }
+                return e
+            }
             return self.key(e) ? nil : e
         }
         // A click in another app closes the Capsule, as Spotlight does.

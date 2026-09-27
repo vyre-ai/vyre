@@ -15,6 +15,7 @@
 // - ⌘O opens the answer's thread in Vyre chat on the box. Esc clears back to plain search.
 
 import AppKit
+import AVFoundation
 import Foundation
 
 extension CapsuleModel {
@@ -44,7 +45,7 @@ extension CapsuleModel {
         let key = Self.autoKey(q.text)
         // The answer on screen was for other words: typing on lets it go.
         if let k = autoKey, k != key { dropAuto() }
-        guard autoKey != key, key.split(separator: " ").count >= 2 else { return }
+        guard autoKey != key, !dictating, Self.doRequest(q.text) == nil, key.split(separator: " ").count >= 2 else { return }
         let words = q.text.trimmingCharacters(in: .whitespacesAndNewlines)
         autoTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -118,9 +119,13 @@ extension CapsuleModel {
             return true
         }
         if userMoved && !command { return false }
+        // "do …": computer use, from ⏎ or ⌘⏎.
+        if let job = Self.doRequest(words) { startComputerUse(job); return true }
         let top = topLocal
         let onScreen = answerOnTop && autoKey == Self.autoKey(text)
         let question = onScreen || (Self.wantsAnswer(words, topKind: top?.kind, topScore: top?.score ?? 0) && quickFirst(words))
+        // ⌘⏎ on words that ask for something to be done, not answered: computer use.
+        if command && !question && !words.isEmpty && words.split(separator: " ").count >= 2 { startComputerUse(words); return true }
         guard question else { return false }
         autoTask?.cancel()
         if command {
@@ -163,6 +168,8 @@ extension CapsuleModel {
 
     /// Esc with an answer on screen: back to plain search.
     func clearAnswer() {
+        stopSpeaking()
+        doing = false
         dropAuto()
         followUp = false
         convo = []
@@ -181,5 +188,80 @@ extension CapsuleModel {
         }
         NSWorkspace.shared.open(url)
         onClose?(nil)
+    }
+}
+
+// MARK: - Voice and computer use, first class in the same box
+
+
+extension CapsuleModel {
+    /// Words spoken into the box (sight's talk chord). Partial words show as they come and ask
+    /// nothing; the final words are submitted as ⏎ would.
+    func dictate(_ words: String, final: Bool) {
+        if !final {
+            dictating = true
+            autoTask?.cancel()
+            text = words
+            return
+        }
+        dictating = false
+        guard !words.isEmpty else { return }
+        text = words
+        voiceTurn = true
+        if !handleReturn(command: false) { voiceTurn = false; search() }
+    }
+
+    /// Say the answer aloud, when spoken replies are on (voice.settings speak). Off, voice.speak
+    /// refuses with speak_off and nothing happens.
+    func speakAnswer(_ answer: String) {
+        let words = String(answer.prefix(2000))
+        guard !words.isEmpty, vyred.has("voice.speak") else { return }
+        let socket = vyred.socket
+        Task { @MainActor in
+            let r = await vyred.call("voice.speak", ["text": words], presence: false)
+            guard let d = r.data as? [String: Any], let url = VJ.nonEmpty(d["url"]) else { return }
+            let got = await withCheckedContinuation { (k: CheckedContinuation<Data?, Never>) in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    if case .success(let (status, body)) = VyHTTP.exchange(socket: socket, method: "GET", path: url, body: nil, timeout: 30), status == 200 {
+                        k.resume(returning: body)
+                    } else { k.resume(returning: nil) }
+                }
+            }
+            guard let audio = got, let player = try? AVAudioPlayer(data: audio) else { return }
+            self.speaker = player
+            player.play()
+        }
+    }
+
+    func stopSpeaking() {
+        (speaker as? AVAudioPlayer)?.stop()
+        speaker = nil
+    }
+
+    /// "do …": the words ask for something to be done on this Mac, not answered.
+    nonisolated static func doRequest(_ text: String) -> String? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        for p in ["do ", "please do "] where t.lowercased().hasPrefix(p) {
+            let rest = String(t.dropFirst(p.count)).trimmingCharacters(in: .whitespaces)
+            return rest.isEmpty ? nil : rest
+        }
+        return nil
+    }
+
+    /// What a computer-use session is told, after the user's words.
+    nonisolated static let computerUseBrief = """
+    You were started from the Vyre Capsule to do this on the user's Mac. Use the hands.* tools \
+    (observe, find, act, commit) and screen.* to see and act; every action is shown on screen and \
+    the user can stop it with Esc. Anything that sends, posts, pays or deletes goes through the \
+    Gate and waits for the user's Touch ID: do not try to get around it. Say in one line what you \
+    did, or what stopped you.
+    """
+
+    /// Start computer use for these words, in the answer area, with the tool rows live.
+    func startComputerUse(_ words: String) {
+        autoTask?.cancel()
+        autoKey = Self.autoKey(words)
+        Task { @MainActor in self.handle(await self.ask(words, computerUse: true)) }
+        commitFollowUp()
     }
 }

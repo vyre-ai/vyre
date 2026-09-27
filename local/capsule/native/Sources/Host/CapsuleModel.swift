@@ -33,6 +33,14 @@ public final class CapsuleModel: ObservableObject {
     var convo: [(q: String, a: String)] = []
     /// The user moved into the results with ↑↓: ⏎ opens that row instead of asking.
     var userMoved = false
+    /// Words are being spoken into the box: nothing asks on its own until they are final.
+    var dictating = false
+    /// The question on screen came by voice: its answer is spoken if spoken replies are on.
+    var voiceTurn = false
+    /// The answer on screen is computer use (an agent session with hands and screen): Esc also
+    /// calls hands.stop.
+    var doing = false
+    var speaker: AnyObject?
     @Published public internal(set) var groups: [Group] = []
     @Published public var selected = 0
     /// One line under the bar ("Copied", an error), cleared on the next keystroke.
@@ -47,7 +55,10 @@ public final class CapsuleModel: ObservableObject {
                                      body: text.isEmpty ? (asked ?? "") : String(text.prefix(180)))
             }
             if reply?.thread != oldValue?.thread || reply == nil { revealed = 0 }
-            if let r = reply, r.finished, oldValue?.finished == false, r.ok != false, !r.cancelled, let q = asked { remember(q, r) }
+            if let r = reply, r.finished, oldValue?.finished == false, r.ok != false, !r.cancelled, let q = asked {
+                remember(q, r)
+                if voiceTurn { voiceTurn = false; speakAnswer(VyState.replyText(r)) }
+            }
             pace()
         }
     }
@@ -734,7 +745,7 @@ public final class CapsuleModel: ObservableObject {
 
     // MARK: asking
 
-    func ask(_ words: String, model: String = "haiku", context: String? = nil) async -> ActionOutcome {
+    func ask(_ words: String, model: String = "haiku", context: String? = nil, computerUse: Bool = false) async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type a question first.") }
         let dir = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask")
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch {
@@ -758,16 +769,22 @@ public final class CapsuleModel: ObservableObject {
             guard let t = thread else { early.append(e); return }
             if e.thread == t, let r = self.reply { self.reply = VyState.applyReply(r, e) }
         }
-        let name = "Capsule: " + String(words.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(40))
-        let r = await vyred.call("threads.start", ["prompt": words, "append": append, "lean": true, "model": model, "purpose": "capsule",
-                                                   "cwd": dir.path, "surface": "capsule", "name": name], presence: false)
+        let name = (computerUse ? "Capsule, doing: " : "Capsule: ") + String(words.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(40))
+        doing = computerUse
+        // Computer use is a full session: the Vyre plugin brings hands.* and screen.*, the floor
+        // and the Gate. A question is a lean one on the fast model.
+        let input: [String: Any] = computerUse
+            ? ["prompt": words, "append": ([Self.computerUseBrief, append].filter { !$0.isEmpty }).joined(separator: "\n\n"), "purpose": "agent",
+               "cwd": dir.path, "surface": "capsule", "name": name]
+            : ["prompt": words, "append": append, "lean": true, "model": model, "purpose": "capsule", "cwd": dir.path, "surface": "capsule", "name": name]
+        let r = await vyred.call("threads.start", input, presence: false)
         pending = false
         if let why = Bridge.explain(r) { asked = nil; replySub?.cancel(); replySub = nil; return .failed(why) }
         guard let d = r.data as? [String: Any], let id = d["id"].map({ "\($0)" }) else { asked = nil; return .failed("vyred did not say which thread it started.") }
         thread = id
         keeper.startedQuick(id)
         var rep = VyState.reply(id)
-        rep.model = model
+        rep.model = computerUse ? nil : model
         for e in early where e.thread == id { rep = VyState.applyReply(rep, e) }
         reply = rep
         return .said("")
@@ -854,6 +871,9 @@ public final class CapsuleModel: ObservableObject {
 
     public func stopReply() {
         guard let r = reply, !r.finished else { return }
+        // Computer use: every hand stops now, whatever the turn is doing.
+        if doing, vyred.has("hands.stop") { Task { [vyred] in _ = await vyred.call("hands.stop", [:], presence: false) } }
+        stopSpeaking()
         // capsule-now rule 8: words still queued for a terminal session are taken back; once
         // handed over there is no interrupt path into it, so the Capsule stops following only.
         if let q = r.queued, VyState.replyText(r).isEmpty {
