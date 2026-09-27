@@ -211,6 +211,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             if model.presenceAsk != nil { model.cancelPresence(); return true }
             if model.confirming != nil { model.confirming = nil; model.line = nil; return true }
             if let r = model.reply, !r.finished { model.stopReply(); return true }
+            // An answer on screen, or the follow-up box: back to plain search. The next Esc hides.
+            if model.followUp || model.asked != nil { model.clearAnswer(); return true }
             if !model.text.isEmpty { model.text = ""; return true }
             hide(); return true
         case 51 where e.modifierFlags.contains(.command) && !model.attachments.isEmpty: // ⌘⌫ takes the last attachment off
@@ -223,11 +225,15 @@ final class PanelController: NSObject, NSWindowDelegate {
             model.memoryExpanded.toggle(); return true
         case 2 where cmd && !shift && model.canGoDeeper: // ⌘D: the same question to the deeper model
             model.deeper(); return true
+        case 31 where cmd && !shift && model.reply.map({ !$0.thread.isEmpty }) == true: // ⌘O: the thread in Vyre chat
+            model.openInChat(); return true
         // ↑↓ move in the results; with ⌘, ⇧ or ⌥ they are the box's (start, end, select).
         case 125 where !e.modifierFlags.contains(.command) && !shift && !e.modifierFlags.contains(.option): model.move(1); return true
         case 126 where !e.modifierFlags.contains(.command) && !shift && !e.modifierFlags.contains(.option): model.move(-1); return true
         case 36, 76: // return; a held key is one press, so a held Enter never confirms what it showed
             if e.isARepeat { return true }
+            // A question: ⏎ asks (or keeps the answer and opens the follow-up box), ⌘⏎ thinks deeper.
+            if !shift, model.handleReturn(command: cmd) { return true }
             if cmd || shift { return model.run(shortcut: KeyShortcut("return", command: cmd, shift: shift)) }
             model.run(); return true
         case 8 where cmd && !shift: // ⌘C with nothing selected in the box copies the row
@@ -244,7 +250,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     /// Keys the Edit, app and Window menus own, never a row's: ⌘A C V X Z F W , Q and ⌘⌫.
-    static let standard: Set<String> = ["a", "v", "x", "z", "f", "w", ",", "q", "\u{7f}"]
+    static let standard: Set<String> = ["a", "v", "x", "z", "f", "w", ",", "q", "o", "\u{7f}"]
 
     /// The caret is at the end of the box with nothing selected: ⌘→ has nothing to move.
     var caretAtEnd: Bool {

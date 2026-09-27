@@ -4,6 +4,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A question answers itself, and the box becomes the follow-up box
+
+- The user's feedback (2026-09-27). Words that read as a question are answered on the fast model
+  (purpose capsule, with what memory said) about 600 ms after typing rests. They qualify with a
+  question word, a "?", or three words or more that nothing on this Mac matches strongly. The
+  answer streams at the top, above the local results. Typing on lets it go (the turn is
+  interrupted) and asks again after the next pause. The same words never ask twice, and the last
+  five answers come back at once. A single word, an exact local match, or words the router sends
+  to the assistant (the user's own work, a command: "Ask juno") never ask on their own.
+- ⏎ keeps the answer and empties the box, which becomes "Ask a follow-up": ⏎ there continues the
+  same thread (threads.send). ↓ into the results first makes ⏎ open that row. ⌘⏎ asks the same
+  question, or the follow-up typed, on the deeper model with the conversation so far. It is a new
+  thread, since threads.send cannot switch the model yet. ⌘O opens the thread in Vyre chat on the
+  box. Esc clears back to plain search; the next Esc hides.
+- The Quick answer, Deeper answer and Follow up rows are gone. Under an answer the footer shows
+  only "Ask ⏎ · Think deeper ⌘⏎ · Clear esc". `Sources/Host/AutoAsk.swift`,
+  `Tests/AutoAskTests.swift` (the pause, cancel, the cache, follow-up threading, ⌘⏎).
+
 #### A Capsule test that timed the clock now counts overlap
 
 - ModuleProvidersTests "search asks every provider in parallel" asserted two 150 ms providers

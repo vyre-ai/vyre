@@ -19,7 +19,20 @@ public final class CapsuleModel: ObservableObject {
         public var id: String { section.rawValue }
     }
 
-    @Published public var text = "" { didSet { if text != oldValue { extensionBoxChanged?(); search() } } }
+    @Published public var text = "" { didSet { if text != oldValue { userMoved = false; extensionBoxChanged?(); search() } } }
+    /// After an answer, the box is the follow-up box: ⏎ continues the same thread (AutoAsk.swift).
+    @Published public internal(set) var followUp = false
+    /// How long typing rests before a question is answered on its own (AutoAsk.swift).
+    var autoDelay: Double = 0.6
+    var autoTask: Task<Void, Never>?
+    /// The words the answer on screen was asked for, normalised; nil when none is.
+    var autoKey: String?
+    /// The last few finished answers, by their words, so asking again shows at once.
+    var answerCache: [(key: String, reply: Reply, memory: MemoryAnswer?)] = []
+    /// What was asked and answered in this conversation, for ⌘⏎ on the deeper model.
+    var convo: [(q: String, a: String)] = []
+    /// The user moved into the results with ↑↓: ⏎ opens that row instead of asking.
+    var userMoved = false
     @Published public internal(set) var groups: [Group] = []
     @Published public var selected = 0
     /// One line under the bar ("Copied", an error), cleared on the next keystroke.
@@ -34,6 +47,7 @@ public final class CapsuleModel: ObservableObject {
                                      body: text.isEmpty ? (asked ?? "") : String(text.prefix(180)))
             }
             if reply?.thread != oldValue?.thread || reply == nil { revealed = 0 }
+            if let r = reply, r.finished, oldValue?.finished == false, r.ok != false, !r.cancelled, let q = asked { remember(q, r) }
             pace()
         }
     }
@@ -153,10 +167,10 @@ public final class CapsuleModel: ObservableObject {
         d.projectName = { [weak self] s in self?.catalog.projectName(s) ?? s }
         return d
     }()
-    private var token = 0
+    var token = 0
     private var partial: [String: [ResultItem]] = [:]
-    private var replySub: VyredSubscription?
-    private var recallTask: Task<Void, Never>?
+    var replySub: VyredSubscription?
+    var recallTask: Task<Void, Never>?
     /// Slow providers whose rows are still from the previous keystroke.
     private var stale = Set<String>()
     private var staleTimer: Timer?
@@ -219,6 +233,7 @@ public final class CapsuleModel: ObservableObject {
     /// A fresh open starts with an empty box, unless a reply is still streaming.
     public func reset() {
         if let r = reply, !r.finished { return }
+        followUp = false; autoKey = nil; autoTask?.cancel(); convo = []
         text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
         cancelMentionRefresh()
         replySub?.cancel(); replySub = nil
@@ -300,6 +315,12 @@ public final class CapsuleModel: ObservableObject {
             return
         }
         cancelMentionRefresh()
+        // The follow-up box: its words go to the answer's thread on ⏎; nothing is searched.
+        if followUp && target == nil {
+            autoTask?.cancel(); recallTask?.cancel(); memory = nil
+            partial = [:]; groups = []; selected = 0
+            return
+        }
         if let c = target {
             recallTask?.cancel(); memory = nil
             groups = q.normalized.isEmpty ? [] : [Group(section: .vyre, items: askItems(q))]
@@ -309,7 +330,7 @@ public final class CapsuleModel: ObservableObject {
         }
         refreshAttachments(q.text, to: .ask)
         recall(q.text, token: t)
-        if q.normalized.isEmpty { partial = [:]; groups = []; selected = 0; return }
+        if q.normalized.isEmpty { autoTask?.cancel(); if autoKey != nil { dropAuto() }; partial = [:]; groups = []; selected = 0; return }
         if let c = calcResult(q) { partial["calc"] = [withCopy(c)] }
         partial["commands"] = SystemCommands.match(q.normalized).prefix(3).map { commandItem($0.command, score: $0.score) }
         partial["ext-commands"] = extensionCommands.compactMap { c in
@@ -335,6 +356,7 @@ public final class CapsuleModel: ObservableObject {
         }
         let pending = Set((providers + extensionProviders).filter { !($0 is ImmediateResults) }.map(\.id))
         stale = pending
+        scheduleAuto(q, token: t)
         staleTimer?.invalidate()
         staleTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -379,6 +401,8 @@ public final class CapsuleModel: ObservableObject {
         let keep = current?.id
         groups = out
         if let keep, let i = flat.firstIndex(where: { $0.id == keep }) { selected = i } else { selected = 0 }
+        // An answer at the top is what ⏎ acts on until the user moves into the results.
+        if answerOnTop && !userMoved { selected = -1 }
     }
 
     /// Taildrop a file to the paired box (files.send). vyred's guard decides whether it may
@@ -604,9 +628,12 @@ public final class CapsuleModel: ObservableObject {
 
     public func move(_ by: Int) {
         let n = flat.count
-        guard n > 0 else { return }
-        selected = (selected + by + n) % n
         confirming = nil
+        // Above the first row is the answer at the top.
+        if answerOnTop && (selected == 0 && by < 0 || n == 0) { selected = -1; userMoved = false; return }
+        guard n > 0 else { return }
+        selected = selected < 0 ? 0 : (selected + by + n) % n
+        userMoved = true
     }
 
     /// Enter (index 0) or a ⌘ shortcut's action on the selected row.
@@ -707,7 +734,7 @@ public final class CapsuleModel: ObservableObject {
 
     // MARK: asking
 
-    func ask(_ words: String, model: String = "haiku") async -> ActionOutcome {
+    func ask(_ words: String, model: String = "haiku", context: String? = nil) async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type a question first.") }
         let dir = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask")
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch {
@@ -718,7 +745,7 @@ public final class CapsuleModel: ObservableObject {
         askedMemory = memory?.text == words && !(memory?.isEmpty ?? true) ? memory : nil
         // The prompt stays the user's words (capsule-now rule 1); what a chip attaches goes with
         // the instructions, after memory.
-        let append = ([Memo.append(askedMemory)] + attachments.map(\.body)).joined(separator: "\n\n")
+        let append = ([context, Memo.append(askedMemory)].compactMap { $0 } + attachments.map(\.body)).filter { !$0.isEmpty }.joined(separator: "\n\n")
         pending = true
         reply = nil
         replySub?.cancel()
@@ -732,7 +759,7 @@ public final class CapsuleModel: ObservableObject {
             if e.thread == t, let r = self.reply { self.reply = VyState.applyReply(r, e) }
         }
         let name = "Capsule: " + String(words.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(40))
-        let r = await vyred.call("threads.start", ["prompt": words, "append": append, "lean": true, "model": model,
+        let r = await vyred.call("threads.start", ["prompt": words, "append": append, "lean": true, "model": model, "purpose": "capsule",
                                                    "cwd": dir.path, "surface": "capsule", "name": name], presence: false)
         pending = false
         if let why = Bridge.explain(r) { asked = nil; replySub?.cancel(); replySub = nil; return .failed(why) }

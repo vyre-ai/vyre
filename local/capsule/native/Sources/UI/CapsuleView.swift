@@ -98,7 +98,7 @@ struct CapsuleView: View {
                 .frame(maxWidth: 240, alignment: .leading)
                 .fixedSize()
             }
-            TextField("", text: $model.text, prompt: Text(model.target == nil ? "Search, calculate, ask, or @ a session" : "Message").foregroundColor(Theme.ash.opacity(0.8)))
+            TextField("", text: $model.text, prompt: Text(model.target != nil ? "Message" : model.followUp ? "Ask a follow-up" : "Search, calculate, ask, or @ a session").foregroundColor(Theme.ash.opacity(0.8)))
                 .textFieldStyle(.plain)
                 .font(Theme.query)
                 .foregroundColor(Theme.bone)
@@ -263,10 +263,11 @@ struct CapsuleView: View {
                 if n > 0 { Text(n == 1 ? "1 result" : "\(n) results").font(.system(size: 11.5)).foregroundColor(Theme.ash) }
             }
             Spacer(minLength: 8)
-            if model.answerAlone {
-                if model.flat.contains(where: { $0.kind == "ask" }) { KeyHint(title: "Follow up", keys: ["⏎"]) }
-                if !model.replyText.isEmpty { KeyHint(title: "Copy", keys: ["⌘", "C"]) }
-                if model.canGoDeeper { KeyHint(title: "Deeper", keys: ["⌘", "D"]) }
+            if model.target == nil && (model.followUp || (model.asked != nil && !model.userMoved)) {
+                // An answer on screen: the keys, nothing that needs the mouse.
+                KeyHint(title: "Ask", keys: ["⏎"])
+                KeyHint(title: "Think deeper", keys: ["⌘", "⏎"])
+                KeyHint(title: "Clear", keys: ["esc"])
             } else if let item = model.current {
                 if let first = item.actions.first {
                     KeyHint(title: model.confirming != nil ? "Confirm" : first.title, keys: ["⏎"])

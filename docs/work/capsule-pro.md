@@ -142,13 +142,15 @@ box, and every key below passed through or kept.
 | ⌘W | Hide the Capsule | Window menu |
 | ⌘, | Settings: hides the Capsule and opens the menu-bar popover | app menu |
 | ⌘Q | Hides the Capsule. Quitting is "Quit Vyre Capsule" in the menu-bar item's menu, so a stray ⌘Q never loses the hot keys | app menu |
-| Esc | Cancel Touch ID, a confirm, or a streaming answer; else clear the box; else hide | Capsule |
+| Esc | Cancel Touch ID, a confirm, or a streaming answer; else clear an answer back to plain search; else clear the box; else hide | Capsule |
 | ↑/↓ | Move in the results; ↑ in an empty box opens what waits on you | Capsule |
-| ⏎ | Run the row (a held ⏎ counts once) | Capsule |
-| ⌘⏎, ⇧⏎ | The row's other actions; ⌘⏎ sends a held card | Capsule |
+| ⏎ | On a question: keep the answer and open the follow-up box; in it, continue the thread. Otherwise run the row (a held ⏎ counts once) | Capsule |
+| ⌘⏎ | On a question or a follow-up: think deeper (the deeper model, told the conversation). On a row: its other action; on a held card: send | Capsule |
+| ⇧⏎ | The row's other action | Capsule |
+| ⌘O | Open the answer's thread in Vyre chat on the box | Capsule |
 | Tab | Pick the @ row, or send the words to the first destination | Capsule |
 | ⌘K | The row's actions, to pick one | Capsule |
-| ⌘D | The same question to the deeper model | Capsule |
+| ⌘D | The same as ⌘⏎ on a finished quick answer (kept for old habits) | Capsule |
 | ⌘S | Send a file row to the box | Capsule |
 | ⌘→ at the end of the box | Show or fold memory's sources | Capsule |
 | ⌫ in an empty box | Drop the @ chip | Capsule |
