@@ -73,13 +73,15 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Doing
 
-- Release-candidate sha to the integrator: the HEAD after the runs below (all with VYRE_CHECK_VIEWS=1,
-  load under 6, nice 15, --test-timeout): 189 (view, tip line, consistency, cli, threads-sessions,
-  apps, voice, statusline, sessions, needs, box, term, projects, sideview, docs) then 74/74 after
-  fixes; 218 (every other core/cli/commands test, vault-cli*, link-cli, peer, presence-cli, memory
-  correct, recall module, statusline) then 15/15 after fixes. Fixes from the runs: card states
-  outside CheckState (gate held, recall off, agent computer off), apps sample names, docs:ref.
-- Batch 4 had 4bc5c14b.
+- SAVED for the restart. Handed off: release candidate 12851fab to the integrator (replaces batch 4
+  4bc5c14b). Since then only notes. Nothing in flight, no testbox processes.
+- Waiting on: launch (high-five in core/cli/commands/high-five.js + core/cli/delight.js; I review, run
+  it, and show their fortune(rand) line dim in core/cli/screen/layout.js's title bar); platform
+  e75a6a11 on main (then JSDoc-import Render in core/cli/view.js); vault-next on main (vyre key);
+  native-core settings on main (vyre config, tips settings); e2e-noclaude on main (statusline
+  claudeHome + a temp-home test); platform P1 (commands.list into vyre commands).
+- Testbox rule now: one targeted run, nice 15, --test-timeout, load under 6 right before, and
+  VYRE_CHECK_VIEWS=1 for CLI tests.
 
 ## Next
 
