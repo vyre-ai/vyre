@@ -214,3 +214,28 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   render/audit rounds to fix real overflow (not audit noise — the two-window Import frame genuinely
   didn't fit at my first two height guesses). Handed to memory-iq (msg_id 8582da7f) and flagged to
   launch as non-blocking (msg_id c3fd6735).
+
+## Now (28 Sep, top priority: vault + connections onboarding)
+
+- Lead: "the UI/UX needs to be INSANELY good", top 0.1.1 priority. Two boards, both pass the audit
+  clean, both themes, sample world:
+  - VaultImport.dc.html/-paper (19a96abd): the onboarding secrets moment, 4 frames — Discover (6
+    source cards: .env, shell exports, password manager, Chrome, SSH keys, MCP/Claude config;
+    found/in counts; masked project-grouped list; the footer button is the confirm), Touch ID
+    (centred card, the canonical shield glyph reused from elsewhere), the live "flying into the
+    vault" delight moment (item chips on dashed trails converging on the vault glyph, N-of-34
+    counter + progress bar, per-project checklist), Done (grouped summary + Open the vault). This
+    is also launch's onboarding-v2.md step 5.
+  - Connections.dc.html/-paper (db3dbbfa): Google, mail/IMAP, Apps Script and MCP servers all draw
+    from account-row.md's spec as the same card — provider tile, account, status, "Granted to" as
+    one-tap toggle chips, "Wrong account?" as a quiet link, never colour for a problem state
+    (outline Sign in / Sign in again is the only tell). Desktop + phone frames.
+  - Both build directly off account-row.md and credential-sheet.md, which I'd already written and
+    which named exactly these boards under their own Gaps sections — nothing new invented.
+  - Real lesson from this session: `.frames` does not wrap on its own (`flex-wrap: wrap` alone
+    left every cap stacked in one column, not a grid) — multi-frame boards need an explicit
+    `.col` of `.row`s, and `.win` height needs real headroom (a two-frame-wide onboarding sheet
+    wants close to 900-960, not 620-820) or the render audit's "clipped" is catching a genuine
+    overflow, not noise.
+  - Sent to vault (msg_id 79e667f5) and launch (msg_id f7dacdfd). Still owe launch: the step-shell
+    board and the session-import 5-stage revision (queued, see above).
