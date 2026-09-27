@@ -40,8 +40,10 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
 - Nothing in flight (2026-09-27). Last: terminal tabs on recall.watch (see Done).
 
 ## Next
-1. When chat's recall.watch reaches main, try the terminal tab against a real vyred in a temp
-   home (lead's go-ahead for the Mac) and put CPU/RSS for a shown watching panel in this doc.
+1. GO-AHEAD GIVEN (lead, 2026-09-27): once chat's recall.watch (10604b9) is on main, one real-vyred
+   perf check on the Mac: temp home, VYRE_NO_DIALOGS=1, VYRE_TAILSCALE_BIN=deck/test/fake-tailscale.js,
+   through buildlock, only my own unfocused window; close everything after; CPU/RSS of a shown
+   watching terminal tab go in this doc and to the lead. Not on main yet at 964af29.
 2. capsule-apps slice 4 (WhatsApp over hands): answer any further hands asks.
 
 ## Try it (the user, own terminal, a vyred from this worktree in a separate home)
