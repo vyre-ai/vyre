@@ -104,10 +104,15 @@ mobile and the Capsule (through their owners).
 
 ## Next (in order, when resumed)
 
-0. (0.1.0, lead) Claude sign-in as a need: how "code" in the catalog (sign-in url, then an inline code),
-   backed by onboard.claude; group "claude" = setup token or API key. Proposal sent to sessions 27 Sep;
-   waiting on: which module declares it, module:vault calling onboard.claude, signin.start() twice.
-
+0. (0.1.0, after 9b + picker) Claude sign-in as a need. Answers (lead + sessions, 27 Sep):
+   the need is declared on module `threads` (sessions adds it once needs.credentials is on main), with a
+   `readers` field (to add) naming agents as a second reader. The catalog gains how "code". vault.connect
+   relays to onboard.claude {mode:"setup-token"} (url) and then {mode:"setup-token", code} (module:vault may
+   call it only to relay a person's vault.connect, with presence checked in the vault). The API key goes
+   through onboard.claude {mode:"api-key", key}, never vault.put, so onboard keeps its prefix and length
+   checks; the item and its readers stay onboard's. signin.start() twice replaces the first link: surfaces
+   show the latest url, and a code from an old link fails "the sign-in has ended; start it again" (test it).
+   setup-token.js now belongs to sessions.
 1. Rotation: revoke-old asks for proof with the new key's name shown (lead decision, ADR 0028 4c);
    then prove each auto provider against a real account.
 2. Agent grants per project (ADR 0031): project column, check on every use, revoke by project.
