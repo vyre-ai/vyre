@@ -30,7 +30,7 @@ test("import preview: same, conflict and rename, the token refuses a changed fil
 
   const preview = await run("vault.import.preview", { file });
   assert.equal(preview.format, "apple-csv");
-  assert.deepEqual(preview.counts, { login: 3, note: 0, card: 0, secret: 0, "api-key": 0 });
+  assert.deepEqual(preview.counts, { login: 3, note: 0, card: 0, secret: 0, "api-key": 0, "env-set": 0 });
   assert.deepEqual(preview.same, ["northwind-bakery"]);
   assert.deepEqual(preview.conflicts, [{ name: "harlow-legal", existing: "harlow-legal" }]);
   // The kit row's name from the parser is "harlow-legal-kit"; nothing was taken, so no rename.

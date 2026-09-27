@@ -229,13 +229,13 @@ export default {
 
     // Preview opens the file and the existing logins, so it asks for the same presence as import
     // (ADR 0028, decision 1). It returns names and counts, never a value.
-    tool("vault.import.preview", ["cli", "local", "mcp"], "What an import would add, skip as already here, or find in conflict, by name and count only, with a token that binds vault.import to this exact file.",
+    tool("vault.import.preview", ["cli", "local", "mcp"], "What an import would add, skip as already here, or find in conflict, by name and count only, with a token that binds vault.import to this exact file. A folder is scanned for .env files; each file's variables come back with their type and whether they are secret, never a value.",
       obj({ file: str, format: str }, ["file"]), (input, { caller }) => vault.importPreview(input, caller),
       presence("Preview a file for import", ({ file }) => `Preview the items in ${path.resolve(String(file))}`));
 
-    tool("vault.import", ["cli", "local", "mcp"], "Import a .env file or a 1Password, Bitwarden, Chrome or Apple Passwords export. vyred reads the file itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts \"update\" makes a new version of the existing login.",
-      obj({ file: str, format: str, token: str, conflicts: { type: "string", enum: ["skip", "update"] } }, ["file"]), (input, { caller }) => vault.import(input, caller),
-      presence("Import a file into the vault", ({ file }) => `Import the items in ${path.resolve(String(file))} into the vault`));
+    tool("vault.import", ["cli", "local", "mcp"], "Import a .env file, a folder of them, or a 1Password, Bitwarden, Chrome or Apple Passwords export. vyred reads the files itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts \"update\" makes a new version of the existing item; rewrite swaps each imported .env value for a vault:// reference once it is stored.",
+      obj({ file: str, format: str, token: str, conflicts: { type: "string", enum: ["skip", "update"] }, rewrite: { type: "boolean" } }, ["file"]), (input, { caller }) => vault.import(input, caller),
+      presence("Import a file into the vault", ({ file, rewrite }) => `Import the items in ${path.resolve(String(file))} into the vault${rewrite ? " and rewrite its .env files to vault references" : ""}`));
 
     tool("vault.audit", null, "Who used which item, when, and whether it was allowed. Never a value.",
       obj({ name: str, limit: { type: "integer" } }), input => vault.auditTrail(input));

@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Vault imports a project's .env files, typed, and can rewrite them to vault references
+
+- `vault.import.preview` and `vault.import` take a folder: every `.env`, `.env.*` and `*.env` under
+  it, skipping node_modules, .git and build folders, listing `.env.example` and other templates
+  without importing them, following no symlinks, at most 200 files of 1 MB. The token covers every
+  file's path and bytes, so a file changing, appearing or going away refuses the import.
+- A .env file is now one `env-set` item named after its path (`harlow-intake.env`), not one secret
+  per variable. Only secrets go in; core/vault/detect.js types each variable (api-key, pat, oauth,
+  cloud, db-url, private-key, cert, jwt, webhook, password, secret, config) and names about 40
+  providers, from the value's shape first and the name second, returning only fixed words and a JWT
+  expiry. The preview lists `files` with each variable's type, what stays, and git state.
+- `vault.import {rewrite: true}` (CLI `--rewrite`) swaps each stored line for
+  `KEY=vault://item/KEY`, keeping comments, config, `export` and line endings, only when every value
+  in that file is stored, atomically and with no backup. `vyre vault run --env-file .env` runs the
+  program with the same environment. Tests: core/vault/detect.test.js, core/vault/env-import.test.js.
+
 #### Vault import previews first, finds duplicates by content, and reads Apple Passwords
 
 - `vault.import.preview {file, format?}` (cli, local, mcp; same presence as import) returns the

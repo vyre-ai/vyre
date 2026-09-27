@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import zlib from "node:zlib";
 import { parse, parseFile, parseCSV, merge, plan } from "./import.js";
 import { crc32 } from "./zip.js";
+import { envEntries } from "./envfiles.js";
 
 // A password with a comma, a quote and a newline, as it appears once CSV-quoted.
 const HARD = 'correct,horse "7Q!x"\nsecond-line';
@@ -148,10 +149,8 @@ test("import: Chrome, Safari and generic CSV", () => {
 });
 
 test("import: .env with export, quotes, comments, inline comment and empty values", () => {
-  const r = parse(ENV, { filename: "/somewhere/.env.local" });
-  assert.equal(r.format, "env");
-  const v = Object.fromEntries(r.items.map(i => [i.name, i.fields.value]));
-  assert.deepEqual(v, {
+  // Every line parses as it always did; envEntries is what the import reads.
+  assert.deepEqual(Object.fromEntries(envEntries(ENV).entries.map(e => [e.key, e.value])), {
     EXAMPLE_API_KEY: "sk-example-0000-aaaa",
     SINGLE: "literal \\n $not-expanded",
     DOUBLE: 'line one\nline "two" \\ tab\there',
@@ -159,15 +158,21 @@ test("import: .env with export, quotes, comments, inline comment and empty value
     INLINE: "plain-value-xyz",
     HASH_KEPT: "abc#def",
   });
-  for (const i of r.items) {
-    assert.equal(i.kind, "secret");
-    assert.equal(i.description, "from .env.local");
-    assert.deepEqual(i.hosts, []);
-  }
+  // The file is one env-set holding what detect.js calls secret; the rest stays in the file.
+  const r = parse(ENV, { filename: "/somewhere/.env.local" });
+  assert.equal(r.format, "env");
+  assert.equal(r.items.length, 1);
+  const [it] = r.items;
+  assert.equal(it.kind, "env-set");
+  assert.equal(it.name, "somewhere.env.local");
+  assert.equal(it.fields.EXAMPLE_API_KEY, "sk-example-0000-aaaa");
+  assert.deepEqual([...Object.keys(it.fields), ...(r.kept ?? [])].sort(), ["DOUBLE", "EXAMPLE_API_KEY", "HASH_KEPT", "INLINE", "MULTI", "SINGLE"]);
+  assert.match(it.description, /^from \.env\.local · \d+ values?$/);
+  assert.deepEqual(it.hosts, []);
   assert.ok(r.skipped.includes("EMPTY: empty value"));
   assert.ok(r.skipped.includes("EMPTY_QUOTED: empty value"));
   assert.ok(r.skipped.some(s => /^line 12:/.test(s)));
-  assert.equal(parse("A=1").items[0].description, "from .env");
+  assert.equal(parse("A_TOKEN=abcdefghij0123456789").items[0].name, "env");
 });
 
 test("import: detects the format without being told", () => {

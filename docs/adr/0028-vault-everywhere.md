@@ -117,8 +117,16 @@ Not defended, stated plainly:
 - Apple Passwords (macOS 15 and iOS 18) exports `Title,URL,Username,Password,Notes,OTPAuth`, the
   same header as Safari. The format is reported as `apple-csv`, and `safari-csv` stays as an
   alias.
-- Surfaces: the CLI (`vyre vault import --preview`) and the Deck's import sheet (the pwa team's
-  surface). Both call these tools.
+- `.env` files, one or a folder of them, go through the same two tools. Each file is one `env-set`
+  named after its path, holding only the variables `detect.js` calls secret; plain config stays in
+  the file. The preview adds `files: [{file, item, state, vars: [{key, secret, type, provider?,
+  mode?, public?, expires?}], kept, git?: {tracked, ignored}}]` and `templates`. A type and a
+  provider are words from a fixed list, never a slice of the value. The token covers every file's
+  path and bytes. `vault.import {rewrite: true}` then replaces each stored variable's line with
+  `KEY=vault://item/KEY`, only in files whose values are all in the vault, atomically, with no
+  backup. `vyre vault run --env-file` reads the result.
+- Surfaces: the CLI (`vyre vault import --preview`, `--rewrite`) and the Deck's import sheet (the
+  pwa team's surface). Both call these tools.
 
 ### 2. Agent logins: one agent, one login, one origin
 

@@ -68,6 +68,24 @@ vyre vault ssh generate deploy-key                    # prints only the public k
 file alone. Delete the file afterwards. `generate` without a name prints a password and stores
 nothing.
 
+A project's `.env` files come in the same way, a file or a whole folder at once:
+
+```
+vyre vault import ~/code/harlow-intake --preview   # every .env under it, typed, never a value
+vyre vault import ~/code/harlow-intake --rewrite   # store them, then swap the values for references
+vyre vault run --env-file .env -- npm start        # the program gets the same environment as before
+```
+
+Each file becomes one env-set named after where it lives (`harlow-intake.env`,
+`harlow-intake-apps-web.env.local`). Only secrets move: API keys, tokens, passwords, database URLs
+with a password, private keys. Plain settings such as `PORT` or a public URL stay in the file. The
+preview names each variable's type and provider (`api-key openai`, `db-url postgres`), flags a
+public name holding a secret value (`NEXT_PUBLIC_...=sk_live_...`), and says when a file is
+committed to git or missing from `.gitignore`. The scan skips `node_modules`, `.git` and build
+folders, lists `.env.example` files without importing them, and follows no symlinks.
+`--rewrite` changes a file only after every value in it is stored, writes no backup of the old
+file, and leaves a file alone when its values differ from the vault's (a conflict).
+
 ## See what you have
 
 ```

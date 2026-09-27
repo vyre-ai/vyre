@@ -569,8 +569,8 @@ async function generate(args) {
 
 async function importFile(args) {
   let f;
-  try { f = flags(args, { string: ["format"], boolean: ["preview", "update-conflicts"] }); } catch (e) { return oops(e.message); }
-  if (f._.length !== 1) return oops("vyre vault import <file> [--preview] [--update-conflicts] [--format f]");
+  try { f = flags(args, { string: ["format"], boolean: ["preview", "update-conflicts", "rewrite"] }); } catch (e) { return oops(e.message); }
+  if (f._.length !== 1) return oops("vyre vault import <file|folder> [--preview] [--update-conflicts] [--rewrite] [--format f]");
   const file = path.resolve(f._[0]);
   const base = { file, ...(f.format ? { format: f.format } : {}) };
   // Preview first, always: the token it returns binds the import to this exact file, so a file
@@ -586,10 +586,13 @@ async function importFile(args) {
     for (const c of conflicts) say(beacon(`  conflict: ${c.name}`) + dim(` has another password than ${c.existing} · --update-conflicts makes a new version`));
     for (const r of renamed) say(dim(`  renamed: ${r.from} to ${r.to}, the name is taken`));
     for (const s of skipped) say(dim(`  skipped: ${s}`));
-    say(dim(`  vyre vault import ${f._[0]}${f["update-conflicts"] ? " --update-conflicts" : ""} to import it`));
+    for (const e of p.data.files || []) envPreview(e);
+    for (const t of p.data.templates || []) say(dim(`  template, not imported: ${path.relative(process.cwd(), t) || t}`));
+    if (p.data.truncated) say(beacon("  stopped at 200 files: import a smaller folder"));
+    say(dim(`  vyre vault import ${f._[0]}${f["update-conflicts"] ? " --update-conflicts" : ""}${p.data.files ? " --rewrite" : ""} to import it`));
     return 0;
   }
-  const r = await tool("vault.import", { ...base, token, conflicts: f["update-conflicts"] ? "update" : "skip" });
+  const r = await tool("vault.import", { ...base, token, conflicts: f["update-conflicts"] ? "update" : "skip", ...(f.rewrite ? { rewrite: true } : {}) });
   if (r.error) return fail(r);
   const d = r.data;
   const added = d.added || [], updated = d.updated || [], left = d.conflicts || [];
@@ -599,8 +602,26 @@ async function importFile(args) {
   if (left.length) say(beacon(`  conflicts skipped: ${left.join(", ")}`) + dim(" · --update-conflicts to take the file's passwords"));
   for (const x of d.renamed || []) say(dim(`  renamed: ${x.from} to ${x.to}`));
   for (const s of d.skipped || []) say(dim(`  skipped: ${s}`));
+  for (const x of d.rewritten || []) say(`  ${signal("rewritten")} ${path.relative(process.cwd(), x) || x} ${dim("· values swapped for vault:// references")}`);
+  for (const x of d.unchanged || []) say(dim(`  left as it was: ${path.relative(process.cwd(), x) || x}`));
   if (d.advice) say(beacon(`  ${d.advice}`));
   return 0;
+}
+
+/** One .env file in a preview: what goes into the vault, typed, and what stays. Never a value. */
+function envPreview(e) {
+  const where = path.relative(process.cwd(), e.file) || e.file;
+  const state = { add: "new", same: "already here", conflict: beacon("differs from the vault"), nothing: "nothing secret" }[e.state] || e.state;
+  say(`\n  ${bold(where)} ${dim("→")} ${e.item ? bold(e.item) : dim("stays as it is")} ${dim("· ")}${state}`);
+  for (const v of e.vars || []) {
+    if (!v.secret) continue;
+    const what = [v.type, v.provider, v.mode].filter(Boolean).join(" ");
+    const until = v.expires ? dim(` · expires ${new Date(v.expires).toISOString().slice(0, 10)}`) : "";
+    say(`    ${v.key.padEnd(28)} ${dim(what)}${until}${v.public ? beacon(" · public name, secret value") : ""}`);
+  }
+  if ((e.kept || []).length) say(dim(`    stays in the file: ${e.kept.join(", ")}`));
+  if (e.git && e.git.tracked) say(beacon("    committed to git: the values stay in its history, change them at the provider"));
+  else if (e.git && !e.git.ignored) say(beacon("    not in .gitignore: add it before a commit picks it up"));
 }
 
 async function audit(args) {
@@ -1146,7 +1167,7 @@ const HELP = [
   ["run [--env-file f] <item...> -- <command...>", "items as VAR=name.field, or KEY=vault://item/field lines; output scrubbed"],
   ["totp <name>", "the current code"],
   ["generate [--length n] [--words n] [--no-symbols] [name]", "a password; stored when named"],
-  ["import <file> [--preview] [--update-conflicts] [--format f]", ".env, 1Password, Bitwarden, Chrome, Apple Passwords; --preview shows names and counts only"],
+  ["import <file|folder> [--preview] [--update-conflicts] [--rewrite] [--format f]", ".env files (a whole project), 1Password, Bitwarden, Chrome, Apple Passwords; --rewrite swaps .env values for vault:// refs"],
   ["audit [name] [--limit n]", "who used what, and when"],
   ["delete <name>", "remove an item and its grants"],
   ["card", "this Vyre's card, to share"],

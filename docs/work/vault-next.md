@@ -12,21 +12,34 @@ mobile and the Capsule (through their owners).
 
 ## Done
 
-- ADR 0028 written (proposed). Number claimed in docs/work/README.md.
+- ADR 0028 written (proposed), in nav.json. Number claimed in docs/work/README.md.
+- Import preview with a file-bound token, duplicates by origin+username, Apple Passwords (782ab9d).
+- Agent grants + vault.uses log, the 30-min fill window, Firefox extension build (WIP commit at
+  resume after logout 3; tests green).
+- Step 1, .env import: core/vault/detect.js (types + ~40 providers, fixed words only),
+  core/vault/envfiles.js (spans, item names, folder scan, rewrite, git state). A .env file is one
+  env-set; only secrets move; folder scan; `rewrite` to vault:// refs; CLI `--rewrite` + per-file
+  preview. Tests: detect.test.js, env-import.test.js. vault + CLI suites on testbox: 264 pass, 0 fail.
 
 ## Doing
 
-- Waiting on the lead's reply to the ADR summary; starting import (ADR 0028 decision 1).
+- Step 2: `vyre run -- cmd` (top-level alias, picks up ./.env refs) + vault.env.resolve for the
+  sessions driver's auth token.
 
-## Next
+## Next (the approved order, sizes sent to the lead 2026-09-27)
 
-1. Import: vault.import.preview with a file-bound token, duplicates by origin+username, conflicts
-   skip|update, renames, apple-csv, CLI --preview.
-2. Agent grants: vault_agent_grants, vault.agent.grant/grants/revoke, vault.uses.
-3. Rotation reminders via planner.add (daily, dedup in vault_marks).
-4. Fill window 30 min from proof; Firefox build of the extension.
-5. vault.agent.fill with computers.fill.begin/end.
-6. Android, iOS, macOS providers (GitHub Actions builds).
+2. `vyre run` + .env refs (S); agree the sessions driver's env shape with sessions (ADR 0030).
+3. Typed credentials (M): passkey, authenticator, pat (scope, expiry), oauth, cloud, db-url, cert,
+   recovery-codes, wifi, licence, file, address, identity. Expiry -> planner todo.
+4. Import sources (L): LastPass, Dashlane, Keeper, NordPass, Proton Pass, Enpass, KeePass XML/CSV,
+   Edge/Brave/Arc, Firefox. KDBX4 later (box is Node 22, no argon2).
+5. Google Authenticator migration QR (multi-part) + otpauth (M); the client decodes the image.
+6. vault.codes: current + next + remaining (S).
+7. Leak sweep + rotation (L): auto for AWS, GCP SA, Cloudflare, Twilio, GitLab, Tailscale; guided
+   otherwise; ADR 0028 decision 4 reminders.
+8. `vyre vault ssh setup` (S). 9. vault.agent.fill (M, needs computers). 10. Passkeys (L).
+11. Cards + addresses (M). 12. Emergency access (M). 13. Autofill: extension, Android service,
+   Glass, simulator-only iOS/macOS providers (L).
 
 ## Needs from others
 
@@ -38,8 +51,10 @@ mobile and the Capsule (through their owners).
 - planner: planner.add from module:vault (already allowed), planner.done on items it added.
 - polish-cli: CLI keeps a fresh proof per call; fills never ride a CLI window.
 - pwa: Deck import sheet (preview), Grants place and "Used by" rows.
-- user: a paid Apple Developer team for the AutoFill Credential Provider entitlement (iOS, macOS).
+- user: a paid Apple Developer team (NOT approved for now: iOS/macOS providers stay simulator + CI).
+- lead: refs stay vault://item/field; accept vyre://vault/... as an alias? Who builds the Deck/phone vault board (Direction A): pwa + mobile, or vault-next?
 
 ## Changed contracts
 
-- (none yet)
+- vault.import on a .env file now makes ONE env-set (named after the file's path), holding only
+  secrets, instead of one secret per variable. vault.import/preview take a folder and `rewrite`.

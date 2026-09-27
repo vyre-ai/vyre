@@ -16,19 +16,20 @@
 
 import path from "node:path";
 import { unzip } from "./zip.js";
+import { readEnv } from "./envfiles.js";
 
 /** @typedef {"env"|"1password-csv"|"1password-1pux"|"bitwarden-csv"|"bitwarden-json"|"chrome-csv"|"apple-csv"|"safari-csv"|"csv"} Format */
 /**
  * @typedef {object} Item
  * @property {string} name
- * @property {"secret"|"api-key"|"login"|"note"|"card"} kind
+ * @property {"secret"|"api-key"|"login"|"note"|"card"|"env-set"} kind
  * @property {string} description
  * @property {Record<string,string>} fields
  * @property {string} [url]
  * @property {string[]} hosts
  * @property {string[]} [tags]
  */
-/** @typedef {{ format: Format|null, items: Item[], skipped: string[], error?: string }} Result */
+/** @typedef {{ format: Format|null, items: Item[], skipped: string[], error?: string, vars?: import("./envfiles.js").Var[], kept?: string[] }} Result */
 
 export const FORMATS = /** @type {const} */ (["env", "1password-csv", "1password-1pux", "bitwarden-csv", "bitwarden-json", "chrome-csv", "apple-csv", "safari-csv", "csv"]);
 export const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -141,6 +142,7 @@ export function merge(existingNames, items) {
  * @property {string} [origin]
  * @property {string} [username]
  * @property {string} [password]
+ * @property {Record<string, string>} [fields] an env-set's variables, opened by the caller
  */
 /**
  * @typedef {object} Plan
@@ -155,6 +157,8 @@ export function merge(existingNames, items) {
  * keyed on the origin of its url (or first host) plus its username, lowercased and trimmed:
  *   - same key and same password as an existing login: `same`, skipped;
  *   - same key, another password: `conflicts`, naming the existing item;
+ *   - an env-set is keyed on its name (the file it came from): every imported variable already
+ *     there with the same value is `same`, anything else is a conflict;
  *   - otherwise it is added, and a name already taken (in the vault, or earlier in this batch)
  *     becomes name-2, name-3 and so on, listed in `renamed`.
  * Pure: nothing here reads the disk, and nothing returned carries a value except `add` and
@@ -166,9 +170,12 @@ export function merge(existingNames, items) {
 export function plan(existing, items) {
   /** @type {Map<string, Existing>} */
   const logins = new Map();
+  /** @type {Map<string, Existing>} */
+  const sets = new Map();
   const taken = new Set();
   for (const e of existing) {
     taken.add(e.name);
+    if (e.kind === "env-set" && e.fields) sets.set(e.name, e);
     if (e.kind !== "login") continue;
     const k = loginKey(e.origin ? originOf(e.origin) : "", e.username ?? "");
     if (k && !logins.has(k)) logins.set(k, e);
@@ -182,6 +189,15 @@ export function plan(existing, items) {
       const e = logins.get(loginKey(itemOrigin(it), it.fields.username ?? ""));
       if (e) {
         if ((e.password ?? "") === (it.fields.password ?? "")) out.same.push(it.name);
+        else out.conflicts.push({ name: it.name, existing: e.name, item: it });
+        continue;
+      }
+    }
+    if (it.kind === "env-set") {
+      const e = sets.get(it.name);
+      if (e) {
+        const have = e.fields ?? {};
+        if (Object.entries(it.fields).every(([k, v]) => have[k] === v)) out.same.push(it.name);
         else out.conflicts.push({ name: it.name, existing: e.name, item: it });
         continue;
       }
@@ -261,64 +277,17 @@ function csvFormat(header) {
 // ---------------------------------------------------------------------------------------------
 // .env
 
-/** @param {string} text @param {string} [filename] @returns {Result} */
+/**
+ * A .env file is one env-set item holding its secret variables (envfiles.js); plain config is
+ * listed in `kept` and stays in the file. `vars` says what each variable is, never its value.
+ * @param {string} text @param {string} [filename] @returns {Result}
+ */
 function parseEnv(text, filename) {
-  const description = `from ${filename ? path.basename(filename) : ".env"}`;
-  /** @type {Map<string, Item>} */
-  const found = new Map();
-  /** @type {string[]} */
-  const skipped = [];
-  const lines = text.replace(/\r\n?/g, "\n").split("\n");
-  for (let n = 0; n < lines.length; n++) {
-    const line = lines[n];
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const m = /^\s*(?:export\s+)?([^\s=#]+)\s*=\s*(.*)$/.exec(line);
-    if (!m) { skipped.push(`line ${n + 1}: not NAME=value`); continue; }
-    const name = m[1];
-    let rest = m[2];
-    let value;
-    if (rest.startsWith('"')) {
-      // Double quotes: escapes, and the value may run across lines until the closing quote.
-      let out = "";
-      let i = 1;
-      let closed = false;
-      let j = n;
-      for (;;) {
-        for (; i < rest.length; i++) {
-          const c = rest[i];
-          if (c === "\\" && i + 1 < rest.length) {
-            const e = rest[++i];
-            out += e === "n" ? "\n" : e === "t" ? "\t" : e === "r" ? "\r" : e === '"' ? '"' : e === "\\" ? "\\" : "\\" + e;
-          } else if (c === '"') { closed = true; break; }
-          else out += c;
-        }
-        if (closed || j + 1 >= lines.length) break;
-        out += "\n";
-        rest = lines[++j];
-        i = 0;
-      }
-      if (!closed) { skipped.push(`${safeName(name)}: no closing double quote`); continue; }
-      n = j;
-      value = out;
-    } else if (rest.startsWith("'")) {
-      const close = rest.indexOf("'", 1);
-      if (close < 0) { skipped.push(`${safeName(name)}: no closing single quote`); continue; }
-      value = rest.slice(1, close);
-    } else {
-      value = rest.replace(/\s+#.*$/, "").trim();
-      if (value.startsWith("#")) value = "";
-    }
-    if (!NAME.test(name)) { skipped.push(`${safeName(name)}: not a usable item name`); continue; }
-    if (value === "") { skipped.push(`${name}: empty value`); continue; }
-    if (found.has(name)) { skipped.push(`${name}: set more than once, the last one is kept`); found.delete(name); }
-    found.set(name, { name, kind: "secret", description, fields: { value }, hosts: [] });
-  }
-  return { format: "env", items: [...found.values()], skipped };
+  const r = readEnv(text, { file: filename });
+  return { format: "env", items: r.item ? [r.item] : [], skipped: r.skipped, vars: r.vars, kept: r.kept };
 }
 
 /** A variable name is safe to report, but only a bounded, printable one. @param {string} s */
-const safeName = s => s.replace(/[^\x21-\x7e]/g, "?").slice(0, 64);
 
 // ---------------------------------------------------------------------------------------------
 // CSV exports

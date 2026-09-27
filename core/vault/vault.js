@@ -30,6 +30,7 @@ import { Helper } from "./mac/helper.js";
 import * as history from "./history.js";
 import { callerKind } from "../modules/index.js";
 import { parseFile as parseImport, plan as planImport } from "./import.js";
+import { findEnvFiles, readEnv, rewriteEnv, isEnvName, gitState } from "./envfiles.js";
 import { FILL_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";
 import { generate } from "./generate.js";
@@ -154,7 +155,7 @@ const newId = () => crypto.randomBytes(9).toString("base64url");
 // Binds an import preview to the file it read. Random per process and never stored, so a token is
 // not forgeable from vyre.db and says nothing about the file's contents (ADR 0028, decision 1).
 const IMPORT_TOKEN_KEY = crypto.randomBytes(32);
-const IMPORT_KINDS = ["login", "note", "card", "secret", "api-key"];
+const IMPORT_KINDS = ["login", "note", "card", "secret", "api-key", "env-set"];
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 
 /** A caller's kind, as the registry sees it. */
@@ -181,6 +182,62 @@ export function origin(u) {
 function importToken(bytes) {
   const digest = crypto.createHash("sha256").update(bytes).digest("hex");
   return crypto.createHmac("sha256", IMPORT_TOKEN_KEY).update(`${digest}:${bytes.length}`).digest("base64url");
+}
+
+/**
+ * Read every .env file in a folder (or one .env file) for an import. The token binds to each
+ * file's path and bytes, so any file changing, appearing or going away since the preview is
+ * refused. Names that two files would share get -2, -3 here, before the vault's own renames.
+ * @param {string} root
+ */
+function scanEnv(root) {
+  const found = findEnvFiles(root);
+  const isFile = found.files.length === 1 && found.files[0] === root;
+  const h = crypto.createHash("sha256");
+  const items = [], skipped = [], envFiles = [];
+  const names = new Set();
+  for (const f of found.files) {
+    const bytes = fs.readFileSync(f);
+    h.update(`${f}\0${crypto.createHash("sha256").update(bytes).digest("hex")}\0`);
+    const r = readEnv(bytes.toString("utf8"), isFile ? { file: f } : { file: f, root });
+    let item = r.item;
+    if (item) {
+      let name = item.name;
+      for (let n = 2; names.has(name); n++) name = `${item.name.slice(0, 120)}-${n}`;
+      names.add(name);
+      item = { ...item, name };
+      items.push(item);
+    }
+    for (const s of r.skipped) skipped.push(`${path.basename(f)}: ${s}`);
+    envFiles.push({ path: f, item: item ? item.name : null, secrets: item ? Object.keys(item.fields) : [], vars: r.vars, kept: r.kept,
+      git: gitState(f), state: item ? "add" : "nothing" });
+  }
+  for (const f of found.large) skipped.push(`${f}: larger than 1 MB`);
+  const token = importToken(Buffer.from(h.digest("hex") + ":" + found.files.length));
+  return { token, envFiles, parsed: { format: /** @type {const} */ ("env"), items, skipped, templates: found.templates, truncated: found.truncated } };
+}
+
+/** What a preview shows for one .env file: names, types and git state, never a value. */
+const envFileOut = f => ({ file: f.path, item: f.item, state: f.state, vars: f.vars, kept: f.kept, ...(f.git ? { git: f.git } : {}) });
+
+/** Replace a file in one step, keeping its mode. No copy of the old contents is left behind. */
+function writeAtomic(file, text) {
+  const mode = fs.statSync(file).mode & 0o777;
+  const tmp = path.join(path.dirname(file), `.${path.basename(file)}.vyre-${crypto.randomBytes(4).toString("hex")}`);
+  try {
+    fs.writeFileSync(tmp, text, { mode, flag: "wx" });
+    fs.renameSync(tmp, file);
+  } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }
+}
+
+/** The next step after an import, in words the person can act on. */
+function importAdvice(p, envFiles, rewrite, rewritten, committed) {
+  if (!envFiles) return `Delete ${p} now. It still holds every value in plain text, and nothing needs it again.`;
+  const parts = [];
+  if (rewrite && rewritten.length) parts.push(`${rewritten.length === 1 ? "The file now holds" : `${rewritten.length} files now hold`} vault references. Run your app with vyre vault run --env-file .env -- <command>.`);
+  else parts.push("The .env files still hold their values. Import again with rewrite to swap them for vault references, or delete them.");
+  if (committed.length) parts.push(`${committed.length === 1 ? "One file is" : `${committed.length} files are`} committed to git, so the old values stay in its history: change them at the provider.`);
+  return parts.join(" ");
 }
 
 /** @param {string} a @param {string} b */
@@ -1184,12 +1241,19 @@ export class Vault {
   async importPlan({ file, format }) {
     const p = path.resolve(String(file));
     const st = fs.statSync(p);
-    if (!st.isFile()) throw new Error(`${p} is not a file`);
-    if (st.size > 20 * 1024 * 1024) throw new Error(`${p} is larger than 20 MB`);
-    const bytes = fs.readFileSync(p);
-    const token = importToken(bytes);
-    const parsed = parseImport(bytes, { format, filename: path.basename(p) });
-    if (parsed.error) throw new Error(parsed.error);
+    let token, parsed, envFiles = null;
+    if (st.isDirectory() || (st.isFile() && (format === "env" || (!format && isEnvName(path.basename(p)))))) {
+      // A folder is scanned for .env files, and a .env file is read the same way, so both can be
+      // rewritten to references afterwards (ADR 0028, decision 1).
+      ({ token, parsed, envFiles } = scanEnv(p));
+    } else {
+      if (!st.isFile()) throw new Error(`${p} is not a file or a folder`);
+      if (st.size > 20 * 1024 * 1024) throw new Error(`${p} is larger than 20 MB`);
+      const bytes = fs.readFileSync(p);
+      token = importToken(bytes);
+      parsed = parseImport(bytes, { format, filename: path.basename(p) });
+      if (parsed.error) throw new Error(parsed.error);
+    }
     await this.key();
     const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items").all());
     if (!this.pvk && rows.some(r => r.kind === "login" && r.vault === PERSONAL))
@@ -1198,24 +1262,34 @@ export class Vault {
     const existing = [];
     for (const r of rows) {
       const e = { name: String(r.name), kind: String(r.kind) };
-      if (r.kind === "login" && this.rowOk("vault_items", r)) {
+      if ((r.kind === "login" || (r.kind === "env-set" && envFiles)) && this.rowOk("vault_items", r)) {
         try {
           const f = await this.fields(r);
-          const o = json(r.hosts, [])[0] || (r.url ? origin(r.url) : "") || "";
-          Object.assign(e, { origin: o, username: f.username ?? "", password: f.password ?? "" });
+          if (r.kind === "env-set") Object.assign(e, { fields: f });
+          else {
+            const o = json(r.hosts, [])[0] || (r.url ? origin(r.url) : "") || "";
+            Object.assign(e, { origin: o, username: f.username ?? "", password: f.password ?? "" });
+          }
         } catch (err) {
           if (/** @type {any} */ (err).code === "locked") throw err;
-          // A login that does not open is judged by its name alone.
+          // An item that does not open is judged by its name alone.
         }
       }
       existing.push(e);
     }
-    return { p, token, parsed, plan: planImport(existing, parsed.items) };
+    const plan = planImport(existing, parsed.items);
+    if (envFiles) {
+      // A file's item may have been renamed around a name already taken; its references follow.
+      const to = new Map(plan.renamed.map(r => [r.from, r.to]));
+      const state = new Map([...plan.add.map(i => [i.name, "add"]), ...plan.same.map(n => [n, "same"]), ...plan.conflicts.map(c => [c.name, "conflict"])]);
+      for (const f of envFiles) if (f.item) { f.state = state.get(f.item) ?? "add"; f.item = to.get(f.item) ?? f.item; }
+    }
+    return { p, token, parsed, plan, envFiles };
   }
 
   /** What an import would do: names and counts, never a value, plus a token bound to the file. */
   async importPreview({ file, format }, caller) {
-    const { token, parsed, plan } = await this.importPlan({ file, format });
+    const { token, parsed, plan, envFiles } = await this.importPlan({ file, format });
     const counts = Object.fromEntries(IMPORT_KINDS.map(k => [k, 0]));
     for (const it of parsed.items) if (it.kind in counts) counts[it.kind]++;
     this.audit("import-preview", null, caller, true, `${parsed.format}: ${parsed.items.length} items, ${plan.add.length} new, ${plan.same.length} same, ${plan.conflicts.length} conflicts`);
@@ -1224,6 +1298,7 @@ export class Vault {
       add: plan.add.map(i => i.name), same: plan.same,
       conflicts: plan.conflicts.map(c => ({ name: c.name, existing: c.existing })),
       renamed: plan.renamed, skipped: parsed.skipped,
+      ...(envFiles ? { files: envFiles.map(envFileOut), templates: parsed.templates, ...(parsed.truncated ? { truncated: true } : {}) } : {}),
     };
   }
 
@@ -1233,9 +1308,10 @@ export class Vault {
    * item as a new version, so history keeps the old password. The file is left as it is; the
    * user deletes it.
    */
-  async import({ file, format, token, conflicts = "skip" }, caller) {
+  async import({ file, format, token, conflicts = "skip", rewrite = false }, caller) {
     if (conflicts !== "skip" && conflicts !== "update") throw new Error(`conflicts is "skip" or "update"`);
-    const { p, token: current, parsed, plan } = await this.importPlan({ file, format });
+    const { p, token: current, parsed, plan, envFiles } = await this.importPlan({ file, format });
+    if (rewrite && !envFiles) throw new Error("rewrite is for .env files and folders of them");
     if (token !== undefined && token !== null && !sameToken(String(token), current)) throw new Error("the file changed since the preview; preview it again");
     const from = `import:${parsed.format}`;
     const added = [], updated = [], skipped = [...parsed.skipped];
@@ -1255,12 +1331,27 @@ export class Vault {
         updated.push(c.existing);
       } catch (e) { skipped.push(`${c.name}: ${/** @type {Error} */ (e).message}`); }
     }
+    // The rewrite follows the import: a file is rewritten only when every value it held is now in
+    // the vault under the name its references use, so a skipped conflict leaves its file alone.
+    const rewritten = [], left = [];
+    if (rewrite && envFiles) {
+      const stored = new Set([...added, ...updated, ...plan.same]);
+      for (const f of envFiles) {
+        if (!f.item) continue;
+        if (!stored.has(f.item)) { left.push(f.path); continue; }
+        try { writeAtomic(f.path, rewriteEnv(fs.readFileSync(f.path, "utf8"), f.item, f.secrets)); rewritten.push(f.path); }
+        catch { left.push(f.path); }
+      }
+    }
     this.audit("import", null, caller, true,
-      `${parsed.format}: ${added.length} added, ${updated.length} updated, ${plan.same.length} same, ${conflicted.length} conflicts skipped, ${plan.renamed.length} renamed, ${skipped.length} not imported`);
+      `${parsed.format}: ${added.length} added, ${updated.length} updated, ${plan.same.length} same, ${conflicted.length} conflicts skipped, ${plan.renamed.length} renamed, ${skipped.length} not imported` +
+      (rewrite ? `, ${rewritten.length} files rewritten` : ""));
+    const committed = envFiles ? envFiles.filter(f => f.item && f.git && f.git.tracked).map(f => f.path) : [];
     return { format: parsed.format, added, updated, same: plan.same, conflicts: conflicted, renamed: plan.renamed, skipped,
       // Older callers read `duplicate`: everything that was here already.
       duplicate: [...plan.same, ...conflicted],
-      advice: `Delete ${p} now. It still holds every value in plain text, and nothing needs it again.` };
+      ...(envFiles ? { rewritten, ...(rewrite ? { unchanged: left } : {}), ...(committed.length ? { committed } : {}) } : {}),
+      advice: importAdvice(p, envFiles, rewrite, rewritten, committed) };
   }
 
   // ---- identity -------------------------------------------------------------------------
