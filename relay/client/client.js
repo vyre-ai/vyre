@@ -113,10 +113,21 @@ function openChannel(o) {
 }
 
 /**
+ * What a device says about itself in every hello (ADR 0026 section 10): the hosted web app sends
+ * kind "web" and the release and manifest hash it loaded, so the box can show the build.
+ * @param {{ kind?: "app"|"web", release?: string, manifest?: string } | undefined} a
+ */
+const about = a => ({
+  ...(a && (a.kind === "web" || a.kind === "app") ? { kind: a.kind } : {}),
+  ...(a && typeof a.release === "string" ? { release: a.release } : {}),
+  ...(a && typeof a.manifest === "string" ? { manifest: a.manifest } : {}),
+});
+
+/**
  * Pair with a box from its QR offer: make (or reuse) this device's key, prove the one-time secret
  * and learn this device's id. Returns what `connect()` needs; store it (it holds no secret).
  * @param {string} offerUrl
- * @param {{ name?: string, presenceKey?: { public_key: string, alg?: number }, keyStore?: import("./webcrypto.js").KeyStore,
+ * @param {{ name?: string, presenceKey?: { public_key: string, alg?: number }, about?: { kind?: "app"|"web", release?: string, manifest?: string }, keyStore?: import("./webcrypto.js").KeyStore,
  *   crypto?: import("./noise.js").CryptoProvider, WebSocket?: any, timeout?: number }} [o]
  */
 export async function pair(offerUrl, o = {}) {
@@ -124,7 +135,7 @@ export async function pair(offerUrl, o = {}) {
   if (!offer) throw new Error("not a Vyre pairing code");
   const d = defaults(o);
   const keys = await deviceKey(d);
-  const hello = { v: 1, pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}) };
+  const hello = { v: 1, ...about(o.about), pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}) };
   const { channel, reply } = await openChannel({ ...d, relay: offer.relay, route: offer.route, box: offer.box, keys, hello, timeout: o.timeout });
   channel.close(1000, "paired");
   return {
@@ -136,7 +147,7 @@ export async function pair(offerUrl, o = {}) {
 
 /**
  * Stay connected to a paired box.
- * @param {{ relay: string, route: string, box: string|Uint8Array, name?: string,
+ * @param {{ relay: string, route: string, box: string|Uint8Array, name?: string, about?: { kind?: "app"|"web", release?: string, manifest?: string },
  *   keyStore?: import("./webcrypto.js").KeyStore, crypto?: import("./noise.js").CryptoProvider, WebSocket?: any,
  *   visibility?: Visibility, pingMs?: number, backoff?: { min?: number, max?: number }, timeout?: number,
  *   rekeyEvery?: number, random?: () => number }} o
@@ -203,7 +214,7 @@ export class Connection {
     this.setState("connecting");
     try {
       const keys = await deviceKey(this.o);
-      const hello = { v: 1, ...(this.o.name ? { name: this.o.name } : {}) };
+      const hello = { v: 1, ...about(this.o.about), ...(this.o.name ? { name: this.o.name } : {}) };
       const { channel, reply, ws } = await openChannel({ ...this.o, keys, hello, onpong: () => { this.outstanding = false; this.missed = 0; } });
       this.dialing = false;
       if (this.closed) { channel.close(1000, "closed"); return; }

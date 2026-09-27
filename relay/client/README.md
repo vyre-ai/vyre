@@ -43,6 +43,7 @@ const box = await pair(scannedUrl, { name: "alex's phone", presenceKey, keyStore
 // -> { relay, route, box, name, device, presence }
 
 const conn = connect({ ...box, keyStore, crypto });   // WebSocket defaults to globalThis.WebSocket
+// The hosted web app also passes about: { kind: "web", release, manifest } to pair() and connect().
 conn.onstate = s => {};                               // "connecting" | "open" | "offline"
 const res = await conn.fetch("/v1/tools/notes.add", { method: "POST", body: JSON.stringify({ text: "hi" }) });
 res.status; res.headers.get("content-type"); await res.json();   // or text(), or for await (const c of res.body)
