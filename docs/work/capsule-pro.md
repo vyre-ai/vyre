@@ -120,7 +120,9 @@ The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, n
    "Wrong?" line opens "That's wrong" (memory.correct {answer, action:"wrong"}), "Forget this"
    (action:"forget"), and a field prefilled with the answer (Enter: action:"replace", object).
    Not sure card: the field only, "Know it? Tell me". Reply {fix:{id}}: show the fix at once with
-   Undo (memory.uncorrect {fix}). via "corrected": the answer with "you corrected this", no chips.
+   Undo (memory.uncorrect {fix}). via "corrected": the answer with "you corrected this", no chips (known is []; its one source
+   {session:"fix:<n>", name:"your correction"} is provenance, never a chip). Card look:
+   iq-everywhere.md "The card" (work/memory-iq).
 3. DONE for rc.2 without streaming (IQAsk.swift). Left for 0.1.1: stream:true with memory.thinking
    stages, ⌘1..⌘3 on source chips. memory-iq 6adfc4b6 spec (docs/design/iq-everywhere.md on work/memory-iq): memory.ask
    {question, stream:true, id:"cap_<n>", context:{project}}; memory.thinking {id, stage} then
