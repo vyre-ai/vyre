@@ -5,6 +5,17 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
+### The module story, "Make it yours" (2026-09-28)
+
+- The lead asked for the landing page's "Make it yours" section to tell the module/Lego story
+  more fully, on top of the terminology pass already done. `h2` changed from "Open source, and
+  built to be changed" to "Open source, and built from pieces"; the body now names the pieces
+  (Capsule, Glass, memory, the vault) and says they only ever talk to each other through the same
+  open door a person's own module would use. New feature line, "Build your own": `vyre module
+  new` scaffolds a real one (tool, setting, Now card, tested in minutes): real per ADR 0033/
+  `docs/work/platform.md` (`vyre module new/list/check` are P1, done), not overclaiming the P3
+  `add`/`remove`/`update` verbs that aren't shipped yet.
+
 ### OS-aware install tab, robots.txt, sitemap.xml (2026-09-28)
 
 - Cheap first-impression fixes the lead asked for: the install tabs (Linux box / Mac / What it
