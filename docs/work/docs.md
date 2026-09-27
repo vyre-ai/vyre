@@ -87,6 +87,14 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
 - The drafts and generator scripts are in the session scratchpad (they may be gone). The
   manifests are now the source of truth.
 
+## Next (queued before tips)
+
+- Shots retake on current main (docs-check shows 263 stale). Run `uptime` on the test box first
+  and wait while the load is over 8. Then rsync to ~/vyre-ci/docs-s and run `DOCS_SHOTS_SHARP=~/vyre-ci/docs-s-tools
+  CHROME=/usr/local/bin/vyre-chrome nice -n 15 node scripts/docs-shots [--only a,b]`, and copy back the
+  PNGs and docs/shots.json. Include pwa 3b's screens (see Still open).
+- Chat's terminal page, when chat f964f8a/b85ab3f land (Pending below).
+
 ## Still open (tips)
 
 - Surface wiring asked of app-design (look), capsule-pro, pwa, chat, mobile, polish-cli (the
