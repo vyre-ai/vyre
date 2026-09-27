@@ -101,20 +101,24 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   (`ONLY=<regex>` for some screens, `DESKTOP=1280x800,1440x900,2000x1100` adds desktop sizes,
   `PHONES=0` drops the phones). Stop the world and Chrome after (pids in /tmp/pwa-*.pid).
 
-## Doing
-- Pushed work/pwa; integrator told the tip is ready. 1cd5346: Create your assistant offers a computer.
-- Waiting for the user to pair his Mac, then: check the phone PWA against his real box, read-only,
-  with the Mac's sessions showing (federation), and fix what looks off.
-
-## Next
-- SW version skew: the Deck's files come from the cache first; a new release lands on the second
-  launch. Consider registering sw.js with the build commit so a release swaps the cache at once.
-- Settings > Setup rows could rerun a step in place (polish-cli's suggestion) instead of naming
-  `vyre up`.
-- Step 6 Mac card: "Already on your tailnet" for an online Mac node.
-- theme.colors: match docs' final shape (asked docs: "light" or "paper", shared validator).
-- threads.unqueue once capsule-now ships it.
-- Real iPhone check by the user.
+## Doing (resumed after logout 3, 2026-09-27)
+- New scope from the lead: Direction A is the design of record (one app for web, iOS and Android,
+  app-design's docs/design/one-app/DIRECTION.md). On iPhone the default is the installed web app,
+  so web-app quality is the iPhone app. mobile leads the one-app code (ADR 0027); pwa owns the web
+  platform: service worker, offline cache, web push, badges, passkeys, the iOS pitfalls. The bar:
+  60 fps, tab switch under 100 ms, cold open under 1 s offline.
+- Merged main ef51363 (a3ec177). Fixed: the SW kept none of Now's phone modules (a910ae9).
+- Plan, in order:
+  A. core/push: the push rule. Needs-you only (ask, draft, watch; lesson off by default), held
+     until 3 min after the last use of any screen (`push.seen`, reported by surfaces on show, hide
+     and first input after a minute), dropped when answered meanwhile. Planner rings always.
+  B. Deck: the presence session on gate.approve and the vault's sessionable tools
+     (x-vyre-presence-keep, the session header reused until it ends, "Face ID covers 30 min" on
+     screen); push.seen reports; the Safari empty-push fallback (planner-ack shows then closes);
+     app badge = the Needs count.
+  C. iOS pitfalls: fixed shell at 100dvh, visualViewport keyboard inset, safe areas,
+     overscroll, touch-action and callout, scroll-snap row swipes.
+  D. tailnet's UI findings (asked them for the list), then the SW version skew.
 
 ## Needs from others
 - polish-cli answered: no --step; Settings says `vyre up` (and `vyre index` for history).
