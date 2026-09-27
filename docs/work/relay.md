@@ -64,17 +64,23 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 - testbox: `core/relay`, `relay/**`, `test/relay.test.js` 93/93; docs tests 50/50.
 
 ## Doing
-- Nothing in flight. Reported to the lead.
+- TESTBOX FREEZE (lead, integrator batch). Untested WIP commits, run these first when it lifts:
+  0e3fc84 (bridge passes authorization/x-vyre-proof; devices.list path), 76c602e
+  (relay.web.release/pin, releases.js sha/newest, ADR section 10 folds in ADR 0027 + e2e sessions),
+  ae027da (relay/app/ + client `about` in hello). Run: `node --test core/relay/*.test.js
+  relay/*/*.test.js test/relay.test.js` then docs:ref + docs tests (new tools relay.web.*).
+- Waiting on replies: e2e (pairing = sign-in for relayed web devices; who enrolls the
+  app.vyre.run passkey), mobile (relay.web.release name), polish-cli (combined path), lead
+  (deploy command + DNS, sent).
 
 ## Next
-1. Surfaces show the `device.paired` notice with one-tap removal (pwa, capsule, mobile own the
-   UI; the event now carries kind, release, build known/unknown).
-2. relay/app/: the app.vyre.run host (CSP, SRI, signed release manifest, pinning service
-   worker) and vyre.run/pair forwarding the fragment. Build comes from mobile.
-3. `vyre relay` CLI (status, pair with a terminal QR, devices).
-4. Onboarding card and Settings, Devices (with deck-design / docs owners).
+1. After tests: CHANGELOG entries for relay/app, relay.web.*, person-session headers.
+2. `vyre relay` CLI (status, pair with a terminal QR, devices) with polish-cli's `vyre phone add`.
+3. Surfaces show the `device.paired` notice with one-tap removal (pwa, capsule, mobile own the UI).
+4. Onboarding card and Settings, Devices (with deck-design / docs owners); docs site publishes
+   relay/app/pair/ at vyre.run/pair.
 5. perf-check numbers for the idle box with the relay on.
-6. First real Cloudflare deploy: approved spend ($5/mo), but ASK THE LEAD before deploying.
+6. First real Cloudflare deploy once the lead confirms the command.
 
 ## Needs from others
 - tailnet: CORS on vyred for https://app.vyre.run (the /v1/health probe and API calls), or
