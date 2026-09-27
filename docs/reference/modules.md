@@ -45,11 +45,12 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
 | [`relay`](#relay) | `core/relay` | `box` | 9 | 4 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 15 | 5 | cli |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 25 | 14 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 32 | 20 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 98 | 38 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
@@ -339,6 +340,17 @@ Screen context on macOS: the front app, window, focused control, URL and visible
 - Emits: no events
 - Shows on: no surface
 
+## sessions
+
+How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's status and install, and the system prompt at three levels, versioned.
+
+- Folder: `core/sessions`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [15](tools.md#sessions), 3 of them only for other modules
+- Emits: [5 events](events.md#sessions)
+- Shows on: cli
+
 ## sideview
 
 The side view on macOS: a session on the left and Chrome (or Glass on the box) filling the rest, tiled through the accessibility API in one call, and put back on close.
@@ -385,9 +397,10 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [25](tools.md#threads), 12 of them only for other modules
-- Emits: [14 events](events.md#threads)
+- Tools: [32](tools.md#threads), 12 of them only for other modules
+- Emits: [20 events](events.md#threads)
 - Shows on: cli
+- Needs vault: `claude-setup-token`, `anthropic-api-key`
 
 ## vault
 

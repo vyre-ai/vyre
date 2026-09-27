@@ -58,3 +58,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0026 | relay | End-to-end encrypted relay with QR pairing |
 | 0028 | vault-next | Vault: import, agent logins, rotation and autofill on every device |
 | 0029 | resilience | The resilience contract: every surface survives network outages |
+| 0030 | sessions | Vyre-owned sessions and the provider router |
