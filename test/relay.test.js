@@ -14,6 +14,7 @@ import { createRelay } from "../relay/node/server.js";
 import { keyPair } from "../core/relay/noise.js";
 import { deviceSide } from "../core/relay/channel.js";
 import { parsePairUrl } from "../core/relay/pairing.js";
+import { useReleasesFile } from "../core/relay/releases.js";
 import { tempHome } from "./helpers.js";
 
 /** Asks for a proof on every human-only tool and takes any proof: refusals below are about who is calling. */
@@ -200,4 +201,28 @@ test("relay: a web device unused past relay.web_expiry_days is removed at its ne
   await assert.rejects(phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } }), /unused too long|closed/);
   const ids = (await p.call("relay.devices.list")).data.devices.map(x => x.id);
   assert.deepEqual(ids, [p.reply.device], "the phone, an app device, never expires");
+});
+
+test("relay: the web app's loader asks the box which build to load, and the owner can pin one", async t => {
+  const { d, root } = await world(t);
+  const list = path.join(root, "releases.json");
+  const rel = (release, c) => ({ release, sha: c.repeat(40), manifest: c.repeat(64) });
+  fs.writeFileSync(list, JSON.stringify({ releases: [rel("0.4.2", "a"), rel("0.10.0", "b"), rel("0.9.9", "c")] }));
+  useReleasesFile(list);
+  t.after(() => useReleasesFile());
+  const p = await phone(await firstPairing(d));
+  const P = { "x-vyre-presence": "passkey id=abc" };
+  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const web = await phone(url, { name: "Northwind Bakery laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
+
+  const newest = await web.call("relay.web.release");
+  assert.equal(newest.status, 200, JSON.stringify(newest));
+  assert.deepEqual([newest.data.release, newest.data.path, newest.data.pinned], ["0.10.0", `/v/${"b".repeat(40)}/`, false], "semver order, not string order");
+  assert.equal((await p.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device).build, "known");
+
+  assert.equal((await web.call("relay.web.pin", { release: "0.4.2" }, P)).status, 404, "an untrusted browser cannot pick its own code");
+  assert.equal((await p.call("relay.web.pin", { release: "1.0.0" }, P)).status, 400);
+  assert.equal((await p.call("relay.web.pin", { release: "0.4.2" }, P)).status, 200);
+  const pinned = (await web.call("relay.web.release")).data;
+  assert.deepEqual([pinned.release, pinned.pinned], ["0.4.2", true]);
 });

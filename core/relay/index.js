@@ -24,7 +24,7 @@ import { newRouteKey, routeId, base32 } from "./wire.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
 import { pairUrl } from "./pairing.js";
-import { knownBuild } from "./releases.js";
+import { knownBuild, findRelease, newestRelease } from "./releases.js";
 
 export const DEFAULT_RELAY = "wss://relay.vyre.run";
 const PAIR_TTL = 10 * 60_000;
@@ -32,7 +32,7 @@ const NAME = /^[^\u0000-\u001f\u007f]{1,64}$/;
 const AGENT_CLAIM = /(?:^|[\s:])agent:/;
 const DAY = 24 * 60 * 60_000;
 /** What an untrusted web device may not call: minting devices, trust, presence keys, secrets out. */
-export const WEB_DENY = /^(relay\.pair\.|relay\.devices\.trust$|relay\.enable$|presence\.(enroll|code|remove)$|vault\.(reveal|copy|render|resolve|release|export|fill\.|session\.open$))/;
+export const WEB_DENY = /^(relay\.pair\.|relay\.devices\.trust$|relay\.enable$|relay\.web\.pin$|presence\.(enroll|code|remove)$|vault\.(reveal|copy|render|resolve|release|export|fill\.|session\.open$))/;
 const BUILD = /^[\w.+-]{1,64}$/;
 
 export const MIGRATIONS = [
@@ -307,6 +307,34 @@ export default {
         const id = String(input.id);
         if (!forget(id, "removed")) throw fail("not_found", `no paired device ${id}`);
         return { removed: id };
+      },
+    });
+
+    // The hosted app's loader asks which build to load (ADR 0026 section 10, ADR 0027 section 4):
+    // the owner's pin, or the newest release this box ships knowing. Open to any paired device,
+    // web ones included, since the loader must ask before it can load anything else.
+    ctx.tool("relay.web.release", {
+      description: "Which build of the hosted web app this box trusts: its release, the content-addressed folder sha and the manifest hash the loader must check. The owner's pin, or the newest release this box knows.",
+      input: obj(),
+      run: async (_, meta = {}) => {
+        owner(meta.caller, meta, "the web app's release");
+        const pin = settings().web_pin;
+        const r = (pin && findRelease(pin)) || newestRelease();
+        if (!r) throw fail("not_found", "this box knows no release of the web app yet");
+        return { release: r.release, sha: r.sha, manifest: r.manifest, path: `/v/${r.sha}/`, pinned: Boolean(pin && findRelease(pin)) };
+      },
+    });
+
+    ctx.tool("relay.web.pin", {
+      description: "Pin the hosted web app to one release this box knows, or clear the pin (empty release) to follow the newest one.",
+      input: obj({ release: str }, ["release"]),
+      presence: { summary: async input => (input && input.release ? `Pin the web app to release ${input.release}` : "Let the web app follow the newest release") },
+      run: async (input, meta = {}) => {
+        owner(meta.caller, meta, "pinning the web app");
+        const release = String(input.release || "");
+        if (release && !findRelease(release)) throw fail("bad_input", `this box does not know web app release ${release}`);
+        save({ web_pin: release || null });
+        return { pinned: release || null };
       },
     });
 
