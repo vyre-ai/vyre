@@ -95,7 +95,9 @@ vyre=$work/prefix/bin/vyre
 pkg=$work/prefix/lib/node_modules/vyre
 [ -x "$vyre" ] || fail "no vyre in $work/prefix/bin"
 kb=$(du -sk "$work/prefix" | cut -f1)
-[ "$kb" -lt 10240 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency come back?)"
+[ ! -d "$pkg/node_modules" ] || fail "npm i -g installed dependencies: $(ls "$pkg/node_modules" | tr '\n' ' ')"
+# About 11 MB today, most of it the docs and their screenshots, so 16 MB leaves room for the docs to grow.
+[ "$kb" -lt 16384 ] || fail "npm i -g installs $kb KB; it should be about 11 MB (did a dependency or a build output come back?)"
 ok "$(du -sh "$work/prefix" | cut -f1) installed at $work/prefix"
 
 step "vyre up, status, down"
