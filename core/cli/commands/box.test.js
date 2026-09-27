@@ -62,6 +62,12 @@ case "$1" in
   up) cat "$FAKE_BOX/up.out" ;;
   call)
     [ "$2" = onboard.link ] && [ -f "$FAKE_BOX/link.json" ] && { cat "$FAKE_BOX/link.json"; exit 0; }
+    # The box's passkeys: keys.json once (then keys.next.json takes its place), else one passkey.
+    if [ "$2" = presence.keys ]; then
+      if [ -f "$FAKE_BOX/keys.json" ]; then cat "$FAKE_BOX/keys.json"; [ -f "$FAKE_BOX/keys.next.json" ] && mv "$FAKE_BOX/keys.next.json" "$FAKE_BOX/keys.json"
+      else echo '[{"kind":"passkey"}]'; fi
+      exit 0
+    fi
     n=$(( $(cat "$FAKE_BOX/n" 2>/dev/null || echo 0) + 1 )); echo $n > "$FAKE_BOX/n"
     [ -f "$FAKE_BOX/status.$n.json" ] && cp "$FAKE_BOX/status.$n.json" "$FAKE_BOX/last.json"
     cat "$FAKE_BOX/last.json" ;;
@@ -141,7 +147,9 @@ test("box: the link comes from --json, or from the text before --json exists", (
   assert.deepEqual(parseLink(`  your address: ${ADDRESS}\n`), { url: null, port: null, address: ADDRESS });
   assert.equal(parseLink("vyre: no box in /srv/vyre"), null);
   assert.equal(settled(status(3)), false);
-  assert.equal(settled(status(4)), true, "the address serves: the Mac can take over");
+  assert.equal(settled(status(4)), true, "a box too old to say arrived: the address serving is enough");
+  assert.equal(settled(status(4, { arrived: false })), false, "the page still needs the tunnel for Switch to");
+  assert.equal(settled(status(4, { arrived: true })), true, "the owner reached the address");
   assert.equal(newer("0.2.0", "0.1.9"), 1);
   assert.equal(newer("0.1.0", "0.1.0"), 0);
 });
@@ -207,17 +215,18 @@ test("box add: a finished box pairs this Mac and asks for the approval in the De
   const asked = [];
   const call = async (tool, input) => {
     asked.push(tool);
-    if (tool === "link.status") return { data: { linked: false, pending: null } };
+    if (tool === "link.status") return { data: { linked: asked.includes("link.pair"), pending: null } };
     if (tool === "link.pair") return { data: { code: "123-456", box: input.box } };
     return { error: { code: "no_such_tool", message: tool } };
   };
   const { code, text } = await capture(() => add("alex@203.0.113.9", { call }));
   assert.equal(code, 0, text);
-  assert.deepEqual(asked, ["link.status", "link.pair"]);
+  assert.deepEqual(asked, ["link.status", "link.pair", "link.status"]);
+  assert.match(text, /this Mac is paired with/);
   assert.doesNotMatch(r.read("vyre.log"), /link approve/, "anything in the box's container could approve over SSH");
   assert.doesNotMatch(r.read("vyre.log"), /^up /m, "a finished box needs no link, tunnel or browser");
   assert.equal(r.read("opened"), "");
-  assert.match(text, /Approve this Mac in your Deck[\s\S]*Code: 123-456/);
+  assert.match(text, /Approve this Mac on your phone at \S+[\s\S]*Code: 123-456/);
 });
 
 test("box add: with no passkey yet, the enrollment link opens before pairing", async t => {
@@ -487,4 +496,38 @@ test("box move: a new server on the tailnet with Tailscale SSH is reached and sa
   assert.match(text, /reaching alex@box\.tail0000\.ts\.net over Tailscale SSH/);
   assert.deepEqual(masters(r).slice(0, 2), [OLD, TS_TARGET], "the old box as saved, the new one over the tailnet");
   assert.equal(/** @type {any} */ (config.load()).box.ssh, TS_TARGET);
+});
+
+test("box add: after the switch, the code waits for the passkey, and an expired code is replaced", async t => {
+  const r = rig(t);
+  fs.mkdirSync(r.stack, { recursive: true });
+  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
+  // The owner switched to the address (arrived) and is making the passkey there: none yet.
+  r.setStatuses([status(6, { finished: true, arrived: true })]);
+  fs.writeFileSync(path.join(r.root, "box", "link.json"), JSON.stringify({ url: null, address: ADDRESS, passkeyUrl: `${ADDRESS}/onboard/passkey#e=x` }));
+  r.put("keys.json", "[]");
+  r.put("keys.next.json", '[{"kind":"passkey"}]');
+  const asked = [];
+  const codes = ["123-456", "654-321"];
+  let statuses = 0;
+  const call = async (tool) => {
+    asked.push(tool);
+    if (tool === "link.pair") return { data: { code: codes.shift() } };
+    if (tool === "link.status") {
+      statuses++;
+      // First look: not paired. Then the first code expires unapproved; the second is approved.
+      if (statuses === 1) return { data: { linked: false, pending: null } };
+      if (statuses === 2) return { data: { linked: false, pending: null, error: "the pairing code expired; start again" } };
+      return { data: { linked: true, pending: null } };
+    }
+    return { error: { code: "no_such_tool", message: tool } };
+  };
+  const { code, text } = await capture(() => add("alex@203.0.113.9", { call }));
+  assert.equal(code, 0, text);
+  assert.equal(r.read("opened"), "", "no second passkey tab: the page took the owner there");
+  assert.match(text, /waiting for your passkey at https:\/\/vyre\.tail0000\.ts\.net/);
+  assert.ok(text.indexOf("waiting for your passkey") < text.indexOf("Code: 123-456"), "the code is made only once a passkey exists");
+  assert.match(text, /That code expired\. The new one: 654-321/);
+  assert.match(text, /this Mac is paired with/);
+  assert.deepEqual(asked.filter(x => x === "link.pair").length, 2);
 });

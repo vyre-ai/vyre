@@ -48,10 +48,16 @@ export function link(href, props, ...kids) {
   } }, ...kids);
 }
 
-/** Navigate inside the Deck. app.js listens for this. */
+/** Navigate inside the Deck. app.js listens for this. The state counts how deep inside the Deck
+ * this entry is, so a Back button can go back (see back()) instead of pushing another entry. */
 export function go(href) {
-  history.pushState(null, "", href);
+  history.pushState({ deck: (history.state?.deck || 0) + 1 }, "", href);
   window.dispatchEvent(new Event("deck:navigate"));
+}
+
+/** A Back button: the previous screen in the Deck, exactly as it was, else `fallback`. */
+export function back(fallback) {
+  if (history.state?.deck) history.back(); else go(fallback);
 }
 
 /** A labelled section heading row (engraved label on the left, optional extra on the right). */
