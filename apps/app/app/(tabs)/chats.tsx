@@ -45,6 +45,7 @@ export default function Chats() {
               detail={word(t)}
               meta={[t.agent, t.projectName ?? t.project, t.model].filter(Boolean).join(" · ")}
               status={statusOf(t)}
+              testID="chat-row"
               onPress={() => router.push({ pathname: "/session/[id]", params: { id: t.id } })}
             />
           )}
