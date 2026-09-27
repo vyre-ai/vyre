@@ -342,7 +342,7 @@ test("summon: that same session can team.ask, and the result posts back into its
 // --- step 2: notes-changed enforcement and compaction re-injection ------------------------------
 
 test("team.done refuses to close a request when the notes have not changed since it started; writing them lets it through", async t => {
-  const { tool, project } = await boot(t);
+  const { tool, root, project } = await boot(t);
   const tm = await tool("team.add", { project: project.slug, role: "design" });
   // Every "vyre <tool> <json>" line found after the first, not only at the very start, is its own
   // call, run in order (fake-claude): a teammate trying team.done, seeing the refusal, writing
@@ -357,6 +357,14 @@ test("team.done refuses to close a request when the notes have not changed since
   assert.equal(ask.result, "now it should work");
   const notes = await tool("team.notes", { agent: tm.agent });
   assert.equal(notes.versions.length, 1);
+  // The refusal is also a line in the transcript (a "vyre" notice), not only an error the
+  // teammate's own turn read (cohesion review, item 3): a person watching would see why it paused.
+  const db = openStore(paths(root).db);
+  const thread = /** @type {any} */ (db.prepare("SELECT thread FROM team_teammates WHERE agent = ?").get(tm.agent)).thread;
+  db.close();
+  const got = await tool("threads.get", { thread });
+  const notice = got.events.find(e => e.type === "thread.text" && e.payload.notice && /notes have not changed/.test(e.payload.text));
+  assert.ok(notice, "expected a paused notice in the transcript");
 });
 
 test("team.done: notes: \"unchanged\" with a reason lets a request close with nothing written down", async t => {

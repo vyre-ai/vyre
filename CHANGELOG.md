@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Project teammates: a paused team.done says why, in the transcript
+
+- `team.done`'s notes-not-changed refusal now also posts a `threads.notice` into the teammate's
+  own thread, so a person watching the transcript sees why it paused, not only the teammate's own
+  turn reading the tool's error text (cohesion's 0.1.1 interaction pass, item 3).
+
 #### Project teammates, step 2 complete: notes-changed enforcement, compaction re-injection
 
 - `team.done` now refuses to close a request when a teammate's notes have not changed since it

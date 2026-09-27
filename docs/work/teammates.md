@@ -169,6 +169,28 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
    and switchboard on testbox, 61/61 docs. Verified the notes-changed test catches a real
    regression (removed the check, ran red, restored).
 5. Left from step 3: the in-process MCP server (`@role` routing) once ADR 0030 phase 3 lands.
+6. cohesion's 0.1.1 interaction pass (2026-09-28, docs/design/interaction.md 5debc1bc) folded 3
+   items into this plan, not on top of it:
+   - Item 1 (finish step 3's in-process MCP, top interaction win): already the plan; blocked on
+     ADR 0030 phase 3, unchanged here.
+   - Item 2 (a teammate's current item and status into the one `waiting.list`, not its own
+     Agents-place tab): binding for step 6's design, no code here yet. `core/waiting`'s own scope
+     today is what needs the *person's* decision (asks, drafts, reminders, pairing — ADR 0036);
+     the "New teammate" / "Merge failed" / "Stuck" kinds ADR 0031 section 9 planned for Needs You
+     are exactly that shape and belong in `waiting.list`'s kinds when step 6 (Agents place) and the
+     features that produce them (step 4's integrator for "Merge failed", retry-then-`failed` for
+     "Stuck", `team.propose` for "New teammate") exist. None do yet, so there is nothing in
+     `waiting.list` for `core/team` to feed today; noted here so step 6 does not design a second,
+     separate tab.
+   - Item 3 (a visible "why I paused here" line, not a silent refusal): done now, since it needed
+     no new feature, only using one that exists. `team.done`'s notes-not-changed refusal now also
+     posts a `threads.notice` into the teammate's own thread ("<agent> paused: team.done was
+     refused because..."), so a person watching the transcript sees why, not only the teammate's
+     own turn reading the tool's error. `threads.notice` only emits an event (no write to the live
+     process), so this is safe to call synchronously mid-turn, same as agents' own budget
+     warnings. New assertion in the existing notes-changed test. Compaction re-injection was
+     already this shape (a `threads.post`, visible in the transcript) from the start.
+   20/20 team tests still green (this addition included), stable, testbox; 61/61 docs.
 
 ## e2e review round 1 (2026-09-28, f8cbc882)
 
