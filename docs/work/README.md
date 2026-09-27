@@ -57,3 +57,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0025 | planner | The planner: time, alarms, reminders, todos, notes and a calendar on the box |
 | 0026 | relay | End-to-end encrypted relay with QR pairing |
 | 0029 | resilience | The resilience contract: every surface survives network outages |
+| 0031 | teammates | Project teammates |
