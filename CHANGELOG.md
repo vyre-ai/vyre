@@ -1031,6 +1031,37 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   using/chat.md, concepts/presence.md: only a send, payment or deletion asks, and one proof covers
   30 minutes. using/claude-code.md: `/vyre todo`, `remind`, `agenda`, `remember`, `lesson`.
 
+#### A queued reply streams live, and only its own turn counts
+
+- A reply queued for a busy session no longer takes the words, tools or end of the turn the
+  session was busy with. It waits for the `thread.sent` carrying its own `queued` id (another
+  surface's hand-over is not its own), then streams that turn's `thread.text` pieces as they come,
+  and finishes at that turn's `thread.finished`. When events carry `turn` (ADR 0030 owned
+  sessions), events from any other turn are dropped. The Electron Capsule
+  (`local/capsule/lib/state.js` `applyReply`) and the native one (`State.swift`) both; tests in
+  state.test.js and StateTests.swift.
+
+#### Esc takes back a message still queued for a terminal session
+
+- In the Electron Capsule, Esc on a queued reply calls `threads.unqueue` for that message
+  ("Taken back. <name> never got it."). Once the Harness has handed it over it is the session's,
+  so Esc only stops following, and nothing is stopped in the terminal (before this, Esc called
+  threads.stop on it). A hand-over racing the key says "Too late" once. `local/capsule/lib/bridge.js`
+  `unqueue`, `app/capsule.js`; test in local/capsule/lib/bridge.test.js.
+
+#### Sessions say when a terminal has them open, and queued words can be taken back
+
+- `threads.list` rows and `projects.catalog` sessions carry `live`: true when the session is
+  bound (its SessionStart hook ran) to a claude process that still runs and is not one of vyred's
+  own threads. One query and a signal-0 per bound pid, no ps, so it costs nothing per list. The
+  catalogue reads it through the new internal `threads.live`; without the Switchboard every row
+  says false. The native Capsule can drop its 15-minute guess for the badge.
+- `threads.unqueue {thread, queued?}` takes back words queued for a terminal-busy session before
+  the Harness hands them over: one (`queued_id`, now in the `threads.send` queued result) or all
+  of the thread's. Words already handed over stay. Person surfaces only; emits `thread.unqueued`.
+  `core/switchboard/index.js`, `sessions.js`, `module.json`, `core/projects/index.js`; tests in
+  core/switchboard/switchboard.test.js and core/projects/projects.test.js.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
@@ -1339,6 +1370,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   of the thread's. Words already handed over stay. Person surfaces only; emits `thread.unqueued`.
   `core/switchboard/index.js`, `sessions.js`, `module.json`, `core/projects/index.js`; tests in
   core/switchboard/switchboard.test.js and core/projects/projects.test.js.
+
 
 - Coral is gone from the repo: the Deck, the CLI, the vault kit, the Capsule, the site, the docs
   and the design boards all use violet (#B8A4FF dark, #5B3FC4 paper). The CLI's beacon comes from
