@@ -904,6 +904,18 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   way, and CI replays them. Questions have their own daily cap (config.memory.model.askDailyUsd, $0.50, about 150 questions).
   At the cap memory.ask returns limited: true and the message "Vyre IQ's daily limit is reached,
   change it in Settings", for the surface to show.
+- Vyre IQ reads the answer, not only the question: a user turn it finds carries the assistant turn
+  that followed, and its check counts what the model was shown for a passage (its date, project
+  folder and session name) and names of several words. Sealed world (recorded blind): accuracy
+  0.62 to 0.80, confident-wrong 6 to 5; open 0.778 to 0.878. `eval-iq --explain` lists each miss
+  and why, and refuses a sealed world.
+- Source trust holds in Vyre IQ's answers: a question about the user's own life is answered only
+  from their own words in sessions trust keeps, never from Claude's turns, a reply, an injected
+  block or dev talk; an answer that says who someone is to the user ("your wife Jordan") must stand
+  on those words too, or IQ abstains. A session's name or folder never grounds a personal answer, a
+  session counts only once recall says a person started it, and each source says whose words it is
+  (role: user or assistant). The trust world through memory.ask (`eval-iq --world trust`):
+  accuracy 1, confident-wrong 0.
 - Memory's model calls (the reader and Vyre IQ) run on the person's Claude login and never bill API
   dollars: ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are left out of their environment unless
   config.memory.model.billing is "api".

@@ -2197,6 +2197,7 @@ The turns Vyre IQ would read to answer a question: { passages: [{ id, session, s
   - `knobs` object: evaluation only: passed to recall.search
   - `project_cwds` list of string
   - `recency` boolean
+  - `replies` boolean
   - `when` boolean
 - Callers: any caller
 
