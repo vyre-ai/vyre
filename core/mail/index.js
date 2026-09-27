@@ -370,7 +370,7 @@ export default {
           const { kind, ...fill } = p;
           const what = [fill.to || fill.name ? `to ${fill.to || fill.name}` : "", fill.subject ? `about ${fill.subject}` : ""].filter(Boolean).join(" ");
           return { rows: list.filter(a => (a.capabilities || []).includes("send_mail")).slice(0, n).map(a => ({ id: composeId(a.id, fill), kind: "compose",
-            name: `Send from ${a.account}`, sub: [a.label && a.label !== a.account ? a.label : kindName(adapterOf(a)), what].filter(Boolean).join(" · ") })) };
+            name: `Send from ${a.account}`, sub: [kindName(adapterOf(a)), a.label || a.account, what].filter(Boolean).join(" · ") })) };
         }
         const readers = list.filter(a => (a.capabilities || []).includes("read_mail"));
         const { messages } = await searchAll(readers, p.q, n);

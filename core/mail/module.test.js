@@ -285,6 +285,8 @@ test("mail: the Capsule offers every account that can send, prefills what the wo
 
   const pre = (await cap("mail.find", { q: "email dana@northwind-bakery.example about the order" })).data.rows[0];
   assert.match(pre.sub, /to dana@northwind-bakery\.example about The order/);
+  // Two accounts on one provider are told apart by their labels.
+  assert.deepEqual(rows.map(r => r.sub.split(" · ").slice(0, 2).join(" · ")), ["IMAP · alex@harlow.example", "Google · alex@harlowlegal.example"]);
   const h = await cap("mail.compose", { id: pre.id });
   assert.equal(h.data.kind, "held", JSON.stringify(h));
   const it = w.held.get(h.data.held);
