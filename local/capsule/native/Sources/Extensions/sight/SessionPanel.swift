@@ -5,7 +5,9 @@
 // keeps it current: a tab per session (the assistant first), the conversation folded from the
 // thread's events with the Capsule's own DM reducer (VyState.applyDm), a prompt box that sends,
 // a mic, and a status line. Nothing polls: history is read once per tab, then events only, and
-// the subscription ends when the panel closes.
+// the subscription ends when the panel closes. A terminal tab follows its transcript through
+// recall.watch while it is the one shown: session.turn rows keyed on their id, session.state for
+// the working dot, and one renewal a minute (a watch nobody renews ends by itself).
 
 import AppKit
 import SwiftUI
@@ -60,6 +62,20 @@ struct PanelSession: Equatable, Identifiable {
     }
 }
 
+/// Who a reply is from, by chat's rule (deck/chat/lib/names.js labelFor): the agent's own name
+/// when the tab is an agent's, else the assistant's name from system.info, else "Vyre". A name
+/// that says Claude never shows.
+enum ReplyLabel {
+    static func of(agent: String?, assistant: String?) -> String {
+        func clean(_ v: String?) -> String? {
+            guard let t = v?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty,
+                  t.range(of: "claude", options: .caseInsensitive) == nil else { return nil }
+            return t
+        }
+        return clean(agent) ?? clean(assistant) ?? "Vyre"
+    }
+}
+
 /// Where the side view puts things, from the display's visible frame (menu bar and Dock out).
 enum SideGeometry {
     static let ratio: CGFloat = 0.29
@@ -104,6 +120,18 @@ final class SessionPanelModel: ObservableObject {
     private var buffered: [VyredEvent] = []
     private var loading = false
     private var sendCount = 0
+    /// The terminal tab's live watch: its id, the session.* subscription, the renewal, and every
+    /// row id already drawn, so a replayed or doubled turn never shows twice.
+    private var watchID: String?
+    private var watchSub: VyredSubscription?
+    private var renewTask: Task<Void, Never>?
+    private var seen = Set<String>()
+    private var lastTurn: String?
+    /// How often a shown terminal tab renews its watch (vyred ends one unrenewed for 3 minutes).
+    var renewEvery: Duration = .seconds(60)
+    /// system.info's assistant.name, read once per show of the panel; nil until read or unset.
+    @Published var assistantName: String?
+    private var namesRead = false
     /// Voice from the panel's mic button or Option-Return in its box.
     var onTalk: () -> Void = {}
 
@@ -121,13 +149,35 @@ final class SessionPanelModel: ObservableObject {
     func start() {
         guard sub == nil else { return }
         sub = vyred.on("thread.*") { [weak self] e in self?.fold(e) }
+        readNames()
     }
 
     func stop() {
         sub?.cancel(); sub = nil
+        endWatch()
         buffered = []
         loading = false
+        namesRead = false
     }
+
+    /// The assistant's name for reply labels, once per show.
+    private func readNames() {
+        guard !namesRead else { return }
+        namesRead = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let r = await vyred.call("system.info", [:], presence: false)
+            if r.error != nil { namesRead = false; return }
+            assistantName = VJ.nonEmpty(((r.data as? [String: Any])?["assistant"] as? [String: Any])?["name"])
+        }
+    }
+
+    /// The label over a reply in the shown tab.
+    var replyLabel: String {
+        ReplyLabel.of(agent: shown.flatMap { $0.isAssistant ? $0.agent : nil }, assistant: assistantName)
+    }
+
+    var isWatching: Bool { watchID != nil }
 
     var isFollowing: Bool { sub != nil }
 
@@ -141,6 +191,7 @@ final class SessionPanelModel: ObservableObject {
 
     /// Show a session: its history once, then its events.
     func show(_ s: PanelSession) async {
+        endWatch()
         shown = s
         line = nil
         note = nil
@@ -184,22 +235,139 @@ final class SessionPanelModel: ObservableObject {
         guard shown == s else { return }
         loading = false
         var x = VyState.dm(s.label, thread: id, limit: 60)
+        var last: String?
         if r.error != nil {
             note = "Not in the index yet; new words show here as they come"
         } else {
             let turns = ((r.data as? [String: Any])?["turns"] as? [[String: Any]]) ?? []
+            last = turns.last.map(Self.rowID)
             x.messages = turns.compactMap { t in
                 let text = VJ.s(t["text"])
                 guard !text.isEmpty else { return nil }
                 let user = VJ.s(t["role"]) == "user"
-                return DmMessage(id: "r\(VJ.int(t["seq"]) ?? 0)", role: user ? .user : .agent, text: text,
-                                 at: VJ.num(t["ts"]) ?? 0, surface: user ? "terminal" : nil, done: user ? nil : true)
+                return DmMessage(id: Self.rowID(t), role: user ? .user : .agent, text: text,
+                                 at: VJ.num(t["at"]) ?? VJ.num(t["ts"]) ?? 0, surface: user ? "terminal" : nil, done: user ? nil : true)
             }
         }
         for e in buffered { x = VyState.applyDm(x, e) }
         buffered = []
         x.loading = false
         dm = x
+        seen = Set(x.messages.map(\.id))
+        lastTurn = last
+        await watch(s)
+    }
+
+    /// A turn's row id: its own id (a text turn's is its number as a string, a tool's "tool:<id>").
+    nonisolated static func rowID(_ t: [String: Any]) -> String {
+        VJ.nonEmpty(t["id"]) ?? VJ.int(t["seq"]).map(String.init) ?? ""
+    }
+
+    /// Follow the shown terminal session live from its newest drawn turn, until another tab or
+    /// the panel's close ends it.
+    private func watch(_ s: PanelSession) async {
+        guard let id = s.thread, !id.isEmpty, shown == s else { return }
+        watchSub = vyred.on("session.*") { [weak self] e in self?.live(e, session: id) }
+        var input: [String: Any] = ["session": id]
+        if let from = lastTurn { input["from"] = from }
+        let r = await vyred.call("recall.watch", input, presence: false)
+        guard shown == s, watchSub != nil else {
+            if let w = VJ.nonEmpty((r.data as? [String: Any])?["watch"]) { unwatch(w) }
+            return
+        }
+        guard r.error == nil, let d = r.data as? [String: Any], let w = VJ.nonEmpty(d["watch"]) else {
+            // Nothing to follow (no transcript for it here): the history stays, still marked.
+            watchSub?.cancel(); watchSub = nil
+            return
+        }
+        watchID = w
+        if let busy = VJ.bool(d["busy"]), busy != dm.busy { dm.busy = busy }
+        renewTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let every = self?.renewEvery else { return }
+                try? await Task.sleep(for: every)
+                guard !Task.isCancelled, let self else { return }
+                await self.renew(id)
+            }
+        }
+    }
+
+    /// Keep the watch alive; one that lapsed anyway starts again from the newest drawn turn.
+    private func renew(_ session: String) async {
+        guard let w = watchID else { return }
+        let r = await vyred.call("recall.watch", ["session": session, "watch": w], presence: false)
+        guard watchID == w else { return }
+        if case .failure(let code, _) = r, code == "not_found" {
+            var input: [String: Any] = ["session": session]
+            if let from = lastTurn { input["from"] = from }
+            let again = await vyred.call("recall.watch", input, presence: false)
+            guard watchID == w else { if let n = VJ.nonEmpty((again.data as? [String: Any])?["watch"]) { unwatch(n) }; return }
+            watchID = VJ.nonEmpty((again.data as? [String: Any])?["watch"]) ?? w
+        }
+    }
+
+    private func endWatch() {
+        renewTask?.cancel(); renewTask = nil
+        watchSub?.cancel(); watchSub = nil
+        if let w = watchID { unwatch(w) }
+        watchID = nil
+        seen = []
+        lastTurn = nil
+    }
+
+    private func unwatch(_ w: String) {
+        let link = vyred
+        Task { _ = await link.call("recall.unwatch", ["watch": w], presence: false) }
+    }
+
+    /// A session.turn or session.state for the shown terminal session.
+    func live(_ e: VyredEvent, session: String) {
+        guard watchSub != nil, (e.thread ?? VJ.str(e.payload["session"])) == session,
+              VJ.str(e.payload["session"]).map({ $0 == session }) ?? true else { return }
+        var d = dm
+        switch e.type {
+        case "session.state":
+            guard let busy = VJ.bool(e.payload["busy"]) else { return }
+            d.busy = busy
+            if !busy { d.messages = Self.settleTools(d.messages) }
+        case "session.turn":
+            let id = Self.rowID(e.payload)
+            guard !id.isEmpty, seen.insert(id).inserted else { return }
+            let role = VJ.s(e.payload["role"])
+            let text = VJ.s(e.payload["text"])
+            let at = VJ.num(e.payload["at"]) ?? vyNowMs()
+            if role == "tool" {
+                let summary = VJ.nonEmpty((e.payload["tool"] as? [String: Any])?["summary"]) ?? text
+                let tool = ReplyTool(id: id, summary: summary, done: false, error: false)
+                if let i = d.messages.indices.last, d.messages[i].role == .agent {
+                    d.messages[i].tools = (d.messages[i].tools ?? []) + [tool]
+                } else {
+                    d.messages.append(DmMessage(id: id, role: .agent, text: "", at: at, tools: [tool], done: false))
+                }
+            } else {
+                guard !text.isEmpty else { return }
+                d.messages = Self.settleTools(d.messages)
+                let user = role == "user"
+                // The words this panel sent come back from the transcript: they replace the pending row.
+                if user, let i = d.messages.lastIndex(where: { $0.pending && $0.role == .user && $0.text == text }) {
+                    d.messages.remove(at: i)
+                }
+                d.messages.append(DmMessage(id: id, role: user ? .user : .agent, text: text, at: at,
+                                            surface: user ? "terminal" : nil, done: user ? nil : true))
+                lastTurn = id
+            }
+            if d.messages.count > d.limit { d.messages.removeFirst(d.messages.count - d.limit) }
+        default: return
+        }
+        if d != dm { dm = d }
+    }
+
+    /// A tool line is done once anything came after it.
+    nonisolated static func settleTools(_ m: [DmMessage]) -> [DmMessage] {
+        m.map { x in
+            guard let t = x.tools, t.contains(where: { !$0.done }) else { return x }
+            var y = x; y.tools = t.map { var u = $0; u.done = true; return u }; return y
+        }
     }
 
     /// The words changed: work out the chip again after a short pause in typing.
@@ -341,7 +509,14 @@ struct SessionPanelView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     if model.view.loading { Text("Reading the conversation").font(Theme.subtitle).foregroundColor(Theme.ash) }
-                    ForEach(model.view.messages) { m in message(m) }
+                    let rows = model.view.messages
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { i, m in
+                        // A reply says who it is from, once per run of replies.
+                        if m.role == .agent, i == 0 || rows[i - 1].role != .agent {
+                            Text(model.replyLabel).font(Theme.label).foregroundColor(Theme.ash)
+                        }
+                        message(m)
+                    }
                     Color.clear.frame(height: 1).id("bottom")
                         .onAppear { atBottom = true }
                         .onDisappear { atBottom = false }

@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The side view's terminal tabs follow live
+
+- capsule-sight: a terminal tab in the side view follows its session through chat's
+  `recall.watch` while it is the tab shown: the history from the index, then each new turn the
+  moment Claude Code writes it (rows keyed on the turn's id, so a replayed or doubled turn never
+  shows twice; tool calls as one line each under the reply), `session.state` for the working
+  dot, one renewal a minute, and `recall.unwatch` on another tab or the panel's close. A watch
+  that lapsed starts again from the newest turn drawn. Replies carry who they are from by chat's
+  rule: the agent's name, else the assistant's name from `system.info` (read once per show),
+  else "Vyre", never Claude.
+
 #### The screen chip in the Capsule's box
 
 - capsule-sight: SightExtension adopts capsule-pro's `SendAttaching`. An Ask, a message to an
