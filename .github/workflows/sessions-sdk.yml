@@ -113,7 +113,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/home"
           HOME="$RUNNER_TEMP/home" "$bin" --version </dev/null
           if [ -f scripts/sessions-smoke.mjs ]; then
-            HOME="$RUNNER_TEMP/home" MODE=real-idle timeout 300 node scripts/sessions-smoke.mjs </dev/null
+            HOME="$RUNNER_TEMP/home" IDLE_MS=5000 timeout 300 node scripts/sessions-smoke.mjs </dev/null | tee "$RUNNER_TEMP/smoke.json"
+            node -e 'const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); console.log("smoke: " + JSON.stringify(j)); if (!j.spawned || !j.alive) process.exit(1)' "$RUNNER_TEMP/smoke.json" | tee -a "$GITHUB_STEP_SUMMARY"
           else
             echo "scripts/sessions-smoke.mjs not here yet: version check only"
           fi
