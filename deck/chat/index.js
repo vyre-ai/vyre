@@ -218,7 +218,7 @@ export default async function chat(ctx) {
       // A session the list knows the Switchboard never ran opens straight from its transcript.
       const known = /** @type {any} */ (state.rows.find(r => r.id === thread));
       ctx.cleanup(mountSession(container, /** @type {any} */ ({ thread, project, recorded: !!known && !known.live, known: !!known, turns: known?.turns || 0,
-        source: known?.source || null, machine: known?.machine || null, onBack: () => back(project ? projectHref(project) : "/chat") })));
+        source: known?.source || null, machine: known?.machine || null, shown, onBack: () => back(project ? projectHref(project) : "/chat") })));
       return;
     }
     const note = state.offline ? h("div", { class: "empty chat-offline" }, `Offline. Showing the list as of ${when(state.snapAt)}.`) : null;
