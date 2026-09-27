@@ -8,9 +8,23 @@ status: stable
 
 # Troubleshooting
 
-Most problems show up as one line from `vyre`. Find that line below. If yours is not here, start with the commands in [First look](#first-look), and read the log they point to.
+Most problems show up as one line from `vyre`. Find that line below. If yours is not here, run `vyre doctor` ([First look](#first-look)), and read the log it points to.
 
 ## First look
+
+Start with `vyre doctor`, on the Mac or on the server:
+
+```sh
+vyre doctor
+```
+
+It checks vyred, Tailscale on both ends (signed in, the same account, MagicDNS and HTTPS on), your
+phone on the tailnet, the box's address, a passkey for that address, pairing, Claude on the box and
+the Capsule, in under two seconds. Each line is a check that passed, failed (with the one thing to
+do next under it), or could not be checked (with why). It only reads: it never signs in, pairs or
+opens anything. `vyre doctor --json` gives the same list to a script.
+
+If that does not explain it, these show more:
 
 ::: tabs
 ::: tab On a server
@@ -136,7 +150,7 @@ When the box is newer than the Mac, `vyre box update` prints that line. It fails
 npm install -g https://vyre.run/box/vyre.tgz && vyre up
 ```
 
-See [known gaps](../known-gaps.md#vyre-box-update-does-not-upgrade-the-mac).
+See [known gaps](../known-gaps.md#the-mac-update-that-vyre-box-update-prints-fails).
 
 ## The Mac
 
@@ -225,10 +239,7 @@ Search by meaning needs a local model of about 130 MB. Vyre fetches it into `~/.
 
 ### The vault says it is locked, or asks for presence
 
-`vyre vault` exits with code 4 when the vault is locked and 3 when an action needs you to prove you are there. Human-only actions, like putting a value, need Touch ID on the Mac or a passkey in the Deck.
-
-> [!GAP]
-> `vyre vault` never asks for that proof, so a human-only verb (`put`, `unlock`, `approve` and others) exits with code 3. Use the Deck, or `vyre call`, which asks for Touch ID on the Mac. See [known gaps](../known-gaps.md#the-vault-cli-never-proves-presence).
+`vyre vault` exits with code 4 when the vault is locked and 3 when an action needs you to prove you are there. Human-only actions, like putting a value, ask you to prove you are there: `vyre vault` asks for Touch ID on the Mac, or for the code vyred writes to your terminal. Without a terminal (from an agent's Bash, say) the command is refused and exits with code 3. In the Deck, it is your passkey.
 
 ### An agent stopped: budget
 

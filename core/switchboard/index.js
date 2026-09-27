@@ -562,8 +562,10 @@ export class Switchboard {
    * process has it open, since one transcript takes one writer. One that is open elsewhere (a
    * terminal) is not typed into: a person's words are queued instead, and the Harness hands them
    * over when that session's turn ends (queue). `queue` false (a model's call) keeps the refusal.
+   * `wait` (the person at the box, through the link) never takes the keyboard: while another
+   * surface holds it, the words are queued as for a terminal.
    */
-  async send(id, text, surface, { queue = true } = {}) {
+  async send(id, text, surface, { queue = true, wait = false } = {}) {
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);
@@ -571,6 +573,8 @@ export class Switchboard {
       if (why) return { sent: false, open_elsewhere: true, note: `This session is open somewhere else: ${why}. Only one keyboard can type into it, so close it there or type there.` };
     }
     const rec = this.must(id);
+    const held = wait && this.leases.holder(id);
+    if (held && held.surface !== surface) return this.queue(id, text, surface, held.surface);
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) return { sent: false, holder: lease.holder, note: `${lease.holder} has the keyboard; threads.lease takes it` };
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
@@ -590,16 +594,18 @@ export class Switchboard {
   /**
    * Keep words for a session another process has open. Nothing is typed into it: the Harness's
    * Stop hook in that session hands them to Claude when its current turn ends (deliver), or its
-   * next prompt does when it is idle. Emits thread.queued.
-   * @param {string} id @param {string} text @param {string} surface
+   * next prompt does when it is idle. Emits thread.queued. `busy` in the answer is "terminal", or
+   * the surface holding the keyboard when that is why (a send with `wait`).
+   * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
-  queue(id, text, surface) {
+  queue(id, text, surface, holder) {
     const rec = this.must(id);
     const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at) VALUES (?,?,?,?)").run(id, String(text), surface, Date.now());
     this.emit("thread.queued", { queued: Number(r.lastInsertRowid), text: cut(text, 2000), surface }, id, rec.project);
     const name = rec.name || id.slice(0, 8);
-    return { sent: false, queued: true, open_elsewhere: true, thread: id, name,
-      note: `${name} is busy in your terminal. I'll hand it your message when this turn ends.` };
+    return { sent: false, queued: true, open_elsewhere: true, thread: id, name, busy: holder || "terminal",
+      note: holder ? `${name} is in use in ${holder}. I'll hand it your message when this turn ends.`
+        : `${name} is busy in your terminal. I'll hand it your message when this turn ends.` };
   }
 
   /**
@@ -858,6 +864,14 @@ export class Switchboard {
 
 const str = { type: "string" };
 
+/**
+ * The person at the box, through the link: the Mac runs a WRITE only with `as: "person"`, as
+ * "link:box" (core/link/mac.js). A caller kind of its own, named here rather than left to fall
+ * through the model-caller patterns: it queues, is no agent, and types only as a box surface.
+ * @param {string} [caller]
+ */
+export const fromLink = caller => /^link:/.test(String(caller || ""));
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 /**
  * Whose words are queued for a session busy in a terminal: a person's. That is every surface of
@@ -868,6 +882,7 @@ const str = { type: "string" };
  */
 export const queuesFor = caller => {
   const c = String(caller || "");
+  if (fromLink(c)) return true;
   return !/^(mcp|harness|hook)/.test(c) && !/(^|[\s:])agent:/.test(c) && c !== "tailnet:";
 };
 
@@ -887,10 +902,15 @@ export default {
      * may drive sessions; other agents stay inside their own work.
      */
     const guard = (caller, what) => {
+      if (fromLink(caller)) return;
       const agent = agentOf(caller);
       if (agent && sb.kindOf(agent) !== "assistant") throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
-    const surfaceOf = (input, caller) => String(input.surface || caller || "vyre");
+    const surfaceOf = (input, caller) => {
+      const s = String(input.surface || caller || "vyre");
+      // The link's words are always the box's surface, whatever the input says.
+      return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
+    };
     const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run, callers, ...extra });
 
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
@@ -908,7 +928,14 @@ export default {
         input: { thread: i.thread, text: i.text, surface: surfaceOf(i, caller) } });
       if (r.error || !Array.isArray(r.data)) return null;
       const done = r.data.find(a => a.ok);
-      if (done) return { ...done.data, source: "mac", machine: done.name };
+      if (done) {
+        const d = done.data || {};
+        // The note names the Mac, so the person knows where the session is busy.
+        const note = d.queued ? (d.busy && d.busy !== "terminal"
+          ? `${d.name} is in use in ${d.busy} on ${done.name}. I'll hand it your message when this turn ends.`
+          : `${d.name} is busy in your terminal on ${done.name}. I'll hand it your message when this turn ends.`) : d.note;
+        return { ...d, ...(note !== undefined ? { note } : {}), source: "mac", machine: done.name };
+      }
       // A Mac that answered with its own error has the thread (or failed on it): say that one. A
       // Mac without the thread says "no thread"; an offline Mac may have it, so nothing was sent.
       const failed = r.data.find(a => a.error && !["mac_offline", "timeout"].includes(a.error.code) && !/^no thread\b/.test(a.error.message));
@@ -930,7 +957,7 @@ export default {
           const mac = await sendToMac(i, caller);
           if (mac) return mac;
         }
-        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller) });
+        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller) });
       });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each and how many questions are open.",

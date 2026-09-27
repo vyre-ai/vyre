@@ -83,6 +83,13 @@ phone.
    only from the Mac it sent to, and re-emits each with `source: "mac"` and `machine` added to
    the payload, the thread id in the envelope and no project (the Mac's slugs are not the box's).
    One that looks like a secret is dropped alone.
+4a. **The box never takes a Mac session's keyboard** (decided with capsule-now, 27 Sep 2026).
+   While any surface on the Mac holds the lease (a terminal, the Capsule, the Mac's Deck), the
+   words are queued, and the answer's `busy` is `"terminal"` or the holder. A free session is
+   typed into as before and its lease goes to `box:<surface>`. The Mac's caller `link:box` is a
+   caller kind of its own in the switchboard (`fromLink`): it queues, is never an agent, and its
+   surface is always `box:<surface>`. The box's note names the Mac: "<name> is busy in your
+   terminal on <mac>. I'll hand it your message when this turn ends."
 5. **The follow ends** at the thread's `thread.finished` or `thread.stopped`, 30 minutes after
    the last send, on unpair, on revoke and when vyred stops. Queued words: a `thread.queued` adds
    its id to the follow's waiting set, and the `thread.sent { queued }` that hands it over removes
@@ -90,7 +97,8 @@ phone.
    the follow goes on. Each send starts or extends the follow. No listener or timer runs while
    nothing is followed. A batch the box does not take is dropped, never retried: the Deck can
    read the thread again with `recall.thread`.
-6. **Not forwarded in v1:** `threads.answer` (permission questions are answered on the Mac),
+6. **Not forwarded in v1:** `threads.answer` (permission questions are answered on the Mac;
+   the Deck says "Answer it on <mac>"),
    `threads.lease` and `threads.release` (the box cannot hold a Mac's lease; the send takes the
    Mac's lease for `box:<surface>` as any send does), and every other thread tool.
 7. **Offline is an answer.** A Mac that is not polling makes `threads.send` fail at once with
@@ -103,6 +111,14 @@ that was taken over could claim it; what it gains is typing into the Mac's sessi
 would from the Deck, the same reach the owner's Deck already has. It still cannot answer a
 permission question, run any other write, or read beyond the allowlist, because the Mac checks
 those itself.
+
+**v2: answering a Mac's permission question from the box** (recorded, not built). A permission
+answer needs presence, and the Mac cannot see a passkey pressed on the box. So the box verifies
+presence itself, then sends a presence assertion signed by the paired box's key, bound to the
+one ask (its id, the thread, the decision) with a short expiry. The Mac checks the signature
+against the key it pinned at pairing and accepts the assertion for `threads.answer` on that ask
+only: never for another tool, another ask, or a second use. Until then v1 ships the Deck line
+"Answer it on <mac>".
 
 ## Consequences
 
