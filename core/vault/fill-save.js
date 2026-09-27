@@ -11,6 +11,7 @@
 // ever sends a password back, and nothing here writes one into an audit row, event or error.
 
 import { totp } from "./totp.js";
+import { appOf } from "./fill.js";
 
 const MAX_VALUE = 64 * 1024;
 const HISTORY = 5;
@@ -54,11 +55,13 @@ export async function otpRoute(fill, b, h) {
   if (g.reply) return g.reply;
   const { d, who, refuse } = /** @type {any} */ (g);
   if (!name) return refuse(400, "bad_input", "give the login's name");
-  const o = origin(b.url);
+  // A native app on the phone is named by package and certificate (fill.js appOf).
+  const app = appOf(b.url);
+  const o = app || origin(b.url);
   if (!o) return refuse(400, "bad_input", "the page is not an http or https page");
   const r = fill.vault.row(name);
   if (!r || r.kind !== "login") return refuse(404, "not_found", `no login named ${name}`);
-  if (!fill.hostsOf(r).includes(o)) return refuse(403, "wrong_origin", `${name} is not for ${o}`);
+  if (app ? !fill.appLogins(app).some(x => x.name === r.name) : !fill.hostsOf(r).includes(o)) return refuse(403, "wrong_origin", `${name} is not for ${o}`);
   let f;
   try { f = await fill.vault.fields(r); } catch (e) { const [st, c, m] = openFailed(e, name); return refuse(st, c, m); }
   if (!f.totp) return refuse(404, "no_totp", `${name} has no one-time code`);

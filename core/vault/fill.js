@@ -48,7 +48,18 @@ export const FILL_MIGRATION = `CREATE TABLE vault_devices (
  * signing a one-time challenge, the phone's version of Touch ID through the Capsule. Its own
  * table, MACed, so a module that writes vyre.db cannot swap in a key of its own.
  */
-export const FILL_KEY_MIGRATION = `CREATE TABLE vault_device_keys (device TEXT PRIMARY KEY, key TEXT NOT NULL, at INTEGER NOT NULL, mac TEXT);`;
+export const FILL_KEY_MIGRATION = `CREATE TABLE vault_device_keys (device TEXT PRIMARY KEY, key TEXT NOT NULL, at INTEGER NOT NULL, mac TEXT);
+   ALTER TABLE vault_pairing ADD COLUMN phone INTEGER NOT NULL DEFAULT 0;`;
+/**
+ * A native Android app, as the phone's autofill service names it: its package and the SHA-256 of
+ * its signing certificate. A login fills it only when the login lists exactly this in `apps`,
+ * because a package name alone is anyone's to take (ADR 0028, threat model).
+ * @param {unknown} u @returns {string|null} "android:<package>@<sha256>"
+ */
+export function appOf(u) {
+  const m = /^android:\/\/([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)@([0-9a-f]{64})$/i.exec(String(u ?? ""));
+  return m ? `android:${m[1].toLowerCase()}@${m[2].toLowerCase()}` : null;
+}
 const CHALLENGE_TTL_MS = 60_000;
 const unlockMessage = nonce => Buffer.from(`vyre:fill-unlock:v1:${nonce}`, "utf8");
 
@@ -151,14 +162,14 @@ export class Fill {
   // ---- registry tools (FILL_TOOLS) ------------------------------------------------------
 
   /** A one-time pairing code for `vyre vault pair`. cli/local only. @param {{ name?: string }} [input] */
-  code({ name } = {}, caller = "cli") {
+  code({ name, phone = false } = {}, caller = "cli") {
     const t = this.now();
     this.db.prepare("DELETE FROM vault_pairing WHERE expires < ? OR used IS NOT NULL").run(t);
     let c = "";
     for (let i = 0; i < CODE_LEN; i++) c += ALPHABET[crypto.randomInt(ALPHABET.length)];
     const label = name ? this.deviceName(name) : null;
-    this.db.prepare("INSERT INTO vault_pairing (code_hash, name, expires, used) VALUES (?,?,?,NULL)").run(this.codeHash(c), label, t + CODE_TTL_MS);
-    this.vault.audit("pair-code", null, caller, true, label ? `for ${label}` : null);
+    this.db.prepare("INSERT INTO vault_pairing (code_hash, name, expires, used, phone) VALUES (?,?,?,NULL,?)").run(this.codeHash(c), label, t + CODE_TTL_MS, phone ? 1 : 0);
+    this.vault.audit("pair-code", null, caller, true, `${phone ? "phone" : "browser"}${label ? ` ${label}` : ""}`);
     return { code: c, display: `${c.slice(0, 4)}-${c.slice(4)}`, expires: t + CODE_TTL_MS };
   }
 
@@ -290,6 +301,8 @@ export class Fill {
     // A phone pairs with its device key; a browser has none and unlocks another way.
     let key = null;
     if (b.key !== undefined) {
+      // A key unlocks with no passphrase and no Touch ID here, so only a code the person made for a phone takes one.
+      if (!row.phone) return this.pairRefused(t, "that code is for a browser · vyre vault pair --phone makes one for a phone");
       key = deviceKey(b.key);
       if (!key) return fail(400, "bad_input", "the device key is not a P-256 public key");
     }
@@ -405,6 +418,8 @@ export class Fill {
   matchRoute(b, h) {
     const d = this.device(h);
     if ("status" in d) return d;
+    const app = appOf(b.url);
+    if (app) return ok({ app, logins: this.appLogins(app).map(r => ({ name: r.name, description: r.description, url: r.url })) });
     const o = origin(b.url);
     if (!o) return ok({ origin: null, logins: [] });
     return ok({ origin: o, logins: this.logins(o).map(r => ({ name: r.name, description: r.description, url: r.url })) });
@@ -421,11 +436,12 @@ export class Fill {
     if (s === "missing") return refuse(401, "session_required", "unlock first");
     if (s === "expired") return refuse(401, "session_expired", "the session ended; unlock again");
     if (!name) return refuse(400, "bad_input", "give the login's name");
-    const o = origin(b.url);
+    const app = appOf(b.url);
+    const o = app || origin(b.url);
     if (!o) return refuse(400, "bad_input", "the page is not an http or https page");
     const r = this.vault.row(name);
     if (!r || r.kind !== "login") return refuse(404, "not_found", `no login named ${name}`);
-    if (!this.hostsOf(r).includes(o)) return refuse(403, "wrong_origin", `${name} is not for ${o}`);
+    if (app ? !this.appLogins(app).some(x => x.name === r.name) : !this.hostsOf(r).includes(o)) return refuse(403, "wrong_origin", `${name} is not for ${o}`);
     let f;
     try { f = await this.vault.fields(r); }
     catch (e) {
@@ -535,6 +551,12 @@ export class Fill {
     return [...hs];
   }
 
+  /** Logins that list a native app, exactly (package and certificate). @param {string} app */
+  appLogins(app) {
+    return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'login' ORDER BY name").all())
+      .filter(r => this.vault.rowOk("vault_items", r) && json(r.apps, []).map(a => String(a).toLowerCase()).includes(app));
+  }
+
   /** Logins whose hosts include an origin: the same rule fill applies, so the popup offers only what fills. */
   logins(o) {
     return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'login' ORDER BY name").all())
@@ -623,8 +645,10 @@ export async function serveFill({ host = "127.0.0.1", port = 0, fill, names = []
       if (req.method !== ROUTES[name]) return reply(405, { error: { code: "method", message: `${name} takes ${ROUTES[name]}` } });
       // Pairing is the extension's first step and nothing else makes it. Without an Origin, the
       // caller is a script (an agent with curl), which would otherwise pair itself with a code.
-      if (name === "pair" && o === undefined) return reply(403, { error: { code: "origin_required", message: "pairing is done from the Vyre extension" } });
       const body = req.method === "POST" ? await readJson(req) : {};
+      // A phone's autofill service is not a browser and sends no Origin; it pairs with a device
+      // key and a phone code, which pair() checks.
+      if (name === "pair" && o === undefined && !(body && typeof body.key === "string")) return reply(403, { error: { code: "origin_required", message: "pairing is done from the Vyre extension" } });
       const out = await fill.handle(`${req.method} ${name}`, body, /** @type {any} */ (req.headers));
       reply(out.status || 200, out.body ?? {});
     } catch (e) {
@@ -656,9 +680,11 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
  * @type {{ name: string, callers: string[]|null, description: string, input: any, method: "code"|"devices"|"revokeDevice"|"unlockDevice"|"setUnlockPassphrase", presence?: (fill: Fill, input: any) => string }[]}
  */
 export const FILL_TOOLS = [
-  { name: "vault.device.code", callers: ["cli", "local"], method: "code", input: obj({ name: str }),
-    presence: (f, i) => `Pair a new browser${i && i.name ? ` (${f.deviceName(i.name)})` : ""} for autofill`,
-    description: "A one-time code (8 characters, 5 minutes) to pair a browser extension with this vault." },
+  { name: "vault.device.code", callers: ["cli", "local"], method: "code", input: obj({ name: str, phone: { type: "boolean" } }),
+    presence: (f, i) => (i && i.phone
+      ? `Pair a phone${i.name ? ` (${f.deviceName(i.name)})` : ""} for autofill: it will unlock with its own fingerprint or face`
+      : `Pair a new browser${i && i.name ? ` (${f.deviceName(i.name)})` : ""} for autofill`),
+    description: "A one-time code (8 characters, 5 minutes) to pair a browser extension, or with phone a phone's autofill service that unlocks with its device key." },
   { name: "vault.devices", callers: null, method: "devices", input: obj({}),
     description: "Browsers paired for autofill, when each was last seen and how many sessions it has open." },
   { name: "vault.device.revoke", callers: null, method: "revokeDevice", input: obj({ id: str }, ["id"]),

@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Android autofill: a module for the Vyre app, phone pairing codes, native-app matching
+
+- modules/vault-android/ is an Expo local module (Kotlin): an AutofillService whose suggestions
+  hold no value and unlock through a BiometricPrompt-signed device key, plus save, cards,
+  addresses and one-time codes. mobile includes it by copying or linking it into
+  apps/app/modules/. Uncompiled by gradle here; its pure core has 17 JUnit tests.
+- `vyre vault pair --phone` (presence) makes a code that alone accepts a device key; such a pair
+  may come without an extension Origin. match, fill and otp take `android://<package>@<sha256>`
+  and fill a login only when its `apps` list that exact package and certificate.
+
 #### A phone opens a fill window with its device key
 
 - The fill listener pairs a device with an optional P-256 public key (`pair {code, key}`), kept

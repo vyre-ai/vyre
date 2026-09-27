@@ -31,13 +31,19 @@ test("fill: device-key unlock, one challenge, one use, 60 seconds; wrong keys an
 
   const phone = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const spki = /** @type {Buffer} */ (phone.publicKey.export({ format: "der", type: "spki" })).toString("base64url");
-  const bad = await call("pair", { code: fill.code({ name: "x" }).code, key: "not-a-key-" + "a".repeat(40) }, EXT);
+  const bad = await call("pair", { code: fill.code({ name: "x", phone: true }).code, key: "not-a-key-" + "a".repeat(40) }, EXT);
   assert.equal(bad.body.error.code, "bad_input");
   const rsa = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
-  const r2 = await call("pair", { code: fill.code({ name: "x" }).code, key: rsa.publicKey.export({ format: "der", type: "spki" }).toString("base64url") }, EXT);
+  const r2 = await call("pair", { code: fill.code({ name: "x", phone: true }).code, key: rsa.publicKey.export({ format: "der", type: "spki" }).toString("base64url") }, EXT);
   assert.equal(r2.body.error.code, "bad_input", "only P-256");
 
-  const paired = await call("pair", { code: fill.code({ name: "alex's Pixel 8" }).code, name: "alex's Pixel 8", key: spki }, EXT);
+  // A browser's code does not take a key: only a code made for a phone does.
+  const browserCode = await call("pair", { code: fill.code({ name: "chrome" }).code, key: spki }, EXT);
+  assert.equal(browserCode.body.error.code, "bad_code");
+  assert.match(browserCode.body.error.message, /for a browser/);
+  // The phone sends no Origin: allowed with a key, refused without one.
+  assert.equal((await call("pair", { code: fill.code({ name: "p", phone: true }).code })).body.error.code, "origin_required");
+  const paired = await call("pair", { code: fill.code({ name: "alex's Pixel 8", phone: true }).code, name: "alex's Pixel 8", key: spki });
   assert.equal(paired.status, 200, JSON.stringify(paired.body));
   const auth = { authorization: `Bearer ${paired.body.data.token}` };
   const sign = (key, msg) => crypto.sign("sha256", Buffer.from(msg), { key, dsaEncoding: "der" }).toString("base64url");
@@ -64,6 +70,23 @@ test("fill: device-key unlock, one challenge, one use, 60 seconds; wrong keys an
   // A key row a module rewrote fails its MAC and is not trusted.
   db.prepare("UPDATE vault_device_keys SET key = ?").run(other.publicKey.export({ format: "der", type: "spki" }).toString("base64url"));
   assert.equal((await call("challenge", {}, auth)).body.error.code, "no_key");
+
+  // A native app: only a login that lists the package and its certificate is offered and filled.
+  const sha = "ab".repeat(32);
+  const app = `android://sh.northwind.orders@${sha}`;
+  await vault.put({ name: "northwind-orders", kind: "login", url: "https://orders.northwind.test", apps: [`android:sh.northwind.orders@${sha}`], fields: { username: "kit", password: "sample-" + crypto.randomBytes(6).toString("hex") } }, "cli");
+  await vault.put({ name: "harlow-portal", kind: "login", url: "https://portal.harlow.test", fields: { username: "juno", password: "sample-" + crypto.randomBytes(6).toString("hex") } }, "cli");
+  db.prepare("DELETE FROM vault_device_keys").run();
+  const again = await call("pair", { code: fill.code({ name: "pixel", phone: true }).code, key: spki });
+  const a2 = { authorization: `Bearer ${again.body.data.token}` };
+  const c4 = (await call("challenge", {}, a2)).body.data;
+  const s4 = (await call("unlock", { signature: sign(phone.privateKey, c4.message) }, a2)).body.data.session;
+  const m = await call("match", { url: app }, a2);
+  assert.deepEqual(m.body.data.logins.map(l => l.name), ["northwind-orders"]);
+  assert.deepEqual((await call("match", { url: `android://sh.northwind.orders@${"cd".repeat(32)}` }, a2)).body.data.logins, [], "another certificate is another app");
+  const filled = await call("fill", { name: "northwind-orders", url: app }, { ...a2, "x-vyre-session": s4 });
+  assert.equal(filled.body.data.username, "kit");
+  assert.equal((await call("fill", { name: "harlow-portal", url: app }, { ...a2, "x-vyre-session": s4 })).body.error.code, "wrong_origin");
 
   const audit = JSON.stringify(db.prepare("SELECT * FROM vault_audit").all());
   assert.ok(!audit.includes(c1.challenge));

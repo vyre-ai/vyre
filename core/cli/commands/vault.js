@@ -1303,13 +1303,13 @@ async function newPassphrase(what) {
 }
 
 async function pair(args) {
-  const f = flags(args, { string: ["name"] });
-  const r = await tool("vault.device.code", f.name ? { name: f.name } : {});
+  const f = flags(args, { string: ["name"], boolean: ["phone"] });
+  const r = await tool("vault.device.code", { ...(f.name ? { name: f.name } : {}), ...(f.phone ? { phone: true } : {}) });
   if (r.error) return fail(r);
   say(`\n  pairing code  ${bold(signal(r.data.display || r.data.code))}  ${dim("· single use, for 5 minutes")}\n`);
   if (r.data.fill) say(`  fill address  ${bold(r.data.fill)}\n`);
   else say(beacon("  this vyred has no fill listener yet ") + dim("· set vault.fill in config.json\n"));
-  say(dim("  type both into the Vyre extension's settings\n"));
+  say(dim(f.phone ? "  type both into the Vyre app on the phone: Settings, Autofill\n" : "  type both into the Vyre extension's settings\n"));
   return 0;
 }
 
@@ -1531,7 +1531,7 @@ const HELP = [
   ["account create | unlock [--touchid] | lock | enroll-touchid | status", "the password (and Touch ID) for your personal vault"],
   ["unlock | lock", "for the passphrase keystore"],
   ["migrate-key", "after an update: move the keychain key to this build (macOS may ask you to allow it)"],
-  ["pair [--name n] | devices [revoke|unlock <id>]", "browser extensions that autofill logins"],
+  ["pair [--name n] [--phone] | devices [revoke|unlock <id>]", "browser extensions, and phones (--phone), that autofill logins"],
   ["unlock-passphrase", "what an extension asks for before it fills"],
   ["backup <file> | restore <file> [--replace]", "the whole vault, sealed to a passphrase of its own"],
   ["--json", "on any command: the tool's {data} or {error} as one line; exit 3 presence, 4 locked"],

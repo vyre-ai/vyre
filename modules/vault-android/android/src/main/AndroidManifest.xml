@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Merged into the app's manifest. The service is bound only by the system (BIND_AUTOFILL_SERVICE);
+     the unlock activity is not exported, so only our own PendingIntents reach it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+  <application>
+    <service
+      android:name="sh.vyre.autofill.VyreAutofillService"
+      android:label="@string/vyre_autofill_label"
+      android:exported="true"
+      android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+      <intent-filter>
+        <action android:name="android.service.autofill.AutofillService" />
+      </intent-filter>
+      <meta-data
+        android:name="android.autofill"
+        android:resource="@xml/vyre_autofill" />
+    </service>
+
+    <activity
+      android:name="sh.vyre.autofill.VyreAuthActivity"
+      android:exported="false"
+      android:excludeFromRecents="true"
+      android:theme="@style/Theme.VyreAutofill.Translucent" />
+  </application>
+</manifest>

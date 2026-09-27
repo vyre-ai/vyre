@@ -1,0 +1,33 @@
+// Vyre autofill on Android (ADR 0028, decision 6): an AutofillService, its unlock activity, and
+// the Expo module the app pairs through. The device key lives in the Android Keystore,
+// StrongBox where the phone has one, behind BiometricPrompt, as in modules/vyre-signer.
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'sh.vyre'
+version = '0.0.1'
+
+android {
+  namespace "sh.vyre.autofill"
+  defaultConfig {
+    versionCode 1
+    versionName "0.0.1"
+  }
+  testOptions {
+    // AutofillCore is plain Kotlin; nothing in the unit tests touches an Android class.
+    unitTests.returnDefaultValues = false
+  }
+}
+
+dependencies {
+  implementation "androidx.biometric:biometric:1.1.0"
+  implementation "androidx.fragment:fragment-ktx:1.8.5"
+  implementation "androidx.security:security-crypto:1.1.0-alpha06"
+  // InlineSuggestionUi: the keyboard's suggestion chips on Android 11 and later.
+  implementation "androidx.autofill:autofill:1.1.0"
+  implementation "androidx.annotation:annotation:1.9.1"
+
+  testImplementation "junit:junit:4.13.2"
+}

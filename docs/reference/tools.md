@@ -3299,11 +3299,12 @@ Let a new device into your vault. It receives the account keyset sealed to its o
 
 ### `vault.device.code`
 
-A one-time code (8 characters, 5 minutes) to pair a browser extension with this vault.
+A one-time code (8 characters, 5 minutes) to pair a browser extension, or with phone a phone's autofill service that unlocks with its device key.
 
 - Input:
   - `confirm` boolean
   - `name` string
+  - `phone` boolean
 - Callers: `cli`, `local`
 - Needs a person present.
 
