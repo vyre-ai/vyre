@@ -312,6 +312,9 @@ Plan (to the lead before building):
 - memory-iq e1851941 SIGNED OFF (HIGH fixed; read). LOWs before threads.said: empty about fails open,
   substring matching, heard-row race; "?" turns. Not reviewed: 034a4397, 398f6156, df22ca0c
   (memory.today in every brief = injection path; asked for a separate review), b7b0b9f0.
+- vault-next f3d39f3f SIGNED OFF (read 4551a530, f3d39f3f, merge 5747b8b0 resolutions; takeover
+  probe passes on testbox with mail.send as the foreign tool). LOWs: allowed() has no person flag;
+  modules.tools(caller) added to the kernel ctx.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
