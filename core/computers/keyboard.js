@@ -183,12 +183,23 @@ export class Keyboard extends EventEmitter {
     return { agent, handed_back: true };
   }
 
-  /** @param {"gave back"|"lease expired"|"lease released"|"idle"} why */
-  end(agent, why) {
+  /**
+   * @param {"gave back"|"lease expired"|"lease released"|"idle"} why
+   * @param {"chat"|"released"} [how] for "lease released": the thread moved to a chat that is not
+   *   a screen (the CLI, a module), or its lease was let go; the agent's thread is told which.
+   */
+  end(agent, why, how) {
     const t = this.takeovers.get(agent);
     if (!t) return;
     this.takeovers.delete(agent);
     this.finish(agent, t, why);
+    if (how && t.thread) {
+      const from = t.surface.split(":")[0];
+      const text = how === "chat" ? `The take-over from ${from} ended when the thread moved to chat` : `The take-over from ${from} ended when the thread's lease was released`;
+      Promise.resolve(this.call("threads.send", { thread: t.thread, text }))
+        .then(r => { if (r && r.error && r.error.code !== "no_such_tool") this.log(`could not note the lease release in ${agent}'s thread: ${r.error.message}`); })
+        .catch(() => {});
+    }
   }
 
   /** @param {Takeover} t @param {string} why @param {number} [idle] the idle setting, for why "idle" */
@@ -214,7 +225,7 @@ export class Keyboard extends EventEmitter {
     const holder = e.payload ? e.payload.holder : null;
     for (const [agent, t] of [...this.takeovers]) {
       if (t.thread !== e.thread) continue;
-      if (!holder) this.end(agent, "lease released");
+      if (!holder) this.end(agent, "lease released", "released");
       else if (holder === t.surface) t.beat = this.now();
       else if (isSurface(holder)) {
         const at = this.now();
@@ -225,7 +236,7 @@ export class Keyboard extends EventEmitter {
         this.send("computer.taken-over", { agent, surface: t.surface, thread: t.thread }, { thread: t.thread });
         this.log(`${agent}'s take-over moved to ${t.surface}`);
         this.emit("changed", { agent, surface: t.surface });
-      } else this.end(agent, "lease released");
+      } else this.end(agent, "lease released", "chat");
     }
   }
 
