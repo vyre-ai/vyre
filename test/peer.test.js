@@ -25,6 +25,10 @@ const tree = {
   920: { ppid: 310, args: "tmux new -d" }, 921: { ppid: 920, args: "vyre gate approve g1" },
   // An orphan a thread left behind (nohup .. &, then its shell exited): parent init, group the thread's.
   940: { ppid: 1, pgid: 600, args: "vyre threads answer" },
+  // An orphan of a shell whose group is gone (nohup .. & under a terminal claude, the shell exited),
+  // and the Capsule, which launchd started as its own group.
+  950: { ppid: 1, pgid: 949, args: "sh -c sleep 2; vyre call link.call" }, 951: { ppid: 950, pgid: 949, args: "vyre call link.call" },
+  960: { ppid: 1, pgid: 960, args: "/Applications/Vyre.app/Contents/MacOS/Vyre" },
   // A link vyred cannot read (the process ended mid-walk).
   990: { ppid: 989, args: "vyre threads answer" },
 };
@@ -44,6 +48,8 @@ test("peer: under a claude, or under a thread vyred runs, is inside; a terminal,
   assert.deepEqual(insideClaude(902, o), { inside: false }, "the person's shell in tmux");
   assert.deepEqual(insideClaude(912, o), { inside: true, by: 911 }, "claude in a tmux pane");
   assert.deepEqual(insideClaude(940, o), { inside: true, by: 600 }, "an orphan in a thread's process group");
+  assert.deepEqual(insideClaude(951, o), { inside: false, unknown: true }, "an orphan of a shell that is gone: refused as unknown");
+  assert.deepEqual(insideClaude(960, o), { inside: false }, "the Capsule, its own group under launchd");
   assert.deepEqual(insideClaude(921, o), { inside: true, by: 300 }, "a tmux a model started");
   assert.deepEqual(insideClaude(500, o), { inside: false }, "vyred itself");
   assert.deepEqual(insideClaude(990, o), { inside: false, unknown: true }, "an unreadable chain is unknown, and vyred refuses it");

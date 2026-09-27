@@ -128,5 +128,12 @@ export function insideClaude(pid, { threads = [], look = processTable(), self = 
   const mine = new Set(ancestry(self, look).chain.map(p => p.pid));
   const { chain, complete } = ancestry(pid, look, p => mine.has(p));
   for (const p of chain) if (threads.includes(p.pid) || claudeCommand(p.args)) return { inside: true, by: p.pid };
-  return complete ? { inside: false } : { inside: false, unknown: true };
+  if (!complete) return { inside: false, unknown: true };
+  // The top of the chain, whose parent is init. An app, a terminal, sshd or a tmux server that
+  // launchd, init or setsid started leads its own process group. One that does not was started
+  // in a shell's group and outlived it (`nohup .. &`): whose shell that was, nobody can say now.
+  const top = chain.length ? chain[chain.length - 1] : null;
+  const row = top ? look(top.pid) : null;
+  if (row && row.ppid <= 1 && row.pgid && row.pgid !== top.pid) return { inside: false, unknown: true };
+  return { inside: false };
 }

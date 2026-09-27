@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Security: the headscale run of the person session; orphans
+
+- The socket's person check refuses a caller whose chain tops out, under init, in a process that
+  does not lead its own group: a `nohup .. &` left behind by a shell that is gone. Apps, terminals,
+  sshd and tmux servers lead their own group and pass. Checked on the stand-in Mac: the person's
+  shell passes, a call under a claude and its orphan are refused.
+- The Deck's service worker leaves /person/ alone, as it does /onboard: it served the shell for
+  the sign-in page, and would have cached the page as the shell.
+- scripts/e2e-headscale runs the box in the split (0:0, three capabilities, vyre-agent-home).
+
 #### Security: the uid split on the box (ADR 0032 part 3)
 
 - The box container's first process is the spawner (core/spawner), root with only SETUID,

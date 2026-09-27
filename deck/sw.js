@@ -133,7 +133,8 @@ self.addEventListener("fetch", e => {
     // Every other tool call, read or write: untouched, network only. No cache, ever.
     return;
   }
-  if (e.request.method !== "GET" || url.pathname.startsWith("/v1/") || url.pathname.startsWith("/fixtures/") || url.pathname.startsWith("/onboard")) return;
+  // Pages of their own, never the shell: onboarding, and the person's sign-in (/person/signin).
+  if (e.request.method !== "GET" || url.pathname.startsWith("/v1/") || url.pathname.startsWith("/fixtures/") || url.pathname.startsWith("/onboard") || url.pathname.startsWith("/person/")) return;
   // The Deck's own files: from the cache at once, and fetched behind it so the next launch has
   // whatever changed (stale-while-revalidate). A phone on the tailnet would otherwise wait a round
   // trip per module on every tab it opens. Every page address is the one shell, index.html.
