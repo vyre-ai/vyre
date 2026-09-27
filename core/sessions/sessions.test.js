@@ -119,6 +119,8 @@ test("config: the approved defaults per machine, and overrides", () => {
     const c = sessionsConfig({ role: "box", sessions: { driver: "sdk", auth: "api-key", idle_minutes: 0, max_live: 2, claude: "/opt/claude" } });
     assert.deepEqual([c.driver, c.auth, c.idle_minutes, c.max_live, c.claude], ["sdk", "api-key", 0, 2, "/opt/claude"]);
     assert.equal(sessionsConfig({ role: "box", sessions: { auth: "nonsense", idle_minutes: -1 } }).auth, "setup-token");
+    assert.equal(sessionsConfig({ role: "box" }).driver, "sdk", "the Agent SDK is the default");
+    assert.equal(sessionsConfig({ role: "local", sessions: { driver: "cli" } }).driver, "cli");
   } finally { if (was !== undefined) process.env.VYRE_SESSIONS_DRIVER = was; }
 });
 
@@ -478,6 +480,9 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(ev.some(e => e.type === "thread.sent" && e.payload.via === "steer" && e.payload.uuid === r.uuid));
     const steered = ev.find(e => e.type === "thread.steered");
     assert.equal(steered && steered.payload.uuid, r.uuid, "Claude took it in at a step");
+    assert.equal(steered.payload.step, 1, "after the one tool call it had finished");
+    const raised = ev.find(e => e.type === "ask.raised");
+    assert.equal(raised.payload.tool_use_id, ev.find(e => e.type === "thread.tool").payload.call, "the ask names its tool row");
     assert.match((await w.said(th.id)).at(-1), /took in: use pnpm instead/);
     assert.equal(ev.filter(e => e.type === "thread.turn").length, 1, "no turn of its own");
     assert.equal(ev.filter(e => e.type === "thread.finished").length, 1);

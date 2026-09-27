@@ -536,7 +536,8 @@ export class Switchboard {
       st.ord.set(mid, base + t.blocks);
     }
     // Steered messages Claude Code took in at a step.
-    for (const u of t.folded || []) if (st.steers.delete(u)) this.emit("thread.steered", { uuid: u }, id, project);
+    // step: how many tool calls the turn had finished when Claude took the words in.
+    for (const u of t.folded || []) if (st.steers.delete(u)) this.emit("thread.steered", { uuid: u, step: st.steps || 0 }, id, project);
     if (t.delta) {
       if (typeof t.block === "number" && t.block !== st.pendingBlock) { this.flush(id, st); st.pendingBlock = t.block; }
       st.pending += t.delta;
@@ -575,7 +576,7 @@ export class Switchboard {
         if (st.launch.once && !st.stopping) { st.done = true; st.stopping = true; setImmediate(() => st.proc.stop()); }
       }
       if (e.type === "thread.tool" && e.payload.phase === "started") { this.set(id, { status: "working" }); st.openTools = st.openTools || new Set(); st.openTools.add(e.payload.call); }
-      if (e.type === "thread.tool" && e.payload.phase === "done" && st.openTools) st.openTools.delete(e.payload.call);
+      if (e.type === "thread.tool" && e.payload.phase === "done") { if (st.openTools) st.openTools.delete(e.payload.call); st.steps = (st.steps || 0) + 1; }
       // A turn that ends with tool calls still open (an interrupt) cancels them, so no row spins.
       if (e.type === "thread.finished") this.cancelTools(id, st, project);
       const ev = this.emit(e.type, e.payload, id, project);
@@ -635,7 +636,7 @@ export class Switchboard {
     // Small: a question's options without their previews, and never a permission's detail.
     // Surfaces read the whole card from threads.asks.
     const questions = a.kind === "question" ? { questions: (a.questions || []).map(q => ({ ...q, options: q.options.map(({ preview, ...o }) => o) })) } : {};
-    const ev = this.emit("ask.raised", { ask: a.id, kind: a.kind, tool: a.tool, summary: a.summary, destination: a.destination, reason: a.reason, holder: rec ? rec.holder : null,
+    const ev = this.emit("ask.raised", { ask: a.id, kind: a.kind, tool: a.tool, tool_use_id: ask.tool_use_id || null, summary: a.summary, destination: a.destination, reason: a.reason, holder: rec ? rec.holder : null,
       agent: a.agent, thread_name: a.thread_name, ...questions }, id, project);
     this.asks.anchored(a.id, ev && ev.id);
   }
@@ -771,6 +772,7 @@ export class Switchboard {
     }
     st.turn = `${id}:${++st.turnNo}`;
     st.ord.clear();
+    st.steps = 0;
     st.proc.write(userLine(text, id, { uuid }));
     this.set(id, { status: "working" });
     const rec = this.record(id);

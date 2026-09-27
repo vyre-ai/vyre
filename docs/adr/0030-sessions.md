@@ -423,9 +423,9 @@ has is a rewind to it.
 
 ## Migration
 
-In order. Steps 1 to 3 shipped behind `sessions.driver`; the default becomes `sdk` as soon as the
-full suite is green on it (days, not a long dual run), and the CLI runner then stays only for the
-window before the SDK is installed. Nothing changes for surfaces until
+In order. Steps 1 to 3 shipped behind `sessions.driver`, and the default became `sdk` once the
+full suite passed on it (27 Sep 2026); the CLI runner stays only for the window before the SDK is
+installed, and by choice. Nothing changes for surfaces until
 step 6.
 
 1. **sessions** (new `core/sessions`): the router, the Claude driver, the fake-claude test path

@@ -197,7 +197,9 @@ let spent = 0;
 const result = (ok, text, cost = 0.001) => out({ type: "result", subtype: ok ? "success" : "error_during_execution", is_error: !ok, result: text,
   total_cost_usd: (spent = Math.round((spent + cost) * 1e6) / 1e6), duration_ms: 5, num_turns: 1, stop_reason: "end_turn", session_id: session,
   usage: { input_tokens: 10, output_tokens: String(text).length, cache_read_input_tokens: 100, cache_creation_input_tokens: 50 },
-  ...(took.length ? { user_message_uuids: took } : {}) });
+  ...(took.length ? { user_message_uuids: took } : {}),
+  // An error result lists its errors, as Claude Code's does (the Agent SDK reads them).
+  ...(ok ? {} : { errors: [String(text)] }) });
 
 async function turn(prompt, uuid = null) {
   const p = String(prompt).trim();

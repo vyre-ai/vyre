@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: the Agent SDK is the default driver (ADR 0030)
+
+- `sessions.driver` defaults to `sdk`: every session Vyre starts (Chat, agents, the Capsule, the
+  phone, the planner, learning jobs) runs on the Claude Agent SDK; terminal sessions stay plain
+  `claude`. `cli` keeps the runner by choice, and sessions fall back to it while the SDK is not
+  installed yet (the box image carries it; a Mac installs it on first use). Flipped after the
+  full suite passed on the SDK driver on testbox (2551 tests: 2499 pass, 45 skipped, 2 todo;
+  the five failures were stale generated docs, a test that wrote inside VYRE_HOME, now fixed, and
+  two journey tests that hit "database is locked" under load and pass on a rerun).
+- `ask.raised` carries `tool_use_id`, so an inline ask attaches to its tool row; `thread.steered`
+  carries `step`, the tool calls the turn had finished when Claude took the words in.
+- The fake `claude`'s error results list `errors`, as Claude Code's do; the SDK reads them.
+- core/cli/screen/screen-live.test.js runs its thread outside the temp home (the floor refuses
+  writes inside VYRE_HOME before anyone is asked).
+
 #### Sessions: an API key never reaches a session's Bash
 
 - Measured against the real bundled Claude Code 2.1.283 and a fake Messages API

@@ -2,7 +2,7 @@
 // sessions: this machine's settings for the sessions Vyre starts (ADR 0030), with the defaults
 // the user approved. `sessions` in config.json overrides any of them:
 //
-//   driver        "sdk" (the Claude Agent SDK) or "cli" (core/switchboard/runner.js)
+//   driver        "sdk" (the Claude Agent SDK; the default) or "cli" (core/switchboard/runner.js)
 //   auth          "login" (Claude Code's own sign-in on this machine), "setup-token" (the vault's
 //                 claude-setup-token) or "api-key" (the vault's anthropic-api-key). The box
 //                 defaults to the setup token, the Mac to the login. An API key in the vault is
@@ -50,7 +50,9 @@ export function sessionsConfig(config) {
   const s = (config && config.sessions) || {};
   const num = (v, d) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : d);
   const env = process.env.VYRE_SESSIONS_DRIVER;
-  const driver = env === "sdk" || env === "cli" ? env : s.driver === "sdk" ? "sdk" : s.driver === "cli" ? "cli" : "cli";
+  // The Agent SDK is the default (ADR 0030, flipped once the full suite passed on it); the CLI
+  // runner stays as the fallback while the SDK is not installed yet, and by choice with "cli".
+  const driver = env === "sdk" || env === "cli" ? env : s.driver === "cli" ? "cli" : "sdk";
   return {
     driver,
     auth: ["login", "setup-token", "api-key"].includes(s.auth) ? s.auth : box ? "setup-token" : "login",
