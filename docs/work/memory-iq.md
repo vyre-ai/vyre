@@ -73,7 +73,8 @@ facts are not a project's.
   No prompt (the no-nag rule). The text is stored in `memory_me_told` and read as session `told:<id>`
   by the same rules at 0.95 (indirect claims at 0.8). In a single-valued slot it outweighs every
   older value (x0.1). A full re-read keeps it. A line with no facts is still found by its words.
-- Same gate for answer, profile and remember (personalOnly in core/memory/index.js).
+- Same gate for answer, profile and remember (personalOnly in core/memory/index.js). A bare "mcp"
+  caller is the user's own Claude Code session and passes, in any folder (27 Sep, for cc-plugin).
 
 ## Done
 - T1 eval world + harness (8c188bc). Held-out world + `--world heldout` (23d25ac).
@@ -98,9 +99,6 @@ facts are not a project's.
 ## Needs from others
 - polish-cli: the contract of the low-priority index worker. Until then extraction runs in the
   memory curator's background pass, in bounded batches that yield.
-- cc-plugin: what caller an MCP call from the person's own Claude Code session carries. Plain
-  "mcp" with no agent counts as project-scoped and is refused for answer, profile and remember.
-  about.md is built by a module (allowed), and `/vyre remember` via the CLI is allowed.
 - main/integrator: core/memory/rooms.test.js:227 fails on main's code. agents.create now needs
   presence ("Making or changing an agent needs a person"), and the test does not provide it.
 

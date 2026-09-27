@@ -186,12 +186,14 @@ test("answer: never a confident wrong answer; unknowns come back null, rivals as
 
 test("answer: the user's surfaces, their devices, modules and all-projects agents ask; a project's agent is refused", async t => {
   const { call, tools } = await world(t);
-  for (const caller of ["cli", "deck", "capsule", "local", "module:watch", "tailnet:alex@example.com", "mcp:agent:juno", "harness:agent:hal"]) {
-    const r = await call("memory.answer", { q: "who is my wife" }, caller);
+  // Bare "mcp" is the user's own Claude Code session, in whatever folder it runs.
+  for (const [caller, input] of [["cli"], ["deck"], ["capsule"], ["local"], ["module:watch"], ["tailnet:alex@example.com"], ["mcp:agent:juno"], ["harness:agent:hal"],
+    ["mcp"], ["mcp", { project_cwds: ["/home/alex/Work/harlow-site"] }]]) {
+    const r = await call("memory.answer", { q: "who is my wife", ...input }, caller);
     assert.ok(!r.error, `${caller}: ${r.error}`);
     assert.equal(r.data.answer, "Your wife is Jordan.");
   }
-  for (const [caller, input] of [["mcp:agent:kit", {}], ["mcp", {}], ["tailnet:agent:kit", {}], ["cli", { agent: "kit" }], ["mcp", { project_cwds: ["/home/alex/Work/harlow-site"] }], ["mcp:agent:nobody", {}]]) {
+  for (const [caller, input] of [["mcp:agent:kit", {}], ["mcp", { agent: "kit" }], ["tailnet:agent:kit", {}], ["cli", { agent: "kit" }], ["harness", {}], ["mcp:agent:nobody", {}]]) {
     const r = await call("memory.answer", { q: "who is my wife", ...input }, caller);
     assert.equal(r.code, "denied", `${caller} ${JSON.stringify(input)}: ${JSON.stringify(r)}`);
   }
@@ -222,6 +224,7 @@ test("profile: second-person lines that still hold, strongest first, nothing sen
   await call("memory.remember", { text: "I work at 1200 Market Street Suite 4." });
   assert.ok(!(await call("memory.profile", { limit: 50 })).data.facts.some(f => /1200/.test(f.text)));
   assert.equal((await call("memory.profile", {}, "mcp:agent:kit")).code, "denied");
+  assert.ok((await call("memory.profile", {}, "mcp")).data.facts.length > 0, "the user's own Claude Code session");
 });
 
 test("remember: told outright, kept at once, answered at once, no prompt", async t => {
@@ -253,7 +256,11 @@ test("remember: told outright, kept at once, answered at once, no prompt", async
   await call("memory.curate", { full: true });
   assert.equal((await ask("who is my brother")).answer, "Your brother is Leo.");
 
-  for (const caller of ["mcp:agent:kit", "mcp", "tailnet:agent:kit"]) assert.equal((await call("memory.remember", { text: "My brother is Max." }, caller)).code, "denied", caller);
+  for (const caller of ["mcp:agent:kit", "harness", "tailnet:agent:kit"]) assert.equal((await call("memory.remember", { text: "My brother is Max." }, caller)).code, "denied", caller);
+  // The user's own Claude Code session (/vyre remember through the plugin) keeps a fact.
+  const cc = await call("memory.remember", { text: "My sister Ana lives in Austin." }, "mcp");
+  assert.ok(!cc.error, cc.error);
+  assert.match(String((await ask("who is my sister")).answer), /Ana/);
   assert.match(String((await call("memory.remember", { text: "  " })).error), /needs the fact/);
 });
 

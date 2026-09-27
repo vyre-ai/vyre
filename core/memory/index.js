@@ -411,9 +411,11 @@ export default {
      * Personal facts are the user's, not a project's: the user's surfaces, their tailnet devices,
      * modules, and the assistant or an agent granted every project. A project's agent is refused.
      */
+    // A bare "mcp" caller is the user's own Claude Code session (an agent's thread says
+    // mcp:agent:<name>), so it asks about the user's life as the user's surfaces do.
     const personalOnly = async (input, caller, name) => {
       const r = await reach(input.agent, caller);
-      if (r.agent ? !r.all : !reader(caller)) {
+      if (r.agent ? !r.all : !(reader(caller) || String(caller) === "mcp")) {
         throw denied(r.agent ? `personal facts are not a project's: ${r.agent} is granted only some projects` : `${name} is for the user's own surfaces and agents granted every project, not ${plain(caller || "an unnamed caller", 60)}`);
       }
     };
