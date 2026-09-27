@@ -189,11 +189,17 @@ export const callerKind = caller => {
  * review, 2026-09-28). One parser here, so a fix to it reaches every caller at once and a new
  * module never re-derives it. This only says what the caller *claims*; the daemon's own socket
  * layer is what actually refuses an unvouched claim (ADR 0031's agent-claim work).
+ *
+ * A claim with no name or an odd one ("cli agent:", "cli agent:???") still counts as a claim: it
+ * must never come back as "" or another value every caller's `if (claim)` treats as no claim at
+ * all, which would make an empty-named claim fully trusted instead of refused (e2e review,
+ * 2026-09-28: the daemon's own socket vouch fails such a claim today, but an in-process caller
+ * does not go through that layer, so this helper has to fail closed on its own).
  */
 export const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
 export const agentClaim = caller => {
   const m = AGENT_CLAIM.exec(String(caller ?? ""));
-  return m ? m[1] : null;
+  return m ? m[1] || "(unnamed)" : null;
 };
 
 /**

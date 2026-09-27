@@ -342,9 +342,18 @@ test("modules: agentClaim finds the agent name behind any transport shape, or nu
   for (const [caller, name] of [
     ["mcp:agent:kit", "kit"], ["harness:agent:kit", "kit"], ["cli:agent:kit", "kit"],
     ["module:agent:kit", "kit"], ["tailnet:agent:kit", "kit"], ["agent:kit", "kit"],
+    ["cli agent:kit", "kit"], ["mcp agent:kit", "kit"],
   ]) assert.equal(agentClaim(caller), name, caller);
   for (const caller of ["cli", "tailnet:alex@example.com", "module:notes", "mcp", "", null, undefined]) {
     assert.equal(agentClaim(caller), null, String(caller));
+  }
+  // An empty or odd name still counts as a claim (e2e review, 2026-09-28): every caller checks
+  // `if (agentClaim(...))`, and "" is falsy, so a claim with no name must never come back as ""
+  // or it reads as no claim at all and the caller is trusted fully instead of refused.
+  for (const caller of ["cli agent:", "mcp:agent:", "agent:"]) {
+    const claim = agentClaim(caller);
+    assert.ok(claim, `${caller} -> ${JSON.stringify(claim)}, must be truthy`);
+    assert.notEqual(claim, "", caller);
   }
 });
 
