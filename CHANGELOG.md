@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sign in on this device: the Deck's side of person sessions
+
+- A box that answers `person_session_required` (a tailnet browser with no `__Host-vyre_person`
+  cookie) now gets a sheet, "Sign in on this device": one passkey tap runs
+  `presence.person.start` and the call that asked goes again exactly once. "Not now" fails it as
+  before. Two calls at once share one sheet. deck/js/person.js; the hook in deck/js/api.js is
+  `setPersonHandler`, installed by app.js. A box without person sessions never asks.
+- Settings, Security: "Signed-in devices" from `presence.person.sessions` (browser or app, when
+  signed in and last used, "This device"), a Revoke for each and "Sign out here"
+  (POST /v1/person/end). Shows nothing on a box without the tool.
+- After a passkey is made on this device (Settings, the phone card, the first-passkey page), the
+  Deck signs in once too, quietly, when the box has `presence.person.status`.
+- The line under Send adds "confirmed 6 min ago" when the item's presence carries `since`.
+
 #### The Deck's palette comes from the generated tokens
 
 - The Deck, onboarding and the passkey page link /css/tokens.css (made by scripts/gen-tokens from

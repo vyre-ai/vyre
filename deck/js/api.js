@@ -63,10 +63,31 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
  *   report sent as the app goes to the background).
  */
 export async function call(name, input = {}, opts = {}) {
+  // The person session (tailnet): a box that wants one answers person_session_required. With a
+  // handler set (js/person.js, from app.js), it asks the person to sign in on this device, and
+  // the call is retried exactly once after that; a refused sign-in rejects as before. No handler:
+  // the error goes to the caller, as it always did. presence.person.* never waits on a sign-in,
+  // since signing in is one of them.
+  try { return await once(name, input, opts); } catch (e) {
+    if (!personHandler || /** @type {any} */ (e)?.code !== "person_session_required" || name.startsWith("presence.person.")) throw e;
+    await personHandler(/** @type {ApiError} */ (e));
+    return once(name, input, opts);
+  }
+}
+
+/** @type {((e: ApiError) => Promise<unknown>) | null} */
+let personHandler = null;
+/** Who answers person_session_required: resolve to retry the call once, reject to fail it. null: nobody.
+ * @param {((e: ApiError) => Promise<unknown>) | null} fn */
+export function setPersonHandler(fn) { personHandler = fn || null; }
+
+/** One call, as call() makes it, without the person-session retry.
+ * @param {string} name @param {Record<string, any>} input @param {{ presence?: boolean | "asked", keepalive?: boolean }} opts */
+async function once(name, input, opts) {
   if (opts.presence === "asked") {
-    try { return await call(name, input, {}); } catch (e) {
+    try { return await once(name, input, {}); } catch (e) {
       if (/** @type {any} */ (e)?.code !== "presence_required") throw e;
-      return call(name, input, { presence: true });
+      return once(name, input, { presence: true });
     }
   }
   if (!opts.presence) return post(name, input, {}, opts.keepalive);
@@ -203,6 +224,15 @@ export async function callWithCode(name, input, code) {
   } catch { throw new ApiError("offline", "vyred did not answer", name); }
   if (body && "data" in body && !body.error) return body.data;
   throw new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
+}
+
+/** Sign this device out: POST /v1/person/end, which clears the person session cookie. Resolves
+ * true when the box said yes; false when it did not (an old box has no such path). */
+export async function endPerson() {
+  try {
+    const res = await fetch("/v1/person/end", { method: "POST", credentials: "same-origin", headers: { "x-vyre-caller": "deck", ...headers } });
+    return res.ok;
+  } catch { return false; }
 }
 
 /** @param {string} tool @param {Record<string, any>} input @returns {Promise<string>} the x-vyre-presence header value */

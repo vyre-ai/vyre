@@ -25,6 +25,7 @@ import "./phone-setup.js";
 import { isMac, machineChip } from "./machine.js";
 import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
+import { installPersonHandler } from "./person.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -665,6 +666,8 @@ window.addEventListener("deck:navigate", route);
 // for it at most a moment and never leaves the phone on a blank screen: a late answer that says
 // there is no owner yet still sends the page to the onboarding.
 (async () => {
+  // A box that asks for a person session gets a sign-in sheet, and the call goes again once.
+  installPersonHandler();
   const status = attempt("onboard.status");
   const first = await Promise.race([status, new Promise(r => setTimeout(r, 800, null))]);
   const toOnboard = (/** @type {any} */ st) => st?.data && st.data.owner === false && !fixturesOn;

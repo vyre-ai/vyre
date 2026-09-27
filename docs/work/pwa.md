@@ -50,6 +50,11 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
    line says the phone is offline. Turn it off and tap Retry: the line goes and the screen fills.
 
 ## Done
+- Person sessions, Deck side (e2e's contract, box side not on this branch; feature-detected):
+  js/person.js (signIn, needSignIn sheet, installPersonHandler, signInAfterEnroll, signOutHere),
+  api.js setPersonHandler + endPerson, Settings Security "Signed-in devices", sign-in after a
+  passkey is enrolled (phone-setup enrollPasskey, onboard/passkey), "confirmed N min ago" on the
+  cover line. Tests: deck/js/person.test.js (6).
 - 2e5d78a merge main into work/pwa (CHANGELOG kept both sides, world.js kept breach: off).
 - Shell (deck/index.html, manifest.webmanifest, css/deck.css, js/pwa.js): standalone manifest with
   id, maskable icons, shortcuts (Now, Chat, Find); Apple touch icon (full bleed, 180); launch
@@ -172,6 +177,9 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
      Reconnecting pill, open offline from cache.
   - Asked the lead to bring e2e, tailnet and app-design branches to main before 1 to 3.
 
+- Person sessions (e2e's contract) and the /pair screen for `vyre phone add --tailscale-only`:
+  see Done. Waiting on e2e's box side to try it for real.
+
 ## Next
 - The push subscription when /app/ becomes /: a subscription belongs to the service worker
   registration that made it, so the app's (scope /app/) and the Deck's (scope /) are two, and
@@ -210,6 +218,13 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - mobile: told the tool names, push payload and tab order so the native apps match.
 
 ## Changed contracts
+- deck/js/api.js: `setPersonHandler(fn)`. call() hands `person_session_required` (never for
+  presence.person.*) to fn; fn resolving retries the call exactly once, rejecting fails it. No
+  handler: the error as before. js/person.js installs it (app.js). ON MERGE with e2e's stopgap
+  (silent signIn() and retry on 401 in api.js, exporting signIn, firing "deck:person"): this
+  handler replaces the stopgap's silent retry; keep e2e's signIn name, which person.js exports
+  with the same meaning (it fires "deck:person" too). api.js also exports `endPerson()`.
+- presence items: the Deck reads optional `presence.since` (ms) for "confirmed N min ago".
 - /app/ serves apps/app/dist (SPA), /app/sw.js and /app/manifest.webmanifest are made by vyred
   from dist/precache.json (core/daemon/app.js, app-sw.js). /app is a 301 to /app/; a missing dist
   is 404 `no_app`; /app/_expo/static/* is immutable, the rest no-cache; a missing /app/_expo/ file

@@ -174,4 +174,5 @@ test("cover line: the device's own word and the time, or nothing", async () => {
   assert.equal(coverLine({ required: true, covered: false }, "Face ID"), "");
   assert.equal(coverLine({ required: false }, "Face ID"), "");
   assert.equal(coverLine(null, "Face ID", until + 1), "", "past its time, nothing");
+  assert.equal(coverLine({ required: true, covered: true, since: Date.now() - 6 * 60_000 }, "Face ID"), `Face ID covers sends until ${clock(until)}, confirmed 6 min ago`);
 });
