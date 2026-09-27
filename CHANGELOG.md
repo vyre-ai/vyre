@@ -93,6 +93,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   as npm makes it, and the tests check the unpacked files are fresh (`core/names/system.test.js`).
   Found by box-deploy.
 
+#### A model's shell cannot answer or approve as the person, even as "cli"
+
+- On vyred's socket a caller label is only a claim. For a person-only tool (core/presence
+  PERSON_ONLY: threads.answer, term.open, term.attach, and now agents.create, agents.update,
+  gate.revise, gate.reject), vyred asks the kernel which process connected (LOCAL_PEERPID on
+  macOS, SO_PEERCRED on Linux, read by a one-line perl) and walks its ancestry. Under a running
+  `claude`, or under a process vyred runs a thread in, the call is refused with `denied`, never
+  asked. Processes above vyred itself do not count. A pid vyred cannot read is refused.
+- threads.answer refuses an answer from the session that raised the ask.
+- `core/daemon/peer.js` (new), `core/daemon/index.js`, `core/presence/index.js`, internal
+  `threads.pids` in `core/switchboard`; test/peer.test.js (a fake `claude` parent).
+
 #### Every ask and held item says what answering it takes
 
 - `threads.asks`, `threads.get`'s asks, `gate.held` and `gate.get` carry

@@ -1003,7 +1003,12 @@ export default {
       { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str,
         answers: { type: "object", additionalProperties: { type: "string" } },
         scope: { type: "string", enum: ["project"], description: "With always: allow this tool from now on in the thread's project only (the ask's always_project)." } } },
-      async (i, { caller }) => sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope),
+      async (i, { caller, thread }) => {
+        // A call vyred traced to a session never answers that session's own ask, whoever it says it is.
+        const a = sb.asks.get(i.ask);
+        if (a && thread && a.thread === thread) throw Object.assign(new Error("an ask is answered by the person, not from the session that raised it"), { code: "denied" });
+        return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope);
+      },
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
       // Deck and the Capsule claim their own names over HTTP, so they are listed by name.
@@ -1075,6 +1080,11 @@ export default {
       description: "The live thread of this agent, or this bound session, that holds this key; or null.", internal: true,
       input: { type: "object", required: ["key"], properties: { agent: str, session: str, key: str } },
       run: async i => ({ thread: i.agent ? sb.vouch(i.agent, i.key) : i.session ? sb.sessions.vouch(i.session, i.key) : null }),
+    });
+    ctx.tool("threads.pids", {
+      description: "The processes Claude sessions run in: vyred's own thread children and every live bound session. vyred refuses a person-only call from under any of them.", internal: true,
+      input: { type: "object", properties: {} },
+      run: async () => ({ pids: [...new Set([...sb.ours(), ...sb.sessions.pids()])] }),
     });
     // The SessionStart hook binds its session to the claude process it runs in (sessions.js).
     tool("threads.bind", "SessionStart: bind this session to its claude process, for a key the MCP server sends to say which session a call is from.",

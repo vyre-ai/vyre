@@ -46,10 +46,13 @@ export const HUMAN_ONLY = new Set([
 /**
  * The person's own actions that ask no proof, because the owner does them on their own screens and
  * Vyre does not nag (ADR 0024): answering a session's ask and opening a terminal. The tools' caller
- * allowlists keep models, agents and guests out, and the harness floor refuses a model's shell
- * that names one of these, as it does the list above.
+ * allowlists keep models, agents and guests out, the harness floor refuses a model's shell
+ * that names one of these, as it does the list above, and vyred refuses a socket call to one from
+ * any process under a `claude` or a thread's process (core/daemon/peer.js).
  */
-export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"]);
+export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach",
+  // Making and changing agents, and changing or discarding a held draft: no proof, and never from a model's shell.
+  "agents.create", "agents.update", "gate.revise", "gate.reject"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
 
