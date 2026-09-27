@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The install cap is 20 MB for 0.1.0
+
+- Batch 4 installs 16.6 MB (vyre.tgz 4.2 MB), over release-check's 16 MB. The cap is 20 MB for
+  0.1.0; moving the generated docs index and reference out of the package is the 0.1.1 task.
+
+#### The app perf job drags the approve swipe
+
+- The Now row's approve swipe is pointer-driven now (mobile 503414d4), so scrolling its strip did
+  nothing. .github/scripts/app-perf.mjs drags each now-row-swipe 130 px right with the mouse, which
+  commits, and stops at the first approve.collapse sample.
+
 #### Four Capsule tests hardened for loaded CI runners
 
 - The pause test rests 400 ms, the stream test holds off ask-on-pause, the queued-session test
