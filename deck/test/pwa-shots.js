@@ -130,6 +130,12 @@ const SCREENS = [
   { name: "onboard-history", path: "/onboard#history", wait: 3000, noShell: true },
   { name: "onboard-devices", path: "/onboard#devices", wait: 3000, noShell: true },
   // No assistant yet (onboarding's first step skipped): agents.list answers without juno.
+  // The Glass mini card (js/glass-mini.js) from a stubbed sight: kit's computer is running.
+  { name: "now-glass-mini", path: "/now", wait: 3000, stub: {
+      "sight.targets": { targets: [{ target: "agent:kit", kind: "agent", label: "kit", live: true }] },
+      "sight.steps": { steps: [{ target: "agent:kit", action: "click", summary: "Clicked Compose in Mail", ok: true, at: 0 }] },
+      "sight.frame": { target: "agent:kit", image: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0ODAiIGhlaWdodD0iMzAwIj48cmVjdCB3aWR0aD0iNDgwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzJiMjkyNiIvPjxyZWN0IHg9IjI0IiB5PSIyNCIgd2lkdGg9IjQzMiIgaGVpZ2h0PSIzNiIgcng9IjYiIGZpbGw9IiMzYTM3MzMiLz48dGV4dCB4PSI0MCIgeT0iNDgiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmaWxsPSIjZjFlZWU2Ij5NYWlsOiBOZXcgbWVzc2FnZSB0byBkYW5hQGhhcmxvd2xlZ2FsLmNvbTwvdGV4dD48L3N2Zz4=", mime: "image/svg+xml", maxWidth: 480, at: 0 } },
+    script: `await waitFor('.gm-card img', 8000); if (!document.querySelector('.gm-card[aria-label="Open Glass for kit\\'s computer"]')) throw new Error('no card for kit');` },
   { name: "no-assistant-now", path: "/now", stub: { "agents.list": [{ name: "kit", kind: "agent", projects: ["harlow-legal"], status: "idle" }] } },
   { name: "no-assistant-agents", path: "/agents", stub: { "agents.list": [{ name: "kit", kind: "agent", projects: ["harlow-legal"], status: "idle" }] } },
   // A cold launch from the home screen opens where the user left off, not at start_url, when
