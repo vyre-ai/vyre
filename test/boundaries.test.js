@@ -2,6 +2,8 @@
 // Boundaries: every part talks to another part only through the registry (ctx.call, tools) and
 // events, never by importing its files (team rule "Modularity", 2026-09-27). The kernel is the
 // exception: core/config, store, events, modules, presence and daemon may be imported by anyone.
+// So is lib/<name>, shared pure code with no feature state (ADR 0033): any part may import a lib,
+// and a lib may import only the kernel and other libs, never a feature.
 //
 // A part is core/<name> (a folder, or a single file such as core/quiet.js), local/<name> or
 // modules/<name>. This scans every runtime .js/.mjs/.cjs file under those trees (tests, testing/
@@ -19,7 +21,7 @@ import { SCRATCH } from "./scratch.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const KERNEL = new Set(["config", "store", "events", "modules", "presence", "daemon"].map(n => "core/" + n));
-const TREES = ["core", "local", "modules"];
+const TREES = ["core", "local", "modules", "lib"];
 
 /**
  * The frozen exceptions: "from -> to" with the files `from` imports, why, and what it becomes
@@ -117,7 +119,7 @@ export function scan(root = ROOT) {
       if (!spec.startsWith(".")) continue;
       const target = path.relative(root, path.resolve(path.dirname(f), spec)).split(path.sep).join("/");
       const to = partOf(target);
-      if (!to || !from || to === from || KERNEL.has(to)) continue;
+      if (!to || !from || to === from || KERNEL.has(to) || to.startsWith("lib/")) continue;
       const k = `${from} -> ${to}`;
       if (!edges.has(k)) edges.set(k, new Set());
       /** @type {Set<string>} */ (edges.get(k)).add(target);
@@ -135,6 +137,12 @@ test("boundaries: parts import only the kernel, or a frozen exception", () => {
     for (const t of targets) if (!allowed.files.includes(t)) problems.push(`${edge} now also imports ${t}: not frozen`);
   }
   assert.deepEqual(problems, []);
+});
+
+test("boundaries: a lib imports only the kernel and other libs, never a feature", () => {
+  const bad = [...scan()].filter(([edge]) => edge.startsWith("lib/")).map(([edge, t]) => `${edge} (${[...t].join(", ")})`);
+  assert.deepEqual(bad, []);
+  assert.ok(Object.keys(ALLOW).every(edge => !edge.startsWith("lib/")), "no lib edge may be frozen");
 });
 
 test("boundaries: the allowlist only shrinks (an edge nothing uses comes off)", () => {
@@ -161,11 +169,12 @@ test("boundaries: the scan sees static, dynamic and require imports, and skips t
     w("core/a/index.js", `import { x } from "../b/x.js";\nconst y = await import("../c/y.js");\nimport "../store/index.js";\n`);
     w("core/a/old.cjs", `const z = require("../d/z.js");\n`);
     w("core/a/a.test.js", `import { q } from "../e/q.js";\n`);
-    w("local/l/index.js", `export { v } from "../../core/f/v.js";\n`);
+    w("local/l/index.js", `export { v } from "../../core/f/v.js";\nimport { t } from "../../lib/tailnet/index.js";\n`);
+    w("lib/tailnet/index.js", `import { c } from "../../core/config/index.js";\nimport { r } from "../retry/index.js";\nimport { n } from "../../core/names/x.js";\n`);
     const edges = Object.fromEntries([...scan(root)].map(([k, v]) => [k, [...v]]));
     assert.deepEqual(edges, {
       "core/a -> core/b": ["core/b/x.js"], "core/a -> core/c": ["core/c/y.js"], "core/a -> core/d": ["core/d/z.js"],
-      "local/l -> core/f": ["core/f/v.js"],
+      "local/l -> core/f": ["core/f/v.js"], "lib/tailnet -> core/names": ["core/names/x.js"],
     });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
