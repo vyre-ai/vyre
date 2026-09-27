@@ -257,6 +257,13 @@ run check.sh + thread.sh.
 - native-core ac34c322: my 3 MEDIUMs fixed (98412a66). Hub step 1 OK; MEDIUM secret non-store keys
   would go to hub.json in clear (and backup); LOW same-uid edits of plain settings, file rev lags.
 
+- transcriptFolders (lead OK, memory-iq agreed): core/config/dialogs.js, realpath both ways,
+  switchboard reads through it; e2e-noclaude 6faa06a3; tests running when testbox load allows. Then
+  send memory-iq the sha (recall's readable() becomes a wrapper).
+- cohesion a4efd0d8: fixed; one nit (callerKind strips agent labels: "cli agent:kit" names a thread).
+- connectors 7e648545: HIGH + MEDIUMs fixed, OK once tests run; build firstParty(name) on
+  native-core's firstParty(dir).
+
 Split with sessions 501ca3fc (lead, 27 Sep): image from 501ca3fc merged with main 53cd1326.
 check.sh 30/30. New scripts/e2e-split/thread.sh (vyred starts a session through the spawner, CLI
 runner, VYRE_CLAUDE_BIN = a stand-in in /work): 6/7. FAIL `vyre call` inside a session: callAsPerson
