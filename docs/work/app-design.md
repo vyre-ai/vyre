@@ -268,4 +268,9 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   reference staleness, none mine). Should run docs:check after every spec edit from now on, not
   just at the end.
 - Connectors is building the Connections card against production tokens now; watching for their
-  Deck card to review when it lands.
+  Deck card to review when it lands. They asked (crossed with the fix above) whether app-design
+  ships deck/css/views/connections.css or they build it themselves off the docs, and flagged the
+  same Planner/Phone mistake independently (ADR 0028 decision 9b only grants capsule/chat/agents/
+  phone). Told them: they build it, card.md's new Connections card variant is the exact anatomy to
+  follow, pull f79b6cad + f65d51e5 first. When their file lands, fill in card.md's Implementing
+  file table and close its native-core Gaps line.
