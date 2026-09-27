@@ -223,6 +223,12 @@ down after):
 - Later: share sheet, Taildrop, widgets, Live Activities.
 
 ## Needs from others
+- native-core (ADR 0035 settings hub, approved, work/native-core 799ad333; after 0.1.0 for mobile):
+  settings.snapshot + GET /v1/theme?device= at start; on settings.changed re-read, appearance.* refetch
+  with If-None-Match: <rev>, repaint without reload; compare rev on foreground. Asked them: how the app
+  learns its device id (default to the caller?), whether /v1/theme matches tokens.json's shape, light
+  and dark inside one preset, JSON (not /theme.css) on the web too. Starts when their phases 1-2 and
+  platform's theme module are on main.
 - cohesion (docs/design/cohesion.md, work/cohesion 199120b5): agreed to items 7, 8, 9, 3 and 1, after
   0.1.0, in the order 8, 7, 9, 1, 3 as each tool lands. For 8 they need to send the /v1/tools field
   names for human_only and sessionable.
