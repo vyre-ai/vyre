@@ -11,7 +11,7 @@
 // "question") is its own kind here, answered allow with `answers`, or deny to decline.
 // Only Send proves presence; every answer is the owner's own act (the no-nag rule).
 
-import { attempt, queue } from "./api.js";
+import { attempt, queue, snapshot } from "./api.js";
 
 /**
  * @typedef {{ label: string, decision: string, primary?: boolean }} Option
@@ -31,9 +31,29 @@ const listeners = new Set();
 /** gate.get answers, by id: the content of a held item does not change while it is held. */
 const got = new Map();
 
+/** Has a load from the box finished? Then a snapshot never replaces what it said. */
+let fresh = false;
+
+/**
+ * The list as this device last saw it (api.js snapshot), at once, before the box answers, so the
+ * phone's Now opens offline (ADR 0029 R3). Asks and questions only: what is held at the Gate is
+ * never kept on the device (the service worker's rule for gate.* reads), so drafts appear when
+ * the box answers. Resolves true when it drew something.
+ */
+export async function restore() {
+  const s = await snapshot.get("needs");
+  if (fresh || cache.length || !s || !Array.isArray(s.value) || !s.value.length) return false;
+  cache = s.value;
+  tell();
+  return true;
+}
+const keep = () => { void snapshot.set("needs", cache.filter(n => n.kind !== "draft")); };
+
 /** Load both lists. Missing tools count as nothing held; errors are kept for the views. */
 export async function load() {
   const [held, asks, threads, projects] = await Promise.all([attempt("gate.held"), attempt("threads.asks"), attempt("threads.list"), attempt("projects.list")]);
+  // The box is out of reach: the list keeps what it last showed, never goes empty (R3).
+  if (held.error?.code === "offline" && asks.error?.code === "offline") return { items: cache, errors: { gate: held.error, threads: asks.error } };
   const thread = new Map((threads.data || []).map(t => [t.id, t]));
   const project = new Map((projects.data?.projects || []).map(p => [p.slug, p]));
   const names = (/** @type {any} */ x) => {
@@ -87,6 +107,8 @@ export async function load() {
   }
   out.sort((x, y) => x.at - y.at);
   cache = out;
+  fresh = true;
+  if (!held.error && !asks.error) keep();
   tell();
   return { items: out, errors: { gate: held.error || null, threads: asks.error || null } };
 }
@@ -120,6 +142,7 @@ export async function answer(n, opt, edited) {
   }
   cache = cache.filter(x => x.id !== n.id);
   got.delete(n.id);
+  keep();
   tell();
 }
 

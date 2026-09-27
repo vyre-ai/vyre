@@ -672,6 +672,8 @@ window.addEventListener("deck:navigate", route);
 (async () => {
   // A box that asks for a person session gets a sign-in sheet, and the call goes again once.
   installPersonHandler();
+  // What needed the user last time, from this device, while the box is asked (ADR 0029 R3).
+  void needs.restore();
   const status = attempt("onboard.status");
   const first = await Promise.race([status, new Promise(r => setTimeout(r, 800, null))]);
   const toOnboard = (/** @type {any} */ st) => st?.data && st.data.owner === false && !fixturesOn;

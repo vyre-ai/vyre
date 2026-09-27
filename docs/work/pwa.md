@@ -125,6 +125,16 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   `PHONES=0` drops the phones). Stop the world and Chrome after (pids in /tmp/pwa-*.pid).
 
 ## Doing (resumed after logout 3, 2026-09-27)
+- ADR 0029 on the Deck, done (2026-09-27): cdf65f1 stream on follow() + vyred serves
+  /core/resilience/*.js; 8436536 Idempotency-Key on writes; a593fda outbox for sends, answers,
+  Discard, planner add/done (Gate Send with a passkey never queued); a86734c Reconnecting pill;
+  step 5 snapshot cache for Now's needs and Agents. Skipped: Chats (already paints from its own
+  localStorage snapshot, chat/index.js; not moved to cacheStore), Now's "working" rows (threads.get
+  transcripts, not kept by design), planner.snooze and firing Done (not asked; attempt as before),
+  agents.* writes. The saved stream cursor is written, not read at start: views load fresh state
+  through tools, so a cold start follows from since=latest; the cursor rides with each snapshot.
+  Tests on testbox: 212 targeted (deck/test, deck/js, deck/chat, core/resilience), 211 pass, 1
+  skipped, 0 fail; test/daemon.test.js route tests 2/2; test/onboard.test.js 15/15.
 - New scope from the lead: Direction A is the design of record (one app for web, iOS and Android,
   app-design's docs/design/one-app/DIRECTION.md). On iPhone the default is the installed web app,
   so web-app quality is the iPhone app. mobile leads the one-app code (ADR 0027); pwa owns the web
@@ -272,6 +282,8 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   `write`. IndexedDB database "vyre-resilience", object store per host.
 - The phone's offline line is the Reconnecting pill (js/reconnect.js), driven by `deck:stream`
   instead of `deck:reach` (which api.js still fires). pwa.test.js needed no wording change.
+- deck/js/api.js `snapshot.get/set(key)` (cacheStore per host), deck/js/needs.js `restore()`
+  (app.js calls it at start); needs.load() keeps its list when both reads are offline.
 
 ## Perf
 - No timers or polls added. The offline line rechecks only on `online`, on becoming visible while

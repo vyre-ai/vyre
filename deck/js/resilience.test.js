@@ -190,4 +190,32 @@ test("outbox: a write that needs a passkey is never queued; offline it fails at 
   assert.equal(tools("gate.approve").length, 1, "not replayed: the proof was for that moment");
 });
 
+test("snapshot: Now opens from what this device last saw; nothing held at the Gate is kept; offline keeps the list", async () => {
+  box = url => {
+    const t = url.split("/v1/tools/")[1];
+    if (t === "gate.held") return { status: 200, body: { data: [{ id: "g7", kind: "send", via: "gmail", to: "kit@example.com", summary: "Harlow Legal invoice", at: 1 }] } };
+    if (t === "gate.get") return { status: 200, body: { data: { draft: { body: "the words of the held draft" } } } };
+    if (t === "threads.asks") return { status: 200, body: { data: [{ id: "a7", tool: "Bash", command: "npm test", at: 2, thread: "t1" }] } };
+    return { status: 200, body: { data: [] } };
+  };
+  const needs = await import("./needs.js");
+  assert.deepEqual((await needs.load()).items.map(n => n.id), ["g7", "a7"]);
+  await tick();
+  const raw = kept.get("vyre-resilience:localhost:4747:cache:needs");
+  assert.ok(raw, "kept on the device (localStorage here; IndexedDB in a browser)");
+  assert.deepEqual(JSON.parse(raw).value.map((/** @type {any} */ n) => n.id), ["a7"]);
+  assert.doesNotMatch(raw, /held draft|Harlow Legal invoice/);
+
+  // A cold start: another page load, the box not asked yet.
+  const cold = await import("./needs.js?cold");
+  /** @type {string[][]} */ const heard = [];
+  cold.watch((/** @type {any[]} */ list) => heard.push(list.map(n => n.id)));
+  assert.equal(await cold.restore(), true);
+  assert.deepEqual(heard, [["a7"]]);
+  box = () => "down";
+  assert.deepEqual((await cold.load()).items.map(n => n.id), ["a7"], "offline: the list stays");
+  assert.deepEqual(cold.current().map(n => n.id), ["a7"]);
+  assert.equal(await cold.restore(), false, "a snapshot never replaces a list already there");
+});
+
 after(() => api.stopEvents());

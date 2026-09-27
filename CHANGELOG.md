@@ -33,6 +33,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   once the box has been gone 60 s (one timer, no interval), "This phone is offline." without a
   network. Retry reconnects now. The box coming back no longer re-runs the router (which scrolled
   the page to the top): the stream replays what was missed.
+- Open offline from the cache (R3): Now's needs list and the Agents list paint at once from what
+  this device last saw (web.js cacheStore, IndexedDB), then the box's answer replaces it and is
+  kept. Only asks and questions are kept, never what is held at the Gate. Out of reach, both keep
+  their last contents instead of going empty. Chats already opened from its own snapshot.
 
 #### /pair: finishing `vyre phone add --tailscale-only` on the phone
 

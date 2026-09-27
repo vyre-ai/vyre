@@ -18,7 +18,7 @@
 // (core/daemon), and in Node the repo's own files, so there is one copy.
 
 import { follow } from "../../core/resilience/stream.js";
-import { open, cursorStore, lifecycle, idbStore } from "../../core/resilience/web.js";
+import { open, cursorStore, cacheStore, lifecycle, idbStore } from "../../core/resilience/web.js";
 import { outbox } from "../../core/resilience/outbox.js";
 import { backoff } from "../../core/resilience/backoff.js";
 
@@ -486,6 +486,22 @@ function startStream() {
   getOutbox();
   unwire = lifecycle(stream, { outbox: { kick: () => { void outboxReady?.then(o => o.kick()); } } });
 }
+
+/**
+ * What each view last showed, per box (web.js cacheStore, ADR 0029 R3), so the phone opens from it
+ * offline: get(key) is { value, at, cursor } or null; set(key, value) keeps it with the stream's
+ * cursor. Lists only (Now's needs, Agents), never transcripts or anything held at the Gate.
+ */
+export const snapshot = (() => {
+  /** @type {ReturnType<typeof cacheStore> | null} */ let s = null;
+  const store = () => (s ??= cacheStore(BOX));
+  return {
+    /** @param {string} key */
+    get: key => store().get(key),
+    /** @param {string} key @param {any} value */
+    set: (key, value) => store().set(key, value, { cursor: stream?.cursor ?? null }),
+  };
+})();
 
 /** Reconnect now (the pill's Retry): a no-op while the page is hidden or before any view listens. */
 export function kick() { stream?.kick(); }
