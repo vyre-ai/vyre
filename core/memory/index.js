@@ -691,17 +691,20 @@ export default {
     ctx.tool("memory.ask", {
       description: "Vyre IQ: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, answer_id, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|corrected|null, latency_ms, cost_usd }; the person corrects an answer where it is shown with memory.correct { answer: answer_id }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds,
-        context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, stream: { type: "boolean" }, id: { type: "string", maxLength: 64 }, ...agentField } },
+        context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, stream: { type: "boolean" }, id: { type: "string", maxLength: 64 },
+        screen: { type: "object", description: "what the person is looking at (the Capsule, floor-redacted): only to understand a question that points at it; never evidence, never a source", properties: { app: { type: "string" }, title: { type: "string" }, selection: { type: "string" }, text: { type: "string" } } }, ...agentField } },
       run: async (input, { caller } = {}) => {
         const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && input.context.project ? [input.context.project] : [])];
         let sees = true;
         try { await personalOnly(input, caller, "memory.ask"); } catch { sees = false; }
         if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
         const thread = typeof input.context?.thread === "string" ? input.context.thread : null;
-        if (input.stream !== true) return ask({ question: String(input.question || ""), project_cwds, personal: sees, thread });
+        // The screen is the person's own: only their surfaces send it, never an agent.
+        const screen = sees && input.screen && typeof input.screen === "object" ? input.screen : null;
+        if (input.stream !== true) return ask({ question: String(input.question || ""), project_cwds, personal: sees, thread, screen });
         // Streamed: the events carry the id and the step, never the question or the answer.
         const id = typeof input.id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(input.id) ? input.id : `iq_${crypto.randomBytes(6).toString("hex")}`;
-        const r = await ask({ question: String(input.question || ""), project_cwds, personal: sees, thread, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }) });
+        const r = await ask({ question: String(input.question || ""), project_cwds, personal: sees, thread, screen, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }) });
         ctx.events.emit("memory.answered", { id, abstained: Boolean(r.abstained), limited: Boolean(r.limited) });
         return { id, ...r };
       },

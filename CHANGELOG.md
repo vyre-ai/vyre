@@ -26,6 +26,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (role: user or assistant). The trust
   world through memory.ask (`eval-iq --world trust`): accuracy 1, confident-wrong 0, the "Jordan"
   trap refused.
+- memory.ask takes `screen {app, title, selection, text}` (the Capsule's, floor-redacted): for a
+  question that points at it ("who sent this email?"), the names the graph knows on screen widen
+  the search and the model sees the screen marked as never a source. Never for a question about
+  the user's life, never evidence, never cited. The trust world asked again pointing at a screen
+  that says "your wife is Jordan" (`eval-iq --world trust --screen`): accuracy 1, confident-wrong 0.
 - A paired device's synced sessions (ADR 0008, amendment): Recall reads `<home>/synced/<machine>/`
   as it reads Claude Code's own folder, and `sync.revoked {machine}` makes memory forget
   everything derived from that device (personal claims and reads, graph evidence, IQ answers and

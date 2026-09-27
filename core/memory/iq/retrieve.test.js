@@ -67,3 +67,15 @@ test("retrieve: personal names widen a question only for a caller that may see t
   assert.deepEqual((await r({ question: "when did my wife move the demo", personal: true })).expanded, ["Noor"]);
   assert.deepEqual((await r({ question: "when did my wife move the demo" })).expanded, []);
 });
+
+test("retrieve: names the graph knows on the screen widen the search; the screen text itself is not searched", async () => {
+  const seen = [];
+  const graph = {
+    phrases: () => ({ phrases: new Map([["priya shah", [{ node: "name:Priya Shah", weight: 1, via: "label" }]]]), longest: 2 }),
+    node: () => ({ label: "Priya Shah" }), view: () => null,
+  };
+  const r = retriever({ graph, now: () => NOW, search: async q => { seen.push(q.q); return []; } });
+  const out = await r({ question: "who sent this", hint: "From: Priya Shah <priya@harlowlegal.com> please sign the retainer" });
+  assert.deepEqual(out.expanded.sort(), ["Priya Shah", "priya@harlowlegal.com"].sort());
+  assert.ok(!seen.some(q => /retainer/.test(q)), "the screen's own words were searched");
+});
