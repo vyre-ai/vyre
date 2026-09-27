@@ -393,6 +393,12 @@ this is the kernel plus surfaces (the CLI's own vault terminal code).
 ## Open questions
 
 1. A community module list (a GitHub topic `vyre-module` first, a page on docs.vyre.run later).
+2. Decided at 0.1.0: the first real tag is cut after the native-core milestone, when the lead asks
+   the person. It needs `package.json` at 0.1.0 and a "## 0.1.0" CHANGELOG section cut from
+   Unreleased (the release workflow's guards).
+3. Decided at 0.1.0: whether CI holds a Cloudflare token, scoped only to the vyre.run Pages project
+   and kept as a GitHub secret, to mirror the latest stable to vyre.run. Until then the mirror is
+   a manual box-deploy step. `vyre update` reads GitHub Releases and doesn't depend on it.
 
 ## Appendix: inventory, 27 Sep 2026 (main c8fb9aae)
 

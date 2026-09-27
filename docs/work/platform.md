@@ -22,7 +22,7 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 
 ## Needs from others
 - ci: release.yml on work/ci cf82ec85 (dry run as v0.0.1 on work/ci-release). Asked them to rename the APK asset to android-<version>-<sha7>.apk. P2 tests use a fixture shaped like their dist/.
-- lead: first tag timing (package.json 0.1.0 + "## 0.1.0" CHANGELOG cut; suggested after native-core), and whether CI holds a Cloudflare token for the vyre.run mirror.
+- (decided) first tag 0.1.0 after the native-core milestone; Cloudflare token for the mirror asked at 0.1.0. Both recorded as open in ADR 0033.
 - mobile: android.json shape and the signer's entry point (a lib the box's update step can call), for P2.
 - polish-cli: reviews core/cli/commands/module.js and update.js (module.js gets aliases ["modules"], remove `modules` from daemon.js, add both to GROUPS). They write the P4 does.commands dispatcher; wants the shape { verb, tool, summary, args? }.
 - integrator: "open" for testbox, then P0 into batch 4.
