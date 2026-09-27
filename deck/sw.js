@@ -38,7 +38,7 @@ const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/app
   "/chat/lib/highlight.js", "/chat/lib/diff.js", "/chat/blocks.js", "/chat/question.js", "/chat/lib/blocks.js", "/chat/lib/names.js",
   "/chat/lib/answers.js", "/chat/newsession.js", "/chat/folders.js", "/chat/term.js", "/chat/term.css", "/chat/lib/term-link.js",
   "/chat/live-text.js", "/chat/core/session-state.js", "/chat/core/tool-detail.js", "/chat/core/grouping.js", "/chat/core/pace.js",
-  "/chat/window-view.js", "/chat/core/window.js", "/chat/pickers.js", "/chat/tray.js", "/chat/core/composer-state.js",
+  "/chat/window-view.js", "/chat/core/window.js", "/chat/pickers.js", "/chat/tray.js", "/chat/core/composer-state.js", "/chat/core/suggest.js",
   "/chat/core/caps.js", "/chat/core/commands.js", "/chat/core/match.js", "/chat/plan-card.js", "/chat/core/plan.js", "/chat/tip-line.js",
   "/core/resilience/stream.js", "/core/resilience/sse.js", "/core/resilience/backoff.js", "/core/resilience/outbox.js", "/core/resilience/web.js"];
 

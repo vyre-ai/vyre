@@ -8,6 +8,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
 
+#### The full suite green on 0.1.0-rc.1
+
+- harness/.claude-plugin/plugin.json is 0.1.0-rc.1, as the plugin moves with the package.
+- core/cli/commands/up.test.js reads the welcome's version from package.json, not 0.0.1.
+- deck/sw.js keeps /chat/core/suggest.js at install (the composer imports it).
+- deck/onboard/onboard.css: the finish's focus rings use --radius-chip and its burst --focus, not
+  the raw --r-1 and --signal.
+- test/chat-sessions-contract.test.js: thread.status is a future event (chat listens ahead).
+- local/voice/talk.test.js: a usage error exits 2 (EXIT.USAGE).
+
 #### Release prep: 0.1.0-rc.1
 
 - package.json (the root and apps/app) and both lockfiles say 0.1.0-rc.1; apps/app/app.json says
