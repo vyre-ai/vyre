@@ -34,6 +34,7 @@ jobs:
         run: sh local/capsule/native/build.sh app
       - name: Native Capsule driven and measured
         if: always() && hashFiles('local/capsule/native/build.sh') != ''
+        timeout-minutes: 6
         env:
           VYRE_CAPSULE_CHECK_DETAIL: "1"
         run: node scripts/capsule-native-check.mjs local/capsule/native/.build/Vyre.app

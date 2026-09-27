@@ -27,6 +27,9 @@ const bin = path.join(app, "Contents", "MacOS", "Vyre");
 if (!fs.existsSync(bin)) { console.error(`no app at ${app}`); process.exit(1); }
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-capsule-check-"));
 const BUDGET = { hiddenMB: 60, hiddenCpu: 0.1, openMs: 50 };
+// The whole check has four minutes; a hang anywhere fails it in words instead of eating the job.
+const watchdog = setTimeout(() => { console.log("FAIL the check did not finish in 4 minutes"); try { child.kill("SIGKILL"); } catch {} process.exit(1); }, 240_000);
+watchdog.unref();
 
 const child = spawn(bin, [], { env: { ...process.env, VYRE_HOME: home, VYRE_SOCKET: path.join(home, "vyred.sock"), VYRE_CAPSULE_DRIVE: "1", VYRE_CAPSULE_TEST: "1" },
   stdio: ["pipe", "pipe", "inherit"] });
@@ -47,7 +50,8 @@ const mem = async () => (await send({ memory: true })).memory;
 const detail = process.env.VYRE_CAPSULE_CHECK_DETAIL === "1";
 const tool = (cmd, args, keep) => {
   try {
-    const out = execFileSync(cmd, args, { maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "pipe"] }).toString().split("\n");
+    // heap and vmmap suspend the target to read it; on a busy runner that has taken minutes.
+    const out = execFileSync(cmd, args, { maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "pipe"], timeout: 60_000 }).toString().split("\n");
     console.log(`--- ${cmd} ${args.join(" ")}\n${(keep ? out.filter(keep) : out).slice(0, 120).join("\n")}`);
     if (detail) {
     const pid = String(child.pid);
@@ -79,7 +83,7 @@ try {
   await pause(3000);
   const samples = [];
   for (let i = 0; i < 20; i++) {
-    const [rss, cpu] = execFileSync("ps", ["-o", "rss=,%cpu=", "-p", String(child.pid)]).toString().trim().split(/\s+/).map(Number);
+    const [rss, cpu] = execFileSync("ps", ["-o", "rss=,%cpu=", "-p", String(child.pid)], { timeout: 10_000 }).toString().trim().split(/\s+/).map(Number);
     samples.push({ rss: rss / 1024, cpu });
     await pause(1000);
   }

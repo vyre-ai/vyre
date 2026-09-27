@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### CI: the native Capsule check cannot hang the job
+
+- scripts/capsule-native-check.mjs gives heap, vmmap and footprint 60 s each and ps 10 s, and the
+  whole check has 4 minutes before it fails in words; the workflow step stops at 6. A run sat in
+  the check for over 20 minutes after the vmmap and heap detail was added.
+
 #### A WhatsApp or Slack send rides the presence session
 
 - apps.send joins the Capsule's sessionable tools: one Touch ID covers about 30 minutes of sends
