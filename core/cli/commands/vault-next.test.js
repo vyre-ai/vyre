@@ -170,6 +170,28 @@ test("vault cli: needs, connect (a key, a mailbox, a key file) and voice key, ne
   const parsed = JSON.parse(json.out.trim().split("\n").at(-1));
   assert.equal(parsed.data.groups[0].ready, true);
 
-  const all = [before, c, vk, wrong, mail, sa, bad, after, json].map(r => r.out).join("\n");
+  // Connections: every key above is one, granted to the Capsule and chat; a person grants more.
+  const conns = await piped(root, ["vault", "connections"], "");
+  assert.equal(conns.code, 0, conns.out);
+  assert.match(conns.out, /juno at Harlow Legal .*imap-smtp · password/);
+  assert.match(conns.out, /can send_mail, read_mail · capsule, chat/);
+  const speech = await piped(root, ["vault", "connections", "--can", "speech"], "");
+  assert.match(speech.out, /Deepgram for voice/); assert.doesNotMatch(speech.out, /harlow-mail/);
+  const id = (await tool("vault.connections.list", { capability: "send_mail" })).data.connections.find(x => x.ref === "harlow-mail").id;
+  const g = await piped(root, ["vault", "connections", "grant", id, "agents"], "");
+  assert.equal(g.code, 0, g.out);
+  assert.match(g.out, /granted juno at Harlow Legal · capsule, chat, agents/);
+  const agents = await piped(root, ["vault", "connections", "--surface", "agents"], "");
+  assert.match(agents.out, /juno at Harlow Legal/); assert.doesNotMatch(agents.out, /Deepgram for voice/);
+  const r = await piped(root, ["vault", "connections", "revoke", id, "chat"], "");
+  assert.match(r.out, /revoked juno at Harlow Legal · capsule, agents/);
+  const sy = await piped(root, ["vault", "connections", "sync"], "");
+  assert.equal(sy.code, 0, sy.out); assert.match(sy.out, /synced · 0 added/);
+  const nope = await piped(root, ["vault", "connections", "grant", id, "everyone"], "");
+  assert.equal(nope.code, 1); assert.match(nope.out, /surface must be one of capsule, chat, agents, phone/);
+  const usage = await piped(root, ["vault", "connections", "grant", id], "");
+  assert.equal(usage.code, 1); assert.match(usage.out, /vyre vault connections grant <id> <surface>/);
+
+  const all = [before, c, vk, wrong, mail, sa, bad, after, json, conns, speech, g, agents, r, sy].map(r => r.out).join("\n");
   for (const x of values) assert.ok(!all.includes(x), "a value reached the terminal");
 });

@@ -650,6 +650,48 @@ async function connectCmd(args) {
   return 0;
 }
 
+// ------------------------------------------------------------ connections
+
+/**
+ * `connections [--can c] [--surface s]`, `connections grant|revoke <id> <surface>`, and
+ * `connections sync`: every account and key, and which surface may use each (ADR 0028, 9b).
+ */
+async function connectionsCmd(args) {
+  const [sub, ...rest] = args;
+  if (sub === "grant" || sub === "revoke") {
+    if (rest.length !== 2) return oops(`vyre vault connections ${sub} <id> <surface>`);
+    const [id, surface] = rest;
+    const r = await tool(`vault.connections.${sub}`, { id, surface });
+    if (r.error) return fail(r);
+    const c = r.data.connection;
+    say(`  ${signal(sub === "grant" ? "granted" : "revoked")} ${bold(c.label)} ${dim(`· ${c.surfaces.join(", ") || "no surface"}`)}`);
+    return 0;
+  }
+  if (sub === "sync") {
+    if (rest.length) return oops("vyre vault connections sync");
+    const r = await tool("vault.connections.sync");
+    if (r.error) return fail(r);
+    const v = r.data.vault || {};
+    say(`  ${signal("synced")} ${dim(`· ${v.added || 0} added, ${v.changed || 0} changed, ${v.removed || 0} removed`)}`);
+    return 0;
+  }
+  let f;
+  try { f = flags(args, { string: ["can", "surface"] }); } catch (e) { return oops(e.message); }
+  if (f._.length) return oops("vyre vault connections [--can <capability>] [--surface <s>] | grant|revoke <id> <surface> | sync");
+  const r = await tool("vault.connections.list", { ...(f.can ? { capability: f.can } : {}), ...(f.surface ? { surface: f.surface } : {}) });
+  if (r.error) return fail(r);
+  const cs = r.data.connections || [];
+  if (!cs.length) { say(dim(f.can || f.surface ? "  no connection matches" : "  no connections yet · vyre vault connect <module>")); return 0; }
+  say("");
+  for (const c of cs) {
+    const state = c.state === "ready" ? "" : ` ${beacon(c.state.replace("_", " "))}${c.needs && c.needs.length ? dim(` · vyre vault connect ${c.needs[0].module} ${c.needs[0].need}`) : ""}`;
+    say(`  ${dim(c.id)}  ${bold(c.label)} ${dim(`${c.account} · ${c.provider} · ${c.auth}`)}${c.tampered ? " " + beacon("failed its check") : ""}${state}`);
+    say(`  ${" ".repeat(c.id.length)}  ${dim(`can ${c.capabilities.join(", ")} · ${(c.surfaces || []).join(", ") || "no surface"}`)}`);
+  }
+  say("");
+  return 0;
+}
+
 // ------------------------------------------------------------ run
 
 /**
@@ -1595,6 +1637,7 @@ const HELP = [
   ["put <name> [--kind k] [--description d] [--url u] [--host h ...] [--allow-body]", "prompts for the value without echo"],
   ["    [--username u] [--totp] [--field F ...] [--expires 90d] [--scope s ...] [--provider p] [--from file]", "kinds: " + KINDS.join(", ")],
   ["needs [module] | connect <module> [need] [--file key.json] [--label l]", "what each module needs from the vault, and filling one: hidden prompts, a key file for service accounts"],
+  ["connections [--can c] [--surface s] | connections grant|revoke <id> <surface> | connections sync", "every account and key, and which surface (capsule, chat, agents, phone) may use it"],
   ["grant <name> <module> [--watcher w]", "let a module use an item"],
   ["revoke <name> <module> [--watcher w]", "take it back"],
   ["pending", "grants and passes an agent asked for"],
@@ -1655,7 +1698,7 @@ async function share(args) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health: healthCmd, remind: remindCmd, history: historyCmd, revert: revertCmd, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
+  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health: healthCmd, remind: remindCmd, history: historyCmd, revert: revertCmd, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 export default {

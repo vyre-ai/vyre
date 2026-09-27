@@ -277,7 +277,7 @@ export class Connections {
     if (items !== undefined && (!Array.isArray(items) || items.length > 20 || items.some(i => !ITEM.test(String(i))))) throw fail("items must be a list of vault item names");
     const uses = checkUse(use);
     const caps = capabilities !== undefined ? CAPABILITIES.filter(c => capabilities.includes(c))
-      : tools !== undefined ? Object.keys(toolCapabilities(tools, `${ref} ${account}`)) : [];
+      : tools !== undefined ? CAPABILITIES.filter(c => c in toolCapabilities(tools, `${ref} ${account}`)) : [];
     await this.v.key();
     const { ids } = this.apply(source, [{ ref: String(ref), provider, account: account.trim(), auth, label: cut((label || account).trim(), 200),
       capabilities: caps.length ? caps : ["other"], items: items ? items.map(String) : [], use: uses }]);
