@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A Capsule test that timed the clock now counts overlap
+
+- ModuleProvidersTests "search asks every provider in parallel" asserted two 150 ms providers
+  finished under 280 ms, which a slow CI Mac missed (capsule-mac 36322149292). It now counts how
+  many calls were in flight at once and expects two.
+
 #### local/capsule/bin/ is ignored
 
 - The old helper builds (hotkey, local, vyre-launcher) could sit untracked in local/capsule/bin/;
