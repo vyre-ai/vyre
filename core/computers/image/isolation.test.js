@@ -24,29 +24,32 @@ function asAgent(code) {
   return execFileSync("docker", ["exec", "-u", "1000:1000", C, "python3", "-c", code], { encoding: "utf8", timeout: 30_000 }).trim();
 }
 
-/** Pids of vyre's (uid 1001) processes whose command line matches. Readable by anyone: /proc/<pid>/status. */
+/** Pids of some uid's processes whose command line matches. Readable by anyone: /proc/<pid>/status. */
 const VYRE_PIDS = `
 import os, re
-def vyre(match):
+def by_uid(uid, match):
     out = []
     for p in os.listdir('/proc'):
         if not p.isdigit(): continue
         try:
             st = open(f'/proc/{p}/status').read()
-            uid = int(re.search(r'^Uid:\\s+(\\d+)', st, re.M).group(1))
+            u = int(re.search(r'^Uid:\\s+(\\d+)', st, re.M).group(1))
             name = re.search(r'^Name:\\s+(.*)$', st, re.M).group(1)
         except Exception: continue
-        if uid == 1001 and re.search(match, name): out.append(int(p))
+        if u == uid and re.search(match, name): out.append(int(p))
     return out
+def vyre(match): return by_uid(1001, match)
+def browser(match): return by_uid(1002, match)
 `;
 
-test("isolation: the agent's uid is 1000 and computerd, Chrome and Xvnc run as 1001", { skip }, () => {
+test("isolation: the agent's uid is 1000, Chrome runs as 1002, and computerd and Xvnc run as 1001", { skip }, () => {
   const r = JSON.parse(asAgent(`${VYRE_PIDS}
 import json
-print(json.dumps({"me": os.getuid(), "node": len(vyre('^node$')), "chrome": len(vyre('chrom')), "xvnc": len(vyre('^Xvnc$'))}))`));
+print(json.dumps({"me": os.getuid(), "node": len(vyre('^node$')), "chrome_vyre": len(vyre('chrom')), "chrome_browser": len(browser('chrom')), "xvnc": len(vyre('^Xvnc$'))}))`));
   assert.equal(r.me, 1000);
   assert.ok(r.node >= 1, "computerd is not running as vyre");
-  assert.ok(r.chrome >= 1, "Chrome is not running as vyre");
+  assert.equal(r.chrome_vyre, 0, "Chrome is running as vyre, not its own uid");
+  assert.ok(r.chrome_browser >= 1, "Chrome is not running as browser (1002)");
   assert.equal(r.xvnc, 1, "Xvnc is not running as vyre");
 });
 
@@ -69,7 +72,7 @@ for port in (9222, 9223, 9229):
     except Exception as e: dials[port] = type(e).__name__
     finally: s.close()
 fds = {}
-for pid in vyre('chrom')[:3] + vyre('^node$')[:1]:
+for pid in browser('chrom')[:3] + vyre('^node$')[:1]:
     try: os.listdir(f'/proc/{pid}/fd'); fds[pid] = 'readable'
     except PermissionError: fds[pid] = 'denied'
 print(json.dumps({"listen": sorted(set(listen)), "dials": dials, "fds": fds}))`));
@@ -136,6 +139,30 @@ print(json.dumps({
   "fs": call('GET', '/fs/'),
 }))`));
   assert.deepEqual(r, { shield: 401, shield_guess: 401, cdp: 401, fs: 401 });
+});
+
+test("isolation: browser (Chrome's uid) cannot read vyre's secrets or vyre's own X cookie", { skip }, () => {
+  const r = JSON.parse(execFileSync("docker", ["exec", "-u", "1002:1002", C, "python3", "-c", `
+import os, json
+def probe(path):
+    try: open(path, 'rb').read(); return 'readable'
+    except IsADirectoryError:
+        try: os.listdir(path); return 'readable'
+        except PermissionError: return 'denied'
+    except PermissionError: return 'denied'
+    except FileNotFoundError: return 'missing'
+print(json.dumps({
+  "boot": probe('/var/lib/vyre/.boot'),
+  "vnc_passwd": probe('/var/lib/vyre/.vnc/passwd'),
+  "vyre_xauth": probe('/var/lib/vyre/.Xauthority'),
+  "vyre_home_listing": probe('/var/lib/vyre'),
+  "own_profile": probe('/var/lib/vyre/browser/chromium'),
+}))`], { encoding: "utf8", timeout: 30_000 }).trim());
+  assert.equal(r.boot, "denied", "browser can read /var/lib/vyre/.boot");
+  assert.equal(r.vnc_passwd, "denied", "browser can read the VNC password");
+  assert.equal(r.vyre_xauth, "denied", "browser can read vyre's own X cookie");
+  assert.equal(r.vyre_home_listing, "denied", "browser can list vyre's home (secrets included)");
+  assert.equal(r.own_profile, "readable", "browser cannot even reach its own Chrome profile");
 });
 
 const TOKEN = process.env.VYRE_COMPUTERD_TOKEN || "";

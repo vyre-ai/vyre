@@ -44,8 +44,16 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
   deck/glass, deck-contract, box-init, bearer. Sent the reviewer the head sha and contents (HIGH 1
   fab3fc0a, HIGH 2 + MEDIUM 4 779cc852/0f17b106/57dc12c3, Downloads fix f10af44e). Chrome runs as
   uid 1001 (vyre) in core/computers/image/Dockerfile; the agent is uid 1000.
-- Next: agent-browsers slice 1 (docs/design/agent-browsers.md), off main, Chrome under its own
-  uid unable to read .boot, computerd's token, the VNC password or other agents' profiles.
+- agent-browsers slice 1 built (docs/design/agent-browsers.md's own new section has the detail):
+  Chrome now runs as a fourth uid, `browser` (1002), separate from vyre (1001, computerd/Xvnc/the
+  bus) and agent (1000). Dockerfile, entrypoint.sh, computerd/index.js, cdpmux.js,
+  isolation.test.js. Targeted tests (testbox, two runs): 208/208 and 286/286 pass, 0 fail (22
+  skipped total: Mac-only Chrome binary, and isolation.test.js's own live-container checks, which
+  need a real computer and were not run this pass). UNVALIDATED live (this repo's own precedent
+  for computers-image work): no throwaway-stack build/run yet, so the vyre-bus group's AT-SPI
+  access (the one thing here no unit test exercises) is reasoned about, not checked.
+- Next: the throwaway-stack check above, then send the reviewer and e2e this head; nothing here
+  merged anywhere yet.
 
 ## Rollout (must ship together)
 - The new computer image and the new vyred go out in the same deploy: the image starts as root and

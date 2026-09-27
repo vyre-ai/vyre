@@ -75,6 +75,19 @@ const CHROME_BIN = process.env.CHROME_BIN || "chromium";
 // for running computerd by hand.
 const CHROME_PROFILE = process.env.CHROME_PROFILE || path.join(HOME, ".chromium");
 const CHROME_LOG = process.env.CHROME_LOG || path.join(HOME, ".chromium.log");
+// Chrome's own uid, a different one from computerd's own (this process's, whatever it is --
+// vyre on the image, something else in a test). Both must be set and numeric for computerd to
+// spawn Chrome under them; either missing (a fake-binary test, computerd run by hand) spawns
+// Chrome as computerd's own uid instead, same as before this split. See launchChrome for what
+// this actually takes to succeed (computerd needs CAP_SETUID/CAP_SETGID in its own ambient set,
+// entrypoint.sh's job, not this file's).
+const CHROME_UID = /^\d+$/.test(process.env.CHROME_UID || "") ? Number(process.env.CHROME_UID) : undefined;
+const CHROME_GID = /^\d+$/.test(process.env.CHROME_GID || "") ? Number(process.env.CHROME_GID) : undefined;
+// Chrome's own home and X cookie, never computerd's: computerd's own HOME/XAUTHORITY (above, in
+// CHILD_ENV_ALLOW) point at vyre's home and vyre's trusted cookie, neither of which browser (if
+// CHROME_UID is set) can even open by path, let alone use.
+const CHROME_HOME = process.env.CHROME_HOME || HOME;
+const CHROME_XAUTHORITY = process.env.CHROME_XAUTHORITY || process.env.XAUTHORITY || "";
 const SCREEN = /^[0-9]+x[0-9]+$/.test(process.env.SCREEN || "") ? String(process.env.SCREEN) : "1440x900";
 // The few sites that go out through the user's Mac (config glass.egress, core/computers/egress.js):
 // vyred passes the proxy script as a data: URL only when the setting is on and lists a site.
@@ -113,6 +126,19 @@ const childEnv = (allow = CHILD_ENV_ALLOW) => Object.fromEntries(allow.filter(k 
 // only sees Chromium's tree with these) and the session bus's pid. Before computerd started it,
 // Chrome inherited the entrypoint's whole environment, the VNC password and this token included.
 const CHROME_ENV_ALLOW = [...CHILD_ENV_ALLOW, "DBUS_SESSION_BUS_PID", "GTK_MODULES", "NO_AT_BRIDGE", "QT_ACCESSIBILITY", "XAUTHORITY", "TZ", "LANGUAGE", "USER"];
+/**
+ * Chrome's own environment: the same allowlist, but HOME and XAUTHORITY overridden to browser's
+ * own (never computerd's/vyre's), and USER/LOGNAME set to match when CHROME_UID is configured --
+ * so anything Chrome itself introspects about its own identity (its profile path included) never
+ * points at vyre's home even if some allowed var still named it.
+ */
+function chromeEnv() {
+  const env = childEnv(CHROME_ENV_ALLOW);
+  env.HOME = CHROME_HOME;
+  if (CHROME_XAUTHORITY) env.XAUTHORITY = CHROME_XAUTHORITY;
+  if (CHROME_UID !== undefined) { env.USER = "browser"; env.LOGNAME = "browser"; }
+  return env;
+}
 
 // ---- the agent's processes stop while shielded ------------------------------------------------
 // While a person signs in or the Vault fills a login, every process the agent's uid runs is
@@ -297,7 +323,16 @@ function launchChrome() {
   /** @type {import("node:child_process").ChildProcess} */
   let child;
   try {
-    child = spawn(CHROME_BIN, chromeArgs(), { stdio: ["ignore", logfd, logfd, "pipe", "pipe"], env: childEnv(CHROME_ENV_ALLOW) });
+    child = spawn(CHROME_BIN, chromeArgs(), {
+      stdio: ["ignore", logfd, logfd, "pipe", "pipe"],
+      env: chromeEnv(),
+      // Chrome under its own uid, a different one from computerd's: node calls setgid then
+      // setuid in the forked child, before it execs chromium, which needs CAP_SETGID/CAP_SETUID
+      // in computerd's own effective set at that moment (entrypoint.sh's ambient-caps setpriv
+      // call) -- omitted entirely when unset, so a test or a hand-run computerd (no such
+      // capability, and usually not even root) spawns Chrome as its own uid same as before.
+      ...(CHROME_UID !== undefined && CHROME_GID !== undefined ? { uid: CHROME_UID, gid: CHROME_GID } : {}),
+    });
   } catch (e) {
     if (typeof logfd === "number") try { fs.closeSync(logfd); } catch {}
     gone(`could not be started: ${/** @type {Error} */ (e).message}`);
