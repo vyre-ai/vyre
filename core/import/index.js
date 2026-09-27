@@ -69,7 +69,7 @@ export default {
     });
 
     ctx.tool("import.plan", {
-      description: "Exactly what an import of these folders would take: { plan, sessions, bytes, folders, pace: { turns, usd, fast: { hours }, gentle: { days } } } (pace: how long understanding them would take at each speed; search works at once either way). include and exclude are folders sessions ran in (as import.scan lists them) or whole sources (their path); run import.scan first. The plan is kept for 30 minutes, for the confirm screen.",
+      description: "Exactly what an import of these folders would take: { plan, sessions, bytes, folders, pace: { turns, fast: { hours }, gentle: { days } } } (pace: how long understanding them would take at each speed, within the plan's normal limits; search works at once either way). include and exclude are folders sessions ran in (as import.scan lists them) or whole sources (their path); run import.scan first. The plan is kept for 30 minutes, for the confirm screen.",
       input: { type: "object", required: ["include"], properties: { include: { type: "array", items: { type: "string" } }, exclude: { type: "array", items: { type: "string" } } } },
       callers: PEOPLE,
       run: async ({ include, exclude = [] }) => {
@@ -121,7 +121,7 @@ export default {
     };
 
     ctx.tool("import.start", {
-      description: "Import a plan the person confirmed: { plan, mode: once (these sessions) | sync (these, then new ones too), pace: fast (understood in hours, more of the Claude plan today) | gentle (over days) }. The person's own action with a person session, never an agent. Records their consent with the server (sync.consent) and sends the plan's sessions through federation's sender, a batch at a time; progress comes as import.progress. Returns { run, sessions, mode, pace }.",
+      description: "Import a plan the person confirmed: { plan, mode: once (these sessions) | sync (these, then new ones too), pace: fast (understood in hours, uses more of the Claude plan's normal limits today) | gentle (over days) }. Never adds paid usage. The person's own action with a person session, never an agent. Records their consent with the server (sync.consent) and sends the plan's sessions through federation's sender, a batch at a time; progress comes as import.progress. Returns { run, sessions, mode, pace }.",
       input: { type: "object", required: ["plan", "mode", "pace"], properties: { plan: { type: "string" }, mode: { type: "string", enum: ["once", "sync"] }, pace: { type: "string", enum: ["fast", "gentle"] } } },
       callers: PEOPLE,
       run: async ({ plan, mode, pace }, meta = {}) => {
@@ -134,8 +134,7 @@ export default {
         // goes with this run, so a different plan is a different consent (e2e).
         const c = await ctx.call("sync.consent", { machine: m, on: true, mode, plan: p.hash });
         if (c?.error) throw Object.assign(new Error(c.error.code === "no_such_tool" ? "this device cannot send to a server yet" : `the server did not take the consent: ${c.error.message}`), { code: c.error.code === "no_such_tool" ? "unavailable" : "failed" });
-        const est = await paces(p.bytes);
-        await ctx.call("memory.pace", { pace, usd: pace === "fast" ? Math.min(10, Math.max(0.5, Math.ceil(est.usd * 1.2 * 100) / 100)) : 0 });
+        await ctx.call("memory.pace", { pace });
         const id = "imp_" + crypto.randomBytes(6).toString("hex");
         ctx.store.db.prepare("INSERT INTO import_runs (id, at, machine, plan_hash, mode, pace, state, of) VALUES (?,?,?,?,?,?,'sending',?)").run(id, Date.now(), m, p.hash, mode, pace, p.items.length);
         current = { id, stop: false, done: null };
@@ -156,17 +155,15 @@ export default {
       },
     });
     ctx.tool("import.cancel", {
-      description: "Stop sending and, when delete is true, delete everything this device has sent to the server and everything made from it (sync.delete; not only this import's, which the confirm screen says). Without delete it is import.stop.",
-      input: { type: "object", properties: { delete: { type: "boolean" } } },
+      description: "Stop this import. What it already sent stays until the server can drop just this import's files (a per-import delete, coming from federation); deleting everything a device sent is the person's own previewed action in Settings, never a cancel.",
+      input: { type: "object", properties: {} },
       callers: PEOPLE,
-      run: async ({ delete: del = false } = {}, meta = {}) => {
+      run: async (_, meta = {}) => {
         if (!person(meta.caller, meta)) throw Object.assign(new Error("cancelling an import is the person's own action"), { code: "denied" });
         const r = current; if (r) { r.stop = true; await r.done; }
         await ctx.call("sync.consent", { machine: machine(), on: false });
-        if (!del) return { stopped: Boolean(r), deleted: false };
-        const d = await ctx.call("sync.delete", { machine: machine() });
-        if (d?.error) throw Object.assign(new Error(`the server did not delete: ${d.error.message}`), { code: "failed" });
-        return { stopped: Boolean(r), deleted: true };
+        if (r) ctx.store.db.prepare("UPDATE import_runs SET state = 'cancelled' WHERE id = ?").run(r.id);
+        return { stopped: Boolean(r), dropped: false };
       },
     });
 
@@ -187,8 +184,9 @@ export default {
       const per = Number(m.usd_per_1000_turns) > 0 ? Number(m.usd_per_1000_turns) / 1000 : 0.0003;
       const usd = Math.round(turns * per * 100) / 100;
       const daily = Number(m.cap_usd) > 0 ? Number(m.cap_usd) : 0.25;
-      // Fast: one batch of 20 a minute, paid from a one-time pool sized to the history.
-      return { turns, usd, fast: { hours: Math.max(1, Math.ceil(turns / 20 / 60)) }, gentle: { days: Math.max(1, Math.ceil(usd / daily)) } };
+      // Fast: batches of 50 a minute within the plan's normal limits; gentle: the default 20 a
+      // minute, at most the daily cap a day. Neither ever adds paid usage.
+      return { turns, fast: { hours: Math.max(1, Math.ceil(turns / 50 / 60)) }, gentle: { days: Math.max(1, Math.ceil(usd / daily), Math.ceil(turns / 20 / 60 / 24)) } };
     };
     /** How long Claude Code keeps sessions here (cleanupPeriodDays, default 30), read, never changed. */
     const keepsDays = () => {

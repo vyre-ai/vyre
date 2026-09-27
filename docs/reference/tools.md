@@ -1419,15 +1419,14 @@ The listener, the open routes, and what Tailscale Funnel is publishing from this
 
 ### `import.cancel`
 
-Stop sending and, when delete is true, delete everything this device has sent to the server and everything made from it (sync.delete; not only this import's, which the confirm screen says). Without delete it is import.stop.
+Stop this import. What it already sent stays until the server can drop just this import's files (a per-import delete, coming from federation); deleting everything a device sent is the person's own previewed action in Settings, never a cancel.
 
-- Input:
-  - `delete` boolean
+- Input: none
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `import.plan`
 
-Exactly what an import of these folders would take: { plan, sessions, bytes, folders, pace: { turns, usd, fast: { hours }, gentle: { days } } } (pace: how long understanding them would take at each speed; search works at once either way). include and exclude are folders sessions ran in (as import.scan lists them) or whole sources (their path); run import.scan first. The plan is kept for 30 minutes, for the confirm screen.
+Exactly what an import of these folders would take: { plan, sessions, bytes, folders, pace: { turns, fast: { hours }, gentle: { days } } } (pace: how long understanding them would take at each speed, within the plan's normal limits; search works at once either way). include and exclude are folders sessions ran in (as import.scan lists them) or whole sources (their path); run import.scan first. The plan is kept for 30 minutes, for the confirm screen.
 
 - Input:
   - `include` list of string, required
@@ -1444,7 +1443,7 @@ The Claude Code sessions on this device, by source and by the folder each ran in
 
 ### `import.start`
 
-Import a plan the person confirmed: { plan, mode: once (these sessions) | sync (these, then new ones too), pace: fast (understood in hours, more of the Claude plan today) | gentle (over days) }. The person's own action with a person session, never an agent. Records their consent with the server (sync.consent) and sends the plan's sessions through federation's sender, a batch at a time; progress comes as import.progress. Returns { run, sessions, mode, pace }.
+Import a plan the person confirmed: { plan, mode: once (these sessions) | sync (these, then new ones too), pace: fast (understood in hours, uses more of the Claude plan's normal limits today) | gentle (over days) }. Never adds paid usage. The person's own action with a person session, never an agent. Records their consent with the server (sync.consent) and sends the plan's sessions through federation's sender, a batch at a time; progress comes as import.progress. Returns { run, sessions, mode, pace }.
 
 - Input:
   - `mode` "once" or "sync", required
@@ -2112,11 +2111,10 @@ Mute a node so memory never offers it, everywhere (scope '*') or in one project 
 
 ### `memory.pace`
 
-Set the first read's pace for an import: fast (usd: a one-time pool, at most $10) or gentle (the daily cap alone).
+Set the first read's pace for an import: fast (bigger batches, within the plan's normal limits) or gentle (the default).
 
 - Input:
   - `pace` "fast" or "gentle", required
-  - `usd` number
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `memory.pin`
