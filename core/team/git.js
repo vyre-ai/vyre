@@ -18,8 +18,13 @@
 // Revs and paths go after --end-of-options. Branch names come only from `symbolic-ref` on the
 // person's own checkout and from a teammate's role, which team.add has already checked against
 // its NAME pattern, so neither can start with "-" anyway.
+//
+// git itself is the only repo content this file ever executes. The project's own test command
+// (detectTestCommand, below) is a string it merely guesses at — nothing here runs it. Running it
+// would mean vyred executing a teammate's own package.json scripts.test/conftest.py/build.rs as
+// vyred, outside every permission floor (reviewer, slice B, HIGH); only the integrator's own
+// teammate session may run it, under its own floor and uid (core/team/index.js's finalizeMerge).
 
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { gitAsync } from "../../lib/git-safe.js";
@@ -239,26 +244,21 @@ export async function compareAndSwap(repo, ref, fromSha, toSha) {
   return (await git(repo, ["update-ref", `refs/heads/${ref}`, toSha, fromSha])).ok;
 }
 
-/** A project's own test command, guessed from what is in its repo. null when none is obvious: no tests are run, and a merge needs only a clean merge. */
+/**
+ * A project's own test command, guessed from what is in its repo. null when none is obvious: no
+ * tests are needed, and a merge needs only a clean merge. A string only, never run by anything in
+ * this file: `npm test`, `pytest` and the rest execute repo content on vyred's own say-so (a
+ * teammate's own package.json scripts.test, conftest.py, a Cargo build script) the moment vyred
+ * runs them itself, as vyred, outside every permission floor (reviewer, slice B, HIGH — this file
+ * used to run it with a local `runTests`; removed rather than left unused, so the HIGH can't come
+ * back by a future call site reaching for it). Only the integrator's own teammate session may run
+ * this, under its own floor and uid, in core/team/index.js's finalizeMerge; vyred only checks the
+ * exit code it reports.
+ */
 export async function detectTestCommand(repo) {
   try { if (JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")).scripts?.test) return "npm test"; } catch {}
   if (fs.existsSync(path.join(repo, "pytest.ini")) || fs.existsSync(path.join(repo, "setup.cfg"))) return "pytest";
   if (fs.existsSync(path.join(repo, "go.mod"))) return "go test ./...";
   if (fs.existsSync(path.join(repo, "Cargo.toml"))) return "cargo test";
   return null;
-}
-
-/**
- * Run a project's own test command in `dir`. No shell (the command is split on plain spaces, its
- * first word run directly): a project's test command is its own declared, editable setting, not
- * untrusted repo content, but this still never hands anything to `/bin/sh`.
- * @param {string} dir @param {string} command @param {number} [ms]
- */
-export function runTests(dir, command, ms = 180_000) {
-  const [cmd, ...args] = String(command).trim().split(/\s+/);
-  return new Promise(resolve => {
-    execFile(cmd, args, { cwd: dir, timeout: ms, killSignal: "SIGKILL", maxBuffer: 16 * 1024 * 1024, windowsHide: true,
-      env: { ...process.env, CI: "1" } },
-    (err, stdout, stderr) => resolve({ ok: !err, stdout: String(stdout), stderr: String(stderr || (err ? err.message : "")) }));
-  });
 }

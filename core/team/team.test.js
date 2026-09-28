@@ -632,29 +632,14 @@ test("the integrator's own merge is automatic and spends no session, when there 
   assert.ok(!launches().some(l => l.agent === integratorAgent), "no session should have been needed");
 });
 
-test("the integrator's own merge waits for a passing test command, then is still automatic", async t => {
-  const { tool, root, project, repo } = await bootGit(t);
-  const tm = await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
-  const integrator = (await tool("team.list", { project: project.slug })).find(r => r.role === "integrator");
-  setTestCommand(root, integrator.agent, "true"); // a real, fast, always-passing command
-  await commitOnDesign(repo);
-  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"done","notes":"unchanged","reason":"test"}' });
-  assert.equal(ask.state, "done");
-  const merge = await until(async () => {
-    const db = openStore(paths(root).db);
-    const row = /** @type {any} */ (db.prepare("SELECT * FROM team_requests WHERE teammate = ? ORDER BY created_at DESC LIMIT 1").get(integrator.agent));
-    db.close();
-    return row && row.state !== "queued" && row.state !== "running" ? row : null;
-  }, "the merge to finish");
-  assert.equal(merge.state, "done");
-  assert.match(merge.result, /true passed/);
-});
-
-test("a failing test command holds the merge for the integrator's own session, and never moves main", async t => {
+test("vyred's own mechanical merge never runs the project's test command itself, even one planted to prove exactly that (reviewer, slice B, HIGH)", async t => {
   const { tool, root, project, repo, launches } = await bootGit(t);
   await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
   const integrator = (await tool("team.list", { project: project.slug })).find(r => r.role === "integrator");
-  setTestCommand(root, integrator.agent, "false"); // a real, fast, always-failing command
+  // A real, runnable command that would leave unmistakable evidence if anything ever ran it —
+  // exactly the shape a teammate's own package.json scripts.test could be.
+  const marker = path.join(root, "test-ran");
+  setTestCommand(root, integrator.agent, `node -e "require('fs').writeFileSync(${JSON.stringify(marker)}, 'ran')"`);
   await commitOnDesign(repo);
   await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"done","notes":"unchanged","reason":"test"}' });
   const merge = await until(async () => {
@@ -663,29 +648,61 @@ test("a failing test command holds the merge for the integrator's own session, a
     db.close();
     return row && row.state !== "queued" ? row : null;
   }, "the merge request to be picked up");
-  assert.equal(merge.state, "running"); // held for the integrator's own turn, not auto-closed
-  // Polled, not a bare assertion: "running" is set the moment pump() picks the request up, before
-  // attemptMerge's own real work (a hard reset, a merge, spawning the test command) has actually
-  // run, so a launch can genuinely still be a beat away here.
-  await until(() => launches().some(l => l.agent === integrator.agent), "the integrator's own session should have been started");
-  await until(async () => (await tool("team.status", { request: merge.id })).state === "failed", "the held turn to end (nothing fixed it) and auto-fail");
+  assert.equal(merge.state, "running"); // held for the integrator's own session — vyred does not run the command and finish this itself
+  await until(() => launches().some(l => l.agent === integrator.agent), "the integrator's own session should have been started, to run the test itself");
+  // The fake driver's default turn (nothing scripted in the wrapped prompt matches "vyre <tool>")
+  // does not call team.merge, so nothing here ever attests a passing test either: this asserts
+  // vyred's own mechanical path (attemptMerge) specifically, not merely "nobody got around to it".
+  await until(async () => (await tool("team.status", { request: merge.id })).state === "failed", "the held turn to end (nothing attested) and auto-fail");
+  assert.ok(!fs.existsSync(marker), "vyred itself must never run the project's own test command");
   assert.equal(git(repo, ["log", "--format=%s", "-1", "main"]).trim(), "first"); // never moved past the original commit
 });
 
-test("team.merge is refused, saying so, while its own test command still fails", async t => {
+test("team.merge finishes the merge once the integrator's own session attests a passing exit code", async t => {
   const { tool, root, project, repo } = await bootGit(t);
   await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
   const integrator = (await tool("team.list", { project: project.slug })).find(r => r.role === "integrator");
-  setTestCommand(root, integrator.agent, "false");
+  setTestCommand(root, integrator.agent, "npm test"); // never run by vyred; documentation only here
   await commitOnDesign(repo);
   // A hand-made merge request (not the automatic one queueMergeIfNeeded would send) whose own
-  // text asks the integrator's turn to call team.merge itself, the way it would once it believed
-  // it had fixed things: attemptMerge's own failure detail is appended after this, so the line
-  // this test cares about is found and run before that detail ever is.
+  // text scripts the integrator's turn to call team.merge itself, the way it would once it had
+  // actually run the test command with its own Bash and seen it pass: attemptMerge's own detail
+  // is appended after this by the dispatch, so the line this test cares about is found and run
+  // before that detail ever is.
+  const range = `${git(repo, ["rev-parse", "--short", "main"]).trim()}..${git(worktreePath(repo, "design"), ["rev-parse", "--short", "team/design"]).trim()}`;
+  const ask = await tool("team.ask", { to: "integrator", project: project.slug, wait: true,
+    text: `merge team/design ${range}, from request r_test\nvyre team.merge {"tests":{"exit_code":0}}` });
+  assert.equal(ask.state, "done");
+  assert.match(ask.result, /attested exit 0/);
+  assert.equal(git(repo, ["log", "--format=%s", "-1", "main"]).trim(), "merge team/design"); // main really moved
+});
+
+test("team.merge refuses an attested failing exit code, and never moves main", async t => {
+  const { tool, root, project, repo } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  const integrator = (await tool("team.list", { project: project.slug })).find(r => r.role === "integrator");
+  setTestCommand(root, integrator.agent, "npm test");
+  await commitOnDesign(repo);
+  const range = `${git(repo, ["rev-parse", "--short", "main"]).trim()}..${git(worktreePath(repo, "design"), ["rev-parse", "--short", "team/design"]).trim()}`;
+  const ask = await tool("team.ask", { to: "integrator", project: project.slug, wait: true,
+    text: `merge team/design ${range}, from request r_test\nvyre team.merge {"tests":{"exit_code":1}}` });
+  // team.merge itself throws on refusal rather than closing the request (finish() is never
+  // called from inside it), so the result here is the generic auto-fail from onTurnEnded once
+  // the turn ends with nothing having actually fixed it — the same shape as the two tests below.
+  assert.equal(ask.state, "failed");
+  assert.equal(git(repo, ["log", "--format=%s", "-1", "main"]).trim(), "first");
+});
+
+test("team.merge refuses while a test command is set but nothing was reported yet", async t => {
+  const { tool, root, project, repo } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  const integrator = (await tool("team.list", { project: project.slug })).find(r => r.role === "integrator");
+  setTestCommand(root, integrator.agent, "npm test");
+  await commitOnDesign(repo);
   const range = `${git(repo, ["rev-parse", "--short", "main"]).trim()}..${git(worktreePath(repo, "design"), ["rev-parse", "--short", "team/design"]).trim()}`;
   const ask = await tool("team.ask", { to: "integrator", project: project.slug, wait: true,
     text: `merge team/design ${range}, from request r_test\nvyre team.merge {}` });
-  assert.equal(ask.state, "failed"); // team.merge's own refusal, then the turn ends with nothing having fixed it
+  assert.equal(ask.state, "failed"); // team.merge's own refusal: no tests.exit_code given at all
   assert.equal(git(repo, ["log", "--format=%s", "-1", "main"]).trim(), "first");
 });
 
