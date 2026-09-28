@@ -496,3 +496,27 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 - Sent (msg_id 0c1565e0): sheet-combined.png (12 teammates + 8 blobs, both themes), mock-combined.png
   (design/reviewer/qa together in a real scene, showing the skin-tone range and friendly
   expressions in context). Same local scratch folder as rounds 1-3, not this repo.
+
+## Now (28 Sep, generated avatars round 4: person + assistant, SVG export for ui-ux)
+
+- User loves the direction, wants more: a generated avatar for the person (the user) that becomes
+  their identity everywhere, one for their assistant clearly distinct from agents and teammates,
+  and less text-heavy overall. A new ui-ux team is building a visual canvas from static SVGs
+  (their own brief: scratchpad/avatar-canvas/BRIEF.md).
+- Designed two new identity families on top of avatar.md's existing "only the person gets a
+  circle" rule, in round4/identity.js: person = a true circle, a warm two-tone gradient, a calm
+  face, no hair or role accessory (4 reroll options); assistant = a soft squircle (rounder than a
+  teammate tile, short of a full circle), a luminous gradient with an abstract mark, never a face
+  (3 directions: spark, ring, chevron). Four families now have four distinct silhouettes, agent
+  blob / teammate tile / person circle / assistant squircle, readable before content even loads.
+- Same lime/violet sweep as every round: caught one gradient stop right at the edge before
+  export (an assistant option's pale straw tone, ~58 units from lime), fixed before generating
+  anything.
+- Exported 27 static SVGs + manifest.json (name, role, kind, file, seed/option) to
+  round4/svg/: 8 agent blobs, 12 teammates (round 3b's look), 4 user options, 3 assistant options.
+  Sent directly to ui-ux (msg_id 7a859a7b) with sourcing notes, and a 5-line opinion to the lead
+  (msg_id ca4d26b6): shape carries the real distinction; the user avatar should stay simple and
+  un-rolled (it's the one person); the assistant should never be a face (spark is my pick over
+  ring/chevron, which read as a spinner and a "next" button); worth seeing all four families
+  together in real chat context before anyone commits, not just an isolated grid.
+- Design files only, no product code, no avatar.md changes yet (the round is still exploratory).
