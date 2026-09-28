@@ -121,7 +121,11 @@ export default {
       fired: (f, item) => {
         emit("planner.fired", { firing: f.id, key: ringKey(item.id, f.due), item: item.id, kind: item.kind, title: item.title, due: f.due, ring: f.ring,
           missed: Boolean(f.missed), actions: ["done", "snooze"], ...(item.source_name ? { added_by: item.source_name } : {}) }, item);
-        if (item.kind === "task") runTask(item).catch(e => ctx.log(`planner: task ${item.id} did not run (${e.message})`));
+        // Reviewer, 2026-09-28: fireItem already sets next_ring null for a task, so nothing should
+        // ring it a second time - but this is the one place that actually runs the model-written
+        // instruction, so it stays fail-safe on its own: only ever the first ring of a firing,
+        // never an escalation, in case a firing is ever re-delivered some other way.
+        if (item.kind === "task" && f.ring === 1) runTask(item).catch(e => ctx.log(`planner: task ${item.id} did not run (${e.message})`));
       } });
 
     // Chained tasks ("when X finishes, do Y"): X's own done is the trigger, not a time, so this

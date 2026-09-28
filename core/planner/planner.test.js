@@ -548,6 +548,20 @@ test("planner: a task fires by posting into its own thread, or launching a fresh
   assert.equal(own.source, "cli");
 });
 
+test("planner: a task runs quietly once per firing - it never rings or escalates like an alarm's unacknowledged one does", async t => {
+  const w = await world(t);
+  // Default settings: escalate_after 5 min, escalate_max 3 - an alarm left unacked would ring 4
+  // times in the next 20 minutes. Nothing here ever acks a task's own firing (planner.done is not
+  // called), so before this fix it would have run the model-written instruction 4 times too.
+  const task = await w.ok("planner.add", { kind: "task", title: "Send the weekly digest", project: "harlow-legal", at: T0 + HOUR });
+  w.advanceTo(T0 + HOUR + 20 * MIN); // past escalate_after (5) x escalate_max (3) = 15 min
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 1, "one firing, one run - never re-run on an escalation ring");
+  assert.equal((await w.ok("planner.get", { item: task.id })).item.run_count, 1);
+  // The firing itself never escalates either (fireItem's own next_ring, not just runTask's guard).
+  assert.equal((await w.ok("planner.get", { item: task.id })).firings.at(-1).ring, 1);
+});
+
 test("planner: reviewer HIGH 1 - only a person or a named agent may add a task; a bare session or a module cannot", async t => {
   const w = await world(t);
   // A bare mcp caller (the person's own live Claude session, unnamed) used to become an AMBIENT
