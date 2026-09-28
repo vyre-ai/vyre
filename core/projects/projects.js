@@ -53,6 +53,16 @@ export const MIGRATIONS = [
     UNIQUE (project, agent)
   );
   `,
+  // Step 2 (federation, reviewer's MEDIUM 2 on 656b3f79): a single-row sentinel recording that
+  // the one-time auto-seed of projects_access from agents.projects has run (core/projects/
+  // index.js), so an upgrade never has to be told about the manual projects.access.migrate tool
+  // for a scoped agent to keep reading what it already could.
+  `
+  CREATE TABLE projects_access_seeded (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    at INTEGER NOT NULL
+  );
+  `,
 ];
 
 /** @typedef {import("./markers.js").Project} Project */

@@ -29,25 +29,25 @@ never Touch ID (it's not a secret action, ADR 0024).
      device, not a sync mode. **Built** as a checkbox, not as a labeled "mode."
 
 3. **Where it shows up.** Finder sidebar on the Mac: **built** (`files.drive.mount`). Windows
-   network drive: **not built**, no Windows client exists at all yet (session import's device
+   network drive: **not built**: no Windows client exists at all yet (session import's device
    role is the first Windows-facing work, and it doesn't touch Drive). Capsule drop target:
-   **not built**, files.deliver (box→Mac) exists as a tool, no Capsule UI calls it. Phone:
+   **not built**: files.deliver (box→Mac) exists as a tool, no Capsule UI calls it. Phone:
    **not built**.
 
 4. **Per-folder access (Capsule, chat, agents, per project).** Not built. Vault's grant pattern
    (per-secret, per-caller) exists and is the right shape to extend, but Drive shares have no
    grant table today: a share is visible to whoever can reach the mount, full stop. Agents get
    none by default is also not enforced (no agent has a Drive-aware tool at all right now, so
-   this is moot until one exists, cheap to get right, list it as a gate, not a feature). **M.**
+   this is moot until one exists: cheap to get right, list it as a gate, not a feature). **M.**
 
 5. **Receiving files from the server (files.receive).** **Built** this session (0.1.1, e2e review
-   of aa9cb40c/9338a6a5): off by default, per device, in config today, not yet a declared
+   of aa9cb40c/9338a6a5): off by default, per device, in config today: not yet a declared
    settings-hub entry (tried; a device-level setting needs a different store than config.json,
-   reverted rather than ship unreviewed, see docs/work/federation.md). Offering it as a clear
+   reverted rather than ship unreviewed: see docs/work/federation.md). Offering it as a clear
    toggle in this step is **S**: wire the existing tool to a UI checkbox.
 
 6. **Conflicts.** Partially built: Taildrop already renames on a name clash
-   (`--conflict=rename`, core/files/drop.js) rather than overwriting, so the underlying transport
+   (`--conflict=rename`, core/files/drop.js) rather than overwriting: so the underlying transport
    already never silently overwrites. What's missing is telling the person: no visible note, no
    "keep both" framing anywhere. **S**: surface the rename as a notice; **M** if "keep both, ask
    which to trust" needs its own UI beyond a note.
@@ -60,7 +60,7 @@ never Touch ID (it's not a secret action, ADR 0024).
 8. **Size and quota shown up front.** Sizes: not built into the picker (1) yet, but the numbers
    exist (drive.js already scans and could total a folder's size before sharing). Per-device quota:
    the sync.upload path has one (`sync_peers.quota_bytes`, no UI); Drive shares have none. Both
-   need the user's call on the actual number, flagged, not decided here, per the lead's note.
+   need the user's call on the actual number: flagged, not decided here, per the lead's note.
 
 ## What's real right now, plainly
 

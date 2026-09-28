@@ -90,6 +90,43 @@ test("facts by thread: the same access rules as every other read", async t => {
   assert.match((await call("memory.facts", { thread: SITE, about: "Dana" }, "deck")).error || "", /thread is read on its own/);
 });
 
+test("agents.projects is not the only door any more: projects.access also has to grant it (reviewer's MEDIUM, one source of truth)", async t => {
+  // access: a fixed answer for one (project, agent) pair; anything else in this test is denied,
+  // the opposite default from "no_such_tool" (module absent) so the test proves the intersection
+  // actually runs, not merely that it fails open.
+  const access = { "harlow:hal": true };
+  const db = open(path.join(tempHome(t), "vyre.db"));
+  t.after(() => db.close());
+  seedRecall(db, SESSIONS);
+  const tools = new Map();
+  const ctx = {
+    name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
+    events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
+    call: async (tool, input) => {
+      if (tool === "projects.list") return { data: { projects: PROJECTS } };
+      if (tool === "agents.list") return { data: AGENTS };
+      if (tool === "projects.access.check") return { data: { granted: Boolean(access[`${input.project}:${input.agent}`]) } };
+      return { error: { code: "no_such_tool", message: tool } };
+    },
+    tool: (name, def) => tools.set(name, def),
+  };
+  const memory = (await import("./index.js")).default;
+  const handle = await memory.start(ctx);
+  t.after(() => handle.stop());
+  const call = async (name, input, caller) => {
+    try { return { data: await tools.get(name).run(input, { caller }) }; } catch (e) { return { error: /** @type {Error} */ (e).message, code: /** @type {any} */ (e).code || "failed" }; }
+  };
+  await call("memory.curate", {}, "cli");
+
+  // hal is granted "harlow" in both agents.projects and projects.access: reads it.
+  const ok = await call("memory.facts", { thread: SITE, room: "harlow" }, "mcp:agent:hal");
+  assert.ok(!ok.error, JSON.stringify(ok));
+  // kit is granted "northwind" by agents.projects, but projects.access never granted it: refused,
+  // exactly as if agents.projects had never listed it at all.
+  const refused = await call("memory.facts", { thread: SITE, room: "northwind" }, "mcp:agent:kit");
+  assert.equal(refused.code, "denied", JSON.stringify(refused));
+});
+
 test("tailnet: the user's other devices read as the owner, and correct only with a person session", async t => {
   const { call } = await module_(t);
   for (const [tool, input] of [["memory.graph", {}], ["memory.facts", { about: "Dana Reyes" }], ["memory.facts", { thread: SITE }],

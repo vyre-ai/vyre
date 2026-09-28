@@ -194,15 +194,22 @@ export default {
     // the same weight a vault grant to an agent carries; revoking is instant (PERSON_ONLY), so
     // taking access away is never held up behind a Touch ID prompt.
     const db = ctx.store.db;
+    // Agent names are case-insensitive here (team-lead's call, reviewer's LOW): a grant to "Kit"
+    // must reach agent "kit". Normalised on every write and every read against this table, so
+    // the row's own stored case is whatever the first write happened to use, but the lookup
+    // never cares. agents.list's own name is the source of truth for an agent's real casing;
+    // this table only ever compares, never displays, so lower-casing here loses nothing.
+    const normAgent = agent => String(agent || "").toLowerCase();
     const accessRow = (project, agent) => {
-      const own = /** @type {any} */ (db.prepare("SELECT * FROM projects_access WHERE project = ? AND agent = ?").get(project, String(agent || "")));
+      const a = normAgent(agent);
+      const own = /** @type {any} */ (db.prepare("SELECT * FROM projects_access WHERE project = ? AND agent = ?").get(project, a));
       if (own) return own;
-      if (agent) return /** @type {any} */ (db.prepare("SELECT * FROM projects_access WHERE project = ? AND agent = ?").get(project, ""));
+      if (a) return /** @type {any} */ (db.prepare("SELECT * FROM projects_access WHERE project = ? AND agent = ?").get(project, ""));
       return null;
     };
     const setAccess = (project, agent, status, by) => {
       const slug = P.resolve(project).slug;
-      const a = String(agent || "");
+      const a = normAgent(agent);
       // ON CONFLICT keeps the existing row's id (never in the SET clause); the id supplied here
       // is only ever used for a genuinely new row.
       db.prepare(`INSERT INTO projects_access (id, project, agent, status, by, at) VALUES (?,?,?,?,?,?)
@@ -228,10 +235,16 @@ export default {
       input: { type: "object", required: ["project", "agent"], properties: { project: str, agent: str } },
       callers: ["module", "cli", "local", "deck", "capsule"],
       run: async ({ project, agent }) => {
-        if (!isProjectId(project)) return { project, agent: String(agent || ""), granted: false };
-        const row = accessRow(project, agent);
-        return row ? { project, agent: String(agent || ""), granted: row.status === "granted", status: row.status, by: row.by, at: row.at }
-          : { project, agent: String(agent || ""), granted: false };
+        // reviewer's LOW, still open after `required`: that only rejects a missing key, and
+        // `{ agent: "" }` still passes it. accessRow's own first query then matches agent = ''
+        // directly, which IS the wildcard row's key, so an empty agent read it as if it were
+        // its own row rather than "no agent". Refused here, before accessRow ever runs.
+        const a = normAgent(agent);
+        if (!a) return { project, agent: "", granted: false };
+        if (!isProjectId(project)) return { project, agent: a, granted: false };
+        const row = accessRow(project, a);
+        return row ? { project, agent: a, granted: row.status === "granted", status: row.status, by: row.by, at: row.at }
+          : { project, agent: a, granted: false };
       },
     });
     ctx.tool("projects.access.list", {
@@ -246,6 +259,76 @@ export default {
       },
     });
 
-    return { async stop() {} };
+    // Seeds a granted row for every agent's own agents.projects entry that has none yet, so an
+    // agent already scoped to a project by agents.create/update keeps reading it once a caller
+    // (memory's guard) starts checking projects.access too. Reviewer's MEDIUM 1: the earlier
+    // version checked only the (project, agent) pair, so a wildcard revoke
+    // (projects.access.revoke { project }, agent left out, meaning every agent) was undone the
+    // next time this ran, because it inserted a fresh per-agent row anyway. Fixed the safer way
+    // team-lead called for: skip a project ENTIRELY once it has any row at all, agent or status
+    // irrelevant, so this only ever seeds a project nobody has touched through projects.access
+    // yet. A projects: "*" agent (not the assistant, whose "*" is a different rule entirely) is
+    // now seeded too, one row per project, the same as a named-projects agent, just for every
+    // project instead of a named few (reviewer's follow-up on d897210d: without this, a wildcard
+    // agent read nothing until someone granted it by hand, project by project).
+    const seedFromAgents = async () => {
+      const r = await ctx.call("agents.list", {});
+      if (r.error) return { error: r.error };
+      const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
+      let seeded = 0;
+      const projects = P.valid();
+      const touched = new Set(/** @type {any[]} */ (db.prepare("SELECT DISTINCT project FROM projects_access").all()).map(x => x.project));
+      for (const a of list) {
+        if (!a || !a.name || a.kind === "assistant") continue;
+        const targets = a.projects === "*" ? projects
+          : Array.isArray(a.projects) ? projects.filter(p => a.projects.some((/** @type {any} */ ref) => p.slug === String(ref) || p.name.toLowerCase() === String(ref).toLowerCase()))
+          : [];
+        for (const p of targets) {
+          if (touched.has(p.slug)) continue; // this project already has a grant or revoke on record; never override it
+          db.prepare("INSERT INTO projects_access (id, project, agent, status, by, at) VALUES (?,?,?,?,?,?)")
+            .run(crypto.randomUUID(), p.slug, normAgent(a.name), "granted", "projects.access.migrate", Date.now());
+          seeded++;
+        }
+      }
+      return { seeded };
+    };
+
+    ctx.tool("projects.access.migrate", {
+      description: "Bootstrap for projects.access (Vyre Drive step 3, one source of truth): seeds a granted row for every agent's own agents.projects entry, including a projects: \"*\" agent's every project, for any project projects.access has never recorded a grant or revoke on. Never touches a project once it has any row at all, so a person's own revoke (even a wildcard one that covers every agent) is never undone. The assistant is untouched: its reach is the assistant rule, not a per-project grant. Runs automatically once, on the first start after this version, and is also here as a manual OWNER tool in case agents was not reachable yet at that first start (see projects.access.check's fallback to agents.projects alone when this module cannot be asked).",
+      input: { type: "object", properties: {} },
+      callers: OWNER,
+      run: async () => {
+        const r = await seedFromAgents();
+        if (r.error) throw refuse(`agents cannot be listed (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`, "no_link");
+        return { seeded: r.seeded };
+      },
+    });
+
+    // Auto-seed once (reviewer's MEDIUM 2, team-lead's call): a person must never have to run
+    // projects.access.migrate by hand for an upgrade not to look like every scoped agent lost
+    // its memory access. Retried a few times, spaced out, in case agents starts after projects
+    // in this boot (module.json declares no hard "requires" on agents: projects works fine
+    // without it, so this can't be a real dependency edge, just a startup-order one). Marked
+    // done in projects_access_seeded (its own migration step) the moment any attempt succeeds,
+    // agents.list's own error included, no_such_tool means agents genuinely is not running, so
+    // there is nothing to seed either way. Six tries, 500ms apart, is not enough to rule out a
+    // permanent problem, only a boot-order race; a real, lasting outage leaves this unmarked, so
+    // the next start tries again, and the manual tool above is the fallback in between.
+    // The returned promise is here for tests to await determinism on, never used by real
+    // callers: nothing in production needs to wait on the auto-seed before start() returns.
+    const autoSeed = db.prepare("SELECT 1 FROM projects_access_seeded").get() ? Promise.resolve() : (async () => {
+      const done = () => db.prepare("INSERT OR IGNORE INTO projects_access_seeded (id, at) VALUES (1, ?)").run(Date.now());
+      for (let i = 0; i < 6; i++) {
+        const r = await seedFromAgents();
+        // No error, or agents genuinely is not installed (no_such_tool): either way agents.list
+        // gave a real answer, so there is nothing left to retry for. Any other error might be
+        // agents starting later in this same boot, worth the next retry.
+        if (!r.error || r.error.code === "no_such_tool") { done(); return; }
+        await new Promise(res => setTimeout(res, 500));
+      }
+      ctx.log("projects.access: could not auto-seed from agents.projects after 6 tries; run projects.access.migrate by hand once agents is up");
+    })();
+
+    return { async stop() {}, seeded: autoSeed };
   },
 };

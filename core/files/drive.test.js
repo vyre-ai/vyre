@@ -75,11 +75,32 @@ process.stderr.write("unexpected"); process.exit(2);
 }
 
 /** A registry with the files module, and on the Mac a fake link module (status and remote). */
-async function registry(t, { role, cfg = {}, link = undefined, seam = undefined, peers = [], presence = undefined }) {
+async function registry(t, { role, cfg = {}, link = undefined, seam = undefined, peers = [], presence = undefined, agents = undefined, projects = undefined, access = undefined }) {
   const root = tmp(t, "vyre-home-");
   const p = config.ensure(root);
   if (seam) { seams.set(root, seam); t.after(() => seams.delete(root)); }
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "files");
+  if (agents) {
+    // Two modules, not one: a tool's name must start with its own module's name.
+    const mods = tmp(t, "vyre-fake-agents-");
+    globalThis.__driveFakeAgents = globalThis.__driveFakeAgents || new Map();
+    globalThis.__driveFakeAgents.set(root, { agents, projects: projects || [], access: access || {} });
+    t.after(() => globalThis.__driveFakeAgents.delete(root));
+    writeModule(mods, "agents", { roles: ["local", "box"], does: { tools: ["agents.list"] } },
+      `export default { async start(ctx) {
+        ctx.tool("agents.list", { input: { type: "object", properties: {} }, run: async () => globalThis.__driveFakeAgents.get(ctx.paths.root).agents });
+        return { async stop() {} };
+      } };`);
+    writeModule(mods, "projects", { roles: ["local", "box"], does: { tools: ["projects.list", "projects.access.check"] } },
+      `export default { async start(ctx) {
+        const fx = () => globalThis.__driveFakeAgents.get(ctx.paths.root);
+        ctx.tool("projects.list", { input: { type: "object", properties: {} }, run: async () => ({ projects: fx().projects }) });
+        ctx.tool("projects.access.check", { input: { type: "object", required: ["project", "agent"], properties: { project: { type: "string" }, agent: { type: "string" } } },
+          run: async ({ project, agent }) => ({ project, agent, granted: Boolean(fx().access[project + ":" + agent]) }) });
+        return { async stop() {} };
+      } };`);
+    found.push(...discover([mods]));
+  }
   if (link) {
     const mods = tmp(t, "vyre-mods-");
     globalThis.__driveLinks = globalThis.__driveLinks || new Map();
@@ -460,6 +481,35 @@ test("drive: the audit scans every shared folder again and reports one with a se
   const ev = events.since(0, { type: "drive.exposed" });
   assert.equal(ev.length, 1);
   assert.deepEqual(ev[0].payload.unsafe, [{ share: "site", found: [".env"] }]);
+});
+
+// ---- Vyre Drive step 5: files.drive.status/.audit scoped by projects.access for agents -------
+
+test("drive: files.drive.status shows a named agent only the shares inside its own granted project", async t => {
+  const ts = fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: LIST });
+  const { work } = boxWorld(t);
+  const harlow = path.join(work, "harlow-site"), northwind = path.join(work, "northwind");
+  fs.mkdirSync(harlow, { recursive: true }); fs.mkdirSync(northwind, { recursive: true });
+  const { reg } = await registry(t, { role: "box", cfg: { files: { roots: [work], drive: { shares: { harlow, northwind } } } },
+    agents: [{ name: "kit", kind: "agent", projects: ["harlow"] }],
+    projects: [{ slug: "harlow", name: "Harlow Legal", home: harlow, workspaces: [] }, { slug: "northwind", name: "Northwind", home: northwind, workspaces: [] }],
+    access: { "harlow:kit": true } }); // northwind left out: deny by default
+
+  const full = await ok(reg, "files.drive.status"); // the owner's own surface: unrestricted
+  assert.deepEqual(full.shares.map(s => s.name).sort(), ["harlow", "northwind", "projects"]);
+
+  const scoped = await ok(reg, "files.drive.status", {}, "mcp:agent:kit");
+  assert.deepEqual(scoped.shares.map(s => s.name), ["harlow"]);
+  assert.deepEqual(scoped.list, []); // LIST's one row, "projects", is not kit's
+});
+
+test("drive: files.drive.audit is never for an agent, wildcard-granted or not", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "" });
+  const { work } = boxWorld(t);
+  const { reg } = await registry(t, { role: "box", cfg: { files: { roots: [work] } },
+    agents: [{ name: "wilma", kind: "agent", projects: "*" }] });
+  await no(reg, "files.drive.audit", {}, "mcp:agent:wilma", "denied");
+  assert.ok((await ok(reg, "files.drive.audit", {}, "mcp")).ok); // a bare session is unaffected
 });
 
 // ---- the Mac -----------------------------------------------------------------------------
