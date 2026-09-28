@@ -255,8 +255,14 @@ facts are not a project's.
 - 0.1.1 queue, in order: import.start/stop/cancel
   (after federation's sync.send); then site recipes (memory.recipe per site from glass's
   browse.finished, module browse; self-correcting, person-editable). Landmark shape proposed to
-  glass: {role, name, css?, near?}, role+name first, never values. Waits on the lead's review of
-  glass's docs/design/agent-browsers.md (work/glass-live b4584a7f) before building.
+  glass: {role, name, css?, near?}, role+name first, never values. Checked with glass 28 Sep
+  (their reply): agent-browsers.md's review has landed and the shape is still good, but the
+  browse module itself (browse.task/browse.finished, the reach ladder) is fully unbuilt -- only
+  the level-2 plumbing under it (cdpmux.js's per-agent BrowserContext scoping, computerd's
+  per-agent identity) has landed, and the browser-kind computer browse.task would run on top of
+  is still mid-build (pool.js's schema not settled). Genuinely blocked, not gated on a review
+  anymore; glass pings when it's real. Did chat win #1 (recall.related) in the meantime instead
+  of idling.
 - Project graphs: recall.search `sessions` filter + retrieve scopes by folders plus picked ids (0.1.1).
 - Host-to-server sync: contract in docs/design/iq-everywhere.md; agree it with federation (paused)
   and amend ADR 0008.
