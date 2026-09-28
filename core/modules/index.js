@@ -52,6 +52,10 @@ const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
 /** Use counts reach vyre.db at most this often; nothing is written while nothing was used. */
 const USE_FLUSH = 60_000;
+/** How long one module's own stop() may take before Registry.stop() gives up on it and moves on
+ * to the next (matches core/daemon/index.js's DRAIN_MS for the same reason: a hang in one place
+ * must never become a hang everywhere). */
+const MODULE_STOP_MS = 5_000;
 
 /**
  * Check a manifest. Returns a list of problems; empty means valid. `firstParty` is true for a
@@ -649,9 +653,21 @@ export class Registry {
   }
 
   async stop() {
-    for (const [, r] of [...this.modules.entries()].reverse()) {
+    for (const [name, r] of [...this.modules.entries()].reverse()) {
       if (r.state === "running" && r.handle && typeof r.handle.stop === "function") {
-        try { await r.handle.stop(); } catch {}
+        try {
+          // A module whose own stop() never settles (an open handle, an awaited promise nothing
+          // ever resolves) used to hang every caller of this method forever, with nothing to say
+          // why: a real vyred shutdown, and any test that starts one in-process (core/settings/
+          // settings.test.js, among others) and stops it in t.after. Race it against the same
+          // bound the daemon already gives its own drain (DRAIN_MS), and say so loudly rather
+          // than hang silently at 0% CPU.
+          const timedOut = await Promise.race([
+            r.handle.stop().then(() => false),
+            new Promise(resolve => { const t = setTimeout(() => resolve(true), MODULE_STOP_MS); t.unref && t.unref(); }),
+          ]);
+          if (timedOut) this.deps.log(`warn: module ${name} did not stop within ${MODULE_STOP_MS}ms; moving on`);
+        } catch {}
       }
     }
     // Last, so a call a module made while stopping is counted too. vyred closes the database after.

@@ -511,3 +511,31 @@ test("modules: ctx.vault.fetch accepts items named by needs.credentials, by item
   assert.match((await reg.call("talker.check", { item: "talker-deepgram" }, "cli")).error.message, /does not declare/);
   assert.deepEqual((await reg.call("talker.mods", {}, "cli")).data, ["deepgram", "openai"]);
 });
+
+test("modules: Registry.stop() does not hang forever on a module whose own stop() never settles", async t => {
+  // core/settings/settings.test.js (and anything else that starts a real vyred in-process and
+  // stops it in t.after) hung indefinitely, at 0% CPU, whenever any one loaded module's stop()
+  // never resolved: Registry.stop() awaited each module in turn with no bound at all. Races it
+  // against MODULE_STOP_MS now, the same way the daemon already bounds its own drain. Mocked
+  // timers, not a real multi-second wait: a module whose stop() truly never resolves is exactly
+  // the case a real wait can't safely reach without either leaving that promise dangling past
+  // the test (node:test's own pending-promise-at-exit check) or waiting the real MODULE_STOP_MS.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  const stuck = `export default { async start(ctx) {
+    ctx.tool("stuck.ping", { run: async () => "pong" });
+    return { stop: () => new Promise(() => {}) }; // never settles
+  } };`;
+  writeModule(root, "stuck", { version: "0.1.0", does: { tools: ["stuck.ping"] } }, stuck);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const logs = [];
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: m => logs.push(m) });
+  await reg.start(discover([root]), { role: "local" });
+  assert.deepEqual(await reg.call("stuck.ping", {}, "cli"), { data: "pong" });
+  const done = reg.stop();
+  t.mock.timers.tick(5_000); // MODULE_STOP_MS, mocked: instant, nothing left dangling
+  await done;
+  assert.ok(logs.some(l => /^warn: module stuck did not stop within \d+ms/.test(l)), logs.join("\n"));
+});
