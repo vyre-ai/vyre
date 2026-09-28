@@ -478,8 +478,8 @@ test("onboard: tailscale policy merges Taildrive, Taildrop and SSH into one snip
   ]);
   const [drive, taildrop] = r.data.policy.grants;
   assert.deepEqual(drive, { src: ["[your Mac's name]"], dst: ["alex-box"], app: { "tailscale.com/cap/drive": [{ shares: ["projects"], access: "ro" }] } });
-  assert.deepEqual(taildrop, { src: ["autogroup:member"], dst: ["alex-box"], app: { "https://tailscale.com/cap/file-sharing-target": [{}] } });
-  assert.deepEqual(r.data.policy.ssh, [{ action: "accept", src: ["alex@example.com"], dst: ["alex-box"], users: ["autogroup:nonroot"] }]);
+  assert.deepEqual(taildrop, { src: ["alex@example.com"], dst: ["alex-box"], app: { "https://tailscale.com/cap/file-sharing-target": [{}] } });
+  assert.deepEqual(r.data.policy.ssh, [{ action: "check", src: ["alex@example.com"], dst: ["alex-box"], users: ["[the admin account you set up this server with]"] }]);
   assert.equal(r.data.policy.tagOwners, undefined, "egress is off by default, so no tag:vyre-egress block");
 });
 

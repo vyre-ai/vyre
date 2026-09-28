@@ -102,7 +102,7 @@ core/link/transport.js's peer-verified open generalized past the Mac-to-box shap
 initiated, either side); acknowledged as mine, queued behind the reviewer's relay.pair.ticket
 sign-off and the lead's Tailscale-carries auth-key work.
 
-28 Sep 2026, latest of all: built relay.pair.ticket (ADR 0037), after the reviewer's two
+28 Sep 2026, latest of all: built relay.pair.ticket (ADR 0045, renumbered from "ADR 0037"), after the reviewer's two
 blocking fixes on the design. `core/relay/wire.js` gains `TICKET_BYTES` (8), `TICKET_TTL` (5 min),
 `ticketDerive(which, ticket)` and `ticketMac(ticket, record)`: every value derived from the raw
 ticket under its own tag (`vyre-pair-loc`, `vyre-pair-sec`, `vyre-pair-mac`), so the relay only
@@ -139,7 +139,7 @@ relay/node/server.test.js. Regenerated docs/reference/*. Sent to the reviewer.
 
 28 Sep 2026, later still: binding user decision, relay-first everywhere ("Wink" in copy — same
 mechanism as the scan-to-pair note below, renamed). Servers skip Tailscale too by default.
-Claimed ADR 0038 (docs/work/README.md), amends ADR 0002 and ADR 0014. Design note sent to the
+Claimed ADR 0046 (renumbered from "ADR 0038"; docs/work/README.md is stale, <team-dir>/ADR-NUMBERS.md is the live registry), amends ADR 0002 and ADR 0014. Design note sent to the
 reviewer (copy to the lead), not building: the caller-classification layer needs nothing new
 (`ownerDevice()` in core/modules/index.js already treats `device:<id>` and `tailnet:<owner>` as
 equal, built for ADR 0026); the tailnet listener (core/names/service.js, `tailscale whois`)
@@ -155,7 +155,7 @@ required infra. Waiting on the reviewer and the lead before writing anything. Id
 28 Sep 2026, new from the lead: scan-to-pair (phone.vyre.run scans the owner's avatar / Vyre
 code, no Tailscale on the phone). My part is the relay side: `relay.pair.ticket` mints a short
 ticket, registered with the relay so a phone can resolve it to the box's signed identity, then
-runs the ordinary pairing handshake. Claimed ADR 0037 (docs/work/README.md), amends ADR 0026
+runs the ordinary pairing handshake. Claimed ADR 0045 (renumbered from "ADR 0037"; docs/work/README.md is stale, team/ADR-NUMBERS.md is the live registry), amends ADR 0026
 section 6. Design note sent to the reviewer before writing any code: a 64-bit ticket (stored only
 as its hash, 5 min TTL, single-use, reusing the existing pairing mint()/secret-hash machinery
 unchanged); a new relay HTTP resolve endpoint (both relay/node/server.js and relay/worker/) that
@@ -667,19 +667,25 @@ Then on the box: `vyre call --tty files.drive.share '{"name":"projects"}'`, and
 ### Taildrop (files to the box)
 
 Admin console, Settings: Send Files on. The box stays a tagged server, so grant file sharing to
-its tag. The grant's exact form is checked on the first real run:
+its tag, owner only — not `autogroup:member`, which would let anyone sharing or family-sharing
+into this tailnet drop a file onto the box too, where an agent may read it. The grant's exact
+form is checked on the first real run:
 
 ```json
-{ "grants": [ { "src": ["autogroup:member"], "dst": ["tag:vyre-box"],
+{ "grants": [ { "src": ["alex@example.com"], "dst": ["tag:vyre-box"],
     "app": { "https://tailscale.com/cap/file-sharing-target": [{}] } } ] }
 ```
 
 ### Tailscale SSH (for `vyre box add`)
 
-On the server, `tailscale up --ssh` (or `tailscale set --ssh`), with a policy SSH rule:
+On the server, `tailscale up --ssh` (or `tailscale set --ssh`), with a policy SSH rule. `action`
+is `check` (a fresh sign-in each time), not `accept` (which would let any of the owner's own
+devices, a phone included, SSH straight in with no fresh sign-in). `users` is the unix account on
+the server itself — the admin account this server was set up with — never a service account like
+`vyre` or `vyre-agent`:
 
 ```json
-{ "ssh": [ { "action": "accept", "src": ["alex@example.com"], "dst": ["tag:vyre-box"], "users": ["autogroup:nonroot"] } ] }
+{ "ssh": [ { "action": "check", "src": ["alex@example.com"], "dst": ["tag:vyre-box"], "users": ["alex"] } ] }
 ```
 
 ### HTTPS (a ts.net address)
@@ -785,7 +791,7 @@ Listed by the area they touch, so the merge can go in order. Everything below is
   Touch ID prompt now sanitises the relay host the same way as the box's own name (shared
   `promptSafe` helper, moved up so `admit()` can use it too, widened to Unicode format/bidi
   characters, host capped at 64).
-- **relay** (28 Sep, ADR 0037, own): tool `relay.pair.ticket` (input `{}`, output
+- **relay** (28 Sep, ADR 0045, own): tool `relay.pair.ticket` (input `{}`, output
   `{ ticket, expiresAt, connected }`), refuses on darwin like `relay.join`; a device's own name at
   pairing (both the classic QR and ticket paths) is now sanitised with `promptSafe`, capped at 64,
   in place of the old plain `NAME` regex check; event `relay.paired { device, name }`, only for a

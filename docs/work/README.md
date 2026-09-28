@@ -67,5 +67,5 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0034 | memory-iq | Vyre IQ: cited answers from every session, fact and the graph |
 | 0035 | native-core | The settings hub: one file, four levels, read live by every surface |
 | 0036 | cohesion | One system |
-| 0037 | tailnet | Scan-to-pair: relay.pair.ticket, a signed pairing ticket the Vyre code can carry |
-| 0038 | tailnet | Relay-first everywhere (Wink): the box's only inbound path is the relay by default, Tailscale under Advanced |
+| 0045 | tailnet | Scan-to-pair (Wink): relay.pair.ticket, a signed pairing ticket the Vyre code can carry (renumbered from this table's stale "0037"; the live registry is team/ADR-NUMBERS.md, outside git) |
+| 0046 | tailnet | The relay introduces, Tailscale carries: auth-key auto-join (renumbered from this table's stale "0038", which was relay-first-everywhere, now shelved) |

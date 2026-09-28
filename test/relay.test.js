@@ -17,7 +17,7 @@ import { parsePairUrl, pairUrl } from "../core/relay/pairing.js";
 import { macCoreRefusal } from "../core/relay/index.js";
 import { useReleasesFile } from "../core/relay/releases.js";
 import { signed } from "../core/presence/person.js";
-import { pairTicket } from "../relay/client/client.js";
+import { pairTicket, resolveTicket, pairOffer } from "../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import crypto from "node:crypto";
@@ -520,13 +520,67 @@ test("relay: relay.pair.ticket mints a Vyre-code ticket, a phone resolves and re
   assert.equal(row.name, "Alex's iPhone");
 
   assert.equal(seen.filter(([n]) => n === "device.paired").length, 1);
+  const dp = seen.find(([n]) => n === "device.paired");
+  assert.match(dp[1].fingerprint, /^[a-z2-7]{4} [a-z2-7]{4}$/, "device.paired carries the new device's own key fingerprint");
   const rp = seen.find(([n]) => n === "relay.paired");
   assert.ok(rp, "relay.paired fires for a ticket pairing");
-  assert.deepEqual(rp[1], { device: paired.device, name: "Alex's iPhone" });
+  assert.deepEqual(rp[1], { device: paired.device, name: "Alex's iPhone", fingerprint: dp[1].fingerprint });
 
   // Single-use: resolving (and so redeeming) the same ticket again is refused outright.
   await assert.rejects(() => pairTicket(fromBase64url(ticket), { relay: status.url, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "phone-key-2.json")) }),
     /expired or was already used/);
+});
+
+test("relay: resolveTicket confirms who a ticket pairs with, before pairing, so a phone can show and pairOffer separately", async t => {
+  const { d } = await world(t);
+  const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const resolved = await resolveTicket(fromBase64url(minted.ticket), { relay: status.url, crypto: nodeCrypto() });
+  assert.equal(resolved.name, "alex");
+  assert.match(resolved.fingerprint, /^[a-z2-7]{4} [a-z2-7]{4}$/);
+  assert.equal(resolved.offer.route, status.route);
+  assert.equal(resolved.handle, "alex", "the claimed vyre.run handle, covered by the same MAC as everything else");
+  // Confirmed by a person reading exactly that name and fingerprint (not built here, the whole
+  // point): only now does the handshake run, as its own separate step.
+  const paired = await pairOffer(resolved.offer, { name: "alex's phone", crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "phone-key.json")) });
+  assert.ok(paired.device);
+  const row = (await d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find(x => x.id === paired.device);
+  assert.equal(row.name, "alex's phone");
+
+  // Resolving again (the ticket is single-use) refuses before any pairing attempt at all.
+  await assert.rejects(() => resolveTicket(fromBase64url(minted.ticket), { relay: status.url, crypto: nodeCrypto() }), /expired or was already used/);
+});
+
+test("relay: resolveTicket refuses a record whose own expiry has passed, even with a valid MAC", async t => {
+  const { d } = await world(t);
+  const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const raw = fromBase64url(minted.ticket);
+  const { ticketDerive, ticketMac } = await import("../core/relay/wire.js");
+  const loc = ticketDerive("loc", Buffer.from(raw)).toString("base64url");
+  const res = await fetch(`${status.url.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
+  const body = await res.json();
+  const record = JSON.parse(body.record);
+  const expired = JSON.stringify({ ...record, exp: Date.now() - 1000 });
+  const mac = ticketMac(Buffer.from(raw), expired).toString("base64url");
+  const badFetch = async () => ({ ok: true, status: 200, json: async () => ({ record: expired, mac }) });
+  await assert.rejects(() => resolveTicket(raw, { relay: status.url, fetch: badFetch, crypto: nodeCrypto() }), /expired or was already used/);
+  assert.equal(record.handle, "alex", "the claimed handle travels in the record, covered by the same MAC");
+});
+
+test("relay: resolveTicket's handle is null when no vyre.run name is claimed, not a guess", async t => {
+  const relay = createRelay();
+  const url = await relay.listen();
+  t.after(() => relay.close());
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
+  const d = await start({ presence: lenient, root, log: () => {} });
+  t.after(() => d.stop());
+  const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const resolved = await resolveTicket(fromBase64url(minted.ticket), { relay: status.url, crypto: nodeCrypto() });
+  assert.equal(resolved.handle, null);
+  assert.equal(resolved.name, "Vyre box", "boxName()'s own fallback, unaffected by the missing handle");
 });
 
 test("relay: a device's own name at ticket pairing is sanitised and capped like the box's own name", async t => {
