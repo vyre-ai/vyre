@@ -46,8 +46,10 @@ export function cardHead(o) {
     h("span", { class: "cv-ask-meta" }, at ? `${o.who} · ${at}` : o.who));
 }
 
-/** A key hint inside a button: plain text, hidden from readers (the button carries aria-keyshortcuts). */
-export const keyHint = k => h("span", { class: "cv-ask-key", "aria-hidden": "true" }, k);
+/** A key hint inside a button: the shared kbd chip (key-hint.md), hidden from readers (the button
+ * carries aria-keyshortcuts). Was plain text (cv-ask-key) - the only key hint in this view not
+ * using the real chip everywhere else (Send Cmd+Enter, Stop Esc, the composer's own) uses. */
+export const keyHint = k => h("span", { class: "kbd cv-ask-key", "aria-hidden": "true" }, k);
 
 /** The spinner and the verb a busy button shows in place of its label. */
 export const busyLabel = verb => [h("span", { class: "cv-ask-spin", "aria-hidden": "true" }), verb];
