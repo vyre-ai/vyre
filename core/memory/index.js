@@ -258,6 +258,10 @@ export default {
       const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
       const a = list.find(x => x && x.name === who);
       if (!a) throw denied(`no agent ${who}`);
+      // Deliberately not a projects.access lookup: the assistant's all-projects reach is a property
+      // of being the assistant (agents.list's kind), never a grant federation's table can revoke.
+      // If the assistant is ever restricted to fewer than every linked project, that is a new rule
+      // here, not a projects.access row for it.
       if (a.kind === "assistant" || a.projects === "*") return { all: true, agent: who, folders: [], slugs: new Set() };
       const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
       const granted = (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
