@@ -157,6 +157,19 @@ test("whoFrom: the same bypass with a space instead of a colon, or an agent clai
   assert.equal(whoFrom("deck:thread:t1").person, false, "a thread: claim is not the person either");
 });
 
+test("whoFrom: an owner device is not person: true here, even though lib/caller.js's isPerson admits it (reviewer's HOLD on f2df7888, lead's ruling 2026-09-28)", () => {
+  // isPerson (lib/caller.js) also admits an owner device (isOwnerDevice: tailnet:<owner>,
+  // device:<id>), which this file's own pre-swap check never did. Per ADR 0032 any script on a
+  // paired phone or tailnet node is that owner device with no person session behind it -
+  // admitting it here would skip inScope()'s per-agent check for every connected MCP server, so
+  // this stays excluded on purpose to keep today's behaviour, unlike goals/planner's swap (which
+  // is intentionally stricter, not identical - see their own tests/comments).
+  assert.equal(whoFrom("tailnet:alex@example.com").person, false, "a tailnet owner device is not the person");
+  assert.equal(whoFrom("device:abcdefghijklmnop").person, false, "a paired device is not the person");
+  // An agent's own tailnet node was already refused before the swap, and still is.
+  assert.equal(whoFrom("tailnet:agent:kit").person, false);
+});
+
 // ---- a hub with a fake connect ----
 
 function fakeHub({ values = {}, behave = {}, ...extra } = {}) {

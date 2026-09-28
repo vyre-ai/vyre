@@ -23,7 +23,7 @@
 
 import crypto from "node:crypto";
 import { McpError } from "./client.js";
-import { isPerson } from "../../lib/caller.js";
+import { isPerson, isOwnerDevice } from "../../lib/caller.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE mcp_servers (
@@ -372,7 +372,15 @@ export function whoFrom(caller, meta = {}) {
   // a space before "agent:", or a claim with no name after it, both used to slip past an anchored
   // regex; isPerson's AGENT_CLAIM already treats these, and a thread: claim, the same as core/
   // modules' own callerKind strip does) before checking the owner surfaces.
-  const person = isPerson(c) || (c.startsWith("module:") && !MODULE_CLAIM.test(c));
+  //
+  // NOT a plain swap to isPerson(c) alone: isPerson also admits an owner device (isOwnerDevice -
+  // tailnet:<owner>, device:<id>), which the old inline check never did, and per ADR 0032 any
+  // script on a paired phone or tailnet node is that owner device with no person session behind
+  // it - admitting it here would skip inScope()'s per-agent check for every connected MCP server.
+  // Excluded explicitly (reviewer's HOLD on f2df7888, lead's ruling 2026-09-28) to keep today's
+  // behaviour exactly; admitting an owner device with a real passkey-backed person session is a
+  // separate design for later, not 0.1.1.
+  const person = (isPerson(c) && !isOwnerDevice(c)) || (c.startsWith("module:") && !MODULE_CLAIM.test(c));
   return { person, agent: meta.agent || (named ? named[1] : null), thread: meta.thread || null };
 }
 

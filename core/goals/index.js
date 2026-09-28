@@ -36,7 +36,10 @@ const STATES = ["pending", "active", "done", "cancelled"];
 // both read as "person" under that test. isPerson (lib/caller.js) checks the owner surfaces and
 // owner devices explicitly instead, and refuses an agent claim first, whatever it otherwise reads
 // as (cohesion, 2026-09-28) - every other caller kind, guests and hooks included, is never the
-// person either way.
+// person either way. This swap is intentionally STRICTER than the local isPerson it replaced, not
+// behaviorally identical: "cli agent:kit" and "cli:thread:x" both used to read as the person here
+// and no longer do (reviewer, 2026-09-28) - the exact class of caller this file's isPerson was
+// already trying to refuse, just not fully.
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const AGENTS = ["mcp", "harness", "module"];
 const newId = () => `g_${crypto.randomBytes(6).toString("base64url")}`;

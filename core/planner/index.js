@@ -258,6 +258,11 @@ export default {
     // with no prompt. The person changes anything; an agent changes only what it added. An item
     // keeps who added it (source), and shows a name (added_by) only when that was neither the
     // person nor their assistant.
+    //
+    // isPerson used to be `callerAllowed(PEOPLE, caller)`, which never refused an agent claim
+    // first (the same backwards shape reviewer caught in goals) - swapped onto lib/caller.js's
+    // isPerson (cohesion, 2026-09-28), intentionally STRICTER, not identical: "cli agent:kit" and
+    // "cli:thread:x" both used to read as the person here and no longer do (reviewer, 2026-09-28).
 
     /** The assistant's name, read from agents.list at most once a minute. */
     let assistant = { name: /** @type {string|null} */ (null), at: -Infinity };
