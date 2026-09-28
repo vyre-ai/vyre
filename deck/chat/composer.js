@@ -76,6 +76,10 @@ const frame = typeof requestAnimationFrame === "function" ? (/** @type {() => vo
 const IMAGES_NO_QUEUE = "Images can't wait in the queue yet. Send them as a steer now (Enter), or after this turn.";
 /** How long the send button is held to queue. */
 const HOLD_MS = 450;
+// This module's own timers (holdTimer, leaseTimer, fileTimer, below) call .unref?.() right after
+// setTimeout: a no-op in the browser, but in a Node test that fails (or otherwise never calls
+// composer.stop()) before its own timer fires, it stops that one dangling timer from keeping the
+// whole test-runner process alive - a hanging glob is worse than a test that leaks harmlessly.
 /** A fallback "/" list is asked again after this long (the session was not running: it had none). */
 const COMMANDS_RETRY_MS = 15_000;
 
@@ -121,7 +125,7 @@ export function mountComposer(opts) {
   const thumbs = h("div", { class: "composer-images", hidden: true });
   let holdTimer = /** @type {any} */ (null), held = false;
   const send = h("button", { class: "ibtn composer-send", "aria-label": "Send", title: "Send (hold to queue for after this turn)",
-    onpointerdown: () => { held = false; clearTimeout(holdTimer); holdTimer = setTimeout(() => { held = true; }, HOLD_MS); },
+    onpointerdown: () => { held = false; clearTimeout(holdTimer); holdTimer = setTimeout(() => { held = true; }, HOLD_MS); holdTimer.unref?.(); },
     onpointerup: () => clearTimeout(holdTimer),
     onclick: () => { const hold = held; held = false; clearTimeout(holdTimer); submit({ button: true, hold }); } }, icon("send", 16));
   const stopBtn = h("button", { class: "btn btn-ghost btn-sm composer-stop", type: "button", hidden: true, title: "Stop this turn (Esc)",
@@ -168,7 +172,7 @@ export function mountComposer(opts) {
 
   function maybeLease() {
     if (leaseTimer || machine) return; // a Mac's lease is not forwarded
-    leaseTimer = setTimeout(() => { leaseTimer = null; }, 4000);
+    leaseTimer = setTimeout(() => { leaseTimer = null; }, 4000); leaseTimer.unref?.();
     attempt("threads.lease", { thread }).catch(() => {});
   }
 
@@ -349,6 +353,7 @@ export function mountComposer(opts) {
         })], row => (row.value.suggestion ? pickSuggestion(row.value.suggestion) : pickFile(row.value.rel)),
       named.length ? "People, agents and files" : "Files in " + (folder || "this folder"), keysLine(["⏎", "insert"], ["Esc", "close"]));
     }, 120);
+    fileTimer.unref?.();
   }
   /** A word completed from suggest (Tab on a word, or an @ name): put it in and say it was picked. */
   function pickSuggestion(/** @type {ReturnType<typeof suggestRows>[number]} */ row) {
