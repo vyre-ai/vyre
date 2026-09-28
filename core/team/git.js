@@ -180,12 +180,16 @@ export async function headSha(dir, ref) {
 
 /**
  * The integrator's own worktree, reset to `mainSha` (section 8: "reset to main before each
- * merge"), discarding whatever it held from a previous attempt. Vyred's own act.
+ * merge"), discarding whatever it held from a previous attempt. Vyred's own act. No
+ * `--end-of-options`: unlike the parse-options commands elsewhere in this file, `git reset`'s own
+ * argument parser refuses that flag outright ("must come before non-option arguments") whatever
+ * position it is given, so it cannot be added here — safe anyway, since `sha` is never raw
+ * caller-controlled text: it is always a hash `headSha()` itself already read with `--verify`.
  */
 export async function resetTo(worktreeDir, sha) {
   const bad = await unsafeConfig(worktreeDir);
   if (bad.length) return refuse(bad, "reset the integrator's worktree");
-  return git(worktreeDir, ["reset", "--hard", "--end-of-options", sha]);
+  return git(worktreeDir, ["reset", "--hard", sha]);
 }
 
 /**
@@ -196,8 +200,12 @@ export async function resetTo(worktreeDir, sha) {
  * clean up before it ever sees it.
  */
 export function mergeBranchIn(worktreeDir, branch) {
+  // --no-ff: a fast-forwardable merge (the common case — a teammate's branch with nothing new
+  // from main since it forked) would otherwise silently move the ref with no merge commit at
+  // all, so the result vyred reports ("Merged <branch> into <base>, a..b") and what team.merge
+  // actually checks in (a real commit whose message names the merge) would both be a fiction.
   return unsafeConfig(worktreeDir).then(bad => bad.length ? refuse(bad, "merge")
-    : git(worktreeDir, ["merge", "--no-verify", "--no-edit", "-m", `merge ${branch}`, "--end-of-options", B(branch)], { env: VYRED }));
+    : git(worktreeDir, ["merge", "--no-verify", "--no-edit", "--no-ff", "-m", `merge ${branch}`, "--end-of-options", B(branch)], { env: VYRED }));
 }
 
 /** True once every conflict marker from a failed merge is gone (the integrator's own edits resolved it, and it was `git add`ed). */
