@@ -118,6 +118,28 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
 - Told reviewer the confirmed fix sha (041f87f0, then 6300ecaf for this round) directly; team-lead
   had asked about ae8ee38c, which was the docs-check commit before the actual fix.
 
+## Done (cont. 6): 28 Sep, reviewer's HOLD round 2, remaining two items + merge
+- The first four items of the reviewer's round-2 HOLD (presence exemption fixed to
+  `role === "box"` only, not any Solo Mac; "device" refused from anyone but
+  module:onboard/module:relay; the 7300 setup listener gated on `isServer()`; 8 Claude
+  attribution trailers stripped) had already landed at c5d7d318.
+- The remaining two, at e22752c9: `onboard.status` now reports `platform` (`os.platform()`) and
+  `can.relayJoin` (false with a reason on darwin until vyre-core/ADR 0040 exists to hold a
+  paired device's keys off the same-uid vyre.db, true elsewhere), so launch's cards read a fact
+  instead of guessing from role/machine. Exported the pure `canRelayJoin(platform)` helper
+  (same injectable-platform pattern as config.js/modules.js) so the darwin branch has a direct
+  unit test. Fixed docs/design/anywhere.md's two remaining `{ action: "set", machine }`
+  mentions of onboard.machine to the shipped `{ machine }` shape (docs/reference/tools.md was
+  already correct).
+- Merged main (187 commits behind) at b2da8bc8: conflicts in core/presence/index.js (kept both
+  this branch's PERSON_ONLY addition for onboard.machine and main's new link.pair/OPT_OUT/
+  PERSON_SURFACES/personOnly() derivation) and core/modules/modules.test.js (kept both
+  `roleBuckets` and main's `firstParty`/`fileURLToPath` imports); regenerated docs/reference/*
+  and docs/index.json after resolving code, not before.
+- Green on testbox after the merge: onboard.test.js (25, 2 new), config+modules+presence+
+  boundaries+person-only-guard+docs-check suites, 177/177.
+- Sent b2da8bc8 to the reviewer and the integrator.
+
 ## Next
 1. ADR 0040 (vyre-core, drafted by e2e at 644c9e50 on work/e2e-setsid): write my three named
    sections -- install mechanics under the no-Apple-Developer-ID constraint (sudo once,
