@@ -69,6 +69,13 @@ export default {
       },
     });
 
+    ctx.tool("presence.capsule.pin", {
+      description: "Pins the Capsule build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous, tty-less process shape (its own proof, not ancestry: core/daemon/peer.js's verifiedCapsule). Needs presence, same as enrolling a key.",
+      presence: { summary: async () => "Pin this Mac's Capsule build" },
+      input: obj({ cdhash: str }, ["cdhash"]),
+      run: async ({ cdhash }) => presence.pinCapsule(cdhash),
+    });
+
     ctx.tool("presence.code", {
       description: "A one-time code, valid 10 minutes, that enrolls one passkey from the Deck. Needs presence.",
       presence: { summary: async () => "Make a one-time code to enroll a passkey" },

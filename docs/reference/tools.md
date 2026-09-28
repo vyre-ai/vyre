@@ -1589,158 +1589,195 @@ Does a lesson work? before: the user's repeats per 100 turns before it was accep
 
 ## link
 
-### `capsule.pin`
-
-Pins the Capsule build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its same ambiguous, tty-less process shape (its own proof, not ancestry: core/daemon/peer.js's verifiedCapsule).
-
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
-
 ### `link.call`
 
 Call a tool on your box from this Mac (threads, agents, files). Answers box_unreachable when the box is away.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `tool` string, required
+  - `input` object
 - Callers: any caller
+- Registered only on the Mac (local).
 
 ### `link.events`
 
 A paired Mac sends the events of a thread the box sent to: { key, events: [{ type, thread, project, at, payload }] }. The box re-emits each, labelled with the Mac.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `events` list of object, required
+  - `key` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `link.find`
 
 Look for your box on your tailnet: online peers that answer as a Vyre box. For `vyre up` to offer pairing.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `local`
+- Registered only on the Mac (local).
 
 ### `link.health`
 
 How this box reaches a node right now: direct or relayed, latency, last handshake. By default the calling device; node: a paired Mac's node id. Checked at most once a minute per node.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `node` string
 - Callers: any caller
 
 ### `link.hello`
 
 A paired Mac checks in. Answers who this box is, or unpaired when the key is not known here.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `key` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `link.macs`
 
 The paired Macs and whether each is online for the box to read now.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
+- Registered only on the box.
 
 ### `link.macs.call`
 
 Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or, as the person, threads.send. Answers [{ mac, name, ok, data?, error? }], one per Mac asked.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `tool` string, required
+  - `as` string
+  - `input` object
+  - `mac` string
+  - `timeout` number
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
+- Registered only on the box.
 
 ### `link.pair`
 
 Pair this Mac with your box. Shows a code to approve on the box: `vyre link approve <code>` there, or in the Deck.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `box` string, required
+- Callers: `capsule`, `cli`, `local`
+- Registered only on the Mac (local).
 
 ### `link.pair.approve`
 
 Approve a Mac's pairing with the code shown on the Mac, e.g. `vyre link approve 123-456` on the box.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `code` string, required
 - Callers: any caller
+- Needs a person present.
+- Registered only on the box.
 
 ### `link.pair.deny`
 
 Refuse a pairing request.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `id` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `link.pair.poll`
 
 The Mac asks whether its pairing was approved; the link key is handed over once.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `id` string, required
+  - `secret` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `link.pair.request`
 
 Start pairing a Mac with this box. Called by the Mac's vyred over the tailnet; the code it returns is shown on the Mac only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `name` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `link.peers`
 
 The Macs paired with this box.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
+- Registered only on the box.
 
 ### `link.pending`
 
 Pairing requests waiting for approval on this box. The codes are never listed: they are on the Mac's screen.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
+- Registered only on the box.
 
 ### `link.remote`
 
 ctx.remote's carrier: a box tool for a module on this Mac.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `tool` string, required
+  - `input` object
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
+- Registered only on the Mac (local).
 
 ### `link.reply`
 
 A paired Mac answers one of the box's questions: result is { data } or { error }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `id` string, required
+  - `key` string, required
+  - `result` object, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `link.serve`
 
 A paired Mac waits here for the box's next question. Answers { id, tool, input }, or null when there was none for a while.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `key` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `link.signin`
 
 Sign this Mac's command line and Capsule in as you on the box for 30 days, so they can answer asks and approve there. Answers the address to open; you confirm with your passkey on the box's page.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `local`
+- Registered only on the Mac (local).
 
 ### `link.signout`
 
 Sign this Mac out on the box: its command line and Capsule are only a device there again.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `local`
+- Registered only on the Mac (local).
 
 ### `link.status`
 
 This box's side of the link: its paired Macs and waiting requests.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `link.unpair`
 
 Forget a paired Mac. On the box, by id; from the Mac, with its own key.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `id` string
+  - `key` string
 - Callers: any caller
 
 ## mcp
@@ -2506,6 +2543,15 @@ Change an item: title, body, list, priority, pinned, tags, project, thread, pare
 - Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
 
 ## presence
+
+### `presence.capsule.pin`
+
+Pins the Capsule build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous, tty-less process shape (its own proof, not ancestry: core/daemon/peer.js's verifiedCapsule). Needs presence, same as enrolling a key.
+
+- Input:
+  - `cdhash` string, required
+- Callers: any caller
+- Needs a person present.
 
 ### `presence.code`
 

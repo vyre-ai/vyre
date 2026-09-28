@@ -313,34 +313,21 @@ export function procInfo(pid) {
 export function codeCdhash(pid) {
   if (process.platform !== "darwin") return null;
   try {
-    const r = spawnSync("codesign", ["-dvvv", `pid=${pid}`], { encoding: "utf8", timeout: 2000 });
+    // codesign's pid form is a bare or `+`-prefixed pid, never `pid=<n>` (that form fails outright
+    // on macOS 26: "No such file or directory") -- found and confirmed against a real signed app
+    // by capsule-pro, 28 Sep.
+    const r = spawnSync("codesign", ["-dvvv", `+${pid}`], { encoding: "utf8", timeout: 2000 });
     const m = /^CDHash=([0-9a-f]+)$/m.exec(`${r.stdout || ""}\n${r.stderr || ""}`);
     return m ? m[1] : null;
   } catch { return null; }
 }
 
-/** Where this install's pinned Capsule build is recorded: 0600, next to vyred's own state. */
-export const capsulePinPath = root => path.join(root, "capsule-pin.json");
-
-/** @param {string} root @returns {{ cdhash: string, pinnedAt: number } | null} */
-export function readCapsulePin(root) {
-  try {
-    const v = JSON.parse(fs.readFileSync(capsulePinPath(root), "utf8"));
-    return typeof v?.cdhash === "string" && /^[0-9a-f]{40,}$/.test(v.cdhash) ? v : null;
-  } catch { return null; }
-}
-
-/**
- * Pins the Capsule build `vyre capsule install` just signed. Only that command calls this (a
- * person action, at a real terminal, after codesign has already run) -- it is exposed to the
- * socket as capsule.pin, PERSON_ONLY, so the same ancestry floor that gates every other person
- * action gates repinning too: a model's shell cannot pin its own build over the person's.
- * @param {string} root @param {string} cdhash
- */
-export function writeCapsulePin(root, cdhash) {
-  if (!/^[0-9a-f]{40,}$/.test(cdhash)) throw new Error("not a cdhash");
-  fs.writeFileSync(capsulePinPath(root), JSON.stringify({ cdhash, pinnedAt: Date.now() }), { mode: 0o600 });
-}
+// The pin itself lives in vyred's own db now (core/presence/index.js's pinCapsule/capsulePin,
+// written only through the presence-required presence.capsule.pin tool) -- NOT a file under root. The
+// first version of this was a flat JSON file, and the reviewer broke it in one line: 0600 or not,
+// it was writable by the same uid vyred runs as, which is also a model's shell's, so nothing
+// stopped a direct write of its own build's cdhash there, no tool call and no proof needed at all
+// (28 Sep). A DB row through the same presence floor as presence.enroll does not have that hole.
 
 /** @type {WeakMap<object, Promise<boolean>>} */
 const capsuleVerified = new WeakMap();

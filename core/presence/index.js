@@ -73,11 +73,7 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   "presence.person.revoke",
   // Every setting is the person's own: a model never changes one, and settings relays the
   // person to the owning module's setter (e2e review, HIGH 1).
-  "settings.set", "settings.reset",
-  // Repins the Capsule build vyred trusts as itself (core/daemon/peer.js's verifiedCapsule): a
-  // model's shell must never be able to pin its own build over the person's (the setsid HIGH's
-  // Capsule follow-up, e2e review, 28 Sep).
-  "capsule.pin"]);
+  "settings.set", "settings.reset"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
 
@@ -189,6 +185,19 @@ export const MIGRATIONS = [`
     key TEXT PRIMARY KEY,
     device TEXT NOT NULL,
     origin TEXT NOT NULL
+  );
+`, `
+  -- A single row: the Capsule build most recently pinned by \`vyre capsule install\`. A DB row
+  -- through the normal presence tool floor (capsule.pin, presence-required), never a bystander
+  -- file: a flat JSON file under root was the first version of this and the reviewer broke it in
+  -- one line -- writable by the same uid vyred runs as, which is also a model's shell's, so
+  -- nothing stopped it writing its own build's cdhash there directly, no tool call needed at all
+  -- (28 Sep). A row here is exactly as protected as any other presence key: only vyred's own tool
+  -- handler, gated the same way presence.enroll already is, ever writes one.
+  CREATE TABLE presence_capsule_pin (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    cdhash TEXT NOT NULL,
+    pinned_at INTEGER NOT NULL
   );
 `];
 
@@ -666,6 +675,28 @@ export class Presence {
   /** Enrolled keys, never their public keys: a list is for recognising and removing them. */
   keys() {
     return this.db.prepare("SELECT id, kind, name, rp_id, created, last_used FROM presence_keys ORDER BY created").all();
+  }
+
+  /**
+   * The Capsule build `vyre capsule install` most recently pinned, or null.
+   * @returns {{ cdhash: string, pinnedAt: number } | null}
+   */
+  capsulePin() {
+    const row = /** @type {any} */ (this.db.prepare("SELECT cdhash, pinned_at FROM presence_capsule_pin WHERE id = 1").get());
+    return row ? { cdhash: row.cdhash, pinnedAt: Number(row.pinned_at) } : null;
+  }
+
+  /**
+   * Pins a Capsule build. Only capsule.pin (presence-required, same floor as presence.enroll)
+   * calls this -- never a bare file, which the same uid a model's shell runs as could write to
+   * directly (the reviewer's HIGH, 28 Sep).
+   * @param {string} cdhash
+   */
+  pinCapsule(cdhash) {
+    if (!/^[0-9a-f]{40,}$/.test(cdhash)) throw Object.assign(new Error("not a cdhash"), { code: "bad_input" });
+    this.db.prepare("INSERT INTO presence_capsule_pin (id, cdhash, pinned_at) VALUES (1, ?, ?) ON CONFLICT (id) DO UPDATE SET cdhash = excluded.cdhash, pinned_at = excluded.pinned_at")
+      .run(cdhash, this.now());
+    return { pinned: true };
   }
 
   /**

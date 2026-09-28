@@ -6,7 +6,7 @@
   "requires": [],
   "does": { "tools": ["link.status", "link.find", "link.pair", "link.unpair", "link.call", "link.remote",
     "link.pair.request", "link.pair.poll", "link.pair.approve", "link.pair.deny", "link.pending", "link.peers", "link.hello", "link.health",
-    "link.serve", "link.reply", "link.macs", "link.macs.call", "link.events", "link.signin", "link.signout", "capsule.pin"] },
+    "link.serve", "link.reply", "link.macs", "link.macs.call", "link.events", "link.signin", "link.signout"] },
   "watches": { "emits": ["link.pair-requested", "link.paired", "link.unpaired", "link.connected", "link.lost", "link.signed-in", "link.signed-out",
     "thread.queued", "thread.sent", "thread.text", "thread.finished", "thread.stopped", "thread.contended", "thread.limit"] },
   "shows": { "deck": [], "capsule": [], "cli": ["link"] },

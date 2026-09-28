@@ -10,7 +10,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 import { ancestry, insideClaude, controllingTty, exePath, loginOf, tmuxClients,
-  readCapsulePin, writeCapsulePin, verifiedCapsule } from "../core/daemon/peer.js";
+  verifiedCapsule } from "../core/daemon/peer.js";
 
 const tree = {
   // vyred (500) under the test runner (400); a terminal zsh (200) and a claude (300) elsewhere.
@@ -377,14 +377,11 @@ test("peer: exePath reads the kernel's own record of the binary, not the process
   finally { child.kill(); }
 });
 
-test("peer: the Capsule's own proof is a pinned cdhash, checked and cached once per connection, bound to the pid's start time", async t => {
-  const root = tempHome(t);
-  assert.equal(readCapsulePin(root), null, "nothing pinned yet");
-  writeCapsulePin(root, "a".repeat(40));
-  assert.deepEqual(readCapsulePin(root), { cdhash: "a".repeat(40), pinnedAt: readCapsulePin(root)?.pinnedAt });
-  assert.throws(() => writeCapsulePin(root, "not-hex"), /cdhash/);
-
-  const pin = readCapsulePin(root);
+test("peer: the Capsule's own proof is a pinned cdhash, checked and cached once per connection, bound to the pid's start time", async () => {
+  // The pin itself (presence.pinCapsule/capsulePin, a db row through the presence-required
+  // presence.capsule.pin tool) is tested in core/presence's own suite -- this is purely verifiedCapsule's
+  // own logic, given whatever pin object it is handed.
+  const pin = { cdhash: "a".repeat(40), pinnedAt: Date.now() };
   const socket1 = {}, socket2 = {};
   // Matches: same cdhash both times the start time is read (before and after the slower check).
   assert.equal(await verifiedCapsule(socket1, 123, pin, { started: () => "t1", cdhash: () => "a".repeat(40) }), true);
@@ -432,6 +429,37 @@ test("peer: a caller claiming to be the Capsule, with the Capsule's own ambiguou
   const noPin = JSON.parse(fs.readFileSync(out, "utf8"));
   assert.equal(noPin.error?.code, "presence_required", JSON.stringify(noPin));
   assert.ok(!(await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "kit"));
+});
+
+test("peer: presence.capsule.pin is presence-required and lives in vyred's own db, never a file", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const presence = d.registry.deps.presence;
+  assert.equal(presence.capsulePin(), null, "nothing pinned yet");
+
+  // No proof at all: refused, never silently pinned.
+  const bare = await d.registry.call("presence.capsule.pin", { cdhash: "a".repeat(40) }, "cli");
+  assert.equal(bare.error?.code, "presence_required", JSON.stringify(bare));
+  assert.equal(presence.capsulePin(), null);
+
+  // With a real proof (the same device-key machinery presence already has, standing in for Touch
+  // ID, which cannot run on this Linux testbox): it pins, as a db row -- there is no file anywhere
+  // under root for a model's shell (the same uid) to overwrite directly, which was the reviewer's
+  // HIGH against the first version of this (a flat capsule-pin.json, 28 Sep).
+  const { generateKeyPairSync, sign, randomBytes } = await import("node:crypto");
+  const { inputHash } = await import("../core/presence/index.js");
+  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const key = presence.enroll({ kind: "device", name: "t", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
+  const proof = (tool, input) => {
+    const ts = Date.now(), nonce = randomBytes(12).toString("base64url");
+    const sig = sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
+    return { method: "device", key: key.id, ts: String(ts), nonce, sig };
+  };
+  const cdhash = "b".repeat(40);
+  const pinned = await d.registry.call("presence.capsule.pin", { cdhash }, "cli", { proof: proof("presence.capsule.pin", { cdhash }) });
+  assert.equal(pinned.error, undefined, JSON.stringify(pinned));
+  assert.equal(presence.capsulePin()?.cdhash, cdhash);
 });
 
 // A Mac's processes with their terminals: Terminal.app (100, no tty) runs login (110) on ttys003,
