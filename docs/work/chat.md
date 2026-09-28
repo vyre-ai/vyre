@@ -240,32 +240,34 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   so this is safe as written, but if sight.targets ever grows a separate id/name field, match on
   that instead since two agents could in theory share a display label.
 
-## RESTART (28 Sep, head af29a073)
-Status for whoever resumes: everything through the teammate handoff card is SIGNED OFF by
-reviewer-2 (572/573 on their rerun of 2bf8ceab). Since then, in order (team-lead's priority):
+## RESTART (28 Sep, checkpointed on a usage-limit warning, head bc222f1d)
+Status for whoever resumes: everything through @role routing is built and pushed; reviewer-2
+signed off through the teammate handoff card (572/573 on 2bf8ceab); the hardening/onRecall/@role
+batch (41ed798b/b61a506e/af29a073) is sent to reviewer-2, not yet answered - check for a reply
+first. Nothing uncommitted; no testbox processes running.
 
-1. The hang team-lead flagged (`node --test "deck/chat/*.test.js"` on native-core's tree) - could
-   not reproduce on work/chat HEAD (96/96, clean, twice); team-lead said not to chase it further
-   without an exact repro, and to do the cheap hardening instead. Done (41ed798b): composer.js's
-   holdTimer/leaseTimer/fileTimer call .unref?.() now, and this session's two newest
-   session.test.js tests use t.after(stop) instead of a trailing stopN() call that a thrown
-   assertion would skip. `deck/chat/*.test.js` re-confirmed clean (97/97) after every commit since.
-2. onRecall wired in session.js (b61a506e) - opens a "From your past sessions" hit's session via
-   threadHref+go(), landing at hit.ts on the existing ?at= deep link. Inert (native-core's
-   composer.js side, fae441ff, still isn't merged anywhere) but activates on its own once it is.
-3. "@role" composer routing (af29a073, teammates.md section 2) - a new "teammate" draft kind
-   (composer-state.js), team.ask first always, the inline create-on-first-use confirm gated on
-   team.default.get, team.add with the ADR-overriding Sonnet default for a guessed-at teammate.
-   Fully testable against mocks even though core/team doesn't exist on any merged branch yet - see
-   the commit message for a real gotcha found while building it (team.ask's not_found must be
-   checked directly, never through CAPS.use, or a role simply not existing yet would mark the
-   whole tool missing for good).
-
-Nothing uncommitted; no testbox processes running. Next: voice session-view states, once
-capsule-pro's voice ticket lands (team-lead's ordering). Also queued, not started: teammates'
-core/style em-dash normaliser + style.patterns lint (message in the inbox, tool shape ready), and
-the request-id fix for the handoff card's correlation gap (teammates + sessions are handling it;
-wire by id once threads.post's payload actually carries one - still FIFO-by-role until then).
+**EXACT NEXT STEP:** the hang native-core re-hit does not reproduce on this tree (ran their exact
+command, `node --test --test-timeout=15000 "deck/chat/session.test.js"` on work/chat HEAD: 21/21
+pass, clean, ~2s). Their repro needs code that is NOT pushed to origin yet: work/native-core-composer
+is still at d5b0ed18 on origin, but their repro was at sha d52205e1 plus an uncommitted keyup line,
+plus e21c019d (voice rebuilt as tap-to-talk) and the fake-dom.js fixes team-lead mentioned - none
+of that is fetchable yet. Asked native-core (msg sent) to push their latest so the already-approved
+whole-branch merge (`git merge work/native-core-composer` into work/chat - team-lead OK'd this
+explicitly, integrator is folding cleared shas into a stage branch separately) can actually pull
+in what's needed to see the hang for real. Also answered their session-state question (no change
+needed to busy/queued/steering - dictation is orthogonal, lands in ta.value like typed text; flagged
+one thing to verify on their end: Esc should cancel dictation before the turn's own interrupt,
+matching the rewind-overlay/hint-dismiss precedence pattern already in onEscape()).
+**On resume: check the inbox for native-core's push, then run `git fetch origin
+work/native-core-composer && git log --oneline -1 origin/work/native-core-composer` - if it moved
+past d5b0ed18, do the whole-branch merge, resolve conflicts, run the full suite, and THEN try to
+reproduce the hang on the merged tree before building anything else.** Once the hang is
+resolved (or confirmed not chat's to fix), build the voice session-view states against e21c019d
+(the voice ticket already landed elsewhere - capsule-pro f967b3de - so this is unblocked once the
+merge lands). Also queued, not started: teammates' core/style em-dash normaliser + style.patterns
+lint (tool shape ready, schemas confirmed stable), and the request-id fix for the handoff card's
+correlation gap (teammates + sessions own it; they'll ping when threads.post's payload carries one
+- still FIFO-by-role until then).
 
 LESSON for whoever runs tests on testbox this session: a `node --test` run of session.test.js
 (now ~900 lines, many `await wait()` calls) can look STUCK from `ps`'s %CPU column (0.2-0.5%
