@@ -702,7 +702,12 @@ test("the box's background tasks, thinking, ! and # and pasted images, on their 
   assert.equal($$(box6, ".composer-thumb").length, 0);
   at("thread.sent", { text: "What is wrong on this invoice?", surface: "deck", uuid: "box-img-1", images: 1 });
   await wait();
-  assert.match(text($$(box6, ".cv-user").at(-1)), /1 image/);
+  // The local send already drew the real picture (cohesion item 18): thread.sent's bare count
+  // (the box never echoes the bytes back) must not downgrade it to a plain "1 image" line.
+  const sentRow = /** @type {any} */ ($$(box6, ".cv-user").at(-1));
+  assert.equal($$(sentRow, ".cv-pic").length, 1);
+  assert.equal($(sentRow, ".cv-pic-img").getAttribute("src"), "data:image/png;base64,iVBORw0KGgo=");
+  assert.doesNotMatch(text(sentRow), /1 image/);
 
   // An older box (threads.tasks: no such tool): images, !, #, thinking and Stop are off.
   at("thread.task", { id: "task_3", status: "running", kind: "shell", title: "npm run e2e", call: null, background: true });

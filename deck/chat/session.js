@@ -587,7 +587,7 @@ export function mountSession(container, opts) {
       case "reasoning": return { kind: "thinking", text: it.text, ts: at };
       case "tool": return { kind: "tool", id: it.call, tool: it.name, input: it.input, output: it.output ?? null, summary: it.summary,
         error: it.status === "failed" || (!!it.error && it.status !== "running"), duration_ms: it.duration_ms ?? null, ts: at, patch: it.patch,
-        done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it) };
+        done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it), ...(it.images ? { images: it.images } : {}) };
       // A turn the transcript has not closed is still going only while the session is busy and
       // nothing was said after it (a message sent now closes the one before, even unread yet).
       case "turn": return { kind: "turn", ts: at, duration_ms: it.duration_ms, tokens: it.tokens, cost_usd: it.cost_usd, open: !!it.open && busy() && !saidAfter(it),
