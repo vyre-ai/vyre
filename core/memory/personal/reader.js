@@ -36,6 +36,16 @@ export const READER = { batch: 20, passes: 2, gapMs: 60_000, dailyUsd: 0.25, bac
   usdPerMIn: 1, usdPerMOut: 5 };
 const BUSY = ["starting", "working", "waiting"];
 
+/**
+ * A circuit breaker: a broken model (bad key, wrong model name, a quota error) fails the same
+ * way every time, and every new personal turn until it is fixed would otherwise trigger a paid
+ * retry of the same stuck batch. After this many CONSECUTIVE failed runs, back off for a growing
+ * wait before spending again; a run that succeeds resets the streak to zero. `force` (drain, the
+ * evaluation) always ignores this, same as the gap and a working thread.
+ */
+const FAIL_STREAK = 3;
+const FAIL_BACKOFF = [5 * 60_000, 15 * 60_000, 60 * 60_000];
+
 // ------------------------------------------------------------------ which turns
 
 /** A turn someone might say something about their life in: first person, and a life word. */
@@ -526,6 +536,15 @@ export function createReader(deps) {
     const last = /** @type {any} */ (db.prepare("SELECT MAX(started) s FROM memory_me_model").get()).s;
     if (!force && last != null && t - Number(last) < cfg.gapMs) return why("a minute apart");
     if (!force && await busy()) return why("a thread is working");
+    if (!force) {
+      const recent = /** @type {any[]} */ (db.prepare("SELECT status, started FROM memory_me_model ORDER BY id DESC LIMIT 8").all());
+      let streak = 0;
+      for (const r of recent) { if (r.status === "failed") streak++; else break; }
+      if (streak >= FAIL_STREAK) {
+        const wait = FAIL_BACKOFF[Math.min(streak - FAIL_STREAK, FAIL_BACKOFF.length - 1)];
+        if (t - Number(recent[0].started) < wait) return why("backing off after repeated failures");
+      }
+    }
     const turns = [];
     for (const r of list) {
       const x = /** @type {any} */ (turnQ.get(r.session, r.seq));

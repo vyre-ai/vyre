@@ -254,13 +254,92 @@ facts are not a project's.
   memory.ask (6adfc4b6), memory.suggest offered to suggest + suggest.ready (f50c5f21). All 0.1.1
   unless the lead says otherwise.
 
+## Doing (28 Sep, chat win #1: "From your past sessions")
+- The lead's ask: chat's inline hint when a person starts a message in a project — 1 to 3
+  relevant snippets from that project's own past sessions, each with a link and a reason. My
+  side is the tool: `recall.related { project_cwds, text, limit? }` -> `{ hits: [{ session, seq,
+  ts, name, title, cwd, snippet, score }] }`. Built in core/recall/index.js, right after
+  recall.search: owner surfaces only (`callers: OWNERS_ONLY`, no "mcp" at all — chat and
+  native-core call it as themselves, never forwarded to a model), and never an unmapped folder
+  (project_cwds is checked against projects.list; nothing mapped means an empty hint, not the
+  whole corpus). Reuses recall's own `search()` (per_session: 1, limit capped at 3) rather than a
+  new ranker — same infra recall.search already runs, already fast.
+- Test: core/recall/related.test.js (5 tests: a project's own relevant turns one-per-session,
+  an unmapped folder gets nothing, empty text/cwds is a quiet empty hint not an error, never an
+  agent even one granted the project, under the 150ms budget on the fixture corpus). First run
+  (once the freeze lifted) failed 4/5: the new tool wasn't in core/recall/module.json's
+  does.tools list, so it was invisible to the loader ("no tool recall.related"). Added it there;
+  5/5 after. Also ran npm run docs:ref (recall.related's description had an em dash, caught by
+  docs-check; fixed at the source). 280/280 on testbox (core/recall + core/memory + boundaries),
+  19/19 docs-check/docs-index. Sent to the reviewer (a new tool, owner-only, worth a look even
+  though it adds no new read path recall.search didn't already have).
+- Shape to agree with chat and native-core (message sent 28 Sep): the reason sentence ("you
+  fixed this in thread X on Sep 20") is theirs to render from `name`/`ts`/`snippet`, not
+  generated here — recall.related returns facts, not prose.
+
+## Doing (28 Sep, security: recall had no project scoping)
+- The lead's ask: recall.search ran unrestricted for any caller, including a named agent limited
+  to one project — it could search, read (recall.thread) or list (recall.sessions) any other
+  project's sessions, since nothing checked who was asking. Built `reach()` in core/recall/index.js,
+  mirroring core/memory/index.js's reach()/guard() 1:1 on purpose (same owner set, same
+  agents.projects ∩ projects.access intersection, same wildcard-walks-every-project rule, same
+  no_such_tool fallback for an install without projects.access yet). New `agent` input on
+  recall.search/thread/sessions; a scoped agent's empty project_cwds/cwd defaults to its own
+  grants rather than the whole corpus; an out-of-grant ask is refused (a session it can't read
+  reads back as "no session", the same message a nonexistent one gets); a paired Mac's answers
+  are filtered the same way as a defense against an older, unpatched Mac. Test:
+  core/recall/scope.test.js (5 tests: search, thread, sessions, a project taken away narrows
+  reach immediately, a mismatched/unknown agent is refused). 273/273 on testbox
+  (core/recall + core/memory + boundaries).
+- This worktree predates federation's projects.access module (work/federation, d897210d and
+  its predecessors) — recall.access.check calls it and gets `no_such_tool`, so reach() falls back
+  to agents.projects alone, same as memory's own reach() does on an install without it. Once
+  federation's branch lands, extend core/recall/scope.test.js with a projects.access.grant/revoke
+  pass (core/memory/floor.test.js's wilma/kit tests are the pattern) to cover the intersection and
+  the revoke-narrows-immediately case for real.
+- Sent to reviewer (access/trust change).
+- **Reviewer signed off, with a MEDIUM and a LOW, both fixed and re-sent:**
+  - MEDIUM: `reach()`'s "no agent named" branch returned `all: true` unconditionally, so a
+    tailnet guest, a hook, or any caller kind nobody had classified yet read the whole corpus —
+    the scoping only ever engaged once an agent was named. Fixed both ways the reviewer offered:
+    declared `callers: ["cli","local","deck","capsule","module","mcp"]` on all three tools, and
+    narrowed `reach()`'s own fallback to `owner(caller) || ownSession(caller) ||
+    ownerDevice(caller)` (kernel utility from core/modules/index.js — covers both the owner's own
+    verified device over the tailnet AND a relay-paired device, ADR 0026; the "deck" clause in
+    callerAllowed already let both through, but reach() itself first only checked
+    `ownerOverTailnet`, missing the paired-device case, a second LOW the reviewer caught on
+    re-review), refusing everyone else.
+  - LOW (prefix): recall.thread resolved an id/prefix before the grant check, so an
+    ambiguous-prefix error told a scoped agent an ungranted session with that prefix exists.
+    Prefix resolution (`resolveScoped`, local to the tool) now only considers sessions the caller
+    may read.
+  - The assistant-vs-wildcard question this raised went round twice before it settled. Recall's
+    first cut (b49b98ac) already had the wildcard-agent case (`projects: "*"`, not the assistant)
+    walk the per-project path over every project. Federation confirmed the true assistant
+    (`kind === "assistant"`) itself is `all: true` in memory, unconditionally. The lead then ruled
+    on the actual question underneath it: a personal fact stays unrestricted for the assistant,
+    but raw session content does not extend past what is linked — memory narrows its unfiled room
+    away from the assistant the same way. Recall returns raw content, so its assistant branch
+    walks the per-project path too, over every MAPPED project, unchecked against projects.access
+    (being the assistant is what grants it). Landed at that final shape.
+  - 2 new tests (guest/hook/unknown-tailnet refusal, extended to also cover a paired device
+    working alongside the owner's tailnet device; the prefix-collision LOW), 7 total in
+    scope.test.js. 275/275 on testbox (core/recall + core/memory + boundaries). Sent back to
+    reviewer.
+
 ## Next
 - Built 28 Sep: memory.card (e67ba34d), memory.contradictions/settle (fd7f57ab).
 - 0.1.1 queue, in order: import.start/stop/cancel
   (after federation's sync.send); then site recipes (memory.recipe per site from glass's
   browse.finished, module browse; self-correcting, person-editable). Landmark shape proposed to
-  glass: {role, name, css?, near?}, role+name first, never values. Waits on the lead's review of
-  glass's docs/design/agent-browsers.md (work/glass-live b4584a7f) before building.
+  glass: {role, name, css?, near?}, role+name first, never values. Checked with glass 28 Sep
+  (their reply): agent-browsers.md's review has landed and the shape is still good, but the
+  browse module itself (browse.task/browse.finished, the reach ladder) is fully unbuilt -- only
+  the level-2 plumbing under it (cdpmux.js's per-agent BrowserContext scoping, computerd's
+  per-agent identity) has landed, and the browser-kind computer browse.task would run on top of
+  is still mid-build (pool.js's schema not settled). Genuinely blocked, not gated on a review
+  anymore; glass pings when it's real. Did chat win #1 (recall.related) in the meantime instead
+  of idling.
 - Project graphs: recall.search `sessions` filter + retrieve scopes by folders plus picked ids (0.1.1).
 - Host-to-server sync: contract in docs/design/iq-everywhere.md; agree it with federation (paused)
   and amend ADR 0008.
@@ -276,7 +355,58 @@ facts are not a project's.
   confident (sealed place-history).
 - The full backfill cost (about $1.50 to $2.60) waits for the user's yes, via the lead.
 
+## Cheap-wins audit (28 Sep, the lead's ask)
+
+Read the whole pipeline (extraction/reader, curator/derive, graph, memory.ask, retrieve) looking
+for hours-not-days wins. Most of the obvious ones (dedup by hash, incremental curation, batching,
+a cheap model by default, caching the model's exact reply) are already built — this workstream has
+been through a few optimization passes already. Ranked what was left:
+
+1. **Three missing indexes (built, 7c1a9f2e in this doc's head).** `memory_me_model(started)` (the
+   reader's `MAX(started)` gap check, on every pump), `memory_iq_suggested(state, thread)`
+   ("waiting on you"), `memory_iq_fixes(at)` (`memory.stats`'s `since`). All three were full table
+   scans; a person's tables are small today but these are hit on every pump/suggest/stats call, so
+   the scan grows with them. No eval-score change (nothing here touches quality) — 230/230 memory
+   tests green on testbox, gold/heldout/fresh/sealed worlds unchanged (gold 1/0/0, heldout 1/0/0,
+   sealed 0.551, fresh 0.76 — same as before the change).
+2. **A circuit breaker on the reader (built).** `once()` schedules itself again only on success or
+   a benign wait (busy thread, gap); a real failure (bad JSON, the model call throwing) does not
+   reschedule itself, but a NEW personal-signal turn arriving re-triggers `pump()` on the same
+   still-queued batch, and each attempt was charged again with no backoff. `drain()` (the
+   evaluation, backfill) already retries a bad batch 3 times by design and stays untouched (it
+   forces past this, same as the gap and a busy thread). Now: after 3 consecutive failed runs,
+   `once()` backs off 5, then 15, then 60 minutes before spending again. New test:
+   `reader: repeated failures back off, so a broken model isn't paid for on every turn` (passes).
+   This is a tail-risk cost fix (a bad key or a wrong model name left on for a chatty day), not a
+   normal-path saving — no eval-score change either.
+3. **Checked and rejected: dropping dense/hybrid retrieval for bm25-alone.** eval-iq's ablation
+   table looked like a free win on the open world (bm25 alone beats "full" on every metric AND is
+   faster: recall 0.931 vs 0.917, mrr 0.763 vs 0.715, p95 0.866 vs 0.848ms). Checked the sealed
+   world before touching anything: there hybrid clearly beats bm25 alone (recall 0.763 vs 0.738,
+   session 0.888 vs 0.863, answer 0.838 vs 0.813). The open world's win is noise from its own
+   distribtion of questions, not a general property. Not building this; recording it here so
+   nobody re-discovers the open-world number and ships it.
+
+Other candidates looked at and set aside, cheap in isolation but each needs an eval run to justify
+before landing (not "straight away"):
+- **The reader's second look (VERIFY) call** runs once per batch unconditionally when there is at
+  least one candidate fact. Skipping it for facts already at rule-level confidence (method other
+  than "model") would cut a call, but the second look is what catches a wrong "who is who," so this
+  needs an accuracy check first, not just a cost one.
+- **`passes: 2` by default** doubles every reader batch's cost by design (docs above, "two readings
+  keep the union"); halving it would roughly halve reader spend but was already tuned against the
+  eval once. Re-cutting it needs an accuracy number, not a guess.
+
 ## Needs from others
+- federation: `projects.reach` (core/projects, cohesion's find, 28 Sep) — a single shared reach()
+  for memory/recall/files, modeled on recall's own reach() as the reference (nothing wrong found
+  there). Once it lands, recall's reach() becomes `ctx.call("projects.reach", { agent, kind:
+  "content" })`, mapping its `projects: [{slug, name, folders, threads}]` into the folders list
+  already flatMapped here; memory's reach()/personalOnly() split becomes two calls (`kind: "facts"`
+  for personal facts, `kind: "content"` for teach/relevant/why/graph), replacing memory's local
+  `viaTailnet` with the tool's own `ownerDevice` handling. guard()/scopeQuery()/within() around
+  reach()'s return shape stay memory-iq's to keep consistent; pair with cohesion once the tool's
+  landed rather than writing the migration blind. Test on testbox, send to the reviewer.
 - main: OK a fast-model (haiku) extraction pass over every personal-signal user turn (a one-time
   backfill of about $2, then about $0.25/day, configurable), and recording eval fixtures with `claude -p`.
 - sessions: the per-purpose model map location and the one-shot background job call. Also
@@ -285,6 +415,17 @@ facts are not a project's.
   memory curator's background pass, in bounded batches that yield.
 
 ## Changed contracts
+- core/recall/index.js: recall.search/thread/sessions take `agent` (a caller-named agent, checked
+  against the caller string's own `agent:<name>` the way memory's reach() does). A named agent's
+  reads are scoped by agents.projects ∩ projects.access; empty project_cwds/cwd default to its
+  own granted folders rather than the whole corpus; a session or folder outside its grant is
+  refused (a scoped-out session reads back exactly like a nonexistent one). recall.sessions'
+  `ids` and a paired Mac's answers are filtered by the same grant. All three now declare
+  `callers: ["cli","local","deck","capsule","module","mcp"]`. The assistant and a wildcard
+  (`projects: "*"`) agent both walk the per-project path over every MAPPED project (never
+  `all: true`, never an unmapped folder's raw content — the lead's ruling on recall vs. memory's
+  personal facts); the assistant unchecked against projects.access, a wildcard agent intersected
+  with it.
 - core/modules/index.js: a module's ctx.call passes { firstParty } (from the loader) in the callee's meta.
 - core/config/index.js: default transcripts add <home>/synced; recall reads each device folder under it. recall.forget (internal). Event recall.embedded. memory listens to sync.revoked and emits memory.forgot. New module core/import (import.scan/plan/status, event import.progress).
 - core/harness/index.js harness.brief adds memory.today's lines ("Lately in this project") for a project session.
@@ -296,3 +437,6 @@ facts are not a project's.
 - memory.ask takes `stream` and `id`; events memory.thinking {id, stage} and memory.answered {id, abstained, limited}.
 - core/recall/index.js readable(folders, root, env): the person's ~/.claude only for the real ~/.vyre (or VYRE_ALLOW_REAL_TRANSCRIPTS=1). New tool memory.retrieve. Table memory_me_trust. Config memory.personal.skipCwds.
 - New tools `memory.answer`, `memory.profile`, `memory.remember` (see above); event `memory.remembered`; table `memory_me_told`. New table family `memory_me_*` (memory's own).
+- New tool `recall.related { project_cwds, text, limit? }` -> `{ hits: [...] }` (chat's "From your
+  past sessions" hint). `callers: OWNERS_ONLY` (no "mcp": never an agent). No new tables, no new
+  events.

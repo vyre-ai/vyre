@@ -44,10 +44,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `deck/js/join-caps.test.js`: both cases, plus missing/null status and a non-bool truthy value.
 - reviewer-2's follow-up: nothing committed had actually driven `relay.join`'s `presence:"asked"`
   round trip (the old onboard-page.test.js click-through only ever hit the fixture fallback,
-  since relay.join isn't a real tool yet — a "missing" answer short-circuits before presence
+  since relay.join isn't a real tool yet: a "missing" answer short-circuits before presence
   enters into it). Added two `deck/js/api.test.js` tests: the box asks for a passkey only once
   it actually says `presence_required` (never up front), and a box that never asks gets one
-  round trip with no passkey (the no-nag rule) — both assert the exact `{url, becomeDevice}`
+  round trip with no passkey (the no-nag rule), both assert the exact `{url, becomeDevice}`
   body on every send. Rewrote `test/onboard-page.test.js`'s device/relay test to match current
   real behaviour instead: the real `onboard.status` (core/onboard/index.js) has no `can` field
   yet, so the code-pairing radio is correctly, unconditionally hidden today; the test now
@@ -56,8 +56,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### Onboarding: relay.join's confirmation shows the box name, relay and key fingerprint
 
 - The "pair with a code" path now calls relay.join through the presence flow
-  (`{presence:"asked"}`), so the real tool's own passkey confirmation — which names the box,
-  its relay host and a short key fingerprint — actually shows before pairing, instead of a bare
+  (`{presence:"asked"}`), so the real tool's own passkey confirmation, which names the box,
+  its relay host and a short key fingerprint, actually shows before pairing, instead of a bare
   call that would skip it. Not gated by platform yet (asked: no client-side signal exists to
   know whether this machine has vyre-core).
 
@@ -102,7 +102,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (`link.health`'s real field) and shows the error instead of proceeding.
 - `core/onboard/loopback.js`'s static-asset whitelist never included `/fixtures/*`, so the
   onboarding page's own `?fixtures=1` mechanism always 403'd and silently fell back to "missing
-  tool" — found while writing the regression test above, the first real end-to-end exercise of
+  tool": found while writing the regression test above, the first real end-to-end exercise of
   onboarding-with-fixtures. Added `fixtures` to the whitelist; a `..` traversal attempt still
   403s.
 
@@ -136,7 +136,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - New step (`live`) between "You" and "Tailscale": Just on this computer (Solo, no Tailscale
   ever), this computer stays on for me (Server, sets up inline), or I already have a Vyre server
-  (Device). None of the three fall through to the old tailscale/name screens anymore — those only
+  (Device). None of the three fall through to the old tailscale/name screens anymore: those only
   run later, when a second device actually joins (Settings > Your devices > Add a device), per
   the same "one flow" decision Move to a server follows. Copy matches `docs/design/anywhere.md`,
   which owns it. Fixture-backed against `onboard.machine` (anywhere) and `join.verify` (tailnet);
@@ -488,6 +488,61 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `link.pending` rows carry `created`, the pairing request's real timestamp, alongside `expires`.
   `waiting`'s `fromPending` uses it directly; it only falls back to the old expiry-minus-TTL guess
   for a box that has not shipped the field yet.
+#### recall.related: "From your past sessions" for chat
+
+- New tool `recall.related { project_cwds, text, limit? }` -> `{ hits: [{ session, seq, ts, name,
+  title, cwd, snippet, score }] }`, for chat's inline hint when a person starts a message in a
+  project: 1 to 3 of that project's own past turns relevant to what they're typing, one per
+  session. Owner surfaces only (chat and native-core call it as themselves; no "mcp" caller, so
+  no agent ever reaches it), and only inside a real, mapped project: `project_cwds` is checked
+  against `projects.list`, and an unmapped or made-up folder gets an empty hint, never the whole
+  corpus. Reuses recall's own `search()` (already fast; no new ranker).
+
+#### Security: recall.search/thread/sessions had no project scoping at all
+
+- A named agent limited to one project could search, read or list any other project's sessions:
+  recall.search accepted `project_cwds` as a caller-chosen suggestion, never enforced it, and
+  recall.thread/sessions did not check the caller at all. Recall now mirrors core/memory/index.js's
+  reach()/guard() (the owner's surfaces and modules see everything; a named agent is scoped by
+  agents.projects intersected with projects.access, deny by default; the assistant unrestricted):
+  `agent` on recall.search/thread/sessions, empty `project_cwds` defaults to the agent's own
+  grants, an out-of-grant cwd or session is refused (a session outside the grant reads back as
+  "no session", same as one that does not exist, so a scoped agent learns nothing about what it
+  may not read). A paired Mac's answers are filtered the same way, in case it is on an older build.
+  Coordinated with federation (owns projects.access); this worktree predates that module, so
+  reach() falls back to agents.projects alone until it lands (the same no_such_tool fallback
+  memory's own reach() uses).
+
+#### Security follow-up: recall.search/thread/sessions declare their callers, and the assistant is mapped-only for raw content
+
+- Reviewer's MEDIUM on the fix above: a caller naming no agent got `all: true` unconditionally, so
+  a tailnet guest, a hook, or any caller kind nobody had thought of yet read the whole corpus too,
+  and the scoping only ever engaged for a caller that named an agent. Fixed both ways: the three
+  tools now declare `callers` (the person's surfaces, first-party modules, and "mcp": a model's
+  own session or a named agent, which reach() still tells apart), and reach() itself only grants
+  `all: true` to the owner's surfaces, a model's own session, a relay-paired device, and the
+  owner's own verified device over the tailnet (`ownerDevice`); everyone else with no agent named
+  is refused outright.
+- The lead's ruling (2026-09-28, after the assistant-vs-wildcard question this raised): a personal
+  fact stays unrestricted for the assistant, but raw session content does not extend past what is
+  linked: memory narrows its unfiled room away from the assistant the same way, so recall's
+  assistant branch now walks the per-project path over every MAPPED project too, unchecked against
+  projects.access (being the assistant is what grants it). A wildcard (`projects: "*"`) agent that
+  is not the assistant walks the same path, intersected with projects.access.
+- Reviewer's LOW: recall.thread resolved an id or an unambiguous prefix before the grant check, so
+  "more than one session starts with X" told a scoped agent that an ungranted session with that
+  prefix exists. Prefix resolution now happens only among the sessions the caller may read.
+
+#### Graph cheap wins: three hot-path indexes, and a circuit breaker on a broken model
+
+- Three hot lookups were full table scans as the tables grow: the reader's `SELECT MAX(started)
+  FROM memory_me_model` (run on every pump), "waiting on you"'s filter of `memory_iq_suggested` by
+  state and thread, and `memory.stats`'s `since` query over `memory_iq_fixes`. Each now has an
+  index.
+- The reader's `once()` is a circuit breaker now: after 3 consecutive failed model runs (a bad key,
+  a wrong model name, a quota error), it backs off for 5, then 15, then 60 minutes before spending
+  again, so a broken model isn't paid for on every new personal-signal turn until someone notices.
+  `force` (drain, the evaluation) always ignores it, same as the gap and a working thread.
 
 #### Vyre IQ: correct it where it appears, streaming, names in predictive text
 

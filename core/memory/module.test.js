@@ -229,6 +229,19 @@ test("memory module: the first read's pace takes Vyre's own import module only, 
   t.after(() => d.stop());
   const imp = d.registry.context(d.registry.modules.get("import").manifest);
   assert.deepEqual((await imp.call("memory.pace", { pace: "fast" })).data, { pace: "fast" });
-  // The same label from anywhere the loader did not vouch for is refused.
-  assert.equal((await d.registry.call("memory.pace", { pace: "fast" }, "module:import")).error?.code, "denied");
+  // af11226d moved firstParty from something a caller passed in to something registry.call
+  // derives itself, fresh, from the caller label against the live registry (core/modules'
+  // firstParty(dir)) - so a caller genuinely reading "module:import" is exactly as trusted
+  // whether it arrives through import's own ctx.call (above) or straight through registry.call
+  // (here): both resolve the SAME registered module's SAME real, shipped directory. The label
+  // itself is still the actual security boundary this tool cares about, not the call path, so
+  // the exact name is what must still be checked: a different real, shipped module's own label
+  // (recall's, also loader-vouched) is refused just the same as an unrelated caller would be.
+  assert.equal((await d.registry.call("memory.pace", { pace: "fast" }, "module:import")).data?.pace, "fast");
+  const rec = d.registry.context(d.registry.modules.get("recall").manifest);
+  assert.equal((await rec.call("memory.pace", { pace: "fast" })).error?.code, "denied");
+  assert.equal((await d.registry.call("memory.pace", { pace: "fast" }, "module:recall")).error?.code, "denied");
+  // A label naming no module the registry actually has running (a typo, an uninstalled one) is
+  // refused too: firstParty(dir) has nothing to check it against.
+  assert.equal((await d.registry.call("memory.pace", { pace: "fast" }, "module:not-a-real-module")).error?.code, "denied");
 });

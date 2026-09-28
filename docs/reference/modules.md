@@ -49,7 +49,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 12 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 19 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
-| [`recall`](#recall) | `core/recall` | `box`, `local` | 11 | 4 | cli |
+| [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
 | [`relay`](#relay) | `core/relay` | `box` | 13 | 5 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
@@ -426,7 +426,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/recall`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [11](tools.md#recall), 1 of them only for other modules
+- Tools: [12](tools.md#recall), 1 of them only for other modules
 - Emits: [4 events](events.md#recall)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

@@ -8,6 +8,7 @@ import path from "node:path";
 import { open } from "../../store/index.js";
 import { SESSIONS, seedRecall } from "../../../test/fixtures/corpus.js";
 import { tempHome } from "../../../test/helpers.js";
+import { fakeReachCall } from "../../../test/fixtures/fake-reach.js";
 import memory from "../index.js";
 import { heard, valueWords } from "./heard.js";
 
@@ -53,7 +54,7 @@ async function world(t, turns) {
     memory: { teach: async () => false }, vault: { fetch: async () => { throw new Error("no vault"); } },
     // The switchboard's word on who wrote a turn of a thread (threads.said), from its own records.
     call: async (tool, input) => tool === "threads.said" ? (turns[`${input.thread}#${input.seq}`] ? { data: turns[`${input.thread}#${input.seq}`] } : { error: { code: "not_found", message: "no such turn" } })
-      : tool === "projects.list" ? { data: { projects: [] } } : tool === "agents.list" ? { data: [{ name: "kit", projects: ["northwind"] }] } : { error: { code: "no_such_tool", message: tool } },
+      : fakeReachCall(tool, input, { agents: [{ name: "kit", projects: ["northwind"] }], projects: [] }),
     tool: (name, def) => tools.set(name, def),
   };
   const handle = await memory.start(ctx);
