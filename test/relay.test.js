@@ -14,6 +14,7 @@ import { createRelay } from "../relay/node/server.js";
 import { keyPair } from "../core/relay/noise.js";
 import { deviceSide } from "../core/relay/channel.js";
 import { parsePairUrl, pairUrl } from "../core/relay/pairing.js";
+import { relayJoinRefusal } from "../core/relay/index.js";
 import { useReleasesFile } from "../core/relay/releases.js";
 import { signed } from "../core/presence/person.js";
 import crypto from "node:crypto";
@@ -453,4 +454,42 @@ test("relay: relay.join's presence prompt names the box, its relay host and a ke
   // The name itself, quoted, is capped well short of the 80-character junk run.
   const quoted = hostile.match(/"([^"]*)"/)[1];
   assert.ok(quoted.length <= 40, quoted);
+
+  // The relay host is the OTHER box's own text too (parsePairUrl only bars whitespace and a
+  // slash, so control characters, a right-to-left override and a long junk run all pass its own
+  // check): the prompt must strip and cap it exactly like the name.
+  const hostileHost = `wss://relay.example.com\u0007‮${"y".repeat(120)}`;
+  const hostileHostUrl = pairUrl({ relay: hostileHost, route: "d".repeat(26), box: box9, secret: "s", name: "Real Bakery" });
+  const hostileHostPrompt = await def.presence.summary({ url: hostileHostUrl });
+  assert.ok(hostileHostPrompt.length < 200, hostileHostPrompt);
+  assert.doesNotMatch(hostileHostPrompt, /[\u0007‮]/, "the control character and the RTL override are gone from the host too");
+  assert.ok(hostileHostPrompt.endsWith(trueFingerprint), "the fingerprint is still this box's own, unaffected by the host");
+  const hostPart = hostileHostPrompt.match(/ on (.+) \(key /)[1];
+  assert.ok(hostPart.length <= 64, hostPart);
+});
+
+test("relay: relay.join is not available on a Mac until vyre-core holds its own device key", async t => {
+  // A pure function of an explicit platform (like installCommand/operator elsewhere), so this
+  // does not depend on the OS running the suite: darwin always refuses, every other platform
+  // (this test box's own linux included) never does.
+  const refusal = relayJoinRefusal("darwin");
+  assert.equal(refusal.code, "not_available_here");
+  assert.match(refusal.message, /vyre-core/);
+  assert.equal(relayJoinRefusal("linux"), null);
+  assert.equal(relayJoinRefusal("win32"), null);
+
+  // End to end, as if this box were a Mac: relay/index.js resolves platform once when its
+  // start() runs (seam.platform || process.platform), so flip process.platform before starting
+  // a fresh daemon, not after. Refused in run(), and before that: no Touch ID prompt at all
+  // (presence.when turns off), a caller the lenient test harness would otherwise pass straight
+  // through to run().
+  const real = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+  t.after(() => Object.defineProperty(process, "platform", real));
+  const { d } = await world(t);
+  const def = d.registry.tools.get("relay.join");
+  assert.equal(await def.presence.when({ url: "https://vyre.run/pair#anything" }), false, "no prompt on darwin: the call can only refuse");
+  const bogus = `https://vyre.run/pair#${Buffer.from(JSON.stringify({ v: 1, r: "wss://relay.example.com", i: "a".repeat(26), k: Buffer.alloc(32).toString("base64url"), s: "x", n: "test" })).toString("base64url")}`;
+  const r = await d.registry.call("relay.join", { url: bogus }, "cli", PROOF);
+  assert.equal(r.error.code, "not_available_here");
 });

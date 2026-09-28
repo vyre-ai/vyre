@@ -86,6 +86,40 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, still later, two items from the lead: relay.join refuses on darwin, and the host
+sanitised the same way as the name. `relayJoinRefusal(platform)` (exported, a pure function of an
+explicit platform like installCommand/operator in core/names/tailscale.js) refuses with
+`not_available_here` on darwin: redeeming a pairing code persists this device's own identity key
+(relay-device/key.json, core/relay/redeem.js) at the person's login uid, the same gap that already
+keeps relay hosting off by default on local role until vyre-core (ADR 0040) holds the box's own
+relay key instead. Wired into relay.join's run() (refuses first, before owner()) and into
+presence.when (no Touch ID prompt on darwin: the call can only fail). Host sanitisation: pulled
+the name's existing strip-and-cap into a shared `promptSafe` helper, widened the stripped set to
+Unicode format and bidi characters (zero-width, RTL/LTR override and embedding, BOM — none of
+which parsePairUrl's own check on `relay` bars, since it only refuses whitespace and a slash) and
+applied it to the relay host too, capped at 64 (hosts run longer than names). Tests (testbox):
+relay.test.js 18/18 (2 new: relayJoinRefusal direct plus an end-to-end darwin run via
+Object.defineProperty(process, "platform", ...) before starting a fresh daemon — the module reads
+platform once at its own start(), so the flip has to happen first, not after; and the hostile-host
+case folded into the existing hostile-name prompt test), boundaries+hygiene 8/8, docs-build+
+docs-index 37/37 (the description change moved docs/reference/tools.md; regenerated with
+npm run docs:ref and the committed-index test still passes). Sent to the reviewer.
+
+28 Sep 2026, latest of all: reviewer signed off ad8f560c/98ddb0a8/0a77983c/6cd9c02d (relay.join,
+in full). Reviewed anywhere's onboard guard (work/anywhere 6300ecaf) properly, found a real bug of
+my own while doing it: onboard.machine's shipped input is `{machine}`, no "action" field, but their
+own design doc still says `{action:"set", machine}` — both my becomeDevice call sites were built
+against the doc, fixed to match the code (b23036af), flagged the doc drift to anywhere. Fixed
+reviewer's LOW on relay.join's prompt too (97a17392): offer.name (the OTHER box's own chosen text)
+is stripped of control characters/newlines and capped at 40 characters before it's quoted, and the
+trailing key fingerprint is always computed here from the real key, never from the name — a
+hostile box can no longer write a fake "(key ...)" trailer into its own pairing offer. Sent
+anywhere a coordination note: if they narrow onboard.machine's callers off bare "module", they
+need to include module:relay specifically, or relay.join's becomeDevice breaks silently (my
+ctx.call(...).catch(()=>{}) swallows the resulting error). launch has wired both paths
+(relay.join{url,becomeDevice} and onboard.join{verify,node,becomeDevice}) on fixtures, waiting on
+both to land on main. Testbox: 51/51.
+
 28 Sep 2026, latest still: fixed reviewer's MEDIUM on relay.join before the stay-connected
 follow-up (6cd9c02d). The Touch ID prompt was generic ("Pair this device with another Vyre");
 now it parses the URL and names the actual box, its relay host, and a short key fingerprint
@@ -653,6 +687,12 @@ restart vyred, and check with `vyre call vault.grants.status`. `7301` is `vault.
 
 Listed by the area they touch, so the merge can go in order. Everything below is off by default.
 
+- **relay** (28 Sep, own): `relay.join` refuses on darwin (`not_available_here`) until vyre-core
+  (ADR 0040) holds the joining device's own key; new export `relayJoinRefusal(platform)`; its
+  `presence.when` no longer always requires a proof (skips the prompt on darwin, since the call
+  can only refuse there); its Touch ID prompt now sanitises the relay host the same way as the
+  box's own name (shared `promptSafe` helper, widened to Unicode format/bidi characters, host
+  capped at 64).
 - **onboard**: tool `onboard.join` (`{ action: "status"|"tailscale"|"relay"|"verify", step?,
   node?, becomeDevice? }`), box role (matches onboard's own). Forwards only, through onboard's own
   functions for tailscale and ctx.call for relay/link/onboard.machine; reads and writes nothing of

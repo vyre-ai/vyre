@@ -63,6 +63,24 @@ const obj = (properties = {}, required = []) => ({ type: "object", properties, r
 const fail = (code, message) => Object.assign(new Error(message), { code });
 
 /**
+ * relay.join makes this Vyre a device of another box, which persists this device's own identity
+ * key (relay-device/key.json, core/relay/redeem.js) to disk. On a Mac that file sits at the
+ * person's own login uid, readable and writable by any process at that uid — the same gap that
+ * keeps relay hosting off by default on local role until vyre-core (ADR 0040) holds the box's own
+ * relay key instead (core/relay/keys.js, docs/work/tailnet.md "Needs from others"). Refuse the
+ * joining side the same way, plainly, rather than ship the gap there too.
+ *
+ * A pure function of an explicit platform, like installCommand/operator in core/names/tailscale.js,
+ * so a test can assert the darwin case without depending on the OS it happens to run on.
+ * @param {string} platform
+ */
+export function relayJoinRefusal(platform) {
+  return platform === "darwin"
+    ? fail("not_available_here", "joining another box from a Mac is not available yet: this device's own join key would sit at your login, unprotected, until vyre-core exists to hold it; join from a Linux box instead, or wait for vyre-core")
+    : null;
+}
+
+/**
  * @type {{ start(ctx: any, seam?: { WebSocket?: any, now?: () => number, platform?: string }): Promise<{ stop(): Promise<void> }> }}
  */
 export default {
@@ -270,27 +288,36 @@ export default {
     // to read: 8 characters as two groups of 4.
     const keyFingerprint = box => { const s = base32(crypto.createHash("sha256").update(box).digest()).slice(0, 8); return `${s.slice(0, 4)} ${s.slice(4)}`; };
 
+    // Text the OTHER box chose (its name, or here its relay host) lands straight in a Touch ID
+    // prompt: strip control characters, newlines and Unicode format/bidi characters (which can
+    // visually reorder or hide part of a quoted string) and cap the length, so a hostile box
+    // cannot write its own fake "(key ...)" text, a right-to-left override, or anything else into
+    // the prompt after its own text (reviewer, 28 Sep, extended to the host the same way).
+    const promptSafe = (s, fallback, max = 40) => String(s || fallback)
+      .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]+/g, " ")
+      .replace(/ {2,}/g, " ").trim().slice(0, max) || fallback;
+
     ctx.tool("relay.join", {
-      description: "This Vyre becomes a device of another box, redeeming a one-time pairing code minted there (relay.pair.start or onboard.join{action:\"relay\"}). One redemption: the channel closes once paired, then this tool returns what the other box said (its name, this device's id, whether presence enrolled). becomeDevice, when true, flips this machine to \"device\" once paired (onboard.machine) — the shape onboard.join{action:\"verify\",becomeDevice} uses on the Tailscale path, so the onboarding card calls the same flag either way. Does not keep a connection open; that is not built yet. A pasted URL that is not a real Vyre pairing code is refused before any prompt.",
+      description: "This Vyre becomes a device of another box, redeeming a one-time pairing code minted there (relay.pair.start or onboard.join{action:\"relay\"}). One redemption: the channel closes once paired, then this tool returns what the other box said (its name, this device's id, whether presence enrolled). becomeDevice, when true, flips this machine to \"device\" once paired (onboard.machine) — the shape onboard.join{action:\"verify\",becomeDevice} uses on the Tailscale path, so the onboarding card calls the same flag either way. Does not keep a connection open; that is not built yet. A pasted URL that is not a real Vyre pairing code is refused before any prompt. Not available on a Mac yet: see vyre-core (ADR 0040).",
       input: obj({ url: { type: "string", pattern: "^https://vyre\\.run/pair#[A-Za-z0-9_-]+$" }, name: str, becomeDevice: { type: "boolean" } }, ["url"]),
       callers: ["cli", "local", "deck", "capsule"],
-      // The prompt names what is actually being joined: a phishing message could paste in a real
-      // pairing link for a stranger's box, and once connect() lands that box can send this device
-      // work, so "pair this device" alone is not enough for a person to judge (reviewer, 28 Sep).
+      // On darwin this always refuses (see relayJoinRefusal above), so presence is not required
+      // there either: no Touch ID prompt for a call that can only ever fail.
       presence: {
+        when: () => !relayJoinRefusal(platform),
         summary: async i => {
           const offer = parsePairUrl(i && i.url);
           if (!offer) return "This does not look like a real Vyre pairing code; refusing to pair.";
-          const host = (offer.relay.match(/^wss?:\/\/([^/]+)/) || [])[1] || offer.relay;
-          // offer.name is text the OTHER box chose, landing straight in a Touch ID prompt: strip
-          // control characters and newlines and cap it, so a hostile box cannot write its own fake
-          // "(key ...)" text (or anything else) into the prompt after its name (reviewer, 28 Sep).
-          // The key shown after it is always this box's own computed fingerprint, never the name.
-          const name = String(offer.name || "a Vyre box").replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 40) || "a Vyre box";
+          const host = promptSafe((offer.relay.match(/^wss?:\/\/([^/]+)/) || [])[1] || offer.relay, "a relay", 64);
+          // The name is the OTHER box's own text; the key shown after it is always this box's own
+          // computed fingerprint, never anything the other side sent.
+          const name = promptSafe(offer.name, "a Vyre box");
           return `Pair this device with "${name}" on ${host} (key ${keyFingerprint(offer.box)})`;
         },
       },
       run: async ({ url, name, becomeDevice = false }, meta = {}) => {
+        const refusal = relayJoinRefusal(platform);
+        if (refusal) throw refusal;
         owner(meta.caller, meta, "joining another box");
         if (!parsePairUrl(url)) throw fail("bad_input", "that does not look like a real Vyre pairing code");
         let paired;
