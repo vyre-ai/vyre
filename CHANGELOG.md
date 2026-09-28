@@ -33,6 +33,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   footgun: only `threads.rewind`'s answer had it before, so code copying that pattern silently
   got `undefined` off the others). `.id` stays canonical; `.thread` is a deliberate one-release
   alias. `threads.rewind`'s answer gains `.id` too, for the same symmetry.
+- Resume reliability, measured against the fake claude: idle-close/restart/crash resumes all
+  land around 200-300ms (Vyre's own overhead, isolated from real model latency). New permanent
+  test: a real crash (SIGKILL) is said as "failed", never "paused", and still resumes.
+- `core/switchboard/switchboard.test.js` pins `VYRE_SESSIONS_DRIVER=cli` in its `boot()`: without
+  it, a shell with `VYRE_SESSIONS_SDK_DIR` still set (this repo's own documented way to test the
+  SDK driver) silently ran this file's ask-handling tests on the SDK driver, which its fake does
+  not implement - 5 tests failed in a way that looked like flakiness. Predates this session
+  (reproduces on d65353a8 too).
 
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 

@@ -115,6 +115,23 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   threads.launch (the job/agent path) and threads.rewind, not just a unit test; the one exact-
   shape regex this touched (chat-sessions-contract's literal-source check on rewind's answer)
   updated to match. Testbox: 110/110.
+- Task 1 fix #4, resume reliability (measured, per the lead): time to first token against the
+  fake claude (isolates Vyre's own spawn/resume overhead from real model latency) - after an
+  idle close ~200-300ms, after a restart ~190-250ms, after a real crash (SIGKILL) ~205-260ms.
+  All fast; added as loose 5s regression guards on the existing idle-close test
+  (sessions.test.js) and the restart test (switchboard.test.js), plus a new permanent crash test
+  (sessions.test.js: SIGKILL is said as thread.status "failed", never "paused", and the next
+  message still resumes it). f64dab91.
+- While measuring under load, found a real reproducible bug, unrelated to anything else in this
+  session but caught by the same exercise: `sessionsConfig()` defaults to the SDK driver and
+  reads `VYRE_SESSIONS_SDK_DIR` straight from the environment, so a shell that still has it set
+  from testing the SDK driver (this file's own recommended way to do that) silently flips
+  `switchboard.test.js` onto the SDK driver too - that file has no driver-loop/skip logic (unlike
+  sessions.test.js) and speaks the CLI runner's own protocol to the fake, so 5 ask-handling tests
+  failed in a way that looked exactly like load-induced flakiness. Verified it predates this
+  session (reproduces on d65353a8 too). Fixed at 476437fc: `boot()` pins `VYRE_SESSIONS_DRIVER`
+  to "cli", saved/restored like its other env vars. 47/47 with the var set (was 42/47); full
+  suite 147/149 (2 skipped, 0 failed) with the real SDK also installed on testbox.
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
