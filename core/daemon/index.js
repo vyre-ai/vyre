@@ -559,7 +559,12 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // still opens once "/" serves the app.
   if (req.method === "GET" && (url.pathname === "/app" || url.pathname.startsWith("/app/"))) {
     if (cfg.app?.root) {
-      const to = (url.pathname === "/app" || url.pathname === "/app/" ? "/" : url.pathname.slice(4)) + url.search;
+      // Never let this become a protocol-relative Location: "/app//evil.example" (or a
+      // "\" the URL parser already turned into "/") would otherwise slice down to "//evil.example",
+      // which a browser reads as scheme-relative and leaves the box for. Collapse every leading
+      // slash or backslash left after the "/app/" prefix before putting the one back.
+      const rest = (url.pathname === "/app" || url.pathname === "/app/") ? "" : url.pathname.slice(5).replace(/^[/\\]+/, "");
+      const to = "/" + rest + url.search;
       res.writeHead(301, { location: to, "cache-control": "no-cache" });
       return res.end();
     }

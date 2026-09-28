@@ -113,6 +113,22 @@ test("app: with config app.root, /app/* is a 301 to the same path under / instea
   assert.deepEqual([c.status, c.headers.location], [301, "/now?tab=chat"], "a deeper path and its query survive the redirect");
   const deck = /** @type {any} */ (await hit("/now"));
   assert.equal(deck.status, 200, "the Deck still answers everything else while the flag is on (it does not itself move / yet)");
+
+  // The redirect must never become protocol-relative ("//host/path" is scheme-relative, so a
+  // browser reading Location: //evil.example leaves the box entirely for it).
+  const open1 = /** @type {any} */ (await hit("/app//evil.example/x"));
+  assert.equal(open1.status, 301);
+  assert.ok(!open1.headers.location.startsWith("//"), `open redirect: ${open1.headers.location}`);
+  assert.equal(open1.headers.location, "/evil.example/x");
+  const open2 = /** @type {any} */ (await hit("/app/\\evil.example"));
+  assert.equal(open2.status, 301);
+  assert.ok(!open2.headers.location.startsWith("//"), `open redirect via backslash: ${open2.headers.location}`);
+  // Percent-encoded slashes stay encoded in the path (never decoded to a real "/" here), so this
+  // one was never actually exploitable, but it is worth pinning down that no decoded form of it
+  // produces a leading "//" either.
+  const enc = /** @type {any} */ (await hit("/app/%2F%2Fevil.example"));
+  assert.equal(enc.status, 301);
+  assert.ok(!enc.headers.location.startsWith("//"), `open redirect via percent-encoding: ${enc.headers.location}`);
 });
 
 test("app: the worker's PRECACHE holds only /app/ paths and its BUILD comes from precache.json", t => {
