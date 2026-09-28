@@ -86,7 +86,7 @@ export class WebSocketRequestResponsePair {
 
 /** ctx.storage: an async Map with the KV API's per-value and per-call limits. */
 export class FakeStorage {
-  constructor() { /** @type {Map<string, any>} */ this.map = new Map(); this.writes = 0; }
+  constructor() { /** @type {Map<string, any>} */ this.map = new Map(); this.writes = 0; /** @type {number|null} */ this.alarmAt = null; }
   async get(key) { return structuredClone(this.map.get(key)); }
   async put(key, value) {
     const entries = typeof key === "string" ? [[key, value]] : Object.entries(key);
@@ -108,6 +108,11 @@ export class FakeStorage {
     return new Map([...this.map].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, v]) => [k, structuredClone(v)]));
   }
   async deleteAll() { const n = this.map.size; this.map.clear(); return n; }
+  // Recorded, not fired: nothing in this harness simulates wall-clock alarms. A test that needs
+  // one to actually fire calls the object's own alarm() directly, as PairTicket's own tests do.
+  async setAlarm(t) { this.alarmAt = t; }
+  async getAlarm() { return this.alarmAt ?? null; }
+  async deleteAlarm() { this.alarmAt = null; }
 }
 
 /**

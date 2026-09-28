@@ -183,16 +183,22 @@ export class PairTicket {
       const exp = Math.min(Number(body && body.exp) || 0, Date.now() + TICKET_TTL_MAX);
       if (!record || !mac || record.length > 2048 || exp <= Date.now()) return new Response(null, { status: 400 });
       await this.ctx.storage.put("t", { record, mac, exp });
+      // A locator nobody ever resolves would otherwise sit in storage forever (reviewer's LOW,
+      // 28 Sep): clean it up at its own exp either way, resolved or not.
+      await this.ctx.storage.setAlarm(exp);
       return new Response(null, { status: 204 });
     }
     if (request.method === "POST" && url.pathname === "/resolve") {
       const t = await this.ctx.storage.get("t");
-      if (t) await this.ctx.storage.deleteAll();
+      if (t) { await this.ctx.storage.deleteAll(); await this.ctx.storage.deleteAlarm(); }
       if (!t || t.exp <= Date.now()) return new Response(null, { status: 404 });
       return json(200, { record: t.record, mac: t.mac });
     }
     return new Response(null, { status: 404 });
   }
+
+  /** The alarm set at register time: gone by its own exp either way (reviewer's LOW, 28 Sep). */
+  async alarm() { await this.ctx.storage.deleteAll(); }
 }
 
 /**

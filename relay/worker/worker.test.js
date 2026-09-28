@@ -471,3 +471,16 @@ test("worker: a control socket cannot register a ticket beyond the per-route cap
   const under = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: loc(0) }) }), rt.env);
   assert.equal(under.status, 200, "under the cap still registers");
 });
+
+test("worker: an unresolved ticket sets an alarm at its own exp, which cleans it up either way", async t => {
+  const rt = world(t);
+  const b = await box(rt);
+  await b.s.json();
+  const exp = Date.now() + 60_000;
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "h".repeat(43), record: "{}", mac: "i".repeat(43), exp }));
+  await rt.settle();
+  const obj = rt.object("h".repeat(43), "TICKETS");
+  assert.equal(await obj.ctx.storage.getAlarm(), exp);
+  await obj.run(inst => inst.alarm());
+  assert.equal(obj.ctx.storage.map.size, 0, "the alarm cleans up an unresolved ticket");
+});

@@ -580,6 +580,27 @@ test("relay: resolveTicket refuses a record whose own expiry has passed, even wi
   assert.equal(record.handle, "alex", "the claimed handle travels in the record, covered by the same MAC");
 });
 
+test("relay: resolveTicket/pairOffer throw stable .code values, not just messages", async t => {
+  const { d } = await world(t);
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const gone = await resolveTicket(Buffer.alloc(8, 1), { relay: status.url, crypto: nodeCrypto() }).catch(e => e);
+  assert.equal(gone.code, "ticket_gone");
+
+  const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
+  const raw = fromBase64url(minted.ticket);
+  const { ticketDerive, ticketMac } = await import("../core/relay/wire.js");
+  const loc = ticketDerive("loc", Buffer.from(raw)).toString("base64url");
+  const res = await fetch(`${status.url.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
+  const body = await res.json();
+  const tampered = JSON.stringify({ ...JSON.parse(body.record), box: Buffer.alloc(32, 9).toString("base64url") });
+  const badFetch = async () => ({ ok: true, status: 200, json: async () => ({ record: tampered, mac: body.mac }) });
+  const bad = await resolveTicket(raw, { relay: status.url, fetch: badFetch, crypto: nodeCrypto() }).catch(e => e);
+  assert.equal(bad.code, "bad_record");
+
+  const limited = await resolveTicket(Buffer.alloc(8, 2), { relay: status.url, fetch: async () => ({ ok: false, status: 429 }), crypto: nodeCrypto() }).catch(e => e);
+  assert.equal(limited.code, "rate_limited");
+});
+
 test("relay: resolveTicket's handle is null when no vyre.run name is claimed, not a guess", async t => {
   const relay = createRelay();
   const url = await relay.listen();

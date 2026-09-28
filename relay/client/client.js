@@ -140,7 +140,9 @@ export async function pairOffer(offer, o = {}) {
   const d = defaults(o);
   const keys = await deviceKey(d);
   const hello = { v: 1, ...about(o.about), pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}) };
-  const { channel, reply } = await openChannel({ ...d, relay: offer.relay, route: offer.route, box: offer.box, keys, hello, timeout: o.timeout });
+  let channel, reply;
+  try { ({ channel, reply } = await openChannel({ ...d, relay: offer.relay, route: offer.route, box: offer.box, keys, hello, timeout: o.timeout })); }
+  catch (e) { throw /** @type {any} */ (e).code ? e : fail("pair_failed", /** @type {Error} */ (e).message); }
   channel.close(1000, "paired");
   return {
     relay: offer.relay, route: offer.route, box: base64url(offer.box),
@@ -157,7 +159,7 @@ export async function pairOffer(offer, o = {}) {
  */
 export async function pair(offerUrl, o = {}) {
   const offer = parsePairUrl(offerUrl);
-  if (!offer) throw new Error("not a Vyre pairing code");
+  if (!offer) throw fail("bad_input", "not a Vyre pairing code");
   return pairOffer(offer, o);
 }
 
@@ -173,6 +175,11 @@ export async function keyFingerprint(box, crypto) {
   const s = base32(await crypto.sha256(box)).slice(0, 8);
   return `${s.slice(0, 4)} ${s.slice(4)}`;
 }
+
+// Stable codes on resolveTicket/pairOffer's own errors (reviewer's LOW, 28 Sep), so a caller
+// tells expired/used, rate-limited and a failed check apart without matching message text, which
+// a later wording change could otherwise silently turn a MAC failure into a generic retry.
+const fail = (code, message) => Object.assign(new Error(message), { code });
 
 const TICKET_TAG = { loc: "vyre-pair-loc", sec: "vyre-pair-sec", mac: "vyre-pair-mac" };
 /** @param {import("./noise.js").CryptoProvider} crypto @param {"loc"|"sec"|"mac"} which @param {Uint8Array} ticket */
@@ -202,30 +209,31 @@ const promptSafe = (s, fallback, max = 64) => { const t = String(s || "").replac
  * @returns {Promise<{ offer: { relay: string, route: string, box: Uint8Array, secret: string }, name: string, fingerprint: string, handle: string|null }>}
  */
 export async function resolveTicket(ticket, o) {
-  if (!o || !/^wss?:\/\/[^\s/]+/.test(String(o.relay))) throw new Error("resolveTicket needs the relay this ticket's box registered with");
+  if (!o || !/^wss?:\/\/[^\s/]+/.test(String(o.relay))) throw fail("bad_input", "resolveTicket needs the relay this ticket's box registered with");
   const cryptoP = (o.crypto) || webCrypto();
   const fetchFn = o.fetch || globalThis.fetch;
-  if (!fetchFn) throw new Error("no fetch here: pass one");
+  if (!fetchFn) throw fail("bad_input", "no fetch here: pass one");
   const loc = await ticketDerive(cryptoP, "loc", ticket);
   const secret = await ticketDerive(cryptoP, "sec", ticket);
   const macKey = await ticketDerive(cryptoP, "mac", ticket);
   const base = String(o.relay).replace(/\/+$/, "").replace(/^ws/, "http");
   const res = await fetchFn(`${base}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: base64url(loc) }) });
-  if (res.status === 404) throw new Error("this pairing code has expired or was already used");
-  if (!res.ok) throw new Error(`the relay would not resolve this pairing code (${res.status})`);
+  if (res.status === 404) throw fail("ticket_gone", "this pairing code has expired or was already used");
+  if (res.status === 429) throw fail("rate_limited", "too many pairing attempts; wait a minute");
+  if (!res.ok) throw fail("pair_failed", `the relay would not resolve this pairing code (${res.status})`);
   const body = await res.json();
   const recordText = String((body && body.record) || "");
   const mac = fromBase64url(String((body && body.mac) || ""));
   const wantMac = await cryptoP.hmacSha256(macKey, utf8(recordText));
-  if (!equal(mac, wantMac)) throw new Error("the relay's answer for this pairing code does not check out; refusing to pair");
+  if (!equal(mac, wantMac)) throw fail("bad_record", "the relay's answer for this pairing code does not check out; refusing to pair");
   let record;
-  try { record = JSON.parse(recordText); } catch { throw new Error("the relay's answer for this pairing code is not valid"); }
-  if (record.v !== 1 || typeof record.relay !== "string" || !ROUTE_RE.test(record.route) || typeof record.box !== "string") throw new Error("the relay's answer for this pairing code is not shaped like an offer");
+  try { record = JSON.parse(recordText); } catch { throw fail("bad_record", "the relay's answer for this pairing code is not valid"); }
+  if (record.v !== 1 || typeof record.relay !== "string" || !ROUTE_RE.test(record.route) || typeof record.box !== "string") throw fail("bad_record", "the relay's answer for this pairing code is not shaped like an offer");
   // The MAC only proves the relay's answer is unmodified from whatever the box minted; an expiry
   // in the past is still a legitimate, unmodified record for a ticket that should have been gone.
-  if (typeof record.exp !== "number" || record.exp < Date.now()) throw new Error("this pairing code has expired or was already used");
+  if (typeof record.exp !== "number" || record.exp < Date.now()) throw fail("ticket_gone", "this pairing code has expired or was already used");
   const box = fromBase64url(record.box);
-  if (box.length !== 32) throw new Error("the relay's answer for this pairing code is not shaped like an offer");
+  if (box.length !== 32) throw fail("bad_record", "the relay's answer for this pairing code is not shaped like an offer");
   // Cleaned the same way the box itself validates a claimed name (core/names/service.js), not
   // just stripped like a free-text name: a handle only means something as a real subdomain, so
   // a bad shape becomes null (no redirect offered) rather than a sanitised-but-wrong string.
