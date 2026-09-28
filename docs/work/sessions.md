@@ -154,6 +154,15 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   failing to read a `/proc` entry to the top of a caller's process chain - a live-process-table
   read race under load, nothing to do with which env vars or driver are set. Told e2e directly
   with the exact code path.
+- Queue item 2, teammates section 1 (docs/design/teammates.md, work/teammates 686e08e7 built
+  core/team's side): `harness.brief` now calls `team.project-append({project})` once the slug is
+  known and in scope, and prepends its `text` (when not null) ahead of the project's own brief.
+  Null-safe through the same `ask()` every other cross-module call in this hook uses - no
+  core/team, or team.default off, changes nothing. Checked core/team/index.js directly: team.ask
+  has no `callers` restriction at all, so "give the session the team.* tools" needed no change on
+  my side - already true. e868f5e2. Tests: harness.test.js's projects+memory test extended with a
+  fake team module (checks ordering), plus a new test for both null-safe paths. 13/13 on
+  core/harness, 20/20 with test/harness.test.js + boundaries.
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.

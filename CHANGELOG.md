@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Teammates section 1: team.project-append in harness.brief
+
+- `harness.brief` calls `team.project-append({project})` once a session's project slug is known
+  and in scope, prepending its text (a nudge toward `team_ask`, or null when the person turned
+  `team.default` off) ahead of the project's own brief. No core/team, or the tool missing, leaves
+  the brief unchanged (the same null-safe `ask()` this hook already uses everywhere else).
+
 #### thread.status: one canonical session-state vocabulary (cohesion finding, 2026-09-28)
 
 - lib/thread-status.js: pure `threadStatus(raw, reason)` mapping + `THREAD_STATUSES`. Internal
