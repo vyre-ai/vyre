@@ -647,6 +647,60 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - core/link/box.js: `link.macs` gains `stableId` (the Mac's tailnet peer id), additive; `node`
   keeps meaning the paired name shown to surfaces.
 - core/files/module.json: files.deliver in "does", two teaching tips (files.deliver, files.receive).
+
+#### Teammates section 1: team.project-append in harness.brief
+
+- `harness.brief` calls `team.project-append({project})` once a session's project slug is known
+  and in scope, prepending its text (a nudge toward `team_ask`, or null when the person turned
+  `team.default` off) ahead of the project's own brief. No core/team, or the tool missing, leaves
+  the brief unchanged (the same null-safe `ask()` this hook already uses everywhere else).
+
+#### thread.status: one canonical session-state vocabulary (cohesion finding, 2026-09-28)
+
+- lib/thread-status.js: pure `threadStatus(raw, reason)` mapping + `THREAD_STATUSES`. Internal
+  `status` (starting/working/waiting/idle/stopped) is Vyre's own bookkeeping; two of its five
+  words already meant something a person would not guess (internal "waiting" is only ever set
+  while an ask is open; internal "idle" is what a person calls "waiting"). cohesion found
+  core/harness checking the raw strings while switchboard's own STATE map and the CLI relabelled
+  "working" to "running" for people: three names for one state inside one blast radius.
+- core/switchboard now emits `thread.status` (canonical: starting, working, asking, waiting,
+  stopped, finished, failed) at the same choke point as the legacy `thread.state`, unchanged.
+  `threads.get`/`threads.list` records add `canonical_status` alongside the existing raw
+  `status`. test/chat-sessions-contract.test.js already listed `thread.status` as a future event
+  chat listens ahead of the server having it (0.1.0-rc.1's own note); it is real now.
+- queued (core/sessions/slots.js) is not folded in: it happens before a thread exists, keyed by
+  owner/kind, not by thread id. A surface combines slot.queued with thread.status once the
+  thread starts.
+- 8th state, "paused": an idle timeout, a box restart or a rewind end the process but are not
+  wrong (threads.send resumes them, no drama). Split from plain "stopped" (the person pressed
+  Stop, they asked for it) and from "failed" (a nonzero exit code or a signal - a real crash). A
+  person must never see an idle close read back as an error, or a crash read back as routine.
+- `recover()` (vyred startup: marks every thread that looked live before the restart as stopped)
+  now also emits `thread.status {status: "paused"}`, not just the legacy `thread.stopped` - a
+  live listener saw nothing until its next poll of `threads.get` otherwise.
+- `threadStatus()` now fails safe to "stopped" on an unknown raw status instead of passing it
+  through unchanged (reviewer-2's finding).
+- `threads.start`/`threads.fork`/`threads.launch` answers gain `.thread` (native-core's naming
+  footgun: only `threads.rewind`'s answer had it before, so code copying that pattern silently
+  got `undefined` off the others). `.id` stays canonical; `.thread` is a deliberate one-release
+  alias. `threads.rewind`'s answer gains `.id` too, for the same symmetry.
+- Resume reliability, measured against the fake claude: idle-close/restart/crash resumes all
+  land around 200-300ms (Vyre's own overhead, isolated from real model latency). New permanent
+  test: a real crash (SIGKILL) is said as "failed", never "paused", and still resumes.
+- `core/switchboard/switchboard.test.js` pins `VYRE_SESSIONS_DRIVER=cli` in its `boot()`: without
+  it, a shell with `VYRE_SESSIONS_SDK_DIR` still set (this repo's own documented way to test the
+  SDK driver) silently ran this file's ask-handling tests on the SDK driver, which its fake does
+  not implement - 5 tests failed in a way that looked like flakiness. Predates this session
+  (reproduces on d65353a8 too).
+- `test/helpers.js`'s `tempHome()` gains an optional `stop` callback, run before its own
+  daemon-stop/rmSync cleanup (which always runs first - after-hooks fire in registration order).
+  Fixes a real rc.2 failure: `core/sessions/sessions.test.js`'s `boot()` runs vyred in-process and
+  registered its own stop too late, so the temp directory got removed while the daemon (and any
+  live child) was still writing to it - ENOTEMPTY, and a plausible contributor to the whole file
+  blowing its 90s timeout under the full suite at concurrency 4. `core/switchboard/
+  switchboard.test.js` had the identical latent bug; fixed the same way, plus a `setDaemon()` for
+  its restart test's second daemon.
+
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at
@@ -970,7 +1024,9 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   `"forge"`/new `"bareforge"`, and `"subagent[-slow]"` scripted prompt lines are now found
   anywhere in the prompt, not only when the whole prompt starts with it, so a teammate's
   `<vyre-request>`-wrapped text can still script a tool call (or a forged one, or hold its turn
-  open for a real interval) in a test.#### Sentence case, no letter-spaced mono captions
+  open for a real interval) in a test.
+
+#### Sentence case, no letter-spaced mono captions
 
 - deck/onboard/onboard.css: `.progress .state` was JetBrains Mono, uppercase, `+0.16em`, the same
   stale "Label (engraved)" pattern site/styles.css's `.lbl` had (docs/design/system/copy.md:

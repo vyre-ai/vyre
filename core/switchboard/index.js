@@ -25,6 +25,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
+import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
@@ -202,7 +203,7 @@ export const TEXT_EVERY_MS = 50;
  * is still catching up on the SSE backlog see the deltas first. VYRE_TEXT_PRUNE_MS overrides it.
  */
 export const TEXT_PRUNE_MS = 60_000;
-const LIVE = ["starting", "working", "waiting", "idle"];
+const LIVE = LIVE_STATUSES;
 /** thread.state's words for a record's status (ADR 0030 section 1). */
 const STATE = { starting: "starting", working: "running", waiting: "waiting", idle: "idle", stopped: "stopped" };
 
@@ -315,6 +316,11 @@ export class Switchboard {
       this.db.prepare("UPDATE threads_runs SET status = 'stopped', stopped_reason = 'restart', pid = NULL WHERE id = ?").run(r.id);
       for (const a of this.asks.open(String(r.id))) this.closeAsk(a, "cancelled", "restart");
       this.emit("thread.stopped", { code: null, reason: "restart" }, String(r.id), r.project || null);
+      // The canonical status too (bypassing set(): there is no live process to route through it),
+      // so a surface watching thread.status in real time sees "paused" here, same as an idle
+      // close - not silence until its next poll, and never read as a crash.
+      this.emitRaw("thread.status", { status: threadStatus("stopped", "restart") }, String(r.id), r.project || null);
+      this.states.set(String(r.id), "stopped");
     }
   }
 
@@ -350,7 +356,10 @@ export class Switchboard {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM threads_runs WHERE id = ?").get(id));
     if (!r) return null;
     const holder = this.leases.holder(id);
-    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status, model: r.model, driver: r.driver || null,
+    // status stays the raw internal word (unchanged: existing callers compare it). canonical_status
+    // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
+    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
+      canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
       provider: r.provider || "claude", purpose: r.purpose || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
@@ -365,12 +374,17 @@ export class Switchboard {
   set(id, fields) {
     const keys = Object.keys(fields);
     this.db.prepare(`UPDATE threads_runs SET ${keys.map(k => `${k} = ?`).join(", ")}, last_at = ? WHERE id = ?`).run(...keys.map(k => fields[k]), Date.now(), id);
-    // thread.state, once per change: the working dot and "waiting on you" read it.
+    // thread.state (legacy words, kept for surfaces that already read it) and thread.status (the
+    // canonical vocabulary, lib/thread-status.js), once per change: the working dot and "waiting
+    // on you" read one of these.
     if (fields.status && this.states.get(id) !== fields.status) {
       this.states.set(id, fields.status);
-      const rec = /** @type {any} */ (this.db.prepare("SELECT project FROM threads_runs WHERE id = ?").get(id));
+      const rec = /** @type {any} */ (this.db.prepare("SELECT project, stopped_reason FROM threads_runs WHERE id = ?").get(id));
       const st = this.live.get(id);
-      this.emitRaw("thread.state", { state: STATE[fields.status] || fields.status, ...(st && st.turn ? { turn: st.turn } : {}) }, id, rec ? rec.project : null);
+      const turn = st && st.turn ? { turn: st.turn } : {};
+      this.emitRaw("thread.state", { state: STATE[fields.status] || fields.status, ...turn }, id, rec ? rec.project : null);
+      const reason = fields.status === "stopped" ? (fields.stopped_reason ?? (rec ? rec.stopped_reason : null)) : null;
+      this.emitRaw("thread.status", { status: threadStatus(fields.status, reason), ...turn }, id, rec ? rec.project : null);
     }
   }
 
@@ -404,7 +418,7 @@ export class Switchboard {
     if (o.resume) {
       rec = this.must(o.resume);
       id = rec.id;
-      if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.record(id); }
+      if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.launched(id); }
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
     } else {
@@ -474,8 +488,18 @@ export class Switchboard {
       if (o.surface) await this.send(id, o.prompt, o.surface);
       else { this.write(id, o.prompt); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
-    return this.record(id);
+    return this.launched(id);
   }
+
+  /**
+   * launch()'s own answer (threads.start, threads.fork, threads.launch): the record, plus
+   * `thread` as an alias of `id` (a naming footgun native-core hit: threads.rewind's answer
+   * echoes the new/resumed session id as `.thread`, so a client that copied that pattern reading
+   * `.thread` off a launch answer silently got undefined). `id` is canonical; drop `thread` here
+   * once every surface is confirmed off it (2026-09-28).
+   * @param {string} id
+   */
+  launched(id) { return { ...this.record(id), thread: id }; }
 
   /**
    * The system prompt for a launch: the levels a person edited (assistant, agent, project;
@@ -746,6 +770,7 @@ export class Switchboard {
         // A failed turn is said as a state of its own, with its turn, before the thread goes idle.
         if (!e.payload.ok && !e.payload.canceled && !st.stopping) {
           this.emitRaw("thread.state", { state: "failed", turn: st.turn, error: e.payload.error || null }, id, project);
+          this.emitRaw("thread.status", { status: "failed", turn: st.turn, error: e.payload.error || null }, id, project);
           this.states.set(id, "failed");
         }
         if (this.asks.open(id).length === 0) this.set(id, { status: "idle" });
@@ -1411,15 +1436,15 @@ export class Switchboard {
       files = { restored: true, ...(r && Array.isArray(r.filesChanged) ? { files_changed: r.filesChanged } : {}), ...(r && r.canRewind === false ? { restored: false, why: r.error || "no checkpoint" } : {}) };
       if (restore === "code") {
         this.emit("thread.rewound", { uuid, restore, files }, id, rec.project);
-        return { rewound: true, thread: id, uuid, restore, files };
+        return { rewound: true, id, thread: id, uuid, restore, files };
       }
     }
-    if (!line.parentUuid) return { rewound: false, thread: id, text, note: "That is the first message: start a new session with it instead.", ...(files ? { files } : {}) };
+    if (!line.parentUuid) return { rewound: false, id, thread: id, text, note: "That is the first message: start a new session with it instead.", ...(files ? { files } : {}) };
     const st = this.live.get(id);
     if (st) await this.close(id, st, "rewind");
     await this.launch({ resume: id, resumeAt: String(line.parentUuid) });
     this.emit("thread.rewound", { uuid, at: String(line.parentUuid), restore, ...(files ? { files } : {}) }, id, rec.project);
-    return { rewound: true, thread: id, uuid, text, ...(restore !== "conversation" ? { restore, files } : {}) };
+    return { rewound: true, id, thread: id, uuid, text, ...(restore !== "conversation" ? { restore, files } : {}) };
   }
 
   /**

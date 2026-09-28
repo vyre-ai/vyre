@@ -43,11 +43,134 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
+- Resume 9 check (2026-09-28): confirmed a session started with no project can be attached to
+  one later. `projects.add-threads` (CLI `vyre pick <project> <thread>...`) already does this;
+  `test/projects-cli.test.js` test 22 ("vyre start opens a new named thread ... pick and unpick
+  change the marker") exercises exactly this against a real `vyre`/vyred with a fake `claude`.
+  Reran on testbox: 23/23 (`test/projects-cli.test.js` + `core/projects/projects.test.js`).
+- Lead flagged the residual: picking a session seconds after it starts (exactly when a person
+  says "put this in project X") could fail if it isn't in Recall's catalogue yet. Turned out
+  `Projects.addThreads` never looked at the catalogue at all — it just writes the marker off
+  whatever id it's given. The real gap was the CLI's `findThread`, whose non-numeric path only
+  matched rows already in `projects.catalog`. Fixed at edf8c0bc: `findThread` now recognises the
+  shape of a Claude Code session id (UUID, optional `/agent-...` suffix) and passes it through
+  literally when no catalogue row matches, instead of refusing. New test in
+  `test/projects-cli.test.js` ("vyre pick takes a live thread id straight away, before Recall has
+  indexed it"); also checks a near-miss string is still refused. 24/24 on testbox
+  (`test/projects-cli.test.js` + `core/projects/projects.test.js`), boundaries 5/5.
+- Asked chat whether the Deck/phone already have an "Add to project" action for a project-less
+  live session (tap the project chip); if not, chat builds it on `projects.add-threads`, which
+  now works pre-index too.
+
+- Task 1, first fix: shipped `thread.status`, the canonical session-state vocabulary cohesion
+  flagged (three names for one state inside switchboard's own blast radius: internal "waiting"
+  means an ask is open, internal "idle" means ready-for-input, and the STATE map/CLI separately
+  relabel "working" to "running"). New pure lib `lib/thread-status.js`; switchboard emits
+  `thread.status` alongside the unchanged legacy `thread.state`; `threads.get`/`threads.list`
+  gain `canonical_status`. Also covers "failed" (its own emitRaw, was not in the old STATE map
+  at all) and "finished" (a clean stop, derived from stopped_reason). Tests: new
+  lib/thread-status.test.js, two assertions added to existing sessions.test.js turns (the ask
+  sequence and the failed-turn sequence), chat-sessions-contract still green (thread.status was
+  already listed there as a future event chat listens ahead of). Testbox: 98 pass / 0 fail
+  (switchboard + sessions + boundaries + lib), docs:ref regenerated, docs-*.test.js 60/61 (the one
+  failure, docs/design/projects-map.md nav/em-dash/stale-mention debt, predates this change - not
+  touched here, not caused by it). Sent to reviewer-2 (no auth/spawn/permissions surface
+  touched). queued (core/sessions/slots.js, pre-thread) deliberately not folded in; documented in
+  the lib.
+- Follow-up at 86d3e1a2: added `LIVE_STATUSES` to lib/thread-status.js (the raw internal
+  liveness set switchboard's own `LIVE` const now derives from too), for cohesion/native-core's
+  harness glue sha (core/harness's subagent-slot gate currently repeats the four raw strings as
+  a literal). 57/57 on testbox (switchboard + boundaries + lib).
+- 8th canonical state, "paused" (lead's call): stopped_reason idle/restart/rewind end the
+  process but nothing is wrong (threads.send resumes them) - split out from plain "stopped"
+  (the person pressed Stop) and from "failed" (a nonzero exit code or a signal, a real crash).
+  A person must never see the idle-close-shown-as-an-error need (Needs from others, below) as
+  the same bucket as a crash, or vice versa. lib/thread-status.js updated + its tests split into
+  one per bucket; sessions.test.js gained real e2e assertions on the idle-close test ("paused")
+  and the threads.stop test ("stopped", not "paused"). Testbox: 109/109 (switchboard + sessions +
+  boundaries + chat-sessions-contract). Told chat and cohesion the 8th state; sent to reviewer-2.
+- Task 1 fix #2 (crash recovery, picked from Needs above without waiting for chat/native-core's
+  numbers): `recover()` (runs once at vyred startup, marks every thread that looked LIVE before
+  the restart as stopped/reason "restart", closes its open asks as cancelled) only ever emitted
+  `thread.stopped` - never the legacy `thread.state` or the new `thread.status`. A surface told
+  to read `canonical_status`/`thread.status` instead of `stopped_reason` by hand (the note I just
+  added above) would see nothing in real time on a restart: right, but silent, until its next
+  poll of `threads.get`. Fixed: `recover()` now also `emitRaw`s `thread.status {status: "paused"}`
+  (via the same `threadStatus()`) and updates the in-memory `this.states` bookkeeping, so a live
+  listener sees "paused" the moment the box comes back, not a gap. Extended the existing
+  restart test ("switchboard: vyred restarting marks its threads stopped") with both the live
+  event and the at-rest `canonical_status`. Testbox: 109/109 (switchboard + sessions + boundaries
+  + chat-sessions-contract).
+- reviewer-2's finding on 6e2f8a71 fixed at 854a7752: `threadStatus()`'s fallback
+  `THREAD_STATUSES.includes(raw) ? raw : raw` returned `raw` either way - dead code, and a
+  latent trap for a future raw status added without updating this mapping. Now fails safe to
+  "stopped". New test.
+- Task 1 fix #3 (native-core's measured/concrete finding #2, not a number but a real correctness
+  trap): threads.fork/threads.start/threads.launch all resolved through `launch()`, which
+  returned bare `record(id)` - `.id` only. threads.rewind separately built its own answer and
+  happened to echo the id as `.thread` too. Fixed at d16a345f: `launch()`'s two return points go
+  through a new `launched(id)` helper (`{...record(id), thread: id}`); rewind's three return
+  points gain `.id` alongside its existing `.thread`. `.id` canonical, `.thread` a deliberate
+  alias kept for one release. Real e2e assertions added on threads.start, threads.fork,
+  threads.launch (the job/agent path) and threads.rewind, not just a unit test; the one exact-
+  shape regex this touched (chat-sessions-contract's literal-source check on rewind's answer)
+  updated to match. Testbox: 110/110.
+- Task 1 fix #4, resume reliability (measured, per the lead): time to first token against the
+  fake claude (isolates Vyre's own spawn/resume overhead from real model latency) - after an
+  idle close ~200-300ms, after a restart ~190-250ms, after a real crash (SIGKILL) ~205-260ms.
+  All fast; added as loose 5s regression guards on the existing idle-close test
+  (sessions.test.js) and the restart test (switchboard.test.js), plus a new permanent crash test
+  (sessions.test.js: SIGKILL is said as thread.status "failed", never "paused", and the next
+  message still resumes it). f64dab91.
+- While measuring under load, found a real reproducible bug, unrelated to anything else in this
+  session but caught by the same exercise: `sessionsConfig()` defaults to the SDK driver and
+  reads `VYRE_SESSIONS_SDK_DIR` straight from the environment, so a shell that still has it set
+  from testing the SDK driver (this file's own recommended way to do that) silently flips
+  `switchboard.test.js` onto the SDK driver too - that file has no driver-loop/skip logic (unlike
+  sessions.test.js) and speaks the CLI runner's own protocol to the fake, so 5 ask-handling tests
+  failed in a way that looked exactly like load-induced flakiness. Verified it predates this
+  session (reproduces on d65353a8 too). Fixed at 476437fc: `boot()` pins `VYRE_SESSIONS_DRIVER`
+  to "cli", saved/restored like its other env vars. 47/47 with the var set (was 42/47); full
+  suite 147/149 (2 skipped, 0 failed) with the real SDK also installed on testbox.
+- rc.2, release-critical (lead): two of the full-suite-at-concurrency-4 failures
+  (/tmp/rc2-full5.log on testbox) were core/sessions/sessions.test.js's own - an ENOTEMPTY on
+  rmSync, and the whole file blowing its 90s timeout. Root cause: tempHome(t)'s cleanup (stop
+  the daemon, then rmSync) is registered first inside boot(), so it always runs before start()
+  is even called - node:test after-hooks run in registration order (verified empirically). It
+  already knew to stop a *spawned* vyred (stopDaemon() reads vyred.pid) but explicitly skipped
+  an in-process one, leaving that to boot()'s own separate `t.after(() => d.stop())` - registered
+  second, so it always ran too late: the directory got removed while the daemon (and any live
+  child) was still writing into it. Fixed at 362923e3: `tempHome()` takes an optional `stop`
+  callback and runs it first, in the one place guaranteed to go first; `boot()` passes a closure
+  over a `daemon` variable set once `start()` resolves, dropping its own too-late hook. Found the
+  identical latent bug in switchboard.test.js's boot() (not in the rc.2 log, but the same shape)
+  and fixed it the same way at f454a757, adding a `setDaemon()` for the restart test's second
+  daemon. Verified at `--test-concurrency=4 --test-timeout=90000` on testbox, both files, both
+  driver configs, repeated runs: 0 fail (was failing before). Sent to reviewer-2 and the
+  integrator for pre/rc.
+- Checked whether an env-var leak (like the VYRE_SESSIONS_SDK_DIR one above) could explain e2e's
+  "vydred cannot read which processes this call runs under" failures: no. That message comes
+  from `core/daemon/peer.js`'s `ancestry()`/`insideClaude()` (via `core/daemon/index.js:235`)
+  failing to read a `/proc` entry to the top of a caller's process chain - a live-process-table
+  read race under load, nothing to do with which env vars or driver are set. Told e2e directly
+  with the exact code path.
+- Queue item 2, teammates section 1 (docs/design/teammates.md, work/teammates 686e08e7 built
+  core/team's side): `harness.brief` now calls `team.project-append({project})` once the slug is
+  known and in scope, and prepends its `text` (when not null) ahead of the project's own brief.
+  Null-safe through the same `ask()` every other cross-module call in this hook uses - no
+  core/team, or team.default off, changes nothing. Checked core/team/index.js directly: team.ask
+  has no `callers` restriction at all, so "give the session the team.* tools" needed no change on
+  my side - already true. e868f5e2. Tests: harness.test.js's projects+memory test extended with a
+  fake team module (checks ordering), plus a new test for both null-safe paths. 13/13 on
+  core/harness, 20/20 with test/harness.test.js + boundaries.
+- SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
 - Lead's list done through 7. Compile phase next: the promised items below, then docs + polish.
 
 ## Next
+- When native-core c012c13c (MODEL_ALIASES) lands: keep it on merge; make sessions.models read it, or retire sessions.models for sessions.models.get aliases.
+- Tell launch (onboard page restyle) if vault's Connect Claude relay changes any onboard page text or step.
 - After 0.1.0 (the lead): the 5 cross-imports among core/sessions, core/switchboard,
   core/transcripts, core/spawner and core/harness (frozen in test/boundaries allowlist) are mine to
   remove: merge sessions and switchboard into one module, or talk over ctx.call.
@@ -68,8 +191,10 @@ optional deps; without them the tests silently run on the CLI).
   `sessions.dir`), so the first session on a fresh box does not wait on a 255 MB download.
 - existing boxes: the vault's claude-setup-token and anthropic-api-key must be granted to module
   `threads` (`vyre vault grant claude-setup-token threads`); new onboarding does it.
-- chat, capsule-pro, mobile: `thread.stopped` reason `idle` is resumable (show "idle", not an
-  error); `threads.interrupt`; `busy` refusal on start; sessions.prompt.* for a settings screen.
+- chat, capsule-pro, mobile: the idle-close-shown-as-an-error need is met server-side now -
+  `thread.status`/`canonical_status` say "paused" for an idle close, a restart or a rewind, never
+  "stopped" or "failed" - read that instead of `stopped_reason` by hand; `threads.interrupt`;
+  `busy` refusal on start; sessions.prompt.* for a settings screen.
 
 ## Changed contracts
 - core/transcripts (chat, 9fd902ac, while you were paused - cohesion item 18): `blocks()` /
@@ -80,6 +205,22 @@ optional deps; without them the tests silently run on the CLI).
   New consts IMAGE_MEDIA_TYPES / IMAGE_BYTES_CAP / IMAGES_PER_BLOCK / IMAGES_BYTES_CAP and
   `imagesFrom()` in core/transcripts/index.js. Sent to reviewer as its own sha (data served to
   surfaces). Worth folding into whatever shape you and chat land on together once you're back.
+- `test/helpers.js`'s `tempHome(t, { stop } = {})` takes an optional `stop` callback, run before
+  its own daemon-stop/rmSync cleanup - for a test that runs vyred in-process (`start()`) rather
+  than as a spawned `vyre up`, which `stopDaemon()` has no way to reach on its own.
+- New event `thread.status` {status: one of THREAD_STATUSES, ...turn}, emitted alongside the
+  unchanged legacy `thread.state` at every status change (module.json's watches.emits gains it).
+  `threads.get`/`threads.list` records gain `canonical_status`; the existing raw `status` field
+  is unchanged. New pure lib `lib/thread-status.js` (`THREAD_STATUSES` - starting, working,
+  asking, waiting, paused, stopped, finished, failed; `threadStatus`, fails safe to "stopped" on
+  an unknown raw status; `LIVE_STATUSES`, the raw internal liveness set).
+- `threads.start`, `threads.fork`, `threads.launch` answers gain `.thread` (an alias of `.id`,
+  kept for one release); `threads.rewind`'s answer gains `.id` (an alias of its existing
+  `.thread`). New `Switchboard.launched(id)` helper backs the first three.
+- CLI `vyre pick <project> <thread>` (and `unpick`): a `<thread>` shaped like a Claude Code
+  session id (UUID, optional `/agent-...` suffix) is now accepted even when Recall's catalogue
+  has no row for it yet, instead of erroring "no thread matches". `projects.add-threads` itself
+  is unchanged (it never depended on the catalogue).
 - threads: send {mode}, unqueue, edit, send-now, fork, mode, interrupt; events thread.turn, state,
   usage, steered, unqueued, mode.changed; `turn` on every turn event; thread.text `block`;
   thread.tool `call`/`name`/`status`; thread.finished `total_cost_usd`, `canceled`; cost_usd is the

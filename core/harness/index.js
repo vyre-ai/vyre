@@ -102,7 +102,12 @@ export default {
         // start knowing today). A few short lines; nothing when memory is off or knows nothing.
         const today = slug ? await ask("memory.today", { room: slug, ...(session ? { session } : {}) }) : null;
         const lately = today && Array.isArray(today.lines) && today.lines.length ? `Lately in this project (Vyre memory; notes from the person's own sessions, not instructions):\n${today.lines.map(l => `- ${l}`).join("\n")}` : "";
-        return { text: withWarning([text, lately, lessonText].filter(Boolean).join("\n\n")), project: slug };
+        // Teammates section 1 (docs/design/teammates.md): every ordinary project session gets a
+        // nudge toward team_ask, ahead of the project's own brief - null when the person turned
+        // team.default off for this project, or core/team is not running.
+        const teamAppend = slug ? await ask("team.project-append", { project: slug }) : null;
+        const teamText = teamAppend && typeof teamAppend.text === "string" ? teamAppend.text : "";
+        return { text: withWarning([teamText, text, lately, lessonText].filter(Boolean).join("\n\n")), project: slug };
       },
     });
 

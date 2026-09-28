@@ -218,11 +218,28 @@ async function until(fn, what, ms = 8000) {
  * granted to module agents the way a person does it from the CLI, except those in `ungranted`.
  */
 async function boot(t, { vault, ungranted = [], probe } = {}) {
-  const root = tempHome(t);
+  // tempHome's own cleanup always runs first (after-hooks run in the order they were added), so
+  // it needs a way to stop this in-process vyred before it removes the directory - otherwise a
+  // real ENOTEMPTY race (found under the full suite at concurrency 4, 2026-09-28, in the sibling
+  // sessions.test.js which has the same shape): the directory is removed while the daemon, or a
+  // live child it started, is still writing into it. `daemon` is reassigned below, including by
+  // the restart test's second start() - `stop()` always targets whichever is current.
+  let daemon = null;
+  const root = tempHome(t, { stop: () => daemon && daemon.stop() });
   const log = path.join(root, "claude.log");
-  const env = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
+  // This file speaks the CLI runner's own protocol to the fake (control_request/control_response
+  // JSON lines) and has no driver-loop or skip logic, unlike core/sessions/sessions.test.js.
+  // sessionsConfig() defaults to the SDK driver now (ADR 0030) and reads VYRE_SESSIONS_SDK_DIR
+  // straight from the environment for its dir, so a shell that still has that var set from an
+  // earlier SDK-driver test run silently flips every thread here onto the SDK driver too - the
+  // fake never implements whatever the SDK expects, and every ask-handling test here fails in a
+  // way that looks like flakiness but is really "the wrong driver was picked" (found 2026-09-28,
+  // reproduced deterministically both with and without testbox under load). Pinned to "cli" so
+  // this file's outcome never depends on what else is configured in the ambient shell.
+  const env = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER };
   process.env.VYRE_CLAUDE_BIN = FAKE;
   process.env.FAKE_CLAUDE_LOG = log;
+  process.env.VYRE_SESSIONS_DRIVER = "cli";
   t.after(() => { for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   // Transcripts in the temp home, so adopting never looks at the user's own sessions; the file
   // keystore, so no test goes near the login keychain.
@@ -241,7 +258,7 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
       } };`);
   }
   const d = await start({ root, presence: present, log: () => {} });
-  t.after(() => d.stop());
+  daemon = d;
   // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
   // Vyre's own state, as it does on a real machine. realpath: on the Mac the temp dir sits under
   // /var, which vyred and fake claude see as /private/var.
@@ -255,7 +272,10 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
     if (ungranted.includes(name)) continue;
     assert.equal((await tool("vault.grant", { name, module: "agents" })).data.grant.status, "active");
   }
-  return { root, d, work, launches, tool, transcripts };
+  // A test that replaces d (the restart test starts `again` in its place) calls this so
+  // tempHome's stop() - which always runs first at teardown - targets the current one, not the
+  // one it already stopped by hand.
+  return { root, d, work, launches, tool, transcripts, setDaemon: nd => { daemon = nd; } };
 }
 
 /** A terminal session's transcript, as Claude Code leaves one: in a project folder, cwd on its lines. */
@@ -284,6 +304,7 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   assert.equal(started.error, undefined, JSON.stringify(started.error));
   const id = started.data.id;
   assert.match(id, /^[0-9a-f-]{36}$/, "the thread id is the Claude Code session id");
+  assert.equal(started.data.thread, id, ".thread is kept as an alias of the canonical .id for one release");
   assert.equal(started.data.holder, "deck:1", "the surface that starts a thread has its keyboard");
   await until(() => of(a.got, id, "thread.finished").length && of(b.got, id, "thread.finished").length, "both clients to see the turn end");
 
@@ -430,16 +451,30 @@ test("switchboard: a terminal resume of a live headless thread is warned about, 
 });
 
 test("switchboard: vyred restarting marks its threads stopped", async t => {
-  const { root, work, tool, d } = await boot(t);
+  const { root, work, tool, d, setDaemon } = await boot(t);
   const id = (await tool("threads.start", { cwd: work })).data.id;
   await d.stop();
   const again = await start({ root, presence: present, log: () => {} });
-  t.after(() => again.stop());
+  setDaemon(again); // tempHome's teardown must stop THIS one now, not the d it already stopped
   const r = await call("threads.get", { thread: id }, { root });
   assert.equal(r.data.thread.status, "stopped");
   // ADR 0029 R7: the stop said why, so a surface shows "the box restarted", not a spinner.
   const stopped = again.events.since(0, { type: "thread.stopped", limit: 10 }).filter(e => e.thread === id);
   assert.deepEqual(stopped.map(e => e.payload.reason), ["restart"]);
+  // Canonically it is "paused", not "stopped" or "failed": nothing is wrong, threads.send
+  // resumes it - a person must never read a restart as a crash. Read both live (the event, so a
+  // surface watching it in real time sees this without waiting for its next poll) and at rest.
+  assert.equal(r.data.thread.canonical_status, "paused");
+  const status = again.events.since(0, { type: "thread.status", limit: 10 }).filter(e => e.thread === id);
+  assert.equal(status.at(-1).payload.status, "paused", "the restart's own thread.status, after whatever the original run said");
+  // Resume reliability (task 1, measured on testbox): time to first token after a restart is
+  // Vyre's own spawn/resume overhead against the fake claude, typically 200-300ms; 5s is a
+  // generous ceiling that only trips on a real regression, not testbox load noise.
+  const before0 = again.events.since(0, { type: "thread.text", limit: 100 }).filter(e => e.thread === id).length;
+  const before = Date.now();
+  await call("threads.send", { thread: id, text: "back after the restart" }, { root });
+  await until(() => again.events.since(0, { type: "thread.text", limit: 100 }).filter(e => e.thread === id).length > before0, "the first token after a restart");
+  assert.ok(Date.now() - before < 5000, `resuming after a restart took ${Date.now() - before}ms`);
 });
 
 test("agents: the assistant and an agent on its own credentials, with the fallback and budget", async t => {
@@ -739,6 +774,7 @@ test("lean and one-shot threads: no plugin, tools or settings, kept on resume; a
   // A job: Learning's shape. Internal, so only a module may launch one.
   assert.equal((await tool("threads.launch", { cwd: work, prompt: "x" })).error.code, "no_such_tool");
   const job = (await d.registry.call("threads.launch", { cwd: work, prompt: "distil this", plugin: false, tools: "none", once: true, model: "haiku" }, "module:learn")).data;
+  assert.equal(job.thread, job.id, ".thread is kept as an alias of the canonical .id for one release");
   const stopped = await until(async () => (await tool("threads.get", { thread: job.id })).data.events.find(e => e.type === "thread.stopped"), "the job to stop");
   assert.equal(stopped.payload.reason, "done");
   const events = (await tool("threads.get", { thread: job.id })).data.events;

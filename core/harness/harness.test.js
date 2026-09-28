@@ -113,21 +113,49 @@ test("harness: brief and enrich use projects and memory when they are running", 
     ctx.tool("memory.relevant", { run: async ({ text, project_cwds }) => text.includes("Dana") ? [{ text: "Dana Reyes is at Harlow Legal", source: "Harlow site rebuild", age: "2 days", confidence: 0.8, cwds: project_cwds }] : [] });
     return {};
   } };`;
+  // Teammates section 1: core/team says the sentence to inject, or null (team.default off, or
+  // no teammates yet with the person choosing not to be nudged - not this hook's business which).
+  const team = `export default { async start(ctx) {
+    ctx.tool("team.project-append", { run: async ({ project }) => ({ project, text: project === "harlow-legal" ? "This project has teammates: design." : null }) });
+    return {};
+  } };`;
   const { reg, events } = await harness(t, [
     ["projects", { version: "0.1.0", does: { tools: ["projects.of", "projects.context"] } }, projects],
     ["memory", { version: "0.1.0", does: { tools: ["memory.relevant"] } }, memory],
+    ["team", { version: "0.1.0", does: { tools: ["team.project-append"] } }, team],
   ]);
   const b = await reg.call("harness.brief", { cwd: "/w/harlow-site", session: "s1", source: "startup" });
-  assert.equal(b.data.text, "Project harlow-legal. People: Dana Reyes.");
+  // The team nudge comes ahead of the project's own brief.
+  assert.equal(b.data.text, "This project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
   assert.equal(events.since(0).find(e => e.type === "thread.started").payload.session, "s1");
   assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site" })).data.text, /Dana Reyes is at Harlow Legal/);
   assert.equal((await reg.call("harness.enrich", { prompt: "/compact", cwd: "/w/harlow-site" })).data.text, "", "slash commands get nothing");
   assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind" })).data.text, "", "outside a project, no brief");
   // An agent's scope, as the switchboard hands it to the hooks.
-  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "harlow-legal,northwind" })).data.text, "Project harlow-legal. People: Dana Reyes.");
+  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "harlow-legal,northwind" })).data.text, "This project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
   assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "northwind" })).data.text, "", "an agent outside its projects gets no brief");
   assert.equal((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "northwind" })).data.text, "", "nor their memory");
   assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "*" })).data.text, /Dana Reyes/, "the assistant sees every project");
+});
+
+test("harness: brief's team nudge is null-safe - team.default off, or core/team not running, changes nothing", async t => {
+  const projects = `export default { async start(ctx) {
+    ctx.tool("projects.context", { run: async () => ({ project: "harlow-legal", candidates: [], text: "Project harlow-legal." }) });
+    return {};
+  } };`;
+  // core/team absent entirely: ask() fails closed to null, same as any other missing module.
+  const { reg: withoutTeam } = await harness(t, [["projects", { version: "0.1.0", does: { tools: ["projects.context"] } }, projects]]);
+  assert.equal((await withoutTeam.call("harness.brief", { cwd: "/w/harlow-site" })).data.text, "Project harlow-legal.");
+  // core/team running, but this project's person turned team.default off (its own tool says so).
+  const teamOff = `export default { async start(ctx) {
+    ctx.tool("team.project-append", { run: async () => ({ project: "harlow-legal", text: null }) });
+    return {};
+  } };`;
+  const { reg: withTeamOff } = await harness(t, [
+    ["projects", { version: "0.1.0", does: { tools: ["projects.context"] } }, projects],
+    ["team", { version: "0.1.0", does: { tools: ["team.project-append"] } }, teamOff],
+  ]);
+  assert.equal((await withTeamOff.call("harness.brief", { cwd: "/w/harlow-site" })).data.text, "Project harlow-legal.");
 });
 
 test("harness: learn records changed files; touched lists them; the vault rule emits tool.held", async t => {
