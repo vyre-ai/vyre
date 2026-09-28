@@ -125,6 +125,36 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## RESUME HERE (saved before a restart, usage 84%)
+- **Head: 7a586676** on work/native-core-composer (this team's own worktree). Clean working tree,
+  nothing uncommitted, no test-box runs left running.
+- **Budget-9 harness blind spot: FIXED and sent.** reviewer-2 found that when window-view recycles
+  the anchor row itself (not just the user's own row), the old in-place-only check went silent on
+  a real replace-at-slot re-order. Fixed (8c0b36ca): when the anchor disconnects, look up whatever
+  now sits at that position (fresh previousElementSibling off the content-matched user row) and
+  compare ITS text to the baseline. Verified with all four scenarios as CDP-injected controls on
+  testbox (A benign insert: pass 0x; B in-place mutation: fail, caught; C replace-at-slot,
+  different text: fail, now caught - the fix; D replace-at-slot, same text/benign recycle: pass
+  0x). Clean run unaffected. Results table in docs/design/native-bar.md. Sent to reviewer-2
+  (7479cc33 msg) - **awaiting their sign-off**, not yet confirmed clear to land.
+- **48de0bd3 (fork-from-turn) also just sent to reviewer-2** (97fbe95a msg) per team-lead's ask -
+  **awaiting their sign-off** too.
+- **Fork-from-turn client wiring: NOT STARTED, next up.** chat said go ahead and build it in
+  pickers.js/composer.js (my files, natural extension of the RESTORES-style rewind-sheet list) and
+  hand chat the exact contract for session.js's side. chat is mid a fix in session.js (the
+  budget-8 reconnect scroll jump, testing on testbox) - **wait for chat to say it's landed before
+  touching session.js at all**; pickers.js/composer.js are free to start now. Plan: add "Fork from
+  here" as a fourth item in pickers.js's RESTORES-style list (docs/design system's rewind sheet,
+  currently conversation/code/both), composer.js wires it to `threads.fork({thread, at: uuid,
+  prompt?, name?, surface})` (matching threads.rewind's own {thread, uuid} pattern) - contract for
+  chat: session.js should treat the answer like a normal new-session open (the forked thread's id
+  comes back in `.thread` per threads.fork's existing shape - check its actual answer shape in
+  core/switchboard/index.js's threads.fork tool before wiring) and open it the way a new session
+  from openHref does, since the original thread stays exactly where it was.
+- **On resume:** check reviewer-2's replies on 8c0b36ca and 48de0bd3 first (SendMessage to
+  reviewer-2 if no reply yet has landed); check chat's session.js status before touching that
+  file; then build the pickers.js/composer.js side of "Fork from here".
+
 ## Known follow-ups
 - DONE: e2e's three MEDIUMs (firstParty, drops/env/plugins confirm, asPerson).
 - Merge e2e's claudeHome switch (work/e2e-noclaude 32dc0956) once it is on main: settings'
