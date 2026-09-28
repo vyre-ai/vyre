@@ -42,6 +42,12 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
 - Writing worktree-start/end wiring is `sessions`' file to touch, not mine; waiting on them to
   build the hook (they said not blocking on me either way - I've done everything on my side that
   doesn't require editing their files).
+- sessions reviewed gitWithAskpass (a9d6a9ab) and found a real HIGH: `child.stdin` lacked the
+  error-swallowing handler the token pipe already had, so an early git exit crashed the whole
+  process (uncaught ECONNRESET), not just failed one call. Fixed at acfcefd2 with a direct repro
+  test; retested on testbox (test/safe-git.test.js 5/5, lib/git-safe-askpass.test.js 6/6,
+  core/github + boundaries + hygiene 26/26). Waiting on sessions' final clearance and reviewer's
+  pass on acfcefd2.
 
 ## Next
 1. Send `sessions` the actual gitWithAskpass diff (lib/git-safe.js + lib/git-safe-askpass.test.js)
