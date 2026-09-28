@@ -251,3 +251,14 @@ the lead delivers this when each restarts after rc.2, so it's collected here rat
   (import + re-export) in federation's own worktree: 37/37 + 15/15 local, 42/42 on testbox. Did
   NOT commit it — that's federation's branch/file and they're actively on it (per RULES, I don't
   commit outside my own worktree). Sent them the exact diff and test evidence to land themselves.
+
+## State-mapping glue, built in my own tree (ee19e955)
+
+Wrote `lib/session-state.js` (+ test) against switchboard's current STATE map rather than waiting
+idle on sessions: `canonicalOf({status, hasOpenAsk, hasQueued})` folds the raw status plus the two
+facts no single status field carries into the four words `queued/asking/waiting/stopped`. Ready to
+switch its caller's input to `thread.status` the moment sessions ships it — the fold itself
+shouldn't need to change. testbox: 12/12 (session-state + boundaries), docs:ref clean, docs-*
+61/61. NOT yet wired into Capsule/CLI/harness — that's the next step, and needs each of those
+three's own read of a thread's status/ask/queued state identified first (their side, once I have
+their go-ahead to touch capsule-pro's Swift and the CLI). Sent to reviewer-2.
