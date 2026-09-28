@@ -57,6 +57,54 @@ tested on Linux where it can be. "Mac check" marks what only a Mac run can confi
   vyred's old store refuses writes after cutover.
 - Mac check: the Capsule's keychain read and erase of the old key.
 
+### Phase 2 design (for the lead and the reviewer, before building)
+
+What the vault is today (mapped 28 Sep): about 16k lines, 99 tools. Its store and crypto core
+(vault.js, crypto.js, keys.js, store.js, history.js, kinds.js, about 2.8k lines) takes only
+`{ db, dir, config, emit, log }` and already runs standalone in tests. The rest sits on top:
+import, fill, members/sharing, devices, relay, ssh, rotate, emergency, connections. Three things
+tie it to vyred and need a decision:
+
+1. **Secrets used by other modules.** Every module (mail, google, mcp, push, hooks, computers,
+   gate, voice ...) gets secrets through `ctx.vault.fetch` -> `vault.release` as
+   `module:<name>`, checked against its manifest's `needs.vault`. Those modules run in vyred,
+   the person's uid. Whatever core releases to vyred, a model can read. There is no way around
+   that while those modules live in vyred.
+   - Recommendation: core releases an item to vyred only under a GRANT the person made with a
+     core-checked proof (item x module), and the grant screen says plainly that a granted item is
+     usable by Vyre's own modules on this Mac, and so readable by anything running as you. core
+     never takes vyred's word that a grant exists: the grant row is core's. What core protects
+     then is every item NOT granted to a module (the person's own logins, cards, keys), plus the
+     record of who got what.
+2. **The person's own Mac session.** The login keychain, the Secure Enclave key, the clipboard,
+   typing into the front app, the screen-lock watcher and Touch ID all belong to the person's
+   GUI session; `_vyre` can't use any of them.
+   - Recommendation: core holds the data and the keys (its own vault key in its data dir, no
+     keychain). The Capsule, core-signed and root-owned, is the person-side hand: it asks core for
+     a value with a proof, gets plaintext over core's socket, and does the clipboard, typing and
+     Touch ID itself. vyred's own clipboard and typing paths refuse on a core Mac.
+3. **The features on top.** Moving 12k lines at once is a large, risky change.
+   - Recommendation: 2a moves the store and crypto core, sessions and the tools the person uses
+     every day: list, item, search, put, edit, delete, reveal, copy, totp, grant, revoke,
+     approve, release, history. The others follow in slices (2b import and backup; 2c fill and
+     the Capsule's autofill; 2d devices, relay, members and emergency; 2e ssh, rotate,
+     connections). Until a slice moves, its tools on a core Mac answer core_owned ("not on this
+     Mac yet"). The alternative, leaving them on vyred's old store, would keep the hole open.
+   - Decision needed: is losing those features on a core Mac until their slice lands acceptable
+     for 0.1.2, or must 2a include some of them (fill is the likely one)?
+
+Also for 2a:
+- Sessions: core mints and checks presence sessions (core already has presence.session.open).
+  Which tools take a session is core's own table (today's SESSIONABLE), never vyred's def.
+- vyred keeps the vault tool NAMES as thin forwarders, so the CLI, Deck and modules keep calling
+  the same tools. A write or reveal carries its proof through to core, and core checks it. A
+  module's put of a NEW item is accepted with its provenance recorded as unverified; overwriting
+  an existing item needs a proof.
+- Events core emits (vault.item-added ...) are forwarded to vyred's event log as core's, marked
+  as such.
+- main.js pins PATH, so core finds git and tailscale only by absolute path, or not at all.
+  Neither is in 2a.
+
 ## Phase 3: the gate send path
 
 - gate moves whole: held drafts, revise/reject, approve/settle and the send credentials.
