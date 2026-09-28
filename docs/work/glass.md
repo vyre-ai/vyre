@@ -39,6 +39,14 @@ in the agent's home and a box folder; secret paths are refused; everything is to
 
 ## Next
 
+- Reviewer's HIGH on 1ae6fe9e (Chrome's FIFOs pre-plantable via /tmp/vyre-chrome + xterm's
+  .bashrc race) fixed at 0a07c6a3: CHROME_DIR moves to /var/lib/vyre/chrome-pipes (vyre's own
+  volume, agent's uid can't write there), created early in entrypoint.sh before as_agent's xterm,
+  fails closed (bare mkdir, symlink/owner checks, `|| exit 1` on every chgrp/chmod/mkfifo). Bounding-
+  set gap accepted as a documented residual (no SETPCAP). Live-verified on a throwaway compose
+  project (vyre-glass-throwaway, own network, no ports, never /srv/vyre) on testbox: 13/13
+  isolation.test.js pass, 0 fail, 0 skipped, including the new FIFO test and the shielded-freeze
+  test. Stack fully torn down after. Sent to the reviewer, integrator and team-lead.
 - Presence enforced once security merges; a passkey step in the Deck.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
