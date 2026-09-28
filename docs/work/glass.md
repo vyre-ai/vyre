@@ -47,6 +47,16 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   project (vyre-glass-throwaway, own network, no ports, never /srv/vyre) on testbox: 13/13
   isolation.test.js pass, 0 fail, 0 skipped, including the new FIFO test and the shielded-freeze
   test. Stack fully torn down after. Sent to the reviewer, integrator and team-lead.
+- Agent-browsers slice 2 started (3f03ddb0): per-agent `Target.createBrowserContext` scoping in
+  `cdpmux.js`, the concrete new mechanism docs/design/agent-browsers.md's level 2 needs. An "agent"
+  client can join with an `agentName`; the mux gets or creates that name's own browser context and
+  reuses it, forces `Target.createTarget` onto it (inject if absent, refuse if it names another),
+  and fences `Target.attachedToTarget`/`targetCreated`/`targetInfoChanged`/`targetDestroyed`/
+  `getTargets` to the caller's own context (all browser-wide in real CDP, not per-context).
+  `kind: "fill"` untouched. Tests: cdpmux.test.js 25/25 (8 new); testbox `core/computers/**/*.test.js`
+  222/222 pass, 9 skipped (container-only). Not yet built: the "browser" computer kind in
+  pool.js/driver/policy.js, on-disk context-profile persistence, hands-chrome/deck-glass wiring --
+  next slices, per the design's own build list.
 - Presence enforced once security merges; a passkey step in the Deck.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
