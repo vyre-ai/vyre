@@ -231,17 +231,21 @@ in 0.1.2 or later: get it right rather than fast.**
       `vyred` is running," full stop) and that the *first* `vyred` is still the one actually
       listening afterward. No silent fallback to observe, because there is no code path that
       would produce one.
-   c. **Scaffolded, first CI run not back yet**: `core/daemon/native-win` (`vyre-pipe-verify`, a
-      small standalone Rust binary, `windows` crate) opens the pipe as a client, asks
-      `GetNamedPipeServerProcessId` who owns the server end, reads that process's token SID, and
-      compares it to the caller's own - exit 0 only on a proven match (`Verdict::exit_code`),
-      every other case (a mismatch, or any Win32 call failing partway through) exits non-zero, so
-      "couldn't tell" can never look like "safe to send." `lib.rs`'s comparison/verdict logic is
-      unit-tested on any platform (5 tests); the actual Win32 plumbing (`main.rs`) only ever runs
-      for real on `windows-latest` (`.github/workflows/windows-pipe-verify.yml`), which also
-      proves it end to end: passes against `vyred`'s own pipe, refused against a pipe owned by a
-      different local account (the same `net user` trick `windows-socket-acl` uses, since a same-
-      user "other pipe" would legitimately verify as ok and prove nothing). Not yet wired into
+   c. **Done, CI-green.** `core/daemon/native-win` (`vyre-pipe-verify`, a small standalone Rust
+      binary, `windows` crate) opens the pipe as a client, asks `GetNamedPipeServerProcessId` who
+      owns the server end, then `EqualSid` between that process's token SID and the caller's own
+      - exit 0 only on a proven match (`Verdict::exit_code`), every other case (a mismatch, or any
+      Win32 call failing partway through) exits non-zero, so "couldn't tell" can never look like
+      "safe to send." `lib.rs`'s verdict logic is unit-tested on any platform (3 tests); the
+      actual Win32 plumbing (`main.rs`) only ever runs for real on `windows-latest`
+      (`.github/workflows/windows-pipe-verify.yml`), which proved it end to end on the first fully
+      green run: passes against `vyred`'s own pipe, refused against a pipe owned by a different
+      local account (the same `net user` trick `windows-socket-acl` uses, since a same-user
+      "other pipe" would legitimately verify as ok and prove nothing). Took three CI rounds to get
+      the Win32 call shapes right (a missing crate feature, `LocalFree` in the wrong module,
+      `EqualSid` returning `Result<()>` rather than a raw `BOOL` in this crate's binding, Ok
+      meaning equal) - nothing about the security logic itself changed across those, only which
+      Win32 API shape got it there. Not yet wired into
       the CLI's actual connection path; this is the tool, not the integration.
 3. **The peer check: a standalone helper exe, not a native addon inside `vyred`, and never
    "unknown means allow."** Reviewer's design: a small helper process *owns* the pipe (or sits in
@@ -285,14 +289,16 @@ in 0.1.2 or later: get it right rather than fast.**
    (and point 5's `winhello` method, and point 3's helper exe) is one conversation with whoever
    owns `core/presence` and ADR 0040, not three separate asks landing on them piecemeal.
 
-**Status: 2a and 2b done and verified in CI (`socketPath` now includes the random token; a second
-`vyred` against the same home is proven, not assumed, to refuse rather than move). 2c scaffolded,
-first CI run pending. Started directly with reviewer (the lead's call, e2e being restarted):
-`winhello` and the point-3 helper exe's design, proposed but not agreed yet. Still open: 1 (the
-hard second-user-refused gate now runs against the token'd name, still worth a deliberate look
-rather than treating "it's green" as proof of the DACL claim specifically), 3 (the peer-check
-helper, likely sharing `core/daemon/native-win` with 2c once its shape is confirmed), 4's
-`winhello` presence method, and 6's Windows `vyre-core` equivalent (waits on ADR 0040).**
+**Status: 2a, 2b and 2c done and CI-green** (`socketPath` includes the random token; a second
+`vyred` against the same home is proven to refuse rather than move; the client-side owner-SID
+check passes against `vyred`'s own pipe and refuses a different local account's). Started
+directly with reviewer (the lead's call, e2e being restarted): `winhello` and the point-3 helper
+exe's design, proposed but not agreed yet. Still open: 1 (the hard second-user-refused gate now
+runs against the token'd name, still worth a deliberate look rather than treating "it's green" as
+proof of the DACL claim specifically), 3 (the peer-check helper, likely sharing
+`core/daemon/native-win` with 2c once its shape is confirmed), 4's `winhello` presence method, and
+6's Windows `vyre-core` equivalent (waits on ADR 0040). 2c is built but **not yet wired into the
+CLI's actual connection path** - the tool exists and is proven, the integration is next.
 
 ## 8. Windows Solo build plan (the lead's 2026-09-28 "Vyre anywhere" call)
 
