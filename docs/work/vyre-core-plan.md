@@ -120,6 +120,23 @@ Also for 2a:
 - main.js pins PATH, so core finds git and tailscale only by absolute path, or not at all.
   Neither is in 2a.
 
+### Phase 2a status
+
+- Core side built (core/vyre-core/vault.js + server.js): the Vault class in core's db and data
+  dir with a file keystore; vault.list and vault.match (verified logins only) as reads;
+  vault.put (a new item from anyone is unverified; an overwrite or a verified put needs a
+  proof); vault.release under core's grants, audited by the Vault; vault.revoke with no proof;
+  vault.delete, vault.grant (verified items only) and vault.verify with a proof; vault.reveal and
+  vault.totp only for the Capsule peer (capsuleFrom, the same check as the code), with a proof
+  or a core session bound to that process (pid and start time). presence.session.open is
+  Capsule-only and binds the session. Testbox: 92/93 of the wider run, then docs 19/19.
+- Boundary edge core/vyre-core -> core/vault (vault.js, kinds.js), next "host": lead's OK pending.
+- Next in 2a: vyred's side. On a core-linked Mac, the vault module's tools forward to core (the
+  proof passes through), its own store stays shut, ctx.vault.fetch releases through core, and
+  `vyre vault reveal` in a terminal says to use the Capsule. Then the grant re-approval of
+  existing needs.vault grants, the vault.copy/type path in the Capsule, events forwarded as
+  information only, and the migration (section 6).
+
 ## Phase 3: the gate send path
 
 - gate moves whole: held drafts, revise/reject, approve/settle and the send credentials.

@@ -22,6 +22,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The installer's enrollment code is 6 characters and lasts 2 minutes (`presence.mintCode` takes
   a length and ttl, within 6 to 16 characters and 10 minutes), and vyre-core voids every open
   code after five wrong ones.
+- Phase 2a, core side: vyre-core hosts the vault's store (the Vault class, a file keystore in its
+  own data dir). A new item anyone puts is unverified: never offered to fill, marked in the
+  list, and not grantable until the person verifies it with a proof. Overwrites, deletes, grants
+  and verifying need a proof; revoking doesn't. A module's value is released only under a grant
+  core holds. A plain value (reveal, totp) goes only to the Capsule core signed, with a proof or
+  a core session bound to that Capsule process.
 
 #### install-box.sh: shellcheck actually clean, and a quiet line for Docker's own wait
 

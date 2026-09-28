@@ -27,6 +27,7 @@ import { Presence, parse } from "../presence/index.js";
 import { insideClaude, loginOf } from "../daemon/peer.js";
 import { readPeerCred } from "./peercred.js";
 import { procTable } from "./procs.js";
+import { openVault } from "./vault.js";
 
 export const PROTOCOL = 1;
 /** The proofs core can check itself. */
@@ -84,8 +85,16 @@ export async function startCore(o) {
   const log = o.log || (() => {});
   const credOf = o.peerCred || readPeerCred;
   const judge = o.personOf || personOf;
-  const codeFrom = o.codeFrom || (async () => process.platform !== "darwin");
+  // Is this peer the Capsule core itself signed? The one check for the installer's code and for
+  // every plain value (phase 4 brings the real one: the exe against core's DR, the audit token).
+  // Until then a Mac core says no to both; Linux runs core for development and tests only.
+  const capsuleFrom = o.capsuleFrom || o.codeFrom || (async () => process.platform !== "darwin");
+  const codeFrom = capsuleFrom;
+  // Which process a session is bound to: its pid and start time, so a leaked session secret is
+  // useless to any other process, a reused pid included.
+  const peerKey = o.peerKey || (pid => `${pid}@${(procTable()(pid) || {}).started || "?"}`);
   const { db, presence } = openStore(o.dataDir, { log, now: o.now, webauthn: o.webauthn });
+  const vaults = openVault({ db, dataDir: o.dataDir, log, testKdf: o.testKdf });
 
   /** @type {WeakMap<object, Promise<{ pid: number, uid: number } | null>>} */
   const creds = new WeakMap();
@@ -97,13 +106,13 @@ export async function startCore(o) {
 
   let codeMisses = 0;
   /** A write's proof, checked by core against its own keys. @returns {Promise<{ ok: true, method: string, keyId: string|null } | { ok: false, code: string, message: string, methods?: string[] }>} */
-  const prove = async (tool, input, header) => {
+  const prove = async (tool, input, header, { caller = "core", def = undefined, peer = null } = {}) => {
     const proof = parse(header);
     if (!proof) return { ok: false, code: "presence_required", message: `${tool} needs a proof vyre-core can check`, methods: [...CORE_METHODS] };
     if (!CORE_METHODS.has(proof.method)) return { ok: false, code: "presence_required", message: `vyre-core doesn't take a ${proof.method} proof`, methods: [...CORE_METHODS] };
     // A code proves nothing here: it is redeemed only by the first enroll (redeem, below).
     if (proof.method === "code") return { ok: false, code: "presence_required", message: "a code only enrolls the first key", methods: [...CORE_METHODS] };
-    const r = await presence.verify({ tool, input, caller: "core", proof });
+    const r = await presence.verify({ tool, input, caller, proof, def, peer });
     return r.ok ? { ok: true, method: r.method, keyId: r.keyId ?? null } : { ok: false, code: r.code, message: r.message, methods: [...CORE_METHODS] };
   };
 
@@ -154,9 +163,11 @@ export async function startCore(o) {
   const WRITE = {
     "presence.enroll": async input => presence.enroll(input),
     "presence.remove": async input => ({ removed: presence.remove(String(input.id || "")) }),
-    "presence.session.open": async (_input, proved) => {
+    "presence.session.open": async (_input, proved, at) => {
       if (!SESSION_OPENERS.has(proved.method)) throw Object.assign(new Error("a session opens only after a Capsule, device or passkey proof"), { code: "presence_required" });
-      return presence.openSession({ method: proved.method, keyId: proved.keyId });
+      // Only the Capsule holds a core session, bound to its own process.
+      if (!at.capsule) throw Object.assign(new Error("only the Capsule vyre-core signed holds a session"), { code: "not_capsule" });
+      return presence.openSession({ method: proved.method, keyId: proved.keyId, peer: at.peer });
     },
   };
 
@@ -196,8 +207,37 @@ export async function startCore(o) {
       const tool = m[1];
       const input = await body(req);
       if (READ[tool]) return send(res, 200, { data: await READ[tool](input) });
-      if (!WRITE[tool]) return send(res, 404, { error: { code: "unknown_tool", message: `vyre-core has no tool ${tool}` } });
       const header = req.headers["x-vyre-presence"];
+      const who = `peer:${c.pid}`;
+      const refused = r => send(res, 401, { error: { code: r.code, message: r.message, methods: r.methods } });
+
+      // The vault (phase 2a, core/vyre-core/vault.js).
+      if (vaults.read[tool]) return send(res, 200, { data: await vaults.read[tool](input) });
+      if (tool === "vault.release") return send(res, 200, { data: await vaults.release(input) });
+      if (tool === "vault.revoke") return send(res, 200, { data: await vaults.revoke(input, who) });
+      if (tool === "vault.put") {
+        if (header === undefined) return send(res, 200, { data: await vaults.put(input, { verified: false, by: `unverified:${who}` }) });
+        const p = await prove(tool, input, header);
+        if (!p.ok) return refused(p);
+        return send(res, 200, { data: await vaults.put(input, { verified: true, by: `${who} (${p.method})` }) });
+      }
+      if (vaults.plain[tool]) {
+        // A plain value leaves core only for the Capsule core signed, to show, copy or type.
+        if (!(await capsuleFrom(c.pid))) return send(res, 403, { error: { code: "not_capsule", message: "on a vyre-core Mac, only the Capsule shows, copies or types a value" } });
+        const at = { peer: { stableId: peerKey(c.pid) } };
+        const p = await prove(tool, input, header, { caller: "capsule", def: { presence: { session: vaults.sessionOk } }, peer: at.peer });
+        if (!p.ok) return refused(p);
+        log(`vyre-core: ${tool} ${String(input.name || "")} for the Capsule (pid ${c.pid}), proved by ${p.method}`);
+        return send(res, 200, { data: await vaults.plain[tool](input, "capsule") });
+      }
+      if (vaults.write[tool]) {
+        const p = await prove(tool, input, header);
+        if (!p.ok) return refused(p);
+        log(`vyre-core: ${tool} by pid ${c.pid}, proved by ${p.method}`);
+        return send(res, 200, { data: await vaults.write[tool](input, `${who} (${p.method})`) });
+      }
+
+      if (!WRITE[tool]) return send(res, 404, { error: { code: "unknown_tool", message: `vyre-core has no tool ${tool}` } });
       const asked = parse(header);
       if (tool === "presence.enroll" && asked && asked.method === "code") {
         const r = await redeem(input, asked.code, c.pid);
@@ -206,7 +246,8 @@ export async function startCore(o) {
       const proved = await prove(tool, input, header);
       if (!proved.ok) return send(res, 401, { error: { code: proved.code, message: proved.message, methods: proved.methods } });
       log(`vyre-core: ${tool} by pid ${c.pid}, proved by ${proved.method}`);
-      return send(res, 200, { data: await WRITE[tool](input, proved) });
+      const at = { capsule: await capsuleFrom(c.pid), peer: { stableId: peerKey(c.pid) } };
+      return send(res, 200, { data: await WRITE[tool](input, proved, at) });
     } catch (e) {
       const err = /** @type {any} */ (e);
       const code = typeof err.code === "string" && /^[a-z_]+$/.test(err.code) ? err.code : "bad_input";
@@ -222,6 +263,7 @@ export async function startCore(o) {
 
   return {
     presence,
-    close: () => new Promise(resolve => { server.close(() => { try { db.close(); } catch {} resolve(undefined); }); server.closeAllConnections?.(); }),
+    vault: vaults,
+    close: () => new Promise(resolve => { server.close(async () => { try { await vaults.vault.stop(); } catch {} try { db.close(); } catch {} resolve(undefined); }); server.closeAllConnections?.(); }),
   };
 }

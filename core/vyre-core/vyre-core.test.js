@@ -173,7 +173,7 @@ test("vyre-core: presence.verify answers for another tool's call without trustin
 
 test("vyre-core: bad requests are refused plainly", async t => {
   const c = await core(t, { peerCred: async () => ({ pid: process.pid, uid }) });
-  assert.equal((await coreTool("vault.reveal", {}, { socket: c.socket })).error.code, "unknown_tool");
+  assert.equal((await coreTool("gate.approve", {}, { socket: c.socket })).error.code, "unknown_tool");
   assert.equal((await coreCall({ socket: c.socket, method: "GET", path: "/v1/tools/presence.keys" })).status, 404);
   const big = await coreTool("presence.keys", { pad: "x".repeat(300 * 1024) }, { socket: c.socket });
   assert.ok(big.status === 413 || (big.error && /core_unreachable|too_large/.test(big.error.code)), JSON.stringify(big));
