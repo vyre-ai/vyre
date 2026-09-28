@@ -310,6 +310,17 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   assigns docs to compile the per-owner rename list for 0.1.1; nothing pwa-facing (Settings copy,
   onboarding copy) says "box" today as far as this pass found. Flagged for the docs sweep rather
   than done here, to avoid touching shared fixtures other teams' tests import.
+- native-core's budget 8 (reconnect catch-up): confirmed the backoff fix (c78b87c0) is in this
+  sha and reran; native-core measured 1,679 ms (down from 1,529-3,240 ms) but still ~680 ms over
+  the 1 s budget, via backoff alone since neither `online` nor `visibilitychange` fire in their
+  harness (checked their test file before building anything, to avoid burning a rerun on the
+  wrong fix). Lead gave pwa ownership of core/resilience/stream.js for this one change while
+  resilience is paused: added a fast reachability probe (`fastReach()` in `down()`, every
+  `fastProbeMs` while a backoff wait is pending, capped at `fastProbeFor` from the first failure)
+  so a wait scheduled before the box comes back doesn't have to run out its full step. New
+  core/resilience/stream.test.js (3 tests, synthetic transport). Noted in resilience's
+  docs/work/resilience.md for their return. Next: push, ask native-core to rerun budget 8 on the
+  new sha, send the numbers to reviewer-2.
 
 ## Next
 - The push subscription when /app/ becomes /: a subscription belongs to the service worker
