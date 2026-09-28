@@ -207,11 +207,22 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   verified on testbox against the real stack: rotation invalidates the old derived token and
   validates the new one at once; the cross-computer refusal leaves no trace of the second
   computer at all. Stack torn down after. testbox core/computers/presence/docs suites: 380/380
-  pass, 10 skipped. Also fixed in this pass: docs/work/glass.md itself had literal "**" (several
-  glob mentions) that test/docs-build.test.js's own render check flags anywhere in the output --
-  it had been silently failing since roughly 3f03ddb0's own doc update; reworded, docs:ref
-  regenerated, all 61 docs tests pass now.
-- Presence enforced once security merges; a passkey step in the Deck.
+  pass, 10 skipped. Also fixed in this pass: docs/work/glass.md itself had a literal double-star
+  glob marker (several test-glob mentions) that test/docs-build.test.js's own render check flags
+  anywhere in the output -- it had been silently failing since roughly 3f03ddb0's own doc update;
+  reworded, docs:ref regenerated, all 61 docs tests pass now.
+- Reviewer SIGNED OFF 1c5c257e (testbox: pool, computers, computerd index, boundaries -- 92/92),
+  with two more LOWs. Both fixed at f4ea6ff1: LOW 1 -- disposeContext now refuses an agent still on
+  the computer (remove first), since disposing a live member would hand its own client a fresh
+  context mid-session. LOW 2 -- a failed addAgent (missing vault key, computerd unreachable) no
+  longer leaves a stray member row or a freshly-made computer row behind; a brand-new member's row
+  is deleted on failure, an already-existing member's prior name and generation are restored
+  instead (checked for BEFORE the insert, not after, so the two cases are told apart). The
+  generation ledger's own bump is never rolled back, by design. Tests: pool.test.js +4,
+  computers.test.js's vault-failure test updated to match (its old assertion was exactly LOW 2).
+  Then merged main (6bcd0385, the personguard PERSON_ONLY security hotfix) -- clean except the
+  generated docs files, regenerated with docs:ref. Re-ran presence + docs-* + this module's own
+  suite per the reviewer's merge note: green.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
 - Vault remote fill; the private sign-in from the Deck checked live.
