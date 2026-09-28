@@ -330,3 +330,25 @@ test("relay: the pairing offer names the box as configured, never the machine's 
     assert.notEqual(offer.name, (await import("node:os")).hostname().split(".")[0]);
   }
 });
+
+test("relay: loads on a Solo Mac (role local) but opens no connection until the person enables it", async t => {
+  // Widened to roles ["box", "local"] for a phone joining a Solo Mac (28 Sep 2026). The module
+  // must not go near the network just from loading: settings().enabled defaults to false, and
+  // start() only calls startLink() when it is already true. No injected WebSocket seam here on
+  // purpose — this proves the real `globalThis.WebSocket` (which would reach the real relay,
+  // never allowed in a test) is never touched, not just a fake one.
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [],
+    modules: { disable: ["names", "onboard"] } }));
+  const events = [];
+  const d = await start({ presence: lenient, root, log: () => {} });
+  t.after(() => d.stop());
+  const off = d.events.on("relay.connected", () => events.push("connected"));
+  const off2 = d.events.on("relay.disconnected", () => events.push("disconnected"));
+  t.after(() => { off(); off2(); });
+  assert.equal(d.registry.modules.get("relay").state, "running", "the module loads under local");
+  const s = await d.registry.call("relay.status", {}, "cli");
+  assert.deepEqual({ enabled: s.data.enabled, connected: s.data.connected }, { enabled: false, connected: false });
+  await new Promise(r => setTimeout(r, 300));
+  assert.deepEqual(events, [], "no connection attempt just from loading, disabled by default");
+});

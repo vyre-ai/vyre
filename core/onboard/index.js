@@ -14,7 +14,7 @@ import * as config from "../config/index.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { checkName } from "../names/service.js";
-import { run as tailscale, lockStatus } from "../names/tailscale.js";
+import { run as tailscale, lockStatus, up as tailscaleUp } from "../names/tailscale.js";
 
 export const STEPS = ["you", "claude", "tailscale", "name", "history", "devices"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
@@ -421,7 +421,12 @@ export default {
           if (step === "connect") {
             const s = await stepOf("tailscale", caller);
             if (s.state === "done" || !s.installed || !s.operator.ok) return link(s);
-            const r = await call("names.connect");
+            // tailscaleUp() directly, not ctx.call("names.connect"): the names module (the box's
+            // own TLS listener/cert claiming) is box-role only, but starting Tailscale itself is
+            // not — a Solo Mac joining someone else's tailnet needs this same step. up() is the
+            // plain function names.connect already forwards to, so onboard.tailscale (the
+            // box-only tool) keeps calling names.connect unchanged.
+            const r = await tailscaleUp();
             const after = await stepOf("tailscale", caller);
             return link({ ...after, loginUrl: after.loginUrl || r.loginUrl || null });
           }

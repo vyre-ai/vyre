@@ -48,7 +48,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 9 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
-| [`relay`](#relay) | `core/relay` | `box` | 13 | 5 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 13 | 5 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 22 | 8 | cli |
@@ -411,7 +411,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.
 
 - Folder: `core/relay`, version 0.1.0
-- Runs on: `box`
+- Runs on: `box`, `local`
 - Requires: none
 - Tools: [13](tools.md#relay), 1 of them only for other modules
 - Emits: [5 events](events.md#relay)
