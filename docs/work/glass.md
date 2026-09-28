@@ -106,6 +106,21 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   .agent-tokens' own permissions (0400 vyre, archive-API, tested), revocation (reload the map and
   close live clients, or restart, when an agent is dropped), and the shield's shared-mode semantics
   (undecided -- does it lock every agent while one signs in).
+- Gate item 2 done at a7c1793a: .agent-tokens as an archive-API write, same shape as .boot
+  (policy.js AGENT_TOKENS/agentTokensTar/allowAgentTokensTar, generalized for a variable multi-line
+  body). driver/docker.js seedAgentTokens() + fake.js + the Driver typedef. dockerproxy/proxy.js's
+  own archive-route check -- the real enforcement point -- now tries allowBootTar and
+  allowAgentTokensTar on a seed body (the tar's own filename tells them apart, the query path is
+  identical for both); a policy with no allowAgentTokensTar just never allows .agent-tokens
+  through, .boot unaffected. isolation.test.js's two existing live secrets checks (browser uid,
+  agent uid) extended to probe .agent-tokens too. Tests: 111 pass locally, 9 skipped; testbox
+  core/computers/**/*.test.js + dockerproxy: 257/257 pass. Live-verified on a fresh throwaway
+  compose stack (vyre-glass-perms) with a real .agent-tokens seeded: isolation.test.js 13/13 pass
+  against the real container, confirming neither the browser nor the agent uid can read it.
+  Lead's decision on gate item 4 (the shield): every agent pauses while one signs in, matches
+  today's mux.closeKind("agent") unchanged -- no code needed. Gate item 3 (revocation: reload the
+  map and close live clients, or restart) is the one piece left before pool.js can actually wire a
+  "browser" computer kind up to any of this.
 - Presence enforced once security merges; a passkey step in the Deck.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
