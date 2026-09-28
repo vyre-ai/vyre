@@ -5,13 +5,17 @@
 [![ios](https://github.com/vyre-ai/vyre/actions/workflows/ios.yml/badge.svg)](https://github.com/vyre-ai/vyre/actions/workflows/ios.yml)
 [![android](https://github.com/vyre-ai/vyre/actions/workflows/android.yml/badge.svg)](https://github.com/vyre-ai/vyre/actions/workflows/android.yml)
 
-**Claude Code, running on your own machine.**
+**Your agents live on your server. Reach them from your Mac or your phone.**
 
-Agents that keep working when you close the laptop. Your memory, your keys, your server.
+Vyre is an open-source, self-hosted home for Claude Code agents. They run on a server you own,
+keep working when your laptop is closed, and answer when you press Option-Space on your Mac or
+open Vyre on your phone.
 
-Vyre is a Claude Code plugin plus one small daemon. It doesn't fork or wrap Claude Code, so when
-Claude Code improves, Vyre improves with it. Put it on a server you control, and you get sessions
-that persist, agents that run while you're away, and a phone that can reach all of it.
+Your API keys stay in an encrypted vault on that server. Anything that sends a message, posts or
+pays waits for your Touch ID or Face ID.
+
+Under the hood it's a Claude Code plugin plus one small daemon. Vyre doesn't fork or wrap Claude
+Code, so when Claude Code improves, Vyre improves with it.
 
 ```
 curl -fsSL https://vyre.run/install.sh | sh
@@ -25,9 +29,9 @@ address: `<you>.vyre.run`.
 
 ## Who it's for
 
-Anyone running Claude Code who wants it to outlive their laptop lid. If you've lost a long agent
-run to a closed terminal, or you want one place that remembers every session instead of forty
-scattered transcripts, this is that place.
+Anyone running Claude Code who has closed a laptop mid-session and lost the agent that was still
+working, or who wants one server that remembers every session instead of a folder of local
+transcripts.
 
 ## What you get
 
@@ -72,6 +76,25 @@ Every person and agent gets their own avatar, on the Deck, on your phone, and in
 <picture>
   <img src="docs/images/readme/avatars.dark.png" alt="A sheet of avatars at four sizes: a person, an assistant, several agent roles, and a set of project-scoped agents named after the projects they work in" width="720">
 </picture>
+
+## Questions
+
+**What is Vyre?** An open-source daemon plus a Claude Code plugin. Together they give your
+agents a permanent home: a server, instead of a laptop that closes.
+
+**What do I need to run it?** A machine to act as your server (a spare Mac, a VPS, a home
+server) and Node 22.5 or newer. `vyre up` sets up Tailscale for you if you don't already run it.
+
+**What does it cost?** Vyre itself is free and open source. You pay Anthropic for Claude the
+same way you would running Claude Code directly.
+
+**What leaves my server?** Your prompts go to Anthropic's API through Claude Code, exactly as
+they would if you ran Claude Code directly on your laptop. Your keys, memory and sessions stay
+on your server. The relay that pairs a new device only ever passes encrypted pairing data; it
+never sees your keys or your conversations.
+
+**How do I add my phone?** Open [phone.vyre.run](https://phone.vyre.run) on your phone, scan the
+ring around your avatar on the Deck or in onboarding, check the name it shows you, and tap Pair.
 
 ## Status
 

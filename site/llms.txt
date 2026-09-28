@@ -1,0 +1,37 @@
+# Vyre
+
+> Vyre is an open-source, self-hosted home for Claude Code agents. Agents run on a server you
+> own, keep working when your laptop is closed, and answer from your Mac (Option-Space, the
+> Capsule) or your phone (phone.vyre.run).
+
+## What it is
+Vyre is a Claude Code plugin plus one small daemon. It does not fork or wrap Claude Code.
+
+## What runs where
+- The daemon (`vyred`) runs on a server you control: a Linux box with Docker, or a Mac.
+- The Deck (the web app) is served from your own address, `<you>.vyre.run`.
+- The Mac Capsule is a small always-on helper on your Mac; press Option-Space to reach it.
+- Devices join your Tailscale network to reach your server; Vyre sets Tailscale up if you don't
+  already run it.
+
+## Install
+```
+curl -fsSL https://vyre.run/install.sh | sh
+vyre up
+```
+On a Mac: `npm install -g https://vyre.run/box/vyre.tgz && vyre up`.
+
+## Cost
+Vyre itself is free and open source. You pay Anthropic for Claude the same way you would running
+Claude Code directly.
+
+## Data
+Prompts go to Anthropic's API through Claude Code, the same as running Claude Code directly.
+Keys, memory and sessions stay on your server. vyre.run holds one DNS record per name and
+nothing else.
+
+## License
+Apache 2.0.
+
+## Docs
+https://github.com/vyre-ai/vyre/tree/main/docs
