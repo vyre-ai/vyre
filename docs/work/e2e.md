@@ -614,6 +614,36 @@ harmless even under a spoofed "cli" claim (tips.*, voice.speak, capsule.report, 
 mechanical rule alone doesn't match the tree; asked the lead for a scope call (allowlist today's 68
 and land the guard now, vs. a narrower signal, vs. hand triage) before landing anything further.
 
+### Landed as a security hotfix (b3b7b1dc, off main, per the lead's default-deny + OPT_OUT call)
+
+core/presence's new `personOnly(name, def)`: default-deny for any tool whose declared callers are
+person-surfaces alone, unless named in the new `OPT_OUT` set (one-line reason each; may only
+shrink, frozen the same way boundaries.test.js's ALLOW is). core/daemon/index.js's floor check now
+calls it instead of a bare `PERSON_ONLY.has(name)`. Proposed OPT_OUT (14, sent to reviewer to
+triage): tips.next/seen/used/dismiss/whatsnew/reset, learn.skill-dismiss, voice.status/settings/speak,
+capsule.report, link.find, link.signout. 25 tools newly default-deny-protected, including every
+item on the reviewer's must-protect list (link.pair, link.unpair, vault.device.join/revoke,
+vault.vaults.create, files.drive.mount/unmount/open, files.send, agents.delete,
+memory.correct/merge/split) plus my own conservative extensions (memory.uncorrect, memory.read,
+planner.settings, presence.person.sessions, sessions.setup, term.close, vault.ssh.approvals,
+vault.devices, vault.match, apps.setup, learn.signals).
+
+Important finding while building this: the existing "claude ancestry relabels the caller to mcp,
+for every tool" mechanism (work/e2e-label 1941f2cf) already independently blocks most of this class
+for a live claude-descendant process on the local socket, proved empirically with a synthetic
+person-only-callers test tool that was refused via caller-mismatch even before my change. This
+fix's concrete new value: default-deny for every future tool (no more remembering to hand-add to
+PERSON_ONLY), an explicit and correctly-worded refusal instead of an incidental one, and the frozen
+OPT_OUT list. Could not confirm from the code what the ORIGINAL files.receive exploit vector
+actually was; best guess is a process no longer a live claude descendant by connection time, which
+neither mechanism's shared ancestry check (`fromClaude`, core/daemon/peer.js) would catch either.
+Flagged as an open question to the reviewer and lead, not claimed as closing an unknown hole.
+
+Verified nothing legit breaks, all on testbox: core/harness 25/25, core/daemon 19/19, core/cli
+340/340, deck 596/597 (1 pre-existing skip), core/presence + test/peer.test.js +
+test/presence-bypass.test.js + test/presence-cli.test.js 72/72, docs-check + docs-index + hygiene +
+boundaries 27/27. Holding for the reviewer's OPT_OUT triage before the integrator lands it.
+
 ## Design note: link.find can't say "seen but unreachable" (0.1.1 follow-up)
 
 Confirmed by the lead as a 0.1.1 follow-up, not an rc.2 blocker (test/journey.test.js:221 is
