@@ -37,6 +37,10 @@ the identity keys, on both merge calls. New test forces both settings on and che
 merge paths (mergeBaseIn, mergeBranchIn) still complete; reverted the fix first and confirmed the
 test catches it. 49/49 green, stable over 2 repeats. Sent to reviewer and integrator.
 
+**Reviewer SIGNED OFF work/teammates 4d2defee (2026-09-28): nothing open on teammates.** The
+integrator takes this head into the 0.1.1 stage (it was tracking 4d2defee already, waiting on
+exactly this clearance).
+
 **Resume 8 brief: all 5 steps done, except step 4** (switch to sessions' lib/project-id.js slug
 regex), still blocked — work/projects (e87f63df) is still not on main as of this check. Nothing
 else queued; watching for it to land.
