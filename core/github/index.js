@@ -18,9 +18,10 @@ const PEOPLE_AND_MODULES = [...PEOPLE, "module"];
 const MODULE_CALLERS = {
   "github.repos": new Set(["module:sessions", "module:launch"]),
   "github.project": new Set(["module:launch"]),
-  "github.project.of": new Set(["module:sessions", "module:launch"]),
+  // module:threads is core/switchboard, where a new thread's worktree is made and cleaned up (79bd2bf1).
+  "github.project.of": new Set(["module:sessions", "module:threads", "module:launch"]),
 };
-const SESSION_ONLY = new Set(["module:sessions"]);
+const SESSION_ONLY = new Set(["module:sessions", "module:threads"]);
 
 const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
 const named = v => (typeof v === "string" && v ? v : undefined);

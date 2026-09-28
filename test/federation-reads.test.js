@@ -108,8 +108,17 @@ test("federation reads: machines local, agents, MCP, guests and modules that do 
     assert.equal(c.sources, undefined, caller);
     assert.deepEqual(c.sessions.map(r => r.id), [BOX_ID], caller);
     assert.ok(c.sessions.every(r => r.source === undefined), `${caller}: rows are as they were, unlabelled`);
-    assert.deepEqual((await asBox(s, "recall.sessions", { limit: 50, ...input }, caller)).map(x => x.id), [BOX_ID], caller);
-    assert.ok((await asBox(s, "recall.search", { q: "intake form", ...input }, caller)).every(h => h.session === BOX_ID), caller);
+    // Recall's own scope (memory-iq 6f898294, via projects.reach) may refuse a caller outright,
+    // e.g. an agent this world never created: a refusal reaches the Mac even less than box rows do.
+    const recall = async (tool, args) => {
+      const r = await s.boxCall(tool, args, caller, caller.startsWith("tailnet:") ? { peer: PHONE } : {});
+      if (r.error) { assert.equal(r.error.code, "denied", `${tool} as ${caller}: ${JSON.stringify(r.error)}`); return null; }
+      return r.data;
+    };
+    const rows = await recall("recall.sessions", { limit: 50, ...input });
+    if (rows) assert.deepEqual(rows.map(x => x.id), [BOX_ID], caller);
+    const hits = await recall("recall.search", { q: "intake form", ...input });
+    if (hits) assert.ok(hits.every(h => h.session === BOX_ID), caller);
     const th = await s.boxCall("recall.thread", { session: MAC_ID, ...input }, caller);
     assert.match(th.error ? th.error.message : "answered", /^no session/, `${caller}: the Mac's session is not reached`);
   };

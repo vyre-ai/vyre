@@ -725,16 +725,16 @@ test("peer: presence.capsule.pin is presence-required and lives in vyred's own d
   assert.equal(wrongMethod.error?.code, "denied", JSON.stringify(wrongMethod));
   assert.equal(presence.capsulePin(), null, "a device key, however valid, does not pin a Capsule build");
 
-  // The Capsule's own enrolled identity key (Ed25519, the "capsule" kind presence already has --
+  // The Capsule's own enrolled identity key (P-256 from the Secure Enclave, the "capsule" kind presence already has --
   // capsule-pro found this already works with no box paired): now it pins, as a db row -- there
   // is no file anywhere under root for a model's shell (the same uid) to overwrite directly,
   // which was the reviewer's HIGH against the first version of this (a flat capsule-pin.json,
   // 28 Sep).
-  const ck = generateKeyPairSync("ed25519");
-  const capsuleKey = presence.enroll({ kind: "capsule", name: "Capsule", public_key: ck.publicKey.export({ format: "der", type: "spki" }).toString("base64url") });
+  const ck = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const capsuleKey = presence.enroll({ kind: "capsule", name: "Capsule", public_key: ck.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
   const capsuleProof = (tool, input) => {
     const ts = Date.now(), nonce = randomBytes(12).toString("base64url");
-    const sig = sign(null, Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), ck.privateKey).toString("base64url");
+    const sig = sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: ck.privateKey, dsaEncoding: "der" }).toString("base64url");
     return { method: "capsule", key: capsuleKey.id, ts: String(ts), nonce, sig };
   };
   const pin = codeSignature => d.registry.call("presence.capsule.pin", { cdhash }, "cli", { proof: capsuleProof("presence.capsule.pin", { cdhash }), ...(codeSignature !== undefined ? { codeSignature } : {}) });

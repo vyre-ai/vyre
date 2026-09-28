@@ -86,11 +86,11 @@ test("peer (live Mac): an ad-hoc-signed caller's presence.capsule.pin is really 
 
   // The Capsule's own enrolled key: same real crypto this suite already uses elsewhere for this
   // tool (peer.test.js), just driving a real socket call instead of an injected registry.call.
-  const ck = crypto.generateKeyPairSync("ed25519");
-  const capsuleKey = presence.enroll({ kind: "capsule", name: "live-mac-test", public_key: ck.publicKey.export({ format: "der", type: "spki" }).toString("base64url") });
+  const ck = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const capsuleKey = presence.enroll({ kind: "capsule", name: "live-mac-test", public_key: ck.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
   const proofFor = cdhash => {
     const input = { cdhash }, ts = Date.now(), nonce = crypto.randomBytes(12).toString("base64url");
-    const sig = crypto.sign(null, Buffer.from(`vyre-presence-v1\npresence.capsule.pin\n${inputHash(input)}\n${ts}\n${nonce}`), ck.privateKey).toString("base64url");
+    const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\npresence.capsule.pin\n${inputHash(input)}\n${ts}\n${nonce}`), { key: ck.privateKey, dsaEncoding: "der" }).toString("base64url");
     return `capsule key=${capsuleKey.id} ts=${ts} nonce=${nonce} sig=${sig}`;
   };
   const call = (bin, cdhash) => new Promise((resolve, reject) => execFile(bin, [callerScript, d.paths.socket, JSON.stringify({ cdhash }), proofFor(cdhash)],

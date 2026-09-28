@@ -33,6 +33,7 @@
     "core",
     "harness",
     "lib",
+    "relay/client",
     "packages/module-sdk",
     "local",
     "deck",

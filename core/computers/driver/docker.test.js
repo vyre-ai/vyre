@@ -153,7 +153,7 @@ test("docker: a computer is refused the host network, whatever config or a calle
 
 test("docker: stats reduces one buffered sample to cpu/ram/network, and never for a stopped or unmanaged container", async t => {
   const e = await engine(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
   const { id } = await d.create(spec);
   const before = await d.stats(id);
   assert.deepEqual(before, { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null }, "created but not started: no stats request at all");
