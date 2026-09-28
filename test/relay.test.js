@@ -389,6 +389,13 @@ test("relay: relay.join redeems a code minted on another box, and this device sh
   const secondUrl = (await box.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
   const again = await device.registry.call("relay.join", { url: secondUrl, name: "kit's laptop" }, "cli", PROOF);
   assert.equal(again.data.device, r.data.device, "the same file-backed key, the same device id");
+
+  // becomeDevice degrades cleanly when onboard.machine is not even running (not merged to this
+  // branch yet) -- it must still return the pairing result, not throw.
+  const thirdUrl = (await box.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
+  const flip = await device.registry.call("relay.join", { url: thirdUrl, becomeDevice: true }, "cli", PROOF);
+  assert.equal(flip.error, undefined, JSON.stringify(flip.error));
+  assert.equal(flip.data.device, r.data.device);
 });
 
 test("relay: relay.join refuses a guest, an agent's own claim, and a bad code, before any handshake", async t => {
