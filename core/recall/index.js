@@ -243,13 +243,13 @@ export default {
         folders: [...new Set([p.home, ...(p.workspaces || []), ...(p.folders || [])].filter(Boolean).map(String))] }));
     };
     /**
-     * What a caller may read: { all: true } only for the user's own surfaces, modules, the
-     * owner's own verified device over the tailnet, and a model's own session (never a named
-     * agent); else { all: false, agent, folders }. The assistant and a wildcard (projects: "*")
-     * agent both walk the per-project path, starting from every MAPPED project (the user's
-     * 2026-09-28 decision: linked projects, never an unmapped folder) — the assistant unchecked
-     * against projects.access (being the assistant is what grants it, the same as
-     * core/memory/index.js's reach()), a wildcard or named agent intersected with it (deny by
+     * What a caller may read: { all: true } for the user's own surfaces, modules, the owner's
+     * own verified device over the tailnet, a model's own session, and the true assistant (kind
+     * === "assistant" — as unrestricted as the owner, federation's own read of memory's reach():
+     * the 2026-09-28 narrowing to MAPPED-only was about a projects: "*" agent that is not the
+     * assistant, never about the assistant itself); else { all: false, agent, folders }. A
+     * wildcard agent walks the same per-project path a named-projects agent does, starting from
+     * every project instead of a named few, intersected with projects.access either way (deny by
      * default; an install without that module keeps today's behavior unchanged). Everyone else
      * with no agent named — a guest, an unrecognised tailnet peer, a hook, any caller kind
      * neither this nor callerAllowed's READERS list has been taught about — is refused outright,
@@ -271,19 +271,23 @@ export default {
       const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
       const a = list.find(x => x && x.name === who);
       if (!a) throw denied(`no agent ${who}`);
-      const assistant = a.kind === "assistant";
+      // The true assistant is unconditionally all:true, same as the owner's own surfaces
+      // (federation's own read of memory's reach(), 2026-09-28: the 09-28 narrowing was about a
+      // projects: "*" agent that is not the assistant, never about kind === "assistant" itself —
+      // only d897210d's wildcard case gets the per-project walk below).
+      if (a.kind === "assistant") return { all: true, agent: who, folders: [] };
       const wildcard = a.projects === "*";
       const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
-      const granted = assistant || wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
-      // The assistant's reach is a property of being the assistant, never a grant
-      // projects.access can revoke (core/memory/index.js's reach() applies the same rule): every
-      // mapped project, unchecked. A wildcard or named agent is still intersected with it.
-      const checked = assistant ? granted : await Promise.all(granted.map(async p => {
+      const granted = wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
+      // A wildcard (projects: "*") agent walks the same per-project path a named-projects agent
+      // does, starting from every project instead of a named few (d897210d): still intersected
+      // with projects.access, never the whole corpus by the wildcard alone.
+      const checked = await Promise.all(granted.map(async p => {
         const c = await ctx.call("projects.access.check", { project: p.slug, agent: who });
         if (c.error && c.error.code === "no_such_tool") return p;
         return c.data && c.data.granted ? p : null;
       }));
-      return { all: false, agent: who, assistant, folders: checked.filter(Boolean).flatMap(p => p.folders) };
+      return { all: false, agent: who, folders: checked.filter(Boolean).flatMap(p => p.folders) };
     };
     /** Narrows q.project_cwds to what a scoped agent may read, or throws. Owners/modules pass through. */
     const scopeQuery = async (q, caller) => {
@@ -295,7 +299,7 @@ export default {
         const outside = requested.filter(c => !within(c, r.folders));
         if (outside.length) throw denied(`${r.agent} is not granted ${outside.join(", ")}`);
       } else {
-        if (!r.folders.length) throw denied(r.assistant ? "no project is mapped yet" : `${r.agent} is not granted any project yet`);
+        if (!r.folders.length) throw denied(`${r.agent} is not granted any project yet`);
         q.project_cwds = r.folders;
       }
       return r;

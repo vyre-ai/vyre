@@ -210,12 +210,14 @@ facts are not a project's.
   - LOW: recall.thread resolved an id/prefix before the grant check, so an ambiguous-prefix error
     told a scoped agent an ungranted session with that prefix exists. Prefix resolution
     (`resolveScoped`, local to the tool) now only considers sessions the caller may read.
-  - Also folded in the lead's parallel decision: recall's assistant branch no longer returns
-    `all: true` (which included unmapped sessions) — it now walks the same per-project path a
-    wildcard agent does, starting from every MAPPED project, unchecked against projects.access
-    (being the assistant is what grants it, exactly as memory's own reach() treats its assistant
-    branch). scope.test.js's assistant assertions flipped to match: sees both mapped projects,
-    never the unmapped one.
+  - Also folded in the lead's parallel decision, THEN REVERTED: tried narrowing recall's true
+    assistant (`kind === "assistant"`) to every MAPPED project instead of `all: true`. Federation
+    corrected this: the 2026-09-28 narrowing (d897210d) was about a `projects: "*"` agent that is
+    NOT the assistant — only that wildcard case walks the per-project path over every project,
+    intersected with projects.access; `kind === "assistant"` stays unconditionally `all: true`,
+    same as before this whole security pass. Recall's `reach()` and scope.test.js both reverted
+    to that split (the wildcard case already walked the per-project path from the first cut of
+    this fix, b49b98ac — nothing new needed there).
   - 2 new tests (guest/hook/unknown-tailnet refusal + owner-tailnet-device still works; the
     prefix-collision LOW), 7 total in scope.test.js. 275/275 on testbox
     (core/recall + core/memory + boundaries). Sent back to reviewer.
@@ -299,8 +301,9 @@ before landing (not "straight away"):
   own granted folders rather than the whole corpus; a session or folder outside its grant is
   refused (a scoped-out session reads back exactly like a nonexistent one). recall.sessions'
   `ids` and a paired Mac's answers are filtered by the same grant. All three now declare
-  `callers: ["cli","local","deck","capsule","module","mcp"]`; recall's assistant branch grants
-  every MAPPED project (never `all: true`, never an unmapped folder).
+  `callers: ["cli","local","deck","capsule","module","mcp"]`. A wildcard (`projects: "*"`) agent
+  that is not the assistant walks the per-project path over every project, intersected with
+  projects.access; the true assistant (`kind === "assistant"`) stays `all: true`, unrestricted.
 - core/modules/index.js: a module's ctx.call passes { firstParty } (from the loader) in the callee's meta.
 - core/config/index.js: default transcripts add <home>/synced; recall reads each device folder under it. recall.forget (internal). Event recall.embedded. memory listens to sync.revoked and emits memory.forgot. New module core/import (import.scan/plan/status, event import.progress).
 - core/harness/index.js harness.brief adds memory.today's lines ("Lately in this project") for a project session.
