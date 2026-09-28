@@ -55,6 +55,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
+| [`style`](#style) | `core/style` | `box`, `local` | 3 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 13 | 6 | cli |
@@ -487,6 +488,18 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Emits: no events
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## style
+
+A house writing voice for every Vyre-owned session (ADR 0037): a system-prompt block, on by default, banning em dashes, throat-clearing, sycophancy and other AI writing tells; a person's own free-text addition on top; the banned-pattern list as data for a surface's own lint.
+
+- Folder: `core/style`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: `settings`
+- Tools: [3](tools.md#style), 1 of them only for other modules
+- Emits: no events
+- Shows on: cli
+- Teaches tips: `[object Object]`
 
 ## suggest
 

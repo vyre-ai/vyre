@@ -89,7 +89,8 @@
       "adr/0033-hackable-vyre.md",
       "adr/0034-vyre-iq.md",
       "adr/0035-settings-hub.md",
-      "adr/0036-one-system.md"
+      "adr/0036-one-system.md",
+      "adr/0037-style.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
     { "title": "Contributing", "pages": [

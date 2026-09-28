@@ -1,0 +1,20 @@
+{
+  "name": "style",
+  "version": "0.1.0",
+  "description": "A house writing voice for every Vyre-owned session (ADR 0037): a system-prompt block, on by default, banning em dashes, throat-clearing, sycophancy and other AI writing tells; a person's own free-text addition on top; the banned-pattern list as data for a surface's own lint.",
+  "roles": ["box", "local"],
+  "requires": ["settings"],
+  "does": { "tools": ["style.append", "style.patterns", "style.rules.check"] },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "settings": [
+    {"key": "style.enabled", "group": "style", "label": "House writing style", "help": "Bans em dashes, throat-clearing, sycophancy and other AI writing tells in every session. Off leaves the model's own default voice.", "type": "bool", "default": true, "levels": ["account", "project"], "apply": "session"},
+    {"key": "style.rules", "group": "style", "label": "Your own writing rules", "help": "Free text, added after the house rules, up to 500 characters. For example: \"never use the word delve\" or \"sign off notes with my initials\".", "type": "string", "levels": ["account", "project"], "apply": "session", "check": {"tool": "style.rules.check"}}
+  ],
+  "teaches": {
+    "tips": [
+      {"id": "off", "text": "Turn off the house writing style for one project in Settings > Style, or with `settings.set` on `style.enabled`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/style.md"}
+    ]
+  }
+}
