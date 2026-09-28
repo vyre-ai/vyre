@@ -21,7 +21,7 @@ import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, fingerprint, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty } from "./peer.js";
+import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, readCapsulePin, verifiedCapsule } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -225,11 +225,14 @@ const MODEL_LABEL = /^(mcp|harness)(?=$|[\s:])/;
  * kernel which process connected (core/daemon/peer.js). From under a `claude`, or under a process
  * vyred runs a thread in, it is a model's shell however it names itself: it is an agent caller,
  * refused silently, and no presence proof or session counts for it. So is a caller whose ancestry
- * vyred cannot read to the top.
- * @param {import("node:net").Socket} socket @param {any} registry
+ * vyred cannot read to the top -- unless it claims to be the Capsule and proves it another way
+ * (core/daemon/peer.js's verifiedCapsule): the Capsule's own process has this same ambiguous
+ * shape (its own session, no controlling terminal) and is not on the terminal-host allowlist, so
+ * ancestry alone would always refuse it.
+ * @param {import("node:net").Socket} socket @param {any} registry @param {string} [caller] @param {string} [root]
  */
-async function fromClaude(socket, registry) {
-  const who = await above(socket, registry);
+async function fromClaude(socket, registry, caller, root) {
+  const who = await above(socket, registry, caller, root);
   if (who.nopid) return "vyred cannot tell which process is calling, so this is refused";
   if (who.inside) return "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence";
   return who.unknown ? "vyred cannot read which processes this call runs under, so this is refused" : null;
@@ -237,18 +240,22 @@ async function fromClaude(socket, registry) {
 
 /**
  * What runs above the process on this socket: a `claude` or one of vyred's threads (inside), an
- * ancestry vyred cannot read to the top (unknown), or no pid at all (nopid).
- * @param {import("node:net").Socket} socket @param {any} registry
+ * ancestry vyred cannot read to the top (unknown), or no pid at all (nopid). A caller claiming to
+ * be the Capsule gets one more chance before "unknown": its own pinned code identity, checked and
+ * cached once per connection (core/daemon/peer.js's verifiedCapsule).
+ * @param {import("node:net").Socket} socket @param {any} registry @param {string} [caller] @param {string} [root]
  * @returns {Promise<{ inside: boolean, unknown?: boolean, nopid?: boolean }>}
  */
-async function above(socket, registry) {
+async function above(socket, registry, caller, root) {
   const pid = await peerPid(socket);
   if (!pid) return { inside: false, nopid: true };
   const r = await registry.call("threads.pids", {}, "module:vyred");
   // The processes vyred runs threads in, their process groups and sessions (core/sessions/spawn.js
   // keeps a group listed until its last process is gone, so an orphan is still caught).
   const d = r.data || {};
-  return insideClaude(pid, { threads: [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])] });
+  const result = insideClaude(pid, { threads: [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])] });
+  if (result.unknown && caller === "capsule" && root && await verifiedCapsule(socket, pid, readCapsulePin(root))) return { inside: false };
+  return result;
 }
 
 /** The labels of a person's own surfaces, which tools trust as the person (their callers lists and checks). */
@@ -468,7 +475,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));
     if (socket && personal && (shell.model || !MODEL_LABEL.test(caller))) {
-      const why = await fromClaude(req.socket, registry);
+      const why = await fromClaude(req.socket, registry, caller, root);
       if (why) return send(res, 403, { error: { code: "denied", message: why } });
     }
     // Held in `inflight` until the answer has left, not just until the tool returns: stop()

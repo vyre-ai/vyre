@@ -26,6 +26,7 @@ import { realBoxAllowed } from "../config/dialogs.js";
 import { ALLOW, WRITE, FOLLOWED } from "./allow.js";
 import { HUMAN_ONLY, PERSON_ONLY, inputHash } from "../presence/index.js";
 import * as enclave from "./se/index.js";
+import { writeCapsulePin } from "../daemon/peer.js";
 import { signed } from "../presence/person.js";
 
 /** The callers that are the person on this Mac: its terminal, the Capsule, its own screens. */
@@ -450,6 +451,13 @@ export function macSide(ctx, seam = {}) {
       if (had) { const { person, ...rest } = saved; save(rest); ctx.events.emit("link.signed-out", {}); }
       return { signedOut: had };
     },
+  });
+
+  ctx.tool("capsule.pin", {
+    description: "Pins the Capsule build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its same ambiguous, tty-less process shape (its own proof, not ancestry: core/daemon/peer.js's verifiedCapsule).",
+    callers: ["cli"],
+    input: { type: "object", required: ["cdhash"], properties: { cdhash: { type: "string", pattern: "^[0-9a-f]{40,}$" } }, additionalProperties: false },
+    run: async input => { writeCapsulePin(ctx.paths.root, input.cdhash); return { pinned: true }; },
   });
 
   ctx.tool("link.status", {

@@ -73,7 +73,11 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   "presence.person.revoke",
   // Every setting is the person's own: a model never changes one, and settings relays the
   // person to the owning module's setter (e2e review, HIGH 1).
-  "settings.set", "settings.reset"]);
+  "settings.set", "settings.reset",
+  // Repins the Capsule build vyred trusts as itself (core/daemon/peer.js's verifiedCapsule): a
+  // model's shell must never be able to pin its own build over the person's (the setsid HIGH's
+  // Capsule follow-up, e2e review, 28 Sep).
+  "capsule.pin"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
 

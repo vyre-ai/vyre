@@ -9,7 +9,8 @@ import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
-import { ancestry, insideClaude, controllingTty, exePath, loginOf, tmuxClients } from "../core/daemon/peer.js";
+import { ancestry, insideClaude, controllingTty, exePath, loginOf, tmuxClients,
+  readCapsulePin, writeCapsulePin, verifiedCapsule } from "../core/daemon/peer.js";
 
 const tree = {
   // vyred (500) under the test runner (400); a terminal zsh (200) and a claude (300) elsewhere.
@@ -280,6 +281,61 @@ test("peer: exePath reads the kernel's own record of the binary, not the process
   await new Promise(r => setTimeout(r, 200));
   try { assert.match(/** @type {string} */ (exePath(/** @type {number} */ (child.pid))), /\/sleep$/); }
   finally { child.kill(); }
+});
+
+test("peer: the Capsule's own proof is a pinned cdhash, checked and cached once per connection, bound to the pid's start time", async t => {
+  const root = tempHome(t);
+  assert.equal(readCapsulePin(root), null, "nothing pinned yet");
+  writeCapsulePin(root, "a".repeat(40));
+  assert.deepEqual(readCapsulePin(root), { cdhash: "a".repeat(40), pinnedAt: readCapsulePin(root)?.pinnedAt });
+  assert.throws(() => writeCapsulePin(root, "not-hex"), /cdhash/);
+
+  const pin = readCapsulePin(root);
+  const socket1 = {}, socket2 = {};
+  // Matches: same cdhash both times the start time is read (before and after the slower check).
+  assert.equal(await verifiedCapsule(socket1, 123, pin, { started: () => "t1", cdhash: () => "a".repeat(40) }), true);
+  // A different socket (a different connection) is asked fresh, never assumed from another one's answer.
+  assert.equal(await verifiedCapsule(socket2, 123, pin, { started: () => "t1", cdhash: () => "b".repeat(40) }), false);
+  // No pin at all: nothing to check against, so refused.
+  assert.equal(await verifiedCapsule({}, 123, null, { started: () => "t1", cdhash: () => "a".repeat(40) }), false);
+  // The pid's start time moved between the two reads: it was recycled to a different process
+  // mid-check, so the codesign answer (even a matching one) is not trusted.
+  let n = 0;
+  assert.equal(await verifiedCapsule({}, 123, pin, { started: () => (n++ === 0 ? "t1" : "t2"), cdhash: () => "a".repeat(40) }), false);
+  // Cached: asking the SAME socket again never re-runs the check, even with different (would-be
+  // failing) answers -- the kernel fact for an open connection cannot change.
+  const socket3 = {};
+  let calls = 0;
+  const seam = { started: () => "t1", cdhash: () => { calls++; return "a".repeat(40); } };
+  await verifiedCapsule(socket3, 123, pin, seam);
+  await verifiedCapsule(socket3, 123, pin, seam);
+  assert.equal(calls, 1, "checked once, not once per call");
+});
+
+test("peer: a caller claiming to be the Capsule, with the Capsule's own ambiguous shape, is refused with no pin", { skip: process.platform !== "linux" ? "needs util-linux setsid" : false }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const dir = fs.mkdtempSync(path.join(root, "peer-capsule-"));
+  const socket = d.paths.socket;
+
+  // setsid'd, exactly the Capsule's own real shape (ppid 1, own session, launchd-started in
+  // reality) -- so this genuinely exercises the ambiguous branch, not the plain in-process case.
+  // codeCdhash() is macOS-only (`codesign`), so on this Linux testbox it always reads null: the
+  // positive "a matching pin passes" case is proven at the unit level above instead, with an
+  // injected seam. What this proves for real, over a real vyred and socket: no pin means no free
+  // pass, however the caller labels itself.
+  const out = path.join(dir, "out.json");
+  await new Promise((resolve, reject) => {
+    const p = spawn("setsid", ["-f", "curl", "-s", "-o", out, "--unix-socket", socket, "-X", "POST", "http://x/v1/tools/agents.create",
+      "-H", "content-type: application/json", "-H", "x-vyre-caller: capsule", "-d", JSON.stringify({ name: "kit" })], { stdio: "ignore" });
+    p.on("exit", code => (code === 0 ? resolve(undefined) : reject(new Error(`setsid exit ${code}`))));
+    p.on("error", reject);
+  });
+  for (let n = 0; n < 50 && !fs.existsSync(out); n++) await new Promise(r => setTimeout(r, 100));
+  const noPin = JSON.parse(fs.readFileSync(out, "utf8"));
+  assert.equal(noPin.error?.code, "denied", JSON.stringify(noPin));
+  assert.ok(!(await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "kit"));
 });
 
 // A Mac's processes with their terminals: Terminal.app (100, no tty) runs login (110) on ttys003,

@@ -13,7 +13,8 @@
 // a terminal, shares them.
 
 import fs from "node:fs";
-import { spawn, execFileSync } from "node:child_process";
+import path from "node:path";
+import { spawn, execFileSync, spawnSync } from "node:child_process";
 import { claudeCommand } from "../switchboard/sessions.js";
 
 const PERL = {
@@ -229,6 +230,80 @@ export function procInfo(pid) {
     const tty = t === "??" || t === "?" ? null : t.startsWith("tty") || t.startsWith("pts") ? t : `tty${t}`;
     return { ppid: Number(m[1]), tty, started: m[3], args: m[4] };
   } catch { return null; }
+}
+
+/**
+ * The Capsule's own proof, since its shape (ppid 1, its own session, no controlling terminal,
+ * launchd-started) is exactly what `setsid` fakes and is not on the terminal-host allowlist
+ * above -- and never will be, since it does not host a login at all. What ancestry can never
+ * fake: the kernel's own record of exactly which signed binary is running (macOS `codesign`,
+ * asked by pid -- it resolves the process's audit token itself, no Security.framework binding
+ * needed from Node), compared against the cdhash `vyre capsule install` pinned the last time it
+ * signed a build (a person action, at a real terminal; see the allowlist). Not the signing
+ * identity or certificate: a self-signed "Vyre Local" cert sits in the login keychain with no ACL,
+ * so a model's shell (the same macOS user) could sign its own binary with it and pass a
+ * cert-based check. The exact cdhash a person just pinned cannot be forged that way.
+ * @param {number} pid @returns {string|null}
+ */
+export function codeCdhash(pid) {
+  if (process.platform !== "darwin") return null;
+  try {
+    const r = spawnSync("codesign", ["-dvvv", `pid=${pid}`], { encoding: "utf8", timeout: 2000 });
+    const m = /^CDHash=([0-9a-f]+)$/m.exec(`${r.stdout || ""}\n${r.stderr || ""}`);
+    return m ? m[1] : null;
+  } catch { return null; }
+}
+
+/** Where this install's pinned Capsule build is recorded: 0600, next to vyred's own state. */
+export const capsulePinPath = root => path.join(root, "capsule-pin.json");
+
+/** @param {string} root @returns {{ cdhash: string, pinnedAt: number } | null} */
+export function readCapsulePin(root) {
+  try {
+    const v = JSON.parse(fs.readFileSync(capsulePinPath(root), "utf8"));
+    return typeof v?.cdhash === "string" && /^[0-9a-f]{40,}$/.test(v.cdhash) ? v : null;
+  } catch { return null; }
+}
+
+/**
+ * Pins the Capsule build `vyre capsule install` just signed. Only that command calls this (a
+ * person action, at a real terminal, after codesign has already run) -- it is exposed to the
+ * socket as capsule.pin, PERSON_ONLY, so the same ancestry floor that gates every other person
+ * action gates repinning too: a model's shell cannot pin its own build over the person's.
+ * @param {string} root @param {string} cdhash
+ */
+export function writeCapsulePin(root, cdhash) {
+  if (!/^[0-9a-f]{40,}$/.test(cdhash)) throw new Error("not a cdhash");
+  fs.writeFileSync(capsulePinPath(root), JSON.stringify({ cdhash, pinnedAt: Date.now() }), { mode: 0o600 });
+}
+
+/** @type {WeakMap<object, Promise<boolean>>} */
+const capsuleVerified = new WeakMap();
+
+/**
+ * Does the live process on this socket match the pinned Capsule build? Read and checked ONCE per
+ * connection and cached there (capsule-pro's own note): re-deriving it later in a long-lived
+ * connection's life would be asking about a pid that may since have been recycled to an unrelated
+ * process. The start time is read before AND after the (slower) codesign call and must still
+ * match, so a recycle mid-check is caught even within this one verification.
+ * @param {import("node:net").Socket} socket @param {number} pid @param {{ cdhash: string } | null} pin
+ * @param {{ started?: (pid: number) => string | null, cdhash?: (pid: number) => string | null }} [seam]
+ * @returns {Promise<boolean>}
+ */
+export function verifiedCapsule(socket, pid, pin, seam = {}) {
+  if (!pin || !pin.cdhash) return Promise.resolve(false);
+  let v = capsuleVerified.get(socket);
+  if (v) return v;
+  const started = seam.started || (p => { const i = procInfo(p); return i && i.started; });
+  const cdhash = seam.cdhash || codeCdhash;
+  v = Promise.resolve().then(() => {
+    const before = started(pid);
+    if (!before) return false;
+    const now = cdhash(pid);
+    return Boolean(now && now === pin.cdhash && started(pid) === before);
+  });
+  capsuleVerified.set(socket, v);
+  return v;
 }
 
 /**
