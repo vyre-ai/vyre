@@ -25,6 +25,8 @@ import { when, clock, since, base, initial, initials, plural } from "../js/fmt.j
 import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
 import { elsewhere } from "../js/need-rows.js";
 import { createProject, createProjectInline, startThread, startThreadInline, indexHistoryInline } from "../js/empty-actions.js";
+import { openGithubRepoPicker } from "../js/github-repo-picker.js";
+import { showToast } from "../js/toast.js";
 
 const enc = encodeURIComponent;
 const TABS = [["threads", "Threads"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
@@ -57,11 +59,25 @@ async function list(ctx) {
   const count_ = h("p", { class: "muted" }, " ");
   const form = h("div", { class: "pl-form", hidden: true });
   const newBtn = h("button", { type: "button", class: "btn btn-primary", "aria-expanded": "false", onclick: () => toggle(true) }, icon("plus", 14), "New project");
+  const ghBtn = h("button", { type: "button", class: "btn", onclick: () => fromGithub() }, icon("branch", 14), "From a GitHub repo");
   put(ctx.root, h("div", { class: "pl" },
     h("div", { class: "pl-head" },
       h("div", { class: "pl-title" }, h("h1", { class: "h2" }, "Projects"), count_),
-      newBtn),
+      h("div", { class: "pl-head-actions" }, ghBtn, newBtn)),
     form, rows));
+
+  /** "New project" > "From a GitHub repo": pick, then github.project makes the project (clones
+   * fresh, never touches an existing folder) and this navigates straight to it. */
+  function fromGithub() {
+    openGithubRepoPicker({
+      title: "New project from a GitHub repo",
+      onPick: async (repo, account) => {
+        const r = await attempt("github.project", { repo: repo.full_name, account });
+        if (r.error) { showToast({ text: `Could not create the project from ${repo.full_name}: ${r.error.message || r.error.code}` }); return; }
+        if (r.data?.project) go(`/projects/${enc(r.data.project)}`);
+      },
+    });
+  }
 
   const toggle = open => {
     form.hidden = !open;
@@ -199,7 +215,7 @@ async function board(ctx) {
   const root = h("div", { class: "pj" + (chosen ? " has-thread" : "") + " tab-" + tab });
   put(ctx.root, root);
 
-  if (tab === "brief") { put(root, header, briefTab(p, cx, sw.error)); return; }
+  if (tab === "brief") { put(root, header, briefTab(ctx, p, cx, sw.error)); return; }
   if (tab === "files") { put(root, header, filesTab(ctx, p, items)); return; }
   if (tab === "memory") { put(root, header, memoryTab(ctx, p)); return; }
 
@@ -301,16 +317,63 @@ function newThreadButton(ctx, p, swErr) {
 
 // ---- tabs ---------------------------------------------------------------------------------
 
-function briefTab(p, cx, swErr) {
+function briefTab(ctx, p, cx, swErr) {
   const lines = briefLines(cx.data?.text);
-  return h("div", { class: "pj-page" },
+  const repos = h("div", { class: "pj-repos" });
+  const page = h("div", { class: "pj-page" },
     head("Brief", h("span", { class: "code faint" }, "Built from this project's threads")),
     cx.error ? empty("The brief is not available.", cx.error)
       : lines.length ? h("div", { class: "pj-brief-full" }, lines.map(l => h("p", { class: /^(People|Other threads|From this project)/.test(l.text) ? "pj-brief-h" : "" }, l.text)))
         : h("div", { class: "empty" }, "Nothing in the brief yet. It fills in as threads run.", swErr?.missing ? null : startThreadInline(p)),
     h("div", { class: "pj-facts code" },
       h("div", null, h("span", { class: "faint" }, "Home  "), p.home || ""),
-      (p.workspaces || []).filter(w => w !== p.home).map(w => h("div", null, h("span", { class: "faint" }, "Also  "), w))));
+      (p.workspaces || []).filter(w => w !== p.home).map(w => h("div", null, h("span", { class: "faint" }, "Also  "), w))),
+    repos);
+  drawRepos(ctx, p, repos);
+  return page;
+}
+
+/**
+ * A project's Repos section (github's final contract, ADR 0041): github.project.detect per
+ * workspace folder, and "Add a repo" (github.project.add-repo), which only ever adds a NEW
+ * workspace folder, never touching an existing one. There is no "link" - the user's call, relayed
+ * by the lead - so a folder that already has a matching GitHub remote just says so; nothing to
+ * confirm, nothing to tap.
+ */
+function drawRepos(ctx, p, el) {
+  put(el, h("div", { class: "lbl" }, "Looking for repos…"));
+  const load = async () => {
+    const r = await attempt("github.project.detect", { project: p.slug });
+    if (!ctx.alive()) return;
+    if (r.error) { put(el, r.error.missing ? null : h("div", { class: "small muted" }, "GitHub repos are not available here.")); return; }
+    const rows = Array.isArray(r.data?.workspaces) ? r.data.workspaces : [];
+    const add = h("button", { type: "button", class: "btn btn-sm", onclick: () => openGithubRepoPicker({
+      title: `Add a repo to ${p.name}`,
+      onPick: async repo => {
+        const r2 = await attempt("github.project.add-repo", { project: p.slug, repo: repo.full_name });
+        if (r2.error) { showToast({ text: `Could not add ${repo.full_name}: ${r2.error.message || r2.error.code}` }); return; }
+        showToast({ text: `Added ${repo.full_name}` });
+        go(location.pathname + location.search); // a new workspace folder: refresh the whole board
+      },
+    }) }, icon("plus", 12), "Add a repo");
+    put(el, h("div", { class: "lbl" }, "Repos"),
+      rows.length ? h("div", { class: "rows" }, rows.map(w => repoRow(w))) : h("div", { class: "small muted" }, "No folders yet."),
+      h("div", { class: "pj-repos-add" }, add));
+  };
+  load();
+  ctx.on("github.token-invalid", load);
+}
+
+function repoRow(w) {
+  const folder = base(w.folder);
+  const matched = (w.remotes || []).find(r => r.match);
+  const named = (w.remotes || []).find(r => r.full_name);
+  const status = matched
+    ? h("a", { class: "link small", href: `https://github.com/${matched.full_name}`, target: "_blank", rel: "noopener noreferrer" }, `Connected to ${matched.full_name}`)
+    : named
+      ? h("span", { class: "small muted" }, `${named.full_name}, but the connected account can't reach it right now`)
+      : w.isRepo ? h("span", { class: "small muted" }, "Git repo, not GitHub") : h("span", { class: "small faint" }, "Not a git repo");
+  return h("div", { class: "pj-repo-row code" }, h("span", { class: "faint" }, folder + "  "), status);
 }
 
 function filesTab(ctx, p, items) {
@@ -392,7 +455,9 @@ async function loose(ctx) {
     // Made into a new project, this chat's draft tile carries over and turns solid (projects.create
     // from_thread keeps its seed); filed into an existing one, it takes that project's tile.
     const make = h("button", { type: "button", class: "btn btn-sm", onclick: () => newProject() }, icon("plus", 14), "New project from this");
-    const btn = projectsAll.length ? h("button", { type: "button", class: "btn btn-sm", "aria-expanded": "false", onclick: () => form() }, "Add to a project") : null;
+    // Still offered with zero existing projects: form() falls back to "New project from a
+    // GitHub repo…" alone when there's nothing to pick from the select.
+    const btn = h("button", { type: "button", class: "btn btn-sm", "aria-expanded": "false", onclick: () => form() }, "Add to a project");
     put(add, draftAvatar(id, { size: 24, title: "Not in a project yet" }), h("span", { class: "small faint lt-none" }, "Not in a project."), make, btn);
   };
   const newProject = () => {
@@ -410,20 +475,35 @@ async function loose(ctx) {
     } }, name, ok, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: drawAdd }, "Cancel"), status));
     name.focus();
   };
+  /** A newly-made project (from a GitHub repo) still needs the thread filed into it, same as
+   * picking an existing one from the select. */
+  const fileInto = async (/** @type {string} */ slug, /** @type {HTMLElement} */ status) => {
+    const r = await attempt("projects.add-threads", { project: slug, threads: [id] });
+    if (r.error) { put(status, r.error.missing ? `The ${r.error.module} module is not running.` : String(r.error.message)); return false; }
+    window.dispatchEvent(new Event("deck:pins"));
+    go(`/projects/${enc(slug)}/${enc(id)}`);
+    return true;
+  };
   const form = () => {
     const sel = /** @type {HTMLSelectElement} */ (h("select", { class: "input lt-sel", "aria-label": "Project" }, projectsAll.map(x => h("option", { value: x.slug }, x.name))));
     const status = h("span", { class: "small muted", role: "status" });
     const ok = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-sm" }, "Add"));
+    const ghBtn = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => openGithubRepoPicker({
+      title: "New project from a GitHub repo",
+      onPick: async (repo, account) => {
+        put(status, `Cloning ${repo.full_name}…`);
+        const r = await attempt("github.project", { repo: repo.full_name, account });
+        if (r.error) { put(status, r.error.message || "Could not create the project from that repo."); return; }
+        if (r.data?.project) await fileInto(r.data.project, status);
+      },
+    }) }, icon("branch", 12), "New project from a GitHub repo…");
     put(add, h("form", { class: "lt-form", onsubmit: async (/** @type {Event} */ e) => {
       e.preventDefault();
       ok.disabled = true;
-      const r = await attempt("projects.add-threads", { project: sel.value, threads: [id] });
+      await fileInto(sel.value, status);
       ok.disabled = false;
-      if (r.error) { put(status, r.error.missing ? `The ${r.error.module} module is not running.` : String(r.error.message)); return; }
-      window.dispatchEvent(new Event("deck:pins"));
-      go(`/projects/${enc(sel.value)}/${enc(id)}`);
-    } }, sel, ok, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: drawAdd }, "Cancel"), status));
-    sel.focus();
+    } }, projectsAll.length ? [sel, ok] : null, ghBtn, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: drawAdd }, "Cancel"), status));
+    if (projectsAll.length) sel.focus(); else ghBtn.focus();
   };
   drawAdd();
 
