@@ -221,10 +221,19 @@ public final class CapsulePresence {
         // again for the same click. A signing failure with a live handle is unexpected (the enclave
         // itself refusing after the panel's own Touch ID succeeded), so re-enrolling is also the
         // only thing left to try, not a special case.
+        let oldId = key.id
         store.delete()
         if let why = await enroll() { return .failure(VyredFailure(why)) }
         guard let key2 = enrolled, let priv2 = loadPrivate(context: context), let header2 = Self.header(tool: tool, input: input, key: priv2, keyId: key2.id, ts: now()) else {
             return .failure(VyredFailure("The Capsule's key could not be made on this Mac. Remove it in Settings and enroll again."))
+        }
+        // Best-effort cleanup, never blocking this call's result: drop the dead row so
+        // presence_keys does not pile up one entry per broken key (the reviewer's LOW, 28 Sep).
+        // Signed with the just-made key2/priv2, reusing the same already-authenticated context --
+        // never a second Touch ID just to tidy up.
+        if oldId != key2.id, let removeHeader = Self.header(tool: "presence.remove", input: ["id": oldId], key: priv2, keyId: key2.id, ts: now()) {
+            let vyred = self.vyred
+            Task { _ = await vyred.call("presence.remove", ["id": oldId], timeout: 30, headers: ["x-vyre-presence": removeHeader]) }
         }
         return .success(header2)
     }
