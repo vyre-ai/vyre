@@ -215,6 +215,23 @@ test("voice: push-to-talk through a real vyred, every failure visible, and the k
     assert.equal((await d.registry.call("voice.status", {}, "capsule", { peer: { node: "juno" } })).error.code, "denied");
   });
 
+  await t.test("voice.listen: a ticket for a caller that cannot set x-vyre-caller itself (the Deck's browser WS)", async () => {
+    const r = await as("deck")("voice.listen", {});
+    assert.match(r.data.path, /^\/v1\/streams\/voice\/listen\?ticket=[A-Za-z0-9_-]{32}$/);
+    // No x-vyre-caller at all, the way a real browser WebSocket connects: the ticket alone gets it in.
+    const s = await connect(`ws://vyred${r.data.path}`, { socketPath: path.join(root, "vyred.sock") });
+    assert.ok(s.peer, "the ticket is the whole authority");
+    s.peer.close(1000);
+    // Spent: the same path again is refused, whatever calls it.
+    const again = await connect(`ws://vyred${r.data.path}`, { socketPath: path.join(root, "vyred.sock") });
+    assert.equal(again.status, 403);
+    // An agent never gets a ticket to hand out in the first place.
+    assert.equal((await as("cli agent:kit")("voice.listen", {})).error.code, "denied");
+    assert.equal((await d.registry.call("voice.listen", {}, "deck", { peer: { node: "juno" } })).error.code, "denied");
+    // voice.status refuses an agent caller the same way (the lead, 28 Sep).
+    assert.equal((await as("local agent:kit")("voice.status", {})).error.code, "denied");
+  });
+
   await t.test("voice.speak: off by default, then audio from the fake, once, to a local caller", async () => {
     assert.equal((await capsule("voice.speak", { text: "Northwind Bakery opens at nine" })).error.code, "speak_off");
     assert.deepEqual((await capsule("voice.settings", { speak: true, voice: "aura-2-thalia-en" })).data, { provider: "deepgram", speak: true, voice: "aura-2-thalia-en" });

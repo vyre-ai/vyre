@@ -50,6 +50,25 @@ export default {
     const refusePeer = meta => {
       if (meta && meta.peer) throw new VoiceError("denied", "voice is for this Mac's own Capsule, not for a tailnet peer");
     };
+    // The mic and the speech key are the person's: an agent (a model's shell, "cli agent:kit")
+    // never uses either, whatever surface it is wrapped in (the lead, 28 Sep). core/projects's
+    // own isAgent() convention, since callers: LOCAL matches by the bare kind and would let it
+    // through otherwise.
+    const isAgent = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
+    const refuseAgent = meta => {
+      if ((meta && meta.agent) || isAgent(meta && meta.caller)) throw new VoiceError("denied", "an agent cannot use the person's mic or speech key");
+    };
+
+    ctx.tool("voice.listen", {
+      description: "A one-use ticket (30 s) for the WebSocket at path: /v1/streams/voice/listen?ticket=<t>, the same shape as term.attach. For a caller that cannot set x-vyre-caller itself (the Deck's browser WebSocket); the native Capsule may still connect directly.",
+      callers: LOCAL,
+      input: { type: "object", properties: {} },
+      run: async (_input, meta) => {
+        refusePeer(meta);
+        refuseAgent(meta);
+        return listen.issue();
+      },
+    });
 
     ctx.tool("voice.status", {
       description: "The speech provider, whether its key is saved (never the key), whether replies are spoken, whether the provider can be reached right now, and the path of the built mic helper (null until local/voice/build.sh has run).",
@@ -57,6 +76,7 @@ export default {
       input: { type: "object", properties: {} },
       run: async (_input, meta) => {
         refusePeer(meta);
+        refuseAgent(meta);
         const s = settings(ctx.config);
         const key = await keyState(s.provider);
         let base = null, endpoint = "default";
