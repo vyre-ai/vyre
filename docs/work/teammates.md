@@ -2,6 +2,12 @@
 
 Branch: work/teammates · Worktree: ../vyre-teammates · Decisions: [ADR 0031](../adr/0031-teammates.md)
 
+Also: work/teammates-a (worktree ../vyre-teammates-a), pushed to origin — slice A only (the
+git.js/isolation hardening), split off work/teammates at the last reviewed slice A commit
+(8806df79, team-lead's call, 2026-09-28) so the reviewer can clear it without slice B's WIP riding
+along. Once cleared it merges back into work/teammates (or straight to main, the lead's call);
+work/teammates keeps building on top of both slice A and slice B.
+
 Scope: persistent project teammates (a named agent per role per project, durable notes, a serial
 inbox, a summon tool in every session of the project), designed on ADR 0030's session model. The
 new module is `core/team`. Surfaces are built by app-design, chat, mobile and capsule on the
