@@ -163,6 +163,14 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   my side - already true. e868f5e2. Tests: harness.test.js's projects+memory test extended with a
   fake team module (checks ordering), plus a new test for both null-safe paths. 13/13 on
   core/harness, 20/20 with test/harness.test.js + boundaries.
+- rc.2 follow-up (lead's call, not raising the timeout): split `core/sessions/sessions.test.js`
+  into two files - `sessions.test.js` (pure/config tests + the first 17 driver-parametrized
+  ones) and the new `sessions-turns.test.js` (the other 18) - sharing `boot()`/`until()`/
+  `terminalSession()` from a new non-test module, `core/sessions/testing/boot.js` (excluded from
+  the boundaries scan like every other `testing/` folder; unchanged logic, moved verbatim).
+  `d2a0207c`. Verified at rc.2's exact conditions on testbox: both new files together with
+  switchboard.test.js, boundaries, chat-sessions-contract, thread-status and harness - 175/177
+  pass, 2 skip, 0 fail, 54-55s twice in a row, versus 87.5s for the one file alone before.
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.

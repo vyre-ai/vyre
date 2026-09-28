@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### sessions.test.js split into two files (rc.2, capacity)
+
+- `core/sessions/sessions.test.js`'s ~80 real subprocess-spawning tests (both drivers) sat right
+  at the edge of the full suite's 90s file timeout under concurrency-4 contention. Split into
+  `sessions.test.js` and a new `sessions-turns.test.js`, sharing `boot()`/`until()`/
+  `terminalSession()` from a new `core/sessions/testing/boot.js` - lets the two run as separate
+  workers instead of one long serial file. 54-55s together with several other files at the
+  rc.2 conditions, versus 87.5s for the one file alone before.
+
 #### Teammates section 1: team.project-append in harness.brief
 
 - `harness.brief` calls `team.project-append({project})` once a session's project slug is known
