@@ -155,10 +155,18 @@ case they want it held for Wink instead.
 
 ## Next
 
-- If team-lead wants the Wink/phone.vyre.run pairing copy anyway (once it ships), update the hero
-  hint line and the Deck/phone section's "Only devices on your Tailscale network can open it."
-- Screenshots from this pass are local-server only (localhost:8934), not committed; re-run the
+- 0.1.1 tags: swap the deployed Deck/phone sentence for the Wink wording already committed at
+  a9fdabf7 ("scan your avatar at phone.vyre.run"), then `npx wrangler pages deploy` from
+  work/site-copy. Until then bce49c81's "scan the QR code Vyre shows you" stays live.
+- Screenshots from this pass are local-server only (localhost:8934/8935), not committed; re-run the
   usual CDP check on testbox against the live site if a fuller record is wanted.
+
+## Deploy log
+
+- caa157f7 -> deploy 170fab6b: headline, og.png, Mac-only-shipped fixes. Live.
+- bce49c81 -> deploy 6f3ae2e2: "scan the QR code Vyre shows you" (Deck/phone section). Live.
+- a9fdabf7: Wink wording ("scan your avatar at phone.vyre.run") in the same spot. Committed, NOT
+  deployed — held for team-lead's go once 0.1.1 is tagged and phone.vyre.run is reachable.
 
 ## Needs from others
 
