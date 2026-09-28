@@ -186,11 +186,13 @@ try {
   const afterFile = await tab.run(`return {
     path: location.pathname,
     projectCall: window.__calls.filter(c => c.tool === "github.project").pop(),
-    filedCall: window.__calls.filter(c => c.tool === "projects.add-threads").pop(),
+    addThreadsCalls: window.__calls.filter(c => c.tool === "projects.add-threads").length,
   };`);
-  say("the new-project-from-repo option creates the project, then files the thread into it",
-    afterFile.projectCall && afterFile.filedCall && afterFile.filedCall.input.project === "harlow-legal-site" && afterFile.filedCall.input.threads?.[0] === world.s40 && afterFile.path.includes(world.s40),
+  say("the new-project-from-repo option passes from_thread to github.project and lands on the thread there",
+    afterFile.projectCall?.input.from_thread === world.s40 && afterFile.path.includes(world.s40),
     JSON.stringify(afterFile));
+  say("from_thread does the filing itself (github's own contract, sha 9cf93817): no separate projects.add-threads call, so the chat's tile carries over rather than getting a fresh seed",
+    afterFile.addThreadsCalls === 0, `addThreadsCalls ${afterFile.addThreadsCalls}`);
 
   say("no page errors", tab.errors.length === 0, tab.errors.slice(0, 3).join(" | "));
   process.stdout.write(JSON.stringify({ shots: OUT }) + "\n");

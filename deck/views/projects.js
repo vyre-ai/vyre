@@ -492,9 +492,12 @@ async function loose(ctx) {
       title: "New project from a GitHub repo",
       onPick: async (repo, account) => {
         put(status, `Cloning ${repo.full_name}…`);
-        const r = await attempt("github.project", { repo: repo.full_name, account });
+        // from_thread (github's contract, sha 9cf93817) both sets the new project's avatar_seed
+        // to this chat's id and files the chat in, in the one call: the same carry-over a
+        // native project-from-chat gets, and no separate projects.add-threads needed here.
+        const r = await attempt("github.project", { repo: repo.full_name, account, from_thread: id });
         if (r.error) { put(status, r.error.message || "Could not create the project from that repo."); return; }
-        if (r.data?.project) await fileInto(r.data.project, status);
+        if (r.data?.project) { window.dispatchEvent(new Event("deck:pins")); go(`/projects/${enc(r.data.project)}/${enc(id)}`); }
       },
     }) }, icon("branch", 12), "New project from a GitHub repo…");
     put(add, h("form", { class: "lt-form", onsubmit: async (/** @type {Event} */ e) => {
