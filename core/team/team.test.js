@@ -647,7 +647,10 @@ test("a failing test command holds the merge for the integrator's own session, a
     return row && row.state !== "queued" ? row : null;
   }, "the merge request to be picked up");
   assert.equal(merge.state, "running"); // held for the integrator's own turn, not auto-closed
-  assert.ok(launches().some(l => l.agent === integrator.agent), "the integrator's own session should have been started");
+  // Polled, not a bare assertion: "running" is set the moment pump() picks the request up, before
+  // attemptMerge's own real work (a hard reset, a merge, spawning the test command) has actually
+  // run, so a launch can genuinely still be a beat away here.
+  await until(() => launches().some(l => l.agent === integrator.agent), "the integrator's own session should have been started");
   await until(async () => (await tool("team.status", { request: merge.id })).state === "failed", "the held turn to end (nothing fixed it) and auto-fail");
   assert.equal(git(repo, ["log", "--format=%s", "-1", "main"]).trim(), "first"); // never moved past the original commit
 });
