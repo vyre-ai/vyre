@@ -55,7 +55,7 @@ test("health: each rule, names and codes only", () => {
   assert.deepEqual(by["agents-note"].reasons, ["unprotected"]);
   assert.equal(by["fine"], undefined);
   assert.equal(out.checked, items.length);
-  assert.deepEqual(out.counts, { weak: 1, reused: 2, old: 1, rotate: 1, "2fa-available": 1, unprotected: 1 });
+  assert.deepEqual(out.counts, { weak: 1, reused: 2, old: 1, rotate: 1, "2fa-available": 1, unprotected: 1, expired: 0, expiring: 0 });
   // Nothing but names, kinds, codes and group ids.
   const text = JSON.stringify(out);
   for (const it of items) for (const v of Object.values(it.fields)) assert.ok(!text.includes(v), "no value in the result");

@@ -482,6 +482,16 @@ export function macSide(ctx, seam = {}) {
     run: async () => {
       if (!saved) return { unpaired: false };
       const told = saved.revoked ? { data: true } : await boxCall("link.unpair", { key: saved.key });
+      // The box being away is expected and not an error (the tool's own description: "when it
+      // can be reached") -- this Mac still forgets locally, and the box catches up when it is
+      // next reachable. A REAL refusal while the box IS reachable (a stale key, a lookup that
+      // failed) is different: something is actually wrong, and reporting `unpaired: true`
+      // regardless silently hid it, leaving a stale row on the box with no error anyone saw
+      // (the rc.2 find, 28 Sep -- personguard had made the box refuse this call outright, and
+      // this swallowed that refusal too). Surface it instead of hiding it.
+      if (told.error && !["box_unreachable", "not_box"].includes(told.error.code)) {
+        throw Object.assign(new Error(`the server didn't forget this Mac: ${told.error.message}`), { code: told.error.code });
+      }
       const was = saved.box.address;
       save(null); beating(false); stopServing(); unfollowAll(); conn = null; state.reachable = false; state.announced = null;
       ctx.events.emit("link.unpaired", { box: was });

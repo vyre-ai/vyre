@@ -65,7 +65,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   ]);
   const pepper = crypto.randomBytes(32);
   const mac = s => crypto.createHmac("sha256", pepper).update(String(s)).digest();
-  /** @type {Map<string, { id: string, name: string, login: string, peer: any, code: Buffer, secret: Buffer, expires: number, key?: string, peerId?: string, denied?: boolean }>} */
+  /** @type {Map<string, { id: string, name: string, login: string, peer: any, code: Buffer, secret: Buffer, created: number, expires: number, key?: string, peerId?: string, denied?: boolean }>} */
   const pending = new Map();
   let wrong = 0;
 
@@ -81,17 +81,17 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       sweep();
       if (pending.size >= MAX_PENDING) throw new Error("too many pairing requests are waiting; approve or deny them on the box first");
       const id = crypto.randomUUID(), code = newCode(), secret = crypto.randomBytes(32).toString("base64url");
-      const peer = peerOf(meta);
-      pending.set(id, { id, name: String(name).slice(0, 80), login, peer, code: mac(code), secret: mac(secret), expires: now() + TTL });
-      ctx.events.emit("link.pair-requested", { id, name: String(name).slice(0, 80), login, expires: now() + TTL });
-      return { id, code: showCode(code), secret, expires: now() + TTL, box: { name: ctx.config.name || null } };
+      const peer = peerOf(meta), created = now();
+      pending.set(id, { id, name: String(name).slice(0, 80), login, peer, code: mac(code), secret: mac(secret), created, expires: created + TTL });
+      ctx.events.emit("link.pair-requested", { id, name: String(name).slice(0, 80), login, expires: created + TTL });
+      return { id, code: showCode(code), secret, expires: created + TTL, box: { name: ctx.config.name || null } };
     },
   });
 
   ctx.tool("link.pending", {
     description: "Pairing requests waiting for approval on this box. The codes are never listed: they are on the Mac's screen.",
     input: { type: "object", properties: {} },
-    run: async () => { sweep(); return [...pending.values()].filter(p => !p.key && !p.denied).map(p => ({ id: p.id, name: p.name, login: p.login, node: p.peer ? p.peer.node : null, expires: p.expires })); },
+    run: async () => { sweep(); return [...pending.values()].filter(p => !p.key && !p.denied).map(p => ({ id: p.id, name: p.name, login: p.login, node: p.peer ? p.peer.node : null, created: p.created, expires: p.expires })); },
   });
 
   /** May this caller approve or deny request p? The box's terminal, or another of the owner's devices. */

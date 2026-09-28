@@ -9,8 +9,12 @@
 //   - A web page never reaches it. Any request carrying an Origin that is not a browser
 //     extension is refused before anything else is read, so a page cannot drive it from script.
 //   - A device token alone reveals nothing. It lists names for a page; a value needs a session,
-//     and a session needs a person: a passphrase typed into the extension, or Touch ID through
-//     the Capsule helper.
+//     and a session needs a person: Touch ID (or another presence proof) through the Capsule
+//     helper, or, on a machine with no Touch ID, a passphrase typed into the extension.
+//   - A session is the fill window of ADR 0028, decision 5: it lasts 30 minutes from the proof
+//     that opened it and does not extend with use. `vault.fill.window` in config.json can make it
+//     shorter (minutes, 1 to 30), never longer. endAll() closes every window at once (sleep,
+//     screen lock, vault.lock).
 //   - A login fills only a page whose origin is one of its hosts, exactly: scheme, host and port.
 //     A lookalike host is the whole point of phishing, so there is no suffix or wildcard match.
 //   - Tokens, codes and the unlock passphrase are stored only as hashes, and nothing here ever
@@ -21,6 +25,8 @@ import http from "node:http";
 import { canonical, same } from "./crypto.js";
 import { totp } from "./totp.js";
 import { otpRoute, saveRoute } from "./fill-save.js";
+import * as passkeys from "./fill-passkey.js";
+import * as cards from "./fill-cards.js";
 
 export const FILL_MIGRATION = `CREATE TABLE vault_devices (
      id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
@@ -36,12 +42,33 @@ export const FILL_MIGRATION = `CREATE TABLE vault_devices (
      code_hash TEXT PRIMARY KEY, name TEXT, expires INTEGER NOT NULL, used INTEGER
    );`;
 
+/**
+ * A phone's device key (ADR 0028, decision 5): a P-256 key the phone keeps in StrongBox or the
+ * Secure Enclave behind its biometric prompt. Paired with the device, it opens a fill window by
+ * signing a one-time challenge, the phone's version of Touch ID through the Capsule. Its own
+ * table, MACed, so a module that writes vyre.db cannot swap in a key of its own.
+ */
+export const FILL_KEY_MIGRATION = `CREATE TABLE vault_device_keys (device TEXT PRIMARY KEY, key TEXT NOT NULL, at INTEGER NOT NULL, mac TEXT);
+   ALTER TABLE vault_pairing ADD COLUMN phone INTEGER NOT NULL DEFAULT 0;`;
+/**
+ * A native Android app, as the phone's autofill service names it: its package and the SHA-256 of
+ * its signing certificate. A login fills it only when the login lists exactly this in `apps`,
+ * because a package name alone is anyone's to take (ADR 0028, threat model).
+ * @param {unknown} u @returns {string|null} "android:<package>@<sha256>"
+ */
+export function appOf(u) {
+  const m = /^android:\/\/([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)@([0-9a-f]{64})$/i.exec(String(u ?? ""));
+  return m ? `android:${m[1].toLowerCase()}@${m[2].toLowerCase()}` : null;
+}
+const CHALLENGE_TTL_MS = 60_000;
+const unlockMessage = nonce => Buffer.from(`vyre:fill-unlock:v1:${nonce}`, "utf8");
+
 /** No 0/O, 1/I/L: a code read off a terminal and typed into a popup should not be misread. */
 const ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const CODE_LEN = 8;
 const CODE_TTL_MS = 5 * 60_000;
-const IDLE_MS = 10 * 60_000;
-const MAX_SESSION_MS = 12 * 3600_000;
+/** The fill window (ADR 0028, decision 5): 30 minutes from the proof, and config may only shorten it. */
+export const FILL_WINDOW_MIN = 30;
 const FAIL_WINDOW_MS = 15 * 60_000;
 const MAX_UNLOCK_FAILS = 5;
 const MAX_PAIR_FAILS = 10;
@@ -53,6 +80,15 @@ const EXTENSION_ORIGIN = /^(chrome-extension|moz-extension):\/\/[A-Za-z0-9-]{1,6
 const DEVICE_NAME = /[^A-Za-z0-9 ._@()'-]/g;
 
 const sha = v => crypto.createHash("sha256").update(String(v)).digest("hex");
+/** A P-256 SPKI public key, base64url, as it will be stored; null for anything else. @param {unknown} k */
+function deviceKey(k) {
+  if (typeof k !== "string" || !/^[A-Za-z0-9_-]{40,400}$/.test(k)) return null;
+  try {
+    const pub = crypto.createPublicKey({ key: Buffer.from(k, "base64url"), format: "der", type: "spki" });
+    if (pub.asymmetricKeyType !== "ec" || /** @type {any} */ (pub.asymmetricKeyDetails).namedCurve !== "prime256v1") return null;
+    return /** @type {Buffer} */ (pub.export({ format: "der", type: "spki" })).toString("base64url");
+  } catch { return null; }
+}
 const newToken = () => crypto.randomBytes(32).toString("base64url");
 const newId = p => p + crypto.randomBytes(9).toString("base64url");
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
@@ -73,6 +109,19 @@ function scrypt(pass, salt, o) {
     (e, k) => (e ? reject(e) : resolve(k))));
 }
 
+/**
+ * The fill window in milliseconds from config.json's `vault.fill.window` (minutes). Anything
+ * that is not a number gives the default; a number is clamped to 1..30, so config can shorten
+ * the window but never lengthen it.
+ * @param {any} config the whole config, or null
+ */
+export function fillWindowMs(config) {
+  const v = config && config.vault && config.vault.fill && typeof config.vault.fill === "object" ? config.vault.fill.window : undefined;
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  const min = Number.isFinite(n) ? Math.min(FILL_WINDOW_MIN, Math.max(1, n)) : FILL_WINDOW_MIN;
+  return Math.round(min * 60_000);
+}
+
 /** A code as people type it: case, spaces and dashes do not matter. */
 const normalCode = c => String(c ?? "").toUpperCase().replace(/[\s-]/g, "");
 
@@ -86,14 +135,19 @@ const ok = data => ({ status: 200, body: { data } });
 
 export class Fill {
   /**
-   * @param {{ vault: import("./vault.js").Vault, verifyVaultPassphrase?: (p: string) => Promise<boolean>, now?: () => number, extensions?: string[] }} deps
-   *   extensions: the extension origins that may pair (vault.fill.extensions); empty means any.
+   * @param {{ vault: import("./vault.js").Vault, verifyVaultPassphrase?: (p: string) => Promise<boolean>, now?: () => number, config?: any, extensions?: string[] }} deps
+   *   config: the whole config.json, for `vault.fill.window`. extensions: the extension origins
+   *   that may pair (vault.fill.extensions); empty means any.
    */
-  constructor({ vault, verifyVaultPassphrase, now = Date.now, extensions = [] }) {
+  constructor({ vault, verifyVaultPassphrase, now = Date.now, config = null, extensions = [] }) {
     this.extensions = new Set(extensions.map(String));
     /** Signed-request nonces seen, with when each can be forgotten. @type {Map<string, number>} */
     this.proofNonces = new Map();
     this.vault = vault;
+    /** How long a session lasts from the proof that opened it. */
+    this.windowMs = fillWindowMs(config);
+    /** What the OS autofill store gets for each login: "usernames" (the default) or "names" (ADR 0028). */
+    this.identities = config && config.vault && config.vault.autofill && config.vault.autofill.identities === "names" ? "names" : "usernames";
     this.db = vault.db;
     this.verifyVaultPassphrase = verifyVaultPassphrase;
     this.now = now;
@@ -107,19 +161,21 @@ export class Fill {
     this.pairFails = [];
     /** Session tokens opened by unlockDevice, waiting for that device's next status call. Memory only. */
     this.pickup = new Map();
+    /** One open challenge per device, for a device-key unlock. Memory only, 60 seconds, single use. */
+    this.challenges = new Map();
   }
 
   // ---- registry tools (FILL_TOOLS) ------------------------------------------------------
 
   /** A one-time pairing code for `vyre vault pair`. cli/local only. @param {{ name?: string }} [input] */
-  code({ name } = {}, caller = "cli") {
+  code({ name, phone = false } = {}, caller = "cli") {
     const t = this.now();
     this.db.prepare("DELETE FROM vault_pairing WHERE expires < ? OR used IS NOT NULL").run(t);
     let c = "";
     for (let i = 0; i < CODE_LEN; i++) c += ALPHABET[crypto.randomInt(ALPHABET.length)];
     const label = name ? this.deviceName(name) : null;
-    this.db.prepare("INSERT INTO vault_pairing (code_hash, name, expires, used) VALUES (?,?,?,NULL)").run(this.codeHash(c), label, t + CODE_TTL_MS);
-    this.vault.audit("pair-code", null, caller, true, label ? `for ${label}` : null);
+    this.db.prepare("INSERT INTO vault_pairing (code_hash, name, expires, used, phone) VALUES (?,?,?,NULL,?)").run(this.codeHash(c), label, t + CODE_TTL_MS, phone ? 1 : 0);
+    this.vault.audit("pair-code", null, caller, true, `${phone ? "phone" : "browser"}${label ? ` ${label}` : ""}`);
     return { code: c, display: `${c.slice(0, 4)}-${c.slice(4)}`, expires: t + CODE_TTL_MS };
   }
 
@@ -153,6 +209,18 @@ export class Fill {
     return { ok: true, expires: s.expires };
   }
 
+  /**
+   * End every open session now: the Mac slept, its screen locked, or the vault was locked. The
+   * extension's next call finds its session gone and asks for a new proof.
+   * @param {string} [why] @returns {number} how many sessions ended
+   */
+  endAll(why = "lock") {
+    const ended = Number(this.db.prepare("DELETE FROM vault_sessions").run().changes);
+    this.pickup.clear();
+    if (ended) this.vault.audit("fill-lock", null, "vyred", true, `${why}: ${ended} sessions ended`);
+    return ended;
+  }
+
   /** Paired devices, with how many sessions each has open. Names and times only. */
   devices() {
     const t = this.now();
@@ -160,7 +228,7 @@ export class Fill {
     return {
       devices: rows.map(d => ({
         id: d.id, name: d.name, created: d.created, lastSeen: d.last_seen, revoked: d.revoked || null,
-        sessions: this.db.prepare("SELECT expires, last_used FROM vault_sessions WHERE device = ?").all(d.id)
+        sessions: this.db.prepare("SELECT created, expires FROM vault_sessions WHERE device = ?").all(d.id)
           .filter(s => this.live(s, t)).length,
       })),
     };
@@ -201,13 +269,23 @@ export class Fill {
     try { if (await this.vault.keys.exists()) await this.vault.key(); } catch {}
     switch (route) {
       case "POST pair": return this.pair(b, h);
-      case "POST unlock": return this.unlock(b, h);
+      case "POST unlock": return b && typeof b.signature === "string" ? this.unlockKey(b, h) : this.unlock(b, h);
+      case "POST challenge": return this.challenge(h);
       case "POST lock": return this.lockRoute(h);
       case "POST match": return this.matchRoute(b, h);
       case "POST fill": return this.fill(b, h);
       case "GET status": return this.status(h);
       case "POST otp": return otpRoute(this, b, h);
       case "POST save": return saveRoute(this, b, h);
+      case "POST identities": return cards.identitiesRoute(this, b, h);
+      case "POST passkeys": return passkeys.listRoute(this, b, h);
+      case "POST passkey.create": return passkeys.createRoute(this, b, h);
+      case "POST passkey.get": return passkeys.getRoute(this, b, h);
+      case "POST passkey.assert": return passkeys.assertRoute(this, b, h);
+      case "POST passkey.register": return passkeys.registerRoute(this, b, h);
+      case "POST cards": return cards.listRoute(this, b, h);
+      case "POST card.fill": return cards.cardRoute(this, b, h);
+      case "POST address.fill": return cards.addressRoute(this, b, h);
       default: return fail(404, "not_found", `no route ${route}`);
     }
   }
@@ -223,8 +301,10 @@ export class Fill {
     const t = this.now();
     const from = String(h.origin || "");
     if (this.extensions.size && !this.extensions.has(from)) return fail(403, "origin_refused", "pairing is done from the Vyre extension");
+    // A browser's key is a JWK it signs requests with; a phone's is a base64url SPKI string it
+    // unlocks with (below, once the code says it was made for a phone).
     let key = null;
-    if (b.key !== undefined) {
+    if (b.key !== undefined && typeof b.key !== "string") {
       const k = b.key;
       try {
         if (!k || k.kty !== "EC" || k.crv !== "P-256" || k.d) throw new Error("no");
@@ -249,11 +329,20 @@ export class Fill {
     const name = row.name || this.deviceName(b.name || "browser");
     const token = newToken();
     const id = newId("d_");
+    // A phone pairs with its device key; a browser has none and unlocks another way.
+    let phoneKey = null;
+    if (typeof b.key === "string") {
+      // A key unlocks with no passphrase and no Touch ID here, so only a code the person made for a phone takes one.
+      if (!row.phone) return this.pairRefused(t, "that code is for a browser · vyre vault pair --phone makes one for a phone");
+      phoneKey = deviceKey(b.key);
+      if (!phoneKey) return fail(400, "bad_input", "the device key is not a P-256 public key");
+    }
     this.db.prepare("INSERT INTO vault_devices (id, name, token_hash, created, last_seen, revoked) VALUES (?,?,?,?,?,NULL)").run(id, name, sha(token), t, t);
     this.vault.sign("vault_devices", id);
+    if (phoneKey) { this.db.prepare("INSERT OR REPLACE INTO vault_device_keys (device, key, at) VALUES (?,?,?)").run(id, phoneKey, t); this.vault.sign("vault_device_keys", id); }
     if (from) this.db.prepare("INSERT OR REPLACE INTO vault_meta (key, value) VALUES (?, ?)").run(`device-origin:${id}`, from);
     if (key) this.db.prepare("INSERT OR REPLACE INTO vault_meta (key, value) VALUES (?, ?)").run(`device-key:${id}`, JSON.stringify(key));
-    this.vault.audit("pair", null, `device:${id}:${name}`, true, key ? "key-bound" : null);
+    this.vault.audit("pair", null, `device:${id}:${name}`, true, key ? "key-bound" : phoneKey ? "phone-key" : null);
     this.vault.emit("vault.device-paired", { device: id, name });
     return ok({ device: id, name, token });
   }
@@ -298,6 +387,56 @@ export class Fill {
     return ok({ session: s.token, expires: s.expires });
   }
 
+  /** A one-time challenge for a device-key unlock. @param {Record<string, string>} h @returns {Reply} */
+  challenge(h) {
+    const d = this.device(h);
+    if ("status" in d) return d;
+    if (!this.keyOf(d.id)) return fail(409, "no_key", "this device has no device key; unlock with the passphrase");
+    const nonce = crypto.randomBytes(32).toString("base64url");
+    this.challenges.set(d.id, { nonce, expires: this.now() + CHALLENGE_TTL_MS });
+    return ok({ challenge: nonce, message: `vyre:fill-unlock:v1:${nonce}`, expires: this.now() + CHALLENGE_TTL_MS });
+  }
+
+  /**
+   * Open a fill window with the device key's signature over the challenge. The phone asks for the
+   * signature through its biometric prompt, so a signature is a person's presence.
+   * @param {any} b @param {Record<string, string>} h @returns {Reply}
+   */
+  unlockKey(b, h) {
+    const d = this.device(h);
+    if ("status" in d) return d;
+    const who = this.who(d);
+    const t = this.now();
+    const recent = (this.fails.get(d.id) || []).filter(x => x > t - FAIL_WINDOW_MS);
+    this.fails.set(d.id, recent);
+    if (recent.length >= MAX_UNLOCK_FAILS) { this.vault.audit("unlock", null, who, false, "locked out"); return fail(429, "locked_out", "too many failed unlocks from this device; wait 15 minutes"); }
+    const c = this.challenges.get(d.id);
+    this.challenges.delete(d.id);
+    const key = this.keyOf(d.id);
+    let good = false;
+    if (c && c.expires > t && key && /^[A-Za-z0-9_-]{16,200}$/.test(b.signature)) {
+      try {
+        const pub = crypto.createPublicKey({ key: Buffer.from(key, "base64url"), format: "der", type: "spki" });
+        good = crypto.verify("sha256", unlockMessage(c.nonce), { key: pub, dsaEncoding: "der" }, Buffer.from(b.signature, "base64url"));
+      } catch { good = false; }
+    }
+    if (!good) {
+      recent.push(t);
+      this.vault.audit("unlock", null, who, false, c ? "bad device signature" : "no challenge");
+      return fail(401, "bad_signature", c ? "the device key's signature did not check" : "ask for a challenge first");
+    }
+    this.fails.delete(d.id);
+    const s = this.openSession(d);
+    this.vault.audit("unlock", null, who, true, "device key");
+    return ok({ session: s.token, expires: s.expires });
+  }
+
+  /** The device key of a device, checked against its MAC, or null. @param {string} id */
+  keyOf(id) {
+    const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_device_keys WHERE device = ?").get(id));
+    return r && this.vault.rowOk("vault_device_keys", r) ? String(r.key) : null;
+  }
+
   /** @param {Record<string, string>} h @returns {Reply} */
   lockRoute(h) {
     const d = this.device(h);
@@ -312,6 +451,8 @@ export class Fill {
   matchRoute(b, h) {
     const d = this.device(h);
     if ("status" in d) return d;
+    const app = appOf(b.url);
+    if (app) return ok({ app, logins: this.appLogins(app).map(r => ({ name: r.name, description: r.description, url: r.url })) });
     const o = origin(b.url);
     if (!o) return ok({ origin: null, logins: [] });
     return ok({ origin: o, logins: this.logins(o).map(r => ({ name: r.name, description: r.description, url: r.url })) });
@@ -328,11 +469,12 @@ export class Fill {
     if (s === "missing") return refuse(401, "session_required", "unlock first");
     if (s === "expired") return refuse(401, "session_expired", "the session ended; unlock again");
     if (!name) return refuse(400, "bad_input", "give the login's name");
-    const o = origin(b.url);
+    const app = appOf(b.url);
+    const o = app || origin(b.url);
     if (!o) return refuse(400, "bad_input", "the page is not an http or https page");
     const r = this.vault.row(name);
     if (!r || r.kind !== "login") return refuse(404, "not_found", `no login named ${name}`);
-    if (!this.hostsOf(r).includes(o)) return refuse(403, "wrong_origin", `${name} is not for ${o}`);
+    if (app ? !this.appLogins(app).some(x => x.name === r.name) : !this.hostsOf(r).includes(o)) return refuse(403, "wrong_origin", `${name} is not for ${o}`);
     let f;
     try { f = await this.vault.fields(r); }
     catch (e) {
@@ -433,16 +575,20 @@ export class Fill {
     const t = this.now();
     const token = newToken();
     const id = newId("s_");
-    this.db.prepare("DELETE FROM vault_sessions WHERE device = ? AND (expires <= ? OR last_used <= ?)").run(d.id, t, t - IDLE_MS);
-    this.db.prepare("INSERT INTO vault_sessions (id, device, token_hash, created, expires, last_used) VALUES (?,?,?,?,?,?)").run(id, d.id, sha(token), t, t + MAX_SESSION_MS, t);
-    return { id, token, expires: Math.min(t + MAX_SESSION_MS, t + IDLE_MS) };
+    this.db.prepare("DELETE FROM vault_sessions WHERE device = ? AND (expires <= ? OR created <= ?)").run(d.id, t, t - this.windowMs);
+    this.db.prepare("INSERT INTO vault_sessions (id, device, token_hash, created, expires, last_used) VALUES (?,?,?,?,?,?)").run(id, d.id, sha(token), t, t + this.windowMs, t);
+    return { id, token, expires: t + this.windowMs };
   }
 
-  /** @param {{ expires: number, last_used: number }} s @param {number} t */
-  live(s, t) { return t < s.expires && t - s.last_used < IDLE_MS; }
+  /** @param {{ created: number, expires: number }} s @param {number} t */
+  live(s, t) { return t < this.expiry(s); }
 
-  /** When a session ends if nothing touches it: the idle limit or the hard cap, whichever comes first. */
-  expiry(s) { return Math.min(s.expires, s.last_used + IDLE_MS); }
+  /**
+   * When a session ends: its window from the proof. Use does not move it. A row written under an
+   * older, longer rule (or before the window was shortened) still ends at created + window.
+   * @param {{ created: number, expires: number }} s
+   */
+  expiry(s) { return Math.min(Number(s.expires), Number(s.created) + this.windowMs); }
 
   /**
    * The session a request names, for this device only.
@@ -455,6 +601,7 @@ export class Fill {
     const s = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_sessions WHERE token_hash = ? AND device = ?").get(hash, d.id));
     if (!s || !same(s.token_hash, hash)) return "expired";
     if (!this.live(s, this.now())) { this.db.prepare("DELETE FROM vault_sessions WHERE id = ?").run(s.id); return "expired"; }
+    // last_used is a record of the last use only. It no longer moves the session's end.
     if (touch) this.db.prepare("UPDATE vault_sessions SET last_used = ? WHERE id = ?").run(this.now(), s.id);
     return s;
   }
@@ -465,6 +612,12 @@ export class Fill {
     const u = r.url ? origin(r.url) : null;
     if (u) hs.add(u);
     return [...hs];
+  }
+
+  /** Logins that list a native app, exactly (package and certificate). @param {string} app */
+  appLogins(app) {
+    return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'login' ORDER BY name").all())
+      .filter(r => this.vault.rowOk("vault_items", r) && json(r.apps, []).map(a => String(a).toLowerCase()).includes(app));
   }
 
   /** Logins whose hosts include an origin: the same rule fill applies, so the popup offers only what fills. */
@@ -484,7 +637,8 @@ export class Fill {
 
 // ---- the listener -----------------------------------------------------------------------
 
-const ROUTES = { pair: "POST", unlock: "POST", lock: "POST", match: "POST", fill: "POST", status: "GET", otp: "POST", save: "POST" };
+const ROUTES = { pair: "POST", unlock: "POST", challenge: "POST", lock: "POST", match: "POST", fill: "POST", status: "GET", otp: "POST", save: "POST",
+  identities: "POST", passkeys: "POST", "passkey.create": "POST", "passkey.get": "POST", "passkey.assert": "POST", "passkey.register": "POST", cards: "POST", "card.fill": "POST", "address.fill": "POST" };
 
 class HttpError extends Error {
   /** @param {number} status @param {string} code @param {string} message */
@@ -548,15 +702,17 @@ export async function serveFill({ host = "127.0.0.1", port = 0, fill, names = []
         if (req.headers["access-control-request-private-network"]) cors["access-control-allow-private-network"] = "true";
       }
       const path = new URL(req.url || "/", "http://fill").pathname;
-      const m = /^\/v1\/fill\/([a-z]+)$/.exec(path);
+      const m = /^\/v1\/fill\/([a-z]+(?:\.[a-z]+)?)$/.exec(path);
       const name = m ? m[1] : "";
       if (!Object.hasOwn(ROUTES, name)) return reply(404, { error: { code: "not_found", message: `${req.method} ${path}` } });
       if (req.method === "OPTIONS") { res.writeHead(204, { ...cors, "content-length": "0" }); return res.end(); }
       if (req.method !== ROUTES[name]) return reply(405, { error: { code: "method", message: `${name} takes ${ROUTES[name]}` } });
       // Pairing is the extension's first step and nothing else makes it. Without an Origin, the
       // caller is a script (an agent with curl), which would otherwise pair itself with a code.
-      if (name === "pair" && o === undefined) return reply(403, { error: { code: "origin_required", message: "pairing is done from the Vyre extension" } });
       const got = req.method === "POST" ? await readJson(req) : { json: {}, raw: "" };
+      // A phone's autofill service is not a browser and sends no Origin; it pairs with a device
+      // key and a phone code, which pair() checks.
+      if (name === "pair" && o === undefined && !(got.json && typeof got.json.key === "string")) return reply(403, { error: { code: "origin_required", message: "pairing is done from the Vyre extension" } });
       const out = await fill.handle(`${req.method} ${name}`, got.json, /** @type {any} */ (req.headers), { raw: got.raw, path: `/v1/fill/${name}` });
       reply(out.status || 200, out.body ?? {});
     } catch (e) {
@@ -588,15 +744,17 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
  * @type {{ name: string, callers: string[]|null, description: string, input: any, method: "code"|"devices"|"revokeDevice"|"unlockDevice"|"setUnlockPassphrase", presence?: (fill: Fill, input: any) => string }[]}
  */
 export const FILL_TOOLS = [
-  { name: "vault.device.code", callers: ["cli", "local"], method: "code", input: obj({ name: str }),
-    presence: (f, i) => `Pair a new browser${i && i.name ? ` (${f.deviceName(i.name)})` : ""} for autofill`,
-    description: "A one-time code (8 characters, 5 minutes) to pair a browser extension with this vault." },
+  { name: "vault.device.code", callers: ["cli", "local"], method: "code", input: obj({ name: str, phone: { type: "boolean" } }),
+    presence: (f, i) => (i && i.phone
+      ? `Pair a phone${i.name ? ` (${f.deviceName(i.name)})` : ""} for autofill: it will unlock with its own fingerprint or face`
+      : `Pair a new browser${i && i.name ? ` (${f.deviceName(i.name)})` : ""} for autofill`),
+    description: "A one-time code (8 characters, 5 minutes) to pair a browser extension, or with phone a phone's autofill service that unlocks with its device key." },
   { name: "vault.devices", callers: ["cli", "local", "deck", "capsule"], method: "devices", input: obj({}),
     description: "Browsers paired for autofill, when each was last seen and how many sessions it has open." },
   { name: "vault.device.revoke", callers: ["cli", "local", "deck", "capsule"], method: "revokeDevice", input: obj({ id: str }, ["id"]),
     description: "Unpair a browser: its token and every session it holds stop working now." },
   { name: "vault.device.unlock", callers: ["cli", "local"], method: "unlockDevice", input: obj({ device: str }, ["device"]),
-    presence: (f, i) => `Unlock autofill in ${f.deviceById(i && i.device)?.name || "a paired browser"} for up to 12 hours`,
+    presence: (f, i) => `Unlock autofill in ${f.deviceById(i && i.device)?.name || "a paired browser"} for 30 minutes`,
     description: "Open an autofill session for a paired browser without a passphrase, after Touch ID. Returns no token." },
   { name: "vault.unlock-passphrase", callers: ["cli", "local"], method: "setUnlockPassphrase", input: obj({ passphrase: str }, ["passphrase"]),
     presence: () => "Set the passphrase that unlocks autofill in paired browsers",

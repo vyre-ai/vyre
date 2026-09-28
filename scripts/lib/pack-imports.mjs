@@ -5,10 +5,14 @@
 // `npm pack --dry-run`'s list; scripts/release-check.sh runs this on the installed folder:
 //
 //   node scripts/lib/pack-imports.mjs <installed package dir>
+//
+// ignoredShipped() also fails a pack that carries a gitignored file (a Mac build output such as
+// local/capsule/bin from a dirty tree), except the files the pack generates on purpose.
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 
 // Static imports and exports ("from" or a bare import "x"), and import("x") with a literal.
 const SPECS = /(?:^|[;\s])(?:import|export)\s[^;"'`]*?from\s*["']([^"']+)["']|(?:^|[;\s])import\s*["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/gm;
@@ -37,6 +41,25 @@ export function missingImports(root, files) {
     }
   }
   return out.sort();
+}
+
+/** Files the pack makes on purpose, though git ignores them: the commit stamp and the web app build. */
+const GENERATED = [/^build\.json$/, /^apps\/app\/dist\//];
+
+/**
+ * The files in the pack that git ignores (a Mac build output in a dirty tree, say), leaving out
+ * the ones the pack generates on purpose. Null when `root` is not a git checkout.
+ * @param {string} root the checkout
+ * @param {string[]} files the pack's file list, relative to root
+ * @returns {string[] | null}
+ */
+export function ignoredShipped(root, files) {
+  try { execFileSync("git", ["rev-parse", "--git-dir"], { cwd: root, stdio: "ignore" }); } catch { return null; }
+  let out = "";
+  // check-ignore exits 1 when nothing matches.
+  try { out = execFileSync("git", ["check-ignore", "--no-index", "--stdin"], { cwd: root, input: files.join("\n"), encoding: "utf8" }); }
+  catch (e) { out = /** @type {any} */ (e).status === 1 ? "" : (() => { throw e; })(); }
+  return out.split("\n").filter(f => f && !GENERATED.some(r => r.test(f))).sort();
 }
 
 /** @param {string} dir */

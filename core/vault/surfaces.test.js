@@ -106,7 +106,7 @@ test("surfaces: a session opens, reports, and closes; its token is in no event",
   assert.ok(!JSON.stringify(ev).includes(o.session));
 });
 
-test("surfaces: reveal shows one field; TOTP gives code, period and remaining", async t => {
+test("surfaces: reveal shows one field; TOTP gives code, next, period and remaining", async t => {
   const { d, as } = await boot(t);
   t.after(() => d.stop());
   const cli = as("cli");
@@ -119,7 +119,7 @@ test("surfaces: reveal shows one field; TOTP gives code, period and remaining", 
   assert.match((await cli("vault.reveal", { name: "stack-env" })).error.message, /name the field/);
   assert.match((await cli("vault.reveal", { name: "nope" })).error.message, /no item named nope/);
   const code = (await cli("vault.totp", { name: "site-login" })).data;
-  assert.deepEqual(Object.keys(code).sort(), ["code", "period", "remaining"]);
+  assert.deepEqual(Object.keys(code).sort(), ["code", "next", "period", "remaining"]);
   assert.equal(code.period, 30);
   const ev = d.events.since(0, { limit: 1000 }).filter(e => e.type === "vault.revealed");
   assert.deepEqual(ev.map(e => e.payload), [{ name: "site-login", field: "password", surface: "cli" }, { name: "site-login", field: "username", surface: "cli" }]);
