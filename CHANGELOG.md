@@ -4,6 +4,43 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### files: dev/ino check closes the parent-dir-swap residual on e8560b79
+
+- `describe()` (core/files/index.js) now carries `dev`/`ino` from its own stat. New
+  `openChecked(d)` opens via `openReal` then fstats the fd and refuses, closing it, unless
+  dev/ino still match `describe()`'s: O_NOFOLLOW alone refuses the final path component turning
+  into a symlink between the stat and the open, not an ancestor directory being renamed out and
+  a new one dropped in its place in that same gap, which still resolves the same path string to
+  a different, unchecked file. Used in files.preview's small-image and text-preview reads;
+  chunk() already fstats its open fd for size/mtime, so the same compare was folded into that
+  one fstat instead of a second one. Thumbnail generation (external convert/sips by path, not
+  fd) is the one residual left uncovered, already accepted per the review.
+
+#### memory,projects: reviewer's HOLDs on f8330ccc and 7021d4e1
+
+- `memory.relevant`, `memory.why`, `memory.facts`, `memory.retrieve`, `memory.ask`,
+  `memory.suggest` and `memory.context` all read graph.view/relevant/why/facts directly, which
+  treated an unscoped call (project_cwds and room both empty) as no scope at all rather than
+  "every mapped project, unfiled excluded". floorPlan's own excludeUnfiled only closed that leak
+  for memory.graph's own drawing. guard() now hands back `r.cwds` (every mapped project's
+  folders) whenever the assistant asks unscoped, and every reader above uses it in place of its
+  own project_cwds from there on.
+- `projects.access.grant`/`revoke`/`clear` refuse any module caller that is not `module:agents`
+  or `module:projects` (this module's own internal grant on projects.create): the loader's
+  `callers: ["module"]` only says "some module", so a third-party module installed with no
+  presence could otherwise grant an agent any project or clear a person's explicit revokes.
+- `projects.create` had no callers at all (open to an agent's own MCP, a guest, a hook), so an
+  agent could map any folder into a brand-new project and, through f8330ccc's own auto-grant,
+  walk straight in with projects.access on it. Now OWNER plus a named `module:sync` exception
+  (sync's `attachMapped`, the only module with real business proposing a folder-to-project
+  mapping). The same exception was added to `projects.add-workspace`, whose OWNER-only callers
+  had excluded module:sync entirely.
+- `Projects.create()` and `Projects.addWorkspace()` (core/projects/projects.js) refuse "/", the
+  real home directory, and the credential/vault folders under it (.vyre, .claude, .ssh, .gnupg,
+  .aws, .config/gcloud, .docker, .kube, .netrc) as a project's own home or workspace, so a
+  project can never be scoped wide enough that granting it hands an agent the person's real
+  keys and vault.
+
 #### projects.access: reviewer's holds on 63af8941/656b3f79, plus docs-check green on this branch
 
 - Fixed docs-check: this branch's own CHANGELOG.md and docs/design/drive-onboarding.md em dashes
