@@ -8,18 +8,25 @@
 Vyre is a Claude Code plugin plus one small daemon. It does not fork or wrap Claude Code.
 
 ## What runs where
-- The daemon (`vyred`) runs on a server you control: a Linux box with Docker, or a Mac.
+- The daemon (`vyred`) runs on a Linux server you control.
 - The Deck (the web app) is served from your own address, `<you>.vyre.run`.
 - The Mac Capsule is a small always-on helper on your Mac; press Option-Space to reach it.
-- Devices join your Tailscale network to reach your server; Vyre sets Tailscale up if you don't
-  already run it.
+- Your Mac reaches your server over Tailscale, which you install and sign in to yourself; Vyre
+  never changes your Mac's Tailscale settings. A Linux or Windows desktop you pair joins the
+  tailnet on its own; Macs join that way starting in 0.1.2.
 
 ## Install
+On the Linux server:
 ```
 curl -fsSL https://vyre.run/install.sh | sh
 vyre up
 ```
-On a Mac: `npm install -g https://vyre.run/box/vyre.tgz && vyre up`.
+On your Mac, with Tailscale installed and signed in:
+```
+npm install -g https://vyre.run/box/vyre.tgz
+vyre up
+vyre capsule install
+```
 
 ## Cost
 Vyre itself is free and open source. You pay Anthropic for Claude the same way you would running
@@ -27,8 +34,10 @@ Claude Code directly.
 
 ## Data
 Prompts go to Anthropic's API through Claude Code, the same as running Claude Code directly.
-Keys, memory and sessions stay on your server. vyre.run holds one DNS record per name and
-nothing else.
+Keys, memory and sessions stay on your server. vyre.run holds your name's DNS record and runs
+the relay (relay.vyre.run). A phone paired by scanning reaches your server through that relay,
+end-to-end encrypted: the relay can see that your phone and server talk, and when, but never
+what's said or your keys.
 
 ## License
 Apache 2.0.

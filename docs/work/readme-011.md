@@ -105,8 +105,55 @@ bullets as text only) and built exactly the three the user cares about:
   the account's other projects in the sidebar, so it covers "Deck chat with avatars and project
   tiles" on its own).
 
+## Round 4: reviewer's relay HOLD + team-lead's own README draft
+Two things landed together:
+
+1. Reviewer HELD 8ea7dc65 (MEDIUM, public claim accuracy): site/index.html, site/llms.txt and
+   README all overstated "vyre.run holds one DNS record and nothing else" - a paired phone's
+   ongoing session traffic actually stays on the relay (relay.vyre.run, ADR 0046), end-to-end
+   encrypted, so the relay sees routing metadata (who talks, when) but never content or keys.
+   Fixed in all three places with the same fact, reviewer's suggested wording adapted to each
+   surface's voice: site/index.html's FAQ answer, its short "outside the line" diagram caption
+   (a second, shorter overstatement of the same claim I found while fixing the FAQ one), and
+   site/llms.txt's Data section (also fixed llms.txt's Tailscale-auto-setup line to match the
+   README draft's corrected claim: Mac Tailscale setup is manual, Vyre never touches it; only
+   Linux/Windows desktops auto-join the tailnet in 0.1.1, Macs follow in 0.1.2).
+2. team-lead rewrote the README body itself (team/README-0.1.1-draft.md, then updated again with
+   the reviewer's relay wording) after finding stale/inaccurate lines in my drafts. Used it
+   VERBATIM per instruction, only converting the four [PICTURE: ...] markers to real <picture>
+   blocks. Checked every non-obvious factual claim in it against code/docs before shipping
+   (nothing was wrong, so nothing was changed): "vyre capsule install builds the Capsule on your
+   Mac; nothing is downloaded" matches docs/get-started/install.md:373 near-verbatim; "Vyre never
+   changes your Mac's Tailscale settings" matches docs/adr/0014-tailnet.md's "Vyre never changes
+   the tailnet" and install.md:89; "Macs follow in 0.1.2" matches
+   team/BACKLOG-0.1.2.md:6 exactly ("In 0.1.1 only Linux and Windows desktops auto-join... Mac
+   desktops auto-join the tailnet [is 0.1.2]").
+
+Four pictures, all opened and checked before use:
+1. capsule-ask.png: who-2-reply.png (Capsule answering "what is on the Northwind Bakery menu"
+   from a cited past session), unchanged.
+2. capsule-chip.png: chip-top.png, the Capsule's collapsed bar with the Northwind Bakery project
+   chip top right (swapped out my round-3 pick, the menu-bar popover, which wasn't "the project
+   chip").
+3. wink-confirm.png: re-rendered with the sample box name "kit" per this round's instruction
+   (was "alex-box"), same real dom.js/icons.js/pair-scan.js/pair.css method as round 3.
+4. deck-chat.png: re-rendered fresh via `npm run docs:shots -- --only deck-project,deck-chat` on
+   testbox rather than reusing the round-1 shot, since docs:check confirms deck-project.png was
+   stale against deck/index.html, deck.css and views/projects.js, and the point this round was
+   specifically "with the new avatars visible." Confirmed the new render does show the current
+   avatar system (a drawn avatar in the sidebar, not the old plain "A" letter circle) and current
+   sentence-case UI copy. FOUND A REAL BUG in that regeneration, not mine to fix: the light and
+   dark PNGs it produced were byte-identical (same md5) - dark mode never actually applied during
+   that docs:shots run. Rather than ship a mislabeled "dark" image, I dropped the dark variant for
+   this shot and used the single light PNG only. Flagging the bug to team-lead/whoever owns
+   docs:shots; did not touch docs/using/shots/ itself (only copied the regenerated PNG into
+   docs/images/readme/), so the repo's own docs shots are unaffected by this.
+
 ## Next
-- Waiting on reviewer's privacy check before deploying vyre.run (team-lead's instruction: deploy
-  after that check, same deploy the user already approved).
-- Waiting on team-lead reading every line before it ships (their ask).
-- Flag the stale docs/brand/readme-hero*/social-preview*/og-paper assets to app-design/launch.
+- Waiting on reviewer's second privacy/accuracy pass and team-lead's read before deploying
+  vyre.run (their instruction: don't deploy until both).
+- Flag two open items to team-lead: the docs:shots dark-mode bug found above, and the still-stale
+  docs/brand/readme-hero*/social-preview*/og-paper assets (old headline, app-design's pipeline).
+- Did a full pass on the relay/DNS claim everywhere I could find it; only spot-checked the rest
+  of site/index.html's feature-line framing (Mac/phone/server) given time - no other inaccuracies
+  found in what I checked, but I didn't read all ~600 lines line by line this round.
