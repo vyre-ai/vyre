@@ -715,6 +715,48 @@ relay/client/client.js and README.md merged clean. No new em dashes. Reran on te
 docs-check, pair-scan, relay/client, test/relay, relay/node/server, relay/worker,
 lib/identity.test.js - 111/111 pass. Sent head d7ec3564 to the integrator.
 
+## Doing (the live relay.vyre.run scan-to-pair check, 2026-09-28) - BLOCKED, real CORS gap found
+Task 3: run the real scan-to-pair flow against the deployed wss://relay.vyre.run, from testbox
+only, headless Chrome + a temp profile, never a visible window. Built a throwaway harness (not
+committed - a one-off, deleted after the run): a real vyred (test/fixtures/vyred-present.js,
+presence auto-approved, temp VYRE_HOME, never touches ~/.vyre), `relay.pair.ticket` minted a REAL
+ticket against the real relay (`relay.status` confirmed `connected: true, url:
+wss://relay.vyre.run`), served over a local TCP proxy (deck/test/world.js's own pattern) so a
+real headless Chrome (vyre-chrome, temp --user-data-dir, --headless=new) could load the actual
+unmodified `/pair/scan` page. Only the camera module (deck/js/scan.js) was swapped via CDP Fetch
+interception for a stub that hands `onFound` the real ticket bytes at once - the camera/decoder
+path is a separate, already-measured concern (14/17 harness), not what this check is for.
+
+**Found a real, structural CORS gap, confirmed by Chrome itself, not a guess:**
+`resolveTicket()`'s `POST https://relay.vyre.run/v1/pair` fails in a real browser from ANY
+origin other than relay.vyre.run itself - `relay/worker/index.js`'s `json()` helper (the only
+place `/v1/pair`'s response is built) sets `content-type` only, no
+`Access-Control-Allow-Origin`, and there is no `OPTIONS` handler at all, so the browser's CORS
+preflight gets a plain 404 and Chrome blocks the request outright ("Response to preflight
+request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present").
+Same in `relay/node/server.js` (grepped: no CORS/OPTIONS handling there either).
+
+This is not a testbox artifact - the real deployed phone flow hits the exact same thing: the
+Deck's own writeup (this file's "Phone-side contract" above) has the phone open `/pair/scan` at
+`phone.vyre.run` and call `wss://relay.vyre.run` - two different origins. Confirmed this is a
+real architectural gap, not an oversight I could quietly work around: ADR 0026 (section on
+Person sessions, "Hosting") states outright "there is no CORS [needed], because the browser opens
+one WebSocket to the relay and every request travels inside the channel" - true for every
+request AFTER pairing, which does ride the one already-open socket. But ADR 0045's
+`resolveTicket()` runs BEFORE any socket is open (that's the whole point - "resolves...WITHOUT
+pairing"), so it structurally cannot use "the channel" and has to be a plain cross-origin fetch,
+which ADR 0026's no-CORS reasoning never covered. Nobody added CORS to `/v1/pair` because nothing
+before ADR 0045 needed a pre-pairing HTTP call.
+
+**Every real Wink pairing over the live relay is broken right now**, on any deployment where the
+phone page's origin differs from relay.vyre.run's (which is the deployed shape: phone.vyre.run
+serving /pair/scan, calling relay.vyre.run) - this blocks step 1 (resolveTicket) entirely, before
+the confirm screen, pairOffer, the avatar dance or the redirect are ever reached. Could not
+complete the rest of task 3's checklist because of this: reported at once rather than working
+around it (a same-origin proxy hack in my own test harness would have hidden the exact bug a real
+phone hits). Sent to team-lead, integrator and reviewer. Cleaned up: no processes or temp files
+left on testbox, the throwaway harness script was not committed (deleted after the run).
+
 ## Next
 - No test coverage of scan.js/scan-worker.js's own lifecycle (the busy flag, the transferred
   buffer, worker.terminate() on stop) - reviewer-2 hand-verified fa619b4a and confirmed it's
