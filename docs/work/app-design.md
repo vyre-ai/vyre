@@ -431,3 +431,24 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 - One thing flagged, not as a product bug: the onboarding header's "Setting up <hostname>" reads
   `os.hostname()` (core/onboard/index.js:222), correct for a real user, but means test-box
   screenshots show the shared box's real name; didn't forward the raw files outside the team.
+
+## Now (28 Sep, generated avatars round 2: in-chat mockups, 5 pairs)
+
+- User saw round 1's sheet, wants "something cool for both, pookie and modern" with a few real
+  options shown IN CHAT. Built 5 pairs, each a realistic in-chat mockup (a session turn, the
+  Handoff card expanded with the teammate's face and reply, an Agents list row for both, a
+  floating Capsule notification), dark and paper: bottts-neutral+notionists (round 1's baseline),
+  big-smile+open-peeps, Boring Avatars "beam"+micah, thumbs+croodles, and an original Vyre concept
+  (hand-written SVG: soft blob creatures for agents, small rounded characters for teammates, code
+  and art both ours, no licence question). All in a local scratch folder outside the repo (path in
+  the message to the lead), not this repo.
+- Ranked pick sent (msg_id c441681a): 1) the original blob+character (best legibility at 24px of
+  the five, zero licence risk, genuinely charming, not a placeholder); 2) big-smile+open-peeps
+  (strongest "makes you smile" hit, CC0 teammate half); 3) beam+micah (best "cool/modern" abstract
+  read, cleanest licence mix); 4) thumbs+croodles (solid, least memorable); 5) bottts-neutral+
+  notionists (only if agents specifically need to read as robots, bottts's licence still open).
+- Ran a real check before shipping, not just a note: swept every pair's generated colours against
+  the exact lime/violet hex values (a small hexDist script). Two real hits in DiceBear's own
+  bigSmile and micah palettes (occasional violet-adjacent purple, not something to fix in their
+  code, flagged as a pre-ship per-seed check); one hit in my own original palette (a blue too
+  close to violet), fixed before the final render, so what shipped is clean.
