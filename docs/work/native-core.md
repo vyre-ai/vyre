@@ -63,6 +63,14 @@ deck/css/deck.css span.vy-av rules; deck/css/views/agents.css, settings.css.
 - Project tile bytes: projectBytes(seed) = two FNV-1a words over "vyre:project:v1:" + seed. Every
   surface drawing a project tile (the App, the Capsule) needs this same function.
 - Rail account button and the phone header show the person's avatar.
+- Tests (testbox): targeted deck/**, boundaries, docs-*, core/projects, core/system, core/config
+  850/850 after the docs fix; docs-check shots-only (mtime); avatars-browser.js 14/14 in headless
+  Chrome (93 avatars, five families, Dark and Paper, ring, chat draft tiles, rail, hop, Reduce
+  Motion). Native bar: all pass but 5 and 8. Both fail on stage base too: 8 always; 5 only when
+  budgets 1-4 run first, one shift of a reply's cv-head row (0.0063 to 0.0070 on base, 0.0067 here,
+  diagnosed with a throwaway copy of run.js). 7.cold 815 ms, 9 send 10.1 ms.
+- Needs from app-design: avatar.md and ADR 0043 should say renaming an agent changes its blob
+  (seed = name), and name projectBytes() as the project-tile seed-to-bytes rule for other surfaces.
 
 ## Done
 - 2026-09-27 77faf1e3: core/settings (registry of ~70 keys, stores: settings_values, config.json,
