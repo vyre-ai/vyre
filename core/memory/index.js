@@ -192,9 +192,8 @@ export default {
       // unfiled has no project". It now walks the same per-project path below, just starting
       // from every project instead of a named few.
       if (a.kind === "assistant") return { all: true, agent: who, folders: [], slugs: new Set() };
-      const wildcard = a.projects === "*";
       const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
-      const granted = wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
+      const granted = a.projects === "*" ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
       // agents.projects alone is not the only door any more (reviewer's MEDIUM, Vyre Drive step
       // 3): a project also has to be live in projects.access, the one place Drive, Recall and
       // memory's own reads are all meant to check the same way. Intersected here rather than
@@ -208,13 +207,12 @@ export default {
         return c.data && c.data.granted ? p : null;
       }));
       const allowed = checked.filter(Boolean);
-      // wildcard (not all): a projects: "*" agent reads every mapped project's room the same
-      // way a named-projects agent reads its own — never the main graph or the unfiled room,
-      // which stay the assistant's alone (docs/adr/0007-intelligence.md decision 1 as narrowed
-      // above). Personal facts are the one place that ADR still treats a wildcard agent as
-      // equivalent to the assistant (answer.test.js's own contract, unchanged here): flagged so
-      // personalOnly can tell a wildcard agent from an ordinary named-projects one.
-      return { all: false, wildcard, agent: who, folders: allowed.flatMap(p => p.folders), slugs: new Set(allowed.map(p => p.slug)) };
+      // Not all: a projects: "*" agent reads every mapped project's room the same way a
+      // named-projects agent reads its own, never the main graph or the unfiled room, which
+      // stay the assistant's alone. Personal facts follow the same rule now too (the user's
+      // decision, 2026-09-28, narrowing docs/adr/0007-intelligence.md decision 1: a wildcard
+      // agent is no longer the assistant's equal there either, see personalOnly below).
+      return { all: false, agent: who, folders: allowed.flatMap(p => p.folders), slugs: new Set(allowed.map(p => p.slug)) };
     };
     const clean = cwds => (cwds || []).map(c => path.resolve(String(c)));
     /** The user's own surfaces. Only these, modules, and a verified all-projects agent read the main graph. */
@@ -432,14 +430,17 @@ export default {
       }, "memory.me"),
     });
     // One line about the user's life from what they have said (docs/work/memory-iq.md). Personal
-    // facts are the user's, not a project's: the user's surfaces, their tailnet devices, modules,
-    // and the assistant or an agent granted every project ask it; a project's agent is refused.
-    // (Unlike the main graph and the unfiled room, personal facts keep treating a projects: "*"
-    // agent as the assistant's equal — the user's 2026-09-28 decision narrowed the graph/folder
-    // side only, and answer.test.js's existing contract is the record of that.)
+    // facts are the user's, not a project's: the user's own surfaces, their tailnet devices,
+    // modules and the assistant ask it. Any named agent is refused, a projects: "*" one
+    // included: narrowed by the user's decision, 2026-09-28, from docs/adr/0007-intelligence.md
+    // decision 1, which had treated a wildcard agent as the assistant's equal here. Two of the
+    // reasons that decision changed: personal facts come mostly from unfiled sessions, which a
+    // wildcard agent no longer reads directly, so this route was the one place that still leaked
+    // them; and projects.access revoking a wildcard agent from every project used to leave
+    // personal facts reachable regardless, which broke "projects.access is one source of truth".
     /**
-     * Personal facts are the user's, not a project's: the user's surfaces, their tailnet devices,
-     * modules, and the assistant or an agent granted every project. A project's agent is refused.
+     * Personal facts are the user's, not a project's: the user's own surfaces, their tailnet
+     * devices, modules and the assistant. Any named agent is refused, wildcard-granted or not.
      */
     // A bare "mcp" caller is the user's own Claude Code session, and "mcp:thread:<id>" a session
     // Vyre runs for the user (ADR 0030; an agent's says mcp:agent:<name>), so both ask about the
@@ -447,8 +448,8 @@ export default {
     const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller));
     const personalOnly = async (input, caller, name) => {
       const r = await reach(input.agent, caller);
-      if (r.agent ? !(r.all || r.wildcard) : !(reader(caller) || ownSession(caller))) {
-        throw denied(r.agent ? `personal facts are not a project's: ${r.agent} is granted only some projects` : `${name} is for the user's own surfaces and agents granted every project, not ${plain(caller || "an unnamed caller", 60)}`);
+      if (r.agent ? !r.all : !(reader(caller) || ownSession(caller))) {
+        throw denied(r.agent ? `personal facts are not a project's: only the assistant reads them, not ${r.agent}` : `${name} is for the user's own surfaces and the assistant, not ${plain(caller || "an unnamed caller", 60)}`);
       }
     };
     const answer = answerer({ personal, graph, db: ctx.store.db, me: ctx.config.me || null, call: (tool, input) => ctx.call(tool, input),

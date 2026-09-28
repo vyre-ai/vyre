@@ -12,6 +12,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { slugify } from "../../lib/project-id.js";
 
 export const MARKER = path.join(".vyre", "project.json");
 
@@ -23,9 +24,10 @@ const SKIP = new Set(["node_modules", "dist", "build", "out", "target", "venv", 
 /** @typedef {{ slug: string, name: string, org: string|null, home: string, workspaces: string[],
  *   threads: string[], people: Person[], watchers: string[], error?: string }} Project */
 
-export function slugify(s) {
-  return String(s || "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
+// The canonical shape lives in lib/project-id.js now (cohesion's find): this was a byte-identical
+// copy, the exact drift the lib exists to prevent. Re-exported so existing callers (M.slugify)
+// are unchanged.
+export { slugify };
 
 /** A subagent's id is "<parent>/agent-<id>". It folds into its parent everywhere a person sees it. */
 export const parentOf = id => { const s = String(id); const i = s.indexOf("/"); return i > 0 ? s.slice(0, i) : s; };

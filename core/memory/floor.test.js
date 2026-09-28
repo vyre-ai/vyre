@@ -226,10 +226,10 @@ test("graph: a projects: \"*\" agent is not the assistant — every mapped proje
   // Never the main graph or the unfiled room: those are the assistant's alone now.
   assert.match((await call("memory.graph", { agent: "wilma" }, opts)).error?.message || "", /main graph is for the assistant/);
   assert.match((await call("memory.facts", { agent: "wilma", room: "unfiled" }, opts)).error?.message || "", /unfiled room is for the user and the assistant/);
-  // Personal facts are the one place a projects: "*" agent still reads as the assistant does
-  // (answer.test.js's own contract, unchanged by this narrowing): no wife fact seeded here, so
-  // it simply comes back null rather than denied.
-  assert.ok(!(await call("memory.answer", { agent: "wilma", q: "who is my wife" }, opts)).error);
+  // Personal facts are refused too now (the user's 2026-09-28 decision, narrowing
+  // docs/adr/0007-intelligence.md decision 1): a wildcard agent is no longer the assistant's
+  // equal there either.
+  assert.match((await call("memory.answer", { agent: "wilma", q: "who is my wife" }, opts)).error?.message || "", /only the assistant reads them/);
 
   // A project.access revoke narrows it immediately, same as a named-projects agent.
   assert.ok(!(await call("projects.access.revoke", { project: "harlow", agent: "wilma" }, opts)).error);
