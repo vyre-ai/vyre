@@ -356,9 +356,18 @@ const PEOPLE = ["cli", "local", "deck", "capsule", "module"];
 /** Who is calling, from the registry's caller and what vyred verified. @returns {Who} */
 export function whoFrom(caller, meta = {}) {
   const c = String(caller || "");
-  const kind = c.startsWith("module:") ? "module" : c.replace(/[\s:]agent:.*$/s, "");
   const named = /^[a-z]+:agent:(.+)$/.exec(c);
-  return { person: PEOPLE.includes(kind), agent: meta.agent || (named ? named[1] : null), thread: meta.thread || null };
+  const kind = c.startsWith("module:") ? "module" : c.replace(/[\s:]agent:.*$/s, "");
+  // Cohesion's audit, 2026-09-28: this used to check PEOPLE.includes(kind) alone, which strips
+  // "agent:kit" off "cli:agent:kit" before the check, reading it as person AND agent at once.
+  // inScope() below trusts who.person to skip every per-agent scope check outright, so that let
+  // an agent whose caller string carried an owner-surface prefix (however it got there) reach
+  // every connected server the true owner can, not just its own scope. An agent's own claim is
+  // never the person, whatever kind its transport otherwise reads as (the same fix lib/caller.js
+  // gives isPerson/isAgent, once this branch can take that dependency — not yet mergeable here,
+  // see the note left for cohesion).
+  const person = !named && PEOPLE.includes(kind);
+  return { person, agent: meta.agent || (named ? named[1] : null), thread: meta.thread || null };
 }
 
 export class Hub {

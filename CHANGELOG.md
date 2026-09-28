@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### mcp: whoFrom() no longer reads an agent's own claim as the person too (cohesion's audit)
+
+- `core/mcp/hub.js`'s `whoFrom()` stripped "agent:kit" off a caller like "cli:agent:kit" before
+  checking it against PEOPLE, so it came back `person: true` and `agent: "kit"` at once.
+  `inScope()` trusts `who.person` to skip every per-agent scope check outright, so this let an
+  agent whose caller string carried an owner-surface prefix reach every connected MCP server the
+  true owner can, not just its own agents/projects scope. Fixed: an agent claim is checked first
+  and refuses `person` immediately, matching the semantics lib/caller.js's isPerson/isAgent give
+  (not yet a dependency this branch can take: it needs agentClaim and PERSON_SURFACES, both
+  unmerged into work/federation's tree as of this write).
+
 #### files: dev/ino check closes the parent-dir-swap residual on e8560b79
 
 - `describe()` (core/files/index.js) now carries `dev`/`ino` from its own stat. New

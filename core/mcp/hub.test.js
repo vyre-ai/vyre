@@ -129,6 +129,18 @@ test("whoFrom: people see all, a model is scoped by what vyred verified", () => 
   assert.equal(whoFrom("harness:agent:kit").person, false);
 });
 
+test("whoFrom: an owner-surface-shaped agent claim is never person: true (cohesion's audit, 2026-09-28)", () => {
+  // The bug: stripping "agent:kit" off "cli:agent:kit" before checking PEOPLE read the kind as
+  // "cli", so this named agent came back person AND agent at once. inScope() trusts who.person
+  // to skip every per-agent scope check outright, so this would have let it reach every
+  // connected server the true owner can, not just its own agents/projects scope.
+  for (const c of ["cli:agent:kit", "local:agent:kit", "deck:agent:kit", "capsule:agent:kit", "module:agent:kit"]) {
+    const who = whoFrom(c);
+    assert.equal(who.person, false, c);
+    assert.equal(who.agent, "kit", c);
+  }
+});
+
 // ---- a hub with a fake connect ----
 
 function fakeHub({ values = {}, behave = {}, ...extra } = {}) {
