@@ -86,6 +86,17 @@ files; waiting on replies. Next once confirmed: re-run the native-bar budgets (5
 merged tree and update docs/design/native-bar.md's results table; then continue down the Doing
 list (Vault Connections entry waits on vault's 5d7cbd07 green).
 
+## 2026-09-28 (cont'd): budget 5 to true CLS 0, sent to reviewer-2
+Fixed the residual 0.0088 CLS entry (215bed2d, chat.css only): turnRow's open placeholder was
+`display:none` while `:empty`, so its footer text landing flipped it to `display:block` and
+inserted a fresh 26px box, shifting everything below down. `.cv-turn` now keeps `min-height: 26px`
+always and `:empty` is `visibility: hidden`. Budget 5: CLS 0, 8/9/10 unchanged, deck/chat 86/86
+green on testbox. Sent to reviewer-2 (non-security) and team-lead. Full root-cause trail (rect
+sampler evidence) in docs/design/native-bar.md. pwa owns budget 8 (reconnect on online/visibility);
+chat is looking at budget 9's footer-text-change flag. Next: continue composer/streaming-path work
+now that file ownership with chat (session.js/newsession.js) and pwa (phone views) is settled —
+composer.js's behaviour and the streaming path are mine.
+
 ## Known follow-ups
 - DONE: e2e's three MEDIUMs (firstParty, drops/env/plugins confirm, asPerson).
 - Merge e2e's claudeHome switch (work/e2e-noclaude 32dc0956) once it is on main: settings'
