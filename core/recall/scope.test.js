@@ -63,15 +63,17 @@ test("recall.search: a named agent reads only its granted project, never the who
   assert.match(cross.error?.message || "", /kit is not granted/);
   // A module forwarding a specific agent's call is scoped the same way as that agent directly.
   assert.equal((await d.registry.call("recall.search", { q: "intake form", agent: "kit" }, "module:memory")).data.length, 0);
-  // The true assistant is unrestricted, same as the owner's own surfaces (federation's own read
-  // of memory's reach(): the 2026-09-28 narrowing to mapped-only was about a projects: "*" agent
-  // that is not the assistant, never about kind === "assistant" itself) — it sees the unmapped
-  // session too (the fixture's session 4 belongs to no project). A quoted phrase (recall's own
-  // exact-phrase mode) keeps this to session 4 alone: an unquoted "left this week" also
-  // OR-matches "week" in northwind's "a weekly total on Fridays".
+  // The assistant sees every MAPPED project (both Northwind and Harlow), but never an unmapped
+  // folder's raw content (the fixture's session 4 belongs to no project) — the lead's ruling,
+  // 2026-09-28: a personal fact stays unrestricted for the assistant, but raw session content
+  // does not extend past what is linked, matching memory's unfiled-room narrowing. A quoted
+  // phrase (recall's own exact-phrase mode) keeps this to session 4 alone: an unquoted "left
+  // this week" also OR-matches "week" in northwind's "a weekly total on Fridays".
   const phrase = { q: '"is left this week"' };
-  assert.ok((await d.registry.call("recall.search", phrase, "mcp:agent:juno")).data.length > 0, "the assistant reads the unmapped session too");
+  assert.equal((await d.registry.call("recall.search", phrase, "mcp:agent:juno")).data.length, 0, "the assistant reads no unmapped folder");
   assert.equal((await d.registry.call("recall.search", phrase, "mcp:agent:kit")).data.length, 0);
+  assert.ok((await d.registry.call("recall.search", { q: "invoice" }, "mcp:agent:juno")).data.length > 0, "the assistant reads a mapped project kit is not granted");
+  assert.ok((await d.registry.call("recall.search", { q: "intake form" }, "mcp:agent:juno")).data.length > 0, "and every other mapped project too");
 });
 
 test("recall.thread: a named agent reads a session only inside its granted project", async t => {
@@ -133,6 +135,11 @@ test("recall: a guest, an unknown tailnet peer or a hook names no agent, and non
   // break: "no guest, no unknown peer", not "no tailnet at all".
   const owner = await d.registry.call("recall.search", { q: "invoice" }, "tailnet:someone");
   assert.ok(owner.data.length > 0);
+  // A relay-paired device (ADR 0026, "device:<id>") is the owner's device too, over the relay
+  // rather than the tailnet — reviewer's LOW: reach() only checked ownerOverTailnet, so a
+  // paired phone's recall was refused even though callerAllowed let it through as "deck".
+  const phone = await d.registry.call("recall.search", { q: "invoice" }, "device:abcdefghijklmnop");
+  assert.ok(phone.data.length > 0);
 });
 
 test("recall.thread: a prefix that matches sessions inside and outside the grant resolves to the grant's own, never revealing the other (reviewer's LOW)", async t => {

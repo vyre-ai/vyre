@@ -38,7 +38,7 @@ import { Watches } from "./watch.js";
 import { blocks, find, peek } from "../transcripts/index.js";
 import { transcriptFolders } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
-import { ownerOverTailnet } from "../modules/index.js";
+import { ownerDevice } from "../modules/index.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -243,19 +243,22 @@ export default {
         folders: [...new Set([p.home, ...(p.workspaces || []), ...(p.folders || [])].filter(Boolean).map(String))] }));
     };
     /**
-     * What a caller may read: { all: true } for the user's own surfaces, modules, the owner's
-     * own verified device over the tailnet, a model's own session, and the true assistant (kind
-     * === "assistant" — as unrestricted as the owner, federation's own read of memory's reach():
-     * the 2026-09-28 narrowing to MAPPED-only was about a projects: "*" agent that is not the
-     * assistant, never about the assistant itself); else { all: false, agent, folders }. A
-     * wildcard agent walks the same per-project path a named-projects agent does, starting from
-     * every project instead of a named few, intersected with projects.access either way (deny by
-     * default; an install without that module keeps today's behavior unchanged). Everyone else
-     * with no agent named — a guest, an unrecognised tailnet peer, a hook, any caller kind
-     * neither this nor callerAllowed's READERS list has been taught about — is refused outright,
-     * not defaulted to "all" (reviewer's MEDIUM on the first cut of this). Who the agent is comes
-     * from the caller ("...agent:<name>") or input.agent; if both are given they must agree. When
-     * agents cannot be checked, a named agent is refused.
+     * What a caller may read: { all: true } for the user's own surfaces, modules, a paired
+     * device or the owner's own verified device over the tailnet (ownerDevice), and a model's
+     * own session (never a named agent); else { all: false, agent, folders }. The assistant and
+     * a wildcard (projects: "*") agent both walk the per-project path, starting from every
+     * MAPPED project — raw session content, unlike a personal fact, is not the assistant's to
+     * read past what is linked, so recall narrows it the same way memory's unfiled room does
+     * (the lead's ruling, 2026-09-28, after federation's read of d897210d: personal facts stay
+     * unrestricted for the assistant; raw content from an unmapped folder does not). The
+     * assistant is unchecked against projects.access (being the assistant is what grants it,
+     * same as core/memory/index.js's reach()); a wildcard or named agent is intersected with it
+     * (deny by default; an install without that module keeps today's behavior unchanged).
+     * Everyone else with no agent named — a guest, an unrecognised tailnet peer, a hook, any
+     * caller kind neither this nor callerAllowed's READERS list has been taught about — is
+     * refused outright, not defaulted to "all" (reviewer's MEDIUM on the first cut of this). Who
+     * the agent is comes from the caller ("...agent:<name>") or input.agent; if both are given
+     * they must agree. When agents cannot be checked, a named agent is refused.
      * @param {string|undefined} agent @param {string|undefined} caller
      */
     const reach = async (agent, caller) => {
@@ -263,7 +266,7 @@ export default {
       if (said && agent && said !== agent) throw denied(`the call came from agent ${said} but names agent ${agent}`);
       const who = said || agent || null;
       if (!who) {
-        if (owner(caller) || ownSession(caller) || ownerOverTailnet(String(caller || ""))) return { all: true, agent: null, folders: [] };
+        if (owner(caller) || ownSession(caller) || ownerDevice(caller)) return { all: true, agent: null, folders: [] };
         throw denied(`recall is for the user's own surfaces, modules and named agents, not ${String(caller || "an unnamed caller").slice(0, 60)}`);
       }
       const r = await ctx.call("agents.list", {});
@@ -271,18 +274,11 @@ export default {
       const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
       const a = list.find(x => x && x.name === who);
       if (!a) throw denied(`no agent ${who}`);
-      // The true assistant is unconditionally all:true, same as the owner's own surfaces
-      // (federation's own read of memory's reach(), 2026-09-28: the 09-28 narrowing was about a
-      // projects: "*" agent that is not the assistant, never about kind === "assistant" itself —
-      // only d897210d's wildcard case gets the per-project walk below).
-      if (a.kind === "assistant") return { all: true, agent: who, folders: [] };
+      const assistant = a.kind === "assistant";
       const wildcard = a.projects === "*";
       const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
-      const granted = wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
-      // A wildcard (projects: "*") agent walks the same per-project path a named-projects agent
-      // does, starting from every project instead of a named few (d897210d): still intersected
-      // with projects.access, never the whole corpus by the wildcard alone.
-      const checked = await Promise.all(granted.map(async p => {
+      const granted = assistant || wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
+      const checked = assistant ? granted : await Promise.all(granted.map(async p => {
         const c = await ctx.call("projects.access.check", { project: p.slug, agent: who });
         if (c.error && c.error.code === "no_such_tool") return p;
         return c.data && c.data.granted ? p : null;

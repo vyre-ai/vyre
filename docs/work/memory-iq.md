@@ -202,25 +202,30 @@ facts are not a project's.
   - MEDIUM: `reach()`'s "no agent named" branch returned `all: true` unconditionally, so a
     tailnet guest, a hook, or any caller kind nobody had classified yet read the whole corpus —
     the scoping only ever engaged once an agent was named. Fixed both ways the reviewer offered:
-    declared `callers: ["cli","local","deck","capsule","module","mcp"]` on all three tools (kernel
-    utility `ownerOverTailnet` from core/modules/index.js lets the owner's own verified tailnet
-    device through via the existing "deck" clause in callerAllowed — not "no tailnet at all", just
-    "no guest, no unknown peer"), and narrowed `reach()`'s own fallback to
-    `owner(caller) || ownSession(caller) || ownerOverTailnet(caller)`, refusing everyone else.
-  - LOW: recall.thread resolved an id/prefix before the grant check, so an ambiguous-prefix error
-    told a scoped agent an ungranted session with that prefix exists. Prefix resolution
-    (`resolveScoped`, local to the tool) now only considers sessions the caller may read.
-  - Also folded in the lead's parallel decision, THEN REVERTED: tried narrowing recall's true
-    assistant (`kind === "assistant"`) to every MAPPED project instead of `all: true`. Federation
-    corrected this: the 2026-09-28 narrowing (d897210d) was about a `projects: "*"` agent that is
-    NOT the assistant — only that wildcard case walks the per-project path over every project,
-    intersected with projects.access; `kind === "assistant"` stays unconditionally `all: true`,
-    same as before this whole security pass. Recall's `reach()` and scope.test.js both reverted
-    to that split (the wildcard case already walked the per-project path from the first cut of
-    this fix, b49b98ac — nothing new needed there).
-  - 2 new tests (guest/hook/unknown-tailnet refusal + owner-tailnet-device still works; the
-    prefix-collision LOW), 7 total in scope.test.js. 275/275 on testbox
-    (core/recall + core/memory + boundaries). Sent back to reviewer.
+    declared `callers: ["cli","local","deck","capsule","module","mcp"]` on all three tools, and
+    narrowed `reach()`'s own fallback to `owner(caller) || ownSession(caller) ||
+    ownerDevice(caller)` (kernel utility from core/modules/index.js — covers both the owner's own
+    verified device over the tailnet AND a relay-paired device, ADR 0026; the "deck" clause in
+    callerAllowed already let both through, but reach() itself first only checked
+    `ownerOverTailnet`, missing the paired-device case, a second LOW the reviewer caught on
+    re-review), refusing everyone else.
+  - LOW (prefix): recall.thread resolved an id/prefix before the grant check, so an
+    ambiguous-prefix error told a scoped agent an ungranted session with that prefix exists.
+    Prefix resolution (`resolveScoped`, local to the tool) now only considers sessions the caller
+    may read.
+  - The assistant-vs-wildcard question this raised went round twice before it settled. Recall's
+    first cut (b49b98ac) already had the wildcard-agent case (`projects: "*"`, not the assistant)
+    walk the per-project path over every project. Federation confirmed the true assistant
+    (`kind === "assistant"`) itself is `all: true` in memory, unconditionally. The lead then ruled
+    on the actual question underneath it: a personal fact stays unrestricted for the assistant,
+    but raw session content does not extend past what is linked — memory narrows its unfiled room
+    away from the assistant the same way. Recall returns raw content, so its assistant branch
+    walks the per-project path too, over every MAPPED project, unchecked against projects.access
+    (being the assistant is what grants it). Landed at that final shape.
+  - 2 new tests (guest/hook/unknown-tailnet refusal, extended to also cover a paired device
+    working alongside the owner's tailnet device; the prefix-collision LOW), 7 total in
+    scope.test.js. 275/275 on testbox (core/recall + core/memory + boundaries). Sent back to
+    reviewer.
 
 ## Next
 - Built 28 Sep: memory.card (e67ba34d), memory.contradictions/settle (fd7f57ab).
@@ -301,9 +306,11 @@ before landing (not "straight away"):
   own granted folders rather than the whole corpus; a session or folder outside its grant is
   refused (a scoped-out session reads back exactly like a nonexistent one). recall.sessions'
   `ids` and a paired Mac's answers are filtered by the same grant. All three now declare
-  `callers: ["cli","local","deck","capsule","module","mcp"]`. A wildcard (`projects: "*"`) agent
-  that is not the assistant walks the per-project path over every project, intersected with
-  projects.access; the true assistant (`kind === "assistant"`) stays `all: true`, unrestricted.
+  `callers: ["cli","local","deck","capsule","module","mcp"]`. The assistant and a wildcard
+  (`projects: "*"`) agent both walk the per-project path over every MAPPED project (never
+  `all: true`, never an unmapped folder's raw content — the lead's ruling on recall vs. memory's
+  personal facts); the assistant unchecked against projects.access, a wildcard agent intersected
+  with it.
 - core/modules/index.js: a module's ctx.call passes { firstParty } (from the loader) in the callee's meta.
 - core/config/index.js: default transcripts add <home>/synced; recall reads each device folder under it. recall.forget (internal). Event recall.embedded. memory listens to sync.revoked and emits memory.forgot. New module core/import (import.scan/plan/status, event import.progress).
 - core/harness/index.js harness.brief adds memory.today's lines ("Lately in this project") for a project session.

@@ -19,19 +19,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   reach() falls back to agents.projects alone until it lands (the same no_such_tool fallback
   memory's own reach() uses).
 
-#### Security follow-up: recall.search/thread/sessions declare their callers
+#### Security follow-up: recall.search/thread/sessions declare their callers, and the assistant is mapped-only for raw content
 
 - Reviewer's MEDIUM on the fix above: a caller naming no agent got `all: true` unconditionally, so
   a tailnet guest, a hook, or any caller kind nobody had thought of yet read the whole corpus too —
   the scoping only ever engaged for a caller that named an agent. Fixed both ways: the three tools
   now declare `callers` (the person's surfaces, first-party modules, and "mcp" — a model's own
   session or a named agent, which reach() still tells apart), and reach() itself only grants
-  `all: true` to the owner's surfaces, a model's own session, and the owner's own verified device
-  over the tailnet; everyone else with no agent named is refused outright. (A wildcard,
-  `projects: "*"`, agent that is not the true assistant was briefly folded into the same
-  mapped-only walk memory gives that case — reverted after federation confirmed the true
-  assistant, `kind === "assistant"`, is unrestricted either way, same as it was before this
-  follow-up; only the wildcard-agent case narrows.)
+  `all: true` to the owner's surfaces, a model's own session, a relay-paired device, and the
+  owner's own verified device over the tailnet (`ownerDevice`); everyone else with no agent named
+  is refused outright.
+- The lead's ruling (2026-09-28, after the assistant-vs-wildcard question this raised): a personal
+  fact stays unrestricted for the assistant, but raw session content does not extend past what is
+  linked — memory narrows its unfiled room away from the assistant the same way, so recall's
+  assistant branch now walks the per-project path over every MAPPED project too, unchecked against
+  projects.access (being the assistant is what grants it). A wildcard (`projects: "*"`) agent that
+  is not the assistant walks the same path, intersected with projects.access.
 - Reviewer's LOW: recall.thread resolved an id or an unambiguous prefix before the grant check, so
   "more than one session starts with X" told a scoped agent that an ungranted session with that
   prefix exists. Prefix resolution now happens only among the sessions the caller may read.
