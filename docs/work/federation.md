@@ -793,3 +793,41 @@ Open question sent back to anywhere: whether vault and sessions need to move ato
 (a session mid-thread holding a vault-derived credential) or each piece can lag independently as
 above; the four-piece split otherwise fits the engine's real constraints (each piece copies and
 verifies on its own, no cross-piece ordering needed except the final confirm gate).
+
+## Both HOLDs fixed after the restart: f8330ccc, 7021d4e1 (28 Sep 2026)
+
+db2d94fd: f8330ccc's M1 (guard() hands back r.cwds for every raw reader, not just memory.graph's
+own drawing) and M2 (projects.access.grant/revoke/clear refuse any module caller that is not
+module:agents or module:projects) were already written, uncommitted, from before the restart;
+verified them against the reviewer's exact notes, ran the tests, committed. 7021d4e1 built fresh
+this round: projects.create and projects.add-workspace both gained real callers (OWNER plus a
+named module:sync exception, the only module with real business proposing a folder-to-project
+mapping, sync's own attachMapped) and a real test exercising sync's attach-to-existing and
+create-new-project calls plus a third-party-module refusal; Projects.create()/addWorkspace() now
+refuse "/", the real home, and the credential/vault folders under it as a project's own home or
+workspace. One pre-existing test (projects.test.js "tools: projects.of...") called
+registry.call("projects.create", ...) with the default "unknown" caller; fixed to "cli", the real
+surface it was standing in for. docs:ref regenerated. Tests, testbox nice -n 15: 234/234
+core/projects, 417/417 (1 pre-existing skip) core/memory + core/sync + core/link + link* +
+federation-* + docs-* + onboard* + harness/floor, 9/9 boundaries + mcp-server-tools +
+cohesion-drift.
+
+c6cda1aa: the e8560b79 dev/ino follow-up (fstat vs describe()'s stat, to catch a parent-dir swap
+the O_NOFOLLOW fix alone does not). describe() now carries dev/ino; new openChecked(d) in
+core/files/index.js opens and fstats, refusing on a mismatch; wired into files.preview's
+small-image and text reads, and folded into chunk()'s existing fstat rather than a second one.
+Thumbnail generation (external convert/sips by path) stays the accepted residual. Tests: 84/84
+core/files + hygiene + boundaries.
+
+CHANGELOG entries added in a follow-up commit (391c4840): missed landing them in the same commit
+the first time.
+
+Shas sent to reviewer and integrator. Told memory-iq db2d94fd/c6cda1aa so work/memory-reach can
+branch off work/federation. Move-engine contract (below, already built and sent to launch and
+tailnet before the restart) re-confirmed with both after the restart, in case the message did not
+survive it.
+
+## Next
+
+- The move engine itself (move.plan/start/status/confirm/cancel), per the contract above: not
+  started this round, time went to the two HOLDs and the dev/ino follow-up instead.
