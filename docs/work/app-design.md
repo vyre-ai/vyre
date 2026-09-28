@@ -793,3 +793,24 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 - Next: none on this from my side unless native-core's re-run of avatars.test.js surfaces
   something. Contact sheet lives at (scratchpad, not committed - same convention every other
   round's preview/verify PNG used) round3b/contact-sheet-fix.png.
+
+## Now (28 Sep, 5th family: project tiles, locked)
+
+- User approved a 5th family: project tiles (a rounded square, a mark and a colour, never a face
+  or creature), plus draft tiles for loose chats and a project-colour badge for teammates.
+  identity.js gained PROJECT_COLORS (8 hues, tuned per-hue after a flat S/L left one hue at
+  3.13:1); round4/project.js is the new file (projectTile(), teammateProjectBadge()).
+- Reused the section-5 mechanism rather than inventing a second one: PROJECT_COLORS runs through
+  the same validatePalette() (96 checks total now, 48 skin + 48 project, worst case 3.68:1).
+  Draft tiles keep the true colour always (never swapped for rim ink) - a continuous rim-coloured
+  line sits under the dash where needed, same add-not-replace principle the solid tile's own rim
+  already uses. First draft implementation DID swap the colour when a rim was needed; caught it
+  against the user's own "same colour" spec before locking, fixed to the add-not-replace version.
+- Contact sheet (round4/contact-sheet-project.png, scratchpad, same convention as the skin-tone
+  one): 8 colours x solid/draft x both themes x 20/24/32/40px, all legible down to 20px.
+- Locked: ADR 0043 section 6, avatar.md's five-family table + new "Project tiles, locked" section.
+  Committed e84bb767.
+- Vendored at deck/vendor/vyrecode/ (native-core's own import path): identity.js and characters.js
+  updated, project.js new, all ESM. Verified all six files load and run under
+  `node --input-type=module`. Sent native-core the API: projectTile(seedBytes, {draft, theme,
+  size}), teammateProjectBadge(color, theme), and character()'s new fourth projectColor param.
