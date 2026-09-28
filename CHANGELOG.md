@@ -4,6 +4,43 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+## 0.1.1
+
+What's new:
+
+- Wink: add your phone by scanning. Settings and onboarding show a ring around your avatar. Point
+  the phone at it, check the name and fingerprint it shows, and tap Pair. The ring appears only
+  when you tap for it, lasts a few minutes, and disappears once used. The relay only ever holds
+  a sealed record.
+- Desktops paired over the relay join your tailnet on their own. There's no auth key to paste.
+- GitHub: sign in with a short code (no token to paste), start a project from one of your repos,
+  or add a repo to an existing project. Each session in a GitHub project gets its own worktree
+  and branch. Vyre never deletes a worktree that holds unpushed or uncommitted work. It tells you
+  what's at stake instead.
+- Avatars for you, your assistant, teammates and projects, in the Deck, on the phone and in the
+  Capsule. A chat that isn't in a project yet shows a draft tile, which carries over when you
+  make it into a project.
+- `vyre vitals` shows CPU, memory, disk, network and battery, with a per-agent breakdown for
+  your computers.
+- Vyre anywhere: choose whether this machine runs Vyre solo, as a server, or as a device of
+  another server. Settings has a Server section for it.
+- Sessions from a paired device come to your box only after you turn that device's import on.
+  `vyre call sync.scan` shows what would be sent first.
+- The Capsule starts Vyre itself when it's offline, knows the project you're working in, and
+  shows your past sessions as hints.
+- Teammates: `vyre team` lists a project's teammates, and `vyre team ask` sends one work.
+
+Security:
+
+- The Capsule's presence key now lives in the Mac's Secure Enclave (P-256), with Touch ID on every
+  use. After updating, re-enroll the Capsule's key. The old key kind is refused.
+- The Capsule pins its own signed build with the box. An ad hoc or unsigned build is refused.
+- An agent only reaches the projects it's mapped to, and a module can't claim another module's
+  name.
+- A Mac can only unpair itself. Only you can unpair any other device.
+
+The entries below are the detailed engineering notes for 0.1.1.
+
 #### projects, chat: GitHub repo screens (ADR 0041, github's final contract)
 
 - New project: a "From a GitHub repo" option next to New project on /projects. Opens a shared
