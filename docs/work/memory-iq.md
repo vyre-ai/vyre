@@ -292,6 +292,15 @@ before landing (not "straight away"):
   eval once. Re-cutting it needs an accuracy number, not a guess.
 
 ## Needs from others
+- federation: `projects.reach` (core/projects, cohesion's find, 28 Sep) — a single shared reach()
+  for memory/recall/files, modeled on recall's own reach() as the reference (nothing wrong found
+  there). Once it lands, recall's reach() becomes `ctx.call("projects.reach", { agent, kind:
+  "content" })`, mapping its `projects: [{slug, name, folders, threads}]` into the folders list
+  already flatMapped here; memory's reach()/personalOnly() split becomes two calls (`kind: "facts"`
+  for personal facts, `kind: "content"` for teach/relevant/why/graph), replacing memory's local
+  `viaTailnet` with the tool's own `ownerDevice` handling. guard()/scopeQuery()/within() around
+  reach()'s return shape stay memory-iq's to keep consistent; pair with cohesion once the tool's
+  landed rather than writing the migration blind. Test on testbox, send to the reviewer.
 - main: OK a fast-model (haiku) extraction pass over every personal-signal user turn (a one-time
   backfill of about $2, then about $0.25/day, configurable), and recording eval fixtures with `claude -p`.
 - sessions: the per-purpose model map location and the one-shot background job call. Also
