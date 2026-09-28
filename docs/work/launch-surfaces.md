@@ -15,6 +15,15 @@
   step's state machine too. Use "server" and "devices", not "box"/"Mac" (see below: this wording
   is net-new, not an in-progress rename elsewhere). Work with memory-iq, federation (owned by
   tailnet, ADR 0021) and app-design. See "The import flow" below.
+- NEW PRIORITY (the user's decision, 28 Sep, HANDOFF.md "Vyre anywhere"): onboarding's server
+  choice becomes "Where should Vyre live?" — Solo (this computer, ~2 min, no Tailscale) /
+  Another computer I have (Mac mini or Linux box) / A cloud server. Plus a polished "Move to
+  server" flow in Settings, the SAME flow as onboarding's "I already have a server, connect it",
+  with progress, what's moving, undo, and a "your laptop is now a device" celebration. Tailscale
+  only appears once a second device or server joins. launch owns this UI; agree contracts with
+  anywhere (the role choice, ADR 0039), federation (the move engine) and tailnet (the join flow).
+  Also needed: a local one-command install for Solo (npm or script), agreed with anywhere. See
+  "Where should Vyre live?" below.
 
 ## Surfaces
 
@@ -36,6 +45,43 @@
 | Deck first run | pwa | spec to hand over |
 | Phone first run | mobile | spec to hand over |
 | Capsule first run | capsule-pro | spec to hand over |
+
+## Where should Vyre live? (0.1.1, new priority)
+
+Researched before proposing anything:
+
+- Today's step 2 ("Pair this device with the server", `docs/design/onboarding-v2.md`) is
+  pairing-only: it assumes a server already exists or is about to via Tailscale, and jumps
+  straight to `tailscale`/`name`. There is no role choice screen and no Solo path anywhere in
+  `deck/onboard/onboard.js`'s `STEPS`, and no Settings entry for "move to a server" exists in
+  `core/onboard/` or the deck's settings surfaces.
+- ADR 0038 ("Linux only" for the server) is superseded by ADR 0039 per HANDOFF.md; 0039 does not
+  exist yet in this worktree (`docs/adr/0039*` absent), so the role/OS split is not yet written
+  down anywhere I can build against.
+- `docs/design/onboarding-v2.md` "One onboarding for every device" (step 2's existing-server
+  detection) is the closest existing design to reuse for Move-to-server: same "add this device"
+  shape, run from Settings instead of first boot.
+
+Proposed UI (draft, pending the three teams below):
+
+- Replace step 2's cold jump into pairing with a role choice screen, three cards: **Solo** (this
+  computer, about 2 minutes, no Tailscale row shown at all), **Another computer I have** (Mac
+  mini or Linux box), **A cloud server**. Solo confirms locally and skips straight to step 3;
+  the other two flow into today's `tailscale`/`name` screens, unchanged, which is where Tailscale
+  first appears.
+- Settings gets a "Move to server" entry that runs the exact same engine as onboarding's
+  "I already have a server, connect it" path (same tool calls, same progress UI), reachable at
+  any time post-onboarding: a plan screen (what moves: projects, memory, vault, sessions, with
+  sizes), live per-category progress (reusing `progressRow`), an undo action while the move is
+  in flight or just after, and a closing screen naming the laptop as a device now ("This Mac is
+  now a device. Your server is <name>.").
+- Local one-command install for Solo: needs an agreed script/npm path from anywhere; today's
+  `scripts/install-box.sh` is server-shaped (Tailscale, naming) and wrong for a Solo laptop.
+
+Needed from others before building the state machine (asked, see Needs from others): anywhere's
+role-choice tool shape and ADR 0039 text, federation's move-plan/move-start/move-status/undo tool
+shapes (proposed names in the ask), and tailnet's confirmation that its join step truly never
+renders for Solo. Look/copy for the three role cards can start now; the real engine wiring waits.
 
 ## The import flow (0.1.1)
 
@@ -292,6 +338,14 @@ Resumed after the restart (28 Sep), reading RULES.md/HANDOFF.md fresh:
 
 ## Needs from others
 
+- anywhere: the role-choice tool shape (Solo/another computer/cloud server), ADR 0039 once
+  written, and the local one-command install for Solo. Asked 28 Sep.
+- federation: move-engine tool shapes for "Move to server" (plan/what's-moving with sizes,
+  start, live status per category, undo). Proposed names: `federation.move.plan`,
+  `federation.move.start`, `federation.move.status`, `federation.move.undo` — open to
+  federation's own naming. Asked 28 Sep.
+- tailnet: confirm the join flow never renders on the Solo path, and still answer for step 2's
+  existing-server detection (names.discover, see below).
 - lead: which of Vyre IQ, Capsule auto-answer, voice, "do" computer use and the settings hub are in the RC. Until answered, anything not on main shows "coming".
 - sessions: pending onboard changes, if any.
 - app-design: a second pass on the memory-section redesign and the hotkey copy, since both
