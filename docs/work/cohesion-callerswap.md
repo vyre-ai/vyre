@@ -38,14 +38,22 @@ reviewer.
     a thread: claim) - lib/caller.js's AGENT_CLAIM/THREAD_CLAIM already cover all of them.
 
 testbox: core/goals/*.test.js, core/planner/*.test.js, core/mcp/*.test.js, lib/caller.test.js,
-boundaries, hygiene = 132/133. The one failure is pre-existing and unrelated to this branch's
-diff: core/team/index.js has its own hand-rolled `PERSON = new Set(["cli","local","deck",
-"capsule"])` (line 246) that isn't in cohesion's hygiene allowlist - it landed on stage via the
-teammates work, after that hygiene test was written, and this is the first run of the two
-together. Not touched here (not one of the three named swap targets, and core/team isn't this
-branch's file to edit) - flagged to the integrator/team-lead to route to whoever owns core/team.
+boundaries, hygiene = 132/133. The one failure was core/team/index.js's own hand-rolled
+`PERSON = new Set(["cli","local","deck","capsule"])` (line 246), not in cohesion's hygiene
+allowlist - landed on stage via the teammates work after that hygiene test was written, first run
+of the two together. Not one of the three named targets, so left alone and flagged.
+
+## Also done: core/team (lead's follow-up, since teammates isn't running)
+
+db48c3ba: swapped core/team/index.js's PERSON_SURFACES copy onto lib/caller.js's isPerson too.
+Full detail in docs/work/teammates.md (the owning team's own doc) - short version: one real spot
+(`projectOf`'s `PERSON.has(callerKind(caller))`) had the same agent-claim-stripping bug as goals/
+planner/hub; the other seven spots (`PERSON.has(String(meta.caller))`, an exact match) were
+already safe against that specific bug but gained owner-device recognition they didn't have.
+testbox: core/team 43/43, boundaries+hygiene 53/53 (hygiene green again). Combined re-run of
+everything this branch touches: 176/176.
 
 ## Next
 
-Send both shas to the reviewer to confirm the mcp-hub module-carve-out behaves identically, and
-the config fix + swap shas to the integrator. Nothing else queued on this branch.
+Sent to the reviewer for one behaviour-identity check across all four swaps (goals, planner,
+mcp-hub, core/team), and the final sha to the integrator. Nothing else queued on this branch.
