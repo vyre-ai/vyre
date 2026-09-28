@@ -17,6 +17,8 @@ import { renderMarkdown } from "./lib/markdown.js";
 import { renderUnified, renderRows, patchRows } from "./lib/diff.js";
 import { highlight } from "./lib/highlight.js";
 import { clip, commandText, duration, elapsed, langOf, rawLines, shortPath, toolState, toolTitle, toolVerb, turnParts } from "./lib/blocks.js";
+import { dataUrl, humanSize, inlineable, tooLarge, THUMB } from "./core/images.js";
+import { openLightbox } from "./lightbox.js";
 
 const OUTPUT_LINES = 12;
 /** Bash shows this much of what it printed before "show all". */
@@ -51,15 +53,48 @@ export function agentAv(who, assistant = who === "Vyre") {
 /** A row's kind, for the header rule (lib/blocks.js plan): user, assistant, turn, or card. */
 const tag = (el, kind, ts) => { /** @type {any} */ (el)._kind = kind; /** @type {any} */ (el)._ts = ts ?? null; return el; };
 
-/** "you" (or a surface's name) and the words, as a chat message. */
+/**
+ * A thumbnail, fixed to `size` (THUMB by default) so it never shifts the rows around it while the
+ * picture decodes (interaction.md section 1: never a layout jump). A tap opens the full picture
+ * (lightbox.js). `context`: who sent it, or which tool - joined with the picture's own name when
+ * it has one. Exported for session.js's sight strip (a step's screen), the same shape as any other
+ * picture, at its own smaller size (chat.css sets a caller's size by class, never by overriding
+ * this inline style, which always wins on the same element).
+ * @param {import("./core/images.js").Picture} p @param {string} [context] @param {{ w: number, h: number }} [size]
+ */
+export function pictureThumb(p, context, size = THUMB) {
+  const src = dataUrl(p);
+  const caption = p.name && context ? `${p.name} - ${context}` : p.name || context || "";
+  return h("button", { class: "cv-pic", type: "button", style: `--pic-w:${size.w}px;--pic-h:${size.h}px`,
+    "aria-label": p.name ? `Open ${p.name}` : "Open picture", onclick: () => openLightbox(src, { alt: p.name || "", caption }) },
+    h("img", { class: "cv-pic-img", src, alt: "", loading: "lazy" }));
+}
+
+/** A picture too large to inline (core/images.js's INLINE_LIMIT_BYTES): a plain file line, not a link yet. */
+function fileChip(p) {
+  return h("span", { class: "cv-pic-file" }, icon("file", 14), p.name || "Picture", p.size ? h("span", { class: "faint" }, humanSize(p.size)) : null);
+}
+
+/**
+ * "you" (or a surface's name) and the words, as a chat message. `images`: the attachments that
+ * went with it. An array (this device's own, or a step's still) draws real thumbnails; a bare
+ * number (an older read, or another device's send: the box does not echo the bytes back) falls
+ * back to a plain count, as before.
+ * @param {string} who @param {string} text @param {number|null} ts @param {string|null} me
+ * @param {number|import("./core/images.js").Picture[]} [images]
+ */
 export function userRow(who, text, ts, me = null, images = 0) {
+  const list = Array.isArray(images) ? images : [];
+  const inline = inlineable(list), big = tooLarge(list);
+  const count = Array.isArray(images) ? list.length : images;
   return tag(h("div", { class: "msg cv-row cv-user" },
     personAv(who, me),
     h("div", { class: "msg-body" },
       h("div", { class: "msg-head" }, h("span", { class: "msg-who" }, who), ts ? h("span", { class: "msg-when" }, clock(ts)) : null),
       h("div", { class: "msg-text cv-user-text" }, String(text ?? "")),
-      // Pasted images went with the words (threads.send images); the count, not the pictures.
-      images > 0 ? h("div", { class: "cv-user-images faint" }, images === 1 ? "1 image" : `${images} images`) : null),
+      inline.length ? h("div", { class: "cv-user-images" }, inline.map(p => pictureThumb(p, `from ${who}`))) : null,
+      big.length ? h("div", { class: "cv-user-images" }, big.map(fileChip)) : null,
+      !list.length && count > 0 ? h("div", { class: "cv-user-images faint" }, count === 1 ? "1 image" : `${count} images`) : null),
   ), "user", ts);
 }
 
@@ -233,6 +268,12 @@ function toolBody(b) {
       if (b.destination) parts.push(h("div", { class: "cv-note" }, "to " + b.destination));
       if (out) parts.push(outputEl(out, { err }));
   }
+  // A picture the tool's result carried (cohesion item 18: "an image the agent made"), whatever
+  // the tool - a screenshot, a Canva render, a read of an image file. Same thumbnail and lightbox
+  // as the person's own pasted pictures, just after the tool's own detail rather than the words.
+  const pics = inlineable(b.images), big = tooLarge(b.images);
+  if (pics.length) parts.push(h("div", { class: "cv-user-images" }, pics.map(p => pictureThumb(p, b.tool))));
+  if (big.length) parts.push(h("div", { class: "cv-user-images" }, big.map(fileChip)));
   return parts;
 }
 
@@ -308,7 +349,7 @@ export function toolCard(b) {
 
 /** A block as its row. @param {any} b @param {{ who?: string, me?: string|null }} [ctx] */
 export function blockRow(b, ctx = {}) {
-  if (b.kind === "user") { const el = userRow(ctx.who || "you", b.command ? commandText(b.text) : b.text, b.ts, ctx.me, Number(b.images) || 0); if (b.command) el.classList.add("cv-command"); return el; }
+  if (b.kind === "user") { const el = userRow(ctx.who || "you", b.command ? commandText(b.text) : b.text, b.ts, ctx.me, Array.isArray(b.images) ? b.images : Number(b.images) || 0); if (b.command) el.classList.add("cv-command"); return el; }
   if (b.kind === "text") return textRow(b.text, b.ts);
   if (b.kind === "thinking") return thinkingRow(b.text, b.ts);
   if (b.kind === "tool") return toolCard(b);

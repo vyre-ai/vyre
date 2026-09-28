@@ -125,15 +125,18 @@ export function cost(usd) {
   return usd < 0.1 ? `$${usd.toFixed(3)}` : `$${usd.toFixed(2)}`;
 }
 
-/** A turn block (plus a cost, when thread.finished gave one) as its footer's parts. */
+/**
+ * A turn block as its footer's parts: time, tokens, and a $ figure only when the turn really is
+ * billed by it (auth "api-key"). A subscription runs on the person's Claude plan; no screen shows
+ * a dollar amount for that, since it reads as a charge that never happens (the user's rule).
+ */
 export function turnParts(t) {
   const parts = [];
   const d = duration(t.duration_ms);
   if (d) parts.push(d);
   const tk = t.tokens || {};
   if (tk.input || tk.output) parts.push(`${tokens((tk.input || 0) + (tk.output || 0))} tokens`);
-  const c = cost(t.cost_usd);
-  if (c) parts.push(c);
+  if (t.auth === "api-key") { const c = cost(t.cost_usd); if (c) parts.push(c); }
   return parts;
 }
 

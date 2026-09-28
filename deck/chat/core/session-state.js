@@ -72,13 +72,14 @@ import { toolDetail } from "./tool-detail.js";
 /**
  * @typedef {"starting"|"idle"|"running"|"waiting"|"stopped"} SessionState
  * @typedef {{ key: string, kind: "user", text: string, uuid?: string, at?: number, seq?: number, command?: true, surface?: string|null,
- *   steered?: boolean, step?: number|null, local?: boolean, confirmed?: boolean, opened?: boolean, images?: number }} UserItem
+ *   steered?: boolean, step?: number|null, local?: boolean, confirmed?: boolean, opened?: boolean,
+ *   images?: number|import("./composer-state.js").Attachment[] }} UserItem
  * @typedef {{ key: string, kind: "steer", uuid: string|null, user: string|null, step: number|null, turn: string|null, pending: boolean,
  *   taken?: boolean, at?: number, seq?: number }} SteerItem
  * @typedef {{ key: string, kind: "text"|"reasoning", message: string|null, block: number, text: string, streaming: boolean, at?: number, seq?: number }} TextItem
  * @typedef {{ key: string, kind: "tool", call: string, name: string, status: "running"|"completed"|"failed"|"canceled", summary?: string,
  *   error?: string|boolean, input?: any, output?: string|null, detail?: import("./tool-detail.js").ToolDetail, duration_ms?: number|null,
- *   patch?: any, at?: number, seq?: number }} ToolItem
+ *   patch?: any, images?: import("./composer-state.js").Attachment[], at?: number, seq?: number }} ToolItem
  * @typedef {{ key: string, kind: "turn", n?: number, ok?: boolean, result?: string, cost_usd?: number, tokens?: any, duration_ms?: number|null,
  *   error?: string, canceled?: boolean, reason?: string|null, model?: string|null, open?: boolean, at?: number, seq?: number }} TurnItem
  * @typedef {{ key: string, kind: "notice", text: string, at?: number, seq?: number }} NoticeItem
@@ -329,7 +330,8 @@ function ensureMarker(s, user, f, out) {
  * once it is known, so the row's buttons can name it; "send" (the session idle): the words at
  * the tail, no marker, adopted by thread.sent's words or confirmSend. null draws nothing.
  * Returns the keys touched.
- * @param {Session} s @param {{ uuid: string, text: string, mode: "steer"|"queue"|"send"|null, at?: number, queued?: number|string|null, images?: number }} m
+ * @param {Session} s @param {{ uuid: string, text: string, mode: "steer"|"queue"|"send"|null, at?: number, queued?: number|string|null,
+ *   images?: import("./composer-state.js").Attachment[] }} m
  */
 export function localSend(s, m) {
   /** @type {Set<string>} */
@@ -927,8 +929,10 @@ function onSent(s, p, at, out) {
   if (uuid && p.via !== "steer" && p.via !== "now") s.meta.texts.delete(uuid);
   const key = uuid ? s.meta.uuids.get(uuid) : undefined;
   const user = key ? /** @type {UserItem|undefined} */ (s.byKey.get(key)) : undefined;
-  // How many pasted images came with it (the box does not echo them).
-  if (user && typeof p.images === "number" && p.images > 0 && user.images !== p.images) { user.images = p.images; out.add(user.key); }
+  // How many pasted images came with it (the server does not echo the bytes back in the event).
+  // A local send already drew the real pictures (localSend's array): never downgrade that to a
+  // bare count just because the confirmation arrived.
+  if (user && typeof p.images === "number" && p.images > 0 && !Array.isArray(user.images) && user.images !== p.images) { user.images = p.images; out.add(user.key); }
   if (user && user.seq === undefined) {
     const steer = p.via === "steer" || (p.via === "now" && !user.opened);
     const m = markerOf(s, user.key);
@@ -1156,7 +1160,8 @@ function fieldsOf(b) {
   switch (b.kind) {
     case "user": return { kind: "user", text: String(b.text ?? ""), ...(b.command ? { command: true } : {}),
       ...(typeof b.uuid === "string" && b.uuid ? { uuid: b.uuid } : {}),
-      ...(b.steered ? { steered: true, step: typeof b.step === "number" ? b.step : null } : {}), ...at };
+      ...(b.steered ? { steered: true, step: typeof b.step === "number" ? b.step : null } : {}),
+      ...(Array.isArray(b.images) && b.images.length ? { images: b.images } : {}), ...at };
     case "text": return { kind: "text", message: b.message ?? null, text: String(b.text ?? ""), streaming: false, ...at };
     case "thinking": return { kind: "reasoning", text: String(b.text ?? ""), streaming: false, ...at };
     case "tool": {
@@ -1167,6 +1172,8 @@ function fieldsOf(b) {
       if (output !== null) f.status = b.error ? "failed" : "completed";
       if (b.error) f.error = true;
       if (b.patch) f.patch = b.patch;
+      // A tool's own picture (cohesion item 18): the caps are already applied by transcripts.blocks.
+      if (Array.isArray(b.images) && b.images.length) f.images = b.images;
       return f;
     }
     case "turn": return { kind: "turn", duration_ms: b.duration_ms ?? null, tokens: b.tokens ?? null, model: b.model ?? null, open: Boolean(b.open), ...at };

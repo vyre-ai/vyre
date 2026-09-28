@@ -72,6 +72,14 @@ optional deps; without them the tests silently run on the CLI).
   error); `threads.interrupt`; `busy` refusal on start; sessions.prompt.* for a settings screen.
 
 ## Changed contracts
+- core/transcripts (chat, 9fd902ac, while you were paused - cohesion item 18): `blocks()` /
+  `recall.transcript` add `images: [{media_type, data}]` alongside a user or tool block's existing
+  text, for a person's own pasted picture and a tool's own (a screenshot, a Canva render). Only
+  png/jpeg/gif/webp; caps: 2 MB per image, 4 pictures per block, 6 MB per block total (the total
+  can bind before the count does); over any cap, no `images` field, same "[image]" text as before.
+  New consts IMAGE_MEDIA_TYPES / IMAGE_BYTES_CAP / IMAGES_PER_BLOCK / IMAGES_BYTES_CAP and
+  `imagesFrom()` in core/transcripts/index.js. Sent to reviewer as its own sha (data served to
+  surfaces). Worth folding into whatever shape you and chat land on together once you're back.
 - threads: send {mode}, unqueue, edit, send-now, fork, mode, interrupt; events thread.turn, state,
   usage, steered, unqueued, mode.changed; `turn` on every turn event; thread.text `block`;
   thread.tool `call`/`name`/`status`; thread.finished `total_cost_usd`, `canceled`; cost_usd is the

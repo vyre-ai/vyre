@@ -172,6 +172,88 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   capsule bridge, deck/chat, deck/test, guests, hygiene: 247/247 after one test fix.
 - composer.js "Claude Code's commands" was already fixed (f857520); only a code comment remains.
 
+## Done (28 Sep)
+- Project chip (finding 6): session.js's header now shows which project a thread is in
+  (`projectName()`, from `record.current.project` - the only source for an agent's own thread,
+  falling back to the route's slug - name-mapped via `opts.projects`, else the slug itself).
+  index.js passes `projects: state.projects` and `project: project || known?.project`. New
+  `.tag.cv-project` in chat.css. The session-list rows already showed this (index.js's
+  `threadRow`'s `where`, unchanged). Test: session.test.js's kit/NEW thread now carries `project`
+  in its threads.get fixture and asserts the chip text. testbox: deck/chat + deck/test 480/481 (1
+  skip, pre-existing), 0 fail; session.test.js 16/16. Sent to reviewer-2 (no auth/presence touched).
+  SIGNED OFF by reviewer-2 (306/306 on deck/chat's own suite, targeted). Pushed work/chat for the
+  integrator: 378c7f54.
+
+## Done (28 Sep, review fixes: d9d1cafb)
+- reviewer's 2 LOWs on 9fd902ac: strict base64 check on image data (BASE64_RE) before it goes
+  anywhere; a whole read's pictures now share one RESPONSE_BYTES_CAP (12 MB, Reader.imageBudget),
+  spent across every block so a many-block page (or a relayed Mac read) can't become hundreds of MB.
+- the lead's $ rule: the turn footer's cost figure only draws when auth is really "api-key"
+  (session.js asBlock passes S.auth through; lib/blocks.js turnParts gates on it) - a subscription
+  session never shows a dollar amount.
+- testbox: deck/chat+deck/test+transcripts+switchboard 604/605 (1 pre-existing skip), 0 fail.
+
+## Done (28 Sep, perf pass)
+- Fling p95 (native-bar budget 6): window-view.js's update() measured every mounted row's box
+  twice per scroll frame (once before mount(), once after); when mount() didn't run (a plain
+  scroll within the same window range - the common case), the second measure re-read the exact
+  same boxes for nothing (017c981f). testbox native-bar: budget 6 now 16.7 ms p95, pass (was the
+  open item since the earlier profile: "2.2 s in getBoundingClientRect"); budget 7 (cold open)
+  928.8 ms, already under its 1000 ms budget - not this fix, looks like other work since landed.
+  window.test.js + core/window.test.js + session.test.js: 37/37.
+
+## Done (28 Sep, cohesion item 18: inline pictures)
+- core/transcripts (9fd902ac, made in sessions' place per the lead - they were paused): `images:
+  [{media_type, data}]` on a user or tool block, capped (2 MB/image, 4/block, 6 MB/block total).
+  Sent to reviewer; noted in docs/work/sessions.md.
+- chat's own half (62b254f4): core/images.js (DOM-free caps/shaping, shared with pwa/mobile),
+  lightbox.js (one overlay, tap-to-zoom, Esc/backdrop close, focus returns to the opener),
+  blocks.js renders real thumbnails (userRow and toolCard) instead of a bare "N images" count,
+  composer.js's local echo carries the actual pictures so a just-sent message looks right at once,
+  session-state.js never lets a server confirmation's bare count downgrade a richer local array.
+  Every thumbnail is a fixed box before it decodes (interaction.md section 1: never a layout jump).
+  Sent to reviewer-2. testbox: deck/chat+deck/test+transcripts+switchboard 602/603 (1 pre-existing
+  skip), 0 fail; boundaries+docs-check 66/66.
+- Open for later: sight.frame stills at a running step (needs a target-per-thread lookup, not yet
+  built); rate-limiting sight.frame across chat and Glass's own caller (cohesion's item).
+
+## Done (28 Sep, sight.frame stills - cohesion item 1/18)
+- A small "cv-sight" strip in session.js's header area, drawn once per mount when this thread's
+  own agent (record.current.agent) has a live target in sight.targets (the registry - never a
+  guessed "agent:<name>"; a plain session or an agent with no computer running draws nothing).
+  Calls sight.frame for the first still, refreshes on sight.stepped scoped to this thread AND this
+  exact target (never another agent's, even a live one). Reuses blocks.js's pictureThumb (now
+  exported, takes an optional size) and core/images.js's frameToPicture (built ahead of time, with
+  the pasted-image work). New CSS .cv-sight in chat.css.
+  Tests: two new session.test.js cases (kit's own target draws and refreshes correctly and only
+  for its own thread/target; no agent or no live target draws nothing). testbox: deck/chat+deck/test
+  494/495 (1 pre-existing skip), 0 fail.
+- Not done: no historical replay (sight.frame only ever answers the LATEST still - there is no way
+  to ask for what a past step looked like, so this is a live-only "what's happening now" strip, not
+  part of the transcript's history). Rate-limiting sight.frame across chat's own caller and Glass's
+  (cohesion's open item) is still open - not addressed here.
+
+## Doing (28 Sep, budget 8: reconnect scroll jump - PARTIAL)
+- native-bar budget 8, before: 1086.7 ms (fail, over the 1 s budget), anchor moved 80 px / scrollTop
+  changed 52 px, first moving 1149 ms after the network came back - BEFORE thread.finished (1313 ms),
+  i.e. during the reconnect catch-up itself (reread()'s event replay + refresh()'s transcript
+  re-read), not triggered by thread.finished landing as first suspected.
+- Found refresh() called patch(applyBlocks(...)) (which already calls layout() itself whenever any
+  changed key needs it) and THEN called layout() again unconditionally right after - a redundant
+  second anchor-capture-and-restore on rows already correctly measured. Removed the redundant call
+  (kept grew(), which still covers the one case patch() skips: a batch of text-only deltas).
+- Result: catch-up time 1086.7 ms -> 900 ms, now UNDER the 1 s budget. But the scroll jump itself
+  is UNCHANGED (still 80 px / 52 px, identical to the number before this fix) - so the redundant
+  layout() was real waste, but not the jump's cause. testbox: deck/chat+deck/test 494/495 (1
+  pre-existing skip), 0 fail; native-bar budget 8 re-run confirms the time number, jump still fails.
+- Next: the jump happens while scrolled up 300px, WHILE all new content lands at the tail (below
+  the reader) - it should not move the anchor at all unless window-view's own windowed-mount range
+  shifts and brings a previously-unmounted (estimated) row into the mounted set for the first time
+  during this exact sequence, revealing its real height late. Needs either temporary instrumentation
+  in window-view.js (log heights.get() vs the real measured height per key during this exact
+  scenario) or a live repro in a real browser - reported to the lead rather than guessing further
+  blind.
+
 ## Doing (28 Sep, restart after cohesion's hand-over)
 
 - Merged origin/main clean (4032bf03; no conflicts). ADR 0038 (server, not box): renamed the
@@ -214,7 +296,7 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
 - Cohesion 5 (the / menu merges commands.list, Render cards) waits on platform P1's sha from cohesion.
 - Plan card deviation: Revise writes in the card (not the composer, native-core's). Needs row "kit has
   a plan to approve" is pwa's deck/js/needs.js. Docs base for tip Show me: https://docs.vyre.run/ (ask docs).
-- Perf still open: fling p95 (profile: forced layouts in window-view update), cold open 1.1 s.
+- Perf: fixed, see "Done (28 Sep, perf pass)" above.
 
 ## Earlier (27 Sep, after logout 4)
 - Done this session: 19c287db merge main 7880dfa6; 553017a1 scroll jump (content-visibility

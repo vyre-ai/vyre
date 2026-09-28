@@ -148,7 +148,7 @@ export function createWindowView(box, opts) {
     // A short session stuck to the bottom has nothing to window or keep: no layout reads at all.
     const reads = !follow || !!range?.windowed || rows.length > threshold;
     // 1. What is on screen now, in the old model, measured.
-    if (reads) measure();
+    let changed = reads ? measure() : false;
     const o0 = reads ? origin() : 0;
     const anchor = follow ? null : captureAnchor(keys, offs, scrollTop() - o0);
     // 2. The new model.
@@ -161,9 +161,16 @@ export function createWindowView(box, opts) {
     const at = pin != null && index.has(pin) ? index.get(pin) : null;
     const y = follow ? tailScroll(offs, vp) : (restoreAnchor(anchor, index, offs) ?? scrollTop() - o0);
     const next = at != null ? rangeAround(offs, /** @type {number} */ (at), vp, { threshold }) : windowRange({ offs, scrollTop: y, viewport: vp, threshold });
-    if (fresh || !sameRange(range, next) || range?.windowed !== next.windowed) mount(next);
-    // 3. The rows just mounted, measured; the spacers from the new heights; the position kept.
-    if (reads && measure()) setSpacers();
+    const remounted = fresh || !sameRange(range, next) || range?.windowed !== next.windowed;
+    if (remounted) mount(next);
+    // 3. The rows just mounted, measured - but only when mount() could have changed anything. A
+    // plain scroll within the same range mounts nothing new, so the boxes read here would be
+    // exactly what step 1 just read: a second forced layout (getBoundingClientRect) for no new
+    // information, on every scroll frame. (Profiled: 2.2 s of it in one fling pass.) Earlier this
+    // measure was dropped unconditionally and that broke real remounts under load; gating it on
+    // `remounted` keeps the case that mattered and only skips the case that was pure waste.
+    if (reads && remounted && measure()) changed = true;
+    if (reads && changed) setSpacers();
     if (at != null || !reads) return;
     if (follow) {
       // Stuck to the bottom: stay there through whatever was measured.

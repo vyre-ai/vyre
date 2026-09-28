@@ -92,7 +92,11 @@ test("formatters: duration, tokens, cost, the turn footer", () => {
   assert.equal(cost(1.2), "$1.20");
   assert.equal(cost(0), "");
   assert.deepEqual(turnParts({ duration_ms: 19000, tokens: { input: 18420, output: 912 } }), ["19 s", "19k tokens"]);
-  assert.deepEqual(turnParts({ duration_ms: 19000, tokens: { input: 18420, output: 912 }, cost_usd: 0.05 }), ["19 s", "19k tokens", "$0.050"]);
+  // No $ figure without api-key billing: a subscription runs on the person's plan, never a charge
+  // (the user's rule) - cost_usd with no `auth`, or any auth but api-key, drops the $ figure.
+  assert.deepEqual(turnParts({ duration_ms: 19000, tokens: { input: 18420, output: 912 }, cost_usd: 0.05 }), ["19 s", "19k tokens"]);
+  assert.deepEqual(turnParts({ duration_ms: 19000, tokens: { input: 18420, output: 912 }, cost_usd: 0.05, auth: "subscription" }), ["19 s", "19k tokens"]);
+  assert.deepEqual(turnParts({ duration_ms: 19000, tokens: { input: 18420, output: 912 }, cost_usd: 0.05, auth: "api-key" }), ["19 s", "19k tokens", "$0.050"]);
 });
 
 test("shortPath: inside the session's folder relative, outside whole", () => {
