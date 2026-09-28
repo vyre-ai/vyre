@@ -915,6 +915,18 @@ relative to several other teams' claims (box-deploy 0038, anywhere 0039, e2e-set
 referenced in HANDOFF.md but not in this branch's own copy of the table); flagged for a
 collision check rather than guessed past.
 
+## ADR 0042: revised for the reviewer's 3 HIGHs (28 Sep 2026)
+
+sha 0e40978e. Renumbered from 0041 (collided with work/github). Folded in: HIGH 1 (destination
+bound to a pairing record of this owner, not a whois-resolved tailnet reachability check - Wink
+tags a desktop, whois no longer says owner), HIGH 2 (move.receive.open on the destination mints a
+one-time token; move.start must present it, bound to the source's own pinned identity - nothing
+pushes a move onto a machine that never asked), HIGH 3 (the vault piece splits into item secrets
+that move, trust state that never does and is remade fresh, and grants shown for re-approval on
+the destination). MEDIUM (fresh handshake per move, not the original introduction's) and LOW
+(move.status owner-only, move.free re-checks the destination live before deleting the source)
+folded in too. Sent back to the reviewer; no code yet.
+
 ## docs/design/projects-map.md: not on this branch (team-lead's docs-check report)
 
 Checked: docs/design/projects-map.md does not exist on work/federation. It is sessions' own doc
