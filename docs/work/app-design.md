@@ -293,3 +293,41 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   card.md/chip.md now, not later, since f65d51e5 (03:16) landed before their commit (03:42) and
   their "still draft with no Connections row" comment is already stale. Waiting on their fix +
   final class names to close card.md's native-core Gap line (msg_id 717f7d6c).
+
+## Now (28 Sep, chat/native-core-composer/pwa UI/UX review, as built)
+
+- Lead: review the CURRENT chat experience as built (chat 33b81bd1, native-core-composer d5b0ed18,
+  pwa), not as designed. Merged the three branches locally (review/chat-native-pwa off main
+  4fd286d7, clean octopus merge), ran `deck/test/chat-shots.js` on testbox (desk 1280 + phone 390,
+  world's demo/ask/question/composer/rewind/terminal/plan threads), 20 PNGs, no failures (no
+  sideways scroll, no console errors). Screens: /tmp scratch (not the repo)
+  chat-review-shots/1-demo-desk.png, /6-rewind-desk.png, /6-rewind-phone.png, /8-plan-desk.png
+  among others; sent the lead 3 (see message).
+- Confirmed present and correct: the sight strip (session.js sightEl/.cv-sight, checks
+  sight.targets once, refreshes on sight.stepped, hidden with no target), the project chip
+  (.cv-project, correctly a Tag per chip.md), pictures with the shared lightbox
+  (deck/chat/lightbox.js, single mounted overlay, 4 MB inline cap), no $ anywhere in the transcript
+  (session.js:630's own comment names the reason), the plan card (clean, on-spec), the question
+  card (radio list + live preview, on-spec).
+- 6 ranked fixes sent to chat (msg_id 34099b56) and native-core (msg_id 105df639): (1) rewind
+  sheet has no "Fork from here" though native-core's threads.fork {at} (48de0bd3) shipped with
+  exactly that framing, both teams are holding on each other, worth unblocking now; (2) deck.css's
+  base `.lbl` is still the retired mono/uppercase label style, ~146 call sites, most visible right
+  now in chat's own queued row and todos pin ("QUEUED FOR AFTER", "TODOS 1 of 3"); (3) the phone
+  stacks lease bar + todos pin + queued row + the rewind sheet inline above the composer, and the
+  rewind sheet should be a real overlay (sheet.md), not drawn in the transcript's own flow; (4) the
+  lease bar's "No one is typing" fallback shows on every solo single-device session and reads as
+  chat presence, not a keyboard lease; (5) ask-item.js's Allow once/Deny hints are unstyled text,
+  not the shared key-hint.md `.kbd` chip everything else in the same view uses; (6) the lightbox is
+  aria-modal="true" but explicitly does not trap focus, a real contract mismatch. Tried to reach
+  pwa directly (not an active session right now) for the desktop command-bar copy still not
+  matching spec ("Search threads, files, people" vs "Jump to anything, or ask juno", a pre-existing
+  Gap, still true as built); relayed to the lead instead.
+- Specs written up and committed (5051188a, f427f62d): turn.md gained a Session header item
+  (project chip + sight strip) and a Picture item (the lightbox), plus 6 new Gaps entries; list-row.md
+  gained a Queued row variant and the `.lbl` finding; chip.md cross-links the project chip to its
+  existing `.tag` gap. `npm run docs:check` clean on all three (pre-existing shot/reference
+  staleness elsewhere, none mine).
+
+## Next
+- Follow up once chat/native-core confirm the fork UI and `.lbl` fix land; tick the new Gaps.
