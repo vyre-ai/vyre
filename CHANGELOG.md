@@ -4,6 +4,51 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### memory,projects: reviewer's second-pass HOLD on db2d94fd, three MEDIUMs
+
+- MEDIUM 1: `graph.view`/`scoped` read an empty cwds array as "no scope at all" (the main graph,
+  unlimited), not "scoped to nothing" - so an assistant with zero mapped projects (a fresh
+  install, `r.folders === []`) read every session, unfiled included, through guard()'s own
+  `cwds: r.folders`. New `NOTHING` sentinel (`core/memory/index.js`, a cwds value under
+  `/dev/null` that can only ever match zero sessions and zero projects) stands in for an empty
+  `r.folders` wherever guard() or scopedCwds() would otherwise hand back `[]`.
+- MEDIUM 2: `scopedCwds(sees=true, ...)` returned the caller's own `project_cwds` unchecked
+  whenever it was non-empty, so the assistant's own call to memory.answer/retrieve/ask/suggest
+  could pass "/" (or any real folder outside every mapped project) and read straight past its
+  scope - only the empty-`project_cwds` branch was ever narrowed to `r.folders`. Every
+  caller-supplied folder is now checked against `r.folders` exactly as guard() already checks a
+  named agent's, refusing outright (not silently narrowing) when any of them falls outside.
+- MEDIUM 3: `refuseSensitiveRoot` (`core/projects/projects.js`) missed ancestors: "/Users" (or
+  whatever holds the real home) contains the home directory, and so every credential folder
+  under it, as a subfolder the moment IT becomes a project's own folder; "~/.config" is the
+  parent of gcloud's own creds the same way. Now refuses an ancestor of "/", the home, or any
+  SENSITIVE entry too, not just the folder itself or something inside it. "Library" (Keychains,
+  Mail, Cookies and more) added to SENSITIVE, not just Keychains.
+
+Tests, testbox nice -n 15, load under 5: 354/354 across core/mcp + core/memory + core/projects +
+core/files + hygiene + boundaries.
+
+#### files: reviewer's LOW on c6cda1aa, verified rather than changed
+
+`chunk()`'s inline dev/ino check already threw from inside the same `try`/`finally` that already
+closed the fd for every other refusal chunk() could hit (offset past the end, and so on): the
+`finally { fs.closeSync(fd); }` wrapping the whole body runs on that throw too, no leak. Added a
+test (`fs.fstatSync` faked for chunk()'s own call, since the real race cannot be forced from
+outside a synchronous function with no `await` in it) proving the fd is closed either way, rather
+than changing code that was already correct.
+
+#### mcp: whoFrom()'s agent/thread claim check catches a space boundary and a nameless claim too
+
+- Reviewer's round-2 MEDIUM on 513f984d: the first fix refused only a caller anchored exactly
+  "<kind>:agent:<name>" (its own named regex's shape). "cli agent:kit" (a space, not a colon,
+  before "agent:" - callerKind's own strip already treats the two the same) and "cli:agent:" (a
+  claim with no name after it at all) both still read as kind "cli" with person: true. `whoFrom()`
+  now tests the bare claim itself, unanchored and with no name required, and treats a `thread:`
+  claim the same as an `agent:` one (callerKind's own strip already does; ADR 0030's
+  "mcp:thread:<id>" is not the person's own surface either). LOW, deferred per the reviewer:
+  `PEOPLE` here still includes `"module"`, so any module (third-party included) skips inScope's
+  scope check; narrow to `firstParty` once lib/caller.js is a real dependency on this branch.
+
 #### mcp: whoFrom() no longer reads an agent's own claim as the person too (cohesion's audit)
 
 - `core/mcp/hub.js`'s `whoFrom()` stripped "agent:kit" off a caller like "cli:agent:kit" before

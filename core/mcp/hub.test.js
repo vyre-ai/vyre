@@ -141,6 +141,22 @@ test("whoFrom: an owner-surface-shaped agent claim is never person: true (cohesi
   }
 });
 
+test("whoFrom: the same bypass with a space instead of a colon, or an agent claim with no name after it (reviewer's round-2 MEDIUM on 513f984d)", () => {
+  // "mcp agent:kit" is a real transport shape this file's own callerKind treats identically to
+  // "mcp:agent:kit" (the space-or-colon boundary is deliberate, not this file's own invention:
+  // core/memory/floor.test.js's own test calls both). The first fix's named regex was anchored
+  // to "<kind>:agent:<name>" exactly, so a space before "agent:", or a claim with nothing after
+  // it at all, matched neither the old PEOPLE-strip nor the old named capture: person still came
+  // back true.
+  assert.equal(whoFrom("cli agent:kit").person, false, "a space, not a colon, before agent:");
+  assert.equal(whoFrom("cli agent:kit").agent, "kit");
+  assert.equal(whoFrom("cli:agent:").person, false, "an agent claim with no name after it");
+  assert.equal(whoFrom("cli:agent:").agent, null);
+  // A thread: claim is refused the same way callerKind's own strip already treats it: identically
+  // to an agent: claim, not the person's own surface either.
+  assert.equal(whoFrom("deck:thread:t1").person, false, "a thread: claim is not the person either");
+});
+
 // ---- a hub with a fake connect ----
 
 function fakeHub({ values = {}, behave = {}, ...extra } = {}) {
