@@ -87,7 +87,11 @@ WinUI 3/.NET (C#) is the "most native" option and gets deepest UI Automation acc
 context, at the cost of a second UI codebase with no code-sharing with the rest of Vyre. Screen
 context and computer use are both anchored on Windows UI Automation (UIA), the Windows analogue of
 the accessibility tree `local/hands-mac`/`screen-mac` already use, so the module shape carries over
-even though the API doesn't.
+even though the API doesn't. **Tauri is now confirmed (the lead, 2026-09-28), not just
+recommended; the full build plan (hotkey, tray, toast, Windows Hello, signing/pinning, CI) is
+section 9.** Windows Solo (a Windows PC running everything alone, no Tailscale, per ADR 0039) is
+section 8, ahead of Tier C in build order per the lead's current instruction even though it was
+originally scoped inside Tier B/C above.
 
 **Tier D, computer use, voice, credentials.** Computer use: UIA for observe, `SendInput` for act,
 mirroring `hands-mac`'s observe/find/act/commit/verify loop and its floor (no acting in
@@ -173,3 +177,126 @@ context, computer use), not before.
 - Claude Code and Tailscale Windows support: both ship official Windows clients (Claude Code via
   npm/native installer, Tailscale via its Windows app) at a level that should cover Tier A/B, but
   neither was hand-verified against this repo's specific assumptions in this pass.
+
+## 8. Windows Solo build plan (the lead's 2026-09-28 "Vyre anywhere" call)
+
+ADR 0039 (owner: anywhere, `docs/design/anywhere.md`) makes "solo / server / device" a
+`config.machine` choice with no OS baked into the model: `core/modules/index.js`'s role→bucket
+mapping doesn't know or care what OS is running `"solo"` or `"device"`; only the `local/*`
+modules do. Windows Solo is that seam, filled in for `win32`, not a new role system:
+
+- **One-command install.** `winget install vyre` (or an `.msi`/`.exe` from the release, if winget
+  publishing isn't ready for 0.1.x) runs the same `scripts/postinstall.mjs` path Tier A already
+  proved on Windows, then offers "run this PC as Solo" the same way onboarding's "make this the server" path does on the Mac.
+  No WSL2, no Docker: Solo is native Windows Node running `vyred` directly (Tier A/B's
+  distinction, "native Windows Node vs. WSL2," is about being a **server for other devices**;
+  a Solo box with nobody else attaching to it has no need for Docker Compose or the eight
+  box-only modules at all, so it skips that cost entirely).
+- **anywhere.md's server-setup flow, a Windows twin**, mirroring the Mac section 1:1, same three
+  steps, different OS primitive:
+  1. Sets `config.machine` (asks Solo-vs-Server the same way onboarding does).
+  2. Installs a **Windows Service** (via `node-windows` or a small `sc.exe`/NSSM-style wrapper,
+     needs a spike, not assumed) instead of a LaunchAgent: `RunAtLoad`→service `START_AUTOMATIC`,
+     `KeepAlive`→service recovery actions (`sc failure` restart-on-crash, not on a clean `vyre
+     stop`). Logs still go to `core/config`'s existing `~/.vyre/logs/` (Windows equivalent of
+     `~`: `%USERPROFILE%`).
+  3. Keep-awake via `SetThreadExecutionState(ES_SYSTEM_REQUIRED | ES_CONTINUOUS)` held while
+     vyred is the server, blocking idle system sleep only, display sleep untouched: same
+     boundary as the Mac's `caffeinate -s`.
+  4. A Startup-folder shortcut or a Task Scheduler "run at logon" entry stands in for the login
+     item, offered not forced, with the same BitLocker-requires-unlock-first caveat FileVault
+     gets on the Mac.
+  5. `--undo` removes the service and the logon entry; `config.machine` is the move flow's to
+     change, same division as the Mac.
+- **Deck in the browser** is Tier A already: `vyre up` opens `http://localhost:<port>` (or the
+  paired device flow once a second device exists); Solo needs nothing new here beyond what Tier A
+  verification already covers.
+- **Owner split, per the lead:** windows builds the service/keep-awake/install-script pieces
+  above (this section); anywhere owns ADR 0039 and the role system itself; federation owns the
+  move-to-server engine (unchanged by Windows: a Windows Solo box moving to a Linux/Mac server,
+  or vice versa, goes through the same copy-then-flip flow, cross-platform by construction since
+  it moves files, a re-indexed store and re-encrypted vault entries, not OS-specific state).
+- **Open**: `node-windows` (or equivalent) needs a spike on `windows-latest` CI before committing
+  to it in an ADR update, same "prove it in CI, not on hardware we don't have" discipline as the
+  socket ACL work in section 7.
+
+## 9. Tier C build plan (the Windows Capsule)
+
+Per the lead's 2026-09-28 instruction: build a thin native shell, not a second UI codebase. The
+Mac Capsule's content model (rows, tools, events, tokens) is reused as-is; only the shell differs.
+app-design's spec is `docs/design/system/components/capsule-windows.md` (sha `d044f0e1` on
+`work/app-design`): Mica on the panel (Acrylic only on the transient tray menu), Segoe UI
+Variable/Segoe UI ahead of Helvetica Neue in the font fallback, DWM rounded corners, a tray icon
++ native-feeling context menu, Windows Toast for Needs-you items when the panel is closed,
+"Windows Hello" copy (never "fingerprint"/"Touch ID"), high-contrast and transparency-off
+fallbacks to solid tokens. That spec is the source of truth for anatomy/states/copy; this section
+is only the build plan.
+
+**Shell: Tauri (Rust + WebView2)**, per windows-plan.md section 2's original recommendation,
+confirmed by the lead over WinUI 3/C#: it hosts Deck's existing web views (`deck/views/{ask,find,
+now,needs}.js` + chat) unmodified inside the panel, so the Capsule's content is the same build as
+every other surface, not a reimplementation. Fall back to a small C# + WebView2 app only if a
+concrete Tauri gap shows up (a specific WinRT API Tauri's plugin ecosystem doesn't reach), not a
+default; switching shells mid-build is expensive, so this is a one-time call to make early, not
+revisit per-feature.
+
+**Native bits, each a thin Rust binding, no business logic on the native side** (the pattern is
+"native calls a Vyre tool over the socket, same as the Deck's fetch does": the Capsule's brain
+stays server-side, in `core/`/`local/capsule-win`, never duplicated into Rust):
+- **Global hotkey**: `tauri-plugin-global-shortcut`, default **Alt+Space** (the lead's call,
+  2026-09-28: `RegisterHotKey` wins over the system menu when nothing else holds the key, and
+  matches PowerToys Run/Raycast-for-Windows convention). While the Capsule panel itself has
+  focus, the app's own keydown handler intercepts Alt+Space and closes the panel *before* it can
+  reach Windows' system-menu handling, so the system menu never opens on a borderless window that
+  has none to show. If `RegisterHotKey` fails (another app already holds Alt+Space),
+  Ctrl+Alt+Space is the fallback and the person is told once (a toast, not a silent swap).
+  Configurable in Settings either way. **Needs a hands-on check on real Windows** (app-design's
+  and the lead's shared flag): windows owns verifying the focused-panel case specifically, most
+  reliably via a `capsule-win.yml` CI job that opens the panel and asserts which handler wins,
+  falling back to a manual pass on the first Windows VM available if CI can't drive real OS
+  keyboard focus.
+- **Tray icon + menu**: Tauri's tray API, Acrylic backdrop on the menu only (per app-design's
+  Mica/Acrylic split), items exactly as specced (Open Capsule, "Needs you" count, Settings, Quit
+  Vyre).
+- **Toast notifications**: `tauri-plugin-notification` (wraps Action Center), same words as the
+  Needs row, inline actions where the platform allows.
+- **Windows Hello for presence**: stands in for Touch ID's role in the confirm-send floor
+  (DIRECTION.md principle 6, only sends/posts/payments/deletes ask for it). Candidate API:
+  `Windows.Security.Credentials.UI.UserConsentVerifier` via a small WinRT binding (Rust's
+  `windows-rs` crate, callable from Tauri), needs a spike to confirm quality/availability parity
+  with the Mac's `keychain.swift`/`touchid` helper before committing; this is windows-plan.md
+  section 7's existing open question, not new.
+- **Screen context via UI Automation**: explicitly *later* per the lead's message (listed for
+  sequencing, not this pass): mirrors `local/screen-mac`'s shape once started, Tier D territory.
+- **Proof to vyred**: the same model as the Mac's cdhash pin (e2e's `work/e2e-setsid`), an
+  Authenticode signature check plus a hash pinned at install time, so vyred only accepts calls
+  from the exact signed binary a person installed, not "anything claiming to be the Capsule."
+  windows implements the Windows-side pin; the pinning *mechanism* (where the hash is stored, how
+  it's verified on each call) should reuse `core/link/se`'s or e2e's existing pin-storage shape
+  rather than inventing a second one; needs a short sync with e2e before landing, flagged under
+  Needs from others.
+
+**Module shape**: ships as `local/capsule-win`, same manifest contract as `local/hands-mac`
+(`module.json`, `does.tools`, `watches.emits`, no cross-feature imports, `test/boundaries.test.js`
+enforced), no fork of `core`, per section 4 above.
+
+**CI, no Windows hardware**: a `capsule-win.yml` workflow on `windows-latest`, same shape as
+`capsule-mac.yml`: build the Tauri shell (`cargo tauri build` or `build.rs`-driven, TBD once the
+project scaffold exists), run its Rust unit tests, and as much of the hotkey/tray/toast surface as
+CI can actually drive headlessly (likely: unit-test the hotkey-conflict handler and the
+Authenticode-pin check in isolation; a real focused-window Alt+Space race may not be CI-drivable
+at all, in which case that specific case is flagged "unverified without hardware" rather than
+silently assumed to pass, same discipline as section 7).
+
+**Sequencing**: doc (this section) → agree the look with app-design (done, `d044f0e1`) → agree
+the tools/events contract with capsule-pro (below, in progress) → scaffold `local/capsule-win` +
+`capsule-win.yml` → wire hotkey/tray/toast → Windows Hello spike → sign/pin. Each milestone
+reported to the lead as it lands, per instruction.
+
+**Needs from others**:
+- capsule-pro: confirm the Windows Capsule calls the *same* tools/events the Mac Capsule does
+  (no new server-side surface for Windows specifically) before windows starts wiring the Rust
+  side to them.
+- e2e: the pin-storage shape from `work/e2e-setsid`'s cdhash work, to reuse rather than duplicate
+  for the Authenticode pin.
+- A Windows VM, once CI's headless coverage runs out (the Alt+Space focused-panel case, primarily).
