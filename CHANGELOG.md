@@ -4,6 +4,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### "Wink": Tailscale off by default everywhere; phone-connected celebration, rename, next-step
+
+- User decisions (28 Sep): Tailscale is off by default everywhere; the relay (a pairing code, or
+  "Wink" scan-to-connect) is primary, Tailscale moves under an "Advanced setup" disclosure both
+  in onboarding's device-join screen and (not yet touched) Settings.
+- `live()`'s "I already have a Vyre server" screen: once relay is allowed, "Pair with a code" is
+  the default/primary radio and "Same Tailscale network" sits inside a reused `.ob-collapse`
+  `<details>` ("Advanced setup") — same component the tailnet-policy and own-domain disclosures
+  already use. Before relay is allowed, Tailscale still shows plainly (the only real path today;
+  never hidden with nothing to fall back to). `state.deviceVia` now defaults to "relay".
+- `devices` step's phone-code card renamed "Wink" ("Wink to connect"); on the real, shipped
+  `device.paired` event (core/relay/index.js) it swaps the ring for "Your phone is connected."
+  with an inline, renameable device name (`relay.devices.rename`, already shipped) and two
+  buttons: "Next step" (`s.next`) and "Connect another device" (mints a fresh ticket, same ring).
+  Reuses the existing step-checklist celebration (`onboard.css`'s `.pop`/`obPop`) rather than
+  inventing a second animation — app-design's actual avatar "dance" doesn't exist yet (asked;
+  nothing to vendor for it today).
+- Not built this round: the same Wink/code-primary restructuring in Settings' Server panel
+  (asked hasn't touched it), and a "scan with an already-paired phone to authorize a new
+  computer" variant of the device-join screen (a different, unspecified ticket flow from "Add
+  your phone"'s — flagged as its own follow-up, not assumed).
+
 #### "Add your phone": the Vyre code ring, shimmer/countdown/expiry, in onboarding's devices step
 
 - `deck/vendor/vyrecode/` (rs.js, payload.js, identity.js, vyrecode2.js): app-design's ADR 0033

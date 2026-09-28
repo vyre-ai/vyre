@@ -70,7 +70,7 @@ don't fit this pass without their own picker UI, left for a follow-up rather tha
 | README hero image | launch (file), docs (README text) | doing |
 | install.sh terminal output | launch | doing |
 | Onboard loopback pages | launch (look/copy), sessions (logic) | doing |
-| Add your phone (onboarding + Settings > Devices) | launch (placement/gate), app-design (ring), tailnet (ticket), pwa (phone side) | doing |
+| Wink (was "Add your phone"; onboarding + Settings > Devices) | launch (placement/gate/rework), app-design (ring), tailnet (ticket), pwa (phone side) | doing |
 | `vyre` no args, `vyre --version` banner | polish-cli | asked |
 | `vyre up` ending | polish-cli | asked |
 | Release notes header | docs | spec to hand over |
@@ -296,6 +296,20 @@ Filled in as each lands.
   same real-daemon limitation as the relay-radio test above (no `can` field from a real
   onboard.status today). Settings > Devices integration and the real ticket wiring wait on
   tailnet/pwa's answers (see Needed from others).
+- Renamed the feature "Wink" per the lead (28 Sep) and reworked it against three more binding
+  user decisions delivered the same day: Tailscale off by default everywhere (relay primary,
+  Tailscale under "Advanced setup," reused `.ob-collapse`, both in `live()`'s device-join screen
+  and — not yet — Settings); the computer reacts live (no refresh) to `device.paired` (real,
+  shipped, core/relay/index.js) with the shipped step-checklist celebration, an inline device
+  rename (`relay.devices.rename`, real), and "Next step"/"Connect another device"; every device
+  gets the name `device.paired` already carries (pwa's job to send a good default, not built
+  here). Confirmed with tailnet's proposed `relay.pair.ticket` shape (28 Sep, pending their
+  reviewer's sign-off) that Touch ID gates the ticket's mint, not the phone's scan — so there is
+  no separate "Pair <phone>? confirm" screen to build; the ring alone is the offer.
+  `test/onboard-page.test.js` (4/4) and `deck/js/*.test.js` (26/26 combined) re-run clean on
+  testbox; the `relay.allowed === true` branch (Advanced disclosure, Wink primary) still has no
+  live-browser test, the same real-`onboard.status`-has-no-`can`-field limit as everywhere else
+  in this doc — verified by code review only.
 
 ## Doing
 

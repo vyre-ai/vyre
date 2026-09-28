@@ -68,7 +68,9 @@ const state = {
   serverNode: "",
   /** Which of Device's two real join mechanisms is selected: same Tailscale network (no code,
    * onboard.join{verify}) or pair with a code (one call, relay.join). */
-  /** @type {"tailscale"|"relay"} */ deviceVia: "tailscale",
+  // Default "relay" (the user, 28 Sep: Tailscale off by default everywhere, under Advanced
+  // only); the live() screen falls back to "tailscale" itself while relay isn't allowed yet.
+  /** @type {"tailscale"|"relay"} */ deviceVia: "relay",
 };
 /** Timers and listeners of the current screen, cleared when the screen changes. */
 let cleanup = [];
@@ -407,7 +409,12 @@ const SCREENS = {
     // anywhere yet, so this reads false today on every machine — the option stays hidden until
     // it lands, not a guess at what platform this is.
     const relay = canRelayJoin(state.status);
-    let via = state.deviceVia === "relay" && !relay.allowed ? "tailscale" : state.deviceVia;
+    // Tailscale off by default everywhere (the user, 28 Sep): "Pair with a code" is the default
+    // (state.deviceVia's own default, below) once relay is allowed; Tailscale moves under
+    // "Advanced setup" and is reached only by opening it. Before relay is allowed, Tailscale is
+    // still the only path that actually works, so it's shown plainly, not hidden behind a toggle
+    // with nothing on the other side of it.
+    let via = !relay.allowed ? "tailscale" : state.deviceVia;
     const nodeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "server-node", placeholder: "kit", autocomplete: "off",
       value: state.serverNode, oninput: () => { state.serverNode = nodeIn.value; } }));
     const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "pair-code", placeholder: "Paste the code your server showed", autocomplete: "off" }));
@@ -467,10 +474,12 @@ const SCREENS = {
       opt("device", "I already have a Vyre server",
         relay.allowed
           ? h("div", { class: "choice", role: "radiogroup", "aria-label": "How to join it" },
-              viaOpt("tailscale", "Same Tailscale network",
-                h("div", { class: "field" }, h("label", { for: "server-node" }, "Your server's tailnet name"), nodeIn)),
               viaOpt("relay", "Pair with a code",
-                h("div", { class: "field" }, h("label", { for: "pair-code" }, "Pairing code"), codeIn)))
+                h("div", { class: "field" }, h("label", { for: "pair-code" }, "Pairing code"), codeIn)),
+              h("details", { class: "ob-collapse" },
+                h("summary", null, "Advanced setup"),
+                viaOpt("tailscale", "Same Tailscale network",
+                  h("div", { class: "field" }, h("label", { for: "server-node" }, "Your server's tailnet name"), nodeIn))))
           : [
               h("div", { class: "field" }, h("label", { for: "server-node" }, "Your server's tailnet name"), nodeIn),
               relay.reason ? h("p", { class: "small muted" }, relay.reason) : null,
@@ -1222,12 +1231,16 @@ const SCREENS = {
     };
     drawNet();
 
-    // "Add your phone" (the user's decision, 28 Sep, ADR 0033): a live Vyre code ring, scanned
-    // by phone.vyre.run instead of the Tailscale-QR path above. Same gate as "Pair with a code"
-    // (deck/js/join-caps.js) — hidden on a Mac until vyre-core. No relay.pair.ticket tool exists
-    // yet (asked tailnet, see docs/work/launch-surfaces.md "Add your phone"), so this mints a
-    // placeholder ticket id client-side purely to prove the ring/shimmer/countdown/refresh
-    // mechanics; swap `mint()` for the real call the moment it lands, nothing else here changes.
+    // "Wink" (the user's decision, 28 Sep, ADR 0033): a live Vyre code ring the person's phone
+    // scans to connect, instead of the Tailscale-QR path above (superseded by it once relay is
+    // allowed; Tailscale-first is retired everywhere per the user's later "Tailscale off by
+    // default" decision — this card is now the primary phone path, not an alternative to it).
+    // Same gate as "Pair with a code" (deck/js/join-caps.js) — hidden on a Mac until vyre-core.
+    // No relay.pair.ticket tool exists yet: tailnet's proposed shape (28 Sep, pending reviewer
+    // sign-off) mints Touch ID at the mint, not the scan, so there is no separate "Pair <phone>?"
+    // confirm screen here — the ring alone is the offer, and `device.paired` (core/relay/index.js,
+    // real and shipped today) is the only signal this waits for. Mints a placeholder ticket id
+    // client-side until the real call lands; swap `mint()`, nothing else here changes.
     const relay = canRelayJoin(state.status);
     let phoneCodeCard = null;
     if (relay.allowed) {
@@ -1237,6 +1250,8 @@ const SCREENS = {
       const mint = () => { mintedAt = Date.now(); ticketId = `placeholder-ticket-${mintedAt}`; };
       const ringEl = h("div", { class: "phone-code-ring", "aria-live": "polite" }, h("span", { class: "busy" }));
       const meta = h("div", { class: "phone-code-meta" });
+      const body = h("div", { class: "phone-code-body" }, ringEl,
+        h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta);
       const refreshBtn = h("button", { class: "btn", type: "button" }, "Refresh");
       refreshBtn.addEventListener("click", () => { mint(); drawRing(); tick(); });
       const drawRing = async () => {
@@ -1255,15 +1270,43 @@ const SCREENS = {
           ? [h("p", { class: "small muted" }, "This code expired."), refreshBtn]
           : h("p", { class: "small muted" }, `Expires in ${countdown(msLeft)}`));
       };
+      // The computer knows the instant a phone connects (device.paired, no refresh, per the
+      // user): swap the ring for a connected state with the same celebration pop the step
+      // checklist uses (onboard.css's .pop/obPop) — app-design's actual "little dance" for the
+      // avatar itself doesn't exist yet (asked; nothing to vendor for it today), so this reuses
+      // the one shipped celebration rather than inventing a second animation language.
+      const showConnected = (/** @type {string} */ deviceId, /** @type {string} */ initialName) => {
+        const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", value: initialName, "aria-label": "Device name" }));
+        let saved = initialName;
+        const save = async () => {
+          const v = nameIn.value.trim();
+          if (!v || v === saved) return;
+          const r = await attempt("relay.devices.rename", { id: deviceId, name: v });
+          if (!r.error) saved = v;
+        };
+        nameIn.addEventListener("blur", save);
+        nameIn.addEventListener("keydown", e => { if (e.key === "Enter") nameIn.blur(); });
+        const nextBtn = h("button", { class: "btn btn-primary", type: "button", onclick: s.next }, "Next step");
+        const anotherBtn = h("button", { class: "btn", type: "button", onclick: () => { mint(); drawRing(); tick(); put(body, ringConnectedReset()); } }, "Connect another device");
+        // A fresh card for the next ticket, once "Connect another device" is chosen: same body
+        // shape as the initial ring, so a second phone goes through the identical experience.
+        function ringConnectedReset() { return [ringEl, h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta]; }
+        put(body,
+          h("div", { class: "phone-code-connected pop", role: "status" },
+            icon("check", 20),
+            h("div", null,
+              h("p", { class: "h3", style: { margin: "0 0 4px" } }, "Your phone is connected."),
+              h("div", { class: "field" }, nameIn))),
+          h("div", { class: "phone-code-actions" }, nextBtn, anotherBtn));
+      };
+      cleanup.push(on("device.paired", e => showConnected(e.payload?.id, e.payload?.name || "A device")));
       drawRing();
       tick();
       every(tick, 1000);
       phoneCodeCard = h("section", { class: "dev-card", "aria-labelledby": "dev-phone-code-h" },
-        h("div", { class: "lbl" }, "Add your phone"),
-        h("h2", { class: "h3", id: "dev-phone-code-h" }, "Scan with phone.vyre.run"),
-        ringEl,
-        h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and scan this."),
-        meta);
+        h("div", { class: "lbl" }, "Wink"),
+        h("h2", { class: "h3", id: "dev-phone-code-h" }, "Wink to connect"),
+        body);
     }
     col.append(h("div", { class: "ob-panel" }, h("div", { class: "dev-grid" }, macCard, phoneCard, phoneCodeCard)));
 
