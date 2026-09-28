@@ -357,7 +357,17 @@ a still) is the fastest way to hand it back — reply with what step, and what h
   so a wait scheduled before the box comes back doesn't have to run out its full step. New
   core/resilience/stream.test.js (3 tests, synthetic transport). Noted in resilience's
   docs/work/resilience.md for their return. Next: push, ask native-core to rerun budget 8 on the
-  new sha, send the numbers to reviewer-2.
+  new sha, send the numbers to reviewer-2. Budget 8 closed (native-core: 55-90 ms), reviewer-2
+  signed off be3f5554, told the lead.
+- Wrote up the real-iPhone keyboard check for the user ("The keyboard check" section above),
+  6e80bcdd.
+- SW version skew ("a release lands on the second launch"): checked, and it was already done
+  (c281be82 + d310169b, well before this restart) — core/daemon/build.js stamps sw.js and
+  app-sw.js with the running build's commit at serve time, both workers skipWaiting()+
+  clients.claim(), and deck/js/app.js's controllerchange listener reloads at once if nobody has
+  touched the page yet, or defers to the next time it is hidden otherwise, so a release never
+  mixes old and new modules under someone's finger. core/daemon/build.test.js (3 tests) still
+  green. Removed the stale Next bullet; nothing to build here.
 
 ## Next
 - The push subscription when /app/ becomes /: a subscription belongs to the service worker
@@ -370,7 +380,6 @@ a still) is the fastest way to hand it back — reply with what step, and what h
   core/push to drop that endpoint, so one phone never rings twice. /app/* becomes a 301 to the same
   path under / for a release, so an installed /app/ home-screen icon still opens. Nothing is
   re-subscribed and the person is not asked for permission again.
-- SW version skew: a release lands on the second launch; register sw.js with the build commit.
 - Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
 - Step 6 Mac card: "Already on your tailnet" for an online Mac node.
 - theme.colors: match docs' final shape.
