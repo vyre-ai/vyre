@@ -175,6 +175,14 @@ step). Never a model.
 
 ### 4a. Linking an EXISTING project to a repo
 
+**Status, 28 Sep 2026: `github.project.link` and `github.project.unlink`, and the single
+`github_projects` row they write to, are ON HOLD.** The user is reconsidering the project/repo
+model itself: a project may end up owning several repos or none, one per workspace, rather than
+one project having one linked repo. Both tools are built and tested (below) but paused, not sent
+for review and not folded, until that's decided. `github.project.detect` (4b) is NOT part of the
+hold, it is read-only, per-workspace, and needed whichever way the model lands, so it shipped
+ahead of the decision.
+
 `github.project` covers "start a project from a repo". The other direction, a project the person
 already has, its folder already cloned by hand or made before Vyre existed, needs its own tool:
 `github.project.link {project, repo, account?, confirm?}`, people only (`callers: PEOPLE`), never
@@ -216,16 +224,26 @@ and nothing else. No git call at all, on purpose, since "I don't want Vyre to th
 is linked anymore" is a different question from "remove the remote from my folder", and the
 second one is not this tool's job.
 
-`github.project.detect {project}` answers a narrower question for a surface, not a person typing
-a repo in by hand: does this project's folder already look like a GitHub repo, and can one of the
-connected accounts reach it. Read-only (`readOrigin` plus, only when the origin parses as a
-github.com URL, one `getRepo` per connected account until one can see it), so it costs nothing to
-call speculatively when a project opens. `callers`: people plus `module:launch` (onboarding can
-offer "Link to owner/repo?" the moment a project is opened, without the person typing anything).
-Returns `{ linked, isRepo, origin, full_name, match }`, `match` is `{ account, full_name,
-default_branch }` for the first connected account that can reach it, or `null` when the origin
-isn't GitHub, or is a repo none of the connected accounts can see (someone else's fork, an
-account not yet connected).
+### 4b. Detecting a project's repos, per workspace
+
+`github.project.detect {project}` answers a narrower question than link/unlink, and doesn't
+depend on their fate: for EVERY folder a project owns (its home plus every workspace it was
+given, `projects.list`'s own `home`/`workspaces`, deduplicated), is it a git repo, what remotes
+does it have, and for any remote that's a GitHub URL, does one of the connected accounts reach
+it. Entirely read-only and local for the git side (`folderGitState`/`listRemotes`, `core/github/
+git.js`, no network git call, no token used for git at all), plus at most one `getRepo` REST call
+per distinct repo found across every remote in every workspace (cached by `full_name`, so the
+same repo behind two remotes, or the same repo in two workspaces, is only ever checked once). It
+costs nothing to call speculatively the moment a project opens.
+
+`callers`: people plus `module:launch` (onboarding, or a project view, can offer "Link to
+owner/repo?" per workspace without the person typing anything). Returns `{ project, workspaces:
+[{ folder, isRepo, remotes: [{ name, url, full_name, match }] }] }`. `remotes` is `[]` for a
+folder that isn't a git repo at all. `full_name` is `owner/name` when a remote's URL parses as
+github.com (`originFullName`, same helper `.link` uses), `null` for anything else (a `gitlab.com`
+remote, say). `match` is `{ account, full_name, default_branch }` for the first connected account
+that can reach that repo, or `null` when the remote isn't GitHub, or is a repo none of the
+connected accounts can see (someone else's fork, an account not yet connected).
 
 ### 5. A worktree and branch per session
 

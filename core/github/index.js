@@ -7,7 +7,7 @@
 
 import { connector, revoke } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
-import { cloneRepo, worktreeAdd, worktreeRemove, readOrigin, originFullName, remoteUrl, remoteAdd } from "./git.js";
+import { cloneRepo, worktreeAdd, worktreeRemove, readOrigin, originFullName, remoteUrl, remoteAdd, folderGitState } from "./git.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -161,11 +161,37 @@ export default {
     async function homeOf(project) {
       const known = projects.get(project);
       if (known) return known.home;
+      const p = await projectRow(project);
+      return p ? p.home : null;
+    }
+
+    /** Every folder a project owns (home plus every workspace), deduplicated, or null when there is no such project. */
+    async function projectFolders(project) {
+      const p = await projectRow(project);
+      if (!p) return null;
+      return [...new Set([p.home, ...(p.workspaces || [])])];
+    }
+
+    /** The `projects` module's own row for a slug or name, asked through its contract, never its table. */
+    async function projectRow(project) {
       const r = await ctx.call("projects.list", {});
       if (r.error) throw fail(r.error.message, r.error.code || "failed");
       const rows = (r.data && r.data.projects) || [];
-      const p = rows.find(x => x.slug === project || x.name === project);
-      return p ? p.home : null;
+      return rows.find(x => x.slug === project || x.name === project) || null;
+    }
+
+    /** The GitHub account that can reach `full_name`, or null - checked once per full_name, first match wins. */
+    async function accountFor(full_name, cache) {
+      if (cache.has(full_name)) return cache.get(full_name);
+      let match = null;
+      for (const acct of accounts.all()) {
+        let token;
+        try { token = await ctx.vault.fetch(acct.item, { field: "token" }); } catch { continue; }
+        const info = await getRepo(token, full_name).catch(() => null);
+        if (info) { match = { account: acct.name, full_name: info.full_name, default_branch: info.default_branch }; break; }
+      }
+      cache.set(full_name, match);
+      return match;
     }
 
     ctx.tool("github.project.of", {
@@ -203,27 +229,27 @@ export default {
     });
 
     ctx.tool("github.project.detect", {
-      description: "Whether an EXISTING project's folder already has a GitHub origin, and whether it matches a repo one of the connected accounts can reach - so a surface can offer \"Link to owner/repo?\" in one tap. Reads only; changes nothing.",
+      description: "Per workspace: for each folder a project owns (its home plus every workspace it was given), whether it's a git repo, its remotes, and for any remote that's a GitHub URL, owner/repo plus whether one of the connected accounts can reach it. Read-only: local-only git reads (no network git call, no token used for git), plus one GitHub REST call per distinct repo found across every remote, cached so the same repo is never checked twice. Changes nothing, needed whichever way the project/repo model lands.",
       input: obj({ project: str }, ["project"]),
       callers: PEOPLE_AND_MODULES,
       run: async ({ project }, meta = {}) => {
         checkModuleCaller("github.project.detect", meta, MODULE_CALLERS["github.project.detect"]);
-        const linked = projects.get(project);
-        const home = linked ? linked.home : await homeOf(project);
-        if (!home) throw fail(`no project named ${project}`, "not_found");
-        const state = await readOrigin(home);
-        if (!state.isRepo) return { linked: Boolean(linked), isRepo: false, origin: null, full_name: null, match: null };
-        if (!state.origin) return { linked: Boolean(linked), isRepo: true, origin: null, full_name: null, match: null };
-        const full_name = originFullName(state.origin);
-        if (!full_name) return { linked: Boolean(linked), isRepo: true, origin: state.origin, full_name: null, match: null };
-        for (const acct of accounts.all()) {
-          let token;
-          try { token = await ctx.vault.fetch(acct.item, { field: "token" }); } catch { continue; }
-          const info = await getRepo(token, full_name).catch(() => null);
-          if (info) return { linked: Boolean(linked), isRepo: true, origin: state.origin, full_name,
-            match: { account: acct.name, full_name: info.full_name, default_branch: info.default_branch } };
+        const folders = await projectFolders(project);
+        if (!folders) throw fail(`no project named ${project}`, "not_found");
+        const cache = new Map();
+        const workspaces = [];
+        for (const folder of folders) {
+          const state = await folderGitState(folder);
+          if (!state.isRepo) { workspaces.push({ folder, isRepo: false, remotes: [] }); continue; }
+          const remotes = [];
+          for (const r of state.remotes) {
+            const full_name = originFullName(r.url);
+            const match = full_name ? await accountFor(full_name, cache) : null;
+            remotes.push({ name: r.name, url: r.url, full_name, match });
+          }
+          workspaces.push({ folder, isRepo: true, remotes });
         }
-        return { linked: Boolean(linked), isRepo: true, origin: state.origin, full_name, match: null };
+        return { project, workspaces };
       },
     });
 

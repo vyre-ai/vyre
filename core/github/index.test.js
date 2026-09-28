@@ -122,25 +122,48 @@ test("github.repos: pages without q using GitHub's own paging, and paginates in-
   assert.equal(denied.error.code, "denied");
 });
 
-test("github.project.detect: no folder is isRepo:false; a matching origin finds the account; a foreign origin finds nothing", async t => {
-  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home: makeRepo(t) }] });
+test("github.project.detect: per workspace - a bare folder, a folder with no matching account, and a folder whose remote matches one", async t => {
+  const home1 = makeRepo(t);
+  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home: home1 }] });
   seedAccount(w.db);
   withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal" }] }));
 
   const bare = await w.as("cli")("github.project.detect", { project: "harlow" });
-  assert.deepEqual(bare.data, { linked: false, isRepo: true, origin: null, full_name: null, match: null });
+  assert.deepEqual(bare.data, { project: "harlow", workspaces: [{ folder: home1, isRepo: true, remotes: [] }] });
 
-  const matched = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home: makeRepo(t, "https://github.com/alex/harlow-legal.git") }] });
+  const home2 = makeRepo(t, "https://github.com/alex/harlow-legal.git");
+  const matched = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home: home2 }] });
   seedAccount(matched.db);
-  withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal" }] }));
+  withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal", default_branch: "main" }] }));
   const found = await matched.as("cli")("github.project.detect", { project: "harlow" });
-  assert.deepEqual(found.data, { linked: false, isRepo: true, origin: "https://github.com/alex/harlow-legal.git", full_name: "alex/harlow-legal", match: { account: "home", full_name: "alex/harlow-legal", default_branch: "main" } });
+  assert.deepEqual(found.data, { project: "harlow", workspaces: [{ folder: home2, isRepo: true,
+    remotes: [{ name: "origin", url: "https://github.com/alex/harlow-legal.git", full_name: "alex/harlow-legal",
+      match: { account: "home", full_name: "alex/harlow-legal", default_branch: "main" } }] }] });
 
-  const foreign = await world(t, { projectsRows: [{ slug: "other", name: "Other", home: makeRepo(t, "https://gitlab.com/alex/somewhere.git") }] });
+  const home3 = makeRepo(t, "https://gitlab.com/alex/somewhere.git");
+  const foreign = await world(t, { projectsRows: [{ slug: "other", name: "Other", home: home3 }] });
   seedAccount(foreign.db);
   withFetch(t, fakeFetch({ repos: [] }));
   const noMatch = await foreign.as("cli")("github.project.detect", { project: "other" });
-  assert.deepEqual(noMatch.data, { linked: false, isRepo: true, origin: "https://gitlab.com/alex/somewhere.git", full_name: null, match: null });
+  assert.deepEqual(noMatch.data, { project: "other", workspaces: [{ folder: home3, isRepo: true,
+    remotes: [{ name: "origin", url: "https://gitlab.com/alex/somewhere.git", full_name: null, match: null }] }] });
+});
+
+test("github.project.detect: covers every workspace a project owns, not just its home, and a folder that isn't a git repo says so", async t => {
+  const home = makeRepo(t, "https://github.com/alex/harlow-legal.git");
+  const workspace = makeRepo(t, "https://github.com/alex/harlow-docs.git");
+  const plain = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-idx-plain-"));
+  t.after(() => fs.rmSync(plain, { recursive: true, force: true }));
+  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home, workspaces: [workspace, plain] }] });
+  seedAccount(w.db);
+  withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal", default_branch: "main" }, { full_name: "alex/harlow-docs", default_branch: "main" }] }));
+
+  const r = await w.as("cli")("github.project.detect", { project: "harlow" });
+  assert.equal(r.data.workspaces.length, 3);
+  assert.deepEqual(r.data.workspaces.map(x => [x.folder, x.isRepo]), [[home, true], [workspace, true], [plain, false]]);
+  assert.equal(r.data.workspaces[0].remotes[0].match.full_name, "alex/harlow-legal");
+  assert.equal(r.data.workspaces[1].remotes[0].match.full_name, "alex/harlow-docs");
+  assert.deepEqual(r.data.workspaces[2].remotes, []);
 });
 
 test("github.project.link: an already-matching origin is just recorded, no confirm needed and nothing on disk changes", async t => {

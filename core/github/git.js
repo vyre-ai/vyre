@@ -91,6 +91,31 @@ export async function remoteUrl(dir, name) {
   return r.ok ? r.stdout.trim() : null;
 }
 
+/** Every remote in `dir`: `[{ name, url }]`, in git's own listing order. Local-only, no network. */
+export async function listRemotes(dir) {
+  const names = await gitAsync(dir, ["remote"]);
+  if (!names.ok) return [];
+  const out = [];
+  for (const name of names.stdout.split("\n").map(s => s.trim()).filter(Boolean)) {
+    const url = await remoteUrl(dir, name);
+    if (url) out.push({ name, url });
+  }
+  return out;
+}
+
+/**
+ * Whether `dir` is a git repository at all, and every remote it has (`[]` when it isn't a repo,
+ * or is one with none). Local-only, no network, no token: this is what `github.project.detect`
+ * reads per workspace, so a folder never needs to belong to `github_projects` for the person to
+ * see what's already there.
+ * @param {string} dir
+ */
+export async function folderGitState(dir) {
+  const top = await gitAsync(dir, ["rev-parse", "--is-inside-work-tree"]);
+  if (!top.ok || top.stdout.trim() !== "true") return { isRepo: false, remotes: [] };
+  return { isRepo: true, remotes: await listRemotes(dir) };
+}
+
 /**
  * Add a new remote. Never overwrites: `git remote add` refuses on its own when a remote by that
  * name already exists, which is the actual protection `github.project.link`'s confirm step

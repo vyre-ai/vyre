@@ -18,7 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { gitSync } from "../../lib/git-safe.js";
-import { cloneRepo, worktreeAdd, worktreeRemove, freeFolder, safeSegment, originFullName, readOrigin, remoteUrl, remoteAdd } from "./git.js";
+import { cloneRepo, worktreeAdd, worktreeRemove, freeFolder, safeSegment, originFullName, readOrigin, remoteUrl, remoteAdd, listRemotes, folderGitState } from "./git.js";
 
 const plainGit = (dir, args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull } });
 
@@ -216,4 +216,32 @@ test("remoteAdd/remoteUrl: adds a new remote and reads it back; never overwrites
   // original URL survives untouched - the actual protection github.project.link relies on.
   await assert.rejects(remoteAdd(repoDir, "github", "https://github.com/someone-else/other.git"), /remote add failed/);
   assert.equal(await remoteUrl(repoDir, "github"), "https://github.com/alex/harlow-legal.git");
+});
+
+test("listRemotes: every remote in the repo, [] with no remotes and outside a repo, in git's own order", async t => {
+  const plain = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-noremotes-"));
+  t.after(() => fs.rmSync(plain, { recursive: true, force: true }));
+  assert.deepEqual(await listRemotes(plain), []);
+
+  const repoDir = makeClonedRepo(t);
+  plainGit(repoDir, ["remote", "remove", "origin"]);
+  assert.deepEqual(await listRemotes(repoDir), []);
+
+  plainGit(repoDir, ["remote", "add", "origin", "https://gitlab.com/alex/somewhere.git"]);
+  plainGit(repoDir, ["remote", "add", "github", "https://github.com/alex/harlow-legal.git"]);
+  assert.deepEqual(await listRemotes(repoDir), [
+    { name: "github", url: "https://github.com/alex/harlow-legal.git" },
+    { name: "origin", url: "https://gitlab.com/alex/somewhere.git" },
+  ]);
+});
+
+test("folderGitState: isRepo:false with no remotes outside a repo, isRepo:true plus every remote inside one", async t => {
+  const plain = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-state-plain-"));
+  t.after(() => fs.rmSync(plain, { recursive: true, force: true }));
+  assert.deepEqual(await folderGitState(plain), { isRepo: false, remotes: [] });
+
+  const repoDir = makeClonedRepo(t);
+  const state = await folderGitState(repoDir);
+  assert.equal(state.isRepo, true);
+  assert.deepEqual(state.remotes, [{ name: "origin", url: await remoteUrl(repoDir, "origin") }]);
 });

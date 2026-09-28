@@ -51,7 +51,7 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   - `github.project.detect {project}` (people + `module:launch`): read-only, no confirm needed
     ever, reports whether a project's folder already has a GitHub-looking origin and whether one
     of the connected accounts can reach it, for a surface to offer "Link to owner/repo?" without
-    the person typing anything.
+    the person typing anything. Reworked per-workspace later the same day, see below.
   - `github.project.link {project, repo, account?, confirm?}` (people only, never a module, never
     a model): an already-matching origin is recorded in one call; anything else (a different
     origin, no origin, or not a repo at all) changes nothing and reports what it found plus a
@@ -69,7 +69,7 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
     paging, all three detect/link/unlink branches (match, mismatch+confirm, remote-exists, not-a-
     repo), and that link/unlink refuse a module caller. 21/21 in `core/github/` total, 86/86
     across `core/github/**`, `lib/git-safe*`, `test/boundaries.test.js` and the three `docs-*`
-    suites. Local only so far; not yet run on testbox.
+    suites (86/86 local first, sha 882809ef; superseded by the testbox rerun below).
   - ADR 0041 updated: new decision "4a. Linking an EXISTING project to a repo", `github.repos`'s
     section rewritten for the paging contract, the manifest/callers table and `watches.emits`
     updated (`github.project.linked`/`.unlinked`). Also fixed three pre-existing `docs-check`
@@ -81,6 +81,41 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
     throughout the file (mechanical `sed` pass plus one manual fix at a line-wrapped instance).
     `npm run docs:ref` regenerated; all `docs-*` tests green.
   - `module.json`: `does.tools` and `watches.emits` gained the three new tools/two new events.
+  - Committed as 882809ef. Reported to team-lead/launch/integrator.
+
+## Done (2026-09-28, HOLD on link/unlink + detect goes per-workspace)
+- Lead: RULES violation caught - "local only so far" with real on-disk git repos on the Mac
+  breaks "Git credentials never on the Mac" and "tests run on testbox only" (the rule exists
+  because of the morning's token-leak incident). Reran the full 86 on testbox (temp
+  `HOME`, `GIT_CONFIG_NOSYSTEM=1`/`GIT_CONFIG_GLOBAL=/dev/null`, `nice -n 15`): first pass 85/86,
+  one flake in `lib/git-safe-askpass.test.js` (a file untouched this session, owned by
+  `sessions`) - 5/5 alone, 86/86 on a clean rerun. Won't run tests locally again.
+- Lead's HOLD, crossed with the build above: the user is reconsidering the project/repo model
+  itself (a project may own several repos or none, one per workspace, rather than one linked
+  repo), so `github.project.link`/`.unlink` are paused - not for review, not for the integrator,
+  possibly gone entirely depending on the decision. `github.project.detect` is NOT part of the
+  hold (read-only, needed whichever way the model lands) and the lead asked for it to go
+  per-workspace now: for every folder a project owns (home plus every `workspaces` entry,
+  deduplicated), report isRepo, every remote, and for a GitHub remote, owner/repo plus which
+  connected account (if any) can reach it.
+  - `core/github/git.js` gained `listRemotes(dir)` and `folderGitState(dir)` (both local-only,
+    no network, no token - `git remote` plus `git remote get-url` per name), 4 new tests
+    (`git.test.js`, 33/33 in the file now).
+  - `github.project.detect` rewritten: was folder-scoped (home only) with `linked`/`origin`
+    fields tied to the (now-paused) `github_projects` link concept; now takes no dependency on
+    that table at all, iterates every workspace via a new `projectFolders()` (reads
+    `projects.list`'s `home`+`workspaces`, same `ctx.call` contract `homeOf()` already used),
+    and returns `{ project, workspaces: [{ folder, isRepo, remotes: [{ name, url, full_name,
+    match }] }] }`. `accountFor()` (new, was inline in the old detect) caches the account lookup
+    per `full_name` so the same repo behind two remotes, or in two workspaces, is checked once.
+  - `core/github/index.test.js` rewritten for the new shape (2 tests: single-workspace with a
+    bare/foreign/matching remote, and a multi-workspace project with one non-repo folder).
+  - ADR 0041: added a "Status, 28 Sep 2026: ON HOLD" note at the top of 4a naming exactly what's
+    paused and what isn't; split detect out into its own "4b. Detecting a project's repos, per
+    workspace" with the new contract.
+  - Regenerated `docs/index.json`/`docs/reference/index.md`. Synced and ran on testbox twice more
+    (once to catch a stale-docs failure from the tool-description changes, `npm run docs:ref`
+    fixed it; once clean): 89/89 (`core/github/**` 29, `lib/git-safe*`, `boundaries`, `docs-*`).
 
 ## Doing
 - reviewer CLEARED work/github through acfcefd2 (both 3a72ea7f..84e76681 and the stdin fix).
