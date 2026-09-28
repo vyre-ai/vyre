@@ -35,47 +35,46 @@ transcripts.
 
 ## What you get
 
-- **The Deck.** The web app at your address. Chat with Claude, browse every past session inline,
-  talk to it by voice, and use `/goal`, `/later`, `/find` to steer without breaking your flow.
+- **The Mac Capsule.** Option-Space anywhere on your Mac opens a command bar wired straight to
+  your server. Ask it something and it answers from your memory, with the session it pulled the
+  answer from linked below.
+
+  <picture>
+    <img src="docs/images/readme/capsule-ask.png" alt="The Mac Capsule's command bar answering &quot;what is on the Northwind Bakery menu&quot; from a past session, with that session linked below the answer" width="600">
+  </picture>
+
+  It lives in your menu bar, and quits the same way any other menu bar app does.
+
+  <picture>
+    <img src="docs/images/readme/capsule-menu.png" alt="The Vyre Capsule's menu bar dropdown: the signed-in person, vyred running, Open Capsule (Option-Space) and Quit Vyre Capsule" width="420">
+  </picture>
+
+- **Your phone, paired by Wink.** Open [phone.vyre.run](https://phone.vyre.run) on your phone and
+  scan the ring around your avatar on the Deck. Your phone shows you the box's name and a short
+  code before you confirm.
+
+  <picture>
+    <img src="docs/images/readme/wink-confirm.png" alt="Wink's confirm screen on a phone: 'Pair with alex-box? Code a1b2 c3d4', with Pair and Not this one buttons" width="360">
+  </picture>
+
+- **Your agents, on your server.** The Deck is the web app at your address. Every project keeps
+  its own threads, and a chat inside one shows who's in it: you and the agent that answered.
 
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/deck-chat.dark.png">
-    <img src="docs/images/readme/deck-chat.png" alt="The Deck showing a chat thread inside a project, with the assistant's reply and a reply box below it" width="720">
+    <img src="docs/images/readme/deck-chat.png" alt="The Deck showing a chat thread inside the Harlow Legal project, with a reply from Claude and the account's other projects listed in the sidebar" width="720">
   </picture>
 
 - **Teammates.** Give an agent its own name and its own projects. `vyre team` lists them, `vyre
   team ask` sends one work.
-
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/teammates.dark.png">
-    <img src="docs/images/readme/teammates.png" alt="The Agents page listing an assistant and a second agent, each idle and scoped to certain projects" width="720">
-  </picture>
-
-- **The Mac Capsule.** Option-Space anywhere on your Mac to `@` an agent, a project, or a file,
-  and send work to your server without leaving what you're doing.
-- **Wink.** Add your phone by scanning your own avatar at [phone.vyre.run](https://phone.vyre.run).
-  Settings and onboarding show a ring around your avatar; point your phone's camera at it, check
-  the name, and tap Pair.
 - **Your tailnet, joined automatically.** A desktop you pair over the relay finds your network on
   its own. No auth key to paste in.
 - **GitHub.** Sign in with a short code, start a project straight from one of your repos, or add
   a repo to a project you already have. Each session gets its own branch.
 - **A vault.** Credentials agents can use but nobody has to see. Share an item with someone else's
   Vyre and it's relayed, so one revoke ends their access.
-
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/vault.dark.png">
-    <img src="docs/images/readme/vault.png" alt="The Vault page listing keys, a login, an env set, an API key, a card and a secure note, all held by nobody until unlocked" width="720">
-  </picture>
-
 - **Memory across sessions.** Ask Vyre something and it searches everything you've said before,
   and shows you which past session an answer came from.
-
-Every person and agent gets their own avatar, on the Deck, on your phone, and in the Capsule.
-
-<picture>
-  <img src="docs/images/readme/avatars.dark.png" alt="A sheet of avatars at four sizes: a person, an assistant, several agent roles, and a set of project-scoped agents named after the projects they work in" width="720">
-</picture>
 
 ## Questions
 

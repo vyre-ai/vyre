@@ -79,6 +79,32 @@ to change (readme-hero.png in particular looks built to be the README's actual h
 I didn't use), that's app-design's pipeline to re-export, not something I should hand-edit with a
 plain HTML mockup. Flagged to team-lead.
 
+## Round 3: three picture stories, not a features grid (team-lead)
+Team-lead's messages crossed: 010fab24 still showed the rejected headline at the time they wrote,
+but 8ea7dc65 (committed before their message landed) already has the final copy. No further
+headline change needed this round.
+
+What changed: replaced the picture set. Dropped teammates/vault/avatars images (kept those
+bullets as text only) and built exactly the three the user cares about:
+- Capsule: `capsule-ask.png` (the command bar answering from memory, with a cited past session)
+  and `capsule-menu.png` (the menu bar popover: Open Capsule Option-Space, Quit). Both from the
+  scratchpad's existing synthetic renders (who-2-reply.png, who-1-popover.png), opened and
+  checked before use, both alex/Northwind sample data.
+- Wink: `wink-confirm.png`, the real "Pair with alex-box? Code a1b2 c3d4" confirm screen. Real
+  code, not a mockup: a small harness page (temp file, not committed) imported the actual
+  `deck/js/dom.js` h()/put(), `deck/js/icons.js`'s icon(), `deck/views/pair-scan.js`'s real
+  `initial()`/`step()` state machine, and `deck/css/pair.css`, then reproduced pair-scan.js's own
+  `render()` confirm-branch markup verbatim, driven to state via `step()` calls (not hand-drawn
+  HTML) with the exact name/fingerprint format `deck/views/pair-scan.test.js` uses as its own
+  fixture ("Alex's box" / "a1b2 c3d4", here "alex-box" to match the sample world's real host
+  name). Served over a throwaway python static server on testbox (stopped after, confirmed no
+  process left with `ps aux`), headless Chrome at phone width (390px), center-cropped to the
+  content. Did not attempt a real camera+relay scan flow (getUserMedia faking plus a live ticket
+  exchange) given the time budget; this gets the identical shipped markup/CSS/state without it.
+- Deck: kept `deck-chat.png`/`.dark.png` from round 1 (already shows a chat thread's avatars AND
+  the account's other projects in the sidebar, so it covers "Deck chat with avatars and project
+  tiles" on its own).
+
 ## Next
 - Waiting on reviewer's privacy check before deploying vyre.run (team-lead's instruction: deploy
   after that check, same deploy the user already approved).
