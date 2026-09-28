@@ -34,11 +34,15 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
   seams.set(root, { now: () => clock.t, setTimer: (fn, ms) => { timers.set(++seq, { at: clock.t + ms, ms, fn }); return seq; }, clearTimer: id => timers.delete(id) });
   t.after(() => seams.delete(root));
   const logs = [], fired = [], acked = [], taskRuns = [], calls = [];
+  // Default agent roster for agents.list: juno is the assistant (sees every project); kit is a
+  // named agent scoped to every project too, by default, so existing tests that never touch scope
+  // keep passing - taskScope tests below narrow kit's (or a second agent's) projects explicitly.
   events.on("planner.fired", e => fired.push({ at: clock.t, ...e.payload }));
   events.on("planner.acked", e => acked.push(e.payload));
   events.on("planner.task-run", e => taskRuns.push(e.payload));
   const w = {
     db, events, clock, timers, logs, fired, acked, taskRuns, calls, linked, remote, handle: /** @type {any} */ (null),
+    agents: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: "*" }],
     /** @type {(tool: string, input: any) => Promise<any>|any} */ onCall: null,
     /** @type {Map<string, any>} */ tools: new Map(),
     async boot() {
@@ -54,8 +58,8 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
           calls.push({ tool, input });
           if (tool === "link.status") return { data: { linked: w.linked } };
           if (tool === "google.accounts") return { data: [] };
-          // juno is the user's assistant; kit is an agent they made.
-          if (tool === "agents.list") return { data: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }] };
+          // juno is the user's assistant; kit is an agent they made (w.agents: tests narrow it).
+          if (tool === "agents.list") return { data: w.agents };
           // /later's own firing (runTask): a test sets w.onCall to answer threads.post/launch
           // its own way; the default is a plain success, so tests that never touch this still see
           // nothing different.
@@ -69,16 +73,18 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
       return w;
     },
     async stop() { await w.handle.stop(); },
-    /** A call as the registry makes it: the callers list first, then the tool. */
-    async call(name, input = {}, caller = "cli") {
+    /** A call as the registry makes it: the callers list first, then the tool. `meta` extends
+     * `{caller}` - `{thread}` is the one other field the planner's tools read (the caller's own
+     * calling thread, for taskScope). */
+    async call(name, input = {}, caller = "cli", meta = {}) {
       const def = w.tools.get(name);
       if (!def) return { error: { code: "no_such_tool" } };
       if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${name} is not for ${caller}` } };
-      try { return { data: await def.run(input, { caller }) }; }
+      try { return { data: await def.run(input, { caller, ...meta }) }; }
       catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code || "failed", message: err.message } }; }
     },
-    async ok(name, input = {}, caller = "cli") {
-      const r = await w.call(name, input, caller);
+    async ok(name, input = {}, caller = "cli", meta = {}) {
+      const r = await w.call(name, input, caller, meta);
       assert.ok(!r.error, `${name}: ${JSON.stringify(r.error)}`);
       return r.data;
     },
@@ -511,9 +517,16 @@ test("planner: a Vyre-owned session's thread is the assistant, whichever thread 
 
 test("planner: a task fires by posting into its own thread, or launching a fresh one under its creator's own agent", async t => {
   const w = await world(t);
+  // A task's firing rings and escalates exactly like an alarm's (nothing here acks it) - not this
+  // test's concern, and past the first ring it would run() a second, third time before the next
+  // task in this test even fires, racing this test's own "last call" assertions. Off, so each of
+  // the three tasks below fires exactly once.
+  await w.ok("planner.settings", { escalate_max: 0 });
   const kit = "mcp:agent:kit";
-  // With a thread: an existing conversation gets a turn, never a new one.
-  const withThread = await w.ok("planner.add", { kind: "task", title: "Chase the Northwind invoice", thread: "s1", at: T0 + HOUR }, kit);
+  // With a thread: an existing conversation gets a turn, never a new one. kit is calling FROM s1
+  // itself (meta.thread) - taskScope requires a task's own thread match the creator's own calling
+  // thread, so this is kit's own scope, not a confused deputy posting into someone else's.
+  const withThread = await w.ok("planner.add", { kind: "task", title: "Chase the Northwind invoice", thread: "s1", at: T0 + HOUR }, kit, { thread: "s1" });
   w.advanceTo(T0 + HOUR);
   await new Promise(r => setImmediate(r)); // runTask() is async; the scheduler fires it, does not await it
   assert.equal(w.taskRuns.length, 1);
@@ -533,6 +546,57 @@ test("planner: a task fires by posting into its own thread, or launching a fresh
   await new Promise(r => setImmediate(r));
   assert.equal(w.calls.at(-1).input.agent, undefined);
   assert.equal(own.source, "cli");
+});
+
+test("planner: reviewer HIGH 1 - only a person or a named agent may add a task; a bare session or a module cannot", async t => {
+  const w = await world(t);
+  // A bare mcp caller (the person's own live Claude session, unnamed) used to become an AMBIENT
+  // task at fire time (no agent, the person's full scope) - exactly the escape the reviewer found.
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s1" }, "mcp", { thread: "s1" })).error.code, "denied");
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s1" }, "mcp:thread:s1", { thread: "s1" })).error.code, "denied");
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s1" }, "harness:thread:s1", { thread: "s1" })).error.code, "denied");
+  // Any module (first-party or not) is refused outright - it is never "an agent the person named".
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s1" }, "module:watchers", { thread: "s1" })).error.code, "denied");
+  // Every other kind is unaffected - only a task fires unattended later.
+  await w.ok("planner.add", { kind: "reminder", title: "x", at: T0 + MIN }, "mcp");
+  await w.ok("planner.add", { kind: "todo", title: "x" }, "module:watchers");
+});
+
+test("planner: reviewer HIGH 2 - a task may only target the creator's OWN calling thread, never any thread it names", async t => {
+  const w = await world(t);
+  const kit = "mcp:agent:kit";
+  // kit is calling from s1, but names s2 (someone else's thread, or one it has no business in):
+  // the confused-deputy escape - module:planner would have posted there as itself, unquestioned.
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s2" }, kit, { thread: "s1" })).error.code, "denied");
+  // Its own calling thread is fine.
+  const ok = await w.ok("planner.add", { kind: "task", title: "x", thread: "s1" }, kit, { thread: "s1" });
+  assert.equal(ok.thread, "s1");
+  // Neither a thread nor a project at all: no scope to check against, refused rather than
+  // defaulting to an ambient launch.
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x" }, kit, { thread: "s1" })).error.code, "denied");
+});
+
+test("planner: reviewer MEDIUM - a task's project must be inside the creator agent's own projects.access, at add, at edit and again at fire", async t => {
+  const w = await world(t);
+  const kit = "mcp:agent:kit";
+  w.agents = [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: ["harlow-legal"] }];
+  // Outside kit's own scope: refused at add time.
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", project: "northwind" }, kit)).error.code, "denied");
+  const t1 = await w.ok("planner.add", { kind: "task", title: "Draft the weekly digest", project: "harlow-legal", at: T0 + HOUR }, kit);
+
+  // Reviewer HIGH 2's update-time twin: kit cannot redirect its own task to a project outside its
+  // scope after the fact either (planner.update takes the same path as planner.add).
+  assert.equal((await w.call("planner.update", { item: t1.id, project: "northwind" }, kit)).error.code, "denied");
+  await w.ok("planner.update", { item: t1.id, priority: 2 }, kit, { thread: "s1" }); // unrelated field: untouched, no scope check at all
+
+  // MEDIUM: kit's access to harlow-legal is revoked after scheduling, before it ever fires -
+  // caught again at runTask, not just at add/edit time.
+  w.agents = [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: [] }];
+  w.advanceTo(T0 + HOUR);
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns[0].ok, false);
+  assert.match(w.taskRuns[0].result, /no longer has access/);
+  assert.equal((await w.ok("planner.get", { item: t1.id })).item.run_count, 1, "an attempt is still recorded (rule 2)");
 });
 
 test("planner: a paused task never runs; a failed run is recorded, not thrown away", async t => {

@@ -97,6 +97,16 @@ export default {
       const agent = AGENT_SOURCE.exec(item.source || "")?.[1] || null;
       let ok = true, note = "";
       try {
+        // MEDIUM (reviewer, 2026-09-28): re-check scope right before it fires, not only at add or
+        // edit time - an agent's projects.access can shrink (or the agent be deleted) any time
+        // between scheduling a task and it going off. threads.launch trusts whatever project it is
+        // given (it's internal, module-to-module), so this is the one place that would catch it.
+        if (agent && item.project) {
+          const projects = await agentProjects(agent);
+          if (!projects || (projects !== "*" && !projects.includes(item.project))) {
+            throw fail(`${agent} no longer has access to ${item.project}`, "denied");
+          }
+        }
         const r = item.thread
           ? await ctx.call("threads.post", { thread: item.thread, text, kind: "scheduled", from: "planner" })
           : await ctx.call("threads.launch", { project: item.project || undefined, prompt: text, purpose: "job", once: true, ...(agent ? { agent } : {}) });
@@ -260,30 +270,71 @@ export default {
     };
 
     /**
-     * Who a call is from: { person, source, name }. A paired Mac passes an agent's identity on as
-     * `as`, which only a person's call (the Mac's link arrives as the owner) may carry.
-     * @returns {Promise<{ person: boolean, source: string, name: string|null }>}
+     * Who a call is from: { person, source, name, thread }. A paired Mac passes an agent's
+     * identity on as `as`, which only a person's call (the Mac's link arrives as the owner) may
+     * carry - `as.thread` rides along the same way, so taskScope sees the ORIGINAL calling thread
+     * on the box, not the Mac-to-box link call's own (meaningless, for this) thread.
+     * @param {string} thread the caller's own calling thread (vyred's meta.thread), direct or none
+     * @returns {Promise<{ person: boolean, source: string, name: string|null, thread: string|null }>}
      */
-    const who = async (i, caller) => {
+    const who = async (i, caller, thread = null) => {
       if (isPerson(caller)) {
         const as = i && i.as && typeof i.as === "object" ? i.as : null;
-        if (as && as.source) return { person: false, source: String(as.source).slice(0, 120), name: as.name ? String(as.name).slice(0, 80) : null };
-        return { person: true, source: callerKind(caller), name: null };
+        if (as && as.source) return { person: false, source: String(as.source).slice(0, 120), name: as.name ? String(as.name).slice(0, 80) : null, thread: as.thread ? String(as.thread).slice(0, 120) : null };
+        return { person: true, source: callerKind(caller), name: null, thread };
       }
       const c = String(caller);
-      if (c.startsWith("module:")) return { person: false, source: c.slice(0, 120), name: null };
+      if (c.startsWith("module:")) return { person: false, source: c.slice(0, 120), name: null, thread };
       // A Vyre-owned session's thread (ADR 0030, in-process tools): the person's assistant, as an
       // unnamed terminal session is, so what one thread adds another may change.
-      if (/^(mcp|harness):thread:/.test(c)) return { person: false, source: c.slice(0, c.indexOf(":")), name: null };
+      if (/^(mcp|harness):thread:/.test(c)) return { person: false, source: c.slice(0, c.indexOf(":")), name: null, thread };
       const m = AGENT_CLAIM.exec(c);
       // An unnamed MCP or harness caller is the person's own Claude session: their assistant.
-      if (!m) return { person: false, source: callerKind(caller), name: null };
-      return { person: false, source: `agent:${m[1]}`, name: (await isAssistant(m[1])) ? null : m[1] };
+      if (!m) return { person: false, source: callerKind(caller), name: null, thread };
+      return { person: false, source: `agent:${m[1]}`, name: (await isAssistant(m[1])) ? null : m[1], thread };
     };
 
     const agentKind = (kind, w) => {
       if (w.person) return;
       if (!AGENT_KINDS.includes(kind)) throw fail(`an agent may add alarms, timers, reminders, todos, notes and tasks, not ${kind}s`, "denied");
+    };
+
+    /** The projects a named agent may reach, from core/agents' own record: "*" for every one, a
+     * list of slugs, or null when no such agent exists. */
+    const agentProjects = async name => {
+      const r = await ctx.call("agents.list", {}).catch(() => null);
+      const a = r && Array.isArray(r.data) ? r.data.find(x => x && x.name === name) : null;
+      return a ? a.projects : null;
+    };
+
+    /**
+     * Reviewer HIGH 1+2, 2026-09-28: a task is the one kind that fires later, unattended, running
+     * text a model wrote - into a thread, or a fresh ambient session. Every other kind an agent (or
+     * a bare model session) adds only ever rings for whoever is watching; a task can act on
+     * another thread's behalf, or launch with the person's own full scope, if let through
+     * unchecked. So: only a person, or a caller with a genuinely claimed agent identity (never a
+     * bare mcp/harness caller, a thread-scoped one with no claim, or a module - none of which the
+     * person actually named), may add or redirect one, and its target - the thread it posts into,
+     * or the project it launches under - must be inside exactly that identity's own scope. Called
+     * again right before it fires (runTask), not only when it was added or last edited, so a
+     * project removed from the agent afterward is caught too.
+     * @param {{thread?: string|null, project?: string|null}} target
+     * @param {{person: boolean, source: string, thread?: string|null}} w
+     */
+    const taskScope = async (target, w) => {
+      if (w.person) return;
+      if (!w.source.startsWith("agent:")) throw fail("a task needs a person, or a named agent's own claim", "denied");
+      if (target.thread) {
+        if (target.thread !== w.thread) throw fail("an agent's task may only target its own calling thread", "denied");
+        return;
+      }
+      if (target.project) {
+        const name = w.source.slice("agent:".length);
+        const projects = await agentProjects(name);
+        if (!projects || (projects !== "*" && !projects.includes(target.project))) throw fail(`${name} has no access to ${target.project}`, "denied");
+        return;
+      }
+      throw fail("an agent's task needs a thread (its own) or a project it can reach", "denied");
     };
     /** An agent may change, finish, snooze or delete only what it added. */
     const owns = (item, w) => {
@@ -324,7 +375,7 @@ export default {
       catch (e) { ctx.log(`planner: parse failed (${/** @type {Error} */ (e).message})`); return null; }
     };
 
-    const add = (i, w) => {
+    const add = async (i, w) => {
       const t = now();
       let input = { ...i };
       if (typeof i.text === "string" && i.text.trim()) {
@@ -336,6 +387,7 @@ export default {
       const kind = input.kind || "note";
       if (!KINDS.includes(kind)) throw fail(`kind is one of ${KINDS.join(", ")}`);
       agentKind(kind, w);
+      if (kind === "task") await taskScope({ thread: input.thread || null, project: input.project || null }, w);
       capped(w);
       const s = settings();
       const time = resolveTime(kind, input, s, t);
@@ -360,11 +412,18 @@ export default {
     const EDITABLE = ["title", "body", "list", "priority", "pinned", "tags", "project", "thread", "parent", "state", "waits_on", "paused"];
     const TIME_FIELDS = ["at", "in_ms", "wall", "date", "repeat", "tz", "floating", "due"];
 
-    const update = (i, w) => {
+    const update = async (i, w) => {
       const item = st.item(i.item);
       if (!item || item.deleted_at) throw fail("no such item", "not_found");
       owns(item, w);
       if (i.kind !== undefined && i.kind !== item.kind) throw fail("an item's kind does not change; add a new one");
+      // HIGH 2 (reviewer, 2026-09-28): a task's own thread/project is exactly what taskScope
+      // checked at add time - letting an agent redirect it afterward with planner.update would be
+      // the same confused-deputy escape through the back door. Re-check with whatever the patch
+      // leaves it as (the new value if given, else its current one).
+      if (item.kind === "task" && (i.thread !== undefined || i.project !== undefined)) {
+        await taskScope({ thread: i.thread !== undefined ? (i.thread || null) : item.thread, project: i.project !== undefined ? (i.project || null) : item.project }, w);
+      }
       const t = now();
       const patch = /** @type {any} */ ({});
       if (i.title !== undefined) { patch.title = String(i.title).trim().slice(0, 500); if (!patch.title) throw fail("the title cannot be empty"); }
@@ -773,7 +832,7 @@ export default {
           endAt = ms(i.end);
           if (!Number.isFinite(endAt) || !(endAt > startAt)) throw fail("end must be a time after start");
         }
-        const item = add({ kind: "event", title: i.title, at: i.start, tz, project: i.project, thread: i.thread }, w);
+        const item = await add({ kind: "event", title: i.title, at: i.start, tz, project: i.project, thread: i.thread }, w);
         st.patch(item.id, { duration_ms: endAt != null ? endAt - item.at : 3_600_000, where_: clip(i.where, 500) });
         return shape(st.item(item.id));
       }
@@ -808,16 +867,16 @@ export default {
     const tool = (name, description, input, run, { agents = false, local = false } = {}) => ctx.tool(name, {
       description, input, callers: agents ? [...PEOPLE, ...AGENTS] : PEOPLE,
       run: async (i, meta) => {
-        const w = await who(i, meta.caller);
+        const w = await who(i, meta.caller, meta.thread || null);
         const { as: _as, ...rest } = i || {};
-        if (!local && role === "local" && (await checkLink())) return forward(name, w.person ? rest : { ...rest, as: { source: w.source, name: w.name } });
+        if (!local && role === "local" && (await checkLink())) return forward(name, w.person ? rest : { ...rest, as: { source: w.source, name: w.name, ...(w.thread ? { thread: w.thread } : {}) } });
         return run(rest, w);
       },
     });
 
     tool("planner.add", "Add an alarm, timer, reminder, todo, note or event. Times: at (ISO or ms), in_ms for a timer, or wall \"HH:MM\" with date \"YYYY-MM-DD\" and repeat {every: day|weekday|week|month|year, days?, interval?, until?}. Or give text (\"alarm 7am\") to read it, with kind as a hint. Anyone may add alarms, timers, reminders, todos and notes.",
       { type: "object", properties: { kind: { type: "string", enum: KINDS }, text: str, ...itemFields } },
-      async (i, w) => add(i, w), { agents: true });
+      async (i, w) => await add(i, w), { agents: true });
 
     tool("planner.list", "Items, newest time first: filter by kind, state (open by default; all), list, project, pinned, tag; limit up to 500. cursor: true returns { items, last_event }, the event cursor the list is current to.",
       { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"] }, list: str, project: str, pinned: bool, tag: str, limit: int, cursor: bool } },
@@ -854,7 +913,7 @@ export default {
 
     tool("planner.update", "Change an item: title, body, list, priority, pinned, tags, project, thread, parent, state (open, done, cancelled) or its time. An agent may change only the items it added.",
       { type: "object", required: ["item"], properties: { item: str, kind: str, state: { type: "string", enum: STATES }, ...itemFields } },
-      async (i, w) => update(i, w), { agents: true });
+      async (i, w) => await update(i, w), { agents: true });
 
     tool("planner.done", "Done: acknowledge a firing (an alarm stops ringing; a repeating one keeps its schedule) or finish a todo or reminder. Give firing, item, or the ring's key (a device answering a ring it rang itself).",
       ref, async (i, w) => done(i, w), { agents: true });
