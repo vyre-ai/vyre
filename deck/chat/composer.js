@@ -63,6 +63,27 @@ const HISTORY = historyStore();
 try { const raw = localStorage.getItem(HISTORY_KEY); if (raw) HISTORY.load(JSON.parse(raw)); } catch {}
 const saveHistory = () => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(HISTORY)); } catch {} };
 
+/** An unsent draft per thread (Paseo's input/state.ts): what you were typing comes back after a
+ *  thread switch or a reload, until it is sent. Debounced (below) so a keystroke costs no write;
+ *  capped like HISTORY's rings so a long-lived box does not grow this file forever. */
+const DRAFT_KEY = "vyre.chat.drafts";
+const DRAFT_MAX_THREADS = 50;
+/** @type {Map<string, string>} */
+const DRAFTS = new Map();
+try {
+  const raw = localStorage.getItem(DRAFT_KEY);
+  if (raw) { const obj = JSON.parse(raw); if (obj && typeof obj === "object") for (const [k, v] of Object.entries(obj)) if (typeof v === "string" && v) DRAFTS.set(k, v); }
+} catch {}
+const saveDrafts = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(Object.fromEntries(DRAFTS))); } catch {} };
+/** @param {string} thread @param {string} text */
+function setDraft(thread, text) {
+  DRAFTS.delete(thread); DRAFTS.set(thread, text); // re-insert: most-recently-drafted last
+  while (DRAFTS.size > DRAFT_MAX_THREADS) DRAFTS.delete(/** @type {string} */ (DRAFTS.keys().next().value));
+  saveDrafts();
+}
+/** @param {string} thread */
+function clearDraft(thread) { if (DRAFTS.delete(thread)) saveDrafts(); }
+
 /** Where a "#" memory goes. */
 const SCOPES = Object.freeze([
   { id: "project", label: "This project", hint: "Only here" },
@@ -112,10 +133,14 @@ export function mountComposer(opts) {
   let commands = /** @type {import("./core/commands.js").Command[]|null} */ (null);
   let commandsAt = 0;
   let fileTimer = /** @type {any} */ (null), fileSeq = 0;
+  let draftTimer = /** @type {any} */ (null);
+  /** Write (or clear) the draft now; cancels a pending debounced one. */
+  function flushDraft() { clearTimeout(draftTimer); draftTimer = null; const v = ta.value; if (v) setDraft(thread, v); else clearDraft(thread); }
+  const scheduleDraftSave = () => { clearTimeout(draftTimer); draftTimer = setTimeout(flushDraft, 200); };
 
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
     rows: 1, placeholder: "Message this session", "aria-label": "Message", enterkeyhint: "send",
-    oninput: () => { grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); },
+    oninput: () => { grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); },
     onkeydown: onKey, onpaste: onPaste,
   }));
   const thumbs = h("div", { class: "composer-images", hidden: true });
@@ -163,7 +188,7 @@ export function mountComposer(opts) {
     });
   }
   const caret = () => (typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length);
-  const setValue = (/** @type {string} */ v, at = v.length) => { ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} grow(); drawChips(); };
+  const setValue = (/** @type {string} */ v, at = v.length) => { ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} grow(); drawChips(); flushDraft(); };
   const say = (/** @type {any} */ what, soft = true) => { note.classList.toggle("soft", soft); put(note, what); };
 
   function maybeLease() {
@@ -683,6 +708,10 @@ export function mountComposer(opts) {
   ];
   drawChips();
 
+  // What was mid-typed here, restored (Paseo's own draft persistence): a fresh box always starts
+  // empty, so this always applies once, after everything above it is set up.
+  if (DRAFTS.has(thread)) setValue(/** @type {string} */ (DRAFTS.get(thread)));
+
   return {
     el: root, key, editQueued, draw: drawChips, value: () => String(ta.value ?? ""), tipSlot, input: ta,
     focus: () => ta.focus(),
@@ -695,7 +724,7 @@ export function mountComposer(opts) {
       drawChips();
     },
     setText: (t, why) => { setValue(String(t ?? "")); if (why) say(why); ta.focus(); },
-    stop: () => { for (const off of offs) off(); clearTimeout(leaseTimer); clearTimeout(fileTimer); clearTimeout(holdTimer); menu.close(); },
+    stop: () => { flushDraft(); for (const off of offs) off(); clearTimeout(leaseTimer); clearTimeout(fileTimer); clearTimeout(holdTimer); menu.close(); },
   };
 }
 
