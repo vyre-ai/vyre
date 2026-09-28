@@ -215,3 +215,29 @@ test("config: a new box with a work folder keeps projects in it; an existing one
     assert.equal(config.load(root).projectsDir, path.join(os.homedir(), "Elsewhere"), "the user's projectsDir wins");
   });
 });
+
+// owner.id (team-lead, 28 Sep): the person's public, non-secret id, for the phone's avatar.
+test("config: ownerId() makes one 16-byte hex id, persists it, and never changes it again", t => {
+  const root = tempHome(t);
+  const c = config.load(root);
+  assert.equal(config.ownerId(c, undefined), null, "a read-only caller (no root) gets null before anything has generated one");
+  const id = config.ownerId(c, root, c);
+  assert.match(id, /^[0-9a-f]{32}$/, "16 random bytes, hex");
+  assert.equal(c.owner.id, id, "mirrored into the live config passed in");
+  const saved = JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8"));
+  assert.equal(saved.owner.id, id, "persisted to disk");
+  // Idempotent: a second call, even with root, returns the same id and writes nothing new.
+  assert.equal(config.ownerId(c, root, c), id);
+  assert.equal(config.ownerId(config.load(root), root), id, "a fresh load sees the same id");
+  // A read-only caller with no root just reads what's there now.
+  assert.equal(config.ownerId(c, undefined), id);
+});
+
+test("config: fingerprint8() matches the spec's formula, the first 8 bytes of sha256(\"vyre:person:v1:\"+hex(id)), base64url -- one encoding everywhere, matching the relay's ticket", () => {
+  const id = "0123456789abcdef0123456789abcdef";
+  // Computed independently (node -e with crypto), not by re-running the function under test.
+  assert.equal(config.fingerprint8(id), "WrNLxox2PS8");
+  assert.equal(config.fingerprint8(id), config.fingerprint8(id), "deterministic");
+  assert.notEqual(config.fingerprint8(id), config.fingerprint8("f".repeat(32)), "a different id fingerprints differently");
+  assert.match(config.fingerprint8(id), /^[A-Za-z0-9_-]{11}$/, "base64url, no padding, of 8 raw bytes");
+});

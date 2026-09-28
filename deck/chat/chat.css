@@ -921,3 +921,11 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-tip-x { flex-shrink: 0; width: 24px; height: 24px; color: var(--label); }
 @keyframes cv-tip-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .cv-tip { animation: none; } }
+
+/* The header's title with the session's short id beside it: sessions in one project wear the same
+   project tile (ADR 0043 section 6), so the title and the id tell them apart. */
+.cv-head-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.cv-head-line > .title { min-width: 0; }
+.cv-num { flex-shrink: 0; font-size: 11px; }
+.cv-head-av { flex-shrink: 0; }
+.nav-pj-av { margin-right: 2px; }

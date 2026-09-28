@@ -4,6 +4,51 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### lib/avatar-seed: the project tile's bytes, one shared file
+
+- `lib/avatar-seed/index.js` is the one rule for a project tile's 8 bytes (two FNV-1a 32 words over
+  "vyre:project:v1:" + seed, big-endian), pure JavaScript. Node imports it; vyred serves it to the
+  Deck at /lib/avatar-seed/index.js (only that file), so there is no second copy. Fixed test
+  vectors, checked against an independent BigInt FNV, are the port target for the Capsule.
+
+#### deck: project tiles (the fifth avatar family), locked renderers, base64url fingerprints
+
+- A session's replies and header wear its project's tile (seeded from the stored avatar_seed); a
+  chat in no project wears a dashed draft tile seeded from its id, which carries over when it is
+  made into a project ("New project from this", projects.create from_thread) and switches in place
+  when it is filed into one (thread.picked). The assistant's creature shows only in its own
+  thread; agents keep blobs; teammates wear their project's colour as a badge.
+- Project tiles in the project list and the chat sidebar; a short session id beside the header
+  title and in thread rows. The rail's account button and the phone header show the person's avatar.
+- app-design's locked renderer files (dark and light skin tones legible in both themes); a theme
+  switch redraws the avatars in place. system.info's fingerprints are read as base64url.
+
+#### projects: a stored avatar_seed, and a chat made into a project keeps its tile
+
+- A project's marker stores `avatar_seed` at `projects.create`: the new slug, or with
+  `from_thread` the chat's id (the chat is picked in too), so a chat's draft tile carries over and
+  turns solid. `projects.list` returns it. A marker from before the field defaults to its slug and
+  is not rewritten on read; a rename never changes the seed. `from_thread` must be a chat's
+  session id (a UUID; a subagent id is refused) that exists, in the Recall index or as a live
+  switchboard thread; otherwise the create is refused with a plain error and nothing is made.
+  The id is trimmed and lower-cased once, so an upper-case UUID names the same chat.
+
+#### deck: the four avatar families (ADR 0043), drawn everywhere a who shows
+
+- `deck/js/avatars.js` is the Deck's one importer of the vendored avatar renderers
+  (`deck/vendor/vyrecode/`, plus `characters.js` for agents' blobs and teammates' characters).
+  The person is a circle seeded from `system.info` `owner.fingerprint8`, with its Vyre code ring
+  at Settings > You; the assistant is its creature, seeded from `assistant.fingerprint8`; an agent
+  is a blob seeded from its stable id (its name); a teammate is a character on a tile, seeded from
+  its teammate id (`<role>-<project>`). A missing fingerprint falls back to a face or creature from
+  the name, never a crash and never a ring.
+- Drawn in chat rows (you, the assistant, agents), the session header, the teammate handoff card,
+  the chat thread list, the Agents page (plus a new Teammates section from `team.list`) and
+  Settings > You. `deck/js/pair-avatar.js` now renders through avatars.js.
+- A tap on any avatar plays a small hop; nothing under Reduce Motion. One document listener.
+- Inline SVG, parsed once per author and cloned after that, each copy with its own gradient ids.
+  `deck/test/avatars-browser.js` checks it in headless Chrome.
+
 #### presence: the Capsule's key is P-256 from the Secure Enclave; Ed25519 Capsule keys are refused
 
 - `presence.enroll` kind `capsule` takes only an EC P-256 key (alg -7), the kind the Mac's Secure
@@ -26,6 +71,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a purely declarative/metadata mismatch with no functional regression). Fixed the key. New test
   (`core/sync/sync.test.js`) proves the underlying watch actually turns sync off on `link.unpair`
   alone, not only reachable through `sync.consent { on: false }` as the existing coverage showed.
+#### owner.id: a public, non-secret person id, for the phone's avatar
+
+- `config.ownerId()` makes one, 16 random bytes as hex, the first time anything reads it: right
+  away on a fresh install (core/onboard's own startup calls it before the wizard's first
+  `onboard.status`), or on the next restart for an install that predates this field. Never
+  changed after. Only onboard's own startup ever writes it; no tool takes it as input.
+- `system.info`'s `owner` object gains `fingerprint8`, a short, stable, non-secret fingerprint of
+  the id (`sha256("vyre:person:v1:" + hex(owner.id))[0:8]`, `config.fingerprint8()`). The id
+  itself never leaves this machine through any tool.
 
 #### link: link.unpair is person-only again, with one machine exception
 

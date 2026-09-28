@@ -15,7 +15,7 @@ const enc = encodeURIComponent;
 
 /**
  * projects.create. → { slug, name } or { error } in plain words.
- * @param {{ name: string, home?: string, people?: any[] }} input
+ * @param {{ name: string, home?: string, people?: any[], from_thread?: string }} input from_thread: the chat it is made from (its tile carries over)
  */
 export async function createProject(input) {
   const r = await attempt("projects.create", input);

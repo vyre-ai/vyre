@@ -16,6 +16,7 @@ import { h, put, link, head, empty } from "../js/dom.js";
 import { attempt, modules, canProve, on } from "../js/api.js";
 import { pushState, subscribePush, unsubscribePush, enrollPasskey, passkeyState, deviceName, deniedHelp } from "../js/phone-setup.js";
 import { icon, mark, wordmark } from "../js/icons.js";
+import { personAvatar, readSystem } from "../js/avatars.js";
 import { when, since, plural } from "../js/fmt.js";
 import { personStatus, signOutHere } from "../js/person.js";
 import { pathMark, statusMark } from "../js/status-mark.js";
@@ -192,13 +193,22 @@ function stepRow(s, st) {
 
 // ---- 2. You and your address ---------------------------------------------------------------
 
+/**
+ * Your own avatar, large: the person's circle with its Vyre code ring (js/avatars.js; a theme
+ * switch redraws it there). Without a real fingerprint (a box from before owner.id) the face
+ * shows alone, never a ring made up from a name.
+ */
+function youAvatar(name) {
+  return h("div", { class: "set-you-av" }, personAvatar({ size: 160, ring: true, label: name ? `Your avatar, ${name}` : "Your avatar" }));
+}
+
 async function drawYou(el) {
-  const r = await attempt("onboard.status");
+  const [r] = await Promise.all([attempt("onboard.status"), readSystem(attempt)]);
   const here = row("This page", mono(location.host),
     h("div", { class: "small muted" }, onTailnet() ? "Served on your tailnet. Only your devices can open it." : "Served on this machine only, not on your tailnet."));
   if (r.error) { put(el, empty("Your name is kept by the box module.", r.error), h("div", { class: "rows" }, here)); return; }
   const name = r.data?.name || "";
-  put(el, h("div", { class: "rows" },
+  put(el, youAvatar(name), h("div", { class: "rows" },
     row("Name", name ? h("span", null, name) : h("span", { class: "muted" }, "Not chosen yet"), name ? null : toOnboard("you")),
     // The address it is served at: a ts.net name when there is no vyre.run name (ADR 0008).
     row("Address", r.data?.address ? mono(String(r.data.address).replace(/^https:\/\//, "")) : name ? mono(`${name}.vyre.run`) : h("span", { class: "muted" }, "None until you pick a name"),

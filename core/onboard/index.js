@@ -125,6 +125,13 @@ export default {
     const ob = () => ctx.config.onboard || {};
     const skipped = () => new Set(ob().skipped || []);
     const net = () => ctx.config.network || {};
+    // The person's public, non-secret id (team-lead, 28 Sep, for the phone's avatar): made once,
+    // here, on every start -- a fresh install gets it right away (this runs before the wizard's
+    // first onboard.status), and an install from before this field existed gets it backfilled on
+    // its next restart. Only this module's own startup ever writes it (config.ownerId(), with
+    // root/live to persist); exposed read-only at system.info, which already carries the owner's
+    // name for the same avatar purpose.
+    config.ownerId(ctx.config, ctx.paths.root, ctx.config);
     // The link's hash survives a restart (vyre update restarts vyred): 0600, hashes only.
     const kept = path.join(ctx.paths.root, "onboard-link.json");
     const keep = {

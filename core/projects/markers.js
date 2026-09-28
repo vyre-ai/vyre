@@ -22,7 +22,7 @@ const SKIP = new Set(["node_modules", "dist", "build", "out", "target", "venv", 
 
 /** @typedef {{ name: string, email?: string }} Person */
 /** @typedef {{ slug: string, name: string, org: string|null, home: string, workspaces: string[],
- *   threads: string[], people: Person[], watchers: string[], error?: string }} Project */
+ *   threads: string[], people: Person[], watchers: string[], avatar_seed: string, error?: string }} Project */
 
 // The canonical shape now lives in lib/project-id.js (any part may import a lib without a
 // boundaries exception); re-exported here so `M.slugify` and existing callers keep working.
@@ -61,8 +61,9 @@ export function load(home) {
   if (!raw || typeof raw !== "object" || !raw.name) return null;
   const abs = real(home);
   const list = v => (Array.isArray(v) ? v : []);
+  const slug = slugify(raw.slug || raw.name);
   return {
-    slug: slugify(raw.slug || raw.name),
+    slug,
     name: String(raw.name).trim(),
     org: raw.org ? String(raw.org) : null,
     home: abs,
@@ -72,6 +73,10 @@ export function load(home) {
     people: list(raw.people).filter(p => p && (p.name || p.email))
       .map(p => ({ name: String(p.name || p.email).trim(), ...(p.email ? { email: String(p.email).trim() } : {}) })),
     watchers: list(raw.watchers).map(String),
+    // What the project's tile is drawn from (ADR 0043 section 6): the stored seed, else the slug,
+    // the project's id. Never read back from the name, so a rename never redraws the tile. A
+    // marker from before this field is not rewritten on read; it just defaults.
+    avatar_seed: typeof raw.avatar_seed === "string" && raw.avatar_seed ? raw.avatar_seed : slug,
   };
 }
 

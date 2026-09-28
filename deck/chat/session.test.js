@@ -228,9 +228,28 @@ doc.body.append(container);
 const stop = mountSession(container, { thread: SID, project: null, onBack() {} });
 await wait();
 
-test("chips: the owner's initial for you, the Vyre mark for replies", () => {
-  assert.equal(text($(container, ".cv-user .msg-av")), "A");
-  assert.ok($(container, ".cv-head .cv-av-vyre svg"));
+test("avatars (ADR 0043): the person's circle for you; a chat in no project wears its draft tile on its replies and header", () => {
+  const you = $(container, ".cv-user .msg-av");
+  assert.equal(you.getAttribute("data-family"), "person");
+  assert.ok($(you, "svg"), "drawn, not a letter");
+  assert.equal(you.getAttribute("title"), "alex");
+  const reply = $(container, ".cv-head .msg-av");
+  assert.equal(reply.getAttribute("data-family"), "project");
+  assert.ok(reply.hasAttribute("data-draft"), "no project yet: the dashed draft tile");
+  assert.ok($(reply, "svg"));
+  const head = $(container, ".cv-head-av");
+  assert.equal(head.getAttribute("data-family"), "project", "the session header wears the same tile");
+  assert.match(text($(container, ".cv-num")), /^#[0-9a-z-]{6}$/, "and the session's short id beside its title");
+});
+
+test("filed into a project (thread.picked): the replies and header take that project's tile, in place", async () => {
+  emit("thread.picked", { project: "harlow-legal", thread: SID });
+  await wait(30);
+  const reply = $(container, ".cv-head .msg-av");
+  assert.equal(reply.getAttribute("data-family"), "project");
+  assert.ok(!reply.hasAttribute("data-draft"), "solid now");
+  assert.ok(!$(container, ".cv-head-av").hasAttribute("data-draft"));
+  assert.ok(calls.some(c => c.tool === "projects.list"), "the project's stored seed is read afresh");
 });
 
 test("open: blocks as rows, one Vyre header per run, tool runs folded, the turn footer, never claude", async () => {
@@ -335,7 +354,7 @@ test("a live thread the transcript cannot find yet: threads.get's events drawn, 
   assert.ok(you, "the person's own message shows");
   assert.match(text(you), /you/);
   assert.match(text(you), /ask/);
-  assert.equal(text($(you, ".msg-av")), "A", "the owner's initial");
+  assert.equal($(you, ".msg-av").getAttribute("data-family"), "person", "the person's own avatar");
   assert.match(text(box), /Two questions first\./);
   assert.ok($(box, ".cv-tool[data-tool=AskUserQuestion]"));
   assert.ok($(box, ".cv-q"), "the open question card");
@@ -908,6 +927,7 @@ test("a teammate handoff (team_ask): its own card, the teammate's tile+name+Team
   assert.ok(row, "its own row, not a generic tool card");
   assert.match(text($(row, ".cv-handoff-name")), /^design$/);
   assert.match(text($(row, ".cv-handoff-tag")), /^Teammate$/);
+  assert.equal($(row, ".av-agent").getAttribute("data-family"), "teammate", "the teammate's character (ADR 0043), not an agent's blob");
   assert.match(text($(row, ".cv-tool-name")), /^Asked\s*$/);
   assert.match(text($(row, ".cv-handoff-sum")), /make the intake form calmer/);
   assert.ok($(row, ".av-agent"), "the teammate's own tile, not a generic sub-agent icon");

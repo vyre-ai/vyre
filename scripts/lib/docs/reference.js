@@ -502,6 +502,8 @@ const MEANING = {
   "modules.disable": "Modules never to start.",
   network: "How this machine is reached. See [Tailscale](../using/tailscale.md).",
   onboard: "Onboarding's own settings.",
+  owner: "The person's own, non-secret identity. Written only by core/onboard's own startup, never by a tool's input.",
+  "owner.id": "16 random bytes, hex. Made once and never changed; `system.info` exposes only a fingerprint of it (fingerprint8), never this value itself.",
   "network.tailscale": "Whether this machine serves over Tailscale.",
   "network.address": "The https URL the Deck is served at.",
   "network.owner": "The one Tailscale login this box serves (ADR 0002). Set by `vyre owner`.",

@@ -705,6 +705,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // so the Deck and its tests load the one copy. Only these five files; nothing else in core/.
   const res29 = req.method === "GET" && /^\/core\/resilience\/(backoff|sse|stream|outbox|web)\.js$/.exec(url.pathname);
   if (res29) return serveFile(res, path.join(REPO, "core", "resilience", res29[1] + ".js"));
+  // lib/avatar-seed (ADR 0043 section 6): the one rule for a project tile's bytes, which the Deck
+  // imports as ../../lib/avatar-seed/index.js, so the Deck and Node load the one copy. Only this file.
+  if (req.method === "GET" && url.pathname === "/lib/avatar-seed/index.js") return serveFile(res, path.join(REPO, "lib", "avatar-seed", "index.js"));
   // The one app (ADR 0027), beside the Deck until it takes over /. Once config app.root flips
   // (mobile's client-side migration, off by default: core/config/index.js), /app/* is a 301 to
   // the same path under "/" instead, so an installed /app/ Home Screen icon or a stale bookmark

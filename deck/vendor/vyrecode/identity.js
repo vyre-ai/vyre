@@ -48,6 +48,137 @@ const USER_GRADIENTS = [
 ];
 const USER_FACE = "#141311";
 
+// --- Palette contrast (28 Sep, lead's ruling): the person and assistant families above use an
+// abstract gradient, never a skin tone, on purpose - it sidesteps this problem entirely. The
+// teammate family (round3b/original.js's `character()`) does draw a real skin tone on the head,
+// light to deep, and that is where the user's "some of them were getting too dark ... weren't
+// clearly visible" note landed. Two separate legibility failures, measured, not guessed:
+//   1. Feature ink (eyes, mouth, glasses) was a single fixed near-black regardless of skin tone -
+//      on the three deepest tones that's 1.3-2.6:1 against the skin, below any usable floor.
+//   2. The head sits on whatever the surface's own backdrop is (an --hover tile in a list row, or
+//      bare on --panel/--bg in a chat avatar) - the four lightest tones wash out on paper's light
+//      backdrops (1.05-2.9:1) the same way the four deepest tones wash out on dark's (1.15-3.9:1).
+//      Both ends needed a fix, in opposite themes, not just the dark end.
+// Fixed at the source, in this shared identity module, so every family that ever draws a skin
+// tone reads from one palette and one pair of helpers rather than each caller re-deriving its own
+// ink/rim logic. Keeps the full range: nothing here removes or lightens a tone, only how its
+// features and edge render.
+
+/** Relative luminance and WCAG contrast ratio, plain sRGB hex in, no deps. */
+function hexToRgb(hex) { hex = hex.replace("#", ""); return [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)); }
+function relLuminance([r, g, b]) {
+  const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  const [R, G, B] = [r, g, b].map(f);
+  return 0.2126 * R + 0.7152 * G + 0.0722 * B;
+}
+function contrastRatio(hex1, hex2) {
+  const l1 = relLuminance(hexToRgb(hex1)), l2 = relLuminance(hexToRgb(hex2));
+  const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1];
+  return (hi + 0.05) / (lo + 0.05);
+}
+function hexBlend(fg, bg, alpha) {
+  const [fr, fgc, fb] = hexToRgb(fg), [br, bgc, bb] = hexToRgb(bg);
+  const mix = (a, b) => Math.round(a * alpha + b * (1 - alpha));
+  return "#" + [mix(fr, br), mix(fgc, bgc), mix(fb, bb)].map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+
+// Warm, realistic skin tones, light to deep - kept here as the canonical copy; round3b/original.js
+// imports this array rather than restating it. Nothing removed, nothing lightened: the fix is
+// ink and edge treatment, never the tones themselves.
+const SKIN_TONES = ["#FBE0C6", "#F1C79B", "#E0AC7C", "#C98A57", "#A8683D", "#7D4C2C", "#5C3620", "#3E2417"];
+
+const CONTRAST_FLOOR = 3; // the floor this ruling holds every combination to, both checks below
+const DARK_INK = "#141311";
+const LIGHT_INK = "#F1EEE6"; // the same cream creature.js already uses for its eye sparkle
+
+/** The feature ink (eyes, mouth, glasses) for a given skin tone: dark ink everywhere it clears
+ * the floor, a light ink only on the tones dark enough that dark ink no longer would. Never a
+ * per-seed choice - the same skin tone always gets the same ink, so a reroll never flips a
+ * teammate's feature colour on its own. */
+function featureInkFor(skinHex) {
+  return contrastRatio(skinHex, DARK_INK) >= CONTRAST_FLOOR ? DARK_INK : LIGHT_INK;
+}
+
+// The two backdrop sets a skin tone actually renders against in product surfaces: an --hover
+// tile in a list row, or bare on --panel/--bg in a chat avatar (avatar-showcase/build.js's
+// tokens, the newest render of the real system palette). Both themes' full set is checked, not
+// just the closest one, since a rim's blended result differs per backdrop.
+const BACKDROPS = {
+  dark: { bg: "#111110", panel: "#1A1917", hover: "#221F1C" },
+  paper: { bg: "#F4F1EA", panel: "#FFFFFF", hover: "#EEEAE0" },
+};
+// A rim drawn just inside the head's edge, opaque enough on its own theme's ink to guarantee
+// >=3:1 against every backdrop in that theme (see round4/check-palette.js for the tuning pass:
+// 0.4 was the minimum for dark, 0.5 for paper; both carry a margin here, landing at 5.2:1 and
+// 4.6:1 worst-case rather than sitting on the floor). Colour is the theme's own ink, inverted from
+// the feature ink above (light rim in dark theme, dark rim in paper theme) - this is a backdrop
+// treatment, unrelated to which ink the features inside the head are using.
+const RIM = {
+  dark: { color: LIGHT_INK, opacity: 0.55 },
+  paper: { color: DARK_INK, opacity: 0.6 },
+};
+
+/** Whether skinHex needs the rim in this theme: true if it fails the floor against any backdrop
+ * that theme actually uses. */
+function needsRim(skinHex, theme) {
+  return Object.values(BACKDROPS[theme]).some((bd) => contrastRatio(skinHex, bd) < CONTRAST_FLOOR);
+}
+
+/** The rim spec to draw for this skin tone and theme, or null if the tone already clears the
+ * floor against every backdrop in that theme unaided. `character()` in round3b/original.js calls
+ * this once per render. */
+function rimFor(skinHex, theme) {
+  return needsRim(skinHex, theme) ? RIM[theme] : null;
+}
+
+// --- Project tiles (28 Sep, the user's approved 5th family) ---------------------------------
+// A project isn't a being - a rounded tile with a mark and colour, not a creature or a face.
+// Seeded from the project's own stored avatar_seed (falling back to its permanent id, never its
+// name, so a rename never reseeds it). 8 hues, spread across three arcs (0-50, 115-225,
+// 285-360deg) that keep the same wide margin from lime (~80deg) and violet (~253deg) every other
+// palette here already keeps - an even 45deg step would land two hues inside the lime band, so
+// these are picked by hand within the allowed arcs instead. Saturation and lightness are tuned
+// per hue (not one fixed S/L) so every hue clears the dark-ink floor with margin (3.3-10.8:1) AND
+// clears its backdrop floor without needing rimFor()'s help where avoidable (4.6-9.5:1 worst
+// case) - a flat S=60/L=48 across all 8 left one hue (a magenta-pink) sitting at 3.13:1, legal but
+// too close to the floor for comfort.
+const PROJECT_COLORS = ["#A34F3E", "#DA932F", "#2FDA4B", "#2FDA93", "#2FDADA", "#2F93DA", "#B620AA", "#BC2F6A"];
+
+/** Validates every skin tone against every theme's full backdrop set, and every skin tone against
+ * its own derived feature ink - the two checks this ruling requires. Throws with the specific
+ * failing combination rather than letting a bad palette edit ship silently, the same contract
+ * geometry.js's validateGeometry() gives the Vyre code ring. Also validates PROJECT_COLORS the
+ * same way (fill-vs-backdrop via rimFor, mark-vs-fill via featureInkFor) - one function, one
+ * floor, for every palette in this module, per the lead's "same contrast floors" instruction.
+ * Call after editing SKIN_TONES, PROJECT_COLORS, DARK_INK, LIGHT_INK, RIM or BACKDROPS. */
+function validatePalette({ floor = CONTRAST_FLOOR } = {}) {
+  const results = [];
+  for (const [group, tones] of [["skin", SKIN_TONES], ["project", PROJECT_COLORS]]) {
+    for (const tone of tones) {
+      const ink = featureInkFor(tone);
+      const inkContrast = contrastRatio(tone, ink);
+      if (inkContrast < floor) {
+        throw new Error(`${group} tone ${tone}: mark/feature ink ${ink} is ${inkContrast.toFixed(2)}:1, ` +
+          `below the ${floor}:1 floor.`);
+      }
+      for (const theme of Object.keys(BACKDROPS)) {
+        const rim = rimFor(tone, theme);
+        for (const [name, bd] of Object.entries(BACKDROPS[theme])) {
+          const rendered = rim ? hexBlend(rim.color, bd, rim.opacity) : tone;
+          const c = contrastRatio(rendered, bd);
+          if (c < floor) {
+            throw new Error(`${group} tone ${tone} in ${theme} theme against ${name} (${bd}): ` +
+              `${c.toFixed(2)}:1${rim ? " even with the rim" : " (no rim applied)"}, below the ` +
+              `${floor}:1 floor.`);
+          }
+          results.push({ group, tone, theme, backdrop: name, contrast: c, rim: !!rim, ink, inkContrast });
+        }
+      }
+    }
+  }
+  return results;
+}
+
 /**
  * The person: a true circle, a warm two-tone gradient, a calm closed-eye or gentle-smile face,
  * nothing else (no hair, no accessory) - the point is that it is always the same one identity,
@@ -119,4 +250,8 @@ function assistantAvatar(option = 0, size = 120) {
   </svg>`;
 }
 
-export { userAvatar, assistantAvatar, USER_GRADIENTS, ASSISTANT_GRADIENTS, defaultAvatarOption };
+export {
+  userAvatar, assistantAvatar, USER_GRADIENTS, ASSISTANT_GRADIENTS, defaultAvatarOption,
+  SKIN_TONES, PROJECT_COLORS, DARK_INK, LIGHT_INK, RIM, BACKDROPS, CONTRAST_FLOOR,
+  featureInkFor, needsRim, rimFor, validatePalette, contrastRatio,
+};
