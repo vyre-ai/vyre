@@ -217,8 +217,13 @@ Plan (to the lead before building):
   signature; a root-only updater daemon (code stays root-owned); Deck writes carry a proof; the
   computers/spawner/dockerproxy rule; the phone-join and relay sequencing. docs:ref regenerated
   (the stale #6-vault-migration and #open-questions anchors). Sent to the reviewer.
-- Next: the 9bfc452e LOW (key type on paired-phone presence rows, refusal wording per device),
-  then the P-256 message format with capsule-pro.
+- ADR 0040 SIGNED OFF by the reviewer at 6a2b3f5f (range 91c02d81..6a2b3f5f). LOWs for whoever
+  builds it: (a) a same-uid model can stream its own value for an approved item name, so the
+  person-side reader is the root-owned, DR-signed Capsule, not the person-writable `vyre` CLI;
+  (b) the root apply step is the ONLY reader of core's signing key in the _vyre data dir.
+- P-256: 9bfc452e + 6579710a + 457ef10c cleared; one batch with capsule-pro's Swift, never
+  6579710a alone. link kindOf 9138e567 (work/e2e-linkkind) cleared; swap to lib/caller.js once it
+  is on stage, keeping the thread: refusal.
 
 ## Doing (27 Sep, after logout 4)
 
