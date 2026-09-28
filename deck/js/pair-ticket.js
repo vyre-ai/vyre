@@ -1,41 +1,38 @@
 // @ts-check
-// Scan your avatar to pair your phone: turning a decoded Vyre-code ticket into a real pairing.
-// This file used to hand-roll the ticket protocol (locator/secret/MAC derivation, a guessed
-// resolve endpoint) - reviewer held that on work/pwa d49335e4: the tags didn't match tailnet's
-// real ones, the locator went in a GET URL instead of a POST body, the MAC covered too little
-// of the record, and the fingerprint format didn't match the box's own. Per reviewer and
-// team-lead: don't reimplement any of it - call tailnet's relay/client library directly
-// (relay/client/client.js's `pairTicket()` and `keyFingerprint()`, merged in from work/tailnet
-// 8b693dab/2990a810/3cfd01c7). Nothing below derives a key, builds a MAC, or talks to a resolve
-// endpoint by hand any more.
+// Scan your avatar to pair your phone: a thin re-export of tailnet's real relay/client API
+// (relay/client/client.js, merged in from work/tailnet 13852c7a) - nothing here derives a key,
+// builds a MAC, or talks to a resolve endpoint by hand. Kept as its own file only so pair-scan.js
+// has one place to import from and one shared crypto provider instance, per reviewer and
+// team-lead's "don't reimplement any of it."
 //
-// INTERIM (2026-09-28): `pairTicket()` is atomic - resolve, verify and the handshake in one call
-// - so there is no confirm-before-pairing step available from this library today. Team-lead and
-// reviewer asked tailnet to split it into a resolve call and a separate pair call so the sheet
-// can show "Pair with <box> (<fingerprint>)?" BEFORE the handshake runs; that sha hasn't landed
-// yet. Until it does, `pairNow()` below runs the full pairing immediately on a decoded ticket,
-// and the sheet shows the box name and fingerprint AFTER pairing succeeds, as a confirmation
-// with an "Unpair" escape hatch, not a gate. Swap this for the split the moment it lands - see
-// docs/work/pwa.md's "Phone-side contract".
+// Split flow (reviewer, 28 Sep MEDIUM): resolveTicket() looks up and verifies a scanned ticket
+// WITHOUT pairing - the person sees who they'd be pairing with and can say no before anything
+// happens. pairOffer() is the handshake itself, run only after they tap Pair. Hold the resolved
+// `offer` in memory only (it carries the derived pairing secret): never in storage, a URL, or a
+// log, and just let it be garbage-collected on "Not this one" - deck/js/pair-scan.js does this by
+// construction (the offer lives in a local variable, never assigned anywhere more durable).
 
 import { webCrypto } from "../../relay/client/webcrypto.js";
-import { fromBase64url } from "../../relay/client/bytes.js";
-import { pairTicket, keyFingerprint } from "../../relay/client/client.js";
+import { resolveTicket, pairOffer, keyFingerprint } from "../../relay/client/client.js";
 
 const crypto = webCrypto();
 
+export { resolveTicket, pairOffer, keyFingerprint, crypto };
+
 /**
- * Pairs immediately from a decoded ticket. `relay` is required (nothing in the 72-bit code
- * carries it - PENDING tailnet/launch: where the Deck's "Add your phone" screen gets the box's
- * own relay address from, to pass in here; a self-hosted relay would need the full QR path
- * instead, per tailnet's message).
- * @param {Uint8Array} ticket the raw 8 bytes decode-core2.js recovered - never hex-encoded,
- *   logged, or put anywhere a string would persist on the way here
- * @param {{ relay: string, name: string }} o
- * @returns {Promise<{ box: string, fingerprint: string, relay: string, route: string, boxKey: string, device: any }>}
+ * Turns one of resolveTicket()/pairOffer()'s plain-message Error throws into a `{ code, message,
+ * retryable }` the UI can act on. Neither function exports a `.code` (they throw plain Error
+ * objects with human words - see their own source), so this matches the exact strings they throw
+ * rather than guessing at HTTP statuses itself; brittle to a wording change there, but there is
+ * no better signal available today. Per reviewer's mapping: 404 (expired/used/unknown, collapsed
+ * on purpose) -> rescan; 429 -> wait; a MAC or shape failure -> "doesn't check out", and it must
+ * never pair.
+ * @param {Error} err
  */
-export async function pairNow(ticket, o) {
-  const result = await pairTicket(ticket, { relay: o.relay, name: o.name, about: { kind: "web" }, crypto });
-  const fingerprint = await keyFingerprint(fromBase64url(result.box), crypto);
-  return { box: result.name, fingerprint, relay: result.relay, route: result.route, boxKey: result.box, device: result.device };
+export function classifyError(err) {
+  const m = String(err?.message || err || "");
+  if (/expired or was already used/.test(m)) return { code: "not_found", message: "That code expired or was already used. Open Add your phone again on your Mac.", retryable: true };
+  if (/\(429\)/.test(m)) return { code: "rate_limited", message: "Too many tries. Wait a moment and scan again.", retryable: true };
+  if (/does not check out|not shaped like an offer|not valid|needs the relay/.test(m)) return { code: "bad_ticket", message: "That code doesn't check out. Try scanning again.", retryable: true };
+  return { code: "error", message: m || "Something went wrong. Try again.", retryable: true };
 }

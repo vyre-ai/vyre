@@ -68,7 +68,7 @@ const fail = (code, message) => Object.assign(new Error(message), { code });
  * relay-device/key.json, core/relay/redeem.js) and `relay.pair.ticket` (a pairing whose secret and
  * MAC key derive from a ticket held only in this box's process, same as relay.pair.start's own
  * secret in relay/keys.json). All of it sits at the person's own login uid today, readable and
- * writable by any process at that uid — the same gap that already keeps relay hosting off by
+ * writable by any process at that uid - the same gap that already keeps relay hosting off by
  * default on local role (core/relay/keys.js, docs/work/tailnet.md "Needs from others"). Refuse
  * plainly rather than ship the gap on any of these paths.
  *
@@ -101,7 +101,7 @@ export default {
     // shows in screenshots.
     const boxName = () => String(ctx.config.name || (ctx.config.network && ctx.config.network.name) || "Vyre box").slice(0, 64);
     // The claimed <handle>.vyre.run subdomain (core/names/service.js's own `ctx.config.name`,
-    // set only once a name is actually claimed) — not boxName()'s fallback chain, since a display
+    // set only once a name is actually claimed) - not boxName()'s fallback chain, since a display
     // name is not necessarily a real, resolvable handle. Null when nothing is claimed yet: the
     // lead's 28 Sep ask (so a phone can offer <handle>.vyre.run after pairing, without a guess).
     const boxHandle = () => {
