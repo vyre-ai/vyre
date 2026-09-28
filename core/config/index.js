@@ -127,7 +127,8 @@ export function isDevice(machine) { return machine === "device" || machine === "
  * /app/* still serves the app beside the Deck as it does today (core/daemon/app.js). Once mobile
  * flips it, /app/* becomes a 301 to the same path under "/", so an installed /app/ Home Screen
  * icon or a stale bookmark still opens (core/daemon/index.js route()). */
- * `role` is the machine's old two-value job (box or local): its meaning and default (an OS guess)
+
+/** `role` is the machine's old two-value job (box or local): its meaning and default (an OS guess)
  * are unchanged, so the many modules that still read `ctx.config.role` directly need no change.
  * `machine` is the person's actual choice (ADR 0039): solo, server or device -- module loading
  * (roleBuckets, core/modules/index.js), presence and onboard read this one, not `role`. */
