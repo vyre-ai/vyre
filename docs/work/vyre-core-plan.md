@@ -93,6 +93,17 @@ tie it to vyred and need a decision:
    - DECIDED (lead, 28 Sep): 2a first, then slices. But no release turns vyre-core on for
      users until fill and import work there ("not on this Mac yet" for filling a password would
      feel broken). Devices, sharing, ssh and rotate may follow later with a plain message.
+- REVIEWER (3471563a), conditions for 2a:
+  - Grants: core's rows, made with a core-checked proof. Existing needs.vault grants are NOT
+    migrated silently: the person re-approves each once. Every release is audited in core;
+    revoke is instant.
+  - Plaintext (reveal, copy, type, totp) and core sessions only to a peer that is the
+    core-signed Capsule (the codeFrom check: exe against core's DR, plus the audit token). Each
+    session is bound to that peer, so a leaked session secret is useless elsewhere. On a core
+    Mac, `vyre vault reveal` in a terminal refuses or hands off to the Capsule.
+  - An item a module puts (unverified provenance) is never filled or offered to fill, is shown
+    marked, and can't be granted to a module until the person verifies it with a proof.
+  - Events core forwards to vyred are informational only; nothing decides on them.
 - DECIDED (lead) on 1 and 2 as recommended. The grant screen says: "this module runs as you, so
   anything you grant it is readable by programs running as you." 2a starts once the reviewer
   checks points 1 and 2.
