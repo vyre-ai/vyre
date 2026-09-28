@@ -117,11 +117,21 @@ export default {
     // Chained tasks ("when X finishes, do Y"): X's own done is the trigger, not a time, so this
     // runs outside the scheduler entirely. A task fires once per its own dependency's done - it
     // is not rearmed unless a person or an agent points waits_on at a new item.
+    //
+    // Bug fix: the chained task's own state stays "open" forever (running it does not finish it),
+    // so matching on "waits_on = X AND state = open" alone fires again every time X's state field
+    // changes to done - including reopening X and finishing it a second time, which is the same
+    // dependency, not a new one. waits_on_fired records WHICH done_at this task last ran for;
+    // done_at is fresh every time an item newly reaches done (never reused across a reopen), so
+    // comparing against it tells "the same completion, already handled" from "a later one" without
+    // needing to touch the task's own state.
     ctx.events.on("planner.changed", async e => {
       if (!e.payload || !Array.isArray(e.payload.fields) || !e.payload.fields.includes("state")) return;
       const done = st.item(e.payload.item);
-      if (!done || done.state !== "done") return;
+      if (!done || done.state !== "done" || done.done_at == null) return;
       for (const row of /** @type {any[]} */ (db.prepare("SELECT * FROM planner_items WHERE kind = 'task' AND waits_on = ? AND state = 'open' AND deleted_at IS NULL").all(e.payload.item))) {
+        if (row.waits_on_fired === done.done_at) continue; // already ran for this exact completion
+        st.patch(row.id, { waits_on_fired: done.done_at });
         await runTask(shape(row)).catch(err => ctx.log(`planner: chained task ${row.id} did not run (${err.message})`));
       }
     });

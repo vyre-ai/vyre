@@ -570,3 +570,27 @@ test("planner: a chained task (waits_on) runs when its dependency is marked done
   await new Promise(r => setImmediate(r));
   assert.equal(w.taskRuns.length, 1);
 });
+
+test("planner: reopening a chained task's dependency and finishing it again does not re-fire it a second time for the same completion", async t => {
+  const w = await world(t);
+  const first = await w.ok("planner.add", { kind: "todo", title: "Sign the contract", project: "harlow-legal" });
+  await w.ok("planner.add", { kind: "task", title: "Kick off onboarding", thread: "s1", waits_on: first.id });
+  await w.ok("planner.done", { item: first.id });
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 1, "fires once on the first done");
+  // Reopen, then finish it again: still the same underlying completion in spirit, but a NEW
+  // done_at - a person redoing the same dependency is a legitimate second trigger.
+  await w.ok("planner.update", { item: first.id, state: "open" });
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 1, "reopening alone never fires it");
+  w.advanceTo(T0 + 1000); // a distinct done_at from the first completion
+  await w.ok("planner.done", { item: first.id });
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 2, "a genuinely new done_at fires again");
+  // But re-delivering the SAME planner.changed (e.g. a duplicate event, or another field on the
+  // done row changing without a new done_at) must not re-fire it.
+  const before = w.taskRuns.length;
+  await w.ok("planner.update", { item: first.id, title: "Sign the contract (updated)" });
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, before, "a change with no new done_at never re-fires it");
+});

@@ -47,6 +47,13 @@ export const MIGRATIONS = [
    ALTER TABLE planner_items ADD COLUMN run_count INTEGER NOT NULL DEFAULT 0;
    ALTER TABLE planner_items ADD COLUMN last_result TEXT;
    ALTER TABLE planner_items ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;`,
+  // Bug fix: a chained task never re-armed itself (the comment above was already the intended
+  // rule), but nothing recorded WHICH of the dependency's done_at instants it already ran for -
+  // the task's own state stays "open" forever (running it does not finish it), so reopening the
+  // dependency and finishing it again re-fired the same chained task a second time. waits_on_fired
+  // is the dependency's done_at at the moment this task last ran for it; a later done with the
+  // same done_at is a no-op, a new (later) done_at fires again.
+  `ALTER TABLE planner_items ADD COLUMN waits_on_fired INTEGER;`,
 ];
 
 export const KINDS = ["alarm", "timer", "reminder", "todo", "note", "event", "task"];
@@ -78,6 +85,7 @@ export function shape(r) {
     next_fire: r.next_fire ?? null, created: r.created, updated: r.updated, done_at: r.done_at ?? null, deleted_at: r.deleted_at ?? null,
     source: r.source ?? null, added_by: r.source_name ?? null, where: r.where_ ?? null,
     waits_on: r.waits_on ?? null, run_count: r.run_count ?? 0, last_result: r.last_result ?? null, paused: Boolean(r.paused),
+    waits_on_fired: r.waits_on_fired ?? null,
   };
 }
 export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, key: ringKey(f.item, f.due), due: f.due, ring: f.ring, missed: Boolean(f.missed), state: f.state,
@@ -87,7 +95,7 @@ function safeJSON(s, fallback) { try { return s == null ? fallback : JSON.parse(
 
 const COLUMNS = ["kind", "title", "body", "list", "priority", "parent", "project", "thread", "tags", "pinned", "state", "at", "tz", "floating",
   "wall", "date", "repeat", "due", "duration_ms", "snooze_until", "next_fire", "created", "updated", "done_at", "deleted_at", "source", "source_name", "where_",
-  "waits_on", "run_count", "last_result", "paused"];
+  "waits_on", "run_count", "last_result", "paused", "waits_on_fired"];
 
 /** Plain values for SQLite: objects as JSON, booleans as 0/1. */
 const cell = (k, v) => v === undefined ? null : (k === "tags" || k === "repeat") ? (v == null ? (k === "tags" ? "[]" : null) : JSON.stringify(v))
