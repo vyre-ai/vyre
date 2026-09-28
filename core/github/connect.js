@@ -16,7 +16,7 @@
 // Everything this file needs from vyred comes in as a function, so it can be tested alone.
 
 import crypto from "node:crypto";
-import { scrub } from "../connectors/auth.js";
+import { scrub } from "./scrub.js";
 
 export const DEVICE_CODE_URI = "https://github.com/login/device/code";
 export const TOKEN_URI = "https://github.com/login/oauth/access_token";
