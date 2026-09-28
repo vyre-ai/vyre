@@ -161,73 +161,49 @@ account?}`:
    immediately; the value was not reused or sent anywhere; a rotation is recommended. The actual
    `gitWithAskpass` code path was never affected (it always goes through the real isolation), the
    leak was in a throwaway debug script that has since been deleted.
-3. `ctx.call("projects.create", { name, home: clonedPath })`, or when the person already has a
-   project and just wants to attach the repo, `projects.add-workspace`. `github` never writes to
-   `projects`' own tables; it only calls its tools, per the module contract. (Needs federation's
-   sign-off: today's caller allowlist for `add-workspace` names `module:sync` as an exception,
-   `module:github` needs the same one, see docs/work/github.md.)
+3. `ctx.call("projects.create", { name, home: clonedPath })`. `github` never writes to `projects`'
+   own tables; it only calls its tools, per the module contract.
 4. The project row remembers the repo (`github_projects (project, account, full_name,
    default_branch)`, keyed by the project's slug), so later steps (worktree-per-session, and
-   0.1.2's PRs and git settings) know which project is a GitHub project without asking again.
+   0.1.2's PRs and git settings) know which project is a GitHub project without asking again. This
+   is the project's **primary** GitHub repo, set exactly once, here: a session's worktree (section
+   5) is always made from it. `github.project.add-repo` (4a) adds further repos to a project as
+   plain workspaces and never touches this row.
 
-`callers` for `github.project`: people plus `module:launch` (the onboarding "connect a repo"
-step). Never a model.
+`github.project` makes a brand-new project. Attaching a repo to a project that already exists is
+a different tool (4a), not a `project` input here: an earlier draft let `github.project` do both
+(`project?` param, `projects.add-workspace` when given), but that let a second, non-primary repo
+silently overwrite the `github_projects` row meant for the session-worktree repo, so it was split
+before either path shipped. `callers` for `github.project`: people plus `module:launch` (the
+onboarding "connect a repo" step). Never a model.
 
-### 4a. Linking an EXISTING project to a repo
+### 4a. Adding a repo to an EXISTING project
 
-**Status, 28 Sep 2026: `github.project.link` and `github.project.unlink`, and the single
-`github_projects` row they write to, are ON HOLD.** The user is reconsidering the project/repo
-model itself: a project may end up owning several repos or none, one per workspace, rather than
-one project having one linked repo. Both tools are built and tested (below) but paused, not sent
-for review and not folded, until that's decided. `github.project.detect` (4b) is NOT part of the
-hold, it is read-only, per-workspace, and needed whichever way the model lands, so it shipped
-ahead of the decision.
+**Decided, 28 Sep 2026: there is no explicit "link".** An earlier draft (`github.project.link`/
+`.unlink`, a `confirm: true` step that added a remote named `github` to an existing folder) was
+built, tested and then dropped once the user settled the project/repo model: a project's repos
+are either its one primary repo (4, set once, what a session's worktree is made from) or
+workspaces it owns, each its own real clone, never a remote grafted onto a folder that already
+exists. Nothing records "this folder is linked" by hand; `github.project.detect` (4b) reads what
+is actually on disk, every time.
 
-`github.project` covers "start a project from a repo". The other direction, a project the person
-already has, its folder already cloned by hand or made before Vyre existed, needs its own tool:
-`github.project.link {project, repo, account?, confirm?}`, people only (`callers: PEOPLE`), never
-a module and never a model. Three rules the reviewer and the user were both explicit about: never
-change a folder without saying so first, never overwrite or remove an existing remote, never
-force anything.
-
-Without `confirm`, the tool only looks and reports:
-1. Resolve `repo` against the account (same `getRepo` as `github.project`, `GET
-   /repos/{full_name}`), so a typo or a repo the account cannot see fails before anything else runs.
-2. Read the project's folder (`readOrigin`, `lib/git.js`, local only, no network): not a git repo
-   at all, a git repo with no `origin` remote, or a git repo whose `origin` already points
-   somewhere. `originFullName` (also `core/github/git.js`) reads `owner/name` back out of an
-   `origin` URL in its https, `git@`, or `ssh://` form, since a folder cloned by hand years ago
-   could be any of the three.
-3. **The folder's origin already matches the repo.** Nothing to propose: the link is recorded
-   (the same `github_projects` row `github.project` writes) and the tool returns
-   `{ linked: true, recorded: true, matched: "origin", ... }` in one call, no `confirm` needed,
-   because nothing on disk changes.
-4. **Anything else** (a different origin, no origin, or the folder isn't a repo at all): nothing
-   is touched. The tool returns what it found (`origin`, or `reason: "not_a_repo"`) and, when the
-   folder is at least a real repo, a proposed action: `{ linked: false, action: "add-remote",
-   remote: "github", url, origin, message }`, `message` in plain words a surface can show
-   directly ("this folder's origin is X, not Y. Add Y as a remote named github?"). A folder that
-   isn't a git repo at all gets `action: "none"`, since there is no remote to add until the person
-   clones or `git init`s it themselves.
-
-Calling again with `confirm: true` is the only path that changes the folder, and only ever adds:
-`remoteUrl(home, "github")` is checked first for a clearer message, then `remoteAdd` (`git remote
-add github <url>`), which refuses on its own (git's own "remote already exists") if a "github"
-remote is already there. If it is, and it points at a different repo, the tool refuses
-(`remote_exists`) rather than silently reusing or replacing it, exactly the binding rule. `git
-remote add` never touches `origin`, never runs `remote set-url`, never removes anything; the
-worst it can do to an existing folder is add one new, named remote, and only on the explicit
-second call.
-
-`github.project.unlink {project}` is the reverse of recording: it drops the `github_projects` row
-and nothing else. No git call at all, on purpose, since "I don't want Vyre to think this project
-is linked anymore" is a different question from "remove the remote from my folder", and the
-second one is not this tool's job.
+The one GitHub action on an existing project is `github.project.add-repo {project, repo,
+account?, folder?}`, people only (`callers: PEOPLE`), never a module and never a model: clone the
+repo, fresh, as a brand-new workspace folder, exactly the way `github.project` clones a project's
+first folder (`getRepo` to resolve `repo`, `cloneRepo`/`gitWithAskpass`, no token on disk, no
+remote grafted onto anything that already exists). `folder?` names the new folder (`freeFolder`'s
+own `-2`/`-3` suffix if that name is taken); the default is the repo's own name. The new folder is
+registered through `ctx.call("projects.add-workspace", { project, folder })`, federation's own
+tool, the same one `github.project` already had sign-off for (`module:github` on
+`MAPPING_ALLOWED`, sha 624edc76). `add-repo` never writes the `github_projects` row: the added
+repo is a workspace, not the project's primary repo, so it changes nothing about which repo a
+session's worktree comes from (section 5), and never touches the project's other folders.
+A worktree for an added, non-primary repo is 0.1.2, same as before.
 
 ### 4b. Detecting a project's repos, per workspace
 
-`github.project.detect {project}` answers a narrower question than link/unlink, and doesn't
-depend on their fate: for EVERY folder a project owns (its home plus every workspace it was
+`github.project.detect {project}` is how a surface knows what's already there, since nothing is
+ever recorded by hand (4a): for EVERY folder a project owns (its home plus every workspace it was
 given, `projects.list`'s own `home`/`workspaces`, deduplicated), is it a git repo, what remotes
 does it have, and for any remote that's a GitHub URL, does one of the connected accounts reach
 it. Entirely read-only and local for the git side (`folderGitState`/`listRemotes`, `core/github/
@@ -236,14 +212,14 @@ per distinct repo found across every remote in every workspace (cached by `full_
 same repo behind two remotes, or the same repo in two workspaces, is only ever checked once). It
 costs nothing to call speculatively the moment a project opens.
 
-`callers`: people plus `module:launch` (onboarding, or a project view, can offer "Link to
-owner/repo?" per workspace without the person typing anything). Returns `{ project, workspaces:
-[{ folder, isRepo, remotes: [{ name, url, full_name, match }] }] }`. `remotes` is `[]` for a
-folder that isn't a git repo at all. `full_name` is `owner/name` when a remote's URL parses as
-github.com (`originFullName`, same helper `.link` uses), `null` for anything else (a `gitlab.com`
-remote, say). `match` is `{ account, full_name, default_branch }` for the first connected account
-that can reach that repo, or `null` when the remote isn't GitHub, or is a repo none of the
-connected accounts can see (someone else's fork, an account not yet connected).
+`callers`: people plus `module:launch` (onboarding, or a project view, can offer "add this repo?"
+per workspace without the person typing anything). Returns `{ project, workspaces: [{ folder,
+isRepo, remotes: [{ name, url, full_name, match }] }] }`. `remotes` is `[]` for a folder that
+isn't a git repo at all. `full_name` is `owner/name` when a remote's URL parses as github.com
+(`originFullName`, `core/github/git.js`), `null` for anything else (a `gitlab.com` remote, say).
+`match` is `{ account, full_name, default_branch }` for the first connected account that can
+reach that repo, or `null` when the remote isn't GitHub, or is a repo none of the connected
+accounts can see (someone else's fork, an account not yet connected).
 
 ### 5. A worktree and branch per session
 
@@ -310,11 +286,10 @@ you what you'd need... without a new tool from me"). Not started; 0.1.2.
 ### 6. Manifest, tools and callers (0.1.1)
 
 `module.json`: `requires: ["vault"]`, `does.tools`: `github.connect`, `github.connect.cancel`,
-`github.accounts`, `github.remove`, `github.repos`, `github.project`, `github.project.of`,
-`github.project.detect`, `github.project.link`, `github.project.unlink`,
-`github.session.worktree` (internal), `github.session.cleanup` (internal). `watches.emits`:
-`github.added`, `github.removed`, `github.connected`, `github.connect-failed`,
-`github.cleanup-needed`, `github.project.linked`, `github.project.unlinked`. `shows.deck`:
+`github.accounts`, `github.remove`, `github.repos`, `github.project`, `github.project.add-repo`,
+`github.project.of`, `github.project.detect`, `github.session.worktree` (internal),
+`github.session.cleanup` (internal). `watches.emits`: `github.added`, `github.removed`,
+`github.connected`, `github.connect-failed`, `github.cleanup-needed`. `shows.deck`:
 `settings:connections` (joins Google there, not a new screen). `needs.vault`:
 `["per-connection"]`.
 
@@ -323,11 +298,11 @@ you what you'd need... without a new tool from me"). Not started; 0.1.2.
 | `github.connect`, `.connect.cancel`, `.remove`, `.accounts` | people | never |
 | `github.repos`, `github.project`, `github.project.of` | people, `module:sessions`, `module:launch` | never |
 | `github.project.detect` | people, `module:launch` | never |
-| `github.project.link`, `.project.unlink` | people only | never |
+| `github.project.add-repo` | people only | never |
 | `github.session.worktree`, `.session.cleanup` | `module:sessions` only, `internal: true` | never |
 
-No tool a model can call in 0.1.1 touches the token, clones, writes a worktree, or changes a
-folder's git remotes. Everything that does is a person surface or one of the two named modules.
+No tool a model can call in 0.1.1 touches the token, clones, or writes a worktree. Everything
+that does is a person surface or one of the two named modules.
 
 ## Consequences
 
@@ -339,10 +314,16 @@ folder's git remotes. Everything that does is a person surface or one of the two
   half-finished `git add`, and each gets a real branch a person can push and open a PR from by
   hand today, before Vyre does it from chat in 0.1.2.
 - `.sessions/` worktrees are invisible to the person's own `git status` in the same clone.
-- Linking an existing project never surprises anyone: the common case (a folder already cloned
-  from the right repo) is one call, and every other case is look-then-confirm, never automatic.
+- No explicit link means no bookkeeping to go stale: `github.project.detect` always answers from
+  what's actually on disk, and adding a repo (`add-repo`) is a real, fresh clone, never a remote
+  grafted onto a folder that already has its own history.
 
 ## Rejected
+
+- **`github.project.link`/`.unlink`, recording a project-to-repo link by hand.** Built, tested,
+  and dropped once the user settled the model: see 4a. A project either owns a repo as its
+  primary (set once, by `github.project`) or as a workspace (`add-repo`, a fresh clone); nothing
+  in between needs recording, since `detect` (4b) can always read it back off disk.
 
 - **A GitHub App instead of device flow, now.** Right shape for 0.1.2 (per-repo installs, short-
   lived tokens, PR/issue/check webhooks), but device flow with a non-expiring user token is the

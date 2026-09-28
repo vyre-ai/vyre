@@ -117,6 +117,49 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
     (once to catch a stale-docs failure from the tool-description changes, `npm run docs:ref`
     fixed it; once clean): 89/89 (`core/github/**` 29, `lib/git-safe*`, `boundaries`, `docs-*`).
 
+## Done (2026-09-28, the user's decision: no link - detect + add-repo)
+- The user approved the per-workspace model and settled it for real: **no explicit link, ever.**
+  A project's repos are either its one primary repo (set once, by `github.project`, what a
+  session's worktree is made from) or workspaces it owns (a fresh clone each, `add-repo`).
+  `github.project.link`/`.unlink` are gone, not just paused - reverted out of the tree entirely.
+  - `core/github/git.js`: removed `readOrigin` and `remoteAdd` (existed only for `.link`'s
+    confirm step). Kept `remoteUrl` (used by `listRemotes`) and `originFullName` (used by
+    `detect`). `git.test.js`: removed their tests, added one small `remoteUrl` test in their
+    place (`listRemotes`/`folderGitState` already cover it well); 31 tests in the file now.
+  - `core/github/index.js`: removed `github.project.link`/`.unlink` and the now-dead `homeOf()`
+    helper. Added `github.project.add-repo {project, repo, account?, folder?}` (people only): the
+    one GitHub action on an existing project, clones the repo as a brand-new workspace (same
+    `cloneRepo`/`gitWithAskpass` `github.project` uses, `folder?` overrides the destination
+    folder's name), registers it via `ctx.call("projects.add-workspace", ...)`, never writes the
+    `github_projects` primary-repo row, never touches the project's other folders. `github.project`
+    narrowed to match: dropped its `project?` param (the old "attach to an existing project"
+    branch, which used to overwrite the primary-repo row - a real bug against the new model,
+    caught while making this change, not asked for explicitly but the right fix alongside it) -
+    it now only ever makes a brand-new project.
+  - `core/github/module.json`: `does.tools` swaps `.link`/`.unlink` for `.add-repo`; `watches.emits`
+    drops `github.project.linked`/`.unlinked` (nothing to announce - `add-repo` doesn't change
+    what `github.project.of` answers, so no new event was needed for it).
+  - `core/github/index.test.js`: replaced the four link/unlink tests with two `add-repo` tests
+    (clone-as-new-workspace + never-touches-other-folders; `folder?` naming, not-found/refused/
+    denied) and one `github.project` test for the narrowed create-only behavior.
+  - ADR 0041: 4a rewritten from "Linking an EXISTING project" to "Adding a repo to an EXISTING
+    project" with a "Decided, 28 Sep 2026: there is no explicit link" note explaining why the
+    earlier draft was dropped (recorded under Rejected too, for the record); decision 4's step 3
+    updated (no more attach-to-existing branch) and step 4 clarified as the project's *primary*
+    repo; 4b (detect) and section 6's manifest/callers table updated for the new tool set.
+    `npm run docs:ref` regenerated.
+  - Tested on testbox (temp `HOME`, per RULES, never locally). First run caught two real bugs the
+    new tests exposed: (1) `github.project.add-repo`/`.project`'s happy paths need a real
+    https-reachable git server to clone from (git-safe's `protocol.allow=never` correctly refuses
+    a local `file://` stand-in, same as `git.test.js` already proves) - rewrote those tests down
+    to the validation that runs before any clone is attempted, matching how `github.project`
+    itself was always tested (never end-to-end); (2) regenerating `docs/reference/tools.md` now
+    picks up `github.connect`'s REAL description at last (earlier commits' committed copy said
+    "No description." for it - a pre-existing generator quirk with a backtick-string description
+    this session's repeated `docs:ref` regens finally surfaced), and that description has always
+    had an em dash. Fixed the em dash (colon instead); not otherwise this session's bug, but the
+    right fix now it's visible. 85/85 clean on testbox, twice.
+
 ## Doing
 - reviewer CLEARED work/github through acfcefd2 (both 3a72ea7f..84e76681 and the stdin fix).
   The credential.interactive LOW is WITHDRAWN (reviewer agreed the evidence was right); the lead
@@ -147,40 +190,47 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
 ## Next
 1. Send `sessions` the actual gitWithAskpass diff (lib/git-safe.js + lib/git-safe-askpass.test.js)
    now that it's built and tested, for their review as a new-file diff, per their ask.
-2. Send `launch` the updated tool contract (below, under Changed contracts) for the repo picker
-   (`github.repos`'s new `{ repos, page, limit, more }` shape) and link/unlink/detect
-   (`github.project.link`/`.unlink`/`.detect`), alongside the sign-in/onboarding shapes already
-   sent. Not this team's UI; hand off and wait on their questions/build.
-3. Once sessions builds the start/end hook: verify `github.session.worktree`/`.cleanup` end to
+2. Send `reviewer` and `integrator` this sha (detect, add-repo, repos paging) per the lead's ask.
+3. Send `launch` the final tool contract (below, under Changed contracts): `github.repos` paging,
+   `github.project.detect` (per workspace), `github.project.add-repo`. No link/unlink, ever -
+   don't build a link-proposal/confirm UI.
+4. Once sessions builds the start/end hook: verify `github.session.worktree`/`.cleanup` end to
    end from a real session (needs sessions' side to exist first).
-4. Run the full suite on testbox once there's a natural checkpoint (nice -n 15, check load first) -
-   this includes the new `core/github/index.test.js` and the `git.js` link/detect additions,
-   local-only (86/86) so far.
 5. 0.1.2 design-only items (not started): PRs from chat, issues as goals, per-project git
-   settings, Touch ID on big moves, the GitHub App replacing the OAuth App's broad `repo` scope.
+   settings, Touch ID on big moves, the GitHub App replacing the OAuth App's broad `repo` scope,
+   a worktree for an added (non-primary) repo.
 
 ## Needs from others
 - sessions: review the gitWithAskpass diff; build the session-start/end hook once they're ready
   (`thread.started` for start, `thread.stopped`/`.finished` for cleanup - their choice which).
-- launch: Settings, onboarding and the repo-picker/link screens, whenever they pick this up. Tool
-  shapes are stable, including the new `github.repos` paging shape and `.project.detect`/
-  `.link`/`.unlink`.
+- launch: Settings, onboarding, the repo picker and "add a repo to this project" screens,
+  whenever they pick this up. Tool shapes are stable: `github.repos` (paging),
+  `github.project.detect` (per workspace, no confirm ever), `github.project.add-repo`. No link.
 - integrator: fold `lib/git-safe.js`'s `gitWithAskpass` addition (currently only in this
   worktree, built against main's copy of the file) at the stage/0.1.1 assembly, alongside
-  whatever sessions lands.
+  whatever sessions lands. Also review/fold detect, add-repo and the repos paging (this sha).
+- reviewer: detect (per-workspace), add-repo, and the repos paging change, this sha.
 
 ## Changed contracts
 - `lib/git-safe.js` gains `gitWithAskpass(dir, args, { token, username?, timeout?, stdin? })`
   (new export, additive - `gitAsync`/`gitSync`/`safeGitArgs`/`safeGitEnv` unchanged).
-- `core/github/git.js` gains `originFullName(url)`, `readOrigin(dir)`, `remoteUrl(dir, name)`,
-  `remoteAdd(dir, name, url)` (new exports, additive, all local-only, no network, no token).
-- `github.repos`'s return shape changed (not yet shipped to a real surface - `launch` hasn't
-  built the picker yet, per their own "Next" note): was a bare array, now
-  `{ repos, page, limit, more }`, plus a new `page` input alongside the existing
-  `account`/`q`/`limit`. The row shape inside `repos` is unchanged.
-- Three new tools: `github.project.detect {project}` (people + `module:launch`),
-  `github.project.link {project, repo, account?, confirm?}` (people only), `github.project.unlink
-  {project}` (people only). Two new events: `github.project.linked`, `github.project.unlinked`.
+- `core/github/git.js` gains `originFullName(url)`, `remoteUrl(dir, name)`, `listRemotes(dir)`,
+  `folderGitState(dir)` (all local-only, no network, no token). `readOrigin`/`remoteAdd`, built
+  for `.link`, were added then removed the same day once `.link` itself was dropped.
+- `github.repos`'s return shape changed (not yet shipped to a real surface - `launch` hadn't
+  started the picker): was a bare array, now `{ repos, page, limit, more }`, plus a new `page`
+  input alongside the existing `account`/`q`/`limit`. The row shape inside `repos` is unchanged.
+- `github.project` narrowed: dropped its `project?` input and the "attach to an existing project"
+  branch it used to have (that branch used to write the `github_projects` primary-repo row for a
+  non-primary repo, a real bug against the settled model - see ADR 4). It now only ever makes a
+  brand-new project.
+- New tool `github.project.add-repo {project, repo, account?, folder?}` (people only): adds a
+  repo to an existing project as a brand-new workspace. Never sets the project's primary repo.
+- New tool `github.project.detect {project}` (people + `module:launch`), per workspace: `{
+  project, workspaces: [{ folder, isRepo, remotes: [{ name, url, full_name, match }] }] }`.
+- `github.project.link`/`.unlink` and their events (`github.project.linked`/`.unlinked`) do NOT
+  exist: built, tested, held, then reverted the same day per the user's decision (no explicit
+  link - see ADR 0041 section 4a and Rejected).
 - `scripts/lib/docs/check.js`'s `OWNERS` list gains `"github"` (was missing; the only owner used
   anywhere in `docs/adr/` that wasn't on it, which failed `docs-check` on ADR 0041 for reasons
   unrelated to this change). `docs/nav.json` gains the ADR 0041 entry it was also missing.

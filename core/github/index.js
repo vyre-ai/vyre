@@ -1,5 +1,9 @@
 // @ts-check
-// github: native "Sign in with GitHub" (device flow), repos, and a project from a repo (ADR 0041).
+// github: native "Sign in with GitHub" (device flow), repos, a project from a repo, adding a repo
+// to an existing project, and per-workspace detection (ADR 0041). No explicit "link": a project's
+// repos are either its primary one (set once, by github.project) or added workspaces
+// (github.project.add-repo); github.project.detect reads what's on disk, nothing is recorded by
+// hand.
 //
 // Nothing here is model-reachable in 0.1.1: connect, remove, repos and project are people plus
 // two named modules (sessions, launch); the worktree tools are sessions-only and internal. No
@@ -7,7 +11,7 @@
 
 import { connector, revoke } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
-import { cloneRepo, worktreeAdd, worktreeRemove, readOrigin, originFullName, remoteUrl, remoteAdd, folderGitState } from "./git.js";
+import { cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState } from "./git.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -149,20 +153,12 @@ export default {
         clone_url: r.clone_url }));
     }
 
-    /** GET /repos/{full_name}, mapped down to what link/detect/project need, or null (not found, no access). */
+    /** GET /repos/{full_name}, mapped down to what detect/project/add-repo need, or null (not found, no access). */
     async function getRepo(token, full_name) {
       const res = await fetch(`https://api.github.com/repos/${full_name}`, { headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(15_000) });
       if (!res.ok) return null;
       const r = await res.json();
       return { full_name: r.full_name, name: r.name, default_branch: r.default_branch, clone_url: r.clone_url, html_url: r.html_url, private: Boolean(r.private) };
-    }
-
-    /** A project's home folder: the one this module already recorded, or asked of `projects` by slug/name. */
-    async function homeOf(project) {
-      const known = projects.get(project);
-      if (known) return known.home;
-      const p = await projectRow(project);
-      return p ? p.home : null;
     }
 
     /** Every folder a project owns (home plus every workspace), deduplicated, or null when there is no such project. */
@@ -205,10 +201,10 @@ export default {
     });
 
     ctx.tool("github.project", {
-      description: "Make a project from a repo: clones it, then makes a new project or attaches it to an existing one. `repo` is owner/name or a full GitHub URL.",
-      input: obj({ name: str, repo: str, project: str, account: str }, ["repo"]),
+      description: "Make a BRAND-NEW project from a repo: clones it and creates the project, recording the repo as the project's primary GitHub repo (what a session's worktree is made from, ADR 0041 section 5). `repo` is owner/name or a full GitHub URL. To add a repo to a project that already exists instead, use github.project.add-repo.",
+      input: obj({ name: str, repo: str, account: str }, ["repo"]),
       callers: PEOPLE_AND_MODULES,
-      run: async ({ name, repo, project, account: a }, meta = {}) => {
+      run: async ({ name, repo, account: a }, meta = {}) => {
         checkModuleCaller("github.project", meta, MODULE_CALLERS["github.project"]);
         const acct = forOne(accounts.all(), named(a));
         const token = await ctx.vault.fetch(acct.item, { field: "token" });
@@ -218,13 +214,32 @@ export default {
         const projectsDir = ctx.config && ctx.config.projectsDir;
         if (!projectsDir) throw fail("this device has no projects folder configured", "config");
         const cloned = await cloneRepo({ projectsDir, name: info.name, url: info.clone_url, token });
-        const out = project
-          ? await ctx.call("projects.add-workspace", { project, folder: cloned.path })
-          : await ctx.call("projects.create", { name: name || info.name, home: cloned.path });
+        const out = await ctx.call("projects.create", { name: name || info.name, home: cloned.path });
         if (out.error) throw fail(out.error.message, out.error.code || "failed");
-        const slug = (out.data && out.data.slug) || project;
+        const slug = out.data && out.data.slug;
         projects.put({ project: slug, account: acct.name, full_name, default_branch: info.default_branch, home: cloned.path }, now());
         return { project: slug, home: cloned.path, full_name, default_branch: info.default_branch };
+      },
+    });
+
+    ctx.tool("github.project.add-repo", {
+      description: "Add a GitHub repo to an EXISTING project as a brand-new workspace folder: clones it fresh under the projects folder and registers it through projects.add-workspace. Never touches the project's other folders. `repo` is owner/name or a full GitHub URL; `folder?` names the new folder (defaults to the repo's own name, a `-2`/`-3` suffix if that name is already taken). This repo does not become the project's primary GitHub repo (that's set once, by github.project or the project's own first repo) - a session's worktree is still made from the primary repo; a worktree for an added repo is 0.1.2. People only, never a model.",
+      input: obj({ project: str, repo: str, account: str, folder: str }, ["project", "repo"]),
+      callers: PEOPLE,
+      run: async ({ project, repo, account: a, folder }) => {
+        const row = await projectRow(project);
+        if (!row) throw fail(`no project named ${project}`, "not_found");
+        const acct = forOne(accounts.all(), named(a));
+        const token = await ctx.vault.fetch(acct.item, { field: "token" });
+        const full_name = repoName(repo);
+        const info = await getRepo(token, full_name);
+        if (!info) throw fail(`GitHub does not show a repo at ${full_name} for ${acct.login}.`, "refused");
+        const projectsDir = ctx.config && ctx.config.projectsDir;
+        if (!projectsDir) throw fail("this device has no projects folder configured", "config");
+        const cloned = await cloneRepo({ projectsDir, name: named(folder) || info.name, url: info.clone_url, token });
+        const out = await ctx.call("projects.add-workspace", { project, folder: cloned.path });
+        if (out.error) throw fail(out.error.message, out.error.code || "failed");
+        return { project, folder: cloned.path, full_name, default_branch: info.default_branch };
       },
     });
 
@@ -250,61 +265,6 @@ export default {
           workspaces.push({ folder, isRepo: true, remotes });
         }
         return { project, workspaces };
-      },
-    });
-
-    ctx.tool("github.project.link", {
-      description: "Link an EXISTING project to a GitHub repo. `repo` is owner/name or a full GitHub URL. Without confirm: if the project's folder is a git repo whose origin already points at that repo, the link is just recorded and nothing on disk changes. Otherwise NOTHING is changed - the folder's current origin (or its absence, or that it isn't a git repo at all) is reported back along with a proposed action: adding the repo as a remote named \"github\". Call again with confirm: true to actually add that remote (never overwrites or removes an existing remote of any name, never force) and record the link.",
-      input: obj({ project: str, repo: str, account: str, confirm: { type: "boolean" } }, ["project", "repo"]),
-      callers: PEOPLE,
-      run: async ({ project, repo, account: a, confirm }) => {
-        const home = await homeOf(project);
-        if (!home) throw fail(`no project named ${project}`, "not_found");
-        const acct = forOne(accounts.all(), named(a));
-        const token = await ctx.vault.fetch(acct.item, { field: "token" });
-        const full_name = repoName(repo);
-        const info = await getRepo(token, full_name);
-        if (!info) throw fail(`GitHub does not show a repo at ${full_name} for ${acct.login}.`, "refused");
-        const record = () => { projects.put({ project, account: acct.name, full_name, default_branch: info.default_branch, home }, now()); ctx.events.emit("github.project.linked", { project, full_name }); };
-
-        const state = await readOrigin(home);
-        if (!state.isRepo) {
-          return { linked: false, action: "none", reason: "not_a_repo", home,
-            message: `${home} is not a git repository yet, so there is no remote to add. Clone or run git init there first.` };
-        }
-        if (state.origin && originFullName(state.origin) === full_name) {
-          record();
-          return { linked: true, recorded: true, matched: "origin", full_name, default_branch: info.default_branch, home };
-        }
-        if (!confirm) {
-          return { linked: false, action: "add-remote", remote: "github", url: info.clone_url, origin: state.origin, full_name,
-            default_branch: info.default_branch,
-            message: state.origin
-              ? `this folder's origin is ${state.origin}, not ${full_name}. Add ${full_name} as a remote named "github"?`
-              : `this folder has no origin remote. Add ${full_name} as a remote named "github"?` };
-        }
-        const existingGithub = await remoteUrl(home, "github");
-        if (existingGithub) {
-          if (originFullName(existingGithub) !== full_name) {
-            throw fail(`this folder already has a remote named "github" pointing at ${existingGithub}; nothing was changed`, "remote_exists");
-          }
-        } else {
-          await remoteAdd(home, "github", info.clone_url);
-        }
-        record();
-        return { linked: true, recorded: true, matched: existingGithub ? "github-remote" : "added-remote", remote: "github", full_name, default_branch: info.default_branch, home };
-      },
-    });
-
-    ctx.tool("github.project.unlink", {
-      description: "Forget a project's GitHub link. Never touches git: no remote is removed and the folder is untouched - only the recorded link is dropped.",
-      input: obj({ project: str }, ["project"]),
-      callers: PEOPLE,
-      run: async ({ project }) => {
-        const had = projects.get(project);
-        const removed = projects.remove(project);
-        if (removed) ctx.events.emit("github.project.unlinked", { project });
-        return { unlinked: removed, was: had ? { full_name: had.full_name, home: had.home } : null };
       },
     });
 

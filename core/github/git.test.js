@@ -18,7 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { gitSync } from "../../lib/git-safe.js";
-import { cloneRepo, worktreeAdd, worktreeRemove, freeFolder, safeSegment, originFullName, readOrigin, remoteUrl, remoteAdd, listRemotes, folderGitState } from "./git.js";
+import { cloneRepo, worktreeAdd, worktreeRemove, freeFolder, safeSegment, originFullName, remoteUrl, listRemotes, folderGitState } from "./git.js";
 
 const plainGit = (dir, args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull } });
 
@@ -193,29 +193,10 @@ test("originFullName: reads owner/name out of https (with or without a userinfo 
   assert.equal(originFullName(""), null);
 });
 
-test("readOrigin: says isRepo:false outside any git repo, isRepo:true with origin:null when there's no origin remote, and the URL when there is one", async t => {
-  const plain = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-plain-"));
-  t.after(() => fs.rmSync(plain, { recursive: true, force: true }));
-  assert.deepEqual(await readOrigin(plain), { isRepo: false, origin: null });
-
+test("remoteUrl: the URL a named remote points at, or null when there is no remote by that name", async t => {
   const repoDir = makeClonedRepo(t);
-  assert.deepEqual(await readOrigin(repoDir), { isRepo: true, origin: await remoteUrl(repoDir, "origin") });
-
-  plainGit(repoDir, ["remote", "remove", "origin"]);
-  assert.deepEqual(await readOrigin(repoDir), { isRepo: true, origin: null });
-});
-
-test("remoteAdd/remoteUrl: adds a new remote and reads it back; never overwrites one that's already there", async t => {
-  const repoDir = makeClonedRepo(t);
-  plainGit(repoDir, ["remote", "remove", "origin"]);
+  assert.equal(await remoteUrl(repoDir, "origin"), (await listRemotes(repoDir))[0].url);
   assert.equal(await remoteUrl(repoDir, "github"), null);
-  await remoteAdd(repoDir, "github", "https://github.com/alex/harlow-legal.git");
-  assert.equal(await remoteUrl(repoDir, "github"), "https://github.com/alex/harlow-legal.git");
-
-  // A second add for the same name is refused (git's own "remote already exists"), and the
-  // original URL survives untouched - the actual protection github.project.link relies on.
-  await assert.rejects(remoteAdd(repoDir, "github", "https://github.com/someone-else/other.git"), /remote add failed/);
-  assert.equal(await remoteUrl(repoDir, "github"), "https://github.com/alex/harlow-legal.git");
 });
 
 test("listRemotes: every remote in the repo, [] with no remotes and outside a repo, in git's own order", async t => {

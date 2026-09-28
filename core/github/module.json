@@ -6,12 +6,12 @@
   "does": {
     "tools": [
       "github.connect", "github.connect.cancel", "github.accounts", "github.remove",
-      "github.repos", "github.project", "github.project.of",
-      "github.project.detect", "github.project.link", "github.project.unlink",
+      "github.repos", "github.project", "github.project.add-repo", "github.project.of",
+      "github.project.detect",
       "github.session.worktree", "github.session.cleanup"
     ]
   },
-  "watches": { "emits": ["github.added", "github.removed", "github.connected", "github.connect-failed", "github.cleanup-needed", "github.project.linked", "github.project.unlinked"] },
+  "watches": { "emits": ["github.added", "github.removed", "github.connected", "github.connect-failed", "github.cleanup-needed"] },
   "shows": {
     "deck": ["settings:connections"],
     "cli": ["connect"]

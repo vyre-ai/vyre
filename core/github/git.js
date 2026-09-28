@@ -72,19 +72,6 @@ export function originFullName(url) {
   return null;
 }
 
-/**
- * Whether `dir` is a git repository at all, and what its `origin` remote points at (`null` when
- * there is no `origin` or no repo). Read-only, local-only: no network call, so it costs nothing
- * to call before proposing any change (ADR 0041, `github.project.link`/`.detect`).
- * @param {string} dir
- */
-export async function readOrigin(dir) {
-  const top = await gitAsync(dir, ["rev-parse", "--is-inside-work-tree"]);
-  if (!top.ok || top.stdout.trim() !== "true") return { isRepo: false, origin: null };
-  const r = await gitAsync(dir, ["remote", "get-url", "origin"]);
-  return { isRepo: true, origin: r.ok ? r.stdout.trim() : null };
-}
-
 /** The URL a named remote points at, or null when the repo has no remote by that name. */
 export async function remoteUrl(dir, name) {
   const r = await gitAsync(dir, ["remote", "get-url", safeSegment(name, "remote name")]);
@@ -114,19 +101,6 @@ export async function folderGitState(dir) {
   const top = await gitAsync(dir, ["rev-parse", "--is-inside-work-tree"]);
   if (!top.ok || top.stdout.trim() !== "true") return { isRepo: false, remotes: [] };
   return { isRepo: true, remotes: await listRemotes(dir) };
-}
-
-/**
- * Add a new remote. Never overwrites: `git remote add` refuses on its own when a remote by that
- * name already exists, which is the actual protection `github.project.link`'s confirm step
- * relies on (checked again there with `remoteUrl` first, for a clearer message, but this is the
- * backstop). Local-only: no network call, since adding a remote is only a config write.
- * @param {string} dir @param {string} name @param {string} url
- */
-export async function remoteAdd(dir, name, url) {
-  const r = await gitAsync(dir, ["remote", "add", safeSegment(name, "remote name"), url]);
-  if (!r.ok) throw fail(`git remote add failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "remote_failed");
-  return { added: true };
 }
 
 const EXCLUDE_LINE = ".sessions/";

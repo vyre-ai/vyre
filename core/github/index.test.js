@@ -1,11 +1,13 @@
 // @ts-check
 // The github module's tools wired up for real: its own table, its own git.js against real local
-// repos on disk (readOrigin/remoteAdd/remoteUrl are local-only, never network), and a small fake
-// for `projects` (ctx.call) and GitHub's REST API (global fetch, restored after each test - no
-// real network, ever). Device flow itself (connect.js) is exercised in connect.test.js; this file
-// seeds an account directly into the module's own table, the way an earlier github.connect would
-// have left it, and focuses on github.repos' paging and the project.detect/.link/.unlink flow
-// (ADR 0041, added for "link an existing project to a repo").
+// repos on disk (listRemotes/folderGitState/remoteUrl are local-only, never network), and a small
+// fake for `projects` (ctx.call) and GitHub's REST API (global fetch, restored after each test -
+// no real network, ever). Device flow itself (connect.js) is exercised in connect.test.js; this
+// file seeds an account directly into the module's own table, the way an earlier github.connect
+// would have left it, and focuses on github.repos' paging, github.project.detect (per workspace)
+// and github.project.add-repo (ADR 0041: there is no explicit "link" - a project's repos are
+// either its primary one, set once by github.project, or added workspaces via add-repo; detect
+// only ever reads what's already on disk).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -166,85 +168,40 @@ test("github.project.detect: covers every workspace a project owns, not just its
   assert.deepEqual(r.data.workspaces[2].remotes, []);
 });
 
-test("github.project.link: an already-matching origin is just recorded, no confirm needed and nothing on disk changes", async t => {
-  const home = makeRepo(t, "https://github.com/alex/harlow-legal.git");
-  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home }] });
-  seedAccount(w.db);
-  withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal", default_branch: "main" }] }));
+// The actual clone step (cloneRepo/gitWithAskpass) needs a real https-reachable git server -
+// git-safe.js's own protocol.allow=never blocks a local file:// stand-in on purpose (git.test.js
+// proves exactly that refusal), so github.project and .add-repo's happy paths (a real successful
+// clone) aren't exercised here, the same as github.project always was: only the validation that
+// runs before a clone is ever attempted is testable without real network, which is what these
+// prove.
 
-  const r = await w.as("cli")("github.project.link", { project: "harlow", repo: "alex/harlow-legal" });
-  assert.deepEqual(r.data, { linked: true, recorded: true, matched: "origin", full_name: "alex/harlow-legal", default_branch: "main", home });
-  assert.ok(w.events.some(e => e.type === "github.project.linked"));
-  // recorded for real, readable back through github.project.of
-  const of = await w.as("cli")("github.project.of", { project: "harlow" });
-  assert.equal(of.data.full_name, "alex/harlow-legal");
-});
-
-test("github.project.link: a different or missing origin proposes adding a \"github\" remote and changes nothing until confirm: true", async t => {
-  const home = makeRepo(t); // no origin at all
-  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home }] });
-  seedAccount(w.db);
-  withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal", default_branch: "main" }] }));
-
-  const proposed = await w.as("cli")("github.project.link", { project: "harlow", repo: "alex/harlow-legal" });
-  assert.equal(proposed.data.linked, false);
-  assert.equal(proposed.data.action, "add-remote");
-  assert.equal(proposed.data.remote, "github");
-  assert.equal(proposed.data.origin, null);
-  // nothing on disk changed: still no remotes at all
-  assert.equal(execFileSync("git", ["-C", home, "remote"], { encoding: "utf8" }).trim(), "");
-
-  const confirmed = await w.as("cli")("github.project.link", { project: "harlow", repo: "alex/harlow-legal", confirm: true });
-  assert.equal(confirmed.data.linked, true);
-  assert.equal(confirmed.data.matched, "added-remote");
-  const remoteCheck = execFileSync("git", ["-C", home, "remote", "get-url", "github"], { encoding: "utf8" }).trim();
-  assert.equal(remoteCheck, "https://github.com/alex/harlow-legal.git");
-});
-
-test("github.project.link: never overwrites an existing \"github\" remote that points somewhere else", async t => {
+test("github.project.add-repo: validates before ever cloning - no such project, a repo the account can't see, and a module caller are all refused", async t => {
   const home = makeRepo(t);
-  plainGit(home, ["remote", "add", "github", "https://github.com/someone-else/other.git"]);
   const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home }] });
   seedAccount(w.db);
-  withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal", default_branch: "main" }] }));
+  withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-docs", default_branch: "main" }] }));
 
-  const r = await w.as("cli")("github.project.link", { project: "harlow", repo: "alex/harlow-legal", confirm: true });
-  assert.equal(r.error.code, "remote_exists");
-  const stillThere = execFileSync("git", ["-C", home, "remote", "get-url", "github"], { encoding: "utf8" }).trim();
-  assert.equal(stillThere, "https://github.com/someone-else/other.git", "the existing remote is untouched");
-});
+  const noProject = await w.as("cli")("github.project.add-repo", { project: "nope", repo: "alex/harlow-docs" });
+  assert.equal(noProject.error.code, "not_found");
+  assert.equal(w.calls.some(c => c.tool === "projects.add-workspace"), false, "never got as far as cloning or registering a workspace");
 
-test("github.project.link: a folder that isn't a git repo at all proposes no action", async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-notrepo-"));
-  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
-  const w = await world(t, { projectsRows: [{ slug: "plain", name: "Plain", home }] });
-  seedAccount(w.db);
-  withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal", default_branch: "main" }] }));
+  const noRepo = await w.as("cli")("github.project.add-repo", { project: "harlow", repo: "alex/does-not-exist" });
+  assert.equal(noRepo.error.code, "refused");
 
-  const r = await w.as("cli")("github.project.link", { project: "plain", repo: "alex/harlow-legal" });
-  assert.equal(r.data.linked, false);
-  assert.equal(r.data.action, "none");
-  assert.equal(r.data.reason, "not_a_repo");
-});
-
-test("github.project.unlink: forgets the link and never touches git; a person-only tool refuses a module caller", async t => {
-  const home = makeRepo(t, "https://github.com/alex/harlow-legal.git");
-  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home }] });
-  seedAccount(w.db);
-  withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal", default_branch: "main" }] }));
-  await w.as("cli")("github.project.link", { project: "harlow", repo: "alex/harlow-legal" });
-
-  const denied = await w.as("module:sessions")("github.project.link", { project: "harlow", repo: "alex/harlow-legal" });
+  // person-only: a module caller is refused, before any of the above even runs
+  const denied = await w.as("module:sessions")("github.project.add-repo", { project: "harlow", repo: "alex/harlow-docs" });
   assert.equal(denied.error.code, "denied");
-  const deniedUnlink = await w.as("module:sessions")("github.project.unlink", { project: "harlow" });
-  assert.equal(deniedUnlink.error.code, "denied");
 
-  const r = await w.as("cli")("github.project.unlink", { project: "harlow" });
-  assert.deepEqual(r.data, { unlinked: true, was: { full_name: "alex/harlow-legal", home } });
-  const of = await w.as("cli")("github.project.of", { project: "harlow" });
-  assert.equal(of.data, null);
-  // the remote from an earlier confirm (none was added here, since origin already matched) and
-  // the origin itself are both still exactly as they were - unlink is a bookkeeping-only op.
-  const originStill = execFileSync("git", ["-C", home, "remote", "get-url", "origin"], { encoding: "utf8" }).trim();
-  assert.equal(originStill, "https://github.com/alex/harlow-legal.git");
+  // add-repo never touches the project's existing folder while failing
+  assert.equal(execFileSync("git", ["-C", home, "remote"], { encoding: "utf8" }).trim(), "");
+});
+
+test("github.project: narrowed to making a brand-new project - no project param anymore; a repo the account can't see is refused before any clone", async t => {
+  const w = await world(t);
+  seedAccount(w.db);
+  withFetch(t, fakeFetch({ repos: [] }));
+
+  const r = await w.as("cli")("github.project", { repo: "alex/does-not-exist" });
+  assert.equal(r.error.code, "refused");
+  assert.equal(w.calls.some(c => c.tool === "projects.create"), false, "never got as far as creating a project");
 });
