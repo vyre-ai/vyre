@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### presence: capsule.pin refuses an ad-hoc-signed Capsule, and a build other than the caller's own
+
+- vyred reads the calling process's code signature from the socket (`codesign -dvvv +pid`, start
+  time checked before and after) and hands it to `presence.capsule.pin`. An ad-hoc or unsigned
+  build is refused with a plain message pointing at `vyre capsule install`; so is a cdhash that
+  is not the caller's own, or a call whose signature vyred cannot read. Only vyred's router can
+  pass the signature (a module's ctx.call carries no meta).
+
 #### daemon: a root leader vyred cannot read asks for presence once, never trusted outright
 
 - An ssh login's top of chain on the box is the root sshd, whose program vyred cannot read. It is

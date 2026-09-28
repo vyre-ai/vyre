@@ -402,15 +402,46 @@ export function procInfo(pid) {
  * @param {number} pid @returns {string|null}
  */
 export function codeCdhash(pid) {
+  const s = codeSignature(pid);
+  return s && s.cdhash;
+}
+
+/**
+ * What `codesign -dvvv` says about a running process: its cdhash, and whether it is signed at all
+ * or only ad hoc. An ad-hoc build has no signing identity, so its keychain ACL binds to nothing a
+ * same-uid program cannot copy (capsule-pro's test, 28 Sep).
+ * @param {number} pid @returns {{ cdhash: string|null, signed: boolean, adhoc: boolean } | null}
+ */
+export function codeSignature(pid) {
   if (process.platform !== "darwin") return null;
   try {
     // codesign's pid form is a bare or `+`-prefixed pid, never `pid=<n>` (that form fails outright
     // on macOS 26: "No such file or directory") -- found and confirmed against a real signed app
     // by capsule-pro, 28 Sep.
     const r = spawnSync("codesign", ["-dvvv", `+${pid}`], { encoding: "utf8", timeout: 2000 });
-    const m = /^CDHash=([0-9a-f]+)$/m.exec(`${r.stdout || ""}\n${r.stderr || ""}`);
-    return m ? m[1] : null;
+    return parseCodesign(`${r.stdout || ""}\n${r.stderr || ""}`);
   } catch { return null; }
+}
+
+/** @param {string} text codesign -dvvv output @returns {{ cdhash: string|null, signed: boolean, adhoc: boolean }} */
+export function parseCodesign(text) {
+  const m = /^CDHash=([0-9a-f]+)$/m.exec(text);
+  const signed = Boolean(m) && !/not signed at all/.test(text);
+  const adhoc = /^Signature=adhoc$/m.test(text) || /^CodeDirectory .*flags=0x[0-9a-f]*\([^)]*\badhoc\b/m.test(text);
+  return { cdhash: m ? m[1] : null, signed, adhoc };
+}
+
+/**
+ * codeSignature for the process on a socket call, with its start time read before and after so a
+ * pid recycled mid-check reads as nothing.
+ * @param {number} pid @param {{ started?: (pid: number) => string | null, signature?: typeof codeSignature }} [seam]
+ */
+export function signatureOf(pid, seam = {}) {
+  const started = seam.started || (p => { const i = procInfo(p); return i && i.started; });
+  const before = started(pid);
+  if (!before) return null;
+  const s = (seam.signature || codeSignature)(pid);
+  return s && started(pid) === before ? s : null;
 }
 
 // The pin itself lives in vyred's own db now (core/presence/index.js's pinCapsule/capsulePin,

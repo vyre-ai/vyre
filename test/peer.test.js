@@ -11,7 +11,7 @@ import { tempHome, writeModule } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 import { SURFACE_LABELS } from "../core/modules/index.js";
 import { ancestry, insideClaude, controllingTty, exePath, processUid, loginOf, tmuxClients,
-  verifiedCapsule } from "../core/daemon/peer.js";
+  verifiedCapsule, parseCodesign, signatureOf } from "../core/daemon/peer.js";
 
 const tree = {
   // vyred (500) under the test runner (400); a terminal zsh (200) and a claude (300) elsewhere.
@@ -737,9 +737,65 @@ test("peer: presence.capsule.pin is presence-required and lives in vyred's own d
     const sig = sign(null, Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), ck.privateKey).toString("base64url");
     return { method: "capsule", key: capsuleKey.id, ts: String(ts), nonce, sig };
   };
-  const pinned = await d.registry.call("presence.capsule.pin", { cdhash }, "cli", { proof: capsuleProof("presence.capsule.pin", { cdhash }) });
+  const pin = codeSignature => d.registry.call("presence.capsule.pin", { cdhash }, "cli", { proof: capsuleProof("presence.capsule.pin", { cdhash }), ...(codeSignature !== undefined ? { codeSignature } : {}) });
+
+  // vyred reads the caller's own signature from the socket. With none (not a socket call, or
+  // codesign could not read it), an ad-hoc or unsigned build, or another build's cdhash: refused
+  // with a plain reason, nothing pinned.
+  const none = await pin(undefined);
+  assert.equal(none.error?.code, "denied", JSON.stringify(none));
+  assert.match(none.error.message, /could not read this Capsule's code signature/);
+  const adhoc = await pin({ cdhash, signed: true, adhoc: true });
+  assert.equal(adhoc.error?.code, "denied", JSON.stringify(adhoc));
+  assert.match(adhoc.error.message, /ad-hoc signed[\s\S]*vyre capsule install/);
+  assert.equal((await pin({ cdhash: null, signed: false, adhoc: false })).error?.code, "denied");
+  const other = await pin({ cdhash: "c".repeat(40), signed: true, adhoc: false });
+  assert.match(other.error?.message || "", /only pin its own build/);
+  assert.equal(presence.capsulePin(), null);
+
+  // Over the socket, the signature is vyred's own read of the caller. This test process is not a
+  // signed Capsule (and off macOS there is no codesign): refused.
+  const p = capsuleProof("presence.capsule.pin", { cdhash });
+  const { execFile } = await import("node:child_process");
+  // Async: this vyred runs in this process, so a sync curl would block its own answer.
+  const viaSocket = JSON.parse(await new Promise((resolve, reject) => execFile("curl", ["-s", "--unix-socket", d.paths.socket, "-X", "POST", "http://x/v1/tools/presence.capsule.pin",
+    "-H", "content-type: application/json", "-H", "x-vyre-caller: capsule",
+    "-H", `x-vyre-presence: capsule key=${p.key} ts=${p.ts} nonce=${p.nonce} sig=${p.sig}`,
+    "-d", JSON.stringify({ cdhash })], { encoding: "utf8", timeout: 20000 }, (e, out) => (e ? reject(e) : resolve(out)))));
+  assert.equal(viaSocket.error?.code, "denied", JSON.stringify(viaSocket));
+  assert.equal(presence.capsulePin(), null);
+
+  const pinned = await pin({ cdhash, signed: true, adhoc: false });
   assert.equal(pinned.error, undefined, JSON.stringify(pinned));
   assert.equal(presence.capsulePin()?.cdhash, cdhash);
+});
+
+test("peer: codesign's own words say signed, ad hoc or unsigned; a pid recycled mid-read reads as nothing", () => {
+  const adhoc = parseCodesign(`Executable=/Applications/Vyre.app/Contents/MacOS/Vyre
+Identifier=run.vyre.capsule
+Format=app bundle with Mach-O thin (arm64)
+CodeDirectory v=20400 size=1234 flags=0x20002(adhoc,linker-signed) hashes=30+7 location=embedded
+CDHash=${"d".repeat(40)}
+Signature=adhoc
+TeamIdentifier=not set`);
+  assert.deepEqual(adhoc, { cdhash: "d".repeat(40), signed: true, adhoc: true });
+  // Signed with an identity (the self-signed one `vyre capsule install` makes, or a Developer ID).
+  const signed = parseCodesign(`Identifier=run.vyre.capsule
+CodeDirectory v=20500 size=1234 flags=0x10000(runtime) hashes=30+7 location=embedded
+CDHash=${"e".repeat(40)}
+Signature size=1712
+Authority=Vyre Local
+TeamIdentifier=not set`);
+  assert.deepEqual(signed, { cdhash: "e".repeat(40), signed: true, adhoc: false });
+  // linker-signed alone (no adhoc word on its own line) still carries adhoc in the flags.
+  assert.equal(parseCodesign(`CodeDirectory v=20400 size=9 flags=0x2(adhoc) hashes=1+0 location=embedded\nCDHash=${"f".repeat(40)}`).adhoc, true);
+  assert.deepEqual(parseCodesign("/tmp/x: code object is not signed at all"), { cdhash: null, signed: false, adhoc: false });
+
+  const sig = { cdhash: "e".repeat(40), signed: true, adhoc: false };
+  assert.deepEqual(signatureOf(42, { started: () => "t1", signature: () => sig }), sig);
+  const times = ["t1", "t2"];
+  assert.equal(signatureOf(42, { started: () => times.shift(), signature: () => sig }), null, "recycled between the reads");
+  assert.equal(signatureOf(42, { started: () => null, signature: () => sig }), null, "gone");
 });
 
 // A Mac's processes with their terminals: Terminal.app (100, no tty) runs login (110) on ttys003,

@@ -21,7 +21,7 @@ import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule } from "./peer.js";
+import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -325,6 +325,12 @@ const serverName = server => server.exe === "uid0"
   ? `a system service running as root that Vyre cannot identify (pid ${server.pid}, started ${server.started}; for example sshd, cron or a login manager)`
   : `${server.exe} (pid ${server.pid}, started ${server.started})`;
 
+/** The code signature of the process on this socket, or null when it cannot be read. @param {import("node:net").Socket} socket */
+async function signedBy(socket) {
+  const pid = await peerPid(socket);
+  return pid ? signatureOf(pid) : null;
+}
+
 async function serverTrusted(server, proofHeader, caller, registry) {
   const key = `${server.exe}:${server.pid}:${server.started}`;
   if (serverTrust.has(key)) return true;
@@ -593,7 +599,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const terminal = socket && terminalOf && SESSIONABLE.has(name) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
     // Only a caller vyred bound to a thread above says which chat tool call this is.
     const call = via.thread ? callId(req.headers["x-vyre-call-id"]) : null;
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}), ...(call ? { call } : {}),
+    // presence.capsule.pin judges the calling binary's own signature, read here from the socket's
+    // pid: only vyred's router can hand a tool this (a module's ctx.call carries no meta).
+    const signed = socket && name === "presence.capsule.pin" ? await signedBy(req.socket) : undefined;
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
