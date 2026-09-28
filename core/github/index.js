@@ -262,10 +262,10 @@ export default {
     });
 
     ctx.tool("github.project", {
-      description: "Make a BRAND-NEW project from a repo: clones it and creates the project, recording the repo as the project's primary GitHub repo (what a session's worktree is made from, ADR 0041 section 5). `repo` is owner/name or a full GitHub URL. To add a repo to a project that already exists instead, use github.project.add-repo.",
-      input: obj({ name: str, repo: str, account: str }, ["repo"]),
+      description: "Make a BRAND-NEW project from a repo: clones it and creates the project, recording the repo as the project's primary GitHub repo (what a session's worktree is made from, ADR 0041 section 5). `repo` is owner/name or a full GitHub URL. `from_thread?` is an existing chat's id, passed straight through to `projects.create` (which validates and normalises it): the new project's avatar_seed becomes that chat's id and the chat is filed into it, so starting a GitHub project from a loose chat keeps its tile instead of getting a fresh one. To add a repo to a project that already exists instead, use github.project.add-repo.",
+      input: obj({ name: str, repo: str, account: str, from_thread: str }, ["repo"]),
       callers: PEOPLE,
-      run: async ({ name, repo, account: a }) => {
+      run: async ({ name, repo, account: a, from_thread }) => {
         const acct = forOne(accounts.all(), named(a));
         const token = await ctx.vault.fetch(acct.item, { field: "token" });
         const full_name = repoName(repo);
@@ -273,7 +273,7 @@ export default {
         const projectsDir = ctx.config && ctx.config.projectsDir;
         if (!projectsDir) throw fail("this device has no projects folder configured", "config");
         const cloned = await cloneRepo({ projectsDir, name: info.name, url: info.clone_url, token });
-        const out = await ctx.call("projects.create", { name: name || info.name, home: cloned.path });
+        const out = await ctx.call("projects.create", { name: name || info.name, home: cloned.path, ...(named(from_thread) ? { from_thread } : {}) });
         if (out.error) throw fail(out.error.message, out.error.code || "failed");
         const slug = out.data && out.data.slug;
         projects.put({ project: slug, account: acct.name, full_name, default_branch: info.default_branch, home: cloned.path }, now());

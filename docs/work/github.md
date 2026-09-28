@@ -315,6 +315,26 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   - ADR 0041 updated throughout (the three narrowed tools, the table, the firstParty note, and
     the merge heads-up recorded explicitly so it isn't lost before the stage fold).
 
+## Done (2026-09-28, from_thread on github.project - avatar carry-over)
+- reviewer CLEARED fb31a36e, nothing open. Lead: one small addition for the user-approved
+  avatar carry-over - an optional `from_thread` input on `github.project` that passes straight
+  through to `projects.create` (`native-core` validates it there: an existing chat's UUID,
+  normalised). The project then gets `avatar_seed` = that chat's id and the chat is filed into
+  it, so "New project from a GitHub repo..." on a loose chat keeps its tile.
+  - `github.project`'s input gains `from_thread?`; when given, it's spread into the
+    `projects.create` call untouched (`...(named(from_thread) ? { from_thread } : {})`, the same
+    `named()` helper already used everywhere else here for "a non-empty string or leave it out
+    entirely" - never sends `from_thread: undefined`). `github` does no validation of its own on
+    it, by design; that's `projects.create`'s job.
+  - Stays people-only, no change to callers.
+  - Can only be tested where `projects.create` is actually reached, which needs a real clone
+    (same limitation as every other `github.project` happy-path assertion) - added to
+    `index.live.test.js`'s existing real clone: passes a `from_thread` UUID and asserts the fake
+    `projects.create` call captured it.
+  - ADR 0041 decision 4, step 3, updated with the new input and what it does.
+  - Tested on testbox (temp `HOME`, never locally): see the commit for the numbers. Sending to
+    reviewer, integrator and launch, then pausing.
+
 ## Doing
 - reviewer CLEARED work/github through acfcefd2 (both 3a72ea7f..84e76681 and the stdin fix).
   The credential.interactive LOW is WITHDRAWN (reviewer agreed the evidence was right); the lead

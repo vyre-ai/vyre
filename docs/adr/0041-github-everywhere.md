@@ -161,8 +161,15 @@ account?}`:
    immediately; the value was not reused or sent anywhere; a rotation is recommended. The actual
    `gitWithAskpass` code path was never affected (it always goes through the real isolation), the
    leak was in a throwaway debug script that has since been deleted.
-3. `ctx.call("projects.create", { name, home: clonedPath })`. `github` never writes to `projects`'
-   own tables; it only calls its tools, per the module contract.
+3. `ctx.call("projects.create", { name, home: clonedPath, from_thread? })`. `github` never writes
+   to `projects`' own tables; it only calls its tools, per the module contract. `from_thread?`
+   (new, the user-approved avatar carry-over) is `github.project`'s own optional input, passed
+   straight through untouched: an existing chat's id, which `projects.create` (`native-core`
+   owns) validates and normalises on its own side. When given, the new project's `avatar_seed`
+   becomes that chat's id and the chat is filed into the project, so starting a GitHub project
+   from a loose chat ("New project from a GitHub repo...") keeps its tile instead of getting a
+   fresh one. `github` does no validation of its own on it, by design, the same as every other
+   value it only relays.
 4. The project row remembers the repo (`github_projects (project, account, full_name,
    default_branch)`, keyed by the project's slug), so later steps (worktree-per-session, and
    0.1.2's PRs and git settings) know which project is a GitHub project without asking again. This

@@ -92,12 +92,17 @@ test(`LIVE (real network, testbox only): github.project and .add-repo really clo
 
   // 1. github.project: resolves the repo (getRepo's anonymous-retry makes this work with a
   //    placeholder token), clones it for real, makes a new project, records the primary repo.
-  const created = await w.as("cli")("github.project", { repo: REPO });
+  //    from_thread rides straight through to projects.create untouched - github.project doesn't
+  //    validate it itself (projects.create/native-core does); this only proves it's passed.
+  const FROM_THREAD = "11111111-1111-4111-8111-111111111111";
+  const created = await w.as("cli")("github.project", { repo: REPO, from_thread: FROM_THREAD });
   assert.equal(created.error, undefined, `github.project failed: ${JSON.stringify(created)}`);
   assert.equal(created.data.full_name, REPO);
   assert.ok(fs.existsSync(path.join(created.data.home, ".git")), "a real clone exists at .home");
   assert.ok(fs.existsSync(path.join(created.data.home, "README")) || fs.existsSync(path.join(created.data.home, "README.md")), "the clone has real file content, not an empty shell");
   assert.ok(hasNoCredentialHelper(created.data.home), "no credential helper got configured on the clone");
+  const createCall = w.calls.find(c => c.tool === "projects.create");
+  assert.equal(createCall.input.from_thread, FROM_THREAD, "from_thread reached projects.create");
   // DUMMY_TOKEN is not a real GitHub credential, so the real API 401s it for real, and the
   // anonymous-fallback fix must still flag it (team-lead/reviewer, 119ef290 review, LOW): the
   // fallback succeeding for a public repo must never quietly hide a broken token.

@@ -924,11 +924,12 @@ Cancel an open sign-in.
 
 ### `github.project`
 
-Make a BRAND-NEW project from a repo: clones it and creates the project, recording the repo as the project's primary GitHub repo (what a session's worktree is made from, ADR 0041 section 5). `repo` is owner/name or a full GitHub URL. To add a repo to a project that already exists instead, use github.project.add-repo.
+Make a BRAND-NEW project from a repo: clones it and creates the project, recording the repo as the project's primary GitHub repo (what a session's worktree is made from, ADR 0041 section 5). `repo` is owner/name or a full GitHub URL. `from_thread?` is an existing chat's id, passed straight through to `projects.create` (which validates and normalises it): the new project's avatar_seed becomes that chat's id and the chat is filed into it, so starting a GitHub project from a loose chat keeps its tile instead of getting a fresh one. To add a repo to a project that already exists instead, use github.project.add-repo.
 
 - Input:
   - `repo` string, required
   - `account` string
+  - `from_thread` string
   - `name` string
 - Callers: `capsule`, `cli`, `deck`, `local`
 
