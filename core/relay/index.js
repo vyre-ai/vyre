@@ -100,6 +100,14 @@ export default {
     // The box's name as the names module knows it (config.name), never the machine's hostname: it rides in QR codes and
     // shows in screenshots.
     const boxName = () => String(ctx.config.name || (ctx.config.network && ctx.config.network.name) || "Vyre box").slice(0, 64);
+    // The claimed <handle>.vyre.run subdomain (core/names/service.js's own `ctx.config.name`,
+    // set only once a name is actually claimed) — not boxName()'s fallback chain, since a display
+    // name is not necessarily a real, resolvable handle. Null when nothing is claimed yet: the
+    // lead's 28 Sep ask (so a phone can offer <handle>.vyre.run after pairing, without a guess).
+    const boxHandle = () => {
+      const h = ctx.config.name;
+      return typeof h === "string" && /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/i.test(h) ? h.slice(0, 32) : null;
+    };
 
     /** One live pairing at a time: its secret's hash, when it ends, and whether it is the first device's. */
     /** @type {{ hash: Buffer, exp: number, first: boolean } | null} */
@@ -186,11 +194,13 @@ export default {
             kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0`)
           .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest);
         // The pairing notice: every surface shows it with a one-tap removal (ADR 0026 section 6).
-        ctx.events.emit("device.paired", { id, name, kind, ...(kind === "web" ? { release, build: knownBuild(release, manifest) ? "known" : "unknown" } : {}) });
+        // Carries the new device's own key fingerprint (reviewer, 28 Sep LOW) so the notice reads
+        // the same short form ("a1b2 c3d4") as every other Touch ID / confirm screen that shows one.
+        ctx.events.emit("device.paired", { id, name, kind, fingerprint: keyFingerprint(pub), ...(kind === "web" ? { release, build: knownBuild(release, manifest) ? "known" : "unknown" } : {}) });
         // The scan-to-pair screen's own event (ADR 0037, the lead 28 Sep): only for a ticket
         // pairing, so a Deck showing "Add your phone" reacts to its own flow and not to someone
         // pairing a different device with the classic QR at the same time.
-        if (match.ticket) ctx.events.emit("relay.paired", { device: id, name });
+        if (match.ticket) ctx.events.emit("relay.paired", { device: id, name, fingerprint: keyFingerprint(pub) });
         return { v: 1, box: { name: boxName() }, device: id, paired: true, presence };
       }
       const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
@@ -330,7 +340,7 @@ export default {
       if (!settings().enabled) save({ enabled: true });
       startLink();
       const connected = link ? await link.ready() : false;
-      const record = JSON.stringify({ v: 1, name: boxName(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp });
+      const record = JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp });
       const mac = ticketMac(rawTicket, record);
       if (link) link.registerTicket({ loc: ticketDerive("loc", rawTicket).toString("base64url"), record, mac: mac.toString("base64url"), exp });
       return { ticket: rawTicket.toString("base64url"), expiresAt: exp, connected };
@@ -339,7 +349,7 @@ export default {
     ctx.tool("relay.pair.ticket", {
       description: "Mint a one-time pairing ticket for the Vyre code (Wink): a phone that scans it resolves the box's identity from the relay, then pairs exactly as relay.pair.start's QR does. Works once, for 5 minutes; call again for a fresh one (an old, unused ticket is simply left to expire, unlike relay.pair.start's single live QR). Not available on a Mac yet: see vyre-core (ADR 0040).",
       input: obj(),
-      presence: { when: () => !macCoreRefusal(platform), summary: async () => "Pair a new device with this box, by scanning its Vyre code" },
+      presence: { when: () => !macCoreRefusal(platform), summary: async () => `Pair a new device with this box, by scanning its Vyre code${settings().enabled ? "" : " (this also turns the relay on)"}` },
       run: async (_, meta = {}) => {
         const refusal = macCoreRefusal(platform);
         if (refusal) throw refusal;

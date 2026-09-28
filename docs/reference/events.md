@@ -291,11 +291,11 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | Event | Fields |
 | --- | --- |
 | `device.moved` | `id`, `path`; sometimes `rtt` |
-| `device.paired` | `id`, `kind`, `name`; sometimes `build`, `release` |
+| `device.paired` | `fingerprint`, `id`, `kind`, `name`; sometimes `build`, `release` |
 | `device.removed` | `id`, `why` |
 | `relay.connected` | built in a variable before the emit; see the source |
 | `relay.disconnected` | built in a variable before the emit; see the source |
-| `relay.paired` | `device`, `name` |
+| `relay.paired` | `device`, `fingerprint`, `name` |
 
 ## sessions
 

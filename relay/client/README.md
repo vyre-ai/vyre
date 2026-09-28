@@ -90,23 +90,39 @@ probe within 1.5 s; a transport error moves to the relay at once (the request ke
 the relay, the better path is probed every 60 s while visible and the connection moves back.
 Event streams move with it and resume from their cursor.
 
-## Scan-to-pair with a compact ticket ("Wink", ADR 0037)
+## Scan-to-pair with a compact ticket ("Wink", ADR 0045)
 
 A Vyre code (the avatar's scannable ring) has room for only 72 bits, nowhere near a full offer
 (a 256-bit box key, a route id, a secret, a name). So it carries only an 8-byte ticket, and the
 phone resolves the actual offer from the relay rather than reading it off the code.
 
+**Confirm before you pair.** `resolveTicket()` looks the ticket up and verifies it, but does not
+pair — it hands back who the box says it is, so a screen can show "Pair with alex's box
+(a1b2 c3d4)?" and let the person confirm before anything happens. The MAC proves the relay's
+answer is unmodified from whatever the box minted; it does **not** prove it is the person's own
+box — someone hands you a code for THEIR box, you scan it, the MAC still checks out. Reading the
+name and fingerprint first, and only then calling `pairOffer()`, is the only thing that catches
+that (reviewer, 28 Sep). `pairTicket()` chains both calls for a caller that genuinely does not
+confirm.
+
 ```js
-import { pairTicket, keyFingerprint } from "<repo>/relay/client/client.js";
+import { resolveTicket, pairOffer, keyFingerprint } from "<repo>/relay/client/client.js";
 
 // ticket: the 8 raw bytes the Vyre code encoded. relay: the ws:// or wss:// base the app already
 // knows to ask (there is no room in the code to carry it; a self-hosted relay is out of scope for
 // this path — fall back to a full QR there).
-const box = await pairTicket(ticket, { relay, name: "alex's phone", keyStore, crypto });
+const { offer, name, fingerprint, handle } = await resolveTicket(ticket, { relay, crypto });
+// Show "Pair with {name} ({fingerprint})?" and wait for the person, THEN:
+const paired = await pairOffer(offer, { name: "alex's phone", keyStore, crypto });
 // -> exactly what pair() returns: { relay, route, box, name, device, presence }
+// handle: the box's claimed <handle>.vyre.run, or null if it hasn't claimed one — redirect there
+// after pairing if you want a friendlier address than the relay/route.
+
+// The one-call form, for a caller that skips the confirm step:
+// const paired = await pairTicket(ticket, { relay, name: "alex's phone", keyStore, crypto });
 ```
 
-`pairTicket` does every step itself — nothing else to build:
+`resolveTicket` does every step through verification:
 
 1. Derives three values from the ticket, each a `sha256` of a distinct tag plus the ticket bytes,
    matching `core/relay/wire.js`'s `ticketDerive` byte for byte: a locator (tag `vyre-pair-loc`),
@@ -125,15 +141,19 @@ const box = await pairTicket(ticket, { relay, name: "alex's phone", keyStore, cr
      version mismatch worth logging).
 3. Verifies `mac` against `hmacSha256(macKey, utf8(record))` itself, **before parsing or trusting
    anything in `record`**. A mismatch means the relay (or someone controlling it) tried to answer
-   with a substituted identity; `pairTicket` throws and pairs with nothing.
-4. Parses `record` (`{ v: 1, name, relay, route, box, exp }`) and sanitises `name` the same way a
-   box's own name is sanitised in a Touch ID prompt (control characters, bidi overrides, capped at
-   64) before it ever reaches the UI.
-5. Runs the exact same handshake `pair()` runs from a QR offer (`pairOffer` underneath both), with
-   the ticket-derived secret as the pairing secret. Returns the same shape.
+   with a substituted identity; `resolveTicket` throws and nothing is ever offered for pairing.
+4. Parses `record` (`{ v: 1, name, handle, relay, route, box, exp }`), refuses one whose own `exp`
+   has already passed (the MAC only proves the record is unmodified, not that it was fetched in
+   time), and sanitises `name` and `handle` the same way a box's own name is sanitised in a Touch
+   ID prompt (control characters, bidi overrides, capped) before either reaches the UI. `handle`
+   is additionally validated as a real subdomain shape; anything else becomes `null` rather than a
+   sanitised-but-wrong string.
+5. Computes `fingerprint` via `keyFingerprint`, below.
+
+`pairOffer(offer, o)` then runs the exact same handshake `pair()` runs from a QR offer, with the
+ticket-derived secret as the pairing secret, and returns the same shape `pair()` does.
 
 `keyFingerprint(box, crypto)` gives the same short fingerprint (`base32(sha256(box)).slice(0, 8)`,
 shown as two groups of 4) the box's own Touch ID prompt already shows for `relay.join`, so a
 "pairing with alex's box (a1b2 c3d4)" screen on the phone reads identically to what the person
-sees on the box's own screens. This is a confirmation, not a security check: the MAC in step 3
-already refused a substituted box before this is ever worth computing.
+sees on the box's own screens.
