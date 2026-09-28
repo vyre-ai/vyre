@@ -34,6 +34,30 @@ person's button to Places. Drawn on almost every board; see "Agents and their co
 Agents, teammates (kit, design) and places get tiles; only the person gets a circle. There are no photos, and no
 colour per agent or person.
 
+## Four identity families (ADR 0033)
+
+Generated-avatar work (`docs/work/app-design.md` rounds 1-5) grew the tile/circle split above
+into four families, each with its own silhouette so identity reads before the name or initial
+does:
+
+| Family | Shape | Content |
+|---|---|---|
+| Person (you) | True circle | A warm two-tone gradient, a calm face, no hair or accessory - one identity, never a rolled character |
+| Assistant | Companion creature | A plump rounded body, glow halo, small ears, a curled tail, a sparkle-eyed face - its own species, not an agent in a different pose |
+| Agent | Organic blob | A spikier, more angular wobble; a plain dot-eyed face |
+| Teammate | Rounded-square tile | This section's existing tile: initial, or a rolled character with role prop |
+
+Agent and assistant marks draw from separate palettes on purpose, so a colour coincidence never
+makes one read as the other. Full rationale and sources: ADR 0033.
+
+## The Vyre code (ADR 0033)
+
+The person's circle above has a second, full-size form for pairing and identity-sharing: a ring
+of marks around the same face and palette encoding a public id/ticket (never a secret), scanned
+by Vyre's own decoder rather than a generic QR reader. Geometry, palette derivation and the
+pairing contract are specified in ADR 0033; implementation lives in `round5/vyrecode2.js`
+(rendering) and `round5/decode-core.js` + `rs.js` (decode). Not yet wired into product surfaces.
+
 **Teammates specifically** (ADR 0031, `docs/work/teammates.md` section 3, decided with teammates
 and chat 2026-09-28): a teammate's tile is the same neutral agent tile as any other agent, initial
 lower case, `--hover` fill, no per-teammate hue. Considered and turned down: a role-hashed accent
@@ -120,9 +144,10 @@ Harlow Legal"). Never a nickname or emoji in the tile.
 
 ## No AI-brand lookalikes
 
-Any generated mark drawn for an identity here (the assistant's, or anything else abstract rather
-than a face or a character) must not resemble a major AI brand's own mark: Gemini's four-point
-sparkle, Claude's starburst, OpenAI's knot, Copilot's shape, Perplexity's compass-like glyph.
+Applies to all four families above, and to the Vyre code's ring marks - not only the assistant's
+mark. Any generated mark drawn for an identity here must not resemble a major AI brand's own
+mark: Gemini's four-point sparkle, Claude's starburst, OpenAI's knot, Copilot's shape,
+Perplexity's compass-like glyph.
 Checked before each round of generated-avatar work ships, not just once: a direction that reads
 fine alone can still land on a lookalike once it's redrawn or recoloured. (User, 2026-09-28: the
 first assistant mark round read as Gemini's sparkle; dropped for that reason, not a licence one,

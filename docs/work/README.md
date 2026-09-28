@@ -60,3 +60,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0030 | sessions | Vyre-owned sessions and the provider router |
 | 0031 | teammates | Project teammates |
 | 0032 | e2e | The person and the device |
+| 0033 | app-design | Identity marks: four families, and the Vyre code (pairing ring) |

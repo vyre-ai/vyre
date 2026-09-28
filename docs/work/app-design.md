@@ -561,3 +561,33 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   the correct one at random, which alone explained a batch of "random"-looking rotation failures.
 - Sent to the lead (msg_id e8a49bfa) with full write-up in round5/NOTES.md. Nothing wired into
   product code.
+
+## Now (28 Sep, round 5 beauty pass, ADR 0033, and a fixed face-scale bug)
+
+- User's "eww" on round 5's first ring look, relayed by the lead: face too small relative to the
+  ring, 4 stark 1-bit rings read as a technical barcode, marker glyph too separate. Built
+  `round5/vyrecode2.js`: face now fills 60% of the diameter, 2 rings not 4 (2 bits/mark, same 144
+  bits at half the marks), ticks/dots/dashes coloured from the avatar's own gradient on a soft
+  92%-neutral tint (a first attempt at 86% hue read as a flat saturated block, fixed), the marker
+  disguised as 3 ascending dots in the same visual language as the marks. `faceSvg` override lets
+  the assistant's `creature.js` share the exact same ring geometry and palette technique as the
+  person's face - "same hand," one ring implementation for both families.
+- The lead's showcase (round4+round5 files, `/tmp/.../scratchpad/avatar-showcase/build.js`)
+  surfaced a real bug and hand-patched around it (`scale(3)`) rather than living with it: source
+  fixed instead. `renderCode2` stripped a face SVG's outer `<svg>` tag to inline it, which also
+  throws away the browser's automatic viewBox-to-size scaling, so the face rendered at its native
+  120 units inside a 360-unit (FACE_D) slot - a third size. Fixed generically in
+  `round5/vyrecode2.js`: reads the face's own `viewBox` and scales explicitly
+  (`FACE_D / faceNativeW`), so it holds for any future face source, not pinned to today's 120.
+  Verified with a direct render + regex check on the emitted `<g transform=...>`, not by eye.
+- Locked the shape/silhouette rule that's grown across rounds 3-5 as **ADR 0033** (claimed in
+  `docs/work/README.md`) and folded it into `docs/design/system/components/avatar.md`: the four
+  identity families (person circle / assistant creature / agent blob / teammate tile), why the
+  assistant is a creature and not round 4's squircle, the "no AI-brand lookalike" rule now stated
+  as covering all four families and the ring marks (not just the assistant's abstract mark), and
+  the Vyre code's geometry/palette/pairing contract (a public id/ticket only, never a secret;
+  pairing still needs Touch ID/presence per ADR 0032; a plain QR is the fallback path for a
+  generic camera). Handed to `pwa` (decode-core.js/rs.js port) and `launch` (render on the Deck's
+  pairing screen) via the lead.
+- Design/spec files only; no product code touched. Perspective/homography decode is still the one
+  scoped gap (ADR 0033 section 4), unchanged from round 5's NOTES.md.
