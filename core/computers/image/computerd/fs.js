@@ -140,6 +140,108 @@ export function resolveIn(root, rel, opts = {}) {
   return { abs, real: within(real), segments };
 }
 
+// ---- safe opens --------------------------------------------------------------------------
+//
+// resolveIn's realpath happens once, up front; every operation below used to reuse its result
+// as a path string, opened moments later by name. In between, the agent -- who owns everything
+// under root -- can rename a folder on the checked path out and put a symlink to /var/lib/vyre
+// in its place, and computerd (running as vyre) would then open, read, or write through it
+// (reviewer, 28 Sep). The fix: never re-walk a path by name after it is checked. Each directory
+// in the chain is opened relative to the fd of the one before it, so a rename anywhere else in
+// the tree cannot redirect a step that is already holding an open, real directory; the final
+// component is always opened with O_NOFOLLOW, so a symlink swapped in at the very last moment is
+// refused rather than followed. /proc/self/fd/<fd>/<name> is Linux's way to express that "open
+// relative to this fd" without a native openat binding -- computerd only ever runs inside the
+// computer image, which is Linux, so this is always available where it matters.
+const { O_DIRECTORY, O_NOFOLLOW, O_RDONLY } = fs.constants;
+/** @param {number} fd @param {string} [name] */
+const fdPath = (fd, name) => name ? `/proc/self/fd/${fd}/${name}` : `/proc/self/fd/${fd}`;
+
+/**
+ * A symlink sat at `fdPath(fd, name)` where a plain open (with `flags`) just failed -- a real,
+ * pre-existing one (Glass follows those inside root, like docs-link in fs.test.js) or one just
+ * swapped in for what this same request already checked as a plain entry (the reviewer's own
+ * scenario, 28 Sep). Both look identical at this point, so both get the identical check resolveIn
+ * already does for a symlink: resolve it right now, at the moment of the open, and only follow
+ * if it still lands inside root on an allowed name -- a stale answer from earlier in this same
+ * request is never trusted here. Returns a new, opened fd for the resolved target, or throws.
+ * @param {string} realRoot @param {number} fd @param {string} name @param {number} flags
+ */
+function followChecked(realRoot, fd, name, flags) {
+  let target;
+  try { target = fs.realpathSync(fdPath(fd, name)); }
+  catch { throw fail(404, "missing", "the path no longer exists"); }
+  const under = path.relative(realRoot, target);
+  if (!inside(realRoot, target) || (under && deniedSegments(under.split(path.sep)))) {
+    throw fail(403, "denied", "a symlink here leads outside its root, or to a private place Glass does not open");
+  }
+  try { return fs.openSync(target, flags & ~O_NOFOLLOW); }
+  catch { throw fail(400, "bad_path", "a file where a folder was expected"); }
+}
+
+/**
+ * Opens `segments` one directory at a time from `realRoot` (trusted: fixed per computer, never
+ * attacker-named) and returns the last one's own fd. The caller closes it.
+ * @param {string} realRoot @param {string[]} segments
+ */
+function openDirChain(realRoot, segments) {
+  let fd = fs.openSync(realRoot, O_DIRECTORY);
+  for (const name of segments) {
+    let next;
+    try { next = fs.openSync(fdPath(fd, name), O_DIRECTORY | O_NOFOLLOW); }
+    catch (e) {
+      // O_NOFOLLOW + O_DIRECTORY on a symlink answers ENOTDIR on Linux, the same code a plain
+      // file (never a symlink) answers -- lstat tells the two apart, since it never follows.
+      let st = null;
+      try { st = fs.lstatSync(fdPath(fd, name)); } catch {}
+      if (!st || !st.isSymbolicLink()) {
+        fs.closeSync(fd);
+        if (!st) throw fail(404, "missing", "the path no longer exists");
+        throw fail(400, "bad_path", "a file where a folder was expected");
+      }
+      try { next = followChecked(realRoot, fd, name, O_DIRECTORY | O_NOFOLLOW); }
+      catch (e2) { fs.closeSync(fd); throw e2; }
+    }
+    fs.closeSync(fd);
+    fd = next;
+  }
+  return fd;
+}
+
+/**
+ * Like resolveIn, but for an operation that actually touches disk: in addition to `segments`, it
+ * opens and pins the checked parent directory (root itself, when `rel` names the root), so the
+ * caller can open, mkdir or rename the leaf by name through fdPath(parentFd, name) -- never by a
+ * path string re-walked from the top. The caller always closes `parentFd`.
+ * @param {string} root @param {unknown} rel @param {{ create?: boolean }} [opts]
+ * @returns {{ parentFd: number, name: string|null, segments: string[], realRoot: string }}
+ */
+export function resolveOpen(root, rel, opts = {}) {
+  const r = resolveIn(root, rel, opts);
+  let realRoot;
+  try { realRoot = fs.realpathSync(root); } catch { throw fail(404, "missing", "the home folder is not there"); }
+  const parentFd = openDirChain(realRoot, r.segments.slice(0, -1));
+  return { parentFd, name: r.segments.length ? r.segments[r.segments.length - 1] : null, segments: r.segments, realRoot };
+}
+
+/**
+ * Opens the leaf named `name` under the pinned `parentFd`, at the moment of the open rather than
+ * by a path checked earlier: a plain entry opens with `flags` (O_NOFOLLOW included) as before; a
+ * symlink there gets the same follow-and-revalidate treatment as an ancestor directory
+ * (followChecked) rather than being refused outright, so an existing in-root symlink still reads
+ * the same way it did before this fix, and only a swap since the last check is caught.
+ * @param {string} realRoot @param {number} parentFd @param {string} name @param {number} flags @param {string} rel for the error message
+ */
+function openLeaf(realRoot, parentFd, name, flags, rel) {
+  try { return fs.openSync(fdPath(parentFd, name), flags); }
+  catch (e) {
+    const code = /** @type {any} */ (e).code;
+    if (code === "ENOENT") throw fail(404, "missing", `"${rel}" does not exist`);
+    if (code === "ELOOP") { try { return followChecked(realRoot, parentFd, name, flags); } catch (e2) { throw e2; } }
+    throw fail(403, "denied", `"${rel}" cannot be opened`);
+  }
+}
+
 // ---- bytes ---------------------------------------------------------------------------------
 
 /** One byte range from a Range header, or null for the whole file. Throws 416 past the end. */
@@ -198,127 +300,202 @@ export function createFs(opts = {}) {
   };
 
   async function list(rel) {
-    const { real, segments } = resolveIn(root, rel);
-    if (!fs.statSync(real).isDirectory()) throw fail(400, "not_a_folder", `"${rel}" is not a folder`);
-    const realRoot = fs.realpathSync(root);
-    /** @type {any[]} */
-    const entries = [];
-    let truncated = false;
-    const dir = await fs.promises.opendir(real);
-    for await (const d of dir) {
-      if (hidden(d.name, segments)) continue;
-      if (entries.length >= MAX_ENTRIES) { truncated = true; break; }
-      const p = path.join(real, d.name);
-      if (d.isSymbolicLink()) {
-        // Shown as a link; followed only when it lands inside the root on a name the guard allows.
-        const e = { name: d.name, kind: "link", size: null, mtime: null, to: null };
-        try {
-          const target = fs.realpathSync(p);
-          const under = path.relative(realRoot, target);
-          if (inside(realRoot, target) && !(under && deniedSegments(under.split(path.sep)))) {
-            const st = fs.statSync(target);
-            const k = kindOf(st);
-            if (k !== "other") Object.assign(e, { to: k, size: k === "file" ? st.size : null, mtime: st.mtimeMs });
-          }
-        } catch {}
-        entries.push(e);
-        continue;
+    const { parentFd, name, segments } = resolveOpen(root, rel);
+    try {
+      let dirFd = parentFd, ownFd = false;
+      if (name !== null) {
+        try { dirFd = fs.openSync(fdPath(parentFd, name), O_DIRECTORY | O_NOFOLLOW); ownFd = true; }
+        catch (e) {
+          const code = /** @type {any} */ (e).code;
+          if (code === "ENOTDIR") throw fail(400, "not_a_folder", `"${rel}" is not a folder`);
+          throw fail(403, "denied", `"${rel}" cannot be opened`);
+        }
       }
-      let st = null;
-      try { st = fs.lstatSync(p); } catch { continue; }
-      const kind = kindOf(st);
-      entries.push({ name: d.name, kind, size: kind === "file" ? st.size : null, mtime: st.mtimeMs });
-    }
-    entries.sort((a, b) => Number(b.kind === "dir" || b.to === "dir") - Number(a.kind === "dir" || a.to === "dir") || a.name.localeCompare(b.name));
-    return { entries, truncated };
+      try {
+        const realRoot = fs.realpathSync(root);
+        /** @type {any[]} */
+        const entries = [];
+        let truncated = false;
+        const dir = await fs.promises.opendir(fdPath(dirFd));
+        for await (const d of dir) {
+          if (hidden(d.name, segments)) continue;
+          if (entries.length >= MAX_ENTRIES) { truncated = true; break; }
+          const p = fdPath(dirFd, d.name);
+          if (d.isSymbolicLink()) {
+            // Shown as a link; followed only when it lands inside the root on a name the guard
+            // allows, and only for this one preview stat -- reads and writes never use `p` again.
+            const e = { name: d.name, kind: "link", size: null, mtime: null, to: null };
+            try {
+              const target = fs.realpathSync(p);
+              const under = path.relative(realRoot, target);
+              if (inside(realRoot, target) && !(under && deniedSegments(under.split(path.sep)))) {
+                const st = fs.statSync(target);
+                const k = kindOf(st);
+                if (k !== "other") Object.assign(e, { to: k, size: k === "file" ? st.size : null, mtime: st.mtimeMs });
+              }
+            } catch {}
+            entries.push(e);
+            continue;
+          }
+          let st = null;
+          try { st = fs.lstatSync(p); } catch { continue; }
+          const kind = kindOf(st);
+          entries.push({ name: d.name, kind, size: kind === "file" ? st.size : null, mtime: st.mtimeMs });
+        }
+        entries.sort((a, b) => Number(b.kind === "dir" || b.to === "dir") - Number(a.kind === "dir" || a.to === "dir") || a.name.localeCompare(b.name));
+        return { entries, truncated };
+      } finally { if (ownFd) fs.closeSync(dirFd); }
+    } finally { fs.closeSync(parentFd); }
   }
 
   function stat(rel) {
-    const { real, segments } = resolveIn(root, rel);
-    const st = fs.statSync(real);
-    const name = segments.length ? segments[segments.length - 1] : "";
-    return { name, kind: kindOf(st), size: st.isFile() ? st.size : 0, mtime: st.mtimeMs };
+    const { parentFd, name, segments, realRoot } = resolveOpen(root, rel);
+    try {
+      const fd = name === null ? parentFd : openLeaf(realRoot, parentFd, name, O_RDONLY | O_NOFOLLOW, rel);
+      try {
+        const st = fs.fstatSync(fd);
+        return { name: segments.length ? segments[segments.length - 1] : "", kind: kindOf(st), size: st.isFile() ? st.size : 0, mtime: st.mtimeMs };
+      } finally { if (name !== null) fs.closeSync(fd); }
+    } finally { fs.closeSync(parentFd); }
   }
 
   /** @param {import("node:http").IncomingMessage} req @param {import("node:http").ServerResponse} res */
   async function read(rel, req, res) {
-    const { real } = resolveIn(root, rel);
-    const st = fs.statSync(real);
-    if (!st.isFile()) throw fail(400, "not_a_file", `"${rel}" is not a file`);
-    const total = st.size;
-    let r;
-    try { r = total ? parseRange(req.headers.range, total) : null; }
-    catch (e) {
-      res.writeHead(416, { "content-type": "application/json", "content-range": `bytes */${total}` });
-      res.end(JSON.stringify({ error: { code: "range", message: /** @type {Error} */ (e).message } }));
-      return;
-    }
-    const start = r ? r.start : 0, end = r ? r.end : Math.max(0, total - 1);
-    const length = total ? end - start + 1 : 0;
-    // Opened before the head is written, so a file that vanished answers 404, not a cut body.
-    const stream = fs.createReadStream(real, total ? { start, end } : {});
-    await new Promise((resolve, reject) => { stream.once("open", resolve); stream.once("error", reject); });
-    res.writeHead(r ? 206 : 200, { "content-type": "application/octet-stream", "content-length": String(length),
-      ...(r ? { "content-range": `bytes ${start}-${end}/${total}` } : {}) });
-    await pipeline(stream, res);
+    const { parentFd, name, realRoot } = resolveOpen(root, rel);
+    let fd;
+    try {
+      if (name === null) throw fail(400, "not_a_file", `"${rel}" is not a file`);
+      fd = openLeaf(realRoot, parentFd, name, O_RDONLY | O_NOFOLLOW, rel);
+    } finally { fs.closeSync(parentFd); }
+    try {
+      const st = fs.fstatSync(fd);
+      if (!st.isFile()) throw fail(400, "not_a_file", `"${rel}" is not a file`);
+      const total = st.size;
+      let r;
+      try { r = total ? parseRange(req.headers.range, total) : null; }
+      catch (e) {
+        res.writeHead(416, { "content-type": "application/json", "content-range": `bytes */${total}` });
+        res.end(JSON.stringify({ error: { code: "range", message: /** @type {Error} */ (e).message } }));
+        fs.closeSync(fd);
+        return;
+      }
+      const start = r ? r.start : 0, end = r ? r.end : Math.max(0, total - 1);
+      const length = total ? end - start + 1 : 0;
+      // The fd is already open and already checked (openLeaf, above): nothing here re-opens by
+      // name, so nothing here can be raced onto a different file.
+      const stream = fs.createReadStream(null, { fd, autoClose: true, ...(total ? { start, end } : {}) });
+      res.writeHead(r ? 206 : 200, { "content-type": "application/octet-stream", "content-length": String(length),
+        ...(r ? { "content-range": `bytes ${start}-${end}/${total}` } : {}) });
+      await pipeline(stream, res);
+    } catch (e) { try { fs.closeSync(fd); } catch {} throw e; }
   }
 
   /** @param {import("node:http").IncomingMessage} body */
   async function write(rel, body, size, overwrite) {
-    const { real } = resolveIn(root, rel, { create: true });
-    const exists = fs.existsSync(real);
-    if (exists && !overwrite) throw fail(409, "exists", `"${rel}" already exists`);
-    if (exists && !fs.statSync(real).isFile()) throw fail(409, "exists", `"${rel}" is a folder`);
-    const temp = path.join(path.dirname(real), UPLOAD_PREFIX + crypto.randomBytes(8).toString("hex"));
-    const count = counter(size);
+    const { parentFd, name } = resolveOpen(root, rel, { create: true });
     try {
-      await pipeline(body, count, fs.createWriteStream(temp, { flags: "wx", mode: 0o644 }));
-      if (count.bytes !== size) throw fail(400, "wrong_size", `the upload announced ${size} bytes and sent ${count.bytes}`);
-      if (overwrite) fs.renameSync(temp, real);
-      else {
-        // A hard link fails if the name was taken meanwhile, where a rename would clobber it.
-        try { fs.linkSync(temp, real); }
-        catch (e) {
-          if (/** @type {any} */ (e).code === "EEXIST" || fs.existsSync(real)) throw fail(409, "exists", `"${rel}" already exists`);
-          fs.renameSync(temp, real);
+      // lstat, never following a final symlink: an existing entry there is exists/denied to us
+      // whatever it is, the same way a plain file or folder would be. checked and used through
+      // the one pinned parentFd, never a path re-walked from the top (reviewer, 28 Sep).
+      let existing = null;
+      try { existing = fs.lstatSync(fdPath(parentFd, name)); }
+      catch (e) { if (/** @type {any} */ (e).code !== "ENOENT") throw fail(403, "denied", `"${rel}" cannot be opened`); }
+      if (existing && !overwrite) throw fail(409, "exists", `"${rel}" already exists`);
+      if (existing && !existing.isFile()) throw fail(409, "exists", existing.isDirectory() ? `"${rel}" is a folder` : `"${rel}" already exists`);
+      const temp = fdPath(parentFd, UPLOAD_PREFIX + crypto.randomBytes(8).toString("hex"));
+      const dest = fdPath(parentFd, name);
+      const count = counter(size);
+      try {
+        await pipeline(body, count, fs.createWriteStream(temp, { flags: "wx", mode: 0o644 }));
+        if (count.bytes !== size) throw fail(400, "wrong_size", `the upload announced ${size} bytes and sent ${count.bytes}`);
+        if (overwrite) fs.renameSync(temp, dest);
+        else {
+          // A hard link fails if the name was taken meanwhile, where a rename would clobber it.
+          try { fs.linkSync(temp, dest); }
+          catch (e) {
+            if (/** @type {any} */ (e).code === "EEXIST" || fs.existsSync(dest)) throw fail(409, "exists", `"${rel}" already exists`);
+            fs.renameSync(temp, dest);
+          }
         }
+      } finally {
+        try { fs.rmSync(temp, { force: true }); } catch {}
       }
-    } finally {
-      fs.rmSync(temp, { force: true });
-    }
-    return { size: count.bytes };
+      return { size: count.bytes };
+    } finally { fs.closeSync(parentFd); }
+  }
+
+  /** Is `ancestorFd`'s directory the same as, or an ancestor of, the directory `fd` opens? */
+  function isSameOrAncestor(ancestorFd, fd) {
+    const target = fs.fstatSync(ancestorFd);
+    let cur = fs.openSync(fdPath(fd), O_DIRECTORY);
+    try {
+      for (let i = 0; i < 64; i++) {
+        const st = fs.fstatSync(cur);
+        if (st.dev === target.dev && st.ino === target.ino) return true;
+        let up;
+        try { up = fs.openSync(fdPath(cur, ".."), O_DIRECTORY); } catch { return false; }
+        const upSt = fs.fstatSync(up);
+        fs.closeSync(cur);
+        cur = up;
+        if (upSt.dev === st.dev && upSt.ino === st.ino) return false; // the real filesystem root
+      }
+      return false;
+    } finally { try { fs.closeSync(cur); } catch {} }
   }
 
   function move(from, to) {
-    const src = resolveIn(root, from);
-    if (!src.segments.length) throw fail(400, "bad_path", "the home folder cannot be moved");
-    // Move the entry itself, never what a link points at.
-    const own = path.join(fs.realpathSync(path.dirname(src.abs)), path.basename(src.abs));
-    const dst = resolveIn(root, to, { create: true });
-    if (fs.existsSync(dst.real) || isLink(dst.real)) throw fail(409, "exists", `"${to}" already exists`);
-    if (inside(own, dst.real)) throw fail(400, "bad_path", "a folder cannot move inside itself");
-    try { fs.renameSync(own, dst.real); }
-    catch (e) { throw fail(500, "failed", /** @type {any} */ (e).code === "EXDEV" ? "that move crosses disks, which Glass does not do" : "could not move it"); }
-    return { moved: true };
+    const src = resolveOpen(root, from);
+    try {
+      if (src.name === null) throw fail(400, "bad_path", "the home folder cannot be moved");
+      const dst = resolveOpen(root, to, { create: true });
+      try {
+        let dstExists = false;
+        try { fs.lstatSync(fdPath(dst.parentFd, dst.name)); dstExists = true; }
+        catch (e) { if (/** @type {any} */ (e).code !== "ENOENT") throw fail(403, "denied", `"${to}" cannot be opened`); }
+        if (dstExists) throw fail(409, "exists", `"${to}" already exists`);
+        // A folder cannot move inside itself: open the source (never following it, so we check
+        // exactly the entry being moved) and walk up from the destination's own parent looking
+        // for it, through pinned fds the whole way rather than a string prefix check.
+        let srcDirFd = null;
+        try { srcDirFd = fs.openSync(fdPath(src.parentFd, src.name), O_DIRECTORY | O_NOFOLLOW); } catch {}
+        if (srcDirFd !== null) {
+          try { if (isSameOrAncestor(srcDirFd, dst.parentFd)) throw fail(400, "bad_path", "a folder cannot move inside itself"); }
+          finally { fs.closeSync(srcDirFd); }
+        }
+        try { fs.renameSync(fdPath(src.parentFd, src.name), fdPath(dst.parentFd, dst.name)); }
+        catch (e) { throw fail(500, "failed", /** @type {any} */ (e).code === "EXDEV" ? "that move crosses disks, which Glass does not do" : "could not move it"); }
+        return { moved: true };
+      } finally { fs.closeSync(dst.parentFd); }
+    } finally { fs.closeSync(src.parentFd); }
   }
 
   function mkdir(rel) {
-    const { real } = resolveIn(root, rel, { create: true });
-    try { fs.mkdirSync(real); }
-    catch (e) { throw /** @type {any} */ (e).code === "EEXIST" ? fail(409, "exists", `"${rel}" already exists`) : fail(500, "failed", `could not make "${rel}"`); }
-    return { created: true };
+    const { parentFd, name } = resolveOpen(root, rel, { create: true });
+    try {
+      try { fs.mkdirSync(fdPath(parentFd, name)); }
+      catch (e) { throw /** @type {any} */ (e).code === "EEXIST" ? fail(409, "exists", `"${rel}" already exists`) : fail(500, "failed", `could not make "${rel}"`); }
+      return { created: true };
+    } finally { fs.closeSync(parentFd); }
   }
 
   function trash(rel) {
-    const src = resolveIn(root, rel);
-    if (!src.segments.length) throw fail(400, "bad_path", "the home folder cannot be trashed");
-    if (src.segments[0] === TRASH) throw fail(400, "bad_path", "that is already in the trash");
-    const own = path.join(fs.realpathSync(path.dirname(src.abs)), path.basename(src.abs));
-    const bin = path.join(fs.realpathSync(root), TRASH);
-    fs.mkdirSync(bin, { recursive: true });
-    const name = trashName(src.segments[src.segments.length - 1]);
-    fs.renameSync(own, path.join(bin, name));
-    return { to: `${TRASH}/${name}` };
+    const src = resolveOpen(root, rel);
+    try {
+      if (src.name === null) throw fail(400, "bad_path", "the home folder cannot be trashed");
+      if (src.segments[0] === TRASH) throw fail(400, "bad_path", "that is already in the trash");
+      let realRoot;
+      try { realRoot = fs.realpathSync(root); } catch { throw fail(404, "missing", "the home folder is not there"); }
+      const rootFd = fs.openSync(realRoot, O_DIRECTORY);
+      try {
+        fs.mkdirSync(fdPath(rootFd, TRASH), { recursive: true });
+        const binFd = fs.openSync(fdPath(rootFd, TRASH), O_DIRECTORY | O_NOFOLLOW);
+        try {
+          const name = trashName(src.name);
+          fs.renameSync(fdPath(src.parentFd, src.name), fdPath(binFd, name));
+          return { to: `${TRASH}/${name}` };
+        } finally { fs.closeSync(binFd); }
+      } finally { fs.closeSync(rootFd); }
+    } finally { fs.closeSync(src.parentFd); }
   }
 
   return async function handle(req, res, url) {
@@ -346,8 +523,4 @@ export function createFs(opts = {}) {
       send(res, status, { error: { code: err.status ? err.code : "failed", message } });
     }
   };
-}
-
-function isLink(p) {
-  try { return fs.lstatSync(p).isSymbolicLink(); } catch { return false; }
 }
