@@ -55,6 +55,11 @@ test("isolation (static): Chrome's FIFOs are made under vyre's own volume, befor
     "CHROME_DIR is not under vyre's own volume (/var/lib/vyre/chrome-pipes) -- the agent's uid can write to /tmp");
   assert.doesNotMatch(ENTRYPOINT, /CHROME_DIR=\/tmp\/vyre-chrome/, "CHROME_DIR is still the old /tmp path, writable by the agent's uid");
   assert.doesNotMatch(ENTRYPOINT, /CHROME_DIR=\/run\/vyre-chrome/, "CHROME_DIR is the /run path computerd's stale default still names");
+  // The reviewer's second HIGH (28 Sep): /var/lib/vyre is the computer's own named volume, kept
+  // across a stop/start and a Docker restart, so a first boot's own chrome-pipes/ must be removed
+  // before the mkdir below, not left for it to trip over as if it were an attacker's plant.
+  assert.match(ENTRYPOINT, /as_vyre rm -rf -- "\$\{CHROME_DIR\}" \|\| exit 1\n(?:#.*\n)*as_vyre sh -c 'umask 007; mkdir "\$0"' "\$\{CHROME_DIR\}"/,
+    "CHROME_DIR is not removed before the mkdir -- a second boot on the same volume would refuse to start");
   // mkdir with no -p: a directory (or symlink) already at that name must abort the boot, not be reused.
   assert.match(ENTRYPOINT, /mkdir "\$0"' "\$\{CHROME_DIR\}" \\\n\s*\|\| \{ log "\$\{CHROME_DIR\} already exists[\s\S]*?exit 1; \}/,
     "CHROME_DIR's mkdir is not a bare mkdir that fails closed on reuse (-p or a missing exit would let a pre-planted directory through)");

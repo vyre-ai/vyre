@@ -112,6 +112,14 @@ CHROME_IN="${CHROME_DIR}/in"    # computerd writes, Chrome reads (its fd 3)
 CHROME_OUT="${CHROME_DIR}/out"  # Chrome writes (its fd 4), computerd reads
 CHROME_PROFILE="${BROWSER_HOME}/chromium"
 CHROME_LOG="${VYRE_HOME}/chromium.log"
+# The reviewer's HIGH (28 Sep, on the fix above): /var/lib/vyre is the computer's own named
+# volume, kept across a stop/start, a box reboot and a Docker restart (computers.stop -> start
+# never removes it, and even a remove uses v=false) -- so a first boot's own chrome-pipes/ is
+# still sitting there on every later boot, and the bare mkdir below would refuse it as if an
+# attacker had planted it. Removed first, as vyre: /var/lib/vyre is vyre's own 0711 directory (not
+# world-writable, not the agent's), so nothing but vyre or root could have left anything there to
+# remove, and `rm -rf` never follows a symlink at the top level it is given -- it unlinks it.
+as_vyre rm -rf -- "${CHROME_DIR}" || exit 1
 as_vyre sh -c 'umask 007; mkdir "$0"' "${CHROME_DIR}" \
   || { log "${CHROME_DIR} already exists; refusing to reuse it for Chrome's FIFOs"; exit 1; }
 as_vyre sh -c '[ -d "$0" ] && [ ! -L "$0" ]' "${CHROME_DIR}" \
