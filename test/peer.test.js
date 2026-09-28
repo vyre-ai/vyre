@@ -9,7 +9,7 @@ import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
-import { ancestry, insideClaude, controllingTty, exePath, loginOf, tmuxClients,
+import { ancestry, insideClaude, controllingTty, exePath, processUid, loginOf, tmuxClients,
   verifiedCapsule } from "../core/daemon/peer.js";
 
 const tree = {
@@ -380,6 +380,23 @@ test("peer: exePath reads the kernel's own record of the binary, not the process
   await new Promise(r => setTimeout(r, 200));
   try { assert.match(/** @type {string} */ (exePath(/** @type {number} */ (child.pid))), /\/sleep$/); }
   finally { child.kill(); }
+});
+
+test("peer: a real root-owned system daemon (sshd, the box's own ssh listener) is trusted even though vyred cannot read its exe", { skip: process.platform !== "linux" ? "needs /proc" : false }, () => {
+  // Found running the actual CLI suite over a real ssh connection (28 Sep): the box's own sshd
+  // LISTENER (root, ppid 1, its own session -- exactly the ambiguous shape a real login's top of
+  // chain has) makes exePath() fail with EACCES, not "nothing to read" -- readlink on another
+  // uid's /proc/<pid>/exe needs the same uid or ptrace access, which vyred (its own, non-root uid
+  // on the box) does not have onto root's. That is a real, permanent wall, not a flaky race: every
+  // "vyre <verb>" call made over ssh hit it. sshd itself (pid 1) proves the fix at the unit level
+  // with the real functions, no fixture: it exists on every Linux box, is root-owned, and is
+  // exactly this shape.
+  const sshd = Number(execFileSync("pgrep", ["-o", "-x", "sshd"], { encoding: "utf8" }).trim());
+  assert.ok(sshd > 0, "this Linux testbox has no sshd to test against");
+  assert.equal(exePath(sshd), null, "vyred's own uid cannot read root's /proc/<pid>/exe -- confirms the wall this fix is for");
+  assert.equal(processUid(sshd), 0, "but its uid, permission-safe, says root");
+  assert.deepEqual(insideClaude(sshd, { look: () => ({ ppid: 1, pgid: sshd, args: "sshd" }), self: 999999 }), { inside: false },
+    "trusted on uid 0 alone, since nothing at vyred's own (non-root) uid could have created it");
 });
 
 test("peer: the Capsule's own proof is a pinned cdhash, checked and cached once per connection, bound to the pid's start time", async () => {

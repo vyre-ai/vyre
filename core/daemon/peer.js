@@ -152,6 +152,28 @@ export function exePath(pid) {
 }
 
 /**
+ * The pid's owning uid, permission-safe unlike exePath -- reading another uid's `/proc/<pid>/exe`
+ * (or its lsof mapping) needs the SAME uid or ptrace access, which vyred does not have onto a
+ * more privileged process. On the box vyred runs as its own uid, not root, so the system's own
+ * sshd listener (ppid 1, its own session -- the exact ambiguous shape a real ssh login's top of
+ * chain has) is a permission EACCES on exePath, not a missing process: found running these tests
+ * for real over ssh (28 Sep), where every "vyre <verb>" call, the ordinary way to use the box,
+ * hit this and was refused. `/proc/<pid>/status`'s Uid line is world-readable regardless of who
+ * owns the target, so this reads the one fact exePath's permission wall does not block.
+ * @param {number} pid @returns {number|null}
+ */
+export function processUid(pid) {
+  try {
+    if (process.platform === "linux") {
+      const m = /^Uid:\s+(\d+)/m.exec(fs.readFileSync(`/proc/${pid}/status`, "utf8"));
+      return m ? Number(m[1]) : null;
+    }
+    const out = execFileSync("ps", ["-o", "uid=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }).trim();
+    return out ? Number(out) : null;
+  } catch { return null; }
+}
+
+/**
  * The ONLY allowlist in this file, and a security boundary: adding to it needs the same review as
  * any other PERSON_ONLY change. Exact absolute paths only, never a basename (the reviewer's own
  * reproduction, 28 Sep: `cp $(command -v script) /tmp/x/login; setsid -f /tmp/x/login -qfc ..`
@@ -209,7 +231,7 @@ function trustedLeader(p) {
  * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string, pgid?: number, sid?: number } | null, exe?: (pid: number) => string | null, started?: (pid: number) => string | null, self?: number }} [o]
  * @returns {{ inside: boolean, by?: number, unknown?: boolean, server?: { exe: string, pid: number, started: string } }}
  */
-export function insideClaude(pid, { threads = [], look = processTable(), exe = exePath, started = defaultStarted, self = process.pid } = {}) {
+export function insideClaude(pid, { threads = [], look = processTable(), exe = exePath, started = defaultStarted, uid = processUid, self = process.pid } = {}) {
   // A thread vyred spawned as its own process group (or session) keeps whatever it leaves behind:
   // an orphan's parent becomes init, but its group and session stay the thread's.
   const own = look(pid);
@@ -236,6 +258,15 @@ export function insideClaude(pid, { threads = [], look = processTable(), exe = e
   if (row && row.ppid <= 1 && row.pgid === top.pid) {
     const p = exe(top.pid);
     if (trustedLeader(p)) return { inside: false };
+    // exePath can come back null not because there is nothing to read, but because it needs the
+    // SAME uid or ptrace access, which vyred does not have onto a more privileged process --
+    // found running for real over ssh (28 Sep): the box's own sshd LISTENER (root) is exactly
+    // this ambiguous shape, and vyred (its own, non-root uid on the box) cannot read root's
+    // /proc/<pid>/exe. A process genuinely owned by uid 0 could not have been created by
+    // anything running at vyred's own uid -- the same uid a model's shell shares -- so this is
+    // trusted on that basis alone, without needing to know which exact root binary it is. Only
+    // uid 0: vyred's own uid proves nothing here (exePath would already have worked for it).
+    if (p === null && uid(top.pid) === 0) return { inside: false };
     // Everything else with this shape (tmux, screen, ssh's sshd, Ghostty, iTerm2's server, the
     // VS Code or Cursor terminal, Warp, or a setsid'd model) is named as a server rather than
     // folded into a flat refusal, per the lead's decision, 28 Sep: nobody with a real terminal the

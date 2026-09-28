@@ -246,6 +246,26 @@ async function fromClaude(socket, registry, caller) {
  * @param {import("node:net").Socket} socket @param {any} registry @param {string} [caller]
  * @returns {Promise<{ inside: boolean, unknown?: boolean, nopid?: boolean }>}
  */
+/**
+ * Retries `check()` a bounded few times while it says unknown with no named server, so a process
+ * that exits between the socket connecting and a /proc read (sessions' find, 28 Sep: a real race
+ * under a loaded box spawning many short-lived vyre CLI children) gets a second look before this
+ * is trusted as final. Never more than `attempts` retries, so this cannot be stretched into a
+ * long hang; still fails closed if every attempt agrees. Peer.js's OTHER unknown shapes (an
+ * orphan whose group died, or a named server with no readable start time) are deterministic, not
+ * a race, so retrying them changes nothing -- harmless, just a little slower.
+ * @param {() => { unknown?: boolean, server?: any }} check
+ * @param {number} [attempts] @param {number} [delayMs]
+ */
+export async function retryUnknown(check, attempts = 2, delayMs = 25) {
+  let result = check();
+  for (let n = 0; result.unknown && !result.server && n < attempts; n++) {
+    await new Promise(res => setTimeout(res, delayMs));
+    result = check();
+  }
+  return result;
+}
+
 async function above(socket, registry, caller) {
   const pid = await peerPid(socket);
   if (!pid) return { inside: false, nopid: true };
@@ -253,7 +273,8 @@ async function above(socket, registry, caller) {
   // The processes vyred runs threads in, their process groups and sessions (core/sessions/spawn.js
   // keeps a group listed until its last process is gone, so an orphan is still caught).
   const d = r.data || {};
-  const result = insideClaude(pid, { threads: [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])] });
+  const threads = [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])];
+  const result = await retryUnknown(() => insideClaude(pid, { threads }));
   // The pin lives in vyred's own db (presence.capsulePin()), never a file the same uid a model's
   // shell runs as could write to directly.
   if (result.unknown && caller === "capsule" && registry.deps.presence
