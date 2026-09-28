@@ -65,9 +65,20 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
     parity partner) unchanged.
   Tests (testbox): 261 run, 254 pass, 0 fail, 7 skipped. fs.test.js/fs-parity.test.js need Linux
   (/proc/self/fd) -- same constraint as the rest of the computers image family.
-- Next: reviewer clearance on a7699c08; e2e's real-stack run on /srv/vyre-e2e (the uid change
-  needs a real Docker check); the throwaway-stack validation still pending for slice 1 overall
-  (no docker host in this session) -- see agent-browsers.md's own "Next" list.
+- Reviewer HOLD on 7c137cbf (new, found while reviewing a7699c08): computerd kept
+  CAP_SETUID/CAP_SETGID in its own ambient set for its whole life to spawn Chrome under a
+  different uid -- ambient caps survive a uid change between two non-zero uids, so a computerd
+  compromise could become browser, vyre, or root. Fixed (47bce9d8): the reviewer's own
+  root-launcher design -- entrypoint.sh launches Chrome itself over two named FIFOs
+  (chrome_once/chrome_loop), computerd only ever opens its own ends (connectChromeFifo) and holds
+  no capability at all, ever. Also (8b62dca6) Page.getCookies added to AGENT_REFUSED (a new LOW).
+  isolation.test.js: a static check neither setpriv call regains an ambient capability, plus a
+  live CapEff/CapAmb/CapPrm=0 check for computerd and Chrome (needs a container). Tests: 256 pass,
+  0 fail, 8 skipped on testbox, plus a new FIFO-connect/reconnect test in index.test.js.
+- Next: reviewer clearance on 47bce9d8; e2e's real-stack run on /srv/vyre-e2e (the uid change and
+  now the FIFO launcher both need a real Docker check); the throwaway-stack validation still
+  pending for slice 1 overall (no docker host in this session) -- see agent-browsers.md's own
+  "Next" list.
 
 ## Rollout (must ship together)
 - The new computer image and the new vyred go out in the same deploy: the image starts as root and
