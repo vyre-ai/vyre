@@ -58,6 +58,17 @@ by Vyre's own decoder rather than a generic QR reader. Geometry, palette derivat
 pairing contract are specified in ADR 0043; implementation lives in `round5/vyrecode2.js`
 (rendering) and `round5/decode-core.js` + `rs.js` (decode). Not yet wired into product surfaces.
 
+## Avatar option: default from identity, optional pick (ADR 0043)
+
+Person and assistant avatars (round4/identity.js) each have a small number of visual options
+(gradient/face variation). Ruling (lead, 28 Sep): the **default is derived deterministically
+from the identity's own 8-byte public fingerprint** (the same fingerprint the Vyre code encodes,
+never a secret) - `defaultAvatarOption(fingerprint, optionCount)` = the fingerprint's first byte
+mod the option count. Every person and every assistant gets a unique, stable avatar with zero
+setup, "unique by design" - never a hash of a device or box key, which is a different, unstable
+identity. A **stored pick is optional and overrides the default**; only the person themself can
+set their own, and only ever their own. Not yet built: see Gaps.
+
 **Teammates specifically** (ADR 0031, `docs/work/teammates.md` section 3, decided with teammates
 and chat 2026-09-28): a teammate's tile is the same neutral agent tile as any other agent, initial
 lower case, `--hover` fill, no per-teammate hue. Considered and turned down: a role-hashed accent
@@ -172,11 +183,9 @@ whether or not the artwork itself is original.
 - [ ] App: the agent tile is a circle (`radius.full`) with `--text-2` ink at 32; it needs the
   rounded square and a shared `Avatar` component with the four sizes.
 - [ ] Capsule: no avatar; the Capsule board draws 20 tiles with radius 5.
-- [ ] No stored field for the person's chosen avatar option/seed. Design intent (round4/identity.js's
-  own comment) is "reroll, or pick from a few, and keep it" - a deliberate, stored choice, the
-  same kind of thing `onboard.person` already stores for the name - never a hash derived from a
-  device or box key (pwa asked this directly, 28 Sep, while wiring the phone pairing success
-  screen to show "the same avatar": there is no real source yet, so their `sha256(box key)[0] %
-  4` is a stopgap, not the design). Needs a real field (`onboard.person.avatarOption` or similar)
-  written once at first pick and read by every surface that draws the person's avatar, including
-  the phone's pairing screen - native-core/onboard's to build.
+- [ ] The optional stored-pick override (see "Avatar option" above) has no real field yet -
+  `onboard.person.avatarOption` or similar, written only by the person, read by every surface
+  that draws their avatar including the phone's pairing screen. Not needed for 0.1.1: every
+  surface can compute the deterministic default from the fingerprint alone until this exists.
+  `anywhere` (core/onboard) builds it later. `tailnet` puts the identity fingerprint in the
+  verified ticket record now, and will carry the pick alongside it once the field exists.

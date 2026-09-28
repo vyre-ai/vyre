@@ -176,6 +176,32 @@ on top of (not instead of) fixing the source colours.
 one file both sides pull from, and `validateGeometry()` catches a bad edit before it ships
 instead of relying on a person to notice.
 
+### 2d. Avatar option: default from identity, optional pick (28 Sep, lead's ruling)
+
+pwa's phone pairing screen needed to render "the same avatar" as the person's, and had no real
+source for which avatar option to use - their stopgap (`sha256(box key)[0] % 4`) hashed the
+wrong identity (a device/box key, not the person's own). Ruling: the **default avatar option is
+derived deterministically from the identity's own 8-byte public fingerprint** - the same
+fingerprint `payload.js`'s `fingerprint8` produces and the Vyre code itself encodes, never a
+secret - so every person and every assistant gets a unique, stable avatar with zero setup ("unique
+by design"). A **stored pick is optional, overrides the default, and only the person themself can
+set their own** (never anyone else's, never derived from a device).
+
+Implemented as `defaultAvatarOption(fingerprint8Bytes, optionCount)` in `round4/identity.js`:
+`fingerprint[0] % optionCount`. Any single byte of a SHA-256 digest is uniformly distributed, so
+byte 0 is as good as any other - picked for simplicity, not significance. Same function serves
+both families: the person's own fingerprint for their avatar, the assistant's own separate
+fingerprint for its creature (never the person's - `creature.js` already required this
+separation for its palette; the option now follows the same rule). Verified live: a real
+fingerprint through `payload.js`'s `fingerprint8` produces a deterministic option index and
+renders through `userAvatar` without error.
+
+Division of labour: `tailnet` puts the identity fingerprint in the verified ticket record now
+(it's already carrying the public id for pairing); the stored-pick override is a real field
+(`onboard.person.avatarOption` or equivalent) that `anywhere` (core/onboard) builds later - not
+needed for 0.1.1, since every surface can compute the default from the fingerprint alone until
+then. `avatar.md`'s Gaps names this explicitly so it isn't lost.
+
 ### 3. What the code carries, and what it doesn't
 
 The Vyre code's payload is a public identifier plus, for pairing, a one-time ticket: 64 bits of
