@@ -69,14 +69,17 @@ mod win {
             let mine_token = token_of(ProcessRef::Handle(unsafe { GetCurrentProcess() }))?;
             let server_user = user_sid(server_token.1)?;
             let mine_user = user_sid(mine_token.1)?;
-            let equal = unsafe { EqualSid(server_user, mine_user) };
+            // EqualSid is a BOOL-returning API, and this crate maps that uniformly to
+            // Result<()>: Ok(()) when the SIDs are equal, Err(_) otherwise (a real system error
+            // and "simply not equal" are not distinguished, which is fine here - both refuse).
+            let equal = unsafe { EqualSid(server_user, mine_user) }.is_ok();
             let (server_owned, server_h) = server_token;
             let (mine_owned, mine_h) = mine_token;
             unsafe { let _ = CloseHandle(server_h); }
             unsafe { let _ = CloseHandle(mine_h); }
             if let Some(h) = server_owned { unsafe { let _ = CloseHandle(h); } }
             if let Some(h) = mine_owned { unsafe { let _ = CloseHandle(h); } }
-            Ok(verdict(Some(equal.as_bool())))
+            Ok(verdict(Some(equal)))
         })();
         unsafe { let _ = CloseHandle(handle); }
         result
