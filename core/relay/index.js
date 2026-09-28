@@ -23,6 +23,7 @@ import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { agentClaim } from "../modules/index.js";
 import { loadKeys } from "./keys.js";
+import { fingerprint8, toBase64url } from "../../lib/identity.js";
 import { redeem } from "./redeem.js";
 import { tailscaleApi, desktopJoin, pairedBox, MINT_ITEM, DEVICE_TAG, JOIN_PATH } from "./tailnet.js";
 
@@ -122,16 +123,11 @@ export default {
       const h = ctx.config.name;
       return typeof h === "string" && /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/i.test(h) ? h.slice(0, 32) : null;
     };
-    // The avatar's own seed (the lead's ruling, 28 Sep): sha256("vyre:person:v1:" + owner.id),
-    // first 8 bytes, base64url. owner.id is a public, random 16-byte person id anywhere's
-    // core/onboard is meant to create once at onboarding (config `owner.id`, a hex string) and
-    // never derives from a device or box key, so it survives a new box or device. STUB until that
-    // lands: null here means no identity fingerprint travels in the record yet, not a fabricated
-    // one, a phone reading null simply shows no avatar rather than the wrong one.
+    // The person's avatar seed (the lead's ruling, 28 Sep), from the one shared formula in
+    // lib/identity.js so the box, system.info and the phone never disagree. A missing or malformed
+    // owner.id gives null (no avatar), never a fabricated value.
     const identityFingerprint = () => {
-      const id = ctx.config.owner && ctx.config.owner.id;
-      if (typeof id !== "string" || !/^[0-9a-f]{32}$/i.test(id)) return null;
-      return crypto.createHash("sha256").update(`vyre:person:v1:${id}`).digest().subarray(0, 8).toString("base64url");
+      try { return toBase64url(fingerprint8(ctx.config.owner && ctx.config.owner.id, "person")); } catch { return null; }
     };
 
     /** One live pairing at a time: its secret's hash, when it ends, and whether it is the first device's. */

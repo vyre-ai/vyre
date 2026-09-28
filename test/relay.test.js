@@ -601,9 +601,10 @@ test("relay: resolveTicket/pairOffer throw stable .code values, not just message
   // A record with a valid MAC that the ticket's "enc" key doesn't open (sealed under the MAC key
   // instead, say): still bad_record, never a parse of whatever bytes came back.
   const wrongKey = (() => {
-    const c = crypto.createCipheriv("aes-256-gcm", ticketDerive("mac", Buffer.from(raw)), Buffer.alloc(12));
+    const nonce = crypto.randomBytes(12);
+    const c = crypto.createCipheriv("aes-256-gcm", ticketDerive("mac", Buffer.from(raw)), nonce);
     c.setAAD(Buffer.from("vyre-pair-record\n1"));
-    return Buffer.concat([c.update(ticketOpen(Buffer.from(raw), body.record)), c.final(), c.getAuthTag()]).toString("base64url");
+    return Buffer.concat([nonce, c.update(ticketOpen(Buffer.from(raw), body.record)), c.final(), c.getAuthTag()]).toString("base64url");
   })();
   const wrongFetch = async () => ({ ok: true, status: 200, json: async () => ({ record: wrongKey, mac: ticketMac(Buffer.from(raw), wrongKey).toString("base64url") }) });
   assert.equal((await resolveTicket(raw, { relay: status.url, fetch: wrongFetch, crypto: nodeCrypto() }).catch(e => e)).code, "bad_record");
@@ -642,6 +643,7 @@ test("relay: resolveTicket's identity fingerprint is sha256(\"vyre:person:v1:\" 
   const resolved = await resolveTicket(fromBase64url(minted.ticket), { relay: status.url, crypto: nodeCrypto() });
   const want = crypto.createHash("sha256").update(`vyre:person:v1:${ownerId}`).digest().subarray(0, 8).toString("base64url");
   assert.equal(resolved.identity, want);
+  assert.equal(resolved.identity, "WrNLxox2PS8", "lib/identity.js's own worked vector for this id");
 });
 
 test("relay: a device's own name at ticket pairing is sanitised and capped like the box's own name", async t => {

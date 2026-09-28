@@ -234,4 +234,5 @@ test("client: resolveTicket opens a record the box sealed, with WebCrypto (the p
   assert.equal(r.name, "alex");
   assert.equal(r.offer.route, ROUTE);
   assert.equal(r.offer.secret, ticketDerive("sec", ticket).toString("base64url"));
+  assert.notEqual(ticketSeal(ticket, "same"), ticketSeal(ticket, "same"), "a fresh random nonce each seal, never a fixed one");
 });

@@ -143,8 +143,8 @@ const paired = await pairOffer(offer, { name: "alex's phone", keyStore, crypto }
 3. Verifies `mac` against `hmacSha256(macKey, utf8(record))` itself, **before parsing or trusting
    anything in `record`**. A mismatch means the relay (or someone controlling it) tried to answer
    with a substituted identity; `resolveTicket` throws and nothing is ever offered for pairing.
-4. Opens `record` with AES-256-GCM under the record key (a 12-byte zero nonce, since each key
-   seals exactly one record, and the AD `"vyre-pair-record\n1"`); a failure is `bad_record`.
+4. Opens `record` with AES-256-GCM under the record key: the first 12 bytes are the nonce, the
+   rest ciphertext plus tag, AD `"vyre-pair-record\n1"`; a failure is `bad_record`.
    Parses the JSON inside (`{ v: 1, name, handle, identity, relay, route, box, exp }`), refuses one whose own `exp`
    has already passed (the MAC only proves the record is unmodified, not that it was fetched in
    time), and sanitises `name` and `handle` the same way a box's own name is sanitised in a Touch

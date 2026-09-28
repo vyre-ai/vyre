@@ -184,8 +184,8 @@ export async function keyFingerprint(box, crypto) {
 const fail = (code, message) => Object.assign(new Error(message), { code });
 
 const TICKET_TAG = { loc: "vyre-pair-loc", sec: "vyre-pair-sec", mac: "vyre-pair-mac", enc: "vyre-pair-enc" };
-// core/relay/wire.js's ticketSeal: AES-256-GCM under the ticket's "enc" key, zero nonce (one record
-// per key), this AD. The relay only ever holds the ciphertext.
+// core/relay/wire.js's ticketSeal: AES-256-GCM under the ticket's "enc" key, a random 12-byte nonce
+// in front of the ciphertext, this AD. The relay only ever holds the sealed bytes.
 const TICKET_SEAL_AD = "vyre-pair-record\n1";
 /** @param {import("./noise.js").CryptoProvider} crypto @param {"loc"|"sec"|"mac"|"enc"} which @param {Uint8Array} ticket */
 const ticketDerive = (crypto, which, ticket) => crypto.sha256(concat(utf8(`${TICKET_TAG[which]}\n`), ticket));
@@ -236,7 +236,9 @@ export async function resolveTicket(ticket, o) {
   let record;
   try {
     const key = cryptoP.aesKey ? await cryptoP.aesKey(encKey) : encKey;
-    record = JSON.parse(fromUtf8(await cryptoP.aesGcmDecrypt(key, new Uint8Array(12), utf8(TICKET_SEAL_AD), fromBase64url(recordText))));
+    const sealed = fromBase64url(recordText);
+    if (sealed.length < 28) throw new Error("too short");
+    record = JSON.parse(fromUtf8(await cryptoP.aesGcmDecrypt(key, sealed.subarray(0, 12), utf8(TICKET_SEAL_AD), sealed.subarray(12))));
   } catch { throw fail("bad_record", "the relay's answer for this pairing code is not valid"); }
   if (record.v !== 1 || typeof record.relay !== "string" || !ROUTE_RE.test(record.route) || typeof record.box !== "string") throw fail("bad_record", "the relay's answer for this pairing code is not shaped like an offer");
   // The MAC only proves the relay's answer is unmodified from whatever the box minted; an expiry

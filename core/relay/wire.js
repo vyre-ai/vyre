@@ -74,24 +74,27 @@ const TAG = { loc: "vyre-pair-loc", sec: "vyre-pair-sec", mac: "vyre-pair-mac", 
 export const ticketDerive = (which, ticket) => crypto.createHash("sha256").update(`${TAG[which]}\n`).update(ticket).digest();
 /** HMAC over the exact record bytes the relay stores and hands back, never a re-serialized copy. @param {Buffer} ticket @param {Buffer|string} record */
 export const ticketMac = (ticket, record) => crypto.createHmac("sha256", ticketDerive("mac", ticket)).update(record).digest();
-// Each ticket's "enc" key seals exactly one record, so a fixed all-zero nonce never repeats under
-// a key. relay/client/client.js opens it with the same nonce and AD, byte for byte.
+// A fresh random 12-byte nonce rides in front of every sealed record (the reviewer's LOW 2), so
+// nonce safety never depends on tickets being unique across every box. relay/client/client.js
+// opens it with the same layout and AD, byte for byte. The seal's real strength against the relay
+// operator is the ticket's 64 bits: the relay holds the locator, a hash of the ticket, so it can
+// search the ticket space offline with no time limit (ADR 0045).
 export const TICKET_SEAL_AD = "vyre-pair-record\n1";
-const SEAL_NONCE = Buffer.alloc(12);
-/** AES-256-GCM, base64url(ciphertext || tag). @param {Buffer} ticket @param {string} plaintext */
+/** AES-256-GCM, base64url(nonce12 || ciphertext || tag16). @param {Buffer} ticket @param {string} plaintext */
 export function ticketSeal(ticket, plaintext) {
-  const c = crypto.createCipheriv("aes-256-gcm", ticketDerive("enc", ticket), SEAL_NONCE);
+  const nonce = crypto.randomBytes(12);
+  const c = crypto.createCipheriv("aes-256-gcm", ticketDerive("enc", ticket), nonce);
   c.setAAD(Buffer.from(TICKET_SEAL_AD));
-  return Buffer.concat([c.update(plaintext, "utf8"), c.final(), c.getAuthTag()]).toString("base64url");
+  return Buffer.concat([nonce, c.update(plaintext, "utf8"), c.final(), c.getAuthTag()]).toString("base64url");
 }
 /** The inverse of ticketSeal; throws on a wrong key or any modified byte. @param {Buffer} ticket @param {string} sealed */
 export function ticketOpen(ticket, sealed) {
   const b = Buffer.from(sealed, "base64url");
-  if (b.length < 16) throw new Error("sealed record too short");
-  const d = crypto.createDecipheriv("aes-256-gcm", ticketDerive("enc", ticket), SEAL_NONCE);
+  if (b.length < 28) throw new Error("sealed record too short");
+  const d = crypto.createDecipheriv("aes-256-gcm", ticketDerive("enc", ticket), b.subarray(0, 12));
   d.setAAD(Buffer.from(TICKET_SEAL_AD));
   d.setAuthTag(b.subarray(-16));
-  return Buffer.concat([d.update(b.subarray(0, -16)), d.final()]).toString("utf8");
+  return Buffer.concat([d.update(b.subarray(12, -16)), d.final()]).toString("utf8");
 }
 
 /** A new Ed25519 route key, raw. */
