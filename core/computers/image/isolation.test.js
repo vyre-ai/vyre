@@ -240,8 +240,14 @@ print(json.dumps({"node": caps(vyre('^node$')), "chrome": caps(browser('chrom'))
   }
 });
 
-test("isolation: Chrome's FIFOs live at /var/lib/vyre/chrome-pipes, owned by vyre, and the agent cannot write, replace or symlink into them", { skip }, () => {
-  const r = JSON.parse(asAgent(`
+const TOKEN = process.env.VYRE_COMPUTERD_TOKEN || "";
+
+/** Run python3 code in the computer as vyre (computerd's own uid), the token passed on stdin. */
+function asVyre(code) {
+  return execFileSync("docker", ["exec", "-i", "-u", "1001:1001", C, "python3", "-c", code], { input: TOKEN, encoding: "utf8", timeout: 30_000 }).trim();
+}
+
+const VYRE_PROBE = `
 import os, json
 def probe(p):
     try:
@@ -249,6 +255,30 @@ def probe(p):
         return {"owner": st.st_uid, "mode": oct(st.st_mode & 0o7777), "is_symlink": os.path.islink(p)}
     except Exception as e:
         return {"error": type(e).__name__}
+`;
+
+test("isolation: Chrome's FIFOs live at /var/lib/vyre/chrome-pipes, owned by vyre, and the agent cannot see, write, replace or symlink into them", { skip: skip || (TOKEN ? false : "set VYRE_COMPUTERD_TOKEN too (asVyre needs it on stdin)") }, () => {
+  // The directory is 0770 vyre:vyre-bus, so the agent's uid (in neither) cannot even lstat what's
+  // inside it by path -- checked as vyre itself, the one uid that can see the real facts.
+  const facts = JSON.parse(asVyre(`${VYRE_PROBE}
+print(json.dumps({
+  "dir": probe("/var/lib/vyre/chrome-pipes"),
+  "in": probe("/var/lib/vyre/chrome-pipes/in"),
+  "out": probe("/var/lib/vyre/chrome-pipes/out"),
+  "old_tmp_path": probe("/tmp/vyre-chrome"),
+}))`));
+  assert.equal(facts.dir.owner, 1001, "the FIFO directory is not owned by vyre (1001)");
+  assert.equal(facts.dir.is_symlink, false, "the FIFO directory is a symlink");
+  assert.equal(facts.dir.mode, "0o770", `the FIFO directory's mode is ${facts.dir.mode}, not 0770`);
+  for (const name of ["in", "out"]) {
+    assert.equal(facts[name].owner, 1001, `the ${name} FIFO is not owned by vyre (1001)`);
+    assert.equal(facts[name].mode, "0o660", `the ${name} FIFO's mode is ${facts[name].mode}, not 0660`);
+  }
+  assert.equal(facts.old_tmp_path.error, "FileNotFoundError", "the old /tmp/vyre-chrome path exists -- something still uses it, or it was pre-planted");
+
+  // As the agent: cannot even stat into the directory (no x on it), let alone write, replace or
+  // walk past it -- the mode above is not just declared, it holds against the one uid it must.
+  const denied = JSON.parse(asAgent(`${VYRE_PROBE}
 def can_write(p):
     try:
         with open(p, "a"): pass
@@ -262,31 +292,14 @@ def can_replace(p):
     except Exception:
         return False
 print(json.dumps({
-  "dir": probe("/var/lib/vyre/chrome-pipes"),
-  "in": probe("/var/lib/vyre/chrome-pipes/in"),
-  "out": probe("/var/lib/vyre/chrome-pipes/out"),
-  "old_tmp_path": probe("/tmp/vyre-chrome"),
+  "stat_in": probe("/var/lib/vyre/chrome-pipes/in"),
   "write_dir": can_write("/var/lib/vyre/chrome-pipes/agent-planted"),
   "unlink_in": can_replace("/var/lib/vyre/chrome-pipes/in"),
 }))`));
-  assert.equal(r.dir.owner, 1001, "the FIFO directory is not owned by vyre (1001)");
-  assert.equal(r.dir.is_symlink, false, "the FIFO directory is a symlink");
-  assert.equal(r.dir.mode, "0o770", `the FIFO directory's mode is ${r.dir.mode}, not 0770`);
-  for (const name of ["in", "out"]) {
-    assert.equal(r[name].owner, 1001, `the ${name} FIFO is not owned by vyre (1001)`);
-    assert.equal(r[name].mode, "0o660", `the ${name} FIFO's mode is ${r[name].mode}, not 0660`);
-  }
-  assert.equal(r.old_tmp_path.error, "FileNotFoundError", "the old /tmp/vyre-chrome path exists -- something still uses it, or it was pre-planted");
-  assert.equal(r.write_dir, false, "the agent's uid can create a new file inside the FIFO directory");
-  assert.equal(r.unlink_in, false, "the agent's uid can unlink (and so replace) Chrome's own FIFO");
+  assert.equal(denied.stat_in.error, "PermissionError", "the agent's uid can stat into the FIFO directory at all");
+  assert.equal(denied.write_dir, false, "the agent's uid can create a new file inside the FIFO directory");
+  assert.equal(denied.unlink_in, false, "the agent's uid can unlink (and so replace) Chrome's own FIFO");
 });
-
-const TOKEN = process.env.VYRE_COMPUTERD_TOKEN || "";
-
-/** Run python3 code in the computer as vyre (computerd's own uid), the token passed on stdin. */
-function asVyre(code) {
-  return execFileSync("docker", ["exec", "-i", "-u", "1001:1001", C, "python3", "-c", code], { input: TOKEN, encoding: "utf8", timeout: 30_000 }).trim();
-}
 
 const STATES = `
 import os, re, json
