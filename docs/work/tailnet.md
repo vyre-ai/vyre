@@ -86,6 +86,32 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, still later still: reviewer OK'd the Solo-join shape with 4 conditions; anywhere OK'd
+widening relay's roles (theirs is landing onboard's own roles change separately). Built (2a02f4d8):
+relay/module.json roles -> `["box","local"]`, no code change (audited start(): startLink() only
+fires when settings().enabled, default false; no timers anywhere in the module); new
+test/relay.test.js proving it — boots role local with default config, zero relay.connected/
+disconnected events, no injected WebSocket seam (so it is the real globalThis.WebSocket path
+proven untouched). onboard.join's tailscale-connect step now calls `tailscaleUp()` directly
+instead of `ctx.call("names.connect")`, dropping the box-only `names` module as a dependency for
+that path; onboard.tailscale itself unchanged.
+
+**Not shipping**: relay-on-a-Mac stays built-but-disabled until vyre-core (ADR 0040, e2e +
+anywhere) holds relay's pairing secret and trusted-device rows. Today those sit in
+`~/.vyre/vyre.db`, readable and writable by any process at the person's uid — a prompt-injected
+model could read a live pairing secret or insert its own device row for lasting access. Reviewer's
+condition 3, and already on vyre-core's list. Do not enable relay by default on local role in any
+release before that lands.
+
+**Open**: reviewer's condition 2 (audit onboard's start() for local-role side effects beyond the
+9 wizard tools) is on hold — asked anywhere whether their own onboard roles change keeps my
+"guard the 9 wizard tools" idea, since their Solo-onboarding design might legitimately want those
+tools live on local by intent, which would make my assumption wrong. Waiting before writing a test
+that could assert the wrong thing. Settled with launch (not yet confirmed back by them): "I already
+have a server" splits into a no-code Tailscale path (`onboard.join{tailscale,connect}` then
+`{verify,becomeDevice:true}`) and a relay path whose code is minted by `onboard.join{action:"relay"}`
+but redeemed by `relay/client/*`, not by any join.* action.
+
 28 Sep 2026, still later: reviewer signed off bac69fa8 (owner-only onboard.join, confirmed by
 merging in e2e-personguard c3a69611 via origin/main and running test/person-only-guard.test.js —
 onboard.join's callers list derives PERSON_ONLY automatically). Root-caused (not just flagged)
@@ -386,13 +412,18 @@ only read-only checks on the test box.
 
 ## Needs from others
 
-- relay and anywhere/launch (the lead's "phone joins a Solo Mac" case): relay's module.json is
-  `roles: ["box"]`; onboard's (and so `onboard.join`'s) is too. Neither loads on a Solo Mac
-  (`role: "local"`). `onboard.join` can forward to relay the moment either grows a "local" role,
-  but I don't own relay, and onboard's other tools (you/claude/name/history/skip/finish/passkey/
-  link) were built for a box-owner's first-run wizard, so widening onboard's roles list is a
-  decision for whoever owns that wizard's semantics on a Mac (anywhere, going by their message),
-  not something I want to do unilaterally to a module most of which isn't mine.
+- RELEASE BLOCKER, all teams: relay's pairing secret and trusted-device rows live in
+  `~/.vyre/vyre.db` on a Mac today, readable and writable by any process at the person's uid.
+  Widened relay to role "local" (2a02f4d8) for the Solo-join design, but it must not ship enabled
+  on local by default in any release until vyre-core (ADR 0040, e2e + anywhere) holds those keys
+  and secrets. Reviewer's condition, already on vyre-core's list.
+- anywhere: waiting on whether onboard's own roles:["box","local"] change (landing separately)
+  keeps the 9 wizard tools (you/claude/name/history/skip/finish/passkey/link/tailscale) guarded to
+  refuse on local, or intentionally leaves them live for Solo's own onboarding — settles whether
+  reviewer's condition 2 (audit onboard's start() for local-role side effects) is mine to close.
+- launch: settle (not yet confirmed back) that "I already have a server" is a no-code Tailscale
+  path (`onboard.join{tailscale,connect}` then `{verify,becomeDevice:true}`) plus a separate relay
+  path whose code is redeemed by `relay/client/*`, never by a join.* action.
 - launch: names.discover (peer scan + GET /v1/whoami, already shipped a20e5eb6) is still to build,
   on the client side that does the scanning; not blocked on anything of mine.
 - chat (via the lead): merge work/tailnet (owner-only streams) and work/federation-transcript
