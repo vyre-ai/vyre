@@ -4,16 +4,20 @@
   "description": "Project teammates (ADR 0031): a named, persistent agent per role per project, a notes file that is its memory of record, and a serial inbox any session in the project summons it through.",
   "roles": ["box", "local"],
   "requires": ["threads", "projects", "sessions"],
-  "does": { "tools": ["team.add", "team.list", "team.ask", "team.status", "team.cancel", "team.done", "team.fail", "team.merge", "team.notes"] },
-  "watches": { "emits": ["teammate.created", "summon.queued", "summon.started", "summon.finished", "summon.cancelled"] },
+  "does": { "tools": ["team.add", "team.list", "team.ask", "team.status", "team.cancel", "team.done", "team.fail", "team.merge", "team.notes", "team.default.get", "team.default.set", "team.project-has-any", "team.project-append"] },
+  "watches": { "emits": ["teammate.created", "summon.queued", "summon.started", "summon.finished", "summon.cancelled", "teammate.default-changed"] },
   "shows": { "cli": ["team"] },
   "needs": {},
+  "settings": [
+    {"key": "team.default", "group": "teammates", "label": "Default new work to teammates", "help": "Ongoing work (design, review, research, QA) steers to a project teammate over a subagent, and @role creates one on first use. Off leaves existing teammates working, just stops steering new work at them.", "type": "bool", "default": true, "levels": ["project"], "apply": "session", "store": {"tool": {"get": {"tool": "team.default.get", "input": {"project": "$project"}, "read": "enabled"}, "set": {"tool": "team.default.set", "input": {"project": "$project", "enabled": "$value"}}}}}
+  ],
   "teaches": {
     "tips": [
       {"id": "ask-cli", "text": "Send work to a teammate from the terminal: `vyre team ask design \"Make the estate intake calmer\"`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre team ask design \"Make the estate intake calmer\"", "docs": "using/teammates.md"},
       {"id": "list", "text": "See this project's teammates, their state and queue with `vyre team`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre team", "docs": "using/teammates.md"},
       {"id": "add", "text": "Give the project a teammate: `vyre team add design --brief \"visual design and UI copy\"`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre team add design --brief \"visual design and UI copy\"", "docs": "using/teammates.md"},
-      {"id": "urgent", "text": "A request that cannot wait: `vyre team ask design \"...\" --urgent`. It jumps its teammate's own queue, never the box-wide slot queue.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/teammates.md"}
+      {"id": "urgent", "text": "A request that cannot wait: `vyre team ask design \"...\" --urgent`. It jumps its teammate's own queue, never the box-wide slot queue.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/teammates.md"},
+      {"id": "default-off", "text": "Stop steering new work at teammates in this project with `team.default.set`. Existing teammates still work.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/teammates.md"}
     ]
   }
 }
