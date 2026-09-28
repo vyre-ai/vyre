@@ -43,8 +43,6 @@ async function asBox(s, tool, input, caller = "deck") {
   assert.ok(!r.error, `${tool} as ${caller}: ${JSON.stringify(r.error)}`);
   return r.data;
 }
-/** The person's own surfaces: recall always answers these with rows, never a refusal. */
-const PERSON = new Set(["deck", "cli"]);
 const sorted = (rows, key) => rows.every((r, i) => i === 0 || (rows[i - 1][key] || 0) >= (r[key] || 0));
 /** A headless thread's row, as the switchboard keeps it. */
 const seedThread = (d, id, last) => d.registry.deps.db.prepare("INSERT INTO threads_runs (id, name, cwd, status, started_at, last_at) VALUES (?,?,?,?,?,?)")
@@ -110,13 +108,22 @@ test("federation reads: machines local, agents, MCP, guests and modules that do 
     assert.equal(c.sources, undefined, caller);
     assert.deepEqual(c.sessions.map(r => r.id), [BOX_ID], caller);
     assert.ok(c.sessions.every(r => r.source === undefined), `${caller}: rows are as they were, unlabelled`);
-    // Recall's own scope (memory-iq 6f898294, via projects.reach) may refuse a caller other than
-    // the person's own surfaces (deck, cli) outright,
-    // e.g. an agent this world never created: a refusal reaches the Mac even less than box rows do.
+    // Recall's own scope (memory-iq 6f898294, core/recall/index.js's own reach(), a 1:1 mirror of
+    // core/memory's — it does NOT call projects.reach; that's core/projects/core/files' own door,
+    // a separate copy by design so recall never waits on projects being installed at all) may
+    // refuse a caller outright, but ONLY one that names an agent this world never created, or one
+    // recall's own OWNER/ownSession/ownerDevice never recognises as the owner (a tailnet guest,
+    // "unknown"): those cover "deck", "cli", every "module:" caller (module:x included) and a
+    // bare "mcp" session, so none of those may ever come back denied here, or a real regression
+    // that refused the person's own surfaces (or a module) would pass this test silently
+    // (reviewer, on the integrator's earlier "denied" is fine for every caller check — verified
+    // by temporarily dropping "deck" from recall's own OWNER set: this now fails loudly instead
+    // of passing quiet).
+    const mayDeny = /agent:/.test(caller) || caller === "unknown" || caller.startsWith("tailnet-guest:");
     const recall = async (tool, args) => {
       const r = await s.boxCall(tool, args, caller, caller.startsWith("tailnet:") ? { peer: PHONE } : {});
       if (r.error) {
-        assert.ok(!PERSON.has(caller), `${tool} as ${caller}: the person's own surface must get rows, not ${JSON.stringify(r.error)}`);
+        assert.ok(mayDeny, `${tool} as ${caller}: refused, but this caller is one of the person's own surfaces or a module — it must never be: ${JSON.stringify(r.error)}`);
         assert.equal(r.error.code, "denied", `${tool} as ${caller}: ${JSON.stringify(r.error)}`);
         return null;
       }
@@ -124,10 +131,13 @@ test("federation reads: machines local, agents, MCP, guests and modules that do 
     };
     const rows = await recall("recall.sessions", { limit: 50, ...input });
     if (rows) assert.deepEqual(rows.map(x => x.id), [BOX_ID], caller);
+    else assert.ok(mayDeny, `${caller}: recall.sessions was refused but must have answered`);
     const hits = await recall("recall.search", { q: "intake form", ...input });
     if (hits) assert.ok(hits.every(h => h.session === BOX_ID), caller);
+    else assert.ok(mayDeny, `${caller}: recall.search was refused but must have answered`);
     const th = await s.boxCall("recall.thread", { session: MAC_ID, ...input }, caller);
-    if (!(th.error && th.error.code === "denied" && !PERSON.has(caller))) assert.match(th.error ? th.error.message : "answered", /^no session/, `${caller}: the Mac's session is not reached`);
+    if (th.error && th.error.code === "denied") assert.ok(mayDeny, `${caller}: recall.thread was refused but must have answered`);
+    else assert.match(th.error ? th.error.message : "answered", /^no session/, `${caller}: the Mac's session is not reached`);
   };
   await boxOnly("deck", { machines: "local" });
   await boxOnly("cli", { machines: "local" });
