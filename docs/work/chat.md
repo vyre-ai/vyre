@@ -232,6 +232,13 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   to ask for what a past step looked like, so this is a live-only "what's happening now" strip, not
   part of the transcript's history). Rate-limiting sight.frame across chat's own caller and Glass's
   (cohesion's open item) is still open - not addressed here.
+- SIGNED OFF by reviewer (read-only, no tests run - the 494/495 above is testbox, mine). LOW open:
+  checkSight() runs once per mount, so an agent whose computer goes live AFTER the thread opens
+  never gets the strip until reopened - should also re-check on computer.started or sight.stepped
+  for this thread while sight.target is still null. Nit (not currently live): matches on `label`;
+  sight.targets today sets label to the agent name itself (core/sight/index.js: `label: c.agent`),
+  so this is safe as written, but if sight.targets ever grows a separate id/name field, match on
+  that instead since two agents could in theory share a display label.
 
 ## RESTART (28 Sep, usage-prep save point, head 9e2c54bc)
 Status for whoever resumes: sight.frame stills (item 1/18) is DONE and pushed (18980d2d), sent to
@@ -387,6 +394,25 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
   /chat/core/caps.js, /chat/core/commands.js, /chat/core/match.js (the last two were missing already).
 
 ## Next
+- FIRST (the lead, next session): budget 8's scroll jump, temporary diagnostic logging in
+  window-view.js. Hypothesis (unconfirmed, see "Doing (28 Sep, budget 8...)" above): the reader is
+  scrolled up 300px while new content lands at the tail, which should not move the anchor at all -
+  unless window-view's own windowed-mount range shifts during the reconnect catch-up sequence and
+  brings a previously-unmounted (estimate-only) row into the mounted set for the first time,
+  revealing its real height late (heights.get() estimate vs. the measured value once mounted).
+  Plan: add temporary logging in measure() (or right where `changed` is set) that prints key, kind,
+  the estimate it had, and the real measured height, gated behind an env var or a one-off console
+  log, ONLY for the exact native-bar budget-8 scenario (reconnect after 2500ms offline, scrolled up
+  300px) - run budget 8 once with it, read which key/kind shows the estimate-to-real gap, remove
+  the logging once the row is identified, then fix that row's estimate or the mount-range timing
+  specifically. Do not guess at a fix without that output first.
+- reviewer's LOW on 18980d2d (sight strip): checkSight() only runs once per mount, so an agent
+  whose computer goes live AFTER the thread opens never gets the strip until reopened - also
+  re-check on computer.started or sight.stepped for this thread while sight.target is still null.
+- Native-core's "Fork from here" (rewind sheet): they own pickers.js/composer.js and are holding
+  until I hand session.js's side; I asked them to hold until budget 8 is closed. Pick this up once
+  budget 8 is done: expect a threads.fork {thread, at} contract (at = a turn's uuid), likely opening
+  the forked thread the same way openHref does for a new session.
 - thread.limit as a line in the turn (the design's limit fallback); windowed rows above 100 items;
   an inline ask anchored to its tool row once ask.raised carries tool_use_id.
 - Screenshots in one world on port 4795 (load rule), time Back (< 100 ms).
