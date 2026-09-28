@@ -644,6 +644,38 @@ Verified nothing legit breaks, all on testbox: core/harness 25/25, core/daemon 1
 test/presence-bypass.test.js + test/presence-cli.test.js 72/72, docs-check + docs-index + hygiene +
 boundaries 27/27. Holding for the reviewer's OPT_OUT triage before the integrator lands it.
 
+## RESTART SAVE (28 Sep, ~05:5x, usage 84%)
+
+**setsid escape (TOP PRIORITY, just assigned, NOT STARTED):** reviewer found a HIGH in
+core/daemon/peer.js:123-138: `setsid -f vyre call <tool>` (or a double fork) gives ppid 1 and a
+new session, so insideClaude returns inside:false and vyred treats the call as the person, for
+every tool -- undoes the whole "claude can't act as you" model on a Mac. No code written yet, no
+worktree made yet. Plan handed down:
+1. Prove it on the Mac (temp home, VYRE_ALLOW_MAC_TESTS=1, VYRE_NO_DIALOGS=1): from inside a
+   claude-spawned shell, setsid-detach `vyre call presence.whoami` (or similar harmless tool), see
+   what label it gets. Synthetic only, never real ~/.vyre.
+2. Fix fails closed: ppid 1 + own session + no controlling tty reads as unknown, refuse person
+   labels for it. The real terminal CLI keeps a tty so it is unaffected; Capsule (launchd, no tty)
+   and Deck need their OWN proof (a keychain token, or a code-signature/audit-token check) bound to
+   the person label, not ancestry.
+3. Test: a setsid'd call is refused; real terminal CLI and Capsule still pass.
+4. Branch off main as a hotfix (not yet created). Send to reviewer + integrator. Tell the lead in
+   one line whether it applies to the live server (the vyre uid) too -- box has no controlling tty
+   for anything by design, so this needs separate thought for that side; have not investigated yet.
+
+**work/e2e-personguard state:** b3b7b1dc committed (see above), sent to reviewer for OPT_OUT
+triage, integrator told to hold for that. No further action pending from me until the reviewer
+answers.
+
+Branch heads at save time: work/e2e (this doc, cfa19ba4), work/e2e-personguard (b3b7b1dc),
+work/e2e-onboardvia-main (7bf34043, sent to reviewer/integrator, reviewer cleared),
+work/e2e-onboardvia (cd376351, superseded by the -main branch), work/e2e-rcfix (a5eff01f, merged
+to pre/rc by integrator as ae442545), work/e2e-safegit (ed8a5506, reviewer cleared),
+work/e2e-safegit-main (60b3673b, reviewer cleared, merged to main as 4fd286d7's parent).
+
+No testbox or Mac processes of mine are running (last command completed and returned before this
+save).
+
 ## Design note: link.find can't say "seen but unreachable" (0.1.1 follow-up)
 
 Confirmed by the lead as a 0.1.1 follow-up, not an rc.2 blocker (test/journey.test.js:221 is
