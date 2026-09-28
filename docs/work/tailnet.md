@@ -86,6 +86,22 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, latest of all: pwa guessed a scan-to-pair contract (relay.pair.ticket.resolve then
+relay.join) that doesn't exist and breaks the reviewer's two fixes; the reviewer held it and asked
+for the phone-side steps published explicitly, the lead made it top priority. Published to pwa and
+the reviewer: call `pairTicket()` from relay/client/client.js directly (it already does every
+step — derive, resolve, verify, pair — there is no separate box tool for an unpaired phone to
+call). Added `keyFingerprint(box, crypto)` to relay/client/client.js (same fingerprint format
+core/relay/index.js's own Touch ID prompt shows) and a pure-JS `base32` to relay/client/bytes.js
+(matched byte for byte against core/relay/wire.js's own by a new test), so a phone's own confirm
+line can read identically to the box's. Documented the whole contract in relay/client/README.md,
+including the relay's three resolve outcomes and why 404 deliberately doesn't distinguish
+expired/used/unknown. Tests: relay/client 10/10 (1 new), relay.test.js 23/23, boundaries+hygiene
+37/37, relay/worker 38/38. Sent to federation too: their move-engine design needs
+core/link/transport.js's peer-verified open generalized past the Mac-to-box shape (source-
+initiated, either side); acknowledged as mine, queued behind the reviewer's relay.pair.ticket
+sign-off and the lead's Tailscale-carries auth-key work.
+
 28 Sep 2026, latest of all: built relay.pair.ticket (ADR 0037), after the reviewer's two
 blocking fixes on the design. `core/relay/wire.js` gains `TICKET_BYTES` (8), `TICKET_TTL` (5 min),
 `ticketDerive(which, ticket)` and `ticketMac(ticket, record)`: every value derived from the raw
@@ -544,6 +560,12 @@ only read-only checks on the test box.
 - **Tailscale SSH:** `vyre box add` to a host with Tailscale SSH on, including check mode.
 
 ## Needs from others
+
+- OWED to federation: `core/link/transport.js`'s `connector()` is parameterized (`verify`,
+  `pinned`) but every caller today assumes the Mac-is-client/box-is-server shape. The move engine
+  (docs/adr/0041-move-engine.md) needs the same peer-verified open symmetrically, either side,
+  source-initiated. Mine to build; queued behind the reviewer's relay.pair.ticket sign-off and the
+  lead's Tailscale-carries auth-key work.
 
 - RELEASE BLOCKER, all teams: relay's pairing secret and trusted-device rows live in
   `~/.vyre/vyre.db` on a Mac today, readable and writable by any process at the person's uid.
