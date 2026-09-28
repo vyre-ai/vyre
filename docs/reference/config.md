@@ -36,6 +36,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `computers` | `{ tailnet: { enabled: boolean, tag: string }, [k: string]: any }` | none | Not described yet. |
 | `hooks` | `{ enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> }` | none | Not described yet. |
 | `theme` | `{ colors?: { dark?: Record<string, string>, light?: Record<string, string> } }` | unset | Your colours, over the defaults in `core/config/theme.js`. The box serves them as `/theme.css`. |
+| `app` | `{ root: boolean }` | none | Not described yet. |
 | `term` | `{ keep_hours: number, max?: number, shell?: string }` | none | Terminals in the browser. `keep_hours`: how long a terminal nobody is looking at is kept before it ends (12). `max`: how many may be open at once (8). `shell`: the shell to run, in place of your login shell. |
 | `projects` | `{ move?: 'enabled' }` | unset | Not described yet. |
 
