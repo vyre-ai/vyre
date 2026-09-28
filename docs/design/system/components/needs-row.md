@@ -9,7 +9,8 @@ status: draft
 # Needs row
 
 The one-row primitive of Needs you: every kind that waits on you draws as this row, on Now on
-every surface and in the Capsule's list. Drawn on the boards
+every surface and in the Capsule's list. The rows and the one count come from `waiting.list` and
+`waiting.count` (see One list and one count, below). Drawn on the boards
 "Needs you, phone and desktop", "Needs you, teammate kinds", "States, every list, every size"
 (decided, many items) and "Devices, trusting a browser for the vault" (device trust).
 
@@ -35,7 +36,7 @@ every surface and in the Capsule's list. Drawn on the boards
    teammate's ask adds a fourth line in the same style: "asked by Q3 report".
 
 Kinds (the kind line's first word): Ask, Draft, Question, Sign-in grant, Reminder, Plan, New
-teammate, Merge failed, Stuck, Usage, Device. Oldest first, always. The group header carries the
+teammate, Merge failed, Stuck, Usage, Device, Pairing. Oldest first, always. The group header carries the
 beacon dot and "Needs you" in `--beacon-ink` (see the list spec); the row itself is never tinted,
 bordered or washed in violet.
 
@@ -87,6 +88,7 @@ Phone swipe, by kind (right commits the primary; left is the second action with 
 | Usage | Resume anyway | none |
 | Device | Trust (Face ID glyph, always) | Not now |
 | Reminder | Done | Snooze 5 min |
+| Pairing | Pair (opens the code field: a pairing needs its code) | Not now |
 | Plan, Merge failed | open the sheet | none |
 
 The swipe is a scroll-snap strip on the compositor (native: the UI thread). Release commits at
@@ -98,6 +100,59 @@ discards, ⌘⏎ sends a draft, F asks a teammate to fix a failed merge. The sel
 next row after an answer. Footer: "J K move · A allow · D deny · ⌘⏎ send" with key-hint chips.
 
 Capsule: the query field holds focus, so ↑ and ↓ move, ⏎ opens the card, A allows.
+
+## One list and one count: waiting
+
+Every surface draws Needs you from cohesion's `waiting` module (ADR 0036 decision 4), and from
+nothing else. No surface merges asks, held drafts, reminders and pairings on its own, and none
+keeps its own count.
+
+**Rows.** `waiting.list {limit?}` returns `{rows, count, by_kind, partial?}`. Each row maps onto
+this row as follows:
+
+| Field | Draws as |
+|---|---|
+| `id` | the row's key: the undo, the outbox, push and every device resolve by it |
+| `kind` | the kind line's first word and the tile: `ask` is Ask (Question when `answer.fill` names `answers`), `draft` is Draft, `reminder` is Reminder (calendar icon), `pairing` is Pairing (laptop icon) |
+| `title` | the title line, as given ("Send email to Sam", "Pair the Mac "alex's MacBook Air"") |
+| `detail` | the detail line; mono only when it is a command or a path |
+| `project`, `thread` | the kind line after the kind ("Ask · kit · Harlow Legal"); tap or ⏎ opens the thread |
+| `at` | the age on the title line; the surface sorts oldest first by `at` (the tool answers newest first) |
+| `source` | not shown; it names the owner for errors ("Couldn't reach the planner") |
+| `answer` | what the primary and the second action call (below) |
+
+**Answering.** The row's primary calls `answer.tool` with `answer.input` and what the person gave
+for each name in `answer.fill`: nothing more for `[]` (a draft's Send, a reminder's Done), the
+choice for `decision` (Approve, Deny), the chosen answers for `answers` (the question card), the
+code for `code` (a pairing). The owner does the work (`threads.answer`, `gate.approve`,
+`planner.done`, `link.pair.approve`); the surface never calls anything else. When the answer lands,
+`waiting.changed` fires and the row leaves on every device at once.
+
+**The count.** One number everywhere, `waiting.count {}` (`{count, by_kind}`), kept fresh by
+`waiting.changed {count, by_kind}`, never by counting rows on the screen:
+
+| Where | How it shows |
+|---|---|
+| Deck rail, Now | the 18 badge (rail.md, status-mark.md) |
+| Deck top bar, any page but Now | the needs count (top-bar.md) |
+| Phone, the Now page label and the app icon | the 18 badge; the app icon's badge number |
+| Capsule | the group header "Needs you · 3" and the menu-bar mark's dot |
+| Menu bar | the mark's violet dot while the count is above 0 |
+| Status line and CLI | "3 need you" (`vyre needs`) <!-- terms: ignore --> |
+| Favicon | the badge |
+
+When `partial` names a source, the count shows what was read and the list ends with one row in
+`--label`: "Couldn't reach the planner · Retry". Kinds that waiting does not merge yet (Sign-in
+grant, New teammate, Merge failed, Stuck, Usage, Device, Plan) stay where they are today and are
+not counted by a surface on its own; each is a gap for cohesion below.
+
+**Pairing.** A Mac asks to join. Tile: the laptop icon. Title "Pair the Mac "alex's MacBook Air"";
+detail the node and login (`alex-mba · alex`); kind line "Pairing · expires in 8 min" (the link
+TTL). The primary is **Pair**; it opens the code field in place of the detail line (desktop, the
+detail pane; phone, the sheet): a field, mono 13 (17 on the phone), 6 characters, "Enter the code
+shown on the Mac", then Pair (primary) with the Touch ID glyph (Face ID on the phone), since pairing
+always needs a proof. A wrong code reads "That code doesn't match. 2 tries left." in the help line.
+Not now leaves it until it expires. Decided: "Paired by you · 14:22" or "Expired after 10 min".
 
 ## Motion
 
@@ -136,6 +191,20 @@ App (work/mobile)
 - [ ] Kind line is "agent · project"; only gate and ask kinds; no decided state.
 - [ ] Commit at 40% of the row width, not 100 or a fling; reveal has no icon or Face ID glyph.
 - [ ] Rows sit on `--bg` full width, not in a `--panel` card.
+
+Adopting waiting.list, every surface
+- [ ] Deck, phone and desktop (work/pwa): `deck/js/needs.js` merges its own sources; draw from
+      `waiting.list`, count from `waiting.count` and `waiting.changed`, answer through
+      `answer.tool`; add the Pairing row.
+- [ ] App (work/mobile): read `waiting.list` and `waiting.count`; the Now label badge and the app
+      icon badge from the one count; the Pairing row with its code field.
+- [ ] Capsule (work/capsule-pro): the list and the "Needs you · n" header from `waiting.list`; the
+      menu-bar dot from `waiting.changed`; answer through `answer.tool`.
+- [ ] CLI and status line (work/polish-cli): `vyre needs` and the status line count from <!-- terms: ignore -->
+      `waiting.count`.
+- [ ] Push (work/pwa): resolve by row `id`, so one answer clears every device.
+- [ ] cohesion: merge the kinds waiting does not have yet (Sign-in grant, New teammate, Merge
+      failed, Stuck, Usage, Device, Plan), each from its owner's tool.
 
 Capsule (work/capsule-pro)
 - [ ] Two lines, no kind line, a 7 dot for the tile, 40 tall; header "WAITING ON YOU" in caps.

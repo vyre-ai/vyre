@@ -18,7 +18,7 @@ const API = "/v1.43";
 
 export class DockerDriver {
   /**
-   * @param {{ url: string, labelPrefix?: string, network?: string, capAdd?: string[], timeoutMs?: number }} opts
+   * @param {{ url: string, bearer: string, labelPrefix?: string, network?: string, capAdd?: string[], timeoutMs?: number }} opts
    */
   constructor(opts) {
     if (!opts || !opts.url) throw new Error("the docker driver needs computers.docker (the restricted proxy's URL)");
@@ -36,6 +36,8 @@ export class DockerDriver {
       if (p.protocol !== "http:") throw new Error(`computers.docker must be http://host:port or unix:///path, not ${p.protocol}`);
       this.target = { host: p.hostname, port: Number(p.port || 80) };
     }
+    if (!opts.bearer) throw new Error("the docker driver needs a bearer for the proxy -- there is no unauthenticated mode");
+    this.bearer = String(opts.bearer);
   }
 
   get managedLabel() { return `${this.prefix}.managed`; }
@@ -50,7 +52,8 @@ export class DockerDriver {
     return new Promise((resolve, reject) => {
       const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
       const req = http.request({ ...this.target, method, path: API + path, timeout: this.timeoutMs,
-        headers: { host: "docker", ...(data ? { "content-type": "application/json", "content-length": data.length } : {}) } }, res => {
+        headers: { host: "docker", authorization: `Bearer ${this.bearer}`,
+          ...(data ? { "content-type": "application/json", "content-length": data.length } : {}) } }, res => {
         const chunks = [];
         res.on("data", c => chunks.push(c));
         res.on("end", () => {

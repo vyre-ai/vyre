@@ -169,6 +169,13 @@ test("needs and gate: list, show, revise (flags and $EDITOR), approve needs a pe
   assert.match(human.out, new RegExp(`${s}\\s+draft`));
   assert.match(human.out, /send via mail to kit@northwind\.example: Opening hours/);
   assert.match(human.out, new RegExp(`vyre threads answer ${w.question.id.slice(0, 8)}\\b`));
+  // --view: one table, each row ending with the command that answers it, then done.
+  const nv = (await vyre(["needs", "--view"], env)).stdout.trim().split("\n").map(l => JSON.parse(l));
+  assert.deepEqual([nv[0].cmd, nv[0].view.kind, nv[0].view.title], ["needs", "table", "4 waiting on you"]);
+  assert.deepEqual(nv[0].view.columns.map(c => c.key), ["short", "kind", "age", "summary", "source", "next"]);
+  assert.equal(nv[0].view.columns.at(-1).label, "Answer with");
+  assert.deepEqual(nv[0].data.map(r => [r.id, r.next]), rows.map(r => [r.id, r.next]), "data is what --json prints");
+  assert.deepEqual(nv.at(-1), { v: 1, done: true, exit: 0 });
 
   const list = await vyre(["drafts", "--json"], env);
   assert.equal(list.code, 0, list.out);
@@ -182,6 +189,16 @@ test("needs and gate: list, show, revise (flags and $EDITOR), approve needs a pe
   assert.match(show.out, /approving it asks you to prove it is you/);
   assert.match(show.out, new RegExp(`vyre gate approve ${s}`));
   assert.equal(JSON.parse((await vyre(["gate", "show", s, "--json"], env)).stdout).draft.body, "The shop opens at 7 from Monday.");
+  const sv = JSON.parse((await vyre(["gate", "show", s, "--view"], env)).stdout.split("\n")[0]);
+  assert.deepEqual([sv.cmd, sv.view.kind, sv.view.title, sv.view.state], ["gate show", "card", "send via mail", "wait"]);
+  assert.deepEqual(sv.view.fields.slice(0, 4), [{ label: "Id", value: s }, { label: "To", value: "kit@northwind.example" },
+    { label: "Subject", value: "Opening hours" }, { label: "Words", value: "The shop opens at 7 from Monday." }]);
+  // --view never opens an editor: it asks for the words, naming the command that takes them.
+  const rv = await vyre(["gate", "revise", s, "--view"], { ...env, EDITOR: "false", VISUAL: "" });
+  assert.equal(rv.code, 2, rv.stdout);
+  const rp = JSON.parse(rv.stdout.split("\n")[0]);
+  assert.deepEqual([rp.view.kind, rp.view.name, rp.view.args, rp.view.answer, rp.view.flag], ["prompt", "text", ["gate", "revise", s], "flag", "text"]);
+  assert.equal(rp.data.current, "The shop opens at 7 from Monday.");
 
   const byFlag = await vyre(["gate", "revise", s, "--text", "The shop opens at 8 from Monday.", "--subject", "New opening hours"], env);
   assert.equal(byFlag.code, 0, byFlag.out);
@@ -234,6 +251,14 @@ test("needs and gate: list, show, revise (flags and $EDITOR), approve needs a pe
   assert.equal(done.code, 1, done.out);
   assert.match(done.out, /is already rejected/);
   assert.equal((await vyre(["gate", "frobnicate"], env)).code, 2);
+
+  // Every verb gate() takes is in vyre commands, and nothing it refuses; needs takes no verbs.
+  const listed = JSON.parse((await vyre(["commands", "gate", "--json"], env)).stdout).commands[0].verbs;
+  assert.deepEqual(listed.map(v => [v.verb, v.aliases || []]), [["list", ["ls"]], ["show", ["get"]], ["approve", ["send"]], ["reject", ["discard"]], ["revise", ["edit"]]]);
+  assert.deepEqual(listed.filter(v => v.read).map(v => v.verb), ["list", "show"]);
+  assert.equal(listed.find(v => v.verb === "approve").person, true);
+  const needs = JSON.parse((await vyre(["commands", "needs", "--json"], env)).stdout).commands[0];
+  assert.deepEqual([needs.verbs, needs.args], [[], []]);
 });
 
 test("threads answer: a question by --pick and --answer, shown first; always with and without a project; deny", async t => {

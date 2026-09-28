@@ -7,6 +7,15 @@
 // checks it against core/computers/driver/policy.js, and forwards its own re-serialisation of
 // what it checked, never the caller's bytes.
 //
+// HOTFIX (see docs/work/computers.md and the incident it closes): the internal network this
+// listens on is not a strong enough boundary on its own -- a session's sandbox can share it (a
+// spawner that runs sessions in the same netns as vyred, for one). Every request needs
+// `Authorization: Bearer <token>`, checked in constant time, matching a secret only vyred's own
+// uid can read (0400, in vyred's home, never in this process's Env or argv, which `docker inspect`
+// or `/proc/<pid>/environ` can both expose to anything sharing the container's namespaces). A
+// proxy started with no `bearer` refuses every request outright -- there is no unauthenticated
+// mode -- except for a caller that opts in by name for a test double.
+//
 // Every decision about a container rests on labels the Engine itself returns: a per-container op
 // first inspects the container, exec start first inspects the exec and then its container, and a
 // create that reuses an existing volume first inspects that volume. Nothing the request says about
@@ -24,6 +33,7 @@
 // No Upgrade: docker.js never attaches, so a hijacked stdin stream is refused outright.
 
 import http from "node:http";
+import crypto from "node:crypto";
 
 const MAX_BODY = 256 * 1024;
 // A list of every computer on the box; far more than any real one, and bounded all the same.
@@ -153,10 +163,22 @@ export async function loadPolicy(file = new URL("../computers/driver/policy.js",
  *   log?: (entry: { method: string, path: string, status: number, why: string }) => void }} opts
  * @returns {http.Server} not yet listening
  */
-export function createProxy({ socket = "/var/run/docker.sock", policy, config, log = () => {} }) {
+export function createProxy({ socket = "/var/run/docker.sock", policy, config, bearer, log = () => {} }) {
   if (!policy || !config || !config.network || !config.image || !config.labelPrefix) {
     throw new Error("createProxy needs the policy and the box's computers network, image and label prefix");
   }
+  if (typeof bearer !== "string" || bearer.length < 16) {
+    throw new Error("createProxy needs a bearer token (16+ chars) -- there is no unauthenticated mode");
+  }
+  const bearerBuf = Buffer.from(bearer, "utf8");
+  /** Constant-time: refuses early (a bad length is itself timing-safe info an attacker cannot
+   * use to guess the token faster) but never short-circuits on the token's own content. */
+  const authorized = header => {
+    const m = /^Bearer (.+)$/.exec(String(header || ""));
+    if (!m) return false;
+    const given = Buffer.from(m[1], "utf8");
+    return given.length === bearerBuf.length && crypto.timingSafeEqual(given, bearerBuf);
+  };
   const prefix = config.labelPrefix;
 
   /** Is this label set, as the Engine reports it, one of this box's computers? */
@@ -268,6 +290,7 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, l
 
   /** @param {http.IncomingMessage} req @param {http.ServerResponse} res */
   const handle = async (req, res) => {
+    if (!authorized(req.headers.authorization)) refuse("missing or wrong bearer", 401);
     const method = String(req.method);
     const url = new URL(String(req.url), "http://docker");
     const v = /^\/v1\.\d{1,2}(?=\/)/.exec(url.pathname);

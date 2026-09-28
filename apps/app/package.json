@@ -1,6 +1,6 @@
 {
   "name": "@vyre/app",
-  "version": "0.0.1",
+  "version": "0.1.0-rc.1",
   "private": true,
   "type": "module",
   "main": "expo-router/entry",
@@ -8,6 +8,7 @@
     "web": "expo start --web",
     "export:web": "expo export -p web && node scripts/precache.mjs",
     "typecheck": "tsc --noEmit",
+    "icons": "node scripts/gen-icons.mjs",
     "test": "node --test \"perf/*.test.js\" \"scripts/*.test.js\" \"src/**/*.test.js\""
   },
   "dependencies": {

@@ -216,3 +216,49 @@ test("vault verbs: with the real verifier and no terminal, approve, share, move,
   assert.equal((await vyre(root, ["vault", "pending", "--json"], undefined, { detached: true })).code, 0);
   assert.equal((await vyre(root, ["vault", "revoke", "nothing-yet", "gate"], undefined, { detached: true })).code, 0);
 });
+
+test("vault verbs: vyre commands lists every word run() dispatches on, as a verb or an alias, and no other", async t => {
+  const { HANDLED } = await import("../core/cli/commands/vault.js");
+  const h = tempHome(t);
+  const r = /** @type {any} */ (await vyre(h, ["commands", "vault", "--json"]));
+  assert.equal(r.code, 0, r.all);
+  const c = JSON.parse(r.out).commands[0];
+  const words = c.verbs.flatMap(v => [v.verb, ...(v.aliases || [])]);
+  assert.deepEqual([...words].sort(), [...HANDLED].sort());
+  for (const v of c.verbs) assert.ok(c.usage.includes(v.verb), `the usage line names ${v.verb}`);
+  assert.equal(c.verbs.find(v => v.verb === "totp").live, true);
+  assert.deepEqual(c.verbs.find(v => v.verb === "git-credential").args, [{ name: "choice", required: true, choices: ["get", "store", "erase"] }]);
+  assert.ok(c.verbs.find(v => v.verb === "put").flags.some(f => f.name === "stdin"));
+});
+
+test("vault verbs --view: kit is a qr frame; a secret without --stdin is a prompt frame, exit 2, and stdin is not read", async t => {
+  const h = home(t, { name: "owner-box", vault: { keystore: "file" } });
+  assert.equal((await upPresent(h)).code, 0);
+  const frames = r => r.out.trim().split("\n").map(l => JSON.parse(l));
+
+  // account create under --view: a prompt naming --stdin, even with a password waiting on stdin.
+  const asked = await vyre(h, ["vault", "account", "create", "--view"], "a long fixture password\n");
+  assert.equal(asked.code, 2, asked.all);
+  const p = frames(asked)[0];
+  assert.deepEqual([p.view.kind, p.view.name, p.view.secret], ["prompt", "secret", true]);
+  assert.deepEqual(p.view.args, ["vault", "account", "create", "--stdin"]);
+  assert.ok(!JSON.parse((await vyre(h, ["vault", "account", "status", "--json"])).out).data.account, "nothing was created");
+  // With --stdin the password comes piped in.
+  const made = await vyre(h, ["vault", "account", "create", "--view", "--stdin"], "a long fixture password\n");
+  assert.equal(made.code, 0, made.all);
+
+  const kit = await vyre(h, ["vault", "kit", "--view"]);
+  assert.equal(kit.code, 0, kit.all);
+  const f = frames(kit);
+  assert.deepEqual([f[0].cmd, f[0].view.kind], ["vault kit", "qr"]);
+  assert.equal(f[0].view.text, f[0].data.data.url, "the address is the frame's text; data is what --json prints");
+  assert.match(f[0].view.caption, /recovery kit/);
+  assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 0 });
+
+  const put = await vyre(h, ["vault", "put", fake("view"), "--view"], "a-fixture-value-that-must-not-be-read");
+  assert.equal(put.code, 2, put.all);
+  assert.match(frames(put)[0].view.label, /The value of fixture-view-/);
+  const listed = frames(await vyre(h, ["vault", "ls", "--view"]));
+  assert.deepEqual([listed[0].view.kind, listed[0].view.columns[0].key], ["table", "name"]);
+  assert.ok(!listed[0].data.data.items.some(it => /^fixture-view-/.test(it.name)), "the prompt stored nothing");
+});

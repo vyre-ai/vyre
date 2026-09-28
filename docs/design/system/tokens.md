@@ -8,9 +8,10 @@ status: draft
 
 # Tokens
 
-One file, `docs/design/one-app/tokens.json`, holds every value. Nobody edits a generated file:
-change the JSON and run `npm run tokens` (`scripts/gen-tokens`). `--check` fails when an output is
-stale, and CI runs it (the design workflow).
+One file, `lib/theme/tokens.json`, holds every value (it moved from `docs/design/one-app/` so it
+ships in the package: vyred reads it at run time). Nobody edits a generated file: change the JSON
+and run `npm run tokens` (`scripts/gen-tokens`). `--check` fails when an output is stale, and CI
+runs it (the design workflow).
 
 | Surface | Generated file | Read it as |
 |---|---|---|
@@ -19,6 +20,11 @@ stale, and CI runs it (the design workflow).
 | Capsule (Swift) | `local/capsule/native/Sources/UI/Tokens.generated.swift` | `Tokens.dark.text2`, `Tokens.Radius.card`, `Tokens.Control.touch`, `Tokens.monoSizes` |
 
 The generator writes a surface only when its folder exists in the tree.
+
+**Generated, never hand written.** Every token file a surface ships is generated from the hub's
+tokens: at build time from `lib/theme/tokens.json` through `gen-tokens`, and at run time from
+`appearance.resolve` or `/v1/theme`. A hand-written token file, or a copy of token values in a
+surface's own file, fails the design check (cohesion, ADR 0036).
 
 ## The values
 
@@ -41,11 +47,19 @@ The generator writes a surface only when its folder exists in the tree.
 
 ## Themes
 
-A person's theme (`<home>/overrides/theme.json`) or a module's `themes/<name>.json` is a partial
-tokens.json merged over the shipped one (ADR 0033). It may change colour roles, fonts, type, space,
-radius, control, motion, shadow and popover. It may not change status, layout, icons or add keys.
+Themes are hub values (ADR 0035, section 3), declared and served by the appearance module:
+
+- `appearance.theme` is the preset: `vyre` (the shipped tokens) or `<module>/<name>`. A preset
+  carries both schemes. Its choices come from `appearance.presets`.
+- `appearance.scheme` is `system` (follow the device), `dark` or `paper`, usually set per device.
+- `appearance.tokens` is the person's own changes, a partial tokens.json merged over the preset.
+
+A module's `themes/<name>.json` (a preset) and `appearance.tokens` are both partial tokens.json
+files merged over the shipped one (ADR 0033). They may change colour roles, fonts, type, space,
+radius, control, motion, shadow and popover. They may not change status, layout, icons or add keys.
 The merged result must keep every rule below, or the whole file is refused and each failure is
-named (`node scripts/gen-tokens --validate <file>`):
+named (`node scripts/gen-tokens --validate <file>`, or the `appearance.check` tool, which the hub
+calls before it stores a value; the rules are `lib/theme`'s `applyOverride` and `check`):
 
 - every text and ground pair the surfaces draw at AA (washes composited over their ground);
 - the focus ring at 3:1 on bg and panel;
@@ -53,3 +67,26 @@ named (`node scripts/gen-tokens --validate <file>`):
 - no text under 12, no touch target under 44, no empty font family.
 
 Modules never override the global tokens; a module theme is only something the person can pick.
+
+All three keys are set at account or device level; a device's value wins for that device. Surfaces
+read the result for their own device from the two routes ADR 0035 names, which vyred serves by
+calling `appearance.resolve { device }`: `GET /v1/theme?device=<id>` (JSON: preset, scheme, the
+whole merged tokens.json, the CSS, a version and the hub's `rev`) and `GET /theme.css?device=<id>`
+(the custom properties alone). The ETag is `"<rev>-<device>"`. resolve checks the merged tokens
+again on every read: a stored value that no longer passes paints the preset instead and is named
+under `problems`, so a bad value never paints. A surface repaints on `settings.changed` for any
+`appearance.*` key, the contract; `appearance.changed` is a convenience. The old `appearance.theme` values `system`, `dark` and `paper` read as `vyre` with
+that scheme for one release, and `config.theme.colors` folds in under the preset for one release.
+
+## Retired names
+
+These Deck names have no role in Design A. Replace them; never give them a token.
+
+| Old name | Use instead |
+|---|---|
+| `--recall`, `--recall-ink` (memory's gold: `.dot.recall`, icons, "From memory") | `--text-2` for the icon or dot; a memory source is a source chip (1 px `--rule-strong`), never gold |
+| `--recall-wash` (the "From memory" card fill) | no fill, or `--hover` where the card needs a ground |
+| `--beacon-wash` (the violet `.needs-pill`) | no fill: the needs count is text in `--beacon-ink` (top-bar.md), or the count badge |
+| `--beacon-rule` (violet rules on Needs rows) | `--rule` |
+
+Violet stays only for "needs you": the dot, the label and the count. Gold is gone from the system.

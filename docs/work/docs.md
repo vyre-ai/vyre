@@ -96,13 +96,36 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
 - Fixed using/capsule.md (Ask about your screen section), using/cli.md (vyre help <command>)
   and using/connectors.md (Google --sign-in).
 
+- 393b7c97 (handed to the integrator): tips.next fills module from context.now's view and busy
+  from waiting.count (cohesion ADR 0036), the statusline surface (platform asked to add it to the
+  schema enum), the chat queue tip says images can't be queued, and the pending Capsule tips say
+  Cmd-Return thinks deeper and "do" starts computer use. The tools reference explains internal
+  tools (threads.history is internal; agents.history is the public one).
+- The look is ready: app-design's docs/design/system/components/tip.md (work/app-design b756d128,
+  board TipLine), sent to capsule-pro, pwa, chat and mobile. native-core put "tips" in GROUPS
+  (ac34c322). cohesion's context.report already takes surface "glass", and pwa sends it from the
+  Glass page. When tip.md lands on main, link it from build/tips.md, "Show one on a surface".
+- 591b5e80 (for the batch after 4): docs/releases/0.1.0.md (a draft, with unlanded lines
+  marked "(pending)") and docs/using/first-hour.md (the 20-minute first run). releases/ joins
+  HISTORY in terms.js. When batch 4 lands, drop the "(pending)" marks that no longer apply and
+  update the first hour's Known gap callouts.
+- Lead routing (0.1.0): ci owns the version and the "## 0.1.0" CHANGELOG section (the RC's last
+  commit); platform owns `vyre module *` (RC or 0.1.1). The RC batch after 4 holds vault
+  5d7cbd07, connectors 8be461a9, memory-iq 1a76d383 and app-design-hub 9a6abbcf. WHEN THE RC BATCH IS
+  ON MAIN: first-hour step 8 changes colours through Settings, Appearance (the hub,
+  appearance.tokens); remove every "(pending)" in releases/0.1.0.md that landed; update the
+  first hour's Known gap callouts (IQ in the Capsule, vault needs, do, the hub).
+- Rule reminder from the lead: one Chrome on testbox at a time, and no shots while the integrator's
+  suite runs.
+
 ## Next (queued before tips)
 
 - Shots retake on current main (docs-check shows 263 stale). Run `uptime` on the test box first
   and wait while the load is over 8. Then rsync to ~/vyre-ci/docs-s and run `DOCS_SHOTS_SHARP=~/vyre-ci/docs-s-tools
   CHROME=/usr/local/bin/vyre-chrome nice -n 15 node scripts/docs-shots [--only a,b]`, and copy back the
   PNGs and docs/shots.json. Include pwa 3b's screens (see Still open).
-- Chat's terminal page, when chat f964f8a/b85ab3f land (Pending below).
+- DONE: chat's terminal page (f964f8a/b85ab3f are on main): offsets and the 1 MB cut line, a 4 KB
+  key hold, the box-update line with Open a new terminal here, Take size, and the phone key bar.
 
 ## Still open (tips)
 
@@ -139,7 +162,7 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
 
 ## Pending page changes (apply when the code reaches main)
 
-- chat f964f8a, b85ab3f (Deck terminal offsets), HOLD until merged: using/chat.md "Open a terminal
+- DONE (applied after both reached main) chat f964f8a, b85ab3f (Deck terminal offsets): using/chat.md "Open a terminal
   on the box" changes: reattaches from its offset with its own scrollback (a cut shows a dim
   "older output was not kept" line); holds up to 4 KB of keys typed while the link is down and
   sends them once caught up; after a deploy "The box was updated and this terminal was closed."

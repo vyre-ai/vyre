@@ -20,6 +20,10 @@ share the `.choice`, `.radio` and `.chk` parts drawn on "Session · the composer
 | App | none (the ask card says "Answer it in the Deck for now") | not built |
 | Capsule | none | not built |
 
+Built once: this card is built once in chat-core for the web (the Deck and the PWA) and Expo (the
+app), from this spec, and the Capsule mirrors the same spec in Swift. No surface draws its own
+version (cohesion, ADR 0036).
+
 ## Anatomy
 
 A neutral card: `--panel`, 1 px `--rule`, radius 12 (phone 10), overflow hidden.

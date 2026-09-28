@@ -5,6 +5,10 @@
 //
 // Every step is worked out from what the server says, not from what this command remembers, so
 // running `vyre box add` again after a Ctrl-C carries on from where the box stands.
+//
+// --json shapes: status {box, address, answering, version}. The other verbs work over SSH and
+// print what happens as it goes. Under --view nothing is read from the terminal: a plan that
+// wants a yes is a prompt frame (run it again with --yes), exit 2, and ssh gets no terminal.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -22,7 +26,8 @@ import { VERSION } from "../../daemon/index.js";
 import { printEnding } from "../ending.js";
 import { out, dim, signal, beacon } from "../style.js";
 import { INSTALL } from "../brand.js";
-import { json, emit, usage as usageError } from "../kit.js";
+import { json, emit, usage as usageError, viewing, EXIT } from "../kit.js";
+import { prompt } from "../view.js";
 
 const INSTALLER = fileURLToPath(new URL("../../../scripts/install-box.sh", import.meta.url));
 const VOLUMES = ["vyre-home", "vyre-work", "tailscale-state"];
@@ -110,10 +115,16 @@ export function unfit(p) {
 
 // ---- asking ----
 
+/** Whether a person is at this terminal to answer: never under --view, where a surface runs it. */
+const terminal = () => !viewing() && Boolean(process.stdin.isTTY);
+
+/** The words that ran this verb, for a prompt frame to run again with --yes. */
+let AGAIN = /** @type {string[]} */ (["box"]);
+
 /** Ask once. true or false; null when there is no terminal to ask on. */
 async function ask(question, yes) {
   if (yes) return true;
-  if (!process.stdin.isTTY) return null;
+  if (!terminal()) return null;
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try { return /^y(es)?$/i.test((await rl.question(`  ${question} [y/N] `)).trim()); }
   finally { rl.close(); }
@@ -123,6 +134,11 @@ async function ask(question, yes) {
 async function agree(lines, question, yes) {
   for (const l of lines) out(`    ${l}`);
   out("");
+  if (!yes && viewing()) {
+    // A surface asks the person, then runs the verb again with --yes.
+    emit({ plan: lines, question }, prompt({ name: "yes", label: `${lines.join("; ")}. ${question}`, choices: ["yes", "no"], args: [...AGAIN.filter(a => a !== "--yes"), "--yes"], answer: "confirm" }));
+    return EXIT.USAGE;
+  }
   const ok = await ask(question, yes);
   if (ok) return null;
   if (ok === null) out(`  nothing changed. Run it in a terminal to answer, or add ${signal("--yes")}.`);
@@ -303,7 +319,7 @@ async function install(r, args, env, group = false) {
   try {
     const put = await r.put(src, tmp);
     if (put.code !== 0) throw new Error(put.stderr.trim() || "could not copy the installer");
-    const tty = Boolean(process.stdin.isTTY);
+    const tty = terminal();
     // Joining the docker group rides the same terminal session, so sudo's cached password covers it.
     const join = group ? ' && sudo usermod -aG docker "$(id -un)"' : "";
     const res = await r.run(line("env", ...passEnv(env), ...(env.VYRE_NO_UP ? ["VYRE_NO_UP=1"] : []), "sh", tmp, ...args) + join, { tty });
@@ -493,7 +509,10 @@ async function status() {
     const target = (c.box && c.box.ssh) || null;
     const address = target ? c.network.box || null : null;
     const h = address ? await tailnet.probe(address) : null;
-    emit({ box: target, address, answering: Boolean(h), version: (h && h.version) || null });
+    emit({ box: target, address, answering: Boolean(h), version: (h && h.version) || null }, { kind: "card", title: "Your box", state: !target ? "wait" : h ? "ok" : "failed",
+      fields: target ? [{ label: "Address", value: address || "no address yet" }, { label: "Server", value: String(target) },
+        { label: "Answering", value: h ? `yes${h.version ? " · " + h.version : ""}` : "not from here: is this Mac on your tailnet?" }]
+        : [{ label: "No box yet", value: "vyre box add <user@host>" }] });
     return target && !h ? 1 : 0;
   }
   const target = saved();
@@ -516,8 +535,8 @@ async function update() {
   const target = saved();
   if (!target) return 1;
   return withBox(target, async r => {
-    const u = await r.run(vyre(["update"]), { tty: Boolean(process.stdin.isTTY) });
-    if (!process.stdin.isTTY && u.stdout.trim()) out(u.stdout.replace(/^/gm, "  ").trimEnd());
+    const u = await r.run(vyre(["update"]), { tty: terminal() });
+    if (!terminal() && u.stdout.trim()) out(u.stdout.replace(/^/gm, "  ").trimEnd());
     if (u.code !== 0) { out(beacon(`  vyre update on the box stopped (exit ${u.code})`)); return 1; }
     const v = (await r.run(vyre(["version"]))).stdout.trim();
     const cmp = newer(v, VERSION);
@@ -706,6 +725,7 @@ async function remove(flags) {
 }
 
 async function run(args) {
+  AGAIN = ["box", ...args.filter(a => a !== "--json")];
   const flags = Object.fromEntries(args.filter(a => a.startsWith("--")).map(a => [a.slice(2), true]));
   const rest = args.filter(a => !a.startsWith("--"));
   const [sub, arg] = rest;
@@ -720,7 +740,16 @@ async function run(args) {
   }
 }
 
-const usage = "vyre box [status|add|update|backup|move|remove] [--json]";
+const usage = "vyre box [status|add <user@host> [--yes]|update|backup [file] [--force]|move <user@newhost> [--yes]|remove [--purge] [--yes]] [--json]";
 const USAGE = "vyre box add <user@host> | update | backup [file] | move <user@newhost> | remove [--purge]";
 
-export default [{ name: "box", order: 12, usage, summary: "put Vyre on a server from this Mac, and look after it", run }];
+const verbs = [
+  { verb: "status", summary: "your box's address, and whether it answers from here", usage: "", read: true },
+  { verb: "add", summary: "put Vyre on a server you can SSH to, then pair this Mac with it", usage: "<user@host> [--yes]" },
+  { verb: "update", summary: "run vyre update on the box, and compare its version with this Mac's", usage: "" },
+  { verb: "backup", summary: "copy the box's volumes to a file here (the box stops while it copies)", usage: "[file] [--force]" },
+  { verb: "move", summary: "move the box to another server, same name and address", usage: "<user@newhost> [--yes]" },
+  { verb: "remove", summary: "take Vyre off the server; --purge deletes its volumes too", usage: "[--purge] [--yes]" },
+];
+
+export default [{ name: "box", order: 12, usage, verbs, summary: "put Vyre on a server from this Mac, and look after it", run }];
