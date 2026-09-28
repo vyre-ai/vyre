@@ -63,14 +63,12 @@ const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Ob
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    // projects_access: which agent may reach a project's data at all (Drive, sync and anything
-    // else that serves a project's files or sessions to an agent asks this, through ctx.call,
-    // federation's Vyre Drive step 3, ADR pending). Appended after MIGRATIONS' own steps, so its
-    // version numbers continue the sequence rather than colliding with them.
-    ctx.store.migrate([...MIGRATIONS,
-      `CREATE TABLE projects_access (id TEXT PRIMARY KEY, project TEXT NOT NULL, agent TEXT NOT NULL DEFAULT '',
-         status TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, UNIQUE (project, agent))`,
-    ]);
+    // projects_access (table itself is step 1 of MIGRATIONS, in projects.js — reviewer's MEDIUM:
+    // core/store's migrate() numbers steps by array index, so appending it here instead would
+    // collide with whatever step another team adds to this same array next) is which agent may
+    // reach a project's data at all: Drive, sync and anything else that serves a project's files
+    // or sessions to an agent asks this, through ctx.call (federation's Vyre Drive step 3).
+    ctx.store.migrate(MIGRATIONS);
     const P = new Projects({
       db: ctx.store.db, config: ctx.config, call: ctx.call,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
@@ -214,8 +212,8 @@ export default {
       run: async ({ project, agent }, meta = {}) => setAccess(project, agent, "revoked", String((meta && meta.caller) || "unknown")),
     });
     ctx.tool("projects.access.check", {
-      description: "Whether this agent (or, agent left out, the box itself) may reach a project's data: deny by default, an agent-specific grant wins over the wildcard for that agent. Drive, sync and anything else that serves a project's files or sessions to an agent asks this first. Internal to first-party modules and the owner's own surfaces; a model never asks this on its own behalf to learn what exists: the row it wants is simply left out of a listing instead.",
-      input: { type: "object", required: ["project"], properties: { project: str, agent: str } },
+      description: "Whether a named agent may reach a project's data: deny by default, an agent-specific grant wins over the wildcard grant (a grant or revoke that left agent out, covering everyone). Drive, sync and anything else that serves a project's files or sessions to an agent asks this first. Internal to first-party modules and the owner's own surfaces; a model never asks this on its own behalf to learn what exists: the row it wants is simply left out of a listing instead. agent is required (reviewer's LOW): an empty agent would otherwise read the wildcard row directly, conflating 'no agent specified' with 'the wildcard grant', two different things.",
+      input: { type: "object", required: ["project", "agent"], properties: { project: str, agent: str } },
       callers: ["module", "cli", "local", "deck", "capsule"],
       run: async ({ project, agent }) => {
         if (!isProjectId(project)) return { project, agent: String(agent || ""), granted: false };

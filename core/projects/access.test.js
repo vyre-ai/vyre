@@ -15,6 +15,7 @@ import { Projects, MIGRATIONS } from "./projects.js";
 import mod from "./index.js";
 import * as config from "../config/index.js";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
+import { checkInput } from "../modules/index.js";
 
 /** A world with one real project, "Harlow Legal", and a fake ctx running the real module's start(). */
 function world(t) {
@@ -88,6 +89,13 @@ test("projects.access: grant and revoke resolve a project by name too, and refus
   const byName = await w.call("projects.access.grant", { project: "Harlow Legal", agent: "kit" }, { caller: "cli" });
   assert.equal(byName.project, "harlow-legal", "stored under the canonical slug, not the typed name");
   await assert.rejects(w.call("projects.access.grant", { project: "no-such-project", agent: "kit" }, { caller: "cli" }), /no project/);
+});
+
+test("projects.access.check: agent is required by the tool's own schema (reviewer's LOW) — an empty agent used to read the wildcard row as if it were 'no agent', conflating two different things", async t => {
+  const w = await started(t);
+  const def = w.tools.get("projects.access.check");
+  assert.deepEqual(checkInput(def.input, { project: "harlow-legal" }), ["input.agent is required"]);
+  assert.deepEqual(checkInput(def.input, { project: "harlow-legal", agent: "kit" }), []);
 });
 
 test("projects.access.check: a malformed project id answers granted: false rather than throwing", async t => {

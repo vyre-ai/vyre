@@ -2691,11 +2691,11 @@ After one strong proof (Touch ID, the Capsule, a device key or a passkey), a sec
 
 ### `projects.access.check`
 
-Whether this agent (or, agent left out, the box itself) may reach a project's data: deny by default, an agent-specific grant wins over the wildcard for that agent. Drive, sync and anything else that serves a project's files or sessions to an agent asks this first. Internal to first-party modules and the owner's own surfaces; a model never asks this on its own behalf to learn what exists: the row it wants is simply left out of a listing instead.
+Whether a named agent may reach a project's data: deny by default, an agent-specific grant wins over the wildcard grant (a grant or revoke that left agent out, covering everyone). Drive, sync and anything else that serves a project's files or sessions to an agent asks this first. Internal to first-party modules and the owner's own surfaces; a model never asks this on its own behalf to learn what exists: the row it wants is simply left out of a listing instead. agent is required (reviewer's LOW): an empty agent would otherwise read the wildcard row directly, conflating 'no agent specified' with 'the wildcard grant', two different things.
 
 - Input:
+  - `agent` string, required
   - `project` string, required
-  - `agent` string
 - Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `projects.access.grant`
