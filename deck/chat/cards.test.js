@@ -186,11 +186,16 @@ test("tool cards: the checklist, a short diff and a run open on their own; a rea
   assert.equal(open(bash), true);
   assert.equal(text($(bash, ".cv-out")).split("\n").length, 6);
   assert.match(text(bash), /show all \(7 lines\)/);
-  assert.equal(text(personAv("you", "alex")), "A");
-  assert.ok($(personAv("you", null), ".cv-dot"));
-  assert.equal(text(personAv("capsule")), "C");
+  // ADR 0043's families: the person's circle on every message of theirs (named in its title), the
+  // assistant's creature, an agent's blob.
+  assert.equal(personAv("you", "alex").getAttribute("data-family"), "person");
+  assert.equal(personAv("you", "alex").getAttribute("title"), "alex");
+  assert.equal(personAv("capsule").getAttribute("title"), "capsule");
+  assert.ok($(personAv("you", null), "svg"), "drawn even before the owner's name is known");
+  assert.equal(agentAv("Vyre").getAttribute("data-family"), "assistant");
   assert.ok($(agentAv("Vyre"), "svg"));
-  assert.equal(text(agentAv("juno")), "ju");
+  assert.equal(agentAv("kit", false).getAttribute("data-family"), "agent");
+  assert.equal(agentAv("juno").getAttribute("data-family"), "agent", "an agent: its blob, not two letters");
 });
 
 test("permission card: the diff summary, totals first, a row per file on a tap, binary and 'and N more'", async () => {

@@ -913,6 +913,7 @@ test("a teammate handoff (team_ask): its own card, the teammate's tile+name+Team
   assert.ok(row, "its own row, not a generic tool card");
   assert.match(text($(row, ".cv-handoff-name")), /^design$/);
   assert.match(text($(row, ".cv-handoff-tag")), /^Teammate$/);
+  assert.equal($(row, ".av-agent").getAttribute("data-family"), "teammate", "the teammate's character (ADR 0043), not an agent's blob");
   assert.match(text($(row, ".cv-tool-name")), /^Asked\s*$/);
   assert.match(text($(row, ".cv-handoff-sum")), /make the intake form calmer/);
   assert.ok($(row, ".av-agent"), "the teammate's own tile, not a generic sub-agent icon");
