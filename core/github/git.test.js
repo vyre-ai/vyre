@@ -1,12 +1,15 @@
 // @ts-check
-// git.js: the sanitisers, the folder-naming helper, cloneRepo's honest refusal (blocked on
-// git-safe.js gaining network access — see git.js's header), and worktree add/remove against a
-// real local repo. Worktree operations are local-only git, so they need no network allowance and
-// are tested for real, through git-safe.js, exactly as github.session.worktree/.cleanup use them.
+// git.js: the sanitisers, the folder-naming helper, cloneRepo (against a local https-refusing
+// case only — team rules forbid a real outbound network call in a test, so the real GitHub path
+// is exercised by lib/git-safe-askpass.test.js's credential-fill proof instead, and here we prove
+// the protocol restriction itself: nothing but https gets through, not even a local file:// repo),
+// and worktree add/remove against a real local repo. Worktree operations are local-only git, so
+// they need no network allowance and are tested for real, through git-safe.js, exactly as
+// github.session.worktree/.cleanup use them.
 //
-// Test setup clones the fixture repo with plain child_process (not through git-safe, and not
-// through cloneRepo): that stands in for "a repo Vyre already cloned", the state worktreeAdd and
-// worktreeRemove actually operate on. It is not a claim that Vyre's own clone works today.
+// Test setup for the worktree tests clones the fixture repo with plain child_process (not through
+// git-safe, and not through cloneRepo): that stands in for "a repo Vyre already cloned", the state
+// worktreeAdd and worktreeRemove actually operate on.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -60,9 +63,22 @@ test("freeFolder: the first free name, then -2, -3 once the folder exists", () =
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("cloneRepo: refuses plainly for a public repo (git-safe has no network allowance yet) and names the extra reason for a private one", async () => {
-  await assert.rejects(cloneRepo({ projectsDir: "/tmp", name: "x", url: "https://github.com/x/y", private: false }), /network-allow addition/);
-  await assert.rejects(cloneRepo({ projectsDir: "/tmp", name: "x", url: "https://github.com/x/y", private: true }), /askpass addition for a private repo/);
+test("cloneRepo: only https is reachable - a local file:// repo (or any other transport) is refused, even with a correct token", async t => {
+  const src = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-src2-"));
+  const projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-projects4-"));
+  t.after(() => { fs.rmSync(src, { recursive: true, force: true }); fs.rmSync(projectsDir, { recursive: true, force: true }); });
+  plainGit(src, ["init", "-q", "-b", "main"]);
+  plainGit(src, ["config", "user.email", "a@example.com"]);
+  plainGit(src, ["config", "user.name", "a"]);
+  fs.writeFileSync(path.join(src, "README.md"), "hello\n");
+  plainGit(src, ["add", "README.md"]);
+  plainGit(src, ["commit", "-q", "-m", "first"]);
+
+  await assert.rejects(
+    cloneRepo({ projectsDir, name: "harlow", url: src, token: "not-a-real-token" }),
+    /clone failed/,
+  );
+  assert.ok(!fs.existsSync(path.join(projectsDir, "harlow")), "a refused clone leaves no folder behind");
 });
 
 test("worktreeAdd/worktreeRemove: a session gets its own worktree and branch, invisible to git status in the main clone; the branch survives cleanup only when it has no commits", async t => {

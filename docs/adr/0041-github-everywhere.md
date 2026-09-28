@@ -64,8 +64,9 @@ this module that reads `VYRE_GITHUB_OAUTH_CLIENT_SECRET` — which revokes the t
 deletes the vault item and drops the account row. A revoke that fails (GitHub unreachable, already
 revoked) still removes the account and item locally and says so plainly, so a person is never
 stuck with a connected-looking account whose token doesn't work; it never leaves the token behind
-silently. Rotation: `remind.js`'s existing mechanism gets a `github-pat` reason (device-flow
-tokens are non-expiring, so this is "have you looked at this lately", not an expiry).
+silently. Rotation needs no new code: `health.js`'s `judge()` already treats kind `pat` as a
+typed credential (`old`, `rotate`, `reused`, `breached` all apply to it via `secretsOf`), and
+`remind.js` already turns those into a planner todo; storing the item as `kind: "pat"` is enough.
 
 Vault catalog change: `providers.js`'s `github` entry moves from `how: "field"` (paste a PAT) to
 a second entry `github-oauth` with `how: "oauth"` and `next: { tool: "github.connect" }`, mirroring
@@ -106,29 +107,55 @@ account?}`:
    branch, for the resolved account.
 2. Clone into `<projects dir>/<repo name>` (`config.js`'s `boxProjectsDir()`/local equivalent;
    `<repo name>` sanitised — `[A-Za-z0-9._-]` only, no leading dot, no `..` — and de-duplicated
-   the way `scanEnv` de-dupes names) with `lib/git-safe.js`'s `gitAsync --no-recurse-submodules`,
-   the only way this module runs git, ever.
+   the way `scanEnv` de-dupes names) with `lib/git-safe.js`'s new `gitWithAskpass`, the only way
+   this module runs git that needs a network call, ever.
 
-   Authentication for a private clone never touches the remote URL or the repo's own config
-   (both persist to disk and would leak the account across every future git call in that folder).
-   Two things the reviewer caught, both fixed here:
+   Authentication for the clone never touches the remote URL or the repo's own config (both
+   persist to disk and would leak the account across every future git call in that folder). Two
+   things the reviewer caught, both fixed and tested (`lib/git-safe-askpass.test.js`):
    - **The token never sits in an env var.** A child process's environment is readable by any
      same-uid process (`ps eww` on a Mac). The askpass script is handed the token over a
-     one-time, already-open pipe fd (an fd number in `GIT_ASKPASS_TOKEN_FD`, the read end passed
-     with `stdio` at spawn, closed the moment the script reads it), not `GITHUB_TOKEN=...` in
-     the environment. The script itself holds no token: it reads the fd and exits. It lives in a
-     `0700` temp dir made fresh per call and removed straight after, never a fixed path.
+     one-time, already-open pipe fd (`GIT_ASKPASS_TOKEN_FD` names only the fd *number*, never a
+     value, as an env var), read once and printed, then the script is gone: it lives in a `0700`
+     temp dir made fresh per call and removed the moment the call ends.
    - **`credential.helper` must not run at all.** macOS ships `credential.helper=osxkeychain` in
-     git's system config, and many people set one globally too; without an override, a successful
-     askpass hands the token straight to that helper, which stores it in the login keychain for
-     `github.com` — readable by any same-uid process, and silently reused by every later `git
-     push` in that folder, a model's own terminal `git push` included. Every call through this
-     path adds `-c credential.helper=` (empty clears the configured list) and `-c
-     credential.interactive=never` on top of `git-safe.js`'s existing `SAFE_GIT_ARGS`.
+     git's system config, and many people set one globally too — though `git-safe.js`'s
+     `GIT_CONFIG_NOSYSTEM`/`GIT_CONFIG_GLOBAL=devNull` already rule out both scopes, so the actual
+     residual risk proven in the test is a **repo-local** helper (in the destination's own
+     `.git/config`, a scope neither of those two touches): without an override, a successful
+     askpass would hand the token straight to it, and it would be reused silently by every later
+     `git push` in that folder, a model's own terminal `git push` included. Every call adds `-c
+     credential.helper=` (git's documented way to clear a configured helper list) on top of
+     `git-safe.js`'s existing `SAFE_GIT_ARGS`. `credential.interactive` is left alone: its `false`
+     value (confusingly) *disables* asking rather than disabling a stored answer, which would
+     defeat askpass entirely; `GIT_TERMINAL_PROMPT=0` (already forced) is what stops a raw
+     terminal prompt without touching the askpass path.
+   - **Only `https` is reachable, nothing else.** `git-safe.js`'s inherited `protocol.allow=never`
+     blocks every transport by default; `gitWithAskpass` adds `protocol.https.allow=always` on
+     top, so `file`, `git`, `ext` and a submodule's own transport all stay blocked even for this
+     call (tested: a local repo path is refused exactly like any other non-https source).
+   - **One username for every account.** `credential.username` is fixed to `x-access-token`
+     (GitHub's own convention: any non-empty username works with a PAT as the password), so git
+     only ever prompts askpass once, for the password. Without this it asks twice — once for the
+     username, once for the password — and the fd, read once, would answer the first ask and
+     leave the second empty. Tested via `git credential fill` (the exact credential-resolution
+     path a clone takes), so nothing here depends on reaching real GitHub in a test.
 
-   This is a small, tested addition to `git-safe.js` (`gitWithAskpass(dir, args, { fd })`),
-   owned by `sessions` (git-safe's owner); `github` calls it, never reimplements auth. A test
-   proves no credential helper runs and that the token never appears in `ps` output or on disk.
+   This is a small, tested addition to `git-safe.js` (`gitWithAskpass(dir, args, { token,
+   username?, stdin? })`), sent to `sessions` (git-safe.js's owner) as a self-contained new-file
+   diff for review — their branch doesn't carry `git-safe.js` yet and a full merge mid-task was
+   too large to do safely, so they review it standalone and the integrator reconciles it against
+   main's copy at the stage/0.1.1 fold, the same as everything else piling up there. `github`
+   calls it and never reimplements auth.
+
+   **A mistake made and reported while building this**: an early hand-written debug script ran
+   `git credential fill` directly, outside `git-safe.js`'s isolation, to check whether the
+   askpass script was reached. Skipping `GIT_CONFIG_NOSYSTEM`/`GIT_CONFIG_GLOBAL=devNull` let this
+   machine's real stored GitHub credential answer instead, printing a real username and PAT into
+   tool output that is now in this session's transcript. Reported to the reviewer and the lead
+   immediately; the value was not reused or sent anywhere; a rotation is recommended. The actual
+   `gitWithAskpass` code path was never affected (it always goes through the real isolation) — the
+   leak was in a throwaway debug script that has since been deleted.
 3. `ctx.call("projects.create", { name, home: clonedPath })`, or when the person already has a
    project and just wants to attach the repo, `projects.add-workspace`. `github` never writes to
    `projects`' own tables; it only calls its tools, per the module contract. (Needs federation's
@@ -143,16 +170,28 @@ step). Never a model.
 
 ### 5. A worktree and branch per session
 
-Ownership split, through the registry only: `sessions` decides *when* (a session starting in a
-project `github_projects` knows about); `github` does the git mechanics.
+Ownership split, through the registry only: `sessions` decides *when*; `github` does the git
+mechanics, fully built and tested (`core/github/git.test.js`), needing no token or network
+allowance at all (a worktree is a local operation on a repo already on disk).
+
+`sessions` corrected the trigger against their real lifecycle (there is no "archived" or
+project-change event today; `thread.started` is real, emitted by the Switchboard):
+- **Start**: on `thread.started` (or `harness.brief`'s own `{session, cwd, source}` hook), if
+  `ctx.call("github.project.of", { project })` says the project has a repo, call
+  `github.session.worktree { project, session }` and use its `path` as the session's cwd instead
+  of the project's home folder.
+- **End**: on `thread.stopped` or `thread.finished` (from `lib/thread-status.js`'s
+  `THREAD_STATUSES`; `sessions` picks the exact one(s) when they build the hook), call
+  `github.session.cleanup { project, session }`.
 
 - `github.session.worktree { project, session }` (`internal: true`, callers `["module:sessions"]`
   only, never a model, never a person surface directly): if the project is not a GitHub project,
   returns `null` (sessions then uses the project's home folder directly, as today). Otherwise:
-  the session id is reduced to a safe short id first (`[A-Za-z0-9_-]` only, no leading dot, no
-  `..`, truncated — the reviewer's LOW, since it becomes a path segment and a branch name), then
-  `git worktree add <project>/.sessions/<safe-id> -b vyre/<safe-id> <default_branch>`
-  through `git-safe`, and returns the new path. `sessions` sets the session's cwd there.
+  the session id is reduced to a safe short id first (git's own check-ref-format rules — no
+  leading `.` or `-`, no `..` anywhere, no trailing `.`, since this becomes a path segment and a
+  branch name), then `git worktree add <repo>/.sessions/<safe-id> -b vyre/<safe-id>
+  <default_branch>` through `git-safe`, and returns the new path. `sessions` sets the session's
+  cwd there.
 - `github.session.cleanup { project, session }` (same caller restriction): `git worktree remove`.
   The branch is left in place — a session's work is never deleted by ending the session — unless
   the worktree has zero commits ahead of its base, in which case the branch is pruned too

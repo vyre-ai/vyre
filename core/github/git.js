@@ -2,25 +2,17 @@
 // git: the mechanics behind github.project and github.session.worktree/.cleanup (ADR 0041).
 // Every git call goes through lib/git-safe.js, with no exception.
 //
-// Cloning is blocked on two things this file deliberately does NOT work around, both owned by
-// sessions (git-safe.js's owner) and flagged to them before any code landed here:
-//   1. git-safe.js's SAFE_GIT_ARGS sets `protocol.allow=never`, so no transport at all is
-//      permitted today, not even https for a public repo. That is correct for git-safe's stated
-//      job (running git safely inside a folder someone else can write to) and wrong for a clone,
-//      which is inherently a network operation; it needs a variant that allows exactly `https`
-//      and nothing else (never `file`, `git`, `ext`, or a submodule's own transport).
-//   2. A private repo additionally needs a token in front of that clone/fetch/push, safely (never
-//      in the remote URL, never handed to a credential helper) — the `gitWithAskpass` addition
-//      ADR 0041 proposes.
-// Until sessions builds and reviews that addition, cloneRepo refuses plainly rather than
-// attempting a call that would just fail on "transport not allowed", or worse, working around
-// git-safe's protocol block from outside it. Worktrees need neither: they are a local git
-// operation on a repo already on disk, so section 5 of the ADR is not blocked on this, and is
-// fully implemented and tested below.
+// Cloning uses gitWithAskpass (lib/git-safe.js), the addition this workstream drafted, tested
+// (lib/git-safe-askpass.test.js) and sent to sessions (git-safe.js's owner) for review as a
+// self-contained new-file diff, since it has no clean path to build against a live git-safe.js on
+// their own branch right now. It is not yet folded into main or reviewed there; this file is
+// ready the moment it lands, unchanged. Worktrees need no token or network allowance at all: a
+// worktree is a local git operation on a repo already on disk, so section 5 of the ADR was never
+// blocked on this, and is fully implemented and tested below.
 
 import fs from "node:fs";
 import path from "node:path";
-import { gitAsync } from "../../lib/git-safe.js";
+import { gitAsync, gitWithAskpass } from "../../lib/git-safe.js";
 
 const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
 
@@ -50,19 +42,18 @@ export function freeFolder(projectsDir, name) {
 }
 
 /**
- * Clone a repo into a fresh folder under `projectsDir`. Blocked today for every repo, public or
- * private, until git-safe.js gains a network-allowing (and, for a private repo, token-carrying)
- * clone path — see the file header. Refuses immediately rather than attempting a call that would
- * only fail on git's own "transport not allowed".
- * @param {{ projectsDir: string, name: string, url: string, private: boolean }} p
+ * Clone a repo into a fresh folder under `projectsDir`, over https, with `token` as the password
+ * (GitHub accepts any non-empty username with a PAT, so gitWithAskpass's fixed `x-access-token`
+ * is used for every account). The same call works for a public or a private repo; the token is
+ * never in the URL, an argv, an env var, or written to the clone's own remote config.
+ * @param {{ projectsDir: string, name: string, url: string, token: string }} p
  */
-export async function cloneRepo({ projectsDir, name, url, private: isPrivate }) {
-  throw fail(
-    `cloning is blocked on git-safe.js's pending network-allow addition (ADR 0041 decision 4)` +
-    `${isPrivate ? ", plus its askpass addition for a private repo's token" : ""}; ` +
-    `neither has landed yet`,
-    "blocked",
-  );
+export async function cloneRepo({ projectsDir, name, url, token }) {
+  fs.mkdirSync(projectsDir, { recursive: true });
+  const dest = freeFolder(projectsDir, name);
+  const r = await gitWithAskpass(projectsDir, ["clone", "--no-recurse-submodules", "--", url, dest], { token, timeout: 120_000 });
+  if (!r.ok) throw fail(`git clone failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "clone_failed");
+  return { path: dest };
 }
 
 const EXCLUDE_LINE = ".sessions/";

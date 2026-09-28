@@ -162,7 +162,7 @@ export default {
         const info = await res.json();
         const projectsDir = ctx.config && ctx.config.projectsDir;
         if (!projectsDir) throw fail("this device has no projects folder configured", "config");
-        const cloned = await cloneRepo({ projectsDir, name: info.name, url: info.clone_url, private: Boolean(info.private) });
+        const cloned = await cloneRepo({ projectsDir, name: info.name, url: info.clone_url, token });
         const out = project
           ? await ctx.call("projects.add-workspace", { project, folder: cloned.path })
           : await ctx.call("projects.create", { name: name || info.name, home: cloned.path });
