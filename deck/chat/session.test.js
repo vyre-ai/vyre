@@ -228,9 +228,14 @@ doc.body.append(container);
 const stop = mountSession(container, { thread: SID, project: null, onBack() {} });
 await wait();
 
-test("chips: the owner's initial for you, the Vyre mark for replies", () => {
-  assert.equal(text($(container, ".cv-user .msg-av")), "A");
+test("avatars (ADR 0043): the person's circle for you, named for the owner; the assistant's creature for replies", () => {
+  const you = $(container, ".cv-user .msg-av");
+  assert.equal(you.getAttribute("data-family"), "person");
+  assert.ok($(you, "svg"), "drawn, not a letter");
+  assert.equal(you.getAttribute("title"), "alex");
+  assert.equal($(container, ".cv-head .cv-av-vyre").getAttribute("data-family"), "assistant");
   assert.ok($(container, ".cv-head .cv-av-vyre svg"));
+  assert.equal($(container, ".cv-head-av").getAttribute("data-family"), "assistant", "the session header: who the session is with");
 });
 
 test("open: blocks as rows, one Vyre header per run, tool runs folded, the turn footer, never claude", async () => {
@@ -335,7 +340,7 @@ test("a live thread the transcript cannot find yet: threads.get's events drawn, 
   assert.ok(you, "the person's own message shows");
   assert.match(text(you), /you/);
   assert.match(text(you), /ask/);
-  assert.equal(text($(you, ".msg-av")), "A", "the owner's initial");
+  assert.equal($(you, ".msg-av").getAttribute("data-family"), "person", "the person's own avatar");
   assert.match(text(box), /Two questions first\./);
   assert.ok($(box, ".cv-tool[data-tool=AskUserQuestion]"));
   assert.ok($(box, ".cv-q"), "the open question card");

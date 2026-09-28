@@ -136,6 +136,8 @@ export function avatarSource(family, seed, size, o = {}) {
 
 const MAX = 256;
 /** @type {Map<string, Element>} */ const cache = new Map();
+/** Each template's source, for a DOM whose importNode hands back the same node (the test fakes). */
+/** @type {WeakMap<Element, string>} */ const sources = new WeakMap();
 let uid = 0;
 /** @type {DOMParser|null} */ let parser = null;
 
@@ -144,19 +146,27 @@ function template(/** @type {string} */ key, /** @type {() => string} */ src) {
   let t = cache.get(key);
   if (t) { cache.delete(key); cache.set(key, t); return t; }
   if (typeof DOMParser === "undefined") return null;
-  parser ||= new DOMParser();
-  t = /** @type {Element} */ (parser.parseFromString(src(), "image/svg+xml").documentElement);
-  if (!t || t.nodeName === "parsererror") return null;
-  t.setAttribute("width", "100%"); t.setAttribute("height", "100%");
-  t.setAttribute("aria-hidden", "true"); t.setAttribute("focusable", "false");
+  const text = src();
+  t = parse(text);
+  if (!t) return null;
+  sources.set(t, text);
   cache.set(key, t);
   if (cache.size > MAX) cache.delete(/** @type {string} */ (cache.keys().next().value));
   return t;
 }
 
+function parse(/** @type {string} */ text) {
+  const t = /** @type {Element} */ ((parser ||= new DOMParser()).parseFromString(text, "image/svg+xml").documentElement);
+  if (!t || t.nodeName === "parsererror") return null;
+  t.setAttribute("width", "100%"); t.setAttribute("height", "100%");
+  t.setAttribute("aria-hidden", "true"); t.setAttribute("focusable", "false");
+  return t;
+}
+
 /** A copy of a template, its gradient ids made unique to it. */
 function copy(/** @type {Element} */ t) {
-  const n = /** @type {Element} */ (typeof document.importNode === "function" ? document.importNode(t, true) : t.cloneNode(true));
+  let n = /** @type {Element} */ (typeof document.importNode === "function" ? document.importNode(t, true) : t.cloneNode(true));
+  if (n === t) n = parse(/** @type {string} */ (sources.get(t))) || t;
   const ids = typeof n.querySelectorAll === "function" ? n.querySelectorAll("[id]") : [];
   if (ids.length) {
     const tag = `-a${++uid}`;
