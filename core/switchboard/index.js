@@ -37,6 +37,13 @@ import { wantsMacs, askMacs, mergeRows } from "../modules/federate.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
+// Reviewer's LOW on cb387d88, 2026-09-28: a teammate's own request id (threads.post -> thread.sent/
+// thread.queued -> threads_inbox) is a matching hint, not an auth fact, but it is still stored and
+// broadcast on every device watching the thread - checked for shape before either, same as any
+// other id this codebase stores untrusted.
+const REQUEST_ID = /^[\w-]{1,64}$/;
+const safeRequest = v => (typeof v === "string" && REQUEST_ID.test(v) ? v : undefined);
+
 /** Usage per turn (for agents.usage), and the last rate-limit report Claude Code gave a thread. */
 const USAGE_MIGRATION = `CREATE TABLE threads_turns (thread TEXT NOT NULL, agent TEXT, auth TEXT NOT NULL, at INTEGER NOT NULL, ok INTEGER NOT NULL,
      cost_usd REAL NOT NULL, duration_ms INTEGER NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL, cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL);
@@ -2101,7 +2108,7 @@ export default {
     ctx.tool("threads.post", {
       description: "Give a thread words from a module (a teammate's result): a turn of their own now if it is idle, else after its running turn. Never steers. request: the request this reply answers (core/team's own id), so a surface with two open asks to the same teammate can match it by id instead of by role, FIFO.", internal: true,
       input: { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, kind: str, from: str, request: str } },
-      run: async (i, { caller }) => sb.post(i.thread, i.text, String(i.from || caller || "module"), i.kind || "post", i.request),
+      run: async (i, { caller }) => sb.post(i.thread, i.text, String(i.from || caller || "module"), i.kind || "post", safeRequest(i.request)),
     });
     // For other modules only (agents): start or resume with an agent's credentials, scope and
     // instructions. Internal, so no surface or model can hand a thread an environment.

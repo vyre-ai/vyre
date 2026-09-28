@@ -117,8 +117,8 @@ export default {
         const teamText = teamAppend && typeof teamAppend.text === "string" ? teamAppend.text : "";
         // Defense in depth (both style and team already cap their own text; this bounds the sum
         // even if either drifts, or a third append joins them later): a hard ceiling at the one
-        // place they are joined, never split mid-word - an ellipsis, not an em dash, matching
-        // team.project-append's own truncation.
+        // place they are joined. A plain character cut (it may land mid-word - this is a safety
+        // bound against drift, not a rendered UI truncation), ellipsis not an em dash.
         let nudge = [styleText, teamText].filter(Boolean).join("\n\n");
         if (nudge.length > APPEND_TOTAL_MAX) nudge = nudge.slice(0, APPEND_TOTAL_MAX - 1) + "…";
         return { text: withWarning([nudge, text, lessonText].filter(Boolean).join("\n\n")), project: slug };

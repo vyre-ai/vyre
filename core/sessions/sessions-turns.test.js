@@ -392,6 +392,16 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(sent.payload.request, "req_xyz");
   });
 
+  test(`${driver}: an ill-shaped request id is dropped before it is ever stored or broadcast (reviewer's LOW on cb387d88)`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    await w.tool("probe.post", { thread: th.id, text: "kit is done", kind: "teammate-result", from: "teammate:kit", request: "a".repeat(65) });
+    await w.finished(th.id, 2);
+    const sent = (await w.events(th.id)).find(e => e.type === "thread.sent" && e.payload.kind === "teammate-result");
+    assert.equal(sent.payload.request, undefined, "too long: never stored or emitted");
+  });
+
   test(`${driver}: switch the model (/model), list the slash commands, and rewind the files a turn changed`, { skip }, async t => {
     const w = await boot(t, { driver });
     const menu = path.join(w.work, "menu.md");
