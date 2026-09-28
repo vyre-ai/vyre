@@ -235,3 +235,19 @@ the lead delivers this when each restarts after rc.2, so it's collected here rat
 - New tools: sight.targets/now/watch/steps, context.report/now, suggest.query/offer/picked,
   waiting.list/count. New events: sight.stepped, context.changed, waiting.changed.
 - scripts/lib/docs/check.js OWNERS: + "cohesion".
+
+## Resume 9, second pass: the two glue jobs the lead assigned
+
+- **State-mapping glue (Capsule/CLI/harness):** blocked — `thread.status` is still on sessions'
+  Next list, not shipped. Confirmed the real drift while there: `core/switchboard/index.js:207`'s
+  STATE map relabels `working` as `running`, but `core/harness/index.js` reads the raw
+  pre-mapped value directly (line ~142) — two readers already disagree before Capsule/CLI even
+  enter it. Sent to sessions asking for the shape/ETA; will build the shared lib the moment it's
+  settled.
+- **projects.access vs lib/project-id.js:** validated. `projects.access.check` already uses
+  `isProjectId` correctly. Found one real duplicate: `core/projects/markers.js`'s `slugify` is a
+  byte-identical copy of `lib/project-id.js`'s, not an import — exactly the drift the lib's own
+  comment warns about (it claims markers.js already re-exports it; it doesn't). Verified the fix
+  (import + re-export) in federation's own worktree: 37/37 + 15/15 local, 42/42 on testbox. Did
+  NOT commit it — that's federation's branch/file and they're actively on it (per RULES, I don't
+  commit outside my own worktree). Sent them the exact diff and test evidence to land themselves.
