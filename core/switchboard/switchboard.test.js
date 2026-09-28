@@ -440,6 +440,12 @@ test("switchboard: vyred restarting marks its threads stopped", async t => {
   // ADR 0029 R7: the stop said why, so a surface shows "the box restarted", not a spinner.
   const stopped = again.events.since(0, { type: "thread.stopped", limit: 10 }).filter(e => e.thread === id);
   assert.deepEqual(stopped.map(e => e.payload.reason), ["restart"]);
+  // Canonically it is "paused", not "stopped" or "failed": nothing is wrong, threads.send
+  // resumes it - a person must never read a restart as a crash. Read both live (the event, so a
+  // surface watching it in real time sees this without waiting for its next poll) and at rest.
+  assert.equal(r.data.thread.canonical_status, "paused");
+  const status = again.events.since(0, { type: "thread.status", limit: 10 }).filter(e => e.thread === id);
+  assert.equal(status.at(-1).payload.status, "paused", "the restart's own thread.status, after whatever the original run said");
 });
 
 test("agents: the assistant and an agent on its own credentials, with the fallback and budget", async t => {

@@ -24,6 +24,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   wrong (threads.send resumes them, no drama). Split from plain "stopped" (the person pressed
   Stop, they asked for it) and from "failed" (a nonzero exit code or a signal - a real crash). A
   person must never see an idle close read back as an error, or a crash read back as routine.
+- `recover()` (vyred startup: marks every thread that looked live before the restart as stopped)
+  now also emits `thread.status {status: "paused"}`, not just the legacy `thread.stopped` - a
+  live listener saw nothing until its next poll of `threads.get` otherwise.
 
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 

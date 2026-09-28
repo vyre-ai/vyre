@@ -316,6 +316,11 @@ export class Switchboard {
       this.db.prepare("UPDATE threads_runs SET status = 'stopped', stopped_reason = 'restart', pid = NULL WHERE id = ?").run(r.id);
       for (const a of this.asks.open(String(r.id))) this.closeAsk(a, "cancelled", "restart");
       this.emit("thread.stopped", { code: null, reason: "restart" }, String(r.id), r.project || null);
+      // The canonical status too (bypassing set(): there is no live process to route through it),
+      // so a surface watching thread.status in real time sees "paused" here, same as an idle
+      // close - not silence until its next poll, and never read as a crash.
+      this.emitRaw("thread.status", { status: threadStatus("stopped", "restart") }, String(r.id), r.project || null);
+      this.states.set(String(r.id), "stopped");
     }
   }
 

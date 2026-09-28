@@ -89,6 +89,18 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   one per bucket; sessions.test.js gained real e2e assertions on the idle-close test ("paused")
   and the threads.stop test ("stopped", not "paused"). Testbox: 109/109 (switchboard + sessions +
   boundaries + chat-sessions-contract). Told chat and cohesion the 8th state; sent to reviewer-2.
+- Task 1 fix #2 (crash recovery, picked from Needs above without waiting for chat/native-core's
+  numbers): `recover()` (runs once at vyred startup, marks every thread that looked LIVE before
+  the restart as stopped/reason "restart", closes its open asks as cancelled) only ever emitted
+  `thread.stopped` - never the legacy `thread.state` or the new `thread.status`. A surface told
+  to read `canonical_status`/`thread.status` instead of `stopped_reason` by hand (the note I just
+  added above) would see nothing in real time on a restart: right, but silent, until its next
+  poll of `threads.get`. Fixed: `recover()` now also `emitRaw`s `thread.status {status: "paused"}`
+  (via the same `threadStatus()`) and updates the in-memory `this.states` bookkeeping, so a live
+  listener sees "paused" the moment the box comes back, not a gap. Extended the existing
+  restart test ("switchboard: vyred restarting marks its threads stopped") with both the live
+  event and the at-rest `canonical_status`. Testbox: 109/109 (switchboard + sessions + boundaries
+  + chat-sessions-contract).
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
