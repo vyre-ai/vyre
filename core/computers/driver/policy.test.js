@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import { DockerDriver } from "./docker.js";
-import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels, bootTar, allowBootTar } from "./policy.js";
+import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels, bootTar, allowBootTar, agentTokensTar, allowAgentTokensTar } from "./policy.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { chromeEnv } from "../egress.js";
 
@@ -235,4 +235,46 @@ test("policy: allowBootTar takes exactly the .boot tar bootTar makes, and nothin
   assert.equal(allowBootTar(Buffer.concat([good, Buffer.alloc(512)])).ok, false, "an extra block");
   assert.equal(allowBootTar(Buffer.concat([good.subarray(0, 1024), good])).ok, false, "a second file");
   assert.equal(allowBootTar(Buffer.from("not a tar")).ok, false);
+});
+
+test("policy: allowAgentTokensTar takes exactly the .agent-tokens tar agentTokensTar makes, one agent or many, and nothing else", () => {
+  const alice = { name: "alice", token: "a".repeat(40) };
+  const bob = { name: "bob", token: "b".repeat(40) };
+  const one = agentTokensTar([alice]);
+  assert.deepEqual(allowAgentTokensTar(one), { ok: true });
+  const many = agentTokensTar([alice, bob]);
+  assert.deepEqual(allowAgentTokensTar(many), { ok: true }, "more than one agent, spanning a second 512-byte block, still passes");
+
+  assert.throws(() => agentTokensTar([]), /at least one agent/);
+  assert.throws(() => agentTokensTar([{ name: "Alice", token: "a".repeat(40) }]), /expected shape/, "an uppercase name");
+  assert.throws(() => agentTokensTar([{ name: "alice", token: "short" }]), /expected shape/, "a short token");
+  assert.throws(() => agentTokensTar([alice, alice]), /named more than once/, "a duplicate name");
+  assert.throws(() => agentTokensTar([alice, { name: "bob", token: alice.token }]), /share one token/, "a duplicate token");
+  assert.throws(() => agentTokensTar(Array.from({ length: 65 }, (_, i) => ({ name: `a${i}`, token: "z".repeat(40) }))), /refuses more than/, "too many agents");
+
+  /** Change bytes of a copy, fixing the header checksum unless told not to. */
+  const change = (fn, fix = true) => {
+    const b = Buffer.from(one); fn(b);
+    if (fix) { b.fill(0x20, 148, 156); let sum = 0; for (let i = 0; i < 512; i++) sum += b[i]; b.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii"); }
+    return allowAgentTokensTar(b).ok;
+  };
+  assert.equal(change(b => { b.write(".boot", 0, "ascii"); }), false, "the .boot name instead");
+  assert.equal(change(b => { b.write("../x\0\0", 0, "ascii"); }), false, "a path");
+  assert.equal(change(b => { b.write("2", 156, "ascii"); }), false, "a symlink");
+  assert.equal(change(b => { b.write("0000644\0", 100, "ascii"); }), false, "a readable mode");
+  assert.equal(change(b => { b.write("0001750\0", 108, "ascii"); }), false, "the agent's uid");
+  // Byte 515 is inside the literal "alice=" name -- '!' there breaks AGENT_TOKENS_LINE's shape
+  // (unlike changing a token byte to another allowed token character, which the shape alone
+  // cannot catch; that class of tamper is exactly the duplicate-name/duplicate-token checks above).
+  assert.equal(change(b => { b[515] = 0x21; }, false), false, "contents changed");
+  assert.equal(change(b => { b[0] = 0x2e; b[1] = 0x61; }, false), true, "same bytes still pass");
+  assert.equal(change(b => { b[100] = 0x31; }, false), false, "a bad checksum");
+  assert.equal(allowAgentTokensTar(Buffer.concat([one, Buffer.alloc(512)])).ok, false, "an extra block");
+  assert.equal(allowAgentTokensTar(Buffer.concat([one.subarray(0, 1024), one])).ok, false, "a second file");
+  assert.equal(allowAgentTokensTar(Buffer.from("not a tar")).ok, false);
+
+  // A tampered line still checked, even when the header's own size/checksum agree with it.
+  const tampered = Buffer.from(one);
+  tampered.write("alice=NOT-A-VALID-TOKEN-SHAPE-AT-ALL!!!", 512, "ascii");
+  assert.equal(allowAgentTokensTar(tampered).ok, false, "a line that is not name=token-shaped, even with a consistent size/checksum");
 });

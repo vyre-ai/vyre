@@ -13,7 +13,7 @@
 
 import http from "node:http";
 import { PORTS, SIZE } from "./index.js";
-import { REQUIRED_CAPS, BOOT, bootTar } from "./policy.js";
+import { REQUIRED_CAPS, BOOT, bootTar, AGENT_TOKENS, agentTokensTar } from "./policy.js";
 
 const API = "/v1.43";
 
@@ -199,6 +199,19 @@ export class DockerDriver {
   async seed(id, secrets) {
     await this.own(id);
     await this.must("PUT", `/containers/${encodeURIComponent(id)}/archive?path=${encodeURIComponent(BOOT.dir)}`, bootTar(secrets));
+  }
+
+  /**
+   * A shared (browser-kind) computer's per-agent identity, as /var/lib/vyre/.agent-tokens (0400,
+   * vyre), the same archive-API write .boot gets and the same directory. computerd's own
+   * identifyClient (index.js) reads this once at start; it is not live-reloaded by this call
+   * alone -- a caller that changes who is on a running computer must also make computerd notice
+   * (docs/work/glass.md's own note on revocation).
+   * @param {string} id @param {Array<{ name: string, token: string }>} agents
+   */
+  async seedAgentTokens(id, agents) {
+    await this.own(id);
+    await this.must("PUT", `/containers/${encodeURIComponent(id)}/archive?path=${encodeURIComponent(AGENT_TOKENS.dir)}`, agentTokensTar(agents));
   }
 
   async start(id) { await this.own(id); await this.must("POST", `/containers/${encodeURIComponent(id)}/start`, undefined, [304]); }

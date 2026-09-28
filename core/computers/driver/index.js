@@ -44,6 +44,10 @@ export const SIZE = Object.freeze({ w: 1440, h: 900 });
  * @property {(spec: CreateSpec) => Promise<{ id: string }>} create
  * @property {(id: string, secrets: { computerd_token: string, vnc_password: string }) => Promise<void>} seed
  *   put the computer's secrets in its volume as /var/lib/vyre/.boot (policy.js bootTar), before start
+ * @property {(id: string, agents: Array<{ name: string, token: string }>) => Promise<void>} seedAgentTokens
+ *   a shared (browser-kind) computer's per-agent identity, as /var/lib/vyre/.agent-tokens (policy.js
+ *   agentTokensTar) -- computerd reads it once at start; changing it on a running computer does
+ *   not by itself make computerd notice (see the revocation note in docs/work/glass.md)
  * @property {(id: string) => Promise<void>} start
  * @property {(id: string) => Promise<void>} pause
  * @property {(id: string) => Promise<void>} unpause

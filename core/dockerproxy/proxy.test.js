@@ -10,7 +10,7 @@ import path from "node:path";
 import http from "node:http";
 import { createProxy, duplicateKey, loadPolicy, scrub } from "./proxy.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { BOOT, bootTar, allowBootTar } from "../computers/driver/policy.js";
+import { BOOT, bootTar, allowBootTar, AGENT_TOKENS, agentTokensTar, allowAgentTokensTar } from "../computers/driver/policy.js";
 
 const PREFIX = "run.vyre.computers";
 const CONFIG = { network: "vyre-computers", image: "vyre/computer:0.1", labelPrefix: PREFIX, capAdd: [] };
@@ -35,8 +35,9 @@ const stub = {
   },
   allowExec: labels => stub.isComputerLabels(labels) ? { ok: true } : { ok: false, why: "not a computer" },
   allowContainerOp: labels => stub.allowExec(labels),
-  // The real ones: the .boot check is byte-exact, and a stub of it would test nothing.
-  BOOT, allowBootTar,
+  // The real ones: the .boot and .agent-tokens checks are byte-exact, and a stub of either would
+  // test nothing.
+  BOOT, allowBootTar, allowAgentTokensTar,
 };
 
 /** A fake Engine: one computer, one database, one volume per case, two execs. */
@@ -347,6 +348,32 @@ test("dockerproxy: the only archive upload is a computer's .boot tar, to /var/li
   // The archive route is exactly as bound to the bearer as every other route -- this is HIGH 2's
   // new route getting the same fix the rest of the proxy just did, not a separate exemption.
   assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", good, { ...tarH, authorization: "" })).status, 401);
+});
+
+test("dockerproxy: a shared computer's .agent-tokens tar is let through the same archive route -- the tar's own name, not the query, tells it apart from .boot", async t => {
+  const p = await proxy(t);
+  const goodAgents = agentTokensTar([{ name: "alice", token: "a".repeat(40) }, { name: "bob", token: "b".repeat(40) }]);
+  const put = (path, body, h = { "content-type": "application/x-tar" }) => p.call("PUT", path, body, h);
+  const ok = await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", goodAgents);
+  assert.equal(ok.status, 200, ok.text);
+  assert.deepEqual(p.sent().filter(s => s.method === "PUT").map(s => s.url), ["/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre"]);
+  // Still every other rule the .boot route has: another folder, another file, no path query.
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fhome%2Fagent", goodAgents)).status, 403, "another folder");
+  const evil = Buffer.from(goodAgents); evil.write("x", 0, "ascii");
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", evil)).status, 403, "tampered contents");
+  assert.equal(p.sent().filter(s => s.method === "PUT").length, 1, "only the good upload reached the Engine");
+});
+
+test("dockerproxy: a policy that has no allowAgentTokensTar (every policy before this feature existed) refuses .agent-tokens outright, .boot only", async t => {
+  const { allowAgentTokensTar: _omit, ...noAgentTokens } = stub;
+  const p = await proxy(t, noAgentTokens);
+  const goodAgents = agentTokensTar([{ name: "alice", token: "a".repeat(40) }]);
+  const r = await p.call("PUT", "/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", goodAgents, { "content-type": "application/x-tar" });
+  assert.equal(r.status, 403);
+  // .boot itself still works on that same, older policy.
+  const good = bootTar({ computerd_token: "k".repeat(43), vnc_password: "Ab-_1234" });
+  const r2 = await p.call("PUT", "/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", good, { "content-type": "application/x-tar" });
+  assert.equal(r2.status, 200);
 });
 
 test("dockerproxy: createProxy needs a bearer -- there is no unauthenticated mode", async t => {

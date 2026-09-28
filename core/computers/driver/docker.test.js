@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { DockerDriver } from "./docker.js";
-import { allowBootTar } from "./policy.js";
+import { allowBootTar, allowAgentTokensTar } from "./policy.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 
 /** A fake Engine: two containers of ours to be, and one that is someone else's database. */
@@ -247,5 +247,20 @@ test("docker: the secrets never go in Env; seed() puts them in the computer's vo
   assert.match(put.body.toString("latin1"), /COMPUTERD_TOKEN=T{43}\nVNC_PASSWORD=Ab-_1234\n/);
   // Only our containers: someone else's database is never written to.
   await assert.rejects(d.seed("db1", { computerd_token: "T".repeat(43), vnc_password: "Ab-_1234" }));
+  assert.ok(!e.seen.some(s => s.method === "PUT" && s.path.includes("db1")));
+});
+
+test("docker: seedAgentTokens() writes .agent-tokens the same way seed() writes .boot, to the same directory, and never to another container", async t => {
+  const e = await engine(t);
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  const { id } = await d.create(spec);
+  await d.seedAgentTokens(id, [{ name: "alice", token: "a".repeat(40) }, { name: "bob", token: "b".repeat(40) }]);
+  const put = e.seen.at(-1);
+  assert.equal(put.method, "PUT");
+  assert.equal(put.path, `/v1.43/containers/${id}/archive?path=%2Fvar%2Flib%2Fvyre`);
+  assert.equal(put.authorization, "Bearer test-bearer");
+  assert.deepEqual(allowAgentTokensTar(put.body), { ok: true });
+  assert.match(put.body.toString("latin1"), /alice=a{40}\nbob=b{40}\n/);
+  await assert.rejects(d.seedAgentTokens("db1", [{ name: "alice", token: "a".repeat(40) }]));
   assert.ok(!e.seen.some(s => s.method === "PUT" && s.path.includes("db1")));
 });

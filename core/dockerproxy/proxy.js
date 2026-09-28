@@ -159,7 +159,10 @@ export async function loadPolicy(file = new URL("../computers/driver/policy.js",
  *   isComputerLabels: (labels: any) => boolean,
  *   allowCreate: (body: any, config: any) => ({ ok: boolean, why?: string }),
  *   allowExec: (labels: any, cmd?: string[]) => ({ ok: boolean, why?: string }),
- *   allowContainerOp: (labels: any) => ({ ok: boolean, why?: string }) }} Policy
+ *   allowContainerOp: (labels: any) => ({ ok: boolean, why?: string }),
+ *   allowAgentTokensTar?: (buf: Buffer) => ({ ok: boolean, why?: string }) }} Policy
+ *   allowAgentTokensTar is optional (loadPolicy does not require it): a policy that omits it
+ *   simply never allows a shared computer's .agent-tokens through this proxy, .boot only.
  * @typedef {{ network: string, image: string, labelPrefix: string, capAdd: string[] }} Config
  */
 
@@ -320,12 +323,17 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
     // The seed's body is a tar, checked byte for byte below; every other body is JSON.
     const body = hasBody && name !== "seed" ? parse(buf) : undefined;
     // The seed: checked whole before the Engine is asked anything, even which container this is.
+    // Two files ever land at this one directory -- .boot (every computer) and .agent-tokens (a
+    // shared/browser-kind one, agent-browsers.md level 2) -- and the tar's own filename, not the
+    // query, is what tells them apart; allowBootTar and allowAgentTokensTar each refuse the other
+    // file's name outright, so exactly one of them can ever say ok for a given tar.
     if (name === "seed") {
       if (typeof policy.allowBootTar !== "function" || !policy.BOOT) refuse("this policy has no secrets file to allow");
       if (q.get("path") !== policy.BOOT.dir) refuse(`archive: only path=${policy.BOOT.dir}`);
       if (String(req.headers["content-type"] || "") !== "application/x-tar") refuse("archive: the body must be application/x-tar", 400);
-      const verdict = policy.allowBootTar(buf);
-      if (!verdict.ok) refuse(`archive: ${verdict.why}`);
+      const boot = policy.allowBootTar(buf);
+      const agentTokens = typeof policy.allowAgentTokensTar === "function" ? policy.allowAgentTokensTar(buf) : { ok: false, why: "this policy has no agent-tokens file to allow" };
+      if (!boot.ok && !agentTokens.ok) refuse(`archive: ${boot.why}`);
     }
 
     if (name === "list") {

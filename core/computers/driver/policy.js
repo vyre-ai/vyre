@@ -348,3 +348,106 @@ export function allowBootTar(buf) {
   if (buf.length !== 512 + 512 + 1024) return no("not a one-file tar");
   return { ok: true };
 }
+
+// ---- a shared computer's per-agent identity, as a second file next to .boot ------------------
+//
+// AGENT_TOKENS_FILE (computerd/index.js's own identifyClient, agent-browsers.md level 2): one
+// "name=token" pair per agent sharing a computer, so cdpmux's per-agent BrowserContext scoping is
+// only as strong as the credential that names it -- never a claim the connecting client makes.
+// Written through the same archive-API PUT as .boot, and checked the same way: an allowlist of
+// exactly what agentTokensTar() makes, refusing anything else the proxy is asked to write here.
+
+export const AGENT_TOKENS = Object.freeze({ dir: "/var/lib/vyre", name: ".agent-tokens", uid: 1001, gid: 1001, mode: 0o400 });
+/** One agent, one line: the same name/token shape computerd's own identifyClient parses. */
+const AGENT_TOKENS_LINE = /^[a-z][a-z0-9-]{0,40}=[A-Za-z0-9_-]{32,128}$/;
+/** A small pool per shared computer (agent-browsers.md's own concurrency-cap note); bounds the
+ * file's size and this check's own cost, not a load-bearing security limit on its own. */
+const MAX_AGENTS_PER_COMPUTER = 64;
+
+/**
+ * @param {Array<{ name: string, token: string }>} agents
+ * @returns {string} one line per agent, in the order given, each exactly AGENT_TOKENS_LINE-shaped
+ */
+function agentTokensBody(agents) {
+  if (!Array.isArray(agents) || agents.length === 0) throw new Error("agentTokensTar needs at least one agent");
+  if (agents.length > MAX_AGENTS_PER_COMPUTER) throw new Error(`agentTokensTar refuses more than ${MAX_AGENTS_PER_COMPUTER} agents on one computer`);
+  const names = new Set(), tokens = new Set();
+  const lines = agents.map(a => {
+    const line = `${a && a.name}=${a && a.token}`;
+    if (!AGENT_TOKENS_LINE.test(line)) throw new Error("an agent's name or token is not in the expected shape");
+    if (names.has(a.name)) throw new Error(`agent "${a.name}" is named more than once`);
+    if (tokens.has(a.token)) throw new Error("two agents share one token");
+    names.add(a.name); tokens.add(a.token);
+    return line;
+  });
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The tar holding .agent-tokens, the same one-file shape bootTar() writes (see its own comment
+ * for why: archive-API PUT, this file's owner and mode, nothing else in the tar).
+ * @param {Array<{ name: string, token: string }>} agents
+ * @returns {Buffer}
+ */
+export function agentTokensTar(agents) {
+  const body = Buffer.from(agentTokensBody(agents), "ascii");
+  const h = Buffer.alloc(512);
+  h.write(AGENT_TOKENS.name, 0, 100, "ascii");
+  octal(h, 100, 8, AGENT_TOKENS.mode);
+  octal(h, 108, 8, AGENT_TOKENS.uid);
+  octal(h, 116, 8, AGENT_TOKENS.gid);
+  octal(h, 124, 12, body.length);
+  octal(h, 136, 12, 0);
+  h.fill(0x20, 148, 156);
+  h.write("0", 156, 1, "ascii");
+  h.write("ustar\u000000", 257, 8, "ascii");
+  let sum = 0;
+  for (const b of h) sum += b;
+  h.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii");
+  const pad = Buffer.alloc((512 - (body.length % 512)) % 512);
+  return Buffer.concat([h, body, pad, Buffer.alloc(1024)]);
+}
+
+/** The largest body agentTokensTar() will ever write: MAX_AGENTS_PER_COMPUTER lines, each at most
+ * a 40-character name, "=", and a 128-character token, plus its newline. Generous on purpose --
+ * this bounds allowAgentTokensTar()'s own check, not a tight fit to today's numbers. */
+const MAX_AGENT_TOKENS_BODY = MAX_AGENTS_PER_COMPUTER * (40 + 1 + 128 + 1);
+
+/**
+ * Is this exactly an .agent-tokens tar as agentTokensTar() makes it: one regular file, that name,
+ * owner and mode, every line AGENT_TOKENS_LINE-shaped with no repeated name or token, nothing
+ * after it but the end blocks? Unlike .boot's single fixed-shape body, this one can span more
+ * than one 512-byte block (more than one agent), so the size bound is generous rather than a
+ * single block.
+ * @param {Buffer} buf @returns {{ ok: true } | { ok: false, why: string }}
+ */
+export function allowAgentTokensTar(buf) {
+  const no = why => ({ ok: /** @type {false} */ (false), why });
+  if (!Buffer.isBuffer(buf) || buf.length < 1536 || buf.length % 512) return no("not a one-file tar of the expected size");
+  const h = buf.subarray(0, 512);
+  const str = (off, len) => h.subarray(off, off + len).toString("ascii").replace(/\0.*$/s, "");
+  const num = (off, len) => parseInt(str(off, len).trim() || "x", 8);
+  if (str(0, 100) !== AGENT_TOKENS.name || str(345, 155) !== "") return no(`the file must be ${AGENT_TOKENS.name}`);
+  if (str(156, 1) !== "0") return no("the entry must be a regular file");
+  if (num(100, 8) !== AGENT_TOKENS.mode || num(108, 8) !== AGENT_TOKENS.uid || num(116, 8) !== AGENT_TOKENS.gid) return no("wrong owner or mode");
+  let sum = 0;
+  for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 0x20 : h[i];
+  if (num(148, 8) !== sum) return no("bad header checksum");
+  const size = num(124, 12);
+  if (!(size > 0 && size <= MAX_AGENT_TOKENS_BODY)) return no("wrong size");
+  const body = buf.subarray(512, 512 + size).toString("ascii");
+  const lines = body.split("\n").slice(0, -1); // the trailing \n leaves one empty entry after split
+  if (body.slice(-1) !== "\n" || lines.length === 0) return no("the contents are not agent-tokens lines");
+  const names = new Set(), tokens = new Set();
+  for (const line of lines) {
+    if (!AGENT_TOKENS_LINE.test(line)) return no("a line is not \"name=token\"-shaped");
+    const [name, token] = line.split("=");
+    if (names.has(name)) return no(`agent "${name}" is named more than once`);
+    if (tokens.has(token)) return no("two agents share one token");
+    names.add(name); tokens.add(token);
+  }
+  const padded = 512 * Math.ceil(size / 512);
+  for (let i = 512 + size; i < buf.length; i++) if (buf[i] !== 0) return no("anything after .agent-tokens must be the end blocks");
+  if (buf.length !== 512 + padded + 1024) return no("not a one-file tar");
+  return { ok: true };
+}

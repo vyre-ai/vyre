@@ -171,13 +171,20 @@ for d in ('/var/lib/vyre', '/var/lib/vyre/chromium'):
 try: open('/var/lib/vyre/.boot').read(); boot = 'readable'
 except PermissionError: boot = 'denied'
 except FileNotFoundError: boot = 'missing'
-print(json.dumps({"env": env, "mem": mem, "traced": traced, "leaks": leaks, "home": home, "boot": boot}))`));
+try: open('/var/lib/vyre/.agent-tokens').read(); agent_tokens = 'readable'
+except PermissionError: agent_tokens = 'denied'
+except FileNotFoundError: agent_tokens = 'missing'
+print(json.dumps({"env": env, "mem": mem, "traced": traced, "leaks": leaks, "home": home, "boot": boot, "agent_tokens": agent_tokens}))`));
   assert.ok(Object.keys(r.env).length > 0, "found no computerd to check");
   for (const how of Object.values(r.env)) assert.equal(how, "denied", "the agent read computerd's environment");
   for (const how of Object.values(r.mem)) assert.notEqual(how, "readable", "the agent read computerd's memory");
   for (const how of Object.values(r.traced)) assert.notEqual(how, "attached", "the agent attached ptrace to computerd");
   assert.deepEqual(r.leaks, [], "a process the agent can read (an exec'd one included) carries COMPUTERD_TOKEN or VNC_PASSWORD");
   assert.equal(r.boot, "denied", "the agent can read /var/lib/vyre/.boot");
+  // Same identity file as the browser-uid check above (AGENT_TOKENS in policy.js): a computer
+  // with none is "missing", fine; "readable" from the agent's own uid never is -- every other
+  // agent sharing the computer's token would otherwise be sitting in a file this agent can open.
+  assert.notEqual(r.agent_tokens, "readable", "the agent can read /var/lib/vyre/.agent-tokens");
   assert.equal(r.home["/var/lib/vyre"], "denied", "the agent can list vyre's volume (the Chrome profile)");
 });
 
@@ -210,12 +217,17 @@ def probe(path):
     except FileNotFoundError: return 'missing'
 print(json.dumps({
   "boot": probe('/var/lib/vyre/.boot'),
+  "agent_tokens": probe('/var/lib/vyre/.agent-tokens'),
   "vnc_passwd": probe('/var/lib/vyre/.vnc/passwd'),
   "vyre_xauth": probe('/var/lib/vyre/.Xauthority'),
   "vyre_home_listing": probe('/var/lib/vyre'),
   "own_profile": probe('/var/lib/vyre/browser/chromium'),
 }))`], { encoding: "utf8", timeout: 30_000 }).trim());
   assert.equal(r.boot, "denied", "browser can read /var/lib/vyre/.boot");
+  // A shared (browser-kind) computer has .agent-tokens too, same directory, same owner and mode
+  // as .boot (policy.js AGENT_TOKENS); a computer with none is fine ("missing"), but "readable"
+  // never is -- computerd (vyre) is the only uid that identity file may ever answer for.
+  assert.notEqual(r.agent_tokens, "readable", "browser can read /var/lib/vyre/.agent-tokens");
   assert.equal(r.vnc_passwd, "denied", "browser can read the VNC password");
   assert.equal(r.vyre_xauth, "denied", "browser can read vyre's own X cookie");
   assert.equal(r.vyre_home_listing, "denied", "browser can list vyre's home (secrets included)");
