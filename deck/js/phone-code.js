@@ -56,7 +56,10 @@ export function ticketLevels(ticket) {
  */
 export function ticketRingSvg(ticket, { userOption = 0, theme = "dark", size = 280 } = {}) {
   const levels = ticketLevels(ticket);
-  return renderCode2(levels, { userOption, style: "ticksSunburst", theme, size });
+  const svg = renderCode2(levels, { userOption, style: "ticksSunburst", theme, size });
+  // app-design's locked renderer (deck/vendor/vyrecode) positions the face in one group; the dance
+  // needs an untransformed inner group to animate, so it is added here rather than in the vendor copy.
+  return svg.replace(/(<g transform="translate\([^)]*\) scale\([^)]*\)">)([\s\S]*)(<\/g>\s*<\/svg>)$/, '$1<g class="vyrecode-face">$2</g>$3');
 }
 
 /**
