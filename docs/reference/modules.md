@@ -45,8 +45,8 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 6 | capsule, cli, deck |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 11 | 6 | capsule, cli, deck |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 15 | 5 | cli |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 12 | 6 | capsule, cli, deck |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 16 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 11 | 4 | cli |
 | [`relay`](#relay) | `core/relay` | `box` | 13 | 5 | capsule, cli, deck |
@@ -384,7 +384,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/presence`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [11](tools.md#presence), 1 of them only for other modules
+- Tools: [12](tools.md#presence), 1 of them only for other modules
 - Emits: [6 events](events.md#presence)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -394,7 +394,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/projects`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [15](tools.md#projects)
+- Tools: [16](tools.md#projects)
 - Emits: [5 events](events.md#projects)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
