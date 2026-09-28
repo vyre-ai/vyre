@@ -181,3 +181,15 @@ same family as budget 5's now-fixed shift and the still-open chat TODO ("5 and 8
 position jumps to the bottom when tool rows arrive while the reader is scrolled up; `following`
 races `grew()`/`toBottom()` (session.js) and the window anchor (window-view.js). Fix: detach only
 on user intent."). Not re-attempted here - it's session.js/window-view.js, chat's.
+
+Re-run 2026-09-28, native-core-composer merged with chat's head (work/chat cfc98f23, includes
+017c981f's fling fix and 33b81bd1): `--only 6,7`, testbox load ~1.5-4.
+
+| # | Metric | Value | Budget | Pass |
+|---|---|---|---|---|
+| 6 | fling p95 frame, 2,000 rows | 16.7 ms | < 16.7 ms | yes (1 dropped frame of 1,351, worst 33 ms) |
+| 7 | open cold | 933.9 ms | < 1,000 ms | yes |
+| 7 | open from cache | 6.7 ms | < 300 ms | yes |
+
+Both clear on chat's tree - my own tree's 67 ms / 2,420 ms numbers (this file, above) were stale,
+measured before chat's fling and cold-open fixes landed. Confirmed, not re-opened.

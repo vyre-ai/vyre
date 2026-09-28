@@ -835,3 +835,31 @@ test("sight.frame stills: no agent, or the agent has no live computer, draws not
   stop9();
   sightWorld = null;
 });
+
+test("sight.frame stills: a computer that goes live after the thread opens still gets the strip (reviewer's LOW on 18980d2d), matched by target not label", async () => {
+  const frames = [];
+  // No live target yet at mount, and kit's row uses a display label that differs from its id -
+  // matching by target (the registry's own identifier) rather than label is what finds it at all.
+  sightWorld = { targets: [{ target: "agent:kit", kind: "agent", label: "Kit (renamed)", live: false }], frame: () => { throw new Error("must not be called yet"); } };
+  const box10 = new El("div");
+  doc.body.append(box10);
+  const stop10 = mountSession(box10, { thread: NEW, project: null, onBack() {} });
+  await wait(30);
+  assert.equal($(box10, ".cv-sight").hidden, true, "not live yet: nothing drawn");
+  // The computer goes live for this thread: sight.targets is asked again, without a reopen.
+  sightWorld = {
+    targets: [{ target: "agent:kit", kind: "agent", label: "Kit (renamed)", live: true }],
+    frame: input => { frames.push(input); return { target: input.target, image: `frame${frames.length}`, mime: "image/png", maxWidth: input.maxWidth, at: Date.now(), step: frames.length }; },
+  };
+  emit("computer.checked-out", { agent: "kit", thread: NEW }, NEW);
+  await wait(30);
+  assert.deepEqual(frames.map(f => f.target), ["agent:kit"]);
+  assert.equal($(box10, ".cv-sight").hidden, false);
+  assert.equal($(box10, ".cv-sight .cv-pic-img").getAttribute("src"), "data:image/png;base64,frame1");
+  // A second checked-out for a different thread does nothing more (still just the one lookup+frame).
+  emit("computer.checked-out", { agent: "kit", thread: "some-other-thread" }, "some-other-thread");
+  await wait();
+  assert.equal(frames.length, 1);
+  stop10();
+  sightWorld = null;
+});

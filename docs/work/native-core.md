@@ -125,6 +125,125 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## Resume 2026-09-28 (cont'd 2): /later + /goal, scope from team-lead
+User's final order: 3 and 4 first (the server's superpowers), then 1, 5, 2. team-lead's split:
+engine for 3/4 goes to sessions; mine is the palette entries + composer piece.
+- **4711a784:** "/later" (static command, example phrasings in the hint, sent as plain text -
+  planner.add/parse/agenda/upcoming already exist per my scoping notes below, so no client-side
+  time parsing). "/goal <goal>" (new local command): Enter adds the title then a milestone at a
+  time, Cmd+Enter or "Set goal" sends one message (title + numbered milestone list), Esc cancels.
+  composer-goal.test.js 3/3 - needed a fetch stub (finishGoal sends a real message; without a fake
+  fetch a relative-URL fetch never settles and node --test hangs after all assertions already
+  passed - see the other gotcha below).
+- Next per team-lead: #2 (push-to-talk voice) once /find's full suite is confirmed - reads the
+  shared STT provider setting capsule-pro is building (not built yet on my side).
+- **Gotcha:** `sendMessage()` (composer.js) hits a real endpoint via attempt()/fetch. A bare
+  mountComposer() test with no globalThis.fetch stub doesn't throw - it hangs forever AFTER every
+  assertion has already passed, because a relative-URL fetch() in plain Node never settles. Any
+  test that reaches submit()/sendMessage (unlike composer-find/drafts, which never do) needs the
+  same minimal fetch stub session.test.js already uses.
+- **Still queued:** testbox load has stayed 6+ since the freeze announcement (want <4 even for a
+  small file) - haven't run /find, /later or /goal on testbox yet, haven't sent /find to
+  reviewer-2's confirmation follow-up. Everything is committed; run the moment load clears.
+
+## Resume 2026-09-28 (cont'd): .lbl, /find, testbox frozen for rc.2
+- **a6436f9e:** deck.css's base .lbl (mono/uppercase/letter-spaced, ~146 callers) fixed to Design A
+  (sentence case, --size-meta/--line-meta, no letter-spacing). Checked in real Chrome
+  (deck/test/lbl-shot.js). Found, not fixed: .rail-disclose (chat.css) has its own separate
+  uppercase rule ("No project" -> "NO PROJECT" in the rail) - flagged, not mine to touch.
+- **5b602dd0:** "/find [words]" composer command (user's cheap-wins list, item 5) - local command
+  in commands.js/composer.js, one-line session.js wire to the existing Find page. Both sent to
+  reviewer-2.
+- Merged chat's work/chat (d2d4628c: budget 8 fixed 106px->4-13px, session.js's Fork wiring using
+  `.id` per my correction, caps.js canFork). Re-measured budgets 6/7 on the merged tree: both pass
+  (16.7 ms fling, 933.9 ms cold open) - my earlier 67 ms/2,420 ms numbers were stale (my own tree,
+  pre-chat's-fixes); struck from the top-5 gap list below as confirmed, not reopened.
+- sessions fixed the .id/.thread naming footgun I flagged (d16a345f, work/sessions): threads.start/
+  fork/launch answers now carry .thread as an alias of .id; threads.rewind gains .id. Not yet
+  merged into this tree - low urgency, my own code already assumed .id.
+- **User's final cheap-wins list (team-lead, 2026-09-28):** 1 IQ-inline, 2 push-to-talk voice
+  (shared STT provider setting, Capsule + chat), 3 Goals+milestones, 4 /later MAXED (one-off,
+  relative, recurring, "when X finishes do Y", runs while the laptop is closed, cancel/edit in
+  chat), 5 /find (done above). 6/7 parked for 0.2. Order: 3 and 4 first (the server's
+  superpowers), then 1, 5, 2.
+  - #3/#4 are planner/sessions/pwa territory (recurring schedules, push/Capsule notifications,
+    rendering scheduled items in chat), not composer.js's. Found the planner tool that already
+    does most of #4's job: core/planner/index.js's planner.add (kind alarm/timer/reminder/todo/
+    note/event, at/in_ms/wall+repeat{every,days,interval,until}), planner.parse (reads "remind me
+    to call the printer at 6" into a proposed item), planner.agenda/upcoming (what's coming,
+    48h ahead, for a device's own notifications), planner.list (cancel/edit surface). If chat's
+    session already has these tools, "/later" barely needs new server code - mostly: (a) make sure
+    the tool is available to a chat session, (b) render scheduled/ringing items in the transcript
+    (a new block type, chat's/blocks.js), (c) a discoverable "/later" command (mine, trivial, NOT
+    built yet pending team-lead's call on ownership). No "goal + milestones" kind exists in
+    planner.js yet - #3 needs real new modeling, not just wiring.
+  - Sent findings to team-lead, offered the composer-sized "/later" discoverability entry, asked
+    whether to wait for chat/sessions to scope #3/#4's actual engine or take a specific piece.
+- **Testbox frozen 20 min (team-lead, integrator's rc.2 canonical suite):** no full suites; single
+  targeted files under a minute OK if load < 4. A stray full-suite run from before the freeze
+  (deck/chat/*.test.js + core/switchboard + core/sessions) hung at test 218 (cards.test.js's plan
+  cards) for 9+ minutes at ~0% CPU with load otherwise low - killed it (mine, idle, not
+  progressing). Worth someone checking whether session.test.js or a switchboard/sessions test has
+  a real hang, separate from the freeze itself, once the tree can run a full suite again.
+- Gotcha hit twice this session: `rsync file1 file2 core/sub/file3 dest/` puts ALL sources flat
+  into dest/, not at their relative paths - core/commands.js landed at deck/chat/commands.js by
+  mistake (caught and removed before it could confuse a test run). Sync files one at a time with
+  their own destination path, or use `--relative`.
+
+## Top 5 chat-feel gaps left vs Paseo (2026-09-28, for team-lead)
+Read against reference/paseo and this file's own Paseo mapping table + native-bar.md's results.
+1. **No draft persistence.** Paseo's input/state.ts saves the unsent composer text every 200 ms;
+   ours only remembers SENT messages (up-arrow recall). Switch threads or reload mid-sentence and
+   the words are gone. BUILT this session (below).
+2. **Full markdown re-parse per frame.** lib/markdown.js's `renderMarkdown` rebuilds a message's
+   whole DOM from scratch on every call; Paseo's split-markdown-blocks.ts re-parses only the tail
+   block and freezes the rest, so a long streaming reply's already-highlighted code blocks are
+   never rebuilt mid-stream. Caller is blocks.js (chat's) - needs coordinating with chat.
+3. ~~Budget 6, fling: 67 ms p95~~ STALE - that number was my own tree, before chat's fling fix
+   (017c981f). Merged chat's head (cfc98f23) and re-measured: 16.7 ms, passes. Confirmed, not open.
+4. ~~Budget 7, cold open: 2,420 ms~~ STALE, same reason. Re-measured on the merged tree: 933.9 ms
+   cold / 6.7 ms cache, both pass. Confirmed, not open.
+5. **Budget 8's residual jump: 106-134 px while reconnecting, scrolled up** (timing itself now
+   passes, well under 1 s, since pwa's fast-reachability fix). Same family as budget 5's now-fixed
+   CLS entry (a placeholder box's display flip) - likely another collapse/expand or windowing
+   remeasure in session.js/window-view.js, chat's.
+
+Built #1 first (composer.js, no chat-file conflict, quick and testable): a draft store
+(`DRAFTS`, module-level, capped at 50 threads like HISTORY's rings) keyed by thread, restored into
+a fresh mountComposer() when one exists, saved debounced (200 ms) on every keystroke via
+`scheduleDraftSave`, and flushed (immediately, not debounced) by `setValue()` and by `stop()` -
+so a fast thread-switch right after typing never loses the last few keystrokes, and any
+programmatic setValue (send, prefill, rewind, clear) keeps the store in sync at once rather than
+on a delay. Sending clears the thread's draft (setValue("") -> flushDraft() -> clearDraft).
+New test file deck/chat/composer-drafts.test.js (3/3): restore across a fresh mount, the
+no-debounce-fired-yet case (stop() must flush), and two threads keeping separate drafts. Full
+deck/chat suite + boundaries: 95/95 on testbox. Not yet done: #2 needs blocks.js coordination with
+chat; #3/#4/#5 are chat's files (window-view.js/session.js) - flagging rather than touching them.
+
+## Resume 2026-09-28 (post-restart, cont'd)
+- **6fb2e02a: pickers.js/composer.js side of "Fork from here" done and tested.** rewindSheet
+  takes optional `onFork`/`canFork`; without them (an older caller, or chat before it wires
+  session.js) the sheet is exactly the three Restore items, unchanged. With `onFork`, a fourth
+  radio item "Fork from here" appears (off until `canFork()` says true, defaulting to `can()`);
+  picking it and hitting Enter/the go button calls `onFork(p)` only, never `onChoose`. Checked
+  threads.fork's actual answer shape in switchboard/index.js: `sb.launch`/`sb.forkAt` both return
+  `this.record(id)`, whose id field is `.id`, NOT `.thread` (my last-session note had this wrong -
+  correcting the contract I hand to chat below). composer.js needed no change: it only opens the
+  sheet via `opts.onRewind()`; the fork wiring lives entirely in pickers.js + whoever instantiates
+  rewindSheet (session.js, chat's file). 38/38 targeted (cards.test.js + session.test.js) +
+  boundaries 5/5 on testbox.
+- **Contract for chat (session.js):** pass `onFork: async p => { const res = await
+  CAPS.use("threads.fork", () => attempt("threads.fork", { thread, at: p.uuid, surface }));
+  if (res.error) return ...; open the new session the way openHref does, using res.data.id (not
+  .thread) as the session id; the original thread's own view is untouched. }` and `canFork: () =>
+  CAPS.has("threads.fork")`. Sent to chat with the status-check message; waiting on their reply on
+  session.js availability (they were mid the budget-8 reconnect fix) before that side lands.
+- **48de0bd3 and 8c0b36ca:** team-lead confirmed budget 9 (8c0b36ca) cleared. 48de0bd3 still
+  awaiting reviewer-2's sign-off - pinged them for status.
+- Next: once chat confirms session.js is free, or wires onFork themselves, verify end to end in a
+  real Chrome run; then back to the parity-gap list (top 5 chat-feel gaps still open) team-lead
+  asked for.
+
 ## RESUME HERE (saved before a restart, usage 84%)
 - **Head: 7a586676** on work/native-core-composer (this team's own worktree). Clean working tree,
   nothing uncommitted, no test-box runs left running.

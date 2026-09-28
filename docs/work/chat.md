@@ -232,27 +232,76 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   to ask for what a past step looked like, so this is a live-only "what's happening now" strip, not
   part of the transcript's history). Rate-limiting sight.frame across chat's own caller and Glass's
   (cohesion's open item) is still open - not addressed here.
+- SIGNED OFF by reviewer (read-only, no tests run - the 494/495 above is testbox, mine). LOW open:
+  checkSight() runs once per mount, so an agent whose computer goes live AFTER the thread opens
+  never gets the strip until reopened - should also re-check on computer.started or sight.stepped
+  for this thread while sight.target is still null. Nit (not currently live): matches on `label`;
+  sight.targets today sets label to the agent name itself (core/sight/index.js: `label: c.agent`),
+  so this is safe as written, but if sight.targets ever grows a separate id/name field, match on
+  that instead since two agents could in theory share a display label.
 
-## Doing (28 Sep, budget 8: reconnect scroll jump - PARTIAL)
-- native-bar budget 8, before: 1086.7 ms (fail, over the 1 s budget), anchor moved 80 px / scrollTop
-  changed 52 px, first moving 1149 ms after the network came back - BEFORE thread.finished (1313 ms),
-  i.e. during the reconnect catch-up itself (reread()'s event replay + refresh()'s transcript
-  re-read), not triggered by thread.finished landing as first suspected.
-- Found refresh() called patch(applyBlocks(...)) (which already calls layout() itself whenever any
-  changed key needs it) and THEN called layout() again unconditionally right after - a redundant
-  second anchor-capture-and-restore on rows already correctly measured. Removed the redundant call
-  (kept grew(), which still covers the one case patch() skips: a batch of text-only deltas).
-- Result: catch-up time 1086.7 ms -> 900 ms, now UNDER the 1 s budget. But the scroll jump itself
-  is UNCHANGED (still 80 px / 52 px, identical to the number before this fix) - so the redundant
-  layout() was real waste, but not the jump's cause. testbox: deck/chat+deck/test 494/495 (1
-  pre-existing skip), 0 fail; native-bar budget 8 re-run confirms the time number, jump still fails.
-- Next: the jump happens while scrolled up 300px, WHILE all new content lands at the tail (below
-  the reader) - it should not move the anchor at all unless window-view's own windowed-mount range
-  shifts and brings a previously-unmounted (estimated) row into the mounted set for the first time
-  during this exact sequence, revealing its real height late. Needs either temporary instrumentation
-  in window-view.js (log heights.get() vs the real measured height per key during this exact
-  scenario) or a live repro in a real browser - reported to the lead rather than guessing further
-  blind.
+## RESTART (28 Sep, post budget-8/sight/fork session, head ffc22ef8)
+Status for whoever resumes: budget 8's scroll jump is FIXED (130f7e8d, root cause found with
+temporary logging, removed after); the sight strip's LOW and nit are FIXED (cfc98f23); session.js's
+side of "Fork from here" is wired to native-core's contract (ffc22ef8). All three sent to
+reviewer-2 (non-security session.js/window-view.js changes). Nothing uncommitted; no testbox
+processes running. Next: reviewer-2's sign-off, then whatever the lead assigns.
+
+## Done (28 Sep, budget 8: reconnect scroll jump - FIXED, 130f7e8d)
+- Added temporary diagnostic logging (window.__WV_DEBUG, removed after) to measure() and the
+  anchor-restore in window-view.js, run through native-bar budget 8 on testbox with WV_DEBUG=1.
+  Found the actual mechanism, distinct from the "revealed-estimate" hypothesis in the last restart
+  note: session.js's patch() replaces a changed turn/tool/user row's element directly in the DOM
+  and in its own `els` cache (`el.replaceWith(nel)`) for a row whose signature changed, BEFORE
+  calling layout(). window-view's own `mounted` Map keeps the OLD, now-detached node until its
+  next mount() call (a few lines later in the same update()) refreshes it. A detached element's
+  getBoundingClientRect() is all zeros in every browser; measure() was trusting it, corrupting the
+  next-row-top chain it builds bottom-up and moving rows above it (here, msg_1's slot swinging
+  140 -> 32 px) that never actually changed.
+- Fix: treat a disconnected mounted element exactly like "not mounted yet" - skip it, break the
+  chain, remeasure once mount() puts the real element back a moment later (window-view.js, 8 lines).
+- Result across six testbox runs: anchor jump 106 px -> 4-13 px (was failing the <=1px budget
+  before and after; the residual is a different, legitimate category - a row above the anchor
+  measured for real for the first time, replacing its estimate, which unavoidably shifts a few px
+  regardless of this bug). Catch-up time (>1000 ms budget) is separate, pre-existing reconnect-loop
+  noise (unaffected by this change, already failing before it at 1296-1493 ms).
+  testbox: deck/chat + deck/test 494/495 (1 pre-existing skip), 0 fail.
+
+## Done (28 Sep, reviewer's LOW + nit on the sight strip, cfc98f23)
+- LOW (18980d2d): checkSight() ran its lookup once per mount, so an agent whose computer went live
+  after the thread opened never got the strip until reopened. Split into checkSight() (runs once,
+  guarded by sight.checked as before) and trySight() (the actual lookup, callable again); if no
+  live target is found the first time, subscribes to computer.checked-out (verified in
+  core/computers/pool.js: fires with `thread: co.thread` right after a checkout's boot sets
+  `state: "running"` - exactly "this thread's agent just got a live screen") and sight.stepped,
+  both scoped to this thread, each retrying trySight(). Never a timer, per sight.frame's contract.
+- Nit: matched sight.targets rows by `target` (the registry's own identifier) instead of `label`
+  (a display name that today happens to equal it, per the reviewer's own note).
+- New test (session.test.js): a computer with a display label that differs from its target,
+  starting not-live, goes live via computer.checked-out, gets the strip without a reopen; a
+  checked-out for a different thread does nothing more.
+  testbox: deck/chat + deck/test 495/496 (1 pre-existing skip), 0 fail.
+
+## Done (28 Sep, native-core's "Fork from here" - session.js's side wired, ffc22ef8)
+- Read native-core's handoff (vyre-native-core/docs/work/native-core.md, 6fb2e02a): they built
+  pickers.js/composer.js's rewindSheet(onFork, canFork) and handed the contract for session.js -
+  call threads.fork {thread, at: uuid}, open the answer the way openHref does. Verified their
+  answer-shape note against source: core/switchboard/index.js's record() returns `.id`, never
+  `.thread`, and openHref(data, project) already falls back `data.thread || data.id`, so no
+  correction needed.
+  Wired onFork/canFork into openRewind()'s rewindSheet() call: onFork calls threads.fork, opens
+  res.data via openHref + go() on success, leaves the original thread's view untouched (no
+  patch()); canFork is CAPS.has("threads.fork"). This tree's pickers.js (not yet merged from
+  native-core) and core/switchboard's threads.fork tool (no `at` param yet in this tree) don't
+  have their side of this yet - the extra rewindSheet options are read by plain property access
+  with no schema check, so they sit inert until both land on main and get merged in here; nothing
+  further needed on chat's side once that happens.
+  Flagged back for native-core/sessions in caps.js's SESSION_TOOLS comment: unlike REWIND_CODE
+  (piggybacks on threads.commands via LINKED), nothing yet marks threads.fork known-true before a
+  first real use, so the item may sit disabled forever on a box that has never forked - worth a
+  LINKED entry once they know which release ships it alongside.
+  testbox: deck/chat + deck/test + core/switchboard 549/550 (1 pre-existing skip), 0 fail;
+  boundaries + docs-check 66/66.
 
 ## Doing (28 Sep, restart after cohesion's hand-over)
 
@@ -377,6 +426,21 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
   /chat/core/caps.js, /chat/core/commands.js, /chat/core/match.js (the last two were missing already).
 
 ## Next
+- FIRST (whoever resumes): reviewer-2's sign-off on 130f7e8d (budget 8 fix), cfc98f23 (sight strip)
+  and ffc22ef8 (fork wiring) - check for a reply before starting new work.
+- Budget 8's residual 4-13 px jump (down from 106 px): a different, smaller category than the fix
+  above - a row above the anchor measured for real for the first time, replacing its ESTIMATES
+  default. Not chased further this session (the plan's ask was the specific mechanism found and
+  fixed); worth a look if the native-bar budget wants strict <=1px, e.g. tighter per-kind estimates
+  or pre-measuring rows just above the viewport before they're needed.
+- Budget 8's catch-up time (>1000 ms budget, separate from the jump): pre-existing, noisy across
+  runs (828-1493 ms observed) even on today's fix - looks like reconnect-loop flakiness under
+  testbox load, not a chat-side regression. Not investigated this session; flag to resilience if it
+  persists once testbox quiets down.
+- Fork from here: send native-core the status (session.js's side landed, ffc22ef8) so they know to
+  verify end to end in a real Chrome run once their pickers.js (6fb2e02a) and the switchboard's
+  `at` support merge to main; and close the canFork probe gap noted in caps.js if they agree on a
+  LINKED tool to ride in on.
 - thread.limit as a line in the turn (the design's limit fallback); windowed rows above 100 items;
   an inline ask anchored to its tool row once ask.raised carries tool_use_id.
 - Screenshots in one world on port 4795 (load rule), time Back (< 100 ms).

@@ -55,7 +55,8 @@
 //
 // Nothing here uses innerHTML: text is untrusted, so it goes through lib/markdown.js or text nodes.
 
-import { h, put, empty } from "../js/dom.js";
+import { h, put, empty, go } from "../js/dom.js";
+import { openHref } from "./newsession.js";
 import { attempt, on, onResume } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
@@ -199,6 +200,9 @@ export function mountSession(container, opts) {
     cwd: () => record.current?.cwd || recorded.session?.cwd || null,
     name: () => agentName(),
     onRewind: () => openRewind(),
+    // "/find [words]" (native-core/commands.js): the existing Find page already queries
+    // recall.search + memory.relevant and has its own scoping rules; the composer just gets there fast.
+    onFind: q => go("/find" + (q ? "?q=" + encodeURIComponent(q) : "")),
     onTasks: () => tray.toggle(),
     onThinkingView: () => setHideThinking(!hideThinking),
     onOverlayEscape: () => { if (!rewind) return false; closeRewind(); return true; } });
@@ -405,17 +409,34 @@ export function mountSession(container, opts) {
   async function take() { if (!isMac(where)) await attempt("threads.lease", { thread }); }
 
   /**
-   * A running step's screen, once (per mount): this thread's own agent, only if sight.targets (the
-   * registry, never a guessed "agent:<name>") lists it live - so a plain session, or an agent with
-   * no computer running, draws nothing. Refreshed on sight.stepped (never a timer, per sight.frame's
-   * own contract), scoped to this thread and this exact target.
+   * A running step's screen: this thread's own agent, only if sight.targets (the registry, never a
+   * guessed "agent:<name>") lists it live - so a plain session, or an agent with no computer
+   * running, draws nothing. Matched by `target` (the registry's own identifier, "agent:<name>"),
+   * not `label` (a display name that could in principle collide or diverge from it).
+   *
+   * The lookup runs once at mount; if no live target is found yet, it tries again on
+   * computer.checked-out (this thread's agent just got a running screen) or sight.stepped (a step
+   * landed for this thread - it must be live), each scoped to this thread, so an agent whose
+   * computer starts after the thread opens still gets the strip without a reopen. Never a timer,
+   * per sight.frame's own contract.
    */
   async function checkSight() {
-    const agent = record.current?.agent;
-    if (sight.checked || !agent) return;
+    if (sight.checked) return;
     sight.checked = true;
+    if (!record.current?.agent) return;
+    await trySight();
+    if (!sight.target) {
+      const retry = () => { if (!sight.target) trySight(); };
+      offs.push(on("computer.checked-out", ev => { if (ev.thread === thread) retry(); }));
+      offs.push(on("sight.stepped", ev => { if (ev.thread === thread) retry(); }));
+    }
+  }
+  async function trySight() {
+    const agent = record.current?.agent;
+    if (!agent) return;
+    const want = `agent:${agent}`;
     const r = await attempt("sight.targets", {});
-    const t = (r.data?.targets || []).find(x => x.kind === "agent" && x.label === agent && x.live);
+    const t = (r.data?.targets || []).find(x => x.kind === "agent" && x.target === want && x.live);
     if (!t) return;
     sight.target = t.target;
     await refreshSight();
@@ -488,6 +509,25 @@ export function mountSession(container, opts) {
       can: () => CAPS.has("threads.rewind"),
       codeOk: () => CAPS.has(REWIND_CODE),
       onClose: closeRewind,
+      // native-core's contract (docs/work/native-core.md, "Fork from here"): threads.fork's answer
+      // is a thread record (`.id`, not `.thread` - checked against core/switchboard/index.js's
+      // record()), so this opens exactly the way a new session from openHref does; the original
+      // thread's own view is left untouched (no rewinding/patch() here, unlike onChoose above).
+      onFork: async p => {
+        const res = await CAPS.use("threads.fork", () => attempt("threads.fork", { thread, at: p.uuid }));
+        if (res.error) return res.missing ? NEEDS_UPDATE : "Could not fork: " + (res.error.message || res.error.code);
+        const href = openHref(res.data, record.current?.project || opts.project || null);
+        if (!href) return "The fork started, but the server did not say which thread it is.";
+        if (rewind) closeRewind();
+        go(href);
+        return null;
+      },
+      // Off until threads.fork is known to be there (no cheap way to probe it without a real fork's
+      // side effect); becomes true the first time onFork above actually succeeds. Flagged to
+      // native-core/sessions: unlike REWIND_CODE (piggybacks on threads.commands via LINKED),
+      // nothing yet marks this true before a first real use, so the item may stay off indefinitely
+      // on a box that has never forked - worth a LINKED entry once threads.fork's release is known.
+      canFork: () => CAPS.has("threads.fork"),
       onChoose: async (p, restore) => {
         rewinding = { uuid: p.uuid, text: p.text, at: p.at };
         // Conversation is the box's default and all an older box does: sent without restore.
