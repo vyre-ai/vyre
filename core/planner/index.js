@@ -9,7 +9,8 @@ import { MIGRATIONS, KINDS, STATES, store, shape, shapeFiring, newId, ringKey, r
 import { Scheduler, nextFire, zoneOf } from "./scheduler.js";
 import { calendarCache, shapeCal } from "./calendar.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
-import { callerAllowed, callerKind, agentClaim } from "../modules/index.js";
+import { callerKind, agentClaim } from "../modules/index.js";
+import { isPerson } from "../../lib/caller.js";
 
 export { MIGRATIONS };
 
@@ -257,8 +258,6 @@ export default {
     // with no prompt. The person changes anything; an agent changes only what it added. An item
     // keeps who added it (source), and shows a name (added_by) only when that was neither the
     // person nor their assistant.
-
-    const isPerson = caller => callerAllowed(PEOPLE, caller);
 
     /** The assistant's name, read from agents.list at most once a minute. */
     let assistant = { name: /** @type {string|null} */ (null), at: -Infinity };
