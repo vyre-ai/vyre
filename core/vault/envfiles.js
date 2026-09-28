@@ -15,7 +15,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { gitSync } from "../../lib/git-safe.js";
 import { classify } from "./detect.js";
 import { isRef, templateRefs } from "./refs.js";
 
@@ -224,9 +224,7 @@ export function findEnvFiles(root, { depth = 6, limit = 200 } = {}) {
 export function gitState(file) {
   const dir = path.dirname(file);
   /** @param {string[]} args */
-  const ok = args => {
-    try { execFileSync("git", ["-C", dir, ...args], { stdio: "ignore", timeout: 3000 }); return true; } catch { return false; }
-  };
+  const ok = args => gitSync(dir, args, { timeout: 3000 }).ok;
   if (!ok(["rev-parse", "--is-inside-work-tree"])) return null;
   return { tracked: ok(["ls-files", "--error-unmatch", "--", path.basename(file)]), ignored: ok(["check-ignore", "-q", "--", path.basename(file)]) };
 }
