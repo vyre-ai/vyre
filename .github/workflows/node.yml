@@ -109,6 +109,13 @@ jobs:
             $vanillaSock = Join-Path $vanilla "v.sock"
             Write-Output "--- vanilla bind test (no icacls) at $vanillaSock ---"
             node -e "const s=require('net').createServer();s.once('error',e=>{console.log('VANILLA BIND FAILED:',e.code,e.message);process.exit(1)});s.listen(process.argv[1],()=>{console.log('VANILLA BIND OK');s.close();process.exit(0)})" "$vanillaSock" 2>&1
+            # A real AF_UNIX socket file is an NTFS reparse point (needs SeCreateSymbolicLinkPrivilege,
+            # which whoami /priv above may show Disabled). A literal \\.\pipe\ name skips that whole
+            # code path and asks libuv for a classic named pipe instead, no filesystem object, no
+            # privilege: if THIS succeeds where the filesystem-path binds above failed, the fix isn't
+            # about privilege or ACL at all, it's "stop asking Windows for an AF_UNIX socket."
+            Write-Output "--- named-pipe bind test (\\.\pipe\, not a filesystem path) ---"
+            node -e "const s=require('net').createServer();s.once('error',e=>{console.log('PIPE BIND FAILED:',e.code,e.message);process.exit(1)});s.listen('\\\\.\\pipe\\vyre-diag-test',()=>{console.log('PIPE BIND OK');s.close();process.exit(0)})" 2>&1
             throw "vyred did not create its socket at $sockPath"
           }
       - name: The socket's folder and the socket file carry an explicit, narrow ACL
