@@ -36,11 +36,11 @@ async function stopAll() {
   try { fs.rmSync(scratch, { recursive: true, force: true }); } catch {}
 }
 
-// A made-up owner: fingerprints are sha256 of the ADR's prefixes over this id, first 8 bytes.
-const crypto = await import("node:crypto");
+// A made-up owner, its fingerprints as system.info sends them (lib/identity.js, base64url).
+const { fingerprint8, toBase64url } = await import("../../lib/identity.js");
 const OWNER_ID = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
-const fp = (/** @type {string} */ prefix) => crypto.createHash("sha256").update(prefix + OWNER_ID).digest("hex").slice(0, 16);
-const IDENTITY = { owner: { name: "alex", fingerprint8: fp("vyre:person:v1:") }, assistant: { name: "juno", fingerprint8: fp("vyre:assistant:v1:") } };
+const IDENTITY = { owner: { name: "alex", fingerprint8: toBase64url(fingerprint8(OWNER_ID, "person")) },
+  assistant: { name: "juno", fingerprint8: toBase64url(fingerprint8(OWNER_ID, "assistant")) } };
 
 /** Draws the gallery into a fixed overlay and reports what the browser made of it. */
 const GALLERY = `
