@@ -114,7 +114,9 @@ jobs:
             throw "the owner could not connect to their own socket"
           }
 
-          $pw = "Vy" + [guid]::NewGuid().ToString("N").Substring(0, 18) + "!1"
+          # net user warns interactively (and hangs, non-interactive) past 14 characters, the old
+          # pre-Windows-2000 LM-compat limit; keep this at or under it.
+          $pw = "Vy" + [guid]::NewGuid().ToString("N").Substring(0, 9) + "!1"
           net user vyreacltest "$pw" /add
           try {
             $sec = ConvertTo-SecureString $pw -AsPlainText -Force
