@@ -43,6 +43,12 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
+- Resume 10 continued: the escalation MEDIUM reviewer held dfc402e9 on (team-lead: a task must
+  never ring/escalate like an alarm) fixed at 7483788d - fireItem gives a task's firing next_ring:
+  null unconditionally, and fired() only ever runs a task on ring 1 as a second guard. New test:
+  default settings, advance past escalate_after x escalate_max, run_count stays 1 (was 4 before
+  the fix). 26/26 planner.test.js, 31/31 with boundaries, testbox. This closes b786a799 + db916908
+  + dfc402e9 as one range, per the reviewer.
 - Resume 10 continued further: cb387d88's LOW + nit fixed (ac37089b) - safeRequest() checks
   request against /^[\w-]{1,64}$/ before it is ever stored or emitted (threads.post's tool
   boundary); fixed a comment overclaiming word-boundary truncation on APPEND_TOTAL_MAX (it's a
