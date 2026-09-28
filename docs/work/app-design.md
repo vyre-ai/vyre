@@ -700,3 +700,21 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   `sha256(box key)[0] % 4` is a reasonable stopgap but not the intended design. Wrote this into
   avatar.md's Gaps as a real, unbuilt need (`onboard.person.avatarOption` or similar, native-core/
   onboard's to build) rather than just answering pwa in a message and leaving no trace.
+
+## Now (28 Sep, lead's ruling: avatar option defaults from identity)
+
+- Lead ruled on the avatar-option question: default is deterministic from the identity's own
+  8-byte fingerprint (zero setup, unique by design), a stored pick is optional and overrides it,
+  only the person can set their own. tailnet carries the fingerprint in the verified ticket
+  record now; anywhere/onboard builds the optional stored field later, not needed for 0.1.1.
+- Implemented `defaultAvatarOption(fingerprint8Bytes, optionCount)` in `round4/identity.js`:
+  `fingerprint[0] % optionCount`. Verified live, not just written: a real fingerprint through
+  `payload.js`'s `fingerprint8` produced a deterministic option index and rendered through
+  `userAvatar` without error. Same function covers the assistant too, on its own separate
+  fingerprint - never the person's, matching the separation `creature.js` already required for
+  its palette.
+- Rewrote the earlier "no stored field" Gap in `avatar.md` to reflect the ruling: the default
+  mechanism is no longer a gap at all (it's specified and implemented), only the optional
+  override's storage field remains open, explicitly marked "not needed for 0.1.1." Added a proper
+  "Avatar option" section to avatar.md and a new ADR 0043 2d documenting the full ruling.
+  Committed 6676b4a6.
