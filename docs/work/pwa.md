@@ -629,6 +629,26 @@ into one shared, vendored module rather than a second hand-copy drifting out of 
 - Not done this session (still next): the Web Worker move, and re-running the harness once
   app-design has a contrast answer.
 
+## Doing (14/17 - re-vendored the blur fix, plus the correction it needed, 2026-09-28)
+app-design widened `TICK_STROKE_WIDTH` 4.5 -> 6 (ADR 0043 2e) as a blur-robustness test, and fixed
+paper-theme contrast (2c) and the avatar-option source (2d, `defaultAvatarOption` in
+`identity.js`). Re-vendored all three files.
+
+Re-ran the harness: **0/17**, even pristine - a real regression, not noise. Found why by direct
+mark-level inspection: a round line-cap always overshoots a tick's own nominal length by its own
+radius (`TICK_CAP_RADIUS`), at every level equally; decode-core2.js never corrected for this, and
+widening the stroke grew the overshoot (2.25px -> 3px) just enough, against `LEVELS`' own tight
+6px spacing (6/12/18/24), to flip several marks a level high with NO degradation applied at all.
+Not a flaw in app-design's stroke-width idea - a missing correction on this side. Threaded
+`CAP_RADIUS` through `decode-core2.js`'s geometry argument and subtracted it from the raw length
+read before quantizing (`sampleMarkLength`'s own new comment has the derivation).
+
+With that fixed: **14/17**, matching round5's ORIGINAL synthetic-fixture ceiling (also 14/17)
+almost exactly, now on the real palette and real geometry. All 3 remaining failures are
+perspective scenarios (15deg, 30deg, the worst-case combo) - the same, already-documented,
+still-scoped limitation from this decoder's first port, not a new gap. Reported to app-design and
+team-lead.
+
 ## Next
 - Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
 - Step 6 Mac card: "Already on your tailnet" for an online Mac node.
