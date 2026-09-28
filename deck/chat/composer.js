@@ -518,7 +518,7 @@ export function mountComposer(opts) {
     if (a.kind === "memory") { saveMemory(draftBody(ta.value)); return; }
     if (a.kind === "command" && !machine) {
       const name = ta.value.trim().slice(1).split(/\s/)[0];
-      const local = (commands || normalizeCommands(null)).find(c => c.name === name && c.local);
+      const local = (commands || normalizeCommands(null)).find(c => c.local && (c.name === name || c.aliases?.includes(name)));
       if (local && local.local) {
         const query = ta.value.trim().slice(1 + name.length).trim();
         setValue(""); runLocal(local.local, query); return;
