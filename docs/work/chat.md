@@ -233,6 +233,16 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   part of the transcript's history). Rate-limiting sight.frame across chat's own caller and Glass's
   (cohesion's open item) is still open - not addressed here.
 
+## RESTART (28 Sep, usage-prep save point, head 9e2c54bc)
+Status for whoever resumes: sight.frame stills (item 1/18) is DONE and pushed (18980d2d), sent to
+reviewer, not yet signed off - check for a reply first. Budget 8 (below) is the one open item,
+PARTIAL only - the redundant-layout fix landed (9e2c54bc, sent to reviewer-2) but the scroll jump
+itself is still unfixed; waiting on the lead's steer (asked: add temp instrumentation to
+window-view.js, or a live repro). After budget 8 is closed: native-core's "Fork from here" (they're
+building pickers.js/composer.js; asked me to hold session.js until they hand me the exact
+threads.fork {thread, at} contract - I told them to hold too, given budget 8 was in progress).
+Nothing uncommitted; no testbox processes running.
+
 ## Doing (28 Sep, budget 8: reconnect scroll jump - PARTIAL)
 - native-bar budget 8, before: 1086.7 ms (fail, over the 1 s budget), anchor moved 80 px / scrollTop
   changed 52 px, first moving 1149 ms after the network came back - BEFORE thread.finished (1313 ms),
