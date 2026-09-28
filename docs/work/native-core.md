@@ -125,6 +125,27 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## Resume 2026-09-28 (cont'd 2): /later + /goal, scope from team-lead
+User's final order: 3 and 4 first (the server's superpowers), then 1, 5, 2. team-lead's split:
+engine for 3/4 goes to sessions; mine is the palette entries + composer piece.
+- **4711a784:** "/later" (static command, example phrasings in the hint, sent as plain text -
+  planner.add/parse/agenda/upcoming already exist per my scoping notes below, so no client-side
+  time parsing). "/goal <goal>" (new local command): Enter adds the title then a milestone at a
+  time, Cmd+Enter or "Set goal" sends one message (title + numbered milestone list), Esc cancels.
+  composer-goal.test.js 3/3 - needed a fetch stub (finishGoal sends a real message; without a fake
+  fetch a relative-URL fetch never settles and node --test hangs after all assertions already
+  passed - see the other gotcha below).
+- Next per team-lead: #2 (push-to-talk voice) once /find's full suite is confirmed - reads the
+  shared STT provider setting capsule-pro is building (not built yet on my side).
+- **Gotcha:** `sendMessage()` (composer.js) hits a real endpoint via attempt()/fetch. A bare
+  mountComposer() test with no globalThis.fetch stub doesn't throw - it hangs forever AFTER every
+  assertion has already passed, because a relative-URL fetch() in plain Node never settles. Any
+  test that reaches submit()/sendMessage (unlike composer-find/drafts, which never do) needs the
+  same minimal fetch stub session.test.js already uses.
+- **Still queued:** testbox load has stayed 6+ since the freeze announcement (want <4 even for a
+  small file) - haven't run /find, /later or /goal on testbox yet, haven't sent /find to
+  reviewer-2's confirmation follow-up. Everything is committed; run the moment load clears.
+
 ## Resume 2026-09-28 (cont'd): .lbl, /find, testbox frozen for rc.2
 - **a6436f9e:** deck.css's base .lbl (mono/uppercase/letter-spaced, ~146 callers) fixed to Design A
   (sentence case, --size-meta/--line-meta, no letter-spacing). Checked in real Chrome
