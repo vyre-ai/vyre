@@ -35,8 +35,15 @@ const RUN = process.env.VYRE_LIVE_GITHUB === "1";
 const REPO = "octocat/Hello-World";
 const DUMMY_TOKEN = "not-a-real-github-token-just-a-placeholder-000111";
 
-/** Same shape as index.test.js's world(), inlined to keep this file's dependency on real network self-contained and easy to skip-compile-away. `failCreate`/`failAddWorkspace` inject a failure AFTER a real clone has already happened, to prove the orphan-clone cleanup. */
-async function world(t, { failCreate = false, failAddWorkspace = false } = {}) {
+/**
+ * Same shape as index.test.js's world(), inlined to keep this file's dependency on real network
+ * self-contained and easy to skip-compile-away. `failCreate`/`failAddWorkspace` inject a failure
+ * AFTER a real clone has already happened, to prove the clone is left in place (the user's
+ * binding no-auto-delete rule) rather than cleaned up. `existingThreads` backs a fake
+ * `threads.get`, the same as index.test.js's, so `checkedThreadId`'s existence check has
+ * something real (if fake) to check against.
+ */
+async function world(t, { failCreate = false, failAddWorkspace = false, existingThreads = new Set() } = {}) {
   const db = new DatabaseSync(":memory:");
   t.after(() => db.close());
   const tools = new Map(), events = [], calls = [];
@@ -52,6 +59,9 @@ async function world(t, { failCreate = false, failAddWorkspace = false } = {}) {
     tool: (name, def) => tools.set(name, def),
     call: async (toolName, input) => {
       calls.push({ tool: toolName, input });
+      if (toolName === "threads.get") {
+        return existingThreads.has(input.thread) ? { data: { thread: { id: input.thread } } } : { error: { code: "not_found", message: `no thread ${input.thread}` } };
+      }
       if (toolName === "projects.list") return { data: { projects: rows } };
       if (toolName === "projects.add-workspace") {
         if (failAddWorkspace) return { error: { code: "boom", message: "injected failure, after a real clone" } };
@@ -73,7 +83,8 @@ async function world(t, { failCreate = false, failAddWorkspace = false } = {}) {
     const def = tools.get(name);
     if (!def) return { error: { code: "no_such_tool" } };
     if (def.callers && !def.callers.some(c => caller === c || caller.startsWith(c + ":"))) return { error: { code: "denied" } };
-    try { return { data: await def.run(input, { caller }) }; } catch (e) { return { error: { code: /** @type {any} */ (e).code, message: /** @type {any} */ (e).message } }; }
+    try { return { data: await def.run(input, { caller }) }; }
+    catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code, message: err.message, ...(err.detail ? { detail: err.detail } : {}) } }; }
   };
   return { db, events, calls, as, ctx };
 }
@@ -89,14 +100,15 @@ function hasNoCredentialHelper(dir) {
 }
 
 test(`LIVE (real network, testbox only): github.project and .add-repo really clone ${REPO}`, { skip: RUN ? false : "set VYRE_LIVE_GITHUB=1 to run this on testbox (real network, no real token)" }, async t => {
-  const w = await world(t);
+  const FROM_THREAD = "11111111-1111-4111-8111-111111111111";
+  const w = await world(t, { existingThreads: new Set([FROM_THREAD]) });
   accountStore(w.db).put({ name: "dummy", login: "dummy", avatar_url: null, item: "github-dummy" }, Date.now());
 
   // 1. github.project: resolves the repo (getRepo's anonymous-retry makes this work with a
   //    placeholder token), clones it for real, makes a new project, records the primary repo.
-  //    from_thread rides straight through to projects.create untouched - github.project doesn't
-  //    validate it itself (projects.create/native-core does); this only proves it's passed.
-  const FROM_THREAD = "11111111-1111-4111-8111-111111111111";
+  //    from_thread is checked for shape and existence (checkedThreadId) before the clone, then
+  //    rides straight through to projects.create untouched - github.project does no validation
+  //    of its own on the value itself, that's projects.create/native-core's job.
   const created = await w.as("cli")("github.project", { repo: REPO, from_thread: FROM_THREAD });
   assert.equal(created.error, undefined, `github.project failed: ${JSON.stringify(created)}`);
   assert.equal(created.data.full_name, REPO);
@@ -144,23 +156,24 @@ test(`LIVE (real network, testbox only): github.project and .add-repo really clo
   assert.ok(w.events.filter(e => e.type === "github.token-invalid").length >= 1);
 });
 
-test(`LIVE (real network, testbox only): a projects.create/.add-workspace failure after a real clone removes the orphan folder, never leaves it behind (reviewer's LOW on 9cf93817)`, { skip: RUN ? false : "set VYRE_LIVE_GITHUB=1 to run this on testbox (real network, no real token)" }, async t => {
+test(`LIVE (real network, testbox only): the user's binding no-auto-delete rule - a projects.create/.add-workspace failure after a real clone leaves it exactly where it is, path named in the error (lead + reviewer correction, 9cf93817/e723df32 review)`, { skip: RUN ? false : "set VYRE_LIVE_GITHUB=1 to run this on testbox (real network, no real token)" }, async t => {
   const wCreate = await world(t, { failCreate: true });
   accountStore(wCreate.db).put({ name: "dummy", login: "dummy", avatar_url: null, item: "github-dummy" }, Date.now());
-  const projectsDirBefore = fs.readdirSync(wCreate.ctx.config.projectsDir);
   const failed = await wCreate.as("cli")("github.project", { repo: REPO });
   assert.equal(failed.error && failed.error.code, "boom", "the injected failure is what actually surfaced, proving the clone really ran first");
-  const projectsDirAfter = fs.readdirSync(wCreate.ctx.config.projectsDir);
-  assert.deepEqual(projectsDirAfter, projectsDirBefore, "no orphan folder left behind after projects.create failed");
+  const clonePath = failed.error.detail && failed.error.detail.path;
+  assert.ok(clonePath, `no path in the error: ${JSON.stringify(failed.error)}`);
+  assert.ok(fs.existsSync(path.join(clonePath, ".git")), "the clone named in the error is real and was NOT removed");
 
   // Same proof for add-repo/.add-workspace, against a project that already exists.
-  const wAdd = await world(t, { failAddWorkspace: true });
+  const wAdd = await world(t, { failAddWorkspace: true, existingThreads: new Set() });
   accountStore(wAdd.db).put({ name: "dummy", login: "dummy", avatar_url: null, item: "github-dummy" }, Date.now());
   const created = await wAdd.as("cli")("github.project", { repo: REPO });
   assert.equal(created.error, undefined, `setup clone failed: ${JSON.stringify(created)}`);
-  const projectsDirBefore2 = fs.readdirSync(wAdd.ctx.config.projectsDir);
   const failedAdd = await wAdd.as("cli")("github.project.add-repo", { project: created.data.project, repo: REPO, folder: "second-clone" });
   assert.equal(failedAdd.error && failedAdd.error.code, "boom");
-  const projectsDirAfter2 = fs.readdirSync(wAdd.ctx.config.projectsDir);
-  assert.deepEqual(projectsDirAfter2, projectsDirBefore2, "no orphan folder left behind after projects.add-workspace failed");
+  const addClonePath = failedAdd.error.detail && failedAdd.error.detail.path;
+  assert.ok(addClonePath, `no path in the error: ${JSON.stringify(failedAdd.error)}`);
+  assert.notEqual(addClonePath, created.data.home, "add-repo's own clone, not the primary repo's");
+  assert.ok(fs.existsSync(path.join(addClonePath, ".git")), "add-repo's clone was also NOT removed");
 });

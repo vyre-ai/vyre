@@ -165,18 +165,22 @@ account?}`:
    to `projects`' own tables; it only calls its tools, per the module contract. `from_thread?`
    (new, the user-approved avatar carry-over) is `github.project`'s own optional input, passed
    straight through untouched: an existing chat's id, which `projects.create` (`native-core`
-   owns) validates and normalises on its own side. When given, the new project's `avatar_seed`
-   becomes that chat's id and the chat is filed into the project, so starting a GitHub project
-   from a loose chat ("New project from a GitHub repo...") keeps its tile instead of getting a
-   fresh one. `github` checks only its shape (a UUID, `checkedThreadId`) before ever cloning,
-   never whether the chat actually exists, that stays `projects.create`'s own job; the shape
-   check alone is enough to catch a typo before spending a real clone on it. Whether the chat
-   exists or the clone succeeds, if `projects.create` (or `.add-workspace`, `github.project.add-
-   repo`'s own equivalent step) errors for any reason after the clone already happened, the
-   clone is removed (`removeOrphanClone`, best-effort, swallows its own failure since the
-   original error is what matters) rather than left behind under `projectsDir` forever, the
-   reviewer's catch (9cf93817 review, LOW: this failure mode already existed for any
-   `projects.create` error, `from_thread` just made it easier to trigger with a plain typo).
+   owns) validates and normalises again on its own side. When given, the new project's
+   `avatar_seed` becomes that chat's id and the chat is filed into the project, so starting a
+   GitHub project from a loose chat ("New project from a GitHub repo...") keeps its tile instead
+   of getting a fresh one. `github` checks it BEFORE ever cloning, for both shape (a UUID) and
+   existence (`ctx.call("threads.get", { thread, limit: 1 })`, the same lookup `projects.create`'s
+   own validation uses): `checkedThreadId` refuses a malformed or made-up id immediately, no repo
+   resolution, no clone, no GitHub API call at all (reviewer, 9cf93817 review, LOW: a bad value
+   used to fail only after a real clone had already happened, spent on nothing).
+
+   **If `projects.create` (or `.add-workspace`, `github.project.add-repo`'s own equivalent step)
+   still fails after the clone, for any other reason, the clone is left exactly where it is.** An
+   earlier fix (`removeOrphanClone`, e723df32) deleted it instead; the lead and the reviewer
+   corrected that against the user's binding no-auto-delete rule (the same rule `github.session.
+   cleanup`, section 5, already follows). The thrown error's `detail.path` names the clone's
+   folder, so a person can use it, register it by hand, or remove it themselves - never an
+   automatic decision this module makes for them.
 4. The project row remembers the repo (`github_projects (project, account, full_name,
    default_branch)`, keyed by the project's slug), so later steps (worktree-per-session, and
    0.1.2's PRs and git settings) know which project is a GitHub project without asking again. This

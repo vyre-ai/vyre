@@ -39,9 +39,11 @@ function makeRepo(t, origin) {
  * A minimal module context: real sqlite table, a fake `projects` (stateful - `projects.create`
  * and `.add-workspace` actually update the rows a later `projects.list` sees, since detect and
  * add-repo both round-trip through it), tokens in a plain map (never fetched over the wire in a
- * test; a name with no entry gets a fixed placeholder token, never used for real credentials).
+ * test; a name with no entry gets a fixed placeholder token, never used for real credentials),
+ * and a fake `threads.get` backed by `existingThreads` (a set of ids `checkedThreadId` treats as
+ * real chats - everything else answers not-found, the same as a made-up id would for real).
  */
-async function world(t, { projectsRows = [], tokens = {}, projectsDir } = {}) {
+async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingThreads = new Set(), failCreate = false, failAddWorkspace = false } = {}) {
   const db = new DatabaseSync(":memory:");
   t.after(() => db.close());
   const tools = new Map(), events = [], calls = [];
@@ -55,13 +57,18 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir } = {}) {
     tool: (name, def) => tools.set(name, def),
     call: async (toolName, input) => {
       calls.push({ tool: toolName, input });
+      if (toolName === "threads.get") {
+        return existingThreads.has(input.thread) ? { data: { thread: { id: input.thread } } } : { error: { code: "not_found", message: `no thread ${input.thread}` } };
+      }
       if (toolName === "projects.list") return { data: { projects: rows } };
       if (toolName === "projects.add-workspace") {
+        if (failAddWorkspace) return { error: { code: "boom", message: "injected failure" } };
         const p = rows.find(x => x.slug === input.project);
         if (p) p.workspaces = [...p.workspaces, input.folder];
         return { data: { slug: input.project } };
       }
       if (toolName === "projects.create") {
+        if (failCreate) return { error: { code: "boom", message: "injected failure" } };
         const slug = input.name;
         rows.push({ slug, name: input.name, home: input.home, workspaces: [] });
         return { data: { slug } };
@@ -76,7 +83,8 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir } = {}) {
     if (!def) return { error: { code: "no_such_tool" } };
     if (def.callers && !def.callers.some(c => caller === c || caller.startsWith(c + ":"))) return { error: { code: "denied" } };
     if (def.internal && !caller.startsWith("module:")) return { error: { code: "no_such_tool" } };
-    try { return { data: await def.run(input, { caller, firstParty }) }; } catch (e) { return { error: { code: /** @type {any} */ (e).code, message: /** @type {any} */ (e).message } }; }
+    try { return { data: await def.run(input, { caller, firstParty }) }; }
+    catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code, message: err.message, ...(err.detail ? { detail: err.detail } : {}) } }; }
   };
   return { db, events, calls, as, ctx };
 }
@@ -317,16 +325,29 @@ test("github.project: repoName refuses a path-traversal owner or a bare '.'/'..'
   assert.equal(w.calls.length, 0, "repoName's own validation runs before any tool call at all");
 });
 
-test("github.project: a malformed from_thread is refused BEFORE any clone or GitHub API call - not just late, when projects.create would also refuse it (reviewer's LOW on 9cf93817)", async t => {
-  const w = await world(t);
+test("github.project: from_thread is checked for shape AND existence BEFORE any clone or GitHub API call - not just late, when projects.create would also refuse it (lead + reviewer, 9cf93817/e723df32 review)", async t => {
+  const REAL = "11111111-1111-4111-8111-111111111111";
+  const w = await world(t, { existingThreads: new Set([REAL]) });
   seedAccount(w.db);
   withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal", default_branch: "main" }] })); // any real fetch call here would be the bug
 
   const notAUuid = await w.as("cli")("github.project", { repo: "alex/harlow-legal", from_thread: "not-a-uuid" });
   assert.equal(notAUuid.error.code, "bad_input");
   assert.match(notAUuid.error.message, /from_thread/);
-  assert.equal(w.calls.length, 0, "checkedThreadId's own validation runs before repo resolution, let alone a clone");
+  assert.equal(w.calls.length, 0, "the shape check runs before even asking threads.get, let alone resolving a repo or cloning");
+
+  const madeUp = await w.as("cli")("github.project", { repo: "alex/harlow-legal", from_thread: "22222222-2222-4222-8222-222222222222" });
+  assert.equal(madeUp.error.code, "not_found");
+  assert.deepEqual(w.calls.map(c => c.tool), ["threads.get"], "threads.get is the only call made - existence is checked before repo resolution too");
+  // A real, existing thread passing both checks and the run actually continuing (through the
+  // real GitHub API and a real clone) is index.live.test.js's job, same limitation as every
+  // other github.project happy-path assertion in this file: cloneRepo hits real network, which
+  // a from_thread that passes checkedThreadId would reach next.
 });
+
+// The clone-is-kept-and-named-in-the-error proof (a projects.create/.add-workspace failure AFTER
+// a real clone) needs an actual clone to exist first - same limitation as every other
+// github.project/.add-repo happy-path assertion in this file - so that's in index.live.test.js.
 
 test("github.session.worktree/.cleanup: the switchboard (module:threads) can call these internal, sessions-only tools, same as module:sessions - and only when first-party (reviewer's merge heads-up: the stage branch already expects both names here)", async t => {
   const home = makeRepo(t);

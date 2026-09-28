@@ -924,7 +924,7 @@ Cancel an open sign-in.
 
 ### `github.project`
 
-Make a BRAND-NEW project from a repo: clones it and creates the project, recording the repo as the project's primary GitHub repo (what a session's worktree is made from, ADR 0041 section 5). `repo` is owner/name or a full GitHub URL. `from_thread?` is an existing chat's id (a UUID), passed straight through to `projects.create` (which validates and normalises it): the new project's avatar_seed becomes that chat's id and the chat is filed into it, so starting a GitHub project from a loose chat keeps its tile instead of getting a fresh one. To add a repo to a project that already exists instead, use github.project.add-repo.
+Make a BRAND-NEW project from a repo: clones it and creates the project, recording the repo as the project's primary GitHub repo (what a session's worktree is made from, ADR 0041 section 5). `repo` is owner/name or a full GitHub URL. `from_thread?` is an existing chat's id (a UUID, checked for shape and existence before anything is cloned), passed straight through to `projects.create` (which validates and normalises it again on its own side): the new project's avatar_seed becomes that chat's id and the chat is filed into it, so starting a GitHub project from a loose chat keeps its tile instead of getting a fresh one. If `projects.create` still fails after the clone, the clone is left exactly as it is (the user's binding no-auto-delete rule) and its path is in the error, for a person to use or remove by hand. To add a repo to a project that already exists instead, use github.project.add-repo.
 
 - Input:
   - `repo` string, required
@@ -935,7 +935,7 @@ Make a BRAND-NEW project from a repo: clones it and creates the project, recordi
 
 ### `github.project.add-repo`
 
-Add a GitHub repo to an EXISTING project as a brand-new workspace folder: clones it fresh under the projects folder and registers it through projects.add-workspace. Never touches the project's other folders. `repo` is owner/name or a full GitHub URL; `folder?` names the new folder (defaults to the repo's own name, a `-2`/`-3` suffix if that name is already taken). This repo does not become the project's primary GitHub repo (that's set once, by github.project or the project's own first repo) - a session's worktree is still made from the primary repo; a worktree for an added repo is 0.1.2. People only, never a model.
+Add a GitHub repo to an EXISTING project as a brand-new workspace folder: clones it fresh under the projects folder and registers it through projects.add-workspace. Never touches the project's other folders. `repo` is owner/name or a full GitHub URL; `folder?` names the new folder (defaults to the repo's own name, a `-2`/`-3` suffix if that name is already taken). If `projects.add-workspace` fails after the clone, the clone is left exactly as it is (the user's binding no-auto-delete rule) and its path is in the error. This repo does not become the project's primary GitHub repo (that's set once, by github.project or the project's own first repo) - a session's worktree is still made from the primary repo; a worktree for an added repo is 0.1.2. People only, never a model.
 
 - Input:
   - `project` string, required

@@ -354,6 +354,32 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
     failure really did happen post-clone (not a shortcut) and that nothing was left behind.
   - ADR 0041 decision 4 step 3 updated with both the shape check and the cleanup.
 
+## Done (2026-09-28, correction: from_thread checked before cloning, clone never auto-deleted)
+- The lead and the reviewer corrected e723df32's own fix: `removeOrphanClone` deleted the clone
+  when `projects.create`/`.add-workspace` failed after it - that breaks the user's binding
+  no-auto-delete rule (the same rule `github.session.cleanup` already follows, section 5).
+  Reverted, and replaced with the actually-requested shape:
+  - `checkedThreadId(from_thread)` now checks BOTH shape (a UUID) AND existence, before ever
+    cloning: `ctx.call("threads.get", { thread, limit: 1 })`, the same lookup `projects.create`'s
+    own validation uses (`native-core`). A malformed or made-up id is refused immediately - no
+    repo resolution, no clone, no GitHub API call at all.
+  - `removeOrphanClone` is gone. If `projects.create`/`.add-workspace` still fails after the
+    clone for any OTHER reason, the clone is left exactly as it is; the thrown error's
+    `detail.path` names the folder, so a person decides what to do with it by hand (`fail()`
+    gained an optional `detail` param for this - the real registry already supports passing
+    `err.detail` through, `core/modules/index.js`'s `run()`).
+  - Tests: `index.test.js` gained a fake `threads.get` (an `existingThreads` set) to `world()`,
+    and the shape/existence rejection paths are proven without any network (both fail before a
+    single other call). The "clone is kept, path is in the error" proof needs a real clone to
+    exist first, so `index.live.test.js`'s orphan-cleanup test was rewritten into the opposite
+    assertion: inject a `projects.create`/`.add-workspace` failure after a real clone, and check
+    the clone is STILL there (`.git` exists) at the path the error named, for both `github.project`
+    and `.add-repo`.
+  - ADR 0041 decision 4 step 3 rewritten to match (the two-step check, and the no-auto-delete
+    correction spelled out plainly, including that the earlier fix existed and why it was wrong).
+  - Tested on testbox (temp `HOME`, never locally): see the commit for the numbers. Sending to
+    reviewer and integrator, then pausing.
+
 ## Doing
 - reviewer CLEARED work/github through acfcefd2 (both 3a72ea7f..84e76681 and the stdin fix).
   The credential.interactive LOW is WITHDRAWN (reviewer agreed the evidence was right); the lead
