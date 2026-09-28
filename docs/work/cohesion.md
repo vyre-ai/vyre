@@ -328,3 +328,16 @@ this tree either — same gap markers.js hit) and touches core/memory/core/recal
 core/files (federation), none of which are my worktrees to commit in. Design + exact code handed
 off; waiting on federation to land the tool, then memory-iq and federation to move their own
 callers onto it with tests, per the lead's ask.
+
+## Loud manifest-validation failures, built (962f6160)
+
+teammates' bug: a camelCase tool/event name failed validate() and dropped the whole module with
+no log line -- found only by inspecting discover()'s problems by hand. Registry.start()
+(core/modules/index.js) now logs `warn: module <name> invalid: <reason>` for all three silent
+cases (a bad manifest, a duplicate module name, an order() cycle/missing dependency). Checked
+before building #2: status() (vyre modules, GET /v1/modules) already lists invalid/failed modules
+with their error text -- that surface already existed, nothing new needed there, just confirmed
+with a test. New test feeds a camelCase-tool manifest and asserts the log line + status() entry;
+new hygiene test runs discover() over the real core/local/modules trees so a bad shipped manifest
+fails CI, not only a by-hand check. testbox: 43/43 (modules, hygiene, boundaries), daemon 19/19.
+Sent to reviewer-2 and the integrator.
