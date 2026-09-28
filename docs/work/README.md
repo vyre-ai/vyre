@@ -60,4 +60,8 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0030 | sessions | Vyre-owned sessions and the provider router |
 | 0031 | teammates | Project teammates |
 | 0032 | e2e | The person and the device |
-| 0033 | app-design | Identity marks: four families, and the Vyre code (pairing ring) |
+| 0033 | platform | Hackable Vyre: the module API, extension points, user modules and updates (this repo's local claim table was stale; 0033 was already taken on main when app-design claimed it here - see 0043) |
+| 0034 | memory-iq | Vyre IQ: cited answers from every session, fact and the graph |
+| 0035 | native-core | The settings hub: one file, four levels, read live by every surface |
+| 0036 | cohesion | One system |
+| 0043 | app-design | Identity marks: four families, and the Vyre code (pairing ring) (renumbered 28 Sep from a colliding 0033 - pwa caught it after merging main at 90c6d2c1; picked 0043 as the first number not claimed anywhere across every active worktree at the time, one past federation's 0042) |

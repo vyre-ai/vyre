@@ -1,12 +1,12 @@
 ---
-title: "ADR 0033: Identity marks: four families, and the Vyre code"
+title: "ADR 0043: Identity marks: four families, and the Vyre code"
 summary: Vyre has four visual identity families with distinct silhouettes (person circle, assistant creature, agent blob, teammate tile), none resembling any AI brand's own mark. The person's circle carries a second, scannable form (the Vyre code) that encodes a one-time pairing ticket, read only by phone.vyre.run's own decoder - not a standard QR, and no normal-camera fallback.
 audience: builders, agents
 owner: app-design
 status: draft
 ---
 
-# ADR 0033: Identity marks: four families, and the Vyre code
+# ADR 0043: Identity marks: four families, and the Vyre code
 
 ## Context
 

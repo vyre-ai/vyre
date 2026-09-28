@@ -562,7 +562,7 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 - Sent to the lead (msg_id e8a49bfa) with full write-up in round5/NOTES.md. Nothing wired into
   product code.
 
-## Now (28 Sep, round 5 beauty pass, ADR 0033, and a fixed face-scale bug)
+## Now (28 Sep, round 5 beauty pass, ADR 0043, and a fixed face-scale bug)
 
 - User's "eww" on round 5's first ring look, relayed by the lead: face too small relative to the
   ring, 4 stark 1-bit rings read as a technical barcode, marker glyph too separate. Built
@@ -580,7 +580,7 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   `round5/vyrecode2.js`: reads the face's own `viewBox` and scales explicitly
   (`FACE_D / faceNativeW`), so it holds for any future face source, not pinned to today's 120.
   Verified with a direct render + regex check on the emitted `<g transform=...>`, not by eye.
-- Locked the shape/silhouette rule that's grown across rounds 3-5 as **ADR 0033** (claimed in
+- Locked the shape/silhouette rule that's grown across rounds 3-5 as **ADR 0043** (claimed in
   `docs/work/README.md`) and folded it into `docs/design/system/components/avatar.md`: the four
   identity families (person circle / assistant creature / agent blob / teammate tile), why the
   assistant is a creature and not round 4's squircle, the "no AI-brand lookalike" rule now stated
@@ -589,9 +589,9 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   pairing still needs Touch ID/presence per ADR 0032). Handed to `pwa` (decode-core.js/rs.js
   port) and `launch` (render on the Deck's pairing screen) via the lead.
 - Design/spec files only; no product code touched. Perspective/homography decode is still the one
-  scoped gap (ADR 0033 section 4), unchanged from round 5's NOTES.md.
+  scoped gap (ADR 0043 section 4), unchanged from round 5's NOTES.md.
 - Correction (lead, 28 Sep): the user decided there is no plain-QR fallback and no normal-camera
-  path - the ring is read only by phone.vyre.run's own decoder. Reworded ADR 0033 (summary,
+  path - the ring is read only by phone.vyre.run's own decoder. Reworded ADR 0043 (summary,
   context, section 3) to state this and move plain QR to "considered, not chosen," committed
   d24e9c3f. avatar.md never claimed a fallback, so it needed no change.
 
@@ -614,7 +614,7 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   margin is now 51.75 units (8.6% of the 600 canvas), ring-gap clearance 7.75px. Re-rendered and
   confirmed the module still executes clean (no visual regression check on this Mac - headless
   only, per the no-visible-windows rule).
-- Wrote the fix and the corrected invariant into ADR 0033 (814d0b08): the outer edge is
+- Wrote the fix and the corrected invariant into ADR 0043 (814d0b08): the outer edge is
   `max(tick reach, marker reach)`, not tick reach alone - restated so the next person doesn't
   repeat the same mistake.
 - Sent the new constants to pwa and launch directly. Not verified end-to-end against pwa's real
@@ -624,7 +624,7 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 
 - Lead: the numbers drifted once already (the widen above), consolidate - one shared constants
   module both the renderer and the decoder import, instead of a second hand-copied set.
-- Built `round5/geometry.js`: every constant and reach formula from ADR 0033 2a (`RING_R`,
+- Built `round5/geometry.js`: every constant and reach formula from ADR 0043 2a (`RING_R`,
   `tickLength(level)`/`tickReach(level)`, `markerOffset(k)`/`markerRadius(k)`/`markerReach()`,
   `outerReach()`) plus `validateGeometry()`, which recomputes the margin-percent and gap-clearance
   invariants and throws a specific message if either regresses.
@@ -633,11 +633,11 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   assumed: re-rendered and got the identical 51.75px margin / 7.75px clearance as before the
   refactor, and separately proved the guard actually fires by passing an impossible threshold and
   confirming it throws the expected message (not just that the happy path still works).
-- Documented as ADR 0033 2b (be7fce03) and told pwa and launch to vendor `geometry.js` itself
+- Documented as ADR 0043 2b (be7fce03) and told pwa and launch to vendor `geometry.js` itself
   (same pattern as their existing `rs.js`/`payload.js`/`identity.js`/`vyrecode2.js` vendoring) and
   import from it rather than hand-copying values into `decode-core2.js` or a render-side copy.
 
-## Now (28 Sep, launch built the pairing screen off ADR 0033)
+## Now (28 Sep, launch built the pairing screen off ADR 0043)
 
 - `launch` vendored `rs.js`/`payload.js`/`identity.js`/`vyrecode2.js` into
   `deck/vendor/vyrecode/` (CJS->ESM only, `fingerprint8` moved onto `crypto.subtle` for the
@@ -648,3 +648,28 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 - Using a placeholder ticket id until tailnet's `relay.pair.ticket` exists; the ring rendering
   itself is not placeholder. Nothing further needed from app-design unless the ticksSunburst
   geometry needs to change once a real ticket shape lands.
+
+## Now (28 Sep, ADR number collision: 0033 renumbered to 0043)
+
+- pwa flagged (after merging main at 90c6d2c1) that the identity-marks ADR's number, 0033, was
+  already taken on main by platform's "Hackable Vyre" ADR - this repo's local
+  `docs/work/README.md` claim table had gone stale under my own branch (last synced before
+  platform's claim landed on main), so RULES.md's "claim it here first" check passed locally
+  while colliding for real.
+- Checked properly before picking a replacement, not just bumped by one: grepped every active
+  worktree's `docs/work/README.md` for any claimed ADR number, not just main's (several
+  worktrees carry uncommitted local claims main hasn't seen yet - federation's own 0042 already
+  came from resolving an 0041 collision with work/github the same way). Highest claimed anywhere,
+  committed or not: 0042 (federation, committed 726576f6). Picked **0043** - one past that, not
+  a token +1 off the stale local table.
+- Renamed `docs/adr/0033-identity-marks-and-vyre-code.md` -> `0043-identity-marks-and-vyre-code.md`
+  and every `ADR 0033` reference to `ADR 0043` in that file and in `avatar.md` (4 occurrences).
+  Left `app-design.md`'s own three other `ADR 0033` mentions alone (theme-overrides validation,
+  lines above this section) - those are platform's real, correctly-numbered 0033, not mine;
+  checked line-by-line before touching anything so the two didn't get conflated.
+- Updated `docs/work/README.md`'s claim table: restored platform's actual 0033/0034/0035/0036
+  rows (this file's copy was missing them, another symptom of the same staleness) and added 0043
+  under app-design with a note explaining the renumbering, so the next person who diffs this
+  table against main understands why app-design's row isn't at 0033.
+- Told pwa (who caught it), launch (who also references the file), and the lead. No product code
+  touched; this is a docs/numbering fix only.

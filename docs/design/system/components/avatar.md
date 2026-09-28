@@ -34,7 +34,7 @@ person's button to Places. Drawn on almost every board; see "Agents and their co
 Agents, teammates (kit, design) and places get tiles; only the person gets a circle. There are no photos, and no
 colour per agent or person.
 
-## Four identity families (ADR 0033)
+## Four identity families (ADR 0043)
 
 Generated-avatar work (`docs/work/app-design.md` rounds 1-5) grew the tile/circle split above
 into four families, each with its own silhouette so identity reads before the name or initial
@@ -48,14 +48,14 @@ does:
 | Teammate | Rounded-square tile | This section's existing tile: initial, or a rolled character with role prop |
 
 Agent and assistant marks draw from separate palettes on purpose, so a colour coincidence never
-makes one read as the other. Full rationale and sources: ADR 0033.
+makes one read as the other. Full rationale and sources: ADR 0043.
 
-## The Vyre code (ADR 0033)
+## The Vyre code (ADR 0043)
 
 The person's circle above has a second, full-size form for pairing and identity-sharing: a ring
 of marks around the same face and palette encoding a public id/ticket (never a secret), scanned
 by Vyre's own decoder rather than a generic QR reader. Geometry, palette derivation and the
-pairing contract are specified in ADR 0033; implementation lives in `round5/vyrecode2.js`
+pairing contract are specified in ADR 0043; implementation lives in `round5/vyrecode2.js`
 (rendering) and `round5/decode-core.js` + `rs.js` (decode). Not yet wired into product surfaces.
 
 **Teammates specifically** (ADR 0031, `docs/work/teammates.md` section 3, decided with teammates
