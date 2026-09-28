@@ -108,7 +108,7 @@ function degradedPageHtml(svg, deg) {
 // decoder imports, as plain data (numbers only - JSON-safe, no live functions) and passed to
 // decodeCore2(GEO) explicitly in the injected script, rather than letting it fall back to its own
 // defaultGeometry() (which needs a live import this page doesn't have).
-const GEO = { CENTER: geo.CENTER, FACE_R: geo.FACE_R, RING_R: geo.RING_R, TINT_MARGIN: 40, LEVELS: [0, 1, 2, 3].map(geo.tickLength) };
+const GEO = { CENTER: geo.CENTER, FACE_R: geo.FACE_R, RING_R: geo.RING_R, TINT_MARGIN: 40, LEVELS: [0, 1, 2, 3].map(geo.tickLength), CAP_RADIUS: geo.TICK_CAP_RADIUS };
 
 function readerPageHtml(pngUrl, decodeSrc) {
   return `<!doctype html><html><body style="margin:0;">

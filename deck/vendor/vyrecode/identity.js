@@ -9,8 +9,30 @@
 //              circle so it never gets mistaken for the person): a luminous mark, not a face,
 //              since it is not a creature and not a person
 //
-// A few numbered options per identity (not endless hash variety): the person and the assistant
-// are each picked once and kept, so "reroll, or pick from a few" fits better than an id hash.
+// A few numbered options per identity, picked once and kept. Ruling (lead, 28 Sep, ADR 0043):
+// the DEFAULT option is derived deterministically from the identity's own 8-byte fingerprint
+// (payload.js's fingerprint8 - the same public id the Vyre code encodes, never a secret), so
+// everyone gets a unique, stable avatar with zero setup - "unique by design." A stored pick is
+// optional, overrides the default, and only the person themself can set it (never derived from a
+// device or box key - that was a stopgap someone else guessed at, not the design). See
+// defaultAvatarOption below.
+
+/**
+ * The default avatar option for an identity, derived from its own 8-byte public fingerprint
+ * (payload.js's fingerprint8 output - never a secret). Deterministic and stable: the same
+ * fingerprint always yields the same option, with no storage or setup needed. Any single byte of
+ * a SHA-256 digest is uniformly distributed, so byte 0 is as good as any - picked for simplicity,
+ * not significance. Used for both the person (their own fingerprint) and the assistant
+ * (creature.js: "seeded from the ASSISTANT's own public id, never the person's" - pass its
+ * fingerprint here too, never the person's, so the two are never accidentally in lockstep).
+ * A caller with a stored, person-set override should use that value instead and never call this
+ * at all - this is the zero-setup default, not a fallback to blend with a stored pick.
+ * @param {number[]} fingerprint8Bytes
+ * @param {number} optionCount
+ */
+function defaultAvatarOption(fingerprint8Bytes, optionCount) {
+  return fingerprint8Bytes[0] % optionCount;
+}
 
 function hashSeed(seed) {
   let h = 2166136261;
@@ -97,4 +119,4 @@ function assistantAvatar(option = 0, size = 120) {
   </svg>`;
 }
 
-export { userAvatar, assistantAvatar, USER_GRADIENTS, ASSISTANT_GRADIENTS };
+export { userAvatar, assistantAvatar, USER_GRADIENTS, ASSISTANT_GRADIENTS, defaultAvatarOption };

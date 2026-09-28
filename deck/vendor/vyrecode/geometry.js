@@ -32,7 +32,16 @@ const RING_R = [FACE_R + 8, FACE_R + 8 + 34]; // [188, 222]
 const TICK_LEN_BASE = 6;
 const TICK_LEN_STEP = 6;
 function tickLength(level) { return TICK_LEN_BASE + level * TICK_LEN_STEP; } // 6, 12, 18, 24
-const TICK_STROKE_WIDTH = 4.5;
+// pwa's per-mark error diagnostic (28 Sep): blur is the dominant, near-linear failure mode
+// (18/38/56 errors at blur 2/4/6px, vs 5-6 for any rotation and 3 for noise), and it got
+// dramatically worse than round 5's original prototype, which passed all 3 blur levels clean.
+// That timing lines up with 2a's margin fix shrinking the ticks (8-29px -> 6-24px) more than
+// with palette softness alone - a thin, short stroke loses proportionally more of its signal to
+// a fixed-radius blur kernel than a wider one does, independent of colour contrast. Widened
+// 4.5 -> 6 (matching dashesRounded's own stroke) as the first, geometry-only lever to test,
+// before touching the palette (team-lead asked pwa not to) or the lengths (which would eat back
+// into 2a's margin fix). Re-verified the margin/gap invariant still holds at this width.
+const TICK_STROKE_WIDTH = 6;
 const TICK_CAP_RADIUS = TICK_STROKE_WIDTH / 2; // a round line-cap extends the reach by half the stroke
 function tickReach(level) { return tickLength(level) + TICK_CAP_RADIUS; }
 

@@ -42,9 +42,19 @@ function paletteFor(theme, option) {
   // "tint" is mostly the theme's own neutral ground with only a whisper of the avatar's hue
   // (first attempt had this backwards - 86% hue, 14% neutral - and the whole disc read as a flat
   // saturated pink block instead of a soft wash, which is exactly the "eww" the user flagged).
+  //
+  // pwa's decode pass rate dropped against the REAL palette (vs. their earlier flat-color test
+  // fixture): measured why rather than guessing - dark theme's mark/markDeep sit at 8.5-12.3:1
+  // contrast against the tint (light-on-near-black, plenty of headroom), but paper theme's old
+  // formula (mark at a 0.3 ink-mix, markDeep as the raw "deep" gradient stop with NO ink mix at
+  // all) measured only 2.96-4.44:1 for mark and a genuinely weak 1.59-2.57:1 for markDeep across
+  // the 4 USER_GRADIENTS options - not enough margin to survive blur/scale degradation, which is
+  // exactly the failure pwa reported. Deepened both paper mixes (0.3->0.5, and markDeep's
+  // implicit 0->0.65) to a worst-case 4.86:1 / 7.35:1 across all 4 options - still the gradient's
+  // own hue, just enough ink to hold up under real-camera conditions, not the "eww" flat block.
   return theme === "dark"
     ? { ground: "#0E0D0C", tint: hexMix(warm, "#161513", 0.92), mark: hexMix(warm, "#F1EEE6", 0.4), markDeep: warm }
-    : { ground: "#F4F1EA", tint: hexMix(warm, "#FBFAF6", 0.92), mark: hexMix(deep, "#141311", 0.3), markDeep: deep };
+    : { ground: "#F4F1EA", tint: hexMix(warm, "#FBFAF6", 0.92), mark: hexMix(deep, "#141311", 0.5), markDeep: hexMix(deep, "#141311", 0.65) };
 }
 function hexMix(a, b, t) {
   const pa = [1, 3, 5].map(i => parseInt(a.slice(i, i + 2), 16));
@@ -97,7 +107,11 @@ const STYLES2 = {
       const x1 = x, y1 = y;
       const x2 = x + Math.cos(rad) * len, y2 = y + Math.sin(rad) * len;
       const fill = level >= 2 ? pal.markDeep : pal.mark;
-      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${fill}" stroke-width="${geo.TICK_STROKE_WIDTH}" stroke-linecap="round" opacity="${level === 0 ? 0.55 : 1}"/>`;
+      // Level 0's opacity dip was 0.55 - stacked with the old paper-theme contrast gap above, the
+      // shortest/lowest-value ticks were the least reliable mark in the whole ring. 0.55 was an
+      // aesthetic softening with no decode headroom behind it; 0.85 keeps a little visual
+      // hierarchy without giving blur/scale a mark that was already faint twice over.
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${fill}" stroke-width="${geo.TICK_STROKE_WIDTH}" stroke-linecap="round" opacity="${level === 0 ? 0.85 : 1}"/>`;
     },
   },
 };

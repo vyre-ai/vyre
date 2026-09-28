@@ -33,6 +33,7 @@ function defaultGeometry() {
                       // background, not part of geometry.js's content-reach invariant, so it
                       // isn't exported there; kept here as the one place both sides agree on it
     LEVELS: [0, 1, 2, 3].map(geo.tickLength), // e.g. [6, 12, 18, 24]
+    CAP_RADIUS: geo.TICK_CAP_RADIUS, // the round line-cap's own overshoot past the nominal length
   };
 }
 
@@ -46,6 +47,13 @@ function decodeCore2(g) {
   const TINT_R = RING_R[1] + geometry.TINT_MARGIN; // the tint disc's own edge, a strong, reliable boundary
   const LEVELS = geometry.LEVELS; // tick lengths for level 0..3 (ticksSunburst's own formula)
   const MAX_OFFSET = LEVELS[LEVELS.length - 1]; // the longest tick's own nominal length
+  // A round line-cap always overshoots the nominal length by its own radius, at every level
+  // (see sampleMarkLength's own comment) - subtracted from the raw read before quantizing.
+  // Found by testing: app-design's stroke-width widening (4.5 -> 6, ADR 0043 2e) grew this
+  // overshoot (2.25 -> 3) just enough, against LEVELS' own tight 6px spacing, to flip several
+  // marks a level high even at pristine - not a blur-robustness win once this is corrected for,
+  // it was an uncorrected systematic bias.
+  const CAP_RADIUS = geometry.CAP_RADIUS ?? 2.25;
 
   /** Small-disk area average, same technique as round4's sampleDot (degrades gracefully under
    * blur instead of an edge read, which blur destroys first). */
@@ -115,7 +123,10 @@ function decodeCore2(g) {
       const t = (threshold - a) / (b - a || 1e-6);
       if (t > 0 && t < 1) lenEstimate = offsets[lastInk] + t * (offsets[lastInk + 1] - offsets[lastInk]);
     }
-    return lenEstimate;
+    // The round line-cap always extends visible ink CAP_RADIUS past the tick's own nominal
+    // length, at every level equally - subtract it so lenEstimate lines up with LEVELS' own
+    // nominal values instead of reading systematically long.
+    return Math.max(0, lenEstimate - CAP_RADIUS);
   }
 
   function lengthToLevel(len) {

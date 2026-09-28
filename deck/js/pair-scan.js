@@ -103,7 +103,7 @@ export function pairScanSheet(opts) {
       const result = await pairOffer(offer, { name, about: { kind: "web" }, crypto });
       pendingOffer = null;
       dispatch({ type: "paired", box: result.name, deviceName: name });
-      renderAvatar(offer.box);
+      renderAvatar(offer.box, undefined); // no identity fingerprint from resolveTicket yet - PENDING tailnet
       celebrate();
     } catch (err) {
       pendingOffer = null;
@@ -127,12 +127,15 @@ export function pairScanSheet(opts) {
     });
   }
 
-  /** Renders the SAME avatar (user's own instruction, 2026-09-28 - not a camera crop) from the
-   * verified box key; the camera crop from scan.js is what's shown until/unless this succeeds,
-   * and stays if this throws (a rendering bug should never blank the success moment). */
-  async function renderAvatar(/** @type {Uint8Array} */ boxKey) {
+  /** Renders the SAME avatar (user's own instruction, 2026-09-28 - not a camera crop). Uses the
+   * owner's identity fingerprint when resolveTicket() hands one back (the real design, ADR 0043
+   * 2d - PENDING tailnet, not in the record yet); falls back to the box key otherwise
+   * (pair-avatar.js's own stopgap). The camera crop from scan.js is what's shown until/unless
+   * this succeeds, and stays if this throws (a rendering bug should never blank the success
+   * moment). */
+  async function renderAvatar(/** @type {Uint8Array} */ boxKey, /** @type {Uint8Array | undefined} */ identityFingerprint) {
     try {
-      const svg = await renderPersonAvatar(boxKey);
+      const svg = await renderPersonAvatar({ identityFingerprint, boxKey });
       const img = el.querySelector(".scan-avatar");
       if (img) img.outerHTML = svg.replace("<svg", '<svg class="scan-avatar"');
     } catch {} // cameraAvatarUrl (already rendered) stands in
