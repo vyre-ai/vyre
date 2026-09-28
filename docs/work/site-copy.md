@@ -130,13 +130,17 @@ site, served from a `git archive` export. Local only, not committed: landing, /s
 
 ## Doing
 
-Nothing. Handed to the lead. Lead review: eyebrow changed to "Built on Claude Code"; an
-unbacked "about 20 minutes" and "one click" removed.
+Standing by. Deployed: the lead published vyre.run from 03c57cda (deploy 06c5df23, installer from
+main) on 2026-09-28. vyre.run, /start and /install.sh return 200.
 
 ## Next
 
-Lead reviews and deploys.
+When "Vyre anywhere" ships (Solo, a Mac as the server), rewrite the hero headline and subhead, the
+install tabs (both groups), "What it needs", the FAQ "Do I need a server?", and /start's
+requirements and "What's coming". Today's copy says a Linux server is required and Mac-only is
+coming, in: the Mac tab, the FAQ, /start's intro and its "A Mac-only setup" item. Use the same
+rules: stop-slop, facts from docs only, and check in Chrome after.
 
 ## Needs from others
 
-- launch or the lead: the app.js demo wiring above.
+- None.
