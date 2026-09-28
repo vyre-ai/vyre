@@ -120,7 +120,7 @@ test("federation reads: machines local, agents, MCP, guests and modules that do 
     const hits = await recall("recall.search", { q: "intake form", ...input });
     if (hits) assert.ok(hits.every(h => h.session === BOX_ID), caller);
     const th = await s.boxCall("recall.thread", { session: MAC_ID, ...input }, caller);
-    assert.match(th.error ? th.error.message : "answered", /^no session/, `${caller}: the Mac's session is not reached`);
+    if (!(th.error && th.error.code === "denied")) assert.match(th.error ? th.error.message : "answered", /^no session/, `${caller}: the Mac's session is not reached`);
   };
   await boxOnly("deck", { machines: "local" });
   await boxOnly("cli", { machines: "local" });

@@ -786,18 +786,16 @@ test("lean and one-shot threads: no plugin, tools or settings, kept on resume; a
 
 test("ADR 0041 (github, worked with sessions): a new thread in a GitHub project starts in its own worktree; github.session.cleanup runs once it is truly finished, never merely stopped", async t => {
   const worktree = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-worktree-")));
-  const github = { name: "github", manifest: { does: { tools: ["github.project.of", "github.session.worktree", "github.session.cleanup", "github.calls"] } }, source: `
-    export default { async start(ctx) {
-      const calls = [];
-      // Only "harlow-legal" is a GitHub project - "northwind" (below) is not, proving the
-      // no-repo case changes nothing (the ordinary project-home cwd, no cleanup call at all).
-      ctx.tool("github.project.of", { input: { type: "object" }, run: async i => { calls.push(["project.of", i]); return i.project === "harlow-legal" ? { account: "acme", full_name: "acme/harlow", default_branch: "main" } : null; } });
-      ctx.tool("github.session.worktree", { input: { type: "object" }, run: async i => { calls.push(["worktree", i]); return { path: ${JSON.stringify(worktree)} }; } });
-      ctx.tool("github.session.cleanup", { input: { type: "object" }, run: async i => { calls.push(["cleanup", i]); return { ok: true }; } });
-      ctx.tool("github.calls", { input: { type: "object" }, run: async () => calls });
-      return { async stop() {} };
-    } };` };
-  const { d, tool, work } = await boot(t, { modules: [github] });
+  // The real core/github is loaded on a box now, and a module name loads once, so the stand-in
+  // answers through github's own registered tools instead of a second "github" module.
+  const { d, tool, work } = await boot(t);
+  const ghCalls = [];
+  const stub = (name, run) => { const entry = d.registry.tools.get(name); assert.ok(entry, `core/github registers ${name}`); entry.run = run; };
+  // Only "harlow-legal" is a GitHub project - "northwind" (below) is not, proving the no-repo
+  // case changes nothing (the ordinary project-home cwd, no cleanup call at all).
+  stub("github.project.of", async i => { ghCalls.push(["project.of", i]); return i.project === "harlow-legal" ? { account: "acme", full_name: "acme/harlow", default_branch: "main" } : null; });
+  stub("github.session.worktree", async i => { ghCalls.push(["worktree", i]); return { path: worktree }; });
+  stub("github.session.cleanup", async i => { ghCalls.push(["cleanup", i]); return { ok: true }; });
   const nwHome = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-nw-")));
   assert.ok(!(await tool("projects.create", { name: "Harlow Legal", home: work })).error);
   assert.ok(!(await tool("projects.create", { name: "Northwind Bakery", home: nwHome })).error);
@@ -808,7 +806,7 @@ test("ADR 0041 (github, worked with sessions): a new thread in a GitHub project 
   const job = (await d.registry.call("threads.launch", { project: "harlow-legal", prompt: "x", plugin: false, tools: "none", once: true, model: "haiku" }, "module:learn")).data;
   const rec = (await tool("threads.get", { thread: job.id })).data.thread;
   assert.equal(rec.cwd, worktree, "the session's own cwd is the worktree github made, not Harlow's home");
-  const calls = (await tool("github.calls", {})).data;
+  const calls = ghCalls;
   assert.deepEqual(calls[0], ["project.of", { project: "harlow-legal" }]);
   assert.deepEqual(calls[1], ["worktree", { project: "harlow-legal", session: job.id }]);
 
@@ -816,8 +814,8 @@ test("ADR 0041 (github, worked with sessions): a new thread in a GitHub project 
   // completion, "done", is the one status a worktree is never needed again for), cleanup runs
   // with exactly this thread's own project and id. Proven FIRST, before the negative checks
   // below, so a false "never cleaned up" pass can never be a timing accident.
-  await until(async () => (await tool("github.calls", {})).data.some(c => c[0] === "cleanup"), "github.session.cleanup to run");
-  const cleanup = (await tool("github.calls", {})).data.find(c => c[0] === "cleanup");
+  await until(async () => ghCalls.some(c => c[0] === "cleanup"), "github.session.cleanup to run");
+  const cleanup = ghCalls.find(c => c[0] === "cleanup");
   assert.deepEqual(cleanup[1], { project: "harlow-legal", session: job.id });
 
   // An ORDINARY session in the SAME GitHub project, stopped by a person: canonical "stopped", not
@@ -829,7 +827,7 @@ test("ADR 0041 (github, worked with sessions): a new thread in a GitHub project 
   await until(async () => (await tool("threads.get", { thread: ordinary.id })).data.events.some(e => e.type === "thread.finished"), "the ordinary thread's first turn");
   await tool("threads.stop", { thread: ordinary.id });
   await new Promise(r => setTimeout(r, 300)); // give a (wrongly-firing) cleanup listener time to show up
-  assert.ok(!(await tool("github.calls", {})).data.some(c => c[0] === "cleanup" && c[1].session === ordinary.id), "stopped, not finished: never cleaned up");
+  assert.ok(!ghCalls.some(c => c[0] === "cleanup" && c[1].session === ordinary.id), "stopped, not finished: never cleaned up");
 
   // A plain (non-GitHub) project's own thread is untouched too: its cwd is that project's own
   // home, and github.session.cleanup is never even asked for it once it finishes and stops.
@@ -838,7 +836,7 @@ test("ADR 0041 (github, worked with sessions): a new thread in a GitHub project 
   await until(async () => (await tool("threads.get", { thread: plain.id })).data.events.some(e => e.type === "thread.finished"), "the plain thread's answer");
   await tool("threads.stop", { thread: plain.id });
   await new Promise(r => setTimeout(r, 300));
-  assert.ok(!(await tool("github.calls", {})).data.some(c => c[1] && c[1].session === plain.id), "no GitHub call at all for a non-GitHub project's thread");
+  assert.ok(!ghCalls.some(c => c[1] && c[1].session === plain.id), "no GitHub call at all for a non-GitHub project's thread");
 });
 
 test("threads.watch: said once when the thread finishes or asks, always when it stops, and not for other agents", async t => {
