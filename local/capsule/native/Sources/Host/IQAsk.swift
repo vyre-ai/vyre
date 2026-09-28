@@ -83,7 +83,9 @@ extension CapsuleModel {
         reply = nil
         replySub?.cancel(); replySub = nil
         doing = false
-        let r = await vyred.call("memory.ask", ["question": words], presence: false)
+        var input: [String: Any] = ["question": words]
+        if let c = askContext { input["context"] = c }
+        let r = await vyred.call("memory.ask", input, presence: false)
         pending = false
         if r.errorCode == "no_such_tool" { return nil }
         // The words changed while it answered: this answer is not theirs.
@@ -92,7 +94,7 @@ extension CapsuleModel {
         let iq = IQAnswer.from(words, r.data)
         askedMemory = iq.memory
         var rep = VyState.reply("")
-        rep.model = "haiku"
+        rep.model = models.quick
         reply = rep
         // Finished in a second step, so the answer is kept for follow-ups and read aloud like any other.
         rep.order = ["iq"]; rep.text = ["iq": iq.text]; rep.finished = true; rep.ok = true

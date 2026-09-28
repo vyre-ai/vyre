@@ -572,6 +572,11 @@ public final class VyredFollower {
         stream?.stop(); stream = nil
     }
 
+    /// Look for vyred now rather than at the next retry (the Capsule just started it).
+    public func lookNow() {
+        if started, stream == nil { Task { await follow() } }
+    }
+
     /// The Capsule showed or hid. Showing looks for a missing vyred at once.
     public func setShown(_ on: Bool) {
         shown = on

@@ -50,7 +50,7 @@ struct CapsuleView: View {
                         // The answer grows with its words up to the room left above a few results,
                         // then scrolls (AnswerScroll.swift). It never clips a line out of reach.
                         if model.asked != nil { answerCard(cap: CapsuleLayout.answerCap(model, alone: false)); Rule() }
-                        if model.showsMemory, let m = model.memory { MemoryLine(memory: m, expanded: $model.memoryExpanded); Rule() }
+                        if model.showsMemory, let m = model.memory { MemoryLine(memory: m, expanded: $model.memoryExpanded, who: model.identities); Rule() }
                         HStack(alignment: .top, spacing: 0) {
                             if !model.groups.isEmpty { results } else { Spacer(minLength: 0) }
                             if let side {
@@ -145,6 +145,20 @@ struct CapsuleView: View {
                 .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
                 .fixedSize()
             }
+            // The project the Capsule is in (ProjectContext.swift): its tile and name, read-only.
+            if model.target == nil, model.attachments.isEmpty, model.current?.sendsTo == nil, let p = model.currentProject {
+                HStack(spacing: 5) {
+                    AvatarView(.project(seed: p.tileSeed, draft: false), size: 14)
+                    Text(p.name).lineLimit(1).truncationMode(.tail)
+                }
+                .font(Theme.type(Tokens.TypeScale.meta, .medium))
+                .foregroundColor(Theme.stone)
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
+                .frame(maxWidth: 160)
+                .fixedSize(horizontal: false, vertical: true)
+                .help("Answers use this project")
+            }
         }
         .padding(.horizontal, Theme.inset)
         .frame(height: Theme.barHeight)
@@ -168,7 +182,8 @@ struct CapsuleView: View {
 
     private var answer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
+                AvatarView(model.identities.person, size: 16)
                 Text("You").font(Theme.subtitle).foregroundColor(Theme.ash)
                 Text(model.asked ?? "").font(Theme.type(Tokens.TypeScale.base, .medium)).foregroundColor(Theme.bone).lineLimit(2)
             }
@@ -178,10 +193,12 @@ struct CapsuleView: View {
                 let working = model.reply.map { !$0.finished } == true || model.pending
                 if let depth = CapsuleLayout.answerDepth(model) {
                     if working { Pulse() }
+                    AvatarView(model.replyAvatar, size: 18)
                     Text("Vyre IQ").font(Theme.label).foregroundColor(Theme.ash)
                     Text(depth).font(Theme.subtitle).foregroundColor(Theme.ash)
                 } else {
-                    if working { Pulse() } else { MarkView(size: 13) }
+                    if working { Pulse() }
+                    AvatarView(model.replyAvatar, size: 18)
                     Text(model.replyWho).font(Theme.type(Tokens.TypeScale.base, .semibold)).foregroundColor(Theme.bone)
                 }
                 let state = replyState
@@ -190,7 +207,7 @@ struct CapsuleView: View {
             }
             // Before the answer is in, what memory said is the answer so far; once it is in, the
             // answer already uses it, so it folds into one line under the answer.
-            if let m = model.askedMemory, model.replyText.isEmpty { MemoryLine(memory: m, expanded: $model.memoryExpanded, inset: false) }
+            if let m = model.askedMemory, model.replyText.isEmpty { MemoryLine(memory: m, expanded: $model.memoryExpanded, inset: false, who: model.identities) }
             // Tool calls, collapsed to one line each, newest three; a row changes in place.
             if let tools = model.reply?.tools, !tools.isEmpty { ToolRows(tools: tools) }
             if let q = model.reply?.queued, !q.withdrawn {
@@ -207,7 +224,7 @@ struct CapsuleView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if let m = model.askedMemory, !model.replyText.isEmpty, !m.sources.isEmpty {
-                MemorySources(memory: m, expanded: $model.memoryExpanded)
+                MemorySources(memory: m, expanded: $model.memoryExpanded, who: model.identities, assistant: model.assistantName)
             }
             if let r = model.reply, r.finished, let e = r.error, r.queued?.withdrawn != true {
                 Label(e == "stopped" ? "Stopped." : "Failed. \(e)", systemImage: "xmark.circle").font(Theme.subtitle).foregroundColor(Theme.stone)
@@ -638,6 +655,7 @@ struct MemoryLine: View {
     let memory: MemoryAnswer
     @Binding var expanded: Bool
     var inset = true
+    var who = Identities()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -657,7 +675,7 @@ struct MemoryLine: View {
             }
             .buttonStyle(.plain)
             .help(expanded ? "Fold the sources (⌘→)" : "Show where this comes from (⌘→)")
-            if expanded { SourceList(memory: memory).padding(.leading, 23) }
+            if expanded { SourceList(memory: memory, who: who).padding(.leading, 23) }
         }
         .padding(.horizontal, inset ? Theme.inset : 0).padding(.vertical, inset ? 11 : 0)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -668,11 +686,16 @@ struct MemoryLine: View {
 struct MemorySources: View {
     let memory: MemoryAnswer
     @Binding var expanded: Bool
+    var who = Identities()
+    /// The assistant's name, for its mark when there is no fingerprint.
+    var assistant: String? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             // A source chip (capsule.md): 28 tall, radius 14, 1 px ruleStrong, 13/18 text2.
             HStack(spacing: 6) {
                 let n = memory.conversationCount
+                // Vyre IQ's chip wears the assistant's mark: the answer is its own reading.
+                if memory.iq { AvatarView(who.assistant(assistant), size: 14) }
                 Text(memory.iq ? IQAnswer.chip(memory) : n == 1 ? "from 1 of your sessions" : "from \(n) of your sessions")
                 Image(systemName: expanded ? "chevron.down" : "chevron.right").imageScale(.small).foregroundColor(Theme.ash)
             }
@@ -683,7 +706,7 @@ struct MemorySources: View {
             .contentShape(Capsule())
             .onTapGesture { withAnimation(.easeOut(duration: 0.14)) { expanded.toggle() } }
             .accessibilityAddTraits(.isButton)
-            if expanded { SourceList(memory: memory) }
+            if expanded { SourceList(memory: memory, who: who) }
         }
     }
 }
@@ -691,12 +714,15 @@ struct MemorySources: View {
 /// Where memory's answer comes from: quotes as quotes, with who said them and when.
 struct SourceList: View {
     let memory: MemoryAnswer
+    var who = Identities()
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             ForEach(Memo.items(memory).filter { $0.kind == .quote || !$0.said && $0.text != memory.answer }) { it in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(it.kind == .quote ? "\u{201C}\(it.text)\u{201D}" : it.text).font(Theme.title).foregroundColor(Theme.stone).lineLimit(2)
                     HStack(spacing: 6) {
+                        // A quote wears the mark of who said it: the person, or the assistant.
+                        if it.kind == .quote { AvatarView(it.source?.role == "assistant" ? who.assistant() : who.person, size: 12) }
                         Text(it.kind == .quote ? "\(it.who ?? "You") said\(it.age.isEmpty ? "" : ", " + Memo.ago(it.age))" : "noted\(it.age.isEmpty ? "" : " " + Memo.ago(it.age))")
                         if let s = it.source { Text("·"); Text(s.name).lineLimit(1) }
                     }

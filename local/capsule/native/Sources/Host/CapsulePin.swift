@@ -13,9 +13,14 @@
 //
 // Asked on every fresh connect (App.swift's follower.onState), a no-op once this process's own
 // cdhash has already been pinned successfully -- never a repeat prompt for the same build. Silent
-// on any refusal: no Secure Enclave, an ad hoc build (vyred refuses presence.capsule.pin outright
-// until a stable identity exists, "vyre-core" per ADR 0040 eventually), Touch ID declined, or off
-// under a test. The Capsule works either way; it just cannot vouch for itself yet.
+// on any refusal: no Secure Enclave, an ad hoc build, Touch ID declined, or off under a test. The
+// Capsule works either way; it just cannot vouch for itself yet.
+//
+// No nagging (the reviewer's LOW on 268404c0, 28 Sep): vyred refuses an ad hoc or unsigned build
+// only after the proof, so asking first meant a Touch ID for nothing on every reconnect, and people
+// build the Capsule on their own Mac. Now pinSelf checks its own signature first, the same test
+// vyred makes (signed, not ad hoc), and asks only when the pin can succeed; and any refusal (vyred
+// says denied, or the person says "Not now") is remembered for this process, so it is asked once.
 
 import Foundation
 import Security
@@ -35,14 +40,55 @@ extension CapsulePresence {
         return data.map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Pin this build with vyred if it is not already pinned. Idempotent per process: a second
-    /// call for the same cdhash (the common case, a reconnect) does nothing.
-    func pinSelf() async {
-        guard let cdhash = Self.ownCdhash(), cdhash != pinnedCdhash else { return }
-        let short = String(cdhash.prefix(16))
-        let proved = await proof(tool: "presence.capsule.pin", input: ["cdhash": cdhash], summary: "Pin this Mac's Capsule build (\(short))")
-        guard case .success(let header) = proved else { return }
-        let r = await vyred.call("presence.capsule.pin", ["cdhash": cdhash], timeout: 30, headers: ["x-vyre-presence": header])
-        if r.error == nil { pinnedCdhash = cdhash }
+    /// This process's own signature: its cdhash, and whether it is signed with an identity (not
+    /// ad hoc), read from its own code flags. nil when the code cannot be read.
+    nonisolated static func readOwnSignature() -> CapsuleSignature? {
+        var code: SecCode?
+        guard SecCodeCopySelf(SecCSFlags(rawValue: 0), &code) == errSecSuccess, let code else { return nil }
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, SecCSFlags(rawValue: 0), &staticCode) == errSecSuccess, let staticCode else { return nil }
+        var info: CFDictionary?
+        guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let dict = info as? [String: Any], let data = dict[kSecCodeInfoUnique as String] as? Data else { return nil }
+        let flags = (dict[kSecCodeInfoFlags as String] as? NSNumber)?.uint32Value ?? 0
+        let adhoc = flags & SecCodeSignatureFlags.adhoc.rawValue != 0 || dict[kSecCodeInfoCertificates as String] == nil
+        return CapsuleSignature(cdhash: data.map { String(format: "%02x", $0) }.joined(), adhoc: adhoc)
     }
+
+    /// Whether pinSelf would ask for Touch ID now, and if not, why.
+    enum PinStep: Equatable { case ask(String), pinned, refusedBefore, adhoc, unreadable }
+
+    func pinStep() -> PinStep {
+        guard let sig = ownSignature() else { return .unreadable }
+        if sig.cdhash == pinnedCdhash { return .pinned }
+        if sig.cdhash == pinRefused { return .refusedBefore }
+        // vyred refuses an unsigned or ad hoc build after the proof: never ask for that.
+        if sig.adhoc { return .adhoc }
+        return .ask(sig.cdhash)
+    }
+
+    /// Pin this build with vyred if it is not already pinned and can be. Idempotent per process:
+    /// a second call for the same cdhash (the common case, a reconnect) does nothing, whether the
+    /// first was pinned or refused.
+    func pinSelf() async {
+        guard case .ask(let cdhash) = pinStep() else { return }
+        let short = String(cdhash.prefix(16))
+        let summary = "Pin this Mac's Capsule build (\(short))"
+        let proved: Result<String, VyredFailure>
+        if let pinProof { proved = await pinProof("presence.capsule.pin", ["cdhash": cdhash], summary) }
+        else { proved = await proof(tool: "presence.capsule.pin", input: ["cdhash": cdhash], summary: summary) }
+        guard case .success(let header) = proved else {
+            // "Not now" is an answer; off under tests is not, so a test run remembers nothing.
+            if dialogsAllowed() || pinProof != nil { pinRefused = cdhash }
+            return
+        }
+        let r = await vyred.call("presence.capsule.pin", ["cdhash": cdhash], timeout: 30, headers: ["x-vyre-presence": header])
+        if r.error == nil { pinnedCdhash = cdhash } else if r.errorCode == "denied" { pinRefused = cdhash }
+    }
+}
+
+/// A process's own code signature, as vyred judges it for presence.capsule.pin.
+struct CapsuleSignature: Equatable {
+    var cdhash: String
+    var adhoc: Bool
 }

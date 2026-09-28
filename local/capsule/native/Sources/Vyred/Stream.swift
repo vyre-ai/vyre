@@ -84,7 +84,7 @@ final class VyredSocketStream: VyredStream, @unchecked Sendable {
     static func open(socket: String, path: String, timeout: TimeInterval = 5,
                      onMessage: @escaping @Sendable ([String: Any]) -> Void, onClose: @escaping @Sendable () -> Void) -> Result<VyredStream, VyredStreamFailure> {
         let fd = VySock.connect(socket)
-        guard fd >= 0 else { return .failure(VyredStreamFailure(code: "unreachable", message: "vyred is not running. Start it with vyre up.")) }
+        guard fd >= 0 else { return .failure(VyredStreamFailure(code: "unreachable", message: "vyred is not running. Start Vyre: Return on an empty Capsule.")) }
         let deadline = Date().addingTimeInterval(timeout)
         var raw = [UInt8](repeating: 0, count: 16)
         _ = SecRandomCopyBytes(kSecRandomDefault, 16, &raw)

@@ -66,7 +66,7 @@ extension CapsuleModel {
     /// The router's first choice for these words is a quick answer. The user's own work, or a
     /// command, goes to the assistant ("Ask juno"), and ⏎ runs that row instead.
     func quickFirst(_ words: String) -> Bool {
-        let first = Route.destinations(nil, words, catalog, quick: true).options.first
+        let first = Route.destinations(nil, words, catalog, quick: true, models: (models.quick, models.deeper)).options.first
         return first == nil || first?.kind == .quick
     }
 
@@ -175,24 +175,25 @@ extension CapsuleModel {
         }
         let said = convo.map { "Q: \($0.q)\nA: \($0.a)" }.joined(separator: "\n\n")
         let context = said.isEmpty ? nil : "Earlier in this conversation (answered by a faster model; answer again, more carefully):\n\n" + said
-        Task { @MainActor in self.handle(await self.ask(words, model: Self.deeperModel, context: context)) }
+        Task { @MainActor in self.handle(await self.ask(words, model: models.deeper, context: context)) }
     }
 
-    /// The model ⌘⏎ switches to.
-    static let deeperModel = "sonnet"
+    /// Today's fallback for the deeper model ⌘⏎ switches to: sessions.models.get's purpose
+    /// "agent" overrides it (CapsuleModel.loadModels), read as `models.deeper`.
+    static let deeperModel = ModelFallback.deeper
 
     /// ⌘⏎ in the answer's own thread: the deeper model and thinking on, then the words. The same
     /// question again is asked to be thought through; words typed after it are sent as they are.
     /// Thinking needs a running session: a thread that went idle gets it once the send wakes it.
     func deeperInThread(_ words: String, thread: String, question: String?) async -> ActionOutcome {
-        let switched = await vyred.call("threads.model", ["thread": thread, "model": Self.deeperModel], presence: false)
+        let switched = await vyred.call("threads.model", ["thread": thread, "model": models.deeper], presence: false)
         if let why = Bridge.explain(switched) { return .failed("Could not switch to the deeper model: \(why)") }
         let before = await vyred.call("threads.thinking", ["thread": thread, "on": true], presence: false)
         let thinking = (before.data as? [String: Any])?["thinking"] as? Bool == true
         let again = Self.autoKey(words) == Self.autoKey(question ?? "")
         let prompt = again ? "Think this through more carefully and answer again: \(words)" : words
         let who = VyreCandidate(kind: .thread, id: thread, label: "this answer")
-        let out = await send(prompt, to: who, model: Self.deeperModel)
+        let out = await send(prompt, to: who, model: models.deeper)
         if reply?.thread == thread { asked = words }
         if !thinking, reply?.thread == thread {
             _ = await vyred.call("threads.thinking", ["thread": thread, "on": true], presence: false)

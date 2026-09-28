@@ -151,6 +151,7 @@ final class SightExtension: CapsuleExtension, SendAttaching {
         panel = SessionPanelModel(vyred: host.vyred)
         panel.attacher = ScreenAttacher(vyred: host.vyred) { [weak host] in host?.log($0) }
         panel.onTalk = { [weak self] in self?.toggleTalk(toPanel: true) }
+        panel.onShown = { [weak host] s in host?.sessionShown(thread: s.map { $0.thread ?? "" }, project: s?.project) }
     }
 
     var panelOpen: Bool { window?.isOpen ?? false }

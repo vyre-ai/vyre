@@ -4,6 +4,49 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### capsule: 0.1.1, offline start, the current project, models from sessions.models, pin without nagging
+
+- Offline, the Capsule starts Vyre itself. The Offline line is "Start Vyre" (Return on an empty
+  box, a click, or the menu-bar popover); `vyre up` typed offline is that action, and any other
+  `vyre ...` says "Start Vyre first". It runs `vyre up --no-capsule --view` by argv with the CLI
+  `vyre capsule` now records in `<home>/capsule/cli.json` (else VYRE_CLI, else PATH), shows its
+  frames, and turns online when /v1/health answers. Before, `vyre up` in the Capsule failed
+  because commands ran through vyred's own CLI path.
+- The current project: the session window's session, else the project whose folder holds the
+  front app's document or working directory (AXDocument, only with Accessibility already
+  granted, never for a password manager), else none. Its tile and name show in the bar, and
+  memory.ask gets `context: {project}` (the slug only; the path never leaves the Mac).
+  `CapsuleHost.sessionShown(thread:project:)` is the new seam call; projects carry avatar_seed.
+- The quick and deeper models come from sessions.models.get (purposes capsule and agent); the
+  fallback names live once, in ModelFallback. The drift allowlist shrank to Route.swift.
+- presence.capsule.pin asks Touch ID only when vyred can pin this build: the Capsule checks its
+  own signature first (signed, not ad hoc), and a refusal or "Not now" is remembered for the
+  process, so a reconnect never asks again.
+
+#### capsule: the identity marks where the Capsule shows people and answers
+
+- The Capsule reads system.info once per show, beside the models, and keeps the owner's and the
+  assistant's name and fingerprint8 (`CapsuleModel.identities`, published only when the answer
+  changes). An older vyred without fingerprints gets the marks' no-fingerprint look.
+- Marks beside who speaks: the person's circle by "You" over an answer, on the user's lines in
+  the side view and in a direct conversation; an agent's blob when an agent answers (a thread's
+  own agent in the side view, which now also labels the reply with that agent); the assistant's
+  creature for Vyre IQ, a quick or deeper answer, and everything else. A memory quote wears the
+  mark of who said it, and Vyre IQ's source chip the assistant's.
+- The menu-bar popover gains an account row: the person's circle and the owner's name.
+
+#### capsule: the five identity marks of ADR 0043, drawn natively and byte for byte with the Deck
+
+- `local/capsule/native/Sources/Core/Avatars` ports the Deck's locked renderers (deck/vendor/vyrecode
+  at native-core a1d8ac72, through deck/js/avatars.js's seed rules) to Swift: the person's circle and
+  its Vyre code ring, the assistant's creature, agent blobs, teammate characters with their project
+  badge, and project tiles, solid and draft. Dark theme only. The Swift emits the same SVG markup as
+  the JS, whitespace included, and `AvatarView` draws that very string through AppKit's own SVG
+  support, cached as a bitmap per kind, size and scale.
+- JS arithmetic is reproduced where Swift differs: number printing, Math.round, and V8's cos and sin,
+  which differ from Darwin's libm in the last bit on 3 of the 55 angles the marks use, so V8's values
+  are kept as a table. Tests/AvatarTests.swift holds vectors printed by the JS renderers from node.
+  Not wired into any view yet.
 #### stage/0.1.1: three test failures fixed (cohesion, work/cohesion-011)
 
 - `test/cohesion-drift.test.js`: `deck/chat/composer.js` kept its own copy of the model list

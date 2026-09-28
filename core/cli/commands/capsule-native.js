@@ -18,6 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { dialogsAllowed, isRealHome } from "../../config/dialogs.js";
 
 export const IDENTITY = "Vyre Local";
@@ -29,6 +30,23 @@ const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: "utf8", .
 
 /** Where the native app is built for this home. @param {string} home */
 export function appPath(home) { return path.join(home, "capsule", "Vyre.app"); }
+
+/** This package's CLI, as vyred's /v1/health gives it: [node, bin/vyre]. */
+export const CLI = [process.execPath, path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "vyre")];
+
+/**
+ * Record where `vyre` is in <home>/capsule/cli.json, so a Capsule that finds vyred down can run
+ * `vyre up` itself (StartVyre.swift) without asking vyred for its CLI. Written when it changes.
+ * @param {string} home @param {string[]} [cli]
+ */
+export function recordCLI(home, cli = CLI) {
+  const f = path.join(home, "capsule", "cli.json");
+  const body = JSON.stringify({ cli }) + "\n";
+  try { if (fs.readFileSync(f, "utf8") === body) return false; } catch {}
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, body);
+  return true;
+}
 
 /** A hash of the Swift sources and the build script. Tests and generated files are not part of it. @param {string} dir */
 export function nativeHash(dir) {
@@ -77,6 +95,7 @@ export function identity(r = run) {
  */
 export function ensureBuilt({ dir, home, runner = run, say = () => {} }) {
   const app = appPath(home);
+  recordCLI(home);
   const id = identity(runner);
   const st = state(dir, app, id);
   if (st.bin && st.fresh) return { ok: true, bin: st.bin, app, built: false, message: "up to date" };

@@ -88,6 +88,24 @@ without editing Capsule files:
 - Planner banners (d608b8a), Touch ID in the panel, menu-bar popover, Taildrop send, the typing
   fix, the extension seam, `@` targets: see CHANGELOG.
 
+## Doing (session 7, 2026-09-28, 0.1.1 on work/capsule-011)
+work/capsule-011 is rebased on stage/0.1.1 e793afdf (the integrator's final P-256 + voice parity).
+The user's decisions for 0.1.1, all done; Swift 386/386 (build.sh test, build lock):
+1. Offline "Start Vyre" (Host/StartVyre.swift, VyreCLI; `vyre capsule` records cli.json).
+   StartVyreTests with FakeVyred and a fake CLI; under tests locate() reads only the scratch record.
+2. Avatars: Sources/Core/Avatars + UI/Avatars (byte-identical SVG, JS vectors, ADR 0043's six
+   projectBytes vectors), wired into the answer card, memory sources, direct replies, the side view
+   and the popover's account row (Host/Identities.swift, system.info once per show).
+   Deliberate differences from the JS: V8's cos/sin for 3 angles are stored as a table (libm differs
+   in the last bit), and the JS `constructor`/`__proto__` role-lookup quirk is not reproduced.
+3. Current project (Host/ProjectContext.swift): session window, then AXDocument's folder, else
+   none; the bar chip; memory.ask {question, context:{project}} on stage's non-streaming IQAsk.
+4. Models from sessions.models (ModelFallback the one fallback).
+5. Option-Space stays.
+Plus the reviewer's LOW on 268404c0: pin without nagging (preflight on its own signature, refusal
+remembered per process; PinNagTests).
+Next: review by team-lead; IQ streaming + corrections are in BACKLOG-0.1.2.
+
 ## Doing (session 6, 2026-09-27/28, Design A for the RC)
 Handed earlier: work/capsule-pro-said a127335d (capsule-mac green).
 On work/capsule-pro since, for the RC cut (Design A; deadline 03:00 UTC, go/no-go 01:30 UTC):

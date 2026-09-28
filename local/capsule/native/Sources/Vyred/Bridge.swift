@@ -20,7 +20,7 @@ public enum Bridge {
 
     /// Words for an error, for the one line the Capsule shows.
     public static func explain(code: String, message: String) -> String {
-        if code == "unreachable" { return "vyred is not running. Start it with vyre up." }
+        if code == "unreachable" { return "vyred is not running. Start Vyre: Return on an empty Capsule." }
         if code == "presence" { return message }
         if code == "no_such_tool" {
             if let mod = VyRx.first("no tool (\\w+)\\.", message, group: 1, caseless: false), let words = missing[mod] { return words }
