@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### link: link.unpair is person-only again, with one machine exception
+
+- `link.unpair` is back on PERSON_ONLY, so a model's shell on the box cannot forget a Mac by id.
+  The one call an owner's device may make without a person session is a paired Mac unpairing
+  itself with exactly `{ key }` (`machineSelf` in core/presence); the box's byKey still matches
+  the key and the calling node, so it can never forget a different Mac.
+
 #### install-box.sh: shellcheck actually clean, and a quiet line for Docker's own wait
 
 - Fixed a real, previously undetected bug: `pick_look()`'s escape-code assignments

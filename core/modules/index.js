@@ -15,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
-import { PERSON_ONLY } from "../presence/index.js";
+import { PERSON_ONLY, machineSelf } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 
@@ -536,7 +536,7 @@ export class Registry {
     // own actions there need the person's session too (core/presence/person.js),
     // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
     // way to get it, and the first passkey is enrolled with onboarding's code.
-    if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool)
+    if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input)
       && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
       return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
     }
