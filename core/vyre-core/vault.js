@@ -33,6 +33,9 @@ const TRUST = [`
   );
 `];
 
+/** How many unverified items one peer, and all of them together, may leave in core's db. */
+export const UNVERIFIED_MAX = { perPeer: 50, total: 500 };
+
 /** Kinds that sign inside the vault and never leave it. */
 const NEVER_OUT = new Set(["ssh-key", "passkey"]);
 
@@ -79,6 +82,13 @@ export function openVault({ db, dataDir, log = () => {}, emit = () => {}, testKd
     put: async (input, how) => {
       const old = Boolean(vault.row(String(input.name || "")));
       if (old && !how.verified) throw fail(`${input.name} exists; changing it needs your proof`, "presence_required");
+      // An unverified put costs nothing to send, so a model could fill core's db with them.
+      if (!how.verified) {
+        const count = (/** @type {string|null} */ by) => Number(/** @type {any} */ (db.prepare(`SELECT COUNT(*) AS n FROM vyrecore_item_trust WHERE verified = 0${by ? " AND by = ?" : ""}`).get(...(by ? [by] : []))).n);
+        if (count(how.by) >= UNVERIFIED_MAX.perPeer || count(null) >= UNVERIFIED_MAX.total) {
+          throw fail("too many items are waiting for you to verify them; verify or delete some first", "too_many_unverified");
+        }
+      }
       const r = await vault.put(input, how.by);
       trust.mark(input.name, how.verified, how.by);
       return { ...r, ...(how.verified ? {} : { unverified: true }) };

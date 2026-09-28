@@ -87,8 +87,10 @@ export async function startCore(o) {
   const judge = o.personOf || personOf;
   // Is this peer the Capsule core itself signed? The one check for the installer's code and for
   // every plain value (phase 4 brings the real one: the exe against core's DR, the audit token).
-  // Until then a Mac core says no to both; Linux runs core for development and tests only.
-  const capsuleFrom = o.capsuleFrom || o.codeFrom || (async () => process.platform !== "darwin");
+  // Until then a Mac core says no to both, and so does Linux unless o.dev is set.
+  // The Linux "yes" is for development only, and only when asked for on purpose (o.dev, which
+  // main.js sets from VYRE_CORE_STRICT=0): a core started any other way says no.
+  const capsuleFrom = o.capsuleFrom || o.codeFrom || (async () => o.dev === true && process.platform !== "darwin");
   const codeFrom = capsuleFrom;
   // Which process a session is bound to: its pid and start time, so a leaked session secret is
   // useless to any other process, a reused pid included.

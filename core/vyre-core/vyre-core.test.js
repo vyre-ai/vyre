@@ -23,7 +23,7 @@ async function core(t, o = {}) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vc-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const socket = path.join(dir, "c.sock");
-  const c = await startCore({ socket, dataDir: path.join(dir, "data"), ownerUid: uid, version: "test", ...o });
+  const c = await startCore({ socket, dataDir: path.join(dir, "data"), ownerUid: uid, version: "test", dev: true, ...o });
   t.after(() => c.close());
   return { ...c, socket, dir };
 }
@@ -282,4 +282,22 @@ test("vyre-core: the handoff code lasts 2 minutes, the typed one 10, and five wr
     const late = await coreTool("presence.enroll", input, { socket: c.socket, coreUid: uid, presence: `code code=${k}` });
     assert.match(late.error.message, /wrong, used or expired/, "a right code after five wrong ones is void");
   }
+});
+
+test("vyre-core: without dev set on purpose, the stand-in Capsule check says no, on Linux too", async t => {
+  const c = await core(t, { peerCred: async () => ({ pid: process.pid, uid }), dev: false });
+  const phone = deviceKey();
+  const id = c.presence.enroll({ kind: "device", name: "alex-phone", public_key: phone.pub, alg: -7 }).id;
+  const s = await coreTool("presence.session.open", {}, { socket: c.socket, coreUid: uid, presence: phone.sign("presence.session.open", {})(id) });
+  assert.equal(s.error && s.error.code, "not_capsule");
+  const r = await coreTool("vault.reveal", { name: "x" }, { socket: c.socket, coreUid: uid, presence: phone.sign("vault.reveal", { name: "x" })(id) });
+  assert.equal(r.status, 403);
+  // The installer's code is refused the same way, on a core with no key yet.
+  const fresh = await core(t, { peerCred: async () => ({ pid: process.pid, uid }), dev: false });
+  const store = openStore(path.join(fresh.dir, "data"));
+  const code = store.presence.mintCode(INSTALL_CODE).code;
+  store.db.close();
+  const k = crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  const e = await coreTool("presence.enroll", { kind: "capsule", name: "Capsule", public_key: k }, { socket: fresh.socket, coreUid: uid, presence: `code code=${code}` });
+  assert.match(String(e.error && e.error.message), /only the Capsule vyre-core signed/);
 });

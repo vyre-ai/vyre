@@ -46,7 +46,9 @@ if (cmd === "code") {
   db.close();
   process.stdout.write(`${code} ${expires}\n`);
 } else if (cmd === "serve") {
-  const core = await startCore({ socket, dataDir, ownerUid: /** @type {number} */ (owner), version: version || undefined, log });
+  // dev: only a non-strict start (VYRE_CORE_STRICT=0, never a Mac default) lets the Linux
+  // stand-in for the signed-Capsule check say yes.
+  const core = await startCore({ socket, dataDir, ownerUid: /** @type {number} */ (owner), version: version || undefined, log, dev: !strict && process.platform !== "darwin" });
   const stop = () => core.close().then(() => process.exit(0));
   process.on("SIGTERM", stop);
   process.on("SIGINT", stop);

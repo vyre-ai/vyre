@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { startCore } from "./server.js";
+import { UNVERIFIED_MAX } from "./vault.js";
 import { coreTool } from "../../lib/vyre-core-client.js";
 import { inputHash } from "../presence/index.js";
 import { TEST_KDF } from "../vault/testing.js";
@@ -101,4 +102,13 @@ test("vyre-core vault: a value leaves only for the Capsule, with a proof or a se
   // A reprompt item takes its own proof every time.
   await call("vault.put", { name: "card", kind: "secret", fields: { value: "4111" }, reprompt: true }, { proved: true });
   assert.equal((await call("vault.reveal", { name: "card" }, { presence: session })).status, 401);
+});
+
+test("vyre-core vault: unverified puts are capped per peer, so nothing can fill core's db with them", async t => {
+  const { call } = await core(t);
+  for (let i = 0; i < UNVERIFIED_MAX.perPeer; i++) assert.ok(!(await call("vault.put", { name: `junk-${i}`, kind: "secret", fields: { value: "x" } })).error, `put ${i}`);
+  const over = await call("vault.put", { name: "one-more", kind: "secret", fields: { value: "x" } });
+  assert.equal(over.error && over.error.code, "too_many_unverified");
+  // The person's own verified put is never capped.
+  assert.ok(!(await call("vault.put", { name: "mine", kind: "secret", fields: { value: "y" } }, { proved: true })).error);
 });

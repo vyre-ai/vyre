@@ -142,6 +142,13 @@ Also for 2a:
   AFTER stage/0.1.1 merges; 2d32d72e's edge stays pending until then. After the move, a note
   on which files core reaches at runtime, and a proposed split so core hosts only the store,
   grants, crypto and keys.
+- Reviewer's LOWs on 2d32d72e, done: the Linux stand-in for the signed-Capsule check says yes
+  only with `dev` set on purpose (main.js sets it from VYRE_CORE_STRICT=0, never on a Mac);
+  unverified puts are capped at 50 per peer and 500 in all (too_many_unverified).
+- The refactor round (lead, final): after stage/0.1.1 lands on main, ONE sha moves core/store,
+  core/presence and core/daemon/peer.js's pure walks to lib/, and the vault store, kinds and
+  crypto to lib/vault (with capValues). No kernel exceptions: a boundaries test fails if anything
+  under core/vyre-core imports a core/ path. The reviewer then clears 2d32d72e with it.
 - Left for later in 2a: vyred's side (below, as first written). On a core-linked Mac, the vault module's tools forward to core (the
   proof passes through), its own store stays shut, ctx.vault.fetch releases through core, and
   `vyre vault reveal` in a terminal says to use the Capsule. Then the grant re-approval of
