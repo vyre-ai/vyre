@@ -7,6 +7,30 @@ Branch: work/integrator · Worktree: ../vyre-integrator · Merges into main at .
 Own merges into main, one at a time, with targeted tests on the test box after each and a full suite on
 the test box when it matters. Keep the suite green on the test box (Linux, node 22, the box image's node).
 
+## State (2026-09-28 ~05:20 UTC, resume 10)
+
+**rc.2 DONE.** main = 90c6d2c1 (c3a69611 + b79eb5e0 journey todo diagnostic + 90c6d2c1 link.unpair
+3d8dd903 cherry-pick). CI node 22 + 24 + box-image green on it. pre/rc = b08d1530 (tree-equal).
+strip-trailers (fresh clone): shas unchanged, tree-equal:yes. Box redeployed to 90c6d2c1 (backup
+/srv/vyre-backups/2026-09-28-6, image tag vyre:rollback-2026-09-28-6; the box had been on 4fd286d,
+not c3a69611). Checksums 1034/1034. GitHub PRE-release v0.1.0-rc.2 (tag made by `gh release create
+--target`, since pre-push refuses refs/tags). vyre.run NOT republished. rc-smoke on the tgz: 22 pass,
+1 fail, 1 skip; the fail is step 6 mail (vault.connect now answers no_terminal/presence_required
+under personguard, which the smoke's grep misses): a smoke gap for e2e2.
+
+**stage/0.1.1** (this worktree): folded in order: sessions d2a0207c (bff60d78; restored the
+native-core fork-at-a-turn test the first resolution dropped), main 90c6d2c1 (7f61a275; 18
+conflicts), ed892ce8 (c496700a), setsid 8cf64fe9 (ebb74a84), federation c6b4856c (79b13dee),
+cohesion 040e52fd (d2444f1c), docs:ref (d04afb0a). Full suite running in tmux `integ-stage-full`,
+log ~/stage-full.log on testbox (tree ~/vyre-ci/integrator-stage).
+
+Known stage failures (pre-existing, not merge damage): core/memory/module.test.js "first read's
+pace" (2ecf79ba vs af11226d firstParty semantics; memory-iq/reviewer), docs-check on
+docs/design/teammates.md (teammates). NOT folded, waiting on the lead: tailnet 6cd9c02d (range
+carries unreviewed vitals), federation e8560b79 (on held 7021d4e1/f8330ccc), glass (dormant
+3f03ddb0), sessions cb387d88/ccf2e0f1 (on held b786a799), 9bfc452e (with capsule-pro Swift SE only),
+and the exact reviewer-2 heads for native-core/chat/teammates/memory-iq/capsule-pro voice.
+
 ## State at restart (2026-09-28, ~00:50 UTC, usage-limit prep)
 
 **rc.2 (pre/rc):** head is `e0c578ad` (= a5eff01f's merge + the rc.2 version bump 0.1.0-rc.1 ->
