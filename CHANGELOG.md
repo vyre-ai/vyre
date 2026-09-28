@@ -15,6 +15,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   join-caps unit test's fixture for the true case (not wired into the live fixture loader, which
   is one file per module).
 - `deck/js/join-caps.test.js`: both cases, plus missing/null status and a non-bool truthy value.
+- reviewer-2's follow-up: nothing committed had actually driven `relay.join`'s `presence:"asked"`
+  round trip (the old onboard-page.test.js click-through only ever hit the fixture fallback,
+  since relay.join isn't a real tool yet — a "missing" answer short-circuits before presence
+  enters into it). Added two `deck/js/api.test.js` tests: the box asks for a passkey only once
+  it actually says `presence_required` (never up front), and a box that never asks gets one
+  round trip with no passkey (the no-nag rule) — both assert the exact `{url, becomeDevice}`
+  body on every send. Rewrote `test/onboard-page.test.js`'s device/relay test to match current
+  real behaviour instead: the real `onboard.status` (core/onboard/index.js) has no `can` field
+  yet, so the code-pairing radio is correctly, unconditionally hidden today; the test now
+  asserts that (no radio, tailnet-name field only, "Connect" not "Pair").
 
 #### Onboarding: relay.join's confirmation shows the box name, relay and key fingerprint
 

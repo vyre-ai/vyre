@@ -248,13 +248,18 @@ test("onboard page: \"How will Vyre run?\" Solo skips Tailscale and the address,
     assert.equal(st.data.steps.name, "skipped", "Solo never shows the address step");
   });
 
-test("onboard page: \"How will Vyre run?\" Device, pair with a code, one call and straight through",
+test("onboard page: \"How will Vyre run?\" Device hides \"Pair with a code\" until anywhere ships can.relayJoin",
   { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
-    // The other of Device's two real mechanisms (tailnet: "Concrete answer: relay.join for the
-    // code, onboard.join for Tailscale"): one call, relay.join{url, becomeDevice:true}, no
-    // separate verify step since a successful pairing already proves reachability. No real
-    // relay.join tool exists yet either, so this drives it through ?fixtures=1
-    // (deck/fixtures/relay.json).
+    // This used to click through the code-pairing radio via ?fixtures=1 (deck/fixtures/relay.json)
+    // as if it were live. It never was: relay.join isn't a real tool yet, so that click only ever
+    // hit the fixture fallback, not a real presence round trip (reviewer-2's gap, closed in
+    // deck/js/api.test.js's new "asked" tests instead, where the call sequence can actually be
+    // driven and asserted). Now that "Pair with a code" is gated on
+    // onboard.status.can.relayJoin (deck/js/join-caps.js), and the real onboard.status
+    // (core/onboard/index.js) does not return a `can` field at all yet, this device path is
+    // unconditionally hidden in a real onboarding flow — correctly, per the no-guess rule. This
+    // test now asserts that real, current behaviour: only the tailnet-name field shows, no
+    // device-via radios at all.
     const root = tempHome(t);
     const bins = fs.mkdtempSync(path.join(root, "bin-"));
     const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
@@ -276,9 +281,6 @@ test("onboard page: \"How will Vyre run?\" Device, pair with a code, one call an
     await page.send("Page.enable");
     await page.send("Page.navigate", { url: link.data.url });
     await page.until(`document.querySelector("#name")`, "the name field");
-    const settled = await page.run(`return location.href;`);
-    await page.send("Page.navigate", { url: withFixtures(settled) });
-    await page.until(`document.querySelector("#name")`, "the name field, back after turning fixtures on");
     await page.run(`document.querySelector("#name").focus()`);
     await page.send("Input.insertText", { text: "kit" });
     await page.until(`!document.querySelector("#primary").disabled`, "Continue turn on");
@@ -286,14 +288,14 @@ test("onboard page: \"How will Vyre run?\" Device, pair with a code, one call an
     await page.run(`document.querySelector("#primary").click()`);
     await page.until(`location.hash === "#live"`, "the how-will-vyre-run step");
     await page.run(`document.querySelector('input[name="live"][value="device"]').click()`);
-    await page.run(`document.querySelector('input[name="device-via"][value="relay"]').click()`);
+    await page.until(`document.querySelector("#server-node")`, "the tailnet-name field");
+    const hasRelayRadio = await page.run(`return !!document.querySelector('input[name="device-via"][value="relay"]');`);
+    assert.equal(hasRelayRadio, false, "no code-pairing option: this real onboard.status has no can.relayJoin field, which reads as false");
     const btnLabel = await page.run(`return document.querySelector("#primary").textContent;`);
-    assert.equal(btnLabel, "Pair", "the button says what this path actually does, not \"Connect\"");
-    await page.run(`document.querySelector("#pair-code").value = "relay://pair/abc123"; document.querySelector("#pair-code").dispatchEvent(new Event("input", { bubbles: true }))`);
-    await page.run(`document.querySelector("#primary").click()`);
-    await page.until(`location.hash === "#claude"`, "one call, no verify step, straight through");
+    assert.equal(btnLabel, "Connect", "the only path left is the Tailscale one");
 
-    const st = await call("onboard.status", {}, { root });
-    assert.equal(st.data.steps.tailscale, "skipped", "the relay path never touches Tailscale");
-    assert.equal(st.data.steps.name, "skipped", "a device never reserves its own address");
+    await page.run(`document.querySelector("#server-node").focus()`);
+    await page.send("Input.insertText", { text: "kit" });
+    await page.run(`document.querySelector("#primary").click()`);
+    await page.until(`location.hash === "#tailscale"`, "the only device path left falls through to the Tailscale screen");
   });

@@ -239,6 +239,18 @@ Filled in as each lands.
   wired into the live fixture loader, which is one file per module). Tests:
   `deck/js/join-caps.test.js` (5/5, both fixture cases plus missing/null/non-bool), run on
   testbox; `test/onboard.test.js` re-run clean after (15/15). Sent to reviewer-2 with 68c2333f.
+- reviewer-2's follow-up: no committed test actually drove `relay.join`'s `presence:"asked"`
+  round trip — the prior onboard-page.test.js click-through only ever hit the fixture fallback
+  (relay.join isn't a real tool, so a "missing" answer short-circuits before presence enters
+  into it). Added `deck/js/api.test.js` tests for the "asked" sequence itself (passkey only once
+  the box actually says presence_required; one round trip, no passkey, for a box that never
+  asks; the same `{url, becomeDevice}` body both times) — 2 new, 13/13 in that file on testbox.
+  Rewrote `test/onboard-page.test.js`'s device/relay test: it used to click a
+  `?fixtures=1`-only radio as if live; now that the option is really gated and the real
+  `onboard.status` has no `can` field yet, it correctly never shows in a real flow, so the test
+  asserts exactly that (no radio, tailnet-name field alone, "Connect" not "Pair") — 4/4 in that
+  file on testbox with `CHROME_BIN=/usr/local/bin/vyre-chrome` (headless, testbox's Playwright
+  Chromium; the RULES `CHROME_BIN` default is a Mac path and testbox has no Chrome install).
 
 ## Doing
 
