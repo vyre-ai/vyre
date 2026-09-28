@@ -52,3 +52,13 @@ test("without onFind, /find is a silent no-op (an older or bare composer)", asyn
   assert.equal(c.value(), "", "still consumed as a local command, not sent as a message");
   c.stop();
 });
+
+test("typing its alias /search directly (not via the menu) still routes to onFind, not sent as a message", async () => {
+  /** @type {string[]} */
+  const found = [];
+  const c = mountComposer({ thread: thread(), onFind: q => found.push(q) });
+  typeAndEnter(c, "/search harlow retainer");
+  assert.deepEqual(found, ["harlow retainer"], "the dispatch checks aliases, not just the canonical name");
+  assert.equal(c.value(), "", "never sent as a literal chat message");
+  c.stop();
+});
