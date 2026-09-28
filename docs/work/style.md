@@ -58,6 +58,21 @@ file, sent directly to them): a single `APPEND_TOTAL_MAX` (2000, their call to s
 `team.project-append`'s own truncation. That is defense in depth: bounded even if either
 module's own cap ever drifts, or a third append joins this spot later. Waiting on sessions.
 
+**Reviewer signed off 36caa4ad (style.append wired into harness.brief), one LOW: fixed, waiting
+on sessions to land it.** `style.append` was called with `{project: slug}` *before*
+`inScope(projects, slug)` was checked, so a session outside that project still got that
+project's own `style.rules` (person text) in its prompt. Fix (sessions' file, sent to them
+directly): compute `inScope` once, pass `{project: slug}` to `style.append` only when in scope,
+`{}` otherwise, reusing the same boolean for the existing early return rather than calling
+`inScope` twice with the fetch in between. The account-level house voice still applies either
+way; only the project-scoped `style.rules` was the leak.
+
+**Reviewer-2 signed off 4732c3a8** after an independent hand-trace of `normalizeRun` (tight-dash
+pairs, a dash before closing punctuation) and `splitProse`'s lopsided-fence handling, plus a
+broader-glob rerun on testbox (128/128, 0 fail). Confirmed the GROUPS-ordering note is
+`core/settings`' own call, not `core/style`'s to reach into; left for whoever places it, not
+blocking.
+
 ## Next
 
 - `style.append`'s session-start pickup is sessions' (sent, queued behind their own work).
