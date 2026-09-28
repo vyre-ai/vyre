@@ -211,7 +211,7 @@ public final class CapsuleModel: ObservableObject {
     public struct CapsuleModels: Equatable { public var quick = CapsuleModel.quickModel; public var deeper = CapsuleModel.deeperModel }
     @Published public internal(set) var models = CapsuleModels()
     /// Today's fallback for the quick model: sessions.models.get's purpose "capsule" overrides it.
-    static let quickModel = "haiku"
+    static let quickModel = ModelFallback.quick
 
     /// Caches purposes.capsule and purposes.agent from sessions.models.get as the Capsule's quick
     /// and deeper models. A vyred with no such tool, or one that errors, leaves today's values.

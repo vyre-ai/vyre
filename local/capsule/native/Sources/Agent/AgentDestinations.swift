@@ -51,7 +51,8 @@ extension CapsuleModel {
             routes.load(t.id, vyred, projectName: { [weak self] s in self?.catalog.projectName(s) ?? s }) { [weak self] in self?.search() }
         }
         let agentThreads = target.flatMap { $0.kind == .agent ? routes.threads($0.id) : nil } ?? []
-        var r = Route.destinations(target, words, catalog, agentThreads: agentThreads, quick: vyred.has("threads.start"))
+        var r = Route.destinations(target, words, catalog, agentThreads: agentThreads, quick: vyred.has("threads.start"),
+                                     models: (models.quick, models.deeper))
         // With no chip, a question answers itself and ⏎ / ⌘⏎ ask (AutoAsk.swift): no Quick or
         // Deeper answer rows.
         if target == nil { r.options.removeAll { $0.kind == .quick } }

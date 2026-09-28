@@ -166,6 +166,14 @@ public struct RankRow: Sendable, Equatable {
 
 // MARK: - The rules
 
+/// The two model names the Capsule falls back on when sessions.models.get has not answered (or a
+/// vyred has no such tool). The one place they are written; everything else reads
+/// CapsuleModel.models (purposes "capsule" and "agent").
+public enum ModelFallback {
+    public static let quick = "haiku"
+    public static let deeper = "sonnet"
+}
+
 public enum Route {
     fileprivate static let kindOrder: [CandidateKind: Int] = [.agent: 0, .project: 1, .thread: 2, .app: 3]
 
@@ -292,7 +300,8 @@ public enum Route {
     /// the default), `agentThreads` the threads of that agent when the switchboard can list them.
     /// `quick` says the switchboard can start a thread, so a question can go straight to a model.
     public static func destinations(_ target: VyreCandidate?, _ text: String, _ cat: VyreCatalog, agentThreads: [VyreThread] = [],
-                                    now: Double = vyNowMs(), quick: Bool = false) -> (options: [VyreDestination], why: String?) {
+                                    now: Double = vyNowMs(), quick: Bool = false,
+                                    models: (quick: String, deeper: String) = (ModelFallback.quick, ModelFallback.deeper)) -> (options: [VyreDestination], why: String?) {
         func threadDest(_ t: VyreThread, _ agent: String? = nil) -> VyreDestination {
             let a = agent ?? t.agent
             return VyreDestination(kind: .thread, agent: a.flatMap { $0.isEmpty ? nil : $0 }, project: t.project, projectName: t.projectName,
@@ -307,8 +316,8 @@ public enum Route {
             // A question goes to a model. One about the user's own work goes to the assistant first,
             // which has their memory; any other goes to a fast model, which has none and answers sooner.
             if quick && asksQuestion(text) {
-                let fast = VyreDestination(kind: .quick, model: "haiku", meta: "fast model · haiku")
-                let deep = VyreDestination(kind: .quick, model: "sonnet", deep: true, meta: "deeper · sonnet")
+                let fast = VyreDestination(kind: .quick, model: models.quick, meta: "fast model · \(models.quick)")
+                let deep = VyreDestination(kind: .quick, model: models.deeper, deep: true, meta: "deeper · \(models.deeper)")
                 guard let mine else { return ([fast, deep], nil) }
                 if let own = ownThings(text, cat) { return ([mine, fast, deep], "\(own), so \(mine.agent ?? "") answers with your memory.") }
                 return ([fast, mine, deep], nil)

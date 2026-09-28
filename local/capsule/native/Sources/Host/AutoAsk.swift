@@ -66,7 +66,7 @@ extension CapsuleModel {
     /// The router's first choice for these words is a quick answer. The user's own work, or a
     /// command, goes to the assistant ("Ask juno"), and ⏎ runs that row instead.
     func quickFirst(_ words: String) -> Bool {
-        let first = Route.destinations(nil, words, catalog, quick: true).options.first
+        let first = Route.destinations(nil, words, catalog, quick: true, models: (models.quick, models.deeper)).options.first
         return first == nil || first?.kind == .quick
     }
 
@@ -180,7 +180,7 @@ extension CapsuleModel {
 
     /// Today's fallback for the deeper model ⌘⏎ switches to: sessions.models.get's purpose
     /// "agent" overrides it (CapsuleModel.loadModels), read as `models.deeper`.
-    static let deeperModel = "sonnet"
+    static let deeperModel = ModelFallback.deeper
 
     /// ⌘⏎ in the answer's own thread: the deeper model and thinking on, then the words. The same
     /// question again is asked to be thought through; words typed after it are sent as they are.

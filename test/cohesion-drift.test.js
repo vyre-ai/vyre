@@ -31,9 +31,7 @@ const ALLOWED = {
   models: {
     "apps/ios/Vyre/Screens/Common.swift": 1, // debt: mobile, after 0.1.0
     "deck/views/agents.js": 3,
-    // The Capsule's fallbacks when sessions.models.get is missing (CapsuleModel.models).
-    "local/capsule/native/Sources/Host/AutoAsk.swift": 1,
-    "local/capsule/native/Sources/Host/CapsuleModel.swift": 1,
+    // The Capsule's one fallback pair when sessions.models.get is missing (ModelFallback; CapsuleModel.models).
     "local/capsule/native/Sources/Vyred/Route.swift": 2,
   },
   policy: {
