@@ -77,6 +77,7 @@ async function render(o = {}, p = fakePresence()) {
 
 const server = (el, name) => $(el, `[data-server=${name}]`);
 const account = (el, name) => $(el, `[data-account=${name}]`);
+const githubAccount = (el, name) => $(el, `[data-github=${name}]`);
 const noLeak = el => assert.ok(!everything(el).includes(LEAK), "a value from a stray reply field reached the page");
 const select = (sel, v) => { sel.value = v; sel.dispatchEvent(new Event("change")); };
 const type = (input, v) => { input.value = v; };
@@ -86,7 +87,7 @@ const submit = form => Promise.all(form.dispatchEvent(new Event("submit")));
 
 test("renders every server and account with names only", async () => {
   const { el, api } = await render();
-  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["google.accounts", "mcp.servers", "vault.connections.list"], "opening makes three calls, and never google.test");
+  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["github.accounts", "google.accounts", "mcp.servers", "vault.connections.list"], "opening makes four calls, and never google.test or github.connect");
 
   const t = text(server(el, "tracker"));
   assert.match(t, /tracker/);
@@ -412,6 +413,128 @@ test("Google Remove asks first, then calls google.remove", async () => {
   assert.match(text(account(el, "bakery")), /Disconnect bakery\?/);
   await $(account(el, "bakery"), "button[data-act=remove-yes]").click();
   assert.deepEqual(api.of("google.remove").map(c => c.input), [{ name: "bakery" }]);
+});
+
+// ---- GitHub accounts -----------------------------------------------------------------------------
+
+test("renders the GitHub account with name, login and avatar, never the token", async () => {
+  const { el } = await render();
+  const t = text(githubAccount(el, "work"));
+  assert.match(t, /work/);
+  assert.match(t, /alex-harlow/);
+  const img = $(githubAccount(el, "work"), "img");
+  assert.equal(img.getAttribute("src"), "https://avatars.githubusercontent.com/u/1?v=4");
+  noLeak(el);
+});
+
+test("GitHub Disconnect asks first, then calls github.remove; a failed revoke still shows removed with a warning", async () => {
+  const { el, api } = await render();
+  await $(githubAccount(el, "work"), "button[data-act=remove]").click();
+  assert.equal(api.of("github.remove").length, 0);
+  assert.match(text(githubAccount(el, "work")), /Disconnect work\?/);
+  assert.match(text(githubAccount(el, "work")), /revoked at GitHub first/);
+  await $(githubAccount(el, "work"), "button[data-act=remove-yes]").click();
+  assert.deepEqual(api.of("github.remove").map(c => c.input), [{ name: "work" }]);
+
+  const { el: el2, api: api2 } = await render({ over: { "github.remove": { removed: true, revoked: false, warning: "the account was removed, but the token may still work at GitHub: no client secret configured" } } });
+  await $(githubAccount(el2, "work"), "button[data-act=remove]").click();
+  await $(githubAccount(el2, "work"), "button[data-act=remove-yes]").click();
+  assert.deepEqual(api2.of("github.remove").map(c => c.input), [{ name: "work" }]);
+});
+
+test("github.accounts missing draws its own empty state, never blocking mcp/google", async () => {
+  const { el } = await render({ missing: ["github"] });
+  assert.match(text(server(el, "tracker")), /tracker/, "mcp still renders");
+  assert.match(text(account(el, "bakery")), /northwind-google/, "google still renders");
+  assert.equal($(el, "button[data-act=add-github]"), null, "no add button when the module is missing, same as MCP/Google");
+  assert.match(text(el), /GitHub accounts are kept by the github module/);
+});
+
+// ---- Sign in with GitHub --------------------------------------------------------------------------
+
+const GH_CONNECT = FIXTURE["github.connect"];
+
+/** Open the form, name the account, and press Sign in with GitHub. */
+async function startGithubSignIn(o = {}) {
+  const r = await render(o);
+  await $(r.el, "button[data-act=add-github]").click();
+  const form = $(r.el, "form[data-form=github]");
+  type($(form, "#cgh-name"), "work2");
+  await submit(form);
+  return { ...r, form, wait: () => $(r.el, "[data-signin=waiting]") };
+}
+
+test("Add a GitHub account: only a name, no vault choices loaded", async () => {
+  const { el, api } = await render();
+  await $(el, "button[data-act=add-github]").click();
+  const form = $(el, "form[data-form=github]");
+  assert.ok($(form, "#cgh-name"));
+  assert.equal($(form, "#cg-item"), null, "no vault item picker: GitHub sign-in makes its own item");
+  assert.equal(api.of("vault.list").length, 0, "no vault.list call to open this form");
+  assert.match(text($(form, "button[type=submit]")), /^Sign in with GitHub$/);
+});
+
+test("Sign in with GitHub: github.connect with the name, then the code and Open GitHub", async () => {
+  const { api, wait, el } = await startGithubSignIn();
+  assert.deepEqual(api.of("github.connect").map(c => c.input), [{ name: "work2" }]);
+  assert.match(text(wait()), new RegExp(GH_CONNECT.user_code));
+  const open = $(wait(), "a[data-act=open-github]");
+  assert.equal(open.getAttribute("href"), GH_CONNECT.verification_uri_complete);
+  assert.equal(open.getAttribute("target"), "_blank");
+  assert.match(open.getAttribute("rel"), /noopener/);
+  assert.match(text(wait()), /15 minutes/);
+  noLeak(el);
+});
+
+test("Sign in with GitHub: Copy uses the clipboard", async () => {
+  const wrote = fakeClipboard();
+  const { wait } = await startGithubSignIn();
+  await $(wait(), "button[data-act=copy-code]").click();
+  assert.deepEqual(wrote, [GH_CONNECT.user_code]);
+  assert.match(text($(wait(), "button[data-act=copy-code]")), /Copied/);
+});
+
+test("Sign in with GitHub: github.connected for this id reloads and closes the form", async () => {
+  const { api, emit, el } = await startGithubSignIn();
+  await emit("github.connected", { id: "someone-else", name: "other", login: "other" });
+  assert.equal(api.of("github.accounts").length, 1, "another sign-in's event is not ours, and does not reload");
+  await emit("github.connected", { id: GH_CONNECT.id, name: "work2", login: "alex-harlow" });
+  await tick();
+  assert.equal(api.of("github.accounts").length, 2, "our own event reloads the list");
+  assert.equal($(el, "[data-signin]"), null, "the form closes");
+});
+
+test("Sign in with GitHub: github.connect-failed shows its error and offers to start again", async () => {
+  const { emit, el, api } = await startGithubSignIn();
+  await emit("github.connect-failed", { id: GH_CONNECT.id, error: "The code expired. Start a new one in Vyre." });
+  assert.match(text($(el, "[data-hint=signin-failed]")), /The code expired\. Start a new one in Vyre\./);
+  await $(el, "button[data-act=again]").click();
+  assert.ok($(el, "form[data-form=github]"), "Start again opens the form");
+  assert.equal(api.of("github.connect.cancel").length, 0, "an ended sign-in is not cancelled");
+});
+
+test("Sign in with GitHub: Cancel calls github.connect.cancel, and so does leaving the page or reopening the form", async () => {
+  const a = await startGithubSignIn();
+  await $(a.wait(), "button[data-act=cancel-signin]").click();
+  assert.deepEqual(a.api.of("github.connect.cancel").map(c => c.input), [{ id: GH_CONNECT.id }]);
+  assert.equal(a.wait(), null);
+  await a.emit("github.connect-failed", { id: GH_CONNECT.id, error: "The sign-in was cancelled." });
+  assert.equal($(a.el, "[data-hint=signin-failed]"), null, "our own cancel is not shown as a failure");
+
+  const b = await startGithubSignIn();
+  b.life.alive = false;
+  for (const f of b.cleanups) f();
+  assert.deepEqual(b.api.of("github.connect.cancel").map(c => c.input), [{ id: GH_CONNECT.id }], "unmounting cancels the open sign-in");
+
+  const c = await startGithubSignIn();
+  await $(c.el, "button[data-act=add-github]").click();
+  assert.deepEqual(c.api.of("github.connect.cancel").map(x => x.input), [{ id: GH_CONNECT.id }], "opening the form again cancels the old sign-in");
+});
+
+test("Sign in with GitHub: an error from github.connect is said, and the form stays open", async () => {
+  const { el, api } = await startGithubSignIn({ over: { "github.connect": { $error: { code: "exists", message: "an account named work2 is already connected; remove it first or choose another name" } } } });
+  assert.match(text($(el, "form[data-form=github]")), /already connected/);
+  assert.equal(api.of("github.connect.cancel").length, 0);
 });
 
 // ---- Sign in with Google ------------------------------------------------------------------------

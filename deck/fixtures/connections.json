@@ -54,6 +54,14 @@
     "client_secret": "fixture-leak-7f3a9c" },
   "google.connect.finish": { "name": "dana", "email": "dana@harlowlegal.com", "item": "google-dana", "refresh_token": "fixture-leak-7f3a9c" },
   "google.connect.cancel": { "cancelled": true },
+  "github.accounts": [
+    { "name": "work", "login": "alex-harlow", "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4", "item": "github-work", "token": "fixture-leak-7f3a9c" }
+  ],
+  "github.connect": { "id": "gh_5Kq8vR2m", "user_code": "WXYZ-1234", "verification_uri": "https://github.com/login/device",
+    "verification_uri_complete": "https://github.com/login/device?user_code=WXYZ-1234", "expires_in": 900, "interval": 5,
+    "device_code": "fixture-leak-7f3a9c" },
+  "github.connect.cancel": { "cancelled": true },
+  "github.remove": { "removed": true, "revoked": true },
   "vault.list": { "locked": false, "items": [
     { "name": "tracker-token", "kind": "api-key", "fields": ["value"], "grants": [{ "module": "mcp" }], "value": "fixture-leak-7f3a9c" },
     { "name": "docs-api", "kind": "secret", "fields": ["value"], "grants": [] },

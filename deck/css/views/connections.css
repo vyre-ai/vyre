@@ -96,6 +96,12 @@
 .cn-paste .input { flex: 1 1 auto; min-width: 0; font-family: var(--mono); font-size: 13px; }
 .cn-paste .btn { flex-shrink: 0; }
 
+/* Sign in with GitHub: a round avatar next to a Google-style .cn-row, and the device code's
+   large, mono, letter-spaced display (github.com's own device page shows it the same way). */
+.cn-avatar-img { width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0; }
+.cn-gh-code-row { display: flex; align-items: center; gap: 12px; margin: 4px 0; }
+.cn-gh-code { font-family: var(--mono); font-size: 32px; line-height: 40px; letter-spacing: 0.08em; color: var(--text); user-select: all; }
+
 /* A service account's admin console values, each with Copy. */
 .cn-admin { border-left: 1px solid var(--rule-strong); padding: 4px 0 4px 14px; display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
 .cn-copies { display: flex; flex-direction: column; gap: 6px; }
@@ -110,4 +116,5 @@
   .cn-copy { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
   .cn-copy .cn-k { grid-column: 1 / -1; }
   .cn-paste { flex-wrap: wrap; }
+  .cn-gh-code { font-size: 24px; line-height: 30px; }
 }

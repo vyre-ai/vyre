@@ -21,14 +21,24 @@
 //
 // Tools: mcp.servers, mcp.add, mcp.update, mcp.remove, mcp.test, mcp.restart, google.accounts,
 // google.add, google.remove, google.test, google.connect, google.connect.finish,
-// google.connect.cancel, vault.list, vault.grant, projects.list, agents.list.
+// google.connect.cancel, vault.list, vault.grant, projects.list, agents.list, github.accounts,
+// github.connect, github.connect.cancel, github.remove.
+//
+// GitHub (ADR 0041): "Sign in with GitHub" is a device code, not a redirect. github.connect
+// returns a short code and GitHub's own page; the person types the code there (or opens
+// verification_uri_complete, which fills it in), and Vyre polls on its own until github.connected
+// or github.connect-failed arrives. No tab to catch, no address to paste, so its waiting panel is
+// simpler than Google's: the code, a copy button, an "Open GitHub" link, and how long the code
+// lasts. Nothing here ticks or polls; GitHub's own expiry ends the flow with github.connect-failed
+// when the person runs out of time. github.remove revokes at GitHub first, so a failed revoke
+// still says so.
 
 import { h, put, empty } from "../js/dom.js";
 import { icon } from "../js/icons.js";
 import { attempt as apiAttempt } from "../js/api.js";
 import { withPresence, PresenceError } from "./memory-presence.js";
 import { showToast } from "../js/toast.js";
-import { since } from "../js/fmt.js";
+import { since, plural } from "../js/fmt.js";
 import { statusMark, statusOf } from "../js/status-mark.js";
 
 /** Vault kinds that make sense for each way of using an item (ADR 0016, decision 2). */
@@ -49,7 +59,8 @@ const STATE_WORDS = { stopped: "stopped", starting: "starting", running: "runnin
 /** The events that change what this section shows. mcp.called is left out: it only moves lastUsed. */
 export const EVENTS = ["mcp.added", "mcp.updated", "mcp.removed", "mcp.started", "mcp.stopped", "mcp.failed", "mcp.refreshed",
   "google.added", "google.removed", "google.connected", "google.connect-failed", "vault.granted",
-  "vault.connection-added", "vault.connection-removed", "vault.connection-changed"];
+  "vault.connection-added", "vault.connection-removed", "vault.connection-changed",
+  "github.added", "github.removed", "github.connected", "github.connect-failed"];
 
 const str = v => (typeof v === "string" ? v : "");
 const strs = v => (Array.isArray(v) ? v.filter(x => typeof x === "string") : []);
@@ -57,6 +68,7 @@ const num = v => (typeof v === "number" && isFinite(v) ? v : null);
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 
 /** @typedef {{ id: string, name: string, url: string, over: boolean, stt: HTMLElement, win?: Window | null }} Flow */
+/** @typedef {{ id: string, name: string, user_code: string, verification_uri: string, verification_uri_complete?: string, minutes: number, over: boolean, stt: HTMLElement }} GhFlow */
 
 // ---- what the page reads, named fields only ------------------------------------------------------
 
@@ -88,6 +100,12 @@ export function pickAccounts(d) {
     name: a.name, email: str(a.email),
     auth: { type: a.auth?.type === "service-account" ? "service-account" : "oauth", item: str(a.auth?.item), subject: str(a.auth?.subject) },
   }));
+}
+
+/** github.accounts → rows with only the fields drawn: name, login and avatar, never a token. */
+export function pickGithubAccounts(d) {
+  const list = Array.isArray(d) ? d : [];
+  return list.filter(a => a && typeof a.name === "string").map(a => ({ name: a.name, login: str(a.login), avatar_url: str(a.avatar_url) }));
 }
 
 /**
@@ -190,26 +208,30 @@ export async function drawConnections(el, ctx, deps = {}) {
     servers: /** @type {ReturnType<typeof pickServers>} */ ([]), serverErr: /** @type {any} */ (null),
     accounts: /** @type {ReturnType<typeof pickAccounts>} */ ([]), accountErr: /** @type {any} */ (null),
     connections: /** @type {ReturnType<typeof pickConnections>} */ ([]), connectionsErr: /** @type {any} */ (null),
+    githubAccounts: /** @type {ReturnType<typeof pickGithubAccounts>} */ ([]), githubErr: /** @type {any} */ (null),
     items: /** @type {ReturnType<typeof pickItems>} */ ([]),
     projects: /** @type {{ slug: string, name: string }[]} */ ([]), agents: /** @type {string[]} */ ([]),
     /** What Test found, kept across redraws so a refresh does not close it. */
     tested: new Map(), gtested: new Map(),
     /** A row asking "Remove?" */
     confirming: "",
-    form: /** @type {"" | "mcp" | "google"} */ (""),
+    form: /** @type {"" | "mcp" | "google" | "github"} */ (""),
     /** The open "Sign in with Google", if any. */
     flow: /** @type {Flow | null} */ (null),
+    /** The open "Sign in with GitHub" device code, if any. */
+    ghFlow: /** @type {GhFlow | null} */ (null),
   };
 
   const top = h("div");
   const cardsBox = h("div", { class: "cn-cards" });
   const mcpBox = h("div", { class: "cn-group" });
   const googleBox = h("div", { class: "cn-group" });
+  const githubBox = h("div", { class: "cn-group" });
   const formBox = h("div");
-  put(el, top, cardsBox, mcpBox, googleBox, formBox);
+  put(el, top, cardsBox, mcpBox, googleBox, githubBox, formBox);
 
   async function load() {
-    const [s, g, c] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts"), attempt("vault.connections.list")]);
+    const [s, g, c, gh] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts"), attempt("vault.connections.list"), attempt("github.accounts")]);
     if (!ctx.alive()) return;
     st.serverErr = s.error || null;
     st.servers = s.error ? [] : pickServers(s.data);
@@ -217,6 +239,8 @@ export async function drawConnections(el, ctx, deps = {}) {
     st.accounts = g.error ? [] : pickAccounts(g.data);
     st.connectionsErr = c.error || null;
     st.connections = c.error ? [] : pickConnections(c.data);
+    st.githubErr = gh.error || null;
+    st.githubAccounts = gh.error ? [] : pickGithubAccounts(gh.data);
     draw();
   }
 
@@ -236,13 +260,14 @@ export async function drawConnections(el, ctx, deps = {}) {
     if (both) {
       put(top, h("div", { class: "empty cn-empty" }, "No connectors are running on this machine.",
         h("span", { class: "code" }, "The mcp and google modules are not running. When they are, MCP servers and Google accounts are added here or with vyre connect add.")));
-      put(mcpBox); put(googleBox); put(formBox);
+      put(mcpBox); put(googleBox); put(githubBox); put(formBox);
       return;
     }
     put(top, h("p", { class: "set-note small muted" },
       "MCP servers and Google accounts Vyre can use. Each one names a vault item; the value stays sealed in the vault and never comes to this page."));
     drawServers();
     drawAccounts();
+    drawGithub();
   }
 
   // ---- Connections cards (vault.connections.list) --------------------------------------------
@@ -533,6 +558,138 @@ export async function drawConnections(el, ctx, deps = {}) {
     if (r) put(/** @type {HTMLElement} */ (r), text);
   }
 
+  // ---- GitHub accounts ----
+
+  function drawGithub() {
+    const add = h("button", { type: "button", class: "btn btn-sm" + (st.githubAccounts.length ? "" : " btn-primary"), "data-act": "add-github", disabled: !!st.githubErr, onclick: () => openForm("github") }, "Add GitHub account");
+    if (st.githubErr) { put(githubBox, h("h3", { class: "set-h3" }, "GitHub accounts"), empty("GitHub accounts are kept by the github module.", st.githubErr)); return; }
+    put(githubBox, h("h3", { class: "set-h3" }, "GitHub accounts"),
+      st.githubAccounts.length ? h("div", { class: "rows" }, st.githubAccounts.map(githubRow))
+        : h("div", { class: "empty" }, "No GitHub account yet. Connect one and an agent can clone your repos and work in its own worktree, one branch per session."),
+      h("div", { class: "set-actions" }, add));
+  }
+
+  function githubRow(a) {
+    const status = h("div", { class: "small muted set-status", role: "status" });
+    return h("div", { class: "cn-row", "data-github": a.name },
+      h("div", { class: "cn-head" },
+        a.avatar_url ? h("img", { class: "cn-avatar-img", src: a.avatar_url, alt: "", width: "20", height: "20" }) : null,
+        h("span", { class: "mono cn-name" }, a.name), h("span", { class: "muted" }, a.login)),
+      st.confirming === `github:${a.name}`
+        ? h("div", { class: "set-actions cn-confirm" },
+          h("span", { class: "small" }, `Disconnect ${a.name}? It's revoked at GitHub first, then removed here.`),
+          h("button", { type: "button", class: "btn btn-sm", "data-act": "remove-yes", onclick: async () => {
+            const r = await attempt("github.remove", { name: a.name });
+            if (!ctx.alive()) return;
+            st.confirming = "";
+            if (r.error) { drawGithub(); sayGh(a.name, errText(r.error)); return; }
+            if (r.data?.warning) { await load(); if (!ctx.alive()) return; sayGh(a.name, r.data.warning); return; }
+            await load();
+          } }, "Disconnect"),
+          h("button", { type: "button", class: "btn btn-ghost btn-sm", "data-act": "remove-no", onclick: () => { st.confirming = ""; drawGithub(); } }, "Cancel"))
+        : h("div", { class: "set-actions cn-acts" },
+          h("button", { type: "button", class: "btn btn-ghost btn-sm", "data-act": "remove", onclick: () => { st.confirming = `github:${a.name}`; drawGithub(); } }, "Disconnect")),
+      status);
+  }
+  function sayGh(name, text) {
+    const r = githubBox.querySelector(`[data-github="${name}"] .set-status`);
+    if (r) put(/** @type {HTMLElement} */ (r), text);
+  }
+
+  /** "Connect a GitHub account": a name, then Sign in with GitHub (the device flow, ADR 0041). */
+  function githubForm() {
+    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cgh-name", autocomplete: "off", spellcheck: "false", placeholder: "work" }));
+    const stt = h("div", { class: "small muted set-status", role: "status" });
+    const save = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-primary" }, "Sign in with GitHub"));
+    const form = h("form", { class: "set-form cn-form", "data-form": "github", onsubmit: async (/** @type {Event} */ e) => {
+      e.preventDefault();
+      const n = name.value.trim();
+      if (!n) { put(stt, "Give the account a name, like work or personal."); return; }
+      save.disabled = true;
+      put(stt, "Starting.");
+      const r = await attempt("github.connect", { name: n });
+      if (!ctx.alive()) return;
+      const id = str(r.data?.id), user_code = str(r.data?.user_code), verification_uri = str(r.data?.verification_uri);
+      if (r.error || !id || !user_code || !verification_uri) { save.disabled = false; put(stt, r.error ? errText(r.error) : "GitHub did not return a code. Try again."); return; }
+      if (st.form !== "github") { attempt("github.connect.cancel", { id }); return; }
+      const verification_uri_complete = str(r.data?.verification_uri_complete) || undefined;
+      const minutes = Math.max(1, Math.round((num(r.data?.expires_in) || 900) / 60));
+      githubWaiting({ id, name: n, user_code, verification_uri, verification_uri_complete, minutes, over: false, stt: h("div") });
+    } },
+      h("h3", { class: "set-h3" }, "Add a GitHub account"),
+      h("div", { class: "rows" },
+        frow("cgh-name", "Name", name, "What the assistant calls it, like work or personal.")),
+      h("p", { class: "small faint" }, "GitHub asks for repo access, full read/write on every repo the account can reach. Its device sign-in has no narrower option; a later release narrows this to the repos you pick."),
+      h("div", { class: "set-actions" }, save, h("button", { type: "button", class: "btn btn-ghost", onclick: closeForm }, "Cancel")), stt);
+    put(formBox, form);
+    name.focus();
+  }
+
+  /**
+   * The open device-code sign-in: the code shown large with Copy, an "Open GitHub" link (or the
+   * verification_uri_complete address when GitHub sent one, which fills the code in for you), how
+   * long it lasts, and Cancel. Vyre polls GitHub on its own; nothing here polls or ticks, GitHub's
+   * own expiry ends the flow with github.connect-failed when the person runs out of time.
+   * @param {GhFlow} flow
+   */
+  function githubWaiting(flow) {
+    st.ghFlow = flow;
+    const codeEl = h("div", { class: "cn-gh-code", "aria-label": "Your code" }, flow.user_code);
+    const copyBtn = h("button", { type: "button", class: "btn btn-sm", "data-act": "copy-code", onclick: async () => {
+      try { await navigator.clipboard.writeText(flow.user_code); put(copyBtn, "Copied"); } catch { put(copyBtn, "Copy"); }
+    } }, "Copy");
+    const openHref = flow.verification_uri_complete || flow.verification_uri;
+    put(formBox, h("div", { class: "set-form cn-form cn-wait", "data-form": "github", "data-signin": "waiting" },
+      h("h3", { class: "set-h3" }, "Add a GitHub account"),
+      h("p", { class: "cn-wait-t" }, "Enter this code at github.com/login/device:"),
+      h("div", { class: "cn-gh-code-row" }, codeEl, copyBtn),
+      h("div", { class: "set-actions" }, h("a", { class: "btn btn-primary", href: openHref, target: "_blank", rel: "noopener noreferrer", "data-act": "open-github" }, "Open GitHub")),
+      h("p", { class: "small muted" }, `Good for about ${plural(flow.minutes, "minute")}.`),
+      h("div", { class: "set-actions" }, h("button", { type: "button", class: "btn btn-ghost", "data-act": "cancel-signin", onclick: () => closeForm() }, "Cancel")),
+      h("div", { class: "small muted set-status", role: "status" }, flow.stt)));
+  }
+
+  /** The device sign-in finished: reload and close. */
+  async function githubConnected(flow) {
+    if (flow.over) return;
+    flow.over = true;
+    st.ghFlow = null;
+    st.form = "";
+    put(formBox);
+    await load();
+  }
+
+  /** The device sign-in ended without an account: say why, and offer to start again. */
+  function githubFailed(flow, error) {
+    if (flow.over) return;
+    flow.over = true;
+    st.ghFlow = null;
+    put(formBox, h("div", { class: "set-form cn-form cn-wait", "data-form": "github", "data-signin": "failed" },
+      h("h3", { class: "set-h3" }, "Add a GitHub account"),
+      h("p", { class: "small cn-err", "data-hint": "signin-failed" }, error || "The sign-in ended without an account."),
+      h("div", { class: "set-actions" },
+        h("button", { type: "button", class: "btn btn-sm", "data-act": "again", onclick: () => openForm("github") }, "Start again"),
+        h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => closeForm() }, "Close"))));
+  }
+
+  /** Cancel the open GitHub sign-in, if any. Nothing waits on the answer. */
+  function cancelGithubFlow() {
+    const flow = st.ghFlow;
+    if (!flow || flow.over) return;
+    flow.over = true;
+    st.ghFlow = null;
+    attempt("github.connect.cancel", { id: flow.id });
+  }
+
+  /** github.connected and github.connect-failed, for the open sign-in only. */
+  function onGithubFlow(type, e) {
+    const flow = st.ghFlow;
+    const p = isObj(e?.payload) ? e.payload : {};
+    if (!flow || flow.over || p.id !== flow.id || !ctx.alive()) return;
+    if (type === "github.connected") githubConnected(flow);
+    else if (type === "github.connect-failed") githubFailed(flow, str(p.error));
+  }
+
   /**
    * What a Workspace admin pastes to let a service account act for people: its client ID and the
    * scope line, each with Copy. Both are public identifiers, never a key.
@@ -573,13 +730,17 @@ export async function drawConnections(el, ctx, deps = {}) {
 
   async function openForm(kind) {
     cancelFlow();
+    cancelGithubFlow();
     st.form = kind;
+    // GitHub's sign-in names no vault item itself (it makes its own), so it needs none of the
+    // vault/project/agent choices the other two forms pick from.
+    if (kind === "github") { githubForm(); return; }
     put(formBox, h("div", { class: "empty" }, "Loading your vault's item names."));
     const { vaultErr } = await loadChoices();
     if (!ctx.alive() || st.form !== kind) return;
     if (kind === "mcp") mcpForm(vaultErr); else googleForm(vaultErr);
   }
-  const closeForm = () => { cancelFlow(); st.form = ""; put(formBox); };
+  const closeForm = () => { cancelFlow(); cancelGithubFlow(); st.form = ""; put(formBox); };
 
   /** The vault item select for one auth type, or a note when there is none of that kind. */
   function itemSelect(type, id, current = "") {
@@ -935,8 +1096,8 @@ export async function drawConnections(el, ctx, deps = {}) {
   }
 
   let t = 0;
-  for (const type of EVENTS) ctx.on(type, e => { onFlow(type, e); clearTimeout(t); t = setTimeout(load, 400); });
-  ctx.cleanup(() => { clearTimeout(t); cancelFlow(); });
+  for (const type of EVENTS) ctx.on(type, e => { onFlow(type, e); onGithubFlow(type, e); clearTimeout(t); t = setTimeout(load, 400); });
+  ctx.cleanup(() => { clearTimeout(t); cancelFlow(); cancelGithubFlow(); });
   await load();
 }
 
