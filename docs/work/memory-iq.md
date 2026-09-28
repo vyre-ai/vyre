@@ -122,6 +122,24 @@ facts are not a project's.
   precision 0.057, 4 confident wrong (the husband answered as "Claire", Owen's wife from a
   pasted email). The held-out world is the real number.
 
+## Doing (28 Sep, the memory-iq fold onto stage/0.1.1)
+- Branch work/memory-iq-fold (f68aca60), worktree ../vyre-memory-iq-fold, off stage/0.1.1
+  029756bc, merging in work/memory-iq 10f67485 (dba6afc2..10f67485, reviewer-cleared on content).
+  core/memory/index.js's reach() conflicted with the old pre-swap copy; kept federation's version
+  per the reviewer's instruction (guard()/scopedCwds()/NOTHING all federation's; every retrieve
+  (replies)/ask (stream/screen) path already threads project_cwds through scopedCwds()'s
+  effectiveCwds, nothing else needed touching).
+- Also folded in: the "first read's pace" test fix (memory-pace-fix bb2287f7); a projects.reach
+  gap in core/memory/iq/heard.test.js's fake ctx.call (wired to fakeReachCall, same fix class as
+  access.test.js/scope.test.js/personal/*.test.js); confirmed a pre-existing core/config/index.js
+  syntax bug (a doubled comment-close, merge fallout from 2b9da919 + 80fd866e) was already fixed
+  upstream at b1e846fc, not re-touched; six pre-existing em dashes in CHANGELOG.md (unrelated
+  teams' entries) rewritten to a colon or comma.
+- Tests on testbox: `core/memory/**/*.test.js` + core/files/files.test.js + core/files/drive.test.js
+  + `core/recall/**/*.test.js` + `core/projects/**/*.test.js` = 384/386 (2 skipped, 0 failed).
+  test/docs-*.test.js 61/61 (docs:ref regenerated). test/boundaries.test.js 5/5.
+- Sent to reviewer and integrator.
+
 ## Doing (28 Sep, the projects.reach swap)
 - Branch work/memory-reach, worktree ../vyre-memory-reach, off federation's work/federation
   (35188a38 projects.reach + 59d6833c caller-as-input-field). Moved core/memory/index.js's own
