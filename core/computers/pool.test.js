@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
+import http from "node:http";
 import { open, migrate } from "../store/index.js";
 import { Pool, MIGRATIONS, TICKET_MS } from "./pool.js";
 import { FakeDriver } from "./driver/fake.js";
@@ -18,7 +19,7 @@ const AGENTS = [
 ];
 
 /** A pool with everything it talks to faked, and the events it emitted. */
-function setup(t, { config = {}, agents = AGENTS, driver = new FakeDriver(), egress = undefined } = {}) {
+function setup(t, { config = {}, agents = AGENTS, driver = new FakeDriver(), egress = undefined, memberTokenKey = undefined } = {}) {
   const root = tempHome(t);
   const db = open(path.join(root, "t.db"));
   t.after(() => db.close());
@@ -31,8 +32,31 @@ function setup(t, { config = {}, agents = AGENTS, driver = new FakeDriver(), egr
     return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
   };
   const pool = new Pool({ db, driver, call, emit: (type, payload) => { events.push({ type, payload }); }, config: { waitMs: 200, ...config }, now: () => clock.t,
-    egress: () => egress && egress.cfg });
+    egress: () => egress && egress.cfg, memberTokenKey });
   return { pool, driver, events, clock, db, types: () => events.map(e => e.type) };
+}
+
+/**
+ * A fake computerd, standing in for its own /agents/reload and /agents/dispose (the real thing is
+ * checked live elsewhere; here the pool's own request shape and sequencing matter, not
+ * computerd's). Returns { port, calls, close }; calls records what actually arrived.
+ * @param {{ bearer: () => string, dispose?: boolean }} o
+ */
+async function fakeComputerd({ bearer, reload = { agents: 1, revoked: [] }, dispose = { disposed: true } }) {
+  /** @type {Array<{ method: string, path: string, authorization: string, body: any }>} */
+  const calls = [];
+  const server = http.createServer(async (req, res) => {
+    const chunks = []; for await (const c of req) chunks.push(c);
+    let body = null; try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch {}
+    calls.push({ method: req.method, path: req.url, authorization: String(req.headers.authorization || ""), body });
+    if (req.headers.authorization !== `Bearer ${bearer()}`) { res.writeHead(401).end(); return; }
+    if (req.method === "POST" && req.url === "/agents/reload") { res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(reload)); return; }
+    if (req.method === "POST" && req.url === "/agents/dispose") { res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(dispose)); return; }
+    res.writeHead(404).end();
+  });
+  await new Promise(r => server.listen(0, "127.0.0.1", r));
+  const port = /** @type {any} */ (server.address()).port;
+  return { port, calls, close: () => new Promise(r => server.close(r)) };
 }
 
 test("pool: a computer is made on first need, not before", async t => {
@@ -396,4 +420,121 @@ test("pool: a boot failure says so, with a short reason fit for Glass", async t 
   assert.equal(e.boot, true);
   assert.equal(e.short, "kit's computer stopped as soon as it started (exit code 127)");
   assert.ok(Buffer.byteLength(e.short) <= 123);
+});
+
+// ---- shared (browser-kind) computers ----------------------------------------------------
+
+test("pool: addAgent makes a fresh shared computer, seeds it before start (not after), and reloads it once running", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  const key = () => Promise.resolve("test-vault-key");
+  ({ pool } = setup(t, { driver, memberTokenKey: key }));
+
+  const r = await pool.addAgent("browser-abc123", "kit-1", "alice");
+  assert.equal(r.computer, "browser-abc123");
+  assert.equal(pool.row("browser-abc123").kind, "browser");
+  assert.deepEqual(driver.calls.map(c => c.op), ["create", "seed", "seedAgentTokens", "start", "seedAgentTokens"]);
+  const c = [...driver.containers.values()][0];
+  assert.deepEqual(c.agentTokens.map(a => a.id), ["kit-1"]);
+  assert.equal(c.agentTokens[0].name, "alice");
+  assert.equal(c.agentTokens[0].token.length, 43, "a base64url SHA-256 HMAC is 43 characters");
+  // Reload happened once the computer was actually running (the second seedAgentTokens, from
+  // reseedMembers after ensure(), triggers it -- the first, inside ensure() before start, must not).
+  assert.deepEqual(server.calls.map(c2 => `${c2.method} ${c2.path}`), ["POST /agents/reload"]);
+});
+
+test("pool: addAgent to an already-running shared computer reseeds and reloads, without touching the existing member", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
+
+  const r1 = await pool.addAgent("browser-abc123", "kit-1", "alice");
+  server.calls.length = 0; // only care about what the second add triggers
+
+  const r2 = await pool.addAgent("browser-abc123", "kit-2", "bob");
+  assert.equal(r2.computer, "browser-abc123");
+  const c = [...driver.containers.values()][0];
+  assert.deepEqual(c.agentTokens.map(a => a.id).sort(), ["kit-1", "kit-2"]);
+  assert.deepEqual(server.calls.map(c2 => `${c2.method} ${c2.path}`), ["POST /agents/reload"]);
+});
+
+test("pool: addAgent refuses a computer id that already exists and is not a shared computer", async t => {
+  const { pool } = setup(t);
+  await pool.checkout("kit", { thread: "th-1" }); // "kit" is now a desktop-kind row
+  await assert.rejects(pool.addAgent("kit", "kit-1", "alice"), /not a shared computer/);
+});
+
+test("pool: removeAgent, with others left, reseeds without them and reloads", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
+  const r1 = await pool.addAgent("browser-abc123", "kit-1", "alice");
+  await pool.addAgent("browser-abc123", "kit-2", "bob");
+  server.calls.length = 0;
+
+  const r = await pool.removeAgent("browser-abc123", "kit-1");
+  assert.deepEqual(r, { computer: "browser-abc123", stopped: false });
+  const c = [...driver.containers.values()][0];
+  assert.deepEqual(c.agentTokens.map(a => a.id), ["kit-2"], "the removed agent's token is still being written");
+  assert.deepEqual(server.calls.map(c2 => `${c2.method} ${c2.path}`), ["POST /agents/reload"]);
+  assert.equal(pool.row("browser-abc123").state, "running", "removing one of two members stopped the computer");
+});
+
+test("pool: removeAgent on the last member stops the container but never removes it or its volume", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
+  const r1 = await pool.addAgent("browser-abc123", "kit-1", "alice");
+
+  const r = await pool.removeAgent("browser-abc123", "kit-1");
+  assert.deepEqual(r, { computer: "browser-abc123", stopped: true });
+  assert.equal(driver.calls.at(-1).op, "stop");
+  assert.equal(pool.row("browser-abc123").state, "stopped");
+  assert.equal(pool.members("browser-abc123").length, 0);
+  assert.ok(!driver.calls.some(c => c.op === "remove"), "the container was removed, not just stopped");
+});
+
+test("pool: removeAgent refuses an agent that is not on the computer, and a computer id that is not shared", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
+  const r1 = await pool.addAgent("browser-abc123", "kit-1", "alice");
+  await assert.rejects(pool.removeAgent("browser-abc123", "nobody"), /is not on/);
+  await assert.rejects(pool.removeAgent("does-not-exist", "kit-1"), /not a shared computer/);
+});
+
+test("pool: disposeContext posts to /agents/dispose with the agent id, and never closes a live client on its own (that is closeAgent's job, not this one's)", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token, dispose: { disposed: true } });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
+  const r1 = await pool.addAgent("browser-abc123", "kit-1", "alice");
+
+  const disposed = await pool.disposeContext("browser-abc123", "kit-1");
+  assert.equal(disposed, true);
+  const call = server.calls.find(c => c.path === "/agents/dispose");
+  assert.deepEqual(call.body, { id: "kit-1" });
+});
+
+test("pool: with no memberTokenKey configured, addAgent refuses cleanly rather than seeding with no derivation key", async t => {
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: 1 } } });
+  const { pool } = setup(t, { driver }); // no memberTokenKey
+  await assert.rejects(pool.addAgent("browser-abc123", "kit-1", "alice"), /no member-token key configured/);
 });

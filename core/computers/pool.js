@@ -37,6 +37,27 @@ export const MIGRATIONS = [
   // Per-agent limits, set from the Deck. Null means the box's computers.cpus / computers.memoryMb.
   `ALTER TABLE computers_computers ADD COLUMN cpus REAL;
    ALTER TABLE computers_computers ADD COLUMN memory_mb INTEGER;`,
+  // A shared (browser-kind) computer, agent-browsers.md level 2 (team-lead schema, 28 Sep): adds
+  // to the table rather than rekeying it, so every existing row (kind defaults to 'desktop') is
+  // untouched. A desktop row's own `agent` column is still the one real agent it belongs to; a
+  // browser row's `agent` is a synthetic pool id (newComputerId(), below) -- never a real agent's
+  // own name -- and computers_members is who is actually sharing it. agent_id is the identity
+  // (unique, never reused, matches cdpmux/computerd's own agentId); agent_name is display-only
+  // and MAY repeat. generation is bumped to rotate a member's token without removing it (a new
+  // generation, same id, a different derived token -- see memberToken()). No token column: per
+  // the reviewer and the lead, a member's token is never stored, only derived on demand from a
+  // vault-held key (memberTokenKey, the Pool constructor) over computer_id, agent_id and
+  // generation, so this table alone is harmless if it ever leaked.
+  `ALTER TABLE computers_computers ADD COLUMN kind TEXT NOT NULL DEFAULT 'desktop';
+   CREATE TABLE computers_members (
+     computer_id TEXT NOT NULL REFERENCES computers_computers(agent),
+     agent_id TEXT NOT NULL,
+     agent_name TEXT NOT NULL,
+     generation INTEGER NOT NULL DEFAULT 0,
+     added_at INTEGER NOT NULL,
+     PRIMARY KEY (computer_id, agent_id)
+   );
+   CREATE UNIQUE INDEX computers_members_agent_id ON computers_members(agent_id);`,
 ];
 
 /** What a person may set a computer's limits to. */
@@ -54,6 +75,24 @@ export const NO_DRIVER = "no computer driver is configured on this machine: set 
 const vncPassword = () => crypto.randomBytes(6).toString("base64url");
 const helperToken = () => crypto.randomBytes(32).toString("base64url");
 
+/** A shared computer's own synthetic id (never a real agent's name): "browser-" plus 16 hex
+ * characters, short enough to fit AGENT (and policy.js's own computerLabel regex, the same
+ * shape) with room to spare. */
+const newComputerId = () => `browser-${crypto.randomBytes(8).toString("hex")}`;
+
+/**
+ * A member's own CDP token, derived, never stored (the reviewer + lead, 28 Sep): HMAC-SHA256 of
+ * "computerId|agentId|generation" under the vault-held key, base64url-encoded -- 43 characters,
+ * comfortably inside policy.js's own [A-Za-z0-9_-]{32,128} token shape. Two different agent ids
+ * (or the same id at two different generations) always derive two different tokens; the same
+ * inputs always derive the same one, so a member's token never needs to be looked up anywhere,
+ * only recomputed from what computers_members already has.
+ * @param {string} key @param {string} computerId @param {string} agentId @param {number} generation
+ */
+function memberToken(key, computerId, agentId, generation) {
+  return crypto.createHmac("sha256", key).update(`${computerId}|${agentId}|${generation}`).digest("base64url");
+}
+
 /**
  * @typedef {{ agent: string, thread: string|null, screen: number, since: number, touched: number, viewers: number, verified?: number }} Checkout
  */
@@ -64,10 +103,15 @@ export class Pool {
    *   call: (tool: string, input: any) => Promise<any>, emit: (type: string, payload: any, where?: any) => any,
    *   log?: (m: string) => void, config?: any, now?: () => number, egress?: () => any,
    *   tailnet?: { setting: () => { enabled: boolean, tag: string }, key: () => Promise<string> },
+   *   memberTokenKey?: () => Promise<string>,
    *   wait?: (ms: number) => Promise<void>, probe?: ((host: string, port: number) => Promise<boolean>) | null }} deps
    *   egress reads config glass.egress when a computer is made, so a change needs no restart.
    *   tailnet reads config computers.tailnet each time a computer starts, and fetches the auth key
    *   from the vault only then, only when that switch is on.
+   *   memberTokenKey: a shared computer's members' tokens are derived (memberToken(), below),
+   *   never stored -- this fetches the vault-held key they are derived from, only when a shared
+   *   computer's membership actually changes (addAgent/removeAgent), the same lazy shape as
+   *   tailnet's own key().
    */
   constructor(deps) {
     const c = deps.config || {};
@@ -79,6 +123,7 @@ export class Pool {
     this.now = deps.now || (() => Date.now());
     this.egress = deps.egress || (() => undefined);
     this.tailnet = deps.tailnet || null;
+    this.memberTokenKey = deps.memberTokenKey || null;
     this.wait = deps.wait;
     // Is the computer's screen answering yet? Only the Docker driver has a real address to dial;
     // the fake's hosts are names nothing resolves, so its computers are ready once started.
@@ -378,6 +423,14 @@ export class Pool {
       // The secrets, as a file only vyre's uid reads, before every start (policy.js bootTar).
       const s = this.row(agent);
       await d.seed(id, { computerd_token: String(s.helper_token), vnc_password: String(s.vnc_password) });
+      // A shared computer's identity file MUST exist before computerd's own first read of it, on
+      // EVERY start (a fresh container's first boot, and any later restart alike): AGENT_MODE is
+      // decided once, at whatever moment computerd first reads the file, and never revisited --
+      // seeding it only after start (reseedMembers, called from addAgent right after this) would
+      // leave a fresh boot in legacy, unscoped mode for that whole process's life, no matter how
+      // many times /agents/reload is called afterward. Always the CURRENT member list, the same
+      // "reseed with the latest, every start" pattern .boot's own seed() just above already uses.
+      if (s.kind === "browser") await this.seedMembersBeforeStart(agent, id);
       await d.start(id);
     }
     await this.boot(agent, id);
@@ -657,6 +710,171 @@ export class Pool {
   }
 
   size(_agent) { return { ...this.opts.size }; }
+
+  // ---- shared (browser-kind) computers, agent-browsers.md level 2 ------------------------
+  //
+  // A browser-kind row is made and driven through exactly the same machinery as a desktop row
+  // (rowFor/ensure/boot/endpoint all key off the `agent` column generically, and never assumed it
+  // was a real agent's own name) -- the only things genuinely new here are the row's own kind,
+  // the members table, and computerd's identity file. `computerId` is the row's own synthetic id
+  // (newComputerId(), never a real agent), used everywhere a desktop call would take an agent name.
+
+  /** @returns {any} */
+  members(computerId) { return /** @type {any[]} */ (this.db.prepare("SELECT * FROM computers_members WHERE computer_id = ? ORDER BY agent_id").all(computerId)); }
+
+  /**
+   * Add an agent to a shared computer, making the computer first if computerId names none yet.
+   * Both add and remove reload computerd's own identity file (the reviewer + lead, 28 Sep): a
+   * membership change that only reseeds the file, with nobody ever asking computerd to notice,
+   * would leave the new agent unable to connect until something else happened to restart it.
+   * @param {string} computerId @param {string} agentId @param {string} agentName
+   */
+  async addAgent(computerId, agentId, agentName) {
+    if (!AGENT.test(String(computerId || ""))) throw new Error(`"${computerId}" is not a computer id`);
+    if (!AGENT.test(String(agentId || ""))) throw new Error(`"${agentId}" is not an agent id`);
+    return this.serial(computerId, async () => {
+      let r = this.row(computerId);
+      if (!r) {
+        const at = this.now();
+        this.db.prepare(`INSERT INTO computers_computers (agent, container, state, vnc_password, helper_token, paused, created, updated, kind)
+          VALUES (?, NULL, 'none', ?, ?, 0, ?, ?, 'browser')`).run(computerId, vncPassword(), helperToken(), at, at);
+        r = this.row(computerId);
+      } else if (r.kind !== "browser") {
+        throw new Error(`${computerId} already exists and is not a shared computer`);
+      }
+      // A re-added id (the same agent, taken off and put back on) keeps its own generation, so its
+      // derived token -- and so its browser context, which cdpmux never disposes on its own --
+      // picks back up. A genuinely new row starts at 0.
+      this.db.prepare(`INSERT INTO computers_members (computer_id, agent_id, agent_name, generation, added_at) VALUES (?, ?, ?, 0, ?)
+        ON CONFLICT(agent_id) DO UPDATE SET agent_name = excluded.agent_name`).run(computerId, agentId, agentName, this.now());
+      await this.ensure(computerId);
+      await this.reseedMembers(computerId);
+      this.emit("computer.member-added", { computer: computerId, agent: agentId });
+      this.log(`${agentId} added to shared computer ${computerId}`);
+      return { computer: computerId };
+    });
+  }
+
+  /**
+   * Remove an agent from a shared computer. If it was the last one, the container is stopped --
+   * never removed, and never its volume -- so its members' cookies and logins survive; deleting
+   * them is disposeContext()'s own job, a separate, explicit action a person previews first (the
+   * lead's ruling, 28 Sep), never a side effect of removal.
+   * @param {string} computerId @param {string} agentId
+   */
+  async removeAgent(computerId, agentId) {
+    return this.serial(computerId, async () => {
+      const r = this.row(computerId);
+      if (!r || r.kind !== "browser") throw new Error(`${computerId} is not a shared computer`);
+      const had = this.db.prepare("SELECT 1 FROM computers_members WHERE computer_id = ? AND agent_id = ?").get(computerId, agentId);
+      if (!had) throw new Error(`${agentId} is not on ${computerId}`);
+      this.db.prepare("DELETE FROM computers_members WHERE computer_id = ? AND agent_id = ?").run(computerId, agentId);
+      const left = /** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM computers_members WHERE computer_id = ?").get(computerId)).n;
+      this.emit("computer.member-removed", { computer: computerId, agent: agentId });
+      this.log(`${agentId} removed from shared computer ${computerId}`);
+      if (left === 0) {
+        const cur = this.row(computerId);
+        if (cur.container && cur.state === "running") { await this.driver.stop(String(cur.container)); this.hosts.delete(computerId); }
+        this.set(computerId, { state: cur.container ? "stopped" : "none" });
+        this.log(`${computerId} has no members left; stopped, its volume kept`);
+        return { computer: computerId, stopped: true };
+      }
+      // Deleting the row is not enough on its own: computerd's own copy is the FILE, not this
+      // table, and it only notices a change when the file is rewritten (reseedMembers, not just
+      // reloadMembers) and then reloaded -- omitting the deleted id from the file entirely is
+      // what actually revokes it, the same way an add's file rewrite is what lets a new one in.
+      await this.reseedMembers(computerId);
+      return { computer: computerId, stopped: false };
+    });
+  }
+
+  /**
+   * Recomputes every current member's token and writes the whole list to computerd
+   * (seedAgentTokens), then tells computerd to reload it. Used after an add (a new member must
+   * be seeded before it can connect) and, indirectly, after a removal that leaves members behind
+   * (reloadMembers, below, does the reload half alone since the file need not be rewritten to
+   * remove a name from computerd's own live map -- computerd's own reload already refuses to
+   * revoke by omission of a still-valid pair, so the file DOES need rewriting either way; kept as
+   * one path for clarity, not two that could drift).
+   * @param {string} computerId
+   */
+  async reseedMembers(computerId) {
+    const wrote = await this._writeMemberTokens(computerId);
+    if (wrote) await this.reloadMembers(computerId);
+  }
+
+  /**
+   * Writes the current member list's derived tokens to computerd's .agent-tokens (seedAgentTokens
+   * alone -- no reload, since the container may not even be running yet). Called from ensure(),
+   * right before a browser-kind container's every start (so the file exists before computerd's
+   * own first read of it), and from reseedMembers, right before telling a running one to reload.
+   * @param {string} computerId @param {string} [containerId] known already by ensure(); looked
+   *   up from the row otherwise.
+   * @returns {Promise<boolean>} whether there was anyone to write (false only means "no members
+   *   at all", which removeAgent handles itself; ensure() never calls this with zero members).
+   */
+  async _writeMemberTokens(computerId, containerId) {
+    if (!this.driver) throw new Error(NO_DRIVER);
+    if (!this.memberTokenKey) throw new Error("no member-token key configured (computers.memberTokenKey)");
+    const members = this.members(computerId);
+    if (members.length === 0) return false;
+    const key = await this.memberTokenKey();
+    const agents = members.map(m => ({ id: m.agent_id, name: m.agent_name, token: memberToken(key, computerId, m.agent_id, m.generation) }));
+    const id = containerId || String(this.row(computerId).container);
+    await this.driver.seedAgentTokens(id, agents);
+    return true;
+  }
+
+  /**
+   * ensure()'s own hook, called right before a browser-kind container's `start` (see there for
+   * why this cannot wait until after start). Not exported beyond this file's own use in ensure().
+   * @param {string} computerId @param {string} containerId
+   */
+  async seedMembersBeforeStart(computerId, containerId) {
+    await this._writeMemberTokens(computerId, containerId);
+  }
+
+  /**
+   * Tells computerd to re-read AGENT_TOKENS_FILE (POST /agents/reload), the owner token only --
+   * the same control-plane class as the shield. Only meaningful while the computer is actually
+   * running; a stopped one has nothing listening, and reseedMembers on the next start (ensure's
+   * own seed()) carries the current membership anyway.
+   * @param {string} computerId @param {string} [why] a removed agent id, for the log line only
+   */
+  async reloadMembers(computerId, why) {
+    const r = this.row(computerId);
+    if (!r || r.state !== "running" || !this.hosts.has(computerId)) return;
+    const h = this.endpoint(computerId).helper;
+    const res = await fetch(new URL("/agents/reload", h.url), {
+      method: "POST", headers: { authorization: `Bearer ${h.token}` }, signal: AbortSignal.timeout(3_000),
+    });
+    let body; try { body = await res.json(); } catch { body = null; }
+    if (!res.ok) throw new Error(`computerd refused to reload ${computerId}'s agents: ${(body && body.error && body.error.message) || res.status}`);
+    if (why) this.log(`${computerId} reloaded after removing ${why}${body && body.revoked && body.revoked.length ? `; revoked ${body.revoked.join(", ")}` : ""}`);
+    return body;
+  }
+
+  /**
+   * The explicit, previewed deletion of one member's browser context (cookies, logins) -- never
+   * a side effect of removeAgent, a reload, or a crash (the reviewer + lead, 28 Sep). A caller
+   * should removeAgent first if the member is still on the computer; this alone does not close
+   * any live client. Only meaningful while the computer is running.
+   * @param {string} computerId @param {string} agentId
+   */
+  async disposeContext(computerId, agentId) {
+    const r = this.row(computerId);
+    if (!r || r.kind !== "browser") throw new Error(`${computerId} is not a shared computer`);
+    if (r.state !== "running" || !this.hosts.has(computerId)) throw new Error(`${computerId} is not running; nothing to tell computerd`);
+    const h = this.endpoint(computerId).helper;
+    const res = await fetch(new URL("/agents/dispose", h.url), {
+      method: "POST", headers: { authorization: `Bearer ${h.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ id: agentId }), signal: AbortSignal.timeout(3_000),
+    });
+    let body; try { body = await res.json(); } catch { body = null; }
+    if (!res.ok) throw new Error(`computerd refused to dispose ${agentId}'s context: ${(body && body.error && body.error.message) || res.status}`);
+    this.log(`${agentId}'s browser context on ${computerId} disposed`);
+    return Boolean(body && body.disposed);
+  }
 
   /**
    * A one-use ticket for opening Glass, bound to one agent and one surface. slow: the viewer is
