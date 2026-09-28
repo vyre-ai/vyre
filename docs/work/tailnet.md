@@ -438,9 +438,10 @@ only read-only checks on the test box.
   keeps the 9 wizard tools (you/claude/name/history/skip/finish/passkey/link/tailscale) guarded to
   refuse on local, or intentionally leaves them live for Solo's own onboarding — settles whether
   reviewer's condition 2 (audit onboard's start() for local-role side effects) is mine to close.
-- launch: settle (not yet confirmed back) that "I already have a server" is a no-code Tailscale
-  path (`onboard.join{tailscale,connect}` then `{verify,becomeDevice:true}`) plus a separate relay
-  path whose code is redeemed by `relay/client/*`, never by a join.* action.
+- launch: RESOLVED, now that relay.join exists — sent the final shape: the Device card's setup
+  code is `relay.join{url, name, becomeDevice:true}` (one call, no separate verify: pairing itself
+  proves reachability); the Tailscale route is unchanged, `onboard.join{tailscale,connect}` then
+  `{verify,node,becomeDevice:true}`. Waiting on launch to confirm they've wired one or both.
 - launch: names.discover (peer scan + GET /v1/whoami, already shipped a20e5eb6) is still to build,
   on the client side that does the scanning; not blocked on anything of mine.
 - chat (via the lead): merge work/tailnet (owner-only streams) and work/federation-transcript
