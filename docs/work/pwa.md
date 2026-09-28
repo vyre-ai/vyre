@@ -829,6 +829,23 @@ Cleaned up testbox: no leftover processes or files; the one-off harness (three i
 this session, `wink-live.mjs` through `wink-live3.mjs`) was never committed. Sent to team-lead
 and integrator: Wink is genuinely reachable end to end from a real browser now.
 
+## Doing (reviewer's HOLD on 30077044, 2026-09-28)
+Quick fix for both findings:
+- MEDIUM: core/daemon/index.js's `import { DEFAULT_RELAY } from "../relay/index.js"` was a new
+  kernel -> feature edge - test/boundaries.test.js's ALLOW list never covered it (it wasn't in
+  the earlier 135-file targeted run, which didn't include boundaries.test.js - a gap in that
+  run, not the fix itself). Moved DEFAULT_RELAY to `lib/relay-default.js` (a pure constant, no
+  feature state, the "Modularity" rule's own escape hatch for exactly this); core/relay/index.js
+  and core/daemon/index.js both import it from there now, and core/relay/index.js still
+  re-exports it for its own existing callers.
+- LOW: the configured-relay regex allowed `ws://` (a bare http: origin reaching connect-src) and
+  arbitrary characters inside the CSP header. Tightened to `^wss:\/\/[A-Za-z0-9.-]+(:\d{1,5})?$`.
+
+sha d5fe9c3e. Ran test/boundaries.test.js this time (5/5, the one the reviewer caught missing).
+Targeted rerun: test/boundaries.test.js, core/daemon/*.test.js, test/daemon.test.js,
+deck/views/pair-scan.test.js, test/docs-check.test.js - 71/71 pass. Sent to reviewer and the
+integrator.
+
 ## Next
 - No test coverage of scan.js/scan-worker.js's own lifecycle (the busy flag, the transferred
   buffer, worker.terminate() on stop) - reviewer-2 hand-verified fa619b4a and confirmed it's
