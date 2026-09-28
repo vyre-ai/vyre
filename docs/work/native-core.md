@@ -134,10 +134,10 @@ Read against reference/paseo and this file's own Paseo mapping table + native-ba
    whole DOM from scratch on every call; Paseo's split-markdown-blocks.ts re-parses only the tail
    block and freezes the rest, so a long streaming reply's already-highlighted code blocks are
    never rebuilt mid-stream. Caller is blocks.js (chat's) - needs coordinating with chat.
-3. **Budget 6, fling: 67 ms p95 (2,000 rows), need under 16.7 ms.** window-view remeasures and
-   remounts rows every frame instead of only when scrolling settles. chat's file (window-view.js).
-4. **Budget 7, cold open: 2,420 ms, need under 1,000 ms.** Well over 2x budget; not yet
-   root-caused (no trace breakdown taken yet - first thing to look at if this is picked up next).
+3. ~~Budget 6, fling: 67 ms p95~~ STALE - that number was my own tree, before chat's fling fix
+   (017c981f). Merged chat's head (cfc98f23) and re-measured: 16.7 ms, passes. Confirmed, not open.
+4. ~~Budget 7, cold open: 2,420 ms~~ STALE, same reason. Re-measured on the merged tree: 933.9 ms
+   cold / 6.7 ms cache, both pass. Confirmed, not open.
 5. **Budget 8's residual jump: 106-134 px while reconnecting, scrolled up** (timing itself now
    passes, well under 1 s, since pwa's fast-reachability fix). Same family as budget 5's now-fixed
    CLS entry (a placeholder box's display flip) - likely another collapse/expand or windowing
