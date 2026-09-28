@@ -41,6 +41,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   SDK driver) silently ran this file's ask-handling tests on the SDK driver, which its fake does
   not implement - 5 tests failed in a way that looked like flakiness. Predates this session
   (reproduces on d65353a8 too).
+- `test/helpers.js`'s `tempHome()` gains an optional `stop` callback, run before its own
+  daemon-stop/rmSync cleanup (which always runs first - after-hooks fire in registration order).
+  Fixes a real rc.2 failure: `core/sessions/sessions.test.js`'s `boot()` runs vyred in-process and
+  registered its own stop too late, so the temp directory got removed while the daemon (and any
+  live child) was still writing to it - ENOTEMPTY, and a plausible contributor to the whole file
+  blowing its 90s timeout under the full suite at concurrency 4. `core/switchboard/
+  switchboard.test.js` had the identical latent bug; fixed the same way, plus a `setDaemon()` for
+  its restart test's second daemon.
 
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 

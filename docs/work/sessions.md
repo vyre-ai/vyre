@@ -132,6 +132,28 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   session (reproduces on d65353a8 too). Fixed at 476437fc: `boot()` pins `VYRE_SESSIONS_DRIVER`
   to "cli", saved/restored like its other env vars. 47/47 with the var set (was 42/47); full
   suite 147/149 (2 skipped, 0 failed) with the real SDK also installed on testbox.
+- rc.2, release-critical (lead): two of the full-suite-at-concurrency-4 failures
+  (/tmp/rc2-full5.log on testbox) were core/sessions/sessions.test.js's own - an ENOTEMPTY on
+  rmSync, and the whole file blowing its 90s timeout. Root cause: tempHome(t)'s cleanup (stop
+  the daemon, then rmSync) is registered first inside boot(), so it always runs before start()
+  is even called - node:test after-hooks run in registration order (verified empirically). It
+  already knew to stop a *spawned* vyred (stopDaemon() reads vyred.pid) but explicitly skipped
+  an in-process one, leaving that to boot()'s own separate `t.after(() => d.stop())` - registered
+  second, so it always ran too late: the directory got removed while the daemon (and any live
+  child) was still writing into it. Fixed at 362923e3: `tempHome()` takes an optional `stop`
+  callback and runs it first, in the one place guaranteed to go first; `boot()` passes a closure
+  over a `daemon` variable set once `start()` resolves, dropping its own too-late hook. Found the
+  identical latent bug in switchboard.test.js's boot() (not in the rc.2 log, but the same shape)
+  and fixed it the same way at f454a757, adding a `setDaemon()` for the restart test's second
+  daemon. Verified at `--test-concurrency=4 --test-timeout=90000` on testbox, both files, both
+  driver configs, repeated runs: 0 fail (was failing before). Sent to reviewer-2 and the
+  integrator for pre/rc.
+- Checked whether an env-var leak (like the VYRE_SESSIONS_SDK_DIR one above) could explain e2e's
+  "vydred cannot read which processes this call runs under" failures: no. That message comes
+  from `core/daemon/peer.js`'s `ancestry()`/`insideClaude()` (via `core/daemon/index.js:235`)
+  failing to read a `/proc` entry to the top of a caller's process chain - a live-process-table
+  read race under load, nothing to do with which env vars or driver are set. Told e2e directly
+  with the exact code path.
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
@@ -166,6 +188,9 @@ optional deps; without them the tests silently run on the CLI).
   `busy` refusal on start; sessions.prompt.* for a settings screen.
 
 ## Changed contracts
+- `test/helpers.js`'s `tempHome(t, { stop } = {})` takes an optional `stop` callback, run before
+  its own daemon-stop/rmSync cleanup - for a test that runs vyred in-process (`start()`) rather
+  than as a spawned `vyre up`, which `stopDaemon()` has no way to reach on its own.
 - New event `thread.status` {status: one of THREAD_STATUSES, ...turn}, emitted alongside the
   unchanged legacy `thread.state` at every status change (module.json's watches.emits gains it).
   `threads.get`/`threads.list` records gain `canonical_status`; the existing raw `status` field
