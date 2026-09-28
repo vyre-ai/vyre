@@ -149,11 +149,52 @@ Four pictures, all opened and checked before use:
    docs:shots; did not touch docs/using/shots/ itself (only copied the regenerated PNG into
    docs/images/readme/), so the repo's own docs shots are unaffected by this.
 
+## Round 5: two pictures redone, one real bug found and diagnosed (team-lead)
+team-lead rejected two of the four pictures (Capsule ones were fine):
+
+**wink-confirm.png**: the black camera circle looked broken. Redone as the real DONE/success
+state instead of confirm (team-lead offered either): drove `step()` through
+found->resolved->confirm->paired to `done`, then called `deck/js/pair-avatar.js`'s
+`renderPersonAvatar({ identityFingerprint })` with a sample 8-byte fingerprint - the exact same
+function `deck/js/pair-scan.js`'s own `renderAvatar()` calls once pairing succeeds - to get a
+real drawn avatar SVG and swap it into `.scan-avatar`, matching shipped behavior exactly. Added a
+simple phone-bezel wrapper (rounded frame, small notch, margin) around the real markup so the
+crop reads as a device screen. Shows "Paired with kit as alex's iPhone. Code a1b2 c3d4."
+
+**deck-chat.png**: found the actual root cause rather than re-rendering the same broken view.
+`docs/using/shots/deck-project.png` (what I'd used) comes from `/projects/<slug>`, whose
+`Threads` tab has its own SEPARATE message renderer -
+`deck/views/projects.js:687 message()` - that still builds plain-text `initial(who)`/`initials(who)`
+letter badges and was never migrated to `deck/js/avatars.js`'s `personAv`/`agentAv` (the ones
+`deck/chat/blocks.js` uses, native-core's avatars work, merged into stage/0.1.1 at d77479bd).
+Confirmed by reading both files, not by guessing: no page-error was logged during the shot (ruled
+out an exception), and `avatarSource()`'s code paths for `family: "agent"`/`"person"` have no
+letter-fallback branch that isn't the `catch`. Real fix belongs to whoever owns
+`deck/views/projects.js` (flagged below, not touched here - out of scope for a README pass).
+Worked around it correctly instead: `/chat/harlow-legal/<session>` (the SAME thread, opened
+through the Chat view rather than the Projects view) uses the current, avatar-wired renderer and
+already shows the Harlow Legal project tile in both the header and the sidebar, alongside
+Northwind Bakery's tile - exactly what was asked for, with zero PII (no Brief panel on this
+route). Rendered both themes with a throwaway `deck/test/world.js` (a test helper, temp home,
+removed after; confirmed no process or port left with `ps`/`lsof`) and the same
+`scripts/lib/docs/chrome.js` CDP helper docs-shots itself uses, forcing
+`Emulation.setEmulatedMedia` for the dark shot (the world's `appearance.scheme` is "system", and
+headless Chrome defaults to light, which is why round 4's shot came out "paper" despite no
+`data-theme` override - not a bug, just an unset media emulation on my part).
+
 ## Next
 - Waiting on reviewer's second privacy/accuracy pass and team-lead's read before deploying
   vyre.run (their instruction: don't deploy until both).
-- Flag two open items to team-lead: the docs:shots dark-mode bug found above, and the still-stale
-  docs/brand/readme-hero*/social-preview*/og-paper assets (old headline, app-design's pipeline).
+- Flag three open items to team-lead:
+  1. Real bug, not fixed here: `deck/views/projects.js`'s own thread message renderer
+     (`message()`, line 687) never got migrated to the avatar system - whoever owns that view
+     should wire it to `personAv`/`agentAv` like `deck/chat/blocks.js` already does.
+  2. The docs:shots dark-mode gap from round 4 (light/dark came out byte-identical) - now
+     understood: that pipeline doesn't force `prefers-color-scheme` for the dark pass, so it only
+     works when the sample world's scheme is explicitly "dark"/"paper", not "system". Worth a
+     one-line fix in `scripts/docs-shots` for whoever owns it.
+  3. docs/brand/readme-hero*/social-preview*/og-paper still carry the old rejected headline
+     (app-design's launch art, not mine to hand-edit).
 - Did a full pass on the relay/DNS claim everywhere I could find it; only spot-checked the rest
   of site/index.html's feature-line framing (Mac/phone/server) given time - no other inaccuracies
   found in what I checked, but I didn't read all ~600 lines line by line this round.

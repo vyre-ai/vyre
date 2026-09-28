@@ -47,7 +47,7 @@ Press Option-Space in any app. Ask a question, send work to one of your agents, 
 Open [phone.vyre.run](https://phone.vyre.run) and point the camera at the ring around your avatar on your Mac or in the browser. Your phone shows your server's name and fingerprint, and pairs only after you tap Pair. After that you can follow sessions, answer your agents' questions and approve actions from your phone.
 
 <picture>
-  <img src="docs/images/readme/wink-confirm.png" alt="Wink's confirm screen on a phone: 'Pair with kit? Code a1b2 c3d4', with Pair and Not this one buttons" width="360">
+  <img src="docs/images/readme/wink-confirm.png" alt="Wink's success screen on a phone, framed by the device's edge: the scanned owner avatar, 'Paired with kit as alex's iPhone', and the code a1b2 c3d4" width="360">
 </picture>
 
 ## On your server: your agents
@@ -60,7 +60,8 @@ Open [phone.vyre.run](https://phone.vyre.run) and point the camera at the ring a
 - **Desktops on your tailnet.** After a one-time Tailscale setup on your server, a Linux or Windows desktop you pair joins your tailnet on its own. Macs follow in 0.1.2.
 
 <picture>
-  <img src="docs/images/readme/deck-chat.png" alt="The Deck showing a chat thread inside the Harlow Legal project, with a reply from Claude, your avatar in the sidebar, and the account's other projects listed there too" width="720">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/deck-chat.dark.png">
+  <img src="docs/images/readme/deck-chat.png" alt="The Deck showing the Weekly planning thread in the Harlow Legal project: your avatar and Vyre's reply avatar in the thread, the Harlow Legal project tile in the header, and both projects' tiles in the sidebar" width="720">
 </picture>
 
 ## What stays private
