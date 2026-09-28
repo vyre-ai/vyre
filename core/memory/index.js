@@ -184,7 +184,20 @@ export default {
       if (a.kind === "assistant" || a.projects === "*") return { all: true, agent: who, folders: [], slugs: new Set() };
       const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
       const granted = (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
-      return { all: false, agent: who, folders: granted.flatMap(p => p.folders), slugs: new Set(granted.map(p => p.slug)) };
+      // agents.projects alone is not the only door any more (reviewer's MEDIUM, Vyre Drive step
+      // 3): a project also has to be live in projects.access, the one place Drive, Recall and
+      // memory's own reads are all meant to check the same way. Intersected here rather than
+      // replacing agents.projects outright, so an agent's own scope (its folders, its Harness
+      // bound) is unaffected; only which of its named projects still counts for a memory read
+      // narrows. Where projects.access is not running at all, nothing changes: an install
+      // without it (or not yet migrated onto it) keeps today's behavior exactly.
+      const checked = await Promise.all(granted.map(async p => {
+        const c = await ctx.call("projects.access.check", { project: p.slug, agent: who });
+        if (c.error && c.error.code === "no_such_tool") return p;
+        return c.data && c.data.granted ? p : null;
+      }));
+      const allowed = checked.filter(Boolean);
+      return { all: false, agent: who, folders: allowed.flatMap(p => p.folders), slugs: new Set(allowed.map(p => p.slug)) };
     };
     const clean = cwds => (cwds || []).map(c => path.resolve(String(c)));
     /** The user's own surfaces. Only these, modules, and a verified all-projects agent read the main graph. */

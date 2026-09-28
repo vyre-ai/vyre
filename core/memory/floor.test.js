@@ -161,6 +161,10 @@ test("graph: the main graph is only for the user and the assistant; an agent see
   // The real agents module: the assistant, and an agent with one project.
   assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
   assert.ok(!(await call("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
+  // memory's guard now also checks projects.access (Vyre Drive step 3, one source of truth):
+  // an agent's agents.projects entry alone is not enough. migrate seeds it from what agents.create
+  // just set, the way an upgrade would, so kit's existing grant keeps working here.
+  assert.ok(!(await call("projects.access.migrate", {}, opts)).error);
   await call("memory.curate", {}, opts);
 
   const main = (await call("memory.graph", {}, opts)).data;

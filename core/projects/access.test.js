@@ -17,8 +17,9 @@ import * as config from "../config/index.js";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import { checkInput } from "../modules/index.js";
 
-/** A world with one real project, "Harlow Legal", and a fake ctx running the real module's start(). */
-function world(t) {
+/** A world with one real project, "Harlow Legal", and a fake ctx running the real module's start().
+ * agents, when given, answers agents.list (core/agents' own shape) instead of no_such_tool. */
+function world(t, { agents = null } = {}) {
   const root = fs.realpathSync(tempHome(t));
   const home = path.join(root, "alex", "Work", "harlow-site");
   fs.mkdirSync(home, { recursive: true });
@@ -33,14 +34,14 @@ function world(t) {
     log: () => {},
     events: { emit: (type, payload) => events.push({ type, payload }), on: () => () => {} },
     tool: (name, def) => tools.set(name, def),
-    call: async () => ({ error: { code: "no_such_tool", message: "none" } }),
+    call: async tool => tool === "agents.list" && agents ? { data: agents } : { error: { code: "no_such_tool", message: "none" } },
   };
   return { root, home, db, tools, events, ctx };
 }
 
 /** Make a project by hand, the way Projects.create does, then start the module over the same db. */
-async function started(t) {
-  const w = world(t);
+async function started(t, opts = {}) {
+  const w = world(t, opts);
   migrate(w.db, "projects", MIGRATIONS);
   const P = new Projects({ db: w.db, config: { projectsDir: path.join(w.root, "projects"), roots: [] } });
   P.create({ name: "Harlow Legal", home: w.home });
@@ -120,4 +121,30 @@ test("projects.access: grant is HUMAN_ONLY (needs the owner's presence), revoke 
   assert.ok(!PERSON_ONLY.has("projects.access.grant"), "not both lists at once");
   assert.ok(PERSON_ONLY.has("projects.access.revoke"), "revoking is instant, no proof");
   assert.ok(!HUMAN_ONLY.has("projects.access.revoke"));
+});
+
+test("projects.access.migrate: seeds a granted row for each of an agent's existing agents.projects entries, once", async t => {
+  const w = await started(t, { agents: [
+    { name: "kit", kind: "agent", projects: ["harlow-legal"] },
+    { name: "hal", kind: "agent", projects: [] },
+    { name: "vyre", kind: "assistant", projects: "*" },
+  ] });
+  const before = (await w.call("projects.access.check", { project: "harlow-legal", agent: "kit" }));
+  assert.equal(before.granted, false, "nothing granted before migrate runs");
+
+  const r = await w.call("projects.access.migrate", {}, { caller: "cli" });
+  assert.equal(r.seeded, 1, "one row: kit's one project; hal has none, vyre's * is not per-project");
+  const after = await w.call("projects.access.check", { project: "harlow-legal", agent: "kit" });
+  assert.deepEqual(after, { project: "harlow-legal", agent: "kit", granted: true, status: "granted", by: "projects.access.migrate", at: after.at });
+
+  // Idempotent: a second run adds nothing more, and never re-grants what the person revoked since.
+  await w.call("projects.access.revoke", { project: "harlow-legal", agent: "kit" }, { caller: "cli" });
+  const r2 = await w.call("projects.access.migrate", {}, { caller: "cli" });
+  assert.equal(r2.seeded, 0);
+  assert.equal((await w.call("projects.access.check", { project: "harlow-legal", agent: "kit" })).granted, false, "migrate never overrides a person's own revoke");
+});
+
+test("projects.access.migrate: refuses when agents cannot be listed, and is person-only", async t => {
+  const w = await started(t); // no agents fixture: ctx.call answers no_such_tool
+  await assert.rejects(w.call("projects.access.migrate", {}, { caller: "cli" }), /agents are not running/);
 });

@@ -234,6 +234,32 @@ export default {
       },
     });
 
+    ctx.tool("projects.access.migrate", {
+      description: "One-time bootstrap for projects.access (Vyre Drive step 3, one source of truth): seeds a granted row for every agent's own agents.projects entry that has none yet, so an agent already scoped to a project by agents.create/update keeps reading it once memory's guard starts checking projects.access too. Never overwrites a person's own revoke: only inserts a row where none exists. \"*\"-projects agents (the assistant included) are untouched here; what they see is the assistant rule, not a per-project grant. Safe to run more than once: later runs add only what a newer agent needs.",
+      input: { type: "object", properties: {} },
+      callers: OWNER,
+      run: async () => {
+        const r = await ctx.call("agents.list", {});
+        if (r.error) throw refuse(`agents cannot be listed (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`, "no_link");
+        const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
+        let seeded = 0;
+        const projects = P.valid();
+        for (const a of list) {
+          if (!a || !a.name || a.projects === "*" || !Array.isArray(a.projects)) continue;
+          for (const ref of a.projects) {
+            const p = projects.find(x => x.slug === String(ref) || x.name.toLowerCase() === String(ref).toLowerCase());
+            if (!p) continue; // an agent may name a project that moved or was removed; nothing to seed for it
+            const before = db.prepare("SELECT 1 FROM projects_access WHERE project = ? AND agent = ?").get(p.slug, a.name);
+            if (before) continue;
+            db.prepare("INSERT INTO projects_access (id, project, agent, status, by, at) VALUES (?,?,?,?,?,?)")
+              .run(crypto.randomUUID(), p.slug, a.name, "granted", "projects.access.migrate", Date.now());
+            seeded++;
+          }
+        }
+        return { seeded };
+      },
+    });
+
     return { async stop() {} };
   },
 };
