@@ -50,6 +50,27 @@ test("isolation (static): Chrome is launched by entrypoint.sh (root), never by c
   assert.doesNotMatch(ENTRYPOINT, /ambient-caps=\+cap_setuid/, "something still grants an ambient CAP_SETUID");
 });
 
+test("isolation (static): Chrome's FIFOs are made under vyre's own volume, before the agent's xterm, and fail closed (reviewer HIGH, 28 Sep)", () => {
+  assert.match(ENTRYPOINT, /CHROME_DIR="\$\{VYRE_HOME\}\/chrome-pipes"/,
+    "CHROME_DIR is not under vyre's own volume (/var/lib/vyre/chrome-pipes) -- the agent's uid can write to /tmp");
+  assert.doesNotMatch(ENTRYPOINT, /CHROME_DIR=\/tmp\/vyre-chrome/, "CHROME_DIR is still the old /tmp path, writable by the agent's uid");
+  assert.doesNotMatch(ENTRYPOINT, /CHROME_DIR=\/run\/vyre-chrome/, "CHROME_DIR is the /run path computerd's stale default still names");
+  // mkdir with no -p: a directory (or symlink) already at that name must abort the boot, not be reused.
+  assert.match(ENTRYPOINT, /mkdir "\$0"' "\$\{CHROME_DIR\}" \\\n\s*\|\| \{ log "\$\{CHROME_DIR\} already exists[\s\S]*?exit 1; \}/,
+    "CHROME_DIR's mkdir is not a bare mkdir that fails closed on reuse (-p or a missing exit would let a pre-planted directory through)");
+  assert.match(ENTRYPOINT, /\[ -d "\$0" \] && \[ ! -L "\$0" \]' "\$\{CHROME_DIR\}"[\s\S]*?is not a plain directory[\s\S]*?exit 1; \}/,
+    "CHROME_DIR is not checked for being a symlink");
+  assert.match(ENTRYPOINT, /stat -c %U "\$\{CHROME_DIR\}"\)" = "vyre"[\s\S]*?is not vyre's[\s\S]*?exit 1; \}/,
+    "CHROME_DIR's owner is not checked to be vyre");
+  assert.match(ENTRYPOINT, /as_vyre chgrp vyre-bus "\$\{CHROME_DIR\}" \|\| exit 1/, "a failed chgrp on CHROME_DIR does not abort the boot");
+  assert.match(ENTRYPOINT, /as_vyre mkfifo -m 0660 "\$\{CHROME_IN\}" "\$\{CHROME_OUT\}" \|\| exit 1/, "a failed mkfifo does not abort the boot");
+  // Order matters: this must all run before as_agent's xterm gets a shell that could run .bashrc.
+  const dirIdx = ENTRYPOINT.indexOf('CHROME_DIR="${VYRE_HOME}/chrome-pipes"');
+  const xtermIdx = ENTRYPOINT.indexOf("as_agent xterm");
+  assert.ok(dirIdx > 0 && xtermIdx > 0 && dirIdx < xtermIdx,
+    "the FIFO directory is made after (or xterm/CHROME_DIR not found), not before, the agent's xterm starts");
+});
+
 /** Run python3 code in the computer as the agent; returns stdout. */
 function asAgent(code) {
   return execFileSync("docker", ["exec", "-u", "1000:1000", C, "python3", "-c", code], { encoding: "utf8", timeout: 30_000 }).trim();
@@ -217,6 +238,47 @@ print(json.dumps({"node": caps(vyre('^node$')), "chrome": caps(browser('chrom'))
       }
     }
   }
+});
+
+test("isolation: Chrome's FIFOs live at /var/lib/vyre/chrome-pipes, owned by vyre, and the agent cannot write, replace or symlink into them", { skip }, () => {
+  const r = JSON.parse(asAgent(`
+import os, json
+def probe(p):
+    try:
+        st = os.lstat(p)
+        return {"owner": st.st_uid, "mode": oct(st.st_mode & 0o7777), "is_symlink": os.path.islink(p)}
+    except Exception as e:
+        return {"error": type(e).__name__}
+def can_write(p):
+    try:
+        with open(p, "a"): pass
+        return True
+    except Exception:
+        return False
+def can_replace(p):
+    try:
+        os.unlink(p)
+        return True
+    except Exception:
+        return False
+print(json.dumps({
+  "dir": probe("/var/lib/vyre/chrome-pipes"),
+  "in": probe("/var/lib/vyre/chrome-pipes/in"),
+  "out": probe("/var/lib/vyre/chrome-pipes/out"),
+  "old_tmp_path": probe("/tmp/vyre-chrome"),
+  "write_dir": can_write("/var/lib/vyre/chrome-pipes/agent-planted"),
+  "unlink_in": can_replace("/var/lib/vyre/chrome-pipes/in"),
+}))`));
+  assert.equal(r.dir.owner, 1001, "the FIFO directory is not owned by vyre (1001)");
+  assert.equal(r.dir.is_symlink, false, "the FIFO directory is a symlink");
+  assert.equal(r.dir.mode, "0o770", `the FIFO directory's mode is ${r.dir.mode}, not 0770`);
+  for (const name of ["in", "out"]) {
+    assert.equal(r[name].owner, 1001, `the ${name} FIFO is not owned by vyre (1001)`);
+    assert.equal(r[name].mode, "0o660", `the ${name} FIFO's mode is ${r[name].mode}, not 0660`);
+  }
+  assert.equal(r.old_tmp_path.error, "FileNotFoundError", "the old /tmp/vyre-chrome path exists -- something still uses it, or it was pre-planted");
+  assert.equal(r.write_dir, false, "the agent's uid can create a new file inside the FIFO directory");
+  assert.equal(r.unlink_in, false, "the agent's uid can unlink (and so replace) Chrome's own FIFO");
 });
 
 const TOKEN = process.env.VYRE_COMPUTERD_TOKEN || "";

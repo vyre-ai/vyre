@@ -94,6 +94,41 @@ as_browser() {
       XAUTHORITY="${BROWSER_XAUTH}" "$@"
 }
 
+# ---- Chrome's two FIFOs, made before any agent process runs -----------------------------------
+# The reviewer's HIGH (28 Sep): the agent's home starts empty, but xterm (further down) gives the
+# agent an interactive shell that runs its own .bashrc from its persistent volume -- if this ran
+# after that, the agent could win a race and plant its own directory (or a symlink) at this exact
+# path first. mkfifo would then succeed inside the agent's own directory, and Chrome's fd 3/4
+# would belong to the agent: raw CDP to the browser target, bypassing cdpmux (cookie dumps,
+# file://, everything cdpmux.js refuses). Made this early instead, and under /var/lib/vyre (vyre's
+# own volume, 0711), not /tmp: vyre owns that path outright, can mkdir and chgrp to vyre-bus with
+# no CAP_CHOWN, and it is nowhere the agent's own uid can write to plant something first.
+# Every step here fails closed (a bare `mkdir`, never `-p`, refuses to reuse anything already at
+# that name; `|| exit 1` on every following chgrp/chmod, since none of them should ever legitimately
+# fail and a silent `&&` short-circuit under set -e would otherwise let the boot continue with the
+# wrong owner or mode on a path the rest of this script trusts).
+CHROME_DIR="${VYRE_HOME}/chrome-pipes"
+CHROME_IN="${CHROME_DIR}/in"    # computerd writes, Chrome reads (its fd 3)
+CHROME_OUT="${CHROME_DIR}/out"  # Chrome writes (its fd 4), computerd reads
+CHROME_PROFILE="${BROWSER_HOME}/chromium"
+CHROME_LOG="${VYRE_HOME}/chromium.log"
+as_vyre sh -c 'umask 007; mkdir "$0"' "${CHROME_DIR}" \
+  || { log "${CHROME_DIR} already exists; refusing to reuse it for Chrome's FIFOs"; exit 1; }
+as_vyre sh -c '[ -d "$0" ] && [ ! -L "$0" ]' "${CHROME_DIR}" \
+  || { log "${CHROME_DIR} is not a plain directory; refusing"; exit 1; }
+[ "$(stat -c %U "${CHROME_DIR}")" = "vyre" ] \
+  || { log "${CHROME_DIR} is not vyre's; refusing"; exit 1; }
+as_vyre chgrp vyre-bus "${CHROME_DIR}" || exit 1
+as_vyre chmod 0770 "${CHROME_DIR}" || exit 1
+as_vyre mkfifo -m 0660 "${CHROME_IN}" "${CHROME_OUT}" || exit 1
+as_vyre chgrp vyre-bus "${CHROME_IN}" "${CHROME_OUT}" || exit 1
+as_vyre chmod 0660 "${CHROME_IN}" "${CHROME_OUT}" || exit 1
+as_vyre sh -c ': > "$0"' "${CHROME_LOG}" 2>/dev/null || true
+# browser writes its own stdout/stderr into this file (below); vyre reads it. Same vyre-bus
+# pattern as the FIFOs: vyre owns it and may hand it to a group it belongs to.
+as_vyre chgrp vyre-bus "${CHROME_LOG}" || exit 1
+as_vyre chmod 0660 "${CHROME_LOG}" || exit 1
+
 # ---- the three homes -------------------------------------------------------------------------
 # The agent's home is group-writable (setgid, so new folders keep the group) for computerd's
 # Files; the agent can undo that for any folder it wants private.
@@ -242,30 +277,9 @@ fi
 # ---- Chrome, as browser, launched here (root) rather than by computerd ------------------------
 # The reviewer's root-launcher design (28 Sep): computerd never spawns Chrome and never holds a
 # capability at all (its own setpriv call, below, is back to a plain --inh-caps=-all like every
-# other process here). Chrome talks CDP over two FIFOs instead of a spawned child's own pipe --
-# computerd opens its own ends (computerd/index.js, CHROME_IN/CHROME_OUT) and never touches
-# Chrome's process, uid or a capability of its own.
-#
-# /run is root-owned 0755 (checked live, 28 Sep): root can make a directory there, but root
-# cannot then chgrp it to vyre-bus (CAP_CHOWN, which this container's root does not have, same as
-# everywhere else here) -- root would have to own the target group already, which it does not.
-# vyre can: it belongs to vyre-bus, and an owner may hand a file it made to any group it belongs
-# to. So vyre makes this directory itself, under /tmp (sticky, world-writable, so vyre can create
-# there without needing write on /run) rather than root making it under /run.
-CHROME_DIR=/tmp/vyre-chrome
-CHROME_IN="${CHROME_DIR}/in"    # computerd writes, Chrome reads (its fd 3)
-CHROME_OUT="${CHROME_DIR}/out"  # Chrome writes (its fd 4), computerd reads
-CHROME_PROFILE="${BROWSER_HOME}/chromium"
-CHROME_LOG="${VYRE_HOME}/chromium.log"
-as_vyre sh -c 'umask 007; mkdir -p "$0"' "${CHROME_DIR}"
-as_vyre chgrp vyre-bus "${CHROME_DIR}" && as_vyre chmod 0770 "${CHROME_DIR}"
-as_vyre rm -f "${CHROME_IN}" "${CHROME_OUT}"
-as_vyre mkfifo -m 0660 "${CHROME_IN}" "${CHROME_OUT}"
-as_vyre chgrp vyre-bus "${CHROME_IN}" "${CHROME_OUT}" && as_vyre chmod 0660 "${CHROME_IN}" "${CHROME_OUT}"
-as_vyre sh -c ': > "$0"' "${CHROME_LOG}" 2>/dev/null || true
-# browser writes its own stdout/stderr into this file (below); vyre reads it. Same vyre-bus
-# pattern as the FIFOs and the D-Bus socket: vyre owns it and may hand it to a group it belongs to.
-as_vyre chgrp vyre-bus "${CHROME_LOG}" && as_vyre chmod 0660 "${CHROME_LOG}"
+# other process here). Chrome talks CDP over the two FIFOs made early, above, instead of a spawned
+# child's own pipe -- computerd opens its own ends (computerd/index.js, CHROME_IN/CHROME_OUT) and
+# never touches Chrome's process, uid or a capability of its own.
 
 # Checked once, here, rather than passed to Chrome's argv unvalidated: vyred passes the proxy
 # script as a data: URL only when the setting is on and lists a site (config glass.egress,
