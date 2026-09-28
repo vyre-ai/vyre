@@ -535,9 +535,10 @@ test("typing while a turn runs steers it ('steering', then 'you steered here · 
   assert.match(text(sheet), /Use Estate intake v2 instead/);
   assert.equal($(box4, ".cv-rewind-scrim").hidden, false, "a real overlay (app-design's review), not drawn in the flow");
   await wait();
-  // Claude Code's three choices; the box answered threads.commands, so it can put files back.
-  assert.deepEqual($$(box4, ".cv-rw-opt").map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code"]);
-  assert.deepEqual($$(box4, ".cv-rw-opt").map(b => b.disabled), [false, false, false]);
+  // Claude Code's three choices, plus native-core's "Fork from here" (pickers.js: shown whenever
+  // onFork is given, disabled until canFork() answers true - session.js always passes onFork now).
+  assert.deepEqual($$(box4, ".cv-rw-opt").map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code", "Fork from here"]);
+  assert.deepEqual($$(box4, ".cv-rw-opt").map(b => b.disabled), [false, false, false, true], "fork waits on threads.fork answering true");
   assert.equal(text($(box4, ".cv-rw-opt[aria-checked=true]")), "Restore code and conversation", "both is the default");
   press3("Enter");
   await wait();
