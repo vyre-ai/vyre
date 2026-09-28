@@ -118,6 +118,13 @@ export class FakeDriver {
     return { state, host: `fake-${c.agent}`, ...exit };
   }
 
+  /** Fixed, deterministic numbers: nothing to average over in a fake. Null when not running. */
+  async stats(id) {
+    const c = this.must(id);
+    if (c.state !== "running") return { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null };
+    return { cpu: 12.5, ram: 30, ramLimit: 2 * 1024 * 1024 * 1024, netRx: 1000, netTx: 500 };
+  }
+
   async list() {
     return [...this.containers.values()].map(c => ({ id: c.id, agent: c.agent, state: c.state === "created" ? "exited" : c.state }));
   }

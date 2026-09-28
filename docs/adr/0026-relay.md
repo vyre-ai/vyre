@@ -391,6 +391,7 @@ check.
 | A stolen `box.key` later | nothing against recorded traffic | the ee DH gives forward secrecy |
 | A malicious web page in the owner's browser | nothing | the device key belongs to the `app.vyre.run` origin and cannot be exported; other origins cannot reach it |
 | Whoever controls the code served at `app.vyre.run` | act as that browser's web device while the tab is open, read what it shows | section 10: non-extractable keys, a biometric per approval, fewer powers for web devices, a signed and pinned release, the build check, the pairing notice, 30-day expiry. The native app and the tailnet Deck do not carry this risk |
+| The relay operator, on a Wink pairing (ADR 0045) | see a stable per-person identity fingerprint (`sha256("vyre:person:v1:"+owner.id)`, in the ticket record) and the owner's `<handle>.vyre.run`, linking every box and pairing that owner's fingerprint appears on over time | reviewer's LOW, 28 Sep, unmitigated as shipped: the record sits on the relay in the clear, MAC-authenticated but not encrypted from the relay itself, same exposure class as the metadata row above. A per-ticket salted value (`H(identity \|\| ticket)`) would give the relay nothing to link across pairings, at the cost of the phone computing it fresh each time; not built, a call for tailnet and app-design |
 
 Residual risks, stated: the first-device path during onboarding (section 6), availability of the
 one hosted relay, traffic analysis by the relay, and hosted code in the web app (section 10).

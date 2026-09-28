@@ -1,5 +1,8 @@
 # The Vyre relay on Cloudflare (ADR 0026, section 2). No account id here: wrangler takes it from
-# the logged-in account at deploy. Deploying needs the lead's approval.
+# the logged-in account at deploy. Deploying needs the lead's approval. The ratelimit
+# namespace_ids below (1001-1003) are placeholders in the account's own numbering; whoever
+# deploys creates the three rate limiting namespaces first (dashboard or `wrangler` at deploy
+# time) and replaces them with the real ids before `wrangler deploy` runs for real.
 name = "vyre-relay"
 main = "index.js"
 compatibility_date = "2026-09-01"
@@ -11,17 +14,40 @@ compatibility_date = "2026-09-01"
 name = "ROUTES"
 class_name = "RouteRelay"
 
-# The free plan needs SQLite-backed Durable Objects.
+# One object per Wink pairing ticket locator (ADR 0045), not per route: a resolve request carries
+# only a locator, nothing to route it to a specific RouteRelay object by.
+[[durable_objects.bindings]]
+name = "TICKETS"
+class_name = "PairTicket"
+
+# The free plan needs SQLite-backed Durable Objects. Cloudflare applies each migration tag once,
+# ever, on a given relay: a relay that already ran v1 (RouteRelay alone, before ADR 0045) never
+# re-runs it, so PairTicket needs its OWN tag, or /v1/pair 404s everything forever, fail-closed
+# but silently broken (reviewer's MEDIUM, 28 Sep).
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RouteRelay"]
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["PairTicket"]
 
-# Per-address limiting for /v1/device. Optional: without it the per-route caps in the DO are the
-# only limit, and a rate limiting rule on /v1/device is set on the zone instead. Set at deploy.
-# [[ratelimits]]
-# name = "DEVICE_LIMITER"
-# namespace_id = "1001"
-# simple = { limit = 30, period = 60 }
+# Per-address limiting for /v1/device: the 256-bit route id and the DO's own per-route caps make
+# this safe without one, but it is real protection against cost and flooding, so it is on.
+[[ratelimits]]
+name = "DEVICE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }
+
+# Per-address and global limiting for /v1/pair (ADR 0045's Wink resolve). Same reasoning: the
+# 256-bit locator and the MAC make guessing infeasible, but flooding and cost are still real.
+[[ratelimits]]
+name = "PAIR_LIMITER"
+namespace_id = "1002"
+simple = { limit = 30, period = 60 }
+[[ratelimits]]
+name = "PAIR_LIMITER_GLOBAL"
+namespace_id = "1003"
+simple = { limit = 600, period = 60 }
 
 [observability]
 enabled = true

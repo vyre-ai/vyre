@@ -45,6 +45,20 @@ export const isZero = b => { let d = 0; for (let i = 0; i < b.length; i++) d |= 
 
 /** @param {Uint8Array} b */
 export const hex = b => Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
+
+const B32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
+/** RFC 4648 base32, lowercase, no padding — byte for byte core/relay/wire.js's own base32, so a
+ * route id or a key fingerprint computed here reads identically to the box's own. @param {Uint8Array} buf */
+export function base32(buf) {
+  let bits = 0, value = 0, out = "";
+  for (const byte of buf) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) { out += B32_ALPHABET[(value >>> (bits - 5)) & 31]; bits -= 5; }
+  }
+  if (bits > 0) out += B32_ALPHABET[(value << (5 - bits)) & 31];
+  return out;
+}
 /** @param {string} s */
 export function fromHex(s) {
   if (s.length % 2 || /[^0-9a-f]/i.test(s)) throw new Error("bad hex");

@@ -4,11 +4,13 @@
 // resume and dedupe, and the pairing URL.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { connect, parsePairUrl } from "./client.js";
+import { connect, parsePairUrl, keyFingerprint } from "./client.js";
 import { webCrypto, memoryKeyStore } from "./webcrypto.js";
 import { memoryBox, serveWith, reply, settle, ROUTE } from "./testing.js";
 import { pairUrl, parsePairUrl as boxParse } from "../../core/relay/pairing.js";
-import { base64url } from "./bytes.js";
+import { base32 as boxBase32 } from "../../core/relay/wire.js";
+import { base64url, base32 } from "./bytes.js";
+import crypto2 from "node:crypto";
 
 const crypto = webCrypto();
 
@@ -208,4 +210,14 @@ test("client: a refused device learns why and keeps retrying quietly", async t =
   await settle(() => conn.lastError !== null);
   assert.match(String(conn.lastError?.message), /not a paired device/);
   assert.equal(conn.state, "offline");
+});
+
+test("client: base32 and keyFingerprint match core/relay/wire.js's own byte for byte (ADR 0037)", async () => {
+  const buf = crypto2.randomBytes(37);
+  assert.equal(base32(buf), boxBase32(buf), "the same RFC 4648 lowercase, no-padding alphabet");
+
+  const box = crypto2.randomBytes(32);
+  const want = boxBase32(crypto2.createHash("sha256").update(box).digest()).slice(0, 8);
+  const fp = await keyFingerprint(box, crypto);
+  assert.equal(fp, `${want.slice(0, 4)} ${want.slice(4)}`, "reads identically to the box's own Touch ID prompt fingerprint");
 });

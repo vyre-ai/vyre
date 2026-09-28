@@ -25,6 +25,7 @@
 //   GET    /containers/json                 list, label filter forced, rows filtered again
 //   POST   /containers/create?name=         allowCreate, name pinned, existing volume checked
 //   GET    /containers/{id}/json            inspect      \
+//   GET    /containers/{id}/stats           one sample, stream=false hard-coded, no query at all
 //   POST   /containers/{id}/start|stop|pause|unpause      > the Engine's labels are a computer's
 //   DELETE /containers/{id}?v=&force=       remove       /
 //   POST   /containers/{id}/exec            exec create, never privileged, never another user
@@ -52,6 +53,7 @@ const ROUTES = [
   ["GET", /^\/containers\/json$/, "list", ["all", "filters", "limit", "size"], false],
   ["POST", /^\/containers\/create$/, "create", ["name"], true],
   ["GET", new RegExp(`^/containers/(${NAME})/json$`), "inspect", ["size"], false],
+  ["GET", new RegExp(`^/containers/(${NAME})/stats$`), "stats", [], false],
   ["POST", new RegExp(`^/containers/(${NAME})/(start|pause|unpause)$`), "op", [], false],
   ["POST", new RegExp(`^/containers/(${NAME})/(stop)$`), "op", ["t"], false],
   ["DELETE", new RegExp(`^/containers/(${NAME})$`), "remove", ["v", "force"], false],
@@ -395,6 +397,14 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
       if (r.status !== 200) return send(res, r.status, r.body);
       if (!computer(r.body && r.body.Config && r.body.Config.Labels).ok) refuse(`container ${m[1]} changed under the check`);
       return send(res, 200, scrub(r.body));
+    }
+    if (name === "stats") {
+      // stream is never the caller's to set: a streaming request would hold this connection open
+      // for as long as the container runs, so ?stream=false is hard-coded, whatever the path
+      // carried (the route above lets no query key through at all). One buffered sample, numeric
+      // counters only, nothing to scrub.
+      const r = await engine("GET", `${ver}/containers/${id}/stats?stream=false`);
+      return send(res, r.status, r.body);
     }
     // Residual (security, 26 Sep): any caller that reaches this proxy can stop, pause or remove
     // ANY agent's computer, not only its own; labels tell a computer from vyred's containers, not

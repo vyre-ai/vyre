@@ -92,7 +92,8 @@
       "adr/0035-settings-hub.md",
       "adr/0036-one-system.md",
       "adr/0040-vyre-core.md",
-      "adr/0039-vyre-anywhere.md"
+      "adr/0039-vyre-anywhere.md",
+      "adr/0046-relay-introduces-tailscale-carries.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
     { "title": "Contributing", "pages": [
@@ -117,7 +118,9 @@
       "design/anywhere.md",
       "design/glass-plan.md",
       "design/agent-browsers.md",
-      "design/teammates.md"
+      "design/teammates.md",
+      "design/tailscale-plan.md",
+      "design/vitals.md"
     ]},
     { "title": "Design system", "pages": [
       "design/system/README.md",

@@ -234,6 +234,15 @@ export default {
         return pool.limits(agent, { cpus: i.cpus, memory_gb: i.memory_gb });
       });
 
+    tool("computers.stats", "One CPU/RAM/network sample for an agent's computer (docker stats, one buffered request, never a streaming connection). Every field null when the computer is not running or this machine has no driver. Internal: vitals reads this, not the Deck.", obj({ agent: str }),
+      async (i, { caller }) => {
+        const agent = await resolve(i, caller);
+        if (!driver || typeof driver.stats !== "function") return { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null };
+        const row = pool.row(agent);
+        if (!row || !row.container || String(row.state) !== "running") return { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null };
+        return driver.stats(row.container);
+      }, { internal: true });
+
     tool("computers.pause", "Pause an agent's hands: its input actions are refused until resumed. The computer keeps running.", obj({ agent: str }),
       async (i, { caller }) => pool.pause(await resolve(i, caller), true));
 
