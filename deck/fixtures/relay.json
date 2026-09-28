@@ -1,0 +1,10 @@
+{
+  "relay.join": {
+    "relay": true,
+    "route": "relay",
+    "box": { "name": "kit" },
+    "name": "alex-mac",
+    "device": { "id": "dev_1" },
+    "presence": { "enrolled": false }
+  }
+}

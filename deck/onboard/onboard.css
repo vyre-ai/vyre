@@ -22,6 +22,14 @@
 .ob-step .t span + span { font-family: var(--mono); font-size: 11px; line-height: 14px; color: var(--label); }
 .ob-steps .foot { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--rule); font-size: 13px; line-height: 18px; color: var(--label); }
 
+/* The per-step celebration: a step just marked done gets one quick, silent pop, under 600ms,
+   decorative only (aria-hidden dots, and the checkmark it lands on either way). Never gates
+   navigation: JS moves on regardless of this animation's state. */
+@keyframes obPop { 0% { transform: scale(1); } 45% { transform: scale(1.5); } 100% { transform: scale(1); } }
+.ob-step .n.pop { animation: obPop 480ms ease; }
+.ob-dots span.pop { animation: obPop 480ms ease; }
+@media (prefers-reduced-motion: reduce) { .ob-step .n.pop, .ob-dots span.pop { animation: none; } }
+
 .ob-main { flex-grow: 1; min-width: 0; overflow: auto; display: flex; justify-content: center; }
 .ob-col { width: 100%; max-width: 640px; padding: 72px 32px 48px; display: flex; flex-direction: column; }
 .ob-col > .lbl { margin-bottom: 14px; }
@@ -52,7 +60,7 @@
 .choice label:hover { background: var(--hover); }
 .choice label.on { background: var(--hover); }
 .choice input[type=radio] { appearance: none; width: 16px; height: 16px; border-radius: 8px; border: 1px solid var(--rule-strong); margin: 3px 0 0; flex-shrink: 0; }
-.choice input[type=radio]:checked { border: 5px solid var(--text); }
+.choice input[type=radio]:checked { border: 5px solid var(--focus); }
 .choice .t { display: flex; flex-direction: column; gap: 2px; }
 .choice .t b { font-weight: 500; font-size: 15px; line-height: 22px; }
 .choice .t span { font-size: 13px; line-height: 18px; color: var(--text-2); }

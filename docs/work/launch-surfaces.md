@@ -15,6 +15,15 @@
   step's state machine too. Use "server" and "devices", not "box"/"Mac" (see below: this wording
   is net-new, not an in-progress rename elsewhere). Work with memory-iq, federation (owned by
   tailnet, ADR 0021) and app-design. See "The import flow" below.
+- NEW PRIORITY (the user's decision, 28 Sep, HANDOFF.md "Vyre anywhere"): onboarding's server
+  choice becomes "Where should Vyre live?" — Solo (this computer, ~2 min, no Tailscale) /
+  Another computer I have (Mac mini or Linux box) / A cloud server. Plus a polished "Move to
+  server" flow in Settings, the SAME flow as onboarding's "I already have a server, connect it",
+  with progress, what's moving, undo, and a "your laptop is now a device" celebration. Tailscale
+  only appears once a second device or server joins. launch owns this UI; agree contracts with
+  anywhere (the role choice, ADR 0039), federation (the move engine) and tailnet (the join flow).
+  Also needed: a local one-command install for Solo (npm or script), agreed with anywhere. See
+  "Where should Vyre live?" below.
 
 ## Surfaces
 
@@ -36,6 +45,60 @@
 | Deck first run | pwa | spec to hand over |
 | Phone first run | mobile | spec to hand over |
 | Capsule first run | capsule-pro | spec to hand over |
+
+## Where should Vyre live? (0.1.1, new priority)
+
+Researched before proposing anything:
+
+- Today's step 2 ("Pair this device with the server", `docs/design/onboarding-v2.md`) is
+  pairing-only: it assumes a server already exists or is about to via Tailscale, and jumps
+  straight to `tailscale`/`name`. There is no role choice screen and no Solo path anywhere in
+  `deck/onboard/onboard.js`'s `STEPS`, and no Settings entry for "move to a server" exists in
+  `core/onboard/` or the deck's settings surfaces.
+- ADR 0038 ("Linux only" for the server) is superseded by ADR 0039 per HANDOFF.md; 0039 does not
+  exist yet in this worktree (`docs/adr/0039*` absent), so the role/OS split is not yet written
+  down anywhere I can build against.
+- `docs/design/onboarding-v2.md` "One onboarding for every device" (step 2's existing-server
+  detection) is the closest existing design to reuse for Move-to-server: same "add this device"
+  shape, run from Settings instead of first boot.
+
+Proposed UI (draft, pending the three teams below):
+
+- Replace step 2's cold jump into pairing with a role choice screen, three cards: **Solo** (this
+  computer, about 2 minutes, no Tailscale row shown at all), **Another computer I have** (Mac
+  mini or Linux box), **A cloud server**. Solo confirms locally and skips straight to step 3;
+  the other two flow into today's `tailscale`/`name` screens, unchanged, which is where Tailscale
+  first appears.
+- Settings gets a "Move to server" entry that runs the exact same engine as onboarding's
+  "I already have a server, connect it" path (same tool calls, same progress UI), reachable at
+  any time post-onboarding: a plan screen (what moves: projects, memory, vault, sessions, with
+  sizes), live per-category progress (reusing `progressRow`), an undo action while the move is
+  in flight or just after, and a closing screen naming the laptop as a device now ("This Mac is
+  now a device. Your server is <name>.").
+- Local one-command install for Solo: needs an agreed script/npm path from anywhere; today's
+  `scripts/install-box.sh` is server-shaped (Tailscale, naming) and wrong for a Solo laptop.
+
+Needed from others before building the state machine (asked, see Needs from others): anywhere's
+role-choice tool shape and ADR 0039 text, federation's move-plan/move-start/move-status/undo tool
+shapes (proposed names in the ask), and tailnet's confirmation that its join step truly never
+renders for Solo. Look/copy for the three role cards can start now; the real engine wiring waits.
+
+Built (client-only, wip b4df8f14): a new step `live` ("Where should Vyre live?") in
+`deck/onboard/onboard.js`'s `STEPS`, between `you` and `tailscale`. Three cards (Solo / another
+computer I have / a cloud server); Solo marks `tailscale` and `name` skipped and jumps straight to
+`claude`, the other two fall through to today's pairing screens unchanged. `state.live` is
+client-only until anywhere's tool lands, same degrade-gracefully shape as the `computers` step.
+Named the step id `live`, not `role`, to keep it distinct from `core/config`'s existing
+`role: "box"|"local"` field, which this choice will likely end up driving once anywhere's contract
+exists (Solo -> `local`, the other two -> `box`, is my read, not confirmed). `test/onboard-page.test.js`
+updated for the new hash; server-side `test/onboard.test.js` unaffected (15/15).
+
+Settings placement for "Move to server", found while reading `deck/views/settings.js`: the
+existing "Your devices" section (`drawDevices`, its `foot(toOnboard("devices", "Add a device"))`)
+is the natural spot — a `role === "local"` box already has no peers to show there, so a "Move to
+server" button belongs right next to "Add a device", not a new top-level Settings section. Not
+built yet: waiting on federation's move-engine shapes before writing real UI, per Needs from
+others.
 
 ## The import flow (0.1.1)
 
@@ -167,6 +230,27 @@ Filled in as each lands.
     review rather than a scripted browser test (no harness exists for `site/app.js`).
   - `site/robots.txt`, `site/sitemap.xml`: added, neither existed.
   - `theme-color`: already present on all three pages, turned out to need nothing.
+- "Pair with a code" gated on `onboard.status.can.relayJoin` (the lead's ask, 28 Sep): new
+  `deck/js/join-caps.js` (`canRelayJoin`, pure, false or missing both read false, never a platform
+  guess). The live step now shows the tailnet-name field alone with the reason as one muted line
+  when it's false, and only offers the code-pairing choice when it's true.
+  `deck/fixtures/onboard.json`'s `onboard.status` gained the real `can` block (false, today's
+  Mac case); `deck/fixtures/onboard-relay-true.json` added for the unit test's true case (not
+  wired into the live fixture loader, which is one file per module). Tests:
+  `deck/js/join-caps.test.js` (5/5, both fixture cases plus missing/null/non-bool), run on
+  testbox; `test/onboard.test.js` re-run clean after (15/15). Sent to reviewer-2 with 68c2333f.
+- reviewer-2's follow-up: no committed test actually drove `relay.join`'s `presence:"asked"`
+  round trip — the prior onboard-page.test.js click-through only ever hit the fixture fallback
+  (relay.join isn't a real tool, so a "missing" answer short-circuits before presence enters
+  into it). Added `deck/js/api.test.js` tests for the "asked" sequence itself (passkey only once
+  the box actually says presence_required; one round trip, no passkey, for a box that never
+  asks; the same `{url, becomeDevice}` body both times) — 2 new, 13/13 in that file on testbox.
+  Rewrote `test/onboard-page.test.js`'s device/relay test: it used to click a
+  `?fixtures=1`-only radio as if live; now that the option is really gated and the real
+  `onboard.status` has no `can` field yet, it correctly never shows in a real flow, so the test
+  asserts exactly that (no radio, tailnet-name field alone, "Connect" not "Pair") — 4/4 in that
+  file on testbox with `CHROME_BIN=/usr/local/bin/vyre-chrome` (headless, testbox's Playwright
+  Chromium; the RULES `CHROME_BIN` default is a Mac path and testbox has no Chrome install).
 
 ## Doing
 
@@ -243,19 +327,256 @@ Resumed after the restart (28 Sep), reading RULES.md/HANDOFF.md fresh:
   e2e had already found and fixed this on work/e2e-rcfix (a5eff01f), verified 120/120; dropped
   work/launch-rc2fix rather than duplicate it with a second sha, per the lead. Not launch's bug
   (core/onboard, core/names), and not the via() caching I first suspected.
+- install-box.sh, per the lead (29 Sep): fixed a real, previously undetected shellcheck SC1087
+  bug (pick_look()'s escape-code vars and step()'s counter, `$var[...` read as an array index;
+  the "shellcheck is clean when available" test in core/names/system.test.js had silently never
+  run anywhere shellcheck was installed until I installed it on testbox to check this branch),
+  and added the asked-for "friendly wait line" (wait_line(), picked by pid) shown once before
+  Docker's own curl|sh install, the one real silent gap. 5b6c17e9, tested 38/38 on testbox.
+- Landing page screenshots for the lead to show the user (desktop 1440, phone 390): a real
+  tooling gotcha cost most of this task's time. `vyre-chrome --window-size=390,...` silently
+  clamps to a 500px minimum in this Chromium build (confirmed empirically: 499 requested reads
+  as innerWidth 500, 501 reads correctly) while `--screenshot` still writes a 390-wide PNG, i.e.
+  a crop of a page laid out for 500px, not a render at 390px. That looked exactly like a real
+  mobile overflow bug (GitHub/Install clipped in the nav, hero paragraph text cut mid-word) until
+  a proper CDP `Emulation.setDeviceMetricsOverride({width:390, mobile:true})` screenshot (see
+  the scratch script written for this, not committed) showed the page is actually fine at true
+  390px: nothing wraps or clips. No site bug, no fix needed. Screenshots are local-only (not
+  committed; the lead asked for paths, not files in the repo), teardown confirmed (no leftover
+  chrome/http.server processes on testbox). Worth remembering: any future phone-width screenshot
+  on this Chromium build needs CDP device-metrics override, not `--window-size` alone.
+- Two real phone-screen findings from the lead's own look at those screenshots, both fixed and
+  verified with a proper CDP mobile-emulation screenshot: the hero's Option-Space hint now reads
+  "Tap to try the Capsule right here." under `(pointer: coarse), (max-width: 720px)` instead of a
+  keyboard shortcut nobody on a touch device can press; the install command's Mac tab now leads
+  with "This puts Vyre on your Mac as a device that pairs with your server (Linux only) over your
+  tailnet.", since it previously never said the Mac pairs rather than serves.
+- PUBLISHED (the user approved, the lead ran the actual deploy): vyre.run is live from `site/` at
+  2d13e42a (this branch), Cloudflare Pages project vyre-site, deploy
+  https://103488f4.vyre-site.pages.dev. The box files and install.sh in that deploy are built
+  from `main` 4fd286d7, not this branch, so installers get reviewed main code; my install-box.sh
+  polish (5b6c17e9, the shellcheck fix + wait_line()) reaches the live installer once it lands on
+  main. Verified: https://vyre.run 200 with the new headline and the tap hint live,
+  https://vyre.run/install.sh 200.
+
+Built (Settings > Server, fixture-backed against `deck/fixtures/federation.json`): a new "Server"
+section in `deck/views/settings.js` (`drawServer`, `drawAlreadyMoved`), reading
+`docs/design/anywhere.md` (work/anywhere, 11328815) for the exact flow: point at a server (paste
+a code), a dry-run plan (the four pieces from anywhere's table — projects, memory, vault,
+sessions — each with a count and size), "Start moving" while the source stays live, live
+per-piece progress (polled every 5 s while the panel is open, same cadence as onboard's history
+step), Undo, a confirm step before the flip ("Confirm: make this a device", separate from
+starting the copy, per anywhere.md step 3), the "this computer is now a device" line, and "Free
+up space on this laptop" gated 24 hours (anywhere.md's forget guard) with counts, never automatic.
+Tool names (`federation.role.status`, `federation.move.plan/start/status/confirm/undo/forget`)
+are launch's proposal, not yet confirmed by federation (asked). Only Solo/Server -> Device is
+built; "Move off this server" (the reverse direction anywhere.md also names) is not, see Next.
+Smoke-tested for real on testbox (a throwaway CDP script against `deck/test/native-bar/world.js`,
+not committed): point-at-a-server -> plan showing all four pieces -> start -> live progress rows,
+zero console/runtime errors, then torn down. No screenshot pass yet (app-design hasn't seen this
+panel), and the plan/start/confirm/undo/forget tools all still answer from fixtures only.
+
+Also reconciled the `live` onboarding step's copy with anywhere.md, which explicitly claims
+ownership of "the three choices and their copy": h1 is now "How will Vyre run?", options are
+"Just on this computer" / "This computer stays on for me, and I'll use other devices too" / "I
+already have a Vyre server", and the internal values are config.role's real three
+(`"solo"|"server"|"device"`), not this file's earlier guess (`"solo"|"device"|"cloud"`). Behavior
+unchanged: Solo skips Tailscale/name; Server and Device both still fall through to today's
+pairing screens, since anywhere.md's own "point at a server" entry for Device isn't wired into
+onboarding yet (it exists now only in the new Settings panel above) — a candidate to unify later,
+noted below rather than built twice under time pressure.
+
+Fixed (the lead, after anywhere's answer): the field is `config.machine` (additive, ADR 0039),
+not `config.role` (unchanged, stays box/local). Unified per the lead's explicit instruction — Move
+to server is the SAME flow in onboarding and later: the `live` step no longer falls through to
+the old tailscale/name screens for any choice. Solo and Server both call `onboard.machine{action:
+"set", machine}` (Server surfaces `service.warning`, doesn't block on it) and skip tailscale/name
+outright; Device shows an inline "Setup code or address" field and calls `onboard.join{action:
+"verify"}` (tailnet's tool, also not shipped) instead of the old screens. Both tools are fixture-
+backed in `deck/fixtures/onboard.json`, not shipped yet (anywhere: within the day; tailnet: not
+started). Settings > Server's `drawServer` now reads `onboard.status`'s `machine` field (same
+tool the onboarding step already calls) instead of an invented `federation.role.status`; only the
+move-engine (`federation.move.*`, unrelated to config.machine) is still federation's own proposal.
+Added the solo-path page test reviewer-2 and the lead flagged as missing (asserts Tailscale and
+the address step are skipped, and the page lands on Claude sign-in), and fixed the existing
+device-path test for the new behavior (lands on `#claude` now, not `#tailscale`; asserts both old
+steps are skipped there too). Testbox verification pending the integrator's rc.2 freeze (20 min,
+the lead, 29 Sep) — no Chrome runs from launch until it lifts; syntax-checked locally in the
+meantime (`node --check` on every touched file, fixture JSON validated).
+
+Found while doing this, not mine to fix: the landing page's Mac install tab still says "pairs
+with your server (Linux only)" (ADR 0038 wording), which ADR 0039 supersedes now that a Mac can
+be Solo or Server too. Flagged to site-copy and the lead rather than touched, since that page is
+mid-rewrite by site-copy right now.
+
+Extracted (the lead + reviewer-2, "pull it into a testable module like Drive did, don't wait for
+federation"): `deck/js/server-rows.js`, pure functions (`fmtBytes`, `pieceLabel`, `pieceLine`,
+`totalBytes`, `pieceState`, `readyToConfirm`, `destinationName`, `forgetGate`), the same shape as
+`drive-rows.js`. `drawServer`/`drawAlreadyMoved` in `settings.js` now call these instead of inline
+duplicates. Committed `deck/test/settings-server.test.js`, 6 tests, checked against the real
+fixture data (`deck/fixtures/federation.json`'s move.plan/move.status/move.confirm,
+`deck/fixtures/onboard.json`'s status/machine) per the lead's "test it against the fixtures", not
+synthetic literals. Runs with plain `node --test`, no daemon or Chrome needed: 6/6 locally
+alongside `settings-drive.test.js`'s existing 4/4.
+
+Read tailnet's real, shipped `core/join` (work/tailnet, af604cf8, not on main yet) to wire the
+Device path against something real instead of my earlier guess, and found a genuine mismatch:
+`join.verify` takes an optional `node` id and forwards to `link.health` — a reachability check for
+a device that already paired, not something that accepts a "setup code" to start one. It's also
+box-role only, the same gap tailnet flagged for "a phone joins a Solo Mac": a fresh device
+choosing "I already have a server" is role solo/local at that point, so `join.*` never even loads
+on its own daemon.
+
+tailnet then dropped that separate module and folded it back into `onboard.join` directly (same
+shape convention as onboard.tailscale/claude/name): `{action:"status"|"tailscale"|"relay"|
+"verify", step?, node?, becomeDevice?}`. Their design call: `verify`'s machine-flip only fires
+with `becomeDevice: true`, since the same action is called from both sides of a join and only the
+connecting device should ever demote itself. Updated the `live` step's Device branch to call the
+real name with `becomeDevice: true` and moved the fixture back into `deck/fixtures/onboard.json`.
+The underlying mismatch is unchanged and still open: `node` expects a device/node id, not the
+setup code this screen's input actually collects, and the box-role gating question is still with
+tailnet. Still degrades gracefully (a missing tool never blocks Continue), so nothing breaks, just
+isn't truly wired yet.
+
+anywhere shipped the real `onboard.machine` (sha 73d03d39): `{machine:"solo"|"server"} ->
+{machine, service}`, no `action` wrapper (dropped from my earlier guess). `service` always comes
+back `null` for now (the launchd/keep-awake installer isn't built), so nothing here reads
+`service.warning` anymore — removed that dead branch rather than leave UI logic that assumes a
+field anywhere explicitly said to treat as always-null. Fixture and the committed test both
+updated to match (`service: null`, not `service.installed`).
+
+Screenshot pass from app-design (ce9c4c5f) landed 5 ranked findings; built all five: the whole
+move wizard now sits in its own card (`.set-server-card`: 1px `--rule` border, radius 12, per
+`docs/design/system/components/card.md`), separate from the plain "This computer" status row
+above it (#1). The
+vault piece on the plan screen gets a lock glyph and anywhere.md's own encryption line, since
+that promise was otherwise invisible (#2). `.set-meter` is a real 6px track+fill now, not a
+hairline (#3). The live progress rows use the shared status-mark vocabulary (`statusMark` from
+`deck/js/status-mark.js`: a running mark with the percent, a hollow done dot) instead of plain
+"Waiting"/"Done" words — a not-yet-started piece keeps plain text since that model has no mark
+for "not started", only running/done/needs/failed/unread (#4). The onboarding radio's selected
+fill is `--focus` (lime) now, not `--text`, matching every other checked/selected state in the
+system (#5). Not re-screenshotted yet; asked app-design for a second pass.
+
+Fixed reviewer-2's caught bug (a real one, ahead-reviewed from git before I'd even sent shas):
+the Device branch checked only `j.error`, never whether `onboard.join` actually said the server
+was reachable, so a wrong code proceeded to Claude sign-in exactly like a right one. The real
+tool's `verify` forwards to `link.health`, whose actual field is `online` (checked in
+`core/link/health.js`), not `ok`/`reachable` as my earlier fixture guessed; now checks
+`j.data.online === false` and shows the error (`why`, or a fallback line) instead of proceeding.
+Added a real regression test (`test/onboard-page.test.js`, "Device with a wrong code..."),
+driven through `?fixtures=1` since no real `onboard.join` exists yet to answer this for real —
+which is how the `core/onboard/loopback.js` gap above (Changed contracts) was found: the test
+failed with "the page never showed the name field" until that fix landed, then failed differently
+("never showed an error line") until the URL-construction bug (query params before the `#`
+fragment, not after) was also fixed. Both are real bugs this test caught, not the one it was
+written for. Verified together on testbox: 36/36 across onboard-page/onboard/boundaries/
+hygiene/settings-server/settings-drive.
+
+~~Get app-design's second pass~~ done: all five confirmed fixed, running the real flow again, no
+new findings.
+
+Rebuilt the Device path per tailnet's actual, detailed answer (there is no single "setup code"):
+two real mechanisms, not one placeholder field.
+- **Same Tailscale network** (built): the "live" step now collects the server's tailnet name,
+  then routes through the existing `tailscale` screen (which Device now runs, unlike Solo/Server
+  — a device joining IS "a second device joining", the case that screen was always meant for;
+  only "name", reserving this machine's own address, never applies to a device). Once signed in,
+  "Continue" calls `onboard.join{action:"verify", node, becomeDevice:true}` there instead of the
+  screen's normal `s.next()`, showing the real error on a wrong node (reviewer-2's bug, now
+  actually reachable by a test: fake Tailscale already `BackendState: "Running"`, no login click
+  to simulate) or proceeding to Claude sign-in with `tailscale` marked done and `name` skipped.
+- **Pair with a code** (now built too, tailnet shipped the real shape same day): one call,
+  `relay.join{url, becomeDevice:true}` — no separate verify step, since a successful pairing
+  already proves reachability. `via` is a second, inner radiogroup under "device" (same
+  Tailscale network / pair with a code), each with its own field; the footer's label changes to
+  match ("Connect" vs "Pair") so the button says what it actually does. Fixture-backed
+  (`deck/fixtures/relay.json`); the real tool isn't on main yet.
+Rewrote the regression test accordingly (connects a fake Tailscale, verifies a wrong node fails
+with an error and stays put, then Back-and-fix proceeds for real), and added one for the relay
+path. Verified on testbox: onboard-page 4/4, full targeted set 40/40.
+
+Also closed reviewer-2's race-window finding on the Server panel (26ba1830): `watch()` attached
+its `move.*` listener only after `move.status`'s baseline call resolved, so an event landing
+during that round trip (a fast-finishing piece, say) was lost for good, with no poll left to
+self-correct. Now attaches the listener first, buffers anything that arrives before the baseline
+is in, replays the buffer onto it, then switches to live — pulled the merge logic itself into
+`server-rows.js`'s `mergeEvent` (pure, unit-tested: one event applied, and buffered-then-replayed
+producing the same result as applied live) so this DOM-adjacent flow has a real testable seam,
+same ask reviewer-2 made about the rest of this panel earlier.
+
+The lead: relay.join is reviewer-cleared (93754fa2) and no longer hypothetical. Wired
+`attempt("relay.join", {url, becomeDevice:true}, {presence:"asked"})` (was a bare `attempt`),
+since the real tool's own presence summary (core/relay/index.js, reviewer's MEDIUM on 93754fa2,
+fixed 6cd9c02d) is where the box name, relay host and key fingerprint actually show — a passkey
+confirmation the person sees, not something this screen renders itself. Confirmed safe against
+the fixture path (fixtures answer before the tool is even found "missing", so presence never
+enters the fixture flow; the request stayed the same shape in all 4 onboard-page tests, still
+40/40 on testbox).
+
+**Blocked**, asked directly: "keep the option hidden on a Mac until vyre-core, shown on Linux and
+Windows" has no client-side signal to build against. Checked `onboard.status`, `onboard.tailscale`
+detect, and tailnet's own `tailnetPeers()` parsing (`core/onboard/index.js`, which reads OS only
+for *other* peers via `tailscale status --json`'s `Peer` map, never `Self`, and needs Tailscale
+already running either way — this device may not be, since avoiding Tailscale is the whole point
+of the relay path). Nothing named "vyre-core" exists yet in the codebase (grepped). Not building a
+guess at this; asked the lead/anywhere what to check. The option shows unconditionally for now.
 
 ## Next
 
+- Get the vyre-core platform signal (see above) and gate the relay option on it once it exists.
+- Build "Move off this server" (Device -> Solo, the reverse direction anywhere.md names) in
+  Settings > Server; only the forward direction is built.
+- Wire `service.warning` into the Server step once anywhere's launchd installer actually
+  populates it (anywhere: "will ping you the moment that lands").
+- reviewer-2's non-blocking note (f7c311bf): `verifyDevice` (and the pre-existing "server"
+  branch) has no cancelled/alive guard around its in-flight `attempt()` calls the way Settings'
+  `drawServer` does (`ctx.alive()` after every await) — a Back click mid-verify that later
+  resolves successfully would still redirect to Claude sign-in. Systemic to onboard.js generally
+  (its `cleanup[]` covers timers/listeners, not in-flight async calls), not something to fix in
+  one screen alone; worth its own pass across the file.
 - Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
-- Start building the step-shell's new pieces (per-step celebration, the final summary) once more
-  steps exist to celebrate; premature to scaffold against only 5 of 9 steps today.
+- Step-shell's final summary, per the lead (build both, 29 Sep): showEnding()'s "What's next"
+  ticks gained a fourth row for the Agent computers choice (9d4103f0); a per-step celebration
+  landed (a 480ms CSS pop on the just-completed step's checkmark/dot, reduced-motion-gated,
+  non-blocking); and a warm one-line note for still-stub steps ("Secrets, accounts and Drive are
+  ready when you are: Settings.", correctly cased/pluralized for whichever subset remain). The
+  ending screen's existing easter egg (endMark()'s burst) was already there from ADR 0008, left
+  untouched.
 - Coordinate with tailnet once it replies about steps 1-2 and install-box.sh.
-- Follow up on the onboard.test.js:265 CI failure once e2e replies with the actual error.
 - Once vault/federation send real tool shapes for secrets/drive, replace the inert previews with
-  working forms.
+  working forms, and drop that id from showEnding()'s stub-steps dict so the warm line stops
+  naming it.
 
 ## Needs from others
 
+- ~~anywhere: the role-choice tool shape~~ answered and REAL now (sha 73d03d39, work/anywhere):
+  `onboard.machine{machine:"solo"|"server"} -> {machine, service}`, `service` always `null` for
+  now (their launchd installer is next on their list; will ping when it's real). ~~Solo one-
+  command install~~ answered: `npm install -g https://vyre.run/box/vyre.tgz` + `vyre up`, no new
+  script; pointed at it in the onboarding comments, not yet in any shipped copy.
+- ~~tailnet: onboard.join shape~~ ~~the Device-path mismatch~~ both answered in full and both
+  built: `onboard.join{action:"status"|"tailscale"|"relay"|"verify", step?, node?, becomeDevice?}`
+  for same-Tailscale (real-shaped, not merged to main yet), `relay.join{url, becomeDevice}` for
+  pair-with-a-code (also real-shaped, also not merged yet — tailnet built it the same day once
+  asked). ~~confirm the join flow never renders on the Solo path~~ confirmed. Still open:
+  names.discover's client-side peer-scan is unbuilt and, per tailnet, not gated on anything of
+  theirs now; worth deciding whether it's still needed given onboard.join's own `status` action,
+  rather than building both.
+- ~~federation: move-engine tool shapes~~ answered and confirmed (docs/work/federation.md):
+  `move.plan{destination}`, `move.start{planId}`, `move.status{moveId}` ({stage, pieces:
+  {bytes,of,done,error}}), `move.confirm{moveId}`, `move.cancel{moveId}` (the Undo, full stop
+  before confirm; no undo after — that's the separate 24h+ "free up space" flow), and events
+  (move.progress/move.piece.done/move.failed/move.confirmed) for live progress instead of
+  polling. Wired the whole panel to this shape and switched from a 5 s poll to the event stream
+  (deck/js/api.js's `on()`), since Settings has the real stream, unlike onboarding's loopback.
+  Asked federation one open question: no explicit "ready" event exists, so the Deck infers it
+  itself (`allReady`, every named piece done with no error) — asked whether that's a safe
+  inference or whether there's a checksum/verify race it should poll `move.status` once more to
+  cover instead. Not yet answered.
+- app-design: a second pass on the Server panel's five fixes (card, vault lock note, real
+  progress bar, status-mark vocabulary, lime radio fill), landed after their first screenshot
+  pass but not yet re-reviewed.
 - lead: which of Vyre IQ, Capsule auto-answer, voice, "do" computer use and the settings hub are in the RC. Until answered, anything not on main shows "coming".
 - sessions: pending onboard changes, if any.
 - app-design: a second pass on the memory-section redesign and the hotkey copy, since both
@@ -290,3 +611,12 @@ Resumed after the restart (28 Sep), reading RULES.md/HANDOFF.md fresh:
   (default `""`); existing callers are unaffected.
 - `core/cli/screen/index.js`: now imports `fortune` from `../delight.js` to fill that option each
   frame.
+- `core/onboard/loopback.js`'s `assetPath` (not launch's file; smallest change through the
+  contract, per RULES): added `fixtures` to the static-path whitelist regex. Found while writing
+  a real regression test for reviewer-2's caught bug (see Doing): the onboarding page's own
+  `?fixtures=1` mechanism (deck/js/api.js) 403'd on every `/fixtures/*.json` fetch, since that
+  path was never in the whitelist, silently degrading to "missing tool" instead of ever serving a
+  fixture. Verified additive and safe: `/fixtures/onboard.json` now 200s, a `..` traversal
+  attempt still 403s (the existing `!p.includes("..")` guard is unaffected, checked directly).
+  No existing test named this path. Flagged to whoever owns onboard's loopback/sessions, since
+  it's the first thing that's actually exercised onboarding-with-fixtures end to end.

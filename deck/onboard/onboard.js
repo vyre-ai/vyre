@@ -10,6 +10,7 @@ import { base, when, plural } from "../js/fmt.js";
 import { pairRequests } from "../js/pair.js";
 import qrcode from "../vendor/qrcode.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
+import { canRelayJoin } from "../js/join-caps.js";
 
 // Reconciled with docs/design/onboarding-v2.md's 10-step table (the lead, 29 Sep): this array's
 // order now matches it exactly, with two client screens standing in for the doc's single step 2
@@ -21,6 +22,7 @@ import { LOCK, lockState, lockSteps } from "../js/lock.js";
 // server-side counterpart yet still marks, skips and counts correctly.
 const STEPS = [
   { id: "you", title: "You" },                    // 1
+  { id: "live", title: "Where should Vyre live?" }, // 1b, ahead of ADR 0039 (docs/work/launch-surfaces.md "Where should Vyre live?")
   { id: "tailscale", title: "Tailscale" },         // 2a
   { id: "name", title: "Your address" },           // 2b
   { id: "claude", title: "Claude Code" },          // 3
@@ -51,6 +53,21 @@ const state = {
   name: "",
   assistant: "",
   host: "",
+  /** The Agent computers step's choice ("off"|"browser"|"desktop"), so the ending screen can
+   * show what was picked. Client-only until glass owns a real onboard.* tool for it. */
+  /** @type {"off"|"browser"|"desktop"|null} */ computers: null,
+  /** The "How will Vyre run?" step's choice, config.machine's three values ("solo"|"server"|
+   * "device", docs/design/anywhere.md, ADR 0039 — not config.role, which is unrelated and
+   * unchanged), fixture-backed until anywhere's and tailnet's onboard.* tools ship for real
+   * (asked, docs/work/launch-surfaces.md "Where should Vyre live?"). */
+  /** @type {"solo"|"server"|"device"|null} */ live: null,
+  /** The Device choice's "same Tailscale network" input: the existing server's tailnet name,
+   * for the `verify{node}` call once Tailscale connects (tailnet, docs/work/launch-surfaces.md
+   * "Two separate paths for 'I have a server'"). Client-only. */
+  serverNode: "",
+  /** Which of Device's two real join mechanisms is selected: same Tailscale network (no code,
+   * onboard.join{verify}) or pair with a code (one call, relay.join). */
+  /** @type {"tailscale"|"relay"} */ deviceVia: "tailscale",
 };
 /** Timers and listeners of the current screen, cleared when the screen changes. */
 let cleanup = [];
@@ -73,6 +90,10 @@ function say(/** @type {string} */ text) {
 /** The bar's last width, so moving to the next step grows it from where it was. */
 let lastPct = 0;
 let lastStep = -1;
+/** A step just marked "done" for real (not skipped), so the next render() can give it a quick,
+ * silent pop: consumed once, then cleared, so a later poll-driven re-render of the same screen
+ * does not replay it. Never delays navigation: it only decorates whatever renders next. */
+let justDone = null;
 
 async function boot() {
   // loopback (before an owner exists) serves only /onboard and the onboard.* tools; system.info
@@ -100,12 +121,17 @@ async function mark_(id, s) {
   state.status ||= { steps: {} };
   state.status.steps ||= {};
   state.status.steps[id] = s;
+  if (s === "done") justDone = id;
   if (s === "skipped") await attempt("onboard.skip", { step: id });
 }
 
 function render() {
   for (const f of cleanup) f();
   cleanup = [];
+  // Consumed once: a later re-render of the same screen (a status poll, devices' refresh()) must
+  // not replay the pop. Decorative only, so it's fine to skip outright under reduced motion.
+  const justId = calm() ? null : justDone;
+  justDone = null;
   const i = current();
   const step = STEPS[i];
   const col = h("div", { class: "ob-col" });
@@ -131,14 +157,14 @@ function render() {
       h("span", { class: "brand", "aria-label": "vyre" }, mark(20), wordmark(22)),
       h("span", { class: "where" }, "Setting up ", h("b", null, state.host))),
     h("div", { class: "ob-dots", "aria-hidden": "true" }, STEPS.map((s, j) =>
-      h("span", { class: j === i ? "now" : stepState(s.id) !== "todo" ? "done" : "" }))),
+      h("span", { class: (j === i ? "now" : stepState(s.id) !== "todo" ? "done" : "") + (s.id === justId ? " pop" : "") }))),
     h("div", { class: "ob-body" },
       h("nav", { class: "ob-steps", "aria-label": "Setup steps" },
         h("div", { class: "lbl" }, "Setup"),
         h("ol", null, STEPS.map((s, j) => {
           const st = stepState(s.id);
           return h("li", null, h("a", { class: "ob-step" + (st === "done" ? " done" : ""), href: "#" + s.id, "aria-current": j === i ? "step" : false },
-            h("span", { class: "n" }, st === "done" ? icon("check", 12) : String(j + 1)),
+            h("span", { class: "n" + (s.id === justId ? " pop" : "") }, st === "done" ? icon("check", 12) : String(j + 1)),
             h("span", { class: "t" }, h("span", null, s.title), st !== "todo" ? h("span", null, st === "done" ? "Done" : "Skipped") : null)));
         })),
         h("div", { class: "foot" }, "Skip anything you like. Every step can be finished later from Settings, or with a vyre command.")),
@@ -157,7 +183,7 @@ function render() {
   lastPct = pct;
   if (lastStep !== i) say(`Step ${i + 1} of ${STEPS.length}: ${step.title}`);
   lastStep = i;
-  if (state.statusError?.missing && i !== 4) {
+  if (state.statusError?.missing && step.id !== "history") {
     col.append(h("div", { class: "need", style: { marginBottom: "24px" } },
       h("div", { class: "lbl beacon" }, "Setup is not running"),
       "The server module is not running on this machine, so this step cannot finish here yet. Run ", h("code", null, "vyre up"),
@@ -271,6 +297,12 @@ function progressRow(label, st, note, since) {
 
 const NAME_RE = /^[a-z][a-z0-9-]{1,30}[a-z0-9]$/;
 
+/** "X", "X and Y", "X, Y and Z". */
+function andJoin(/** @type {string[]} */ words) {
+  if (words.length < 2) return words[0] || "";
+  return words.length === 2 ? words.join(" and ") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
 /** @type {Record<string, (col: HTMLElement, s: any) => void>} */
 const SCREENS = {
   you(col, s) {
@@ -320,6 +352,130 @@ const SCREENS = {
     sync();
     if (state.name) check();
     later(() => nameIn.focus(), 0);
+  },
+
+  // New (28 Sep, user decision "Vyre anywhere"): a role choice ahead of the pairing screens.
+  // Copy and the three choices are anywhere's (docs/design/anywhere.md, work/anywhere 11328815,
+  // ADR 0039), which owns them; this screen is launch's build of that spec. The field is
+  // config.machine ("solo"|"server"|"device", additive, ADR 0039) — NOT config.role, which
+  // stays "box"|"local" and is untouched by this screen.
+  //
+  // Unified per the lead (the user was explicit: Move to server is the SAME flow in onboarding
+  // and later): "name" (reserving this machine's own address) never runs for Device — a device
+  // never reserves an address, only a server does. "tailscale" DOES still run for Device (a
+  // device joining IS "a second device joining", the case the lead said triggers it), just not
+  // for Solo or Server, which both skip both screens and defer to Settings > Your devices > Add
+  // a device later.
+  //   - Solo: onboard.machine{machine:"solo"} (a safe no-op per anywhere, called anyway so the
+  //     server has it on record), then straight to Claude sign-in. Real tool, sha 73d03d39 —
+  //     `service` always comes back null for now (anywhere's own launchd installer isn't built
+  //     yet), so nothing here reads it.
+  //   - Server: onboard.machine{machine:"server"}, same real tool. `service.warning` is not
+  //     surfaced yet either, for the same reason; will add once anywhere says it's populated.
+  //   - Device: two real paths, per tailnet, both built now (docs/work/launch-surfaces.md
+  //     "Concrete answer: relay.join for the code, onboard.join for Tailscale"), each its own
+  //     inner radio under "device", not one made-up "setup code" field:
+  //       - Same Tailscale network: this machine's own Tailscale connect (the existing
+  //         `tailscale` screen, reused as-is, `onboard.tailscale`), then
+  //         `onboard.join{action:"verify", node:<the server's tailnet name>, becomeDevice:true}`
+  //         once connected. No code exchanged; the person supplies the server's tailnet name,
+  //         since verify has to be told which server to check reachability against.
+  //       - Pair with a code: one call, `relay.join{url, becomeDevice:true}`, straight from this
+  //         screen — no separate verify step, since a successful pairing already proves
+  //         reachability. `url` is the pairing code/link (relay.pair.start or
+  //         onboard.join{action:"relay"}, minted on the server side, pasted here). Shown only
+  //         when `onboard.status.can.relayJoin` is true (see js/join-caps.js): false on a Mac
+  //         until vyre-core (relay.join itself also refuses there, as a backstop), a missing
+  //         field treated as false. Not shipped by anywhere yet, so this hides unconditionally
+  //         today — no guessed platform check stands in for the real signal.
+  //     Both paths pass `becomeDevice:true` and land the same way. Neither existed as real
+  //     tools when this screen was first built (28 Sep); onboard.join is real-shaped but not on
+  //     main yet, relay.join is real-shaped and not on main yet either.
+  // Fixture-backed (deck/fixtures/onboard.json, deck/fixtures/relay.json): onboard.machine is
+  // the only one of these four tools actually shipped on main so far.
+  live(col, s) {
+    col.append(
+      h("h1", { class: "h1" }, "How will Vyre run?"),
+      h("p", { class: "lead" }, "You can change this later without losing anything."));
+    const body = h("div", { class: "ob-panel" });
+    const st = h("div", { class: "check-line", "aria-live": "polite" });
+    col.append(body, st);
+    let choice = state.live;
+    // Server-decided (the lead, 28 Sep): can.relayJoin, false on a Mac until vyre-core, a
+    // missing field treated the same as false (see deck/js/join-caps.js). Not shipped by
+    // anywhere yet, so this reads false today on every machine — the option stays hidden until
+    // it lands, not a guess at what platform this is.
+    const relay = canRelayJoin(state.status);
+    let via = state.deviceVia === "relay" && !relay.allowed ? "tailscale" : state.deviceVia;
+    const nodeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "server-node", placeholder: "kit", autocomplete: "off",
+      value: state.serverNode, oninput: () => { state.serverNode = nodeIn.value; } }));
+    const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "pair-code", placeholder: "Paste the code your server showed", autocomplete: "off" }));
+
+    const toClaude = () => goto(STEPS.findIndex(x => x.id === "claude"));
+    const label = () => choice !== "device" ? "Continue" : via === "relay" ? "Pair" : "Connect";
+
+    const syncFoot = () => s.foot({ label: label(), disabled: !choice, run: async () => {
+      if (choice === "solo") {
+        await attempt("onboard.machine", { machine: "solo" });
+        await mark_("live", "done"); await mark_("tailscale", "skipped"); await mark_("name", "skipped"); toClaude();
+        return;
+      }
+      if (choice === "server") {
+        put(st, "Setting this computer up as your server.");
+        const r = await attempt("onboard.machine", { machine: "server" });
+        if (r.error && !r.error.missing) { put(st, String(r.error.message)); return; }
+        put(st, "");
+        await mark_("live", "done"); await mark_("tailscale", "skipped"); await mark_("name", "skipped"); toClaude();
+        return;
+      }
+      if (via === "relay") {
+        // A single call, no verify step: relay.join proves reachability by pairing. presence:
+        // "asked" so the box name, relay host and key fingerprint the real tool's own presence
+        // summary names (core/relay/index.js, reviewer's MEDIUM on 93754fa2, fixed 6cd9c02d) show
+        // in the confirmation before it pairs — this device is joining a box a phishing message
+        // could otherwise name convincingly, so the person needs to see which one for real.
+        const v = codeIn.value.trim();
+        if (!v) { put(st, "Paste the code first."); return; }
+        put(st, "Pairing.");
+        const r = await attempt("relay.join", { url: v, becomeDevice: true }, { presence: "asked" });
+        if (r.error && !r.error.missing) { put(st, String(r.error.message)); return; }
+        put(st, "");
+        await mark_("live", "done"); await mark_("tailscale", "skipped"); await mark_("name", "skipped"); toClaude();
+        return;
+      }
+      // device, same Tailscale network: this machine still needs to join it (the "tailscale"
+      // screen is real and does that), so it runs, unlike Solo/Server above. "name" never
+      // applies to a device, wherever this flow lands next (see SCREENS.name's own skip).
+      const v = nodeIn.value.trim();
+      if (!v) { put(st, "Your server's tailnet name first (the same one its own setup showed)."); return; }
+      state.serverNode = v;
+      await mark_("live", "done");
+      goto(STEPS.findIndex(x => x.id === "tailscale"));
+    } });
+    const opt = (value, title, more) => h("label", { class: value === choice ? "on" : "" },
+      h("input", { type: "radio", name: "live", value, checked: value === choice, onchange: () => { choice = state.live = value; put(body, choiceEl()); syncFoot(); } }),
+      h("span", { class: "t" }, h("b", null, title)),
+      value === choice && more ? h("div", { class: "more" }, more) : null);
+    const viaOpt = (value, title, more) => h("label", { class: value === via ? "on" : "" },
+      h("input", { type: "radio", name: "device-via", value, checked: value === via, onchange: () => { via = state.deviceVia = value; put(body, choiceEl()); syncFoot(); } }),
+      h("span", { class: "t" }, h("b", null, title)),
+      value === via ? h("div", { class: "more" }, more) : null);
+    const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "How Vyre runs" },
+      opt("solo", "Just on this computer"),
+      opt("server", "This computer stays on for me, and I'll use other devices too"),
+      opt("device", "I already have a Vyre server",
+        relay.allowed
+          ? h("div", { class: "choice", role: "radiogroup", "aria-label": "How to join it" },
+              viaOpt("tailscale", "Same Tailscale network",
+                h("div", { class: "field" }, h("label", { for: "server-node" }, "Your server's tailnet name"), nodeIn)),
+              viaOpt("relay", "Pair with a code",
+                h("div", { class: "field" }, h("label", { for: "pair-code" }, "Pairing code"), codeIn)))
+          : [
+              h("div", { class: "field" }, h("label", { for: "server-node" }, "Your server's tailnet name"), nodeIn),
+              relay.reason ? h("p", { class: "small muted" }, relay.reason) : null,
+            ]));
+    put(body, choiceEl());
+    syncFoot();
   },
 
   claude(col, s) {
@@ -415,8 +571,23 @@ const SCREENS = {
       h("p", { class: "lead" }, "Tailscale lets your phone and laptop reach Vyre, and nothing else can. You sign in on Tailscale's own page, so Vyre never sees your password."),
       h("p", { class: "small muted", style: { marginTop: "8px" } }, "No Tailscale account? Sign in with Google, GitHub, Apple or Microsoft; that makes one, free for personal use. Use the same account as your Mac."));
     const panel = h("div", { class: "ob-panel" }, h("div", { class: "found" }, h("span", { class: "faint" }, "Looking for Tailscale")));
-    col.append(panel);
+    const st = h("div", { class: "check-line", "aria-live": "polite" });
+    col.append(panel, st);
     s.foot(null);
+    const toClaude = () => goto(STEPS.findIndex(x => x.id === "claude"));
+    const verifyDevice = async () => {
+      put(st, "Checking your server.");
+      s.foot({ label: "Checking", disabled: true, run: () => {} });
+      const j = await attempt("onboard.join", { action: "verify", node: state.serverNode, becomeDevice: true });
+      if (j.error && !j.error.missing) { put(st, String(j.error.message)); s.foot({ label: "Continue", run: verifyDevice }); return; }
+      // A tool that answers without erroring still says whether it actually found the server:
+      // verify forwards to link.health, whose real shape (core/link/health.js) is `online` (and
+      // `path: "unknown"` with a `why`), not `ok`/`reachable` — reviewer-2 caught this being
+      // skipped entirely (the real bug: any node, right or wrong, always proceeded).
+      if (j.data && j.data.online === false) { put(st, j.data.why || `Could not reach ${state.serverNode}. Check the name and try again.`); s.foot({ label: "Continue", run: verifyDevice }); return; }
+      put(st, "");
+      await mark_("tailscale", "done"); await mark_("name", "skipped"); toClaude();
+    };
 
     // The merged policy snippet (tailnet, ecd89c0c): one JSON object for Taildrive, Taildrop,
     // egress (when on) and the SSH rule, replacing the four separate placeholders in ADR 0014.
@@ -467,7 +638,14 @@ const SCREENS = {
         t.loginUrl && !signed ? h("p", { class: "notice" }, "The sign-in page did not open? ",
           h("a", { class: "link", href: t.loginUrl, target: "_blank", rel: "noopener" }, "Open it here")) : null,
         null);
-      if (signed) { s.foot({ label: "Continue", run: s.next }); drawPolicy(); }
+      if (signed) {
+        // A device joining an existing server (the "live" step's Device choice, above): verify
+        // reachability and flip config.machine before moving on, instead of the plain s.next()
+        // every other path here uses. becomeDevice:true per tailnet's design call — only the
+        // connecting device's own verify should ever flip the machine.
+        s.foot({ label: "Continue", run: state.live === "device" ? verifyDevice : s.next });
+        drawPolicy();
+      }
       else if (opened) s.foot({ label: "Waiting for Tailscale", disabled: true, run: () => {} });
       else s.foot({ label: "Connect", run: connect });
     };
@@ -493,6 +671,10 @@ const SCREENS = {
   },
 
   name(col, s) {
+    // A device never reserves its own address, only a server does (the "live" step's Device
+    // choice already routes around this screen via its own verify step; this is the safety net
+    // for anything that lands here anyway — a reload mid-flow, say).
+    if (state.live === "device") { mark_("name", "skipped").then(() => goto(STEPS.findIndex(x => x.id === "claude"))); return; }
     col.append(
       h("h1", { class: "h1" }, "Your address."),
       // ADR 0008 section 4: v0.1 defaults to a ts.net address (tailscale cert), not <you>.vyre.run;
@@ -821,10 +1003,10 @@ const SCREENS = {
       h("p", { class: "lead" }, "Each agent can work from its own computer, the way a coworker would: a browser to look things up in, or a whole desktop to work on. More capable, and more for your server to run."));
     const body = h("div", { class: "ob-panel" });
     col.append(body);
-    let choice = /** @type {"off"|"browser"|"desktop"|null} */ (null);
+    let choice = state.computers;
     const syncFoot = () => s.foot({ label: "Continue", disabled: !choice, run: s.next });
     const opt = (value, title, desc, size) => h("label", { class: value === choice ? "on" : "" },
-      h("input", { type: "radio", name: "computers", value, checked: value === choice, onchange: () => { choice = value; put(body, choiceEl()); syncFoot(); } }),
+      h("input", { type: "radio", name: "computers", value, checked: value === choice, onchange: () => { choice = state.computers = value; put(body, choiceEl()); syncFoot(); } }),
       h("span", { class: "t" }, h("b", null, title), h("span", null, desc), h("span", { class: "code" }, size)));
     const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "Agent computers" },
       opt("off", "Off", "Agents work from the terminal only, no browser or desktop of their own.", "Nothing extra to run."),
@@ -1021,8 +1203,26 @@ function showEnding(d) {
       note: `Open ${home.replace(/^https?:\/\//, "")}/now on your phone, then Add to Home Screen.` },
     { id: "history", label: "Your history", done: stepState("history") !== "todo",
       note: stepState("history") !== "todo" ? "Every session is searchable in the Deck." : "Vyre keeps reading your sessions in the background." },
+    // Only shown once the person actually chose (not skipped): the other new stub steps
+    // (secrets, accounts, drive) have nothing real to report yet, so they stay off this list.
+    ...(state.computers ? [{ id: "computers", label: "Agent computers", done: true, note: state.computers === "off"
+      ? "Agents work from the terminal only. Change this any time from Settings."
+      : state.computers === "browser" ? "Each agent gets a Chrome of its own."
+      : "Each agent gets a Chrome and a desktop of its own." }] : []),
   ];
   put(ticks, rows.map(t => progressRow(t.label, t.done ? "done" : "todo", t.note)));
+  // One warm line for the still-stub steps (the lead, 29 Sep): no guilt, no itemized list of
+  // what's missing, just naming what's ready whenever they want it. Named regardless of whether
+  // the person clicked Continue or Skip for now on them: neither saves anything real yet, so
+  // both mean the same thing here. Left off entirely once a step gets a real onboard.* tool
+  // (drops out of STUB_STEPS below), and off the list the moment none of the three remain.
+  const notReady = Object.entries({ secrets: "secrets", accounts: "accounts", drive: "Drive" })
+    .filter(([id]) => stepState(id) !== "todo").map(([, label]) => label);
+  const joined = andJoin(notReady);
+  const notReadyLine = notReady.length
+    ? h("p", { class: "small muted", style: { marginTop: "12px" } },
+        `${joined.charAt(0).toUpperCase()}${joined.slice(1)} ${notReady.length === 1 ? "is" : "are"} ready when you are: Settings.`)
+    : null;
   // The passkey detour already happened earlier, at the address step (onboard.finish only hands
   // back passkeyUrl to the loopback session, which is gone by now); this is a defensive fallback,
   // not the usual path.
@@ -1035,7 +1235,7 @@ function showEnding(d) {
     h("div", { class: "lbl" }, "Vyre is ready"),
     title,
     greet,
-    h("div", { class: "ob-panel" }, h("div", { class: "lbl" }, "What's next"), ticks),
+    h("div", { class: "ob-panel" }, h("div", { class: "lbl" }, "What's next"), ticks, notReadyLine),
     h("a", { class: "btn btn-primary ob-end-open", href: open }, d.passkeyUrl ? "Add a passkey" : "Open Vyre"),
     d.passkeyUrl ? h("p", { class: "small faint", style: { marginTop: "10px" } }, h("a", { class: "link", href: home + "/now" }, "Skip for now")) : null));
   // The button the person pressed is gone: focus goes to the heading, and the live region says it.

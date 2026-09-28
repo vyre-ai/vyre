@@ -13,15 +13,16 @@
 // per group under "Sessions and Claude"; ?key=<key> scrolls to one and highlights it.
 
 import { h, put, link, head, empty } from "../js/dom.js";
-import { attempt, modules, canProve } from "../js/api.js";
+import { attempt, modules, canProve, on } from "../js/api.js";
 import { pushState, subscribePush, unsubscribePush, enrollPasskey, passkeyState, deviceName, deniedHelp } from "../js/phone-setup.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { when, since, plural } from "../js/fmt.js";
 import { personStatus, signOutHere } from "../js/person.js";
-import { pathMark } from "../js/status-mark.js";
+import { pathMark, statusMark } from "../js/status-mark.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
+import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, mergeEvent, destinationName, forgetGate } from "../js/server-rows.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -31,6 +32,7 @@ const SECTIONS = [
   ["connections", "Connections"],
   ["network", "Network"],
   ["devices", "Your devices"],
+  ["server", "Server"],
   ["history", "History and memory"],
   ["lessons", "Lessons"],
   ["notifications", "Notifications"],
@@ -127,7 +129,7 @@ export default async function settings(ctx) {
       const after = jumpSel.querySelector(`option[value="claude"]`);
       if (after && after.nextSibling) jumpSel.insertBefore(og, after.nextSibling); else jumpSel.append(og);
     }).catch(e => put(keysBody, empty("Sessions and Claude settings did not load.", e))),
-    drawNetwork(body.network, ctx), drawDevices(body.devices), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
+    drawNetwork(body.network, ctx), drawDevices(body.devices), drawServer(body.server, ctx), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
   ];
@@ -590,6 +592,191 @@ async function drawDevices(el) {
     rows.length ? h("div", { class: "rows" }, rows)
       : note("No other devices on your tailnet yet. The setup's last step adds your phone and pairs your Mac."),
     foot(toOnboard("devices", "Add a device")));
+}
+
+// ---- 5c. Server ------------------------------------------------------------------------------
+
+/** Settings > Server: config.machine ("solo"|"server"|"device", additive, ADR 0039 — NOT
+ * config.role, which drawMachine below reads and is unrelated), and "Move to a server"
+ * (docs/design/anywhere.md, work/anywhere 11328815). Reads onboard.status for machine, same
+ * tool the "live" onboarding step already uses. Client-only against deck/fixtures/onboard.json
+ * (machine) and deck/fixtures/federation.json (the move.* engine) until anywhere's onboard.
+ * machine and federation's move.* tools land (asked, docs/work/launch-surfaces.md): the move.*
+ * shapes here are launch's proposal, not yet confirmed. Only the Solo/Server -> Device direction
+ * is built; "Move off this server" (the reverse move, back to Solo) is not, see the work doc's
+ * Next. No auto-delete anywhere in this flow: the pre-move copy is only ever removed by the
+ * person's own "Free up space" click, gated 24 hours per anywhere.md's forget guard. The
+ * formatting and gating logic itself lives in ../js/server-rows.js, pure and unit-tested
+ * (deck/test/settings-server.test.js), the way Drive's does in drive-rows.js. */
+async function drawServer(el, ctx) {
+  const r = await attempt("onboard.status");
+  if (r.error) {
+    put(el, empty("The server role is read by the box module.", r.error),
+      note("Once it's running, this is where you move your work to a server, or back."));
+    return;
+  }
+  const machine = r.data?.machine || "solo";
+  if (machine !== "solo" && machine !== "server") { drawAlreadyMoved(el, r.data || {}); return; }
+
+  // app-design's #1 finding (ce9c4c5f screenshot pass): a consequential, multi-step flow (moving
+  // the whole vault/projects/memory to another machine) needs its own weight, a card
+  // (docs/design/system/components/card.md), separate from the plain status row above it.
+  const panel = h("div", { class: "rows" });
+  const st = status();
+  put(el,
+    row("This computer", h("span", null, machine === "server" ? "Is your server." : "Runs everything, on its own."),
+      h("div", { class: "small muted" }, machine === "server"
+        ? "Other devices can pair with it once you add one."
+        : "No Tailscale, nothing else running, until you move to a server.")),
+    h("div", { class: "set-server-card" }, panel, st));
+
+  // Event-driven, not polled: federation's contract (docs/work/federation.md) emits move.progress/
+  // move.piece.done/move.failed/move.confirmed over the same stream every other Deck view reads
+  // (deck/js/api.js's on()), so watching a move never needs to poll faster than 60 s (SPEC
+  // principle 8) the way onboarding's history step has to (its loopback door carries no stream
+  // at all, a different situation). One move.status call establishes the baseline right after
+  // start (in case an event fired before the listener was attached); everything live after that
+  // is the event stream. No explicit "ready" event exists, so allReady (server-rows.js) infers it
+  // from every named piece being done with no error, same information move.status's own `stage`
+  // would give on a fresh load.
+  let offEvents = null;
+  ctx.cleanup(() => offEvents && offEvents());
+
+  const point = () => {
+    const dest = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Paste the setup code your server showed", "aria-label": "Server setup code" }));
+    const go = async () => {
+      const v = dest.value.trim();
+      if (!v) { put(st, "Paste the code first."); return; }
+      put(st, "Looking for that server.");
+      const p = await attempt("federation.move.plan", { destination: v });
+      if (!ctx.alive()) return;
+      if (p.error) { put(st, errText(p.error)); return; }
+      put(st);
+      plan(p.data);
+    };
+    put(panel,
+      h("div", { class: "rows" },
+        row(h("label", { for: "move-code" }, "Point at a server"), Object.assign(dest, { id: "move-code" }),
+          h("div", { class: "small faint" }, "From the new computer's own setup, or Settings > Your devices > Add a device."))),
+      foot(h("button", { type: "button", class: "btn btn-primary", onclick: go }, "Continue")));
+  };
+
+  const plan = p => {
+    const pieces = Object.entries(p.pieces || {});
+    put(panel,
+      row("Moving to", mono(destinationName(p)), h("span", { class: "small muted" }, p.destination?.address || "")),
+      h("div", { class: "rows" }, pieces.map(([k, v]) => row(pieceLabel(k, v), h("span", null, pieceLine(v)),
+        // app-design's #2 finding: the vault's own encryption promise (anywhere.md "The move-to-
+        // server flow") needs to be visible right where it's being moved, not left to the doc.
+        k === "vault" ? h("div", { class: "small muted set-vault-note" }, icon("lock", 12),
+          h("span", null, "Encrypted end to end. Never written to disk unencrypted on either side.")) : null))),
+      note(`${fmtBytes(totalBytes(p.pieces))} total. This computer keeps working, unchanged, until the move finishes and you confirm it.`),
+      foot(h("button", { type: "button", class: "btn btn-primary", onclick: () => start(p.planId, Object.keys(p.pieces || {})) }, "Start moving"),
+        h("button", { type: "button", class: "btn btn-ghost", onclick: point }, "Back")));
+  };
+
+  const start = async (planId, keys) => {
+    put(panel, h("div", { class: "empty" }, "Starting."));
+    const s = await attempt("federation.move.start", { planId });
+    if (!ctx.alive()) return;
+    if (s.error) { put(panel, empty("Could not start the move.", s.error), foot(h("button", { type: "button", class: "btn", onclick: point }, "Try again"))); return; }
+    watch(s.data.moveId, keys);
+  };
+
+  const drawPieces = (moveId, keys, pieces) => {
+    // app-design's #4 finding: use the shared status-mark vocabulary (statusMark, running/done)
+    // instead of plain "Done"/"NN%" words, matching list-row.md's running ring elsewhere in the
+    // Deck. A piece that hasn't started yet has no mark of its own in that model (only running,
+    // done, needs, failed, unread), so "Waiting" stays plain text for that one case.
+    put(panel, h("div", { class: "rows" }, keys.map(k => {
+      const v = pieces[k] || {};
+      return h("div", { class: "set-move-row" },
+        h("div", { class: "set-move-main" }, h("div", null, pieceLabel(k, v)), h("div", { class: "set-meter" }, h("span", { style: { width: piecePct(v) + "%" } }))),
+        v.error ? statusMark("failed", { word: true })
+          : v.done ? statusMark("done", { word: true })
+          : v.bytes ? statusMark("running", { word: `${piecePct(v)}%` })
+          : h("span", { class: "small faint" }, "Waiting"));
+    })));
+    if (allReady(pieces, keys)) ready(moveId);
+  };
+
+  const watch = async (moveId, keys) => {
+    // reviewer-2's finding: attaching the listener only after move.status resolves leaves a
+    // window (the round trip itself) where a fast-finishing piece's event is missed for good,
+    // with no poll left to self-correct. Attach first, buffer until the baseline lands, replay
+    // the buffer onto it, then switch to live — closes the window either way the race lands.
+    let pieces = null, live = false;
+    const buffered = [];
+    offEvents?.();
+    offEvents = on("move.*", e => {
+      if (e.payload?.moveId !== moveId) return;
+      if (!live) { buffered.push(e); return; }
+      pieces = mergeEvent(pieces, e);
+      drawPieces(moveId, keys, pieces);
+    });
+    const s = await attempt("federation.move.status", { moveId });
+    if (!ctx.alive()) return;
+    if (s.error) { put(panel, empty("Lost track of the move.", s.error)); return; }
+    pieces = s.data.pieces || {};
+    for (const e of buffered.splice(0)) pieces = mergeEvent(pieces, e);
+    live = true;
+    drawPieces(moveId, keys, pieces);
+    if (readyToConfirm(s.data)) ready(moveId);
+  };
+
+  const ready = moveId => {
+    offEvents?.(); offEvents = null;
+    panel.append(note("The copy is verified and ready. This computer stays as it is until you confirm."),
+      foot(h("button", { type: "button", class: "btn btn-primary", onclick: () => confirmFlip(moveId) }, "Confirm: make this a device"),
+        h("button", { type: "button", class: "btn btn-ghost", onclick: () => cancelMove(moveId) }, "Undo")));
+  };
+
+  const cancelMove = async moveId => {
+    put(panel, h("div", { class: "empty" }, "Undoing."));
+    offEvents?.(); offEvents = null;
+    await attempt("federation.move.cancel", { moveId });
+    if (!ctx.alive()) return;
+    point();
+  };
+
+  const confirmFlip = async moveId => {
+    put(panel, h("div", { class: "empty" }, "Finishing up."));
+    const c = await attempt("federation.move.confirm", { moveId });
+    if (!ctx.alive()) return;
+    if (c.error) { put(panel, empty("Could not finish the move.", c.error)); return; }
+    drawAlreadyMoved(el, { movedAt: Date.now(), ...c.data }, true);
+  };
+
+  point();
+}
+
+/** After the flip: the celebration line once, the steady state after, and "Free up space" —
+ * never automatic, gated 24 hours (anywhere.md's forget guard), the person's own click. */
+function drawAlreadyMoved(el, d, justMoved = false) {
+  // d is either onboard.status (machine: "device", a real server's identity not shaped yet by
+  // anywhere) or federation.move.confirm's own data (destination.name) right after the flip.
+  const dest = destinationName(d);
+  const panel = h("div");
+  put(el,
+    justMoved ? note(`This computer is now a device. Your server is ${dest}.`) : null,
+    row("This computer", h("span", null, "Is a device."), h("div", { class: "small muted" }, `Your server is ${dest}.`)),
+    panel);
+  const gate = forgetGate(d.movedAt || Date.now());
+  if (!gate.ready) {
+    put(panel, note(`The copy this computer kept during the move stays for ${gate.hoursLeft} more hours, in case anything looks off. After that, free it up any time.`));
+    return;
+  }
+  const idle = () => put(panel, row("Old local copy", h("span", { class: "small muted" }, "Still here, from the move.")),
+    foot(h("button", { type: "button", class: "btn", onclick: confirm_ }, "Free up space on this laptop")));
+  const confirm_ = () => put(panel, note("This deletes the local copy the move kept. Your server already has everything."),
+    foot(h("button", { type: "button", class: "btn btn-primary", onclick: run }, "Delete it"),
+      h("button", { type: "button", class: "btn btn-ghost", onclick: idle }, "Cancel")));
+  const run = async () => {
+    put(panel, h("div", { class: "empty" }, "Freeing up space."));
+    const r = await attempt("federation.move.forget");
+    put(panel, r.error ? empty("Could not free up space.", r.error) : note(`Freed up ${fmtBytes(r.data?.freedBytes || 0)}.`));
+  };
+  idle();
 }
 
 // ---- 6. History and memory -----------------------------------------------------------------
