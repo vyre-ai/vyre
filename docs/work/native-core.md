@@ -125,6 +125,26 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## Resume 2026-09-28 (cont'd 6): "From your past sessions" hint (fae441ff)
+Item 1's composer side, against memory-iq's recall.related (200112a0, signed off by their
+reviewer): {session, seq, role, ts, name, title, cwd, snippet, score} per hit, owner surfaces
+only, refuses (hits:[]) rather than searching the whole corpus for an unmapped folder.
+- Debounced (350 ms) while typing a plain message 12+ chars in a project (opts.cwd()); up to 3
+  quiet rows: snippet, "you said"/"you were told" (role user/assistant), ago() relative time
+  (deck/js/need-rows.js, shared with Needs). Tap -> opts.onRecall(hit); opening/rendering it is
+  the caller's - same pattern as onFind/onFork. Never focuses anything of its own. Dismiss: its
+  own close button or Esc (checked before the composer's own escape chain), lasts for the current
+  compose - the box going empty resets it. A sequence guard drops a stale answer; wantHint() is
+  re-checked before drawing so an in-flight request that outlived its reason to exist (cleared,
+  sent, box moved on) never draws.
+- **Changed contract:** chat.css gains .composer-hints/-head/-close/-row/-snip/-meta - new
+  selectors only, nothing existing touched. Precedent: chat.css already holds every composer-*
+  rule (composer-note, composer-chip, composer-images, ...), shared by both teams' composer work.
+- composer-recall.test.js (5/5). 44/44 total on testbox (composer-*, commands,
+  design-components, boundaries).
+- **Needs from chat:** who renders the opened session - session.js's onRecall, same shape as
+  onFind/onFork (a `.thread`/`.id`-bearing navigation, not yet agreed or wired). Asked them.
+
 ## Resume 2026-09-28 (cont'd 5): reviewer-2 SIGNED OFF a6436f9e/5b602dd0/4711a784/6138a420
 Full review of 4711a784 confirmed correct: goal-mode's Enter-intercept ordering (null on the
 bootstrap Enter, truthy after, no double-dispatch), "later" correctly absent from commands.test.js's
