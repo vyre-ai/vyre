@@ -7,6 +7,87 @@ Branch: work/integrator · Worktree: ../vyre-integrator · Merges into main at .
 Own merges into main, one at a time, with targeted tests on the test box after each and a full suite on
 the test box when it matters. Keep the suite green on the test box (Linux, node 22, the box image's node).
 
+## State at restart (2026-09-28, ~00:50 UTC, usage-limit prep)
+
+**rc.2 (pre/rc):** head is `e0c578ad` (= a5eff01f's merge + the rc.2 version bump 0.1.0-rc.1 ->
+rc.2 applied directly to package.json/package-lock.json x2 + harness/.claude-plugin/plugin.json,
+since work/ci-rc 5b1c5b33 was stale against everything landed tonight). NOT pushed to main yet.
+
+- Full suite run 1 (fresh env, `npm test`): 4024 tests, 3931 pass, **0 fail**, 90 skipped, 3 todo.
+  BUT posttest tmp-guard failed: 8 leaked temp homes, 6 were live `vyred-present.js` processes
+  still running 19+ min after the suite finished (killed and cleaned by hand). AND both shellcheck
+  tests (test/box-update.test.js's two) were skipped ("shellcheck not installed"/"no shellcheck
+  here") even though /usr/bin/shellcheck 0.9.0 is on testbox's default PATH and both files pass
+  when run directly (`node --test test/box-update.test.js` finds and runs it). Root cause of the
+  skip-under-npm-test not found; team-lead's read is a sanitised PATH somewhere in the harness —
+  logged as a 0.1.1 task below, not an rc.2 blocker (lead's call, since CI's node job runs
+  shellcheck too and must be checked green on the pushed sha).
+- Full suite run 2 hung for real (not load): stuck on core/cli/commands/threads-sessions.test.js
+  for 11+ min, killed. Ran that file alone 3x with `timeout 120` on testbox: 18/18 pass every time,
+  ~30-33 s each. Conclusion: load contention (other teams' concurrent testbox runs), not an rc.2
+  bug. No need to loop in e2e on this.
+- Full suite run 3 (`--test-concurrency=4 --test-timeout=90000`, tmp-guard run by hand
+  before/after since bypassing the npm script wrapper) was killed mid-run for this restart-prep
+  window; log is at `/tmp/rc2-full3.log` on testbox but incomplete/no final summary. testbox is
+  clean now (no leaked homes, no orphaned vyred-present processes of mine; left another team's
+  own processes alone).
+
+**Next for rc.2 (in order):**
+1. Rerun the full suite one more time (concurrency-limited is safer given other teams share the
+   box; check `uptime` first, hold if load is high) and get a clean 0-fail, 0-leak result.
+2. Confirm both shellcheck tests pass when run directly (already shown true above) — that alone
+   satisfies the lead's criterion 2, no further action needed unless they want it re-verified.
+3. Push `main` from pre/rc's `e0c578ad` (or later, if the rerun adds a fixup commit).
+4. Watch CI's node job (and box-image) on the pushed sha; confirm shellcheck is green there.
+5. Report sha + numbers to team-lead, then tell box-deploy to deploy. NO tag, NO release — user's
+   call only, via team-lead.
+
+**0.1.1 stage (`stage/0.1.1`, worktree `../vyre-stage-011`, pushed as `work/integrator-0.1.1`):**
+head `7f71b682`, built off main `4fd286d7` (pre-rc.2 safe-git). Contains, in order: projects
+`e87f63df`, cohesion agentClaim `1a8bf671`, memory-iq `c5cfd005`+`2ecf79ba`, connectors `b3bbec29`,
+launch `cc24ac19` (superseded — see below), box-deploy `2ce5150d`, plus a fix of my own:
+`core/vault/envfiles.js`'s `gitState()` called `execFileSync("git", ...)` directly, unguarded —
+converted to `lib/git-safe.js`'s `gitSync` (reviewer-cleared, testbox 359/359). **This stage still
+needs a rebase onto the post-rc.2 main** once rc.2 pushes (the lead's instruction: rc.2 first, then
+rebase stage/0.1.1 onto new main — the onboard casing fix disappears as a diff there since it's
+already in main).
+
+Cleared heads not yet folded into stage/0.1.1 (take exactly these, newest first supersedes):
+- launch: `a206ad6d` (supersedes `cc24ac19`, reviewer-2 cleared the chain)
+- native-core: `215bed2d` (reviewer-2 cleared)
+- teammates: `4d2defee` (supersedes `b720a002` and `work/teammates-a` entirely incl. `5dfa6b41`
+  and `60b42d3d` — land ONLY 4d2defee, nothing else from teammates)
+- federation: `85bc9ec5` (supersedes `87b2a243`; step-2 fix `63af8941` is HELD, migration-ordering
+  MEDIUM — do not take)
+- chat: `18980d2d` (sight strip/screen-still, reviewer-cleared, 1 LOW with chat) — reviewer also
+  cleared `d9d1cafb`'s core/transcripts half (strict base64 + 12 MB image budget) but its UI half
+  needs reviewer-2 too before taking that sha; `9fd902ac` and `62b254f4` are earlier/parallel chat
+  shas, check with reviewer-2 which head is actually current before landing chat
+- pwa: `082915b8` (open-redirect fix, cleared)
+- onboard via-staleness (0.1.1, NOT rc.2): `work/e2e-onboardvia-main` `7bf34043`, off main,
+  reviewer-cleared, cherry-pick of `cd376351`
+
+Held, do not take: teammates slice B alone (HIGH: vyred runs project tests as itself — but
+4d2defee/b720a002 already fold slice B in, cleared); glass-live (`a9d57668` cleared conditionally
+for a LATER 0.1.x train, gated on glass running `isolation.test.js` live on a throwaway stack
+first — not this stage); federation `63af8941`; teammates `work/teammates-a` (any sha) once
+`4d2defee` is taken instead; connectors/launch/box-deploy anything past the shas listed above
+unless a new clearance message says otherwise.
+
+## 0.1.1 task: test hygiene gaps found during rc.2's full suite (2026-09-28)
+
+Not an rc.2 blocker (lead's call). Two confirmed sources, `t.after` kills without waiting or
+removing the home:
+- `core/cli/screen/screen-live.test.js`: `t.after(() => { try { process.kill(up.pid, "SIGTERM"); }
+  catch {} });` — no wait, no rmSync of the tempHome-managed dir's leftover state.
+- `core/vault/login-keychain.test.js` (first test, ~line 64): `t.after(() => { try {
+  child.kill("SIGTERM"); } catch {} });` — same pattern.
+Compare `test/vault-cli-totp.test.js`'s `vyred()` helper, which does it right: SIGTERM, wait up to
+5 s for `child.exitCode`, then `fs.rmSync(h, { recursive: true, force: true })`. 4 more leaks in
+that 8-leak run are unexplained — only 2 call sites found via grep for `vyred-present`/`upPresent`;
+worth a broader audit of anything spawning a real vyred and killing it in `t.after` without
+waiting, next time someone has the cycles.
+
 ## Done (2026-09-27)
 
 - Baseline on the test box at bfbfd69: 1445 tests, 21 fail, all from the machine (node 22 has no
