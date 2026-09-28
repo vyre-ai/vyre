@@ -445,6 +445,20 @@ out to be a plain `$` vs `$$` typo in a new test, not a hang.
   merged docs (docs/work/pwa.md fails to render, em dashes in docs/design/native-bar.md) - flagged
   to native-core, not chat's files.
 
+## Done (28 Sep, session-view voice states: recording/transcribing/no-key, 5bb97447)
+- composer.js already had recording (the Listening pill) and no-key (the Settings note) from
+  native-core's merge; added the missing third state: a stop tap now sets voiceStopping, shows
+  "Transcribing…" in the pill and a "stopping" mic class/aria-label, held until onDone/onError
+  answers (matches local/voice/listen.js's TAIL_MS wait) - Esc/cancel still clears everything at
+  once, no transcribing flash on a cancel. New composer-voice.test.js cases cover all three states.
+- Found and fixed a real bug in deck/test/fake-dom.js (a shared test helper, not chat's alone, but
+  a one-line variadic fix matching the real DOM API): classList.add/remove only ever took their
+  first argument, silently dropping the rest - finishTalk()'s existing classList.remove("on",
+  "held") never actually removed "held" under test. No passing assertion changed; this only fixes
+  removals that were silently no-ops before.
+  testbox: deck/chat + deck/test + core/switchboard + core/resilience + local/voice 588/588 (2
+  skip, 1 pre-existing cancelled), 0 fail; boundaries 5/5.
+
 ## Doing (28 Sep, restart after cohesion's hand-over)
 
 - Merged origin/main clean (4032bf03; no conflicts). ADR 0038 (server, not box): renamed the
