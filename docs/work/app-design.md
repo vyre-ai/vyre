@@ -586,8 +586,23 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   assistant is a creature and not round 4's squircle, the "no AI-brand lookalike" rule now stated
   as covering all four families and the ring marks (not just the assistant's abstract mark), and
   the Vyre code's geometry/palette/pairing contract (a public id/ticket only, never a secret;
-  pairing still needs Touch ID/presence per ADR 0032; a plain QR is the fallback path for a
-  generic camera). Handed to `pwa` (decode-core.js/rs.js port) and `launch` (render on the Deck's
-  pairing screen) via the lead.
+  pairing still needs Touch ID/presence per ADR 0032). Handed to `pwa` (decode-core.js/rs.js
+  port) and `launch` (render on the Deck's pairing screen) via the lead.
 - Design/spec files only; no product code touched. Perspective/homography decode is still the one
   scoped gap (ADR 0033 section 4), unchanged from round 5's NOTES.md.
+- Correction (lead, 28 Sep): the user decided there is no plain-QR fallback and no normal-camera
+  path - the ring is read only by phone.vyre.run's own decoder. Reworded ADR 0033 (summary,
+  context, section 3) to state this and move plain QR to "considered, not chosen," committed
+  d24e9c3f. avatar.md never claimed a fallback, so it needed no change.
+
+## Now (28 Sep, launch built the pairing screen off ADR 0033)
+
+- `launch` vendored `rs.js`/`payload.js`/`identity.js`/`vyrecode2.js` into
+  `deck/vendor/vyrecode/` (CJS->ESM only, `fingerprint8` moved onto `crypto.subtle` for the
+  browser, no logic changes) and used `renderCode2`/`ticksSunburst` exactly as specced.
+- Built the live/pairing variant this doc had flagged as launch's to do (shimmer while valid,
+  countdown, expired-and-dimmed): `deck/js/phone-code.js`, wired into onboarding's devices step
+  behind `can.relayJoin`, f0a85c09 on work/launch.
+- Using a placeholder ticket id until tailnet's `relay.pair.ticket` exists; the ring rendering
+  itself is not placeholder. Nothing further needed from app-design unless the ticksSunburst
+  geometry needs to change once a real ticket shape lands.
