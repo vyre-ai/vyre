@@ -849,7 +849,7 @@ test("sight.frame stills: no agent, or the agent has no live computer, draws not
   sightWorld = null;
 });
 
-test("sight.frame stills: a computer that goes live after the thread opens still gets the strip (reviewer's LOW on 18980d2d), matched by target not label", async () => {
+test("sight.frame stills: a computer that goes live after the thread opens still gets the strip (reviewer's LOW on 18980d2d), matched by target not label", async (t) => {
   const frames = [];
   // No live target yet at mount, and kit's row uses a display label that differs from its id -
   // matching by target (the registry's own identifier) rather than label is what finds it at all.
@@ -857,6 +857,10 @@ test("sight.frame stills: a computer that goes live after the thread opens still
   const box10 = new El("div");
   doc.body.append(box10);
   const stop10 = mountSession(box10, { thread: NEW, project: null, onBack() {} });
+  // t.after runs even if an assertion throws mid-test (team-lead, the hang investigation): a
+  // leaked composer timer (leaseTimer et al.) otherwise outlives the test, since a thrown
+  // assertion skips every line after it, including a plain stopN() at the end.
+  t.after(() => { stop10(); sightWorld = null; });
   await wait(30);
   assert.equal($(box10, ".cv-sight").hidden, true, "not live yet: nothing drawn");
   // The computer goes live for this thread: sight.targets is asked again, without a reopen.
@@ -873,14 +877,13 @@ test("sight.frame stills: a computer that goes live after the thread opens still
   emit("computer.checked-out", { agent: "kit", thread: "some-other-thread" }, "some-other-thread");
   await wait();
   assert.equal(frames.length, 1);
-  stop10();
-  sightWorld = null;
 });
 
-test("a teammate handoff (team_ask): its own card, the teammate's tile+name+Teammate tag, 'Asked' then 'Replied' once the result lands (teammates.md section 3)", async () => {
+test("a teammate handoff (team_ask): its own card, the teammate's tile+name+Teammate tag, 'Asked' then 'Replied' once the result lands (teammates.md section 3)", async (t) => {
   const box11 = new El("div");
   doc.body.append(box11);
   const stop11 = mountSession(box11, { thread: NEW, project: null, onBack() {} });
+  t.after(stop11); // even if an assertion below throws (team-lead's hang investigation)
   await wait(30);
   emit("thread.tool", { id: "tu_h1", tool: "team_ask", phase: "started", input: { to: "design", text: "make the intake form calmer" } }, NEW);
   await wait();
@@ -901,5 +904,4 @@ test("a teammate handoff (team_ask): its own card, the teammate's tile+name+Team
   await $(row, ".cv-handoff-head").click();
   assert.ok(row.hasAttribute("data-open"));
   assert.match(text($(row, ".cv-handoff-reply")), /Warmed up the copy in three places/);
-  stop11();
 });
