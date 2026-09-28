@@ -24,8 +24,8 @@ function world() {
 
 const tick = (ms = 5) => new Promise(r => setTimeout(r, ms));
 
-/** @param {CdpMux} mux @param {string} [kind] */
-function client(mux, kind = "agent") {
+/** @param {CdpMux} mux @param {string} [kind] @param {string} [agentName] */
+function client(mux, kind = "agent", agentName) {
   /** @type {any[]} */
   const inbox = [];
   /** @type {Array<() => void>} */
@@ -38,7 +38,7 @@ function client(mux, kind = "agent") {
       const w = waiters; waiters = []; for (const f of w) f();
     },
     close: () => { state.closed = true; },
-  });
+  }, agentName);
   let seq = 0;
   /** @param {(m: any) => boolean} pred @param {number} [ms] */
   const waitFor = (pred, ms = 2000) => new Promise((resolve, reject) => {
@@ -484,4 +484,129 @@ test("cdpmux: a cookie's actual value never reaches the agent through associated
   assert.equal(audit.issue.code, "CookieIssue", "the rest of the issue still arrives");
 
   assert.equal((await agent.call("Network.loadNetworkResource")).error.code, -32000, "the agent can read an arbitrary URL's bytes");
+});
+
+test("cdpmux: two agent clients joining with the same agentName share one browserContextId, made once", async () => {
+  const { mux, fake } = world();
+  const a1 = client(mux, "agent", "alice");
+  const a2 = client(mux, "agent", "alice");
+  const t1 = await a1.call("Target.createTarget", { url: "about:blank#1" });
+  const t2 = await a2.call("Target.createTarget", { url: "about:blank#2" });
+  const ctx1 = fake.targets.get(t1.result.targetId).browserContextId;
+  const ctx2 = fake.targets.get(t2.result.targetId).browserContextId;
+  assert.ok(ctx1, "alice got a browser context");
+  assert.equal(ctx1, ctx2, "the same agent name reuses it, not a second one");
+  assert.equal(fake.seen.filter(s => s.method === "Target.createBrowserContext").length, 1,
+    "Target.createBrowserContext was called once, not once per client");
+  assert.equal(mux.contextStore.get("alice"), ctx1, "and stored under the agent's name");
+});
+
+test("cdpmux: two agent clients with different agentNames get different browserContextIds", async () => {
+  const { mux, fake } = world();
+  const a = client(mux, "agent", "alice");
+  const b = client(mux, "agent", "bob");
+  const ta = await a.call("Target.createTarget", { url: "about:blank#a" });
+  const tb = await b.call("Target.createTarget", { url: "about:blank#b" });
+  const ctxA = fake.targets.get(ta.result.targetId).browserContextId;
+  const ctxB = fake.targets.get(tb.result.targetId).browserContextId;
+  assert.ok(ctxA && ctxB);
+  assert.notEqual(ctxA, ctxB);
+  assert.equal(fake.seen.filter(s => s.method === "Target.createBrowserContext").length, 2, "one per agent name");
+});
+
+test("cdpmux: an agent client's own Target.createTarget with no browserContextId gets its own injected before it reaches Chrome", async () => {
+  const { mux, fake } = world();
+  const a = client(mux, "agent", "alice");
+  await a.call("Target.createTarget", { url: "about:blank#x" });
+  const ctxId = mux.contextStore.get("alice");
+  assert.ok(ctxId);
+  const seenCall = fake.seen.find(s => s.method === "Target.createTarget");
+  assert.equal(seenCall.params.browserContextId, ctxId, "injected by the mux, not left for Chrome's own default");
+});
+
+test("cdpmux: an agent client's Target.createTarget naming a different browserContextId than its own is refused, never rewritten", async () => {
+  const { mux, fake } = world();
+  const a = client(mux, "agent", "alice");
+  const b = client(mux, "agent", "bob");
+  // Settle both agents' own contexts first.
+  await a.call("Target.createTarget", { url: "about:blank#a" });
+  await b.call("Target.createTarget", { url: "about:blank#b" });
+  const bobCtx = mux.contextStore.get("bob");
+  const before = fake.seen.filter(s => s.method === "Target.createTarget").length;
+  const r = await a.call("Target.createTarget", { url: "about:blank#c", browserContextId: bobCtx });
+  assert.equal(r.error.code, -32000, "refused, not silently corrected to alice's own context");
+  assert.equal(fake.seen.filter(s => s.method === "Target.createTarget").length, before, "the call never reached Chrome");
+});
+
+test("cdpmux: a client of agent A never learns agent B's targets exist -- targetCreated, targetDestroyed and attachedToTarget are all fenced to A's own browserContextId", async () => {
+  const { mux } = world();
+  const a = client(mux, "agent", "alice");
+  const b = client(mux, "agent", "bob");
+  await a.call("Target.setDiscoverTargets", { discover: true });
+  await b.call("Target.setDiscoverTargets", { discover: true });
+
+  const { result: { targetId: bTargetId } } = await b.call("Target.createTarget", { url: "about:blank#bob" });
+  await tick(20);
+  assert.equal(a.events("Target.targetCreated").filter(e => e.params.targetInfo.targetId === bTargetId).length, 0,
+    "A never sees B's target created, though Chrome's own discovery is browser-wide, not per context");
+  assert.ok(b.events("Target.targetCreated").some(e => e.params.targetInfo.targetId === bTargetId), "B sees its own");
+
+  await b.call("Target.closeTarget", { targetId: bTargetId });
+  await tick(20);
+  assert.equal(a.events("Target.targetDestroyed").filter(e => e.params.targetId === bTargetId).length, 0,
+    "A never sees B's target destroyed either, though targetDestroyed itself carries no browserContextId at all");
+  assert.ok(b.events("Target.targetDestroyed").some(e => e.params.targetId === bTargetId), "B sees its own destroyed");
+
+  // Auto-attach fans out the same way discovery does (browser-wide, not per context) -- fenced the same way.
+  await a.call("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
+  await b.call("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
+  const { result: { targetId: bTargetId2 } } = await b.call("Target.createTarget", { url: "about:blank#bob2" });
+  await tick(20);
+  assert.equal(a.events("Target.attachedToTarget").filter(e => e.params.targetInfo.targetId === bTargetId2).length, 0,
+    "A's auto-attach never attaches to B's target");
+  assert.ok(b.events("Target.attachedToTarget").some(e => e.params.targetInfo.targetId === bTargetId2), "B still sees its own");
+});
+
+test("cdpmux: Target.getTargets answers a context-scoped agent client with only its own context's targets, though Chrome's own answer names every target in the browser", async () => {
+  const { mux, fake } = world();
+  const a = client(mux, "agent", "alice");
+  const b = client(mux, "agent", "bob");
+  const { result: { targetId: aTargetId } } = await a.call("Target.createTarget", { url: "about:blank#alice" });
+  const { result: { targetId: bTargetId } } = await b.call("Target.createTarget", { url: "about:blank#bob" });
+
+  const chromeAnswer = await mux.call("Target.getTargets");
+  assert.ok(chromeAnswer.targetInfos.some(t => t.targetId === aTargetId) && chromeAnswer.targetInfos.some(t => t.targetId === bTargetId),
+    "Chrome's own answer (unfenced, the mux's own call) names both -- the fence is cdpmux's, not Chrome's");
+
+  const aAnswer = await a.call("Target.getTargets");
+  assert.ok(aAnswer.result.targetInfos.some(t => t.targetId === aTargetId), "alice's own answer is missing her own target");
+  assert.ok(!aAnswer.result.targetInfos.some(t => t.targetId === bTargetId), "alice's answer names bob's target");
+
+  const bAnswer = await b.call("Target.getTargets");
+  assert.ok(bAnswer.result.targetInfos.some(t => t.targetId === bTargetId), "bob's own answer is missing his own target");
+  assert.ok(!bAnswer.result.targetInfos.some(t => t.targetId === aTargetId), "bob's answer names alice's target");
+});
+
+test("cdpmux: Target.createBrowserContext and Target.disposeBrowserContext sent directly by a client are refused, the same as any other REFUSED method", async () => {
+  const { mux, fake } = world();
+  const agent = client(mux, "agent", "alice"), fill = client(mux, "fill");
+  await agent.call("Test.echo"); // let alice's own join (and the mux's own Target.createBrowserContext for it) settle first
+  const before = fake.seen.filter(s => s.method === "Target.createBrowserContext").length;
+  assert.ok(before >= 1, "the mux made its own call for alice's join");
+  for (const method of ["Target.createBrowserContext", "Target.disposeBrowserContext"]) {
+    assert.equal((await agent.call(method)).error.code, -32000, `${method} from an agent client`);
+    assert.equal((await fill.call(method)).error.code, -32000, `${method} from a fill client`);
+  }
+  assert.equal(fake.seen.filter(s => s.method === "Target.createBrowserContext").length, before, "no client's direct call ever reached Chrome");
+  assert.ok(!fake.seen.some(s => s.method === "Target.disposeBrowserContext"), "disposeBrowserContext never reached Chrome either");
+});
+
+test("cdpmux: a 'fill' client ignores agentName entirely -- no browser context, no createTarget enforcement (regression)", async () => {
+  const { mux, fake } = world();
+  const fill = client(mux, "fill", "alice"); // agentName means nothing for a fill client
+  const r = await fill.call("Target.createTarget", { url: "about:blank#fill" });
+  assert.ok(!r.error);
+  const seenCall = fake.seen.find(s => s.method === "Target.createTarget");
+  assert.equal(seenCall.params.browserContextId, undefined, "no browserContextId injected for a fill client");
+  assert.equal(fake.seen.filter(s => s.method === "Target.createBrowserContext").length, 0, "a fill client never triggers a browser-context creation");
 });

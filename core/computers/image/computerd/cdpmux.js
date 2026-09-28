@@ -40,13 +40,35 @@
 // Kinds: each client is marked "agent" or "fill". closeKind(kind) drops every client of that
 // kind and detaches its sessions; raising the shield uses it to cut the agent off.
 //
+// Browser contexts: an "agent" client may join with an agentName (addClient's third argument).
+// The mux gets or creates that name's own Target.createBrowserContext (disposeOnDetach: false) on
+// first use, in contextStore (a plain Map by default; index.js may back it with something
+// durable), and reuses it for every later client of that name -- so two connections/sessions for
+// the same agent share one set of cookies, storage and targets, and two different agent names
+// never do. Every Target.createTarget an "agent" client with a browserContextId sends is forced
+// onto it: injected when the client left it out, refused (never silently rewritten) when the
+// client named a different one -- the same "refuse a wrong claim loudly" shape as everything else
+// below. Target.setDiscoverTargets and auto-attach are native per session (above) but not per
+// context: Chrome fans a browser session's Target.targetCreated/attachedToTarget/
+// targetInfoChanged/targetDestroyed out across every context in the browser, not just the one it
+// was opened for (checked against testing/fake-chrome.js, which does the same) -- so the mux
+// filters those four events for a context-scoped agent client down to its own context, dropping
+// the rest the same way an event on a session nobody owns is dropped. Target.getTargets is fenced
+// the same way on its way back (_response), since a client asking directly, rather than waiting
+// on discovery events, must not see another agent's targetInfos either. Target.targetDestroyed
+// carries no browserContextId at all in real CDP, so targetContext below remembers each open
+// target's context from whichever of the other three events named it first. An "agent" client
+// joined with no agentName, and every "fill" client, keep today's unscoped behaviour exactly.
+//
 // Refusals, on any session: Browser.close, Browser.crash and crashGpuProcess (the agent must not
 // kill the browser everyone shares), Target.sendMessageToTarget (the old unflattened channel),
 // Target.exposeDevToolsProtocol (CDP handed to a page's own script), Target.setRemoteLocations,
-// and Target.attachToBrowserTarget (a client already has its browser session, and a second one
-// would escape the cleanup above). From the agent only, as ADR 0005 says: Runtime.addBinding and
-// Page.addScriptToEvaluateOnNewDocument, either of which would leave script of its own in a page
-// a person later signs in on.
+// Target.attachToBrowserTarget (a client already has its browser session, and a second one would
+// escape the cleanup above), and Target.createBrowserContext / Target.disposeBrowserContext (only
+// the mux itself ever calls these, from _contextFor; a client asking directly gets the same
+// refusal everything else in this list does). From the agent only, as ADR 0005 says:
+// Runtime.addBinding and Page.addScriptToEvaluateOnNewDocument, either of which would leave
+// script of its own in a page a person later signs in on.
 //
 // Nothing here ever logs a message's contents: they carry whatever is on the page, passwords a
 // person is typing included. Logs name methods and count things, never more.
@@ -56,6 +78,9 @@ export const REFUSED = new Set([
   "Browser.close", "Browser.crash", "Browser.crashGpuProcess",
   "Target.sendMessageToTarget", "Target.exposeDevToolsProtocol",
   "Target.setRemoteLocations", "Target.attachToBrowserTarget",
+  // Only the mux's own _contextFor ever creates or disposes an agent's browser context; a client
+  // asking directly is refused the same way as everything else here.
+  "Target.createBrowserContext", "Target.disposeBrowserContext",
 ]);
 
 /**
@@ -146,17 +171,29 @@ const MAX_MESSAGE = 256 * 1024 * 1024;
 /** Messages a client may send before its browser session exists. */
 const MAX_QUEUE = 1000;
 
+/** Target events an agent client's own browserContextId fences (see the doc comment at the top). */
+const TARGET_CONTEXT_EVENTS = new Set([
+  "Target.attachedToTarget", "Target.targetCreated", "Target.targetInfoChanged", "Target.targetDestroyed",
+]);
+
 /**
  * @typedef {{ send(text: string): void, close(): void }} Transport
  * @typedef {{ id: number, kind: string, transport: Transport, closed: boolean,
- *   browserSid: string|null, queue: string[], sessions: Set<string> }} Client
+ *   browserSid: string|null, queue: string[], sessions: Set<string>,
+ *   agentName: string|null, browserContextId: string|null }} Client
  * @typedef {{ client: Client|null, origId?: number, method: string, sessionId?: string,
  *   resolve?: (v: any) => void, reject?: (e: Error) => void, timer?: any }} Pending
+ * @typedef {{ get(agentName: string): string|undefined, set(agentName: string, browserContextId: string): void }} ContextStore
+ *   Where an agent's browserContextId lives. Deliberately tiny -- get one, set one, nothing else --
+ *   so a plain Map works as the default (and is all these tests need) while a caller like index.js
+ *   can later back it with something that outlives this process.
  */
 
 export class CdpMux {
   /** @param {{ log?: (line: string) => void }} [o] */
-  /** @param {{ log?: (line: string) => void, downloads?: string }} [o] downloads: the one folder an agent may send downloads to */
+  /** @param {{ log?: (line: string) => void, downloads?: string, contextStore?: ContextStore }} [o]
+   *   downloads: the one folder an agent may send downloads to; contextStore: where an agent's
+   *   browserContextId lives (default: an in-memory Map, see the ContextStore typedef above) */
   constructor(o = {}) {
     this.log = o.log || (() => {});
     // Not under /home/agent (e2e review MEDIUM 3): the agent owns its home outright and could
@@ -164,6 +201,18 @@ export class CdpMux {
     // then follow. /var/lib/vyre/browser/downloads is browser-owned, mode 2750 (entrypoint.sh) --
     // Chrome writes into it as browser, the agent can list and read but never rename or replace it.
     this.downloads = o.downloads || "/var/lib/vyre/browser/downloads";
+    /** @type {ContextStore} */
+    this.contextStore = o.contextStore || new Map();
+    /** @type {Map<string, Promise<string>>} an agent name's Target.createBrowserContext while it
+     *  is still being made, so two clients joining for the same name at once share the one call
+     *  in flight rather than each starting their own and racing to store the result. */
+    this.contextInFlight = new Map();
+    /** @type {Map<string, string>} a still-open target's browserContextId, learned from whichever
+     *  of Target.targetCreated / attachedToTarget / targetInfoChanged named it first. Needed
+     *  because Target.targetDestroyed carries only a targetId in real CDP, never a context, so
+     *  without this an agent client's own targetDestroyed events could not be fenced the way the
+     *  other three are. Forgotten once the target is destroyed. */
+    this.targetContext = new Map();
     this.nextId = 0;
     this.nextClient = 0;
     /** @type {Map<number, Pending>} */
@@ -311,6 +360,17 @@ export class CdpMux {
     // Target.attachedToTarget for it arrived first.
     const sid = !m.error && m.result && typeof m.result.sessionId === "string" ? m.result.sessionId : null;
     if (sid && p.method === "Target.attachToTarget" && !this.sessions.has(sid)) this._own(sid, c);
+    // Target.getTargets answers with every target in the browser, not just the caller's context
+    // (checked against testing/fake-chrome.js, same as the four events above) -- a context-scoped
+    // agent client asking directly, rather than waiting for discovery events, must not see another
+    // agent's targetInfos this way either. targetContext is kept in sync by _event for exactly this.
+    if (!m.error && c.kind === "agent" && c.browserContextId && p.method === "Target.getTargets"
+      && m.result && Array.isArray(m.result.targetInfos)) {
+      m.result = { ...m.result, targetInfos: m.result.targetInfos.filter(t => {
+        const ctx = t && typeof t.browserContextId === "string" ? t.browserContextId : this.targetContext.get(t && t.targetId);
+        return ctx === c.browserContextId;
+      }) };
+    }
     const out = { ...m, id: p.origId };
     if (p.sessionId) out.sessionId = p.sessionId;
     else delete out.sessionId;
@@ -324,6 +384,23 @@ export class CdpMux {
     const s = this.sessions.get(m.sessionId);
     if (!s || s.client.closed) return;
     const params = m.params && typeof m.params === "object" ? m.params : {};
+    // Fenced per the doc comment at the top: an agent client scoped to a browserContextId never
+    // learns another context's target ids exist, even though Chrome's own discovery/auto-attach
+    // is browser-wide, not per-context. targetContext remembers what targetDestroyed itself never
+    // says. Checked and (if it belongs to another context) dropped before _own below, so a
+    // filtered attachedToTarget never gives the client an owned, addressable child session either
+    // -- it never learns the sessionId, and the mux never treats it as this client's to use.
+    if (TARGET_CONTEXT_EVENTS.has(m.method)) {
+      const tid = m.method === "Target.targetDestroyed" ? params.targetId
+        : (params.targetInfo && typeof params.targetInfo.targetId === "string" ? params.targetInfo.targetId : undefined);
+      const ctx = m.method === "Target.targetDestroyed" ? this.targetContext.get(tid)
+        : (params.targetInfo && typeof params.targetInfo.browserContextId === "string" ? params.targetInfo.browserContextId : undefined);
+      if (typeof tid === "string") {
+        if (m.method === "Target.targetDestroyed") this.targetContext.delete(tid);
+        else if (typeof ctx === "string") this.targetContext.set(tid, ctx);
+      }
+      if (s.client.kind === "agent" && s.client.browserContextId && typeof ctx === "string" && ctx !== s.client.browserContextId) return;
+    }
     if (m.method === "Target.attachedToTarget" && typeof params.sessionId === "string" && !this.sessions.has(params.sessionId)) this._own(params.sessionId, s.client);
     if (m.method === "Target.detachedFromTarget" && typeof params.sessionId === "string") {
       const child = this.sessions.get(params.sessionId);
@@ -348,14 +425,24 @@ export class CdpMux {
   // ---- clients ----------------------------------------------------------------------------
 
   /**
-   * A new client. `kind` marks it for closeKind and AGENT_REFUSED. Returns its handle: receive()
-   * takes one CDP message as text, leave() says it has gone (safe to call more than once).
-   * Messages that arrive before its browser session exists wait for it.
-   * @param {string} kind @param {Transport} transport
+   * A new client. `kind` marks it for closeKind and AGENT_REFUSED. For an "agent" client, the
+   * optional `agentName` scopes it to that agent's own browser context (get-or-created via
+   * _contextFor, then enforced on Target.createTarget and the four target events by _fromClient/
+   * _event below); an "agent" client joined with no agentName behaves exactly as before, unscoped.
+   * Ignored for "fill" clients -- the private sign-in flow has no browser-context scope, and this
+   * does not give it one.
+   * Returns its handle: receive() takes one CDP message as text, leave() says it has gone (safe to
+   * call more than once). Messages that arrive before its browser session (and, for a named agent,
+   * its browser context) is ready wait for it.
+   * @param {string} kind @param {Transport} transport @param {string} [agentName]
    */
-  addClient(kind, transport) {
+  addClient(kind, transport, agentName) {
     /** @type {Client} */
-    const c = { id: ++this.nextClient, kind, transport, closed: false, browserSid: null, queue: [], sessions: new Set() };
+    const c = {
+      id: ++this.nextClient, kind, transport, closed: false, browserSid: null, queue: [], sessions: new Set(),
+      agentName: kind === "agent" && typeof agentName === "string" && agentName ? agentName : null,
+      browserContextId: null,
+    };
     const handle = {
       /** @param {string} text */
       receive: text => this._fromClient(c, text),
@@ -364,12 +451,21 @@ export class CdpMux {
     if (!this.up) { c.closed = true; try { transport.close(); } catch {} return handle; }
     this.clients.add(c);
     this.log(`cdp: ${kind} client joined; ${this.clients.size} clients`);
-    this.call("Target.attachToBrowserTarget", {}).then(r => {
+    this.call("Target.attachToBrowserTarget", {}).then(async r => {
       const sid = r && r.sessionId;
       if (typeof sid !== "string") throw new Error("no browser session");
       if (c.closed) { this._detachInChrome(sid); return; }
       c.browserSid = sid;
       this.sessions.set(sid, { client: c, browser: true });
+      if (c.agentName) {
+        try {
+          c.browserContextId = await this._contextFor(c.agentName);
+        } catch {
+          if (!c.closed) { this.log(`cdp: could not open a browser context for a "${c.agentName}" agent client`); this._drop(c); }
+          return;
+        }
+        if (c.closed) return;
+      }
       const queued = c.queue;
       c.queue = [];
       for (const text of queued) this._fromClient(c, text);
@@ -379,6 +475,31 @@ export class CdpMux {
       this._drop(c);
     });
     return handle;
+  }
+
+  /**
+   * The browserContextId for an agent name: contextStore's own if one is already there, else a
+   * fresh Target.createBrowserContext {disposeOnDetach: false} (survives past any one client's
+   * session, the same way a person's Chrome profile survives past any one login) stored there for
+   * every later call to reuse. Two clients joining for the same name at once share the one call in
+   * flight rather than each making their own and racing to store the result.
+   * @param {string} agentName @returns {Promise<string>}
+   */
+  async _contextFor(agentName) {
+    const existing = this.contextStore.get(agentName);
+    if (typeof existing === "string") return existing;
+    let inFlight = this.contextInFlight.get(agentName);
+    if (!inFlight) {
+      inFlight = this.call("Target.createBrowserContext", { disposeOnDetach: false }).then(r => {
+        const id = r && r.browserContextId;
+        if (typeof id !== "string") throw new Error("Target.createBrowserContext returned no browserContextId");
+        this.contextStore.set(agentName, id);
+        return id;
+      });
+      this.contextInFlight.set(agentName, inFlight);
+      inFlight.catch(() => {}).finally(() => { this.contextInFlight.delete(agentName); });
+    }
+    return inFlight;
   }
 
   /** Drop every client of one kind, detaching its sessions. Returns how many were dropped. @param {string} kind */
@@ -474,6 +595,10 @@ export class CdpMux {
     if (typeof m.method !== "string") return fail(-32600, "Message must have string 'method' property");
     const method = m.method;
     const params = m.params && typeof m.params === "object" ? m.params : {};
+    // Kept in sync so a mutation below (Target.createTarget's browserContextId, just past) reaches
+    // Chrome: params is the same object as m.params when the client sent one, but a client that
+    // sent none at all would otherwise mutate a copy nobody forwards.
+    m.params = params;
 
     if (REFUSED.has(method) || (c.kind === "agent" && AGENT_REFUSED.has(method))) {
       this.log(`cdp: refused ${method} from a ${c.kind} client`);
@@ -482,6 +607,18 @@ export class CdpMux {
     if (c.kind === "agent") {
       const why = this._agentParams(method, params);
       if (why) { this.log(`cdp: refused ${method} from an agent client (${why})`); return fail(-32000, `${method} ${why}`); }
+    }
+    // A context-scoped agent's own Target.createTarget always lands in its own browser context:
+    // injected when the client left browserContextId out, refused (not rewritten) when the client
+    // named a different one -- that is another agent's context, and a wrong claim is refused
+    // loudly here exactly as everywhere else in this file, never corrected quietly. An agent client
+    // with no agentName (browserContextId null) and every "fill" client are untouched.
+    if (c.kind === "agent" && c.browserContextId && method === "Target.createTarget") {
+      if (params.browserContextId === undefined) params.browserContextId = c.browserContextId;
+      else if (params.browserContextId !== c.browserContextId) {
+        this.log("cdp: refused Target.createTarget from an agent client naming another browser context");
+        return fail(-32000, "Target.createTarget may use only this agent's own browser context");
+      }
     }
     if (sid !== undefined && !this._ownsChild(c, sid)) return fail(-32001, "No session with given id");
     if (!this.up) return fail(-32000, "Chrome is not running");
