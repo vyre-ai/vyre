@@ -15,7 +15,7 @@ import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { seams, merge, openReal } from "./index.js";
+import { seams, merge, openReal, openChecked } from "./index.js";
 import { guard } from "./safety.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -577,4 +577,28 @@ test("files: openReal refuses a symlink outright, closing the check-then-open ga
   // the gap before this actually opens it, O_NOFOLLOW must refuse rather than follow it to
   // wherever the symlink now points, in or out of the granted folder.
   assert.throws(() => openReal(link), /not available/);
+});
+
+test("files: openChecked refuses a parent-directory swap between describe()'s stat and the open (e2e's follow-up on e8560b79)", async t => {
+  const base = tmp(t);
+  const real = path.join(base, "dir", "notes.txt");
+  put(real, "hello\n");
+  const before = fs.statSync(real);
+  // The ordinary case: describe()'s own dev/ino still match what is actually opened.
+  const okFd = openChecked({ real, dev: before.dev, ino: before.ino });
+  fs.closeSync(okFd);
+  // The residual O_NOFOLLOW alone does not close: the final component (notes.txt) never became
+  // a symlink, but its parent directory was renamed out and a new one dropped in its place in
+  // the gap between describe()'s stat and the actual open — the path string still resolves,
+  // through the swapped-in parent, to a different real file (same name, different inode), which
+  // was never checked against scope or the guard.
+  fs.renameSync(path.join(base, "dir"), path.join(base, "dir-old"));
+  fs.mkdirSync(path.join(base, "dir"));
+  put(real, "a different file the swap dropped in the same place\n");
+  assert.throws(() => openChecked({ real, dev: before.dev, ino: before.ino }), /not available/);
+  // Describing it fresh (as a caller would after the swap, not reusing the stale stat) agrees:
+  // it opens fine on its own dev/ino, since only the comparison against the STALE stat refuses.
+  const after = fs.statSync(real);
+  const freshFd = openChecked({ real, dev: after.dev, ino: after.ino });
+  fs.closeSync(freshFd);
 });

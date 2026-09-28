@@ -65,6 +65,24 @@ export function openReal(real) {
   try { return fs.openSync(real, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); }
   catch (e) { throw /** @type {any} */ (e).code === "ELOOP" ? new Refused() : e; }
 }
+/**
+ * openReal, plus the residual O_NOFOLLOW alone does not close (e2e's follow-up on e8560b79):
+ * O_NOFOLLOW refuses the final component turning into a symlink, but not one of ITS ancestors
+ * being renamed out and a new directory dropped in its place between describe()'s stat and this
+ * open — the path string still resolves, through the swapped-in parent, to a different real
+ * file that was never checked against scope or the guard. fstat after opening and comparing
+ * dev/ino to describe()'s own stat catches that: the swap either lands a different inode (dev
+ * or ino differs) or the original file was itself replaced (same path, new inode) — either way
+ * this refuses rather than silently reading whatever is there now.
+ * @param {{ real: string, dev: number, ino: number }} d describe()'s own result
+ * @returns {number} the open fd, already checked; the caller still owns closing it
+ */
+export function openChecked(d) {
+  const fd = openReal(d.real);
+  const st = fs.fstatSync(fd);
+  if (st.dev !== d.dev || st.ino !== d.ino) { fs.closeSync(fd); throw new Refused(); }
+  return fd;
+}
 /** Owner surfaces, modules, an agent's own session (mcp, harness) and the tailnet reader case
  * (the user's other device). Reviewer's MEDIUM 2 (450c34b6): these four used to declare no
  * callers at all, so a tailnet guest, a hook or any unrecognised kind reached them the same as
@@ -123,7 +141,7 @@ export default {
       const name = path.basename(safe.path);
       const { kind, mime } = classify(name, st.isDirectory());
       return { path: safe.path, real: safe.real, name, kind, mime, dir: st.isDirectory(), size: st.isDirectory() ? 0 : st.size,
-        mtime: st.mtime.toISOString() };
+        mtime: st.mtime.toISOString(), dev: st.dev, ino: st.ino };
     }
 
     /** Search this machine only. Never throws: a failure is reported in its source entry. scope,
@@ -280,7 +298,7 @@ export default {
           const t = await thumbnail(d.real, path.extname(d.name).toLowerCase());
           if (t && t.buf && t.buf.length) return { source: here, path: d.path, kind: "image", mime: t.mime, base64: t.buf.toString("base64"), thumbnail: true, size: d.size };
           if (d.size <= SMALL_IMAGE) {
-            const ifd = openReal(d.real);
+            const ifd = openChecked(d);
             let ibuf;
             try { ibuf = fs.readFileSync(ifd); } finally { fs.closeSync(ifd); }
             return { source: here, path: d.path, kind: "image", mime: d.mime, base64: ibuf.toString("base64"), thumbnail: false, size: d.size };
@@ -292,7 +310,7 @@ export default {
         if (d.kind !== "text" && d.kind !== "code" && d.kind !== "other") return other();
         const limit = clamp(max ?? PREVIEW, 1, PREVIEW_CAP);
         const buf = Buffer.alloc(Math.min(limit, d.size));
-        const fd = openReal(d.real);
+        const fd = openChecked(d);
         let n = 0;
         try { n = fs.readSync(fd, buf, 0, buf.length, 0); } finally { fs.closeSync(fd); }
         const head = buf.subarray(0, n);
@@ -314,8 +332,11 @@ export default {
       const len = clamp(length, 1, CHUNK);
       const fd = openReal(d.real);
       try {
-        // Size and date from the open file itself, so they describe exactly what is read.
+        // Size and date from the open file itself, so they describe exactly what is read; the
+        // same fstat also carries dev/ino, checked against describe()'s own stat here rather
+        // than through openChecked (which would fstat twice for no reason).
         const st = fs.fstatSync(fd);
+        if (st.dev !== d.dev || st.ino !== d.ino) throw new Refused();
         if (offset > st.size) throw new Error("offset is past the end of the file");
         const buf = Buffer.alloc(Math.min(len, st.size - offset));
         const n = fs.readSync(fd, buf, 0, buf.length, offset);
