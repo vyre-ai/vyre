@@ -183,6 +183,38 @@ test("push: devices subscribe, the moments reach them as kind, title and path on
   assert.ok(priv.length > 40 && !everything.includes(priv), "the VAPID private key leaked");
 });
 
+test("push: devices are keyed by endpoint, so two subscriptions of the same push service upsert to one device, never two", async t => {
+  // The /app/ -> / migration (docs/work/pwa.md) leans on this: the app's own launch-time
+  // pushManager.getSubscription() re-sends the same endpoint the Deck already holds (same
+  // browser, same push service registration), and push.unsubscribe by endpoint has to actually
+  // reach the row that ring, not a stray duplicate.
+  const root = tempHome(t);
+  const svc = await fakeService(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" },
+    modules: { enable: [], disable: ["recall", "memory", "learn"] }, push: { hosts: ["127.0.0.1"], allow_http: true } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (tool, input = {}) => call(tool, input, { root, caller: "deck" });
+
+  const phone = await browser();
+  const endpoint = `${svc.base}/push/one-phone`;
+  const first = (await deck("push.subscribe", { subscription: { endpoint, keys: phone.keys }, label: "the Deck's registration" })).data;
+  const second = (await deck("push.subscribe", { subscription: { endpoint, keys: phone.keys }, label: "the app's registration" })).data;
+  assert.equal(second.device, first.device, "the same endpoint is the same device, whichever scope's SW registered it");
+  const devices = (await deck("push.devices")).data;
+  assert.equal(devices.length, 1, "one row, not two");
+  assert.equal(devices[0].label, "the app's registration", "the later subscribe's label wins, upsert not append");
+
+  // The migration's cleanup: unsubscribe by endpoint (not by device id, which the app's own
+  // code may never have learned if it only ever read the endpoint back from the browser).
+  const gone = await deck("push.unsubscribe", { endpoint });
+  assert.equal(gone.data.removed, true);
+  assert.deepEqual((await deck("push.devices")).data, []);
+  d.events.emit("threads", "ask.raised", { ask: "a1", tool: "Bash", summary: "x" }, { thread: "t-1" });
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(svc.got.length, 0, "unsubscribing by endpoint really drops the row: nothing was pushed to it");
+});
+
 test("push: a planner firing reaches the phone as kind planner with a fixed title, never the label; alarms ring through quiet hours", async t => {
   const root = tempHome(t);
   const svc = await fakeService(t);

@@ -96,9 +96,14 @@ export function privateSocketDir() {
  *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any },
  *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> },
  *   theme?: { colors?: { dark?: Record<string, string>, light?: Record<string, string> } },
+ *   app: { root: boolean },
  *   term: { keep_hours: number, max?: number, shell?: string },
  *   projects?: { move?: "enabled" } }} Config
- * projects.move "enabled" lets projects.move really move a box's homes (off until box-deploy validates it). */
+ * projects.move "enabled" lets projects.move really move a box's homes (off until box-deploy validates it).
+ * app.root: off until the one app (ADR 0027) actually takes over "/" from the Deck; while off,
+ * /app/* still serves the app beside the Deck as it does today (core/daemon/app.js). Once mobile
+ * flips it, /app/* becomes a 301 to the same path under "/", so an installed /app/ Home Screen
+ * icon or a stale bookmark still opens (core/daemon/index.js route()). */
 
 /**
  * Pages on other sites that may call this box from the owner's browser: Vyre's hosted app. Config
@@ -162,6 +167,9 @@ function defaults(root) {
     computers: { tailnet: { enabled: false, tag: "tag:vyre-agent" } },
     // Off: no webhook listener until the owner turns it on and opens a route (core/hooks).
     hooks: { enabled: false, port: 7310, routes: {} },
+    // Off: /app/* keeps serving beside the Deck until mobile's client-side migration is ready and
+    // flips this (ADR 0027; core/daemon/app.js).
+    app: { root: false },
     term: { keep_hours: 12 },
   };
 }
@@ -187,6 +195,7 @@ export function load(root = home()) {
     glass: { ...d.glass, ...(user.glass || {}), egress: { ...d.glass.egress, ...((user.glass && user.glass.egress) || {}) } },
     computers: { ...d.computers, ...(user.computers || {}), tailnet: { ...d.computers.tailnet, ...((user.computers && user.computers.tailnet) || {}) } },
     hooks: { ...d.hooks, ...(user.hooks || {}) },
+    app: { ...d.app, ...(user.app || {}) },
     term: { ...d.term, ...(user.term || {}) },
   };
   if (!["box", "local"].includes(c.role)) { problems.push(`role "${c.role}" is not box or local; using ${d.role}`); c.role = d.role; }

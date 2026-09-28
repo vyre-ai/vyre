@@ -49,6 +49,43 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 8. Offline. Turn on Airplane Mode and open Vyre: it still opens, shows what it last had, and one
    line says the phone is offline. Turn it off and tap Retry: the line goes and the screen fills.
 
+## The keyboard check (real iPhone only — a simulator or Chrome DevTools does not show this)
+
+Everything above has been checked in headless Chrome on testbox, but the keyboard behaviour it is
+built against (`visualViewport`, safe areas, `100dvh`) only shows its real shape on an actual
+iPhone in Safari, so this is the user's to run rather than something the team can verify in CI. Takes
+about five minutes. For each step, what should happen is next to what would mean it is broken.
+
+1. Open a session with some history in it (Chat, pick one with a few messages). Tap the composer
+   at the bottom. **Should**: the keyboard rises and the composer sits right on top of it, with no
+   gap and no part of the composer hidden underneath; the transcript above does not jump, flash,
+   or scroll to a different spot when the keyboard appears. **Broken** would look like: the
+   composer staying at the bottom of the screen behind the keyboard, a visible jump in the
+   transcript's scroll position at the moment the keyboard opens, or a blank gap between the last
+   message and the keyboard.
+2. With the keyboard still up, scroll the transcript up to read an earlier message, then scroll
+   back down and type a short reply. **Should**: scrolling works normally with the keyboard up,
+   and sending returns you to the bottom smoothly. **Broken** would be scrolling that fights the
+   keyboard, or the view snapping somewhere unexpected on send.
+3. Dismiss the keyboard (tap the transcript or swipe down) without sending anything, then tap the
+   composer again. **Should**: it opens and closes cleanly a few times in a row with the layout
+   settling in the same place each time. **Broken** would be the composer sitting too high or too
+   low after a second or third open, or a growing gap under it.
+4. Tap Send (or Approve) on the Gate to open its sheet, then tap into one of its text fields.
+   **Should**: the sheet's field also rises above the keyboard, same as the composer. **Broken**
+   would be the field ending up hidden behind the keyboard inside the sheet.
+5. Pull down for Find and tap its search box. **Should**: the same lift as the composer; typing
+   filters results live above the keyboard. **Broken** would be the results list being covered by
+   the keyboard, or the search box itself sitting under it.
+6. Turn the phone sideways (landscape) with the composer's keyboard up, then back to portrait.
+   **Should**: the layout does not break in either orientation — this is also where to notice
+   whether the phone should still use its narrow (five-tab) layout in landscape, or switch to the
+   wider desktop-style one now that the screen is over 760px wide sideways; either way of it
+   should look deliberate, not stretched or cut off.
+
+Whatever you see, a screenshot (or a screen recording if it's the jump, which is hard to catch in
+a still) is the fastest way to hand it back — reply with what step, and what happened instead.
+
 ## Done
 - /pair for `vyre phone add --tailscale-only` (views/pair.js, js/pair-steps.js pure parts,
   css/views/pair-phone.css via app.js CSS_NAME): code + enrollPasskey, subscribePush, Home Screen
@@ -320,29 +357,64 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   so a wait scheduled before the box comes back doesn't have to run out its full step. New
   core/resilience/stream.test.js (3 tests, synthetic transport). Noted in resilience's
   docs/work/resilience.md for their return. Next: push, ask native-core to rerun budget 8 on the
-  new sha, send the numbers to reviewer-2.
+  new sha, send the numbers to reviewer-2. Budget 8 closed (native-core: 55-90 ms), reviewer-2
+  signed off be3f5554, told the lead.
+- Wrote up the real-iPhone keyboard check for the user ("The keyboard check" section above),
+  6e80bcdd.
+- SW version skew ("a release lands on the second launch"): checked, and it was already done
+  (c281be82 + d310169b, well before this restart) — core/daemon/build.js stamps sw.js and
+  app-sw.js with the running build's commit at serve time, both workers skipWaiting()+
+  clients.claim(), and deck/js/app.js's controllerchange listener reloads at once if nobody has
+  touched the page yet, or defers to the next time it is hidden otherwise, so a release never
+  mixes old and new modules under someone's finger. core/daemon/build.test.js (3 tests) still
+  green. Removed the stale Next bullet; nothing to build here.
+- The /app/ -> / push migration (lead: mobile is paused and the actual flip isn't scheduled
+  yet, so build the forward-compatible piece that's clearly pwa's rather than guess at mobile's
+  client-side code in apps/app). Built:
+  - Confirmed core/push already keys subscriptions by endpoint, not by device id or scope
+    (push_devices.endpoint is UNIQUE, push.subscribe upserts ON CONFLICT(endpoint)), so the app's
+    (scope /app/) and the Deck's (scope /) registrations of the *same browser* naturally collapse
+    to one row once the app re-sends the same endpoint after the flip. Added a test that was
+    missing: "push: devices are keyed by endpoint, so two subscriptions of the same push service
+    upsert to one device, never two" (core/push/push.test.js), including push.unsubscribe by
+    endpoint actually stopping delivery. No code change needed here, only the test.
+  - core/config/index.js: new `app.root` config key, off by default (`app: { root: false }`),
+    merged one level deep like glass/computers/hooks. Test:
+    "config: app.root is off by default... and a user can turn it on" (config.test.js).
+  - core/daemon/index.js route(): while `cfg.app.root` is false (today, always), /app/* behaves
+    exactly as before. Once it flips, GET /app or /app/* becomes a 301 to the same path under /,
+    query string kept (`/app/now?tab=chat` -> `/now?tab=chat`; bare `/app` and `/app/` -> `/`).
+    Test: "app: with config app.root, /app/* is a 301 to the same path under / instead of serving
+    the app" (core/daemon/app.test.js). This does NOT itself move "/" from the Deck to the app —
+    that's a separate, bigger change (whatever serves "/" has to actually be the app) that mobile
+    or the integrator makes when the flip really happens; flipping `app.root` alone today would
+    just make /app/* redirect to a "/" that still answers as the Deck, which is why the flag
+    defaults off and nothing currently sets it.
+  - **What mobile's client-side cleanup will need, when it returns** (this is apps/app's code to
+    write, not built here): at launch, after the flip, call
+    `navigator.serviceWorker.getRegistrations()` (not just `getRegistration(SCOPE)`, since by then
+    the app's own registration is at scope `/`) and look for one whose `.scope` still ends in
+    `/app/` — a leftover from before the flip. If found: read its `pushManager.getSubscription()`
+    (if any), call `push.unsubscribe({ endpoint: sub.endpoint })` (needs no device id — see the
+    test above), `sub.unsubscribe()` on the browser side, then `registration.unregister()`. Do
+    this once (a flag in localStorage, `vyre.push.appScopeCleaned` or similar, is enough) since
+    `getRegistrations()` after the first successful cleanup will simply not find one anymore. No
+    new permission prompt and no re-subscribe: the Deck's own registration at scope `/`, and its
+    subscription, are untouched and keep receiving pushes exactly as before the flip — this is
+    only cleaning up the app's now-redundant one. `apps/app/src/pwa/pwa.web.ts`'s `startPwa()`
+    (or wherever the app's own boot runs once it owns `/`) is the natural place for this, next to
+    where it already does `navigator.serviceWorker.register(SW, { scope: SCOPE })`.
 
 ## Next
-- The push subscription when /app/ becomes /: a subscription belongs to the service worker
-  registration that made it, so the app's (scope /app/) and the Deck's (scope /) are two, and
-  core/push keeps each by its endpoint. When the app takes /, vyred serves the app's worker at
-  /sw.js with scope /, which replaces the Deck's registration in place: the browser keeps the
-  registration, so the Deck's subscription survives and now reaches the app's push handler (same
-  payload, and paths stop needing the /app prefix). The app then calls pushManager.getSubscription()
-  at launch and, if the /app/ registration still exists, unsubscribes it, unregisters it and tells
-  core/push to drop that endpoint, so one phone never rings twice. /app/* becomes a 301 to the same
-  path under / for a release, so an installed /app/ home-screen icon still opens. Nothing is
-  re-subscribed and the person is not asked for permission again.
-- SW version skew: a release lands on the second launch; register sw.js with the build commit.
 - Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
 - Step 6 Mac card: "Already on your tailnet" for an online Mac node.
 - theme.colors: match docs' final shape.
 - threads.unqueue once capsule-now ships it.
-- Real iPhone check by the user, against the DIRECTION.md bar. Especially the keyboard: open a
-  session, tap the composer, the transcript must not jump and the composer must sit on the keys;
-  the Send sheet's fields; Find's box.
+- Real iPhone check by the user, against the DIRECTION.md bar: steps written up in "The keyboard
+  check" above (2026-09-28), asked for a screenshot or recording of anything that doesn't match.
 - A phone turned sideways (over 760 wide) gets the desktop layout; decide whether the phone
-  shell should follow the shorter side instead (`max-width: 760px` or `max-height: 500px`).
+  shell should follow the shorter side instead (`max-width: 760px` or `max-height: 500px`) — the
+  keyboard check's step 6 asks the user to notice this too.
 
 ## Design A gaps closed
 The Deck-wide components from Design A v1 (app-design's spec, docs/design/system/components on

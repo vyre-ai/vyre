@@ -583,8 +583,23 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // so the Deck and its tests load the one copy. Only these five files; nothing else in core/.
   const res29 = req.method === "GET" && /^\/core\/resilience\/(backoff|sse|stream|outbox|web)\.js$/.exec(url.pathname);
   if (res29) return serveFile(res, path.join(REPO, "core", "resilience", res29[1] + ".js"));
-  // The one app (ADR 0027), beside the Deck until it takes over /.
-  if (req.method === "GET" && (url.pathname === "/app" || url.pathname.startsWith("/app/"))) return serveApp(res, url.pathname);
+  // The one app (ADR 0027), beside the Deck until it takes over /. Once config app.root flips
+  // (mobile's client-side migration, off by default: core/config/index.js), /app/* is a 301 to
+  // the same path under "/" instead, so an installed /app/ Home Screen icon or a stale bookmark
+  // still opens once "/" serves the app.
+  if (req.method === "GET" && (url.pathname === "/app" || url.pathname.startsWith("/app/"))) {
+    if (cfg.app?.root) {
+      // Never let this become a protocol-relative Location: "/app//evil.example" (or a
+      // "\" the URL parser already turned into "/") would otherwise slice down to "//evil.example",
+      // which a browser reads as scheme-relative and leaves the box for. Collapse every leading
+      // slash or backslash left after the "/app/" prefix before putting the one back.
+      const rest = (url.pathname === "/app" || url.pathname === "/app/") ? "" : url.pathname.slice(5).replace(/^[/\\]+/, "");
+      const to = "/" + rest + url.search;
+      res.writeHead(301, { location: to, "cache-control": "no-cache" });
+      return res.end();
+    }
+    return serveApp(res, url.pathname);
+  }
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }
