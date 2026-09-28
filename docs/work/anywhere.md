@@ -49,16 +49,34 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
 - OK'd tailnet's `onboard.join` proposal; confirmed Solo never touches Tailscale/relay until a
   device actually joins.
 
+## Done (cont. 3)
+- `onboard.machine` shipped (sha 73d03d39): `{machine:"solo"|"server"|"device"}` -> `{machine,
+  service:null}`. Added to `core/onboard/loopback.js`'s TOOLS allowlist (it was returning
+  "no such tool here" otherwise: the loopback session only allows a hardcoded list) and to
+  `module.json`'s `does.tools`. `onboard.status` now also reports `machine` alongside `role`.
+  `service` is a stub for now: the launchd/keep-awake installer (Next item 2) isn't built yet, so
+  `machine:"server"` on darwin does NOT yet actually start the service, only records the choice.
+  Told launch and tailnet the contract is real; have not yet told them `service` still no-ops on
+  darwin: pending item 2 landing, or a correction if they build against it first.
+- Migrated the config tests to config.test.js, added roleBuckets test to modules.test.js, added
+  onboard.machine integration test to test/onboard.test.js (real daemon, temp home). All green.
+- Fixed docs-check failures the ADR/design doc had picked up: no front matter on design/anywhere.md,
+  neither page in docs/nav.json, "anywhere" not a registered owner in scripts/lib/docs/check.js,
+  ~70 em dashes (RULES: none, anywhere, not just public copy), and three not-yet-real names
+  (`vyre server here`, `vyre stop`, `onboard.join`) that were in backtick code spans, which the
+  stale-mention checker treats as real command/tool references: moved to italics instead of
+  inventing STALE_ALLOWED entries for things not yet built. docs/reference/* regenerated.
+  test/docs-*.test.js 61/61 green.
+
 ## Next
-1. Implement `onboard.machine` (core/onboard) + the launchd/keep-awake install it calls into on
-   darwin+server. Tests: migrating a real existing box config.json (role:"box", no machine) and
-   a Mac local config.json (role:"local", no machine), per team-lead's ask.
+1. The launchd plist + keep-awake installer (`vyre server here` CLI and `onboard.machine`'s
+   darwin+server path both call into it) -- once it lands, tell launch/tailnet `service` is real
+   and update `onboard.machine`'s doc comment.
 2. Audit the eight modules (releases=core/apps, computers, glass, hooks, names, network,
    onboard, relay) for Linux-only assumptions beyond the manifest gate (paths, container
    networking) before claiming they run on macOS.
-3. `vyre server here` / `--undo` CLI (shares code with onboard.machine's server-side install).
-4. `core/cli/commands/up.js`: stop assuming role=local means "find a box"; ask/default Solo.
-5. Coordinate the move engine contract (section 4) with federation.
+3. `core/cli/commands/up.js`: stop assuming role=local means "find a box"; ask/default Solo.
+4. Coordinate the move engine contract (section 4) with federation.
 
 ## Needs from others
 - federation: confirm the move engine can implement ADR 0039 section 4's four-piece contract
