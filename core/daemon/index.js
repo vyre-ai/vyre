@@ -25,7 +25,10 @@ import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, canReadPee
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
-import { DEFAULT_RELAY } from "../relay/index.js";
+// lib/, not core/relay/index.js: importing the module itself would be a new kernel -> feature
+// edge (reviewer's MEDIUM, 2026-09-28) and would pull the whole relay module - link, bridge,
+// redeem, tailnet via relay/client - into the kernel just for one constant.
+import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -837,13 +840,16 @@ function serveDeck(res, pathname, cfg) {
  * (DEFAULT_RELAY); also this box's own configured relay (relay.status's url), so a self-hosted
  * relay (relay/client/README.md's own documented case) is never silently blocked either. Exact
  * origins only, both wss: (the socket pairOffer opens) and the matching https: (resolveTicket's
- * own fetch, same scheme swap relay/client/client.js does) - never a wildcard.
+ * own fetch, same scheme swap relay/client/client.js does) - never a wildcard. The configured
+ * relay is checked against a strict wss://<hostname>[:<port>] shape (reviewer's LOW,
+ * 2026-09-28): wss: only, never plain ws: (which would put a bare http: origin in connect-src),
+ * and a hostname charset only - no `;`, `'` or anything else that doesn't belong in a header.
  * @param {any} cfg
  */
 function relaySources(cfg) {
   const urls = new Set([DEFAULT_RELAY]);
   const configured = cfg && cfg.relay && cfg.relay.url;
-  if (typeof configured === "string" && /^wss?:\/\/[^\s/]+$/.test(configured)) urls.add(configured);
+  if (typeof configured === "string" && /^wss:\/\/[A-Za-z0-9.-]+(:\d{1,5})?$/.test(configured)) urls.add(configured);
   const out = [];
   for (const u of urls) out.push(u, u.replace(/^ws/, "http"));
   return out.join(" ");

@@ -26,10 +26,10 @@ import { loadKeys } from "./keys.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
 import { redeem } from "./redeem.js";
 import { tailscaleApi, desktopJoin, pairedBox, MINT_ITEM, DEVICE_TAG, JOIN_PATH } from "./tailnet.js";
+import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 
 export { loadKeys } from "./keys.js";
-
-export const DEFAULT_RELAY = "wss://relay.vyre.run";
+export { DEFAULT_RELAY } from "../../lib/relay-default.js";
 const PAIR_TTL = 10 * 60_000;
 const NAME = /^[^\u0000-\u001f\u007f]{1,64}$/;
 const DAY = 24 * 60 * 60_000;
