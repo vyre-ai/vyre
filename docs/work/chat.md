@@ -184,6 +184,15 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   SIGNED OFF by reviewer-2 (306/306 on deck/chat's own suite, targeted). Pushed work/chat for the
   integrator: 378c7f54.
 
+## Done (28 Sep, perf pass)
+- Fling p95 (native-bar budget 6): window-view.js's update() measured every mounted row's box
+  twice per scroll frame (once before mount(), once after); when mount() didn't run (a plain
+  scroll within the same window range - the common case), the second measure re-read the exact
+  same boxes for nothing (017c981f). testbox native-bar: budget 6 now 16.7 ms p95, pass (was the
+  open item since the earlier profile: "2.2 s in getBoundingClientRect"); budget 7 (cold open)
+  928.8 ms, already under its 1000 ms budget - not this fix, looks like other work since landed.
+  window.test.js + core/window.test.js + session.test.js: 37/37.
+
 ## Done (28 Sep, cohesion item 18: inline pictures)
 - core/transcripts (9fd902ac, made in sessions' place per the lead - they were paused): `images:
   [{media_type, data}]` on a user or tool block, capped (2 MB/image, 4/block, 6 MB/block total).
@@ -241,7 +250,7 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
 - Cohesion 5 (the / menu merges commands.list, Render cards) waits on platform P1's sha from cohesion.
 - Plan card deviation: Revise writes in the card (not the composer, native-core's). Needs row "kit has
   a plan to approve" is pwa's deck/js/needs.js. Docs base for tip Show me: https://docs.vyre.run/ (ask docs).
-- Perf still open: fling p95 (profile: forced layouts in window-view update), cold open 1.1 s.
+- Perf: fixed, see "Done (28 Sep, perf pass)" above.
 
 ## Earlier (27 Sep, after logout 4)
 - Done this session: 19c287db merge main 7880dfa6; 553017a1 scroll jump (content-visibility
