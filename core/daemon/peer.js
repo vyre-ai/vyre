@@ -157,10 +157,10 @@ function trustedLeader(p) {
  * A person's shell under tmux or sshd has no claude above it. vyred's own process and its
  * ancestors are not the caller's. Unknown when the chain cannot be read to the top.
  * @param {number} pid
- * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string, pgid?: number, sid?: number } | null, exe?: (pid: number) => string | null, self?: number }} [o]
- * @returns {{ inside: boolean, by?: number, unknown?: boolean }}
+ * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string, pgid?: number, sid?: number } | null, exe?: (pid: number) => string | null, started?: (pid: number) => string | null, self?: number }} [o]
+ * @returns {{ inside: boolean, by?: number, unknown?: boolean, server?: { exe: string, pid: number, started: string } }}
  */
-export function insideClaude(pid, { threads = [], look = processTable(), exe = exePath, self = process.pid } = {}) {
+export function insideClaude(pid, { threads = [], look = processTable(), exe = exePath, started = defaultStarted, self = process.pid } = {}) {
   // A thread vyred spawned as its own process group (or session) keeps whatever it leaves behind:
   // an orphan's parent becomes init, but its group and session stay the thread's.
   const own = look(pid);
@@ -184,9 +184,27 @@ export function insideClaude(pid, { threads = [], look = processTable(), exe = e
   // checked exactly that). What ancestry alone CAN still say: which binary the kernel actually
   // loaded for this leader (exePath, never argv) -- so this judges that against a short allowlist
   // of what actually hosts a login, not whether a tty exists.
-  if (row && row.ppid <= 1 && row.pgid === top.pid) return trustedLeader(exe(top.pid)) ? { inside: false } : { inside: false, unknown: true };
+  if (row && row.ppid <= 1 && row.pgid === top.pid) {
+    const p = exe(top.pid);
+    if (trustedLeader(p)) return { inside: false };
+    // tmux and screen are deliberately off the allowlist (their server has this exact shape too,
+    // indistinguishable from a model's own detached one) but named distinctly rather than folded
+    // into a flat refusal: the caller can offer the person one presence proof for THIS specific
+    // server (its exe, pid and start time -- never a bare pid, which can be recycled) instead of
+    // an outright deny, per the lead's decision. A model-started server is a different process
+    // with its own pid/start, so it can never inherit trust proved for the person's real one.
+    const base = p && p.split("/").pop();
+    if (base === "tmux" || base === "screen") {
+      const at = started(top.pid);
+      if (at) return { inside: false, unknown: true, server: { exe: /** @type {string} */ (p), pid: top.pid, started: at } };
+    }
+    return { inside: false, unknown: true };
+  }
   return { inside: false };
 }
+
+/** @param {number} pid @returns {string|null} */
+function defaultStarted(pid) { const i = procInfo(pid); return i && i.started; }
 
 /**
  * The terminal a process runs in, as `who` names it ("ttys003", "pts/3"), or null for none. The

@@ -260,18 +260,92 @@ pty.spawn(${JSON.stringify([cmd, ...args])})
   // `setsid -f tmux new -d ..`: tmux's server also leads its own tty-less session under launchd's
   // reparenting, same shape again -- and tmux is deliberately NOT on the trusted allowlist (a
   // person's own real tmux needs its own proof, not ancestry; see the allowlist's own comment).
+  // Without a proof this is presence_required, not a flat denied -- that's the one-proof-per-
+  // server test below, which exercises the same escape with a proof attached.
   const byTmux = await detachedCall(([cmd, ...args]) => new Promise((resolve, reject) => {
     const inner = [cmd, ...args].map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
     const p = spawn("setsid", ["-f", "tmux", "-f", "/dev/null", "new-session", "-d", inner], { stdio: "ignore" });
     p.on("exit", code => (code === 0 || code === undefined ? resolve(undefined) : reject(new Error(`tmux exit ${code}`))));
     p.on("error", reject);
   }));
-  assert.equal(byTmux.error?.code, "denied", JSON.stringify(byTmux));
+  assert.equal(byTmux.error?.code, "presence_required", JSON.stringify(byTmux));
   // The client that requested `-d` exits immediately once its server forks; the server itself
   // (what actually got refused, above) keeps running detached and needs its own cleanup.
   try { execFileSync("tmux", ["-f", "/dev/null", "kill-server"]); } catch {}
 
   assert.ok(!(await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "kit"), "none of the escapes made anything");
+});
+
+test("peer: a tmux or screen server needs one presence proof, then every pane on it is trusted; a different server needs its own", { skip: process.platform !== "linux" ? "needs util-linux setsid and tmux" : false }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const dir = fs.mkdtempSync(path.join(root, "peer-tmux-"));
+  const socket = d.paths.socket;
+  const presence = d.registry.deps.presence;
+
+  const { generateKeyPairSync, sign, randomBytes } = await import("node:crypto");
+  const { inputHash } = await import("../core/presence/index.js");
+  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const key = presence.enroll({ kind: "device", name: "test key", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
+  const proof = (tool, input) => {
+    const ts = Date.now(), nonce = randomBytes(12).toString("base64url");
+    const sig = sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
+    return `device key=${key.id} ts=${ts} nonce=${nonce} sig=${sig}`;
+  };
+
+  // A one-shot `new-session -d <cmd>` server exits the instant that command's pane closes (its
+  // default destroy-unattended behaviour), so two calls a few hundred ms apart would each get a
+  // BRAND NEW server -- never actually exercising "trusted for its whole life". Each socket name
+  // gets one persistent anchor session (a long sleep) the first time it is used, and every call
+  // after that runs as a new WINDOW in the SAME still-running server.
+  const anchored = new Set();
+  async function inTmux(socketName, name, presenceProof) {
+    if (!anchored.has(socketName)) {
+      anchored.add(socketName);
+      await new Promise((resolve, reject) => {
+        const p = spawn("setsid", ["-f", "tmux", "-L", socketName, "-f", "/dev/null", "new-session", "-d", "-s", "anchor", "sleep", "300"], { stdio: "ignore" });
+        p.on("exit", code => (code === 0 || code === undefined ? resolve(undefined) : reject(new Error(`tmux exit ${code}`))));
+        p.on("error", reject);
+      });
+      const up = () => { try { return execFileSync("tmux", ["-L", socketName, "list-sessions"], { encoding: "utf8" }).includes("anchor"); } catch { return false; } };
+      for (let n = 0; n < 50 && !up(); n++) await new Promise(r => setTimeout(r, 100));
+    }
+    const out = path.join(dir, `out-${socketName}-${Math.random().toString(36).slice(2)}.json`);
+    const curl = ["curl", "-s", "-o", out, "--unix-socket", socket, "-X", "POST", "http://x/v1/tools/agents.create",
+      "-H", "content-type: application/json", "-H", "x-vyre-caller: cli", ...(presenceProof ? ["-H", `x-vyre-presence: ${presenceProof}`] : []), "-d", JSON.stringify({ name })];
+    execFileSync("tmux", ["-L", socketName, "new-window", "-t", "anchor",
+      [...curl].map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ")]);
+    for (let n = 0; n < 50 && !fs.existsSync(out); n++) await new Promise(r => setTimeout(r, 100));
+    return JSON.parse(fs.readFileSync(out, "utf8"));
+  }
+
+  try {
+    // No proof: presence_required, nothing made.
+    const bare = await inTmux("harlow-a", "kit");
+    assert.equal(bare.error?.code, "presence_required", JSON.stringify(bare));
+
+    // With a valid proof, from the SAME server (-L harlow-a again reaches it, tmux servers persist
+    // across `tmux -L <name>` invocations until killed): it goes through, and the server is now
+    // trusted for good.
+    const proved = await inTmux("harlow-a", "juno", proof("tmux.trust", {}));
+    assert.equal(proved.error, undefined, JSON.stringify(proved));
+    assert.ok((await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "juno"));
+
+    // A second call to the SAME server, with NO proof this time: still trusted, no prompt.
+    const again = await inTmux("harlow-a", "kit");
+    assert.equal(again.error, undefined, JSON.stringify(again));
+    assert.ok((await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "kit"));
+
+    // A DIFFERENT server (`-L harlow-b`, its own pid and start time): never inherits harlow-a's
+    // trust, whether it is the person's second window or a model's own -- it needs its own proof.
+    const other = await inTmux("harlow-b", "nova");
+    assert.equal(other.error?.code, "presence_required", JSON.stringify(other));
+    assert.ok(!(await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "nova"));
+  } finally {
+    try { execFileSync("tmux", ["-L", "harlow-a", "kill-server"]); } catch {}
+    try { execFileSync("tmux", ["-L", "harlow-b", "kill-server"]); } catch {}
+  }
 });
 
 test("peer: exePath reads the kernel's own record of the binary, not the process's own title", { skip: process.platform !== "linux" ? "needs /proc" : false }, async () => {
