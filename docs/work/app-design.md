@@ -480,3 +480,19 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 - Re-ran the same real flow on 72d69271 (fresh screenshots, not a diff read): all 5 confirmed
   fixed with the actual UI, not just the code. Sent to launch (msg_id 3cdebc62). Nothing new
   found; cleared it.
+
+## Now (28 Sep, generated avatars round 3b: skin tones + friendly-only)
+
+- Lead: while the user decides, keep teammate HEAD colours to a warm, realistic skin-tone set
+  (light to deep), pastel on clothes/accessories only; keep only friendly expressions (smiles, a
+  soft closed-eye smile, a gentle neutral), no open-mouth or startled faces. Agent blobs untouched.
+- Built on round 3's generator: added an 8-tone SKIN_TONES palette for the head only (bodyColor
+  stays pastel for clothes/headwear/glasses/badges); cut face() down to three expressions
+  (smile weighted most common, a closed-eye smile, neutral), dropped grin and surprised.
+- Re-ran the lime/violet colour sweep against the new palette before rendering anything (not
+  after): one existing pastel (#E3C05F, a golden yellow used for clothes/badges) sat about 60
+  units from lime, right at the edge; swapped it for a terracotta (#D98E52, 92+ units clear)
+  before generating the sheet. All 12 teammates + 8 agents clean.
+- Sent (msg_id 0c1565e0): sheet-combined.png (12 teammates + 8 blobs, both themes), mock-combined.png
+  (design/reviewer/qa together in a real scene, showing the skin-tone range and friendly
+  expressions in context). Same local scratch folder as rounds 1-3, not this repo.
