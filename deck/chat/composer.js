@@ -127,6 +127,9 @@ export function mountComposer(opts) {
   /** A queued message taken back into the box to edit (Up, or its Edit button). */
   let editing = /** @type {{ uuid: string|null, queued?: any } | null} */ (null);
   let scope = "project";
+  /** "/goal" mode: Enter adds the title, then a milestone at a time; Cmd+Enter or "Set goal" sends
+   *  it (the milestone-list piece of the goal + milestones cheap win - the engine is sessions'). */
+  let goal = /** @type {{ title: string, milestones: string[] } | null} */ (null);
   const hist = HISTORY.get(thread);
   const esc = createEsc();
   const menu = listMenu();
@@ -208,6 +211,24 @@ export function mountComposer(opts) {
   let chipSig = "";
   function drawChips() {
     drawAttach();
+    if (goal) {
+      ta.placeholder = goal.title ? "Add a milestone, Enter to add another" : "What's the goal?";
+      root.setAttribute("data-mode", "goal");
+      chips.hidden = false;
+      put(chips,
+        h("span", { class: "composer-kind" }, "Goal"),
+        goal.title ? h("span", { class: "small ellipsis" }, goal.title) : null,
+        goal.milestones.length ? h("span", { class: "composer-scopes", role: "list", "aria-label": "Milestones" },
+          goal.milestones.map((m, i) => h("span", { class: "btn btn-ghost btn-sm composer-scope", role: "listitem" }, m,
+            h("button", { type: "button", "aria-label": "Remove " + m, onclick: () => { goal?.milestones.splice(i, 1); drawChips(); ta.focus(); } }, "×")))) : null,
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: !goal.title,
+          title: goal.title ? "Send the goal and its milestones" : "Type a goal first", onclick: () => finishGoal() },
+          "Set goal", h("span", { class: "kbd" }, "⌘⏎")),
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => cancelGoal() }, "Cancel", h("span", { class: "kbd" }, "Esc")),
+      );
+      chipSig = "";
+      return;
+    }
     const kind = draftKind(ta.value);
     ta.placeholder = machine ? "Message this session"
       : busy ? `Steer ${opts.name?.() || "the session"}, or Alt+Enter to queue for after` : "Message this session";
@@ -343,7 +364,27 @@ export function mountComposer(opts) {
     if (what === "model") openModels();
     else if (what === "rewind") opts.onRewind?.();
     else if (what === "find") opts.onFind?.(query);
+    else if (what === "goal") { goal = { title: query, milestones: [] }; setValue(""); drawChips(); }
   }
+  /** Enter in goal mode: the first line is the title, each one after is a milestone. Empty does
+   *  nothing (Cmd+Enter or "Set goal" finishes; Esc cancels - onEscape, below). */
+  function advanceGoal() {
+    const v = ta.value.trim();
+    if (!v || !goal) return;
+    if (!goal.title) goal.title = v; else goal.milestones.push(v);
+    setValue("");
+  }
+  /** Sends the goal as one message (title + a numbered milestone list) - the engine (parsing it
+   *  into a tracked goal, notifying on each milestone) is sessions', not the composer's. */
+  function finishGoal() {
+    if (!goal || !goal.title) return;
+    const text = "Goal: " + goal.title + (goal.milestones.length
+      ? "\nMilestones:\n" + goal.milestones.map((m, i) => (i + 1) + ". " + m).join("\n") : "");
+    goal = null;
+    // A running turn: this joins the queue like any other command sent mid-turn, not a steer.
+    sendMessage(text, busy && !machine ? "queue" : null);
+  }
+  function cancelGoal() { goal = null; setValue(""); }
 
   function showFiles(/** @type {import("./core/composer-state.js").MentionRange} */ range) {
     clearTimeout(fileTimer);
@@ -466,6 +507,9 @@ export function mountComposer(opts) {
 
   /** Enter, the send button, or a hold on it. @param {{ button?: boolean, hold?: boolean, alt?: boolean, shift?: boolean }} how */
   function submit(how = {}) {
+    // The Send button (or its hold) while a goal is being built: keyboard Cmd+Enter finishes
+    // (handled in onKey, below, where the modifier is at hand); a click just adds the line.
+    if (goal) { advanceGoal(); return; }
     const a = enterAction({ text: ta.value, running: busy && !machine, queueToggle, images: images.length, touch: touch(), ...how });
     if (a.do === "refuse") { say(IMAGES_NO_QUEUE); return; }
     if (a.do !== "send" || sending) return;
@@ -629,6 +673,8 @@ export function mountComposer(opts) {
 
   /** Esc, from the box or from anywhere on the page. @returns {boolean} whether it did something */
   function onEscape() {
+    // Goal mode (like the rewind picker) closes first: Esc cancels it, not a general clear.
+    if (goal) { cancelGoal(); return true; }
     // A sheet over the composer (the rewind picker) closes first.
     if (opts.onOverlayEscape?.()) return true;
     const act = escape(esc, { now: Date.now(), running: busy && !machine && !!opts.onStop, text: ta.value, pickerOpen: menu.isOpen(), recalled: recalling(hist) || !!editing });
@@ -682,6 +728,11 @@ export function mountComposer(opts) {
     if (e.key === "ArrowDown" && recalling(hist) && !ta.value.slice(caret()).includes("\n")) {
       const v = recall(hist, "down", ta.value);
       if (v !== null) { e.preventDefault(); setValue(v); }
+      return;
+    }
+    if (e.key === "Enter" && goal && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      if (e.metaKey || e.ctrlKey) finishGoal(); else advanceGoal();
       return;
     }
     if (e.key === "Enter") {
