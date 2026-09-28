@@ -11,18 +11,23 @@
 // AT-SPI is Python's job (atspi.py, next to this file); xdotool and ImageMagick's `import` are
 // shelled out to directly, since there is nothing here worth a binding for a single command each.
 //
-// Chrome is computerd's own child, started with --remote-debugging-pipe: it has no debugging
-// port at all, so nothing else on the computer (the agent's own terminal included) can reach it
-// and step around the token and the shield. computerd owns that one pipe and shares it between
-// its clients through cdpmux.js, which gives every client a browser session of its own (so what
-// one client switches on, Fetch interception or a trace, never outlives it or reaches another),
-// keeps each client's ids and sessions apart, and refuses Browser.close. GET /cdp/json/version answers in Chrome's own /json/version shape
+// Chrome is launched by entrypoint.sh, as browser (1002), never by computerd (the reviewer's
+// root-launcher design, 28 Sep -- computerd holding CAP_SETUID/CAP_SETGID for its whole life, the
+// previous design, meant a computerd compromise could setuid to vyre or root, since ambient caps
+// survive a uid change between two non-zero uids). computerd and Chrome talk over a pair of named
+// FIFOs (CHROME_IN/CHROME_OUT below) instead of a spawned child's own pipe: --remote-debugging-
+// pipe still means Chrome has no debugging port at all, so nothing else on the computer (the
+// agent's own terminal included) can reach it and step around the token and the shield; computerd
+// owns its two FIFO ends and shares them between its clients through cdpmux.js, which gives every
+// client a browser session of its own (so what one client switches on, Fetch interception or a
+// trace, never outlives it or reaches another), keeps each client's ids and sessions apart, and
+// refuses Browser.close. GET /cdp/json/version answers in Chrome's own /json/version shape
 // with a webSocketDebuggerUrl pointing back here, and the WebSocket upgrade at
 // /cdp/devtools/browser/<id> is the only way in. A plain WebSocket cannot carry an Authorization
 // header, so that one check reads the token from `?token=` on the upgrade request instead:
 // modules/hands-chrome/cdp.js appends it, and it is never logged or echoed, same as everywhere
-// else here. Chrome is restarted if it exits (1 s, doubling to 30 s at most), and every call
-// still waiting on it is answered with an error.
+// else here. computerd reconnects if either FIFO closes (1 s, doubling to 30 s at most), and every
+// call still waiting on Chrome is answered with an error.
 //
 // Two kinds of client. COMPUTERD_TOKEN is the agent's. While a person signs in (the shield,
 // POST /shield), the agent's clients are cut and new ones get 423; the shield may also carry a
@@ -68,38 +73,36 @@ if (!TOKEN) {
 
 const ATSPI = new URL("./atspi.py", import.meta.url).pathname;
 
-// ---- Chrome: its flags, moved here from entrypoint.sh -------------------------------------
+// ---- Chrome: two named FIFOs, entrypoint.sh's launcher on the other end -------------------
+// CHROME_IN: computerd writes (Chrome's fd 3, its --remote-debugging-pipe read side).
+// CHROME_OUT: computerd reads (Chrome's fd 4, its write side). Left unset (the default), a test
+// or a hand-run computerd never touches these paths -- see CHROME_BIN below for the alternative
+// that spawns a fake Chrome directly, no FIFOs, no launcher, no uid change.
+const CHROME_IN = process.env.CHROME_IN || "/run/vyre-chrome/in";
+const CHROME_OUT = process.env.CHROME_OUT || "/run/vyre-chrome/out";
+// Legacy/test path only: on the image, entrypoint.sh's launcher starts Chrome as browser (1002)
+// and CHROME_BIN is never set, so computerd only ever connects to the FIFOs above. Set CHROME_BIN
+// (index.test.js, fs.test.js) and computerd spawns it directly instead -- exactly as it did
+// before entrypoint.sh took over launching Chrome (28 Sep, the reviewer's root-launcher design:
+// computerd holding CAP_SETUID/CAP_SETGID for its whole life, so it could spawn Chrome under a
+// different uid itself, meant a computerd compromise could setuid to vyre or root, since ambient
+// capabilities survive a uid change between two non-zero uids). No uid change here: whatever this
+// mode is used for runs as computerd's own uid, same as everything else it spawns.
+const CHROME_BIN = process.env.CHROME_BIN || "";
 const HOME = process.env.HOME || "/home/agent";
-const CHROME_BIN = process.env.CHROME_BIN || "chromium";
-// The image sets both (the browser's own folder, outside the agent's home); the defaults are
-// for running computerd by hand. CHROME_LOG stays under computerd's own uid's home (vyre's, on
-// the image), not browser's: this process opens it (fs.openSync below, then hands the fd to
-// Chrome's spawn), and browser's own folder only grants computerd read+execute through the
-// agent group, not write -- opening a fresh log file there would fail.
 const CHROME_PROFILE = process.env.CHROME_PROFILE || path.join(HOME, ".chromium");
 const CHROME_LOG = process.env.CHROME_LOG || path.join(HOME, ".chromium.log");
-// Chrome's own uid, a different one from computerd's own (this process's, whatever it is --
-// vyre on the image, something else in a test). Both must be set and numeric for computerd to
-// spawn Chrome under them; either missing (a fake-binary test, computerd run by hand) spawns
-// Chrome as computerd's own uid instead, same as before this split. See launchChrome for what
-// this actually takes to succeed (computerd needs CAP_SETUID/CAP_SETGID in its own ambient set,
-// entrypoint.sh's job, not this file's).
-const CHROME_UID = /^\d+$/.test(process.env.CHROME_UID || "") ? Number(process.env.CHROME_UID) : undefined;
-const CHROME_GID = /^\d+$/.test(process.env.CHROME_GID || "") ? Number(process.env.CHROME_GID) : undefined;
-// Chrome's own home and X cookie, never computerd's: computerd's own HOME/XAUTHORITY (above, in
-// CHILD_ENV_ALLOW) point at vyre's home and vyre's trusted cookie, neither of which browser (if
-// CHROME_UID is set) can even open by path, let alone use.
-const CHROME_HOME = process.env.CHROME_HOME || HOME;
-const CHROME_XAUTHORITY = process.env.CHROME_XAUTHORITY || process.env.XAUTHORITY || "";
 const SCREEN = /^[0-9]+x[0-9]+$/.test(process.env.SCREEN || "") ? String(process.env.SCREEN) : "1440x900";
 // The few sites that go out through the user's Mac (config glass.egress, core/computers/egress.js):
 // vyred passes the proxy script as a data: URL only when the setting is on and lists a site.
-// Checked against that exact shape, so nothing else ever reaches Chrome's command line through it.
-// WebRTC is kept off UDP that bypasses the proxy, or a listed site could still learn this box's
-// own address from a STUN reply.
+// Checked against that exact shape, so nothing else ever reaches Chrome's command line through
+// it. WebRTC is kept off UDP that bypasses the proxy, or a listed site could still learn this
+// box's own address from a STUN reply. On the image this same check is entrypoint.sh's own
+// (bash), since entrypoint.sh builds Chrome's argv now, not this file; kept here too for
+// CHROME_BIN's legacy path, which still builds its own argv below.
 const PAC = process.env.VYRE_PROXY_PAC || "";
 const PAC_SHAPE = /^data:application\/x-ns-proxy-autoconfig;base64,[A-Za-z0-9+\/]+=*$/;
-if (PAC && !PAC_SHAPE.test(PAC)) {
+if (CHROME_BIN && PAC && !PAC_SHAPE.test(PAC)) {
   console.error("computerd: VYRE_PROXY_PAC is not a PAC data: URL; refusing to start Chrome without the sites it lists");
   process.exit(1);
 }
@@ -129,19 +132,6 @@ const childEnv = (allow = CHILD_ENV_ALLOW) => Object.fromEntries(allow.filter(k 
 // only sees Chromium's tree with these) and the session bus's pid. Before computerd started it,
 // Chrome inherited the entrypoint's whole environment, the VNC password and this token included.
 const CHROME_ENV_ALLOW = [...CHILD_ENV_ALLOW, "DBUS_SESSION_BUS_PID", "GTK_MODULES", "NO_AT_BRIDGE", "QT_ACCESSIBILITY", "XAUTHORITY", "TZ", "LANGUAGE", "USER"];
-/**
- * Chrome's own environment: the same allowlist, but HOME and XAUTHORITY overridden to browser's
- * own (never computerd's/vyre's), and USER/LOGNAME set to match when CHROME_UID is configured --
- * so anything Chrome itself introspects about its own identity (its profile path included) never
- * points at vyre's home even if some allowed var still named it.
- */
-function chromeEnv() {
-  const env = childEnv(CHROME_ENV_ALLOW);
-  env.HOME = CHROME_HOME;
-  if (CHROME_XAUTHORITY) env.XAUTHORITY = CHROME_XAUTHORITY;
-  if (CHROME_UID !== undefined) { env.USER = "browser"; env.LOGNAME = "browser"; }
-  return env;
-}
 
 // ---- the agent's processes stop while shielded ------------------------------------------------
 // While a person signs in or the Vault fills a login, every process the agent's uid runs is
@@ -297,7 +287,8 @@ function chromeArgs() {
   ];
 }
 
-function launchChrome() {
+/** Legacy/test path: computerd spawns CHROME_BIN itself, as its own uid, no FIFOs. */
+function launchChromeSpawned() {
   restartTimer = null;
   if (stopping) return;
   // The profile lives on the home volume; a container that was killed (or a Chrome that crashed)
@@ -320,22 +311,13 @@ function launchChrome() {
     if (stopping) return;
     if (Date.now() - started > 60_000) backoff = 1000;
     console.error(`computerd: chromium ${why}; starting it again in ${backoff / 1000} s`);
-    restartTimer = setTimeout(launchChrome, backoff);
+    restartTimer = setTimeout(launchChromeSpawned, backoff);
     backoff = Math.min(backoff * 2, 30_000);
   };
   /** @type {import("node:child_process").ChildProcess} */
   let child;
   try {
-    child = spawn(CHROME_BIN, chromeArgs(), {
-      stdio: ["ignore", logfd, logfd, "pipe", "pipe"],
-      env: chromeEnv(),
-      // Chrome under its own uid, a different one from computerd's: node calls setgid then
-      // setuid in the forked child, before it execs chromium, which needs CAP_SETGID/CAP_SETUID
-      // in computerd's own effective set at that moment (entrypoint.sh's ambient-caps setpriv
-      // call) -- omitted entirely when unset, so a test or a hand-run computerd (no such
-      // capability, and usually not even root) spawns Chrome as its own uid same as before.
-      ...(CHROME_UID !== undefined && CHROME_GID !== undefined ? { uid: CHROME_UID, gid: CHROME_GID } : {}),
-    });
+    child = spawn(CHROME_BIN, chromeArgs(), { stdio: ["ignore", logfd, logfd, "pipe", "pipe"], env: childEnv(CHROME_ENV_ALLOW) });
   } catch (e) {
     if (typeof logfd === "number") try { fs.closeSync(logfd); } catch {}
     gone(`could not be started: ${/** @type {Error} */ (e).message}`);
@@ -350,6 +332,43 @@ function launchChrome() {
   if (toChrome && fromChrome) mux.attach(toChrome, fromChrome);
   console.log("computerd: chromium started");
 }
+
+/**
+ * Default path: Chrome is already running (entrypoint.sh's launcher, as browser) and computerd
+ * only opens its two ends of the FIFO pair -- never a capability, never a uid, never a process
+ * computerd itself owns. A FIFO open blocks until its other end opens too, which is exactly the
+ * wait this needs (nothing to connect to until the launcher's next Chrome comes up); the streams'
+ * own "error"/"close" trigger a reconnect with the same backoff `launchChromeSpawned` used.
+ */
+function connectChromeFifo() {
+  restartTimer = null;
+  if (stopping) return;
+  const started = Date.now();
+  let done = false;
+  /** @param {string} why */
+  const gone = why => {
+    if (done) return;
+    done = true;
+    mux.detach(`Chrome ${why}`);
+    if (stopping) return;
+    if (Date.now() - started > 60_000) backoff = 1000;
+    console.error(`computerd: chromium ${why}; reconnecting in ${backoff / 1000} s`);
+    restartTimer = setTimeout(connectChromeFifo, backoff);
+    backoff = Math.min(backoff * 2, 30_000);
+  };
+  const toChrome = fs.createWriteStream(CHROME_IN);
+  const fromChrome = fs.createReadStream(CHROME_OUT);
+  let opened = 0;
+  const ready = () => { if (++opened === 2 && !done) { mux.attach(toChrome, fromChrome); console.log("computerd: chromium connected"); } };
+  toChrome.once("open", ready);
+  fromChrome.once("open", ready);
+  toChrome.on("error", e => gone(`in-pipe error: ${/** @type {any} */ (e).code || e.message}`));
+  fromChrome.on("error", e => gone(`out-pipe error: ${/** @type {any} */ (e).code || e.message}`));
+  toChrome.on("close", () => gone("in-pipe closed"));
+  fromChrome.on("close", () => gone("out-pipe closed"));
+}
+
+const launchChrome = CHROME_BIN ? launchChromeSpawned : connectChromeFifo;
 
 /** Chrome's /json/version shape, from Browser.getVersion over the pipe. @param {number} timeout */
 async function chromeVersion(timeout) {

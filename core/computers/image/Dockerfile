@@ -1,15 +1,17 @@
 # The agent computer: a desktop, Chrome and a terminal, reached only over the internal Docker
 # network (docs/work/computers.md, ADR 0003). Nothing here is published on the host; vyred is the
 # only thing that ever dials in, to 5900 (Xvnc, VNC auth) and 7000 (computerd, bearer token).
-# Chrome has no debugging port at all: computerd starts it with --remote-debugging-pipe and
-# serves CDP only through its own authenticated /cdp route (docs/adr/0012-cdp-proxy.md).
+# Chrome has no debugging port at all: entrypoint.sh's launcher starts it with
+# --remote-debugging-pipe, over a pair of named FIFOs computerd opens its own ends of, and
+# computerd serves CDP only through its own authenticated /cdp route (docs/adr/0012-cdp-proxy.md).
 #
 # Three users (entrypoint.sh): vyre (1001) runs Xvnc, the session bus and computerd; browser
-# (1002) runs Chrome only, so a Chrome exploit lands in a uid with no access to /var/lib/vyre's
-# secrets (.boot, the VNC password) or to vyre's own X cookie -- see docs/design/agent-browsers.md
-# ("Chrome gets its own uid") and computerd/index.js's launchChrome for how computerd (still vyre)
-# spawns it there. agent (1000) runs the desktop the agent works in. The container starts as root
-# only to switch between them.
+# (1002) runs Chrome only, launched by entrypoint.sh itself (root), never by computerd -- so a
+# Chrome exploit lands in a uid with no access to /var/lib/vyre's secrets (.boot, the VNC
+# password) or to vyre's own X cookie, and a computerd compromise has no capability to become
+# browser, vyre or root with (see docs/design/agent-browsers.md, "Chrome gets its own uid", and
+# entrypoint.sh's chrome_once/chrome_loop for how it is actually launched). agent (1000) runs the
+# desktop the agent works in. The container starts as root only to switch between them.
 #
 # UNVALIDATED: the uid split (browser, 1002) is written by inspection, never `docker build`'d or
 # run against a live box in this session. See docs/work/glass-live.md's "Next" for the throwaway-

@@ -271,20 +271,56 @@ fourth uid, `browser` (1002), with nothing of vyre's reachable to it:
   `vyre-bus` (an owner may hand a file to any group it belongs to, no CAP_CHOWN needed) so browser
   can still reach AT-SPI; a second one-time migration (vyre's old `chromium/` to browser's new
   one, the same shape as the existing agent-to-vyre migration, since vyre cannot chown an
-  existing volume's directory to browser without CAP_CHOWN either); computerd's own setpriv call
-  keeps CAP_SETUID/CAP_SETGID in its ambient set (everything else it starts still gets none) --
-  the one thing it needs beyond running as vyre, to hand Chrome a different uid than its own.
-- `computerd/index.js`: `CHROME_UID`/`CHROME_GID` (spawn's own `uid`/`gid` options -- omitted
-  entirely, falling back to today's behaviour, when either is unset: a fake-binary test or a
-  hand-run computerd never needs this), `CHROME_HOME`/`CHROME_XAUTHORITY` so Chrome's environment
-  never carries vyre's HOME or vyre's trusted cookie.
-- `cdpmux.js`: the downloads default moves to `/var/lib/vyre/browser/downloads`.
-- `core/computers/image/isolation.test.js`: Chrome's uid check now expects 1002, not 1001; a new
-  test (`docker exec -u 1002:1002`) confirms browser cannot read `.boot`, the VNC password, or
-  vyre's own X cookie, and can reach its own profile.
-- Targeted tests (testbox, 502 across two runs): 494 pass, 0 fail, 22 skipped (Mac-only Chrome
-  binary, and isolation.test.js's live-container checks, which need a real computer container and
-  are not run in this pass -- see Next).
+  existing volume's directory to browser without CAP_CHOWN either).
+- `cdpmux.js`: the downloads default moves to `/var/lib/vyre/browser/downloads`, and the cookie
+  scrub over agent CDP events (below) closes what the e2e MEDIUM 4 pass left open.
+- `core/computers/image/isolation.test.js`: Chrome's uid check now expects 1002, not 1001; tests
+  confirm browser cannot read `.boot`, the VNC password, or vyre's own X cookie, and can reach its
+  own profile.
+
+**Revised after review (28 Sep)**: the first cut had computerd itself spawn Chrome with a
+different uid, via `spawn(..., {uid, gid})`, which needed computerd to keep CAP_SETUID/CAP_SETGID
+in its own ambient set for its entire life -- the reviewer's HIGH: ambient capabilities survive a
+uid change between two non-zero uids, so a computerd compromise (it serves authenticated HTTP to
+whatever a person's Glass session and the agent's hands reach) could have used them to become
+`browser`, `vyre`, or `root`, undoing the whole split it was meant to enforce. Replaced with the
+reviewer's own root-launcher design:
+- `entrypoint.sh` launches Chrome itself (`chrome_once`/`chrome_loop`, root, `setpriv --reuid=1002
+  ... --inh-caps=-all --ambient-caps=-all --bounding-set=-all`) -- the same way it already
+  launches Xvnc and fluxbox, just with the extra ambient/bounding-set strip since Chrome is the
+  one process here that renders untrusted content. Chrome talks CDP over a pair of named FIFOs
+  (`/run/vyre-chrome/{in,out}`, root:vyre-bus, 0660) instead of a spawned child's own pipe.
+- `computerd/index.js`: no `spawn()` for Chrome at all in the default path -- `connectChromeFifo`
+  opens its own ends of the two FIFOs and waits (a FIFO open blocks until its peer opens too,
+  which is exactly the "nothing to connect to yet" wait this needs), reconnecting with the same
+  backoff a spawned Chrome's exit used to trigger. computerd's own setpriv call is back to a plain
+  `--inh-caps=-all`, identical to every other process here: it holds no capability, at any point
+  in its life. `CHROME_BIN` still spawns Chrome directly (no uid change, no FIFOs) for
+  index.test.js/fs.test.js's fake-Chrome tests, which never exercised the uid split anyway.
+- `cdpmux.js`: the agent-event cookie scrub (fab3fc0a/e2e MEDIUM 4) widened to cover every
+  Network/Fetch/Audits event recursively, not three enumerated ones -- `associatedCookies`,
+  `headersText`, both WebSocket handshake events, and Audits' `rawCookieLine` all reach an agent's
+  CDP client otherwise. `Network.loadNetworkResource` and `Page.getCookies` added to the refused
+  list (the same class of leak `DOM.setFileInputFiles` and `Network.getCookies` were already
+  refused for).
+- `core/computers/image/computerd/fs.js`: computerd's `/fs` routes (Glass's file browser) opened
+  by a re-walked path string after resolveIn's own check -- a symlink swapped in for a checked
+  plain directory in between would be followed. `resolveOpen` now pins the checked parent
+  directory's fd (`/proc/self/fd/<fd>/<name>`, Linux's openat-equivalent without a native
+  binding) and every operation opens, mkdirs or renames the leaf through it, never a re-walked
+  path. A symlink found mid-chain gets resolveIn's own check redone at the moment of the open.
+- `isolation.test.js`: a static check that neither setpriv call regains an ambient capability, and
+  a live check (needs a container) that CapEff/CapAmb/CapPrm are all zero for both computerd and
+  Chrome's own pids.
+- Tests (testbox): 261 run, 254 pass, 0 fail, 7 skipped, plus a new FIFO-connect/reconnect test in
+  index.test.js (a real subprocess acting as Chrome, killed to simulate a crash, so the reconnect
+  gets a real kernel-level fd close rather than an in-process stream's asynchronous one).
+
+**Residual, documented rather than fixed here**: `followChecked` (fs.js) re-opens a symlink's
+already-validated target by its resolved path string, not through its own further fd chain -- a
+legitimate in-root symlink (reviewer's own example: `docs-link` in fs.test.js) still has a small
+window between that validation and the open. Accepted for now; closing it fully means resolving
+the target's own chain through fds too, not a quick fix.
 
 **Not yet true**: "other agents' profiles" from the task brief doesn't apply to slice 1's own
 architecture, since today's model is still one whole container per agent (no sharing within a
@@ -294,9 +330,9 @@ shared Chrome process, above) and should be checked again once that's built.
 **Next**:
 1. A throwaway-stack build and run (this repo's own precedent for computers-image work: written
    by inspection first, checked live once a stack exists) -- `docker build`, `isolation.test.js`
-   with `VYRE_COMPUTER_CONTAINER` set, specifically: Chrome's uid, the two new isolation checks
-   above, and that AT-SPI/`chrome.snapshot` still works (the vyre-bus group access is the one
-   mechanism here never exercised by a unit test, only reasoned about).
+   with `VYRE_COMPUTER_CONTAINER` set, specifically: Chrome's uid, the CapEff/CapAmb=0 check, the
+   isolation checks above, and that AT-SPI/`chrome.snapshot` still works (the vyre-bus group
+   access is the one mechanism here never exercised by a unit test, only reasoned about).
 2. computerd's own residual: its process keeps CAP_SETUID/CAP_SETGID in its ambient set for its
    whole life, not just the moment it spawns Chrome (Node has no built-in way to drop a
    capability from a running process, and re-exec would lose the live Chrome pipe fds). Bounded by

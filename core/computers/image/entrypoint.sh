@@ -5,11 +5,19 @@
 # Three users (the Dockerfile makes them):
 #   vyre    (uid 1001)  Xvnc, the session bus and computerd. Its home is its own volume at
 #                       /var/lib/vyre: the VNC password, the boot secrets, its own X cookie.
-#   browser (uid 1002)  Chrome, computerd's child, and nothing else -- a different uid from vyre's
-#                       so a Chrome exploit cannot read /var/lib/vyre's secrets or vyre's own X
-#                       cookie by path, even though it lives inside the same volume (see the
-#                       Dockerfile's note on /var/lib/vyre/browser). Reaches the AT-SPI bus only
-#                       through the vyre-bus group vyre chgrp's it into below, never by uid.
+#   browser (uid 1002)  Chrome, and nothing else -- launched by THIS script (root), never by
+#                       computerd (the reviewer's root-launcher design, 28 Sep, replacing an
+#                       earlier one where computerd itself spawned Chrome under this uid, which
+#                       needed computerd to keep CAP_SETUID/CAP_SETGID for its whole life: ambient
+#                       capabilities survive a uid change between two non-zero uids, so a
+#                       computerd compromise could have used them to become vyre, or root, undoing
+#                       the whole split). computerd only ever talks to Chrome over the two FIFOs
+#                       below (chrome_loop), never touching its process, its uid, or a capability.
+#                       A different uid from vyre's, so a Chrome exploit cannot read
+#                       /var/lib/vyre's secrets or vyre's own X cookie by path, even though it
+#                       lives inside the same volume (see the Dockerfile's note on
+#                       /var/lib/vyre/browser). Reaches the AT-SPI bus only through the vyre-bus
+#                       group (Dockerfile), never by uid.
 #   agent   (uid 1000)  the terminal the agent works in (xterm), and everything it starts. While
 #                       the shield is up (a person signing in, a Vault fill) all of it is stopped.
 #   fluxbox, the window manager, is vyre's too.
@@ -21,13 +29,11 @@
 # Chrome can save there and the agent can read what lands.
 #
 # This script starts as root only to switch users: the container gets exactly CAP_SETUID and
-# CAP_SETGID (policy.js), with no-new-privileges and a read-only root, and every process below is
-# started through setpriv, which leaves it no capability at all -- except computerd, which keeps
-# CAP_SETUID/CAP_SETGID in its own ambient set (below) for the one syscall it needs to hand Chrome
-# a different uid than its own; everything computerd itself spawns other than Chrome still gets
-# none, and Chrome's own capabilities are cleared the instant its setuid/setgid calls succeed (an
-# unavoidable kernel side effect of the uid change, not something this script arranges). tini
-# (PID 1) stays root and does nothing but reap.
+# CAP_SETGID (policy.js), with no-new-privileges and a read-only root, and every process below --
+# computerd included, now -- is started through setpriv with `--inh-caps=-all`, which leaves it no
+# capability at all; Chrome (chrome_loop) additionally gets `--ambient-caps=-all --bounding-set=-
+# all`, stripping even what a uid-0-to-nonzero transition would otherwise leave available to a
+# later exec inside it. tini (PID 1) stays root and does nothing but reap.
 #
 # Order: Xvnc (the X server; nothing has a display until it exists), the session bus (AT-SPI
 # publishes on it), the window manager, a terminal, and finally computerd in the foreground,
@@ -79,9 +85,9 @@ as_agent() {
       LANG="${LANG:-C.UTF-8}" DISPLAY="${DISPLAY}" XAUTHORITY="${AGENT_XAUTH}" TERM=xterm \
     /bin/sh -c 'umask 002; exec "$@"' sh "$@"
 }
-# For the one-time provisioning this script itself does under browser's uid (its X cookie,
-# nothing else -- Chrome itself is computerd's child, spawned directly with a different uid, not
-# through this helper; see the computerd exec below).
+# For the one-time provisioning this script itself does under browser's uid (its X cookie, the
+# profile-directory upkeep below) -- Chrome itself runs through chrome_once/chrome_loop further
+# down, its own dedicated setpriv call with extra hardening, not through this helper.
 as_browser() {
   setpriv --reuid=1002 --regid=1002 --init-groups --inh-caps=-all -- \
     env -i HOME="${BROWSER_HOME}" USER=browser LOGNAME=browser PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" DISPLAY="${DISPLAY}" \
@@ -210,6 +216,65 @@ as_vyre sh -c 'mkdir -p "$HOME/.fluxbox" && echo "background: none" > "$HOME/.fl
 sleep 1
 as_agent xterm -geometry 100x30 &
 
+# ---- Chrome, as browser, launched here (root) rather than by computerd ------------------------
+# The reviewer's root-launcher design (28 Sep): computerd never spawns Chrome and never holds a
+# capability at all (its own setpriv call, below, is back to a plain --inh-caps=-all like every
+# other process here). Chrome talks CDP over two FIFOs instead of a spawned child's own pipe --
+# computerd opens its own ends (computerd/index.js, CHROME_IN/CHROME_OUT) and never touches
+# Chrome's process, uid or a capability of its own.
+CHROME_DIR=/run/vyre-chrome
+CHROME_IN="${CHROME_DIR}/in"    # computerd writes, Chrome reads (its fd 3)
+CHROME_OUT="${CHROME_DIR}/out"  # Chrome writes (its fd 4), computerd reads
+CHROME_PROFILE="${BROWSER_HOME}/chromium"
+CHROME_LOG="${VYRE_HOME}/chromium.log"
+mkdir -p "${CHROME_DIR}"
+chown root:vyre-bus "${CHROME_DIR}" && chmod 0770 "${CHROME_DIR}"
+rm -f "${CHROME_IN}" "${CHROME_OUT}"
+mkfifo -m 0660 "${CHROME_IN}" "${CHROME_OUT}"
+chown root:vyre-bus "${CHROME_IN}" "${CHROME_OUT}"
+: > "${CHROME_LOG}" 2>/dev/null || true
+
+# Checked once, here, rather than passed to Chrome's argv unvalidated: vyred passes the proxy
+# script as a data: URL only when the setting is on and lists a site (config glass.egress,
+# core/computers/egress.js); WebRTC is kept off UDP that bypasses the proxy, or a listed site
+# could still learn this box's own address from a STUN reply.
+PAC="${VYRE_PROXY_PAC:-}"
+if [ -n "${PAC}" ] && ! printf '%s' "${PAC}" | grep -Eq '^data:application/x-ns-proxy-autoconfig;base64,[A-Za-z0-9+/]+=*$'; then
+  log "VYRE_PROXY_PAC is not a PAC data: URL; refusing to start Chrome without the sites it lists"
+  exit 1
+fi
+
+chrome_once() {
+  # The profile lives on the home volume; a container that was killed (or a Chrome that crashed)
+  # leaves its Singleton locks behind, and the next one then refuses to start with "profile in use".
+  as_browser sh -c 'for f in SingletonLock SingletonSocket SingletonCookie; do rm -f "$HOME/chromium/$f"; done'
+  local pac_args=()
+  if [ -n "${PAC}" ]; then pac_args=("--proxy-pac-url=${PAC}" "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"); fi
+  # --ambient-caps=-all --bounding-set=-all on top of --inh-caps=-all (the reviewer, 28 Sep): even
+  # though nothing here ever raises an ambient capability for this shell to begin with, Chrome is
+  # the one process in this container that renders untrusted content, so it gets the belt as well
+  # as the braces -- a future regression upstream (an ambient grant added for some other reason)
+  # still could not reach it.
+  setpriv --reuid=1002 --regid=1002 --init-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- \
+    env -i HOME="${BROWSER_HOME}" USER=browser LOGNAME=browser PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" DISPLAY="${DISPLAY}" \
+      XAUTHORITY="${BROWSER_XAUTH}" DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS}" DBUS_SESSION_BUS_PID="${DBUS_SESSION_BUS_PID}" \
+      GTK_MODULES=gail:atk-bridge NO_AT_BRIDGE=0 QT_ACCESSIBILITY=1 \
+    chromium \
+      --no-sandbox --test-type --disable-gpu --disable-dev-shm-usage --force-renderer-accessibility \
+      --disable-extensions --password-store=basic --remote-debugging-pipe \
+      "--user-data-dir=${CHROME_PROFILE}" "--window-size=${SCREEN%x*},${SCREEN#*x}" --start-maximized \
+      "${pac_args[@]}" about:blank \
+      3<"${CHROME_IN}" 4>"${CHROME_OUT}" >>"${CHROME_LOG}" 2>&1
+}
+chrome_loop() {
+  while true; do
+    chrome_once
+    log "chromium exited $?; starting it again in 1 s"
+    sleep 1
+  done
+}
+chrome_loop &
+
 # ---- the freezer: stops the agent's processes while the shield is up --------------------------
 # computerd writes "stop" or "cont" to fd 9; this root loop does it as the agent's uid, which may
 # signal exactly the agent's processes (kill -1 as uid 1000 reaches uid 1000 and nothing else).
@@ -230,27 +295,18 @@ exec 9> >(freezer)
 
 # ---- computerd, in the foreground, as vyre: its exit is the container's exit ------------------
 # Only what computerd needs, named one by one. GTK_MODULES and friends make Chromium build an
-# AT-SPI-visible tree; computerd passes them on to Chrome.
-#
-# computerd itself still runs as vyre (1001), same as always, but this setpriv call keeps
-# CAP_SETUID and CAP_SETGID in its ambient set (on top of vyre's own uid/gid/groups) instead of
-# stripping every capability the way every other setpriv call in this script does. That is the
-# one thing computerd needs beyond what vyre itself can do: spawning Chrome as a different uid
-# (browser, 1002 -- computerd/index.js's launchChrome, CHROME_UID/CHROME_GID below). Ambient caps
-# survive exec (unlike inherited-but-not-ambient ones) precisely so a plain node binary, with no
-# file capabilities of its own, keeps them; Chrome's own spawn clears them the instant its
-# setuid/setgid calls succeed (a kernel side effect of changing uid away from vyre, not something
-# this script or computerd arranges), so nothing Chrome itself runs ever holds either capability.
-log "starting computerd (it starts chromium)"
-exec setpriv --reuid=1001 --regid=1001 --init-groups \
-    --inh-caps=+cap_setuid,+cap_setgid --ambient-caps=+cap_setuid,+cap_setgid -- \
+# AT-SPI-visible tree, for AT-SPI reads only now -- Chrome itself is launched above, not by
+# computerd, so computerd needs no capability at all: a plain --inh-caps=-all, the same as every
+# other process here (the reviewer's root-launcher design, 28 Sep, replacing the ambient-caps
+# grant this line carried before -- a computerd compromise now has nothing to setuid with).
+log "starting computerd"
+exec setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \
   env -i HOME="${VYRE_HOME}" USER=vyre LOGNAME=vyre PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" DISPLAY="${DISPLAY}" \
     DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS}" DBUS_SESSION_BUS_PID="${DBUS_SESSION_BUS_PID}" XAUTHORITY="${VYRE_XAUTH}" \
     GTK_MODULES=gail:atk-bridge NO_AT_BRIDGE=0 QT_ACCESSIBILITY=1 \
-    COMPUTERD_TOKEN_FILE="${BOOT_FILE}" SCREEN="${SCREEN}" ${VYRE_PROXY_PAC:+VYRE_PROXY_PAC="${VYRE_PROXY_PAC}"} \
+    COMPUTERD_TOKEN_FILE="${BOOT_FILE}" SCREEN="${SCREEN}" \
     ${COMPUTERD_PORT:+COMPUTERD_PORT="${COMPUTERD_PORT}"} \
-    CHROME_UID=1002 CHROME_GID=1002 CHROME_HOME="${BROWSER_HOME}" CHROME_XAUTHORITY="${BROWSER_XAUTH}" \
-    CHROME_PROFILE="${BROWSER_HOME}/chromium" CHROME_LOG="${VYRE_HOME}/chromium.log" COMPUTERD_FS_ROOT="${AGENT_HOME}" \
+    CHROME_IN="${CHROME_IN}" CHROME_OUT="${CHROME_OUT}" COMPUTERD_FS_ROOT="${AGENT_HOME}" \
     AGENT_DOWNLOADS="${BROWSER_HOME}/downloads" \
     VYRE_FREEZE_FD=9 \
   node /opt/computerd/index.js
