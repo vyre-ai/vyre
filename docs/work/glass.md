@@ -222,7 +222,14 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   computers.test.js's vault-failure test updated to match (its old assertion was exactly LOW 2).
   Then merged main (6bcd0385, the personguard PERSON_ONLY security hotfix) -- clean except the
   generated docs files, regenerated with docs:ref. Re-ran presence + docs-* + this module's own
-  suite per the reviewer's merge note: green.
+  suite per the reviewer's merge note: green. Reviewer signed f4ea6ff1 + the merge off, with one
+  more LOW: rolling a fresh member back by deleting its computer row could orphan a real container
+  ensure() already created (even started) for it, since nothing in computers_computers would ever
+  name it again for freeze/sweep/reconcile to find. Fixed: the same catch now stops and removes
+  that container (best-effort -- a driver already gone or already stopped never blocks the row's
+  own cleanup) before the row goes, so "no trace" covers the driver's own state too. Tests:
+  pool.test.js +1, plus the existing fresh-member test now checks the container is gone, not just
+  the rows. 187/187 local.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
 - Vault remote fill; the private sign-in from the Deck checked live.

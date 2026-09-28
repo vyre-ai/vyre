@@ -639,6 +639,24 @@ test("pool: a failed addAgent for a brand-new member leaves no member row and no
   await assert.rejects(pool.addAgent("browser-abc123", "kit-1", "alice"), /stopped as soon as it started/);
   assert.equal(pool.members("browser-abc123").length, 0, "the fresh member row was left behind");
   assert.equal(pool.row("browser-abc123"), null, "the freshly-made computer row was left behind");
+  assert.equal(driver.containers.size, 0, "the container ensure() made was left orphaned, tracked by no row at all (reviewer LOW, 29 Sep)");
+});
+
+test("pool: a failed addAgent for a brand-new member that DID reach running stops and removes the container it made, not just the rows (reviewer LOW, 29 Sep)", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token, reload: () => ({ fail: "computerd is down" }) });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
+
+  // ensure() itself succeeds -- the container is created AND started -- and only the reload after
+  // it fails, so this exercises the "already running, not just half-created" shape of the LOW.
+  await assert.rejects(pool.addAgent("browser-abc123", "kit-1", "alice"), /computerd is down/);
+  assert.equal(pool.members("browser-abc123").length, 0);
+  assert.equal(pool.row("browser-abc123"), null);
+  assert.equal(driver.containers.size, 0, "a container that reached running was left behind, orphaned");
+  assert.deepEqual(driver.calls.filter(c => c.op === "stop" || c.op === "remove").map(c => c.op), ["stop", "remove"]);
 });
 
 test("pool: a failed addAgent for an ALREADY-existing member restores its previous name and generation, rather than deleting it (reviewer LOW 2, 29 Sep)", async t => {

@@ -784,7 +784,21 @@ export class Pool {
             .run(before.agent_name, before.generation, computerId, agentId);
         } else {
           this.db.prepare("DELETE FROM computers_members WHERE computer_id = ? AND agent_id = ?").run(computerId, agentId);
-          if (madeComputer) this.db.prepare("DELETE FROM computers_computers WHERE agent = ?").run(computerId);
+          if (madeComputer) {
+            // reviewer's LOW (29 Sep): ensure() may have already created, seeded, even started a
+            // real container before a later step (boot, or the reseed) failed -- deleting the row
+            // outright would orphan it: nothing in computers_computers would ever name it again for
+            // freeze/sweep/reconcile to find. Tear down whatever exists before removing the row, so
+            // "no trace" means the driver's own state too, not just this table. Best-effort: a
+            // driver that is already gone or already stopped must not block the row's own cleanup.
+            const cur = this.row(computerId);
+            if (cur && cur.container && this.driver) {
+              try { await this.driver.stop(String(cur.container)); } catch {}
+              try { await this.driver.remove(String(cur.container)); } catch {}
+              this.hosts.delete(computerId);
+            }
+            this.db.prepare("DELETE FROM computers_computers WHERE agent = ?").run(computerId);
+          }
         }
         throw e;
       }
