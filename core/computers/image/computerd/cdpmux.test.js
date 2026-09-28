@@ -538,6 +538,105 @@ test("cdpmux: an agent client's Target.createTarget naming a different browserCo
   assert.equal(fake.seen.filter(s => s.method === "Target.createTarget").length, before, "the call never reached Chrome");
 });
 
+test("cdpmux: Target.getBrowserContexts is refused outright for every client (reviewer H1, 28 Sep)", async () => {
+  const { mux, fake } = world();
+  const agent = client(mux, "agent", "alice"), unscoped = client(mux, "agent"), fill = client(mux, "fill");
+  await agent.call("Test.echo"); // let alice's join settle
+  for (const c of [agent, unscoped, fill]) assert.equal((await c.call("Target.getBrowserContexts")).error.code, -32000);
+  assert.ok(!fake.seen.some(s => s.method === "Target.getBrowserContexts"), "never reached Chrome");
+});
+
+test("cdpmux: any call naming another agent's browserContextId is refused, not just Target.createTarget (reviewer H1, 28 Sep)", async () => {
+  const { mux, fake } = world();
+  const a = client(mux, "agent", "alice");
+  const b = client(mux, "agent", "bob");
+  await a.call("Test.echo"); await b.call("Test.echo"); // settle both contexts
+  const bobCtx = mux.contextStore.get("bob");
+  for (const method of ["Storage.setCookies", "Storage.clearCookies", "Browser.grantPermissions", "Browser.resetPermissions",
+    "Browser.setDownloadBehavior", "Page.setDownloadBehavior"]) {
+    const before = fake.seen.filter(s => s.method === method).length;
+    const r = await a.call(method, { browserContextId: bobCtx });
+    assert.equal(r.error.code, -32000, `${method} naming bob's context reached Chrome or was not refused`);
+    assert.equal(fake.seen.filter(s => s.method === method).length, before, `${method} reached Chrome`);
+  }
+  // Alice's own context on the same calls is not refused by this check (whatever else Chrome or
+  // another refusal does with it is not this test's concern -- fake-chrome answers "not found"
+  // for methods it doesn't implement, which is fine: what matters is it was not refused as a
+  // wrong-context claim).
+  const aliceCtx = mux.contextStore.get("alice");
+  const r2 = await a.call("Storage.setCookies", { browserContextId: aliceCtx, cookies: [] });
+  assert.notEqual(r2.error && r2.error.code, -32000, "alice's own context was refused as if it were another agent's");
+});
+
+test("cdpmux: an agent client cannot attach to, close, activate or read another agent's target by id (reviewer H2, 28 Sep)", async () => {
+  const { mux } = world();
+  const a = client(mux, "agent", "alice");
+  const b = client(mux, "agent", "bob");
+  const { result: { targetId: bTargetId } } = await b.call("Target.createTarget", { url: "about:blank#bob" });
+  for (const [method, params] of [
+    ["Target.attachToTarget", { targetId: bTargetId, flatten: true }],
+    ["Target.closeTarget", { targetId: bTargetId }],
+    ["Target.activateTarget", { targetId: bTargetId }],
+    ["Target.getTargetInfo", { targetId: bTargetId }],
+  ]) {
+    const r = await a.call(method, params);
+    assert.equal(r.error && r.error.code, -32000, `alice's own ${method} on bob's target was not refused`);
+  }
+  // Bob himself may still close his own target -- H2 is not a blanket refusal of these methods.
+  const r = await b.call("Target.closeTarget", { targetId: bTargetId });
+  assert.ok(!r.error, "bob could not close his own target");
+});
+
+test("cdpmux: an agent client naming a targetId targetContext has never learned is refused, not assumed safe (reviewer H2, 28 Sep)", async () => {
+  const { mux } = world();
+  const a = client(mux, "agent", "alice");
+  await a.call("Test.echo"); // settle alice's own context first
+  const r = await a.call("Target.closeTarget", { targetId: "no-such-target-anyone-ever-saw" });
+  assert.equal(r.error.code, -32000, "an unknown targetId was not refused");
+});
+
+test("cdpmux: a scoped agent client's own Target.closeTarget on its own target works even when nobody ever turned discovery on for it (reviewer H2 follow-up, 28 Sep)", async () => {
+  const { mux } = world();
+  const a = client(mux, "agent", "alice");
+  // Deliberately never calls Target.setDiscoverTargets or setAutoAttach: targetContext must still
+  // learn alice's own target's context from the Target.createTarget response itself (_response),
+  // not only from an event nobody is listening for.
+  const { result: { targetId } } = await a.call("Target.createTarget", { url: "about:blank#no-discovery" });
+  const r = await a.call("Target.closeTarget", { targetId });
+  assert.ok(!r.error, `alice could not close her own target with no discovery ever on: ${JSON.stringify(r.error)}`);
+});
+
+test("cdpmux: Target.setAutoAttach with waitForDebuggerOnStart is refused for a context-scoped agent client (reviewer M2, 28 Sep)", async () => {
+  const { mux, fake } = world();
+  const a = client(mux, "agent", "alice");
+  const fill = client(mux, "fill"); // unaffected -- no context, no DoS risk this fix is about
+  const before = fake.seen.filter(s => s.method === "Target.setAutoAttach").length;
+  const r = await a.call("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
+  assert.equal(r.error.code, -32602);
+  assert.equal(fake.seen.filter(s => s.method === "Target.setAutoAttach").length, before, "reached Chrome despite being refused");
+  const r2 = await a.call("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
+  assert.ok(!r2.error, "waitForDebuggerOnStart: false was wrongly refused too");
+  const r3 = await fill.call("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
+  assert.ok(!r3.error, "a fill client (no browser context) was wrongly refused");
+});
+
+test("cdpmux: the target-event fence drops an event with no browserContextId at all, not only a known mismatch (reviewer M1, 28 Sep)", async () => {
+  const { mux, fake } = world();
+  const a = client(mux, "agent", "alice");
+  await a.call("Target.setDiscoverTargets", { discover: true });
+  // alice's own browser session, at the mux level (not a per-target child session): the same
+  // session her own session-less calls resolve to and her own root-level events arrive on.
+  const aliceSid = [...mux.sessions.entries()].find(([, s]) => s.browser && s.client.agentName === "alice")[0];
+  // Some CDP target genuinely carries no browserContextId at all (an older Chrome, or the
+  // browser's own non-page targets) -- must never reach a context-scoped client either way, the
+  // same as a known mismatch: ctx is undefined, and undefined is not alice's own context.
+  const beforeEvents = a.events("Target.targetCreated").length;
+  fake.emit(aliceSid, "Target.targetCreated", { targetInfo: { targetId: "no-context-target", type: "page", title: "", url: "about:blank" } });
+  await tick(20);
+  assert.equal(a.events("Target.targetCreated").filter(e => e.params.targetInfo.targetId === "no-context-target").length, beforeEvents,
+    "a target event with no browserContextId at all reached a context-scoped client");
+});
+
 test("cdpmux: a client of agent A never learns agent B's targets exist -- targetCreated, targetDestroyed and attachedToTarget are all fenced to A's own browserContextId", async () => {
   const { mux } = world();
   const a = client(mux, "agent", "alice");
