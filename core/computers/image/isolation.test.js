@@ -24,7 +24,9 @@ const skip = C ? false : "set VYRE_COMPUTER_CONTAINER to a running computer to c
 
 // Static checks (no container needed): the two MEDIUMs the reviewer found on b001e641 (before
 // browser had its own uid) stay fixed even without a throwaway stack to check them live on.
-const DOCKERFILE = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "Dockerfile"), "utf8");
+const HERE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const DOCKERFILE = fs.readFileSync(path.join(HERE_DIR, "Dockerfile"), "utf8");
+const ENTRYPOINT = fs.readFileSync(path.join(HERE_DIR, "entrypoint.sh"), "utf8");
 
 test("isolation (static): Chrome's managed download policy points at browser's own folder, not the agent's home", () => {
   assert.match(DOCKERFILE, /"DownloadDirectory": "\/var\/lib\/vyre\/browser\/downloads"/,
@@ -38,6 +40,14 @@ test("isolation (static): the agent can reach browser's downloads folder despite
     "browser's own folder does not grant the agent group read+execute");
   assert.match(DOCKERFILE, /chown browser:agent \/var\/lib\/vyre\/browser\/downloads && chmod 2750/,
     "the downloads folder itself does not grant the agent group read");
+});
+
+test("isolation (static): Chrome is launched by entrypoint.sh (root), never by computerd, and both drop every capability", () => {
+  assert.match(ENTRYPOINT, /setpriv --reuid=1002 --regid=1002 --init-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all/,
+    "Chrome's setpriv call no longer strips ambient capabilities and the bounding set (the CAP_SETUID HIGH, reviewer 28 Sep)");
+  assert.match(ENTRYPOINT, /setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \\\n[\s\S]*?node \/opt\/computerd\/index\.js/,
+    "computerd's own setpriv call grants it a capability again");
+  assert.doesNotMatch(ENTRYPOINT, /ambient-caps=\+cap_setuid/, "something still grants an ambient CAP_SETUID");
 });
 
 /** Run python3 code in the computer as the agent; returns stdout. */
@@ -184,6 +194,29 @@ print(json.dumps({
   assert.equal(r.vyre_xauth, "denied", "browser can read vyre's own X cookie");
   assert.equal(r.vyre_home_listing, "denied", "browser can list vyre's home (secrets included)");
   assert.equal(r.own_profile, "readable", "browser cannot even reach its own Chrome profile");
+});
+
+test("isolation: computerd and Chrome hold no capability at all -- CapEff and CapAmb are both 0 (reviewer, CAP_SETUID HIGH, 28 Sep)", { skip }, () => {
+  const r = JSON.parse(asAgent(`${VYRE_PIDS}
+import json
+def caps(pids):
+    out = {}
+    for p in pids:
+        try:
+            st = open(f'/proc/{p}/status').read()
+            out[p] = {k: re.search(rf'^{k}:\\s+(\\S+)', st, re.M).group(1) for k in ('CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb')}
+        except Exception as e: out[p] = {"error": str(e)}
+    return out
+print(json.dumps({"node": caps(vyre('^node$')), "chrome": caps(browser('chrom'))}))`));
+  assert.ok(Object.keys(r.node).length > 0, "found no computerd to check");
+  assert.ok(Object.keys(r.chrome).length > 0, "found no Chrome to check");
+  for (const [group, pids] of Object.entries(r)) {
+    for (const [pid, caps] of Object.entries(pids)) {
+      for (const k of ["CapEff", "CapAmb", "CapPrm"]) {
+        assert.equal(caps[k], "0000000000000000", `${group} pid ${pid}'s ${k} is ${caps[k]}, not zero`);
+      }
+    }
+  }
 });
 
 const TOKEN = process.env.VYRE_COMPUTERD_TOKEN || "";

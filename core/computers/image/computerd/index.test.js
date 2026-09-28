@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
@@ -263,4 +263,61 @@ test("computerd: the token comes from COMPUTERD_TOKEN_FILE (the .boot file), nev
   assert.equal((await req(c.base, "GET", "/cdp/json/version", { token: fileToken })).status, 200);
   assert.equal((await req(c.base, "GET", "/cdp/json/version")).status, 401, "the environment's token is not the one");
   assert.ok(!c.output().includes(fileToken) && !c.output().includes("Ab-_1234"), "a secret reached the log");
+});
+
+// The root-launcher design (reviewer, 28 Sep): with no CHROME_BIN, computerd never spawns
+// anything for Chrome -- it only opens two named FIFOs and waits, the same way it would wait on
+// the image for entrypoint.sh's chrome_loop to bring Chrome up. Needs mkfifo (Linux; testbox).
+test("computerd: with no CHROME_BIN, it connects to Chrome over CHROME_IN/CHROME_OUT FIFOs, and reconnects when they close", { skip: process.platform !== "linux" && "mkfifo needs Linux" }, async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-fifo-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const chromeIn = path.join(dir, "in");
+  const chromeOut = path.join(dir, "out");
+  execFileSync("mkfifo", [chromeIn, chromeOut]);
+
+  const port = await freePort();
+  const child = spawn(process.execPath, [path.join(HERE, "index.js")], {
+    env: { PATH: process.env.PATH, HOME: dir, COMPUTERD_TOKEN: TOKEN, COMPUTERD_PORT: String(port), COMPUTERD_FS_ROOT: dir, CHROME_IN: chromeIn, CHROME_OUT: chromeOut },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  child.stdout.on("data", d => { out += d; });
+  child.stderr.on("data", d => { out += d; });
+  t.after(() => child.kill("SIGKILL"));
+  await new Promise((resolve, reject) => {
+    child.stdout.on("data", () => { if (/listening/.test(out)) resolve(undefined); });
+    child.once("exit", code => reject(new Error(`computerd exited ${code}: ${out}`)));
+  });
+  const base = `http://127.0.0.1:${port}`;
+  assert.equal((await req(base, "GET", "/cdp/json/version")).status, 503, "computerd answers before anything is on the FIFOs");
+
+  // Act as Chrome, as a real separate process (a shell opening the FIFOs for its own fd 3/4, then
+  // exec'ing the fake): killing it, like a real Chrome crash, gets a clean kernel-level fd close
+  // rather than a stream .destroy()'s asynchronous one, which real production also gets for free
+  // (Chrome exiting is a real process exit) but a same-process fake would not reliably reproduce.
+  const fake = path.join(HERE, "testing", "fake-chrome.js");
+  const spawnFakeChrome = () => spawn("bash", ["-c", `exec "${process.execPath}" "${fake}" --remote-debugging-pipe 3<"${chromeIn}" 4>"${chromeOut}"`], { stdio: ["ignore", "ignore", "ignore"] });
+  const waitFor = async re => { for (let i = 0; i < 100 && !re.test(out); i++) await new Promise(r => setTimeout(r, 50)); assert.match(out, re); };
+
+  const chrome1 = spawnFakeChrome();
+  await waitFor(/chromium connected/);
+  assert.equal((await req(base, "GET", "/cdp/json/version")).status, 200);
+
+  // Chrome "exits": both FIFO ends close (the process is gone); computerd notices and waits.
+  chrome1.kill("SIGKILL");
+  await waitFor(/reconnecting in/);
+  const failing = await req(base, "GET", "/cdp/json/version");
+  assert.equal(failing.status, 503);
+
+  // entrypoint.sh's chrome_loop would restart Chrome onto the same FIFO paths.
+  const chrome2 = spawnFakeChrome();
+  t.after(() => { try { chrome2.kill("SIGKILL"); } catch {} });
+  const deadline = Date.now() + 5000;
+  let v;
+  while (Date.now() < deadline) {
+    v = await req(base, "GET", "/cdp/json/version");
+    if (v.status === 200) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  assert.equal(/** @type {any} */ (v).status, 200, "computerd reconnected to the next Chrome");
 });
