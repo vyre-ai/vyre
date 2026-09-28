@@ -79,7 +79,15 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // are the tools personOnly() would derive on the box itself but this Mac-side pre-check cannot,
   // named explicitly so a model's shell forwarding through link.call is refused just as early as a
   // direct call would be (reviewer's LOW, 28 Sep). voice.speak and capsule.report join them too.
-  "link.pair", "link.unpair", "vault.device.join", "vault.device.revoke", "vault.vaults.create",
+  // link.unpair is NOT here (the lead's decision, 28 Sep, an rc.2 blocker this caused): the box's
+  // own registration (core/link/box.js) declares no callers at all, because the Mac itself is a
+  // legitimate caller unpairing itself, machine to machine (byKey already checks the calling
+  // Mac's stableId matches the row's own, so it can never unpair a DIFFERENT Mac); forcing
+  // personOnly here made the box refuse that real, non-person call outright. The Mac's own
+  // exposure of the same tool name (core/link/mac.js) keeps its callers: ["cli","local","capsule"]
+  // -- all person surfaces -- so personOnly still derives true there on its own, unaffected by
+  // this list.
+  "link.pair", "vault.device.join", "vault.device.revoke", "vault.vaults.create",
   "files.drive.mount", "files.drive.unmount", "files.drive.open", "files.send", "agents.delete",
   "memory.correct", "memory.merge", "memory.split",
   // A model's shell making Vyre speak out loud is a social-engineering channel ("approve the
