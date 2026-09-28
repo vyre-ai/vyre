@@ -118,9 +118,23 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   compose stack (vyre-glass-perms) with a real .agent-tokens seeded: isolation.test.js 13/13 pass
   against the real container, confirming neither the browser nor the agent uid can read it.
   Lead's decision on gate item 4 (the shield): every agent pauses while one signs in, matches
-  today's mux.closeKind("agent") unchanged -- no code needed. Gate item 3 (revocation: reload the
-  map and close live clients, or restart) is the one piece left before pool.js can actually wire a
-  "browser" computer kind up to any of this.
+  today's mux.closeKind("agent") unchanged -- no code needed.
+- Gate item 3 done at 8ea87af4: cdpmux.closeAgent(name) (closeKind's own shape, by agent name);
+  computerd POST /agents/reload (owner-token only) re-reads AGENT_TOKENS_FILE and closes any
+  agent whose OLD (token, name) pair the new map no longer matches identically -- covers a plain
+  removal and a rotation (the same name, a different token) alike. AGENT_MODE (was inline as
+  "SHARED") is now a sticky flag decided once from whether the file existed at start, never from
+  the env var's mere presence (entrypoint.sh passes it unconditionally) or from the map's current
+  size (a shared computer with its last agent just revoked must not fall back to the bare owner
+  token as an unscoped identity). Tests: index.test.js 14/14 (2 new: plain revocation, rotation).
+  Live-verified on a fresh throwaway compose stack (vyre-glass-revoke) against the real image: two
+  real agents connected, .agent-tokens rewritten via docker cp (mirroring vyred's own archive-API
+  write) while bob's own live WebSocket stayed open, then /agents/reload as the owner closed
+  exactly bob's session, left alice's untouched and working, and refused bob's now-revoked token a
+  new connection while alice's still worked. All 4 reviewer gate items on the browser kind are now
+  closed (H1-M4 in cdpmux, .agent-tokens permissions, revocation, the shield decision) -- pool.js/
+  driver's own "browser" computer kind (the piece that actually calls all of this for real) is
+  next.
 - Presence enforced once security merges; a passkey step in the Deck.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
