@@ -153,6 +153,26 @@ on the user's own, already-content-matched row churns constantly and means nothi
 check, kept the content match (already proves the right words are on screen). Re-run: budget 9
 passes (14.6 ms, 0 re-orders); 5/8/10 unchanged. sha: deck/test/native-bar/run.js only.
 
+reviewer-2 found a blind spot in that fix, 2026-09-28: window-view recycles DOM nodes (budget 6's
+own finding), so if it recycles the ANCHOR itself, not just the user's own row, the in-place-only
+check (isConnected && text differs) goes silent - the anchor disconnects, isConnected is false,
+so a real re-order (a different node with different words landing in that slot) was never caught.
+Fixed: when the anchor is gone, look up whatever now sits at that position (a fresh
+previousElementSibling lookup, off the current content-match) and compare ITS text to the
+original baseline - same text there is a benign recycle (still excused), different text is a
+real, visible re-order. Four scenarios run as controls (temporary CDP-injected DOM changes on
+testbox, not kept):
+
+| Scenario | What | Expected | Got |
+|---|---|---|---|
+| A: benign insert | a new sibling (a steer marker's shape) beside an untouched anchor | pass, 0x | pass, 0x |
+| B: in-place mutation | the anchor's own node, same reference, text changed | fail, caught | fail, caught |
+| C: replace, different text | the anchor node removed, a different node with different text in its slot | fail, caught | fail, caught (was pass, 0x before this fix - the blind spot) |
+| D: replace, same text | the anchor node removed, an equal-text node put back (a benign recycle) | pass, 0x | pass, 0x |
+
+Clean run (no injected scenario) unchanged: 0 reorders. sha: deck/test/native-bar/run.js only
+(8c0b36ca).
+
 Budget 8, re-run on pwa's be3f5554 (a fast reachability probe in follow()/down(): while a backoff
 wait is pending it polls paths[0] + /v1/health every 150 ms and cancels the wait the moment it
 answers, capped at 5 s): catch-up time is now 55-90 ms, down from 1,335-1,679 ms - the 1 s timing
