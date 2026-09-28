@@ -328,8 +328,9 @@ test("relay: relay.devices.node answers a paired device's own Noise identity, fo
   const before = await d.registry.call("relay.devices.node", { id }, "module:link");
   assert.equal(before.data.stableId, id);
   assert.match(before.data.staticKey, /\S/);
+  assert.equal(before.data.name, "alex's phone", "the device's own paired name, for a move's \"receive from <name>\" line");
   assert.equal(before.data.node, null, "no tailnet node reported yet");
-  assert.deepEqual((await d.registry.call("relay.devices.node", { id: "nobody" }, "module:link")).data, { stableId: null, staticKey: null, node: null });
+  assert.deepEqual((await d.registry.call("relay.devices.node", { id: "nobody" }, "module:link")).data, { stableId: null, staticKey: null, name: null, node: null });
 });
 
 test("relay: the pairing offer names the box as configured, never the machine's hostname", async t => {

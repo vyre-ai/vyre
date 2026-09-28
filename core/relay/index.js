@@ -534,9 +534,9 @@ export default {
       description: "A paired relay device's own Noise identity and, if it has reported one, its tailnet node — for a module to check ownership or open a direct connection, never for a person or a device to call about itself.",
       input: obj({ id: str }, ["id"]),
       run: async input => {
-        const row = /** @type {any} */ (db.prepare("SELECT id, pub, node_id, node_name FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(String(input.id)));
-        if (!row) return { stableId: null, staticKey: null, node: null };
-        return { stableId: row.id, staticKey: row.pub, node: row.node_id ? { stableId: row.node_id, name: row.node_name || null } : null };
+        const row = /** @type {any} */ (db.prepare("SELECT id, name, pub, node_id, node_name FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(String(input.id)));
+        if (!row) return { stableId: null, staticKey: null, name: null, node: null };
+        return { stableId: row.id, staticKey: row.pub, name: row.name, node: row.node_id ? { stableId: row.node_id, name: row.node_name || null } : null };
       },
     });
 
