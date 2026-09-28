@@ -141,7 +141,7 @@ export async function listen(handlers) {
         // leaves the mic open. Not scheduled below: cleanup() (this closes the socket itself
         // too) already ran synchronously in every other case, so a second real timer here would
         // just dangle for up to 6 s doing nothing.
-        try { ws.send(JSON.stringify({ type: "end" })); fallback = setTimeout(() => { if (ctx && ctx.state !== "closed") cleanup(); }, 6000); }
+        try { ws.send(JSON.stringify({ type: "end" })); fallback = setTimeout(() => { if (ctx && ctx.state !== "closed") cleanup(); }, 6000); fallback.unref?.(); }
         catch { cleanup(); }
       } else cleanup(); // not yet open (or already closed): nothing to wait on, clean up now
     },
