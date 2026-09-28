@@ -10,13 +10,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   title, cwd, snippet, score }] }`, for chat's inline hint when a person starts a message in a
   project: 1 to 3 of that project's own past turns relevant to what they're typing, one per
   session. Owner surfaces only (chat and native-core call it as themselves; no "mcp" caller, so
-  no agent ever reaches it), and only inside a real, mapped project — `project_cwds` is checked
+  no agent ever reaches it), and only inside a real, mapped project: `project_cwds` is checked
   against `projects.list`, and an unmapped or made-up folder gets an empty hint, never the whole
   corpus. Reuses recall's own `search()` (already fast; no new ranker).
 
 #### Security: recall.search/thread/sessions had no project scoping at all
 
-- A named agent limited to one project could search, read or list any other project's sessions —
+- A named agent limited to one project could search, read or list any other project's sessions:
   recall.search accepted `project_cwds` as a caller-chosen suggestion, never enforced it, and
   recall.thread/sessions did not check the caller at all. Recall now mirrors core/memory/index.js's
   reach()/guard() (the owner's surfaces and modules see everything; a named agent is scoped by
@@ -32,16 +32,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### Security follow-up: recall.search/thread/sessions declare their callers, and the assistant is mapped-only for raw content
 
 - Reviewer's MEDIUM on the fix above: a caller naming no agent got `all: true` unconditionally, so
-  a tailnet guest, a hook, or any caller kind nobody had thought of yet read the whole corpus too —
-  the scoping only ever engaged for a caller that named an agent. Fixed both ways: the three tools
-  now declare `callers` (the person's surfaces, first-party modules, and "mcp" — a model's own
-  session or a named agent, which reach() still tells apart), and reach() itself only grants
+  a tailnet guest, a hook, or any caller kind nobody had thought of yet read the whole corpus too,
+  and the scoping only ever engaged for a caller that named an agent. Fixed both ways: the three
+  tools now declare `callers` (the person's surfaces, first-party modules, and "mcp": a model's
+  own session or a named agent, which reach() still tells apart), and reach() itself only grants
   `all: true` to the owner's surfaces, a model's own session, a relay-paired device, and the
   owner's own verified device over the tailnet (`ownerDevice`); everyone else with no agent named
   is refused outright.
 - The lead's ruling (2026-09-28, after the assistant-vs-wildcard question this raised): a personal
   fact stays unrestricted for the assistant, but raw session content does not extend past what is
-  linked — memory narrows its unfiled room away from the assistant the same way, so recall's
+  linked: memory narrows its unfiled room away from the assistant the same way, so recall's
   assistant branch now walks the per-project path over every MAPPED project too, unchecked against
   projects.access (being the assistant is what grants it). A wildcard (`projects: "*"`) agent that
   is not the assistant walks the same path, intersected with projects.access.

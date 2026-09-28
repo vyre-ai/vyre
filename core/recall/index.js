@@ -338,7 +338,7 @@ export default {
       },
     });
     ctx.tool("recall.related", {
-      description: "1 to 3 of a project's own past sessions relevant to what the person is about to say, for chat's \"From your past sessions\" hint while they type. Each hit is one turn (its own session, seq, ts, name, cwd and a short snippet); chat/native-core render the reason sentence and the link. Owner surfaces only, and only inside a real, mapped project — project_cwds must name at least one folder that is actually a project's; an ad-hoc or unmapped folder gets no hint rather than the whole corpus.",
+      description: "1 to 3 of a project's own past sessions relevant to what the person is about to say, for chat's \"From your past sessions\" hint while they type. Each hit is one turn (its own session, seq, ts, name, cwd and a short snippet); chat/native-core render the reason sentence and the link. Owner surfaces only, and only inside a real, mapped project: project_cwds must name at least one folder that is actually a project's; an ad-hoc or unmapped folder gets no hint rather than the whole corpus.",
       input: { type: "object", required: ["project_cwds", "text"], properties: {
         project_cwds: stringArray, text: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 3 } } },
       callers: OWNERS_ONLY,

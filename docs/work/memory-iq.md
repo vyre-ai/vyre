@@ -189,11 +189,13 @@ facts are not a project's.
   new ranker — same infra recall.search already runs, already fast.
 - Test: core/recall/related.test.js (5 tests: a project's own relevant turns one-per-session,
   an unmapped folder gets nothing, empty text/cwds is a quiet empty hint not an error, never an
-  agent even one granted the project, under the 150ms budget on the fixture corpus). WRITTEN, NOT
-  YET RUN: testbox is frozen for the integrator's rc.2 suite until about 02:27 UTC (the lead's
-  instruction was to write the code now and test after). Run on testbox once the freeze lifts,
-  then send to the reviewer (a new tool, owner-only, worth a look even though it adds no new
-  read path recall.search didn't already have).
+  agent even one granted the project, under the 150ms budget on the fixture corpus). First run
+  (once the freeze lifted) failed 4/5: the new tool wasn't in core/recall/module.json's
+  does.tools list, so it was invisible to the loader ("no tool recall.related"). Added it there;
+  5/5 after. Also ran npm run docs:ref (recall.related's description had an em dash, caught by
+  docs-check; fixed at the source). 280/280 on testbox (core/recall + core/memory + boundaries),
+  19/19 docs-check/docs-index. Sent to the reviewer (a new tool, owner-only, worth a look even
+  though it adds no new read path recall.search didn't already have).
 - Shape to agree with chat and native-core (message sent 28 Sep): the reason sentence ("you
   fixed this in thread X on Sep 20") is theirs to render from `name`/`ts`/`snippet`, not
   generated here — recall.related returns facts, not prose.
