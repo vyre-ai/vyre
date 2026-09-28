@@ -226,6 +226,8 @@ test("presence: capsule and device rows always store alg -7; old rows are refuse
   assert.throws(() => ins.run("new-capsule", "capsule", "Capsule", spkiOf(phone.publicKey), -8, Date.now()), /alg -7/);
   assert.throws(() => ins.run("new-phone", "device", "juno-phone", spkiOf(phone.publicKey), null, Date.now()), /alg -7/);
   assert.throws(() => db.prepare("UPDATE presence_keys SET alg = NULL WHERE id = 'old-phone'").run(), /alg -7/);
+  // A new key written over an old -8 Capsule row, alg untouched, is refused too: re-enroll adds a row.
+  assert.throws(() => db.prepare("UPDATE presence_keys SET public_key = ? WHERE id = 'old-capsule'").run(spkiOf(phone.publicKey)), /alg -7/);
   ins.run("pk", "passkey", "Laptop", spkiOf(phone.publicKey), -7, Date.now());
 });
 

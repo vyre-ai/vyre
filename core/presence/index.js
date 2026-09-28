@@ -322,7 +322,7 @@ export const MIGRATIONS = [`
   CREATE TRIGGER presence_keys_signer_alg BEFORE INSERT ON presence_keys
     WHEN NEW.kind IN ('capsule', 'device') AND (NEW.alg IS NULL OR NEW.alg <> -7)
     BEGIN SELECT RAISE(ABORT, 'a capsule or device key must store alg -7'); END;
-  CREATE TRIGGER presence_keys_signer_alg_update BEFORE UPDATE OF kind, alg ON presence_keys
+  CREATE TRIGGER presence_keys_signer_alg_update BEFORE UPDATE OF kind, alg, public_key ON presence_keys
     WHEN NEW.kind IN ('capsule', 'device') AND (NEW.alg IS NULL OR NEW.alg <> -7)
     BEGIN SELECT RAISE(ABORT, 'a capsule or device key must store alg -7'); END;
 `];
