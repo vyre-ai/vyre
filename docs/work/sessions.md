@@ -43,6 +43,14 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
+- Resume 10 continued further: cb387d88's LOW + nit fixed (ac37089b) - safeRequest() checks
+  request against /^[\w-]{1,64}$/ before it is ever stored or emitted (threads.post's tool
+  boundary); fixed a comment overclaiming word-boundary truncation on APPEND_TOTAL_MAX (it's a
+  plain slice(), a safety bound not a rendered cut). docs/design/projects-map.md (mine, owner:
+  sessions) failed docs-check - added to nav.json under Contributing, dropped every em dash, and
+  de-backticked memory.today/vault.uses (neither is a real tool in this tree - grepped memory-iq
+  and vault to confirm; didn't touch the Built/Gap claims themselves, that's their call) (40379d4a).
+  test/docs-*.test.js 61/61 on testbox.
 - Resume 10 continued: reviewer verdicts on both sent shas, addressed.
   - Reviewer HELD b786a799 (planner task kind) on 2 HIGHs: a task from a bare mcp/module/thread-
     scoped caller launched AMBIENT with the person's own scope at fire (no real agent claim
