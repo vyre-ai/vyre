@@ -207,6 +207,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   surfaces' own labels, for modules to import. vyred now takes any label but a model's own (mcp,
   harness) from under a `claude` or a thread as the session's own, so "mobile" and any surface
   name added later are covered without a list to keep up. "anonymous" stays as it is.
+#### link: an agent riding the person's CLI never carries the Mac's person session
+
+- `core/link/mac.js` read a caller's kind from its first word, so `cli:agent:kit` counted as the
+  person's CLI and got the person session (and the Secure Enclave signature for a human-only
+  tool) on its call to the box. It now refuses any caller with an agent or thread claim first,
+  then checks the kind, lib/caller.js's isPerson rule.
 
 #### Project teammates: vyred's own git runs nothing the repo names
 
