@@ -331,3 +331,25 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 
 ## Next
 - Follow up once chat/native-core confirm the fork UI and `.lbl` fix land; tick the new Gaps.
+
+## Now (28 Sep, Windows Capsule spec)
+
+- Lead: spec how Design A translates to the Windows Capsule (Tauri shell per windows-plan.md Tier
+  C, hosting Deck's web views, Alt+Space, always-on-top). Wrote
+  docs/design/system/components/capsule-windows.md (d044f0e1, nav.json + docs:ref regenerated,
+  docs:check clean): same content model as capsule-mac.md (same rows, tools, events, tokens), the
+  shell differs. Mica on the panel (persistent surface), Acrylic only on the tray's transient
+  right-click menu, per Microsoft's own material guidance; `--panel` becomes a translucent tint
+  over Mica, every other role stays opaque. Borderless window with DWM rounded corners. Font
+  fallback gains Segoe UI Variable/Segoe UI ahead of the Mac-only Helvetica Neue. Native system
+  tray icon + menu (kept close to stock Windows styling, not reskinned). Native Windows Toast
+  (Action Center) for a Needs-you item when the Capsule is closed, distinct from toast.md's in-app
+  Undo toast. Windows Hello, not "Touch ID," on the existing Confirm-send card, same no-nagging
+  rule. High contrast mode and transparency-off both fall back to solid tokens.
+- Flagged rather than assumed: Alt+Space is Windows' own reserved shortcut for the active window's
+  system menu, so once the Capsule itself has focus, native Alt+Space could reopen the OS menu
+  instead of closing the panel. Needs a hands-on check; Ctrl+Alt+Space is the fallback. Also called
+  out not to wire the Windows system accent colour into `--primary-bg` or any status colour, lime
+  stays the one accent, Mica's tint is where "feels like this desktop" belongs.
+- Sent to windows (msg_id 30a3d494). Nothing built yet (Tier C hasn't started); this spec exists so
+  it starts from Design A and the Mac Capsule's content model.
