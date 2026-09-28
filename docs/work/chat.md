@@ -233,10 +233,26 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   part of the transcript's history). Rate-limiting sight.frame across chat's own caller and Glass's
   (cohesion's open item) is still open - not addressed here.
 
-## Next (from native-core, budget 8)
-- A 108-134px scroll jump when thread.finished lands while scrolled up (following races
-  grow()/toBottom() in session.js + window-view.js) - same family as the budget-5/8 jump already
-  partly fixed. Queued behind sight.frame stills.
+## Doing (28 Sep, budget 8: reconnect scroll jump - PARTIAL)
+- native-bar budget 8, before: 1086.7 ms (fail, over the 1 s budget), anchor moved 80 px / scrollTop
+  changed 52 px, first moving 1149 ms after the network came back - BEFORE thread.finished (1313 ms),
+  i.e. during the reconnect catch-up itself (reread()'s event replay + refresh()'s transcript
+  re-read), not triggered by thread.finished landing as first suspected.
+- Found refresh() called patch(applyBlocks(...)) (which already calls layout() itself whenever any
+  changed key needs it) and THEN called layout() again unconditionally right after - a redundant
+  second anchor-capture-and-restore on rows already correctly measured. Removed the redundant call
+  (kept grew(), which still covers the one case patch() skips: a batch of text-only deltas).
+- Result: catch-up time 1086.7 ms -> 900 ms, now UNDER the 1 s budget. But the scroll jump itself
+  is UNCHANGED (still 80 px / 52 px, identical to the number before this fix) - so the redundant
+  layout() was real waste, but not the jump's cause. testbox: deck/chat+deck/test 494/495 (1
+  pre-existing skip), 0 fail; native-bar budget 8 re-run confirms the time number, jump still fails.
+- Next: the jump happens while scrolled up 300px, WHILE all new content lands at the tail (below
+  the reader) - it should not move the anchor at all unless window-view's own windowed-mount range
+  shifts and brings a previously-unmounted (estimated) row into the mounted set for the first time
+  during this exact sequence, revealing its real height late. Needs either temporary instrumentation
+  in window-view.js (log heights.get() vs the real measured height per key during this exact
+  scenario) or a live repro in a real browser - reported to the lead rather than guessing further
+  blind.
 
 ## Doing (28 Sep, restart after cohesion's hand-over)
 

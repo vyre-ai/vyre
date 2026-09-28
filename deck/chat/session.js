@@ -1008,8 +1008,14 @@ export function mountSession(container, opts) {
         const r = await transcript({ from: next });
         if (r.error) break;
         if (r.data.session && recorded.on) { recorded.session = r.data.session; drawHead(); }
+        // patch() already lays out again itself whenever a changed key needs it (any kind but a
+        // streaming text update); calling layout() again here unconditionally was a second,
+        // redundant anchor-capture-and-restore right after the first, on rows already correctly
+        // measured. Cuts the reconnect catch-up time (native-bar budget 8): 1086 ms -> 900 ms,
+        // under its 1 s budget. The scroll jump itself is a separate cause: still open.
+        // grew() alone still covers the one case patch() skips (a batch of text-only deltas).
         patch(applyBlocks(S, r.data.blocks));
-        if (r.data.blocks.length) { layout(); grew(); }
+        if (r.data.blocks.length) grew();
         next = r.data.next ?? next;
         if (r.data.blocks.length >= page()) reading.again = true;
       } while (reading.again);
