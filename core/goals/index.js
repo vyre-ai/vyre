@@ -72,6 +72,12 @@ export default {
     const inScope = async (target, meta) => {
       if (isPerson(meta && meta.caller)) return true;
       const thread = meta && meta.thread;
+      // Reviewer's LOW 2, 2026-09-28: with both a thread and a project named, checking only the
+      // thread let an agent tag its own thread with a mismatched project label (goals.set) or read
+      // a goal it otherwise owns by thread as if it were also in-scope for an unrelated project.
+      // Both must hold: its own thread, AND that thread's own real project (never a project it
+      // merely claims alongside a thread it happens to own).
+      if (target.thread && target.project) return Boolean(thread) && thread === target.thread && (await callerProject(thread)) === target.project;
       if (target.thread) return Boolean(thread) && thread === target.thread;
       if (target.project) return Boolean(thread) && (await callerProject(thread)) === target.project;
       return true; // neither a thread nor a project named: nobody's in particular

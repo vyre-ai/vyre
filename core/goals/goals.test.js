@@ -115,3 +115,18 @@ test("goals: an agent cannot list another project's goals, and gets only its own
   // No thread at all (a bare module, no session context): nothing is its own.
   assert.deepEqual((await reg.call("goals.list", {}, "module:learn")).data, []);
 });
+
+test("goals: reviewer's LOW 2 - naming both a thread and a project checks both, never the thread alone", async t => {
+  const { reg } = await boot(t);
+  const asKitInS1 = (name, input) => reg.call(name, input, "mcp:agent:kit", { thread: "s1" }); // s1 is harlow-legal's
+  // kit's own thread (s1), tagged with a project that is NOT s1's real one (northwind, s2's) -
+  // used to pass on the thread check alone; both must hold now.
+  assert.equal((await asKitInS1("goals.set", { thread: "s1", project: "northwind", goal: "Mislabeled", milestones: ["a"] })).error.code, "denied");
+  // Its own thread with its own real project: still fine.
+  const g = (await asKitInS1("goals.set", { thread: "s1", project: "harlow-legal", goal: "Correctly labeled", milestones: ["a"] })).data;
+  assert.equal(g.state, "pending");
+  // The same mismatch on the READ side (goals.get/milestone-done): a goal saved with both fields
+  // (however that happened) is refused for a thread whose real project does not match it.
+  const mismatched = (await reg.call("goals.set", { thread: "s1", project: "northwind", goal: "x", milestones: ["a"] }, "deck")).data; // person: no scope check
+  assert.equal((await asKitInS1("goals.get", { goal: mismatched.id })).error.code, "denied");
+});
