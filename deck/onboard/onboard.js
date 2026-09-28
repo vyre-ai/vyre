@@ -357,20 +357,20 @@ const SCREENS = {
   // They only run later, when a second device actually joins (anywhere's capability ladder,
   // rung 2) — via Settings > Your devices > Add a device, not here.
   //   - Solo: onboard.machine{machine:"solo"} (a safe no-op per anywhere, called anyway so the
-  //     server has it on record), then straight to Claude sign-in.
-  //   - Server: onboard.machine{machine:"server"} sets this computer up as the always-on one
-  //     inline (launchd/keep-awake on darwin) and may hand back a `service.warning` (e.g. sleep
-  //     settings that would fight it) to show, not block on.
+  //     server has it on record), then straight to Claude sign-in. Real tool, sha 73d03d39 —
+  //     `service` always comes back null for now (anywhere's own launchd installer isn't built
+  //     yet), so nothing here reads it.
+  //   - Server: onboard.machine{machine:"server"}, same real tool. `service.warning` is not
+  //     surfaced yet either, for the same reason; will add once anywhere says it's populated.
   //   - Device: pairs with a server the person already has. Nothing to move yet (a fresh
-  //     device, anywhere.md's Entry A). Calls `join.verify` (tailnet's real, shipped shape,
-  //     work/tailnet af604cf8) — but that module is box-role only and verify takes a `node` id,
-  //     not a setup code, so this screen's own "paste a code" premise does not match what
-  //     tailnet actually built (a fresh, non-box device has no join module loaded at all, same
-  //     gap tailnet flagged for "a phone joins a Solo Mac"). Asked tailnet/the lead how a fresh
-  //     device should really point at an existing server; left as-is until answered, since
-  //     either way it degrades gracefully (a missing tool never blocks Continue here).
-  // Fixture-backed (deck/fixtures/join.json, deck/fixtures/onboard.json): onboard.machine and
-  // join.verify are anywhere's and tailnet's tools, not wired for this case yet.
+  //     device, anywhere.md's Entry A). Calls the real, consolidated `onboard.join` (tailnet,
+  //     not merged to main yet): {action:"verify", node, becomeDevice:true} — becomeDevice is
+  //     required for this exact card (per tailnet: only the connecting device's own verify call
+  //     should flip config.machine; anything else defaults to false and never flips). `node`
+  //     still expects a device/node id, not a setup code, which is what this screen's input
+  //     collects — same shape mismatch as before, still unresolved with tailnet, still degrades
+  //     gracefully (a missing tool never blocks Continue).
+  // Fixture-backed (deck/fixtures/onboard.json): onboard.machine is real; onboard.join is not.
   live(col, s) {
     col.append(
       h("h1", { class: "h1" }, "How will Vyre run?"),
@@ -386,15 +386,15 @@ const SCREENS = {
 
     const syncFoot = () => s.foot({ label: choice === "device" ? "Connect" : "Continue", disabled: !choice, run: async () => {
       if (choice === "solo") {
-        await attempt("onboard.machine", { action: "set", machine: "solo" });
+        await attempt("onboard.machine", { machine: "solo" });
         await mark_("live", "done"); await skipPairing(); toClaude();
         return;
       }
       if (choice === "server") {
         put(st, "Setting this computer up as your server.");
-        const r = await attempt("onboard.machine", { action: "set", machine: "server" });
+        const r = await attempt("onboard.machine", { machine: "server" });
         if (r.error && !r.error.missing) { put(st, String(r.error.message)); return; }
-        put(st, r.data?.service?.warning || "");
+        put(st, "");
         await mark_("live", "done"); await skipPairing(); toClaude();
         return;
       }
@@ -402,7 +402,7 @@ const SCREENS = {
       const v = codeIn.value.trim();
       if (!v) { put(st, "Paste the code first."); return; }
       put(st, "Looking for your server.");
-      const j = await attempt("join.verify", { node: v });
+      const j = await attempt("onboard.join", { action: "verify", node: v, becomeDevice: true });
       if (j.error && !j.error.missing) { put(st, String(j.error.message)); return; }
       put(st, "");
       await mark_("live", "done"); await skipPairing(); toClaude();

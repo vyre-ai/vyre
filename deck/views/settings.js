@@ -18,11 +18,11 @@ import { pushState, subscribePush, unsubscribePush, enrollPasskey, passkeyState,
 import { icon, mark, wordmark } from "../js/icons.js";
 import { when, since, plural } from "../js/fmt.js";
 import { personStatus, signOutHere } from "../js/person.js";
-import { pathMark } from "../js/status-mark.js";
+import { pathMark, statusMark } from "../js/status-mark.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
-import { fmtBytes, pieceLabel, pieceLine, totalBytes, pieceState, readyToConfirm, destinationName, forgetGate } from "../js/server-rows.js";
+import { fmtBytes, pieceLabel, pieceLine, totalBytes, readyToConfirm, destinationName, forgetGate } from "../js/server-rows.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -618,6 +618,9 @@ async function drawServer(el, ctx) {
   const machine = r.data?.machine || "solo";
   if (machine !== "solo" && machine !== "server") { drawAlreadyMoved(el, r.data || {}); return; }
 
+  // app-design's #1 finding (ce9c4c5f screenshot pass): a consequential, multi-step flow (moving
+  // the whole vault/projects/memory to another machine) needs its own weight, a card
+  // (docs/design/system/components/card.md), separate from the plain status row above it.
   const panel = h("div", { class: "rows" });
   const st = status();
   put(el,
@@ -625,7 +628,7 @@ async function drawServer(el, ctx) {
       h("div", { class: "small muted" }, machine === "server"
         ? "Other devices can pair with it once you add one."
         : "No Tailscale, nothing else running, until you move to a server.")),
-    panel, st);
+    h("div", { class: "set-server-card" }, panel, st));
 
   let poll = null;
   ctx.cleanup(() => clearTimeout(poll));
@@ -653,7 +656,11 @@ async function drawServer(el, ctx) {
     const pieces = Object.entries(p.pieces || {});
     put(panel,
       row("Moving to", mono(destinationName(p)), h("span", { class: "small muted" }, p.destination?.address || "")),
-      h("div", { class: "rows" }, pieces.map(([k, v]) => row(pieceLabel(k, v), h("span", null, pieceLine(v))))),
+      h("div", { class: "rows" }, pieces.map(([k, v]) => row(pieceLabel(k, v), h("span", null, pieceLine(v)),
+        // app-design's #2 finding: the vault's own encryption promise (anywhere.md "The move-to-
+        // server flow") needs to be visible right where it's being moved, not left to the doc.
+        k === "vault" ? h("div", { class: "small muted set-vault-note" }, icon("lock", 12),
+          h("span", null, "Encrypted end to end. Never written to disk unencrypted on either side.")) : null))),
       note(`${fmtBytes(totalBytes(p.pieces))} total. This computer keeps working, unchanged, until the move finishes and you confirm it.`),
       foot(h("button", { type: "button", class: "btn btn-primary", onclick: () => start(code) }, "Start moving"),
         h("button", { type: "button", class: "btn btn-ghost", onclick: point }, "Back")));
@@ -672,9 +679,15 @@ async function drawServer(el, ctx) {
     if (!ctx.alive()) return;
     if (s.error) { put(panel, empty("Lost track of the move.", s.error)); return; }
     const d = s.data;
+    // app-design's #4 finding: use the shared status-mark vocabulary (statusMark, running/done)
+    // instead of plain "Done"/"NN%" words, matching list-row.md's running ring elsewhere in the
+    // Deck. A piece that hasn't started yet has no mark of its own in that model (only running,
+    // done, needs, failed, unread), so "Waiting" stays plain text for that one case.
     put(panel, h("div", { class: "rows" }, Object.entries(d.pieces || {}).map(([k, v]) => h("div", { class: "set-move-row" },
-      h("div", null, h("div", null, pieceLabel(k, v)), h("div", { class: "set-meter" }, h("span", { style: { width: (v.pct || 0) + "%" } }))),
-      h("span", { class: "small faint" }, pieceState(v))))));
+      h("div", { class: "set-move-main" }, h("div", null, pieceLabel(k, v)), h("div", { class: "set-meter" }, h("span", { style: { width: (v.pct || 0) + "%" } }))),
+      v?.state === "doing" ? statusMark("running", { word: `${v.pct || 0}%` })
+        : v?.state === "done" ? statusMark("done", { word: true })
+        : h("span", { class: "small faint" }, "Waiting")))));
     if (readyToConfirm(d)) { ready(); return; }
     poll = setTimeout(watch, 5000);
   };

@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Settings > Server: app-design's screenshot-pass fixes, and the real onboard.machine/onboard.join
+
+- Wired against the real, shipped tools: `onboard.machine{machine} -> {machine, service}` (sha
+  73d03d39; `service` is always `null` for now, its launchd installer isn't built yet) and the
+  real `onboard.join` shape (tailnet, `becomeDevice` only on the connecting device's own verify
+  call). Removed UI logic that assumed `service.warning` would be populated.
+- Five fixes from app-design's screenshot pass: the move wizard is its own card, not plain rows;
+  the vault piece shows a lock glyph and its encryption promise; the progress bar is a real
+  track+fill, not a hairline; live progress uses the shared status-mark vocabulary (a running
+  mark with the percent, a hollow done dot) instead of plain words; the onboarding radio's
+  selected fill is lime (`--focus`), matching every other checked state in the system.
+
 #### Settings > Server: "Move to a server", fixture-backed, and pulled into a testable module
 
 - New "Server" section (`deck/views/settings.js`): point at a server with a setup code, a

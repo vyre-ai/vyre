@@ -60,7 +60,7 @@
 .choice label:hover { background: var(--hover); }
 .choice label.on { background: var(--hover); }
 .choice input[type=radio] { appearance: none; width: 16px; height: 16px; border-radius: 8px; border: 1px solid var(--rule-strong); margin: 3px 0 0; flex-shrink: 0; }
-.choice input[type=radio]:checked { border: 5px solid var(--text); }
+.choice input[type=radio]:checked { border: 5px solid var(--focus); }
 .choice .t { display: flex; flex-direction: column; gap: 2px; }
 .choice .t b { font-weight: 500; font-size: 15px; line-height: 22px; }
 .choice .t span { font-size: 13px; line-height: 18px; color: var(--text-2); }

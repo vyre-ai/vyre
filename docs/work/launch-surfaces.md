@@ -404,21 +404,49 @@ Device path against something real instead of my earlier guess, and found a genu
 a device that already paired, not something that accepts a "setup code" to start one. It's also
 box-role only, the same gap tailnet flagged for "a phone joins a Solo Mac": a fresh device
 choosing "I already have a server" is role solo/local at that point, so `join.*` never even loads
-on its own daemon. Renamed the call to the real `join.verify` and moved the fixture to
-`deck/fixtures/join.json` for naming accuracy, but the actual mechanism for this path is still
-unresolved — asked tailnet rather than guess a UI around a tool that structurally can't run here.
-Degrades gracefully either way (a missing tool never blocks Continue), so nothing is broken, just
-not truly wired.
+on its own daemon.
+
+tailnet then dropped that separate module and folded it back into `onboard.join` directly (same
+shape convention as onboard.tailscale/claude/name): `{action:"status"|"tailscale"|"relay"|
+"verify", step?, node?, becomeDevice?}`. Their design call: `verify`'s machine-flip only fires
+with `becomeDevice: true`, since the same action is called from both sides of a join and only the
+connecting device should ever demote itself. Updated the `live` step's Device branch to call the
+real name with `becomeDevice: true` and moved the fixture back into `deck/fixtures/onboard.json`.
+The underlying mismatch is unchanged and still open: `node` expects a device/node id, not the
+setup code this screen's input actually collects, and the box-role gating question is still with
+tailnet. Still degrades gracefully (a missing tool never blocks Continue), so nothing breaks, just
+isn't truly wired yet.
+
+anywhere shipped the real `onboard.machine` (sha 73d03d39): `{machine:"solo"|"server"} ->
+{machine, service}`, no `action` wrapper (dropped from my earlier guess). `service` always comes
+back `null` for now (the launchd/keep-awake installer isn't built), so nothing here reads
+`service.warning` anymore — removed that dead branch rather than leave UI logic that assumes a
+field anywhere explicitly said to treat as always-null. Fixture and the committed test both
+updated to match (`service: null`, not `service.installed`).
+
+Screenshot pass from app-design (ce9c4c5f) landed 5 ranked findings; built all five: the whole
+move wizard now sits in its own card (`.set-server-card`: 1px `--rule` border, radius 12, per
+`docs/design/system/components/card.md`), separate from the plain "This computer" status row
+above it (#1). The
+vault piece on the plan screen gets a lock glyph and anywhere.md's own encryption line, since
+that promise was otherwise invisible (#2). `.set-meter` is a real 6px track+fill now, not a
+hairline (#3). The live progress rows use the shared status-mark vocabulary (`statusMark` from
+`deck/js/status-mark.js`: a running mark with the percent, a hollow done dot) instead of plain
+"Waiting"/"Done" words — a not-yet-started piece keeps plain text since that model has no mark
+for "not started", only running/done/needs/failed/unread (#4). The onboarding radio's selected
+fill is `--focus` (lime) now, not `--text`, matching every other checked/selected state in the
+system (#5). Not re-screenshotted yet; asked app-design for a second pass.
 
 ## Next
 
-- Resolve the Device-path mechanism with tailnet (see above) and rebuild that part of the `live`
-  step once there's a real answer, not the "paste a code" placeholder.
-- Get app-design's eyes on the new Server panel (no board exists for it yet; asked implicitly by
-  building ahead of the tools, per the lead's "don't block" instruction).
+- Get app-design's second pass on the five fixes above.
+- Resolve the Device-path mechanism with tailnet (the node/code mismatch, box-role gating) and
+  rebuild that part of the `live` step once there's a real answer, not the "paste a code"
+  placeholder that can never actually resolve as written.
 - Build "Move off this server" (Device -> Solo, the reverse direction anywhere.md names) in
   Settings > Server; only the forward direction is built.
-- Swap fixtures for the real `onboard.machine` tool once anywhere ships it (today, per anywhere).
+- Wire `service.warning` into the Server step once anywhere's launchd installer actually
+  populates it (anywhere: "will ping you the moment that lands").
 - Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
 - Step-shell's final summary, per the lead (build both, 29 Sep): showEnding()'s "What's next"
   ticks gained a fourth row for the Agent computers choice (9d4103f0); a per-step celebration
@@ -434,22 +462,26 @@ not truly wired.
 
 ## Needs from others
 
-- ~~anywhere: the role-choice tool shape~~ answered (sha 35393327, work/anywhere): `onboard.
-  machine{action:"set", machine:"solo"|"server"}`, config.machine, ADR 0039/anywhere.md now
-  written. Built against it as a fixture; anywhere says the real tool should land within the day,
-  will swap then. ~~Solo one-command install~~ answered: `npm install -g https://vyre.run/box/
-  vyre.tgz` + `vyre up`, no new script; pointed at it in the onboarding comments, not yet in any
-  shipped copy.
-- tailnet: `onboard.join{action:"status"|"tailscale"|"relay"|"verify"}` — asked for and got the
-  shape, not built yet on their side. Fixture-backed on mine (`deck/fixtures/onboard.json`), used
-  by the `live` step's Device choice. Still need: confirm the join flow never renders on the Solo
-  path (asked, no answer yet), and step 2's existing-server detection (names.discover, see below)
-  — though that may now be superseded by onboard.join's own `status` action; worth confirming
-  with tailnet rather than assuming.
+- ~~anywhere: the role-choice tool shape~~ answered and REAL now (sha 73d03d39, work/anywhere):
+  `onboard.machine{machine:"solo"|"server"} -> {machine, service}`, `service` always `null` for
+  now (their launchd installer is next on their list; will ping when it's real). ~~Solo one-
+  command install~~ answered: `npm install -g https://vyre.run/box/vyre.tgz` + `vyre up`, no new
+  script; pointed at it in the onboarding comments, not yet in any shipped copy.
+- ~~tailnet: onboard.join shape~~ answered and REAL-shaped (not merged to main yet):
+  `onboard.join{action:"status"|"tailscale"|"relay"|"verify", step?, node?, becomeDevice?}`.
+  ~~confirm the join flow never renders on the Solo path~~ confirmed: nothing in join runs unless
+  something actually joins. Still open: the Device-path mismatch (`node` id vs. a setup code, and
+  box-role gating a fresh device out entirely) — asked, not yet answered. names.discover's
+  client-side peer-scan is unbuilt and, per tailnet, not gated on anything of theirs now; worth
+  deciding whether it's still needed given onboard.join's own `status` action, rather than
+  building both.
 - federation: move-engine tool shapes for "Move to server" (plan/what's-moving with sizes,
   start, live status per category, undo). Proposed names: `federation.move.plan`,
   `federation.move.start`, `federation.move.status`, `federation.move.undo` — open to
   federation's own naming. Asked 28 Sep, no answer yet.
+- app-design: a second pass on the Server panel's five fixes (card, vault lock note, real
+  progress bar, status-mark vocabulary, lime radio fill), landed after their first screenshot
+  pass but not yet re-reviewed.
 - lead: which of Vyre IQ, Capsule auto-answer, voice, "do" computer use and the settings hub are in the RC. Until answered, anything not on main shows "coming".
 - sessions: pending onboard changes, if any.
 - app-design: a second pass on the memory-section redesign and the hotkey copy, since both

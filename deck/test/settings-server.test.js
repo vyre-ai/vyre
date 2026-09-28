@@ -72,5 +72,7 @@ test("server rows: onboard.status's machine field, read by drawServer the same a
   assert.equal(onboard["onboard.status"].machine, "solo", "the fixture's default machine, matching a fresh install");
   assert.equal(onboard["onboard.machine"].cases.solo.machine, "solo");
   assert.equal(onboard["onboard.machine"].cases.server.machine, "server");
-  assert.ok(onboard["onboard.machine"].cases.server.service.installed, "the server card's inline launchd install");
+  // anywhere (73d03d39): service always comes back null for now, the launchd installer isn't
+  // built yet. Nothing in the Deck should assume it is populated until anywhere says otherwise.
+  assert.equal(onboard["onboard.machine"].cases.server.service, null);
 });

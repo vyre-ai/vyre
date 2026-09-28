@@ -226,9 +226,27 @@
   "onboard.machine": {
     "$by": "machine",
     "cases": {
-      "solo": { "machine": "solo" },
-      "server": { "machine": "server", "service": { "installed": true } },
-      "*": { "machine": "solo" }
+      "solo": { "machine": "solo", "service": null },
+      "server": { "machine": "server", "service": null },
+      "*": { "machine": "solo", "service": null }
+    }
+  },
+  "onboard.join": {
+    "$by": "action",
+    "cases": {
+      "status": { "tailscale": { "state": "off" }, "relay": { "available": true, "enabled": false, "connected": false, "pairing": null } },
+      "tailscale": {
+        "$by": "step",
+        "cases": {
+          "status": { "state": "off", "installed": true },
+          "connect": { "loginUrl": "https://login.tailscale.com/a/example" },
+          "policy": { "ready": true, "policy": { "note": "same merged ACL snippet as onboard.tailscale action=policy" } },
+          "lock": { "enabled": false }
+        }
+      },
+      "relay": { "pairing": { "url": "https://relay.vyre.run/pair/abc123", "qr": "abc123" } },
+      "verify": { "reachable": true, "kind": "owner", "name": "kit" },
+      "*": { "reachable": false }
     }
   }
 }
