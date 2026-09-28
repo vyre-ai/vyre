@@ -93,6 +93,19 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   index.test.js 12/12 (6 new); testbox core/computers/**/*.test.js 234/234 pass, 9 skipped. Sent to
   the reviewer. Next: the "browser" computer kind in pool.js/driver/policy.js, which is what will
   actually write .agent-tokens for a real shared computer.
+- Reviewer's 2 MEDIUMs on b914fd3a fixed at 9d2d20e8, required before the browser kind turns
+  shared mode on: M3 -- omitting browserContextId is not neutral (Chrome defaults to the browser's
+  own default context, where fill and unscoped clients live); OPTIONAL_CONTEXT_METHODS now pins the
+  agent's own context in for Storage.setCookies/clearCookies, Browser.grantPermissions/
+  setPermission/resetPermissions and Browser.setDownloadBehavior, and any other Browser/Storage
+  call with no context is refused (CONTEXT_READONLY_METHODS excepted, e.g. Browser.getVersion). M4
+  -- Target.autoAttachRelated was missing from H2's TARGET_ID_METHODS enumeration (the same pause
+  DoS as M2); added, and the waitForDebuggerOnStart refusal now covers any method that carries it.
+  Tests: cdpmux.test.js 35/35 (3 new); testbox core/computers/**/*.test.js 237/237 pass, 9 skipped.
+  ba1f766d (identity) is SIGNED OFF by the reviewer and may land. Still gating the browser kind:
+  .agent-tokens' own permissions (0400 vyre, archive-API, tested), revocation (reload the map and
+  close live clients, or restart, when an agent is dropped), and the shield's shared-mode semantics
+  (undecided -- does it lock every agent while one signs in).
 - Presence enforced once security merges; a passkey step in the Deck.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
