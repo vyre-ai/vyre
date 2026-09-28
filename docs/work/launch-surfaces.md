@@ -243,6 +243,24 @@ Resumed after the restart (28 Sep), reading RULES.md/HANDOFF.md fresh:
   e2e had already found and fixed this on work/e2e-rcfix (a5eff01f), verified 120/120; dropped
   work/launch-rc2fix rather than duplicate it with a second sha, per the lead. Not launch's bug
   (core/onboard, core/names), and not the via() caching I first suspected.
+- install-box.sh, per the lead (29 Sep): fixed a real, previously undetected shellcheck SC1087
+  bug (pick_look()'s escape-code vars and step()'s counter, `$var[...` read as an array index;
+  the "shellcheck is clean when available" test in core/names/system.test.js had silently never
+  run anywhere shellcheck was installed until I installed it on testbox to check this branch),
+  and added the asked-for "friendly wait line" (wait_line(), picked by pid) shown once before
+  Docker's own curl|sh install, the one real silent gap. 5b6c17e9, tested 38/38 on testbox.
+- Landing page screenshots for the lead to show the user (desktop 1440, phone 390): a real
+  tooling gotcha cost most of this task's time. `vyre-chrome --window-size=390,...` silently
+  clamps to a 500px minimum in this Chromium build (confirmed empirically: 499 requested reads
+  as innerWidth 500, 501 reads correctly) while `--screenshot` still writes a 390-wide PNG, i.e.
+  a crop of a page laid out for 500px, not a render at 390px. That looked exactly like a real
+  mobile overflow bug (GitHub/Install clipped in the nav, hero paragraph text cut mid-word) until
+  a proper CDP `Emulation.setDeviceMetricsOverride({width:390, mobile:true})` screenshot (see
+  the scratch script written for this, not committed) showed the page is actually fine at true
+  390px: nothing wraps or clips. No site bug, no fix needed. Screenshots are local-only (not
+  committed; the lead asked for paths, not files in the repo), teardown confirmed (no leftover
+  chrome/http.server processes on testbox). Worth remembering: any future phone-width screenshot
+  on this Chromium build needs CDP device-metrics override, not `--window-size` alone.
 
 ## Next
 
