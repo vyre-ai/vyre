@@ -671,6 +671,18 @@ MAC check, both of which a decoded-but-wrong id fails - so this can never actual
 anything, only fail to scan, which is already the outcome recorded above. Worth keeping in mind
 if the false-accept rate ever needs bounding formally, but not a pairing-safety concern.
 
+## Doing (reviewer's stamped LOW, 2026-09-28)
+Fixed the reviewer's LOW on wink.js's `?relay=` dev gate: it checked `r.data.stamped === false`,
+but build.js only ever set `stamped: true` (a real stamped release) or left the field undefined
+(git checkout, bare repo) - so an old or unusual box answering `system.info` without a `stamped`
+field would have honoured the override by accident instead of failing closed. build.js now sets
+`stamped` explicitly (`true`/`false`) in every branch, never absent. Checked `.stamped`'s other
+two readers (core/cli/commands/update.js, up.js) - both do a plain truthy check, so undefined-vs-
+explicit-false is a no-op for them. Updated build.test.js's checkout/bare assertions to the new
+shape. sha f7059424, testbox targeted (build.test.js, app.test.js, pair-scan.test.js): 19/19.
+Sent to team-lead and integrator. Next: tailnet's ticket-record encryption in resolveTicket()
+(watching for their sha), then the real relay.vyre.run scan-to-pair check once tailnet deploys it.
+
 ## Next
 - No test coverage of scan.js/scan-worker.js's own lifecycle (the busy flag, the transferred
   buffer, worker.terminate() on stop) - reviewer-2 hand-verified fa619b4a and confirmed it's
