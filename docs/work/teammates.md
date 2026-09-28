@@ -54,6 +54,29 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
   vyred records itself on the integrator's own row (`attemptMerge`/`finalizeMerge` in index.js),
   never a fresh read of the ref at swap time — a moved ref (the person's own push, or a teammate's
   Bash) is caught and resynced, not overwritten, per the resume brief's step 5.
+- Reviewer round on 68a1b890: two holds, both fixed.
+  - MEDIUM (slice A, still open from 2cb7bb14): `ensureWorktree`'s re-add path ran
+    `worktree add <dir> refs/heads/<branch>` for an existing branch — a full refname, so git
+    checks it out detached instead of on the branch (`worktree add` resolves a *bare* name through
+    its own branch dwim first, refs/heads/ before anything else, so a same-named tag can't hijack
+    it either way; a fully qualified name defeats that dwim). Fixed at 36fd0761 (bare `branch` for
+    that one call), with a re-add-beside-a-same-named-tag test. Split slice A onto its own branch
+    per the lead's call — see the header above.
+  - HIGH (slice B): `team.merge`/`attemptMerge` ran the project's own test command
+    (`npm test`/`pytest`/...) directly, as vyred — a teammate's own `package.json` `scripts.test`
+    or `conftest.py` is repo content, so this was vyred running a teammate's code as itself,
+    outside every permission floor. Fixed at c0ec7600: `runTests()` removed from git.js entirely;
+    a clean merge with a `test_command` set always falls through to the integrator's own session
+    now (same as a real conflict), which runs the command itself with its own Bash and reports the
+    exit code to `team.merge` as `tests: {exit_code}`; vyred only checks that report (refusing a
+    missing or nonzero one) and never executes anything. New test: a planted test command that
+    would leave a marker file if anything ever ran it never does, under vyred's own mechanical
+    merge path.
+  - Also reverted the `lib/git-safe.js` `env` passthrough at b2b46655 (team-lead's call): vyre's
+    commit identity is set with `-c user.name=Vyre -c user.email=vyre@localhost` on the two
+    commit-making calls instead, so the shared helper's deliberately narrow environment needs no
+    caller-supplied hole punched in it.
+  - 48/48 team+boundaries+safe-git green, stable over repeats on testbox. Sent back to reviewer.
 
 ## Where ADR 0031 stands
 - Built (step 1, a876e5e4): `core/team` (roles box, local; requires threads, projects, sessions).
