@@ -1,0 +1,74 @@
+# The client-side owner-SID check (docs/design/windows-plan.md section 7a point 2c): before the
+# CLI/Capsule sends anything over vyred's named pipe, confirm the pipe's owning process is the
+# current user, not a squatter. Real Win32 calls (GetNamedPipeServerProcessId, token SIDs), so
+# this only ever runs for real here, on windows-latest, never assumed correct off it.
+name: windows-pipe-verify
+on:
+  push:
+    paths: ["core/daemon/native-win/**", ".github/workflows/windows-pipe-verify.yml"]
+  pull_request:
+    paths: ["core/daemon/native-win/**", ".github/workflows/windows-pipe-verify.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-pipe-verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: core/daemon/native-win
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo test (lib.rs's host-independent verdict logic)
+        run: cargo test --verbose
+      - name: cargo build (the real Win32 binary)
+        run: cargo build --verbose
+      - name: The verifier passes against vyred's own pipe, and fails against someone else's
+        shell: pwsh
+        run: |
+          $env:VYRE_HOME = "$env:RUNNER_TEMP\vyre-home"
+          $env:VYRE_NO_DIALOGS = "1"
+          New-Item -ItemType Directory -Force -Path $env:VYRE_HOME | Out-Null
+          Push-Location "$env:GITHUB_WORKSPACE"
+          $proc = Start-Process -FilePath node -ArgumentList "core/daemon/main.js" -PassThru `
+            -RedirectStandardOutput "$env:RUNNER_TEMP\vyred.out" -RedirectStandardError "$env:RUNNER_TEMP\vyred.err" -WindowStyle Hidden
+          $sockPath = (node -e "import('./core/config/index.js').then(c => console.log(c.paths(process.env.VYRE_HOME).socket))").Trim()
+          $found = $false
+          for ($i = 0; $i -lt 100; $i++) { if (Test-Path $sockPath) { $found = $true; break }; Start-Sleep -Milliseconds 200 }
+          if (-not $found) {
+            Get-Content "$env:RUNNER_TEMP\vyred.out","$env:RUNNER_TEMP\vyred.err" -ErrorAction SilentlyContinue
+            throw "vyred did not create its socket"
+          }
+          $verify = "core/daemon/native-win/target/debug/vyre-pipe-verify.exe"
+          & $verify $sockPath
+          if ($LASTEXITCODE -ne 0) { throw "the verifier refused vyred's own pipe (exit $LASTEXITCODE); it should have passed" }
+          Write-Output "own pipe: verified ok"
+
+          # A pipe some OTHER *user's* process owns must be refused: same trick as
+          # windows-socket-acl's "a second local user cannot connect" (a genuinely different
+          # owning SID, not just a different pipe under the same account, which would legitimately
+          # verify as ok and prove nothing).
+          $otherSock = "\\.\pipe\vyre-pipe-verify-other-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+          $pw = "Vy" + [guid]::NewGuid().ToString("N").Substring(0, 9) + "!1"
+          net user vyrepipeverifytest "$pw" /add
+          try {
+            $sec = ConvertTo-SecureString $pw -AsPlainText -Force
+            $cred = New-Object System.Management.Automation.PSCredential("vyrepipeverifytest", $sec)
+            $other = Start-Process -FilePath node -ArgumentList "-e", "require('net').createServer().listen('$otherSock',()=>{})" `
+              -Credential $cred -PassThru -WindowStyle Hidden -WorkingDirectory "$env:GITHUB_WORKSPACE"
+            Start-Sleep -Milliseconds 800
+            & $verify $otherSock
+            $otherExit = $LASTEXITCODE
+            Stop-Process -Id $other.Id -Force -ErrorAction SilentlyContinue
+            if ($otherExit -eq 0) { throw "the verifier accepted a pipe owned by a different user; it must refuse" }
+            Write-Output "other user's pipe: refused as expected (exit $otherExit)"
+          } finally {
+            net user vyrepipeverifytest /delete
+          }
+
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
