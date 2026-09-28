@@ -185,6 +185,37 @@ test("projects: a marker edited by hand is followed; a folder added to it brings
   assert.equal(M.load(p.home).name, "Harlow Legal", "a write dropped a field it did not name");
 });
 
+test("projects: addWorkspace attaches an existing folder once, and a folder that is the home itself is a no-op (Vyre Drive step 4)", async t => {
+  const w = world(t);
+  const p = w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site") });
+  const intake = path.join(w.work, "harlow-intake");
+  fs.mkdirSync(intake, { recursive: true });
+  w.events.length = 0;
+  const r = w.P.addWorkspace(p.slug, intake);
+  assert.equal(r.added, "../harlow-intake");
+  // .workspaces is loaded, home-prefixed and absolute (markers.js's own load() shape); "added" is
+  // the relative form, the same shape create()'s own workspaces takes.
+  assert.deepEqual(r.workspaces, [p.home, fs.realpathSync(intake)]);
+  assert.deepEqual(w.events.filter(e => e.type === "project.changed").map(e => e.fields), [["workspaces"]]);
+  // The folder now brings its sessions, the same as one listed at create time.
+  const again = w.P.resolve(p.slug);
+  assert.ok(w.P.threadsOf(again).some(x => x.id === ID.intake && x.how.includes("folder")));
+
+  // Adding the same folder again is a no-op, not a duplicate.
+  w.events.length = 0;
+  const r2 = w.P.addWorkspace(p.slug, intake);
+  assert.equal(r2.added, null);
+  assert.deepEqual(r2.workspaces, [p.home, fs.realpathSync(intake)]);
+  assert.equal(w.events.length, 0, "no project.changed for a no-op");
+
+  // The project's own home resolves to "." (M.relative), filtered out: nothing to add.
+  const r3 = w.P.addWorkspace(p.slug, p.home);
+  assert.equal(r3.added, null);
+  assert.deepEqual(r3.workspaces, [p.home, fs.realpathSync(intake)]);
+
+  assert.throws(() => w.P.addWorkspace("no-such-project", intake), /no project/);
+});
+
 test("projects: a project outside the roots is remembered; one under them is discovered; a removed marker ends it", async t => {
   const w = world(t);
   const away = path.join(w.root, "elsewhere", "harlow");

@@ -19,6 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { claudeHome } from "../config/index.js";
 import { scanText } from "./scrub.js";
+import { slugify, isProjectId } from "../../lib/project-id.js";
 
 const SAFE_NAME = /[^A-Za-z0-9._-]/g;
 const DEFAULT_QUOTA = 500 * 1024 * 1024;
@@ -69,6 +70,13 @@ export default {
       // outside this set is refused by sync.upload.plan and sync.upload.start both, whatever a
       // device sends.
       `ALTER TABLE sync_peers ADD COLUMN plan_included TEXT`,
+      // plan_folders: the person's confirmed folder-to-project mapping (Vyre Drive step 4), as a
+      // JSON array of { name, project }: name is one of sync.scan's own folder names, project the
+      // id confirmed at sync.consent time (sync.scan's own proposal, slugify(name), or whatever
+      // the person typed instead). finish() attaches the synced folder to that project (creating
+      // it first if the slug is new) the first time that folder's own first file actually lands,
+      // never at consent time itself (nothing to attach yet: no files have arrived).
+      `ALTER TABLE sync_peers ADD COLUMN plan_folders TEXT`,
     ]);
     const now = () => Date.now();
 
@@ -125,6 +133,39 @@ export default {
     const uploads = new Map();
     const sweepUploads = () => { for (const [id, u] of uploads) if (now() - u.at > UPLOAD_TTL) { try { fs.rmSync(u.tmp, { force: true }); } catch {} uploads.delete(id); } };
 
+    // Vyre Drive step 4: which (peer, folder name) pairs this boot has already tried to attach,
+    // so a big import's many files do not each redo the projects.list + create/add-workspace
+    // round trip. Not persisted: a restart just tries once more, harmless since both calls are
+    // idempotent.
+    const attachedFolders = new Set();
+    /**
+     * Attach a synced folder to its confirmed project the first time one of its files actually
+     * lands (never at consent time: nothing exists on disk yet to attach). Creates the project,
+     * home the folder itself, if the confirmed slug is new; otherwise attaches the folder to the
+     * existing project with projects.add-workspace, a no-op if it is already there. Never throws:
+     * a mapping problem is logged, not allowed to fail an upload that already landed.
+     * @param {any} peerRow @param {string} name
+     */
+    const attachMapped = async (peerRow, name) => {
+      if (!peerRow.plan_folders) return;
+      const key = `${peerRow.peer}:${name}`;
+      if (attachedFolders.has(key)) return;
+      let mapping;
+      try { mapping = JSON.parse(peerRow.plan_folders); } catch { mapping = null; }
+      const m = Array.isArray(mapping) ? mapping.find(f => f && f.name === name) : null;
+      if (!m || !isProjectId(m.project)) return;
+      attachedFolders.add(key);
+      try {
+        const folder = path.join(syncedRoot(peerRow.name, peerRow.peer), "projects", name);
+        const pr = await ctx.call("projects.list", {});
+        const exists = !pr.error && (Array.isArray(pr.data) ? pr.data : pr.data?.projects || []).some(p => p && p.slug === m.project);
+        const r = exists
+          ? await ctx.call("projects.add-workspace", { project: m.project, folder })
+          : await ctx.call("projects.create", { name: m.project, home: folder });
+        if (r.error) ctx.log(`sync: could not ${exists ? "attach" : "create"} ${m.project} for ${name}: ${r.error.message}`);
+      } catch (e) { ctx.log(`sync: folder-to-project attach failed for ${name}: ${/** @type {Error} */ (e).message}`); }
+    };
+
     // the user overruled the original design: unpairing, turning sync off, or losing a device
     // deletes NOTHING. What came from a device is the person's, not the device's. Both events
     // below only stop new uploads (sync_on off, or the peer gone so peerOf finds nothing) and say
@@ -138,27 +179,33 @@ export default {
     });
 
     ctx.tool("sync.consent", {
-      description: "Turn a paired peer's session import on or off, on the box's own record: never the device's say-so. Off only stops new uploads: nothing already sent is touched. sync.delete removes what a device sent, as its own action. planHash and included, when the surface reviewed a sync.scan plan with the person, are stored with the consent: sync.delete.import can later remove just that import by its planHash, and every project folder not in included is refused by sync.upload.plan and sync.upload.start, not merely left untagged. The picker's exclusions are enforced, not advisory.",
-      input: { type: "object", required: ["machine", "on"], properties: { machine: { type: "string" }, on: { type: "boolean" }, planHash: { type: "string" }, included: { type: "array", items: { type: "string" }, description: "Project folder names (sync.scan's own names) this plan lets in. Omitted or on: false: no restriction." } } },
+      description: "Turn a paired peer's session import on or off, on the box's own record: never the device's say-so. Off only stops new uploads: nothing already sent is touched. sync.delete removes what a device sent, as its own action. planHash and included, when the surface reviewed a sync.scan plan with the person, are stored with the consent: sync.delete.import can later remove just that import by its planHash, and every project folder not in included is refused by sync.upload.plan and sync.upload.start, not merely left untagged. The picker's exclusions are enforced, not advisory. folders (Vyre Drive step 4) is the person's confirmed folder-to-project mapping, sync.scan's own proposed slug or whatever they typed instead: the first file that lands for a mapped folder creates that project (if the slug is new) and attaches the folder with projects.add-workspace. A folder left out of folders is synced but attached to no project.",
+      input: { type: "object", required: ["machine", "on"], properties: { machine: { type: "string" }, on: { type: "boolean" }, planHash: { type: "string" },
+        included: { type: "array", items: { type: "string" }, description: "Project folder names (sync.scan's own names) this plan lets in. Omitted or on: false: no restriction." },
+        folders: { type: "array", items: { type: "object", required: ["name", "project"], properties: { name: { type: "string" }, project: { type: "string" } } }, description: "The confirmed folder-to-project mapping: name is one of sync.scan's own folder names, project the id to attach it to." } } },
       // The person's own surfaces only, never a module (e2e's review: "module" let any home
       // module turn a device's import on). No presence needed to turn it off (ADR 0024); import
       // itself is not a secret action either, so this stays plain person-only, not presence-gated.
       callers: ["cli", "local", "deck", "capsule"],
-      run: async ({ machine, on, planHash, included }) => {
+      run: async ({ machine, on, planHash, included, folders }) => {
         const peers = await ctx.call("link.peers", {});
         const row = (peers.data || []).find(p => p.id === machine || p.name === machine);
         if (!row) throw Object.assign(new Error(`no paired device named "${machine}"`), { code: "no_link" });
         syncRow(row.id, row.name);
-        // Turning it on always sets plan_hash and plan_included to whatever this call gave (or
-        // clears them, giving neither): a later approval without them must not leave an earlier
-        // plan's tag or restriction in place for new files to inherit silently (reviewer's LOW,
-        // and the same reasoning extended to included). Turning it off leaves both alone — it
-        // stops new uploads either way, so neither is anything a new file could be tagged or
-        // checked against.
+        // Turning it on always sets plan_hash, plan_included and plan_folders to whatever this
+        // call gave (or clears them, giving none): a later approval without them must not leave
+        // an earlier plan's tag, restriction or mapping in place for new files to inherit
+        // silently (reviewer's LOW, and the same reasoning extended to included and folders).
+        // Turning it off leaves all three alone — it stops new uploads either way, so none of
+        // them is anything a new file could be tagged, checked or mapped against.
         const includedJson = Array.isArray(included) ? JSON.stringify([...new Set(included.map(String))]) : null;
-        if (on) db.prepare("UPDATE sync_peers SET sync_on = 1, plan_hash = ?, plan_included = ? WHERE peer = ?").run(planHash ? String(planHash) : null, includedJson, row.id);
+        const foldersJson = Array.isArray(folders) && folders.length
+          ? JSON.stringify(folders.filter(f => f && typeof f.name === "string" && isProjectId(f.project)).map(f => ({ name: f.name, project: f.project })))
+          : null;
+        if (on) db.prepare("UPDATE sync_peers SET sync_on = 1, plan_hash = ?, plan_included = ?, plan_folders = ? WHERE peer = ?")
+          .run(planHash ? String(planHash) : null, includedJson, foldersJson, row.id);
         else { db.prepare("UPDATE sync_peers SET sync_on = 0 WHERE peer = ?").run(row.id); ctx.events.emit("sync.revoked", { machine: row.name }); }
-        return { machine: row.name, on: Boolean(on), ...(planHash ? { planHash: String(planHash) } : {}), ...(includedJson ? { included: JSON.parse(includedJson) } : {}) };
+        return { machine: row.name, on: Boolean(on), ...(planHash ? { planHash: String(planHash) } : {}), ...(includedJson ? { included: JSON.parse(includedJson) } : {}), ...(foldersJson ? { folders: JSON.parse(foldersJson) } : {}) };
       },
     });
 
@@ -367,6 +414,10 @@ export default {
           .run(peer.id, u.rel, gotHash, realBytes, now(), row.plan_hash || null);
         db.prepare("UPDATE sync_peers SET used_bytes = used_bytes + ? WHERE peer = ?").run(delta, peer.id);
         ctx.events.emit("sync.progress", { machine: peer.name, path: u.rel, done: true });
+        // Vyre Drive step 4: the folder this file landed in now has at least one real file in
+        // it, so this is the first point a mapped folder can actually be attached to a project.
+        const folderName = projectOf(u.rel);
+        if (folderName) await attachMapped(row, folderName);
         return { ok: true, path: u.rel };
       },
     });
@@ -439,7 +490,7 @@ function walkSize(dir, budget) {
 
 async function deviceSide(ctx) {
   ctx.tool("sync.scan", {
-    description: "What this device would offer to sync to the box (Vyre Drive's what-to-sync picker): every project folder under this device's own Claude Code folder (~/.claude/projects or CLAUDE_CONFIG_DIR/projects), each with its session-file count and total size, so the person sees what is there and can leave folders out before turning sync.consent on. Read-only: nothing is sent, nothing is opened, only sizes are read. planHash stands for the choice made here: pass it straight to sync.consent's own planHash, so an approved import is tied to what was actually reviewed, not a plan that silently drifted.",
+    description: "What this device would offer to sync to the box (Vyre Drive's what-to-sync picker): every project folder under this device's own Claude Code folder (~/.claude/projects or CLAUDE_CONFIG_DIR/projects), each with its session-file count and total size, so the person sees what is there and can leave folders out before turning sync.consent on. Read-only: nothing is sent, nothing is opened, only sizes are read. Each folder also carries `project`, a proposed project id (lib/project-id.js's slugify of the folder name) for Vyre Drive step 4's folder-to-project mapping: a suggestion only, the person confirms or edits it at sync.consent time; nothing here creates a project or attaches anything. planHash stands for the choice made here: pass it straight to sync.consent's own planHash, so an approved import is tied to what was actually reviewed, not a plan that silently drifted.",
     input: { type: "object", properties: { exclude: { type: "array", items: { type: "string" } } } },
     callers: ["cli", "local", "deck", "capsule"],
     run: async ({ exclude }) => {
@@ -454,13 +505,15 @@ async function deviceSide(ctx) {
         for (const e of entries) {
           if (!e.isDirectory()) continue;
           const { bytes, files } = walkSize(path.join(projDir, e.name), budget);
-          projects.push({ name: e.name, bytes, files, included: !excluded.has(e.name) });
+          projects.push({ name: e.name, bytes, files, included: !excluded.has(e.name), project: slugify(e.name) });
         }
       }
       projects.sort((a, b) => b.bytes - a.bytes);
       const total = projects.reduce((sum, p) => sum + (p.included ? p.bytes : 0), 0);
       // Only the included names, sorted: excluding a folder and excluding it again in a different
-      // order both land on the same plan; a different set of exclusions never does.
+      // order both land on the same plan; a different set of exclusions never does. The proposed
+      // project id never enters the hash: it is a suggestion, not part of what was approved
+      // (the person's actual mapping choice lives in sync.consent's own folders, confirmed there).
       const planHash = crypto.createHash("sha256")
         .update(JSON.stringify(projects.filter(p => p.included).map(p => p.name).sort()))
         .digest("hex");

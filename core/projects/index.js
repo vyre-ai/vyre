@@ -118,6 +118,12 @@ export default {
       input: { type: "object", required: ["project", "threads"], properties: { project: str, threads: strs } },
       run: async ({ project, threads }) => P.removeThreads(project, threads),
     });
+    ctx.tool("projects.add-workspace", {
+      description: "Attach an existing folder to an existing project as one of its workspaces (Vyre Drive step 4): the folder starts counting as the project's own, the same as one listed at projects.create time. For confirming sync.consent's proposed folder-to-project mapping, or attaching any other folder by hand. Person-only, instant, no presence: a placement decision, same weight as a pick. Refuses a project that does not exist; a folder that resolves to the project's own home is a no-op (added: null), not an error.",
+      input: { type: "object", required: ["project", "folder"], properties: { project: str, folder: str } },
+      callers: OWNER,
+      run: async ({ project, folder }) => P.addWorkspace(project, folder),
+    });
     ctx.tool("projects.catalog", {
       description: "Every session on this device for picking into projects, with its /rename name, first message, folder, last activity, projects, and live (a terminal has it open now). q searches names, first messages, folders and, through Recall, what was said.",
       input: { type: "object", properties: { q: str, limit: { type: "integer" }, human: { type: "boolean" }, machines } },

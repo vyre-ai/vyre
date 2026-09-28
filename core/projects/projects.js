@@ -175,6 +175,33 @@ export class Projects {
   }
 
   /**
+   * Attach an existing folder to an existing project as one of its workspaces (Vyre Drive step
+   * 4): the folder starts counting as the project's own, the same as one listed at create()
+   * time. Person-only (core/presence PERSON_ONLY), the same weight a pick carries: attaching a
+   * folder to a project is a placement decision. Mirrors create()'s own workspaces handling
+   * exactly (sessions' review of this shape, 2026-09-28): M.relative drops the home folder
+   * itself (relative() turns it into "."), and an already-listed folder is left alone rather
+   * than duplicated, the same as addThreads dedupes against p.threads.
+   */
+  addWorkspace(ref, folder) {
+    this.refresh();
+    const p = this.resolve(ref);
+    const rel = M.relative(p.home, [folder]).filter(w => w !== ".");
+    if (!rel.length) return { project: p.slug, added: null, workspaces: p.workspaces }; // the folder IS the project's home
+    const [add] = rel;
+    // p.workspaces (loaded) is absolute and home-prefixed; the marker stores relative paths
+    // without the home, the same shape create() writes. existing strips the load()-added home
+    // (always index 0) and re-derives the relative list, so this never writes p.workspaces'
+    // resolved form back onto disk.
+    const existing = M.relative(p.home, p.workspaces.slice(1));
+    if (existing.includes(add)) return { project: p.slug, added: null, workspaces: p.workspaces };
+    const next = /** @type {Project} */ (M.write(p.home, { workspaces: [...existing, add] }));
+    this.refresh();
+    this.emit("project.changed", { project: p.slug, fields: ["workspaces"] }, { project: p.slug });
+    return { project: p.slug, added: add, workspaces: next.workspaces };
+  }
+
+  /**
    * Remove picks. A thread that ran in one of the project's folders stays in it by folder; that
    * is a fact about where the work happened, not a choice, so it is reported rather than hidden.
    */

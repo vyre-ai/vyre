@@ -136,6 +136,17 @@ test("projects.access: grant is HUMAN_ONLY (needs the owner's presence), revoke 
   assert.ok(!HUMAN_ONLY.has("projects.access.revoke"));
 });
 
+test("projects.add-workspace: person-only, instant, and calls through to Projects.addWorkspace (Vyre Drive step 4)", async t => {
+  assert.ok(PERSON_ONLY.has("projects.add-workspace"), "a placement decision, no presence needed");
+  assert.ok(!HUMAN_ONLY.has("projects.add-workspace"));
+  const w = await started(t);
+  const intake = path.join(w.root, "alex", "Work", "harlow-intake");
+  fs.mkdirSync(intake, { recursive: true });
+  const r = await w.call("projects.add-workspace", { project: "harlow-legal", folder: intake }, { caller: "cli" });
+  assert.equal(r.added, "../harlow-intake");
+  await assert.rejects(w.call("projects.add-workspace", { project: "no-such-project", folder: intake }, { caller: "cli" }), /no project/);
+});
+
 test("projects.access: auto-seeds from agents.projects on start, no manual step needed (reviewer's MEDIUM 2 on 656b3f79)", async t => {
   const w = await started(t, { agents: [
     { name: "kit", kind: "agent", projects: ["harlow-legal"] },
