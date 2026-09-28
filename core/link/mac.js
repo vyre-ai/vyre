@@ -34,6 +34,7 @@ import { gatedAsk } from "../modules/federate.js";
 import { HUMAN_ONLY, PERSON_ONLY, inputHash } from "../presence/index.js";
 import * as enclave from "./se/index.js";
 import { signed } from "../presence/person.js";
+import { agentClaim, callerKind } from "../modules/index.js";
 
 /** The callers that are the person on this Mac: its terminal, the Capsule, its own screens. */
 const PEOPLE = new Set(["cli", "local", "capsule", "deck"]);
@@ -127,8 +128,17 @@ export function macSide(ctx, seam = {}) {
   }
 
   /** A box tool for a module or a surface on the Mac. Fails fast while the box is known to be away. */
-  /** The kind of a caller label: "cli", "module", "mcp" ... */
-  const kindOf = caller => String(caller || "").startsWith("module:") ? "module" : String(caller || "").split(/[\s:]/)[0];
+  /**
+   * Whether a caller is the person on this Mac: one of PEOPLE, and no agent or thread riding it.
+   * The first word alone is not enough: "cli:agent:kit" is an agent inside the person's CLI, not
+   * the person (lib/caller.js isPerson's rule: the agent claim is checked first). A thread label
+   * is a model's session (ADR 0030), refused the same way.
+   */
+  const isPerson = caller => {
+    const c = String(caller || "");
+    if (agentClaim(c) !== null || /(?:^|[\s:])thread:/.test(c)) return false;
+    return PEOPLE.has(callerKind(c));
+  };
 
   /** A person session's headers for one request: the token and a fresh signature over it. */
   function personHeaders(person, pathname, body) {
@@ -152,7 +162,7 @@ export function macSide(ctx, seam = {}) {
     const human = HUMAN_ONLY.has(String(tool));
     if (human || PERSON_ONLY.has(String(tool))) {
       const person = saved.person;
-      if (!person || !PEOPLE.has(kindOf(caller))) {
+      if (!person || !isPerson(caller)) {
         return { error: { code: "person_session_required", message: `${tool} is the person's own action on the box: sign this Mac in first (vyre link signin), or do it in the Deck, the Capsule or the phone` } };
       }
       extra = personHeaders(person, "/v1/tools/" + encodeURIComponent(tool), input);
