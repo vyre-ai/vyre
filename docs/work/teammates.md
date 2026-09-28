@@ -75,9 +75,14 @@ included, started answering "no such tool"), and `node --check` says nothing abo
 a runtime manifest-validation rule, not a syntax error. Found by booting a real daemon with
 logging on and diffing `discover()`'s `problems` directly. Renamed to `team.project-has-any` /
 `team.project-append` / `teammate.default-changed`; fixed. 42/42 team tests green (3 new), 5/5
-boundaries, `npm run docs:ref` regenerated. `test/docs-check.test.js`'s em-dash/section-sign check
-on `reference/tools.md` fails on **main already** (confirmed with `git stash`), pre-existing and
-not touched here, flagged to the lead rather than fixed on this branch.
+boundaries, `npm run docs:ref` regenerated. **Correction, own error**: I told the lead and
+cohesion the em-dash-in-a-tool-description failure was pre-existing on main; `git stash` only
+went back to work/teammates dd6e15b5, not to main, so it was mine to begin with, `team.merge`'s
+own description, introduced at c0ec7600 (slice B), never on main/pre-rc/stage. Fixed at fd34fd06,
+along with docs/design/teammates.md itself (never run through docs-check before this: 21 em
+dashes, 3 stale mentions, a bad status value, a missing OWNERS entry, missing from nav.json).
+61/61 across team/boundaries/docs-check. Told cohesion the real source; sorry for the wasted
+lookup.
 
 **app-design ruling (2026-09-28), lead confirmed it stands: rewrote section 3.** Turned down the
 role-hashed accent colour I'd proposed (disc/border/dot/ANSI square) — the product's colour
