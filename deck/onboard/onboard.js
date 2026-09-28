@@ -76,6 +76,10 @@ function say(/** @type {string} */ text) {
 /** The bar's last width, so moving to the next step grows it from where it was. */
 let lastPct = 0;
 let lastStep = -1;
+/** A step just marked "done" for real (not skipped), so the next render() can give it a quick,
+ * silent pop: consumed once, then cleared, so a later poll-driven re-render of the same screen
+ * does not replay it. Never delays navigation: it only decorates whatever renders next. */
+let justDone = null;
 
 async function boot() {
   // loopback (before an owner exists) serves only /onboard and the onboard.* tools; system.info
@@ -103,12 +107,17 @@ async function mark_(id, s) {
   state.status ||= { steps: {} };
   state.status.steps ||= {};
   state.status.steps[id] = s;
+  if (s === "done") justDone = id;
   if (s === "skipped") await attempt("onboard.skip", { step: id });
 }
 
 function render() {
   for (const f of cleanup) f();
   cleanup = [];
+  // Consumed once: a later re-render of the same screen (a status poll, devices' refresh()) must
+  // not replay the pop. Decorative only, so it's fine to skip outright under reduced motion.
+  const justId = calm() ? null : justDone;
+  justDone = null;
   const i = current();
   const step = STEPS[i];
   const col = h("div", { class: "ob-col" });
@@ -134,14 +143,14 @@ function render() {
       h("span", { class: "brand", "aria-label": "vyre" }, mark(20), wordmark(22)),
       h("span", { class: "where" }, "Setting up ", h("b", null, state.host))),
     h("div", { class: "ob-dots", "aria-hidden": "true" }, STEPS.map((s, j) =>
-      h("span", { class: j === i ? "now" : stepState(s.id) !== "todo" ? "done" : "" }))),
+      h("span", { class: (j === i ? "now" : stepState(s.id) !== "todo" ? "done" : "") + (s.id === justId ? " pop" : "") }))),
     h("div", { class: "ob-body" },
       h("nav", { class: "ob-steps", "aria-label": "Setup steps" },
         h("div", { class: "lbl" }, "Setup"),
         h("ol", null, STEPS.map((s, j) => {
           const st = stepState(s.id);
           return h("li", null, h("a", { class: "ob-step" + (st === "done" ? " done" : ""), href: "#" + s.id, "aria-current": j === i ? "step" : false },
-            h("span", { class: "n" }, st === "done" ? icon("check", 12) : String(j + 1)),
+            h("span", { class: "n" + (s.id === justId ? " pop" : "") }, st === "done" ? icon("check", 12) : String(j + 1)),
             h("span", { class: "t" }, h("span", null, s.title), st !== "todo" ? h("span", null, st === "done" ? "Done" : "Skipped") : null)));
         })),
         h("div", { class: "foot" }, "Skip anything you like. Every step can be finished later from Settings, or with a vyre command.")),
@@ -273,6 +282,12 @@ function progressRow(label, st, note, since) {
 }
 
 const NAME_RE = /^[a-z][a-z0-9-]{1,30}[a-z0-9]$/;
+
+/** "X", "X and Y", "X, Y and Z". */
+function andJoin(/** @type {string[]} */ words) {
+  if (words.length < 2) return words[0] || "";
+  return words.length === 2 ? words.join(" and ") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
 
 /** @type {Record<string, (col: HTMLElement, s: any) => void>} */
 const SCREENS = {
@@ -1032,6 +1047,18 @@ function showEnding(d) {
       : "Each agent gets a Chrome and a desktop of its own." }] : []),
   ];
   put(ticks, rows.map(t => progressRow(t.label, t.done ? "done" : "todo", t.note)));
+  // One warm line for the still-stub steps (the lead, 29 Sep): no guilt, no itemized list of
+  // what's missing, just naming what's ready whenever they want it. Named regardless of whether
+  // the person clicked Continue or Skip for now on them: neither saves anything real yet, so
+  // both mean the same thing here. Left off entirely once a step gets a real onboard.* tool
+  // (drops out of STUB_STEPS below), and off the list the moment none of the three remain.
+  const notReady = Object.entries({ secrets: "secrets", accounts: "accounts", drive: "Drive" })
+    .filter(([id]) => stepState(id) !== "todo").map(([, label]) => label);
+  const joined = andJoin(notReady);
+  const notReadyLine = notReady.length
+    ? h("p", { class: "small muted", style: { marginTop: "12px" } },
+        `${joined.charAt(0).toUpperCase()}${joined.slice(1)} ${notReady.length === 1 ? "is" : "are"} ready when you are: Settings.`)
+    : null;
   // The passkey detour already happened earlier, at the address step (onboard.finish only hands
   // back passkeyUrl to the loopback session, which is gone by now); this is a defensive fallback,
   // not the usual path.
@@ -1044,7 +1071,7 @@ function showEnding(d) {
     h("div", { class: "lbl" }, "Vyre is ready"),
     title,
     greet,
-    h("div", { class: "ob-panel" }, h("div", { class: "lbl" }, "What's next"), ticks),
+    h("div", { class: "ob-panel" }, h("div", { class: "lbl" }, "What's next"), ticks, notReadyLine),
     h("a", { class: "btn btn-primary ob-end-open", href: open }, d.passkeyUrl ? "Add a passkey" : "Open Vyre"),
     d.passkeyUrl ? h("p", { class: "small faint", style: { marginTop: "10px" } }, h("a", { class: "link", href: home + "/now" }, "Skip for now")) : null));
   // The button the person pressed is gone: focus goes to the heading, and the live region says it.

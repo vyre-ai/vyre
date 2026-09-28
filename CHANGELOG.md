@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A per-step celebration, and a warm line for the still-stub steps
+
+- Onboarding now gives a step a quick, silent pop (480ms, CSS only, `@keyframes obPop`) the moment
+  it is marked done for real: the sidebar's checkmark and the mobile step dots both get it, gated
+  off entirely under `prefers-reduced-motion` (checked in JS before the class is ever added, plus
+  a CSS media-query backstop). It never delays navigation: `next()` still marks the step and
+  moves on exactly as before; the pop only decorates whatever renders next, consumed once via a
+  module-level `justDone` flag so a later poll-driven re-render of the same screen doesn't replay
+  it. The ending screen already had its own small easter egg (`endMark()`'s signal-dot burst plus
+  the "already taking notes" hover line, from ADR 0008); left as-is.
+- The ending screen's "What's next" panel gets one more warm line when secrets, accounts and/or
+  Vyre Drive are still stubs: "Secrets, accounts and Drive are ready when you are: Settings." (or
+  whichever subset remain, correctly cased and pluralized via a small `andJoin()` helper). No
+  itemized list of what's missing, and it doesn't matter whether the person clicked Continue or
+  Skip for now on those steps: neither saves anything real yet, so both read the same way here.
+  Drops out entirely, id by id, once a step gets a real onboard.* tool.
+
 #### The ending screen shows the Agent computers choice
 
 - The "What's next" ticks on the final onboarding screen (showEnding()) now include a fourth row,

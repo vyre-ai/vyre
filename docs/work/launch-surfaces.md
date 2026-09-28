@@ -247,14 +247,17 @@ Resumed after the restart (28 Sep), reading RULES.md/HANDOFF.md fresh:
 ## Next
 
 - Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
-- Started on the step-shell's final summary: showEnding()'s "What's next" ticks gained a fourth
-  row for the Agent computers choice (9d4103f0). No longer premature now that 11 of 11 steps
-  exist; still owed: a per-step celebration (none exists at all yet, just a bare transition), and
-  deciding whether secrets/accounts/drive deserve a "not built yet" note somewhere in the ending
-  summary once they're skipped, rather than silently vanishing from it.
+- Step-shell's final summary, per the lead (build both, 29 Sep): showEnding()'s "What's next"
+  ticks gained a fourth row for the Agent computers choice (9d4103f0); a per-step celebration
+  landed (a 480ms CSS pop on the just-completed step's checkmark/dot, reduced-motion-gated,
+  non-blocking); and a warm one-line note for still-stub steps ("Secrets, accounts and Drive are
+  ready when you are: Settings.", correctly cased/pluralized for whichever subset remain). The
+  ending screen's existing easter egg (endMark()'s burst) was already there from ADR 0008, left
+  untouched.
 - Coordinate with tailnet once it replies about steps 1-2 and install-box.sh.
 - Once vault/federation send real tool shapes for secrets/drive, replace the inert previews with
-  working forms.
+  working forms, and drop that id from showEnding()'s stub-steps dict so the warm line stops
+  naming it.
 
 ## Needs from others
 
