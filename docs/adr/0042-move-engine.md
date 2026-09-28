@@ -73,24 +73,33 @@ identity the same way, from its own copy of the same pairing record. A move is r
 declined, if either side cannot confirm the other from a pinned record rather than the network's
 say-so.
 
-### 3. The destination must consent to receive (reviewer's HIGH 2)
+### 3. The destination must consent to receive (reviewer's HIGH 2, team-lead's headless-server note)
 
 As drafted before this revision, anything that could reach the destination's move endpoint could
 push data into it - planting memory, secrets or sessions with nothing on the receiving end ever
-having agreed to accept them. Fixed: **the destination accepts a move only for a token minted on
-itself, by a person present at it.**
+having agreed to accept them. The first fix (a token minted **on the destination**) assumed a
+person could walk up to it and mint one; the destination is very often a headless server with no
+screen anyone is standing in front of. Fixed the way ADR 0021 already answers this exact shape of
+problem for a Mac's own asks (a paired device answers something the machine that needs an answer
+cannot ask for itself): **the destination raises the question, and any of the owner's already-
+paired devices answers it, with presence, from wherever they are.**
 
-- `move.receive.open { }` (HUMAN_ONLY, run **on the destination**): mints a one-time receive token,
-  short-lived (minutes, not the plan's own longer window), shown as a code or QR the person carries
-  to the source (the same shape a pairing code already takes, ADR 0026). Nothing is accepted before
-  this has been minted.
-- `move.start { planId, receiveToken }` (run **on the source**, HUMAN_ONLY): the token proves a
-  person at the destination is expecting this specific source (bound to the source's own pinned
-  identity from section 2, not just "some move"). The destination's endpoint verifies the token,
-  the source's pinned identity, and the `moveId` together before accepting the first chunk of any
-  piece; a token is consumed on first successful bind and cannot authorize a second, later attempt.
-- Without a live receive token, the destination's move endpoint refuses every write outright, the
-  same "not available" shape the rest of Vyre uses for a refusal that must not leak why.
+- `move.start { planId }` (run **on the source**, HUMAN_ONLY): once the destination's mutual
+  identity check (section 2) passes, the destination raises `move.receive.ask { moveId, source:
+  { name, fingerprint } }` instead of accepting anything yet. `move.start` itself answers
+  `{ stage: "awaiting_receive" }` - no piece begins copying.
+- The ask reaches the owner's paired devices the way any other "needs you" moment does (push,
+  ADR 0011): the phone or the Capsule shows "Receive a move from `<name>` (`<fingerprint>`)?",
+  never requiring anyone at the destination's own screen.
+- `move.receive.answer { ask, decision }` (HUMAN_ONLY, from **any of the owner's paired devices**,
+  not necessarily the destination): a yes checked with presence on that device is what the
+  destination accepts as consent, bound to this one `moveId` and the source's pinned fingerprint
+  from section 2 - a decision on one ask never carries over to a later, different move, even from
+  the same source. Only after a "yes" does the destination begin accepting the first chunk of any
+  piece; a "no", or the ask expiring unanswered, refuses the move outright.
+- Without a live, answered `yes` for this exact `moveId`, the destination's move endpoint refuses
+  every write outright, the same "not available" shape the rest of Vyre uses for a refusal that
+  must not leak why.
 
 ### 4. What the vault piece actually carries (reviewer's HIGH 3)
 
@@ -172,17 +181,19 @@ the vault's separate `remade`/`pending_grants` lists (section 4), and a `planId`
 four pieces' current state, so a stale plan can never be started against (constraint 3). No write,
 nothing moved, nothing on the source touched.
 
-`move.receive.open { }` (HUMAN_ONLY, on the destination): mints the one-time receive token, section
-3. Nothing else in this ADR accepts a write without one.
+`move.start { planId }` (HUMAN_ONLY, on the source): checks the destination's mutual pinned-identity
+(section 2), then raises `move.receive.ask` on it rather than sending anything yet (section 3).
+Returns a `moveId` and `{ stage: "awaiting_receive" }`. Refuses a stale `planId` (the source changed
+since the plan) or a destination that fails the mutual identity check, rather than starting
+against a wrong count or an unproven machine.
 
-`move.start { planId, receiveToken }` (HUMAN_ONLY, on the source): begins copying to the
-destination over the tailnet connection from section 5, piece by piece, source untouched and fully
-itself for the whole run (constraint 1). Returns a `moveId`. Refuses a stale `planId` (the source
-changed since the plan), a missing or already-used `receiveToken`, or a destination that fails the
-mutual pinned-identity check, rather than starting against a wrong count or an unconsenting machine.
+`move.receive.answer { ask, decision }` (HUMAN_ONLY, from any of the owner's paired devices):
+section 3's consent. A `yes` checked with presence unlocks this one `moveId` for this one source's
+pinned fingerprint; copying begins only after it. A `no`, or the ask expiring unanswered, ends the
+move at `stage: "failed"` with a plain reason, nothing sent.
 
-`move.status { moveId }` (owner-only, reviewer's LOW): `{ stage:
-"copying"|"verifying"|"ready"|"confirmed"|"failed", pieces: { projects: { bytes, of, done, error },
+`move.status { moveId }` (owner-only, reviewer's LOW): `{ stage: "awaiting_receive"|"copying"|
+"verifying"|"ready"|"confirmed"|"failed", pieces: { projects: { bytes, of, done, error },
 memory: {...}, vault: { moved, of, done, error, remade: [...], pending_grants: [...] },
 sessions: {...} } }`. Resumable: a status check after a restart of either machine picks up where
 copying left off, never re-starts a finished piece (or an item secret already verified present).
@@ -208,9 +219,11 @@ new machine looked fine, then found a gap a day later, must still have the old o
 
 ### 8. Events
 
-`move.progress { moveId, piece, bytes, of }` (throttled, not per chunk), `move.piece.done
-{ moveId, piece }`, `move.failed { moveId, piece, error }` (retried by a fresh `move.start`
-against the same `planId`, not a special recovery path), `move.confirmed { moveId }`,
+`move.receive.ask { moveId, source }` (raised on the destination, delivered by push to the owner's
+paired devices like any other "needs you" ask, ADR 0011), `move.receive.answered { moveId,
+decision }`, `move.progress { moveId, piece, bytes, of }` (throttled, not per chunk),
+`move.piece.done { moveId, piece }`, `move.failed { moveId, piece, error }` (retried by a fresh
+`move.start` against the same `planId`, not a special recovery path), `move.confirmed { moveId }`,
 `move.freed { moveId }`.
 
 ### 9. Checksums, not trust
@@ -240,13 +253,16 @@ cross-piece ordering needed except the final confirm gate, and now the free gate
   yet, or not provably the owner's own", rather than this engine growing its own identity path.
 - vyre-core (ADR 0040 phase 2): whoever owns the Mac's core process, for the vault export call the
   move engine's vault piece will need to make there instead of assuming vyred holds the vault.
+- push (ADR 0011): `move.receive.ask` is delivered the same way any other "needs you" moment is;
+  confirms a move-shaped ask fits its existing kinds, or needs a new one.
 
 ## Consequences
 
 A move never has a moment where a vault item secret sits decrypted anywhere but a live process's
 memory, on either side, and it never copies the trust that made the source's vault trustworthy in
 the first place - that trust is remade fresh on the destination, with the person's own eyes on
-every grant. A destination never receives anything it did not, itself, ask for. A person can walk
-away mid-copy, come back, and either resume or cancel with the source exactly as it was. Freeing
+every grant. A destination never receives anything the person did not consent to, from wherever
+they actually are - a headless server never needs someone standing in front of it. A person can
+walk away mid-copy, come back, and either resume or cancel with the source exactly as it was. Freeing
 the old machine's disk is never bundled into the same decision as trusting the new one, and it is
 checked live, not assumed, before it happens.
