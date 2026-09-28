@@ -534,3 +534,30 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   of the ground, rather than deepening the gradients (which would have killed the soft/luminous
   look) or leaving every caller to patch around it individually. Re-swept lime/violet clean,
   re-exported all 3 assistant-*.svg to round4/svg/, told ui-ux to drop their workaround.
+
+## Now (28 Sep, round 5: the "Vyre code", a scannable person avatar)
+
+- Lead's direction: the person avatar becomes a unique identifier, seeded from a stable public
+  identity (a public-key fingerprint, never a secret), with a scannable full form ("Vyre code")
+  like a Snapcode: the face at the centre, a ring of dots around it encoding ~64-96 bits plus a
+  checksum and Reed-Solomon, an orientation marker, our own scanner reads it, a plain QR is the
+  fallback. Deliver 2-3 visual ring styles (light/dark) plus a real encode/decode prototype and
+  its pass rate. Design and prototype only.
+- Built: `rs.js` (Reed-Solomon over GF(256), the QR/CD field), `payload.js` (8-byte id + CRC-8 +
+  9 RS parity bytes = 144 bits), `vyrecode.js` (rendering, 3 ring styles: dot/ring/tick, both
+  themes), `decode-core.js` (pixel sampling + rotation/scale search, shared between a Node
+  self-test and real in-browser decode), `harness.js` (renders, degrades with real CSS in real
+  Chrome - blur/rotate/scale/perspective/noise -, screenshots, reloads into a fresh canvas, reads
+  real getImageData pixels, validates in Node).
+- Real result, not simulated: **14/17 degradation scenarios decoded correctly.** All 3 failures
+  are perspective (camera-tilt) cases specifically, since the search models rotation+uniform
+  scale, not a true homography - a known, scoped next step, not an unexplained gap.
+- Found and fixed 3 real bugs while building this (all in NOTES.md, not glossed over): the RS
+  decoder had an array-index-vs-field-exponent bug that failed every correctable-error test
+  (fixed, fuzz-verified 100/100 through 4 byte errors); a fixed light/dark threshold silently read
+  every bit backwards on the dark theme (fixed: try both polarities, let RS decide); and the
+  subtlest one, rotating by an exact multiple of the dot spacing samples the identical pixels just
+  relabelled, so 36 rotations tie in confidence by construction, and a top-K cutoff was discarding
+  the correct one at random, which alone explained a batch of "random"-looking rotation failures.
+- Sent to the lead (msg_id e8a49bfa) with full write-up in round5/NOTES.md. Nothing wired into
+  product code.
