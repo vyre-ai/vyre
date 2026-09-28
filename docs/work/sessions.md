@@ -286,6 +286,20 @@ Then the compile phase: tests for every piece, docs, polish.
 Testing the SDK driver on testbox: VYRE_SESSIONS_SDK_DIR=~/vyre-ci/sessions-sdk (0.3.283, with
 optional deps; without them the tests silently run on the CLI).
 
+## Doing (github, ADR 0041)
+- github asked for gitWithAskpass in lib/git-safe.js and a session start/cleanup hook for their
+  worktree feature. lib/git-safe.js does not exist on this branch (merge-base a3a844e4, 196 commits
+  behind main; git-safe.js landed after that) and a clean isolated cherry-pick isn't possible either
+  (e5944433 depends on vault's later kinds.js/defaultField refactor, also not here). Told them: add
+  it fresh as a new file, self-contained, and the integrator reconciles at the stage/0.1.1 fold; a
+  full main merge is too large to do safely mid-session (196 commits, real overlap in switchboard/
+  harness/planner - files I've been actively editing for reviewer holds this session).
+  Also corrected their hook design against real names: `thread.started` exists; there is no
+  "archived" thread event or a project-change event at all (projects.add-threads/remove-threads
+  emit nothing today) - waiting to hear which real status (finished/stopped/paused) they actually
+  want cleanup on, and whether the missing project-change event is a real blocker for them (I'd add
+  it if so). Sent, not blocking either side.
+
 ## Needs from others
 - integrator: one full-suite run with `VYRE_SESSIONS_DRIVER=sdk VYRE_SESSIONS_SDK_DIR=<dir with SDK 0.3.283>`.
 - box: pre-install the SDK with its bundled binary in the image (`npm i --omit=dev
