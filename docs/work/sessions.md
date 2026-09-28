@@ -61,6 +61,22 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
 - Asked chat whether the Deck/phone already have an "Add to project" action for a project-less
   live session (tap the project chip); if not, chat builds it on `projects.add-threads`, which
   now works pre-index too.
+
+- Task 1, first fix: shipped `thread.status`, the canonical session-state vocabulary cohesion
+  flagged (three names for one state inside switchboard's own blast radius: internal "waiting"
+  means an ask is open, internal "idle" means ready-for-input, and the STATE map/CLI separately
+  relabel "working" to "running"). New pure lib `lib/thread-status.js`; switchboard emits
+  `thread.status` alongside the unchanged legacy `thread.state`; `threads.get`/`threads.list`
+  gain `canonical_status`. Also covers "failed" (its own emitRaw, was not in the old STATE map
+  at all) and "finished" (a clean stop, derived from stopped_reason). Tests: new
+  lib/thread-status.test.js, two assertions added to existing sessions.test.js turns (the ask
+  sequence and the failed-turn sequence), chat-sessions-contract still green (thread.status was
+  already listed there as a future event chat listens ahead of). Testbox: 98 pass / 0 fail
+  (switchboard + sessions + boundaries + lib), docs:ref regenerated, docs-*.test.js 60/61 (the one
+  failure, docs/design/projects-map.md nav/em-dash/stale-mention debt, predates this change - not
+  touched here, not caused by it). Sent to reviewer-2 (no auth/spawn/permissions surface
+  touched). queued (core/sessions/slots.js, pre-thread) deliberately not folded in; documented in
+  the lib.
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
@@ -93,6 +109,10 @@ optional deps; without them the tests silently run on the CLI).
   error); `threads.interrupt`; `busy` refusal on start; sessions.prompt.* for a settings screen.
 
 ## Changed contracts
+- New event `thread.status` {status: one of THREAD_STATUSES, ...turn}, emitted alongside the
+  unchanged legacy `thread.state` at every status change (module.json's watches.emits gains it).
+  `threads.get`/`threads.list` records gain `canonical_status`; the existing raw `status` field
+  is unchanged. New pure lib `lib/thread-status.js` (`THREAD_STATUSES`, `threadStatus`).
 - CLI `vyre pick <project> <thread>` (and `unpick`): a `<thread>` shaped like a Claude Code
   session id (UUID, optional `/agent-...` suffix) is now accepted even when Recall's catalogue
   has no row for it yet, instead of erroring "no thread matches". `projects.add-threads` itself

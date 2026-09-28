@@ -643,6 +643,10 @@ for (const driver of ["cli", "sdk"]) {
     // Every event of the turn says which turn; the state and usage are said.
     assert.ok(ev.filter(e => /^(thread\.(text|tool|finished|sent)|ask\.)/.test(e.type)).every(e => e.payload.turn === `${th.id}:1`));
     assert.deepEqual(ev.filter(e => e.type === "thread.state").map(e => e.payload.state), ["starting", "running", "waiting", "running", "idle"]);
+    // thread.status: the same five changes, in the one canonical vocabulary a person reads
+    // (lib/thread-status.js) - internal "waiting" (an ask is open) is "asking", "idle" is "waiting".
+    assert.deepEqual(ev.filter(e => e.type === "thread.status").map(e => e.payload.status),
+      ["starting", "working", "asking", "working", "waiting"]);
     assert.ok(ev.some(e => e.type === "thread.usage" && typeof e.payload.cost_usd === "number"));
     const text = ev.filter(e => e.type === "thread.text" && e.payload.done && !e.payload.notice);
     assert.ok(text.every(e => typeof e.payload.block === "number"), "done text carries its block");
@@ -805,6 +809,12 @@ for (const driver of ["cli", "sdk"]) {
     assert.match(failed.error, /broke on purpose/);
     assert.equal(states.at(-1).state, "idle", "and then it is idle, ready for the next message");
     assert.ok(states.filter(x => x.state === "running").every(x => x.turn === `${th.id}:1`), "state carries the turn");
+    // thread.status: the same "failed" of its own, in the canonical vocabulary.
+    const statuses = (await w.events(th.id)).filter(e => e.type === "thread.status").map(e => e.payload);
+    const failedStatus = statuses.find(x => x.status === "failed");
+    assert.ok(failedStatus, JSON.stringify(statuses));
+    assert.equal(failedStatus.turn, `${th.id}:1`);
+    assert.equal(statuses.at(-1).status, "waiting", "and then it is waiting, ready for the next message");
     await w.tool("threads.send", { thread: th.id, text: "bash npm test", surface: "deck" });
     await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
     await w.tool("threads.stop", { thread: th.id });

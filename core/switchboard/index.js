@@ -25,6 +25,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
+import { threadStatus } from "../../lib/thread-status.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
@@ -350,7 +351,10 @@ export class Switchboard {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM threads_runs WHERE id = ?").get(id));
     if (!r) return null;
     const holder = this.leases.holder(id);
-    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status, model: r.model, driver: r.driver || null,
+    // status stays the raw internal word (unchanged: existing callers compare it). canonical_status
+    // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
+    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
+      canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
       provider: r.provider || "claude", purpose: r.purpose || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
@@ -365,12 +369,17 @@ export class Switchboard {
   set(id, fields) {
     const keys = Object.keys(fields);
     this.db.prepare(`UPDATE threads_runs SET ${keys.map(k => `${k} = ?`).join(", ")}, last_at = ? WHERE id = ?`).run(...keys.map(k => fields[k]), Date.now(), id);
-    // thread.state, once per change: the working dot and "waiting on you" read it.
+    // thread.state (legacy words, kept for surfaces that already read it) and thread.status (the
+    // canonical vocabulary, lib/thread-status.js), once per change: the working dot and "waiting
+    // on you" read one of these.
     if (fields.status && this.states.get(id) !== fields.status) {
       this.states.set(id, fields.status);
-      const rec = /** @type {any} */ (this.db.prepare("SELECT project FROM threads_runs WHERE id = ?").get(id));
+      const rec = /** @type {any} */ (this.db.prepare("SELECT project, stopped_reason FROM threads_runs WHERE id = ?").get(id));
       const st = this.live.get(id);
-      this.emitRaw("thread.state", { state: STATE[fields.status] || fields.status, ...(st && st.turn ? { turn: st.turn } : {}) }, id, rec ? rec.project : null);
+      const turn = st && st.turn ? { turn: st.turn } : {};
+      this.emitRaw("thread.state", { state: STATE[fields.status] || fields.status, ...turn }, id, rec ? rec.project : null);
+      const reason = fields.status === "stopped" ? (fields.stopped_reason ?? (rec ? rec.stopped_reason : null)) : null;
+      this.emitRaw("thread.status", { status: threadStatus(fields.status, reason), ...turn }, id, rec ? rec.project : null);
     }
   }
 
@@ -746,6 +755,7 @@ export class Switchboard {
         // A failed turn is said as a state of its own, with its turn, before the thread goes idle.
         if (!e.payload.ok && !e.payload.canceled && !st.stopping) {
           this.emitRaw("thread.state", { state: "failed", turn: st.turn, error: e.payload.error || null }, id, project);
+          this.emitRaw("thread.status", { status: "failed", turn: st.turn, error: e.payload.error || null }, id, project);
           this.states.set(id, "failed");
         }
         if (this.asks.open(id).length === 0) this.set(id, { status: "idle" });

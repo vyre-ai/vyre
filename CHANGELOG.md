@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### thread.status: one canonical session-state vocabulary (cohesion finding, 2026-09-28)
+
+- lib/thread-status.js: pure `threadStatus(raw, reason)` mapping + `THREAD_STATUSES`. Internal
+  `status` (starting/working/waiting/idle/stopped) is Vyre's own bookkeeping; two of its five
+  words already meant something a person would not guess (internal "waiting" is only ever set
+  while an ask is open; internal "idle" is what a person calls "waiting"). cohesion found
+  core/harness checking the raw strings while switchboard's own STATE map and the CLI relabelled
+  "working" to "running" for people: three names for one state inside one blast radius.
+- core/switchboard now emits `thread.status` (canonical: starting, working, asking, waiting,
+  stopped, finished, failed) at the same choke point as the legacy `thread.state`, unchanged.
+  `threads.get`/`threads.list` records add `canonical_status` alongside the existing raw
+  `status`. test/chat-sessions-contract.test.js already listed `thread.status` as a future event
+  chat listens ahead of the server having it (0.1.0-rc.1's own note); it is real now.
+- queued (core/sessions/slots.js) is not folded in: it happens before a thread exists, keyed by
+  owner/kind, not by thread id. A surface combines slot.queued with thread.status once the
+  thread starts.
+
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at
