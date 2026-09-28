@@ -402,3 +402,32 @@ way) or genuinely cost the real MODULE_STOP_MS every run. Also added { timeout: 
 settings.test.js tests that start a real daemon, so a hang anywhere else in this path fails loudly
 under a minute rather than tying up CI forever. testbox: modules+settings+boundaries+hygiene
 70/70, docs:ref clean. Sent to reviewer-2 and the integrator.
+
+## lib/caller.js — the one isPerson/isAgent/agentName/isOwnerDevice
+
+Built to stop the recurring bug the reviewer keeps catching (latest: sessions' goals, bb3b9b4e):
+"no agent name means the person" admits a bare model session, the harness, a guest and a hook.
+Composes core/modules (agentClaim, ownerDevice, callerKind) and core/presence (PERSON_SURFACES),
+both kernel, rather than re-deriving their regexes. isPerson checks the agent claim FIRST -- a
+caller shaped "cli:agent:kit" reads its own callerKind as "cli" (PERSON_SURFACES would otherwise
+wrongly admit it), the same transport-spoofing shape e2e already fixed for agentClaim's other
+callers.
+
+Needed personguard in this tree first: cherry-picked b3b7b1dc + 002e6577 from origin/main
+(already landed, reviewer-cleared) rather than a full 185-commit main merge -- one CHANGELOG.md
+conflict resolved by hand.
+
+Full audit (a forked agent, core/ and local/ only, no edits): two REAL backwards bugs found --
+core/mcp/hub.js's whoFrom() strips the agent: suffix before checking PEOPLE.includes(kind), so
+"cli:agent:kit" reads as person AND agent at once; core/link/mac.js's kindOf() does the same
+split-and-check shape. Everything else found is either a different concept (tool-level personOnly
+declarations, labeling) or correct-but-duplicated (core/projects/glass/hooks/files-drive's own
+isAgent(), core/harness/rules.js's/core/modules/federate.js's/core/memory/index.js's own
+OWNER-equivalent sets -- federate.js's TAILNET_PERSON is narrower than isOwnerDevice, missing the
+relay-paired device: case). Sent the two real bugs and every correct-duplicate's exact line to
+the lead and to federation/memory-iq. Did not touch any other team's file.
+
+New hygiene test freezes today's known hand-rolled PERSON_SURFACES copies (allowlist only
+shrinks, boundaries.test.js's convention) -- a Set of exactly cli/local/deck/capsule outside
+lib/caller.js or core/presence/index.js. testbox: caller 8/8, hygiene 5/5, boundaries 5/5,
+docs:ref clean. Sent the helper to the reviewer.
