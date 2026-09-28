@@ -14,16 +14,16 @@
 // expires after `relay.web_expiry_days` without use. Its build is checked against the releases
 // this box knows and shown with every pairing notice.
 
-import fs from "node:fs";
-import path from "node:path";
 import crypto from "node:crypto";
 import * as config from "../config/index.js";
-import { keyPair } from "./noise.js";
-import { newRouteKey, routeId, base32 } from "./wire.js";
+import { routeId, base32 } from "./wire.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
 import { pairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
+import { loadKeys } from "./keys.js";
+
+export { loadKeys } from "./keys.js";
 
 export const DEFAULT_RELAY = "wss://relay.vyre.run";
 const PAIR_TTL = 10 * 60_000;
@@ -60,28 +60,6 @@ const sha = s => crypto.createHash("sha256").update(String(s)).digest();
 const str = { type: "string" };
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const fail = (code, message) => Object.assign(new Error(message), { code });
-
-/** The box's relay keys, made on first use. */
-export function loadKeys(root) {
-  const dir = path.join(root, "relay");
-  const file = path.join(dir, "keys.json");
-  try {
-    const k = JSON.parse(fs.readFileSync(file, "utf8"));
-    const box = keyPair(Buffer.from(k.box, "base64url"));
-    const routePriv = Buffer.from(k.route, "base64url");
-    const routePub = crypto.createPublicKey(crypto.createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), routePriv]), format: "der", type: "pkcs8" }))
-      .export({ format: "der", type: "spki" }).subarray(-32);
-    return { box, route: { priv: routePriv, pub: Buffer.from(routePub) } };
-  } catch (e) {
-    if (/** @type {any} */ (e).code !== "ENOENT") throw new Error(`relay keys unreadable (${file}): ${/** @type {Error} */ (e).message}`);
-  }
-  const box = keyPair(), route = newRouteKey();
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ v: 1, box: box.priv.toString("base64url"), route: route.priv.toString("base64url") }) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, file);
-  return { box, route };
-}
 
 /**
  * @type {{ start(ctx: any, seam?: { WebSocket?: any, now?: () => number, platform?: string }): Promise<{ stop(): Promise<void> }> }}
