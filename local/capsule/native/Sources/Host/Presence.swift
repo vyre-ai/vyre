@@ -176,6 +176,13 @@ public final class CapsulePresence {
     /// CapsulePin.swift's pinSelf(): the cdhash last successfully pinned with vyred, in memory
     /// only, so a reconnect for the same build never re-signs or re-asks Touch ID.
     var pinnedCdhash: String?
+    /// The cdhash vyred refused to pin (or the person declined), in memory for this process, so a
+    /// reconnect never asks Touch ID again for a pin that cannot or will not happen.
+    var pinRefused: String?
+    /// This process's own signature for pinSelf's preflight (a fake in tests).
+    var ownSignature: () -> CapsuleSignature? = { CapsulePresence.readOwnSignature() }
+    /// The proof pinSelf asks for; nil is proof(tool:input:summary:) (tests give a fake).
+    var pinProof: ((String, [String: Any], String) async -> Result<String, VyredFailure>)?
 
     struct Enrolled: Codable { var id: String; var publicKey: String }
 
