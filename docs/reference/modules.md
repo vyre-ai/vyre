@@ -30,6 +30,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`files`](#files) | `core/files` | `box`, `local` | 19 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 10 | 6 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
+| [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
 | [`hands`](#hands) | `local/hands-mac` | `local` | 5 | 3 | none |
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
@@ -44,9 +45,9 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 11 | 2 | none |
-| [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 6 | capsule, cli, deck |
+| [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 12 | 6 | capsule, cli, deck |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 16 | 5 | cli |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 19 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 11 | 4 | cli |
 | [`relay`](#relay) | `core/relay` | `box` | 13 | 5 | capsule, cli, deck |
@@ -65,7 +66,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 28 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 109 | 42 | capsule, cli, deck |
-| [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
+| [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
 
@@ -213,6 +214,17 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Emits: [8 events](events.md#glass)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## goals
+
+A goal and an ordered milestone list, attached to a session or a project. An agent may propose one; a person's tap (goals.accept) makes it real.
+
+- Folder: `core/goals`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [5](tools.md#goals)
+- Emits: [5 events](events.md#goals)
+- Shows on: capsule, cli, deck
 
 ## google
 
@@ -375,7 +387,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [15](tools.md#planner)
-- Emits: [6 events](events.md#planner)
+- Emits: [7 events](events.md#planner)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -394,7 +406,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/projects`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [16](tools.md#projects)
+- Tools: [19](tools.md#projects)
 - Emits: [5 events](events.md#projects)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -608,7 +620,7 @@ Push-to-talk for the Capsule: streams the mic to a speech provider and relays th
 - Folder: `local/voice`, version 0.1.0
 - Runs on: `local`
 - Requires: none
-- Tools: [3](tools.md#voice)
+- Tools: [4](tools.md#voice)
 - Emits: no events
 - Shows on: capsule
 - Streams: `listen`
