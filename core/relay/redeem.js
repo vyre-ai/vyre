@@ -10,15 +10,22 @@
 // Staying connected afterward is connect()'s job (relay/client/client.js), not wired in here yet
 // (docs/work/tailnet.md "Doing").
 
+import fs from "node:fs";
 import path from "node:path";
 import { pair } from "../../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
 
 /**
  * @param {string} url the pairing URL a box's relay.pair.start (or onboard.join{action:"relay"}) minted
- * @param {{ root: string, name?: string }} o
+ * @param {{ root: string, name?: string, tailnet?: boolean }} o
  */
-export async function redeem(url, { root, name }) {
+export async function redeem(url, { root, name, tailnet = false }) {
   const file = path.join(root, "relay-device", "key.json");
-  return pair(url, { crypto: nodeCrypto(), keyStore: fileKeyStore(file), name });
+  const paired = await pair(url, { crypto: nodeCrypto(), keyStore: fileKeyStore(file), name, tailnet });
+  // What connect() needs later (no secret in it), so the tailnet join (ADR 0046) can reach this
+  // box again after a restart. A new pairing replaces the old record whole.
+  const box = path.join(root, "relay-device", "box.json");
+  fs.writeFileSync(`${box}.tmp`, JSON.stringify({ relay: paired.relay, route: paired.route, box: paired.box, device: paired.device, name: paired.name }), { mode: 0o600 });
+  fs.renameSync(`${box}.tmp`, box);
+  return paired;
 }

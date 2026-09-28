@@ -69,8 +69,13 @@ export function names(deps) {
     return r && !r.error && r.data && typeof r.data.agent === "string" ? r.data.agent : null;
   });
   const agentNodes = () => (ctx.config.computers && ctx.config.computers.tailnet) || null;
+  // Which paired desktop a tag:vyre-device node was bound to (ADR 0046): the relay knows.
+  const deviceOf = deps.deviceOf || (async stableId => {
+    const r = await ctx.call("relay.devices.tailnet", { stableId });
+    return r && !r.error && r.data && typeof r.data.device === "string" ? r.data.device : null;
+  });
   const identify = identifier({ whois: ip => ts.whois(ip), selfIps: () => selfIps, selfId: () => selfId, owner: () => net().owner || null,
-    network: net, agentNodes, agentOf });
+    network: net, agentNodes, agentOf, deviceOf });
 
   async function tailscale() {
     const s = await ts.status();
@@ -195,7 +200,12 @@ export function names(deps) {
 
   let handle = null;
   /** Who a peer is to vyred's router. A guest and an agent's node never get the owner's caller. */
-  const callerOf = who => who.kind === "guest" ? `tailnet-guest:${who.login}` : who.kind === "agent" ? `tailnet:agent:${who.agent}` : `tailnet:${who.login}`;
+  const callerOf = who => who.kind === "guest" ? `tailnet-guest:${who.login}` : who.kind === "agent" ? `tailnet:agent:${who.agent}`
+    : who.kind === "device" ? `device:${who.device}` : `tailnet:${who.login}`;
+  /** The peer beside the caller. A bound desktop reads as it does over the relay (stableId is its device id), plus the transport. */
+  const peerOf = who => who.kind === "device"
+    ? { node: who.node, stableId: who.device, nodeId: who.stableId || null, login: null, tags: who.tags || [], caps: {}, kind: "device", via: "tailnet" }
+    : { node: who.node, stableId: who.stableId || null, login: who.login, tags: who.tags || [], caps: who.caps || {}, kind: who.kind, ...(who.kind === "agent" ? { agent: who.agent } : {}) };
 
   /**
    * GET /v1/whoami: the join flow's reachability probe. A device adding itself as a second
@@ -227,6 +237,7 @@ export function names(deps) {
     res.setHeader("strict-transport-security", HSTS);
     const url = new URL(req.url || "/", "https://vyred");
     const who = await identify(String(req.socket.remoteAddress || ""));
+    if (!who.ok && who.bindable && req.method === "POST" && url.pathname === "/v1/tailnet/bind") return bindNode(req, res, who);
     if (!who.ok) {
       if (!net().owner && who.login && req.method === "GET" && url.pathname === "/onboard/claim") {
         const h = sha(url.searchParams.get("c") || "");
@@ -273,9 +284,24 @@ export function names(deps) {
     // The peer rides beside the caller, for tools that bind to a device (link.pair); never in input or events.
     // A guest and an agent's node each get a caller class of their own, never the owner's; the
     // router limits a guest to its tools and wants an agent's key beside `tailnet:agent:<name>`.
-    const peer = { node: who.node, stableId: who.stableId || null, login: who.login, tags: who.tags || [], caps: who.caps || {},
-      kind: who.kind, ...(who.kind === "agent" ? { agent: who.agent } : {}) };
-    return handle(req, res, callerOf(who), peer);
+    return handle(req, res, callerOf(who), peerOf(who));
+  }
+
+  /**
+   * A new tag:vyre-device node presents the bind code its paired desktop got inside its own Noise
+   * channel with the key (ADR 0046 section 3, step 4). The node id is whois's, never the body's.
+   */
+  async function bindNode(req, res, who) {
+    const json = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+    if (!/^application\/json\b/.test(String(req.headers["content-type"] || ""))) return json(403, { error: { code: "denied", message: "cross-site request" } });
+    let raw = "";
+    for await (const chunk of req) { raw += chunk; if (raw.length > 2048) return json(413, { error: { code: "bad_input", message: "too large" } }); }
+    let body = null;
+    try { body = JSON.parse(raw); } catch {}
+    if (!body || typeof body.device !== "string" || typeof body.code !== "string") return json(400, { error: { code: "bad_input", message: "a bind needs the device id and its bind code" } });
+    const r = await ctx.call("relay.devices.bind", { stableId: String(who.stableId), node: String(who.node || ""), device: body.device, code: body.code });
+    if (r.error) { ctx.log(`names: refused a bind from ${who.node || "a node"}: ${r.error.message}`); return json(403, { error: { code: "denied", message: r.error.message } }); }
+    return json(200, { data: r.data });
   }
 
   /** Is this origin one of the hosted app's (network.origins, default HOSTED_ORIGINS)? */
@@ -325,7 +351,8 @@ export function names(deps) {
     if (!who.ok) { ctx.log(`names: refused a stream from ${who.node || "an address"}: ${who.why}`); return refuse(403, "Forbidden"); }
     // A stream is the owner's alone (the terminal, Glass's screen): a guest and an agent's node
     // get none, whatever tools they hold, as a tool that reaches the terminal would refuse them.
-    if (who.kind !== "owner") { ctx.log(`names: refused a stream from ${who.node || "a node"}: streams are the owner's (${who.kind})`); return refuse(403, "Forbidden"); }
+    // A bound desktop (ADR 0046) is the owner's own device, as it already is through the relay.
+    if (who.kind !== "owner" && who.kind !== "device") { ctx.log(`names: refused a stream from ${who.node || "a node"}: streams are the owner's (${who.kind})`); return refuse(403, "Forbidden"); }
     const host = String(req.headers.host || "").toLowerCase();
     const mine = [certName(), ...selfIps].filter(Boolean).map(h => String(h).toLowerCase());
     if (!mine.some(h => host === h || host === `${h}:${bound()}` || host === `[${h}]:${bound()}`)) return refuse(421, "Misdirected Request");

@@ -24,6 +24,7 @@ import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { agentClaim } from "../modules/index.js";
 import { loadKeys } from "./keys.js";
 import { redeem } from "./redeem.js";
+import { tailscaleApi, desktopJoin, pairedBox, MINT_ITEM, DEVICE_TAG, JOIN_PATH } from "./tailnet.js";
 
 export { loadKeys } from "./keys.js";
 
@@ -49,10 +50,23 @@ export const MIGRATIONS = [
    ALTER TABLE relay_devices ADD COLUMN last_path TEXT;
    ALTER TABLE relay_devices ADD COLUMN path_at INTEGER;
    ALTER TABLE relay_devices ADD COLUMN rtt INTEGER;`,
+  // ADR 0046: a pairing that asked to join the tailnet leaves a grant; a node bound from a tagged
+  // auth key is node_tagged, so revoke knows to delete it from the tailnet too.
+  `ALTER TABLE relay_devices ADD COLUMN join_grant INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE relay_devices ADD COLUMN join_mints INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE relay_devices ADD COLUMN join_last INTEGER;
+   ALTER TABLE relay_devices ADD COLUMN node_tagged INTEGER NOT NULL DEFAULT 0;`,
 ];
 /** A direct report counts as the device's path for this long; the app reports on every switch. */
 const DIRECT_FRESH = 10 * 60_000;
 const LINK_TTL = 5 * 60_000;
+/** A desktop gets a fresh key at most this often, and this many in all, per pairing. */
+const JOIN_GAP = 5 * 60_000;
+const JOIN_MAX = 5;
+/** How long the bind code handed out with a key stays good: the join plus a slow first connect. */
+const BIND_TTL = 15 * 60_000;
+/** How often the device list asks Tailscale which tagged nodes still exist. */
+const NODES_FRESH = 10 * 60_000;
 
 /** The id a device is known by: the first 16 base32 characters of sha256 of its static key. */
 export const deviceId = pub => base32(crypto.createHash("sha256").update(pub).digest()).slice(0, 16);
@@ -142,6 +156,58 @@ export default {
     /** @type {Map<string, Set<any>>} */
     const live = new Map();
 
+    // ---- the tailnet join (ADR 0046) ----
+
+    const ts = tailscaleApi({ credential: () => ctx.vault.fetch(MINT_ITEM) });
+    /** Bind codes handed out with a key, by device id: only inside that device's own channel. */
+    /** @type {Map<string, { hash: Buffer, exp: number }>} */
+    const binding = new Map();
+    const answer = (res, status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+    /**
+     * A paired desktop's tailnet key: single use, 5 minutes, tagged tag:vyre-device, minted only
+     * for a device whose own pairing asked for it, never on a Mac server before vyre-core. The
+     * bind code beside it is what later proves, over the tailnet, that the new node is this device.
+     * @param {string} id @param {any} res
+     */
+    async function tailnetKey(id, res) {
+      const refusal = macCoreRefusal(platform);
+      if (refusal) return answer(res, 403, { error: { code: refusal.code, message: refusal.message } });
+      const row = /** @type {any} */ (db.prepare("SELECT kind, join_grant, join_mints, join_last, node_id, node_tagged FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+      if (!row || row.kind !== "app" || !row.join_grant) return answer(res, 403, { error: { code: "denied", message: "this device's pairing did not ask to join the tailnet" } });
+      if (row.node_tagged && row.node_id) return answer(res, 409, { error: { code: "already_joined", message: "this device is already on the tailnet" } });
+      if (row.join_mints >= JOIN_MAX) return answer(res, 403, { error: { code: "denied", message: "too many tailnet keys for one pairing; pair this device again" } });
+      if (row.join_last && now() - row.join_last < JOIN_GAP) return answer(res, 429, { error: { code: "rate_limited", message: "a tailnet key was made for this device a moment ago; try again in a few minutes" } });
+      // The box's own tailnet address, as the names module saved it (network.address).
+      const address = ctx.config.network && typeof ctx.config.network.address === "string" && /^https:\/\/[^\s/]+$/.test(ctx.config.network.address) ? ctx.config.network.address : null;
+      if (!address) return answer(res, 409, { error: { code: "no_tailnet", message: "this box is not on a tailnet yet; the relay carries this device" } });
+      db.prepare("UPDATE relay_devices SET join_mints = join_mints + 1, join_last = ? WHERE id = ?").run(now(), id);
+      let minted;
+      try { minted = await ts.mintKey(id); }
+      catch (e) {
+        const code = /** @type {any} */ (e).code || "mint_failed";
+        ctx.log(`relay: no tailnet key for device ${id}: ${/** @type {Error} */ (e).message}`);
+        return answer(res, code === "not_set_up" ? 409 : 502, { error: { code, message: /** @type {Error} */ (e).message } });
+      }
+      const bindCode = crypto.randomBytes(16).toString("base64url");
+      binding.set(id, { hash: sha(bindCode), exp: now() + BIND_TTL });
+      ctx.log(`relay: minted a tailnet key for device ${id}`);
+      return answer(res, 200, { data: { authKey: minted.key, expiresAt: minted.expiresAt, bindCode, device: id, address, tag: DEVICE_TAG } });
+    }
+    /** Which tagged nodes Tailscale still has, asked at most every NODES_FRESH, off the list's path. */
+    let nodesAt = 0;
+    const pruneGoneNodes = () => {
+      const rows = /** @type {any[]} */ (db.prepare("SELECT id, node_id FROM relay_devices WHERE removed_at IS NULL AND node_tagged = 1 AND node_id IS NOT NULL").all());
+      if (!rows.length || now() - nodesAt < NODES_FRESH || macCoreRefusal(platform)) return;
+      nodesAt = now();
+      ts.nodeIds().then(ids => {
+        for (const r of rows) if (!ids.has(r.node_id)) {
+          // Deleted in the admin console, outside Vyre: the device stays paired, on the relay only.
+          db.prepare("UPDATE relay_devices SET node_id = NULL, node_name = NULL, node_tagged = 0 WHERE id = ?").run(r.id);
+          ctx.log(`relay: tailnet node ${r.node_id} is gone; device ${r.id} is relay-only now`);
+        }
+      }).catch(() => {});
+    };
+
     const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, node_id, node_name, last_path, path_at, rtt FROM relay_devices WHERE removed_at IS NULL ORDER BY paired_at").all());
     const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
@@ -191,6 +257,10 @@ export default {
         if (match.first && personExists()) throw new Error("this box already has a device; if that was not you, remove it from Settings, Devices");
         const name = promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64);
         const kind = hello.kind === "web" ? "web" : "app";
+        // A desktop asks to join the tailnet in its pairing hello (ADR 0046 section 3). The grant
+        // is what makes a later key possible at all, so it only ever comes from a pairing, which a
+        // present person started; a web device never gets one.
+        const grant = kind === "app" && hello.tailnet === "join" ? 1 : 0;
         const release = typeof hello.release === "string" && BUILD.test(hello.release) ? hello.release : null;
         const manifest = typeof hello.manifest === "string" && /^[a-f0-9]{64}$/.test(hello.manifest) ? hello.manifest : null;
         let presenceKey = null, presence = { enrolled: false, reason: "no presence key offered" };
@@ -200,10 +270,10 @@ export default {
           if (r && r.data && (r.data.keyId || r.data.id)) { presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" }; }
           else presence = { enrolled: false, reason: (r && r.error && r.error.message) || "presence would not enroll this key" };
         }
-        db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0)
+        db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL)
           ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL,
-            kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0`)
-          .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest);
+            kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL`)
+          .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant);
         // The pairing notice: every surface shows it with a one-tap removal (ADR 0026 section 6).
         // Carries the new device's own key fingerprint (reviewer, 28 Sep LOW) so the notice reads
         // the same short form ("a1b2 c3d4") as every other Touch ID / confirm screen that shows one.
@@ -233,7 +303,11 @@ export default {
       if (!webHandle) webHandle = ctx.handler({ tool: name => !WEB_DENY.test(name) });
       const limited = row.kind === "web" && !row.trusted;
       const peer = { node: row.name, stableId: id, login: null, tags: [], caps: {}, kind: "device", ...(row.kind === "web" ? { web: true } : {}) };
-      bridge(channel, { handler: limited ? webHandle : handle, caller: `device:${id}`, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m) });
+      const routed = limited ? webHandle : handle;
+      // The tailnet key is answered here, before vyred's router ever sees the request, so it is
+      // reachable only from inside this device's own Noise channel and never as a tool.
+      const handler = (req, res, caller, p) => (req.method === "POST" && req.url === JOIN_PATH ? tailnetKey(id, res) : routed(req, res, caller, p));
+      bridge(channel, { handler, caller: `device:${id}`, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m) });
       const set = live.get(id) || new Set();
       set.add(channel);
       live.set(id, set);
@@ -242,6 +316,18 @@ export default {
     }
 
     if (settings().enabled) startLink();
+
+    // This machine as a desktop of another box (ADR 0046): one join attempt at a time, once after
+    // pairing and once at each start until it has joined. Never on a Mac before vyre-core.
+    let joining = null;
+    const joinTailnet = () => {
+      if (joining || macCoreRefusal(platform) || !pairedBox(ctx.paths.root)) return;
+      joining = desktopJoin({ root: ctx.paths.root, hostname: String(ctx.config.name || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 63) || undefined, log: m => ctx.log(m) })
+        .then(r => { if (r.state !== "unpaired") ctx.events.emit("relay.tailnet.state", { state: r.state, ...(r.why ? { why: r.why } : {}) }); return r; })
+        .catch(e => ctx.log(`relay: tailnet join: ${e.message}`))
+        .finally(() => { joining = null; });
+    };
+    joinTailnet();
 
     // ---- tools ----
 
@@ -255,9 +341,18 @@ export default {
 
     /** Remove a device: close its channels, drop its presence key, tell every surface. */
     function forget(id, why) {
-      const row = /** @type {any} */ (db.prepare("SELECT presence_key FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+      const row = /** @type {any} */ (db.prepare("SELECT presence_key, node_id, node_tagged FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row) return false;
-      db.prepare("UPDATE relay_devices SET removed_at = ? WHERE id = ?").run(now(), id);
+      db.prepare("UPDATE relay_devices SET removed_at = ?, join_grant = 0 WHERE id = ?").run(now(), id);
+      binding.delete(id);
+      // Revoke goes both ways (ADR 0046): a node this box joined with a tagged key is deleted from
+      // the tailnet too. Admission already fails closed on the removed row whatever Tailscale says,
+      // so a failed delete is logged and shown, never a half-trusted device.
+      if (row.node_tagged && row.node_id) {
+        ts.deleteNode(row.node_id)
+          .then(() => ctx.log(`relay: deleted tailnet node ${row.node_id} with device ${id}`))
+          .catch(e => { ctx.log(`relay: could not delete tailnet node ${row.node_id}: ${e.message}`); ctx.events.emit("relay.tailnet.revoke_failed", { id, node: row.node_id, why: String(e.message).slice(0, 200) }); });
+      }
       for (const ch of live.get(id) || []) ch.close(4401, "device removed");
       live.delete(id);
       if (row.presence_key) ctx.call("presence.remove", { id: row.presence_key }).catch(() => null);
@@ -271,8 +366,11 @@ export default {
       run: async (_, meta = {}) => {
         owner(meta.caller, meta, "the relay's status");
         const s = settings();
+        const mine = pairedBox(ctx.paths.root);
         return { enabled: Boolean(s.enabled), url: s.url, connected: Boolean(link && link.connected), route: s.enabled || keys ? route() : null,
-          devices: active().length, open: link ? link.open : 0, pairing: pairing && pairing.exp > now() ? { expiresAt: pairing.exp } : null };
+          devices: active().length, open: link ? link.open : 0, pairing: pairing && pairing.exp > now() ? { expiresAt: pairing.exp } : null,
+          // This machine's own tailnet join as another box's desktop (ADR 0046), when it is one.
+          ...(mine ? { tailnet: mine.tailnet || { state: "pending" } } : {}) };
       },
     });
 
@@ -400,9 +498,11 @@ export default {
         owner(meta.caller, meta, "joining another box");
         if (!parsePairUrl(url)) throw fail("bad_input", "that does not look like a real Vyre pairing code");
         let paired;
-        try { paired = await redeem(url, { root: ctx.paths.root, name }); }
+        try { paired = await redeem(url, { root: ctx.paths.root, name, tailnet: true }); }
         catch (e) { throw fail("bad_input", /** @type {Error} */ (e).message); }
         if (becomeDevice) await ctx.call("onboard.machine", { machine: "device" }).catch(() => {});
+        // The tailnet upgrade (ADR 0046) runs on its own: pairing already worked over the relay.
+        joinTailnet();
         return paired;
       },
     });
@@ -413,6 +513,7 @@ export default {
       run: async (_, meta = {}) => {
         owner(meta.caller, meta, "the device list");
         for (const d of active()) if (expired(d)) forget(d.id, "expired");
+        pruneGoneNodes();
         const rows = active();
         // The relay round trip, measured now over each open channel (1 s at most, never on a timer).
         const rtts = await Promise.all(rows.map(async d => {
@@ -496,6 +597,12 @@ export default {
         owner(meta.caller, meta, "a device's path");
         const c = String(meta.caller || "");
         const rtt = Number.isFinite(input.rtt) && input.rtt >= 0 && input.rtt < 60_000 ? Math.round(input.rtt) : null;
+        if (c.startsWith("device:") && meta.peer && meta.peer.via === "tailnet") {
+          // A desktop bound through ADR 0046's tagged join, calling over its own tailnet node.
+          const id = c.slice("device:".length);
+          moved(id, input.path === "direct" ? "direct" : "relay", rtt);
+          return { path: input.path, device: id };
+        }
         if (c.startsWith("device:")) {
           const id = c.slice("device:".length);
           if (input.path !== "relay") throw fail("bad_input", "through the relay, a device reports the relay path");
@@ -539,6 +646,50 @@ export default {
         const row = /** @type {any} */ (db.prepare("SELECT id, name, pub, node_id, node_name FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(String(input.id)));
         if (!row) return { stableId: null, staticKey: null, name: null, node: null };
         return { stableId: row.id, staticKey: row.pub, name: row.name, node: row.node_id ? { stableId: row.node_id, name: row.node_name || null } : null };
+      },
+    });
+
+    // ADR 0046, the names listener's half: whois says which tailnet node is calling, and only
+    // these two internal tools turn that into a paired device. A tag never names anyone by itself.
+    ctx.tool("relay.devices.tailnet", {
+      internal: true,
+      description: "The paired desktop bound to a tagged tailnet node (ADR 0046), or null.",
+      input: obj({ stableId: str }, ["stableId"]),
+      run: async input => {
+        const row = /** @type {any} */ (db.prepare("SELECT id FROM relay_devices WHERE node_id = ? AND node_tagged = 1 AND kind = 'app' AND removed_at IS NULL").get(String(input.stableId)));
+        return { device: row ? row.id : null };
+      },
+    });
+
+    ctx.tool("relay.devices.bind", {
+      internal: true,
+      description: "Bind a new tagged tailnet node to the paired desktop whose bind code it presents (ADR 0046). The names listener calls it with whois's own stable id; the code was handed out only inside that device's Noise channel, with its key.",
+      input: obj({ stableId: str, node: str, device: str, code: str }, ["stableId", "device", "code"]),
+      run: async (input, meta = {}) => {
+        if (meta.caller !== "module:names") throw fail("denied", "only the tailnet listener binds a node");
+        const id = String(input.device);
+        const b = binding.get(id);
+        if (!b || b.exp < now() || !crypto.timingSafeEqual(sha(input.code), b.hash)) throw fail("denied", "that bind code has expired or was already used");
+        binding.delete(id);
+        const node = String(input.stableId);
+        if (!/^[A-Za-z0-9]{1,64}$/.test(node)) throw fail("bad_input", "not a tailnet node id");
+        // One node, one device: a node id that somehow sat on another row leaves it.
+        db.prepare("UPDATE relay_devices SET node_id = NULL, node_name = NULL, node_tagged = 0 WHERE node_id = ? AND id != ?").run(node, id);
+        const r = db.prepare("UPDATE relay_devices SET node_id = ?, node_name = ?, node_tagged = 1, join_grant = 0 WHERE id = ? AND kind = 'app' AND removed_at IS NULL").run(node, promptSafe(input.node, "", 64), id);
+        if (!r.changes) throw fail("not_found", `no paired desktop ${id}`);
+        ctx.events.emit("relay.tailnet.joined", { id, node });
+        return { device: id, node };
+      },
+    });
+
+    ctx.tool("relay.tailnet.status", {
+      description: "Whether this box can hand paired desktops a tailnet key (ADR 0046): the vault item it mints with, the tag, and why not when it cannot. Never the credential itself.",
+      input: obj(),
+      run: async (_, meta = {}) => {
+        owner(meta.caller, meta, "the tailnet join");
+        const refusal = macCoreRefusal(platform);
+        const bound = /** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM relay_devices WHERE removed_at IS NULL AND node_tagged = 1").get()).n;
+        return { available: !refusal, why: refusal ? refusal.message : null, item: MINT_ITEM, tag: DEVICE_TAG, joined: bound };
       },
     });
 

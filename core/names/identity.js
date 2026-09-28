@@ -51,7 +51,7 @@ const AGENT_NAME = /^[A-Za-z0-9_-]{1,64}$/;
  *   which agent a tagged node belongs to, or null (production asks computers.node.agent).
  * @returns {(ip: string) => Promise<Identity>}
  */
-export function identifier({ whois, selfIps, selfId = () => null, owner, network = () => ({}), agentNodes = () => null, agentOf = async () => null, ttl = 60_000, now = Date.now }) {
+export function identifier({ whois, selfIps, selfId = () => null, owner, network = () => ({}), agentNodes = () => null, agentOf = async () => null, deviceOf = null, ttl = 60_000, now = Date.now }) {
   /** @type {Map<string, { at: number, who: any }>} */
   const cache = new Map();
   return async raw => {
@@ -69,26 +69,37 @@ export function identifier({ whois, selfIps, selfId = () => null, owner, network
     // A second check in case the address list was stale: whois naming this very node.
     const me = selfId();
     if (me && who.stableId === me) return refused(null, who.node, "from this box itself");
-    return classify(who, { owner: owner(), network: network(), agentNodes: agentNodes(), agentOf });
+    return classify(who, { owner: owner(), network: network(), agentNodes: agentNodes(), agentOf, deviceOf });
   };
 }
 
 /**
- * @typedef {{ ok: boolean, kind: "owner"|"guest"|"agent"|null, login: string|null, node: string|null, stableId?: string|null,
- *   tags?: string[], caps?: Record<string, any[]>, agent?: string, why: string }} Identity
+ * @typedef {{ ok: boolean, kind: "owner"|"guest"|"agent"|"device"|null, login: string|null, node: string|null, stableId?: string|null,
+ *   tags?: string[], caps?: Record<string, any[]>, agent?: string, device?: string, bindable?: boolean, why: string }} Identity
  */
 
 const refused = (login, node, why) => ({ ok: false, kind: null, login, node, why });
+/** ADR 0046's tag for a desktop that joined through a Wink pairing. */
+export const DEVICE_TAG = "tag:vyre-device";
 
 /**
  * Which kind of caller one whois answer is. Pure but for agentOf, so network.guests.check reports
  * exactly what the listener would do.
  * @param {any} who a parseWhois answer
- * @param {{ owner: string|null, network?: any, agentNodes?: { enabled?: boolean, tag?: string } | null, agentOf?: (stableId: string) => Promise<string|null> }} o
+ * @param {{ owner: string|null, network?: any, agentNodes?: { enabled?: boolean, tag?: string } | null, agentOf?: (stableId: string) => Promise<string|null>,
+ *   deviceOf?: ((stableId: string) => Promise<string|null>) | null }} o
  * @returns {Promise<Identity>}
  */
-export async function classify(who, { owner, network = {}, agentNodes = null, agentOf = async () => null }) {
+export async function classify(who, { owner, network = {}, agentNodes = null, agentOf = async () => null, deviceOf = null }) {
   const base = { node: who.node, stableId: who.stableId || null, tags: who.tags || [], caps: who.caps || {} };
+  // A desktop that joined with a tag:vyre-device key (ADR 0046) is only ever the paired device
+  // its stable id was bound to, found through the relay's own table, never the tag itself: a tag
+  // says which ACL bucket a node is in, not who it is. Unbound, it may only present its bind code.
+  if (deviceOf && (who.tagged || !who.login) && (who.tags || []).includes(DEVICE_TAG) && who.stableId) {
+    const device = await deviceOf(String(who.stableId)).catch(() => null);
+    if (typeof device === "string" && /^[a-z2-7]{16}$/.test(device)) return { ok: true, kind: "device", login: null, ...base, device, why: "device" };
+    return { ...refused(null, who.node, "a Vyre device node not bound to a paired device yet"), stableId: who.stableId, bindable: true };
+  }
   if (who.tagged || !who.login) {
     const tag = (agentNodes && agentNodes.tag) || "tag:vyre-agent";
     if (agentNodes && agentNodes.enabled === true && owner && (who.tags || []).includes(tag) && who.stableId) {

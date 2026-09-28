@@ -358,6 +358,17 @@ export default {
         policyOut.grants.push({ src: ["tag:vyre-egress"], dst: ["autogroup:internet"], ip: ["*"] });
         notes.push("Egress is on: tag:vyre-egress needs its own OAuth client or reusable ephemeral pre-authorized key, made separately in the admin console (Keys).");
       }
+      // ADR 0046: desktops paired over the relay join as tag:vyre-device, and reach this box's own
+      // port and nothing else, never each other.
+      const join = await tryCall("relay.tailnet.status");
+      if (!join.__error && join.available) {
+        const names = await tryCall("names.status");
+        let port = "443";
+        try { port = new URL(String(names.address)).port || "443"; } catch {}
+        policyOut.tagOwners = { ...(policyOut.tagOwners || {}), "tag:vyre-device": [owner] };
+        policyOut.grants.push({ src: ["tag:vyre-device"], dst: [boxHost], ip: [`tcp:${port}`] });
+        notes.push("Desktops you pair by scanning join the tailnet as tag:vyre-device. Make one OAuth client (Settings, OAuth clients) with auth_keys and devices:core, both limited to tag:vyre-device, and store it in the vault as tailscale-mint-oauth: {\"client_id\": \"...\", \"client_secret\": \"...\"}. Keep any broader rule (autogroup:member to *) from also covering tag:vyre-device.");
+      }
       return { ready: true, why: null, policy: policyOut, notes };
     }
 
