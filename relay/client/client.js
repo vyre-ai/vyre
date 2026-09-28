@@ -10,7 +10,7 @@
 // response was lost to a dropped channel is sent once more on the next channel with the same key.
 
 import { dial, FRAME, MAX_FRAME } from "./channel.js";
-import { EMPTY, base64url, fromBase64url, utf8, fromUtf8, toBytes, concat, equal, uuidFrom } from "./bytes.js";
+import { EMPTY, base64url, fromBase64url, base32, utf8, fromUtf8, toBytes, concat, equal, uuidFrom } from "./bytes.js";
 import { Pipe, makeResponse, lowerHeaders } from "./response.js";
 import { followEvents } from "./sse.js";
 import { webCrypto, indexedDbKeyStore } from "./webcrypto.js";
@@ -156,6 +156,19 @@ export async function pair(offerUrl, o = {}) {
   const offer = parsePairUrl(offerUrl);
   if (!offer) throw new Error("not a Vyre pairing code");
   return pairOffer(offer, o);
+}
+
+/**
+ * The same short fingerprint core/relay/index.js shows in its own Touch ID prompt (base32 of
+ * sha256 of a box's public key, 8 characters as two groups of 4), so a phone's own "pairing with
+ * X (fingerprint)" screen reads identically to what the box shows. Not a security check by
+ * itself — pairTicket() already verifies the record's MAC before this is ever worth computing —
+ * just the same human-readable confirmation on both ends of one pairing.
+ * @param {Uint8Array} box @param {import("./noise.js").CryptoProvider} crypto
+ */
+export async function keyFingerprint(box, crypto) {
+  const s = base32(await crypto.sha256(box)).slice(0, 8);
+  return `${s.slice(0, 4)} ${s.slice(4)}`;
 }
 
 const TICKET_TAG = { loc: "vyre-pair-loc", sec: "vyre-pair-sec", mac: "vyre-pair-mac" };
