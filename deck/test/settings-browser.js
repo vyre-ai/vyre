@@ -156,7 +156,11 @@ try {
   await shot("wink-idle", ".phone-code-ring");
 
   // 4b. The explicit tap mints exactly once and draws the real ring.
-  await tab.run(`document.querySelector(".phone-code-body .btn.btn-primary").click(); await waitFor(".phone-code-ring line", 4000); return true;`);
+  await tab.run(`document.querySelector(".phone-code-body .btn.btn-primary").click(); return true;`);
+  await sleep(500);
+  const dbgTap = await tab.run(`return { vis: document.visibilityState, hasFocus: document.hasFocus(), metaText: document.querySelector(".phone-code-meta")?.textContent };`);
+  say("DEBUG after tap", true, JSON.stringify(dbgTap));
+  await tab.run(`await waitFor(".phone-code-ring line", 4000); return true;`);
   const afterTap = await tab.run(`return { mints: window.__ticketMints, ticks: document.querySelectorAll(".phone-code-ring line").length };`);
   say("Wink: the ring renders (72 ticksSunburst marks) after the tap", afterTap.ticks === 72, JSON.stringify(afterTap));
   say("Wink: exactly one mint for the one tap", afterTap.mints === 1, JSON.stringify(afterTap));
