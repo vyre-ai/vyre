@@ -151,6 +151,19 @@ public final class CapsuleModel: ObservableObject {
     var attachedWords = ""
     /// The memory line's sources, shown (a click or ⌘→) or folded.
     @Published var memoryExpanded = false
+    /// Vyre IQ's stage word while memory.ask streams (IQAsk.swift): "Understanding the question",
+    /// etc. Nil outside a streamed ask, or once it answers.
+    @Published var iqStage: String?
+    /// The answer_id memory.ask gave the answer on screen (95b2b891); nil with no memory.ask, an
+    /// abstention with nothing to correct, or an already-corrected answer.
+    @Published var iqAnswerId: String?
+    /// "Wrong?" opened its three choices under the answer on screen (IQCardViews.swift).
+    @Published var iqCorrecting: IQCorrecting?
+    /// The last correction's fix, shown with Undo until it is undone or a new question is asked.
+    @Published var iqFixed: IQFixShown?
+    /// memory.ask said abstained: true for the answer on screen (openIQCorrect's "not sure" card).
+    @Published var iqAbstained = false
+    var iqAskSeq = 0
     /// A human-only call waiting for the person to prove they are here (Presence.swift).
     @Published var presenceAsk: PresenceAsk?
     /// "Add your Deepgram key": a module's missing key, asked for in the panel (Credentials.swift).
@@ -293,6 +306,7 @@ public final class CapsuleModel: ObservableObject {
         if let r = reply, !r.finished { return }
         followUp = false; autoKey = nil; autoTask?.cancel(); convo = []
         text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
+        iqStage = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
         cancelMentionRefresh()
         replySub?.cancel(); replySub = nil
     }
@@ -890,6 +904,7 @@ public final class CapsuleModel: ObservableObject {
         guard !words.isEmpty else { return .said("Type what to send first.") }
         asked = words
         askedMemory = nil
+        iqStage = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
         pending = true
         switch c.kind {
         case .app:
