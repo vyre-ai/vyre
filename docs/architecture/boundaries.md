@@ -47,7 +47,7 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/cli -> core/names` | backup.js, system.js | `vyre backup` and `vyre up` write the box backup and the systemd unit in-process | ctx.call |
 | `core/cli -> core/recall` | embed.js, progress.js | `vyre status` and `vyre doctor` read index progress and the embedder's state directly | ctx.call |
 | `core/cli -> core/resilience` | backoff.js, node.js, stream.js | the reference client every surface uses, a pure library | lib |
-| `core/cli -> core/vault` | backup.js, cli-io.js, refs.js | `vyre vault`'s terminal side: no-echo prompts, `vault://` refs, the sealed backup format | surface |
+| `core/cli -> core/vault` | backup.js, cli-io.js, kinds.js, refs.js, ssh/setup.js | `vyre vault`'s terminal side: no-echo prompts, `vault://` refs, the sealed backup format. Debt: kinds.js and ssh/setup.js move to a shared lib/ in 0.1.1 (vault) | surface |
 | `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Capsule has voice | ctx.call |
 | `core/daemon -> core/harness` | rules.js | the kernel runs the security floor on every call's input; the floor belongs in the kernel | lib |
 | `core/daemon -> core/names` | guests.js | the router asks whether a tailnet caller is a guest before the registry | ctx.call |

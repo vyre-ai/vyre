@@ -190,6 +190,15 @@ export function checkInput(schema, value, where = "input") {
  * that names an agent ("mcp:agent:kit", "harness:agent:kit") is the kind before the name, so an
  * agent's MCP server is still "mcp" to every allowlist and rule. vyred has already checked the name.
  */
+/**
+ * The surfaces' own labels: the person at a terminal (cli, local), their Deck and Capsule, and
+ * the phone app (mobile). The one list; a module that trusts a surface's label imports it rather
+ * than keeping its own copy. On the socket every such label is only a claim, and vyred takes any
+ * label but a model's own (mcp, harness) from under a `claude` or a thread as that session's
+ * (core/daemon asTaken), whether or not it is listed here.
+ */
+export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", "mobile"]);
+
 export const callerKind = caller => {
   const c = String(caller);
   // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
@@ -583,14 +592,14 @@ export class Registry {
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
     // The key reaches the tool too, so a tool that hands work on can carry it (threads.send uses
     // it as the Agent SDK message uuid, ADR 0030), and a retry after a restart is still one turn.
-    // meta.firstParty: the caller is one of Vyre's own modules, by the loader's one rule
-    // (firstParty above). Set here, over anything a caller passed, so no module can claim it.
-    const rec = String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null;
-    const fp = Boolean(rec && rec.dir && firstParty(rec.dir));
     // A tool that ran counts as a use of its module, whether it succeeded or threw; a refusal
     // above never ran, and neither does a replayed answer. One module calling another is plumbing,
     // not use, and nor is a webhook.
     const counted = !["module", "hook"].includes(callerKind(caller));
+    // meta.firstParty: the caller is one of Vyre's own modules, by the loader's one rule
+    // (firstParty above). Set here, over anything a caller passed, so no module can claim it.
+    const rec = String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null;
+    const fp = Boolean(rec && rec.dir && firstParty(rec.dir));
     const run = async () => {
       try { return await this.run(def, input, { ...meta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
       finally { if (counted) this.countUse(def.module); }

@@ -4,6 +4,182 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### install-box.sh: shellcheck actually clean, and a quiet line for Docker's own wait
+
+- Fixed a real, previously undetected bug: `pick_look()`'s escape-code assignments
+  (`BONE="$e[38;2;..."` etc.) and `step()`'s `"$ASH[$STEP/$STEPS]$RESET"` shellcheck as SC1087
+  (a bare `$var[` reads as an attempted array index). `core/names/system.test.js`'s "shellcheck is
+  clean when available" test only skips when the binary is missing, so it had silently never run
+  anywhere shellcheck was actually installed; installing it on testbox to check this branch's own
+  work surfaced the pre-existing failure. Fixed by bracing every one of the 7 flagged expansions
+  (`"${e}[...`, `"${ASH}[...`); confirmed clean with `shellcheck -s sh`, and
+  `core/names/system.test.js` + `test/install-box*.test.js` green (38/38).
+- Added one quiet line (`wait_line()`, picked by pid from a short WAITS list) right before the one
+  real silent gap in the installer: Docker's own `curl | sh` script, which can run a minute or two
+  before it says anything. Never shown under `--dry-run` (nothing runs that long there); `--yes`
+  is unaffected, still silent for prompts. No new shellcheck findings from the addition.
+
+#### A Cloudflare zone token for vyre.run was never read: the env var name had a typo
+
+- core/names/index.js's `hasToken()` checked `process.env.CLOUDFLARE_vyre_token` (mixed case);
+  every other place that names it (`box/vyre.env.example`, the docs, `test/onboard.test.js`) uses
+  `CLOUDFLARE_VYRE_TOKEN`. A box owner who set the token exactly as the example env file and the
+  docs say to would never have it read: `zone` stayed false, `onboard.name` never offered a
+  vyre.run name, and there was nothing to say why. Fixed: the code now reads
+  `CLOUDFLARE_VYRE_TOKEN`; the docs that quoted the old casing (ADR 0002, ADR 0008,
+  concepts/box-and-mac, concepts/tailnet, get-started/onboarding, get-started/troubleshooting,
+  work/box) are corrected to match. The vault item name (`cloudflare-vyre-token`) is unrelated and
+  unchanged.
+- test/onboard.test.js:265 ("with a token it is vyre.run") failed in CI on this: after
+  `freeZone()` sets `CLOUDFLARE_VYRE_TOKEN`, `onboard.status`'s `detail.name.via` stayed "ts.net"
+  because the token was never actually read.
+
+#### vyred's git never runs a folder's own commands
+
+- A repo's config and hooks belong to whoever can write the folder. `git ls-files` and `git
+  check-ignore` run a planted core.fsmonitor, and the vault ran both, without guards, in the folder
+  of an .env it imported or a file it rendered: on the box, an agent could run code as vyred's own
+  user. lib/git-safe.js is the one way vyred runs git now (gitSync, gitAsync) (no fsmonitor, no hooks, no pager, no
+  external diff, no network, no global or system config, and every filter driver the repo names
+  overridden to cat, since `status` runs clean filters), used by the vault's checks, the build
+  stamp and the switchboard's push summary. A repo's own `log.showSignature=true` plus
+  `gpg.program`/`gpg.ssh.program`/`gpg.x509.program` ran that command as vyred on `log` and `show`
+  (an explicit `--format=%G?` asked for it too, signed or not); all three are forced to `false`.
+  test/safe-git.test.js plants an fsmonitor, textconv, filter drivers, hooks and a gpg.program, and
+  fails if any file but lib/git-safe.js starts git (core/cli, the person's own terminal, aside).
+
+#### On a Mac, the caller check no longer leaves vyred's socket blocking
+
+- vyred reads who is on a socket with a small perl child that gets the connection as fd 3. On
+  macOS libuv clears O_NONBLOCK for the child, and that flag is shared with vyred's own copy, so
+  after the check vyred's socket blocked: the next large answer (the tool list) stalled vyred's
+  whole event loop behind a slow reader, and deadlocked with an in-process client (switchboard's
+  tests hung on the Mac). The child now sets O_NONBLOCK back first. A peer vyred should be able to
+  read but cannot (perl failed or timed out) no longer keeps a surface's label: it counts as a
+  model's, so a stall never reopens the forged label. test/peer.test.js has the large answer.
+- The peer is read by /usr/bin/perl with an empty environment, never a perl from vyred's PATH or one
+  PERL5OPT/PERL5LIB could load code into (a model's shell shares that user's PATH and env). vyred
+  also sets its socket non-blocking again itself when the check ends, so a check that never ran its
+  first line (a failed exec, a kill) cannot leave vyred blocking either.
+
+#### main's node job green again: install-box.sh passes shellcheck; the side view test has no read race
+
+- scripts/install-box.sh: the colour escapes and the step counter brace their variables
+  (`${e}[`, `${ASH}[`), which shellcheck read as array expansions (SC1087).
+- local/sideview: the test's fake window list and the fake tile write windows.json whole and
+  rename it into place, so the fake never reads half a file and exits 1 (a CI-only flake).
+
+#### rc.2 freezes: six helper imports and two Capsule model names, owed for 0.1.1
+
+- test/boundaries.test.js freezes the edges vault and connectors added (the lead's OK): core/cli to
+  core/vault/kinds.js and ssh/setup.js (vault), and core/google, core/mcp and core/mail to
+  core/connectors/behalf.js, message.js and auth.js (connectors). Debt: move them to a shared lib/
+  in 0.1.1 (lib/vault-kinds, lib/connectors).
+- test/cohesion-drift.test.js: CapsuleModel.swift may hold 2 model names and IQAsk.swift 1, for
+  the Capsule's IQ fast path (debt: capsule-pro, after 0.1.0).
+
+#### rc.2: Capsule questions are Vyre IQ (memory.ask)
+
+- A quick question (after the pause, or ⏎) goes to memory.ask, not a lean model session with the
+  Capsule's own prompt: memory-iq's grounded answer with a chip "confidence 0.82 · from 2
+  sessions" that unfolds up to three sources; "Not sure yet." with what memory does know and
+  "Ask Claude instead: ⌘⏎"; at the day's cap, memory's message exactly. No streaming yet (0.1.1).
+- A question about the screen ("what is this error", "what am I looking at", "the selected
+  text") or with text selected goes to the fast model with the screen context, not memory.ask,
+  which cannot see it. Sight marks its chip `aboutIt` (Kit `SendAttachment.aboutIt`, additive);
+  only words that may be about the screen (a local word check, or text may be selected: Kit
+  `SendAttaching.mayBeAbout`, default false) wait for the chip; any other question goes to
+  memory.ask at once (a test holds the chip 600 ms and memory.ask is still called under 300 ms).
+- A follow-up or ⌘⏎ after an IQ answer starts a session told the conversation. The old path
+  (threads.start, lean) runs only when vyred has no memory.ask (no_such_tool).
+- `Sources/Host/IQAsk.swift` (new), `Sources/Host/CapsuleModel.swift`, `Sources/Host/AutoAsk.swift`,
+  `Sources/Vyred/MemoryBox.swift`, `Sources/UI/CapsuleView.swift`; `Tests/IQAskTests.swift`. The
+  frecency file test waits for the write (a CI flake). Swift 331/331.
+
+#### rc.2: no gold, no epoch ages, one placeholder
+
+- Design A retired the gold: memory's colour (`Theme.recall`, the icon tint) is neutral text, and
+  "from 2 of your sessions" under an answer is a source chip (28 tall, radius 14, 1 px
+  `ruleStrong`, 13/18 `text2`).
+- A missing, zero or pre-2001 time shows no age ("691 months" came from a test's `at: 1000`); a
+  row under a minute old says "just now" (copy.md). The test fixtures use real times.
+- The placeholder is capsule.md's "Ask Vyre, find, or run" in every state; the other line was in
+  stale pictures, and capsule-mac.md's checklist still says the old words (app-design's file).
+- `Sources/UI/Theme.swift`, `Sources/UI/CapsuleView.swift`, `Sources/Providers/IconCache.swift`,
+  `Sources/Vyred/Route.swift`, `Sources/Vyred/State.swift`; `Tests/DesignATests.swift`,
+  `Tests/RouteTests.swift`. Swift 326/326.
+
+#### A box container replaced by an update no longer finds its own old lock held
+
+- vyred.lock named the old container's vyred pid, and in the new container (the same boot) that pid
+  can belong to the spawner or the loop, both under /opt/vyre, so vyred refused to start "already
+  running" and the loop kept retrying (rc-smoke on 0.1.0-rc.1, now and then after `vyre update`).
+  The lock now records when its process started; a live pid that started at another time does not
+  hold it (core/daemon/lock.test.js).
+
+#### In the box's container, `vyre` waits for vyred instead of starting a second one
+
+- A `vyre` command run with docker exec while the box's vyred was restarting (the loop's 2 s gap,
+  or right after the container started) started a vyred of its own, without the spawner. The
+  loop's vyred then exited "already running" until the loop gave up, and the stray one died with
+  the exec: later calls said "vyred is not running" and vault writes made meanwhile were lost
+  (rc-smoke on 0.1.0-rc.1, now and then). With VYRE_SUPERVISOR=docker, ensureUp waits up to 20 s
+  for the supervisor's vyred and never starts one (test/client-socket.test.js).
+
+#### The package leaves Mac build outputs and gitignored files out
+
+- package.json "files" leaves out local/capsule/bin, every .build folder, *.app bundles and
+  DerivedData, so a dirty tree no longer packs the old helper binaries.
+- scripts/lib/pack-imports.mjs `ignoredShipped()`: the files in a pack that git ignores, except
+  build.json and apps/app/dist, which the pack makes on purpose. test/pack-imports.test.js and
+  scripts/release-check.sh fail on any (skipped outside a git checkout).
+
+#### An agent is named only as mcp:agent or harness:agent
+
+- vyred vouched any label naming an agent ("cli:agent:kit", "deck agent:kit") with that agent's key,
+  and the label then passed every callers list as the surface in front of it (hands-desktop took it
+  for the person). On the socket an agent is now named only as mcp:agent:<name> (its MCP server) or
+  harness:agent:<name> (its hooks), the only forms Vyre sends; any other label naming an agent is
+  refused before its key is checked. An agent's tailnet node (tailnet:agent:<name>) is unchanged.
+
+#### PERSON_ONLY is derived from the manifests, default-deny (security hotfix)
+
+- A tool whose callers name only the person's own surfaces (cli, local, deck, capsule) read as
+  person-only, but core/daemon's floor block (the own-process check that refuses a `claude` or
+  thread process even when it spoofs "cli") only ever fired for a tool core/presence's hand-kept
+  PERSON_ONLY named, or one that asked for presence itself. Anything else had nothing beyond the
+  ordinary caller-kind check, which a model's own shell can pass exactly as a real terminal would.
+  files.receive was the latest instance found this way; a sweep of every module's real tool
+  definitions (the same sandboxed load docs:ref uses) found dozens more: link.pair, link.unpair,
+  vault.device.join, vault.device.revoke, vault.vaults.create, files.drive.mount/unmount/open,
+  files.send, agents.delete, memory.correct/uncorrect/merge/split/read, and more.
+- Fixed: core/presence's new `personOnly(name, def)` treats a tool as person-only whenever its own
+  declared callers are person-surfaces alone, default-deny, unless the tool is named in the new
+  `OPT_OUT` set (harmless even under a spoofed "cli", one line of reason each: tips.*, a suggested
+  skill-install dismissal, local voice output, a local diagnostic bundle, a read-only tailnet probe,
+  ending this Mac's own person session). OPT_OUT may only shrink; a new entry needs the reviewer's
+  own sign-off (test/person-only-guard.test.js freezes it, same shape as boundaries.test.js's
+  ALLOW). Nothing that sends, pairs, joins, or changes what is remembered may ever be opted out.
+- core/daemon/index.js's floor check now calls `personOnly(name, def)` in place of a bare
+  `PERSON_ONLY.has(name)`; `link.call`'s carried `inner` tool (no local def available for it) is
+  unchanged, checked by name against PERSON_ONLY/HUMAN_ONLY only, as before.
+- Tests: test/person-only-guard.test.js (every real tool's callers agree with personOnly(); OPT_OUT
+  only shrinks; OPT_OUT never names anything on the reviewer's protect list), and a new case in
+  test/peer.test.js proving a previously-unprotected tool (link.pair, not on PERSON_ONLY's own list)
+  is now refused under a claude exactly as agents.create (which is) already was, while an opted-out
+  one (link.find) is correctly left alone by the derivation. One pre-existing test's expectation
+  updated to match (probe.mine now takes the explicit "inside a Claude session" path instead of
+  falling through to a caller-kind mismatch: same refusal, clearer reason).
+- Verified nothing legitimate breaks: core/harness, core/daemon, core/cli, deck, core/presence,
+  test/presence-bypass.test.js, test/presence-cli.test.js, all green on testbox (1445+ tests).
+
+#### Any surface's label from a model's shell is the model's; one list of surfaces
+
+- core/modules exports SURFACE_LABELS (cli, local, deck, capsule, mobile): the one list of the
+  surfaces' own labels, for modules to import. vyred now takes any label but a model's own (mcp,
+  harness) from under a `claude` or a thread as the session's own, so "mobile" and any surface
+  name added later are covered without a list to keep up. "anonymous" stays as it is.
+
 #### Project teammates: vyred's own git runs nothing the repo names
 
 - A teammate can write a repo's shared .git, so vyred's own worktree checkout and merge could
@@ -371,7 +547,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - core/cli/commands/projects.js: the `vyre projects` command summary and the `move` verb's
   summary both said "on a box"; both now say "on a server" (ADR 0038). docs/reference/cli.md
-  regenerated to match.#### Vyre Drive step 3: projects.access, deny-by-default per-project agent access
+  regenerated to match.
+
+#### Vyre Drive step 3: projects.access, deny-by-default per-project agent access
 
 - New module addition, `core/projects` (sessions owns it, paused; built here per team-lead):
   `projects.access.grant`, `.revoke`, `.check`, `.list`. New table `projects_access
@@ -939,7 +1117,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `safari-csv` kept as an alias. `vyre vault import <file>` previews, then imports with the token;
   `--preview` stops after the preview and `--update-conflicts` takes the file's passwords. The
   import result adds `updated`, `same`, `conflicts` and `renamed`, and keeps `duplicate`. Audit rows
-  carry counts only (ADR 0028, decision 1).#### The box lists the Macs' open asks
+  carry counts only (ADR 0028, decision 1).
+
+#### The box lists the Macs' open asks
 
 - `threads.asks` on a box, for the person, merges each paired Mac's open asks (a new link read,
   `threads.asks` in ALLOW), labelled `source` and `machine`, oldest first; `machines: "local"`

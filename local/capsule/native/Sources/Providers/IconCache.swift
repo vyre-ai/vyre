@@ -32,7 +32,7 @@ public final class IconCache {
         case .stone: return rgb(0xB3AEA4)
         case .ash: return rgb(0x8C877D)
         case .signal: return rgb(0xC6F36B)
-        case .recall: return rgb(0xEBC76B)
+        case .recall: return rgb(0xB3AEA4) // Design A retired the gold: as stone
         case .attention: return rgb(0xB8A4FF)
         }
     }

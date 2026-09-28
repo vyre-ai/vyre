@@ -30,7 +30,8 @@ function fake(t, scenario = {}) {
   const file = path.join(state, "windows.json");
   const windows = () => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : (scenario.windows || [TERMINAL, CHROME]);
   const requests = () => fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim().split("\n").map(l => JSON.parse(l)) : [];
-  const add = w => fs.writeFileSync(file, JSON.stringify([...windows(), w]));
+  // Written whole, then renamed: the fake tile may read the file at the same moment.
+  const add = w => { fs.writeFileSync(file + ".tmp", JSON.stringify([...windows(), w])); fs.renameSync(file + ".tmp", file); };
   return { tile, windows, requests, add };
 }
 

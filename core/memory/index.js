@@ -661,6 +661,7 @@ export default {
     const retrieve = retriever({ graph, personal, askDir, quickDir, now: () => Date.now(),
       // The sessions picked into the project these folders are, so IQ in a project reads them too.
       picks: cwds => { try { const sc = graph.view(cwds); return sc?.room ? curator.rooms().find(r => r.slug === sc.room)?.threads || [] : []; } catch { return []; } },
+      // A user turn carries the reply that followed: the answer is often one turn after the question.
       next: async (session, seq) => { const r = await ctx.call("recall.thread", { session, from: seq + 1, limit: 1 }); return r?.error ? null : (r?.data?.turns || [])[0] || null; },
       search: async q => { const r = await ctx.call("recall.search", q); if (r?.error) throw new Error(r.error.message || "recall.search failed"); return Array.isArray(r?.data) ? r.data : r?.data?.hits || []; } });
     ctx.tool("memory.retrieve", {
@@ -690,6 +691,8 @@ export default {
       if (r?.error || !r?.data?.ok) throw new Error(r?.error?.message || "threads.quick did not answer");
       return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0 };
     });
+    // Source trust (ADR 0034): a question about the user's own life stands only on their own words
+    // in sessions trust keeps (core/memory/iq/ask.js).
     const LIFE = new Set(["kin", "of", "birthday", "car", "carFate", "diet", "lives", "born", "myname", "owns"]);
     const trustOf = ctx.store.db.prepare("SELECT ok FROM memory_me_trust WHERE session = ?");
     const humanOf = () => { try { return ctx.store.db.prepare("SELECT human FROM recall_sessions WHERE id = ?"); } catch { return null; } };
@@ -704,7 +707,8 @@ export default {
       },
       // A session source trust refused, or one a program started (a subagent, a headless run), never grounds a personal answer.
       // Fails closed (e2e, 28 Sep): a session counts only once recall says a person started it.
-      trusted: session => /** @type {any} */ (trustOf.get(session))?.ok !== 0 && /** @type {any} */ (humanOf()?.get(session))?.human === 1, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
+      trusted: session => /** @type {any} */ (trustOf.get(session))?.ok !== 0 && /** @type {any} */ (humanOf()?.get(session))?.human === 1,
+      runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
       budget: {
         // The person's plan share (memory.plan_share) scales IQ's day too; an explicit figure wins.
         allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd)

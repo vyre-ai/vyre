@@ -67,7 +67,7 @@ The installer puts the stack in `/srv/vyre` (`VYRE_DIR` moves it), owned by you,
   compose.yml          the stack: tailscale, vyre, and docker-api under the computers profile
   compose.build.yml    used when COMPOSE_FILE lists it: build the image from VYRE_SOURCE
   src/                 the unpacked vyre.tgz, when the image is built from it
-  vyre.env.example     copy to vyre.env for CLOUDFLARE_vyre_token and similar
+  vyre.env.example     copy to vyre.env for CLOUDFLARE_VYRE_TOKEN and similar
   vyre.env             optional, yours, read by the vyre container
   .env                 COMPOSE_PROJECT_NAME, COMPOSE_FILE, VYRE_SOURCE, DOCKER_GID; yours to add TS_AUTHKEY, COMPOSE_PROFILES
 /usr/local/bin/vyre    the host wrapper

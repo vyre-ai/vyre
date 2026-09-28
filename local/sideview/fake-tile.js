@@ -35,7 +35,7 @@ process.stdin.on("end", () => {
       w.frame = { ...m.frame, w: Math.max(m.frame.w, min) };
       return { pid: m.pid, index: m.index, ok: true, frame: w.frame, exact: w.frame.w === m.frame.w };
     });
-    fs.writeFileSync(file, JSON.stringify(ws));
+    fs.writeFileSync(file + ".tmp", JSON.stringify(ws)); fs.renameSync(file + ".tmp", file);
     return out({ results, activated: req.activate || [] });
   }
   out({ error: "unknown command", code: "bad_request" });

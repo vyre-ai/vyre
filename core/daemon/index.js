@@ -16,12 +16,12 @@ import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
-import { Registry, discover, ownerDevice, callerKind } from "../modules/index.js";
+import { Registry, discover, ownerDevice } from "../modules/index.js";
 import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
-import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, fingerprint, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty } from "./peer.js";
+import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence } from "../presence/index.js";
+import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, canReadPeers } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -168,8 +168,14 @@ async function startLocked(opts, root, p, release) {
   return { registry, events, config: cfg, paths: p, stop };
 }
 
-/** A caller that names an agent: "mcp:agent:kit", "harness:agent:kit", "mcp agent:kit". */
+/** Any label that names an agent, in whatever form: "mcp:agent:kit", "cli agent:kit", "deck:agent:kit". */
 const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+/**
+ * The only forms a socket caller may name an agent in: its MCP server's and its hooks' (harness
+ * mcp/server.js, hooks/hook.js). A surface's label with an agent in it ("cli:agent:kit") would be
+ * vouched by the key and then pass every callers list as that surface, so it is refused.
+ */
+const AGENT_LABEL = /^(?:mcp|harness):agent:([A-Za-z0-9_-]+)$/;
 
 function send(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });
@@ -265,22 +271,22 @@ async function above(socket, registry) {
   return insideClaude(pid, { threads: [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])] });
 }
 
-/** The labels of a person's own surfaces, which tools trust as the person (their callers lists and checks). */
-const PERSON_LABELS = new Set(["cli", "local", "deck", "capsule"]);
-
 /**
- * A socket caller as vyred takes it. A person's label from a process under a `claude` or a thread
- * is that model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the
- * call proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
- * review). An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
+ * A socket caller as vyred takes it. Any label but a model's own (a surface's, core/modules
+ * SURFACE_LABELS, or one no surface uses yet) from a process under a `claude` or a thread is that
+ * model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the call
+ * proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
+ * review). "anonymous" stays: the session could say "mcp" itself, so it gains nothing. An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
  * here; the person's own actions still refuse it (fromClaude). Asked once per connection.
  * @param {string} caller @param {import("node:net").Socket} socket @param {any} registry @param {string} [thread]
  * @returns {Promise<{ caller: string, model: boolean }>}
  */
 async function asTaken(caller, socket, registry, thread) {
-  if (!PERSON_LABELS.has(callerKind(caller))) return { caller, model: false };
+  if (MODEL_LABEL.test(caller) || caller === "anonymous") return { caller, model: false };
   let v = taken.get(socket);
-  if (!v) { v = above(socket, registry).then(w => w.inside); taken.set(socket, v); }
+  // A peer vyred cannot read where it normally can (perl failed or timed out) is not taken on its
+  // word: a surface's label then counts as a model's, so a stall never reopens the forged label.
+  if (!v) { v = above(socket, registry).then(w => w.inside || Boolean(w.nopid && canReadPeers)); taken.set(socket, v); }
   return await v ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true } : { caller, model: false };
 }
 /** @type {WeakMap<object, Promise<boolean>>} */
@@ -397,6 +403,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   }
   if (policy.thread) {
     // Bound above; a key or a session claim on this socket changes nothing.
+  } else if (said && !agentNode && !AGENT_LABEL.test(caller)) {
+    return send(res, 403, { error: { code: "denied", message: "an agent is named only as mcp:agent:<name> or harness:agent:<name>" } });
   } else if (said) {
     const key = String(req.headers["x-vyre-agent-key"] || "");
     const v = key ? await registry.call("threads.vouch", { agent: said[1], key }, "module:vyred") : null;
@@ -494,7 +502,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const def = registry.tools.get(name);
     // link.call carries another tool to the box: what it carries is what counts.
     const inner = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
-    const personal = PERSON_ONLY.has(name) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"])
+    const personal = personOnly(name, def) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"])
       || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));
     if (socket && personal && (shell.model || !MODEL_LABEL.test(caller))) {

@@ -16,46 +16,97 @@ import fs from "node:fs";
 import { spawn, execFileSync } from "node:child_process";
 import { claudeCommand } from "../switchboard/sessions.js";
 
+// The child gets vyred's own connection as fd 3, and a file's O_NONBLOCK is shared by every copy of
+// it. On macOS libuv clears it for the child, which left vyred's socket blocking: the next large
+// write stalled vyred's whole event loop behind a slow reader, and deadlocked when the reader was
+// vyred itself (an in-process client). So each script sets it back first, before anything else.
+const NONBLOCK = 'use Fcntl; open(my $s, "+<&=", 3) or exit 2; fcntl($s, F_SETFL, fcntl($s, F_GETFL, 0) | O_NONBLOCK) or exit 4;';
 const PERL = {
-  darwin: 'open(my $s, "+<&=", 3) or exit 2; my $v = getsockopt($s, 0, 2) or exit 3; print unpack("i", $v);',
-  linux: 'use Socket; open(my $s, "+<&=", 3) or exit 2; my $v = getsockopt($s, SOL_SOCKET, SO_PEERCRED) or exit 3; print((unpack("iii", $v))[0]);',
+  darwin: `${NONBLOCK} my $v = getsockopt($s, 0, 2) or exit 3; print unpack("i", $v);`,
+  linux: `use Socket; ${NONBLOCK} my $v = getsockopt($s, SOL_SOCKET, SO_PEERCRED) or exit 3; print((unpack("iii", $v))[0]);`,
 };
+/** Whether this platform can say who is on a socket at all (peerPid is null there, not a failure). */
+export const canReadPeers = Boolean(PERL[/** @type {"darwin"|"linux"} */ (process.platform)]);
 
 /** @type {WeakMap<object, Promise<number|null>>} */
 const cache = new WeakMap();
 
 /**
  * The pid of the process connected to this unix socket, or null when it cannot be read. A
- * keep-alive connection is asked once.
+ * keep-alive connection is asked once -- but only once it has an answer: a busy machine can make
+ * the kernel read itself slow (rc.2's real find, 28 Sep: at test-concurrency 4, the perl helper's
+ * timeout tripped and the person's own CLI was refused). A transient miss is not cached, so the
+ * next call on this same connection asks again instead of being stuck refused for its whole life;
+ * a real answer, once read, is the kernel's and does not change for as long as the socket stays
+ * open, so that one is kept.
  * @param {import("node:net").Socket} socket
  * @returns {Promise<number|null>}
  */
 export function peerPid(socket) {
-  let p = cache.get(socket);
-  if (!p) { p = readPeerPid(socket); cache.set(socket, p); }
+  const cached = cache.get(socket);
+  if (cached) return cached;
+  const p = readPeerPid(socket).then(pid => { if (pid == null) cache.delete(socket); return pid; });
+  cache.set(socket, p);
   return p;
 }
 
-/** @param {import("node:net").Socket} socket @returns {Promise<number|null>} */
-function readPeerPid(socket) {
+/**
+ * The perl that reads the peer: by absolute path (SIP-protected on macOS, root-owned perl-base on
+ * the box) and with an empty environment. vyred's own PATH and env are its user's, which a model's
+ * shell shares: a perl earlier in PATH, or PERL5OPT/PERL5LIB, would be handed fd 3 of every checked
+ * connection and could print whatever pid it liked.
+ */
+const PERL_BIN = "/usr/bin/perl";
+
+/**
+ * Put a socket back to non-blocking. The child's own first line does this, but a child that never
+ * runs it (a failed exec, a kill) must not leave vyred blocking either, so the parent does too.
+ * @param {any} socket
+ */
+function nonBlocking(socket) {
+  try { if (socket && socket._handle && typeof socket._handle.setBlocking === "function") socket._handle.setBlocking(false); } catch {}
+}
+
+// A busy box (rc.2's find, 28 Sep: node --test at concurrency 4 on a shared testbox) can starve
+// the perl helper past a short timeout, and a fail-closed check then refuses the real person's own
+// CLI, not just a model. So one retry, same fd, before giving up -- never more, so a caller cannot
+// stretch this into a long hang by keeping the box busy across every attempt.
+const PEER_TIMEOUT = 4000, PEER_ATTEMPTS = 2;
+
+/**
+ * @param {import("node:net").Socket} socket
+ * @param {{ bin?: string, args?: string[] }} [seam] tests only: another program in perl's place
+ * @returns {Promise<number|null>}
+ */
+export function readPeerPid(socket, seam = {}) {
   const script = PERL[/** @type {"darwin"|"linux"} */ (process.platform)];
   if (!script) return Promise.resolve(null);
   // The fd number, not the Socket: given a Socket, Node wraps its handle for the child and closes
   // it when the child exits, which resets the person's keep-alive connection.
   const fd = /** @type {any} */ (socket)._handle && /** @type {any} */ (socket)._handle.fd;
   if (!Number.isInteger(fd) || fd < 0) return Promise.resolve(null);
-  return new Promise(resolve => {
+  const once = () => new Promise(resolve => {
     let out = "";
-    const child = spawn("perl", ["-e", script], { stdio: ["ignore", "pipe", "ignore", fd] });
-    const timer = setTimeout(() => child.kill(), 3000);
+    const child = spawn(seam.bin || PERL_BIN, seam.args || ["-e", script], { stdio: ["ignore", "pipe", "ignore", fd], env: {} });
+    const timer = setTimeout(() => child.kill("SIGKILL"), PEER_TIMEOUT);
     child.stdout.on("data", d => { out += d; });
-    child.on("error", () => { clearTimeout(timer); resolve(null); });
+    child.on("error", () => { clearTimeout(timer); nonBlocking(socket); resolve(null); });
     child.on("close", code => {
       clearTimeout(timer);
+      nonBlocking(socket);
       const pid = Number(out.trim());
       resolve(code === 0 && Number.isInteger(pid) && pid > 0 ? pid : null);
     });
   });
+  return (async () => {
+    for (let n = 0; n < PEER_ATTEMPTS; n++) {
+      // Every attempt asks the SAME connection (the fd captured above) again -- never a pid found
+      // some other way -- so a retry can only confirm or fail to confirm this one peer, not drift.
+      const pid = await once();
+      if (pid != null) return pid;
+    }
+    return null;
+  })();
 }
 
 /**
@@ -79,12 +130,17 @@ export function processTable() {
   };
   /** @type {Map<number, { ppid: number, args: string, pgid: number }>} */
   const rows = new Map();
-  try {
-    for (const line of execFileSync("ps", ["-A", "-ww", "-o", "pid=,ppid=,pgid=,args="], { encoding: "utf8", timeout: 3000, maxBuffer: 16 << 20 }).split("\n")) {
-      const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/.exec(line);
-      if (m) rows.set(Number(m[1]), { ppid: Number(m[2]), pgid: Number(m[3]), args: m[4] });
-    }
-  } catch {}
+  // A busy box can starve this single bulk read past a short timeout (the same rc.2 find as
+  // readPeerPid's), and coming back empty reads as "nobody above" -- unknown, refused -- for the
+  // real person's own CLI too. One retry, same as the peer read, before accepting empty.
+  for (let n = 0; n < PEER_ATTEMPTS && rows.size === 0; n++) {
+    try {
+      for (const line of execFileSync("ps", ["-A", "-ww", "-o", "pid=,ppid=,pgid=,args="], { encoding: "utf8", timeout: PEER_TIMEOUT, maxBuffer: 16 << 20 }).split("\n")) {
+        const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+        if (m) rows.set(Number(m[1]), { ppid: Number(m[2]), pgid: Number(m[3]), args: m[4] });
+      }
+    } catch {}
+  }
   return pid => rows.get(pid) || null;
 }
 
