@@ -399,8 +399,17 @@ export class Switchboard {
     }
   }
 
-  /** Where a thread runs: the folder given, else the project's home. */
-  async where({ cwd, project }) {
+  /**
+   * Where a thread runs: the folder given, else the project's home - or, for a brand-new
+   * thread starting at a GitHub project's own default folder (never an explicit cwd a caller
+   * gave), that project's own worktree for this session (ADR 0041 section 5: "use its path as
+   * the session's cwd instead"). Null-safe the same way every other cross-module call in this
+   * file is: no core/github, or the project has no repo, changes nothing.
+   * @param {string} [session] the new thread's own id, so github.session.worktree can key its
+   *   worktree to it - only given by launch() for a genuinely new thread, never a resume or fork
+   *   (both already have a fixed cwd of their own by the time this runs).
+   */
+  async where({ cwd, project }, session) {
     let slug = null, home = null;
     if (project) {
       const list = await this.deps.call("projects.list", {});
@@ -408,10 +417,17 @@ export class Switchboard {
       if (!p) throw new Error(`no project ${project}`);
       slug = p.slug; home = p.home;
     }
-    const dir = cwd ? path.resolve(cwd) : home;
+    let dir = cwd ? path.resolve(cwd) : home;
     if (!dir) throw new Error("a thread needs a folder: give cwd or project");
     if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new Error(`${dir} is not a folder`);
     if (!slug) { const of = await this.deps.call("projects.of", { cwd: dir }); slug = of.data?.slug || null; }
+    if (!cwd && slug && session) {
+      const gh = await this.deps.call("github.project.of", { project: slug }).catch(() => null);
+      if (gh && !gh.error && gh.data) {
+        const wt = await this.deps.call("github.session.worktree", { project: slug, session }).catch(() => null);
+        if (wt && !wt.error && wt.data && wt.data.path) dir = wt.data.path;
+      }
+    }
     return { cwd: dir, project: slug };
   }
 
@@ -439,8 +455,8 @@ export class Switchboard {
         const src = this.record(o.fork) || await this.adopt(o.fork);
         o = { ...o, cwd: src.cwd, project: undefined, forkFrom: src.id, name: o.name || `${src.name || String(src.id).slice(0, 8)} (fork)` };
       }
-      const w = await this.where(o);
       id = crypto.randomUUID();
+      const w = await this.where(o, id);
       const now = Date.now();
       const provider = String(o.provider || "claude");
       if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) {
@@ -1820,6 +1836,24 @@ export default {
       ...(typeof cfg.uid === "number" ? { uid: cfg.uid, gid: typeof cfg.gid === "number" ? cfg.gid : cfg.uid } : {}),
     });
     sb.recover();
+    // ADR 0041 section 5, end side (start side is where()'s github.session.worktree call above):
+    // a github project's worktree is cleaned up once its session reaches "finished" - a one-shot's
+    // own natural completion (threads.launch's own purpose: "job", once: true; never resumed by
+    // design), the one canonical status that never needs the worktree again. Deliberately narrower
+    // than the ADR's "stopped or finished": an ordinary interactive session that stops (the person
+    // presses Stop, or an idle close/restart/rewind lands on "paused") is resumable - threads.send
+    // brings it back on its EXISTING cwd (launch()'s resume branch never calls where() at all) -
+    // so cleaning its worktree up there would break resume outright unless resume also learned to
+    // recreate a missing one, which is real, separate work, not done here. Flagged to github/
+    // reviewer-2 rather than guessed at silently.
+    const offGithubCleanup = ctx.events.on("thread.status", e => {
+      if (e.payload && e.payload.status === "finished" && e.project && e.thread) {
+        ctx.call("github.project.of", { project: e.project }).then(gh => {
+          if (!gh || gh.error || !gh.data) return;
+          return ctx.call("github.session.cleanup", { project: e.project, session: e.thread });
+        }).catch(() => {}); // no core/github, or nothing to clean up: changes nothing
+      }
+    });
     // The Agent SDK driver (ADR 0030). It is loaded with the first thread, not at start (the
     // import alone is about 40 MB), and installed in the background on first use while threads
     // run on the CLI runner.
@@ -2189,6 +2223,6 @@ export default {
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     // An SDK install still running ends with vyred, and cleans up after itself (sdk.js).
-    return { async stop() { await abortInstalls(); await sb.stopAll(); } };
+    return { async stop() { offGithubCleanup(); await abortInstalls(); await sb.stopAll(); } };
   },
 };
