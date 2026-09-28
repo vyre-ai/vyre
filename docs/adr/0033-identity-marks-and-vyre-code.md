@@ -1,6 +1,6 @@
 ---
 title: "ADR 0033: Identity marks: four families, and the Vyre code"
-summary: Vyre has four visual identity families with distinct silhouettes (person circle, assistant creature, agent blob, teammate tile), none resembling any AI brand's own mark. The person's circle carries a second, scannable form (the Vyre code) that encodes a one-time pairing ticket for phone.vyre.run to scan.
+summary: Vyre has four visual identity families with distinct silhouettes (person circle, assistant creature, agent blob, teammate tile), none resembling any AI brand's own mark. The person's circle carries a second, scannable form (the Vyre code) that encodes a one-time pairing ticket, read only by phone.vyre.run's own decoder - not a standard QR, and no normal-camera fallback.
 audience: builders, agents
 owner: app-design
 status: draft
@@ -14,8 +14,9 @@ avatar.md already drew one line: agents and teammates get tiles, only the person
 no photos, no colour per agent or person. Five rounds of generated-avatar work (round 1 through
 round 5, `docs/work/app-design.md`) grew that into four families with distinct silhouettes, and
 the user asked for a scannable form of the person's own mark to pair a phone: not a standard QR
-(any camera reads a QR; this should be ours), seeded from a stable public identity such as a
-public-key fingerprint, never a secret.
+(any camera reads a QR; this should be ours, read only by phone.vyre.run's own decoder, with no
+normal-camera fallback path), seeded from a stable public identity such as a public-key
+fingerprint, never a secret.
 
 Round 5 built and proved the encoding (`rs.js`, `payload.js`, `decode-core.js`, `harness.js`):
 144 bits (a 64-bit id + CRC-8, Reed-Solomon-protected) laid out as marks around the face, 14/17
@@ -90,8 +91,15 @@ ticket plus a CRC, Reed-Solomon-protected the same way. Scanning it reveals only
 person's own profile already shows; it grants nothing by itself. `phone.vyre.run`'s scanner
 reads the ring and completes pairing only alongside the device-side proof (Touch ID or presence)
 that ADR 0032 already requires for a person-level action - the code identifies the ticket, it
-does not authorize by itself. A plain QR encoding the same payload is the fallback path for any
-camera that isn't running Vyre's own decoder; it is not the primary form.
+does not authorize by itself.
+
+There is no plain-QR fallback and no normal-camera support (user decision, 2026-09-28): the Vyre
+code is our ring only, read exclusively by phone.vyre.run's own decoder. A plain QR encoding the
+same payload was considered - as the fallback path for a generic camera that isn't running Vyre's
+decoder - and turned down: it would let any camera read the payload, which is exactly what the
+ring exists to avoid, and it would mean shipping and maintaining two decode paths for one
+identifier. If a non-Vyre entry point to pairing is ever needed, it should be a separate,
+explicitly weaker mechanism (e.g. a typed code), not a QR twin of this ring.
 
 ### 4. Known gap, scoped
 
