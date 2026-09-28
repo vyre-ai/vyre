@@ -273,3 +273,18 @@ waiting, next time someone has the cycles.
 - `core/vault`: `Vault.later(fn, ms)` and `Vault.stop()`; the module's stop calls it in place of
   `lock()`. After stop, `key()` refuses with code `stopping`.
 - `core/vault/testing.js` exports `TEST_KDF`.
+
+## Gotcha (2026-09-28 ~01:50 UTC): setsid+disown over a one-shot ssh does not survive
+
+Two rc.2 full-suite attempts (`nohup ... &` and later `setsid nice ... & disown`, both inside a
+one-shot `ssh testbox '...'`) produced real progress in their log for several minutes, then the
+whole process vanished with no final `# tests` tally and no OOM/dmesg/journal trace, well before
+completion. Neither `nohup` nor `setsid`+`disown` kept the job alive once the ssh connection that
+launched it closed, even though other teams' jobs (started the same way, per RULES's own
+recipe) were still running fine hours later in the same `ps` snapshot. Root cause not fully
+pinned down (systemd-logind session cleanup on the launching connection is the leading theory,
+since it would explain surviving vs dying by whether the user still has *another* live session at
+the moment this one closes), but the fix that reliably works: launch under `tmux new-session -d
+-s <name> "<command> > log 2>&1"` on testbox, then poll with `tmux has-session -t <name>` instead
+of `pgrep`. The tmux *server* persists independent of any one ssh connection. Next integrator:
+always use tmux for a full-suite run on testbox, not nohup/setsid/disown.
