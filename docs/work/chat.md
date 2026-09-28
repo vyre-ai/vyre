@@ -433,7 +433,8 @@ out to be a plain `$` vs `$$` typo in a new test, not a hang.
   Fixed pickers.js's allowed() to gate Fork on forkOk() === true, the same pattern RESTORES already
   uses for codeOk() (still rendered, disabled, in the visible list either way - only cycling order
   changed). Updated session.test.js's rewind-sheet assertion for the now-real fourth option.
-  Separately found and fixed (native-core's file, a one-line contract-safe change, told them):
+  Separately found and fixed (pwa's file per be3f5554, not native-core's as I first told them - a
+  one-line contract-safe change either way, corrected the attribution after reviewer-2 caught it):
   core/resilience/stream.js's fastReach() interval and its abort setTimeout were never unref'd, so
   two real, never-closing sockets survived every test that ever went "reconnecting" - this is what
   actually kept the process alive for the file-level timeout once the crossed-session symptom above
