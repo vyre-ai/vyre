@@ -176,6 +176,25 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   docker cp), booted the real image against the result -- computerd started clean, no refusal,
   and alice's token answered a real /cdp/json/version 200. testbox core/computers/**/*.test.js +
   dockerproxy: 269/269 pass, 9 skipped. Stack torn down after. Sent to the reviewer.
+- pool.js's own "browser" computer kind built against the lead's signed-off schema (0a440416,
+  572b58e9): a `kind` column (existing rows untouched), `computers_members(computer_id, agent_id
+  UNIQUE, agent_name, generation, added_at)`, no token column -- a member's token is derived
+  on demand (HMAC-SHA256 of computerId|agentId|generation under a vault-held key, never stored).
+  addAgent/removeAgent both reseed+reload computerd; ensure() seeds a browser-kind container's
+  identity file BEFORE its every start, not after (AGENT_MODE is decided once, at computerd's own
+  first read, and never revisited). The last member's removal stops the container and keeps its
+  volume; deletion is disposeContext (POST /agents/dispose), separate and explicit. A real bug
+  the tests caught before anything shipped: removeAgent's non-last-member path originally only
+  reloaded, never reseeded, so a removed agent's token would have kept working. Fixed.
+  Tests: pool.test.js 35/35 (8 new, a real local HTTP server standing in for computerd).
+  Live-verified fully end to end on testbox: real docker.sock, real dockerproxy, real
+  DockerDriver, real Pool, real image, real computerd -- addAgent/removeAgent/disposeContext all
+  exercised for real, catching one more bug live (computerd's own startup lag behind the VNC
+  probe ensure() already waits for; fixed with a bounded connection retry, _helperFetch).
+  Volumes confirmed still present after the last member's removal. Stack torn down after.
+  testbox core/computers/**/*.test.js + dockerproxy: 277/277 pass, 9 skipped. Sent to the
+  reviewer. Not yet done: wiring memberTokenKey to the real vault (module.json's needs.vault,
+  the same shape tailnet.key already uses) -- pool.js takes it injected, faked in tests today.
 - Presence enforced once security merges; a passkey step in the Deck.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
