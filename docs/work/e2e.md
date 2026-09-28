@@ -596,6 +596,24 @@ Done this session:
 
 Next: task 3 (federation re-review) is done. Idle; watch for a new assignment from the lead.
 
+## person-only guard test (0.1.1 train, work/e2e-personguard off main)
+
+Built test/person-only-guard.test.js (fe28fbc8) using scripts/lib/docs/reference.js's existing
+harvest() (same sandboxed load docs:ref uses, no reinvented parsing). Rule: a tool whose callers
+are person-surfaces only (cli/local/deck/capsule, never module/mcp/tailnet/guest) must be in
+core/presence's PERSON_ONLY, HUMAN_ONLY, or presence-gated itself.
+
+Run against today's main: 68 tools trip it (link.find, link.pair, link.unpair, link.signin/out,
+files.drive.mount/unmount/open, files.send, vault.device.join, vault.vaults.create, vault.devices,
+vault.device.revoke, agents.delete, memory.correct/uncorrect/merge/split, term.list/close,
+voice.speak/status/settings, tips.*, capsule.report, apps.setup, planner.settings, sessions.setup,
+learn.signals/skill-dismiss, presence.person.sessions, vault.ssh.approvals, vault.match — full list
+in the test's failure output). Some read like real gaps in files.receive's class (link.unpair,
+vault.device.join, vault.vaults.create, files.drive.mount/unmount); others look deliberately
+harmless even under a spoofed "cli" claim (tips.*, voice.speak, capsule.report, term.list). The
+mechanical rule alone doesn't match the tree; asked the lead for a scope call (allowlist today's 68
+and land the guard now, vs. a narrower signal, vs. hand triage) before landing anything further.
+
 ## Design note: link.find can't say "seen but unreachable" (0.1.1 follow-up)
 
 Confirmed by the lead as a 0.1.1 follow-up, not an rc.2 blocker (test/journey.test.js:221 is
