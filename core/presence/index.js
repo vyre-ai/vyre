@@ -73,7 +73,22 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   "presence.person.revoke",
   // Every setting is the person's own: a model never changes one, and settings relays the
   // person to the owning module's setter (e2e review, HIGH 1).
-  "settings.set", "settings.reset"]);
+  "settings.set", "settings.reset",
+  // core/link/mac.js's link.call carries a named tool to the box (`inner`, checked only by name
+  // in core/daemon/index.js's floor: the Mac has no local def for a box tool to derive from). These
+  // are the tools personOnly() would derive on the box itself but this Mac-side pre-check cannot,
+  // named explicitly so a model's shell forwarding through link.call is refused just as early as a
+  // direct call would be (reviewer's LOW, 28 Sep). voice.speak and capsule.report join them too.
+  "link.pair", "link.unpair", "vault.device.join", "vault.device.revoke", "vault.vaults.create",
+  "files.drive.mount", "files.drive.unmount", "files.drive.open", "files.send", "agents.delete",
+  "memory.correct", "memory.merge", "memory.split",
+  // A model's shell making Vyre speak out loud is a social-engineering channel ("approve the
+  // Touch ID prompt now"); a diagnostic bundle (paths, device names, logs) is not the model's to
+  // read (reviewer, 28 Sep).
+  "voice.speak", "capsule.report",
+  // Ends this Mac's own person session; cheap to protect, and a model signing the person out
+  // mid-task is a real annoyance (reviewer, 28 Sep).
+  "link.signout"]);
 
 /**
  * The person's own surfaces: a real terminal, the Deck, Capsule. Never `module`, `mcp`, `tailnet`,
@@ -101,17 +116,13 @@ export const OPT_OUT = new Set([
   "tips.next", "tips.seen", "tips.used", "tips.dismiss", "tips.whatsnew", "tips.reset",
   // Dismissing a suggested skill install, the same shape as tips.dismiss.
   "learn.skill-dismiss",
-  // Local voice output: read its settings, change them, or make Vyre speak out loud. No data
-  // leaves this machine and nothing else changes.
-  "voice.status", "voice.settings", "voice.speak",
-  // A local diagnostic bundle, read for the person to share themselves; not sent by this tool.
-  "capsule.report",
+  // Local voice output settings: read them, or change which voice/volume. No data leaves this
+  // machine. voice.speak stays off this list (reviewer, 28 Sep): a model making Vyre say
+  // something out loud is a social-engineering channel ("approve the Touch ID prompt now").
+  "voice.status", "voice.settings",
   // A read-only tailnet probe for candidate boxes (`vyre up`'s own search); pairing itself
   // (link.pair) is not opted out.
   "link.find",
-  // Ends this Mac's own person session: the worst case is being signed out, not a privilege
-  // gain. Signing IN (link.signin) is already floor-gated by name, below.
-  "link.signout",
 ]);
 
 /**
