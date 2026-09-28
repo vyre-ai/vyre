@@ -86,6 +86,32 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, latest of all: ported Wink's ticket lookup to the production Cloudflare relay (the
+reviewer's MEDIUM 2, the lead's priority — code and tests only, no deploy, that waits for the
+user). New `PairTicket` Durable Object in relay/worker/index.js, one object per locator
+(`env.TICKETS.idFromName(loc)`, not per route: a resolve request carries no route id to look one
+up by). `RouteRelay`'s control socket, previously silent after auth like relay/node's, now handles
+`{t:"ticket",...}` and writes to it; the Worker's top-level `fetch()` handles `POST /v1/pair`
+before the WebSocket-upgrade gate, same locator-in-body/never-a-URL shape as relay/node, with
+optional `PAIR_LIMITER`/`PAIR_LIMITER_GLOBAL` rate-limiting bindings (same optional pattern as
+`DEVICE_LIMITER`) and an in-memory per-route registration cap (60/minute, resets on hibernation —
+only weakens the cap, never the pairing security it sits in front of, which is the MAC, not this).
+wrangler.toml gains the `TICKETS` binding and migration entry.
+
+Had to extend the shared test harness, relay/worker/fake-cf.js, since it only ever bound one
+Durable Object class (`ROUTES`): `createRuntime` now takes an optional `classes` map for further
+bindings, each with its own isolated object registry so two bindings can never collide on the same
+name; `object(name)` (used all over worker.test.js already) is unchanged for ROUTES. Two real fake
+gaps found and fixed while wiring it: a DO stub's `.fetch()` needs to accept `(url, init)` as well
+as a `Request`, matching the real runtime, not just the latter; `ctx.storage.deleteAll()` did not
+exist at all (added, `FakeStorage`). Also one bug in my own new test, not the code under test: a
+locator built as `` `f${i}`.padEnd(43,"0") `` collides between i=6 and i=60 (padding with the same
+digit the index ends in is indistinguishable from more of the index) — fixed with a fixed-width,
+non-digit-padded index.
+
+Tests (testbox): worker.test.js 34/34 (10 new, every one against a real Durable Object object
+graph, not a stub), boundaries+hygiene 8/8. Sent to the reviewer.
+
 28 Sep 2026, latest of all: pwa guessed a scan-to-pair contract (relay.pair.ticket.resolve then
 relay.join) that doesn't exist and breaks the reviewer's two fixes; the reviewer held it and asked
 for the phone-side steps published explicitly, the lead made it top priority. Published to pwa and
@@ -784,6 +810,15 @@ restart vyred, and check with `vyre call vault.grants.status`. `7301` is `vault.
 
 Listed by the area they touch, so the merge can go in order. Everything below is off by default.
 
+- **relay/worker** (28 Sep, ADR 0045, own): new Durable Object `PairTicket`, bound `TICKETS` in
+  wrangler.toml (new migration entry too); `RouteRelay`'s control socket handles `{ t: "ticket",
+  loc, record, mac, exp }` post-auth (previously silent); the Worker's top-level `fetch` handles
+  `POST /v1/pair`, optional `PAIR_LIMITER`/`PAIR_LIMITER_GLOBAL` rate-limit bindings. Not deployed
+  — code and tests only, per the lead; deploying needs the user's yes.
+- **relay/worker/fake-cf.js** (28 Sep, shared test harness, own): `createRuntime` takes an
+  optional `classes` map for Durable Object bindings beyond `ROUTES`; a namespace's `.fetch()`
+  accepts `(url, init)` as well as a `Request`; `FakeStorage` gains `deleteAll()`. `object(name)`
+  for `ROUTES` is unchanged.
 - **relay** (28 Sep, own): `relay.join` refuses on darwin (`not_available_here`) until vyre-core
   (ADR 0040) holds the joining device's own key; new export `macCoreRefusal(platform)` (renamed
   from `relayJoinRefusal`, now shared with `relay.pair.ticket`); its `presence.when` no longer
