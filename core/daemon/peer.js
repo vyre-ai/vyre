@@ -78,6 +78,18 @@ export function processTable() {
       return Number.isInteger(ppid) ? { ppid, args, pgid: Number(f[2]), sid: Number(f[3]) } : null;
     } catch { return null; }
   };
+  // The reviewer's LOW, 28 Sep: this bulk read blocks vyred's whole event loop while it runs, and
+  // every connection needing an ancestry check (a fresh insideClaude()) triggers its own by
+  // default. A full async rewrite of insideClaude/ancestry/loginOf/tmuxClients (all synchronous by
+  // design today, and used that way in several places -- atTerminal's tmux-client loop calls
+  // insideClaude() directly inside a plain `for`, not awaited) is real scope on its own, not
+  // something to fold into this fix unverified (this Mac-only path cannot be tested on this Linux
+  // testbox at all). Narrower mitigation that does not touch the interface: cache the table
+  // briefly, so a burst of connections (several panes waking at once, a run of quick CLI calls)
+  // shares one blocking read instead of one each. Shrinks the frequency of the block; does not
+  // remove it. Flagged to the lead as a partial answer, not the fix asked for.
+  const now = Date.now();
+  if (macTable && now - macTable.at < MAC_TABLE_TTL) return pid => /** @type {any} */ (macTable).rows.get(pid) || null;
   /** @type {Map<number, { ppid: number, args: string, pgid: number }>} */
   const rows = new Map();
   try {
@@ -86,8 +98,13 @@ export function processTable() {
       if (m) rows.set(Number(m[1]), { ppid: Number(m[2]), pgid: Number(m[3]), args: m[4] });
     }
   } catch {}
+  macTable = { at: now, rows };
   return pid => rows.get(pid) || null;
 }
+
+/** @type {{ at: number, rows: Map<number, any> } | null} */
+let macTable = null;
+const MAC_TABLE_TTL = 250;
 
 /**
  * The chain from pid up to init, pid first, and whether it got there. A process whose parent
@@ -135,19 +152,51 @@ export function exePath(pid) {
 }
 
 /**
- * A handful of basenames that actually host a real login: an sshd or login that launchd/init/inetd
- * started, or a named terminal app. This is the ONLY allowlist in this file and it is a security
- * boundary: adding to it needs the same review as any other PERSON_ONLY change. Not on it (on
- * purpose, until decided otherwise -- reviewer, 28 Sep): tmux and screen, whose SERVER also leads
- * its own tty-less session under launchd/init, indistinguishable here from a model's own detached
- * one; a person's tmux needs its own proof (a presence session), not ancestry, until that is built.
+ * The ONLY allowlist in this file, and a security boundary: adding to it needs the same review as
+ * any other PERSON_ONLY change. Exact absolute paths only, never a basename (the reviewer's own
+ * reproduction, 28 Sep: `cp $(command -v script) /tmp/x/login; setsid -f /tmp/x/login -qfc ..`
+ * passed the basename version of this check -- a copy the person's own uid made and named
+ * anything on the list). login is the one thing left that genuinely hosts a real console/terminal
+ * login and is normally root-owned and immutable on both platforms. sshd is deliberately NOT here
+ * (the lead's decision, 28 Sep): a model can trivially get itself an sshd leader too
+ * (`ssh -o BatchMode=yes localhost ..` after appending its own key to ~/.ssh/authorized_keys,
+ * whenever Remote Login is on), so ssh sessions fall through to the same one-proof-per-session
+ * fallback as everything else not on this list (Ghostty, iTerm2, VS Code's terminal, Warp, tmux,
+ * screen, ssh -- named servers, never a flat refusal: see insideClaude's `server` case below).
  */
-const TRUSTED_LEADER = new Set(["sshd", "login", "Terminal", "iTerm2", "WezTerm", "Hyper", "kitty",
-  "Alacritty", "wezterm", "konsole", "gnome-terminal-server", "xterm", "urxvt", "st"]);
+const TRUSTED_PATHS = new Set(["/usr/bin/login", "/bin/login",
+  "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"]);
+
+/**
+ * Every component from `/` down to the file itself must be root-owned and not group- or
+ * other-writable, so a person's own build or a copy under their own uid (Homebrew, an
+ * /Applications bundle the installer left owned by the admin, a tmpfs a model's shell can write
+ * to) can never satisfy this even if it happens to land at an allowlisted path. Not a full
+ * immutability proof (a compromised root already owns everything), but it is exactly what SIP
+ * paths and system package paths already guarantee on a stock install, and it costs one stat per
+ * path component, not a subprocess.
+ * @param {string} p @returns {boolean}
+ */
+function rootOwnedPath(p) {
+  try {
+    // /bin, /sbin and /lib are themselves symlinks into /usr on a merged-usr Linux (Debian
+    // included, so testbox too): a symlink's own lstat shows mode 777 no matter who owns the
+    // real target, which would fail every ancestor check on `/bin/login`'s way up through `/bin`
+    // for no real reason. Resolve once, then walk the REAL path with a normal stat (no symlinks
+    // left to misread).
+    for (let cur = fs.realpathSync(p); ; ) {
+      const st = fs.statSync(cur);
+      if (st.uid !== 0 || (st.mode & 0o022)) return false;
+      const parent = path.dirname(cur);
+      if (parent === cur) return true;
+      cur = parent;
+    }
+  } catch { return false; }
+}
 
 /** @param {string|null} p @returns {boolean} */
 function trustedLeader(p) {
-  return Boolean(p && TRUSTED_LEADER.has(/** @type {string} */ (p.split("/").pop())));
+  return Boolean(p && TRUSTED_PATHS.has(p) && rootOwnedPath(p));
 }
 
 /**
@@ -187,17 +236,15 @@ export function insideClaude(pid, { threads = [], look = processTable(), exe = e
   if (row && row.ppid <= 1 && row.pgid === top.pid) {
     const p = exe(top.pid);
     if (trustedLeader(p)) return { inside: false };
-    // tmux and screen are deliberately off the allowlist (their server has this exact shape too,
-    // indistinguishable from a model's own detached one) but named distinctly rather than folded
-    // into a flat refusal: the caller can offer the person one presence proof for THIS specific
-    // server (its exe, pid and start time -- never a bare pid, which can be recycled) instead of
-    // an outright deny, per the lead's decision. A model-started server is a different process
-    // with its own pid/start, so it can never inherit trust proved for the person's real one.
-    const base = p && p.split("/").pop();
-    if (base === "tmux" || base === "screen") {
-      const at = started(top.pid);
-      if (at) return { inside: false, unknown: true, server: { exe: /** @type {string} */ (p), pid: top.pid, started: at } };
-    }
+    // Everything else with this shape (tmux, screen, ssh's sshd, Ghostty, iTerm2's server, the
+    // VS Code or Cursor terminal, Warp, or a setsid'd model) is named as a server rather than
+    // folded into a flat refusal, per the lead's decision, 28 Sep: nobody with a real terminal the
+    // allowlist does not happen to know about gets locked out. The caller can offer the person one
+    // presence proof for THIS specific leader (its exe, pid and start time -- never a bare pid,
+    // which can be recycled, and never a different process: a model-started one always has its
+    // own pid and start time, so it can never inherit trust proved for the person's real one).
+    const at = p && started(top.pid);
+    if (p && at) return { inside: false, unknown: true, server: { exe: p, pid: top.pid, started: at } };
     return { inside: false, unknown: true };
   }
   return { inside: false };

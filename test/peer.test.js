@@ -51,14 +51,27 @@ test("peer: under a claude, or under a thread vyred runs, is inside; a terminal,
   assert.deepEqual(insideClaude(940, o), { inside: true, by: 600 }, "an orphan in a thread's process group");
   assert.deepEqual(insideClaude(951, o), { inside: false, unknown: true }, "an orphan of a shell that is gone: refused as unknown");
   // Leads its own group under launchd, same shape a `setsid`'d escape has (see the dedicated
-  // test below): unknown by ancestry alone without a controlling terminal. The Capsule is this
-  // shape too, and must prove itself another way, not by ancestry (the setsid HIGH, 28 Sep).
-  // Its own group under launchd, same shape a setsid'd escape has: unknown unless its own binary
-  // (never argv, which this fixture's `args` string cannot stand in for here) is on the trusted
-  // allowlist. The Capsule's own binary is not, so it stays unknown until it has its own proof.
-  assert.deepEqual(insideClaude(960, o), { inside: false, unknown: true }, "its own group under launchd, unlisted binary: unknown, not trusted by ancestry");
-  assert.deepEqual(insideClaude(960, { ...o, exe: () => "/usr/sbin/sshd" }), { inside: false }, "the same shape, but the kernel says its binary is sshd's");
-  assert.deepEqual(insideClaude(960, { ...o, exe: () => "/usr/bin/script" }), { inside: false, unknown: true }, "a fresh tty from `script` proves nothing: still judged on the binary, not on having one");
+  // test below): unknown by ancestry alone, no `started` in this fixture to name it a server with.
+  // The Capsule is this shape too, and must prove itself another way, not by ancestry (the setsid
+  // HIGH, 28 Sep).
+  // `started` is left at its real default deliberately nowhere near here: a synthetic pid like
+  // 960 can coincide with a REAL process on a shared box, and a real `started()` for it would
+  // make this flaky. Every case below that is not testing the server-naming path itself overrides
+  // `started: () => null`, same as tests elsewhere in this file override `look` or `exe`.
+  const noServer = { started: () => null };
+  assert.deepEqual(insideClaude(960, { ...o, ...noServer }), { inside: false, unknown: true }, "its own group under launchd, unlisted binary, no start time to name a server: flat unknown");
+  // The exact-path allowlist (never a basename: the reviewer's own reproduction, 28 Sep, copied
+  // `script` to a file named `login` and it passed the old basename check). login is the one
+  // thing left on it -- sshd came off by the lead's decision (a model can get itself an sshd
+  // leader too, over `ssh -o BatchMode=yes localhost` with its own appended key).
+  assert.deepEqual(insideClaude(960, { ...o, ...noServer, exe: () => "/usr/bin/login" }), { inside: false }, "the kernel says its binary is the real, root-owned /usr/bin/login");
+  assert.deepEqual(insideClaude(960, { ...o, ...noServer, exe: () => "/tmp/login" }), { inside: false, unknown: true }, "a copy at an unlisted path named login: not on the allowlist at all");
+  // Everything else with a start time is named as a server rather than flatly refused (the lead's
+  // decision, 28 Sep: nobody with a real, unlisted terminal gets locked out) -- sshd included.
+  assert.deepEqual(insideClaude(960, { ...o, exe: () => "/usr/sbin/sshd", started: () => "t1" }),
+    { inside: false, unknown: true, server: { exe: "/usr/sbin/sshd", pid: 960, started: "t1" } }, "sshd, off the allowlist now, is named as a server, not flatly refused");
+  assert.deepEqual(insideClaude(960, { ...o, exe: () => "/usr/bin/script", started: () => "t1" }),
+    { inside: false, unknown: true, server: { exe: "/usr/bin/script", pid: 960, started: "t1" } }, "a fresh tty from `script` proves nothing: still judged on the binary, named as a server too");
   assert.deepEqual(insideClaude(921, o), { inside: true, by: 300 }, "a tmux a model started");
   assert.deepEqual(insideClaude(500, o), { inside: false }, "vyred itself");
   assert.deepEqual(insideClaude(990, o), { inside: false, unknown: true }, "an unreadable chain is unknown, and vyred refuses it");
@@ -199,17 +212,24 @@ test("peer: setsid, nohup, a double fork, and a fresh tty from script/pty/tmux a
     return JSON.parse(fs.readFileSync(out, "utf8"));
   }
 
-  // `setsid -f`: one fork, `setsid()` in the child. No process above to blame, and no tty.
+  // `setsid -f`: one fork, `setsid()` in the child. No process above to blame, and no tty. Its own
+  // binary (curl, here) is not on the allowlist, so this is now presence_required, not a flat
+  // deny -- but a model has no presence proof to attach (no Touch ID, no device key), so it is
+  // still, in practice, a hard wall for it: it can ask, and nothing answers.
   const bySetsid = await detachedCall(([cmd, ...args]) => new Promise((resolve, reject) => {
     const p = spawn("setsid", ["-f", cmd, ...args], { stdio: "ignore" });
     p.on("exit", code => (code === 0 ? resolve(undefined) : reject(new Error(`setsid exit ${code}`))));
     p.on("error", reject);
   }));
-  assert.equal(bySetsid.error?.code, "denied", JSON.stringify(bySetsid));
-  assert.match(bySetsid.error.message, /this comes from inside a Claude session|vyred cannot read/);
+  assert.equal(bySetsid.error?.code, "presence_required", JSON.stringify(bySetsid));
 
-  // A python double fork: fork, setsid() in the child, fork again -- the classic daemonize(), which
-  // also lands at ppid 1, its own session, no tty.
+  // A python double fork: fork, setsid() in the MIDDLE process, fork again -- the classic
+  // daemonize(). setsid() runs before the second fork, so the final grandchild inherits that
+  // session/group but is not itself its leader (the middle process, now dead, is): pgid !== its
+  // own pid, the same "gone shell" shape as `nohup .. &`, so this is peer.js's OTHER unknown
+  // branch (unrelated to the terminal-host allowlist or server-naming) -- a flat deny, not
+  // presence_required. Confirmed by hand: a single fork() + setsid() (no second fork) IS its own
+  // session/group leader and DOES get the server treatment; a genuine double fork does not.
   const byDoubleFork = await detachedCall(([cmd, ...args]) => new Promise((resolve, reject) => {
     const py = `import os, sys, subprocess
 if os.fork() > 0: sys.exit(0)
@@ -231,7 +251,7 @@ subprocess.run(${JSON.stringify([cmd, ...args])})
     p.on("exit", code => (code === 0 ? resolve(undefined) : reject(new Error(`sh exit ${code}`))));
     p.on("error", reject);
   }));
-  assert.equal(byNohup.error?.code, "denied", JSON.stringify(byNohup));
+  assert.equal(byNohup.error?.code, "denied", JSON.stringify(byNohup));  // an unreadable chain, not a named server: still a flat deny
 
   // The reviewer's own reproduction (28 Sep) of the first version of this fix: `setsid -f script
   // -qfc .. /dev/null` hands the detached leader a FRESH, real-looking controlling tty, same as a
@@ -243,7 +263,7 @@ subprocess.run(${JSON.stringify([cmd, ...args])})
     p.on("exit", code => (code === 0 ? resolve(undefined) : reject(new Error(`script exit ${code}`))));
     p.on("error", reject);
   }));
-  assert.equal(byScript.error?.code, "denied", JSON.stringify(byScript));
+  assert.equal(byScript.error?.code, "presence_required", JSON.stringify(byScript));
 
   // The same reproduction's other half: a python pty (`pty.spawn`) gives the same fresh-tty shape
   // without needing the external `script` binary at all.
@@ -255,7 +275,7 @@ pty.spawn(${JSON.stringify([cmd, ...args])})
     p.on("exit", code => (code === 0 ? resolve(undefined) : reject(new Error(`python3 exit ${code}`))));
     p.on("error", reject);
   }));
-  assert.equal(byPty.error?.code, "denied", JSON.stringify(byPty));
+  assert.equal(byPty.error?.code, "presence_required", JSON.stringify(byPty));
 
   // `setsid -f tmux new -d ..`: tmux's server also leads its own tty-less session under launchd's
   // reparenting, same shape again -- and tmux is deliberately NOT on the trusted allowlist (a
@@ -328,7 +348,7 @@ test("peer: a tmux or screen server needs one presence proof, then every pane on
     // With a valid proof, from the SAME server (-L harlow-a again reaches it, tmux servers persist
     // across `tmux -L <name>` invocations until killed): it goes through, and the server is now
     // trusted for good.
-    const proved = await inTmux("harlow-a", "juno", proof("tmux.trust", {}));
+    const proved = await inTmux("harlow-a", "juno", proof("session.trust", {}));
     assert.equal(proved.error, undefined, JSON.stringify(proved));
     assert.ok((await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "juno"));
 
@@ -386,7 +406,7 @@ test("peer: the Capsule's own proof is a pinned cdhash, checked and cached once 
   assert.equal(calls, 1, "checked once, not once per call");
 });
 
-test("peer: a caller claiming to be the Capsule, with the Capsule's own ambiguous shape, is refused with no pin", { skip: process.platform !== "linux" ? "needs util-linux setsid" : false }, async t => {
+test("peer: a caller claiming to be the Capsule, with the Capsule's own ambiguous shape, gets no free pass with no pin", { skip: process.platform !== "linux" ? "needs util-linux setsid" : false }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
@@ -397,8 +417,10 @@ test("peer: a caller claiming to be the Capsule, with the Capsule's own ambiguou
   // reality) -- so this genuinely exercises the ambiguous branch, not the plain in-process case.
   // codeCdhash() is macOS-only (`codesign`), so on this Linux testbox it always reads null: the
   // positive "a matching pin passes" case is proven at the unit level above instead, with an
-  // injected seam. What this proves for real, over a real vyred and socket: no pin means no free
-  // pass, however the caller labels itself.
+  // injected seam. What this proves for real, over a real vyred and socket: no pin means no
+  // shortcut past the ordinary one-presence-proof fallback every other named server gets (the
+  // lead's "nobody gets locked out" decision, 28 Sep) -- claiming "capsule" buys nothing extra
+  // without one, and a model still has no proof to attach either way.
   const out = path.join(dir, "out.json");
   await new Promise((resolve, reject) => {
     const p = spawn("setsid", ["-f", "curl", "-s", "-o", out, "--unix-socket", socket, "-X", "POST", "http://x/v1/tools/agents.create",
@@ -408,7 +430,7 @@ test("peer: a caller claiming to be the Capsule, with the Capsule's own ambiguou
   });
   for (let n = 0; n < 50 && !fs.existsSync(out); n++) await new Promise(r => setTimeout(r, 100));
   const noPin = JSON.parse(fs.readFileSync(out, "utf8"));
-  assert.equal(noPin.error?.code, "denied", JSON.stringify(noPin));
+  assert.equal(noPin.error?.code, "presence_required", JSON.stringify(noPin));
   assert.ok(!(await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "kit"));
 });
 
