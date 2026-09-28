@@ -51,6 +51,9 @@ const state = {
   name: "",
   assistant: "",
   host: "",
+  /** The Agent computers step's choice ("off"|"browser"|"desktop"), so the ending screen can
+   * show what was picked. Client-only until glass owns a real onboard.* tool for it. */
+  /** @type {"off"|"browser"|"desktop"|null} */ computers: null,
 };
 /** Timers and listeners of the current screen, cleared when the screen changes. */
 let cleanup = [];
@@ -821,10 +824,10 @@ const SCREENS = {
       h("p", { class: "lead" }, "Each agent can work from its own computer, the way a coworker would: a browser to look things up in, or a whole desktop to work on. More capable, and more for your server to run."));
     const body = h("div", { class: "ob-panel" });
     col.append(body);
-    let choice = /** @type {"off"|"browser"|"desktop"|null} */ (null);
+    let choice = state.computers;
     const syncFoot = () => s.foot({ label: "Continue", disabled: !choice, run: s.next });
     const opt = (value, title, desc, size) => h("label", { class: value === choice ? "on" : "" },
-      h("input", { type: "radio", name: "computers", value, checked: value === choice, onchange: () => { choice = value; put(body, choiceEl()); syncFoot(); } }),
+      h("input", { type: "radio", name: "computers", value, checked: value === choice, onchange: () => { choice = state.computers = value; put(body, choiceEl()); syncFoot(); } }),
       h("span", { class: "t" }, h("b", null, title), h("span", null, desc), h("span", { class: "code" }, size)));
     const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "Agent computers" },
       opt("off", "Off", "Agents work from the terminal only, no browser or desktop of their own.", "Nothing extra to run."),
@@ -1021,6 +1024,12 @@ function showEnding(d) {
       note: `Open ${home.replace(/^https?:\/\//, "")}/now on your phone, then Add to Home Screen.` },
     { id: "history", label: "Your history", done: stepState("history") !== "todo",
       note: stepState("history") !== "todo" ? "Every session is searchable in the Deck." : "Vyre keeps reading your sessions in the background." },
+    // Only shown once the person actually chose (not skipped): the other new stub steps
+    // (secrets, accounts, drive) have nothing real to report yet, so they stay off this list.
+    ...(state.computers ? [{ id: "computers", label: "Agent computers", done: true, note: state.computers === "off"
+      ? "Agents work from the terminal only. Change this any time from Settings."
+      : state.computers === "browser" ? "Each agent gets a Chrome of its own."
+      : "Each agent gets a Chrome and a desktop of its own." }] : []),
   ];
   put(ticks, rows.map(t => progressRow(t.label, t.done ? "done" : "todo", t.note)));
   // The passkey detour already happened earlier, at the address step (onboard.finish only hands

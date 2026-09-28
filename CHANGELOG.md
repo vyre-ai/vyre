@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The ending screen shows the Agent computers choice
+
+- The "What's next" ticks on the final onboarding screen (showEnding()) now include a fourth row,
+  "Agent computers", once the person actually picks Off/Browser only/Browser + desktops in that
+  step (not shown if they skipped it, since there's nothing real to report). The choice is kept in
+  `state.computers` (client-only, same degrade-gracefully pattern as the step itself) so the
+  ending screen can read it; no server persistence yet.
+
 #### Vyre Drive step: the decided design, previewed honestly
 
 - deck/onboard/onboard.js's `drive` step is no longer a bare "Coming soon" line: it now shows the
