@@ -1371,8 +1371,8 @@ export class Switchboard {
    * The same thread and transcript; a running turn is stopped first.
    * @param {string} id @param {string} uuid the user message (thread.turn's uuid, the transcript line's)
    */
-  async rewind(id, uuid, restore = "conversation") {
-    const rec = this.must(id);
+  /** The user turn named by uuid, in this session's transcript here (rewind and forkAt share the lookup). */
+  findLine(id, uuid) {
     const t = findSession(this.deps.transcripts || [], id);
     if (!t) throw Object.assign(new Error("this session has no transcript here to rewind"), { code: "bad_input" });
     let line = null;
@@ -1381,6 +1381,23 @@ export class Switchboard {
       try { const j = JSON.parse(l); if (j.uuid === uuid && j.type === "user") { line = j; break; } } catch {}
     }
     if (!line) throw Object.assign(new Error(`no message ${String(uuid).slice(0, 8)} in this session`), { code: "bad_input" });
+    return line;
+  }
+
+  /**
+   * A new thread with this session's conversation up to (not including) a turn, that the
+   * original never sees - "fork from here" (rewind's own, in-place, the other menu item).
+   * @param {string} id @param {string} uuid @param {{ prompt?: string, name?: string, surface?: string }} [opts]
+   */
+  async forkAt(id, uuid, opts = {}) {
+    const line = this.findLine(id, uuid);
+    if (!line.parentUuid) throw Object.assign(new Error("that is the first message: fork the whole session instead"), { code: "bad_input" });
+    return this.launch({ fork: id, resumeAt: String(line.parentUuid), prompt: opts.prompt, name: opts.name, surface: opts.surface });
+  }
+
+  async rewind(id, uuid, restore = "conversation") {
+    const rec = this.must(id);
+    const line = this.findLine(id, uuid);
     const text = typeof line.message?.content === "string" ? line.message.content
       : (Array.isArray(line.message?.content) ? line.message.content.filter(b => b && b.type === "text").map(b => b.text).join("\n") : "");
     // The files first, while the session that made the changes is running: Claude Code puts back
@@ -2051,9 +2068,13 @@ export default {
         return sb.remember(i.thread, i.text, i.scope || "project");
       }, ["cli", "local", "deck", "capsule"]);
 
-    tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation so far, in the same folder, that the original never sees. For a session busy in a terminal, the way to carry on from here without two keyboards on one transcript.",
-      { type: "object", required: ["thread"], properties: { thread: str, prompt: str, name: str, surface: str } },
-      async (i, { caller }) => { guard(caller, "fork sessions"); return sb.launch({ fork: i.thread, prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) }); });
+    tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation so far, in the same folder, that the original never sees. For a session busy in a terminal, the way to carry on from here without two keyboards on one transcript. at: a message's uuid (thread.turn's) - fork from just before that turn instead of from the live end, the other item in the rewind menu ('Fork from here' beside 'Restore').",
+      { type: "object", required: ["thread"], properties: { thread: str, at: str, prompt: str, name: str, surface: str } },
+      async (i, { caller }) => {
+        guard(caller, "fork sessions");
+        if (i.at) return sb.forkAt(i.thread, i.at, { prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) });
+        return sb.launch({ fork: i.thread, prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) });
+      });
 
     tool("threads.mode", "Put a running thread in a permission mode, as Shift+Tab does in Claude Code: default (ask), acceptEdits (edits without asking), plan (read and plan only) or bypassPermissions (\"Doesn't ask\": no questions; Vyre's security floor and the Gate still hold, and only in a session with Vyre's plugin). Only a person's surface can; no answer ever sets it.",
       { type: "object", required: ["thread", "mode"], properties: { thread: str, mode: { type: "string", enum: PERSON_MODES } } },
