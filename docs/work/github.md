@@ -56,9 +56,14 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   file, and no commit missing from the default branch and every remote; otherwise nothing is
   touched and `github.cleanup-needed { project, session, path, branch, dirty, commits }` is
   emitted for a surface to show a confirm card. `git worktree remove --force` and `git branch -D`
-  no longer appear anywhere in this file. 29/29 on testbox (5 new/changed worktree-safety cases:
-  clean removal, dirty-file block, untracked-file block, unmerged-commit block, merged-or-pushed
-  allow). Sent to reviewer.
+  no longer appear anywhere in this file. 29/29 on testbox. Reviewer CLEARED 58d0dd87 with one
+  MEDIUM and one LOW, both fixed at 4e9c6d7d: `--ignored` added to the status check (an ignored
+  `.env`/build output/dataset used to slip past cleanup entirely); `refs/heads/<branch>` on
+  rev-list's two revision args. Found on testbox, not assumed: `--end-of-options` on rev-list
+  actually breaks `--not`/`--remotes` (git stops parsing them as flags once given), so it was
+  dropped, keeping just the `refs/heads/` prefix; `git branch -d` doesn't accept `refs/heads/`
+  form at all, so that one keeps the short name. 29/29 on testbox including a new ignored-file
+  test. Sent to reviewer.
 
 ## Next
 1. Send `sessions` the actual gitWithAskpass diff (lib/git-safe.js + lib/git-safe-askpass.test.js)
