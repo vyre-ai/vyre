@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Onboarding: "Where should Vyre live?", ahead of pairing
+
+- New step (`live`) between "You" and "Tailscale": Solo (this computer, no Tailscale), Another
+  computer I have, or A cloud server. Solo skips straight to Claude sign-in; the other two fall
+  through to today's pairing screens unchanged, which is still where Tailscale first appears.
+  Client-only choice for now, pending anywhere's role-choice contract and ADR 0039.
+
 #### Landing page: a tap hint on touch/narrow screens, and the Mac tab names what it does
 
 - The hero's "Press Option-Space to try the Capsule right here" hint made no sense without a

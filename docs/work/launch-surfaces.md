@@ -83,6 +83,23 @@ role-choice tool shape and ADR 0039 text, federation's move-plan/move-start/move
 shapes (proposed names in the ask), and tailnet's confirmation that its join step truly never
 renders for Solo. Look/copy for the three role cards can start now; the real engine wiring waits.
 
+Built (client-only, wip b4df8f14): a new step `live` ("Where should Vyre live?") in
+`deck/onboard/onboard.js`'s `STEPS`, between `you` and `tailscale`. Three cards (Solo / another
+computer I have / a cloud server); Solo marks `tailscale` and `name` skipped and jumps straight to
+`claude`, the other two fall through to today's pairing screens unchanged. `state.live` is
+client-only until anywhere's tool lands, same degrade-gracefully shape as the `computers` step.
+Named the step id `live`, not `role`, to keep it distinct from `core/config`'s existing
+`role: "box"|"local"` field, which this choice will likely end up driving once anywhere's contract
+exists (Solo -> `local`, the other two -> `box`, is my read, not confirmed). `test/onboard-page.test.js`
+updated for the new hash; server-side `test/onboard.test.js` unaffected (15/15).
+
+Settings placement for "Move to server", found while reading `deck/views/settings.js`: the
+existing "Your devices" section (`drawDevices`, its `foot(toOnboard("devices", "Add a device"))`)
+is the natural spot — a `role === "local"` box already has no peers to show there, so a "Move to
+server" button belongs right next to "Add a device", not a new top-level Settings section. Not
+built yet: waiting on federation's move-engine shapes before writing real UI, per Needs from
+others.
+
 ## The import flow (0.1.1)
 
 What exists today (researched before writing any code):
