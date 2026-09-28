@@ -81,9 +81,8 @@ test("cloneRepo: only https is reachable - a local file:// repo (or any other tr
   assert.ok(!fs.existsSync(path.join(projectsDir, "harlow")), "a refused clone leaves no folder behind");
 });
 
-test("worktreeAdd/worktreeRemove: a session gets its own worktree and branch, invisible to git status in the main clone; the branch survives cleanup only when it has no commits", async t => {
+test("worktreeAdd: makes an isolated worktree and branch, invisible to git status in the main clone", async t => {
   const repoDir = makeClonedRepo(t);
-
   const w1 = await worktreeAdd({ repoDir, session: "abc123", defaultBranch: "main" });
   assert.equal(w1.branch, "vyre/abc123");
   assert.ok(fs.existsSync(path.join(w1.path, "README.md")));
@@ -91,20 +90,78 @@ test("worktreeAdd/worktreeRemove: a session gets its own worktree and branch, in
   const status = gitSync(repoDir, ["status", "--porcelain"]);
   assert.equal(status.stdout.trim(), "", "the worktree folder does not show up as untracked");
   assert.ok(fs.readFileSync(path.join(repoDir, ".git", "info", "exclude"), "utf8").includes(".sessions/"));
+});
 
-  // No commits of its own: cleanup prunes the branch too.
-  const r1 = await worktreeRemove({ repoDir, session: "abc123", defaultBranch: "main" });
-  assert.deepEqual(r1, { removed: true, pruned: true });
-  assert.equal(gitSync(repoDir, ["rev-parse", "--verify", "--quiet", "vyre/abc123"]).ok, false);
+test("worktreeRemove: a clean worktree with no commits of its own is removed, and its branch pruned", async t => {
+  const repoDir = makeClonedRepo(t);
+  await worktreeAdd({ repoDir, session: "clean1", defaultBranch: "main" });
+  const r = await worktreeRemove({ repoDir, session: "clean1", defaultBranch: "main" });
+  assert.deepEqual(r, { removed: true, pruned: true });
+  assert.ok(!fs.existsSync(path.join(repoDir, ".sessions", "clean1")));
+  assert.equal(gitSync(repoDir, ["rev-parse", "--verify", "--quiet", "vyre/clean1"]).ok, false);
+});
 
-  // A session that committed keeps its branch after its worktree is cleaned up.
-  const w2 = await worktreeAdd({ repoDir, session: "def456", defaultBranch: "main" });
-  fs.writeFileSync(path.join(w2.path, "notes.md"), "work in progress\n");
-  plainGit(w2.path, ["add", "notes.md"]);
-  plainGit(w2.path, ["commit", "-q", "-m", "wip"]);
-  const r2 = await worktreeRemove({ repoDir, session: "def456", defaultBranch: "main" });
-  assert.deepEqual(r2, { removed: true, pruned: false });
-  assert.equal(gitSync(repoDir, ["rev-parse", "--verify", "--quiet", "vyre/def456"]).ok, true, "the branch with real work survives");
+test("worktreeRemove: the user's binding rule - never auto-delete. An uncommitted change, an untracked file, or a commit not on the default branch or a remote each block removal; nothing is force-removed and no branch is force-deleted", async t => {
+  const repoDir = makeClonedRepo(t);
+
+  // Uncommitted change to a tracked file.
+  const w1 = await worktreeAdd({ repoDir, session: "dirty1", defaultBranch: "main" });
+  fs.writeFileSync(path.join(w1.path, "README.md"), "changed\n");
+  const r1 = await worktreeRemove({ repoDir, session: "dirty1", defaultBranch: "main" });
+  assert.equal(r1.removed, false);
+  assert.equal(r1.needsConfirm, true);
+  assert.ok(r1.dirty.length > 0, "the modified file shows up as something that would be lost");
+  assert.equal(r1.commits.length, 0);
+  assert.ok(fs.existsSync(w1.path), "the worktree is untouched");
+  assert.equal(gitSync(repoDir, ["rev-parse", "--verify", "--quiet", "vyre/dirty1"]).ok, true, "the branch is untouched");
+
+  // An untracked file, nothing committed.
+  const w2 = await worktreeAdd({ repoDir, session: "dirty2", defaultBranch: "main" });
+  fs.writeFileSync(path.join(w2.path, "scratch.txt"), "notes\n");
+  const r2 = await worktreeRemove({ repoDir, session: "dirty2", defaultBranch: "main" });
+  assert.equal(r2.removed, false);
+  assert.ok(r2.dirty.some(l => l.includes("scratch.txt")));
+  assert.ok(fs.existsSync(w2.path));
+
+  // A real commit that is on neither the default branch nor any remote.
+  const w3 = await worktreeAdd({ repoDir, session: "unmerged1", defaultBranch: "main" });
+  fs.writeFileSync(path.join(w3.path, "notes.md"), "work in progress\n");
+  plainGit(w3.path, ["add", "notes.md"]);
+  plainGit(w3.path, ["commit", "-q", "-m", "wip"]);
+  const r3 = await worktreeRemove({ repoDir, session: "unmerged1", defaultBranch: "main" });
+  assert.equal(r3.removed, false);
+  assert.equal(r3.dirty.length, 0, "the worktree itself is clean; it's the commit that's at risk");
+  assert.ok(r3.commits.length === 1 && r3.commits[0].includes("wip"));
+  assert.equal(gitSync(repoDir, ["rev-parse", "--verify", "--quiet", "vyre/unmerged1"]).ok, true, "the branch survives untouched");
+});
+
+test("worktreeRemove: a commit already merged into the default branch, or already on a remote, is safe and gets cleaned up", async t => {
+  const repoDir = makeClonedRepo(t);
+
+  // Merged into the default branch: fast-forward main to include the session's commit.
+  const w1 = await worktreeAdd({ repoDir, session: "merged1", defaultBranch: "main" });
+  fs.writeFileSync(path.join(w1.path, "notes.md"), "done\n");
+  plainGit(w1.path, ["add", "notes.md"]);
+  plainGit(w1.path, ["commit", "-q", "-m", "landed"]);
+  plainGit(repoDir, ["merge", "-q", "--ff-only", "vyre/merged1"]);
+  const r1 = await worktreeRemove({ repoDir, session: "merged1", defaultBranch: "main" });
+  assert.equal(r1.removed, true, JSON.stringify(r1));
+
+  // On a remote, even though it's not on the default branch: push the session branch to a
+  // second local repo standing in for "origin", which is exactly what `--remotes` sees.
+  const remote = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-remote-"));
+  t.after(() => fs.rmSync(remote, { recursive: true, force: true }));
+  plainGit(remote, ["init", "-q", "--bare"]);
+  // makeClonedRepo's clone already made an "origin" remote pointing at the throwaway src repo;
+  // point it at this one instead rather than adding a second remote.
+  plainGit(repoDir, ["remote", "set-url", "origin", remote]);
+  const w2 = await worktreeAdd({ repoDir, session: "pushed1", defaultBranch: "main" });
+  fs.writeFileSync(path.join(w2.path, "feature.md"), "shipped elsewhere\n");
+  plainGit(w2.path, ["add", "feature.md"]);
+  plainGit(w2.path, ["commit", "-q", "-m", "on a remote, not on main"]);
+  plainGit(w2.path, ["push", "-q", "origin", "vyre/pushed1"]);
+  const r2 = await worktreeRemove({ repoDir, session: "pushed1", defaultBranch: "main" });
+  assert.equal(r2.removed, true, JSON.stringify(r2));
 });
 
 test("worktreeAdd: a hostile session id cannot escape .sessions/ or forge a branch name", async t => {

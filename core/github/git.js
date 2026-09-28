@@ -84,21 +84,40 @@ export async function worktreeAdd({ repoDir, session, defaultBranch }) {
 }
 
 /**
- * Remove a session's worktree. The branch stays (a session's work is never deleted by ending the
- * session) unless it has zero commits ahead of the default branch, the safe case to prune.
+ * Whether a session's worktree is safe to remove with no loss: no uncommitted changes, no
+ * untracked files, and no commit that isn't already on the default branch or some remote (the
+ * user's binding rule: no auto-delete, ever, of anything that would actually be lost).
+ * @param {{ repoDir: string, dest: string, branch: string, defaultBranch: string }} p
+ */
+async function worktreeSafety({ repoDir, dest, branch, defaultBranch }) {
+  const status = await gitAsync(dest, ["status", "--porcelain"]);
+  const dirty = status.ok ? status.stdout.split("\n").map(l => l.trim()).filter(Boolean) : ["(could not read the worktree's status)"];
+  const rev = await gitAsync(repoDir, ["rev-list", branch, "--not", defaultBranch, "--remotes", "--pretty=oneline", "--abbrev-commit"]);
+  const commits = rev.ok ? rev.stdout.split("\n").filter(Boolean) : ["(could not check which commits are only on this branch)"];
+  return { dirty, commits, safe: dirty.length === 0 && commits.length === 0 };
+}
+
+/**
+ * Remove a session's worktree, but ONLY when it is provably safe: no uncommitted change, no
+ * untracked file, and no commit that would be lost (everything on it is already on the default
+ * branch or some remote). This is the user's binding rule, not a style choice: no auto-delete,
+ * deletion is always previewed. When it is not safe, nothing is removed; the worktree and branch
+ * are left exactly as they are, and the caller (`github.session.cleanup`) tells the person what
+ * would be lost so they can decide by hand. `git worktree remove --force` and `git branch -D`
+ * never appear in this path, on purpose: a plain (non-force) remove and a plain (non-force,
+ * `-d`) branch delete both refuse on their own if anything here turns out to be wrong, which is
+ * a second, independent backstop behind the check above, not a substitute for it.
  * @param {{ repoDir: string, session: string, defaultBranch: string }} p
  */
 export async function worktreeRemove({ repoDir, session, defaultBranch }) {
   const id = safeSegment(session, "session id");
   const dest = path.join(repoDir, ".sessions", id);
   const branch = `vyre/${id}`;
-  const rm = await gitAsync(repoDir, ["worktree", "remove", "--force", dest]);
-  if (!rm.ok && fs.existsSync(dest)) throw fail(`git worktree remove failed: ${rm.stderr.trim().slice(0, 300) || "no output"}`, "cleanup_failed");
-  const ahead = await gitAsync(repoDir, ["rev-list", "--count", `${defaultBranch}..${branch}`]);
-  let pruned = false;
-  if (ahead.ok && Number(ahead.stdout.trim()) === 0) {
-    const del = await gitAsync(repoDir, ["branch", "-D", branch]);
-    pruned = del.ok;
-  }
-  return { removed: true, pruned };
+  if (!fs.existsSync(dest)) return { removed: false, existed: false };
+  const safety = await worktreeSafety({ repoDir, dest, branch, defaultBranch });
+  if (!safety.safe) return { removed: false, needsConfirm: true, path: dest, branch, dirty: safety.dirty, commits: safety.commits };
+  const rm = await gitAsync(repoDir, ["worktree", "remove", dest]);
+  if (!rm.ok) throw fail(`git worktree remove failed even though nothing would be lost: ${rm.stderr.trim().slice(0, 300) || "no output"}`, "cleanup_failed");
+  const del = await gitAsync(repoDir, ["branch", "-d", branch]);
+  return { removed: true, pruned: del.ok };
 }

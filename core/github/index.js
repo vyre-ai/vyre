@@ -188,14 +188,18 @@ export default {
 
     ctx.tool("github.session.cleanup", {
       internal: true,
-      description: "Sessions only: remove a session's worktree (the branch stays, unless it has no commits of its own).",
+      description: "Sessions only: remove a session's worktree, but ONLY when nothing would be lost (no uncommitted change, no untracked file, no commit missing from the default branch and every remote). Otherwise nothing is removed and github.cleanup-needed is emitted with what's at stake, for a person to decide by hand.",
       input: obj({ project: str, session: str }, ["project", "session"]),
       callers: ["module"],
       run: async ({ project, session }, meta = {}) => {
         checkModuleCaller("github.session.cleanup", meta, SESSION_ONLY);
         const repo = projects.get(project);
         if (!repo) return { removed: false };
-        return worktreeRemove({ repoDir: repo.home, session, defaultBranch: repo.default_branch });
+        const out = await worktreeRemove({ repoDir: repo.home, session, defaultBranch: repo.default_branch });
+        if (out.needsConfirm) {
+          ctx.events.emit("github.cleanup-needed", { project, session, path: out.path, branch: out.branch, dirty: out.dirty, commits: out.commits });
+        }
+        return out;
       },
     });
 
