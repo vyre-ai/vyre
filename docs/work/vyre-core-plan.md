@@ -117,6 +117,17 @@ tested on Linux where it can be. "Mac check" marks what only a Mac run can confi
 - Still vyred's own, advisory on a Mac (ADR 0040 section 3): Touch ID, the terminal code, the
   CLI window and presence sessions. Sessions become core's with the Deck rule, next to the vault
   (phase 2), since that is what they serve.
-- Next, phase 1c: the person's clients write to core directly. The Capsule enrolls its key and
-  removes keys through core (with capsule-pro); `vyre presence` in a terminal does the same;
-  core's first key comes from the installer's code. Then phase 2.
+- Next, phase 1c: the person's clients write to core directly. The contract (sent to capsule-pro):
+  - The Capsule reads core.json itself (the same trust rule as readCoreConfig) and talks to
+    core's socket only after the same socketProblem check. With no core.json it keeps talking
+    to vyred exactly as today.
+  - First key: `vyre up` (phase 4) shows the installer's one-time code; the Capsule sends
+    POST /v1/tools/presence.enroll {kind:"capsule", name, public_key, alg:-7} with
+    x-vyre-presence `code code=<code>`. Every later key is enrolled with a proof from an
+    already-enrolled key (`capsule key=... ts nonce sig` over that exact input).
+  - Removing a key (its own old key after re-enroll, or one the person picks):
+    presence.remove {id} with a capsule proof.
+  - A proof for a tool that stays in vyred is still sent to vyred as today; vyred asks core.
+  - The CLI holds no key core knows, so `vyre presence keys` reads through vyred (core's list),
+    and enroll and remove in a terminal say to use the Capsule (vyred's core_owned message).
+  Then phase 2.
