@@ -89,9 +89,24 @@ export default {
       },
     });
     ctx.tool("projects.create", {
-      description: "Make a project by hand: a name, a home folder (default: a new folder in the projects folder), other folders it owns, the threads picked into it, and its people.",
+      description: "Make a project by hand: a name, a home folder (default: a new folder in the projects folder), other folders it owns, the threads picked into it, and its people. Every projects: \"*\" agent (never the assistant, whose \"*\" is a different rule) is granted projects.access on it at once too, option (a) (the lead's decision, so agents.projects and projects.access never drift apart): a wildcard agent reads a brand-new project the moment it exists, with no separate step.",
       input: { type: "object", required: ["name"], properties: { name: str, home: str, org: str, workspaces: strs, threads: strs, people: { type: "array", items: person }, watchers: strs } },
-      run: async input => P.create(input),
+      run: async input => {
+        const created = P.create(input);
+        const r = await ctx.call("agents.list", {});
+        if (!r.error) {
+          const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
+          for (const a of list) {
+            if (!a || !a.name || a.kind === "assistant" || a.projects !== "*") continue;
+            // A brand-new project can never already have a projects.access row (grant/revoke
+            // both require it to exist first), so there is nothing here to weigh against a
+            // person's own earlier revoke: always safe to grant outright.
+            const g = await ctx.call("projects.access.grant", { project: created.slug, agent: a.name });
+            if (g.error) throw new Error(`${created.slug} was created, but could not grant ${a.name} access to it: ${g.error.message}`);
+          }
+        }
+        return created;
+      },
     });
     ctx.tool("projects.add-threads", {
       description: "Pick threads (Claude Code session ids) into a project. A thread can be in several projects.",
@@ -207,16 +222,26 @@ export default {
     };
 
     ctx.tool("projects.access.grant", {
-      description: "Let an agent reach a project's data (Drive, synced sessions, anything project-scoped asks projects.access.check before serving an agent). agent left out or empty grants every agent. Needs the owner's presence, the same weight a vault grant to an agent carries: Drive and sync refuse an ungranted project's data outright, they do not merely leave it off a list.",
+      description: "Let an agent reach a project's data (Drive, synced sessions, anything project-scoped asks projects.access.check before serving an agent). agent left out or empty grants every agent. Needs the owner's presence, the same weight a vault grant to an agent carries: Drive and sync refuse an ungranted project's data outright, they do not merely leave it off a list. callers includes \"module\": agents.create/update and projects.create write this grant internally, as part of the person's own already-gated action (option (a), the lead's decision), never reachable this way by a model, since only the loader itself can set a \"module:<name>\" caller.",
       input: { type: "object", required: ["project"], properties: { project: str, agent: str } },
-      callers: OWNER,
+      callers: [...OWNER, "module"],
       run: async ({ project, agent }, meta = {}) => setAccess(project, agent, "granted", String((meta && meta.caller) || "unknown")),
     });
     ctx.tool("projects.access.revoke", {
-      description: "Take an agent's (or, agent left out, every agent's) access to a project away. Instant, no presence needed: taking access away is never held up behind a prompt.",
+      description: "Take an agent's (or, agent left out, every agent's) access to a project away. Instant, no presence needed: taking access away is never held up behind a prompt. callers includes \"module\": agents.update revokes internally when a project drops off an agent's own list.",
       input: { type: "object", required: ["project"], properties: { project: str, agent: str } },
-      callers: OWNER,
+      callers: [...OWNER, "module"],
       run: async ({ project, agent }, meta = {}) => setAccess(project, agent, "revoked", String((meta && meta.caller) || "unknown")),
+    });
+    ctx.tool("projects.access.clear", {
+      description: "Delete every projects.access row for one agent outright, not merely revoke: for agents.delete's own case, where the agent no longer exists at all, so there is nothing left for a future re-add to distinguish from a person's own explicit revoke. Internal: never a person or model's own door directly.",
+      input: { type: "object", required: ["agent"], properties: { agent: str } },
+      callers: ["module"],
+      run: async ({ agent }) => {
+        const a = normAgent(agent);
+        const info = db.prepare("DELETE FROM projects_access WHERE agent = ?").run(a);
+        return { agent: a, cleared: info.changes };
+      },
     });
     ctx.tool("projects.access.check", {
       description: "Whether a named agent may reach a project's data: deny by default, an agent-specific grant wins over the wildcard grant (a grant or revoke that left agent out, covering everyone). Drive, sync and anything else that serves a project's files or sessions to an agent asks this first. Internal to first-party modules and the owner's own surfaces; a model never asks this on its own behalf to learn what exists: the row it wants is simply left out of a listing instead. agent is required (reviewer's LOW): an empty agent would otherwise read the wildcard row directly, conflating 'no agent specified' with 'the wildcard grant', two different things.",
@@ -297,22 +322,28 @@ export default {
     // its memory access. Retried a few times, spaced out, in case agents starts after projects
     // in this boot (module.json declares no hard "requires" on agents: projects works fine
     // without it, so this can't be a real dependency edge, just a startup-order one). Marked
-    // done in projects_access_seeded (its own migration step) the moment any attempt succeeds,
-    // agents.list's own error included, no_such_tool means agents genuinely is not running, so
-    // there is nothing to seed either way. Six tries, 500ms apart, is not enough to rule out a
-    // permanent problem, only a boot-order race; a real, lasting outage leaves this unmarked, so
-    // the next start tries again, and the manual tool above is the fallback in between.
+    // done in projects_access_seeded (its own migration step) ONLY once it has actually read a
+    // real list from agents.list (reviewer's seed-order LOW, still open on 2fb4258c): a
+    // no_such_tool answer used to be treated as final ("agents genuinely is not installed"),
+    // but that is only true when agents really is disabled, which this cannot tell apart from
+    // "agents hasn't started yet" by the error code alone. Retried the same as any other error
+    // now; six tries, 500ms apart, is not enough to rule out a permanent problem, only a
+    // boot-order race, so a real, lasting outage (or a genuinely agents-less install) leaves
+    // this unmarked and retries again next boot, cheap either way. Going forward this matters
+    // less: agents.create/update and projects.create write the grant as it happens (option (a)
+    // below), so this seed only ever backfills what existed before this version.
     // The returned promise is here for tests to await determinism on, never used by real
     // callers: nothing in production needs to wait on the auto-seed before start() returns.
+    // A test that awaits this promise (access.test.js's own started()) would otherwise pay the
+    // full 6-try, 2.5s retry cost on every no_such_tool too, now that no_such_tool is retried
+    // like any other error: sped up under node --test, same convention core/config/dialogs.js
+    // and core/recall/index.js use, never in production.
+    const RETRY_MS = process.env.NODE_TEST_CONTEXT ? 5 : 500;
     const autoSeed = db.prepare("SELECT 1 FROM projects_access_seeded").get() ? Promise.resolve() : (async () => {
-      const done = () => db.prepare("INSERT OR IGNORE INTO projects_access_seeded (id, at) VALUES (1, ?)").run(Date.now());
       for (let i = 0; i < 6; i++) {
         const r = await seedFromAgents();
-        // No error, or agents genuinely is not installed (no_such_tool): either way agents.list
-        // gave a real answer, so there is nothing left to retry for. Any other error might be
-        // agents starting later in this same boot, worth the next retry.
-        if (!r.error || r.error.code === "no_such_tool") { done(); return; }
-        await new Promise(res => setTimeout(res, 500));
+        if (!r.error) { db.prepare("INSERT OR IGNORE INTO projects_access_seeded (id, at) VALUES (1, ?)").run(Date.now()); return; }
+        await new Promise(res => setTimeout(res, RETRY_MS));
       }
       ctx.log("projects.access: could not auto-seed from agents.projects after 6 tries; run projects.access.migrate by hand once agents is up");
     })();

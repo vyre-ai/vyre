@@ -223,9 +223,10 @@ test("graph: a projects: \"*\" agent is not the assistant — every mapped proje
   const hl = await call("memory.graph", { agent: "wilma", project_cwds: [path.join(work, "harlow-site")] }, opts);
   assert.equal(hl.data?.scope, "project");
 
-  // Never the main graph or the unfiled room: those are the assistant's alone now.
+  // Never the main graph (the assistant's alone) or the unfiled room (nobody's but the true
+  // owner's now, THE assistant rule: not even the assistant reads raw unmapped content).
   assert.match((await call("memory.graph", { agent: "wilma" }, opts)).error?.message || "", /main graph is for the assistant/);
-  assert.match((await call("memory.facts", { agent: "wilma", room: "unfiled" }, opts)).error?.message || "", /unfiled room is for the user and the assistant/);
+  assert.match((await call("memory.facts", { agent: "wilma", room: "unfiled" }, opts)).error?.message || "", /unfiled room is for the user only/);
   // Personal facts are refused too now (the user's 2026-09-28 decision, narrowing
   // docs/adr/0007-intelligence.md decision 1): a wildcard agent is no longer the assistant's
   // equal there either.
@@ -234,6 +235,36 @@ test("graph: a projects: \"*\" agent is not the assistant — every mapped proje
   // A project.access revoke narrows it immediately, same as a named-projects agent.
   assert.ok(!(await call("projects.access.revoke", { project: "harlow", agent: "wilma" }, opts)).error);
   assert.match((await call("memory.graph", { agent: "wilma", project_cwds: [path.join(work, "harlow-site")] }, opts)).error?.message || "", /not granted/);
+});
+
+test("graph: THE assistant rule — every mapped project and the main graph, personal facts kept, never the unfiled room", async t => {
+  const root = fs.realpathSync(tempHome(t));
+  const work = path.join(root, "Work");
+  const moved = [...SESSIONS, CROSSOVER].map(s => ({ ...s, cwd: s.cwd.replace(W, work) }));
+  const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const opts = { root };
+  assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
+  assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
+  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  await call("memory.curate", {}, opts);
+
+  // The main graph, every mapped project's room, unconditional (never checked against
+  // projects.access: the assistant is not subject to a per-agent revoke).
+  const main = (await call("memory.graph", { agent: "juno" }, opts)).data;
+  assert.equal(main.scope, "main");
+  assert.ok(main.rooms.some(r => r.id === "project:northwind") && main.rooms.some(r => r.id === "project:harlow"), JSON.stringify(main.rooms));
+  // Never the unfiled room, in the main graph's own rooms list or as a direct ask: the fixture's
+  // `${HOME}/Work` session belongs to neither project, so this is a real exclusion, not a no-op.
+  assert.ok(!main.rooms.some(r => r.id === "unfiled"), JSON.stringify(main.rooms));
+  assert.match((await call("memory.facts", { agent: "juno", room: "unfiled" }, opts)).error?.message || "", /unfiled room is for the user only/);
+  // Any one mapped project's room, the same door a named-projects or wildcard agent uses.
+  const nw = await call("memory.graph", { agent: "juno", project_cwds: [path.join(work, "northwind")] }, opts);
+  assert.equal(nw.data?.scope, "project");
+  // Personal facts are the one thing it keeps despite no longer reading the unfiled room most
+  // of them are drawn from: distilled facts, not raw transcripts.
+  assert.ok(!(await call("memory.answer", { agent: "juno", q: "who is my wife" }, opts)).error);
 });
 
 test("graph: a named agent is refused when agents cannot be checked", async t => {

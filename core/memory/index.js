@@ -184,14 +184,17 @@ export default {
       const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
       const a = list.find(x => x && x.name === who);
       if (!a) throw denied(`no agent ${who}`);
-      // Only the assistant gets the true main graph, unfiled room included (the user's decision,
-      // 2026-09-28: the assistant sees every MAPPED project and never an unmapped folder;
-      // everyone else, wildcard agent included, only sees what it's granted). A projects: "*"
-      // agent used to be folded into the same all:true branch as the assistant, which handed it
-      // the unfiled room too, even though a wildcard grant is "every project", not "everything
-      // unfiled has no project". It now walks the same per-project path below, just starting
-      // from every project instead of a named few.
-      if (a.kind === "assistant") return { all: true, agent: who, folders: [], slugs: new Set() };
+      // THE assistant rule (binding, team-lead, 2026-09-28): the assistant sees every MAPPED
+      // project's content and keeps personal facts, but never raw content from an unmapped
+      // folder (the unfiled room). So it is not r.all (the true owner's unconditional reach,
+      // unfiled included): a separate r.assistant flag, unconditional over every project that
+      // exists right now (never gated by projects.access, unlike a projects: "*" agent below;
+      // the assistant is a different privilege tier, not subject to a per-agent revoke) that
+      // guard() and personalOnly() both check for on top of r.all.
+      if (a.kind === "assistant") {
+        const projects = await projectList();
+        return { all: false, assistant: true, agent: who, folders: projects.flatMap(p => p.folders), slugs: new Set(projects.map(p => p.slug)) };
+      }
       const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
       const granted = a.projects === "*" ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
       // agents.projects alone is not the only door any more (reviewer's MEDIUM, Vyre Drive step
@@ -249,8 +252,16 @@ export default {
         if (!scoped && !whole && !r.agent && !(tailnet ? reader(caller) : owner(caller))) throw denied("the main graph is drawn for the Deck and the assistant; pass room (a project's slug, or unfiled) or project_cwds");
         return r;
       }
-      if (room === "unfiled") throw denied(`the unfiled room is for the user and the assistant, not ${r.agent}`);
-      if (!scoped) throw denied(`the main graph is for the assistant; ask for one of ${r.agent}'s projects with room or project_cwds`);
+      // THE assistant rule: unfiled is never the assistant's either, only the true owner's
+      // (r.all above). r.assistant still reaches the unscoped main-graph-equivalent view (every
+      // mapped project's room together, unfiled excluded — memory.graph's own call strips it via
+      // floorPlan's excludeUnfiled) and any one mapped project's room by name, the same door a
+      // named-projects or wildcard agent uses below.
+      if (room === "unfiled") throw denied(`the unfiled room is for the user only, not ${r.agent}`);
+      if (!scoped) {
+        if (r.assistant) return r;
+        throw denied(`the main graph is for the assistant; ask for one of ${r.agent}'s projects with room or project_cwds`);
+      }
       const sc = /** @type {{ room: string|null }} */ (graph.view(cwds, room && room !== "*" ? room : undefined));
       if (sc.room) {
         if (!r.slugs.has(sc.room)) throw denied(`${r.agent} is not granted ${sc.room}`);
@@ -282,7 +293,7 @@ export default {
         }
         const projects = await projectList();
         if (curator.setRooms(projects)) soon();
-        return floorPlan(graph, { ...input, projects });
+        return floorPlan(graph, { ...input, projects, excludeUnfiled: Boolean(r.assistant) });
       },
     });
     ctx.tool("memory.facts", {
@@ -448,7 +459,10 @@ export default {
     const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller));
     const personalOnly = async (input, caller, name) => {
       const r = await reach(input.agent, caller);
-      if (r.agent ? !r.all : !(reader(caller) || ownSession(caller))) {
+      // THE assistant rule: it keeps personal facts (distilled, not raw), even though it no
+      // longer reaches the unfiled room most of them are drawn from. r.all is never true for a
+      // named caller (only !who gets it), so this is r.assistant or refuse, for any agent.
+      if (r.agent ? !r.assistant : !(reader(caller) || ownSession(caller))) {
         throw denied(r.agent ? `personal facts are not a project's: only the assistant reads them, not ${r.agent}` : `${name} is for the user's own surfaces and the assistant, not ${plain(caller || "an unnamed caller", 60)}`);
       }
     };

@@ -20,8 +20,10 @@ import { checkInput } from "../modules/index.js";
 /** A world with one real project, "Harlow Legal", and a fake ctx running the real module's start().
  * agents, when given, answers agents.list (core/agents' own shape) instead of no_such_tool.
  * state.agents can be changed after start() too, for tests of the auto-seed running before
- * agents exists and the manual tool filling in once it does. */
-function world(t, { agents = null } = {}) {
+ * agents exists and the manual tool filling in once it does. failFirst: agents.list answers
+ * this error the first N calls (a boot-order race, agents not up yet), then answers normally,
+ * for the seed-order LOW: only a real answer, no_such_tool included, may mark the seed done. */
+function world(t, { agents = null, failFirst = 0 } = {}) {
   const root = fs.realpathSync(tempHome(t));
   const home = path.join(root, "alex", "Work", "harlow-site");
   fs.mkdirSync(home, { recursive: true });
@@ -29,7 +31,7 @@ function world(t, { agents = null } = {}) {
   t.after(() => db.close());
   const cfg = config.load(root);
   const tools = new Map(), events = [];
-  const state = { agents };
+  const state = { agents, calls: 0 };
   const ctx = {
     config: { ...cfg, role: "box", roots: [] },
     store: { db, migrate: steps => migrate(db, "projects", steps) },
@@ -37,7 +39,12 @@ function world(t, { agents = null } = {}) {
     log: () => {},
     events: { emit: (type, payload) => events.push({ type, payload }), on: () => () => {} },
     tool: (name, def) => tools.set(name, def),
-    call: async tool => tool === "agents.list" && state.agents ? { data: state.agents } : { error: { code: "no_such_tool", message: "none" } },
+    call: async tool => {
+      if (tool !== "agents.list") return { error: { code: "no_such_tool", message: "none" } };
+      state.calls++;
+      if (state.calls <= failFirst) return { error: { code: "unreachable", message: "agents is not up yet" } };
+      return state.agents ? { data: state.agents } : { error: { code: "no_such_tool", message: "none" } };
+    },
   };
   return { root, home, db, tools, events, ctx, state };
 }
@@ -141,6 +148,15 @@ test("projects.access: auto-seeds from agents.projects on start, no manual step 
   // hal has no projects to seed; the assistant's "*" is its own rule, never a per-project row.
   assert.equal((await w.call("projects.access.check", { project: "harlow-legal", agent: "hal" })).granted, false);
   assert.equal((await w.call("projects.access.check", { project: "harlow-legal", agent: "vyre" })).granted, false);
+});
+
+test("projects.access: the auto-seed retries a boot-order race, and marks itself done only once agents.list actually answers (reviewer's seed-order LOW)", async t => {
+  // agents.list fails twice (not no_such_tool: a real "not up yet" error) before it answers,
+  // simulating agents starting after projects in the same boot.
+  const w = await started(t, { agents: [{ name: "kit", kind: "agent", projects: ["harlow-legal"] }], failFirst: 2 });
+  assert.ok(w.state.calls >= 3, `expected at least 3 attempts (2 failures + 1 success), got ${w.state.calls}`);
+  assert.equal((await w.call("projects.access.check", { project: "harlow-legal", agent: "kit" })).granted, true, "seeded once agents finally answered");
+  assert.ok(w.db.prepare("SELECT 1 FROM projects_access_seeded").get(), "marked done only after a real answer");
 });
 
 test("projects.access: auto-seed covers a projects: \"*\" agent too, one row per project (reviewer's follow-up on d897210d)", async t => {
