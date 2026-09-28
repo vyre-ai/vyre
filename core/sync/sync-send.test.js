@@ -8,7 +8,15 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { pair } from "../../test/link-harness.js";
+import { Registry, discover } from "../modules/index.js";
+import { open } from "../store/index.js";
+import { Events } from "../events/index.js";
+import * as config from "../config/index.js";
+import { tempHome, writeModule } from "../../test/helpers.js";
+
+const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const hash = s => crypto.createHash("sha256").update(s).digest("hex");
 
@@ -68,7 +76,46 @@ test("sync.send: a device's own file reaches the box over the real link, chunked
   // is still refused, because firstParty(dir) is the CLAIMED module's own directory: a module
   // installed into <root>/modules can never resolve there, whatever it calls itself (see
   // core/modules/modules.test.js's firstParty() cases for the shipped-vs-home split this rests
-  // on). Nothing under core/sync or core/files needed to change for this.
+  // on). Nothing under core/sync or core/files needed to change for this. The real threat that
+  // old assertion stood in for — a module installed in the person's own home, naming itself
+  // "import" — is tested for real just below, through its own genuine ctx.call, not a spoofed
+  // caller string (reviewer's nit on bf13d8fc).
+});
+
+test("sync.send: a home-installed module cannot pass as core/import by naming itself that — firstParty is the claimed name's own directory, not its label", async t => {
+  const home = tempHome(t);
+  const p = config.ensure(path.join(home, "vh"));
+  const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "sync");
+  // A stub link module: sync.send throws before ever reaching ctx.remote (SEND_CALLERS/firstParty
+  // is checked first), so nothing here needs to answer for real — this only satisfies core/sync's
+  // own requires: ["link"] so it can start at all.
+  const coreMods = path.join(home, "core-mods");
+  writeModule(coreMods, "link", { roles: ["local"], does: { tools: [] } },
+    `export default { async start() { return { async stop() {} }; } };`);
+  // The rogue module: written into a plain temp folder, never one of core/, local/ or modules/ in
+  // the actual repo checkout, so firstParty() refuses it whatever it calls itself (the
+  // shipped-vs-home split core/modules/modules.test.js's own firstParty() cases cover). It calls
+  // sync.send through its own REAL ctx.call — the loader's trusted path, the only way any module
+  // can ever produce a "module:" caller at all (reviewer's independent read of bf13d8fc) — naming
+  // itself "import" to see whether the label alone, unearned, is enough.
+  const homeMods = path.join(home, "home-mods");
+  writeModule(homeMods, "import", { roles: ["local"], does: { tools: ["import.spoof"] } },
+    `export default { async start(ctx) {
+      ctx.tool("import.spoof", { input: { type: "object", properties: {} },
+        run: async () => ctx.call("sync.send", { files: [], mode: "once" }) });
+      return { async stop() {} };
+    } };`);
+  found.push(...discover([coreMods]), ...discover([homeMods]));
+  const db = open(p.db);
+  const events = new Events(db);
+  const reg = new Registry({ db, events, config: { role: "local" }, paths: p, log: () => {} });
+  await reg.start(found, { role: "local" });
+  t.after(async () => { await reg.stop(); db.close(); });
+  assert.equal(reg.modules.get("sync").state, "running", reg.modules.get("sync").error);
+  assert.equal(reg.modules.get("import").state, "running", reg.modules.get("import").error);
+  const r = await reg.call("import.spoof", {}, "cli");
+  assert.ok(!r.error, JSON.stringify(r.error)); // import.spoof itself runs fine; it is what it calls that is refused
+  assert.equal(r.data.error?.code, "denied", JSON.stringify(r.data));
 });
 
 test("sync.send: with the switch off, nothing is sent", async t => {
