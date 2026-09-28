@@ -431,3 +431,46 @@ New hygiene test freezes today's known hand-rolled PERSON_SURFACES copies (allow
 shrinks, boundaries.test.js's convention) -- a Set of exactly cli/local/deck/capsule outside
 lib/caller.js or core/presence/index.js. testbox: caller 8/8, hygiene 5/5, boundaries 5/5,
 docs:ref clean. Sent the helper to the reviewer.
+
+isPerson later hardened once more (e2e2, reviewer-cleared 040e52fd): callerKind strips "thread:"
+same as "agent:" (ADR 0030), so "cli:thread:x"/"deck:thread:x" used to read as a plain person
+surface. Refuses any thread: label directly now (a local THREAD_CLAIM regex, not core/modules'
+agentClaim -- a thread claim isn't an agent claim). Both real audit bugs are fixed and reviewer-
+relayed: e2e2's core/link/mac.js kindOf() at 9138e567 (cleared); federation's core/mcp/hub.js
+whoFrom() -- first pass 513f984d held by the reviewer (its named regex missed the space-separated
+and empty-name claim shapes lib/caller.js's AGENT_CLAIM already handles; reviewer sent federation
+the one-line fix). sessions and federation both sit on branches whose merge-base predates
+personguard/PERSON_SURFACES landing on main, so neither could import lib/caller.js directly yet;
+both wrote the equivalent check locally with a swap-to-lib/caller.js note for their next main/
+stage merge -- flagged to the lead as a stage/0.1.1-fold cleanup item.
+
+## docs-check fix on stage/0.1.1 (work/cohesion-docs, separate worktree)
+
+Quick job from the lead: stage/0.1.1's docs-check failed on docs/design/teammates.md (owner
+"teammates" isn't a known team, status had a parenthetical instead of one word, missing from
+nav.json, 21 em dashes, 3 stale tool mentions). Fixed at 1e57575a on work/cohesion-docs (own
+worktree ../vyre-cohesion-docs, off stage/0.1.1): owner -> chat, status -> draft (granular
+per-section status moved into prose), added to nav.json, em dashes replaced with colons/commas,
+team.projectHasAny/team.autoAdd reworded or terms-ignored (deliberately hypothetical/negative
+mentions), team.preset's false "already in ADR 0031" claim removed rather than kept. Regenerated
+docs/index.json + docs/reference/index.md (npm run docs:ref). Checked docs/work/projects-map.md
+and docs/work/pwa.md too, as asked -- both already clean on stage/0.1.1, no changes needed.
+testbox: docs-check+docs-build+docs-index 50/50. Sent the sha to the integrator.
+
+## vyre doctor: a failed module is now a named check, not silent (reviewer finding, from tailnet)
+
+tailnet lost real time to a gotcha (docs/work/tailnet.md, 28 Sep): a module that registers a tool
+or emits an event its own module.json doesn't declare fails to start; every other module still
+loads, so "no such tool" from something that quietly never registered was the only symptom.
+core/modules/index.js's startOne already logs this loudly and by name (`module X failed to
+start: <manifest-key sentence>`) and status()/`/v1/modules` already carries the same `error`
+forever -- but nothing read it except grepping vyred's log, and `vyre doctor` said nothing at all.
+
+Added a `modules` check to core/cli/commands/doctor.js (core/cli/commands/doctor.js,
+core/cli/commands/doctor.test.js): GET /v1/modules on THIS machine (box or Mac, whichever `vyre
+doctor` runs on -- a module runs wherever vyred does, this is not a box-only fact like `paired`),
+gated on vyred being up. Fails naming the module and vyred's own error sentence when any module is
+`failed`/`invalid`, names all of them when more than one is. New tests cover the pass case, the
+tailnet-shaped single failure, multiple failures, and the vyred-down gate. Kept in `IDS`/`LABELS`
+order so `--view`'s live checks frame and `item()` pick it up for free -- no other file hard-codes
+the check list. testbox: doctor 13/13, boundaries+hygiene+modules 58/58 total.
