@@ -56,6 +56,54 @@ export async function cloneRepo({ projectsDir, name, url, token }) {
   return { path: dest };
 }
 
+/**
+ * A git remote URL's `owner/name`, or null when it is not github.com at all. Reads https
+ * (`https://github.com/owner/name(.git)`, with or without a userinfo prefix), ssh
+ * (`git@github.com:owner/name(.git)`) and the `ssh://` long form, since a folder's own origin
+ * may have been cloned any of those ways before Vyre ever saw it.
+ * @param {string} url
+ */
+export function originFullName(url) {
+  const s = String(url || "").trim();
+  const https = /^https?:\/\/(?:[^@/\s]+@)?github\.com[:/]([^/\s]+)\/([^/\s.]+?)(?:\.git)?\/?$/i.exec(s);
+  if (https) return `${https[1]}/${https[2]}`;
+  const ssh = /^(?:ssh:\/\/)?git@github\.com[:/]([^/\s]+)\/([^/\s.]+?)(?:\.git)?\/?$/i.exec(s);
+  if (ssh) return `${ssh[1]}/${ssh[2]}`;
+  return null;
+}
+
+/**
+ * Whether `dir` is a git repository at all, and what its `origin` remote points at (`null` when
+ * there is no `origin` or no repo). Read-only, local-only: no network call, so it costs nothing
+ * to call before proposing any change (ADR 0041, `github.project.link`/`.detect`).
+ * @param {string} dir
+ */
+export async function readOrigin(dir) {
+  const top = await gitAsync(dir, ["rev-parse", "--is-inside-work-tree"]);
+  if (!top.ok || top.stdout.trim() !== "true") return { isRepo: false, origin: null };
+  const r = await gitAsync(dir, ["remote", "get-url", "origin"]);
+  return { isRepo: true, origin: r.ok ? r.stdout.trim() : null };
+}
+
+/** The URL a named remote points at, or null when the repo has no remote by that name. */
+export async function remoteUrl(dir, name) {
+  const r = await gitAsync(dir, ["remote", "get-url", safeSegment(name, "remote name")]);
+  return r.ok ? r.stdout.trim() : null;
+}
+
+/**
+ * Add a new remote. Never overwrites: `git remote add` refuses on its own when a remote by that
+ * name already exists, which is the actual protection `github.project.link`'s confirm step
+ * relies on (checked again there with `remoteUrl` first, for a clearer message, but this is the
+ * backstop). Local-only: no network call, since adding a remote is only a config write.
+ * @param {string} dir @param {string} name @param {string} url
+ */
+export async function remoteAdd(dir, name, url) {
+  const r = await gitAsync(dir, ["remote", "add", safeSegment(name, "remote name"), url]);
+  if (!r.ok) throw fail(`git remote add failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "remote_failed");
+  return { added: true };
+}
+
 const EXCLUDE_LINE = ".sessions/";
 
 /** Add `.sessions/` to the repo's own (never the person's committed) exclude file, once. */

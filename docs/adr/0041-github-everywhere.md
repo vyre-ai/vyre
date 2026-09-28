@@ -3,12 +3,12 @@ title: ADR 0041: GitHub everywhere
 summary: How Vyre signs in to GitHub, lists repos, turns one into a project, and gives every session its own worktree and branch.
 audience: builders
 owner: github
-status: proposed
+status: draft
 ---
 
 # ADR 0041: GitHub everywhere
 
-Status: proposed, 28 Sep 2026 · Workstream: github · Code: `core/github/`, `lib/git-safe.js`
+Status: draft, 28 Sep 2026, Workstream: github, Code: `core/github/`, `lib/git-safe.js`
 (existing, owner: sessions), `core/projects/` (existing, owner: federation), `deck/views/connections.js` (existing, owner: launch)
 
 ## The problem
@@ -59,8 +59,8 @@ is nothing to paste. `github.accounts` lists `{name, login, avatar_url}`, never 
 
 `github.remove {name}` (reviewer: a live non-expiring `repo` token must not just sit in the vault
 once disconnected) fetches the item, calls `DELETE /applications/{client_id}/token` with HTTP
-basic auth `client_id:client_secret` and `{ "access_token": token }` as the body — the one call in
-this module that reads `VYRE_GITHUB_OAUTH_CLIENT_SECRET` — which revokes the token at GitHub, then
+basic auth `client_id:client_secret` and `{ "access_token": token }` as the body, the one call in
+this module that reads `VYRE_GITHUB_OAUTH_CLIENT_SECRET`, which revokes the token at GitHub, then
 deletes the vault item and drops the account row. A revoke that fails (GitHub unreachable, already
 revoked) still removes the account and item locally and says so plainly, so a person is never
 stuck with a connected-looking account whose token doesn't work; it never leaves the token behind
@@ -76,18 +76,23 @@ both.
 
 ### 3. Repos: `github.repos`
 
-`github.repos {account?, q?, limit?}` calls `GET /user/repos?affiliation=owner,collaborator,
-organization_member&sort=updated&per_page=100`, paginated to `limit` (default 30, max 100),
-filtered client-side by `q` against `full_name` and `description`. Returns
-`[{ full_name, name, owner, private, default_branch, description, updated_at, html_url }]`, never
-a clone URL with a token in it. `account` picks the connected account when there is more than one
-(the same `forRead`/`forWait` shape as Google's). `callers`: people (`cli`, `local`, `deck`,
-`capsule`) plus `module:sessions` and `module:launch` only — this lists every private repo the
-account can reach, so it is never model-reachable, the same as `github.connect`/`.remove`/
-`.project`. No tool in this module that a model can call ever touches the token: reads (`repos`)
-are person/module-only, and there is no model-reachable write in 0.1.1 (clone and worktree
-creation run only from `github.project`, itself person/module-only). Any future model-reachable
-push or PR tool goes through the Gate, unheld access is not on the table for it.
+`github.repos {account?, q?, limit?, page?}` returns `{ repos: [{ full_name, name, owner,
+private, default_branch, description, updated_at, html_url }], page, limit, more }`, everything a
+picker needs (name, owner, the private flag, when it was last updated, its default branch) and a
+next-page signal, never a clone URL with a token in it. Without `q`, `page`/`limit` are GitHub's
+own paging on `GET /user/repos?...&sort=updated&per_page=<limit>&page=<page>` directly, newest-
+updated first. With `q` (matched client-side against `full_name` and `description`, since
+`/user/repos` has no text search of its own), the same call scans pages (capped at 10, so one
+search can never fetch without bound) collecting matches, then paginates the matches themselves
+by `page`/`limit`; `more` says whether another page of matches exists either way. `account` picks
+the connected account when there is more than one (the same `forRead`/`forWait` shape as
+Google's). `callers`: people (`cli`, `local`, `deck`, `capsule`) plus `module:sessions` and
+`module:launch` only, this lists every private repo the account can reach, so it is never
+model-reachable, the same as `github.connect`/`.remove`/`.project`. No tool in this module that a
+model can call ever touches the token: reads (`repos`) are person/module-only, and there is no
+model-reachable write in 0.1.1 (clone and worktree creation run only from `github.project`, itself
+person/module-only). Any future model-reachable push or PR tool goes through the Gate, unheld
+access is not on the table for it.
 
 **Scope decision: `repo`.** An OAuth App's device-flow scope is fixed at the request that minted
 the token (unlike a GitHub App, there is no per-repo installation), so the choice is between
@@ -106,7 +111,7 @@ account?}`:
 1. `github.repos` to resolve `repo` (`owner/name` or a full URL) to its clone URL and default
    branch, for the resolved account.
 2. Clone into `<projects dir>/<repo name>` (`config.js`'s `boxProjectsDir()`/local equivalent;
-   `<repo name>` sanitised — `[A-Za-z0-9._-]` only, no leading dot, no `..` — and de-duplicated
+   `<repo name>` sanitised, `[A-Za-z0-9._-]` only, no leading dot, no `..`, and de-duplicated
    the way `scanEnv` de-dupes names) with `lib/git-safe.js`'s new `gitWithAskpass`, the only way
    this module runs git that needs a network call, ever.
 
@@ -119,7 +124,7 @@ account?}`:
      value, as an env var), read once and printed, then the script is gone: it lives in a `0700`
      temp dir made fresh per call and removed the moment the call ends.
    - **`credential.helper` must not run at all.** macOS ships `credential.helper=osxkeychain` in
-     git's system config, and many people set one globally too — though `git-safe.js`'s
+     git's system config, and many people set one globally too, though `git-safe.js`'s
      `GIT_CONFIG_NOSYSTEM`/`GIT_CONFIG_GLOBAL=devNull` already rule out both scopes, so the actual
      residual risk proven in the test is a **repo-local** helper (in the destination's own
      `.git/config`, a scope neither of those two touches): without an override, a successful
@@ -136,14 +141,14 @@ account?}`:
      call (tested: a local repo path is refused exactly like any other non-https source).
    - **One username for every account.** `credential.username` is fixed to `x-access-token`
      (GitHub's own convention: any non-empty username works with a PAT as the password), so git
-     only ever prompts askpass once, for the password. Without this it asks twice — once for the
-     username, once for the password — and the fd, read once, would answer the first ask and
+     only ever prompts askpass once, for the password. Without this it asks twice, once for the
+     username, once for the password, and the fd, read once, would answer the first ask and
      leave the second empty. Tested via `git credential fill` (the exact credential-resolution
      path a clone takes), so nothing here depends on reaching real GitHub in a test.
 
    This is a small, tested addition to `git-safe.js` (`gitWithAskpass(dir, args, { token,
    username?, stdin? })`), sent to `sessions` (git-safe.js's owner) as a self-contained new-file
-   diff for review — their branch doesn't carry `git-safe.js` yet and a full merge mid-task was
+   diff for review, their branch doesn't carry `git-safe.js` yet and a full merge mid-task was
    too large to do safely, so they review it standalone and the integrator reconciles it against
    main's copy at the stage/0.1.1 fold, the same as everything else piling up there. `github`
    calls it and never reimplements auth.
@@ -154,12 +159,12 @@ account?}`:
    machine's real stored GitHub credential answer instead, printing a real username and PAT into
    tool output that is now in this session's transcript. Reported to the reviewer and the lead
    immediately; the value was not reused or sent anywhere; a rotation is recommended. The actual
-   `gitWithAskpass` code path was never affected (it always goes through the real isolation) — the
+   `gitWithAskpass` code path was never affected (it always goes through the real isolation), the
    leak was in a throwaway debug script that has since been deleted.
 3. `ctx.call("projects.create", { name, home: clonedPath })`, or when the person already has a
    project and just wants to attach the repo, `projects.add-workspace`. `github` never writes to
    `projects`' own tables; it only calls its tools, per the module contract. (Needs federation's
-   sign-off: today's caller allowlist for `add-workspace` names `module:sync` as an exception —
+   sign-off: today's caller allowlist for `add-workspace` names `module:sync` as an exception,
    `module:github` needs the same one, see docs/work/github.md.)
 4. The project row remembers the repo (`github_projects (project, account, full_name,
    default_branch)`, keyed by the project's slug), so later steps (worktree-per-session, and
@@ -167,6 +172,60 @@ account?}`:
 
 `callers` for `github.project`: people plus `module:launch` (the onboarding "connect a repo"
 step). Never a model.
+
+### 4a. Linking an EXISTING project to a repo
+
+`github.project` covers "start a project from a repo". The other direction, a project the person
+already has, its folder already cloned by hand or made before Vyre existed, needs its own tool:
+`github.project.link {project, repo, account?, confirm?}`, people only (`callers: PEOPLE`), never
+a module and never a model. Three rules the reviewer and the user were both explicit about: never
+change a folder without saying so first, never overwrite or remove an existing remote, never
+force anything.
+
+Without `confirm`, the tool only looks and reports:
+1. Resolve `repo` against the account (same `getRepo` as `github.project`, `GET
+   /repos/{full_name}`), so a typo or a repo the account cannot see fails before anything else runs.
+2. Read the project's folder (`readOrigin`, `lib/git.js`, local only, no network): not a git repo
+   at all, a git repo with no `origin` remote, or a git repo whose `origin` already points
+   somewhere. `originFullName` (also `core/github/git.js`) reads `owner/name` back out of an
+   `origin` URL in its https, `git@`, or `ssh://` form, since a folder cloned by hand years ago
+   could be any of the three.
+3. **The folder's origin already matches the repo.** Nothing to propose: the link is recorded
+   (the same `github_projects` row `github.project` writes) and the tool returns
+   `{ linked: true, recorded: true, matched: "origin", ... }` in one call, no `confirm` needed,
+   because nothing on disk changes.
+4. **Anything else** (a different origin, no origin, or the folder isn't a repo at all): nothing
+   is touched. The tool returns what it found (`origin`, or `reason: "not_a_repo"`) and, when the
+   folder is at least a real repo, a proposed action: `{ linked: false, action: "add-remote",
+   remote: "github", url, origin, message }`, `message` in plain words a surface can show
+   directly ("this folder's origin is X, not Y. Add Y as a remote named github?"). A folder that
+   isn't a git repo at all gets `action: "none"`, since there is no remote to add until the person
+   clones or `git init`s it themselves.
+
+Calling again with `confirm: true` is the only path that changes the folder, and only ever adds:
+`remoteUrl(home, "github")` is checked first for a clearer message, then `remoteAdd` (`git remote
+add github <url>`), which refuses on its own (git's own "remote already exists") if a "github"
+remote is already there. If it is, and it points at a different repo, the tool refuses
+(`remote_exists`) rather than silently reusing or replacing it, exactly the binding rule. `git
+remote add` never touches `origin`, never runs `remote set-url`, never removes anything; the
+worst it can do to an existing folder is add one new, named remote, and only on the explicit
+second call.
+
+`github.project.unlink {project}` is the reverse of recording: it drops the `github_projects` row
+and nothing else. No git call at all, on purpose, since "I don't want Vyre to think this project
+is linked anymore" is a different question from "remove the remote from my folder", and the
+second one is not this tool's job.
+
+`github.project.detect {project}` answers a narrower question for a surface, not a person typing
+a repo in by hand: does this project's folder already look like a GitHub repo, and can one of the
+connected accounts reach it. Read-only (`readOrigin` plus, only when the origin parses as a
+github.com URL, one `getRepo` per connected account until one can see it), so it costs nothing to
+call speculatively when a project opens. `callers`: people plus `module:launch` (onboarding can
+offer "Link to owner/repo?" the moment a project is opened, without the person typing anything).
+Returns `{ linked, isRepo, origin, full_name, match }`, `match` is `{ account, full_name,
+default_branch }` for the first connected account that can reach it, or `null` when the origin
+isn't GitHub, or is a repo none of the connected accounts can see (someone else's fork, an
+account not yet connected).
 
 ### 5. A worktree and branch per session
 
@@ -187,7 +246,7 @@ project-change event today; `thread.started` is real, emitted by the Switchboard
 - `github.session.worktree { project, session }` (`internal: true`, callers `["module:sessions"]`
   only, never a model, never a person surface directly): if the project is not a GitHub project,
   returns `null` (sessions then uses the project's home folder directly, as today). Otherwise:
-  the session id is reduced to a safe short id first (git's own check-ref-format rules — no
+  the session id is reduced to a safe short id first (git's own check-ref-format rules, no
   leading `.` or `-`, no `..` anywhere, no trailing `.`, since this becomes a path segment and a
   branch name), then `git worktree add <repo>/.sessions/<safe-id> -b vyre/<safe-id>
   <default_branch>` through `git-safe`, and returns the new path. `sessions` sets the session's
@@ -195,20 +254,20 @@ project-change event today; `thread.started` is real, emitted by the Switchboard
 - `github.session.cleanup { project, session }` (same caller restriction). **The user's binding
   rule: no auto-delete, ever; deletion is always previewed.** The worktree is removed, and its
   branch pruned, only when nothing would be lost: no uncommitted change, no untracked **or
-  ignored** file (`git status --porcelain --ignored` — plain `--porcelain` skips ignored files,
+  ignored** file (`git status --porcelain --ignored`, plain `--porcelain` skips ignored files,
   and a plain `git worktree remove` deletes them without complaint; in a session's worktree those
-  are exactly the things that matter — a `.env`, build output, a downloaded dataset, a local
+  are exactly the things that matter, a `.env`, build output, a downloaded dataset, a local
   database, the reviewer's MEDIUM on the first cut), and no commit that isn't already on the
   default branch or some remote (`git rev-list refs/heads/<branch> --not
   refs/heads/<default_branch> --remotes`; the `refs/heads/` form guards against a value ever
   being misread as an option, belt-and-braces on top of `safeSegment` already refusing a leading
-  dash — `git branch -d` itself only accepts the short name, not that form, so it keeps it).
-  If any of those is true, **nothing is removed** — the worktree and branch are left exactly as
-  they were — and `github.cleanup-needed { project, session, path, branch, dirty, commits }` is
+  dash, `git branch -d` itself only accepts the short name, not that form, so it keeps it).
+  If any of those is true, **nothing is removed**, the worktree and branch are left exactly as
+  they were, and `github.cleanup-needed { project, session, path, branch, dirty, commits }` is
   emitted with what's at stake, for a surface to show "Clean up this session's worktree?" and the
   person to decide by hand. `git worktree remove --force` and `git branch -D` never appear
   anywhere in this path; the removal that does happen uses their plain, non-force forms, which
-  independently refuse if the check above ever turns out to be wrong — a second backstop, not a
+  independently refuse if the check above ever turns out to be wrong, a second backstop, not a
   substitute for the check.
 - `.sessions/` is repo-local and machine-local: it is written to the project's own `.git/info/
   exclude` once (never the repo's committed `.gitignore`, which is the person's file) so `git
@@ -221,7 +280,7 @@ reads through `ctx.call("github.project.of", { project })`, never a direct table
 
 **Built by sessions (79bd2bf1): cleanup fires only on canonical status `finished`**, never
 `stopped` or `paused` (`lib/thread-status.js`), since both of those are resumable on their
-existing cwd and `threads.send` on resume never re-resolves it — cleaning up on them would strand
+existing cwd and `threads.send` on resume never re-resolves it, cleaning up on them would strand
 the resume. This is the right, conservative default for 0.1.1, decided jointly: an ordinary
 interactive session, which typically ends `stopped` rather than `finished`, keeps its worktree
 indefinitely under today's hook. Nothing breaks (disk isn't reclaimed, not correctness), but it is
@@ -234,19 +293,23 @@ you what you'd need... without a new tool from me"). Not started; 0.1.2.
 
 `module.json`: `requires: ["vault"]`, `does.tools`: `github.connect`, `github.connect.cancel`,
 `github.accounts`, `github.remove`, `github.repos`, `github.project`, `github.project.of`,
+`github.project.detect`, `github.project.link`, `github.project.unlink`,
 `github.session.worktree` (internal), `github.session.cleanup` (internal). `watches.emits`:
 `github.added`, `github.removed`, `github.connected`, `github.connect-failed`,
-`github.cleanup-needed`. `shows.deck`: `settings:connections` (joins Google there, not a new
-screen). `needs.vault`: `["per-connection"]`.
+`github.cleanup-needed`, `github.project.linked`, `github.project.unlinked`. `shows.deck`:
+`settings:connections` (joins Google there, not a new screen). `needs.vault`:
+`["per-connection"]`.
 
 | Tool | Callers | Model-reachable |
 |---|---|---|
 | `github.connect`, `.connect.cancel`, `.remove`, `.accounts` | people | never |
 | `github.repos`, `github.project`, `github.project.of` | people, `module:sessions`, `module:launch` | never |
+| `github.project.detect` | people, `module:launch` | never |
+| `github.project.link`, `.project.unlink` | people only | never |
 | `github.session.worktree`, `.session.cleanup` | `module:sessions` only, `internal: true` | never |
 
-No tool a model can call in 0.1.1 touches the token, clones, or writes a worktree. Everything
-that does is a person surface or one of the two modules named above.
+No tool a model can call in 0.1.1 touches the token, clones, writes a worktree, or changes a
+folder's git remotes. Everything that does is a person surface or one of the two named modules.
 
 ## Consequences
 
@@ -258,6 +321,8 @@ that does is a person surface or one of the two modules named above.
   half-finished `git add`, and each gets a real branch a person can push and open a PR from by
   hand today, before Vyre does it from chat in 0.1.2.
 - `.sessions/` worktrees are invisible to the person's own `git status` in the same clone.
+- Linking an existing project never surprises anyone: the common case (a folder already cloned
+  from the right repo) is one call, and every other case is look-then-confirm, never automatic.
 
 ## Rejected
 
