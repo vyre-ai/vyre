@@ -206,7 +206,7 @@ const promptSafe = (s, fallback, max = 64) => { const t = String(s || "").replac
  * the MAC key that authenticates it).
  * @param {Uint8Array} ticket 8 random bytes, scanned from the Vyre code
  * @param {{ relay: string, fetch?: typeof fetch, crypto?: import("./noise.js").CryptoProvider }} o
- * @returns {Promise<{ offer: { relay: string, route: string, box: Uint8Array, secret: string }, name: string, fingerprint: string, handle: string|null }>}
+ * @returns {Promise<{ offer: { relay: string, route: string, box: Uint8Array, secret: string }, name: string, fingerprint: string, handle: string|null, identity: string|null }>}
  */
 export async function resolveTicket(ticket, o) {
   if (!o || !/^wss?:\/\/[^\s/]+/.test(String(o.relay))) throw fail("bad_input", "resolveTicket needs the relay this ticket's box registered with");
@@ -238,11 +238,16 @@ export async function resolveTicket(ticket, o) {
   // just stripped like a free-text name: a handle only means something as a real subdomain, so
   // a bad shape becomes null (no redirect offered) rather than a sanitised-but-wrong string.
   const handle = typeof record.handle === "string" && /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/i.test(record.handle) ? record.handle.slice(0, 32) : null;
+  // The avatar's own seed (the lead's ruling, 28 Sep): 8 bytes, base64url, or null on a box that
+  // hasn't got an owner.id yet (anywhere's core/onboard, not landed everywhere) — never guessed.
+  let identity = null;
+  try { const b = fromBase64url(String(record.identity || "")); if (b.length === 8) identity = base64url(b); } catch {}
   return {
     offer: { relay: record.relay, route: record.route, box, secret: base64url(secret) },
     name: promptSafe(record.name, "a Vyre box"),
     fingerprint: await keyFingerprint(box, cryptoP),
     handle,
+    identity,
   };
 }
 
