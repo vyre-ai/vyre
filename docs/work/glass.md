@@ -80,6 +80,19 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   cdpmux.test.js 32/32 (7 new); testbox core/computers/**/*.test.js 229/229 pass, 9 skipped. Still
   dormant and unwired -- wiring needs agentName from computerd's own authenticated identity, never
   the client, and refusing an unscoped agent client in shared mode (reviewer's note, not yet done).
+- Authenticated per-agent identity, at ba1f766d: computerd/index.js's identifyClient() is now the
+  one place a token becomes a CDP identity. AGENT_TOKENS_FILE ("name=token" lines, vyred's own
+  doing once the browser kind writes it) switches a computer into shared mode; any pair at all
+  turns off the bare owner token's old "agent" identity for CDP purposes (the reviewer's unscoped-
+  client note), while /fs and POST /shield stay owner-token-only in either mode. A malformed file
+  refuses to start. entrypoint.sh passes AGENT_TOKENS_FILE unconditionally; no writer exists yet
+  (ENOENT -> shared off, unchanged for every computer today, not logged as an error). Live-verified
+  on a throwaway compose stack (vyre-glass-identity) against the REAL image and real Chrome: two
+  real agents each saw only their own target in Target.getTargets and were refused (-32000)
+  reaching each other's by id; isolation.test.js 13/13 pass on the same container after. Tests:
+  index.test.js 12/12 (6 new); testbox core/computers/**/*.test.js 234/234 pass, 9 skipped. Sent to
+  the reviewer. Next: the "browser" computer kind in pool.js/driver/policy.js, which is what will
+  actually write .agent-tokens for a real shared computer.
 - Presence enforced once security merges; a passkey step in the Deck.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
