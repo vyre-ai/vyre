@@ -3593,10 +3593,11 @@ Set a thread's reasoning effort, as /effort does in Claude Code: low, medium, hi
 
 ### `threads.fork`
 
-Continue a session as a copy: a new thread with the same conversation so far, in the same folder, that the original never sees. For a session busy in a terminal, the way to carry on from here without two keyboards on one transcript.
+Continue a session as a copy: a new thread with the same conversation so far, in the same folder, that the original never sees. For a session busy in a terminal, the way to carry on from here without two keyboards on one transcript. at: a message's uuid (thread.turn's) - fork from just before that turn instead of from the live end, the other item in the rewind menu ('Fork from here' beside 'Restore').
 
 - Input:
   - `thread` string, required
+  - `at` string
   - `name` string
   - `prompt` string
   - `surface` string
