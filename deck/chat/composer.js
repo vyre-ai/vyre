@@ -115,7 +115,7 @@ const COMMANDS_RETRY_MS = 15_000;
  * and rendering that session at its seq is the caller's job; without onRecall the hint never shows.
  * @returns {{ el: HTMLElement, focus: () => void, stop: () => void, setMachine: (m: string|null) => void, setBusy: (on: boolean) => void,
  *   setText: (text: string, note?: string) => void, editQueued: (q: { uuid: string|null, queued?: any, text: string }) => void,
- *   key: (e: KeyboardEvent) => boolean, draw: () => void, value: () => string }}
+ *   key: (e: KeyboardEvent) => boolean, keyUp: (e: KeyboardEvent) => boolean, draw: () => void, value: () => string }}
  */
 export function mountComposer(opts) {
   const { thread } = opts;
@@ -150,7 +150,7 @@ export function mountComposer(opts) {
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
     rows: 1, placeholder: "Message this session", "aria-label": "Message", enterkeyhint: "send",
     oninput: () => { grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); scheduleHint(); },
-    onkeydown: onKey, onpaste: onPaste,
+    onkeydown: onKey, onkeyup: (/** @type {KeyboardEvent} */ e) => { if (keyUp(e)) e.preventDefault(); }, onpaste: onPaste,
   }));
   const thumbs = h("div", { class: "composer-images", hidden: true });
   let holdTimer = /** @type {any} */ (null), held = false;
@@ -168,8 +168,10 @@ export function mountComposer(opts) {
     onchange: () => { const fs = [...(picker.files || [])]; picker.value = ""; takeFiles(fs); } }));
   const attachBtn = h("button", { class: "ibtn composer-attach", type: "button", "aria-label": "Attach images", title: "Attach images (PNG, JPEG, GIF, WebP)",
     onclick: () => picker.click() }, icon("plus", 16));
-  const micBtn = h("button", { class: "ibtn composer-mic", type: "button", disabled: !!machine, "aria-label": "Push to talk", title: "Hold to talk",
-    onpointerdown: /** @type {any} */ (startTalk), onpointerup: stopTalk, onpointerleave: stopTalk, onpointercancel: stopTalk }, icon("mic", 16));
+  const micBtn = h("button", { class: "ibtn composer-mic", type: "button", disabled: !!machine, "aria-label": "Talk", title: "Tap to talk, hold to push-to-talk (Ctrl+M)",
+    onpointerdown: /** @type {any} */ (e => { if (e.button !== undefined && e.button !== 0) return; try { micBtn.setPointerCapture(e.pointerId); } catch {} voicePressBegin(); }),
+    onpointerup: () => voicePressEnd(), onpointercancel: () => voicePressEnd() }, icon("mic", 16));
+  const voicePill = h("div", { class: "composer-voice-pill", hidden: true, role: "status" });
   const wrap = h("div", { class: "composer-wrap", ondragover: (/** @type {DragEvent} */ e) => { if (!machine) e.preventDefault(); },
     ondrop: (/** @type {DragEvent} */ e) => { const fs = [...(e.dataTransfer?.files || [])]; if (!fs.length || machine) return; e.preventDefault(); takeFiles(fs); } }, menu.el,
     h("div", { class: "composer-row" }, attachBtn, micBtn, picker, ta, stopBtn, send),
@@ -182,7 +184,7 @@ export function mountComposer(opts) {
   // The tip sits on the left of the hint line, the key hints stay on the right (tip.md; chat's tip-line.js fills it).
   const tipSlot = h("div", { class: "composer-tip", hidden: true });
   const hint = h("div", { class: "composer-hint" }, tipSlot, h("span", { class: "composer-keys" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "memory"])));
-  const root = h("div", { class: "composer" }, note, thumbs, hintBox, wrap, chips, hint);
+  const root = h("div", { class: "composer" }, note, thumbs, hintBox, voicePill, wrap, chips, hint);
 
   // The box fits its text. Where CSS can size it (field-sizing, chat.css) nothing runs per key.
   // Elsewhere it is measured once a frame, and the height is reset only when the text got
@@ -399,48 +401,184 @@ export function mountComposer(opts) {
   }
   function cancelGoal() { goal = null; setValue(""); }
 
-  // ---- push-to-talk (voice) ----------------------------------------------------------------
+  // ---- tap-to-talk / push-to-talk (voice) ---------------------------------------------------
+  //
+  // TAP the mic or Ctrl+M to start; talk as long as you like; tap or Ctrl+M again to STOP (the
+  // words stay to edit). Enter stops and sends. Esc cancels and removes only what this dictation
+  // added - never anything typed before or after it. HOLD past VOICE_HOLD_MS for quick
+  // push-to-talk instead: release stops (never sends) - Wispr Flow/superwhisper's own pattern.
+  // Interim and final words land at the cursor (never over typed text); a command word recognised
+  // only at the end of a final ("send it", "new line", "scratch that") is stripped and acted on.
+
+  const VOICE_HOLD_MS = 350;
+  const VOICE_SILENCE_WARN_MS = 2 * 60_000;
+  const VOICE_SILENCE_STOP_MS = 5 * 60_000;
+  const VOICE_COMMANDS = Object.freeze([
+    { id: "send", re: /\s*\bsend it\b\.?\s*$/i },
+    { id: "newline", re: /\s*\bnew line\b\.?\s*$/i },
+    { id: "scratch", re: /\s*\bscratch that\b\.?\s*$/i },
+  ]);
 
   /** null: not checked yet; true/false: whether the box has a voice key. Checked once per mount. */
   let voiceKnown = /** @type {boolean|null} */ (null);
   /** @type {{ stop: () => void }|null} */
   let voiceSession = null;
-  /** True between the hold starting and listenVoice() answering - stopTalk() during this window
-   *  sets voiceWantStop instead of calling a session that does not exist yet. */
-  let voiceOpening = false, voiceWantStop = false;
-  /** What was in the box when the key went down; partial/final text replaces what came after it. */
-  let voiceBaseline = "";
+  /** True between opening and listenVoice() answering. */
+  let voiceOpening = false;
+  /** True once actually streaming (voiceOpening resolved to a live session). */
+  let voiceListening = false;
+  let voiceWantStopOnOpen = false, voiceWantCancelOnOpen = false;
+  /** This press/hold's own bookkeeping, reset at the start of every press. */
+  let voicePressTimer = /** @type {any} */ (null), voiceHeld = false, voicePressWasOpen = false;
+  /** Ctrl+M is a keydown/keyup pair; e.ctrlKey can already be false by keyup if Ctrl let go
+   *  first, so the M key's own up (not actionFor's Ctrl+M match) ends the press. */
+  let voiceKeyDown = false;
+  /** The dictated span this utterance owns in ta.value: [voiceStart, voiceEnd). Esc removes
+   *  exactly this; nothing typed before or after it is ever touched. */
+  let voiceStart = 0, voiceEnd = 0;
+  /** local/voice/listen.js's own "final" is cumulative (its committed string, growing with each
+   *  phrase) - this is how much of it has already become box text, so a new final's own newly
+   *  added tail is what gets checked for a command word. */
+  let voiceCommittedLen = 0;
+  /** Offsets within the cumulative committed text where each phrase began, oldest first -
+   *  "scratch that" truncates back to the last one. */
+  let voiceSegmentStarts = /** @type {number[]} */ ([]);
+  let voiceStartedAt = 0, voiceElapsedTimer = /** @type {any} */ (null);
+  let voiceSilenceWarn = /** @type {any} */ (null), voiceSilenceStop = /** @type {any} */ (null);
 
-  const voiceKeyNote = () => ["Add a voice key in ", link("/settings", {}, "Settings"), " to use push-to-talk."];
-  const joinVoice = (/** @type {string} */ base, /** @type {string} */ text) => (base ? base + (/\s$/.test(base) ? "" : " ") : "") + text;
-  function finishTalk() { voiceSession = null; micBtn.classList.remove("on"); }
+  const voiceKeyNote = () => ["Add a voice key in ", link("/settings", {}, "Settings"), " to use voice."];
 
-  async function startTalk(/** @type {PointerEvent} */ e) {
-    if (e.button !== undefined && e.button !== 0) return;
+  /** Replaces [voiceStart, voiceEnd) with text, moves voiceEnd, caret at the end of it. */
+  function voiceReplace(/** @type {string} */ text) {
+    const before = ta.value.slice(0, voiceStart), after = ta.value.slice(voiceEnd);
+    const at = voiceStart + text.length;
+    setValue(before + text + after, at);
+    voiceEnd = at;
+  }
+  function voiceElapsedText() {
+    const s = Math.max(0, Math.round((Date.now() - voiceStartedAt) / 1000));
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+  function drawVoicePill() {
+    if (!voiceListening) { voicePill.hidden = true; voicePill.replaceChildren(); return; }
+    voicePill.hidden = false;
+    put(voicePill, h("span", { class: "composer-voice-dot" }), "Listening " + voiceElapsedText());
+  }
+  function startVoiceElapsed() { voiceStartedAt = Date.now(); clearInterval(voiceElapsedTimer); voiceElapsedTimer = setInterval(drawVoicePill, 1000); }
+  function stopVoiceElapsed() { clearInterval(voiceElapsedTimer); voiceElapsedTimer = null; }
+  function resetSilenceTimers() {
+    clearTimeout(voiceSilenceWarn); clearTimeout(voiceSilenceStop);
+    voiceSilenceWarn = setTimeout(() => say("Still listening? Tap to stop."), VOICE_SILENCE_WARN_MS);
+    voiceSilenceStop = setTimeout(() => stopTalk(), VOICE_SILENCE_STOP_MS);
+  }
+  function clearSilenceTimers() { clearTimeout(voiceSilenceWarn); clearTimeout(voiceSilenceStop); voiceSilenceWarn = voiceSilenceStop = null; }
+
+  /** A command word at the very end of a final's cumulative text, or null. */
+  function matchVoiceCommand(/** @type {string} */ text) {
+    for (const c of VOICE_COMMANDS) { const m = c.re.exec(text); if (m) return { id: c.id, index: m.index }; }
+    return null;
+  }
+
+  function finishTalk() {
+    voiceListening = false; voiceSession = null;
+    micBtn.classList.remove("on", "held");
+    micBtn.style.removeProperty("--voice-level");
+    micBtn.setAttribute("aria-label", "Talk");
+    stopVoiceElapsed(); clearSilenceTimers(); drawVoicePill();
+  }
+  function finishTalkAndSend() {
+    const session = voiceSession;
+    finishTalk();
+    session?.stop();
+    submit({ button: true });
+  }
+
+  async function openVoice() {
     if (voiceSession || voiceOpening || machine) return;
-    voiceOpening = true; voiceWantStop = false;
+    voiceOpening = true; voiceWantStopOnOpen = false; voiceWantCancelOnOpen = false;
     if (voiceKnown === null) { const s = await voiceStatus(); voiceKnown = s ? s.ready : null; }
     if (voiceKnown !== true) {
       voiceOpening = false;
       say(voiceKnown === false ? voiceKeyNote() : "Could not reach voice.");
       return;
     }
-    voiceBaseline = ta.value;
+    voiceStart = caret(); voiceEnd = voiceStart; voiceCommittedLen = 0; voiceSegmentStarts = [];
     say("Listening…");
     micBtn.classList.add("on");
+    micBtn.setAttribute("aria-label", "Stop listening");
     const session = await listenVoice({
-      onPartial: text => setValue(joinVoice(voiceBaseline, text)),
-      onFinal: text => setValue(joinVoice(voiceBaseline, text)),
-      onDone: text => { finishTalk(); if (text) setValue(joinVoice(voiceBaseline, text)); put(note); ta.focus(); },
+      onOpen: () => { voiceListening = true; startVoiceElapsed(); resetSilenceTimers(); drawVoicePill(); put(note); },
+      onPartial: text => { resetSilenceTimers(); voiceReplace(text); },
+      onFinal: text => {
+        resetSilenceTimers();
+        const priorLen = voiceCommittedLen; // this final's own text, before whatever it just added
+        const m = matchVoiceCommand(text);
+        if (m) {
+          const words = text.slice(0, m.index);
+          if (m.id === "send") { voiceCommittedLen = words.length; voiceReplace(words); say("\"send it\": sending"); finishTalkAndSend(); return; }
+          if (m.id === "newline") { voiceCommittedLen = words.length; voiceReplace(words + "\n"); say("\"new line\""); return; }
+          // "scratch that": undo whatever this final just added: back to the length as of the
+          // previous final. If nothing new came before the command (words itself is no longer
+          // than that), there was nothing to undo here, so undo the phrase before that instead.
+          let kept = words.slice(0, priorLen);
+          if (words.length <= priorLen) {
+            voiceSegmentStarts.pop();
+            kept = kept.slice(0, voiceSegmentStarts.length ? voiceSegmentStarts[voiceSegmentStarts.length - 1] : 0);
+          }
+          voiceCommittedLen = kept.length;
+          voiceReplace(kept);
+          say("\"scratch that\": removed the last phrase");
+          return;
+        }
+        if (text.length > voiceCommittedLen) voiceSegmentStarts.push(voiceCommittedLen);
+        voiceCommittedLen = text.length;
+        voiceReplace(text);
+      },
+      onDone: text => {
+        const was = voiceListening;
+        finishTalk();
+        if (text && was) voiceReplace(text);
+        put(note); ta.focus();
+      },
       onError: message => { finishTalk(); say(message); },
+      onLevel: level => micBtn.style.setProperty("--voice-level", String(Math.max(0, Math.min(1, level)))),
     });
     voiceOpening = false;
-    if (voiceWantStop) { voiceWantStop = false; session.stop(); return; }
+    if (voiceWantCancelOnOpen) { voiceWantCancelOnOpen = false; cancelVoiceNow(session); return; }
+    if (voiceWantStopOnOpen) { voiceWantStopOnOpen = false; session.stop(); return; }
     voiceSession = session;
   }
   function stopTalk() {
     if (voiceSession) { voiceSession.stop(); return; }
-    if (voiceOpening) voiceWantStop = true;
+    if (voiceOpening) voiceWantStopOnOpen = true;
+  }
+  /** Stops and removes exactly [voiceStart, voiceEnd) - nothing else in the box moves. */
+  function cancelVoiceNow(/** @type {{ stop: () => void }} */ session) {
+    const before = ta.value.slice(0, voiceStart), after = ta.value.slice(voiceEnd);
+    setValue(before + after, voiceStart);
+    session.stop();
+  }
+  function cancelTalk() {
+    if (voiceSession) { const s = voiceSession; finishTalk(); cancelVoiceNow(s); return; }
+    if (voiceOpening) voiceWantCancelOnOpen = true;
+  }
+
+  /** The mic button, or Ctrl+M: tap starts and stays open; held past VOICE_HOLD_MS, release stops. */
+  function voicePressBegin() {
+    if (machine) return;
+    voicePressWasOpen = voiceListening || voiceOpening;
+    if (voicePressWasOpen) return; // already open: wait for the release to stop it (tap-to-stop)
+    voiceHeld = false;
+    clearTimeout(voicePressTimer);
+    voicePressTimer = setTimeout(() => { voiceHeld = true; micBtn.classList.add("held"); }, VOICE_HOLD_MS);
+    openVoice();
+  }
+  function voicePressEnd() {
+    clearTimeout(voicePressTimer);
+    micBtn.classList.remove("held");
+    if (voicePressWasOpen) { stopTalk(); return; } // a tap (or Ctrl+M) while already open: stop
+    if (voiceHeld) stopTalk(); // held past the threshold: release stops, push-to-talk
+    voiceHeld = false; // else: a quick tap that just opened it - stays open
   }
 
   // ---- "From your past sessions" (recall.related) ------------------------------------------
@@ -614,6 +752,9 @@ export function mountComposer(opts) {
 
   /** Enter, the send button, or a hold on it. @param {{ button?: boolean, hold?: boolean, alt?: boolean, shift?: boolean }} how */
   function submit(how = {}) {
+    // The send button while listening: stop and send, same as Enter (finishTalkAndSend calls
+    // back into submit() once voiceListening is already false, so this never loops).
+    if (voiceListening) { finishTalkAndSend(); return; }
     // The Send button (or its hold) while a goal is being built: keyboard Cmd+Enter finishes
     // (handled in onKey, below, where the modifier is at hand); a click just adds the line.
     if (goal) { advanceGoal(); return; }
@@ -780,9 +921,9 @@ export function mountComposer(opts) {
 
   /** Esc, from the box or from anywhere on the page. @returns {boolean} whether it did something */
   function onEscape() {
-    // Listening (like goal mode and the rewind picker) closes first: Esc cancels the recording,
-    // not a general clear - the words heard so far stay in the box to edit.
-    if (voiceSession || voiceOpening) { stopTalk(); return true; }
+    // Listening (like goal mode and the rewind picker) closes first: Esc cancels the recording
+    // AND removes exactly what this dictation added - anything typed before or after it stays.
+    if (voiceSession || voiceOpening) { cancelTalk(); return true; }
     // Goal mode (like the rewind picker) closes first: Esc cancels it, not a general clear.
     if (goal) { cancelGoal(); return true; }
     // A sheet over the composer (the rewind picker) closes first.
@@ -810,6 +951,13 @@ export function mountComposer(opts) {
     if (id === "thinking" && rich()) { toggleThinking(); return true; }
     if (id === "thinking-view" && opts.onThinkingView) { opts.onThinkingView(); return true; }
     if (id === "tasks" && opts.onTasks) { opts.onTasks(); return true; }
+    if (id === "voice" && !/** @type {any} */ (e).repeat && !machine) { voiceKeyDown = true; voicePressBegin(); return true; }
+    return false;
+  }
+  /** Ctrl+M's own release: the whole session view, not only the textarea (session.js wires this
+   *  to a document keyup, same as key() to its keydown). */
+  function keyUp(/** @type {KeyboardEvent} */ e) {
+    if (voiceKeyDown && String(e.key).toLowerCase() === "m") { voiceKeyDown = false; voicePressEnd(); return true; }
     return false;
   }
 
@@ -829,7 +977,7 @@ export function mountComposer(opts) {
     }
     const id = actionFor(/** @type {any} */ (e), isMacOS());
     if (id === "mode") { if (rich()) { e.preventDefault(); cycleMode(); } return; }
-    if (id === "thinking" || id === "thinking-view" || id === "tasks") { if (key(e)) e.preventDefault(); return; }
+    if (id === "thinking" || id === "thinking-view" || id === "tasks" || id === "voice") { if (key(e)) e.preventDefault(); return; }
     if (e.key === "ArrowUp" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
       const firstLine = !ta.value.slice(0, caret()).includes("\n");
       const act = upAction({ text: ta.value, firstLine, recalling: recalling(hist), queued: machine ? 0 : (S?.queued.length || 0) });
@@ -842,6 +990,7 @@ export function mountComposer(opts) {
       if (v !== null) { e.preventDefault(); setValue(v); }
       return;
     }
+    if (e.key === "Enter" && voiceListening && !e.shiftKey && !e.isComposing) { e.preventDefault(); finishTalkAndSend(); return; }
     if (e.key === "Enter" && goal && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       if (e.metaKey || e.ctrlKey) finishGoal(); else advanceGoal();
@@ -876,6 +1025,10 @@ export function mountComposer(opts) {
     }),
     CAPS.on(() => drawChips()),
   ];
+  // The mic is never left open: the window losing focus (another app or tab) stops it, keeping
+  // the words so far - the same as a tap to stop, not Esc's cancel.
+  const onWindowBlur = () => { if (voiceListening) stopTalk(); };
+  window.addEventListener("blur", onWindowBlur);
   drawChips();
 
   // What was mid-typed here, restored (Paseo's own draft persistence): a fresh box always starts
@@ -883,7 +1036,7 @@ export function mountComposer(opts) {
   if (DRAFTS.has(thread)) setValue(/** @type {string} */ (DRAFTS.get(thread)));
 
   return {
-    el: root, key, editQueued, draw: drawChips, value: () => String(ta.value ?? ""), tipSlot, input: ta,
+    el: root, key, keyUp, editQueued, draw: drawChips, value: () => String(ta.value ?? ""), tipSlot, input: ta,
     focus: () => ta.focus(),
     setMachine: m => { machine = m || null; drawChips(); },
     setBusy: v => {
@@ -894,7 +1047,7 @@ export function mountComposer(opts) {
       drawChips();
     },
     setText: (t, why) => { setValue(String(t ?? "")); if (why) say(why); ta.focus(); },
-    stop: () => { flushDraft(); voiceSession?.stop(); clearTimeout(hintTimer); for (const off of offs) off(); clearTimeout(leaseTimer); clearTimeout(fileTimer); clearTimeout(holdTimer); menu.close(); },
+    stop: () => { flushDraft(); voiceSession?.stop(); stopVoiceElapsed(); clearSilenceTimers(); window.removeEventListener("blur", onWindowBlur); clearTimeout(hintTimer); for (const off of offs) off(); clearTimeout(leaseTimer); clearTimeout(fileTimer); clearTimeout(holdTimer); menu.close(); },
   };
 }
 

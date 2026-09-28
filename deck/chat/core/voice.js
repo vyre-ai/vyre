@@ -39,7 +39,8 @@ export function voiceErrorText(code) {
  * last word before the socket closes. Never sends anything itself - the caller decides what the
  * words become.
  * @param {{ onOpen?: () => void, onPartial: (text: string) => void, onFinal: (text: string) => void,
- *   onDone: (text: string) => void, onError: (message: string) => void }} handlers
+ *   onDone: (text: string) => void, onError: (message: string) => void, onLevel?: (level: number) => void }} handlers
+ *   onLevel: the real mic level, 0 to 1, throttled to about 10 Hz - for a live ring, not per-frame.
  * @returns {Promise<{ stop: () => void }>}
  */
 export async function listen(handlers) {
@@ -62,12 +63,15 @@ export async function listen(handlers) {
     try { source?.disconnect(); } catch {}
     try { ctx?.close(); } catch {}
     try { stream?.getTracks().forEach(x => x.stop()); } catch {}
+    handlers.onLevel?.(0);
   };
 
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-  } catch {
-    handlers.onError("Could not use the microphone - check the browser's permission for it.");
+  } catch (err) {
+    const denied = /** @type {any} */ (err)?.name === "NotAllowedError" || /** @type {any} */ (err)?.name === "SecurityError";
+    handlers.onError(denied ? "The microphone is blocked - allow it for this site in the browser's settings, then try again."
+      : "Could not use the microphone - check that one is connected.");
     return { stop() {} };
   }
   if (stopped) { cleanup(); return { stop() {} }; }
@@ -96,13 +100,22 @@ export async function listen(handlers) {
     // plays back through the speakers.
     mute = ctx.createGain();
     mute.gain.value = 0;
+    let lastLevel = 0;
     proc.onaudioprocess = e => {
       if (stopped) return;
       const input = e.inputBuffer.getChannelData(0);
       const pcm = new Int16Array(input.length);
-      for (let i = 0; i < input.length; i++) { const s = Math.max(-1, Math.min(1, input[i])); pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff; }
+      let sumSq = 0;
+      for (let i = 0; i < input.length; i++) {
+        const s = Math.max(-1, Math.min(1, input[i]));
+        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+        sumSq += s * s;
+      }
       if (socketOpen && ws.readyState === WebSocket.OPEN) ws.send(pcm.buffer);
       else early.push(pcm.buffer);
+      // ~10 Hz: a 4096-frame buffer at 16 kHz is 256 ms already, so every callback is plenty.
+      const now = Date.now();
+      if (handlers.onLevel && now - lastLevel > 90) { lastLevel = now; handlers.onLevel(Math.min(1, Math.sqrt(sumSq / input.length) * 4)); }
     };
     source.connect(proc);
     proc.connect(mute);
