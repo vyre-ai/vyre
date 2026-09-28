@@ -57,6 +57,9 @@ export const MIGRATIONS = [
    ALTER TABLE relay_devices ADD COLUMN join_mints INTEGER NOT NULL DEFAULT 0;
    ALTER TABLE relay_devices ADD COLUMN join_last INTEGER;
    ALTER TABLE relay_devices ADD COLUMN node_tagged INTEGER NOT NULL DEFAULT 0;`,
+  // A removed device's tagged node still waiting on its API delete (the reviewer's LOW): kept
+  // apart from node_id, so nothing can admit it, and retried until Tailscale confirms.
+  `ALTER TABLE relay_devices ADD COLUMN orphan_node TEXT;`,
 ];
 /** A direct report counts as the device's path for this long; the app reports on every switch. */
 const DIRECT_FRESH = 10 * 60_000;
@@ -192,6 +195,26 @@ export default {
       ctx.log(`relay: minted a tailnet key for device ${id}`);
       return answer(res, 200, { data: { authKey: minted.key, expiresAt: minted.expiresAt, bindCode, device: id, address, tag: DEVICE_TAG } });
     }
+    /** Delete every removed device's leftover tagged node; each success clears its row. */
+    let deleting = null;
+    const deleteOrphans = () => {
+      if (deleting || macCoreRefusal(platform)) return deleting;
+      const rows = /** @type {any[]} */ (db.prepare("SELECT id, orphan_node FROM relay_devices WHERE orphan_node IS NOT NULL").all());
+      if (!rows.length) return null;
+      deleting = (async () => {
+        for (const r of rows) {
+          try {
+            await ts.deleteNode(r.orphan_node);
+            db.prepare("UPDATE relay_devices SET orphan_node = NULL WHERE id = ? AND orphan_node = ?").run(r.id, r.orphan_node);
+            ctx.log(`relay: deleted tailnet node ${r.orphan_node} with device ${r.id}`);
+          } catch (e) {
+            ctx.log(`relay: could not delete tailnet node ${r.orphan_node}: ${/** @type {Error} */ (e).message}`);
+            ctx.events.emit("tailnet.revoke-failed", { id: r.id, node: r.orphan_node, why: String(/** @type {Error} */ (e).message).slice(0, 200) });
+          }
+        }
+      })().finally(() => { deleting = null; });
+      return deleting;
+    };
     /** Which tagged nodes Tailscale still has, asked at most every NODES_FRESH, off the list's path. */
     let nodesAt = 0;
     const pruneGoneNodes = () => {
@@ -271,7 +294,8 @@ export default {
         }
         db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL)
           ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL,
-            kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL`)
+            kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL,
+            node_id = NULL, node_name = NULL, node_tagged = 0`)
           .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant);
         // The pairing notice: every surface shows it with a one-tap removal (ADR 0026 section 6).
         // Carries the new device's own key fingerprint (reviewer, 28 Sep LOW) so the notice reads
@@ -342,16 +366,13 @@ export default {
     function forget(id, why) {
       const row = /** @type {any} */ (db.prepare("SELECT presence_key, node_id, node_tagged FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row) return false;
-      db.prepare("UPDATE relay_devices SET removed_at = ?, join_grant = 0 WHERE id = ?").run(now(), id);
+      // Revoke goes both ways (ADR 0046): the binding goes at once, so nothing can admit the node
+      // again (a re-pairing included), and the node itself is deleted from the tailnet, retried
+      // until Tailscale confirms. A failed delete is logged and shown, never a half-trusted device.
+      const orphan = row.node_tagged && row.node_id ? row.node_id : null;
+      db.prepare("UPDATE relay_devices SET removed_at = ?, join_grant = 0, node_id = NULL, node_name = NULL, node_tagged = 0, orphan_node = COALESCE(?, orphan_node) WHERE id = ?").run(now(), orphan, id);
       binding.delete(id);
-      // Revoke goes both ways (ADR 0046): a node this box joined with a tagged key is deleted from
-      // the tailnet too. Admission already fails closed on the removed row whatever Tailscale says,
-      // so a failed delete is logged and shown, never a half-trusted device.
-      if (row.node_tagged && row.node_id) {
-        ts.deleteNode(row.node_id)
-          .then(() => ctx.log(`relay: deleted tailnet node ${row.node_id} with device ${id}`))
-          .catch(e => { ctx.log(`relay: could not delete tailnet node ${row.node_id}: ${e.message}`); ctx.events.emit("tailnet.revoke-failed", { id, node: row.node_id, why: String(e.message).slice(0, 200) }); });
-      }
+      if (orphan) deleteOrphans();
       for (const ch of live.get(id) || []) ch.close(4401, "device removed");
       live.delete(id);
       if (row.presence_key) ctx.call("presence.remove", { id: row.presence_key }).catch(() => null);
@@ -513,6 +534,7 @@ export default {
         owner(meta.caller, meta, "the device list");
         for (const d of active()) if (expired(d)) forget(d.id, "expired");
         pruneGoneNodes();
+        deleteOrphans();
         const rows = active();
         // The relay round trip, measured now over each open channel (1 s at most, never on a timer).
         const rtts = await Promise.all(rows.map(async d => {

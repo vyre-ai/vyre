@@ -263,12 +263,15 @@ Where each decision lives, and the few concrete choices the text above left open
   bind. No tag produces a caller by itself.
 - **The desktop's join** is `desktopJoin()`/`joinWithKey()`: the key goes to `tailscale up
   --auth-key=file:<path> --advertise-tags=tag:vyre-device` from a 0600 file in a 0700 `mkdtemp`
-  directory, removed in a `finally`. A machine whose Tailscale is already signed in to any tailnet
-  is left alone (joining would switch the person's own account). No Tailscale: the device stays on
+  directory, removed in a `finally`. `canJoin()` fails closed: only a status that parses, in
+  `NeedsLogin` or `NoState`, with no node of its own, is ready. Anything else (unreadable status,
+  signed in but stopped, an expired node key) is the person's own tailnet and left alone, since
+  joining would switch their account. No Tailscale: the device stays on
   the relay and `relay.status` shows the install line.
-- **Revoke:** `relay.devices.remove` deletes a bound node through the API; admission already fails
-  closed on the removed row, so a failed delete is logged and emitted (`tailnet.revoke-failed`),
-  never a half-trusted device. `relay.devices.list` clears nodes the API no longer lists (asked at
+- **Revoke:** `relay.devices.remove` unbinds the node at once (a re-pairing of the same device
+  never re-admits it without a new bind) and deletes it through the API. A failed delete is
+  logged and emitted (`tailnet.revoke-failed`), kept as `orphan_node` and retried from the device
+  list until Tailscale confirms. `relay.devices.list` clears nodes the API no longer lists (asked at
   most every 10 minutes, off the list's own path).
 - **Mac server:** the key path answers `not_available_here` on darwin until vyre-core.
 - **The OAuth client** needs `auth_keys` and `devices:core` (delete and list), both limited to

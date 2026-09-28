@@ -76,7 +76,7 @@ test("tailnet: a refused mint says what the OAuth client needs; deleteNode treat
 });
 
 /** A fake tailscale that writes down each `up`: its argv, the key file's modes and content, and whether the key was in its env. */
-function fakeTailscale(t, { state = "NeedsLogin", upCode = 0 } = {}) {
+function fakeTailscale(t, { state = "NeedsLogin", upCode = 0, status = null, statusCode = 0 } = {}) {
   const dir = tempHome(t);
   const log = path.join(dir, "log.jsonl");
   const bin = path.join(dir, "tailscale");
@@ -84,6 +84,7 @@ function fakeTailscale(t, { state = "NeedsLogin", upCode = 0 } = {}) {
 const fs = require("fs"), path = require("path");
 const [cmd, ...args] = process.argv.slice(2);
 const joined = fs.existsSync(${JSON.stringify(path.join(dir, "joined"))});
+if (cmd === "status" && !joined && ${JSON.stringify(status)} !== null) { process.stdout.write(${JSON.stringify(status)}); process.exit(${statusCode}); }
 if (cmd === "status") {
   const running = joined || ${JSON.stringify(state)} === "Running";
   process.stdout.write(JSON.stringify({ BackendState: running ? "Running" : ${JSON.stringify(state)}, Self: running ? { ID: "nDESK1CNTRL", HostName: "alex-desktop" } : null }));
@@ -145,6 +146,24 @@ test("tailnet: canJoin says not installed (with this OS's install line), or leav
   const own = await canJoin();
   assert.equal(/** @type {any} */ (own).why, "already_on_a_tailnet");
   for (const p of ["linux", "darwin", "win32"]) assert.equal(installCommand(p), namesInstall(p), p);
+});
+
+test("tailnet: canJoin fails closed: unreadable status, stopped-but-signed-in, or an expired node key is the person's own tailnet", async t => {
+  const cases = [
+    { status: "not json at all", statusCode: 1 },
+    { status: "", statusCode: 0 },
+    { status: JSON.stringify({ BackendState: "Stopped", Self: { ID: "nMINE1", HostName: "alex-mbp" } }) },
+    { status: JSON.stringify({ BackendState: "NeedsLogin", Self: { ID: "nMINE1", HostName: "alex-mbp" } }) },
+    { status: JSON.stringify({ BackendState: "Starting", Self: null }) },
+  ];
+  for (const c of cases) {
+    fakeTailscale(t, c);
+    const r = await canJoin();
+    assert.equal(r.ready, false, c.status);
+    assert.equal(/** @type {any} */ (r).why, "already_on_a_tailnet", c.status);
+  }
+  fakeTailscale(t, { status: JSON.stringify({ BackendState: "NoState" }) });
+  assert.deepEqual(await canJoin(), { ready: true }, "a fresh install with no node yet");
 });
 
 test("tailnet: a signed-out tailscale is ready to join", async t => {
@@ -298,4 +317,45 @@ test("tailnet: desktopJoin asks, joins with the key in a file, binds through the
   assert.equal((await d.registry.call("relay.devices.tailnet", { stableId: "nDESK1CNTRL" }, "module:names")).data.device, pairedBox(root).device);
   assert.equal((await desktopJoin({ root })).state, "joined", "a joined desktop does not ask again");
   assert.equal(ts.ups().length, 1);
+});
+
+test("tailnet: a failed node delete never lets the old node back in, even when the device pairs again; the delete is retried", async t => {
+  let deleteOk = false;
+  /** @type {string[]} */
+  const deletes = [];
+  const fetch = /** @type {any} */ (async (url, init = {}) => {
+    const u = new URL(url);
+    const reply = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+    if (u.pathname === "/api/v2/oauth/token") return reply(200, { access_token: "tok-fake" });
+    if (u.pathname === "/api/v2/tailnet/-/keys") return reply(200, { key: KEY, expires: new Date(Date.now() + 300_000).toISOString() });
+    if (init.method === "DELETE") { deletes.push(u.pathname); return reply(deleteOk ? 200 : 500, {}); }
+    if (u.pathname === "/api/v2/tailnet/-/devices") return reply(200, { devices: [{ nodeId: "nDESK1CNTRL" }] });
+    return reply(404, {});
+  });
+  t.after(useTailscaleApi({ fetch, base: "https://api.example.invalid", credential: async () => CRED }));
+  const d = await box(t);
+  const desk = await desktop(t, d);
+  const { bindCode, device } = (await desk.askKey()).body.data;
+  assert.ok((await d.registry.call("relay.devices.bind", { stableId: "nDESK1CNTRL", node: "alex-desktop", device, code: bindCode }, "module:names")).data);
+  assert.ok((await d.registry.call("relay.devices.remove", { id: device }, "cli", PROOF)).data);
+  for (let i = 0; i < 50 && !deletes.length; i++) await new Promise(r => setTimeout(r, 10));
+  assert.equal(deletes.length, 1, "the delete was tried, and Tailscale refused it");
+  for (let i = 0; i < 50 && !d.events.since(0, { limit: 1000 }).some(e => e.type === "tailnet.revoke-failed"); i++) await new Promise(r => setTimeout(r, 10));
+  assert.ok(d.events.since(0, { limit: 1000 }).some(e => e.type === "tailnet.revoke-failed"), "and says so");
+
+  // The same desktop pairs again (same key, same device id): its old node is not admitted.
+  const url = (await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
+  const again = await redeem(url, { root: desk.root, name: "alex's desktop", tailnet: true });
+  assert.equal(again.device, device, "the same device id");
+  assert.equal((await d.registry.call("relay.devices.tailnet", { stableId: "nDESK1CNTRL" }, "module:names")).data.device, null, "the old node needs a new bind");
+
+  // The device list retries the delete, and a success clears it.
+  deleteOk = true;
+  await d.registry.call("relay.devices.list", {}, "cli");
+  for (let i = 0; i < 50 && deletes.length < 2; i++) await new Promise(r => setTimeout(r, 10));
+  assert.deepEqual(deletes, ["/api/v2/device/nDESK1CNTRL", "/api/v2/device/nDESK1CNTRL"]);
+  await new Promise(r => setTimeout(r, 20));
+  await d.registry.call("relay.devices.list", {}, "cli");
+  await new Promise(r => setTimeout(r, 50));
+  assert.equal(deletes.length, 2, "once deleted, never asked again");
 });

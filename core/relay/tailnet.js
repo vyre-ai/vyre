@@ -144,20 +144,22 @@ export function installCommand(platform = process.platform) {
 }
 
 /**
- * Whether this desktop can take a key: Tailscale installed, and not signed in to any tailnet.
- * @returns {Promise<{ ready: true } | { ready: false, why: "not_installed"|"already_on_a_tailnet"|"unknown", install?: string, node?: string }>}
+ * Whether this desktop can take a key: Tailscale installed and cleanly signed out. Fails closed
+ * (the reviewer's MEDIUM): a status that does not parse, a stopped-but-signed-in machine, an
+ * expired node key, anything but a clean NeedsLogin/NoState with no node of its own, is treated
+ * as the person's own tailnet and left alone, since `tailscale up` there would switch accounts.
+ * @returns {Promise<{ ready: true } | { ready: false, why: "not_installed"|"already_on_a_tailnet", install?: string, node?: string }>}
  */
 export async function canJoin() {
   const r = await run(["status", "--json"]);
   if (r.code === 127) return { ready: false, why: "not_installed", install: installCommand() };
   let s = null;
   try { s = JSON.parse(r.out); } catch {}
-  if (!s) return r.code === 0 ? { ready: false, why: "unknown" } : { ready: true };
+  if (!s || typeof s !== "object") return { ready: false, why: "already_on_a_tailnet" };
   const state = String(s.BackendState || "");
-  if (state === "Running" || (s.Self && s.Self.ID && state !== "NeedsLogin" && state !== "NoState" && state !== "Stopped")) {
-    return { ready: false, why: "already_on_a_tailnet", node: String((s.Self && s.Self.HostName) || "") };
-  }
-  return { ready: true };
+  const self = s.Self && typeof s.Self === "object" ? s.Self : null;
+  if ((state === "NeedsLogin" || state === "NoState") && !(self && self.ID)) return { ready: true };
+  return { ready: false, why: "already_on_a_tailnet", node: String((self && self.HostName) || "") };
 }
 
 /**
@@ -221,7 +223,7 @@ export async function desktopJoin(o) {
   if (b.tailnet && b.tailnet.state === "joined") return { state: "joined", node: b.tailnet.node };
   const done = (state, extra = {}) => { note(o.root, { state, ...extra }); return { state, ...extra }; };
   const ready = await canJoin();
-  if (!ready.ready) return done(ready.why === "not_installed" ? "relay_only" : ready.why === "already_on_a_tailnet" ? "own_tailnet" : "relay_only", { why: ready.why, ...(ready.install ? { install: ready.install } : {}) });
+  if (!ready.ready) return done(ready.why === "not_installed" ? "relay_only" : "own_tailnet", { why: ready.why, ...(ready.install ? { install: ready.install } : {}) });
 
   let grant = null;
   const conn = (o.connect || connect)({ relay: b.relay, route: b.route, box: b.box, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(o.root, "relay-device", "key.json")) });
