@@ -36,7 +36,10 @@
 //     success screen prefers a freshly rendered avatar (see pair-avatar.js) and only falls back
 //     to this photo if that rendering throws. The caller stops the scan itself (or calls stop()
 //     again defensively).
-//     onError(err): camera permission refused, no camera, or the stream ending unexpectedly.
+//     onError(err): camera permission refused, no camera, the stream ending unexpectedly, or the
+//     decode worker itself throwing (worker.onerror) - scanning stops for good in every case,
+//     never retries on its own; the caller's own "Scan again" is what restarts it (reviewer-2's
+//     read of fa619b4a, spelled out here per their note).
 
 const ATTEMPT_MS = 350; // gap between the END of one decode attempt and the start of the next
 const FRAME_SIZE = 640; // grabbed frame side, in CSS px equivalent - plenty for a code held at

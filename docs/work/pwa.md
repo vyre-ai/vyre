@@ -672,6 +672,10 @@ anything, only fail to scan, which is already the outcome recorded above. Worth 
 if the false-accept rate ever needs bounding formally, but not a pairing-safety concern.
 
 ## Next
+- No test coverage of scan.js/scan-worker.js's own lifecycle (the busy flag, the transferred
+  buffer, worker.terminate() on stop) - reviewer-2 hand-verified fa619b4a and confirmed it's
+  correct, but flagged this as worth a fake-Worker test eventually (UI/perf plumbing, not a
+  security boundary, so not blocking).
 - Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
 - Step 6 Mac card: "Already on your tailnet" for an online Mac node.
 - theme.colors: match docs' final shape.
