@@ -240,12 +240,16 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   so this is safe as written, but if sight.targets ever grows a separate id/name field, match on
   that instead since two agents could in theory share a display label.
 
-## RESTART (28 Sep, post budget-8/sight/fork session, head ffc22ef8)
-Status for whoever resumes: budget 8's scroll jump is FIXED (130f7e8d, root cause found with
-temporary logging, removed after); the sight strip's LOW and nit are FIXED (cfc98f23); session.js's
-side of "Fork from here" is wired to native-core's contract (ffc22ef8). All three sent to
-reviewer-2 (non-security session.js/window-view.js changes). Nothing uncommitted; no testbox
-processes running. Next: reviewer-2's sign-off, then whatever the lead assigns.
+## RESTART (28 Sep, post canonical-status/app-design session, head 74017fb8)
+Status for whoever resumes: budget 8's scroll jump FIXED (130f7e8d); the sight strip's LOW and nit
+FIXED (cfc98f23); session.js's side of "Fork from here" wired to native-core's contract (ffc22ef8);
+the local STATUS map dropped for sessions' canonical thread.status (f8ce247a, lead's ask after
+6e2f8a71/28a8b4f8); four of app-design's review items fixed (74017fb8: kbd chips, the rewind sheet
+as a real overlay, the lightbox focus trap - "No one is typing" on solo sessions is folded into
+f8ce247a since it touched the same lease-bar code nearby). All sent to reviewer-2 (non-security).
+Nothing uncommitted; no testbox processes running (checked and cleared several stray/stuck ones
+from earlier in the session - other teams' load spiked testbox past the load-12 rule twice; waited
+both times). Next: reviewer-2's sign-off, then whatever the lead assigns.
 
 ## Done (28 Sep, budget 8: reconnect scroll jump - FIXED, 130f7e8d)
 - Added temporary diagnostic logging (window.__WV_DEBUG, removed after) to measure() and the
@@ -302,6 +306,38 @@ processes running. Next: reviewer-2's sign-off, then whatever the lead assigns.
   LINKED entry once they know which release ships it alongside.
   testbox: deck/chat + deck/test + core/switchboard 549/550 (1 pre-existing skip), 0 fail;
   boundaries + docs-check 66/66.
+- Confirmed budget 8's catch-up time on a tree with pwa's reconnect-backoff fix (be3f5554) merged
+  in (a disposable local branch, never pushed): 64-70ms across three runs, well under the 1000ms
+  budget - the 1296-1493ms seen earlier was testing without that fix, not a chat regression. Jump
+  on that merged tree: 6-13px (same residual category, a faster reconnect catches the
+  estimate-to-real correction mid-flight slightly differently).
+
+## Done (28 Sep, dropped the local STATUS map for sessions' canonical thread.status, f8ce247a)
+- Lead's ask, following sessions' 6e2f8a71 (thread.status/canonical_status, lib/thread-status.js)
+  and 28a8b4f8 (the 8th state, "paused"). Full detail: see the commit message (f8ce247a) - the
+  short version: session.js reads canonical_status/thread.status directly now (BUSY, waitingOn,
+  idleClosed all use the canonical words); core/session-state.js's guess() call sites (thread.sent,
+  thread.tool, ask.raised/answered, thread.finished, thread.stopped) guess the canonical word
+  instead of the old internal one, and thread.stopped's guess now mirrors threadStatus()'s own
+  reason-parsing for the best guess before any real thread.status arrives.
+- Folded in nearby (app-design's item 4, since it's the same lease-bar code drawHead touches):
+  "No one is typing" no longer shows on a solo session with nothing to report (no holder, nothing
+  to resume, no error) - the lease bar hides instead.
+- testbox: deck/chat + deck/test 563/564 (1 pre-existing skip), 0 fail; boundaries + docs-check 66/66.
+
+## Done (28 Sep, app-design's review: kbd chips, a real rewind overlay, a focus trap, 74017fb8)
+- ask-item.js's Allow once (A) / Deny (D) key hints now use the shared .kbd chip (key-hint.md)
+  instead of custom plain text.
+- The rewind sheet (Esc Esc) is now a real overlay (position: fixed, a scrim, sheet.css's
+  --scrim/--float tokens, centred on desktop matching sheet.css's own breakpoint) instead of drawn
+  inline above the composer - on a phone that stack (lease bar, todos, queued row, this) pushed the
+  composer's mode row off the bottom of the viewport. Keyboard routing (rewind.key(e) in onKey) is
+  unchanged; only where it's drawn moved. A tap on the scrim closes it (lightbox.js's convention).
+- lightbox.js: Tab is now trapped to the one focusable control while open, so aria-modal="true"
+  keeps its promise; was explicitly documented as not doing this.
+- Still open from that review: the item 2 fix (deck.css's base `.lbl` mono/uppercase is the retired
+  label style, ~146 callers across the whole Deck) is cross-team, not chat's alone to land.
+  testbox: deck/chat + deck/test 563/564 (1 pre-existing skip), 0 fail; boundaries + docs-check 66/66.
 
 ## Doing (28 Sep, restart after cohesion's hand-over)
 
@@ -426,21 +462,23 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
   /chat/core/caps.js, /chat/core/commands.js, /chat/core/match.js (the last two were missing already).
 
 ## Next
-- FIRST (whoever resumes): reviewer-2's sign-off on 130f7e8d (budget 8 fix), cfc98f23 (sight strip)
-  and ffc22ef8 (fork wiring) - check for a reply before starting new work.
-- Budget 8's residual 4-13 px jump (down from 106 px): a different, smaller category than the fix
-  above - a row above the anchor measured for real for the first time, replacing its ESTIMATES
-  default. Not chased further this session (the plan's ask was the specific mechanism found and
-  fixed); worth a look if the native-bar budget wants strict <=1px, e.g. tighter per-kind estimates
-  or pre-measuring rows just above the viewport before they're needed.
-- Budget 8's catch-up time (>1000 ms budget, separate from the jump): pre-existing, noisy across
-  runs (828-1493 ms observed) even on today's fix - looks like reconnect-loop flakiness under
-  testbox load, not a chat-side regression. Not investigated this session; flag to resilience if it
-  persists once testbox quiets down.
-- Fork from here: send native-core the status (session.js's side landed, ffc22ef8) so they know to
-  verify end to end in a real Chrome run once their pickers.js (6fb2e02a) and the switchboard's
-  `at` support merge to main; and close the canFork probe gap noted in caps.js if they agree on a
-  LINKED tool to ride in on.
+- FIRST (whoever resumes): reviewer-2's sign-off on 130f7e8d (budget 8), cfc98f23 (sight strip),
+  ffc22ef8 (fork wiring), f8ce247a (canonical status) and 74017fb8 (app-design's review) - check
+  for a reply before starting new work.
+- Budget 8's residual 4-13 px jump (down from 106 px; 6-13 px on a tree with pwa's reconnect fix
+  merged): a different, smaller category than the fix above - a row above the anchor measured for
+  real for the first time, replacing its ESTIMATES default. Not chased further this session (the
+  plan's ask was the specific mechanism found and fixed); worth a look if the native-bar budget
+  wants strict <=1px, e.g. tighter per-kind estimates or pre-measuring rows just above the viewport
+  before they're needed. Catch-up time itself is confirmed NOT a regression (64-70ms once pwa's fix
+  is in the tree) - nothing further to do there once main picks it up.
+- Fork from here: told native-core session.js's side landed (ffc22ef8); waiting on their pickers.js
+  (6fb2e02a) and the switchboard's `at` support to merge to main, then a real end-to-end Chrome
+  verification. The canFork probe gap (caps.js) needs native-core/sessions to say which release
+  ships threads.fork's `at` support, for a LINKED entry.
+- app-design's review item 2 (deck.css's base `.lbl` is the retired mono/uppercase label style,
+  ~146 callers across the whole Deck): cross-team, not chat's alone to land - flagged to whoever
+  owns deck.css/tokens generally (app-design or pwa).
 - thread.limit as a line in the turn (the design's limit fallback); windowed rows above 100 items;
   an inline ask anchored to its tool row once ask.raised carries tool_use_id.
 - Screenshots in one world on port 4795 (load rule), time Back (< 100 ms).
