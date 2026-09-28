@@ -267,3 +267,23 @@ shouldn't need to change. testbox: 12/12 (session-state + boundaries), docs:ref 
 61/61. NOT yet wired into Capsule/CLI/harness — that's the next step, and needs each of those
 three's own read of a thread's status/ask/queued state identified first (their side, once I have
 their go-ahead to touch capsule-pro's Swift and the CLI). Sent to reviewer-2.
+
+## CLI glue, built (64b55255)
+
+sessions confirmed lib/thread-status.js's final shape (28a8b4f8: an 8th state, "paused" -- an
+idle timeout/restart/rewind, resumable, not an error; plain "stopped" is now specifically the
+person pressing Stop; "failed" now also covers a real crash). Pulled the lib + its test up to that
+shape. core/cli/commands/threads.js: added statusWord(t) (threadStatus() + stopped_reason) and
+swapped every place it printed switchboard's raw status word to a person (threadTable, threadCard,
+both live-view header lines, row()'s status column) onto it. stateOf (the --view card state) now
+keys off the canonical word via a CARD_STATE map instead of the raw one; row()'s beacon now also
+flags a failed thread. Every raw-status comparison used for logic/styling stayed untouched -- those
+already meant the right thing internally, only the printed word was wrong. Capsule's Swift side
+doesn't read raw thread status this way at all (its own gate/ask/lesson model) -- no fix needed
+there. testbox: 56/56 targeted, docs:ref clean, full core/cli 340/340. Sent to reviewer-2.
+
+Collision note: this worktree briefly had two live cohesion sessions (a fork of mine, relaunched
+independently off the same resume-9 prompt) -- it landed 48d70ed1 (harness onto LIVE_STATUSES)
+concurrently with my own work; no data lost, but from here on: `git log --oneline -3` before every
+commit, and no editing another team's own worktree even to test-and-revert (team-lead's
+correction) -- use my own tree or a `git archive` export instead.
