@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed } from "./index.js";
+import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, roleBuckets } from "./index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
@@ -11,6 +11,17 @@ const good = { name: "notes", version: "0.1.0", does: { tools: ["notes.add"] }, 
 
 test("modules: a good manifest has no problems", () => {
   assert.deepEqual(validate(good), []);
+});
+
+// ADR 0039: config.machine (solo/server/device) is what start() is actually called with now;
+// manifests keep saying "box"/"local", so this is the seam between the two.
+test("modules: roleBuckets maps config.machine onto the manifests' box/local vocabulary", () => {
+  assert.deepEqual(roleBuckets("server"), ["box"]);
+  assert.deepEqual(roleBuckets("device"), ["local"]);
+  assert.deepEqual(roleBuckets("solo").sort(), ["box", "local"]);
+  // A raw legacy value (existing tests, or a caller not yet updated) passes straight through.
+  assert.deepEqual(roleBuckets("box"), ["box"]);
+  assert.deepEqual(roleBuckets("local"), ["local"]);
 });
 
 test("modules: tools must carry the module's own name", () => {
