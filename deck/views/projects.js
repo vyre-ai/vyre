@@ -19,7 +19,8 @@
 import { h, put, link, go, head, empty } from "../js/dom.js";
 import { attempt, queue, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
-import { projectAvatar, draftAvatar, setProjects, personAvatar, threadAvatar, readSystem, readTeammates, readProjects } from "../js/avatars.js";
+import { projectAvatar, draftAvatar, setProjects, personAvatar, threadAvatar, readTeammates, readProjects } from "../js/avatars.js";
+import { labelFor, readNames } from "../chat/lib/names.js";
 import * as needs from "../js/needs.js";
 import { when, clock, since, base, initial, plural } from "../js/fmt.js";
 import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
@@ -464,7 +465,8 @@ async function threadPane(ctx, id, o) {
   const isLive = !!o.known?.live && !fromMac;
   let thread = null, events = [], recorded = null, loadErr = null;
   // Who is who for the avatars (each read once per page; a missing one just means a fallback look).
-  const identity = Promise.all([readSystem(attempt), readTeammates(attempt), readProjects(attempt)]);
+  // chat/lib/names.js's readNames reads system.info once for the page and passes it to the avatars too.
+  const identity = Promise.all([readNames(attempt), readTeammates(attempt), readProjects(attempt)]);
   if (isLive) {
     const r = await attempt("threads.get", { thread: id });
     if (r.data) ({ thread, events } = { thread: r.data.thread, events: r.data.events || [] }); else loadErr = r.error;
@@ -478,7 +480,7 @@ async function threadPane(ctx, id, o) {
       if (g.data?.thread) ({ thread, events } = { thread: g.data.thread, events: g.data.events || [] }); else loadErr = loadErr || r.error;
     }
   }
-  await identity;
+  const [names] = await identity;
   if (!ctx.alive()) return;
 
   const swMissing = !!(o.switchboard?.error?.missing);
@@ -538,7 +540,8 @@ async function threadPane(ctx, id, o) {
         : ev.text || "";
       if (live && key && byMsg.has(key)) { put(byMsg.get(key), text); return; }
       if (live && ev.role === "user" && pendingEcho.has(ev.text)) { pendingEcho.delete(ev.text); return; }
-      const who = ev.role === "user" ? "You" : (agent || "Claude");
+      // A reply is named the way chat names it (chat/lib/names.js): the agent's name, else the assistant's, never "Claude".
+      const who = ev.role === "user" ? "You" : labelFor({ role: "assistant", agent }, names);
       const m = message(ev.role === "user" ? "user" : "assistant", who, ev.at, text, ev.role === "user" ? youAv(who) : replyAv(who));
       if (key) byMsg.set(key, /** @type {HTMLElement} */ (m.querySelector(".th-text")));
       stream.append(m);

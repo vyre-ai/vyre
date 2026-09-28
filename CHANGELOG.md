@@ -16,6 +16,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The Projects view's thread pane (/projects/<slug>/<thread> and /threads/<thread>) draws the
   person's avatar on "You" and the thread's own on replies (the project tile, a draft tile, an
   agent's blob or a teammate's character) instead of letter chips.
+  Its replies are named the way chat names them (chat/lib/names.js): the agent's name, else the
+  assistant's, never "Claude".
 - A session's replies and header wear its project's tile (seeded from the stored avatar_seed); a
   chat in no project wears a dashed draft tile seeded from its id, which carries over when it is
   made into a project ("New project from this", projects.create from_thread) and switches in place
