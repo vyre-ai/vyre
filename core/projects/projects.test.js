@@ -455,6 +455,10 @@ test("projects: from_thread must look like a chat's session id (reviewer LOW)", 
     assert.throws(() => w.P.create({ name: "Nope " + bad.length, home: path.join(w.work, "nope-" + bad.length), from_thread: bad }), /from_thread must be/);
   }
   assert.ok(w.P.hasSession(ID.hub), "an indexed chat is known");
+  assert.ok(w.P.hasSession(` ${ID.hub.toUpperCase()} `), "in any case, and trimmed: an upper-case UUID is the same chat");
+  const made = w.P.create({ name: "Upper", home: path.join(w.work, "upper"), from_thread: ID.hub.toUpperCase() });
+  assert.equal(made.avatar_seed, ID.hub, "stored in the one lower-case form, so the draft tile carries over");
+  assert.ok(made.threads.includes(ID.hub));
   assert.ok(!w.P.hasSession("00000000-0000-4000-8000-000000000000"));
 });
 

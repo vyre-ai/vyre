@@ -31,6 +31,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   is not rewritten on read; a rename never changes the seed. `from_thread` must be a chat's
   session id (a UUID; a subagent id is refused) that exists, in the Recall index or as a live
   switchboard thread; otherwise the create is refused with a plain error and nothing is made.
+  The id is trimmed and lower-cased once, so an upper-case UUID names the same chat.
 
 #### deck: the four avatar families (ADR 0043), drawn everywhere a who shows
 
