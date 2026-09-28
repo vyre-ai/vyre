@@ -235,6 +235,22 @@ palette contrast (or accepting blur tolerance as a scoped gap, the way perspecti
 is the next thing to try, not a mark-length increase that would reopen the margin problem 2a
 fixed.
 
+**Confirmed: the hypothesis was right, once a decoder-side bug it exposed was also fixed.**
+`pwa`'s first rerun against the wider stroke was 0/17 - even pristine broke. Cause: a round
+line-cap always overshoots a tick's nominal length by its own cap radius, and widening the stroke
+grew that overshoot from 2.25px to 3px, which against `LEVELS`' tight 6px level spacing (6, 12,
+18, 24) was enough to flip several marks a level high with zero degradation applied - a
+decode-side reading of raw pixel length that never subtracted the cap radius before quantizing to
+a level, not a rendering bug (the renderer draws exactly what the geometry says; `TICK_CAP_RADIUS`
+was already exported from `geometry.js` for exactly this purpose, just not consumed on the decode
+side yet). `pwa` fixed it in `decode-core2.js` (subtract `TICK_CAP_RADIUS` from the raw measured
+length before quantizing). Result: **14/17**, matching round 5's original synthetic-fixture
+ceiling almost exactly, now on the real palette and geometry. The remaining 3 failures are all
+perspective (15deg, 30deg, the worst-case combo) - the same scoped, known limitation from round
+5's first pass (see `NOTES.md`), not a new one. Reaching the stated 15/17 target needs the
+homography correction already named as the next real step there, not further palette or geometry
+tuning on this side.
+
 ### 3. What the code carries, and what it doesn't
 
 The Vyre code's payload is a public identifier plus, for pairing, a one-time ticket: 64 bits of
