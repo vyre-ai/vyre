@@ -75,6 +75,58 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // person to the owning module's setter (e2e review, HIGH 1).
   "settings.set", "settings.reset"]);
 
+/**
+ * The person's own surfaces: a real terminal, the Deck, Capsule. Never `module`, `mcp`, `tailnet`,
+ * `hook` or a guest kind — those already keep a model, an agent or another box's peer out on
+ * their own, so a tool naming one of them is not "person-only" by its callers alone.
+ */
+export const PERSON_SURFACES = new Set(["cli", "local", "deck", "capsule"]);
+
+/**
+ * A tool whose callers are person-only surfaces reads as person-only, but until now only
+ * PERSON_ONLY's own hand-kept list got the floor's own-process check (core/daemon/peer.js): a
+ * model's shell can claim "cli" exactly as a real terminal would, so anything left off that list
+ * had nothing stopping it (e2e review, 28 Sep: files.receive was the latest instance; a sweep of
+ * every module found dozens more). PERSON_ONLY is derived from the manifests now: it is default-
+ * deny, and OPT_OUT is the only way off it — a short, explicit, reviewed list of tools that are
+ * harmless even if a model's own shell spoofs "cli", one line of reason each. It may only shrink
+ * (test/person-only-guard.test.js freezes it); nothing on the reviewer's protect list (link.pair,
+ * link.unpair, vault.device.join, vault.device.revoke, vault.vaults.create, files.drive.mount,
+ * files.drive.unmount, files.drive.open, files.send, agents.delete, memory.correct, memory.merge,
+ * memory.split, and anything else that sends, pairs, joins or changes what is remembered) belongs
+ * here.
+ */
+export const OPT_OUT = new Set([
+  // A tip list nudge: read, mark seen, dismiss, reset. Nothing sent, paid, paired or revealed.
+  "tips.next", "tips.seen", "tips.used", "tips.dismiss", "tips.whatsnew", "tips.reset",
+  // Dismissing a suggested skill install, the same shape as tips.dismiss.
+  "learn.skill-dismiss",
+  // Local voice output: read its settings, change them, or make Vyre speak out loud. No data
+  // leaves this machine and nothing else changes.
+  "voice.status", "voice.settings", "voice.speak",
+  // A local diagnostic bundle, read for the person to share themselves; not sent by this tool.
+  "capsule.report",
+  // A read-only tailnet probe for candidate boxes (`vyre up`'s own search); pairing itself
+  // (link.pair) is not opted out.
+  "link.find",
+  // Ends this Mac's own person session: the worst case is being signed out, not a privilege
+  // gain. Signing IN (link.signin) is already floor-gated by name, below.
+  "link.signout",
+]);
+
+/**
+ * Is `name` a person-only tool: PERSON_ONLY's own list, or (unless explicitly opted out) a tool
+ * whose declared callers are person-only surfaces alone. `def` is the live tool definition (its
+ * `callers`), when the caller has it; a remote tool forwarded blind (link.call's `inner`) has none,
+ * so it is checked by name against PERSON_ONLY and HUMAN_ONLY only, same as before.
+ * @param {string} name @param {{ callers?: string[] }} [def]
+ */
+export function personOnly(name, def) {
+  if (PERSON_ONLY.has(name)) return true;
+  if (OPT_OUT.has(name)) return false;
+  return Boolean(def) && Array.isArray(def.callers) && def.callers.length > 0 && def.callers.every(c => PERSON_SURFACES.has(c));
+}
+
 export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
 
 /**
