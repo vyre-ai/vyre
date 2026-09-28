@@ -70,17 +70,33 @@ test("config: on win32, the socket always lives under a per-user LOCALAPPDATA fo
   assert.equal(p1, config.socketPath(root, { platform: "win32" }), "the same home always hashes to the same socket");
 });
 
-test("config: ensureWindowsSocketDir strips inheritance then grants only the user and SYSTEM", t => {
+test("config: ensureWindowsSocketDir strips inheritance then grants only the user (by SID) and SYSTEM", t => {
   const dir = path.join(tempHome(t), "sockets");
   const calls = [];
-  const fakeSpawnSync = (cmd, args) => { calls.push({ cmd, args }); return { status: 0 }; };
+  const fakeSpawnSync = (cmd, args) => {
+    calls.push({ cmd, args });
+    if (cmd === "whoami") return { status: 0, stdout: '"HOST\\alex","S-1-5-21-1-2-3-1001"\r\n' };
+    return { status: 0 };
+  };
   const r = config.ensureWindowsSocketDir(dir, { env: { USERNAME: "alex" }, spawnSync: fakeSpawnSync });
   assert.equal(r, dir);
   assert.ok(fs.existsSync(dir));
-  assert.equal(calls.length, 3);
-  assert.deepEqual(calls[0], { cmd: "icacls", args: [dir, "/inheritance:r"] });
-  assert.deepEqual(calls[1], { cmd: "icacls", args: [dir, "/grant:r", "alex:(OI)(CI)F"] });
-  assert.deepEqual(calls[2], { cmd: "icacls", args: [dir, "/grant:r", "SYSTEM:(OI)(CI)F"] });
+  assert.equal(calls.length, 4);
+  assert.deepEqual(calls[0], { cmd: "whoami", args: ["/user", "/fo", "csv", "/nh"] });
+  assert.deepEqual(calls[1], { cmd: "icacls", args: [dir, "/inheritance:r"] });
+  assert.deepEqual(calls[2], { cmd: "icacls", args: [dir, "/grant:r", "*S-1-5-21-1-2-3-1001:(OI)(CI)F"] });
+  assert.deepEqual(calls[3], { cmd: "icacls", args: [dir, "/grant:r", "SYSTEM:(OI)(CI)F"] });
+});
+
+test("config: currentUserPrincipal falls back to the account name when whoami is missing, refuses or doesn't parse", t => {
+  assert.equal(config.currentUserPrincipal({ env: { USERNAME: "alex" }, spawnSync: () => ({ error: new Error("ENOENT") }) }), "alex");
+  assert.equal(config.currentUserPrincipal({ env: { USERNAME: "alex" }, spawnSync: () => ({ status: 1, stdout: "" }) }), "alex");
+  assert.equal(config.currentUserPrincipal({ env: { USERNAME: "alex" }, spawnSync: () => ({ status: 0, stdout: "garbage, no csv here" }) }), "alex");
+});
+
+test("config: currentUserPrincipal prefers the live token's SID over the account name", t => {
+  const spawnSync = () => ({ status: 0, stdout: '"HOST\\alex","S-1-5-21-1-2-3-1001"\r\n' });
+  assert.equal(config.currentUserPrincipal({ env: { USERNAME: "alex" }, spawnSync }), "*S-1-5-21-1-2-3-1001");
 });
 
 test("config: ensureWindowsSocketDir throws, fail closed, when icacls is missing or refuses", t => {

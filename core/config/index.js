@@ -96,21 +96,39 @@ const windowsSocketDir = (/** @type {NodeJS.ProcessEnv} */ env = process.env) =>
   path.join(env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "Vyre", "sockets");
 
 /**
+ * The running process's own SID, from `whoami /user`, rather than its account name: a name can
+ * resolve to a different SID than the live token's in less common setups (a CI runner rejoining
+ * a domain, a renamed account), and `icacls` accepts a SID directly with a `*` prefix. Falls back
+ * to the account name if `whoami` is missing or its output does not parse, so a fresh, unusual
+ * environment degrades to the old behavior instead of failing outright.
+ * @param {{ env?: NodeJS.ProcessEnv, spawnSync?: typeof spawnSync }} [opts]
+ */
+export function currentUserPrincipal({ env = process.env, spawnSync: spawnImpl = spawnSync } = {}) {
+  const fallback = env.USERNAME || os.userInfo().username;
+  const r = spawnImpl("whoami", ["/user", "/fo", "csv", "/nh"], { windowsHide: true, encoding: "utf8" });
+  if (r.error || r.status !== 0 || !r.stdout) return fallback;
+  // "COMPUTER\\name","S-1-5-21-...,....,1001" — a quoted CSV row, SID last.
+  const m = /"([^"]*)"\s*,\s*"([^"]*)"/.exec(r.stdout.trim());
+  return m && m[2].startsWith("S-1-") ? `*${m[2]}` : fallback;
+}
+
+/**
  * Windows: make (or re-set) the socket folder's ACL explicitly. `chmod`/`fs.mode` have no POSIX
  * meaning on Windows, so this is what stands in for `privateSocketDir`'s 0700: `icacls
  * /inheritance:r` drops whatever the folder inherited from its parent (a fresh
  * `%LOCALAPPDATA%\Vyre` could otherwise carry broader permissions than intended), then an
- * explicit grant adds back only the current user and `SYSTEM` (which services and elevated
- * helpers commonly need) with full control. Nothing else is granted. Fails closed: an `icacls`
- * that is missing or refuses throws, the same shape as `privateSocketDir` refusing an unsafe
- * `/tmp` folder, since a socket this code cannot prove is private is not one it should bind to.
+ * explicit grant adds back only the current user (by SID, see `currentUserPrincipal`) and
+ * `SYSTEM` (which services and elevated helpers commonly need) with full control. Nothing else is
+ * granted. Fails closed: an `icacls` that is missing or refuses throws, the same shape as
+ * `privateSocketDir` refusing an unsafe `/tmp` folder, since a socket this code cannot prove is
+ * private is not one it should bind to.
  * @param {string} [dir]
  * @param {{ env?: NodeJS.ProcessEnv, spawnSync?: typeof spawnSync }} [opts] `spawnSync` is for a
  *   test to fake `icacls` without a real Windows machine.
  */
 export function ensureWindowsSocketDir(dir = windowsSocketDir(), { env = process.env, spawnSync: spawnImpl = spawnSync } = {}) {
   fs.mkdirSync(dir, { recursive: true });
-  const user = env.USERNAME || os.userInfo().username;
+  const user = currentUserPrincipal({ env, spawnSync: spawnImpl });
   const run = (/** @type {string[]} */ args) => spawnImpl("icacls", [dir, ...args], { windowsHide: true, encoding: "utf8" });
   const steps = [run(["/inheritance:r"]), run(["/grant:r", `${user}:(OI)(CI)F`]), run(["/grant:r", "SYSTEM:(OI)(CI)F"])];
   const failed = steps.find(s => s.error || s.status !== 0);

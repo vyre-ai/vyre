@@ -89,12 +89,18 @@ jobs:
             Write-Output "--- vyred.out ---"; Get-Content "$env:RUNNER_TEMP\vyred.out" -ErrorAction SilentlyContinue
             Write-Output "--- vyred.err ---"; Get-Content "$env:RUNNER_TEMP\vyred.err" -ErrorAction SilentlyContinue
             # Diagnostic only (a failed bind still leaves the folder ensureWindowsSocketDir made
-            # and ACL'd): what ACL it actually ended up with, and this token's own group SIDs,
-            # since a bind EACCES here is an OS-level question icacls alone may not answer.
+            # and ACL'd): what ACL it actually ended up with, this token's own SID and groups
+            # (bindSocket in core/daemon/index.js grants by SID, not name, but a mismatch would
+            # still show here), and whether a plain file can be created in the same folder right
+            # now, since a bind EACCES here is an OS-level question icacls alone may not answer.
             $dir = Split-Path $sockPath
             Write-Output "--- icacls $dir ---"; icacls "$dir" 2>&1
             Write-Output "--- icacls (parent) ---"; icacls (Split-Path $dir) 2>&1
+            Write-Output "--- whoami /user ---"; whoami /user 2>&1
             Write-Output "--- whoami /groups ---"; whoami /groups 2>&1
+            $probe = Join-Path $dir "probe.tmp"
+            try { [IO.File]::WriteAllText($probe, "x"); Write-Output "--- plain file create in $dir: ok ---"; Remove-Item $probe -Force -ErrorAction SilentlyContinue }
+            catch { Write-Output "--- plain file create in $dir: FAILED: $_ ---" }
             throw "vyred did not create its socket at $sockPath"
           }
       - name: The socket's folder and the socket file carry an explicit, narrow ACL

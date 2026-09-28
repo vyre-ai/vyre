@@ -140,7 +140,7 @@ async function startLocked(opts, root, p, release) {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
   });
-  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(p.socket, () => resolve(undefined)); });
+  await bindSocket(server, p.socket);
   // No POSIX mode on win32: config.ensure() (called above, before listen()) already set an
   // explicit ACL on the socket's folder (core/config/index.js's ensureWindowsSocketDir), which is
   // what stands in for this chmod there.
@@ -660,6 +660,35 @@ function serveFile(res, file) {
   try { buf = fs.readFileSync(file); } catch { return send(res, 404, { error: { code: "not_found", message: path.basename(file) } }); }
   res.writeHead(200, { "content-type": "text/javascript", ...DECK_HEADERS });
   res.end(buf);
+}
+
+/**
+ * Bind the socket, retrying a `win32` EACCES/EPERM a few times before giving up. The folder's
+ * ACL is set (ensureWindowsSocketDir) and applied before this call, but on Windows an antivirus
+ * or indexer can hold a fresh reparse-point-backed socket file for a moment right after creation,
+ * which surfaces as a transient EACCES on the very first bind attempt (observed on
+ * `windows-latest` CI, not on real hardware). Retrying is only about that timing: it changes
+ * nothing about who the ACL admits, so a second local user is still refused exactly as before.
+ * @param {{ listen: (socket: string, cb: () => void) => any, once: (ev: "error", cb: (e: Error) => void) => any, removeAllListeners: (ev: "error") => any }} server
+ * @param {string} socket
+ * @param {{ platform?: string, wait?: (ms: number) => Promise<void> }} [opts] for a test off Windows
+ */
+export function bindSocket(server, socket, { platform = process.platform, wait = ms => new Promise(r => setTimeout(r, ms)) } = {}) {
+  const attempts = platform === "win32" ? 10 : 1;
+  return (async () => {
+    for (let i = 1; ; i++) {
+      try {
+        await new Promise((resolve, reject) => { server.once("error", reject); server.listen(socket, () => resolve(undefined)); });
+        return;
+      } catch (e) {
+        const code = /** @type {any} */ (e).code;
+        const transient = platform === "win32" && (code === "EACCES" || code === "EPERM");
+        if (!transient || i >= attempts) throw e;
+        server.removeAllListeners("error");
+        await wait(150 * i);
+      }
+    }
+  })();
 }
 
 /** Does anything answer on this socket? */
