@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### capsule: the five identity marks of ADR 0043, drawn natively and byte for byte with the Deck
+
+- `local/capsule/native/Sources/Core/Avatars` ports the Deck's locked renderers (deck/vendor/vyrecode
+  at native-core a1d8ac72, through deck/js/avatars.js's seed rules) to Swift: the person's circle and
+  its Vyre code ring, the assistant's creature, agent blobs, teammate characters with their project
+  badge, and project tiles, solid and draft. Dark theme only. The Swift emits the same SVG markup as
+  the JS, whitespace included, and `AvatarView` draws that very string through AppKit's own SVG
+  support, cached as a bitmap per kind, size and scale.
+- JS arithmetic is reproduced where Swift differs: number printing, Math.round, and V8's cos and sin,
+  which differ from Darwin's libm in the last bit on 3 of the 55 angles the marks use, so V8's values
+  are kept as a table. Tests/AvatarTests.swift holds vectors printed by the JS renderers from node.
+  Not wired into any view yet.
 #### Desktops paired over the relay join the tailnet on their own (ADR 0046)
 
 - A desktop's pairing asks to join; the box mints a single-use, pre-approved, 5-minute auth key
