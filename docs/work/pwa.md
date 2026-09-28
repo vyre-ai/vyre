@@ -9,63 +9,61 @@ work/polish-surfaces (phone Chat, five tabs, title truncation), with main merged
 ## Phone-side contract: scan your avatar to pair your phone (for launch, 2026-09-28)
 
 launch can't message pwa directly, so this section is the handoff: what the Deck's "Add your
-phone" screen needs to know about what happens after it shows the code. Rewritten 2026-09-28
-after tailnet posted the REAL contract (relay/client's `pairTicket()`/`keyFingerprint()`, merged
-in from work/tailnet); an earlier version of this section (hand-rolled locator/secret/MAC
-derivation) was reviewer-held twice and is history - see "Doing" below for the full story if it
-matters to you, otherwise everything below is current.
+phone" screen needs to know about what happens after it shows the code. Current as of sha
+00652f9d - tailnet's real split (`resolveTicket()`/`pairOffer()`, work/tailnet 13852c7a) is wired
+and the route is live. Two earlier versions of this section (a hand-rolled protocol, then an
+atomic-call interim) were reviewer-held or superseded; see "Doing" below for that history if it
+matters to you, otherwise everything below is current and stable.
 
 **No Tailscale in this flow, relay only** (team-lead, 2026-09-28) - the phone never touches the
-tailnet; everything below goes over the relay via `relay/client/client.js`'s `pairTicket()`.
+tailnet; everything below goes over the relay via `relay/client/client.js`'s
+`resolveTicket()`/`pairOffer()`.
 
 1. **The Deck mints a ticket and shows it as a code ring** around the person's avatar (tailnet +
-   app-design's side, not pwa's). The ticket is 8 random bytes; the ring encodes it plus a CRC-8
-   and Reed-Solomon parity (`deck/vyrecode/payload.js`), 144 bits total, in app-design's 2-ring/
-   36-mark/2-bit-per-mark layout (`deck/vendor/vyrecode/geometry.js`: RING_R=[188,222], tick
-   lengths 6/12/18/24). Per reviewer: **Touch ID happens here, at mint** (option A) - not later,
-   at redeem.
-2. **The phone scans it** (`deck/js/scan.js`): camera → decode-core2.js's search → an 8-byte
-   ticket, recovered but never turned into a string, logged, or put in a URL (it is this flow's
-   pairing secret).
-3. **The phone pairs in one call**: `deck/js/pair-ticket.js`'s `pairNow(ticket, { relay, name })`
-   calls `relay/client/client.js`'s `pairTicket()` directly - no code of pwa's own touches the
-   ticket, derives a key, or talks to a resolve endpoint; that entire library call does the
-   derivation (domain-separated SHA-256 under tailnet's own tags), the locator-only POST to the
-   relay's `/v1/pair`, the MAC verification against the full record, and the Noise handshake.
-   `keyFingerprint(box, crypto)` then gives the same 8-character fingerprint the box's own Touch
-   ID prompt shows.
-   **STILL PENDING from launch:** `relay`, the box's `ws://`/`wss://` address - nothing in the
-   72-bit code carries it (no room), so the Deck's "Add your phone" screen needs to hand it to
-   the sheet some other way (`pairScanSheet({ relay })`'s own second argument). Not yet wired to
-   a real value.
-   **INTERIM, not final** (team-lead + reviewer, 2026-09-28): `pairTicket()` is atomic, so there
-   is no confirm-before-pairing step - pairing starts the instant a ticket decodes. Team-lead and
-   reviewer have asked tailnet for a resolve/pair split so the sheet can show "Pair with `<box>`
-   (`<fingerprint>`)?" BEFORE the handshake; once that sha lands, swap `pairNow()` for it (see
-   `pair-ticket.js`'s own header) - this is the one thing in this contract expected to change.
-4. **Success**: the box name and fingerprint are shown as a confirmation ("Paired with `<box>`
-   as `<name>`. Code `<fingerprint>`. Not you? Remove it in Settings, Devices."), the device name
-   sent with the pairing is the person's first name (`system.info`'s `owner.name`) plus the model
-   (User-Agent Client Hints on Android; iOS Safari has none and falls back to a plain "iPhone")
-   - "Alex's iPhone" (team-lead's decision, not editable yet: no pre-pairing screen exists to
-   edit it on until the split above lands). The phone shows the SAME avatar the person saw on
-   the Deck (`deck/js/pair-avatar.js`, rendered fresh via app-design's vendored `identity.js`,
-   not a photo - the camera-frame crop in `scan.js` is kept only as a fallback if rendering
-   throws), doing a short celebratory hop-plus-confetti (under 1.2s, skipped under
-   `prefers-reduced-motion`, `deck/css/pair.css`'s `.ms-done`/`.confetti-bit`).
+   app-design's side, not pwa's). The ticket is 8 random bytes; the ring encodes those RAW bytes
+   directly (launch fixed an earlier hashed-ticket bug, d99a44d6) plus a CRC-8 and Reed-Solomon
+   parity (`deck/vyrecode/payload.js`), 144 bits total, in app-design's 2-ring/36-mark/2-bit-per-
+   mark layout (`deck/vendor/vyrecode/geometry.js`: RING_R=[188,222], tick lengths 6/12/18/24).
+   Per reviewer: **Touch ID happens here, at mint** (option A) - not later, at redeem.
+2. **The phone opens `/pair/scan`** (`deck/views/wink.js` - phone.vyre.run points here) and
+   scans the code (`deck/js/scan.js`): camera → decode-core2.js's search → an 8-byte ticket,
+   recovered but never turned into a string, logged, or put in a URL (it is this flow's pairing
+   secret). The relay to ask is `wss://relay.vyre.run` (`core/relay/index.js`'s own
+   `DEFAULT_RELAY` - the one relay every box registers through, so nothing box-specific needs
+   handing to this page; a `?relay=` query override exists only for a self-hosted relay).
+3. **The phone looks the ticket up WITHOUT pairing**: `resolveTicket(ticket, { relay, crypto })`
+   (re-exported by `deck/js/pair-ticket.js`) derives everything from the ticket locally (domain-
+   separated SHA-256 under tailnet's own tags), POSTs only the derived locator to the relay's
+   `/v1/pair`, verifies the FULL record's MAC (not just part of it - an earlier version of this
+   flow MAC'd too little and was reviewer-held for it) before trusting anything in the response,
+   and returns `{ offer, name, fingerprint, handle }` - no pairing yet. `offer` (it carries the
+   derived pairing secret) is held only in `deck/js/pair-scan.js`'s local `pendingOffer`
+   variable, never storage, a URL, or a log.
+4. **The person confirms**: "Pair with `<name>` (`<fingerprint>`)?", with "Not this one"
+   returning to scanning and dropping `pendingOffer` without ever pairing.
+5. **On Pair**: `pairOffer(offer, { name: deviceName })` runs the actual handshake. The device
+   name sent is the person's first name (`system.info`'s `owner.name`) plus the model (User-Agent
+   Client Hints on Android; iOS Safari has none and falls back to a plain "iPhone") - "Alex's
+   iPhone" (team-lead's decision). Not editable today (no field on the confirm screen for it
+   yet - a small follow-up, not blocked on anything).
+6. **Success**: "Paired with `<box>` as `<name>`. Code `<fingerprint>`. Not you? Remove it in
+   Settings, Devices." The phone shows the SAME avatar the person saw on the Deck
+   (`deck/js/pair-avatar.js`, rendered fresh via app-design's vendored `identity.js`, not a
+   photo - the camera-frame crop in `scan.js` is kept only as a fallback if rendering throws),
+   doing a short celebratory hop-plus-confetti (under 1.2s, skipped under
+   `prefers-reduced-motion`). Redirects to `https://<handle>.vyre.run` when `resolveTicket`
+   returned one (it's `null` when the box hasn't claimed a handle); otherwise stays on the
+   success screen.
    **ASSUMED, flagged to app-design, not confirmed:** the avatar option shown is derived from
    `sha256(box key)[0] % USER_GRADIENTS.length` - matching "the same avatar" ONLY if the box
-   picks its own avatar the same deterministic way, from its own key. If it's a stored/user
-   choice instead, this renders a different (but plausible-looking) avatar, not literally the
-   same one.
-   **STILL PENDING from tailnet:** the redirect to `https://<handle>.vyre.run` (team-lead,
-   2026-09-28) has nowhere to read `handle` from - `pairTicket()`'s result has no such field.
-   Not built until tailnet says where it comes from; team-lead is asking them to add it to the
-   (still-atomic, or future split) response.
-5. **Errors**: `pairTicket()`'s own refusals surface as a generic "That code expired or was
-   already used" for a 404 (tailnet: expired/used/unknown are deliberately indistinguishable, so
-   a scanner can't tell which applied) plus `rate_limited` for a 429 - always with "Scan again"
-   returning to step 2.
+   picks its own avatar the same deterministic way, from its own key. team-lead is separately
+   asking tailnet to put the owner's real identity fingerprint in the verified record instead;
+   swap to that field once it exists.
+7. **Errors**: `resolveTicket`'s refusals map to worded, always-retryable states - a 404-shaped
+   failure ("expired or was already used", tailnet's 404 deliberately covers expired/used/unknown
+   alike so a scanner can't tell which applied), `rate_limited` for a 429, and `bad_ticket`
+   ("doesn't check out") for a MAC or shape failure, which per reviewer must NEVER pair. A
+   pairing-time failure (after confirm, from `pairOffer`) gets the same three-way mapping.
 
 ## Install it on an iPhone
 
@@ -592,6 +590,44 @@ into one shared, vendored module rather than a second hand-copy drifting out of 
 - Fixed two pre-existing em dashes in tool descriptions that came in with the work/tailnet merge
   (`core/onboard/index.js`, `core/relay/index.js`) - broke `test/docs-check.test.js`'s
   reference-generation check.
+
+## Doing (the real split + a wired route + the decode-rate diagnostic, 2026-09-28)
+- tailnet's resolve/pair split landed (work/tailnet 13852c7a, `resolveTicket()`/`pairOffer()`).
+  Merged again (a second `work/tailnet` merge, b38b199e) - reintroduced the two em dashes just
+  fixed (a new ADR, 0046, also arrived with 34 of its own); fixed all of it again, 596e7fdd.
+  Rewrote `deck/js/pair-ticket.js` down to a thin re-export plus `classifyError()` (matches
+  `resolveTicket`/`pairOffer`'s plain-message throws against reviewer's mapping - neither
+  function exports a `.code`), and rebuilt the state machine and sheet for the real
+  confirm-before-pair shape (57ed8d04): scan → resolveTicket → "Pair with `<name>`
+  (`<fingerprint>`)?" → Pair → pairOffer → done, with the resolved offer held only in a closure
+  variable and dropped on "Not this one" or once pairing finishes.
+- Wired `/pair/scan` to an actual route (00652f9d): `deck/views/wink.js` (ADR 0037's codename)
+  mounts the sheet, defaulting to `wss://relay.vyre.run` (`core/relay/index.js`'s own
+  `DEFAULT_RELAY`) - no box-specific address needed from launch after all, since there's one
+  shared relay every box registers through. Told launch to point phone.vyre.run's copy here.
+- Ran the decode-rate diagnostic team-lead asked for: raw per-mark error counts (of 72; RS
+  corrects up to ~4 byte errors) at each scenario's own true rotation/scale -
+
+  | Scenario | Errors | Reads as |
+  |---|---|---|
+  | pristine | 3 | fine |
+  | blur 2px | 18 | FAILS - already 4x+ over budget at the lightest blur |
+  | blur 4px | 38 | FAILS, worse |
+  | blur 6px | 56 | FAILS, severe |
+  | rotate 15/37/90/181deg | 5-6 each | fine |
+  | scale 80% | 12 | fails/borderline |
+  | scale 120% | 1 | fine |
+  | noise light/heavy | 3 each | fine |
+
+  Blur is the clean, dominant signal: catastrophic even lightly, while rotation and noise (which
+  don't touch contrast) stay easily tolerable - points at CONTRAST, not geometry size, as the
+  lever. Scale-80's degradation (smaller absolute marks) fits the same story. Sent the table to
+  app-design with a specific ask (a contrast floor on the mark/tint colours) rather than touching
+  the palette myself, per team-lead's instruction. Perspective scenarios weren't included in this
+  table - they need the real ellipse-correction search to be measured fairly, not a raw rot=0/
+  scale=1 read.
+- Not done this session (still next): the Web Worker move, and re-running the harness once
+  app-design has a contrast answer.
 
 ## Next
 - Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
