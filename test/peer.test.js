@@ -427,44 +427,58 @@ test("peer: a leader whose exe cannot be read is a server keyed uid0 only when r
   assert.equal(insideClaude(32, { ...common, exe: () => "/usr/bin/tmux", uid: () => 0 }).server?.exe, "/usr/bin/tmux");
 });
 
-test("peer: under a root leader vyred cannot read (a real ssh login), the first call asks once for presence, then that leader is trusted", async t => {
+test("peer: under a root leader vyred cannot read (a real ssh login), the first call asks once for presence, then that leader is trusted", { skip: process.platform !== "linux" ? "needs /proc" : false }, async t => {
   // Runs only where this test process itself sits under such a leader: the testbox over ssh,
   // whose sshd listener is root-owned and unreadable from this uid. Elsewhere there is nothing
   // real to test against.
-  const self = insideClaude(process.pid);
+  const self = insideClaude(process.pid, { self: 999999 });
   if (self.server?.exe !== "uid0") { t.skip("not under an unreadable root leader (run over ssh on testbox)"); return; }
-  const root = tempHome(t);
-  const d = await start({ root, log: () => {} });
-  t.after(() => d.stop());
-  const presence = d.registry.deps.presence;
+  // vyred runs detached, as `vyre up` starts it: an in-process one would count this test's own
+  // ancestry (the sshd chain) as its own and never look at it.
+  const home = tempHome(t);
   const { generateKeyPairSync, sign, randomBytes } = await import("node:crypto");
   const { inputHash } = await import("../core/presence/index.js");
+  const { ping } = await import("../core/daemon/index.js");
+  const config = await import("../core/config/index.js");
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const key = presence.enroll({ kind: "device", name: "test key", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
+  const spki = publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  const keyFile = path.join(home, "key-id");
+  const script = `const { start } = await import(${JSON.stringify(path.resolve(import.meta.dirname, "../core/daemon/index.js"))});
+    const d = await start({ root: process.env.VYRE_HOME, log: () => {} });
+    const k = d.registry.deps.presence.enroll({ kind: "device", name: "test key", public_key: process.env.KEY, alg: -7 });
+    (await import("node:fs")).writeFileSync(process.env.KEY_FILE, k.id);`;
+  const child = spawn(process.execPath, ["--input-type=module", "-e", script], { detached: true, stdio: "ignore", env: { ...process.env, VYRE_HOME: home, KEY: spki, KEY_FILE: keyFile } });
+  child.unref();
+  t.after(() => { try { process.kill(child.pid); } catch {} });
+  const socket = config.ensure(home).socket;
+  for (let n = 0; n < 100 && !(fs.existsSync(keyFile) && await ping(socket)); n++) await new Promise(r => setTimeout(r, 100));
+  const keyId = fs.readFileSync(keyFile, "utf8");
   const proof = server => {
     const ts = Date.now(), nonce = randomBytes(12).toString("base64url");
     const sig = sign("sha256", Buffer.from(`vyre-presence-v1\nsession.trust\n${inputHash(server)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
-    return `device key=${key.id} ts=${ts} nonce=${nonce} sig=${sig}`;
+    return `device key=${keyId} ts=${ts} nonce=${nonce} sig=${sig}`;
   };
-  const call = (name, presenceProof) => JSON.parse(execFileSync("curl", ["-s", "--unix-socket", d.paths.socket, "-X", "POST", "http://x/v1/tools/agents.create",
+  const call = (tool, input, presenceProof) => JSON.parse(execFileSync("curl", ["-s", "--unix-socket", socket, "-X", "POST", `http://x/v1/tools/${tool}`,
     "-H", "content-type: application/json", "-H", "x-vyre-caller: cli", ...(presenceProof ? ["-H", `x-vyre-presence: ${presenceProof}`] : []),
-    "-d", JSON.stringify({ name })], { encoding: "utf8" }));
-  const names = async () => (await d.registry.call("agents.list", {}, "cli")).data.map(a => a.name);
+    "-d", JSON.stringify(input)], { encoding: "utf8" }));
+  const names = () => call("agents.list", {}).data.map(a => a.name);
 
-  const bare = call("kit");
+  const bare = call("agents.create", { name: "kit" });
   assert.equal(bare.error?.code, "presence_required", JSON.stringify(bare));
   assert.equal(bare.error.server.exe, "uid0");
   assert.match(bare.error.message, /system service running as root/, "the reason says what it is in plain words");
-  assert.ok(!(await names()).includes("kit"));
+  assert.ok(!bare.error.methods.includes("tty"), "a tty code is no proof: a model under the same leader could read it");
+  assert.ok(!names().includes("kit"));
 
-  // A tty code is no proof here: a model under the same leader could read it.
-  assert.ok(!bare.error.methods.includes("tty"));
+  // A proof for a different server (another pid) does not answer this one.
+  const wrong = call("agents.create", { name: "nova" }, proof({ ...bare.error.server, pid: bare.error.server.pid + 1 }));
+  assert.equal(wrong.error?.code, "presence_required", JSON.stringify(wrong));
 
-  const proved = call("juno", proof(bare.error.server));
+  const proved = call("agents.create", { name: "juno" }, proof(bare.error.server));
   assert.equal(proved.error, undefined, JSON.stringify(proved));
-  const again = call("kit");
+  const again = call("agents.create", { name: "kit" });
   assert.equal(again.error, undefined, JSON.stringify(again));
-  assert.ok((await names()).includes("juno") && (await names()).includes("kit"));
+  assert.ok(names().includes("juno") && names().includes("kit") && !names().includes("nova"));
 });
 
 test("peer: the Capsule's own proof is a pinned cdhash, checked and cached once per connection, bound to the pid's start time", async () => {
