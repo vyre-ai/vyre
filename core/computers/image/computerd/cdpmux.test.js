@@ -435,3 +435,53 @@ test("cdpmux: Cookie and Set-Cookie never reach the agent in a Network/Fetch eve
   const fillInfo = (await fill.waitFor(m => m.method === "Network.requestWillBeSentExtraInfo")).params;
   assert.equal(fillInfo.headers.Cookie, "sid=abc");
 });
+
+test("cdpmux: a cookie's actual value never reaches the agent through associatedCookies, headersText, a WebSocket handshake, or an Audits issue (reviewer, 28 Sep)", async () => {
+  const { mux, fake } = world();
+  const agent = client(mux, "agent");
+  const asid = (await agent.call("Target.attachToTarget", { targetId: "T1", flatten: true })).result.sessionId;
+
+  fake.emit(asid, "Network.requestWillBeSentExtraInfo", {
+    requestId: "r1", headers: { "User-Agent": "x" },
+    associatedCookies: [{ cookie: { name: "sid", value: "abc", domain: "a.test" }, blockedReasons: [] }],
+  });
+  const reqInfo = (await agent.waitFor(m => m.method === "Network.requestWillBeSentExtraInfo")).params;
+  assert.equal(reqInfo.associatedCookies, undefined, "associatedCookies reached the agent");
+  assert.equal(reqInfo.headers["User-Agent"], "x", "a non-cookie header still arrives");
+
+  fake.emit(asid, "Network.responseReceivedExtraInfo", {
+    requestId: "r1", headers: { "Content-Type": "text/html" }, headersText: "HTTP/1.1 200 OK\r\nSet-Cookie: sid=abc\r\n",
+    blockedCookies: [{ blockedReasons: ["SecureOnly"], cookieLine: "sid=abc; Secure" }],
+    exemptedCookies: [{ cookie: { name: "sid", value: "abc" }, exemptionReason: "UserSetting" }],
+  });
+  const resInfo = (await agent.waitFor(m => m.method === "Network.responseReceivedExtraInfo")).params;
+  assert.equal(resInfo.headersText, undefined, "the raw header block reached the agent");
+  assert.equal(resInfo.blockedCookies, undefined, "blockedCookies reached the agent");
+  assert.equal(resInfo.exemptedCookies, undefined, "exemptedCookies reached the agent");
+  assert.equal(resInfo.headers["Content-Type"], "text/html");
+
+  fake.emit(asid, "Network.webSocketWillSendHandshakeRequest", {
+    requestId: "w1", timestamp: 0, wallTime: 0, request: { headers: { Cookie: "sid=abc", Origin: "https://a.test" } },
+  });
+  const wsReq = (await agent.waitFor(m => m.method === "Network.webSocketWillSendHandshakeRequest")).params;
+  assert.equal(wsReq.request.headers.Cookie, undefined, "the WebSocket handshake request carried Cookie");
+  assert.equal(wsReq.request.headers.Origin, "https://a.test");
+
+  fake.emit(asid, "Network.webSocketHandshakeResponseReceived", {
+    requestId: "w1", timestamp: 0, response: { headers: { "Set-Cookie": "sid=abc" }, headersText: "raw", requestHeaders: { Cookie: "sid=abc" }, requestHeadersText: "raw" },
+  });
+  const wsRes = (await agent.waitFor(m => m.method === "Network.webSocketHandshakeResponseReceived")).params;
+  assert.equal(wsRes.response.headers["Set-Cookie"], undefined);
+  assert.equal(wsRes.response.headersText, undefined);
+  assert.equal(wsRes.response.requestHeaders.Cookie, undefined, "requestHeaders (a headers map) carried Cookie to the agent");
+  assert.equal(wsRes.response.requestHeadersText, undefined);
+
+  fake.emit(asid, "Audits.issueAdded", {
+    issue: { code: "CookieIssue", details: { cookieIssueDetails: { cookie: { name: "sid", domain: "a.test" }, rawCookieLine: "sid=abc; Secure", cookieWarningReasons: [] } } },
+  });
+  const audit = (await agent.waitFor(m => m.method === "Audits.issueAdded")).params;
+  assert.equal(audit.issue.details.cookieIssueDetails.rawCookieLine, undefined, "Audits carried rawCookieLine to the agent");
+  assert.equal(audit.issue.code, "CookieIssue", "the rest of the issue still arrives");
+
+  assert.equal((await agent.call("Network.loadNetworkResource")).error.code, -32000, "the agent can read an arbitrary URL's bytes");
+});
