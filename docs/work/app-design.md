@@ -409,3 +409,25 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   deliberate exception to "no colour per agent, no photos" (avatar.md, reaffirmed twice already
   this session for teammates and the Windows accent colour). Left the call with the lead; will
   write it into avatar.md for real once decided.
+
+## Now (28 Sep, launch's Server panel + onboarding screenshot pass)
+
+- Lead: screenshot pass on launch's new Settings > Server ("Move to a server") panel and
+  onboarding's "How will Vyre run?" screen (ce9c4c5f, not yet on work/launch's tip when checked;
+  worked directly off that commit). Wrote a throwaway CDP script (not committed, a local scratch
+  copy of the tree) that runs the real move flow end to end against `deck/fixtures/federation.json`
+  (point at a server, plan, start, live progress, ready-to-confirm, after-move) plus onboarding's
+  live step, on the test box.
+- 5 ranked findings sent to launch (msg_id 9ee66d00): (1) the whole move wizard has no card or
+  elevation, reads identically to a static settings row even though it's moving the person's
+  entire vault/projects/memory, card.md/plan-card.md's existing pattern is what to reuse; (2) the
+  vault's encryption guarantee (anywhere.md is emphatic about it) is invisible in the plan screen,
+  "Vault · 23 items · 40 KB" exactly like any other row, no lock glyph, no reassurance line; (3)
+  the progress meter renders as a barely-visible underline, not a legible bar; (4) no
+  status-mark vocabulary in the flow ("Waiting"/"Done" as plain words, no lime "in progress"
+  ring, no hollow done dot); (5) the onboarding radio's selected dot is plain text-colour, not
+  lime, unlike every other "selected/checked" mark in the system. Onboarding's own copy and layout
+  matched anywhere.md exactly, no findings there.
+- One thing flagged, not as a product bug: the onboarding header's "Setting up <hostname>" reads
+  `os.hostname()` (core/onboard/index.js:222), correct for a real user, but means test-box
+  screenshots show the shared box's real name; didn't forward the raw files outside the team.
