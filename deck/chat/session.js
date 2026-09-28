@@ -405,17 +405,34 @@ export function mountSession(container, opts) {
   async function take() { if (!isMac(where)) await attempt("threads.lease", { thread }); }
 
   /**
-   * A running step's screen, once (per mount): this thread's own agent, only if sight.targets (the
-   * registry, never a guessed "agent:<name>") lists it live - so a plain session, or an agent with
-   * no computer running, draws nothing. Refreshed on sight.stepped (never a timer, per sight.frame's
-   * own contract), scoped to this thread and this exact target.
+   * A running step's screen: this thread's own agent, only if sight.targets (the registry, never a
+   * guessed "agent:<name>") lists it live - so a plain session, or an agent with no computer
+   * running, draws nothing. Matched by `target` (the registry's own identifier, "agent:<name>"),
+   * not `label` (a display name that could in principle collide or diverge from it).
+   *
+   * The lookup runs once at mount; if no live target is found yet, it tries again on
+   * computer.checked-out (this thread's agent just got a running screen) or sight.stepped (a step
+   * landed for this thread - it must be live), each scoped to this thread, so an agent whose
+   * computer starts after the thread opens still gets the strip without a reopen. Never a timer,
+   * per sight.frame's own contract.
    */
   async function checkSight() {
-    const agent = record.current?.agent;
-    if (sight.checked || !agent) return;
+    if (sight.checked) return;
     sight.checked = true;
+    if (!record.current?.agent) return;
+    await trySight();
+    if (!sight.target) {
+      const retry = () => { if (!sight.target) trySight(); };
+      offs.push(on("computer.checked-out", ev => { if (ev.thread === thread) retry(); }));
+      offs.push(on("sight.stepped", ev => { if (ev.thread === thread) retry(); }));
+    }
+  }
+  async function trySight() {
+    const agent = record.current?.agent;
+    if (!agent) return;
+    const want = `agent:${agent}`;
     const r = await attempt("sight.targets", {});
-    const t = (r.data?.targets || []).find(x => x.kind === "agent" && x.label === agent && x.live);
+    const t = (r.data?.targets || []).find(x => x.kind === "agent" && x.target === want && x.live);
     if (!t) return;
     sight.target = t.target;
     await refreshSight();
