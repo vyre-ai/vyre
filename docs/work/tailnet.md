@@ -86,6 +86,20 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, new from the lead: scan-to-pair (phone.vyre.run scans the owner's avatar / Vyre
+code, no Tailscale on the phone). My part is the relay side: `relay.pair.ticket` mints a short
+ticket, registered with the relay so a phone can resolve it to the box's signed identity, then
+runs the ordinary pairing handshake. Claimed ADR 0037 (docs/work/README.md), amends ADR 0026
+section 6. Design note sent to the reviewer before writing any code: a 64-bit ticket (stored only
+as its hash, 5 min TTL, single-use, reusing the existing pairing mint()/secret-hash machinery
+unchanged); a new relay HTTP resolve endpoint (both relay/node/server.js and relay/worker/) that
+answers a record signed with the box's existing route.key (self-certifying, so the relay's own
+word is never trusted for identity); the one real amendment flagged for sign-off is that box.key's
+*public* half now reaches the relay, which ADR 0026 currently says never happens; and an open
+question on whether Touch ID gates only the mint (today's relay.pair.start shape) or also the
+redeem (new pending-confirm machinery, not built anywhere in this repo yet) — recommended the
+former, deferred to the reviewer and the lead. Not building until that lands. Idle otherwise.
+
 28 Sep 2026, still later, two items from the lead: relay.join refuses on darwin, and the host
 sanitised the same way as the name. `relayJoinRefusal(platform)` (exported, a pure function of an
 explicit platform like installCommand/operator in core/names/tailscale.js) refuses with
