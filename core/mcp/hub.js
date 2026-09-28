@@ -23,6 +23,7 @@
 
 import crypto from "node:crypto";
 import { McpError } from "./client.js";
+import { isPerson, isOwnerDevice } from "../../lib/caller.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE mcp_servers (
@@ -338,7 +339,11 @@ function normalizePolicy(t) {
 const json = (s, d) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
 const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 const fail = (code, msg) => Object.assign(new Error(msg), { code });
-const PEOPLE = ["cli", "local", "deck", "capsule", "module"];
+// A module's own call (the kernel's own "module:<name>" label, ctx.call - never a caller-
+// forgeable claim the way an agent's own caller string is) is scoped like the person too, same
+// as always; this guards it against smuggling an agent: or thread: claim behind "module:" the
+// same way the pre-swap inline check did (whoFrom's own audited "claimed" regex).
+const MODULE_CLAIM = /(?:^|[\s:])(agent|thread):/;
 
 /**
  * @typedef {{ person: boolean, agent: string|null, thread: string|null }} Who
@@ -356,28 +361,26 @@ const PEOPLE = ["cli", "local", "deck", "capsule", "module"];
 /** Who is calling, from the registry's caller and what vyred verified. @returns {Who} */
 export function whoFrom(caller, meta = {}) {
   const c = String(caller || "");
-  const kind = c.startsWith("module:") ? "module" : c.replace(/[\s:](agent|thread):.*$/s, "");
-  // Cohesion's audit, 2026-09-28: this used to check PEOPLE.includes(kind) alone, which strips
+  const named = /(?:^|[\s:])agent:(\S+)/.exec(c);
+  // Cohesion's audit, 2026-09-28: this used to check PEOPLE.includes(kind) alone, which stripped
   // "agent:kit" off "cli:agent:kit" before the check, reading it as person AND agent at once.
   // inScope() below trusts who.person to skip every per-agent scope check outright, so that let
   // an agent whose caller string carried an owner-surface prefix (however it got there) reach
-  // every connected server the true owner can, not just its own scope.
+  // every connected server the true owner can, not just its own scope. Swapped onto lib/caller.js's
+  // isPerson now that this branch can take the dependency (stage/0.1.1 fold, 2026-09-28) - it
+  // refuses an agent's or a thread's own claim first (the reviewer's round-2 MEDIUM on 513f984d:
+  // a space before "agent:", or a claim with no name after it, both used to slip past an anchored
+  // regex; isPerson's AGENT_CLAIM already treats these, and a thread: claim, the same as core/
+  // modules' own callerKind strip does) before checking the owner surfaces.
   //
-  // Reviewer's MEDIUM (round 2) on 513f984d: the first fix only refused a caller anchored exactly
-  // "<kind>:agent:<name>" (its own named regex's shape) — "cli agent:kit" (a space before
-  // "agent:", the same boundary callerKind's own strip already treats as equivalent to a colon;
-  // "mcp agent:kit" is a real shape this file's own test used) and "cli:agent:" (a claim with no
-  // name after it at all) both still read as kind "cli" with no match for the old anchored regex,
-  // so person came back true either way. claimed below tests the bare claim itself, unanchored,
-  // no name required — the same class core/modules' agentClaim recognizes — and, like
-  // callerKind's own strip, treats a thread: claim the same as an agent: one: "mcp:thread:<id>"
-  // (ADR 0030, a Vyre-owned session) is not the person's own surface either, whatever kind it
-  // otherwise reads as. An agent's or a thread's own claim is never the person (the same fix
-  // lib/caller.js gives isPerson/isAgent, once this branch can take that dependency — not yet
-  // mergeable here, see the note left for cohesion).
-  const claimed = /(?:^|[\s:])(agent|thread):/.test(c);
-  const named = /(?:^|[\s:])agent:(\S+)/.exec(c);
-  const person = !claimed && PEOPLE.includes(kind);
+  // NOT a plain swap to isPerson(c) alone: isPerson also admits an owner device (isOwnerDevice -
+  // tailnet:<owner>, device:<id>), which the old inline check never did, and per ADR 0032 any
+  // script on a paired phone or tailnet node is that owner device with no person session behind
+  // it - admitting it here would skip inScope()'s per-agent check for every connected MCP server.
+  // Excluded explicitly (reviewer's HOLD on f2df7888, lead's ruling 2026-09-28) to keep today's
+  // behaviour exactly; admitting an owner device with a real passkey-backed person session is a
+  // separate design for later, not 0.1.1.
+  const person = (isPerson(c) && !isOwnerDevice(c)) || (c.startsWith("module:") && !MODULE_CLAIM.test(c));
   return { person, agent: meta.agent || (named ? named[1] : null), thread: meta.thread || null };
 }
 

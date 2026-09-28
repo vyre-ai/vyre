@@ -28,7 +28,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { callerKind } from "../modules/index.js";
+import { isPerson } from "../../lib/caller.js";
 import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
   headSha, resetTo, mergeBranchIn, stillConflicted, compareAndSwap, detectTestCommand, B } from "./git.js";
 
@@ -229,7 +229,7 @@ export default {
       const tm = callerTeammate(agent);
       if (tm) return tm.project;
       if (agent) throw Object.assign(new Error("this agent is not a teammate"), { code: "denied" });
-      if (PERSON.has(callerKind(caller)) && input && input.project) {
+      if (isPerson(caller) && input && input.project) {
         if (!SLUG.test(String(input.project))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
         return String(input.project);
       }
@@ -242,8 +242,6 @@ export default {
       const tm = callerTeammate(meta.agent);
       return Boolean(tm && (tm.project === project || tm.shared === "*" || (Array.isArray(tm.shared) && tm.shared.includes(project))));
     };
-
-    const PERSON = new Set(["cli", "local", "deck", "capsule"]);
 
     // ---------------------------------------------------------------- notes (files with versions)
 
@@ -703,7 +701,7 @@ export default {
         let project = null;
         try { project = await projectOf(meta, i); } catch { project = null; }
         const rows = project ? serving(project)
-          : PERSON.has(String(meta.caller)) ? db.prepare("SELECT * FROM team_teammates").all().map(shapeT)
+          : isPerson(meta.caller) ? db.prepare("SELECT * FROM team_teammates").all().map(shapeT)
           : [];
         return rows.map(tm => {
           const queued = Number(/** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM team_requests WHERE teammate = ? AND state = 'queued'").get(tm.agent)).n);
@@ -736,7 +734,7 @@ export default {
       callers: ["cli", "local", "deck", "capsule"],
       run: async (i, meta) => {
         if (!SLUG.test(String(i.project || ""))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
-        if (!PERSON.has(String(meta.caller))) throw Object.assign(new Error("only a person changes this"), { code: "denied" });
+        if (!isPerson(meta.caller)) throw Object.assign(new Error("only a person changes this"), { code: "denied" });
         setDefaultEnabled(i.project, Boolean(i.enabled));
         ctx.events.emit("teammate.default-changed", { project: i.project, enabled: Boolean(i.enabled) });
         return { project: i.project, enabled: Boolean(i.enabled) };
@@ -788,7 +786,7 @@ export default {
         }
         const priority = i.priority || "normal";
         if (!PRIORITIES.includes(priority)) throw Object.assign(new Error(`priority must be one of ${PRIORITIES.join(", ")}`), { code: "bad_input" });
-        const from_kind = callerTm ? "teammate" : meta.thread ? "session" : PERSON.has(String(meta.caller)) ? "person" : "session";
+        const from_kind = callerTm ? "teammate" : meta.thread ? "session" : isPerson(meta.caller) ? "person" : "session";
         const from = callerTm ? callerTm.agent : meta.thread || String(meta.caller || "vyre");
         const id = queueRequest({ teammate: tm.agent, project, from_kind, from, reply_to: meta.thread || null, via, text: i.text, refs: i.refs, priority, key: i.key });
         if (i.wait) {
@@ -811,7 +809,7 @@ export default {
       input: { type: "object", required: ["request"], properties: { request: { type: "string" } } },
       run: async (i, meta) => {
         const r = mustR(i.request);
-        const allowed = PERSON.has(String(meta.caller)) || meta.thread === r.reply_to || meta.agent === r.teammate;
+        const allowed = isPerson(meta.caller) || meta.thread === r.reply_to || meta.agent === r.teammate;
         if (!allowed) throw Object.assign(new Error("team.status is for the requester or a person"), { code: "denied" });
         return r;
       },
@@ -822,7 +820,7 @@ export default {
       input: { type: "object", required: ["request"], properties: { request: { type: "string" } } },
       run: async (i, meta) => {
         const r = mustR(i.request);
-        const person = PERSON.has(String(meta.caller));
+        const person = isPerson(meta.caller);
         const owner = meta.thread === r.reply_to || (meta.agent && meta.agent === r.from);
         if (!(person || owner)) throw Object.assign(new Error("team.cancel is for the requester or a person"), { code: "denied" });
         if (r.state !== "queued") {
@@ -921,11 +919,11 @@ export default {
         if ((i.action || "get") === "get") {
           // Scoped like any other project read: the teammate itself, a caller whose verified
           // thread or agent identity is in the project(s) this teammate serves, or a person.
-          const allowed = meta.agent === tm.agent || await inProject(meta, tm.project) || PERSON.has(String(meta.caller));
+          const allowed = meta.agent === tm.agent || await inProject(meta, tm.project) || isPerson(meta.caller);
           if (!allowed) throw Object.assign(new Error(`team.notes is for ${tm.project}'s own teammates and sessions, or a person`), { code: "denied" });
           return { agent: tm.agent, part, text: noteCurrent(tm.agent, part), versions: noteVersions(tm.agent, part) };
         }
-        const allowed = meta.agent === tm.agent || PERSON.has(String(meta.caller));
+        const allowed = meta.agent === tm.agent || isPerson(meta.caller);
         if (!allowed) throw Object.assign(new Error("team.notes set is for the teammate itself, or a person"), { code: "denied" });
         if (typeof i.text !== "string") throw Object.assign(new Error("text is required to set notes"), { code: "bad_input" });
         return { agent: tm.agent, part, ...(await writeNotes(tm, part, i.text, meta.agent || String(meta.caller || "vyre"))) };

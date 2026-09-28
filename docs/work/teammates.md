@@ -551,3 +551,19 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   `core/team/git.js` itself no longer starts git directly — every call now goes through
   `gitAsync`, so `test/safe-git.test.js`'s tree-wide "nothing but lib/git-safe.js starts git" guard
   passes again (it started failing the moment safe-git 60b3673b landed on main, before this).
+- lib/caller.js swap (2026-09-28, cohesion, since teammates isn't running): core/team/index.js had
+  its own hand-rolled `PERSON = new Set(["cli", "local", "deck", "capsule"])`, the exact copy
+  cohesion's hygiene test freezes against. Two call shapes: `PERSON.has(callerKind(caller))` in
+  `projectOf` (line ~232) had the same agent-claim-stripping bug as goals/planner/hub did — an
+  agent whose caller string carried an owner-surface prefix (however it got there) could pass
+  `input.project` and get treated as the person choosing a project by slug; the other seven sites
+  used `PERSON.has(String(meta.caller))`, an exact match on the raw caller string, which was
+  already correct against that specific bug (an agent's caller string is never literally `"cli"`)
+  but never recognised an owner device (`tailnet:<login>`, `device:<id>`) the way `isPerson` does.
+  Swapped every site onto `lib/caller.js`'s `isPerson` (import replaces `callerKind` from
+  `core/modules/index.js`, no longer used elsewhere in the file): fixes the real bug in `projectOf`
+  and adds owner-device recognition everywhere else, same as the goals/planner/hub swap did.
+  work/cohesion-callerswap db48c3ba (off stage/0.1.1 9790c716, worktree ../vyre-cohesion-callerswap).
+  testbox: core/team 43/43, boundaries+hygiene 53/53 — the hygiene "no new PERSON_SURFACES copy"
+  test is green again. Sent to the reviewer with the goals/planner/hub swap for one behaviour-
+  identity check, and the final sha to the integrator.
