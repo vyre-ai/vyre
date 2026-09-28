@@ -86,6 +86,18 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, later: new top priority from the user's "Vyre anywhere" decision (see
+team/HANDOFF.md) — Tailscale is not needed for Solo; it comes in only when a second device or a
+server joins. My part: the "join" flow (guide Tailscale setup or offer the relay alternative,
+pair, verify reachability), simple, one-paste policy tool, never `tailscale up` or an ACL edit
+myself. Committed prior WIP first: core/vitals module (0.1.0, five tools, person-only, 33/33
+tests), 6a52ad23. Proposed the join interface to anywhere, launch and federation (not yet built,
+awaiting their OK): a new box tool `onboard.join` (HUMAN_ONLY), separate from the first-run
+wizard — `status` (tailscale + relay availability), `tailscale` with `step: policy|connect|lock`
+(delegates to today's onboard.tailscale logic), `relay` (delegates to relay.pair.start),
+`verify` (link.health, answers reachability + which path). Next: build once they answer; resume
+vitals' `/v1/whoami` probe and vitals surfacing meanwhile.
+
 28 Sep 2026 (resumed; merged origin/main a3a844e4 into work/tailnet, clean). Wrote
 docs/design/tailscale-plan.md for the lead's max-benefit/simplest-install ask: verified all ten
 ADR 0014 parts by content against origin/main (nine are ancestors of main; part 9, agent nodes,
