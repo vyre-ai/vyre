@@ -106,6 +106,12 @@ test("onboard page: step 1 takes a name on a box with no vyre.run token, and say
     assert.doesNotMatch(note, /not free|could not check/);
 
     await page.run(`document.querySelector("#primary").click()`);
+    // "Where should Vyre live?" (28 Sep, docs/work/launch-surfaces.md) now sits between step 1
+    // and pairing: pick "Another computer I have" to reach the existing tailscale/name flow this
+    // test verifies. Solo would skip straight to Claude sign-in instead (covered elsewhere).
+    await page.until(`location.hash === "#live"`, "the where-should-Vyre-live step");
+    await page.run(`document.querySelector('input[name="live"][value="device"]').click()`);
+    await page.run(`document.querySelector("#primary").click()`);
     // Reconciled with docs/design/onboarding-v2.md (the lead, 29 Sep): step 2 is now pairing
     // (tailscale, then name), with Claude sign-in moved after it as step 3.
     await page.until(`location.hash === "#tailscale"`, "step 2");

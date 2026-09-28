@@ -21,6 +21,7 @@ import { LOCK, lockState, lockSteps } from "../js/lock.js";
 // server-side counterpart yet still marks, skips and counts correctly.
 const STEPS = [
   { id: "you", title: "You" },                    // 1
+  { id: "live", title: "Where should Vyre live?" }, // 1b, ahead of ADR 0039 (docs/work/launch-surfaces.md "Where should Vyre live?")
   { id: "tailscale", title: "Tailscale" },         // 2a
   { id: "name", title: "Your address" },           // 2b
   { id: "claude", title: "Claude Code" },          // 3
@@ -54,6 +55,10 @@ const state = {
   /** The Agent computers step's choice ("off"|"browser"|"desktop"), so the ending screen can
    * show what was picked. Client-only until glass owns a real onboard.* tool for it. */
   /** @type {"off"|"browser"|"desktop"|null} */ computers: null,
+  /** The "Where should Vyre live?" step's choice ("solo"|"device"|"cloud"), client-only
+   * until anywhere's onboard.* tool lands (asked, docs/work/launch-surfaces.md "Where should
+   * Vyre live?"). */
+  /** @type {"solo"|"device"|"cloud"|null} */ live: null,
 };
 /** Timers and listeners of the current screen, cleared when the screen changes. */
 let cleanup = [];
@@ -169,7 +174,7 @@ function render() {
   lastPct = pct;
   if (lastStep !== i) say(`Step ${i + 1} of ${STEPS.length}: ${step.title}`);
   lastStep = i;
-  if (state.statusError?.missing && i !== 4) {
+  if (state.statusError?.missing && step.id !== "history") {
     col.append(h("div", { class: "need", style: { marginBottom: "24px" } },
       h("div", { class: "lbl beacon" }, "Setup is not running"),
       "The server module is not running on this machine, so this step cannot finish here yet. Run ", h("code", null, "vyre up"),
@@ -338,6 +343,41 @@ const SCREENS = {
     sync();
     if (state.name) check();
     later(() => nameIn.focus(), 0);
+  },
+
+  // New (28 Sep, user decision "Vyre anywhere", docs/work/launch-surfaces.md "Where should Vyre
+  // live?"): a role choice ahead of the pairing screens. Solo skips Tailscale and the address
+  // step entirely; the other two flow into today's tailscale/name screens unchanged, which is
+  // where Tailscale first appears. Client-only choice for now: waiting on anywhere's role-choice
+  // tool shape and ADR 0039 before wiring a real onboard.* call, same degrade-gracefully shape
+  // as the computers step below.
+  live(col, s) {
+    col.append(
+      h("h1", { class: "h1" }, "Where should Vyre live?"),
+      h("p", { class: "lead" }, "Pick where your work lives. You can move it to a server later without losing anything."));
+    const body = h("div", { class: "ob-panel" });
+    col.append(body);
+    let choice = state.live;
+    const syncFoot = () => s.foot({ label: "Continue", disabled: !choice, run: async () => {
+      if (choice === "solo") {
+        // No Tailscale, no address to reserve: skip both and land straight on Claude sign-in.
+        await mark_("live", "done");
+        await mark_("tailscale", "skipped");
+        await mark_("name", "skipped");
+        goto(STEPS.findIndex(x => x.id === "claude"));
+        return;
+      }
+      s.next();
+    } });
+    const opt = (value, title, desc) => h("label", { class: value === choice ? "on" : "" },
+      h("input", { type: "radio", name: "live", value, checked: value === choice, onchange: () => { choice = state.live = value; put(body, choiceEl()); syncFoot(); } }),
+      h("span", { class: "t" }, h("b", null, title), h("span", null, desc)));
+    const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "Where Vyre lives" },
+      opt("solo", "Just this computer", "Set up in about two minutes. No Tailscale, nothing else to install."),
+      opt("device", "Another computer I have", "A Mac mini or a Linux box, always on, that this computer pairs with over your tailnet."),
+      opt("cloud", "A cloud server", "A server you rent, always on, reachable from anywhere over your tailnet."));
+    put(body, choiceEl());
+    syncFoot();
   },
 
   claude(col, s) {
