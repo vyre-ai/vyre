@@ -69,6 +69,11 @@ deck/css/deck.css span.vy-av rules; deck/css/views/agents.css, settings.css.
   Motion). Native bar: all pass but 5 and 8. Both fail on stage base too: 8 always; 5 only when
   budgets 1-4 run first, one shift of a reply's cv-head row (0.0063 to 0.0070 on base, 0.0067 here,
   diagnosed with a throwaway copy of run.js). 7.cold 815 ms, 9 send 10.1 ms.
+- ddc75e75: lib/avatar-seed/index.js is the one projectBytes (pure JS, vectors in its test, checked
+  against an independent BigInt FNV). vyred serves only that file at /lib/avatar-seed/index.js
+  (core/daemon, next to the resilience route; test/daemon.test.js covers it); avatars.js imports
+  it. Also adapted test/daemon.test.js's two system.info asserts to anywhere's fingerprint8 fields.
+  Testbox 882/882 (+1 skipped), Chrome 14/14.
 - Needs from app-design: avatar.md and ADR 0043 should say renaming an agent changes its blob
   (seed = name), and name projectBytes() as the project-tile seed-to-bytes rule for other surfaces.
 
