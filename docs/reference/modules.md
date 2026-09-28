@@ -29,7 +29,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 19 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 10 | 6 | capsule, cli, deck |
-| [`github`](#github) | `core/github` | `box`, `local` | 9 | 5 | cli, deck |
+| [`github`](#github) | `core/github` | `box`, `local` | 11 | 5 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
@@ -51,7 +51,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 19 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 16 | 6 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 19 | 9 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 22 | 8 | cli |
@@ -212,7 +212,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/github`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`
-- Tools: [9](tools.md#github), 2 of them only for other modules
+- Tools: [11](tools.md#github), 2 of them only for other modules
 - Emits: [5 events](events.md#github)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
@@ -451,9 +451,10 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [16](tools.md#relay), 2 of them only for other modules
-- Emits: [6 events](events.md#relay)
+- Tools: [19](tools.md#relay), 4 of them only for other modules
+- Emits: [9 events](events.md#relay)
 - Shows on: capsule, cli, deck
+- Needs vault: `tailscale-mint-oauth`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## releases
