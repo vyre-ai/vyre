@@ -101,6 +101,14 @@ jobs:
             $probe = Join-Path $dir "probe.tmp"
             try { [IO.File]::WriteAllText($probe, "x"); Write-Output "--- plain file create in ${dir}: ok ---"; Remove-Item $probe -Force -ErrorAction SilentlyContinue }
             catch { Write-Output "--- plain file create in ${dir}: FAILED: $_ ---" }
+            Write-Output "--- whoami /priv (does this token actually hold SeCreateSymbolicLinkPrivilege, since a bound AF_UNIX socket file is a reparse point) ---"; whoami /priv 2>&1
+            # Isolates whether ANY socket bind works on this runner at all, ACL untouched (default
+            # inherited ACL, no icacls), so a failure here means it's not about what we grant.
+            $vanilla = Join-Path $env:RUNNER_TEMP "vanilla-bind-test"
+            New-Item -ItemType Directory -Force -Path $vanilla | Out-Null
+            $vanillaSock = Join-Path $vanilla "v.sock"
+            Write-Output "--- vanilla bind test (no icacls) at $vanillaSock ---"
+            node -e "const s=require('net').createServer();s.once('error',e=>{console.log('VANILLA BIND FAILED:',e.code,e.message);process.exit(1)});s.listen(process.argv[1],()=>{console.log('VANILLA BIND OK');s.close();process.exit(0)})" "$vanillaSock" 2>&1
             throw "vyred did not create its socket at $sockPath"
           }
       - name: The socket's folder and the socket file carry an explicit, narrow ACL
