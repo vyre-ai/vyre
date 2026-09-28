@@ -25,7 +25,7 @@ Done:
   on a theme switch). pair-avatar.js renders through avatars.js. sw.js precaches the new modules.
 - Tap hop (deck.css .vy-av-play), off under prefers-reduced-motion; one capture listener in app.js.
 - Perf: one parse per (family, seed, size band), cloned after; LRU 256; unique gradient ids per copy.
-Tests (testbox): deck/js/avatars.test.js 13/13; "deck/**/*.test.js" + boundaries 706/706 after the
+Tests (testbox): deck/js/avatars.test.js 13/13; `"deck/**/*.test.js"` + boundaries 706/706 after the
 cards/session test updates; test/docs-*.test.js + boundaries 66/66; docs-check 0 problems other than
 262 mtime-only shot staleness (untouched files too, environmental). Headless Chrome
 (deck/test/avatars-browser.js, temp profile, testbox) 13/13: 61 avatars draw in Dark and Paper, 0
