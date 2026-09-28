@@ -29,13 +29,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### Wink: the ring carries the real pairing secret, not a hash of it (ADR 0043)
 
 - `deck/js/phone-code.js`: `ticketLevels`/`ticketRingSvg` decode `relay.pair.ticket`'s base64url
-  `ticket` field to its 8 raw bytes (`ticketToBytes`) and encode those directly — the earlier
+  `ticket` field to its 8 raw bytes (`ticketToBytes`) and encode those directly, the earlier
   `fingerprint8` (SHA-256) approach was a placeholder that couldn't be reversed back into the
   literal ticket a phone needs to redeem. The lead's ruling, confirmed independently by tailnet.
   A malformed/placeholder ticket degrades to a ring that draws but won't scan, never a throw.
   Both functions are sync now (no more `crypto.subtle` digest in the path).
 - New `idleAvatarSvg()`: once a ticket expires, both Wink cards swap the ring's contents to the
-  plain avatar (no ticks) instead of leaving an already-spent ticket's bits on screen — "swap
+  plain avatar (no ticks) instead of leaving an already-spent ticket's bits on screen, "swap
   back to the identity" once expired or redeemed (redemption already did this, via
   `showConnected` replacing the ring outright).
 - `deck/js/phone-code.test.js`: ticket fixtures are now real `TICKET_BYTES=8` base64url values,
@@ -46,7 +46,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - `deck/css/phone-code.css`: the `.phone-code-*` rules (ring, shimmer, dance, burst, connected
   state) moved out of `deck/onboard/onboard.css` into their own shared stylesheet, linked from
-  both `deck/index.html` and `deck/onboard/index.html` — the main Deck bundle never loaded
+  both `deck/index.html` and `deck/onboard/index.html`, the main Deck bundle never loaded
   onboard.css, and Settings needed the same card. `spin`/`ob-pop` duplicated in rather than
   moved out of onboard.css under time pressure (a third user would be the point to actually
   share them).
@@ -54,7 +54,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   identical ring/shimmer/countdown/dance/rename mechanics as onboarding's card, using `ctx.on`/
   `ctx.cleanup`/`ctx.alive` instead of onboard.js's own `on`/`cleanup`/`every` (the main Deck's
   lifecycle API, not onboarding's loopback one). "Connect another device" replaces onboarding's
-  "Next step"/"Connect another device" pair with a single "Add another device" action — Settings
+  "Next step"/"Connect another device" pair with a single "Add another device" action, Settings
   isn't a wizard, so there's no next step to go to. The old "Add a device" link now reads "Use my
   own Tailscale setup" once Wink is showing (it's the Advanced fallback now), unchanged when
   Wink is hidden (still the only add-a-device path on a Mac today).
@@ -66,7 +66,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Wink pivot: Tailscale stays (auto-managed), relabeled Advanced disclosure, the avatar's dance
 
-- PIVOT from the user (28 Sep, same day as "Tailscale off by default"): Tailscale itself stays —
+- PIVOT from the user (28 Sep, same day as "Tailscale off by default"): Tailscale itself stays , 
   Vyre sets it up automatically once relay is allowed, so the normal flow never asks the person
   to touch it. The device-join screen's structure from the prior commit was already right
   (relay/code default, manual Tailscale entry as a secondary path); only the label changes:
@@ -86,7 +86,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   in onboarding's device-join screen and (not yet touched) Settings.
 - `live()`'s "I already have a Vyre server" screen: once relay is allowed, "Pair with a code" is
   the default/primary radio and "Same Tailscale network" sits inside a reused `.ob-collapse`
-  `<details>` ("Advanced setup") — same component the tailnet-policy and own-domain disclosures
+  `<details>` ("Advanced setup"), same component the tailnet-policy and own-domain disclosures
   already use. Before relay is allowed, Tailscale still shows plainly (the only real path today;
   never hidden with nothing to fall back to). `state.deviceVia` now defaults to "relay".
 - `devices` step's phone-code card renamed "Wink" ("Wink to connect"); on the real, shipped
@@ -94,12 +94,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   with an inline, renameable device name (`relay.devices.rename`, already shipped) and two
   buttons: "Next step" (`s.next`) and "Connect another device" (mints a fresh ticket, same ring).
   Reuses the existing step-checklist celebration (`onboard.css`'s `.pop`/`obPop`) rather than
-  inventing a second animation — app-design's actual avatar "dance" doesn't exist yet (asked;
+  inventing a second animation, app-design's actual avatar "dance" doesn't exist yet (asked;
   nothing to vendor for it today).
 - Not built this round: the same Wink/code-primary restructuring in Settings' Server panel
   (asked hasn't touched it), and a "scan with an already-paired phone to authorize a new
   computer" variant of the device-join screen (a different, unspecified ticket flow from "Add
-  your phone"'s — flagged as its own follow-up, not assumed).
+  your phone"'s, flagged as its own follow-up, not assumed).
 
 #### "Add your phone": the Vyre code ring, shimmer/countdown/expiry, in onboarding's devices step
 
@@ -109,7 +109,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   both have it; no build-time swap needed).
 - `deck/js/phone-code.js` (launch's own): `ticketLevels`/`ticketRingSvg` turn a ticket id into
   the 144-bit ring per the ADR; `ticketPhase`/`countdown` are the live/expiring/expired state
-  machine and its m:ss text — the "live variant" app-design flagged as still needed from launch.
+  machine and its m:ss text, the "live variant" app-design flagged as still needed from launch.
 - Wired into `deck/onboard/onboard.js`'s `devices` step, alongside the existing Tailscale-QR
   phone card, gated on `onboard.status.can.relayJoin` (deck/js/join-caps.js, same helper as
   "Pair with a code"). No `relay.pair.ticket` mint tool exists yet (asked tailnet); mints a
