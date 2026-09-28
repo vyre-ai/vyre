@@ -39,6 +39,91 @@ test("config: an unknown role falls back and says so", t => {
   assert.match(c.problems.join(" "), /role "server"/);
 });
 
+// ADR 0039: config.machine is the person's actual choice (solo/server/device), additive next
+// to the unchanged config.role. A config.json from before this field existed only ever names a
+// role, never a machine, so load() infers one from it rather than the OS guess defaults() would
+// otherwise use -- an explicit role said more than the platform does.
+test("config: a real existing box's config.json (role box, no machine) migrates to machine server", t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box" }));
+  const c = config.load(root);
+  assert.equal(c.role, "box", "role itself is untouched -- the ~15 files that read it directly still see box");
+  assert.equal(c.machine, "server");
+  assert.deepEqual(c.problems, []);
+});
+
+test("config: a real Mac local config.json (role local, no machine) migrates to machine solo, not device", t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local" }));
+  const c = config.load(root);
+  assert.equal(c.role, "local");
+  assert.equal(c.machine, "solo", 'a lone Mac never had a device/server split to have chosen; "device" would wrongly imply a server exists');
+});
+
+test("config: an explicit machine in config.json always wins over a role-inferred one", t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", machine: "solo" }));
+  const c = config.load(root);
+  assert.equal(c.machine, "solo", "the person's own machine choice is never overridden by role");
+});
+
+test("config: with no config.json, machine defaults the same way role's OS guess always did", t => {
+  const root = tempHome(t);
+  const c = config.load(root);
+  assert.ok(["solo", "server", "device"].includes(c.machine));
+  assert.equal(c.machine, process.platform === "darwin" ? "solo" : "server");
+});
+
+// Reviewer's HOLD on 80fd866e, 28 Sep: a fresh (or existing, unconfigured) Mac must behave
+// exactly like today's local role -- no box-only module loads, no server-side presence rules --
+// until the person makes an explicit choice. `platform` is injectable so this runs on any CI box.
+test("config: a fresh darwin install defaults to solo, which is NOT a server (today's Mac behavior, unchanged)", t => {
+  const root = tempHome(t);
+  const c = config.load(root, "darwin");
+  assert.equal(c.role, "local");
+  assert.equal(c.machine, "solo");
+  assert.equal(config.isServer(c.machine), false, "solo alone must never turn on the eight box-only modules");
+  assert.equal(config.isDevice(c.machine), true, "solo still gets the full local core");
+});
+
+test("config: an existing Mac's config.json (role local, no machine) migrates to solo, still not a server", t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local" }));
+  const c = config.load(root, "darwin");
+  assert.equal(c.machine, "solo");
+  assert.equal(config.isServer(c.machine), false);
+});
+
+test("config: a fresh non-darwin install (a real box) defaults to server, which IS a server", t => {
+  const root = tempHome(t);
+  const c = config.load(root, "linux");
+  assert.equal(c.role, "box");
+  assert.equal(c.machine, "server");
+  assert.equal(config.isServer(c.machine), true, "a provisioned box keeps running the eight box-only modules");
+});
+
+test("config: an unknown machine falls back and says so, independently of role", t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", machine: "container" }));
+  const c = config.load(root);
+  assert.equal(c.role, "box");
+  assert.ok(["solo", "server", "device"].includes(c.machine));
+  assert.match(c.problems.join(" "), /machine "container"/);
+});
+
+test("config: isServer and isDevice read machine, and alias the legacy role strings", () => {
+  assert.equal(config.isServer("server"), true);
+  assert.equal(config.isServer("solo"), false, "solo is not a server: fixed after reviewer's HOLD on 80fd866e");
+  assert.equal(config.isServer("device"), false);
+  assert.equal(config.isServer("box"), true, "legacy alias");
+  assert.equal(config.isServer("local"), false, "legacy alias");
+  assert.equal(config.isDevice("device"), true);
+  assert.equal(config.isDevice("solo"), true);
+  assert.equal(config.isDevice("server"), false);
+  assert.equal(config.isDevice("local"), true, "legacy alias");
+  assert.equal(config.isDevice("box"), false, "legacy alias");
+});
+
 test("config: ensure creates private folders", t => {
   const root = tempHome(t);
   const p = config.ensure(root);

@@ -89,7 +89,30 @@ export function privateSocketDir() {
  * address is the https URL the Deck is served at; owner the one Tailscale login served there (ADR 0002);
  * guests the people from other tailnets it also serves, each limited to its tools (ADR 0014 part 8). */
 
-/** @typedef {{ name?: string, role: "box"|"local", projectsDir: string, roots: string[],
+/**
+ * Whether a machine plays the server's part: the eight box-only modules, an always-on presence,
+ * the owner's Deck served from here, a real address other devices reach. True only for
+ * `config.machine` "server", and for the legacy `config.role` value "box".
+ *
+ * NOT true for "solo" (fixed 28 Sep after reviewer's HOLD on 80fd866e): a first pass made solo
+ * both a server and a device, which put the eight box-only modules -- the tailnet listener,
+ * public webhooks, the relay, the owner-claim flow -- on every existing Mac by default, with no
+ * choice made. Solo is the full local core and nothing that exposes this machine to anyone else;
+ * a person turns individual server parts on by choosing them (pairing a device, `vyre server
+ * here`), never by installing Vyre on a Mac.
+ * @param {string} [machine]
+ */
+export function isServer(machine) { return machine === "server" || machine === "box"; }
+
+/**
+ * Whether a machine is a device, of a server elsewhere or (under "solo") of no one: the
+ * local-only modules, Capsule, voice, presence's Mac rules. True for `config.machine` "device"
+ * and "solo", and for the legacy `config.role` value "local".
+ * @param {string} [machine]
+ */
+export function isDevice(machine) { return machine === "device" || machine === "solo" || machine === "local"; }
+
+/** @typedef {{ name?: string, role: "box"|"local", machine: "solo"|"server"|"device", projectsDir: string, roots: string[],
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
  *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any,
  *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
@@ -104,6 +127,10 @@ export function privateSocketDir() {
  * /app/* still serves the app beside the Deck as it does today (core/daemon/app.js). Once mobile
  * flips it, /app/* becomes a 301 to the same path under "/", so an installed /app/ Home Screen
  * icon or a stale bookmark still opens (core/daemon/index.js route()). */
+ * `role` is the machine's old two-value job (box or local): its meaning and default (an OS guess)
+ * are unchanged, so the many modules that still read `ctx.config.role` directly need no change.
+ * `machine` is the person's actual choice (ADR 0039): solo, server or device -- module loading
+ * (roleBuckets, core/modules/index.js), presence and onboard read this one, not `role`. */
 
 /**
  * Pages on other sites that may call this box from the owner's browser: Vyre's hosted app. Config
@@ -145,12 +172,23 @@ export function boxProjectsDir() {
   return path.join(workDir(), "projects");
 }
 
-/** Defaults: one person on one Mac, nothing enabled that needs setting up. */
-/** @param {string} root */
-function defaults(root) {
+/**
+ * Defaults: one person on one machine, nothing enabled that needs setting up. `platform` is
+ * injectable (default `process.platform`) so a test can cover the darwin branch on any CI
+ * machine, the way `core/names/tailscale.js`'s `installCommand` already does.
+ * @param {string} root @param {string} [platform]
+ */
+function defaults(root, platform = process.platform) {
   const claude = claudeHome(root);
   return {
-    role: process.platform === "darwin" ? "local" : "box",
+    role: platform === "darwin" ? "local" : "box",
+    // The person's explicit choice (ADR 0039), defaulted the same way `role` always was until
+    // they say otherwise: alone on a Mac is Solo, and stays exactly today's local role (no
+    // box-only module, no server-side presence) until they choose "server" themselves; a
+    // provisioned box is already a server, since there was never a solo mode for one. Reviewer's
+    // HOLD on 80fd866e: a first pass made solo BOTH a server and a device, which put the eight
+    // box-only modules on every existing Mac with no choice made -- fixed in isServer(), above.
+    machine: platform === "darwin" ? "solo" : "server",
     projectsDir: path.join(os.homedir(), "Vyre", "projects"),
     roots: [],
     me: { domains: [], emails: [] },
@@ -178,15 +216,16 @@ function defaults(root) {
  * The user's settings, merged over the defaults. A missing or unreadable file is not an error:
  * a fresh install has none, and a broken one should not stop vyred from starting, so it is
  * reported through `problems` and the defaults are used.
+ * @param {string} [root] @param {string} [platform] injectable for tests; see defaults().
  * @returns {Config & { problems: string[] }}
  */
-export function load(root = home()) {
+export function load(root = home(), platform = process.platform) {
   const p = paths(root);
   const problems = [];
   let user = {};
   try { user = JSON.parse(fs.readFileSync(p.config, "utf8")); }
   catch (e) { if (/** @type {any} */ (e).code !== "ENOENT") problems.push("config.json unreadable: " + /** @type {Error} */ (e).message); }
-  const d = defaults(root);
+  const d = defaults(root, platform);
   const c = {
     ...d, ...user,
     me: { ...d.me, ...(user.me || {}) },
@@ -199,6 +238,11 @@ export function load(root = home()) {
     term: { ...d.term, ...(user.term || {}) },
   };
   if (!["box", "local"].includes(c.role)) { problems.push(`role "${c.role}" is not box or local; using ${d.role}`); c.role = d.role; }
+  // machine (ADR 0039) is new and additive: an old config.json naming a role but no machine
+  // gets one inferred from that explicit choice, which says more than the OS guess in
+  // defaults() would -- someone who set role: "box" by hand meant a real server, not Solo.
+  if (user.machine === undefined && user.role !== undefined) c.machine = user.role === "box" ? "server" : user.role === "local" ? "solo" : c.machine;
+  if (!["solo", "server", "device"].includes(c.machine)) { problems.push(`machine "${c.machine}" is not solo, server or device; using ${d.machine}`); c.machine = d.machine; }
   // On a box with a work folder, projects live there so Taildrive can share them, but only where
   // nothing has to move: a new box (no homes in ~/Vyre/projects), or one whose homes the owner
   // already moved with projects.move (the record is there). An existing box keeps

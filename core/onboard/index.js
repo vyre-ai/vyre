@@ -35,6 +35,24 @@ const CREDENTIAL_READERS = ["agents", "threads"];
 // Who may be handed a passkey code: the loopback onboarding session and the box's own terminal.
 // Never a tailnet caller, which a model on the owner's Mac is too.
 const HANDS_CODE = new Set(["onboard", "cli", "local"]);
+// relay.join is not shippable on a Mac yet: vyre.db is a same-uid store, so a Mac chosen as
+// Solo/Server has nowhere safe to hold a paired device's keys until vyre-core (ADR 0040) owns
+// its own root-only store -- reviewer/team-lead, 28 Sep ("gated on vyre-core, same as Mac GA").
+// launch reads this to hide the code-pairing card rather than offer a path that would fail.
+const RELAY_JOIN_DARWIN_REASON = "relay pairing needs vyre-core to hold its keys, which is not built on a Mac yet";
+/** Pure, for tests: what onboard.status reports under `can`, for a given `os.platform()` value. */
+export function canRelayJoin(platform) {
+  return platform === "darwin" ? { relayJoin: false, reason: RELAY_JOIN_DARWIN_REASON } : { relayJoin: true, reason: null };
+}
+/**
+ * Pure, for tests: the loopback's default port when network.onboardPort is unset. 7300 (ADR
+ * 0002) everywhere except a Mac chosen as server, which must never even attempt the port a real
+ * Mac's own onboarding tunnel binds (reviewer's LOW, 28 Sep round 2) -- 7301 instead. An explicit
+ * network.onboardPort always wins, on every platform, box included.
+ */
+export function defaultOnboardPort(platform) {
+  return platform === "darwin" ? 7301 : 7300;
+}
 const GREETING = "Vyre is set up. Say hello to me in two or three sentences: who you are, and one thing you can do for me now.";
 /**
  * The commands the Tailnet Lock card shows. The person runs them on their Mac; Vyre never runs
@@ -99,8 +117,16 @@ export default {
       load: () => { try { return JSON.parse(fs.readFileSync(kept, "utf8")); } catch { return null; } },
       save: s => { if (s) fs.writeFileSync(kept, JSON.stringify(s), { mode: 0o600 }); else fs.rmSync(kept, { force: true }); },
     };
-    const lb = loopback({ handler: p => ctx.handler(p), port: Number(net().onboardPort ?? 7300), log: m => ctx.log(m), keep });
-    if (!net().ownerSeen) await lb.resume().catch(e => ctx.log(`onboard: the kept link did not reopen: ${e.message}`));
+    // Reviewer, 28 Sep round 2 (LOW): the box's own default, 7300, is the exact port RULES.md
+    // forbids binding on a Mac (the user's real onboarding tunnel to the box lives there); a
+    // Mac chosen as server must never even attempt it, "next free port if taken" (ADR 0002)
+    // notwithstanding. Solo/Server on darwin defaults one port over instead; an explicit
+    // network.onboardPort still wins on every platform, box included.
+    const lb = loopback({ handler: p => ctx.handler(p), port: Number(net().onboardPort ?? defaultOnboardPort(process.platform)), log: m => ctx.log(m), keep });
+    // Reviewer, 28 Sep: onboard now loads on Solo too, so this can no longer resume
+    // unconditionally -- on a Mac that would bind the setup listener with no server chosen and
+    // nothing to onboard into. Belt and braces alongside the boxOnly() guard on onboard.link.
+    if (config.isServer(ctx.config.machine) && !net().ownerSeen) await lb.resume().catch(e => ctx.log(`onboard: the kept link did not reopen: ${e.message}`));
     else keep.save(null);
     let claimUrl = null;
     let indexing = null;
@@ -119,6 +145,13 @@ export default {
     };
     const tryCall = (tool, input) => call(tool, input).catch(e => ({ __error: e.message }));
     const mark = (step, s) => skipped().has(step) && s.state !== "done" ? { ...s, state: "skipped" } : s;
+    // ADR 0039: onboard now loads on a Solo machine too (so onboard.machine and, on tailnet's
+    // branch, onboard.join can reach it), but the six-step box wizard below assumes box things
+    // (a public address, Tailscale, an owner-claim flow) it must not run on a machine that isn't
+    // one. Reviewer's condition, 28 Sep: refuse up front, through this one guard, on every wizard
+    // tool but the two that are meant to work on Solo (onboard.status, which only reads, and
+    // onboard.machine, which is how a Solo machine becomes a server in the first place).
+    const boxOnly = () => { if (!config.isServer(ctx.config.machine)) throw Object.assign(new Error("this step is part of the box's onboarding wizard, not available on this machine"), { code: "not_a_server" }); };
 
     async function status(caller = "local") {
       const [version, names, recall] = await Promise.all([claudeVersion(), tryCall("names.status"), tryCall("recall.status")]);
@@ -169,7 +202,7 @@ export default {
         // total does not depend on the limit, so one row is enough. On the box the catalogue
         // counts the paired Mac's sessions too (a module asks for that with machines: "all"), and
         // sources says which machines answered.
-        const box = ctx.config.role === "box";
+        const box = config.isServer(ctx.config.machine);
         // The page asks every couple of seconds, and each federated answer is a question to the
         // Mac, so the box keeps it for 30 s, or until a Mac pairs, unpairs, comes or goes
         // (link.macs is the box's own record, so reading it costs the Mac nothing). The box's own
@@ -218,7 +251,12 @@ export default {
       const steps = Object.fromEntries(STEPS.map(k => [k, ["done", "skipped"].includes(detail[k].state) ? detail[k].state : "todo"]));
       const current = STEPS.find(k => steps[k] === "todo") || null;
       const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
-      return { mode, role: ctx.config.role, owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
+      // can: what this machine is actually able to do, for launch's cards to gate on rather than
+      // guess from role/machine. relayJoin is false on darwin until vyre-core exists (see
+      // RELAY_JOIN_DARWIN_REASON above); every other platform can already join a relay today.
+      const can = canRelayJoin(process.platform);
+      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can,
+        owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
         host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
         // loopback page is done with and `vyre box add` may close its tunnel.
@@ -260,6 +298,7 @@ export default {
       description: "Step 1: your name as you like it shown, and your assistant's name. A name that is also a valid vyre.run name becomes the default candidate.",
       input: obj({ name: { type: "string" }, assistant: { type: "string" } }, ["name"]),
       run: async ({ name, assistant }, { caller }) => {
+        boxOnly();
         const p = String(name ?? "").trim(), a = String(assistant ?? "").trim();
         if (!p || p.length > 60 || /[\u0000-\u001f]/.test(p)) throw new Error("your name is one line of up to 60 characters");
         if (a.length > 40 || /[\u0000-\u001f]/.test(a)) throw new Error("the assistant's name is one line of up to 40 characters");
@@ -271,10 +310,55 @@ export default {
       },
     });
 
+    ctx.tool("onboard.machine", {
+      description: "ADR 0039: how Vyre runs on this machine. solo (everything here) or server (always on for other devices) are the person's own choice; device is set by onboard.join/relay.join once a connection to another server is confirmed, never chosen directly by a person.",
+      // "device" stays in the type (checkInput has no per-caller schema, and removing it would
+      // break the already-shipped, already-reviewed relay.join -> onboard.machine wiring); the
+      // run() guard below, not the schema, is what actually stops a person or an agent choosing
+      // it -- reviewer, 28 Sep round 2.
+      input: obj({ machine: { type: "string", enum: ["solo", "server", "device"] } }, ["machine"]),
+      // Reviewer, 28 Sep: this tool changes which modules load, so it is the person's own action,
+      // never an agent's or a third-party module's. "onboard" is the pre-owner loopback session
+      // (only reachable through a one-time link cli/local/capsule minted). "module" stays in the
+      // allowlist only so the two specific callers below can reach run() at all; which of them
+      // may do what is checked there, by the exact caller string, not by this coarse kind.
+      callers: ["cli", "local", "deck", "capsule", "onboard", "module"],
+      // Moving TO server turns on the eight box-only modules -- a real network-facing change --
+      // so it needs an actual presence proof, EXCEPT the very first choice on a real box, before
+      // any owner exists: that's already proven by the one-time link only cli/local/capsule can
+      // mint (ADR 0032's own passkey-enrollment exemption; there's no passkey to prove with yet
+      // either). A Mac never gets this exemption (role is never "box"), so a Solo Mac choosing
+      // server always needs the proof -- reviewer's HIGH, round 2: the first version of this
+      // exempted "no owner seen", which is permanently true for every Solo Mac, so it was
+      // proof-free there always, the opposite of the fix.
+      presence: { when: input => Boolean(input && input.machine === "server" && !(ctx.config.role === "box" && !net().ownerSeen)) },
+      run: async ({ machine }, { caller }) => {
+        const raw = String(caller);
+        if (machine === "device") {
+          // Only onboard's own onboard.join step, or relay's relay.join, ever sets this, each
+          // after its own person-gated, presence-proved pairing (ADR 0039 section 5) -- never a
+          // person or an agent choosing it directly.
+          if (!["module:onboard", "module:relay"].includes(raw)) throw Object.assign(new Error("device is set once a connection to another server is confirmed, not chosen directly"), { code: "denied" });
+        } else if (raw.startsWith("module:")) {
+          // Any other module reaching this tool may only ever set device (above); solo and
+          // server are the person's own choice, whoever is asking on their behalf.
+          throw Object.assign(new Error("only a person chooses solo or server"), { code: "denied" });
+        }
+        // machine's own default (config/index.js defaults()) already covers "no choice made
+        // yet"; this tool only ever records an actual choice, so calling it with the value
+        // already in effect is a safe no-op, not an error.
+        save({ machine });
+        // The launchd/keep-awake service (`vyre server here`'s own installer) lands separately;
+        // this tool records the choice now so onboarding and Settings have something to call.
+        return { machine: ctx.config.machine, service: null };
+      },
+    });
+
     ctx.tool("onboard.name", {
       description: "Checks <name>.vyre.run and saves it; reserve serves this machine at its address (DNS and certificate, as progress rows): the vyre.run name with a zone token or own domain, else the ts.net name. `via` says which; again retries.",
       input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] }, confirm: { type: "boolean" } }),
       run: async ({ name, action = "check", confirm }, { caller }) => {
+        boxOnly();
         if (action === "check") {
           if (!name) throw new Error("name is required to check");
           // No zone token and no own domain: the address is this machine's ts.net name, so there
@@ -309,6 +393,7 @@ export default {
       input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key"] }, key: { type: "string" }, code: { type: "string" },
         kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),
       run: async ({ mode, key, code, kind, token }, { caller }) => {
+        boxOnly();
         if (mode === "setup-token" && !key && !token) {
           if (!code) return { ...(await stepOf("claude", caller)), url: await signin.start(), needsCode: true };
           [kind, token] = ["subscription", await signin.finish(code)];
@@ -331,6 +416,7 @@ export default {
       description: "Tailscale on this machine; connect starts `tailscale up` and returns its sign-in link. lock reads Tailnet Lock (read-only): whether it is on, this box's lock key, how many keys are trusted, whether this box is signed, and the commands the person runs on their Mac to turn it on.",
       input: obj({ action: { type: "string", enum: ["status", "detect", "poll", "connect", "lock"] } }),
       run: async ({ action = "status" }, { caller }) => {
+        boxOnly();
         if (action === "lock") {
           const l = await lockStatus();
           return { ...l, key: l.nodeKey, commands: lockCommands(l.nodeKey) };
@@ -350,6 +436,7 @@ export default {
       description: "Find and index this machine's Claude Code sessions, in the background.",
       input: obj({ action: { type: "string", enum: ["status", "start"] } }),
       run: async ({ action = "status" }, { caller }) => {
+        boxOnly();
         if (action === "start" && !indexing) {
           save({ onboard: { history: true } });
           indexing = call("recall.index").catch(e => ctx.log("onboard: indexing failed: " + e.message)).finally(() => { indexing = null; });
@@ -362,6 +449,7 @@ export default {
       description: "Skip a step for now; it can be finished later from Settings.",
       input: obj({ step: { type: "string", enum: STEPS } }, ["step"]),
       run: async ({ step }, { caller }) => {
+        boxOnly();
         save({ onboard: { skipped: [...new Set([...skipped(), step])] } });
         return status(caller);
       },
@@ -415,6 +503,7 @@ export default {
       description: "A one-time link to make the first passkey at this box's address, while none exists. Only to the loopback session or the box's terminal.",
       input: obj(),
       run: async (_, { caller }) => {
+        boxOnly();
         const address = (await status(caller)).address || net().address || null;
         return { address, passkeyUrl: address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null };
       },
@@ -424,6 +513,7 @@ export default {
       description: "Finish the onboarding.",
       input: obj(),
       run: async (_, { caller }) => {
+        boxOnly();
         const assistant = await meet();
         save({ onboard: { finished: new Date().toISOString() } });
         ctx.events.emit("onboard.finished", {});
@@ -437,6 +527,7 @@ export default {
       description: "A one-time link to the onboarding page on this machine's loopback address. Only from this machine's own socket. With mint false it makes nothing and says whether an unused link is still open (url null, pending with its expiry), so an update never voids the link the user was sent.",
       input: obj({ mint: { type: "boolean" } }),
       run: async (input, { caller }) => {
+        boxOnly(); // revisit once the Solo Deck loopback design (docs/design/anywhere.md) lands and reuses this link
         if (!["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
         // Once the owner has come in over the tailnet, or onboarding is finished and the address

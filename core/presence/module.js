@@ -9,6 +9,7 @@
 
 import { Presence } from "./index.js";
 import { PersonSessions } from "./person.js";
+import { isServer } from "../config/index.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -46,7 +47,7 @@ export default {
           return k;
         }
         // On the box a passkey must belong to the Deck's own address, not a name in the request.
-        if (ctx.config.role === "box" && input.kind === "passkey") {
+        if (isServer(ctx.config.machine) && input.kind === "passkey") {
           let host = null;
           try { host = new URL(String((ctx.config.network || {}).address || "")).hostname; } catch {}
           if (!host) throw new Error("the box has no address yet, so no passkey can be enrolled");

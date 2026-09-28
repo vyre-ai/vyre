@@ -91,7 +91,8 @@
       "adr/0034-vyre-iq.md",
       "adr/0035-settings-hub.md",
       "adr/0036-one-system.md",
-      "adr/0040-vyre-core.md"
+      "adr/0040-vyre-core.md",
+      "adr/0039-vyre-anywhere.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
     { "title": "Contributing", "pages": [
@@ -112,7 +113,8 @@
       "design/mcp-native.md",
       "design/onboarding-v2.md",
       "design/drive-onboarding.md",
-      "design/projects-map.md"
+      "design/projects-map.md",
+      "design/anywhere.md"
     ]},
     { "title": "Design system", "pages": [
       "design/system/README.md",

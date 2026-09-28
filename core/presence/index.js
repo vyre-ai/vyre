@@ -14,6 +14,7 @@ import fs from "node:fs";
 import { execFile } from "node:child_process";
 import { migrate } from "../store/index.js";
 import { dialogsAllowed, NO_DIALOG } from "../config/dialogs.js";
+import { isServer } from "../config/index.js";
 
 /**
  * The floor's list. These need presence whatever their owners declare; a module can add to the
@@ -95,6 +96,9 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // Every setting is the person's own: a model never changes one, and settings relays the
   // person to the owning module's setter (e2e review, HIGH 1).
   "settings.set", "settings.reset",
+  // ADR 0039: which of the eight box-only modules load is the person's own choice, never an
+  // agent's ancestry-forged one (reviewer's HOLD on 041f87f0/efbf7a2a).
+  "onboard.machine",
   // core/link/mac.js's link.call carries a named tool to the box (`inner`, checked only by name
   // in core/daemon/index.js's floor: the Mac has no local def for a box tool to derive from). These
   // are the tools personOnly() would derive on the box itself but this Mac-side pre-check cannot,
@@ -542,7 +546,7 @@ export class Presence {
    * @param {string} [tool]
    */
   ttyAllowed(tool) {
-    return this.role !== "box";
+    return !isServer(this.role);
   }
 
   /**
@@ -733,7 +737,7 @@ export class Presence {
       if (tool !== "presence.enroll") return refuse("a one-time code only enrolls a passkey or a device key");
       // On the box, Claude's sessions share vyred's socket and can ask onboarding for a fresh code.
       // So the code counts only from the owner's own device over the tailnet, where they cannot be.
-      if (this.role === "box") {
+      if (isServer(this.role)) {
         const owner = String((this.network() || {}).owner || "").toLowerCase();
         if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
       }

@@ -21,6 +21,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | --- | --- | --- | --- |
 | `name` | `string` | unset | This box's name: its address is `<name>.vyre.run`. Set by `vyre name claim`. |
 | `role` | `'box'\|'local'` | none | `box` for the always-on server, `local` for a Mac. Decides which modules start. |
+| `machine` | `'solo'\|'server'\|'device'` | none | Not described yet. |
 | `projectsDir` | `string` | none | The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects` when the box is new (nothing in `~/Vyre/projects`) or its homes were moved with `projects.move`; otherwise `~/Vyre/projects`. |
 | `roots` | `string[]` | none | More folders to look in for projects. |
 | `me` | `object` | see below | Who you are, so memory can tell your own people and domains from everyone else's. |
@@ -52,7 +53,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `network.port` | `number` | unset | The port the tailnet listener serves on. |
 | `network.acme` | `'production'\|'staging'` | unset | `staging` to get test certificates while trying things out; `production` otherwise. |
 | `network.box` | `string` | unset | On a Mac: the address of the box it is paired with. |
-| `network.onboardPort` | `number` | unset | The loopback port onboarding listens on. 7300 when unset. |
+| `network.onboardPort` | `number` | unset | The loopback port onboarding listens on. 7300 when unset, except 7301 on a Mac chosen as server, which never binds 7300. |
 | `network.ownerSeen` | `string` | unset | When the owner was first seen on the tailnet. Written by Vyre. |
 | `network.origins` | `string[]` | unset | Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `["https://app.vyre.run"]` when unset; `[]` turns it off. Each call but the reachability probe and the token exchange needs a person session. |
 | `network.guests` | `{ enabled: boolean, people: Record<string, { tools: string[] }> }` | unset | Not described yet. |
