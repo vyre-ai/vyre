@@ -350,10 +350,10 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | `thread.contended` | `holder`, `session` |
 | `thread.finished` | `ok`, `via` |
 | `thread.limit` | built in a variable before the emit; see the source |
-| `thread.queued` | `queued`, `surface`, `text`, `uuid`; sometimes `edited`, `images`, `kind` |
+| `thread.queued` | `queued`, `surface`, `text`, `uuid`; sometimes `edited`, `images`, `kind`, `request` |
 | `thread.remembered` | `file`, `scope` |
 | `thread.rewound` | `restore`, `uuid`; sometimes `at`, `files` |
-| `thread.sent` | `surface`, `text`; sometimes `images`, `kind`, `queued`, `uuid`, `via` |
+| `thread.sent` | `surface`, `text`; sometimes `images`, `kind`, `queued`, `request`, `uuid`, `via` |
 | `thread.shell` | `code`, `command`, `output` |
 | `thread.started` | built in a variable before the emit; see the source |
 | `thread.state` | `state`; sometimes `error`, `turn` |

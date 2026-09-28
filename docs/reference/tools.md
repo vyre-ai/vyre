@@ -944,25 +944,25 @@ Turn a proposed goal (an agent's goals.set) into a real one. The person's own - 
 
 - Input:
   - `goal` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `goals.get`
 
-One goal by id.
+One goal by id. An agent reads only a goal in its own session or project.
 
 - Input:
   - `goal` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
 
 ### `goals.list`
 
-Goals for a project or a thread (or every one, with neither), newest first.
+Goals for a project or a thread (or every one, with neither, person only), newest first. An agent sees only its own session or project - given or, with neither, its own calling thread's.
 
 - Input:
   - `project` string
   - `state` one of "pending", "active", "done", "cancelled"
   - `thread` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
 
 ### `goals.milestone-done`
 
@@ -971,18 +971,18 @@ Mark a milestone done, by its index (0-based). Scoped to the goal's own session 
 - Input:
   - `goal` string, required
   - `index` integer, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
 
 ### `goals.set`
 
-Set a goal with its ordered milestones, on a session or a project (at least one of thread, project). A person's own call is the goal at once; an agent's is a proposal (state pending) until goals.accept.
+Set a goal with its ordered milestones, on a session or a project (at least one of thread, project). A person's own call is the goal at once; an agent's is a proposal (state pending) until goals.accept, and only in its own session or project.
 
 - Input:
   - `goal` string, required
   - `milestones` list of string, required
   - `project` string
   - `thread` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
 
 ## google
 
@@ -3803,18 +3803,19 @@ The processes Claude sessions run in: vyred's own thread children and every live
 
 ### `threads.post`
 
-Give a thread words from a module (a teammate's result): a turn of their own now if it is idle, else after its running turn. Never steers.
+Give a thread words from a module (a teammate's result): a turn of their own now if it is idle, else after its running turn. Never steers. request: the request this reply answers (core/team's own id), so a surface with two open asks to the same teammate can match it by id instead of by role, FIFO.
 
 - Input:
   - `text` string, required
   - `thread` string, required
   - `from` string
   - `kind` string
+  - `request` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.queue`
 
-The words queued for a thread and not handed over yet, oldest first: queued (the row id), uuid, text, surface, at.
+The words queued for a thread and not handed over yet, oldest first: queued (the row id), uuid, text, surface, at, request (a teammate's own request id, when its reply carries one).
 
 - Input:
   - `thread` string, required
