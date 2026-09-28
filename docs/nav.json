@@ -110,7 +110,8 @@
       "design/import.md",
       "design/mcp-native.md",
       "design/onboarding-v2.md",
-      "design/drive-onboarding.md"
+      "design/drive-onboarding.md",
+      "design/teammates.md"
     ]},
     { "title": "Design system", "pages": [
       "design/system/README.md",
