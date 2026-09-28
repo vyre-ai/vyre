@@ -184,6 +184,15 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   SIGNED OFF by reviewer-2 (306/306 on deck/chat's own suite, targeted). Pushed work/chat for the
   integrator: 378c7f54.
 
+## Done (28 Sep, review fixes: d9d1cafb)
+- reviewer's 2 LOWs on 9fd902ac: strict base64 check on image data (BASE64_RE) before it goes
+  anywhere; a whole read's pictures now share one RESPONSE_BYTES_CAP (12 MB, Reader.imageBudget),
+  spent across every block so a many-block page (or a relayed Mac read) can't become hundreds of MB.
+- the lead's $ rule: the turn footer's cost figure only draws when auth is really "api-key"
+  (session.js asBlock passes S.auth through; lib/blocks.js turnParts gates on it) - a subscription
+  session never shows a dollar amount.
+- testbox: deck/chat+deck/test+transcripts+switchboard 604/605 (1 pre-existing skip), 0 fail.
+
 ## Done (28 Sep, perf pass)
 - Fling p95 (native-bar budget 6): window-view.js's update() measured every mounted row's box
   twice per scroll frame (once before mount(), once after); when mount() didn't run (a plain
