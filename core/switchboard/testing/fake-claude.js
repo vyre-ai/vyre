@@ -383,17 +383,29 @@ async function turn(prompt, uuid = null) {
     return result(false, "Claude usage limit reached.", 0);
   }
   // What a careless forgery from this thread's Bash looks like: its own key, someone else's name.
-  const forge = /^forge (\S+) (\S+)$/.exec(p);
-  if (forge) {
+  // "forge <caller> <tool>" sends the agent's own key with it, which the daemon refuses outright
+  // (the key must name its own agent); "bareforge <caller> <tool>" sends neither a key nor a
+  // session header, the plainer and more realistic forgery ("its Bash can call vyre call ... with
+  // no agent key and no session header", e2e review HIGH 1) that only fromClaude (peer ancestry)
+  // catches. Both, like "vyre", are found anywhere in the prompt: at the very start they take the
+  // rest of the string (unused today, kept for symmetry), embedded further in they take just that
+  // line, since request-wrapped text (core/team) has a closing tag after it that must not be
+  // swallowed.
+  const lines = p.split("\n");
+  const CMD = /^(forge|bareforge) (\S+) (\S+)(?:\s+(.*))?$/s;
+  const cmdAt = lines.findIndex(l => CMD.test(l));
+  const cmd = cmdAt < 0 ? null : CMD.exec(cmdAt === 0 ? p : lines[cmdAt]);
+  if (cmd) {
+    const [, kind, caller, toolName, body] = cmd;
     const http = await import("node:http");
     const { paths } = await import("../../config/index.js");
     const r = await new Promise(resolve => {
-      const req = http.request({ socketPath: paths(process.env.VYRE_HOME).socket, path: "/v1/tools/" + forge[2], method: "POST",
-        headers: { "content-type": "application/json", "x-vyre-caller": forge[1], "x-vyre-agent-key": process.env.VYRE_AGENT_KEY || "" } }, res => {
+      const req = http.request({ socketPath: paths(process.env.VYRE_HOME).socket, path: "/v1/tools/" + toolName, method: "POST",
+        headers: { "content-type": "application/json", "x-vyre-caller": caller, ...(kind === "forge" ? { "x-vyre-agent-key": process.env.VYRE_AGENT_KEY || "" } : {}) } }, res => {
         let raw = ""; res.on("data", c => { raw += c; }); res.on("end", () => resolve(`${res.statusCode} ${raw}`));
       });
       req.on("error", e => resolve(`error ${e.message}`));
-      req.end("{}");
+      req.end(body || "{}");
     });
     await say(String(r));
     return result(true, String(r));
@@ -406,18 +418,46 @@ async function turn(prompt, uuid = null) {
     await say(r);
     return result(true, r);
   }
-  const tool = /^vyre (\S+)\s*(.*)$/s.exec(p);
-  if (tool) {
+  // A prompt with a "vyre <tool> <json>" line anywhere in it, not only at the very start, so a
+  // teammate's wrapped <vyre-request> text (core/team, ADR 0031) can still script a tool call. At
+  // the very start the rest of the prompt is the call, as before (a multi-line JSON body works),
+  // and only one call is made. Found further in, EVERY such line is its own single-line call, run
+  // in order, so a test can script a teammate trying something, reacting to the answer (a refusal,
+  // say) and trying again, all in the one turn a real model would; a wrapper's closing tag after
+  // the last one is never swallowed into any call's JSON, since each line is matched on its own.
+  const vyreAt = lines.findIndex(l => /^vyre \S/.test(l));
+  if (vyreAt === 0) {
+    const tool = /^vyre (\S+)\s*(.*)$/s.exec(p);
+    if (tool) {
+      const { call } = await import("../../daemon/client.js");
+      const caller = process.env.VYRE_AGENT ? `mcp:agent:${process.env.VYRE_AGENT}` : "mcp";
+      const r = JSON.stringify(await call(tool[1], tool[2] ? JSON.parse(tool[2]) : {}, { root: process.env.VYRE_HOME, caller }));
+      await say(r);
+      return result(true, r);
+    }
+  } else if (vyreAt > 0) {
     const { call } = await import("../../daemon/client.js");
     const caller = process.env.VYRE_AGENT ? `mcp:agent:${process.env.VYRE_AGENT}` : "mcp";
-    const r = JSON.stringify(await call(tool[1], tool[2] ? JSON.parse(tool[2]) : {}, { root: process.env.VYRE_HOME, caller }));
-    await say(r);
-    return result(true, r);
+    const results = [];
+    for (const l of lines) {
+      const m = /^vyre (\S+)\s*(.*)$/.exec(l);
+      if (!m) continue;
+      results.push(JSON.stringify(await call(m[1], m[2] ? JSON.parse(m[2]) : {}, { root: process.env.VYRE_HOME, caller })));
+    }
+    const text = results.join("\n");
+    await say(text);
+    return result(true, text);
   }
   const spend = /^spend (\d+(?:\.\d+)?)$/i.exec(p);
   if (spend) { await say(`spent ${spend[1]}`); return result(true, `spent ${spend[1]}`, Number(spend[1])); }
   // A subagent (Claude Code's Agent tool), which Vyre's concurrency slots hold back when full.
-  const sub = /^subagent(-slow)? (.+)$/i.exec(p);
+  // Found anywhere in the prompt, like vyre/forge/bareforge above, so a teammate's wrapped
+  // <vyre-request> text can hold its turn open for a real interval (core/team's priority-order
+  // test needs this: a request-wrapped prompt never starts with "subagent", so the old
+  // start-anchored-only match let the turn finish in milliseconds instead of the 1.5s it asked for).
+  const SUB = /^subagent(-slow)? (.+)$/i;
+  const subAt = lines.findIndex(l => SUB.test(l));
+  const sub = subAt < 0 ? null : SUB.exec(lines[subAt]);
   if (sub) {
     const { allowed, r } = await useTool("Agent", { description: sub[2], prompt: sub[2], subagent_type: "general-purpose" }, {
       run: async () => { if (sub[1]) await sleep(1500); return { content: `subagent done: ${sub[2]}` }; } });

@@ -4,7 +4,87 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### The docker-api bearer's folder exists in the image
+#### Project teammates: vyred's own git runs nothing the repo names
+
+- A teammate can write a repo's shared .git, so vyred's own worktree checkout and merge could
+  run a hook, filter or merge driver it planted, as vyred and outside every permission check.
+  `core/team/git.js` now switches off hooks, signing, editors, the pager, fsmonitor and system
+  and global config on every call, and refuses to check out or merge while the repo's own config
+  names a filter, textconv, merge driver, include or alias, saying which. A folder already at a
+  teammate's worktree path must be that repo's own worktree on that teammate's branch, or it is
+  refused rather than adopted.
+
+#### Project teammates, step 4 slice A: worktree isolation, the integrator, merge-before-dispatch
+
+- `team.add` with `isolation: "worktree"` now gives a teammate its own git worktree and branch
+  (`<repo>/../<repo>-<role>`, `team/<role>`, off the project's own current branch), falling back
+  to `isolation: "folder"` (saying so in the answer's `notice`) when the project's home is not a
+  git repo, instead of running `git init` on the person's behalf. The project's first such
+  teammate brings an `"integrator"` teammate along
+  automatically. Before every dispatch, vyred (never the model) merges the project's own branch
+  into the teammate's, backing out a conflict at once and failing that one request rather than
+  leaving the worktree stuck; the teammate's session runs with its worktree as `cwd`. A request
+  that finishes with new commits queues a merge to the integrator. `core/team/git.js`: no shell,
+  no prompt, no network, a deadline, the same pattern `core/switchboard/changes.js` uses for
+  `git diff --numstat`. The integrator's own merge tool (conflicts, the test command, the
+  compare-and-swap fast-forward into main) is slice B, sent separately.
+
+#### Project teammates: a listener leak on a failed launch
+
+- The catch-all listener that closes the launch-vs-turn-finished race (previous entry) never
+  unsubscribed itself when `threads.launch` threw, leaking one listener per failed attempt.
+  Wrapped in `try`/`finally` so it always does.
+
+#### Project teammates: a paused team.done says why, in the transcript
+
+- `team.done`'s notes-not-changed refusal now also posts a `threads.notice` into the teammate's
+  own thread, so a person watching the transcript sees why it paused, not only the teammate's own
+  turn reading the tool's error text (cohesion's 0.1.1 interaction pass, item 3).
+
+#### Project teammates, step 2 complete: notes-changed enforcement, compaction re-injection
+
+- `team.done` now refuses to close a request when a teammate's notes have not changed since it
+  started, unless `notes: "unchanged"` is given with a `reason`. Compaction re-injection: on
+  `harness.brief`'s own `thread.started` event with `source: "compact"`, a teammate's notes and
+  its current request go back into that thread, the same way a result reaches a caller
+  (`threads.post`), so what survives Claude Code's own compaction is what was written down, not
+  what the teammate remembers saying. No change to `core/harness` itself: listening for its event
+  needed neither a new contract nor an import.
+- `core/switchboard/testing/fake-claude.js` (test-only): a `"vyre <tool> <json>"` line found after
+  the first is now its own call, and every such line in one prompt runs in order, so a test can
+  script a teammate trying something, reacting to the answer, and trying again, all in one turn.
+
+#### Project teammates: rotation's carried context moves out of the system prompt
+
+- Rotation (steps 2/3, below) carried a teammate's notes and last results in `append`, the system
+  prompt. That is the teammate's own past writing, read from anywhere before it wrote it, so it is
+  untrusted like any request's text. Moved to the first user turn instead: its own nonce'd tags,
+  neutralized, framed as data not instructions, and capped (notes 8 KB, each result 500
+  characters). Also fixed: the `thread.finished` listener that closes a request and frees its
+  teammate was registered only after `threads.launch` resolved, and launch's own internal awaits
+  left a real window in which a very fast turn's finish could be missed for good. A catch-all is
+  now in place before `threads.launch` is even called, narrowed to the launched thread the moment
+  its id is known.
+
+#### Project teammates, steps 2/3: summon verified, rotation
+
+- `core/team`'s teammates now rotate (ADR 0031 section 3): a thread over 7 days old, or one that
+  has run 40 turns (the nearest signal available today to the ADR's context-used-60%, which
+  nothing yet exposes per-thread), is retired rather than resumed: a fresh session starts,
+  carrying the teammate's current notes and its last 3 results forward in its append. Freeing a
+  teammate for its next request now happens only once its current turn has genuinely ended
+  (`thread.finished`), not the moment `team.done`/`team.fail` closes the request record (which
+  runs mid-turn): an earlier version freed it immediately, so a caller's second, fast team.ask
+  could start writing to the same resumed session before its first turn had finished sending its
+  own closing text.
+- Verified summon works from a real (non-agent) session, not only a teammate's own turn: bound the
+  way a session's own SessionStart hook binds it, `team.list` and `team.ask` correctly resolve
+  their project from the session's thread and post results back into it. Found doing this:
+  `threads.get` answers `{thread: <record>, ...}`, not the record flat, so every place `core/team`
+  read a thread's project or age directly (`projectOf`, `inProject`, and rotation's own check) was
+  silently reading `undefined` and falling through, a real gap in step 1 that nothing caught
+  until a genuine bound-thread caller was tested, since every earlier test used a bare "cli" or
+  "mcp:agent:*" caller. Fixed with one shared `threadRecord()` helper.#### The docker-api bearer's folder exists in the image
 
 - box/Dockerfile makes /var/lib/vyre-secrets owned by vyre (1000), mode 700. Without it the new
   docker-api-bearer volume mounted root-owned and vyred could not write the bearer, so the
@@ -539,7 +619,6 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   dispatched on, so a candidate is checked before anything is tagged.
 - release/min_from is 0.1.0-rc.1, so a box on the release candidate updates straight to 0.1.0
   (with the default, 0.1.0, `vyre update` would have refused it).
-
 #### A person's label from a model's shell is the model's, for every tool
 
 - On the socket, `x-vyre-caller` is only a claim. vyred already refused a person-only call from
@@ -552,7 +631,32 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   (a `docker exec` on the box) keeps its label, and person-only tools still refuse it. The verdict
   is read once per connection (test/peer.test.js).
 
-#### Sentence case, no letter-spaced mono captions
+#### Project teammates, step 1: core/team, the serial inbox, notes, CLI
+
+- New module `core/team` (ADR 0031 Migration step 1): a named teammate per role per project, a
+  priority-ordered serial inbox (one request running per teammate at a time), a versioned notes
+  file written to `<project home>/.vyre/team/<role>/notes.md`, and `vyre team`. Tools `team.add`
+  (person-only), `team.list`, `team.ask`, `team.status`, `team.cancel`, `team.done`, `team.fail`,
+  `team.notes`. A request takes a `sessions.slots` teammate slot in the requesting project before
+  it launches, and the slot (and the next request) is never stuck behind a teammate's turn ending
+  without `team.done`/`team.fail`. The next request is dispatched only once the current one's turn
+  has genuinely finished, never from inside team.done/team.fail (which run mid-turn): an earlier
+  version raced the two, and a low-priority request could close with an unrelated urgent one's
+  result. `team.notes`' `part` is checked against the teammate's own parts (only "general" until
+  sharing exists), never taken as a bare path segment. Tested against the fake claude driver,
+  including regression tests from an e2e security review (a notes path that did not validate its
+  `part`; a result wrapper a teammate's own output could break out of, now closed with a
+  per-request nonce and a neutralising pass on anything that reads as one of the wrapper's tags).
+  A third finding, a caller label trusted without proof it was not forged from inside a Claude
+  session, is fixed once in the daemon for every tool, not per module (above). One more shape of
+  it was still open in `projectOf`: once a forged label is downgraded, the caller looks exactly
+  like a genuine person surface (no thread, no agent), so `input.project` is now trusted only
+  when the caller actually is one (`PERSON.has(callerKind(caller))`), never just "has neither".
+- core/switchboard/testing/fake-claude.js (test-only): its `"vyre <tool> <json>"`,
+  `"forge"`/new `"bareforge"`, and `"subagent[-slow]"` scripted prompt lines are now found
+  anywhere in the prompt, not only when the whole prompt starts with it, so a teammate's
+  `<vyre-request>`-wrapped text can still script a tool call (or a forged one, or hold its turn
+  open for a real interval) in a test.#### Sentence case, no letter-spaced mono captions
 
 - deck/onboard/onboard.css: `.progress .state` was JetBrains Mono, uppercase, `+0.16em`, the same
   stale "Label (engraved)" pattern site/styles.css's `.lbl` had (docs/design/system/copy.md:
@@ -789,7 +893,6 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
 - packages/module-sdk: a setting's `choicesFrom` may name `read`, the dotted path to the list in
   the tool's answer (core/appearance), and `confirm` may be `{ drops: true }`, ask when an entry is
   taken out of a list (core/sessions). The settings loader already did both.
-
 #### On a Mac, waiting leaves the planner to the box
 #### Appearance settings per device, from the hub
 

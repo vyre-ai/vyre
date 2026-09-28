@@ -66,6 +66,7 @@ In the order `vyre help` lists them.
 | [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code, no Tailscale |
 | [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
+| [`vyre team`](#vyre-team) | Project teammates: add one, send it work, read what came back |
 | [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
 | [`vyre voice`](#vyre-voice) | push-to-talk from the terminal (Enter to talk), status, and the speech key |
@@ -637,6 +638,21 @@ Drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow.
 ```
 vyre apps [list | find <words...> | targets <app> [words...] | setup <app> | <words...>] [--app <App>] [--to <who>] [--model] [--json]
 ```
+
+### vyre team
+
+Project teammates: add one, send it work, read what came back.
+
+```
+vyre team [add|ask|status|cancel|notes] … [--project slug] [--json]
+```
+
+vyre team                     this project's teammates, states and queues
+vyre team add <role>          add a teammate
+vyre team ask <role> <text>   send it work; --urgent, --wait
+vyre team status <request>    one request's state and result
+vyre team cancel <request>    cancel a queued request
+vyre team notes <agent>       read its notes
 
 ### vyre sideview
 
