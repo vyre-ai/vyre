@@ -202,6 +202,39 @@ Division of labour: `tailnet` puts the identity fingerprint in the verified tick
 needed for 0.1.1, since every surface can compute the default from the fingerprint alone until
 then. `avatar.md`'s Gaps names this explicitly so it isn't lost.
 
+### 2e. Blur is the real signal, not (only) contrast (28 Sep, `pwa`'s per-mark diagnostic)
+
+`pwa` sent raw per-mark error counts (of 72 marks) for the 8/17 run, at each scenario's own true
+rotation/scale, real renderer, dark theme, `userOption 1`: pristine 3 errors (fine), rotate
+15/37/90/181deg 5-6 errors each (fine - rotation doesn't touch contrast or size), noise light/
+heavy 3 errors each (fine), scale 120% 1 error (fine) - but **blur 2px 18 errors, blur 4px 38,
+blur 6px 56** (all fail, even light blur already 4-6x over the ~4-16 error budget RS can correct),
+and **scale 80% 12 errors** (borderline/fails).
+
+The pattern - blur catastrophic even at 2px, rotation/noise easily tolerable, scale-down also
+hurting - points at absolute mark SIZE surviving a fixed-radius blur kernel, not primarily colour
+contrast, though `pwa` initially read it as a contrast question (their real palette scored 8/17
+against an 11/17 flat-colour test fixture). Checked the maths before assuming either explanation:
+dark theme's WCAG contrast is already 11.74-12.31:1 (mark and markDeep both far exceed any
+practical threshold) - raising it further was unlikely to be the real lever for this specific
+case. What *did* change between round 5's original prototype (which passed all three blur levels
+clean, per `NOTES.md`) and this beauty pass: 2a's margin fix shrank the tick lengths from
+`8-29px` to `6-24px` to buy back outer margin. A short, thin stroke loses proportionally more of
+its signal to a fixed-pixel blur kernel than a wider one does, independent of hue - the
+mechanism `pwa`'s own "scale-80 also degrades" observation is consistent with (smaller absolute
+marks either way).
+
+Tried the geometry-only lever first, not the palette: widened `TICK_STROKE_WIDTH` 4.5 -> 6
+(`round5/geometry.js`, matching `dashesRounded`'s own width) rather than lengths (which would eat
+back into 2a's margin) or colour (which the mechanism above doesn't clearly implicate for dark,
+and which the lead asked `pwa` not to touch directly). Re-verified the margin/gap invariant still
+holds at the new width: margin 51 units (8.5% of canvas, still inside 8-10%), gap clearance 7
+(was 7.75, still comfortably positive). **Not verified against `pwa`'s real harness** - this is a
+hypothesis-driven change for them to test, not a claimed fix; if it doesn't move the blur numbers,
+palette contrast (or accepting blur tolerance as a scoped gap, the way perspective already is)
+is the next thing to try, not a mark-length increase that would reopen the margin problem 2a
+fixed.
+
 ### 3. What the code carries, and what it doesn't
 
 The Vyre code's payload is a public identifier plus, for pairing, a one-time ticket: 64 bits of
