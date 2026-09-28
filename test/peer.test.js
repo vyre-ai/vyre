@@ -6,10 +6,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
-import { ancestry, insideClaude, controllingTty, loginOf, tmuxClients } from "../core/daemon/peer.js";
+import { ancestry, insideClaude, controllingTty, exePath, loginOf, tmuxClients } from "../core/daemon/peer.js";
 
 const tree = {
   // vyred (500) under the test runner (400); a terminal zsh (200) and a claude (300) elsewhere.
@@ -52,8 +52,12 @@ test("peer: under a claude, or under a thread vyred runs, is inside; a terminal,
   // Leads its own group under launchd, same shape a `setsid`'d escape has (see the dedicated
   // test below): unknown by ancestry alone without a controlling terminal. The Capsule is this
   // shape too, and must prove itself another way, not by ancestry (the setsid HIGH, 28 Sep).
-  assert.deepEqual(insideClaude(960, o), { inside: false, unknown: true }, "its own group under launchd, no tty: unknown, not trusted by ancestry");
-  assert.deepEqual(insideClaude(960, { ...o, tty: () => "ttys040" }), { inside: false }, "the same shape, but with a controlling terminal: a real login can lead its own group too");
+  // Its own group under launchd, same shape a setsid'd escape has: unknown unless its own binary
+  // (never argv, which this fixture's `args` string cannot stand in for here) is on the trusted
+  // allowlist. The Capsule's own binary is not, so it stays unknown until it has its own proof.
+  assert.deepEqual(insideClaude(960, o), { inside: false, unknown: true }, "its own group under launchd, unlisted binary: unknown, not trusted by ancestry");
+  assert.deepEqual(insideClaude(960, { ...o, exe: () => "/usr/sbin/sshd" }), { inside: false }, "the same shape, but the kernel says its binary is sshd's");
+  assert.deepEqual(insideClaude(960, { ...o, exe: () => "/usr/bin/script" }), { inside: false, unknown: true }, "a fresh tty from `script` proves nothing: still judged on the binary, not on having one");
   assert.deepEqual(insideClaude(921, o), { inside: true, by: 300 }, "a tmux a model started");
   assert.deepEqual(insideClaude(500, o), { inside: false }, "vyred itself");
   assert.deepEqual(insideClaude(990, o), { inside: false, unknown: true }, "an unreadable chain is unknown, and vyred refuses it");
@@ -175,7 +179,7 @@ test("peer: a detached process has no controlling terminal, whatever it says", a
 // every person-only tool. This proves the escape is closed against a REAL vyred, over a REAL socket,
 // with the actual OS-level process shapes each technique produces -- not just the synthetic tree
 // above. Needs the real `setsid` binary (util-linux; not on macOS, hence testbox-only).
-test("peer: setsid, nohup and a double fork are all refused as the person; a real terminal still gets in", { skip: process.platform !== "linux" ? "needs util-linux setsid" : false }, async t => {
+test("peer: setsid, nohup, a double fork, and a fresh tty from script/pty/tmux are all refused as the person", { skip: process.platform !== "linux" ? "needs util-linux setsid and lsof/proc" : false }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
@@ -227,22 +231,55 @@ subprocess.run(${JSON.stringify([cmd, ...args])})
     p.on("error", reject);
   }));
   assert.equal(byNohup.error?.code, "denied", JSON.stringify(byNohup));
-  assert.ok(!(await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "kit"), "none of the three made anything");
 
-  // The real terminal CLI: `script` gives curl an actual controlling tty, same shape (ppid 1, own
-  // session, once its own shell wrapper exits) as the escapes above -- except for the tty, which is
-  // exactly what should let it through.
-  const out = path.join(dir, "out-tty.json");
-  await new Promise((resolve, reject) => {
-    const cmd = `curl -s -o ${out} --unix-socket ${socket} -X POST http://x/v1/tools/agents.create -H 'content-type: application/json' -H 'x-vyre-caller: cli' -d '${JSON.stringify({ name: "harlow" })}'`;
-    const p = spawn("script", ["-qfec", cmd, "/dev/null"], { stdio: "ignore" });
+  // The reviewer's own reproduction (28 Sep) of the first version of this fix: `setsid -f script
+  // -qfc .. /dev/null` hands the detached leader a FRESH, real-looking controlling tty, same as a
+  // genuine terminal's -- a tty check alone let this straight through. It must still be refused,
+  // because it is judged on the leader's actual binary (`script`), never on whether it has a tty.
+  const byScript = await detachedCall(([cmd, ...args]) => new Promise((resolve, reject) => {
+    const inner = [cmd, ...args].map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
+    const p = spawn("setsid", ["-f", "script", "-qfc", inner, "/dev/null"], { stdio: "ignore" });
     p.on("exit", code => (code === 0 ? resolve(undefined) : reject(new Error(`script exit ${code}`))));
     p.on("error", reject);
-  });
-  for (let n = 0; n < 50 && !fs.existsSync(out); n++) await new Promise(r => setTimeout(r, 100));
-  const viaTerminal = JSON.parse(fs.readFileSync(out, "utf8"));
-  assert.equal(viaTerminal.error, undefined, JSON.stringify(viaTerminal));
-  assert.ok((await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "harlow"), "the real terminal's call went through");
+  }));
+  assert.equal(byScript.error?.code, "denied", JSON.stringify(byScript));
+
+  // The same reproduction's other half: a python pty (`pty.spawn`) gives the same fresh-tty shape
+  // without needing the external `script` binary at all.
+  const byPty = await detachedCall(([cmd, ...args]) => new Promise((resolve, reject) => {
+    const py = `import pty, subprocess
+pty.spawn(${JSON.stringify([cmd, ...args])})
+`;
+    const p = spawn("setsid", ["-f", "python3", "-c", py], { stdio: "ignore" });
+    p.on("exit", code => (code === 0 ? resolve(undefined) : reject(new Error(`python3 exit ${code}`))));
+    p.on("error", reject);
+  }));
+  assert.equal(byPty.error?.code, "denied", JSON.stringify(byPty));
+
+  // `setsid -f tmux new -d ..`: tmux's server also leads its own tty-less session under launchd's
+  // reparenting, same shape again -- and tmux is deliberately NOT on the trusted allowlist (a
+  // person's own real tmux needs its own proof, not ancestry; see the allowlist's own comment).
+  const byTmux = await detachedCall(([cmd, ...args]) => new Promise((resolve, reject) => {
+    const inner = [cmd, ...args].map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
+    const p = spawn("setsid", ["-f", "tmux", "-f", "/dev/null", "new-session", "-d", inner], { stdio: "ignore" });
+    p.on("exit", code => (code === 0 || code === undefined ? resolve(undefined) : reject(new Error(`tmux exit ${code}`))));
+    p.on("error", reject);
+  }));
+  assert.equal(byTmux.error?.code, "denied", JSON.stringify(byTmux));
+  // The client that requested `-d` exits immediately once its server forks; the server itself
+  // (what actually got refused, above) keeps running detached and needs its own cleanup.
+  try { execFileSync("tmux", ["-f", "/dev/null", "kill-server"]); } catch {}
+
+  assert.ok(!(await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "kit"), "none of the escapes made anything");
+});
+
+test("peer: exePath reads the kernel's own record of the binary, not the process's own title", { skip: process.platform !== "linux" ? "needs /proc" : false }, async () => {
+  // A process that rewrites argv[0] to look like sshd (real sshd does exactly this for its
+  // privsep display) must still resolve to its real binary, not the string it chose to show.
+  const child = spawn("bash", ["-c", 'exec -a "sshd: fake [priv]" sleep 5'], { stdio: "ignore" });
+  await new Promise(r => setTimeout(r, 200));
+  try { assert.match(/** @type {string} */ (exePath(/** @type {number} */ (child.pid))), /\/sleep$/); }
+  finally { child.kill(); }
 });
 
 // A Mac's processes with their terminals: Terminal.app (100, no tty) runs login (110) on ttys003,

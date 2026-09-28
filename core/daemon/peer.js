@@ -111,16 +111,55 @@ export function ancestry(pid, look, stop = () => false) {
 }
 
 /**
+ * The kernel's own record of a process's executable image -- never argv, which `exec -a fake` or
+ * a custom process title (real sshd does this too, for its privsep display) can say is anything.
+ * On Linux, /proc/<pid>/exe is a symlink the kernel maintains to the file that was actually
+ * exec'd. macOS has no /proc; the closest without a compiled helper is `lsof`'s `txt` (text
+ * segment) mapping, which names the file actually mapped in, not the argv string. Neither is
+ * fooled by `setsid -f script ...`, `python3 -c 'import pty; pty.spawn(...)'`, or `exec -a sshd`
+ * (the reviewer's reproduction, 28 Sep): those show up as script's, python's or the real caller's
+ * own binary, never as sshd's or login's.
+ * @param {number} pid @returns {string|null}
+ */
+export function exePath(pid) {
+  try {
+    if (process.platform === "linux") return fs.readlinkSync(`/proc/${pid}/exe`);
+    const out = execFileSync("lsof", ["-p", String(pid)], { encoding: "utf8", timeout: 2000 });
+    for (const line of out.split("\n")) {
+      const m = /^\S+\s+\d+\s+\S+\s+txt\s+\S+\s+.*?\s(\/\S+)$/.exec(line);
+      if (m) return m[1];
+    }
+    return null;
+  } catch { return null; }
+}
+
+/**
+ * A handful of basenames that actually host a real login: an sshd or login that launchd/init/inetd
+ * started, or a named terminal app. This is the ONLY allowlist in this file and it is a security
+ * boundary: adding to it needs the same review as any other PERSON_ONLY change. Not on it (on
+ * purpose, until decided otherwise -- reviewer, 28 Sep): tmux and screen, whose SERVER also leads
+ * its own tty-less session under launchd/init, indistinguishable here from a model's own detached
+ * one; a person's tmux needs its own proof (a presence session), not ancestry, until that is built.
+ */
+const TRUSTED_LEADER = new Set(["sshd", "login", "Terminal", "iTerm2", "WezTerm", "Hyper", "kitty",
+  "Alacritty", "wezterm", "konsole", "gnome-terminal-server", "xterm", "urxvt", "st"]);
+
+/** @param {string|null} p @returns {boolean} */
+function trustedLeader(p) {
+  return Boolean(p && TRUSTED_LEADER.has(/** @type {string} */ (p.split("/").pop())));
+}
+
+/**
  * Does this caller's process run inside a Claude session? Any ancestor that is a `claude`, or one
  * of `threads` (the processes vyred runs threads in), counts, so a model's shell is caught
  * whether it runs straight under claude, under a shell it started, or in a tmux or ssh it opened.
  * A person's shell under tmux or sshd has no claude above it. vyred's own process and its
  * ancestors are not the caller's. Unknown when the chain cannot be read to the top.
  * @param {number} pid
- * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string, pgid?: number, sid?: number } | null, self?: number }} [o]
+ * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string, pgid?: number, sid?: number } | null, exe?: (pid: number) => string | null, self?: number }} [o]
  * @returns {{ inside: boolean, by?: number, unknown?: boolean }}
  */
-export function insideClaude(pid, { threads = [], look = processTable(), tty = controllingTty, self = process.pid } = {}) {
+export function insideClaude(pid, { threads = [], look = processTable(), exe = exePath, self = process.pid } = {}) {
   // A thread vyred spawned as its own process group (or session) keeps whatever it leaves behind:
   // an orphan's parent becomes init, but its group and session stay the thread's.
   const own = look(pid);
@@ -138,12 +177,13 @@ export function insideClaude(pid, { threads = [], look = processTable(), tty = c
   // `setsid -f <cmd>` (util-linux), or a plain fork that calls setsid() itself, produces exactly
   // this shape too: ppid 1, its own session and group, nothing above it to blame -- and it is
   // indistinguishable BY ANCESTRY ALONE from a real terminal, sshd or tmux server that launchd or
-  // init started directly. The one thing a detach can never fake is a controlling terminal: a real
-  // login (or its tmux pane, which gets its own pty) always has one; a `setsid`'d or double-forked
-  // process never does (it exists precisely to shed it). A headless app has the same shape by
-  // design and is caught here too -- it must prove itself another way, not by ancestry (the setsid
-  // HIGH, e2e review 28 Sep).
-  if (row && row.ppid <= 1 && row.pgid === top.pid && !tty(pid)) return { inside: false, unknown: true };
+  // init started directly. A controlling terminal is not proof either: `setsid -f script -qfc ..`
+  // or a python `pty.spawn` hands the detached leader a FRESH, real-looking tty it made up on the
+  // spot (the reviewer's own reproduction, 28 Sep, broke the first version of this fix, which
+  // checked exactly that). What ancestry alone CAN still say: which binary the kernel actually
+  // loaded for this leader (exePath, never argv) -- so this judges that against a short allowlist
+  // of what actually hosts a login, not whether a tty exists.
+  if (row && row.ppid <= 1 && row.pgid === top.pid) return trustedLeader(exe(top.pid)) ? { inside: false } : { inside: false, unknown: true };
   return { inside: false };
 }
 
