@@ -24,6 +24,7 @@ import { startScan } from "./scan.js";
 import { resolveTicket, pairOffer, crypto, classifyError } from "./pair-ticket.js";
 import { renderPersonAvatar } from "./pair-avatar.js";
 import { attempt } from "./api.js";
+import { fromBase64url } from "../../relay/client/bytes.js";
 import { initial, step } from "../views/pair-scan.js";
 
 let styled = false;
@@ -67,6 +68,7 @@ export function pairScanSheet(opts) {
   let state = initial();
   /** @type {{ stop: () => void } | null} */ let scan = null;
   /** @type {{ relay: string, route: string, box: Uint8Array, secret: string } | null} */ let pendingOffer = null;
+  /** @type {string | null} */ let pendingIdentity = null; // resolveTicket's identity, base64url - the owner's own fingerprint, for the avatar (ADR 0043 2d); null until tailnet's config side lands owner.id
   /** @type {string | null} */ let cameraAvatarUrl = null; // scan.js's crop, kept as a fallback only
   let slow = false; // scan.js's onSlow fired: show the "hold straight on" hint under the status
   const video = /** @type {HTMLVideoElement} */ (h("video", { class: "scan-video", playsinline: true, muted: true, "aria-hidden": "true" }));
@@ -88,6 +90,7 @@ export function pairScanSheet(opts) {
     try {
       const resolved = await resolveTicket(ticket, { relay: opts.relay, crypto });
       pendingOffer = resolved.offer;
+      pendingIdentity = resolved.identity;
       dispatch({ type: "resolved", name: resolved.name, fingerprint: resolved.fingerprint, handle: resolved.handle });
     } catch (err) {
       const { code, message } = classifyError(/** @type {Error} */ (err));
@@ -104,10 +107,15 @@ export function pairScanSheet(opts) {
       const result = await pairOffer(offer, { name, about: { kind: "web" }, crypto });
       pendingOffer = null;
       dispatch({ type: "paired", box: result.name, deviceName: name });
-      renderAvatar(offer.box, undefined); // no identity fingerprint from resolveTicket yet - PENDING tailnet
+      // fromBase64url, not the string itself - resolveTicket() hands the identity back re-encoded
+      // (tailnet, cd9be96d). null until config lands owner.id (stubbed there for now); the
+      // fallback in that case is pair-avatar.js's own box-key derivation, not this file's job.
+      renderAvatar(offer.box, pendingIdentity ? fromBase64url(pendingIdentity) : undefined);
+      pendingIdentity = null;
       celebrate();
     } catch (err) {
       pendingOffer = null;
+      pendingIdentity = null;
       const { code, message } = classifyError(/** @type {Error} */ (err));
       dispatch({ type: "pairFailed", code, message });
     }
@@ -115,6 +123,7 @@ export function pairScanSheet(opts) {
 
   function onNotThisOne() {
     pendingOffer = null;
+    pendingIdentity = null;
     dispatch({ type: "notThisOne" });
     startCamera();
   }
@@ -206,7 +215,7 @@ export function pairScanSheet(opts) {
 
   return {
     el,
-    open() { state = initial(); pendingOffer = null; cameraAvatarUrl = null; render(); startCamera(); },
-    close() { scan?.stop(); scan = null; pendingOffer = null; },
+    open() { state = initial(); pendingOffer = null; pendingIdentity = null; cameraAvatarUrl = null; render(); startCamera(); },
+    close() { scan?.stop(); scan = null; pendingOffer = null; pendingIdentity = null; },
   };
 }
