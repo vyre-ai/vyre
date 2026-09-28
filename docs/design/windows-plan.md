@@ -186,6 +186,55 @@ context, computer use), not before.
   npm/native installer, Tailscale via its Windows app) at a level that should cover Tier A/B, but
   neither was hand-verified against this repo's specific assumptions in this pass.
 
+## 7a. Named-pipe security design (sent to reviewer before touching `socketPath` again)
+
+Section 7's named-pipe fix (the socket now binds; still debugging one connect-side bug) solved
+the wrong-privilege problem, but the lead's follow-up raised three things a filesystem-path socket
+never had to answer that a pipe does. **No further change to `socketPath` lands until reviewer has
+seen this.**
+
+1. **The security descriptor cannot be assumed.** Node's own docs describe the *documented*
+   behavior as current-user-restricted by default ("Starting an IPC server as root may cause the
+   server path to be inaccessible for unprivileged users"; `readableAll`/`writableAll` widen it),
+   which is what this plan assumed. The lead's read is that the raw Win32 default DACL
+   (`CreateNamedPipe` with no explicit security attributes) grants `Everyone`/`Anonymous` **read**,
+   and Node may or may not override that fully. This is not resolved by reasoning about it further
+   here: the existing `.github/workflows/node.yml` "A second local user cannot connect" step is
+   the actual test of the property that matters (can another local account reach the pipe at
+   all), and it has not yet passed against the pipe implementation (blocked on the connect-side
+   bug in section 7). If it fails once that's fixed, an explicit security descriptor has to be set
+   some other way, which runs into the same "no public Node API for this" problem as point 3.
+2. **Squatting.** `socketPath`'s pipe name today is deterministic from a hash of `realFolder(root)`
+   alone, and `root` is normally a predictable path (`~/.vyre` under the person's home). Another
+   local account that can guess or enumerate that path can compute the same name and pre-create a
+   pipe with it before the real `vyred` starts, and an unwitting client would connect to the
+   attacker's pipe instead. **Proposed fix, not yet implemented**: fold a random, per-home token
+   into the name instead of (or alongside) the path hash, generated once with `crypto.randomBytes`
+   and persisted in `config.json` (so the same home keeps the same pipe name across restarts,
+   same as today), never derived from anything guessable. This defeats blind pre-creation; it does
+   not by itself prove the *connecting* client is talking to the real `vyred` rather than a lucky
+   or targeted squatter, which is where point 3's capability would also help, as defense in depth,
+   not required to close the guessing attack.
+3. **The peer check has no obvious Windows path.** `core/daemon/peer.js`'s mechanism (spawn a
+   one-line perl handed the raw fd as inherited stdio, reading `SO_PEERCRED`/`LOCAL_PEERPID` off
+   it) is POSIX-specific top to bottom: it depends on Unix fd inheritance and a syscall with no
+   Windows equivalent. The Windows analogue, `GetNamedPipeClientProcessId`, needs the actual OS
+   pipe handle for the accepted connection, which lives inside vyred's own Node process (inside
+   libuv's pipe wrapper) - not a POSIX-style fd a spawned helper can be handed the way `peer.js`
+   does it. The realistic options, **neither implemented, both needing scoping before either is
+   built**:
+   - a native N-API/`napi-rs` addon loaded into `vyred` itself, calling `GetNamedPipeClientProcessId`
+     on the live connection's handle - the open question is whether that raw `HANDLE` is reachable
+     from a `net.Socket` at all through any stable API, public or internal;
+   - degrade gracefully: report the peer as unknown on `win32`, the same fallback `ancestry()`
+     already has for an unreadable chain, which is honest but means `PERSON_ONLY` (`core/presence`)
+     gets no ancestry-based strengthening on Windows the way it does on Mac and Linux - a real gap,
+     not a stopgap to fix quietly later.
+   This is the same shape of gap capsule-pro flagged for Windows Hello/presence (no `core/presence`
+   method exists yet for a Windows-native "human, not a model" proof, the way `method === "capsule"`
+   /`"touchid"` exist for the Mac): worth one conversation with whoever owns `core/presence`
+   covering both gaps together, not two separate asks landing on them piecemeal.
+
 ## 8. Windows Solo build plan (the lead's 2026-09-28 "Vyre anywhere" call)
 
 ADR 0039 (owner: anywhere, `docs/design/anywhere.md`) makes "solo / server / device" a
