@@ -4,8 +4,9 @@
 // CSS in real headless Chrome -> screenshot -> reload into a fresh canvas -> decode-core2's real
 // getImageData search -> RS/CRC-validate in Node) and the SAME 17-scenario matrix, for a
 // like-for-like pass-rate comparison against round5's 14/17 on the old (4-ring, 1-bit) layout.
-// Renders with render-fixture.js (a plain test disc, not the on-brand renderer app-design owns -
-// see that file's header).
+// Renders with the real, vendored renderer (deck/vendor/vyrecode/vyrecode2.js) and geometry
+// (geometry.js) - the same code and constants app-design's own renderer and pwa's live decoder
+// use, not a stand-in.
 //
 // Manual/robustness run, not part of `npm test` (needs a local Chrome and ~35s, real pixels):
 //   CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" node deck/vyrecode/test/harness.js [out dir]
@@ -18,13 +19,14 @@ import url from "node:url";
 import http from "node:http";
 import crypto from "node:crypto";
 import * as payload from "../payload.js";
+import { renderCode2, bitsToLevels, levelsToBits } from "../../vendor/vyrecode/vyrecode2.js";
+import * as geo from "../../vendor/vyrecode/geometry.js";
 
 /** A stand-in for a real public-key fingerprint (test-only: payload.js itself must stay
  * browser-safe, since deck/js/scan.js imports it for the real on-phone decode). */
 function fingerprint8(publicSeed) {
   return [...crypto.createHash("sha256").update(publicSeed).digest()].slice(0, 8);
 }
-import { renderFixture, bitsToLevels, levelsToBits } from "./render-fixture.js";
 import { decodeCore2 } from "../decode-core2.js";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
@@ -100,6 +102,14 @@ function degradedPageHtml(svg, deg) {
   </body></html>`;
 }
 
+// decodeCore2's own source is self-contained (no free variables), but its geometry argument
+// isn't: a toString()'d function loses whatever it imported at module scope when re-evaluated in
+// this injected, non-module page. Built once here, from the SAME vendored geometry.js the real
+// decoder imports, as plain data (numbers only - JSON-safe, no live functions) and passed to
+// decodeCore2(GEO) explicitly in the injected script, rather than letting it fall back to its own
+// defaultGeometry() (which needs a live import this page doesn't have).
+const GEO = { CENTER: geo.CENTER, FACE_R: geo.FACE_R, RING_R: geo.RING_R, TINT_MARGIN: 40, LEVELS: [0, 1, 2, 3].map(geo.tickLength) };
+
 function readerPageHtml(pngUrl, decodeSrc) {
   return `<!doctype html><html><body style="margin:0;">
     <canvas id="c" width="600" height="600"></canvas>
@@ -119,7 +129,7 @@ function readerPageHtml(pngUrl, decodeSrc) {
               const i = (y * 600 + x) * 4;
               return 0.2126*data.data[i] + 0.7152*data.data[i+1] + 0.0722*data.data[i+2];
             };
-            const { searchWithPerspective } = decodeCore2();
+            const { searchWithPerspective } = decodeCore2(${JSON.stringify(GEO)});
             const top = searchWithPerspective(getLum, 300, 300, {});
             resolve({ candidates: top.map(c => ({ rot: c.rot, scale: c.scale, confidence: c.confidence, levels: c.levels, correction: c.correction })) });
           } catch (e) { resolve({ error: e.message + " " + e.stack }); }
@@ -134,7 +144,9 @@ function readerPageHtml(pngUrl, decodeSrc) {
 const decodeSrc = `const decodeCore2 = ${decodeCore2.toString()};`;
 
 async function runScenario(name, id, bits, levels, deg) {
-  const svg = renderFixture(levels, { theme: "dark", size: 600 });
+  // The real renderer + real identity face, not a plain test disc: exercises exactly what a
+  // phone camera will actually see, including the face art inside the ring.
+  const svg = renderCode2(levels, { userOption: 1, style: "ticksSunburst", theme: "dark", size: 600 });
   const pagePath = path.join(OUT, `${name}-degrade.html`);
   fs.writeFileSync(pagePath, degradedPageHtml(svg, deg));
   const t1 = await tab();

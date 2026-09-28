@@ -5,18 +5,47 @@
 // an ellipse fit on the ring/tint boundary, which is the piece round5's prototype scoped out
 // (it passed 14/17, failing only the 3 perspective scenarios).
 //
+// Geometry (RING_R, tick lengths, CENTER/FACE_R) comes from deck/vendor/vyrecode/geometry.js -
+// app-design's own single source, shared with their renderer - not restated here by hand: an
+// earlier hand-copied version already drifted out of sync once (the ring-gap/margin finding
+// below), which is exactly the failure mode a shared import removes. See defaultGeometry().
+//
 // Exported as a function so the SAME source can be serialized into a <script> the browser runs
-// (Function.prototype.toString), same technique as decode-core.js.
+// (Function.prototype.toString), same technique as decode-core.js - which is why decodeCore2
+// takes the geometry as a plain-data argument (numbers only, no imported functions) rather than
+// closing over the geometry module: a toString()'d function can't carry an ES import with it
+// into a freshly-evaluated page, but a plain object built from one, JSON-serialized by the
+// caller, works in either context. defaultGeometry() below is the one place that reads the
+// live geometry module, for callers in a normal module graph (deck/js/scan.js); test/harness.js
+// calls it once in Node and injects the resulting plain object alongside the toString()'d source.
 
-function decodeCore2() {
-  const CENTER = 300;
-  const FACE_D = 360, FACE_R = FACE_D / 2;
+import * as geo from "../vendor/vyrecode/geometry.js";
+
+/** The plain-data geometry decodeCore2() needs, read once from the shared geometry.js. Callers
+ * that can't use a live import (the toString()-injected harness) build the same shape by hand
+ * from their own copy of the numbers instead - see test/harness.js. */
+function defaultGeometry() {
+  return {
+    CENTER: geo.CENTER,
+    FACE_R: geo.FACE_R,
+    RING_R: geo.RING_R,
+    TINT_MARGIN: 40, // vyrecode2.js's own hardcoded tint-disc margin past RING_R[1] - decorative
+                      // background, not part of geometry.js's content-reach invariant, so it
+                      // isn't exported there; kept here as the one place both sides agree on it
+    LEVELS: [0, 1, 2, 3].map(geo.tickLength), // e.g. [6, 12, 18, 24]
+  };
+}
+
+function decodeCore2(g) {
+  const geometry = g || defaultGeometry();
+  const CENTER = geometry.CENTER;
+  const FACE_R = geometry.FACE_R;
   const RINGS = 2, PER_RING = 36;
   const ANGLE_STEP = 360 / PER_RING;
-  const RING_R = [FACE_R + 30, FACE_R + 65]; // 210, 245 - matches vyrecode2.js exactly
-  const TINT_R = RING_R[1] + 40; // 285: the tint disc's own edge, a strong, reliable boundary
-  const LEVELS = [8, 15, 22, 29]; // tick lengths for level 0..3 (ticksSunburst's own formula)
-  const MAX_LEN = 35; // past the longest tick (29) plus its patch radius
+  const RING_R = geometry.RING_R;
+  const TINT_R = RING_R[1] + geometry.TINT_MARGIN; // the tint disc's own edge, a strong, reliable boundary
+  const LEVELS = geometry.LEVELS; // tick lengths for level 0..3 (ticksSunburst's own formula)
+  const MAX_OFFSET = LEVELS[LEVELS.length - 1]; // the longest tick's own nominal length
 
   /** Small-disk area average, same technique as round4's sampleDot (degrades gracefully under
    * blur instead of an edge read, which blur destroys first). */
@@ -30,17 +59,17 @@ function decodeCore2() {
     return n === 0 ? null : sum / n;
   }
 
-  // The ring gap (RING_R[1]-RING_R[0] = 35) is tight against the longest tick's own reach
-  // (level 3's 29px line plus its round line-cap, ~31.25px): sampling a mark's own trailing
-  // offsets as "background" (decode-core.js's median-split trick) picks up the NEXT ring's own
-  // anchor round-cap, which bleeds inward by half its stroke width - a real, found-by-testing
-  // artifact of this geometry, not a sampling bug. Fixed by never trusting the tail of a mark's
-  // own profile for "background": ink and background are each read from an independent
-  // reference point instead (see sampleMarkLength).
-  const MAX_OFFSET = 29; // the longest tick's own nominal length; never sample past this ring's
-                          // own reach outward from its anchor (a small round-cap margin is
-                          // still inside the two rings' 35px gap)
-
+  // The ring gap (RING_R[1]-RING_R[0]) was originally tight against the longest tick's own
+  // reach (round5's first-pass geometry: level 3's 29px line plus its round line-cap, ~31.25px,
+  // against a 35px gap): sampling a mark's own trailing offsets as "background" (decode-core.js's
+  // median-split trick) picked up the NEXT ring's own anchor round-cap, which bleeds inward by
+  // half its stroke width - a real, found-by-testing artifact of that geometry, not a sampling
+  // bug. Fixed by never trusting the tail of a mark's own profile for "background": ink and
+  // background are each read from an independent reference point instead (see
+  // sampleMarkLength). app-design's revised geometry (RING_R=[188,222], ticks 6/12/18/24)
+  // widens the clearance to 7.75px, but this independent-reference fix stays regardless - it
+  // costs nothing when the margin is generous, and the margin can tighten again in a future
+  // revision.
   /**
    * One mark's tick length, in the ORIGINAL (pre-scale) coordinate units vyrecode2.js drew it
    * in. `ink` is read at the anchor itself (every level's line starts there, so it is always
@@ -64,6 +93,12 @@ function decodeCore2() {
     if (ink === null || bg === null || Math.abs(ink - bg) < 3) return null; // no usable contrast
     const darker = ink < bg;
     const threshold = (ink + bg) / 2;
+    // Absolute offsets, NOT scaled to the current geometry's own max tick length: this only
+    // needs enough resolution to tell the 4 known lengths apart somewhere under ~28.5px, and
+    // going past the shorter ticks' own reach into pure background is fine (still well inside
+    // the ring gap) - confirmed by testing: scaling this down with a shorter max tick actually
+    // cost blur/scale robustness for no gain, since blur is a real-pixel-space effect that
+    // doesn't shrink just because the drawn ticks did.
     const offsets = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 28.5];
     const profile = offsets.map(o => areaSample(getLum, ax + Math.cos(rad) * o * scale, ay + Math.sin(rad) * o * scale, patch));
     if (profile.some(v => v === null)) return null;

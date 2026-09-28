@@ -2410,7 +2410,7 @@ Find and index this machine's Claude Code sessions, in the background.
 
 ### `onboard.join`
 
-Adding a second device or a server: status says whether Tailscale or the relay is ready to pair with; tailscale (step: status|connect|policy|lock) is onboard.tailscale's own logic, callable any time; relay mints a QR/link pairing code; verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to "device" once reachability is confirmed (per ADR 0039 section 5 — never on the Solo/server side accepting a join). The owner's alone: a guest, an agent (its own node, its thread, or an mcp/harness claim) and hook/anonymous callers are refused outright, whatever proof they carry, the same as relay.pair.start already refuses them.
+Adding a second device or a server: status says whether Tailscale or the relay is ready to pair with; tailscale (step: status|connect|policy|lock) is onboard.tailscale's own logic, callable any time; relay mints a QR/link pairing code; verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to "device" once reachability is confirmed (per ADR 0039 section 5, never on the Solo/server side accepting a join). The owner's alone: a guest, an agent (its own node, its thread, or an mcp/harness claim) and hook/anonymous callers are refused outright, whatever proof they carry, the same as relay.pair.start already refuses them.
 
 - Input:
   - `action` one of "status", "tailscale", "relay", "verify"
@@ -3119,7 +3119,7 @@ Turn the relay on: the box connects out to the relay so paired devices can reach
 
 ### `relay.join`
 
-This Vyre becomes a device of another box, redeeming a one-time pairing code minted there (relay.pair.start or onboard.join{action:"relay"}). One redemption: the channel closes once paired, then this tool returns what the other box said (its name, this device's id, whether presence enrolled). becomeDevice, when true, flips this machine to "device" once paired (onboard.machine) — the shape onboard.join{action:"verify",becomeDevice} uses on the Tailscale path, so the onboarding card calls the same flag either way. Does not keep a connection open; that is not built yet. A pasted URL that is not a real Vyre pairing code is refused before any prompt. Not available on a Mac yet: see vyre-core (ADR 0040).
+This Vyre becomes a device of another box, redeeming a one-time pairing code minted there (relay.pair.start or onboard.join{action:"relay"}). One redemption: the channel closes once paired, then this tool returns what the other box said (its name, this device's id, whether presence enrolled). becomeDevice, when true, flips this machine to "device" once paired (onboard.machine), the shape onboard.join{action:"verify",becomeDevice} uses on the Tailscale path, so the onboarding card calls the same flag either way. Does not keep a connection open; that is not built yet. A pasted URL that is not a real Vyre pairing code is refused before any prompt. Not available on a Mac yet: see vyre-core (ADR 0040).
 
 - Input:
   - `url` string, required

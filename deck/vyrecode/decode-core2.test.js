@@ -70,11 +70,13 @@ test("payload: a codeword whose CRC never matched its id is refused, not force-f
 
 test("decode-core2: lengthToLevel picks the nearest of the four known tick lengths", () => {
   const { lengthToLevel, LEVELS } = decodeCore2();
-  assert.deepEqual(LEVELS, [8, 15, 22, 29]);
-  assert.equal(lengthToLevel(8), 0);
-  assert.equal(lengthToLevel(11), 0); // closer to 8 than 15
-  assert.equal(lengthToLevel(12), 1); // closer to 15 than 8
-  assert.equal(lengthToLevel(29), 3);
+  // From deck/vendor/vyrecode/geometry.js's tickLength(0..3) - app-design's revised, tighter
+  // constants (2026-09-28: RING_R=[188,222], the ring-gap/margin fix), not restated by hand.
+  assert.deepEqual(LEVELS, [6, 12, 18, 24]);
+  assert.equal(lengthToLevel(6), 0);
+  assert.equal(lengthToLevel(8), 0); // closer to 6 than 12
+  assert.equal(lengthToLevel(10), 1); // closer to 12 than 6
+  assert.equal(lengthToLevel(24), 3);
   assert.equal(lengthToLevel(40), 3); // clamps to the nearest, not out of range
 });
 
