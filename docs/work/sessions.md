@@ -50,7 +50,7 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   Reran on testbox: 23/23 (`test/projects-cli.test.js` + `core/projects/projects.test.js`).
 - Lead flagged the residual: picking a session seconds after it starts (exactly when a person
   says "put this in project X") could fail if it isn't in Recall's catalogue yet. Turned out
-  `Projects.addThreads` never looked at the catalogue at all — it just writes the marker off
+  `Projects.addThreads` never looked at the catalogue at all; it just writes the marker off
   whatever id it's given. The real gap was the CLI's `findThread`, whose non-numeric path only
   matched rows already in `projects.catalog`. Fixed at edf8c0bc: `findThread` now recognises the
   shape of a Claude Code session id (UUID, optional `/agent-...` suffix) and passes it through

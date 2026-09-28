@@ -135,7 +135,7 @@ export async function hereProject() {
 }
 
 // A Claude Code session id: a UUID, optionally with a /agent-... subagent suffix. Recognising
-// the shape lets a literal id through even before Recall's catalogue has indexed it — the exact
+// the shape lets a literal id through even before Recall's catalogue has indexed it: the exact
 // moment a person says "put this chat in project X" right after starting it.
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/.+)?$/i;
 
