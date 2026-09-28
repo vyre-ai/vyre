@@ -218,7 +218,7 @@ export default {
       const steps = Object.fromEntries(STEPS.map(k => [k, ["done", "skipped"].includes(detail[k].state) ? detail[k].state : "todo"]));
       const current = STEPS.find(k => steps[k] === "todo") || null;
       const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
-      return { mode, role: ctx.config.role, owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
+      return { mode, role: ctx.config.role, machine: ctx.config.machine, owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
         host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
         // loopback page is done with and `vyre box add` may close its tunnel.
@@ -261,6 +261,20 @@ export default {
         // an address already serves under the old one.
         save({ ...(c.valid && !net().address ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
         return stepOf("you", caller);
+      },
+    });
+
+    ctx.tool("onboard.machine", {
+      description: "ADR 0039: how Vyre runs on this machine. solo (everything here) or server (always on for other devices) are the person's own choice; device is set by onboard.join once a connection to another server is confirmed, never chosen directly here.",
+      input: obj({ machine: { type: "string", enum: ["solo", "server", "device"] } }, ["machine"]),
+      run: async ({ machine }) => {
+        // machine's own default (config/index.js defaults()) already covers "no choice made
+        // yet"; this tool only ever records an actual choice, so calling it with the value
+        // already in effect is a safe no-op, not an error.
+        save({ machine });
+        // The launchd/keep-awake service (`vyre server here`'s own installer) lands separately;
+        // this tool records the choice now so onboarding and Settings have something to call.
+        return { machine: ctx.config.machine, service: null };
       },
     });
 

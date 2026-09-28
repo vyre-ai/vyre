@@ -24,7 +24,7 @@ const HEADER = "x-vyre-onboard";
 const sha = s => crypto.createHash("sha256").update(String(s)).digest("hex");
 
 /** The tools the onboarding page may call. onboard.link is not one: only the socket mints links. */
-export const TOOLS = new Set(["onboard.status", "onboard.you", "onboard.name", "onboard.claude", "onboard.tailscale", "onboard.history",
+export const TOOLS = new Set(["onboard.status", "onboard.you", "onboard.machine", "onboard.name", "onboard.claude", "onboard.tailscale", "onboard.history",
   "onboard.skip", "onboard.finish", "onboard.passkey", "projects.catalog", "projects.create", "projects.list", "recall.status"]);
 
 const onboardPath = p => p === "/onboard" || p.startsWith("/onboard/");

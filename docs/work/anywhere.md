@@ -27,21 +27,21 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   test/boundaries all green (config 21/21, modules 40/40, presence 134/135 (1 skip), onboard+
   daemon 20/20, boundaries 5/5).
 
-## Done (cont. 2) — 28 Sep, team-lead review round
+## Done (cont. 2): 28 Sep, team-lead review round
 - Design approved with two tweaks, applied to ADR 0039 and docs/design/anywhere.md:
   1. No auto-delete, ever. Section 4's "vyre server forget" / 24-hour guard is gone; replaced
      with "Free up space on this laptop" in Settings, always previewed (counts, by piece), only
      ever run on the person's explicit confirm.
   2. Solo plus a phone is its own case (new ADR section 5): pairing a second device to a Solo
-     machine flips that machine's `machine` from `"solo"` to `"server"` in place — no move, no
+     machine flips that machine's `machine` from `"solo"` to `"server"` in place: no move, no
      federation involvement, Tailscale/relay turn on only then. This is exactly tailnet's
      `onboard.join.verify` trigger.
 - Fixed several leftover `config.role` mentions in sections 3/4/6 that should have said
   `config.machine` (missed in the first pass).
 - Added a concrete tool contract for launch and tailnet: `onboard.machine` (new tool,
-  core/onboard, HUMAN_ONLY) — `{action:"set", machine:"solo"|"server"}` -> `{machine, service?}`;
+  core/onboard, HUMAN_ONLY): `{action:"set", machine:"solo"|"server"}` -> `{machine, service?}`;
   Solo needs no call; Device is set by `onboard.join`'s verify step calling back into it. Not
-  yet implemented — next.
+  yet implemented: next.
 - Answered launch's "one-command Solo install" question: no new script, `npm install -g
   https://vyre.run/box/vyre.tgz` + `vyre up` (docs/get-started/without-docker.md) already does
   it; flagged that bare `vyre up` needs to stop assuming role=local-looking-for-a-box and ask/
@@ -63,7 +63,7 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
 ## Needs from others
 - federation: confirm the move engine can implement ADR 0039 section 4's four-piece contract
   (projects, memory, vault, sessions), the source-stays-live-until-destination-confirms
-  ordering, and the no-auto-delete rule (tweak 1 above — "Free up space" is explicit-confirm
+  ordering, and the no-auto-delete rule (tweak 1 above: "Free up space" is explicit-confirm
   only, federation's engine should not itself schedule any cleanup).
 - windows: Windows Solo needs the seam this ADR names (role mapping is OS-agnostic; `local/*`
   macOS-only modules need Windows equivalents, out of scope here).
@@ -77,7 +77,7 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   `"box"`/`"local"` passed directly (existing tests do this) still works unchanged.
 - `core/daemon/index.js` builds `Presence` with `cfg.machine` instead of `cfg.role`.
 - Moved from `ctx.config.role === "box"` to `isServer(ctx.config.machine)` in
-  `core/presence/index.js`, `core/presence/module.js`, `core/onboard/index.js` — these three
+  `core/presence/index.js`, `core/presence/module.js`, `core/onboard/index.js`: these three
   gate real server/not-server behavior, not an OS artifact. No other team's file was touched;
   ~15 other `role === "box"/"local"` sites (planner, term, projects, statusline, link, files,
   vault/watch, sessions/config, modules/federate, cli/commands/*) are untouched and still work,

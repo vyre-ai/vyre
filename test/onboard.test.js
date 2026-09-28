@@ -262,6 +262,31 @@ test("onboard: step 1 saves your name and the assistant's; a name that fits beco
   assert.equal(s.current, "claude");
 });
 
+// ADR 0039: onboard.machine records the person's own solo/server choice; device is never sent
+// directly (it's set by onboard.join once a connection to another server is confirmed).
+test("onboard: onboard.machine records solo or server, rejects a bad value, and onboard.status reports it", async t => {
+  const { root } = await box(t);
+  const { url, port } = (await call("onboard.link", {}, { root })).data;
+  const base = `http://127.0.0.1:${port}`;
+  const { session } = await redeem(url);
+  const saved = () => JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8"));
+
+  const bad = await (await tool(base, session, "onboard.machine", { machine: "container" })).json();
+  assert.match(bad.error.message, /solo.*server.*device|enum/i);
+
+  const solo = await (await tool(base, session, "onboard.machine", { machine: "solo" })).json();
+  assert.equal(solo.data.machine, "solo");
+  assert.equal(saved().machine, "solo");
+
+  const server = await (await tool(base, session, "onboard.machine", { machine: "server" })).json();
+  assert.equal(server.data.machine, "server");
+  assert.equal(saved().machine, "server", "the later choice replaces the earlier one");
+
+  const s = (await (await tool(base, session, "onboard.status")).json()).data;
+  assert.equal(s.machine, "server");
+  assert.equal(s.role, "box", "role is untouched by this tool");
+});
+
 test("onboard: reserve goes to ts.net without a zone token and says so when the tailnet has HTTPS off; with a token it is vyre.run", async t => {
   const { root } = await box(t);
   process.env.VYRE_TAILSCALE_BIN = fakeBin(fs.mkdtempSync(path.join(root, "ts-")), "tailscale", JSON.stringify({ BackendState: "Running", TUN: true,
