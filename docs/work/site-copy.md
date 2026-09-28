@@ -107,7 +107,13 @@ old copy, new for the rewrite. 35 is the floor.
   screen), `<you>.vyre.run` (it's your Tailscale name today), "start on your Mac" (a server is needed
   today), Bash file changes on the safety list (not recorded yet), and the /start pairing note.
 
-## Found, not fixed (outside copy)
+## Demo wiring (lead asked site-copy to take it)
+
+Fixed: see site/CHANGELOG.md. Every control on the page now does something, and none needs a backend.
+CDP check on testbox: 34/34 pass, console clean on /, /start and /404. Screenshots
+check-dialog.png, check-dialog-390.png and check-hero-after-try.png sit next to the others.
+
+## Found earlier (now fixed, above)
 
 - `site/app.js` doesn't wire the hero Capsule demo. It looks for `[data-cap-tabs]`, `#cap-field`,
   `#cap-demo` and `[data-dest-name]`, none of which exist in `site/index.html` (the page uses

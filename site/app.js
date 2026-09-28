@@ -1,29 +1,51 @@
-// vyre.run: copy buttons, your own address, the Capsule states, and the Control-Control demo.
+// vyre.run: copy buttons, install tabs, your own address, the Capsule demo and the small
+// interactive panels (memory's Why, vault revoke, Glass take-over, module switches).
+// Everything here runs in the page. Nothing you type is sent anywhere.
 (() => {
   'use strict';
 
-  // Copy the install command.
-  document.querySelectorAll('[data-copy]').forEach((btn) => {
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+
+  // A short message at the bottom of the screen.
+  const toast = $('#toast');
+  let toastTimer = 0;
+  function say(text) {
+    if (!toast) return;
+    toast.textContent = text;
+    toast.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.classList.remove('on'); toast.textContent = ''; }, 2600);
+  }
+
+  // Copy buttons. The label span is [data-copy-label] on /start and .txt on the landing page;
+  // an install block's [data-copied] line says it worked.
+  $$('[data-copy]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const label = btn.querySelector('[data-copy-label]');
+      const label = $('[data-copy-label], .txt', btn);
       const ariaLabel = btn.dataset.aria || (btn.dataset.aria = btn.getAttribute('aria-label') || '');
+      const block = btn.closest('[data-install]');
+      const note = block && $('[data-copied]', block);
+      let ok = true;
       try {
         await navigator.clipboard.writeText(btn.getAttribute('data-copy'));
-        if (label) label.textContent = 'Copied';
-        btn.setAttribute('aria-label', 'Copied');
       } catch (e) {
-        if (label) label.textContent = 'Select it';
+        ok = false;
       }
+      if (label) label.textContent = ok ? 'Copied' : 'Select it';
+      if (note) note.textContent = ok ? 'Copied to your clipboard.' : 'Copy failed. Select the text and copy it yourself.';
+      if (ok) btn.setAttribute('aria-label', 'Copied');
       setTimeout(() => {
         if (label) label.textContent = 'Copy';
+        if (note) note.textContent = '';
         if (ariaLabel) btn.setAttribute('aria-label', ariaLabel);
       }, 2000);
     });
   });
 
   // Your name becomes your address everywhere on the page.
-  const nameIn = document.getElementById('yourname');
-  const hosts = document.querySelectorAll('[data-host]');
+  const nameIn = $('#yourname');
+  const hosts = $$('[data-host]');
   if (nameIn) {
     nameIn.addEventListener('input', () => {
       const clean = nameIn.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20);
@@ -34,38 +56,20 @@
     });
   }
 
-  // Capsule state tabs: each group drives the capsule whose id it names.
-  function setState(group, state) {
-    const cap = document.getElementById(group.getAttribute('data-cap-tabs'));
-    if (!cap) return;
-    cap.setAttribute('data-state', state);
-    group.querySelectorAll('[data-state]').forEach((b) => {
-      b.setAttribute('aria-pressed', String(b.getAttribute('data-state') === state));
-    });
-  }
-  document.querySelectorAll('[data-cap-tabs]').forEach((group) => {
-    group.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-state]');
-      if (b) setState(group, b.getAttribute('data-state'));
-    });
-  });
-
-  // Install tabs: Linux box / Mac / What it needs. One group can appear more than once on the
-  // page (the hero and the end-of-page install both use it), so this wires every `.itabs` found.
-  // Each tab's id ends in a stable key ("linux", "mac", "needs") shared across both groups; that
-  // key is what a remembered choice and the OS guess are stored and matched by.
+  // Install tabs: Linux server / Mac / What it needs. The hero and the end of the page each have
+  // a group. Each tab's id ends in a stable key ("linux", "mac", "needs") shared across both
+  // groups; a remembered choice and the OS guess are stored and matched by that key.
   const tabKey = (el) => el.id.split('-').pop();
   const STORE_KEY = 'vyre-install-os';
   const readStored = () => { try { return localStorage.getItem(STORE_KEY); } catch { return null; } };
   const writeStored = (key) => { try { localStorage.setItem(STORE_KEY, key); } catch {} };
-  // A guess only, and only for the default: Mac reads as "mac" (checked in both platform and the
-  // UA string, since navigator.platform can be frozen or absent and a --user-agent override does
-  // not always change it), anything else stays "linux". A person can always click a different tab.
+  // A guess for the default only: a Mac reads as "mac" (checked in both platform and the UA
+  // string, since navigator.platform can be frozen or absent), anything else as "linux".
   const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
   const guessOs = /mac/i.test(platform) || /mac/i.test(navigator.userAgent || '') ? 'mac' : 'linux';
 
-  document.querySelectorAll('.itabs').forEach((tabs) => {
-    const tabEls = [...tabs.querySelectorAll('.itab')];
+  $$('.itabs').forEach((tabs) => {
+    const tabEls = $$('.itab', tabs);
     const select = (tab, { remember = true } = {}) => {
       tabEls.forEach((t) => {
         const on = t === tab;
@@ -90,78 +94,263 @@
       tabEls[next].focus();
       select(tabEls[next]);
     });
-    // Default: a remembered choice wins, then the OS guess, then whatever the markup already
-    // marks selected. Silent (does not re-write the choice a person didn't just make).
+    // Default: a remembered choice wins, then the OS guess, then the markup's own selection.
     const want = readStored() || guessOs;
     const initial = tabEls.find((t) => tabKey(t) === want);
     if (initial && !initial.matches('[aria-selected="true"]')) select(initial, { remember: false });
   });
 
-  // The demo.
-  const demo = document.getElementById('demo');
-  if (!demo || typeof demo.showModal !== 'function') return;
-  const demoTabs = demo.querySelector('[data-cap-tabs]');
-  const field = document.getElementById('cap-field');
-  const status = demo.querySelector('[data-demo-status]');
-  const destName = demo.querySelector('[data-dest-name]');
-  const destWhere = demo.querySelector('[data-dest-where]');
-  const destNote = demo.querySelector('[data-dest-note]');
-  const destHint = demo.querySelector('[data-dest-hint]');
-  const AGENTS = {
-    juno: ['your assistant', 'default', 'juno can start any session or type into it.'],
-    kit: ['Harlow Legal › Q3 report', 'thread · 4 days', 'kit works on the Harlow deck in this thread.'],
-    pax: ['Northwind Bakery › new thread', 'new thread', 'pax can read Northwind Bakery and nothing else.'],
-  };
-  let opener = null;
-
-  function route() {
-    const m = field.value.match(/^@(\w+)/);
-    const who = m && AGENTS[m[1].toLowerCase()] ? m[1].toLowerCase() : 'juno';
-    const [where, note, hint] = AGENTS[who];
-    destName.textContent = who;
-    destWhere.textContent = where;
-    destNote.textContent = note;
-    destHint.textContent = m && !AGENTS[m[1].toLowerCase()] ? 'You have no agent called @' + m[1] + ', so this goes to juno.' : hint;
-  }
-
-  function open() {
-    if (demo.open) return;
-    opener = document.activeElement;
-    setState(demoTabs, 'typing');
-    status.textContent = '';
-    demo.showModal();
-    field.focus();
-  }
-  function close() { if (demo.open) demo.close(); }
-  demo.addEventListener('close', () => { if (opener && opener.focus) opener.focus(); });
-
-  document.querySelectorAll('[data-open-demo]').forEach((b) => b.addEventListener('click', open));
-  demo.querySelector('[data-close-demo]').addEventListener('click', close);
-  demo.addEventListener('click', (e) => { if (e.target === demo) close(); });
-  demoTabs.addEventListener('click', () => {
-    if (demo.querySelector('#cap-demo').getAttribute('data-state') === 'typing') field.focus();
+  // Memory: "Why?" opens the turn a recalled answer came from.
+  $$('.why[aria-controls]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const src = document.getElementById(btn.getAttribute('aria-controls'));
+      if (!src) return;
+      const open = src.hidden;
+      src.hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+    });
   });
+
+  // Vault: revoke the shared env set, and share it again.
+  $$('[data-share]').forEach((row) => {
+    const btn = $('[data-revoke]', row);
+    const state = $('[data-share-state]', row);
+    const note = $('[data-share-note]', row.parentElement);
+    if (!btn || !state) return;
+    const was = { state: state.textContent, note: note ? note.textContent : '' };
+    btn.addEventListener('click', () => {
+      const shared = btn.textContent.trim() === 'Revoke';
+      state.textContent = shared ? 'not shared' : was.state;
+      btn.textContent = shared ? 'Share again' : 'Revoke';
+      btn.setAttribute('aria-label', shared ? 'Share the harlow-site env with Harlow Legal again' : 'Revoke the harlow-site env share');
+      if (note) note.textContent = shared ? 'Revoked. Harlow Legal can no longer use harlow-site env, and the values never left your server.' : was.note;
+    });
+  });
+
+  // Glass: take the keyboard from kit, then hand it back.
+  $$('[data-glass]').forEach((glass) => {
+    const btn = $('[data-takeover]', glass);
+    const who = $('[data-glass-who]', glass);
+    const tag = $('[data-glass-tag]', glass);
+    const msg = $('[data-glass-msg]', glass);
+    if (!btn) return;
+    const was = { who: who && who.textContent, tag: tag && tag.textContent, msg: msg && msg.innerHTML };
+    btn.addEventListener('click', () => {
+      const take = btn.getAttribute('aria-pressed') !== 'true';
+      btn.setAttribute('aria-pressed', String(take));
+      btn.textContent = take ? 'Hand back' : 'Take over';
+      glass.classList.toggle('taken', take);
+      if (who) who.textContent = take ? 'paused' : was.who;
+      if (tag) tag.textContent = take ? 'you' : was.tag;
+      if (msg) msg.innerHTML = take ? '<span class="bone">You have the keyboard.</span> kit is paused until you hand it back.' : was.msg;
+    });
+  });
+
+  // Settings > Modules: the switches flip.
+  $$('.sw-btn[role="switch"]').forEach((sw) => {
+    sw.addEventListener('click', () => {
+      const on = sw.getAttribute('aria-checked') !== 'true';
+      sw.setAttribute('aria-checked', String(on));
+      say(sw.getAttribute('aria-label') + (on ? ' is on.' : ' is off. The other modules keep working.'));
+    });
+  });
+
+  // The Capsule demo. One Capsule lives in the hero; the dialog borrows it while open.
+  const wrap = $('[data-cap-wrap]');
+  const cap = wrap && $('[data-capsule]', wrap);
+  if (!cap) return;
+  const field = $('.cap-field', cap);
+  const reply = $('[data-reply]', cap);
+  const status = $('[data-status]', wrap);
+  const modes = $$('.cap-modes .dtab', wrap);
+  const dest = {
+    name: $('[data-d-name]', cap), where: $('[data-d-where]', cap),
+    note: $('[data-d-note]', cap), hint: $('[data-d-hint]', cap),
+  };
+  const DEFAULT_HINT = dest.hint ? dest.hint.textContent : '';
+  // Where a message goes, by the @name at its start. No @name means juno, your assistant.
+  const ROUTES = {
+    juno: ['juno', 'your assistant', 'default'],
+    kit: ['kit', 'Harlow Legal › Q3 report', 'thread'],
+    northwind: ['kit', 'Northwind Bakery › order form', 'project'],
+  };
+
+  function setState(state) {
+    cap.setAttribute('data-state', state);
+    modes.forEach((b) => b.setAttribute('aria-pressed', String(b.getAttribute('data-state') === state)));
+  }
+  function setStatus(text) { if (status) status.textContent = text; }
+
+  function routeFor(text) {
+    const m = text.trim().match(/^@(\w+)/);
+    const key = m ? m[1].toLowerCase() : 'juno';
+    return { at: m ? m[1] : '', known: !!ROUTES[key], r: ROUTES[key] || ROUTES.juno };
+  }
+  function route() {
+    const { at, known, r } = routeFor(field.value);
+    dest.name.textContent = r[0];
+    dest.where.textContent = r[1];
+    dest.note.textContent = r[2];
+    dest.hint.textContent = at && !known ? 'You have no agent or project called @' + at + ', so this goes to juno.' : DEFAULT_HINT;
+  }
+
+  function showReply(who, text) {
+    reply.hidden = false;
+    reply.textContent = '';
+    const w = document.createElement('span');
+    w.className = 'who';
+    w.textContent = who;
+    const t = document.createElement('span');
+    t.textContent = text;
+    reply.append(w, t);
+    reply.classList.remove('pop');
+    void reply.offsetWidth;
+    reply.classList.add('pop');
+  }
+
+  function send(text) {
+    const q = text.trim();
+    if (!q) return;
+    const { r } = routeFor(q);
+    const body = q.replace(/^@\w+\s*/, '');
+    field.value = '';
+    route();
+    if (/cost per lead|target/i.test(body)) {
+      const rq = $('[data-r-q]', cap);
+      if (rq) rq.textContent = body;
+      reply.hidden = true;
+      setState('recall');
+      setStatus('Demo: the answer comes from a past call, with its source. Nothing left this page.');
+    } else if (/^do\s/i.test(body)) {
+      showReply('juno', 'On your Mac I would do this with your mouse and keyboard, and ask you before sending anything.');
+      setStatus('Demo only. Nothing left this page.');
+    } else {
+      showReply(r[0], r[0] === 'juno'
+        ? 'On your Mac I would answer this from your past sessions, or ask Claude.'
+        : 'Got it. I will work on this in ' + r[1] + '.');
+      setStatus('Demo: on your Mac this would go to ' + r[0] + '. Nothing left this page.');
+    }
+  }
+
+  modes.forEach((b) => b.addEventListener('click', () => {
+    setState(b.getAttribute('data-state'));
+    setStatus('');
+    if (b.getAttribute('data-state') === 'typing') field.focus();
+  }));
 
   field.addEventListener('input', route);
   field.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (!field.value.trim()) return;
-      status.textContent = 'Demo only. On your Mac this would go to ' + destName.textContent + '. Nothing left this page.';
-      field.value = '';
-      route();
+      send(field.value);
     } else if (e.key === 'ArrowUp' && !field.value) {
       e.preventDefault();
-      setState(demoTabs, 'waiting');
+      setState('waiting');
+      const first = $('.wait', cap);
+      if (first) first.focus();
     }
   });
-  demo.querySelectorAll('[data-demo-send]').forEach((b) => b.addEventListener('click', () => {
-    status.textContent = 'Demo only. On your Mac, Send sends the exact text you see. Nothing left this page.';
+
+  // Try buttons type the example into the Capsule, then send it.
+  let typing = 0;
+  $$('[data-try]').forEach((b) => b.addEventListener('click', () => {
+    const text = b.getAttribute('data-try');
+    clearInterval(typing);
+    setState('typing');
+    reply.hidden = true;
+    setStatus('');
+    field.value = '';
+    let i = 0;
+    const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { field.value = text; route(); send(text); return; }
+    typing = setInterval(() => {
+      i += 2;
+      field.value = text.slice(0, i);
+      route();
+      if (i >= text.length) { clearInterval(typing); setTimeout(() => send(text), 350); }
+    }, 28);
   }));
 
-  // Option-Space toggles the Capsule, same as the real default. Control pressed twice, with no
-  // other key in between, does too: that's the optional toggle a person turns on from the
-  // menu-bar mark, kept here so the demo matches either way someone tries it.
+  // The mic: on a Mac, Deepgram turns speech into text. Here it only says so.
+  const mic = $('.cap-mic', cap);
+  if (mic) mic.addEventListener('click', () => {
+    const on = mic.getAttribute('aria-pressed') !== 'true';
+    mic.setAttribute('aria-pressed', String(on));
+    setStatus(on ? 'Demo: on your Mac you would talk now, and Deepgram would type it. This page does not record.' : '');
+  });
+
+  // Held: Send and Edit.
+  const msg = $('.st-held .msg', cap);
+  $$('[data-demo-send]', cap).forEach((b) => b.addEventListener('click', () => {
+    if (msg) msg.removeAttribute('contenteditable');
+    setStatus('Demo: on your Mac, Send sends the exact text you see. Nothing left this page.');
+  }));
+  $$('[data-demo-edit]', cap).forEach((b) => b.addEventListener('click', () => {
+    if (!msg) return;
+    msg.setAttribute('contenteditable', 'true');
+    msg.focus();
+    setStatus('Change the text, then press Send.');
+  }));
+
+  // Waiting: pick a row with the arrows or a click, Enter or a second click reviews it.
+  const waits = $$('.wait', cap);
+  function review(row) {
+    if (/juno/.test(row.textContent)) {
+      setState('held');
+      setStatus('');
+    } else {
+      setStatus('Demo: kit\'s email to 14 Northwind Bakery customers waits for your OK. This demo only opens juno\'s draft.');
+    }
+  }
+  waits.forEach((row, i) => {
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.addEventListener('click', () => {
+      if (row.classList.contains('on')) { review(row); return; }
+      waits.forEach((w) => w.classList.toggle('on', w === row));
+    });
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); review(row); }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const next = waits[Math.min(waits.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1)))];
+        waits.forEach((w) => w.classList.toggle('on', w === next));
+        next.focus();
+      }
+    });
+  });
+
+  // The dialog: ⌥Space (or Control twice) opens the same Capsule over the page.
+  const demo = $('#demo');
+  const mount = $('#demo-mount');
+  if (!demo || !mount || typeof demo.showModal !== 'function') return;
+  const home = document.createElement('div');
+  let opener = null;
+
+  function open() {
+    if (demo.open) return;
+    opener = document.activeElement;
+    home.style.height = wrap.offsetHeight + 'px';
+    wrap.replaceWith(home);
+    mount.appendChild(wrap);
+    setState('typing');
+    setStatus('');
+    reply.hidden = true;
+    demo.showModal();
+    field.focus();
+  }
+  function close() { if (demo.open) demo.close(); }
+  demo.addEventListener('close', () => {
+    home.replaceWith(wrap);
+    if (opener && opener.focus) opener.focus();
+  });
+
+  $$('[data-open-demo]').forEach((b) => b.addEventListener('click', open));
+  $$('[data-close-demo]', demo).forEach((b) => b.addEventListener('click', close));
+  demo.addEventListener('click', (e) => { if (e.target === demo) close(); });
+
+  // Option-Space toggles the Capsule, the same default as on a Mac. Control pressed twice, with
+  // no other key between, does too: the optional toggle a person can turn on from the menu bar.
   document.addEventListener('keydown', (e) => {
     if (e.altKey && e.code === 'Space') {
       e.preventDefault();

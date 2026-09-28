@@ -5,6 +5,23 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
+### The Capsule demo and the page's panels work (2026-09-28)
+
+- `app.js` was never updated when the hero markup was rebuilt, so live vyre.run had a dead demo
+  and threw at load (`demoTabs` was null). Rewired to the markup that exists: the
+  Typing/Recall/Held/Waiting tabs, typing with live routing (@kit, @northwind, unknown names),
+  Enter, the three Try buttons, the mic, Held's Send and Edit, the Waiting rows (arrows, Enter,
+  click), and the dialog, which borrows the hero Capsule while open (Option-Space, Control twice,
+  the Open the demo button, Esc, the close button, a backdrop click). Every reply says it is a
+  demo, and nothing leaves the page.
+- Also wired, since they were dead too: memory's Why?, the vault's Revoke / Share again, Glass
+  Take over / Hand back, and the module switches. Copy buttons on the landing page now say
+  Copied (they used `.txt`, which the old code never looked for).
+- `styles.css`: `.cap-reply[hidden] { display: none; }`. Before, `display: flex` beat `hidden`
+  and left an empty band in the Capsule.
+- Checked in headless Chrome on testbox over CDP: 34 of 34 control checks pass, with no console
+  errors and no exceptions on the landing page, /start or the 404.
+
 ### Every word rewritten in plain English (2026-09-28)
 
 - The user found the old copy odd and full of AI tells ("never drops the thread"). site-copy

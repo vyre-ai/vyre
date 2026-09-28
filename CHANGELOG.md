@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### vyre.run: the Capsule demo works again
+
+- `site/app.js` rewired to the current markup: demo tabs, Try buttons, the Option-Space dialog, Why?,
+  Revoke, Take over and the module switches. It no longer throws at load. See `site/CHANGELOG.md`.
+
 #### vyre.run: every word rewritten in plain English
 
 - New copy on the landing page, /start and the 404, and claims cut back to what ships. Details in
