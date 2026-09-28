@@ -86,9 +86,9 @@ updated first. With `q` (matched client-side against `full_name` and `descriptio
 search can never fetch without bound) collecting matches, then paginates the matches themselves
 by `page`/`limit`; `more` says whether another page of matches exists either way. `account` picks
 the connected account when there is more than one (the same `forRead`/`forWait` shape as
-Google's). `callers`: people (`cli`, `local`, `deck`, `capsule`) plus `module:sessions` and
-`module:threads` only, this lists every private repo the account can reach, so it is never
-model-reachable, the same as `github.connect`/`.remove`/`.project`. No tool in this module that a
+Google's). `callers`: people (`cli`, `local`, `deck`, `capsule`) plus `module:sessions` only, this
+lists every private repo the account can reach, so it is never model-reachable, the same as
+`github.connect`/`.remove`/`.project`. No tool in this module that a
 model can call ever touches the token: reads (`repos`) are person/module-only, and there is no
 model-reachable write in 0.1.1 (clone and worktree creation run only from `github.project`, itself
 person/module-only). Any future model-reachable push or PR tool goes through the Gate, unheld
@@ -174,8 +174,10 @@ account?}`:
 a different tool (4a), not a `project` input here: an earlier draft let `github.project` do both
 (`project?` param, `projects.add-workspace` when given), but that let a second, non-primary repo
 silently overwrite the `github_projects` row meant for the session-worktree repo, so it was split
-before either path shipped. `callers` for `github.project`: people plus `module:threads` (the
-onboarding "connect a repo" step). Never a model.
+before either path shipped. `callers` for `github.project`: people only (`launch`'s onboarding
+"connect a repo" step calls it as a person surface, `deck`/`cli`/etc, never as a module - see the
+firstParty note near the end of this section for why no module belongs here at all). Never a
+model.
 
 ### 4a. Adding a repo to an EXISTING project
 
@@ -244,8 +246,9 @@ per distinct repo found across every remote in every workspace (cached by `full_
 same repo behind two remotes, or the same repo in two workspaces, is only ever checked once). It
 costs nothing to call speculatively the moment a project opens.
 
-`callers`: people plus `module:threads` (onboarding, or a project view, can offer "add this repo?"
-per workspace without the person typing anything). Returns `{ project, workspaces: [{ folder,
+`callers`: people only (onboarding or a project view calls it as `deck`/`cli`/etc, the same as
+`github.project` above, so it can offer "add this repo?" per workspace without the person typing
+anything - no module ever calls `detect` directly). Returns `{ project, workspaces: [{ folder,
 isRepo, remotes: [{ name, url, full_name, match }] }] }`. `remotes` is `[]` for a folder that
 isn't a git repo at all. `full_name` is `owner/name` when a remote's URL parses as github.com
 (`originFullName`, `core/github/git.js`), `null` for anything else (a `gitlab.com` remote, say).
@@ -279,8 +282,11 @@ project-change event today; `thread.started` is real, emitted by the Switchboard
   `THREAD_STATUSES`; `sessions` picks the exact one(s) when they build the hook), call
   `github.session.cleanup { project, session }`.
 
-- `github.session.worktree { project, session }` (`internal: true`, callers `["module:sessions"]`
-  only, never a model, never a person surface directly): if the project is not a GitHub project,
+- `github.session.worktree { project, session }` (`internal: true`, callers `["module:sessions",
+  "module:threads"]`, both first-party-checked, never a model, never a person surface directly:
+  the switchboard (`threads`) is the one that actually resolves a session's cwd through this
+  tool, `sessions` is kept alongside it for the stage/0.1.1 fold): if the project is not a GitHub
+  project,
   returns `null` (sessions then uses the project's home folder directly, as today). Otherwise:
   the session id is reduced to a safe short id first (git's own check-ref-format rules, no
   leading `.` or `-`, no `..` anywhere, no trailing `.`, since this becomes a path segment and a
@@ -338,10 +344,10 @@ you what you'd need... without a new tool from me"). Not started; 0.1.2.
 | Tool | Callers | Model-reachable |
 |---|---|---|
 | `github.connect`, `.connect.cancel`, `.remove`, `.accounts` | people | never |
-| `github.repos`, `github.project`, `github.project.of` | people, `module:sessions`, `module:threads` | never |
-| `github.project.detect` | people, `module:threads` | never |
-| `github.project.add-repo` | people only | never |
-| `github.session.worktree`, `.session.cleanup` | `module:sessions` only, `internal: true` | never |
+| `github.repos` | people, `module:sessions` | never |
+| `github.project`, `github.project.detect`, `github.project.add-repo` | people only | never |
+| `github.project.of` | people, `module:sessions`, `module:threads` | never |
+| `github.session.worktree`, `.session.cleanup` | `module:sessions`, `module:threads`, `internal: true` | never |
 
 No tool a model can call in 0.1.1 touches the token, clones, or writes a worktree. Everything
 that does is a person surface or one of the two named modules.
@@ -356,6 +362,15 @@ requires both: the caller's name is one a tool actually listed, AND `meta.firstP
 the registry's own signal (`core/modules/index.js`'s `firstParty()`, set from where the calling
 module's code actually lives on disk, never something a caller can claim for itself). Reviewer
 and lead finding, 5b1c69f1 review's follow-up.
+
+**Narrowed once more, same review's own follow-up**: `threads` (the switchboard) only actually
+calls `github.project.of` (to learn whether a project has a repo) and the two session-worktree
+tools (the worktree mechanics themselves) - never `github.repos`, `github.project` or
+`.project.detect`, which are person surfaces only (`launch`'s screens call these as `deck`/`cli`/
+etc, never as a module, so no module entry belongs on them at all). Narrowed accordingly. Merge
+note: `sessions`' own branch (the stage/0.1.1 fold) already carries `threads` alongside `sessions`
+on the two session-worktree tools; kept here to match, so that fold doesn't quietly deny the
+switchboard's own worktree calls.
 
 ## Consequences
 

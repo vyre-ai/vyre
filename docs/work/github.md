@@ -290,6 +290,31 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   - ADR 0041 updated (the rename, and a short explanation of why the name-only check wasn't
     enough) throughout.
 
+## Done (2026-09-28, reviewer CLEARED 32935271; narrow module:threads down to what the switchboard actually calls)
+- reviewer CLEARED 32935271 (the sanitize fail-closed fix and the firstParty requirement both
+  confirmed sound - noted the registry sets `meta.firstParty` after the caller's own meta,
+  `core/modules/index.js:565-570`, so a caller can't claim it itself). One more LOW, non-blocking:
+  `module:threads` had landed on `github.repos`, `github.project` and `.project.detect`, but the
+  switchboard only actually calls `.project.of`, `.session.worktree` and `.session.cleanup`.
+  Dropped `threads` from the first three (`launch`'s screens are person callers - `deck`/`cli`/
+  etc - so nothing needs a module entry on those anyway); `github.repos` keeps `module:sessions`
+  only, `github.project`/`.detect`/`.add-repo` are now people-only across the board (no
+  `checkModuleCaller` call left in either `github.project`'s or `.detect`'s `run`, matching
+  `add-repo`'s own shape). `github.project.of` and the two session-worktree tools keep both
+  `sessions` and `threads`.
+  - **Merge heads-up from the reviewer, acted on now rather than left for the fold**: the
+    integrator's stage branch (859fb63d) already has `SESSION_ONLY = {sessions, threads}`; this
+    branch had `{sessions}` only. Added `threads` to `SESSION_ONLY` here too, so the fold doesn't
+    quietly deny the switchboard's own worktree calls (`module:threads` on
+    `github.session.worktree`/`.cleanup`, first-party-checked same as everywhere else).
+  - Tests: the `github.repos` module-caller test rewritten for `sessions` (not `threads`), plus a
+    new assertion that `threads`, even first-party, is refused there since it was never named as
+    a caller. New test for `github.session.worktree`/`.cleanup`: a wrong module name is denied, a
+    right name without `firstParty` is denied, `threads` first-party succeeds, `sessions`
+    first-party still succeeds too (the merge-safety case).
+  - ADR 0041 updated throughout (the three narrowed tools, the table, the firstParty note, and
+    the merge heads-up recorded explicitly so it isn't lost before the stage fold).
+
 ## Doing
 - reviewer CLEARED work/github through acfcefd2 (both 3a72ea7f..84e76681 and the stdin fix).
   The credential.interactive LOW is WITHDRAWN (reviewer agreed the evidence was right); the lead

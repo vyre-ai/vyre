@@ -25,14 +25,20 @@ const PEOPLE_AND_MODULES = [...PEOPLE, "module"];
 // registry's own firstParty flag (derived from that, lib/caller.js) is (reviewer, 5b1c69f1
 // review's follow-up, and the lead independently). checkModuleCaller below requires both: the
 // name is one of the ones a tool actually named, AND meta.firstParty === true.
+// Reviewer's follow-up on the rename above: `threads` (the switchboard) only actually calls
+// `.project.of`, `.session.worktree` and `.session.cleanup` - resolving whether a project has a
+// repo, and the worktree mechanics themselves. `github.repos`, `github.project` and `.detect` are
+// person surfaces only (`launch`'s screens call them as `deck`/`cli`/etc, never as a module), so
+// `threads` never belonged on those three; narrowed back down.
 /** Which module callers each tool actually accepts, checked against the raw meta.caller. */
 const MODULE_CALLERS = {
-  "github.repos": new Set(["module:sessions", "module:threads"]),
-  "github.project": new Set(["module:threads"]),
+  "github.repos": new Set(["module:sessions"]),
   "github.project.of": new Set(["module:sessions", "module:threads"]),
-  "github.project.detect": new Set(["module:threads"]),
 };
-const SESSION_ONLY = new Set(["module:sessions"]);
+// Also accepted on `.session.worktree`/`.cleanup`, since the switchboard (`threads`) is the one
+// that actually resolves a session's cwd through them (ADR 0041 section 5); kept alongside
+// `sessions` for the stage/0.1.1 fold (integrator's branch already carries both).
+const SESSION_ONLY = new Set(["module:sessions", "module:threads"]);
 
 const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
 const named = v => (typeof v === "string" && v ? v : undefined);
@@ -258,9 +264,8 @@ export default {
     ctx.tool("github.project", {
       description: "Make a BRAND-NEW project from a repo: clones it and creates the project, recording the repo as the project's primary GitHub repo (what a session's worktree is made from, ADR 0041 section 5). `repo` is owner/name or a full GitHub URL. To add a repo to a project that already exists instead, use github.project.add-repo.",
       input: obj({ name: str, repo: str, account: str }, ["repo"]),
-      callers: PEOPLE_AND_MODULES,
-      run: async ({ name, repo, account: a }, meta = {}) => {
-        checkModuleCaller("github.project", meta, MODULE_CALLERS["github.project"]);
+      callers: PEOPLE,
+      run: async ({ name, repo, account: a }) => {
         const acct = forOne(accounts.all(), named(a));
         const token = await ctx.vault.fetch(acct.item, { field: "token" });
         const full_name = repoName(repo);
@@ -299,9 +304,8 @@ export default {
     ctx.tool("github.project.detect", {
       description: "Per workspace: for each folder a project owns (its home plus every workspace it was given), whether it's a git repo, its remotes, and for any remote that's a GitHub URL, owner/repo plus whether one of the connected accounts can reach it. Read-only: local-only git reads (no network git call, no token used for git), plus one GitHub REST call per distinct repo found across every remote, cached so the same repo is never checked twice. Changes nothing, needed whichever way the project/repo model lands.",
       input: obj({ project: str }, ["project"]),
-      callers: PEOPLE_AND_MODULES,
-      run: async ({ project }, meta = {}) => {
-        checkModuleCaller("github.project.detect", meta, MODULE_CALLERS["github.project.detect"]);
+      callers: PEOPLE,
+      run: async ({ project }) => {
         const folders = await projectFolders(project);
         if (!folders) throw fail(`no project named ${project}`, "not_found");
         const cache = new Map();

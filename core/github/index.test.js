@@ -17,7 +17,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import github from "./index.js";
-import { store as accountStore } from "./accounts.js";
+import { store as accountStore, projectStore } from "./accounts.js";
 
 const plainGit = (dir, args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull } });
 
@@ -146,14 +146,18 @@ test("github.repos: pages without q using GitHub's own paging, and paginates in-
   const denied = await w.as("module:someone-else")("github.repos", {});
   assert.equal(denied.error.code, "denied");
 
-  // github.repos names module:threads - but a module claiming that name isn't enough on its own
-  // (reviewer's LOW: a module's name is self-declared in its own manifest, never proof of where
-  // its code actually lives). Without the registry's own firstParty flag, it's refused exactly
-  // like an unnamed module; with it, it's let through.
-  const notFirstParty = await w.as("module:threads")("github.repos", {});
-  assert.equal(notFirstParty.error.code, "denied", "a module named threads that the registry didn't mark first-party is still refused");
-  const firstParty = await w.as("module:threads", { firstParty: true })("github.repos", {});
+  // github.repos names module:sessions, not threads - the switchboard only calls .project.of and
+  // the session-worktree tools (reviewer's follow-up narrowing this back down). A module claiming
+  // the right name isn't enough on its own either way (reviewer's earlier LOW: a module's name is
+  // self-declared in its own manifest, never proof of where its code actually lives): without the
+  // registry's own firstParty flag, even the right name is refused exactly like an unnamed
+  // module; with it, it's let through. threads, named or not, is refused here either way.
+  const notFirstParty = await w.as("module:sessions")("github.repos", {});
+  assert.equal(notFirstParty.error.code, "denied", "a module named sessions that the registry didn't mark first-party is still refused");
+  const firstParty = await w.as("module:sessions", { firstParty: true })("github.repos", {});
   assert.equal(firstParty.error, undefined, JSON.stringify(firstParty));
+  const wrongName = await w.as("module:threads", { firstParty: true })("github.repos", {});
+  assert.equal(wrongName.error.code, "denied", "threads is a real, first-party module, but github.repos never named it as a caller");
 });
 
 test("github.project.detect: per workspace - a bare folder, a folder with no matching account, and a folder whose remote matches one", async t => {
@@ -311,4 +315,27 @@ test("github.project: repoName refuses a path-traversal owner or a bare '.'/'..'
   const dotName = await w.as("cli")("github.project", { repo: "alex/.." });
   assert.equal(dotName.error.code, "bad_input");
   assert.equal(w.calls.length, 0, "repoName's own validation runs before any tool call at all");
+});
+
+test("github.session.worktree/.cleanup: the switchboard (module:threads) can call these internal, sessions-only tools, same as module:sessions - and only when first-party (reviewer's merge heads-up: the stage branch already expects both names here)", async t => {
+  const home = makeRepo(t);
+  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home }] });
+  projectStore(w.db).put({ project: "harlow", account: "home", full_name: "alex/harlow-legal", default_branch: "main", home }, Date.now());
+
+  const deniedName = await w.as("module:someone-else", { firstParty: true })("github.session.worktree", { project: "harlow", session: "s1" });
+  assert.equal(deniedName.error.code, "denied");
+
+  const notFirstParty = await w.as("module:threads")("github.session.worktree", { project: "harlow", session: "s1" });
+  assert.equal(notFirstParty.error.code, "denied", "threads is the right name, but not marked first-party here");
+
+  const viaThreads = await w.as("module:threads", { firstParty: true })("github.session.worktree", { project: "harlow", session: "s2" });
+  assert.equal(viaThreads.error, undefined, JSON.stringify(viaThreads));
+  assert.match(viaThreads.data.branch, /^vyre\/s2$/);
+
+  const cleaned = await w.as("module:threads", { firstParty: true })("github.session.cleanup", { project: "harlow", session: "s2" });
+  assert.equal(cleaned.error, undefined, JSON.stringify(cleaned));
+  assert.equal(cleaned.data.removed, true);
+
+  const viaSessions = await w.as("module:sessions", { firstParty: true })("github.session.worktree", { project: "harlow", session: "s3" });
+  assert.equal(viaSessions.error, undefined, JSON.stringify(viaSessions));
 });

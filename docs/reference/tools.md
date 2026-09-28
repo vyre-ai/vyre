@@ -930,7 +930,7 @@ Make a BRAND-NEW project from a repo: clones it and creates the project, recordi
   - `repo` string, required
   - `account` string
   - `name` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `github.project.add-repo`
 
@@ -949,7 +949,7 @@ Per workspace: for each folder a project owns (its home plus every workspace it 
 
 - Input:
   - `project` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `github.project.of`
 
