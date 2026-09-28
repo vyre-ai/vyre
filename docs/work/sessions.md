@@ -171,6 +171,11 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   `d2a0207c`. Verified at rc.2's exact conditions on testbox: both new files together with
   switchboard.test.js, boundaries, chat-sessions-contract, thread-status and harness - 175/177
   pass, 2 skip, 0 fail, 54-55s twice in a row, versus 87.5s for the one file alone before.
+- teammates' second small pickup, bundled with the first: `style.append` (ADR 0037, core/style's
+  side already built) alongside `team.project-append` in `harness.brief`. Unlike team's, it's not
+  project-scoped ("the house voice for every session") - applies even outside a project and to an
+  agent out of scope. Order: house voice, then team nudge, then project brief, then lessons.
+  `36caa4ad`. 28/28 on core/harness + test/harness.test.js.
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
