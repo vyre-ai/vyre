@@ -206,6 +206,27 @@ All off for --json, CI, NO_COLOR, non-TTY and prefers-reduced-motion. No network
 
 Filled in as each lands.
 
+## GitHub repo screens (0.1.1, sha 197a482a, 28 Sep)
+
+New project's "From a GitHub repo", a project's Repos section (github.project.detect, Add a
+repo), and a loose thread's "New project from a GitHub repo…", against github's final contract
+(work/github fb31a36e, merged into work/launch-github at 87a4ccc1: repos paging, project.detect
+per-workspace, project.add-repo, narrowed project, github.token-invalid). One shared
+`deck/js/github-repo-picker.js` sheet (search, paging, private badge) for all three call sites.
+No link/unlink UI anywhere - the user settled the model (a project can have several repos or
+none), so a folder that already matches just says so.
+
+`deck/test/github-repo-screens-browser.js`, 15/15 on testbox: real headless Chrome, real vyred,
+every github.\* tool faked at the browser's fetch layer (Page.addScriptToEvaluateOnNewDocument),
+no real GitHub, no real git clone (cloneRepo shells out to git for a real credentialed clone,
+which this test has no reason to exercise; the tool's own core/github/git.test.js covers that).
+Found and fixed a real bug while writing it: "Add a repo" dropped the picker's chosen account
+before calling github.project.add-repo. Also found and fixed three test-only timing races (each
+worth naming since they cost real debugging time): reading a freshly-opened sheet's rows before
+its own async load() resolved (twice), and a global `input[type=search]` in the app shell
+(deck/js/app.js, "Search threads, files, people") shadowing the picker's own scoped search box
+under a plain `input[type=search]` selector.
+
 ## Done
 
 - Landing page vyre.run (`site/index.html`, `site/styles.css`): hero "Your best work, with a

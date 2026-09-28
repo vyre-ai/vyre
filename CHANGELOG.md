@@ -4,6 +4,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### projects, chat: GitHub repo screens (ADR 0041, github's final contract)
+
+- New project: a "From a GitHub repo" option next to New project on /projects. Opens a shared
+  picker (new `deck/js/github-repo-picker.js`, a sheet): search, paging ("Show more"), a private
+  badge, last updated. Picking one calls `github.project`, which clones fresh and makes the
+  project; lands straight on it.
+- A project's Brief tab gets a Repos section: `github.project.detect` reads every workspace
+  folder and says, per folder, "Connected to owner/repo", "owner/repo, but the connected account
+  can't reach it right now" (a broken token, or the wrong account; `github.token-invalid`
+  refreshes it), "Git repo, not GitHub", or "Not a git repo". "Add a repo" reuses the same picker
+  and calls `github.project.add-repo`, which only ever adds a brand-new workspace folder, never
+  touching an existing one. There is no "link" screen: the user's decision, relayed by the lead,
+  is that a project can have several repos or none, with nothing to confirm when one already
+  matches.
+- A loose thread's "Add to a project" gets a second option, "New project from a GitHub repo…":
+  the same picker, then `github.project` followed by `projects.add-threads` to file the thread
+  into the project it just made.
+- Tests: `deck/test/github-repo-screens-browser.js`, real headless Chrome against a real vyred
+  with every github.\* tool response faked at the browser's own fetch layer (no real GitHub, no
+  real git clone) - the picker's search/paging/pick, detect's three cases, Add a repo's exact
+  input, and the loose-thread flow's project-then-file sequence. 15/15 on testbox.
+
 #### Wink: the ring carries the real pairing secret, not a hash of it (ADR 0043)
 
 - `deck/js/phone-code.js`: `ticketLevels`/`ticketRingSvg` decode `relay.pair.ticket`'s base64url
