@@ -23,7 +23,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { callerKind } from "../modules/index.js";
 import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
-  headSha, resetTo, mergeBranchIn, stillConflicted, compareAndSwap, detectTestCommand, runTests, B } from "./git.js";
+  headSha, resetTo, mergeBranchIn, stillConflicted, compareAndSwap, detectTestCommand, B } from "./git.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE team_teammates (
@@ -91,7 +91,7 @@ export function preamble(tm) {
   const lines = [`You are ${tm.role}, a teammate in the ${tm.project} project (Vyre, ADR 0031).`,
     `Your brief: ${tm.brief || "no brief set yet"}.`,
     tm.role === INTEGRATOR_ROLE
-      ? "A merge request's own worktree may already have a real conflict in it, or a failing test, once you see it: read both sides, fix it with your own tools, then call team.merge (not team.done) to check and finish it. It is refused, saying why, while a conflict remains or the test command still fails; fix more and call it again. Give up on this one with team.fail. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's."
+      ? "A merge request's own worktree may already have a real conflict in it once you see it: read both sides and fix it with your own tools. If this project has its own test command, vyred never runs it (that would mean vyred running your teammates' own code as itself) — you run it yourself, with Bash, in this worktree, and report the exit code. Call team.merge (not team.done) to check and finish: with a conflict still there, or a test command set but not yet run and reported, it refuses and says which; once nothing remains, pass {\"tests\": {\"exit_code\": <the number the command actually exited with>}} if a test command is set. Never make up an exit code you did not see. Fix more and call it again if refused. Give up on this one with team.fail. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's."
       : "Work reaches you as requests, one at a time, wrapped in <vyre-request>. Close each one by calling team.done with a result, or team.fail with a reason, before you stop. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's.",
     "For what was decided or done before in your projects, call memory_ask; it sees only your projects."];
   if (tm.instructions) lines.push("", String(tm.instructions));
@@ -294,11 +294,17 @@ export default {
     /**
      * The integrator's own merge, mechanical and vyred's own act (section 8): reset its worktree
      * to the main tip vyred itself last recorded (never the ref read fresh, so a moved ref is
-     * caught, not trusted), merge the teammate's branch in, run the project's test command, and
-     * only then fast-forward main with a compare-and-swap against that same recorded tip. A
-     * conflict or a failing test is not an error here: it is exactly the case the integrator's
-     * own session (with real reasoning, and its worktree left exactly as this attempt found it)
-     * exists for, so this hands back what it needs, not a thrown error.
+     * caught, not trusted), merge the teammate's branch in, and only then, when there is nothing
+     * left for a session to check, fast-forward main with a compare-and-swap against that same
+     * recorded tip. Vyred never runs the project's own test command itself (reviewer, slice B,
+     * HIGH: that command executes repo content — a teammate's own package.json scripts.test,
+     * conftest.py, a Cargo build script — the moment anything runs it, and vyred running it would
+     * be vyred running a teammate's code as itself, outside every permission floor). So a clean
+     * merge with a test_command set is never finished here either: it always falls through to the
+     * integrator's own session (below, `needsTests`), the same as a real conflict, and only that
+     * session's own Bash may run the command, under its own floor and uid, reporting the exit
+     * code back through team.merge's `tests` input (finalizeMerge). Vyred's part stays only the
+     * merge, the compare-and-swap, and checking the reported exit code is 0 — never running it.
      */
     const attemptMerge = async (integrator, req) => {
       const branch = branchFromMergeText(req.text);
@@ -316,9 +322,8 @@ export default {
       if (!merged.ok) return { done: false, conflict: true, branch, mainSha: recorded, info,
         detail: `merging ${branch} into ${info.base} conflicts:\n${merged.stderr}`.slice(0, 4000) };
       if (integrator.test_command) {
-        const tested = await runTests(info.dir, integrator.test_command);
-        if (!tested.ok) return { done: false, testsFailed: true, branch, mainSha: recorded, info,
-          detail: `${integrator.test_command} failed after merging ${branch}:\n${(tested.stderr || tested.stdout)}`.slice(0, 4000) };
+        return { done: false, needsTests: true, branch, mainSha: recorded, info,
+          detail: `merged ${branch} into ${info.base} cleanly. This project's own test command is set: run it yourself now, in this worktree — vyred never runs it for you:\n${integrator.test_command}\nThen call team.merge with {"tests": {"exit_code": <the command's real exit code>}}.` };
       }
       const newSha = await headSha(info.dir, "HEAD");
       if (!newSha) return { done: false, fatal: "could not read the integrator's worktree HEAD after a clean merge" };
@@ -332,16 +337,20 @@ export default {
         return { done: false, refMoved: true, detail: `${info.base} moved since vyred last recorded it; resynced and will try again` };
       }
       setTeammate(integrator.agent, { main_sha: newSha });
-      return { done: true, branch, base: info.base, from: recorded.slice(0, 7), to: newSha.slice(0, 7), testCommand: integrator.test_command, info };
+      return { done: true, branch, base: info.base, from: recorded.slice(0, 7), to: newSha.slice(0, 7), info };
     };
 
     /**
-     * team.merge, called by the integrator itself once it believes a conflict is resolved (its
+     * team.merge, called by the integrator itself once it believes a conflict is resolved, or
+     * once it has run the project's own test command itself and has an exit code to report (its
      * own worktree state, left exactly as it made it: never reset or re-merged here, unlike
-     * attemptMerge's first, automatic try). Checks that directly — no conflict markers left, the
-     * test command passing — then the same compare-and-swap fast-forward.
+     * attemptMerge's first, automatic try). Checks directly that no conflict markers remain, and
+     * — when a test_command is set — that `tests.exit_code` was actually given and is 0; vyred
+     * takes that report on trust the same way team.done's own result is trusted, and never runs
+     * the command itself to double-check (see attemptMerge's own comment). Logs which session
+     * attested it (the integrator's own thread id) and the exit code into the merge's own result.
      */
-    const finalizeMerge = async (integrator, req) => {
+    const finalizeMerge = async (integrator, req, tests) => {
       const branch = branchFromMergeText(req.text);
       if (!branch) return { done: false, fatal: `not a merge request: ${req.text}` };
       const info = await worktreeInfo(integrator);
@@ -352,11 +361,17 @@ export default {
       if (await stillConflicted(info.dir)) {
         return { done: false, detail: "there are still unresolved conflicts (git diff --diff-filter=U); resolve them, git add them, and call team.merge again" };
       }
-      const recorded = integrator.main_sha || await headSha(info.repo, B(info.base));
+      let attested = null;
       if (integrator.test_command) {
-        const tested = await runTests(info.dir, integrator.test_command);
-        if (!tested.ok) return { done: false, detail: `${integrator.test_command} still fails:\n${(tested.stderr || tested.stdout)}`.slice(0, 4000) };
+        if (!tests || typeof tests.exit_code !== "number") {
+          return { done: false, detail: `this project's own test command is set (${integrator.test_command}); run it yourself in this worktree and call team.merge again with {"tests": {"exit_code": <the command's real exit code>}} — vyred never runs it for you` };
+        }
+        if (tests.exit_code !== 0) {
+          return { done: false, detail: `you reported ${integrator.test_command} exited ${tests.exit_code} (not 0); fix it and call team.merge again` };
+        }
+        attested = { thread: integrator.thread, exit_code: tests.exit_code };
       }
+      const recorded = integrator.main_sha || await headSha(info.repo, B(info.base));
       const newSha = await headSha(info.dir, "HEAD");
       if (!newSha) return { done: false, fatal: "could not read the integrator's worktree HEAD" };
       if (!(await compareAndSwap(info.repo, info.base, recorded, newSha))) {
@@ -365,7 +380,7 @@ export default {
         return { done: false, refMoved: true, detail: `${info.base} moved since vyred last recorded it; resynced, call team.merge again` };
       }
       setTeammate(integrator.agent, { main_sha: newSha });
-      return { done: true, branch, base: info.base, from: recorded.slice(0, 7), to: newSha.slice(0, 7), testCommand: integrator.test_command };
+      return { done: true, branch, base: info.base, from: recorded.slice(0, 7), to: newSha.slice(0, 7), testCommand: integrator.test_command, attested };
     };
 
     const setTeammate = (agent, patch) => {
@@ -465,16 +480,18 @@ export default {
           setTeammate(agent, { current_request: req.id, state: "working" });
           ctx.events.emit("summon.started", { request: req.id, teammate: agent, project: req.project });
           // The integrator's own merge is tried mechanically, by vyred, before its session is
-          // ever started: a clean merge with tests passing needs no reasoning at all, so no slot
-          // and no turn are spent on it. Only a conflict or a failing test reaches its session
-          // (below, the ordinary dispatch, with the detail in the wrapped prompt), and even then
-          // its worktree is left exactly as this attempt found it, ready for it to work on.
+          // ever started: a clean merge with no test_command needs no reasoning at all, so no
+          // slot and no turn are spent on it. A real conflict, or a test_command that needs
+          // running (vyred never runs it itself — reviewer, slice B, HIGH; see attemptMerge's own
+          // comment), reaches its session instead (below, the ordinary dispatch, with the detail
+          // in the wrapped prompt), and even then its worktree is left exactly as this attempt
+          // left it, ready for it to work on.
           let worktreeDir = null;
           if (tm.role === INTEGRATOR_ROLE) {
             const attempt = await attemptMerge(tm, req);
             if (attempt.done) {
               const closed = await finish(reqById(req.id), "done",
-                { result: `Merged ${attempt.branch} into ${attempt.base}, ${attempt.from}..${attempt.to}${attempt.testCommand ? ` (${attempt.testCommand} passed)` : ""}.` });
+                { result: `Merged ${attempt.branch} into ${attempt.base}, ${attempt.from}..${attempt.to}.` });
               await release(closed || req);
               continue;
             }
@@ -489,10 +506,11 @@ export default {
               await release(req);
               continue;
             }
-            // A real conflict or failing test: dispatch below, with `attempt.detail` in the
-            // prompt, so the integrator's own reasoning is spent only where it is actually needed;
-            // its worktree is exactly as attemptMerge left it (mid-conflict, or clean but failing
-            // tests), ready for its own Bash and Edit to work on.
+            // A real conflict, or a test_command the integrator's own session must run itself:
+            // dispatch below, with `attempt.detail` in the prompt, so its own reasoning (and its
+            // own Bash, running the test command under its own floor) is spent only where it is
+            // actually needed; its worktree is exactly as attemptMerge left it (mid-conflict, or
+            // cleanly merged and waiting on a test run).
             req.text = `${req.text}\n\n${attempt.detail}`;
             worktreeDir = attempt.info.dir;
           } else if (tm.isolation === "worktree") {
@@ -769,15 +787,15 @@ export default {
     });
 
     ctx.tool("team.merge", {
-      description: "The integrator's own tool, once it believes it has resolved a merge conflict or fixed a failing test in its own worktree: checks that directly (no conflict markers left, the project's own test command passing), then fast-forwards the project's own branch with a compare-and-swap. Refused, saying which, while a conflict remains or the test command still fails; call it again after fixing more. request may be left out; defaults to the integrator's one running request.",
-      input: { type: "object", properties: { request: { type: "string" } } },
+      description: "The integrator's own tool, once it believes it has resolved a merge conflict in its own worktree, or has run this project's own test command itself (vyred never runs it) and has its exit code: checks that directly (no conflict markers left, and — when a test command is set — that tests.exit_code was reported and is 0), then fast-forwards the project's own branch with a compare-and-swap. Refused, saying which, while a conflict remains, the test command was not actually run and reported, or it failed; call it again after fixing more. request may be left out; defaults to the integrator's one running request.",
+      input: { type: "object", properties: { request: { type: "string" }, tests: { type: "object", properties: { exit_code: { type: "number" } } } } },
       run: async (i, meta) => {
         const r = ownRunning(meta, i.request);
         const tm = byAgent(r.teammate);
         if (!tm || tm.role !== INTEGRATOR_ROLE) throw Object.assign(new Error("team.merge is the integrator's own tool"), { code: "denied" });
-        const result = await finalizeMerge(tm, r);
+        const result = await finalizeMerge(tm, r, i.tests);
         if (!result.done) throw Object.assign(new Error(result.fatal || result.detail || "the merge is not ready yet"), { code: result.fatal ? "bad_input" : "denied" });
-        return finish(r, "done", { result: `Merged ${result.branch} into ${result.base}, ${result.from}..${result.to}${result.testCommand ? ` (${result.testCommand} passed)` : ""}.` });
+        return finish(r, "done", { result: `Merged ${result.branch} into ${result.base}, ${result.from}..${result.to}${result.attested ? ` (${result.testCommand} attested exit 0 by thread ${result.attested.thread})` : ""}.` });
       },
     });
 

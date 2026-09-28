@@ -3546,10 +3546,12 @@ The teammates that serve a project: role, brief, state, queue length and last re
 
 ### `team.merge`
 
-The integrator's own tool, once it believes it has resolved a merge conflict or fixed a failing test in its own worktree: checks that directly (no conflict markers left, the project's own test command passing), then fast-forwards the project's own branch with a compare-and-swap. Refused, saying which, while a conflict remains or the test command still fails; call it again after fixing more. request may be left out; defaults to the integrator's one running request.
+The integrator's own tool, once it believes it has resolved a merge conflict in its own worktree, or has run this project's own test command itself (vyred never runs it) and has its exit code: checks that directly (no conflict markers left, and — when a test command is set — that tests.exit_code was reported and is 0), then fast-forwards the project's own branch with a compare-and-swap. Refused, saying which, while a conflict remains, the test command was not actually run and reported, or it failed; call it again after fixing more. request may be left out; defaults to the integrator's one running request.
 
 - Input:
   - `request` string
+  - `tests` object
+    - `exit_code` number
 - Callers: any caller
 
 ### `team.notes`
