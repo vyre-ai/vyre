@@ -17,9 +17,12 @@
   background-size: 220% 220%; animation: phone-code-shimmer 3.2s ease-in-out infinite; }
 .phone-code-ring.expired { opacity: 0.4; }
 .phone-code-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* Minting (deck/js/wink-card.js's start()/refresh, an async presence-gated call): the same
+   spinner as the ring's own initial one, sized for the meta row instead of the ring's centre. */
+.phone-code-meta .busy { display: block; width: 12px; height: 12px; border-radius: 6px; border: 1.5px solid var(--rule-strong); border-top-color: var(--text); animation: spin 900ms linear infinite; }
 @keyframes phone-code-shimmer { 0% { background-position: 130% 130%; } 100% { background-position: -30% -30%; } }
 @media (prefers-reduced-motion: reduce) {
-  .phone-code-ring .busy { animation: none; border-color: var(--text); }
+  .phone-code-ring .busy, .phone-code-meta .busy { animation: none; border-color: var(--text); }
   .phone-code-ring.shimmer::after { animation: none; display: none; }
 }
 .phone-code-body { display: flex; flex-direction: column; gap: 12px; align-items: center; text-align: center; }

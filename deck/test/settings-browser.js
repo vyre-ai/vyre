@@ -104,24 +104,29 @@ try {
     say("with no proof it is not saved, and the row says why in plain words", (lock?.source !== "account" || lock?.value !== "8h") && /Add one in Settings/.test(note) && !/presence\./.test(note), `value ${lock?.value} (${lock?.source}); row: "${note}"`);
     await shot("lock-after", row(lockKey));
   }
-  // 4. Wink (Settings > Devices, deck/js/phone-code.js): the ring, the countdown, and the
-  // relay.paired reaction (dance, rename, "Add another device"). Real onboard.status carries no
-  // `can` field yet (asked anywhere), so this patches window.fetch, injected before any page
-  // script runs, splicing `can.relayJoin: true` onto that one real response — no fake tool, no
-  // faked module, everything else on the page stays real. relay.pair.ticket itself isn't merged
-  // yet either, so it answers from deck/fixtures/relay.json's fallback (a fixed, far-future
-  // expiresAt — a real mint's TTL is ~5 min, but this fixture's isn't meant to be read literally,
-  // just to prove the ring/countdown/dance mechanics without a real network call). Date.now is
-  // patched the same way so the forced-expiry check can jump straight past that fixed date
-  // instead of waiting on it for real. relay.paired itself is delivered with api.js's own
-  // `hear()` test seam (pwa's contract, used the same way by chat/session.test.js) rather than a
-  // genuine relay handshake, which this box was never asked to run.
+  // 4. Wink (Settings > Devices, deck/js/wink-card.js, shared with onboarding): the explicit-tap
+  // gate, the ring, the countdown, blanking on blur/hidden/expiry, and the relay.paired reaction
+  // (dance, name, fingerprint, Remove) — reviewer's five pre-review points. Real onboard.status
+  // carries no `can` field yet (asked anywhere), so this patches window.fetch, injected before
+  // any page script runs, splicing `can.relayJoin: true` onto that one real response — no fake
+  // tool, no faked module, everything else on the page stays real. It also counts calls to
+  // relay.pair.ticket, so "minted only on tap, never on load, never re-minted by blur/focus" is
+  // an assertion, not an assumption. relay.pair.ticket itself isn't merged yet either, so it
+  // answers from deck/fixtures/relay.json's fallback (a fixed, far-future expiresAt — a real
+  // mint's TTL is ~5 min, but this fixture's isn't meant to be read literally, just to prove the
+  // ring/countdown/dance mechanics without a real network call). Date.now is patched the same
+  // way so the forced-expiry check can jump straight past that fixed date instead of waiting on
+  // it for real. relay.paired itself is delivered with api.js's own `hear()` test seam (pwa's
+  // contract, used the same way by chat/session.test.js) rather than a genuine relay handshake,
+  // which this box was never asked to run.
   await tab.send("Page.addScriptToEvaluateOnNewDocument", { source: `
     window.__fakeNow = null;
+    window.__ticketMints = 0;
     const _now = Date.now.bind(Date);
     Date.now = () => window.__fakeNow ?? _now();
     const _fetch = window.fetch.bind(window);
     window.fetch = async (url, init) => {
+      if (typeof url === "string" && url.includes("/v1/tools/relay.pair.ticket")) window.__ticketMints++;
       const res = await _fetch(url, init);
       if (typeof url === "string" && url.includes("/v1/tools/onboard.status")) {
         const body = await res.clone().json();
@@ -131,38 +136,85 @@ try {
       return res;
     };
   ` });
+  // A same-document hash change (this tab is already on /settings from checks 1-3) never fires
+  // a new document, so addScriptToEvaluateOnNewDocument's injection would never run — force a
+  // real reload through about:blank first.
+  await tab.go("about:blank", 200);
   await tab.go(`${world.url}/settings#devices`, 2500);
-  await tab.run(`await waitFor(".phone-code-ring svg", 8000); return true;`);
-  const ringOk = await tab.run(`const svg = document.querySelector(".phone-code-ring svg"); return !!svg && svg.querySelectorAll("line").length === 72;`);
-  say("Wink: the ring renders (72 ticksSunburst marks)", ringOk);
+  await tab.run(`await waitFor("#wink-h", 8000); return true;`);
+
+  // 4a. Never minted on load: the idle avatar shows (no ticks), "Add a device" is offered, and
+  // relay.pair.ticket was never called.
+  const idle = await tab.run(`return {
+    mints: window.__ticketMints,
+    hasIdleSvg: !!document.querySelector(".phone-code-ring svg"),
+    hasTicks: document.querySelectorAll(".phone-code-ring line").length,
+    hasStart: !!document.querySelector(".phone-code-body .btn.btn-primary"),
+  };`);
+  say("Wink: no ticket minted on load (reviewer's #1)", idle.mints === 0 && idle.hasTicks === 0 && idle.hasIdleSvg, JSON.stringify(idle));
+  say("Wink: \"Add a device\" is offered before any tap", idle.hasStart);
+  await shot("wink-idle", ".phone-code-ring");
+
+  // 4b. The explicit tap mints exactly once and draws the real ring.
+  await tab.run(`document.querySelector(".phone-code-body .btn.btn-primary").click(); await waitFor(".phone-code-ring line", 4000); return true;`);
+  const afterTap = await tab.run(`return { mints: window.__ticketMints, ticks: document.querySelectorAll(".phone-code-ring line").length };`);
+  say("Wink: the ring renders (72 ticksSunburst marks) after the tap", afterTap.ticks === 72, JSON.stringify(afterTap));
+  say("Wink: exactly one mint for the one tap", afterTap.mints === 1, JSON.stringify(afterTap));
   await shot("wink-ring", ".phone-code-ring");
   const before5 = await tab.run(`return document.querySelector(".phone-code-meta").textContent;`);
   say("Wink: the countdown shows a live m:ss", /Expires in \d+:\d\d/.test(String(before5)), String(before5));
-  // The fixture's expiresAt is a fixed epoch (deck/fixtures/relay.json, 1893456000000): jump the
-  // fake clock just past it, rather than a real mint's ~5 min, since this fixture's TTL was never
-  // meant to be read literally (see the note above).
+
+  // 4c. Blur blanks the ring at once, without minting again; focus redraws the SAME ticket.
+  await tab.run(`window.dispatchEvent(new Event("blur")); await wait(50); return true;`);
+  const blurred = await tab.run(`return { ticks: document.querySelectorAll(".phone-code-ring line").length, mints: window.__ticketMints };`);
+  say("Wink: window blur blanks the ring (reviewer's #2), no re-mint", blurred.ticks === 0 && blurred.mints === 1, JSON.stringify(blurred));
+  await tab.run(`window.dispatchEvent(new Event("focus")); await wait(50); return true;`);
+  const refocused = await tab.run(`return { ticks: document.querySelectorAll(".phone-code-ring line").length, mints: window.__ticketMints };`);
+  say("Wink: focus redraws the still-live ticket, no re-mint", refocused.ticks === 72 && refocused.mints === 1, JSON.stringify(refocused));
+
+  // 4d. document hidden blanks it too (a real tab-hide can't be simulated headlessly, so
+  // visibilityState is stubbed for this one check, same technique as the fake clock above).
+  await tab.run(`Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    document.dispatchEvent(new Event("visibilitychange")); await wait(50); return true;`);
+  const hidden = await tab.run(`return document.querySelectorAll(".phone-code-ring line").length;`);
+  say("Wink: document hidden blanks the ring too (reviewer's #2)", hidden === 0, `ticks ${hidden}`);
+  await tab.run(`Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    document.dispatchEvent(new Event("visibilitychange")); await wait(50); return true;`);
+
+  // 4e. The fixture's expiresAt is a fixed epoch (deck/fixtures/relay.json, 1893456000000): jump
+  // the fake clock just past it, rather than a real mint's ~5 min, since this fixture's TTL was
+  // never meant to be read literally (see the note above). Expiry swaps to the idle avatar too.
   await tab.run(`window.__fakeNow = 1893456000000 + 2000; await wait(1200); return true;`);
-  const expired = await tab.run(`return document.querySelector(".phone-code-meta").textContent;`);
-  say("Wink: the ticket actually expires (a forced clock, not a real wait)", /expired/i.test(String(expired)), String(expired));
+  const expired = await tab.run(`return { text: document.querySelector(".phone-code-meta").textContent, ticks: document.querySelectorAll(".phone-code-ring line").length };`);
+  say("Wink: the ticket actually expires (a forced clock, not a real wait)", /expired/i.test(expired.text), JSON.stringify(expired));
+  say("Wink: expiry swaps to the idle avatar (reviewer's #2), not a dimmed stale ring", expired.ticks === 0, `ticks ${expired.ticks}`);
   await tab.run(`window.__fakeNow = null; return true;`);
+
+  // 4f. relay.paired: the dance, then name + fingerprint + Remove (reviewer's #5).
   await tab.run(`const api = await import("/js/api.js");
     api.hear({ id: 999999, at: Date.now(), type: "relay.paired", source: "relay", project: null, thread: null,
-      payload: { device: "dev_test_wink", name: "Wink Test Phone" } });
+      payload: { device: "dev_test_wink", name: "Wink Test Phone", fingerprint: "AB12 CD34" } });
     return true;`);
   await tab.run(`await waitFor(".phone-code-connected", 4000); return true;`);
   const connected = await tab.run(`return {
     text: document.querySelector(".phone-code-connected .h3")?.textContent || "",
     name: document.querySelector(".phone-code-connected input")?.value || "",
-    hasAnother: !!document.querySelector(".phone-code-actions .btn"),
+    fingerprint: document.querySelector(".phone-code-connected .mono")?.textContent || "",
+    actionLabels: [...document.querySelectorAll(".phone-code-actions .btn")].map(b => b.textContent),
     leftoverDance: document.querySelectorAll(".phone-code-ms-done, .phone-code-confetti-bit").length,
   };`);
   say("Wink: relay.paired shows the connected state with the device's own name", /connected/i.test(connected.text) && connected.name === "Wink Test Phone", JSON.stringify(connected));
+  say("Wink: the device's key fingerprint shows too", connected.fingerprint === "AB12 CD34", JSON.stringify(connected));
   say("Wink: the dance's classes/confetti clean up after themselves", connected.leftoverDance === 0, `left ${connected.leftoverDance}`);
-  say("Wink: \"Add another device\" is offered", connected.hasAnother, "");
-  await tab.run(`document.querySelector(".phone-code-actions .btn").click(); await wait(300); return true;`);
-  const another = await tab.run(`return !!document.querySelector(".phone-code-ring svg") && !document.querySelector(".phone-code-connected");`);
-  say("Wink: \"Add another device\" mints a fresh ring", another);
+  say("Wink: \"Add another device\" and Remove are both offered", connected.actionLabels.includes("Add another device") && connected.actionLabels.includes("Remove"), JSON.stringify(connected.actionLabels));
   await shot("wink-connected", ".phone-code-body");
+
+  // 4g. "Add another device" is itself an explicit tap: mints again (a second real call, not a
+  // leftover from 4b), same one-ticket-shown rule.
+  await tab.run(`[...document.querySelectorAll(".phone-code-actions .btn")].find(b => b.textContent === "Add another device").click();
+    await waitFor(".phone-code-ring line", 4000); return true;`);
+  const again = await tab.run(`return { ticks: document.querySelectorAll(".phone-code-ring line").length, mints: window.__ticketMints, hasConnected: !!document.querySelector(".phone-code-connected") };`);
+  say("Wink: \"Add another device\" mints a fresh ring", again.ticks === 72 && again.mints === 2 && !again.hasConnected, JSON.stringify(again));
 
   say("no page errors", tab.errors.length === 0, tab.errors.slice(0, 3).join(" | "));
   process.stdout.write(JSON.stringify({ shots: OUT }) + "\n");

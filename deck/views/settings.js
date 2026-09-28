@@ -25,7 +25,7 @@ import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
 import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, mergeEvent, destinationName, forgetGate } from "../js/server-rows.js";
 import { canRelayJoin } from "../js/join-caps.js";
-import { ticketRingSvg, ticketPhase, countdown, playDance, idleAvatarSvg } from "../js/phone-code.js";
+import { buildWinkCard } from "../js/wink-card.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -579,83 +579,24 @@ function deviceKind(os, name = "") {
   return { kind: k || os || "Device", handheld: false };
 }
 
-/** Wink (ADR 0043, deck/js/phone-code.js): the same live Vyre code ring onboarding's devices
- * step uses, added here so a phone can be added later without re-running onboarding. Gated on
- * onboard.status.can.relayJoin, same as onboarding's — hidden on a Mac until vyre-core.
- * relay.pair.ticket (tailnet, work/tailnet 2990a810, sent to their reviewer) mints a real ticket
- * with a Touch ID prompt; not merged to main yet, so `attempt` answers from
- * deck/fixtures/relay.json until it is. relay.paired {device, name} is the connect signal.
- * `ctx.on`/`ctx.cleanup`/`ctx.alive` (not onboard.js's own `on`/`cleanup`/`every`) since this runs
- * in the main Deck, not the onboarding loopback page. */
+/** Wink (ADR 0043): the same live Vyre code ring onboarding's devices step uses (deck/js/
+ * wink-card.js, shared — reviewer's pre-review points live in that file's header), added here so
+ * a phone can be added later without re-running onboarding. Gated on onboard.status.can.
+ * relayJoin, same as onboarding's — hidden on a Mac until vyre-core. `ctx.on`/`ctx.cleanup`/
+ * `ctx.alive` (not onboard.js's own `on`/`cleanup`/`every`) since this runs in the main Deck, not
+ * the onboarding loopback page; no "Next step" here (`onNext` omitted) since Settings isn't a
+ * wizard. */
 function winkCard(status, ctx) {
   const relay = canRelayJoin(status);
   if (!relay.allowed) return null;
-  let mintedAt = Date.now();
-  let ttlMs = 5 * 60_000;
-  let ticketId = `placeholder-ticket-${mintedAt}`;
-  const mint = async () => {
-    const r = await attempt("relay.pair.ticket", {}, { presence: "asked" });
-    mintedAt = Date.now();
-    if (r.data?.ticket) { ticketId = r.data.ticket; ttlMs = Math.max(0, (r.data.expiresAt ?? mintedAt + ttlMs) - mintedAt); }
-    else ticketId = `placeholder-ticket-${mintedAt}`; // a declined passkey, or any other real error: still shows a ring, never a dead card
-  };
-  const ringEl = h("div", { class: "phone-code-ring", "aria-live": "polite" }, h("span", { class: "busy" }));
-  const meta = h("div", { class: "phone-code-meta" });
-  const body = h("div", { class: "phone-code-body" }, ringEl,
-    h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta);
-  const refreshBtn = h("button", { class: "btn", type: "button" }, "Refresh");
-  refreshBtn.addEventListener("click", async () => { await mint(); await drawRing(); tick(); });
-  const drawRing = async () => {
-    const forId = ticketId;
-    const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
-    const svg = await ticketRingSvg(forId, { theme });
-    if (!ctx.alive() || forId !== ticketId) return;
-    ringEl.innerHTML = svg;
-  };
-  let expiredDrawn = false;
-  const tick = () => {
-    if (!ctx.alive()) return;
-    const { phase, msLeft } = ticketPhase(mintedAt, ttlMs);
-    ringEl.classList.toggle("shimmer", phase === "live" && !calm());
-    ringEl.classList.toggle("expiring", phase === "expiring");
-    ringEl.classList.toggle("expired", phase === "expired");
-    // Swap the spent ticket's ring for the plain avatar once, not on every tick (the lead,
-    // 28 Sep: never go on displaying an already-expired ticket's bits).
-    if (phase === "expired" && !expiredDrawn) { expiredDrawn = true; ringEl.innerHTML = idleAvatarSvg({ size: 280 }); }
-    else if (phase !== "expired") expiredDrawn = false;
-    put(meta, phase === "expired"
-      ? [h("p", { class: "small muted" }, "This code expired."), refreshBtn]
-      : h("p", { class: "small muted" }, `Expires in ${countdown(msLeft)}`));
-  };
-  const showConnected = (/** @type {string} */ deviceId, /** @type {string} */ initialName) => {
-    if (!ctx.alive()) return;
-    const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", value: initialName, "aria-label": "Device name" }));
-    let saved = initialName;
-    const save = async () => {
-      const v = nameIn.value.trim();
-      if (!v || v === saved) return;
-      const r = await attempt("relay.devices.rename", { id: deviceId, name: v });
-      if (!r.error) saved = v;
-    };
-    nameIn.addEventListener("blur", save);
-    nameIn.addEventListener("keydown", e => { if (e.key === "Enter") nameIn.blur(); });
-    const anotherBtn = h("button", { class: "btn btn-primary", type: "button", onclick: async () => { await mint(); await drawRing(); tick(); put(body, ringEl, h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta); } }, "Add another device");
-    put(body,
-      h("div", { class: "phone-code-connected", role: "status" },
-        icon("check", 20),
-        h("div", null,
-          h("p", { class: "h3", style: { margin: "0 0 4px" } }, "Your phone is connected."),
-          h("div", { class: "field" }, nameIn))),
-      h("div", { class: "phone-code-actions" }, anotherBtn));
-  };
-  ctx.on("relay.paired", async (/** @type {any} */ e) => { await playDance(ringEl, calm()); showConnected(e.payload?.device, e.payload?.name || "A device"); });
-  (async () => { await mint(); await drawRing(); tick(); })();
-  const t = setInterval(tick, 1000);
-  ctx.cleanup(() => clearInterval(t));
-  return h("section", { class: "dev-card", "aria-labelledby": "wink-h" },
-    h("div", { class: "lbl" }, "Wink"),
-    h("h2", { class: "h3", id: "wink-h" }, "Wink to connect"),
-    body);
+  return buildWinkCard({
+    attempt,
+    subscribe: ctx.on,
+    every: (fn, ms) => { const t = setInterval(fn, ms); ctx.cleanup(() => clearInterval(t)); },
+    cleanup: ctx.cleanup,
+    calm,
+    alive: ctx.alive,
+  });
 }
 
 /** The owner's devices on the tailnet (onboard.status detail.devices.peers) and the paired Macs (link.peers). */
