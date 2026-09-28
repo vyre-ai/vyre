@@ -188,25 +188,25 @@ as_vyre sh -c 'cat /tmp/.browser.xauth' > "${BROWSER_XAUTH}.new" && as_vyre rm -
 chmod 0644 "${BROWSER_XAUTH}.new" && mv "${BROWSER_XAUTH}.new" "${BROWSER_XAUTH}"
 
 # ---- the session bus, vyre's: AT-SPI for computerd and Chrome -------------------------------
-# The agent's processes are not on it (dbus-launch's own default: a private, randomly named 0700
-# directory only its own uid can even traverse into), so nothing the agent runs can read Chrome's
-# accessibility tree, a form being filled included. browser (Chrome) still needs it -- AT-SPI is
-# how computerd reads Chrome's own tree -- so vyre, the directory's owner, chgrp's it to
-# vyre-bus (a group vyre is already a member of, which needs no CAP_CHOWN: an owner may hand a
-# file to any group they belong to) and opens it to that group only. agent is not in vyre-bus, so
-# this changes nothing for it.
+# The agent's processes are not on it (dbus-launch puts its socket directly in the shared, sticky
+# /tmp on this dbus -- not its own private directory, checked live on testbox, 28 Sep -- so the
+# socket FILE's own mode is the only thing guarding it), so nothing the agent runs can read
+# Chrome's accessibility tree, a form being filled included. browser (Chrome) still needs it --
+# AT-SPI is how computerd reads Chrome's own tree -- so vyre, the socket's owner (dbus-launch ran
+# as vyre), chgrp's that one file to vyre-bus (a group vyre is already a member of, which needs no
+# CAP_CHOWN: an owner may hand a file to any group they belong to) and locks its mode down to that
+# group only. agent is not in vyre-bus, so this changes nothing for it. Never touch /tmp itself:
+# it is shared with the agent's own untrusted processes.
 bus="$(as_vyre dbus-launch --sh-syntax)"
 DBUS_SESSION_BUS_ADDRESS="$(printf '%s\n' "${bus}" | sed -n "s/^DBUS_SESSION_BUS_ADDRESS='\(.*\)';$/\1/p")"
 DBUS_SESSION_BUS_PID="$(printf '%s\n' "${bus}" | sed -n "s/^DBUS_SESSION_BUS_PID=\([0-9]*\);$/\1/p")"
 log "session bus at ${DBUS_SESSION_BUS_ADDRESS}"
-bus_dir="$(printf '%s\n' "${DBUS_SESSION_BUS_ADDRESS}" | sed -n 's#^unix:path=\([^,]*\).*#\1#p')"
-bus_dir="$(dirname "${bus_dir}")"
-if [ -n "${bus_dir}" ] && [ -d "${bus_dir}" ]; then
-  as_vyre chgrp -R vyre-bus "${bus_dir}" && as_vyre chmod -R u+rwx,g+rwx,o-rwx "${bus_dir}"
+bus_sock="$(printf '%s\n' "${DBUS_SESSION_BUS_ADDRESS}" | sed -n 's#^unix:path=\([^,]*\).*#\1#p')"
+if [ -n "${bus_sock}" ] && [ -e "${bus_sock}" ]; then
+  as_vyre chgrp vyre-bus "${bus_sock}" && as_vyre chmod 0660 "${bus_sock}"
 else
-  log "could not find the session bus's own directory in '${DBUS_SESSION_BUS_ADDRESS}'; browser will not reach AT-SPI"
+  log "could not find the session bus's own socket in '${DBUS_SESSION_BUS_ADDRESS}'; browser will not reach AT-SPI"
 fi
-
 # ---- the desktop: the window manager as vyre, the terminal as the agent ------------------------
 # fluxbox is vyre's: the agent's processes are stopped during a sign-in (below), and a stopped
 # window manager would never map the window a fill opens.
@@ -216,23 +216,56 @@ as_vyre sh -c 'mkdir -p "$HOME/.fluxbox" && echo "background: none" > "$HOME/.fl
 sleep 1
 as_agent xterm -geometry 100x30 &
 
+# AT-SPI's OWN bus (org.a11y.Bus) is not the session bus above: it is a second, separately
+# D-Bus-activated one, lazily started the first time anything asks for it, whose socket lives
+# under vyre's own home (~/.cache/at-spi/bus_N, 0700 -- checked live on testbox, 28 Sep: Chrome's
+# own accessibility tree was entirely empty until this ran, because the ATK bridge could not
+# reach this bus at all; activating it before fluxbox is up did not work either, and this needs a
+# short wait too, so it runs here and polls rather than checking once). Force it to start now, as
+# vyre, before Chrome ever needs it, then open its whole directory to vyre-bus the same way as the
+# session bus's socket above.
+setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \
+  env -i HOME="${VYRE_HOME}" USER=vyre LOGNAME=vyre PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" DISPLAY="${DISPLAY}" \
+    XAUTHORITY="${VYRE_XAUTH}" DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS}" DBUS_SESSION_BUS_PID="${DBUS_SESSION_BUS_PID}" \
+  dbus-send --session --dest=org.a11y.Bus --type=method_call --print-reply \
+    /org/a11y/bus org.a11y.Bus.GetAddress >/dev/null 2>&1 || true
+for _ in $(seq 1 25); do
+  [ -d "${VYRE_HOME}/.cache/at-spi" ] && break
+  sleep 0.2
+done
+if [ -d "${VYRE_HOME}/.cache/at-spi" ]; then
+  as_vyre chgrp -R vyre-bus "${VYRE_HOME}/.cache/at-spi" && as_vyre chmod -R u+rwx,g+rwx,o-rwx "${VYRE_HOME}/.cache/at-spi"
+else
+  log "AT-SPI's own bus never appeared under ${VYRE_HOME}/.cache; browser will not reach AT-SPI"
+fi
+
 # ---- Chrome, as browser, launched here (root) rather than by computerd ------------------------
 # The reviewer's root-launcher design (28 Sep): computerd never spawns Chrome and never holds a
 # capability at all (its own setpriv call, below, is back to a plain --inh-caps=-all like every
 # other process here). Chrome talks CDP over two FIFOs instead of a spawned child's own pipe --
 # computerd opens its own ends (computerd/index.js, CHROME_IN/CHROME_OUT) and never touches
 # Chrome's process, uid or a capability of its own.
-CHROME_DIR=/run/vyre-chrome
+#
+# /run is root-owned 0755 (checked live, 28 Sep): root can make a directory there, but root
+# cannot then chgrp it to vyre-bus (CAP_CHOWN, which this container's root does not have, same as
+# everywhere else here) -- root would have to own the target group already, which it does not.
+# vyre can: it belongs to vyre-bus, and an owner may hand a file it made to any group it belongs
+# to. So vyre makes this directory itself, under /tmp (sticky, world-writable, so vyre can create
+# there without needing write on /run) rather than root making it under /run.
+CHROME_DIR=/tmp/vyre-chrome
 CHROME_IN="${CHROME_DIR}/in"    # computerd writes, Chrome reads (its fd 3)
 CHROME_OUT="${CHROME_DIR}/out"  # Chrome writes (its fd 4), computerd reads
 CHROME_PROFILE="${BROWSER_HOME}/chromium"
 CHROME_LOG="${VYRE_HOME}/chromium.log"
-mkdir -p "${CHROME_DIR}"
-chown root:vyre-bus "${CHROME_DIR}" && chmod 0770 "${CHROME_DIR}"
-rm -f "${CHROME_IN}" "${CHROME_OUT}"
-mkfifo -m 0660 "${CHROME_IN}" "${CHROME_OUT}"
-chown root:vyre-bus "${CHROME_IN}" "${CHROME_OUT}"
-: > "${CHROME_LOG}" 2>/dev/null || true
+as_vyre sh -c 'umask 007; mkdir -p "$0"' "${CHROME_DIR}"
+as_vyre chgrp vyre-bus "${CHROME_DIR}" && as_vyre chmod 0770 "${CHROME_DIR}"
+as_vyre rm -f "${CHROME_IN}" "${CHROME_OUT}"
+as_vyre mkfifo -m 0660 "${CHROME_IN}" "${CHROME_OUT}"
+as_vyre chgrp vyre-bus "${CHROME_IN}" "${CHROME_OUT}" && as_vyre chmod 0660 "${CHROME_IN}" "${CHROME_OUT}"
+as_vyre sh -c ': > "$0"' "${CHROME_LOG}" 2>/dev/null || true
+# browser writes its own stdout/stderr into this file (below); vyre reads it. Same vyre-bus
+# pattern as the FIFOs and the D-Bus socket: vyre owns it and may hand it to a group it belongs to.
+as_vyre chgrp vyre-bus "${CHROME_LOG}" && as_vyre chmod 0660 "${CHROME_LOG}"
 
 # Checked once, here, rather than passed to Chrome's argv unvalidated: vyred passes the proxy
 # script as a data: URL only when the setting is on and lists a site (config glass.egress,
@@ -255,16 +288,23 @@ chrome_once() {
   # the one process in this container that renders untrusted content, so it gets the belt as well
   # as the braces -- a future regression upstream (an ambient grant added for some other reason)
   # still could not reach it.
+  #
+  # The FIFOs and the log are group vyre-bus, not world-readable, so the 3<.../4>.../>>... below
+  # must be opened by browser's own uid, after setpriv's switch -- as a redirect on the setpriv
+  # command line itself, bash would open them as root (this script's own uid) BEFORE setpriv ever
+  # runs, and root is not in vyre-bus either (checked live, 28 Sep: "Permission denied"). The inner
+  # sh -c, already running as browser by the time it parses its own redirects, is what actually
+  # opens them.
   setpriv --reuid=1002 --regid=1002 --init-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- \
     env -i HOME="${BROWSER_HOME}" USER=browser LOGNAME=browser PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" DISPLAY="${DISPLAY}" \
       XAUTHORITY="${BROWSER_XAUTH}" DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS}" DBUS_SESSION_BUS_PID="${DBUS_SESSION_BUS_PID}" \
       GTK_MODULES=gail:atk-bridge NO_AT_BRIDGE=0 QT_ACCESSIBILITY=1 \
-    chromium \
+      CHROME_FIFO_IN="${CHROME_IN}" CHROME_FIFO_OUT="${CHROME_OUT}" CHROME_LOGFILE="${CHROME_LOG}" \
+    /bin/sh -c 'exec chromium "$@" 3<"${CHROME_FIFO_IN}" 4>"${CHROME_FIFO_OUT}" >>"${CHROME_LOGFILE}" 2>&1' sh \
       --no-sandbox --test-type --disable-gpu --disable-dev-shm-usage --force-renderer-accessibility \
       --disable-extensions --password-store=basic --remote-debugging-pipe \
       "--user-data-dir=${CHROME_PROFILE}" "--window-size=${SCREEN%x*},${SCREEN#*x}" --start-maximized \
-      "${pac_args[@]}" about:blank \
-      3<"${CHROME_IN}" 4>"${CHROME_OUT}" >>"${CHROME_LOG}" 2>&1
+      "${pac_args[@]}" about:blank
 }
 chrome_loop() {
   while true; do
