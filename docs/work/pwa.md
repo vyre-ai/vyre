@@ -757,6 +757,46 @@ around it (a same-origin proxy hack in my own test harness would have hidden the
 phone hits). Sent to team-lead, integrator and reviewer. Cleaned up: no processes or temp files
 left on testbox, the throwaway harness script was not committed (deleted after the run).
 
+## Doing (fixed: /pair/scan actually works in a real browser, 2026-09-28)
+Urgent from team-lead (relayed from the integrator's review of stage): my headless test in the
+previous entry never caught the real bug because it either bypassed CSP or hand-served
+relay/client/*.js from my own test proxy, papering over exactly what a real phone would hit. Two
+real gaps in vyred's own serving, both fixed in core/daemon/index.js (sha 30077044):
+
+1. **relay/client/*.js was never served.** deck/js/pair-ticket.js and deck/js/pair-scan.js import
+   `../../relay/client/*.js` (outside deck/), but `serveDeck()` only ever serves inside deck/ -
+   any real browser got the client-routing shell (index.html) instead, so resolveTicket/pairOffer
+   never loaded at all. Fixed with a fixed-path allowlist route (the same shape as
+   core/resilience's own five-file route, and the pattern native-core used for
+   lib/avatar-seed): client, channel, bytes, response, sse, webcrypto, noise - client.js's own
+   browser-safe import closure, checked by hand. nodecrypto.js is Node-only and stays unserved.
+2. **connect-src 'self' blocked the relay.** wss://relay.vyre.run (pairOffer's socket) and
+   https://relay.vyre.run (resolveTicket's own POST /v1/pair - ADR 0045's pre-pairing fetch,
+   which structurally can't ride the one already-open channel ADR 0026's "no CORS needed"
+   reasoning covers, since it runs before any channel exists) were both blocked. `deckHeaders(cfg)`
+   now computes connect-src per request: DEFAULT_RELAY plus this box's own configured relay
+   (relay.status's url, for the self-hosted case relay/client/README.md documents), both wss:
+   and the matching https: - narrow, no wildcards.
+
+**Reverified against the live relay, loaded exactly as a real phone would** (real vyred, the
+real unmodified CSP header, no Page.setBypassCSP, no test-proxy file-serving workaround this
+time): minted a real ticket, resolveTicket showed "Pair with kit? Code af3j esuq" against
+wss://relay.vyre.run, Pair ran a real pairOffer handshake, the avatar rendered, and
+relay.devices.list showed the new device on the box side. The relay's own CORS gap on
+`/v1/pair` (my earlier finding, reported to team-lead/integrator) was already fixed
+server-side by the time of this second run (`curl -i OPTIONS https://relay.vyre.run/v1/pair`
+now answers 204 with `access-control-allow-origin: *`) - not something pwa touched. No redirect
+exercised live (this throwaway box never claimed a real vyre.run handle, deliberately - that
+would register a real subdomain against production); the redirect-when-a-handle-exists branch is
+one line, already unit-covered with a fake handle (pair-scan.test.js).
+
+New test: daemon.test.js's Wink relay-client-serving + CSP case (7 files, both origins, the
+nodecrypto.js negative case, the shell's own CSP). Targeted testbox run: core/daemon/*.test.js,
+test/daemon.test.js, deck/views/pair-scan.test.js, deck/test/pwa.test.js, test/docs-check.test.js,
+relay/client/client.test.js, test/relay.test.js - 135/135 pass. Sent to reviewer (the CSP/serving
+change) and the integrator. Cleaned up testbox: no leftover processes/files; the one-off harness
+scripts were not committed.
+
 ## Next
 - No test coverage of scan.js/scan-worker.js's own lifecycle (the busy flag, the transferred
   buffer, worker.terminate() on stop) - reviewer-2 hand-verified fa619b4a and confirmed it's
