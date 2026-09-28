@@ -86,6 +86,20 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, after the restart (0.1.1, the user's two YESes): step 1 of 3 done, the Wink ticket
+record is sealed. `core/relay/wire.js` `ticketSeal`/`ticketOpen`: AES-256-GCM under
+`ticketDerive("enc")` (tag `vyre-pair-enc`, apart from loc/sec/mac), zero nonce (one record per
+key), AD `"vyre-pair-record\n1"`, then the existing MAC over the sealed text. `resolveTicket()`
+opens it after the MAC check; pwa's calls and the error codes are unchanged. Both relays refuse a
+record that is not opaque base64url (`SEALED`). Wrote docs/adr/0045-wink.md (the file never
+existed, only notes) and marked ADR 0026's Wink threat row mitigated. Swept em dashes from the
+relay code comments. Testbox: 187/187 (test/relay, relay/node, relay/worker, relay/client,
+core/relay, boundaries, hygiene, docs-check/build/index).
+
+Next: step 2, deploy the worker once team-lead says the review cleared (dry run, migration tag
+v2 for PairTicket, check the worker name relay.vyre.run routes to, numeric rate-limit
+namespace_ids, smoke from the testbox only). Step 3, build ADR 0046.
+
 28 Sep 2026, latest of all: added the owner's identity fingerprint to the ticket record (the
 lead's ruling, 28 Sep): `sha256("vyre:person:v1:" + owner.id).slice(0,8)`, base64url, covered by
 the same MAC as name and handle. Stubbed against `ctx.config.owner.id` until anywhere's

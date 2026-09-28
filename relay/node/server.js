@@ -95,13 +95,17 @@ export function createRelay(o = {}) {
     if (r && !r.control && r.conns.size === 0) routes.delete(id);
   };
 
-  // Pairing tickets (ADR 0037): a box's control socket registers a locator -> a signed-by-the-
+  // Pairing tickets (ADR 0045): a box's control socket registers a locator -> a signed-by-the-
   // box's-own-ticket record, never the pairing secret itself (core/relay/wire.js ticketDerive).
   // Single-use (deleted on the one resolve that finds it) and short-lived; a sweep on insert
   // keeps the map from growing on tickets nobody ever resolves. Resolve is rate-limited per IP
   // and globally: unlike a device connection, this endpoint answers with no proof at all, so it
   // is the one place worth defending against a plain guessing loop even though 64 random bits in
   // 5 minutes is already out of reach.
+  // The record is ciphertext the box sealed under a key only the ticket gives (wire.js
+  // ticketSeal): anything that isn't opaque base64url, a plaintext JSON record included, is
+  // refused, so this relay never holds a box's name, handle or key in the clear.
+  const SEALED = /^[A-Za-z0-9_-]{22,2048}$/;
   /** @type {Map<string, { record: string, mac: string, exp: number }>} */
   const pairTickets = new Map();
   const sweepTickets = () => { const now = Date.now(); for (const [loc, t] of pairTickets) if (t.exp <= now) pairTickets.delete(loc); };
@@ -117,7 +121,7 @@ export function createRelay(o = {}) {
     res.end();
   });
 
-  /** GET-by-POST on purpose (ADR 0037): the locator never sits in a URL, so it never lands in an
+  /** GET-by-POST on purpose (ADR 0045): the locator never sits in a URL, so it never lands in an
    * access log. Single-use: found or not, the entry is gone either way after this call. */
   function onPairResolve(req, res) {
     const ip = String(req.socket.remoteAddress || "");
@@ -181,7 +185,7 @@ export function createRelay(o = {}) {
       peer.json({ t: "ready", ticket: r.ticket, waiting: [...r.conns].filter(([, x]) => !x.box).map(([c]) => c) });
       log("box.connected", { route });
       // The only thing a control socket sends after auth: registering a pairing ticket's locator
-      // (ADR 0037). Everything here is the box's own word about its own route, so this is not a
+      // (ADR 0045). Everything here is the box's own word about its own route, so this is not a
       // trust boundary the way the HTTP resolve side is; the size caps and the register-side
       // rate limit are just hygiene against a runaway or compromised box, not the real defence.
       peer.onmessage = (d2, bin2) => {
@@ -190,7 +194,7 @@ export function createRelay(o = {}) {
         try { t = JSON.parse(d2.toString()); } catch { return; }
         if (t?.t !== "ticket") return;
         const loc = String(t.loc || ""), record = String(t.record || ""), mac = String(t.mac || "");
-        if (!/^[A-Za-z0-9_-]{20,64}$/.test(loc) || !/^[A-Za-z0-9_-]{20,64}$/.test(mac) || record.length > 2048) return;
+        if (!/^[A-Za-z0-9_-]{20,64}$/.test(loc) || !/^[A-Za-z0-9_-]{20,64}$/.test(mac) || !SEALED.test(record)) return;
         sweepTickets();
         const exp = Math.min(Number(t.exp) || 0, Date.now() + TICKET_TTL);
         if (exp <= Date.now()) return;

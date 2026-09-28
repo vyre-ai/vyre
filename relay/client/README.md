@@ -124,15 +124,16 @@ const paired = await pairOffer(offer, { name: "alex's phone", keyStore, crypto }
 
 `resolveTicket` does every step through verification:
 
-1. Derives three values from the ticket, each a `sha256` of a distinct tag plus the ticket bytes,
+1. Derives four values from the ticket, each a `sha256` of a distinct tag plus the ticket bytes,
    matching `core/relay/wire.js`'s `ticketDerive` byte for byte: a locator (tag `vyre-pair-loc`),
-   the pairing secret (tag `vyre-pair-sec`) and a MAC key (tag `vyre-pair-mac`). **The raw ticket
-   itself never leaves the device**, only the locator goes to the relay.
+   the pairing secret (tag `vyre-pair-sec`), a MAC key (tag `vyre-pair-mac`) and a record key
+   (tag `vyre-pair-enc`). **The raw ticket itself never leaves the device**, only the locator goes
+   to the relay.
 2. `POST {relay's http(s) origin}/v1/pair` with `{ "loc": "<base64url>" }` in the body, never in a
    URL (so it is never in an access log). One request, and single-use either way:
-   - `200 { record, mac }`, `record` is the exact JSON string the box handed the relay (do not
-     re-serialize it; the MAC is over these exact bytes) and `mac` is `hmacSha256(macKey, record)`
-     as base64url.
+   - `200 { record, mac }`, `record` is the sealed record exactly as the box handed it to the
+     relay, base64url of AES-256-GCM ciphertext plus tag (the relay never sees it in the clear),
+     and `mac` is `hmacSha256(macKey, record)` over those exact characters, as base64url.
    - `404`, the ticket does not exist, already expired (5 minutes), or was already resolved once.
      These three cases are deliberately indistinguishable: show one generic "this code expired or
      was already used, scan again" message.
@@ -142,7 +143,9 @@ const paired = await pairOffer(offer, { name: "alex's phone", keyStore, crypto }
 3. Verifies `mac` against `hmacSha256(macKey, utf8(record))` itself, **before parsing or trusting
    anything in `record`**. A mismatch means the relay (or someone controlling it) tried to answer
    with a substituted identity; `resolveTicket` throws and nothing is ever offered for pairing.
-4. Parses `record` (`{ v: 1, name, handle, relay, route, box, exp }`), refuses one whose own `exp`
+4. Opens `record` with AES-256-GCM under the record key (a 12-byte zero nonce, since each key
+   seals exactly one record, and the AD `"vyre-pair-record\n1"`); a failure is `bad_record`.
+   Parses the JSON inside (`{ v: 1, name, handle, identity, relay, route, box, exp }`), refuses one whose own `exp`
    has already passed (the MAC only proves the record is unmodified, not that it was fetched in
    time), and sanitises `name` and `handle` the same way a box's own name is sanitised in a Touch
    ID prompt (control characters, bidi overrides, capped) before either reaches the UI. `handle`

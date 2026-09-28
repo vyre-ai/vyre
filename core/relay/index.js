@@ -16,7 +16,7 @@
 
 import crypto from "node:crypto";
 import * as config from "../config/index.js";
-import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac } from "./wire.js";
+import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, ticketSeal } from "./wire.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
 import { pairUrl, parsePairUrl } from "./pairing.js";
@@ -68,7 +68,7 @@ const fail = (code, message) => Object.assign(new Error(message), { code });
  * relay-device/key.json, core/relay/redeem.js) and `relay.pair.ticket` (a pairing whose secret and
  * MAC key derive from a ticket held only in this box's process, same as relay.pair.start's own
  * secret in relay/keys.json). All of it sits at the person's own login uid today, readable and
- * writable by any process at that uid — the same gap that already keeps relay hosting off by
+ * writable by any process at that uid, the same gap that already keeps relay hosting off by
  * default on local role (core/relay/keys.js, docs/work/tailnet.md "Needs from others"). Refuse
  * plainly rather than ship the gap on any of these paths.
  *
@@ -101,7 +101,7 @@ export default {
     // shows in screenshots.
     const boxName = () => String(ctx.config.name || (ctx.config.network && ctx.config.network.name) || "Vyre box").slice(0, 64);
     // The claimed <handle>.vyre.run subdomain (core/names/service.js's own `ctx.config.name`,
-    // set only once a name is actually claimed) — not boxName()'s fallback chain, since a display
+    // set only once a name is actually claimed), not boxName()'s fallback chain, since a display
     // name is not necessarily a real, resolvable handle. Null when nothing is claimed yet: the
     // lead's 28 Sep ask (so a phone can offer <handle>.vyre.run after pairing, without a guess).
     const boxHandle = () => {
@@ -113,7 +113,7 @@ export default {
     // core/onboard is meant to create once at onboarding (config `owner.id`, a hex string) and
     // never derives from a device or box key, so it survives a new box or device. STUB until that
     // lands: null here means no identity fingerprint travels in the record yet, not a fabricated
-    // one — a phone reading null simply shows no avatar rather than the wrong one.
+    // one, a phone reading null simply shows no avatar rather than the wrong one.
     const identityFingerprint = () => {
       const id = ctx.config.owner && ctx.config.owner.id;
       if (typeof id !== "string" || !/^[0-9a-f]{32}$/i.test(id)) return null;
@@ -123,7 +123,7 @@ export default {
     /** One live pairing at a time: its secret's hash, when it ends, and whether it is the first device's. */
     /** @type {{ hash: Buffer, exp: number, first: boolean } | null} */
     let pairing = null;
-    /** Live ticket-minted pairings (ADR 0037), any number at once, each single-use: the pairing
+    /** Live ticket-minted pairings (ADR 0045), any number at once, each single-use: the pairing
      * secret's hash keyed by itself (hex), same check as `pairing` above but there can be several. */
     /** @type {Map<string, { exp: number }>} */
     const pendingTickets = new Map();
@@ -208,7 +208,7 @@ export default {
         // Carries the new device's own key fingerprint (reviewer, 28 Sep LOW) so the notice reads
         // the same short form ("a1b2 c3d4") as every other Touch ID / confirm screen that shows one.
         ctx.events.emit("device.paired", { id, name, kind, fingerprint: keyFingerprint(pub), ...(kind === "web" ? { release, build: knownBuild(release, manifest) ? "known" : "unknown" } : {}) });
-        // The scan-to-pair screen's own event (ADR 0037, the lead 28 Sep): only for a ticket
+        // The scan-to-pair screen's own event (ADR 0045, the lead 28 Sep): only for a ticket
         // pairing, so a Deck showing "Add your phone" reacts to its own flow and not to someone
         // pairing a different device with the classic QR at the same time.
         if (match.ticket) ctx.events.emit("relay.paired", { device: id, name, fingerprint: keyFingerprint(pub) });
@@ -335,12 +335,13 @@ export default {
       },
     });
 
-    // Scan-to-pair, "Wink" in copy (ADR 0037): a Vyre code carries only a compact 64-bit ticket,
+    // Scan-to-pair, "Wink" in copy (ADR 0045): a Vyre code carries only a compact 64-bit ticket,
     // not a full offer, so a phone that scans it resolves the offer from the relay instead of
     // reading it straight off the code. Everything the relay ever sees is a one-way derivation of
     // the ticket under its own tag (core/relay/wire.js): a locator to store the record under, and
     // a MAC key that authenticates it, so the relay can neither redeem the pairing itself (it
-    // never learns the secret) nor substitute its own record (it never learns the MAC key). The
+    // never learns the secret) nor substitute its own record (it never learns the MAC key), nor
+    // read the record (sealed under a fourth derived key, so it holds ciphertext only). The
     // pairing secret this mints is exactly relay.pair.start's own mechanism (`takeLiveSecret`
     // above checks both), so redemption and admission are unchanged.
     const mintTicket = async () => {
@@ -351,7 +352,8 @@ export default {
       if (!settings().enabled) save({ enabled: true });
       startLink();
       const connected = link ? await link.ready() : false;
-      const record = JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp });
+      // Sealed under the ticket's own "enc" key: the relay holds ciphertext only (wire.js).
+      const record = ticketSeal(rawTicket, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp }));
       const mac = ticketMac(rawTicket, record);
       if (link) link.registerTicket({ loc: ticketDerive("loc", rawTicket).toString("base64url"), record, mac: mac.toString("base64url"), exp });
       return { ticket: rawTicket.toString("base64url"), expiresAt: exp, connected };
@@ -527,7 +529,7 @@ export default {
     // the network. stableId/staticKey are this pairing's own Noise identity (ADR 0026), never a
     // tailnet stable id; `node` is only ever filled once this device has ALSO reported itself over
     // its own tailnet node (relay.devices.path, already built, no dependency on ADR 0046's
-    // auth-key auto-join) — the same node_id/node_name columns that already exist for exactly this
+    // auth-key auto-join), the same node_id/node_name columns that already exist for exactly this
     // purpose. Module-only: never a tool a person, an agent or a relayed device calls directly.
     ctx.tool("relay.devices.node", {
       internal: true,

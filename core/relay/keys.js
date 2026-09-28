@@ -1,12 +1,12 @@
 // @ts-check
 // The box's relay keys: box.key (Noise static, the QR carries its public half) and route.key
-// (proves the route to the relay). One small interface so moving where these live — into
-// vyre-core's `_vyre` service user (ADR 0040), off the person's own uid — is a swap of this file,
+// (proves the route to the relay). One small interface so moving where these live, into
+// vyre-core's `_vyre` service user (ADR 0040), off the person's own uid, is a swap of this file,
 // not a rewrite of core/relay/index.js's pairing logic, which only ever calls loadKeys(root).
 //
 // Today: ~/.vyre/relay/keys.json (0600), made on first use, never leaves the box. That file sits
 // on the person's own uid, so a process running as them (including a prompt-injected model) can
-// read or replace it — the reason relay-on-a-Mac is not enabled by default until vyre-core holds
+// read or replace it, the reason relay-on-a-Mac is not enabled by default until vyre-core holds
 // this instead (docs/work/tailnet.md "Needs from others").
 
 import fs from "node:fs";

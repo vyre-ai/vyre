@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Wink: the relay holds the ticket record as ciphertext only (ADR 0045)
+
+- The box seals the whole ticket record (box name, handle, identity fingerprint, route, box key)
+  with AES-256-GCM under a fourth key derived from the ticket (tag `vyre-pair-enc`, separate
+  from the locator, secret and MAC keys). `core/relay/wire.js` gains `ticketSeal`/`ticketOpen`;
+  `relay/client`'s `resolveTicket()` opens it after the MAC check, so callers are unchanged and
+  keep the same error codes (`bad_record` for a record that will not open).
+- Both relays (`relay/node/server.js`, the worker's control socket and `PairTicket`) refuse a
+  record that is not opaque base64url, so a plaintext record never lands.
+- ADR 0045 written up (it existed only as work notes); ADR 0026's relay-operator Wink threat row
+  is now mitigated. Stale "ADR 0037" comments in the ticket code now say ADR 0045.
+
 #### settings, onboard: GitHub sign-in screens (ADR 0041)
 
 - Settings > Connections gets a "GitHub accounts" group, matching the existing MCP/Google groups:

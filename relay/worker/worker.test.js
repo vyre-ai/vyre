@@ -418,15 +418,19 @@ for (const hibernateEveryEvent of [false, true]) {
     const b = await box(rt);
     await b.s.json(); // "ready"
     const exp = Date.now() + 5 * 60_000;
-    b.s.ws.send(JSON.stringify({ t: "ticket", loc: "a".repeat(43), record: JSON.stringify({ v: 1, name: "alex", relay: BASE, route: b.route, box: "x".repeat(43), exp }), mac: "b".repeat(43), exp }));
+    const ticket = Buffer.alloc(8, 7);
+    const sealed = wire.ticketSeal(ticket, JSON.stringify({ v: 1, name: "alex", relay: BASE, route: b.route, box: "x".repeat(43), exp }));
+    b.s.ws.send(JSON.stringify({ t: "ticket", loc: "a".repeat(43), record: sealed, mac: "b".repeat(43), exp }));
     await rt.settle();
+    const stored = JSON.stringify([...rt.object("a".repeat(43), "TICKETS").ctx.storage.map.values()]);
+    assert.doesNotMatch(stored, /alex|"route"/, "the PairTicket object holds ciphertext only");
 
     const res = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "a".repeat(43) }) }), rt.env);
     assert.equal(res.status, 200);
     const data = /** @type {any} */ (await res.json());
     assert.equal(data.mac, "b".repeat(43));
-    const record = JSON.parse(data.record);
-    assert.equal(record.route, b.route);
+    assert.equal(data.record, sealed, "handed back byte for byte");
+    assert.equal(JSON.parse(wire.ticketOpen(ticket, data.record)).route, b.route);
 
     // Single-use: the same locator resolves nothing a second time.
     const again = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "a".repeat(43) }) }), rt.env);
@@ -441,10 +445,24 @@ test("worker: /v1/pair 404s an unknown or expired locator, and never leaks the p
 
   const b = await box(rt);
   await b.s.json();
-  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "d".repeat(43), record: JSON.stringify({ v: 1, name: "alex" }), mac: "e".repeat(43), exp: Date.now() - 1000 }));
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "d".repeat(43), record: "s".repeat(64), mac: "e".repeat(43), exp: Date.now() - 1000 }));
   await rt.settle();
   const expired = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "d".repeat(43) }) }), rt.env);
   assert.equal(expired.status, 404, "a registration with an already-past exp is refused, not stored past its own TTL");
+});
+
+test("worker: a plaintext ticket record is refused at registration, so the relay never holds one", async t => {
+  const rt = world(t);
+  const b = await box(rt);
+  await b.s.json();
+  const exp = Date.now() + 60_000;
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "j".repeat(43), record: JSON.stringify({ v: 1, name: "alex" }), mac: "k".repeat(43), exp }));
+  await rt.settle();
+  const res = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "j".repeat(43) }) }), rt.env);
+  assert.equal(res.status, 404);
+  // And the PairTicket object refuses one directly too, not only through the control socket.
+  const direct = await rt.env.TICKETS.get(rt.env.TICKETS.idFromName("m".repeat(43))).fetch("https://ticket/register", { method: "PUT", body: JSON.stringify({ record: "{\"name\":\"alex\"}", mac: "k".repeat(43), exp }) });
+  assert.equal(direct.status, 400);
 });
 
 test("worker: /v1/pair refuses a bad locator and a malformed body before ever asking a PairTicket object", async t => {
@@ -463,7 +481,7 @@ test("worker: a control socket cannot register a ticket beyond the per-route cap
   // collide the way `f${i}`.padEnd(...,"0") would (i=6 and i=60 padded with "0" are the same
   // string).
   const loc = i => `f${String(i).padStart(3, "0")}`.padEnd(43, "z");
-  for (let i = 0; i < 61; i++) b.s.ws.send(JSON.stringify({ t: "ticket", loc: loc(i), record: "{}", mac: "g".repeat(43), exp: Date.now() + 60_000 }));
+  for (let i = 0; i < 61; i++) b.s.ws.send(JSON.stringify({ t: "ticket", loc: loc(i), record: "s".repeat(64), mac: "g".repeat(43), exp: Date.now() + 60_000 }));
   await rt.settle();
   // The 61st registration is over the cap; its locator resolves nothing.
   const over = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: loc(60) }) }), rt.env);
@@ -477,7 +495,7 @@ test("worker: an unresolved ticket sets an alarm at its own exp, which cleans it
   const b = await box(rt);
   await b.s.json();
   const exp = Date.now() + 60_000;
-  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "h".repeat(43), record: "{}", mac: "i".repeat(43), exp }));
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "h".repeat(43), record: "s".repeat(64), mac: "i".repeat(43), exp }));
   await rt.settle();
   const obj = rt.object("h".repeat(43), "TICKETS");
   assert.equal(await obj.ctx.storage.getAlarm(), exp);

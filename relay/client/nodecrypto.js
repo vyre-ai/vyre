@@ -4,7 +4,7 @@
 // choice) or the browser's IndexedDB key store. Node's globalThis.crypto.subtle already runs
 // X25519 fine (client.test.js uses webCrypto() directly in Node), but subtle.generateKey's keys
 // are non-extractable by design, so they cannot survive a process restart the way a real device
-// identity must — a CLI runs as a fresh process every time. This provider works in raw,
+// identity must, a CLI runs as a fresh process every time. This provider works in raw,
 // extractable, persistable bytes instead, the same primitives core/relay/noise.js already uses
 // for the box's own side, so a Node keyStore can simply write them to a file (see fileKeyStore
 // below), matching core/relay/keys.js's own pattern.

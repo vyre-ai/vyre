@@ -19,7 +19,7 @@
 // resolve request carries only a locator, not a route id, so there is nothing to route it to a
 // specific RouteRelay object by. `RouteRelay`'s control socket writes to it (`registerTicket`,
 // below); `/v1/pair` reads it. Same contract as relay/node/server.js's `pairTickets` map: stores
-// only what the box handed the relay (record, mac, exp), single-use (deleted on the one resolve
+// only what the box handed the relay (a sealed record, mac, exp), single-use (deleted on the one resolve
 // that finds it, whether it answers or not), and never the pairing secret itself, which the relay
 // never sees at all (core/relay/wire.js's ticketDerive).
 
@@ -114,6 +114,10 @@ const size = m => typeof m === "string" ? enc.encode(m).length : m.byteLength;
  * sent a wildly long exp cannot make a PairTicket object outlive what the mechanism promises. */
 const TICKET_TTL_MAX = 5 * 60_000;
 const LOC_RE = /^[A-Za-z0-9_-]{20,64}$/;
+/** A Wink record is ciphertext the box sealed under a key only the ticket gives (core/relay/wire.js
+ * ticketSeal); anything else, a plaintext JSON record included, is refused, so the relay never
+ * holds a box's name, handle or key in the clear. Same rule as relay/node/server.js. */
+const SEALED = /^[A-Za-z0-9_-]{22,2048}$/;
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 /**
@@ -181,7 +185,7 @@ export class PairTicket {
       try { body = await request.json(); } catch { return new Response(null, { status: 400 }); }
       const record = String((body && body.record) || ""), mac = String((body && body.mac) || "");
       const exp = Math.min(Number(body && body.exp) || 0, Date.now() + TICKET_TTL_MAX);
-      if (!record || !mac || record.length > 2048 || exp <= Date.now()) return new Response(null, { status: 400 });
+      if (!SEALED.test(record) || !LOC_RE.test(mac) || exp <= Date.now()) return new Response(null, { status: 400 });
       await this.ctx.storage.put("t", { record, mac, exp });
       // A locator nobody ever resolves would otherwise sit in storage forever (reviewer's LOW,
       // 28 Sep): clean it up at its own exp either way, resolved or not.
@@ -359,7 +363,7 @@ export class RouteRelay {
     try { m = JSON.parse(message); } catch { return; }
     if (m?.t !== "ticket") return;
     const loc = String(m.loc || ""), record = String(m.record || ""), mac = String(m.mac || "");
-    if (!/^[A-Za-z0-9_-]{20,64}$/.test(loc) || !/^[A-Za-z0-9_-]{20,64}$/.test(mac) || record.length > 2048) return;
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(loc) || !/^[A-Za-z0-9_-]{20,64}$/.test(mac) || !SEALED.test(record)) return;
     const exp = Math.min(Number(m.exp) || 0, Date.now() + TICKET_TTL_MAX);
     if (exp <= Date.now() || !this.env.TICKETS) return;
     try {

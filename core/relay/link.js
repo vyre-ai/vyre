@@ -42,7 +42,7 @@ export function relayLink(o) {
   let connected = false;
   /** @type {Map<string, any>} */
   const data = new Map();
-  /** Ticket registrations (ADR 0037) waiting for a connected control socket to carry them; sent
+  /** Ticket registrations (ADR 0045) waiting for a connected control socket to carry them; sent
    * once, best effort, since each is single-use and short-lived on the relay anyway. */
   /** @type {Array<{ loc: string, record: string, mac: string, exp: number }>} */
   const pendingRegs = [];
@@ -144,7 +144,7 @@ export function relayLink(o) {
     },
     /** How many device connections are open through the relay. */
     get open() { return data.size; },
-    /** Register a pairing ticket's locator/record/mac with the relay (ADR 0037), best effort:
+    /** Register a pairing ticket's locator/record/mac with the relay (ADR 0045), best effort:
      * queued if not connected yet, sent once the control socket is, never retried afterward
      * since each ticket is short-lived and single-use on the relay regardless.
      * @param {{ loc: string, record: string, mac: string, exp: number }} reg */

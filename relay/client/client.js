@@ -129,8 +129,8 @@ const about = a => ({
  * The handshake both `pair()` and `pairOffer()`'s callers run once they have an offer, whichever
  * way they got it: make (or reuse) this device's key, prove the one-time secret and learn this
  * device's id. Returns what `connect()` needs; store it (it holds no secret). Exported (not just
- * internal) so a caller that already confirmed an offer with the person — `resolveTicket()`'s
- * result, after a "pair with this box?" screen — can run the handshake as its own, separate step
+ * internal) so a caller that already confirmed an offer with the person, `resolveTicket()`'s
+ * result, after a "pair with this box?" screen, can run the handshake as its own, separate step
  * (reviewer, 28 Sep MEDIUM: pairTicket alone could only show who it paired with after the fact).
  * @param {{ relay: string, route: string, box: Uint8Array, secret: string, name?: string }} offer
  * @param {{ name?: string, presenceKey?: { public_key: string, alg?: number }, about?: { kind?: "app"|"web", release?: string, manifest?: string }, keyStore?: import("./webcrypto.js").KeyStore,
@@ -167,7 +167,7 @@ export async function pair(offerUrl, o = {}) {
  * The same short fingerprint core/relay/index.js shows in its own Touch ID prompt (base32 of
  * sha256 of a box's public key, 8 characters as two groups of 4), so a phone's own "pairing with
  * X (fingerprint)" screen reads identically to what the box shows. Not a security check by
- * itself — pairTicket() already verifies the record's MAC before this is ever worth computing —
+ * itself, pairTicket() already verifies the record's MAC before this is ever worth computing , 
  * just the same human-readable confirmation on both ends of one pairing.
  * @param {Uint8Array} box @param {import("./noise.js").CryptoProvider} crypto
  */
@@ -181,8 +181,11 @@ export async function keyFingerprint(box, crypto) {
 // a later wording change could otherwise silently turn a MAC failure into a generic retry.
 const fail = (code, message) => Object.assign(new Error(message), { code });
 
-const TICKET_TAG = { loc: "vyre-pair-loc", sec: "vyre-pair-sec", mac: "vyre-pair-mac" };
-/** @param {import("./noise.js").CryptoProvider} crypto @param {"loc"|"sec"|"mac"} which @param {Uint8Array} ticket */
+const TICKET_TAG = { loc: "vyre-pair-loc", sec: "vyre-pair-sec", mac: "vyre-pair-mac", enc: "vyre-pair-enc" };
+// core/relay/wire.js's ticketSeal: AES-256-GCM under the ticket's "enc" key, zero nonce (one record
+// per key), this AD. The relay only ever holds the ciphertext.
+const TICKET_SEAL_AD = "vyre-pair-record\n1";
+/** @param {import("./noise.js").CryptoProvider} crypto @param {"loc"|"sec"|"mac"|"enc"} which @param {Uint8Array} ticket */
 const ticketDerive = (crypto, which, ticket) => crypto.sha256(concat(utf8(`${TICKET_TAG[which]}\n`), ticket));
 
 // The box's own name, reported by the relay (never signed by anything the relay holds) or later
@@ -192,18 +195,18 @@ const PROMPT_UNSAFE = /[\u0000-\u001f\u007f-\u009f\u061c\u180e\u200b-\u200f\u202
 const promptSafe = (s, fallback, max = 64) => { const t = String(s || "").replace(PROMPT_UNSAFE, " ").replace(/ {2,}/g, " ").trim().slice(0, max); return t || fallback; };
 
 /**
- * Look up a compact pairing ticket (ADR 0037, "Wink") against the relay, verify it, and hand back
- * an offer ready for `pairOffer()` — without pairing yet. Split from the handshake itself
+ * Look up a compact pairing ticket (ADR 0045, "Wink") against the relay, verify it, and hand back
+ * an offer ready for `pairOffer()`, without pairing yet. Split from the handshake itself
  * (reviewer, 28 Sep MEDIUM) so a caller can show "Pair with alex's box (a1b2 c3d4)?" and let the
  * person confirm BEFORE anything is paired: the MAC here proves the record came from whoever
- * minted the ticket, not that it is the person's own box — someone else's code, scanned by
+ * minted the ticket, not that it is the person's own box, someone else's code, scanned by
  * mistake, still passes the MAC. Recognising the name and fingerprint is the only thing that
  * catches that, so it has to happen before the handshake, not after.
  *
  * The ticket itself never leaves this device; every value the relay sees is a one-way derivation
  * of it under its own tag, matching core/relay/wire.js byte for byte, so the relay can neither
- * redeem this pairing (it never learns the secret) nor substitute its own record (it never learns
- * the MAC key that authenticates it).
+ * redeem this pairing (it never learns the secret), nor substitute its own record (it never learns
+ * the MAC key that authenticates it), nor read the record (sealed under the "enc" key, opened here).
  * @param {Uint8Array} ticket 8 random bytes, scanned from the Vyre code
  * @param {{ relay: string, fetch?: typeof fetch, crypto?: import("./noise.js").CryptoProvider }} o
  * @returns {Promise<{ offer: { relay: string, route: string, box: Uint8Array, secret: string }, name: string, fingerprint: string, handle: string|null, identity: string|null }>}
@@ -216,6 +219,7 @@ export async function resolveTicket(ticket, o) {
   const loc = await ticketDerive(cryptoP, "loc", ticket);
   const secret = await ticketDerive(cryptoP, "sec", ticket);
   const macKey = await ticketDerive(cryptoP, "mac", ticket);
+  const encKey = await ticketDerive(cryptoP, "enc", ticket);
   const base = String(o.relay).replace(/\/+$/, "").replace(/^ws/, "http");
   const res = await fetchFn(`${base}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: base64url(loc) }) });
   if (res.status === 404) throw fail("ticket_gone", "this pairing code has expired or was already used");
@@ -226,8 +230,12 @@ export async function resolveTicket(ticket, o) {
   const mac = fromBase64url(String((body && body.mac) || ""));
   const wantMac = await cryptoP.hmacSha256(macKey, utf8(recordText));
   if (!equal(mac, wantMac)) throw fail("bad_record", "the relay's answer for this pairing code does not check out; refusing to pair");
+  // The MAC passed, so these are the box's own bytes; opening them is what the relay can't do.
   let record;
-  try { record = JSON.parse(recordText); } catch { throw fail("bad_record", "the relay's answer for this pairing code is not valid"); }
+  try {
+    const key = cryptoP.aesKey ? await cryptoP.aesKey(encKey) : encKey;
+    record = JSON.parse(fromUtf8(await cryptoP.aesGcmDecrypt(key, new Uint8Array(12), utf8(TICKET_SEAL_AD), fromBase64url(recordText))));
+  } catch { throw fail("bad_record", "the relay's answer for this pairing code is not valid"); }
   if (record.v !== 1 || typeof record.relay !== "string" || !ROUTE_RE.test(record.route) || typeof record.box !== "string") throw fail("bad_record", "the relay's answer for this pairing code is not shaped like an offer");
   // The MAC only proves the relay's answer is unmodified from whatever the box minted; an expiry
   // in the past is still a legitimate, unmodified record for a ticket that should have been gone.
@@ -239,7 +247,7 @@ export async function resolveTicket(ticket, o) {
   // a bad shape becomes null (no redirect offered) rather than a sanitised-but-wrong string.
   const handle = typeof record.handle === "string" && /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/i.test(record.handle) ? record.handle.slice(0, 32) : null;
   // The avatar's own seed (the lead's ruling, 28 Sep): 8 bytes, base64url, or null on a box that
-  // hasn't got an owner.id yet (anywhere's core/onboard, not landed everywhere) — never guessed.
+  // hasn't got an owner.id yet (anywhere's core/onboard, not landed everywhere), never guessed.
   let identity = null;
   try { const b = fromBase64url(String(record.identity || "")); if (b.length === 8) identity = base64url(b); } catch {}
   return {
@@ -255,7 +263,7 @@ export async function resolveTicket(ticket, o) {
  * The one-call convenience for a caller that does not confirm before pairing: `resolveTicket()`
  * then `pairOffer()` right away. Prefer calling them separately when a person can see and approve
  * who they are pairing with first (pwa's "Pair with this box?" screen). `o.name` here is this
- * DEVICE's own name (as pairOffer's `o.name` always is) — not the box's, which comes back on the
+ * DEVICE's own name (as pairOffer's `o.name` always is), not the box's, which comes back on the
  * result regardless of which of the two ways it was reached.
  * @param {Uint8Array} ticket
  * @param {Parameters<typeof resolveTicket>[1] & Parameters<typeof pairOffer>[1]} o

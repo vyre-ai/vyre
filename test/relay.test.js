@@ -352,7 +352,7 @@ test("relay: loads on a Solo Mac (role local) but opens no connection until the 
   // Widened to roles ["box", "local"] for a phone joining a Solo Mac (28 Sep 2026). The module
   // must not go near the network just from loading: settings().enabled defaults to false, and
   // start() only calls startLink() when it is already true. No injected WebSocket seam here on
-  // purpose — this proves the real `globalThis.WebSocket` (which would reach the real relay,
+  // purpose, this proves the real `globalThis.WebSocket` (which would reach the real relay,
   // never allowed in a test) is never touched, not just a fake one.
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [],
@@ -569,12 +569,12 @@ test("relay: resolveTicket refuses a record whose own expiry has passed, even wi
   const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
   const raw = fromBase64url(minted.ticket);
-  const { ticketDerive, ticketMac } = await import("../core/relay/wire.js");
+  const { ticketDerive, ticketMac, ticketSeal, ticketOpen } = await import("../core/relay/wire.js");
   const loc = ticketDerive("loc", Buffer.from(raw)).toString("base64url");
   const res = await fetch(`${status.url.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
   const body = await res.json();
-  const record = JSON.parse(body.record);
-  const expired = JSON.stringify({ ...record, exp: Date.now() - 1000 });
+  const record = JSON.parse(ticketOpen(Buffer.from(raw), body.record));
+  const expired = ticketSeal(Buffer.from(raw), JSON.stringify({ ...record, exp: Date.now() - 1000 }));
   const mac = ticketMac(Buffer.from(raw), expired).toString("base64url");
   const badFetch = async () => ({ ok: true, status: 200, json: async () => ({ record: expired, mac }) });
   await assert.rejects(() => resolveTicket(raw, { relay: status.url, fetch: badFetch, crypto: nodeCrypto() }), /expired or was already used/);
@@ -589,14 +589,24 @@ test("relay: resolveTicket/pairOffer throw stable .code values, not just message
 
   const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
   const raw = fromBase64url(minted.ticket);
-  const { ticketDerive, ticketMac } = await import("../core/relay/wire.js");
+  const { ticketDerive, ticketMac, ticketSeal, ticketOpen } = await import("../core/relay/wire.js");
   const loc = ticketDerive("loc", Buffer.from(raw)).toString("base64url");
   const res = await fetch(`${status.url.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
   const body = await res.json();
-  const tampered = JSON.stringify({ ...JSON.parse(body.record), box: Buffer.alloc(32, 9).toString("base64url") });
+  const tampered = ticketSeal(Buffer.from(raw), JSON.stringify({ ...JSON.parse(ticketOpen(Buffer.from(raw), body.record)), box: Buffer.alloc(32, 9).toString("base64url") }));
   const badFetch = async () => ({ ok: true, status: 200, json: async () => ({ record: tampered, mac: body.mac }) });
   const bad = await resolveTicket(raw, { relay: status.url, fetch: badFetch, crypto: nodeCrypto() }).catch(e => e);
   assert.equal(bad.code, "bad_record");
+
+  // A record with a valid MAC that the ticket's "enc" key doesn't open (sealed under the MAC key
+  // instead, say): still bad_record, never a parse of whatever bytes came back.
+  const wrongKey = (() => {
+    const c = crypto.createCipheriv("aes-256-gcm", ticketDerive("mac", Buffer.from(raw)), Buffer.alloc(12));
+    c.setAAD(Buffer.from("vyre-pair-record\n1"));
+    return Buffer.concat([c.update(ticketOpen(Buffer.from(raw), body.record)), c.final(), c.getAuthTag()]).toString("base64url");
+  })();
+  const wrongFetch = async () => ({ ok: true, status: 200, json: async () => ({ record: wrongKey, mac: ticketMac(Buffer.from(raw), wrongKey).toString("base64url") }) });
+  assert.equal((await resolveTicket(raw, { relay: status.url, fetch: wrongFetch, crypto: nodeCrypto() }).catch(e => e)).code, "bad_record");
 
   const limited = await resolveTicket(Buffer.alloc(8, 2), { relay: status.url, fetch: async () => ({ ok: false, status: 429 }), crypto: nodeCrypto() }).catch(e => e);
   assert.equal(limited.code, "rate_limited");
@@ -647,8 +657,8 @@ test("relay: a device's own name at ticket pairing is sanitised and capped like 
   assert.doesNotMatch(row.name, /[\u0007‮]/);
 });
 
-test("relay: the relay never learns the pairing secret, and a tampered record fails the phone's MAC check", async t => {
-  const { ticketDerive } = await import("../core/relay/wire.js");
+test("relay: the relay never learns the pairing secret or reads the record, and a tampered record fails the phone's MAC check", async t => {
+  const { ticketDerive, ticketSeal, ticketOpen } = await import("../core/relay/wire.js");
   const { d } = await world(t);
   const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
@@ -662,10 +672,18 @@ test("relay: the relay never learns the pairing secret, and a tampered record fa
   const body = await res.json();
   assert.equal(Object.keys(body).sort().join(","), "mac,record", "nothing else, and certainly no secret, ever leaves the relay");
   assert.doesNotMatch(body.record, /vyre-pair-sec/);
+  // The record is ciphertext to the relay (the lead's ruling, 28 Sep): no name, handle, route or
+  // box key in what it stores, and only the ticket's own "enc" key opens it.
+  assert.match(body.record, /^[A-Za-z0-9_-]+$/);
+  assert.throws(() => JSON.parse(Buffer.from(body.record, "base64url").toString("utf8")));
+  const opened = JSON.parse(ticketOpen(Buffer.from(raw), body.record));
+  for (const clear of [opened.name, opened.route, opened.box]) assert.ok(!body.record.includes(clear) && !Buffer.from(body.record, "base64url").toString("latin1").includes(clear), clear);
+  const keys = ["loc", "sec", "mac", "enc"].map(w => ticketDerive(/** @type {any} */ (w), Buffer.from(raw)).toString("hex"));
+  assert.equal(new Set(keys).size, 4, "the enc key is domain-separated from the locator, secret and MAC key");
 
   // A tampered record (a dishonest relay operator substituting their own box) fails the MAC a
   // phone checks locally, before it ever tries to pair with what the record names.
-  const tampered = JSON.stringify({ ...JSON.parse(body.record), box: Buffer.alloc(32, 9).toString("base64url") });
+  const tampered = ticketSeal(Buffer.from(raw), JSON.stringify({ ...opened, box: Buffer.alloc(32, 9).toString("base64url") }));
   const badFetch = async () => ({ ok: true, status: 200, json: async () => ({ record: tampered, mac: body.mac }) });
   await assert.rejects(() => pairTicket(raw, { relay: status.url, fetch: badFetch, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "phone-key.json")) }),
     /does not check out/);

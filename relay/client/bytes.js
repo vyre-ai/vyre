@@ -47,7 +47,7 @@ export const isZero = b => { let d = 0; for (let i = 0; i < b.length; i++) d |= 
 export const hex = b => Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
 
 const B32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
-/** RFC 4648 base32, lowercase, no padding — byte for byte core/relay/wire.js's own base32, so a
+/** RFC 4648 base32, lowercase, no padding, byte for byte core/relay/wire.js's own base32, so a
  * route id or a key fingerprint computed here reads identically to the box's own. @param {Uint8Array} buf */
 export function base32(buf) {
   let bits = 0, value = 0, out = "";
