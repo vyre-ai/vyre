@@ -64,6 +64,7 @@ In the order `vyre help` lists them.
 | [`vyre phone`](#vyre-phone) | add a phone to your box, list, remove and test the ones it has |
 | [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code, no Tailscale |
 | [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
+| [`vyre vitals`](#vyre-vitals) | CPU, RAM, disk, network, GPU and battery, for this device or the server |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
 | [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
@@ -617,6 +618,14 @@ Send files from this Mac to your box with Taildrop.
 
 ```
 vyre send <file...> [--json]
+```
+
+### vyre vitals
+
+CPU, RAM, disk, network, GPU and battery, for this device or the server.
+
+```
+vyre vitals [status|explain|advice] [--device <name>] [--json]
 ```
 
 ### vyre apps

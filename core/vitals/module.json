@@ -6,12 +6,12 @@
   "requires": [],
   "does": { "tools": ["vitals.watch", "vitals.status", "vitals.summary", "vitals.explain", "vitals.advice"] },
   "watches": { "emits": ["vitals.sample", "vitals.trouble"] },
-  "shows": { "deck": [], "capsule": [], "cli": [] },
+  "shows": { "deck": [], "capsule": [], "cli": ["vitals"] },
   "needs": {},
   "teaches": {
     "tips": [
-      {"id": "status", "text": "Run `vyre call vitals.status` to see this machine's CPU, RAM, disk and network right now, and its last 24 hours.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre call vitals.status"},
-      {"id": "advice", "text": "Run `vyre call vitals.advice` for sizing suggestions from the last week's numbers.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call vitals.advice"},
+      {"id": "status", "text": "Run `vyre vitals` to see this machine's CPU, RAM, disk and network right now, and its last 24 hours.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre vitals status", "docs": "reference/cli.md#vyre-vitals"},
+      {"id": "advice", "text": "Run `vyre vitals advice` for sizing suggestions from the last week's numbers.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre vitals advice", "docs": "reference/cli.md#vyre-vitals"},
       {"id": "no-nag", "text": "vitals never pushes anything on its own: set up a watcher on vitals.trouble if you want to hear about sustained trouble.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0"}
     ]
   }
