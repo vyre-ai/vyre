@@ -219,7 +219,9 @@ the resume. This is the right, conservative default for 0.1.1, decided jointly: 
 interactive session, which typically ends `stopped` rather than `finished`, keeps its worktree
 indefinitely under today's hook. Nothing breaks (disk isn't reclaimed, not correctness), but it is
 a real gap. **Deferred to 0.1.2**: a periodic sweep for worktrees whose session has neither a live
-thread nor a resumable `stopped`/`paused` status. Owner (sessions or github) not yet decided.
+thread nor a resumable `stopped`/`paused` status. Owner: `github` (sessions, 28 Sep: "it's
+reading your own .sessions/ directories against thread status, and threads.list already gives
+you what you'd need... without a new tool from me"). Not started; 0.1.2.
 
 ### 6. Manifest, tools and callers (0.1.1)
 
