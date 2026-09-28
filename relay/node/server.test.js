@@ -156,3 +156,26 @@ test("a pairing ticket's record must be sealed: a plaintext one is refused, a se
   assert.equal((await ok.json()).record, sealed);
   assert.equal((await resolve("p".repeat(43))).status, 404, "the plaintext record was never stored");
 });
+
+test("/v1/pair alone answers any origin, without credentials: the preflight, and every POST answer", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const pre = await fetch(`${http}/v1/pair`, { method: "OPTIONS", headers: { origin: "https://phone.vyre.run", "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get("access-control-allow-origin"), "*");
+  assert.equal(pre.headers.get("access-control-allow-methods"), "POST");
+  assert.equal(pre.headers.get("access-control-allow-headers"), "content-type");
+  assert.equal(pre.headers.get("access-control-allow-credentials"), null);
+  const miss = await fetch(`${http}/v1/pair`, { method: "POST", headers: { origin: "https://alex.vyre.run", "content-type": "application/json" }, body: JSON.stringify({ loc: "z".repeat(43) }) });
+  assert.equal(miss.status, 404);
+  assert.equal(miss.headers.get("access-control-allow-origin"), "*", "an error answer is readable too, so the phone sees ticket_gone");
+  assert.equal(miss.headers.get("access-control-allow-credentials"), null);
+  for (const p of ["/health", "/v1/box", "/v1/device", "/nothing"]) {
+    const r = await fetch(`${http}${p}`, { headers: { origin: "https://phone.vyre.run" } });
+    assert.equal(r.headers.get("access-control-allow-origin"), null, p);
+  }
+  const other = await fetch(`${http}/v1/device`, { method: "OPTIONS", headers: { origin: "https://phone.vyre.run" } });
+  assert.equal(other.headers.get("access-control-allow-origin"), null, "no preflight answer anywhere else");
+});

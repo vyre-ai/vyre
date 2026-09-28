@@ -118,6 +118,14 @@ const LOC_RE = /^[A-Za-z0-9_-]{20,64}$/;
  * ticketSeal); anything else, a plaintext JSON record included, is refused, so the relay never
  * holds a box's name, handle or key in the clear. Same rule as relay/node/server.js. */
 const SEALED = /^[A-Za-z0-9_-]{22,2048}$/;
+// /v1/pair alone answers any origin (ADR 0045): a phone's page may be phone.vyre.run, a
+// <handle>.vyre.run or a self-hosted box's own address, and the endpoint's safety is the ticket
+// (an opaque locator, a sealed and MAC'd record), never the caller's origin. No credentials: it
+// reads no cookies and sets none. Every other route stays without CORS.
+const PAIR_CORS = { "access-control-allow-origin": "*" };
+const PAIR_PREFLIGHT = { ...PAIR_CORS, "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
+/** @param {Response} r */
+const withPairCors = r => { const out = new Response(r.body, r); for (const [k, v] of Object.entries(PAIR_CORS)) out.headers.set(k, v); return out; };
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 /**
@@ -132,7 +140,8 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/health") return new Response('{"ok":true}', { headers: { "content-type": "application/json" } });
     if (!url.pathname.startsWith("/v1/")) return new Response(null, { status: 404 });
-    if (url.pathname === "/v1/pair" && request.method === "POST") return onPairResolve(request, env);
+    if (url.pathname === "/v1/pair" && request.method === "OPTIONS") return new Response(null, { status: 204, headers: PAIR_PREFLIGHT });
+    if (url.pathname === "/v1/pair" && request.method === "POST") return withPairCors(await onPairResolve(request, env));
     if (String(request.headers.get("upgrade")).toLowerCase() !== "websocket") return new Response(null, { status: 426 });
     const route = url.searchParams.get("route") || "";
     if ((url.pathname !== "/v1/box" && url.pathname !== "/v1/device") || !ROUTE_RE.test(route)) return new Response(null, { status: 400 });

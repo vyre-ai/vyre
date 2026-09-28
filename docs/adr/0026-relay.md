@@ -366,8 +366,10 @@ effect. They cannot rule it out.
 trusts no origin by itself. The app signs the person in on the box's own page with a passkey
 and holds a session bound to a non-extractable key. Every call is signed with that key. The
 e2e team owns this; tailnet answers CORS for `https://app.vyre.run` only. On the relay path
-there is no CORS, because the browser opens one WebSocket to the relay and every request
-travels inside the channel. The box's sign-in page cannot be reached there either. For a relayed
+the channel itself needs no CORS, because the browser opens one WebSocket to the relay and every
+request travels inside it. The one exception is Wink's ticket lookup, `POST /v1/pair`, a plain
+cross-origin fetch made before any channel exists: it answers `Access-Control-Allow-Origin: *`
+with no credentials, and no other relay route sends CORS headers (ADR 0045). The box's sign-in page cannot be reached there either. For a relayed
 web device, pairing stands in for signing in: the device key is non-extractable, Noise binds
 every request to it, the pairing enrolls a passkey under `app.vyre.run` as its presence key, and
 the session is the device's pairing, with a 30-day sliding expiry, revoked by removing the

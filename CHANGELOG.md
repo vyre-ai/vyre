@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Wink: the relay's /v1/pair answers any origin, so a real phone can look a ticket up
+
+- Chrome blocked `resolveTicket()`'s cross-origin POST before the confirm screen (pwa's live
+  test). Both relays now send `Access-Control-Allow-Origin: *` on `/v1/pair` alone, with no
+  credentials, and answer its `OPTIONS` preflight for `POST` with `Content-Type`. Every other
+  route stays without CORS (ADR 0045, ADR 0026's relay path note corrected).
+
 #### rc-smoke: steps 3, 6, 7 and 8 were the script's, not the product's (15/6/1 to 27/0/1)
 
 - `ready()` matched `running`, which "vyred not running" also contains, so it returned while

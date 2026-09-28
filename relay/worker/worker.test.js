@@ -465,6 +465,29 @@ test("worker: a plaintext ticket record is refused at registration, so the relay
   assert.equal(direct.status, 400);
 });
 
+test("worker: /v1/pair alone answers any origin, without credentials: the preflight, and every POST answer", async t => {
+  const rt = world(t);
+  const H = BASE.replace(/^ws/, "http");
+  const pre = await worker.fetch(new Request(`${H}/v1/pair`, { method: "OPTIONS", headers: { origin: "https://phone.vyre.run", "access-control-request-method": "POST", "access-control-request-headers": "content-type" } }), rt.env);
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get("access-control-allow-origin"), "*");
+  assert.equal(pre.headers.get("access-control-allow-methods"), "POST");
+  assert.equal(pre.headers.get("access-control-allow-headers"), "content-type");
+  assert.equal(pre.headers.get("access-control-allow-credentials"), null);
+  const miss = await worker.fetch(new Request(`${H}/v1/pair`, { method: "POST", headers: { origin: "https://alex.vyre.run", "content-type": "application/json" }, body: JSON.stringify({ loc: "y".repeat(43) }) }), rt.env);
+  assert.equal(miss.status, 404);
+  assert.equal(miss.headers.get("access-control-allow-origin"), "*");
+  const bad = await worker.fetch(new Request(`${H}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: "nope" }), rt.env);
+  assert.equal(bad.status, 400);
+  assert.equal(bad.headers.get("access-control-allow-origin"), "*");
+  for (const p of ["/health", "/v1/box", "/v1/device", "/nothing"]) {
+    const r = await worker.fetch(new Request(`${H}${p}`, { headers: { origin: "https://phone.vyre.run" } }), rt.env);
+    assert.equal(r.headers.get("access-control-allow-origin"), null, p);
+  }
+  const other = await worker.fetch(new Request(`${H}/v1/device`, { method: "OPTIONS", headers: { origin: "https://phone.vyre.run" } }), rt.env);
+  assert.equal(other.headers.get("access-control-allow-origin"), null);
+});
+
 test("worker: /v1/pair refuses a bad locator and a malformed body before ever asking a PairTicket object", async t => {
   const rt = world(t);
   const bad = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "short" }) }), rt.env);

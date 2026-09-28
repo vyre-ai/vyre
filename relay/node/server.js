@@ -116,7 +116,14 @@ export function createRelay(o = {}) {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || "/", "http://relay");
     if (url.pathname === "/health") { res.writeHead(200, { "content-type": "application/json" }); res.end('{"ok":true}'); return; }
-    if (url.pathname === "/v1/pair" && req.method === "POST") { onPairResolve(req, res); return; }
+    // /v1/pair alone answers any origin, with no credentials (ADR 0045; relay/worker/index.js
+    // does the same): its safety is the ticket, never the caller's origin.
+    if (url.pathname === "/v1/pair" && req.method === "OPTIONS") {
+      res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" });
+      res.end();
+      return;
+    }
+    if (url.pathname === "/v1/pair" && req.method === "POST") { res.setHeader("access-control-allow-origin", "*"); onPairResolve(req, res); return; }
     res.writeHead(url.pathname.startsWith("/v1/") ? 426 : 404);
     res.end();
   });
