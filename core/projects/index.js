@@ -12,6 +12,7 @@ import { moveProjects, RECORD } from "./move.js";
 import { boxProjectsDir, oldProjectsDir, workDir, home as vyreHome } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
 import { isProjectId } from "../../lib/project-id.js";
+import { ownerDevice } from "../modules/index.js";
 
 const str = { type: "string" };
 const strs = { type: "array", items: str };
@@ -275,6 +276,53 @@ export default {
           ? db.prepare("SELECT project, agent, status, by, at FROM projects_access WHERE project = ? ORDER BY at DESC").all(P.resolve(project).slug)
           : db.prepare("SELECT project, agent, status, by, at FROM projects_access ORDER BY at DESC").all();
         return { grants: rows };
+      },
+    });
+
+    // Cohesion's one-system audit (28 Sep 2026): core/memory, core/recall and core/files each
+    // grew their own copy of "which projects may this caller reach", and drifted (memory's never
+    // intersected agents.projects with projects.access at all; files' treated any unnamed caller
+    // as the owner). projects.reach is the one door now: this module owns projects.access, so
+    // the ctx.call fan-out (agents.list, projects.list, projects.access.check) belongs in one
+    // place, not three. Landed with one fix on cohesion's own proposal (flagged to them first):
+    // the assistant is never checked against projects.access at all (a different privilege tier,
+    // not the wildcard agent's own per-project door — THE assistant rule, team-lead, restated
+    // twice), so it skips the projects.access.check loop entirely rather than running through it
+    // with every project as its candidate set.
+    const REACH_OWNER = new Set(["deck", "cli", "local", "capsule"]);
+    const reachOwner = c => REACH_OWNER.has(String(c)) || String(c || "").startsWith("module:");
+    const reachOwnSession = c => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(c || ""));
+    const reachAgentOf = c => /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(c || ""))?.[1] || null;
+    ctx.tool("projects.reach", {
+      description: "Which projects (and their folders) a caller may reach: the one door core/memory, core/recall and core/files all ask instead of keeping their own copy of this check. { all: true } for the true owner (its own surfaces, a module, its own session, or an owner device): no restriction. Otherwise { all: false, agent, projects: [{slug, name, folders, threads}] }, deny by default. kind \"facts\" additionally gives the assistant { all: true } too (personal facts, distilled, not raw content); kind \"content\" (the default) never does, even for the assistant, which instead gets every project that exists, unconditional and never checked against projects.access (a different privilege tier from a projects: \"*\" agent, which is checked). Internal to first-party modules; a model never asks this on its own behalf.",
+      input: { type: "object", properties: { agent: str, kind: { type: "string", enum: ["facts", "content"] } } },
+      callers: ["module"],
+      run: async ({ agent, kind = "content" }, { caller } = {}) => {
+        const said = reachAgentOf(caller);
+        if (said && agent && said !== agent) throw refuse(`the call came from agent ${said} but names agent ${agent}`, "denied");
+        const who = said || agent || null;
+        if (!who) {
+          if (reachOwner(caller) || reachOwnSession(caller) || ownerDevice(caller)) return { all: true, agent: null };
+          throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}`, "denied");
+        }
+        const r = await ctx.call("agents.list", {});
+        if (r.error) throw new Error(`agent ${who}: its projects cannot be checked (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`);
+        const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
+        const a = list.find(x => x && x.name === who);
+        if (!a) throw refuse(`no agent ${who}`, "denied");
+        const assistant = a.kind === "assistant";
+        if (assistant && kind === "facts") return { all: true, agent: who };
+        const all = P.list().projects.map(p => ({ slug: p.slug, name: p.name, folders: p.workspaces ? [p.home, ...p.workspaces] : [p.home], threads: p.picks || [] }));
+        if (assistant) return { all: false, agent: who, projects: all };
+        const wildcard = a.projects === "*";
+        const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
+        const candidate = wildcard ? all : all.filter(p => mine.has(p.slug) || mine.has(p.name));
+        const checked = await Promise.all(candidate.map(async p => {
+          const c = await ctx.call("projects.access.check", { project: p.slug, agent: who });
+          if (c.error && c.error.code === "no_such_tool") return p; // no gate installed: agents.projects' own scope, unchanged
+          return c.data && c.data.granted ? p : null;
+        }));
+        return { all: false, agent: who, projects: checked.filter(Boolean) };
       },
     });
 

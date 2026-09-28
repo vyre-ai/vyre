@@ -95,9 +95,10 @@ test("sync.scan: sizes and file counts per project folder, exclusions honored, a
 
   const r = await s.macCall("sync.scan", {}, "cli");
   assert.ok(!r.error, JSON.stringify(r.error));
+  // project (Vyre Drive step 4): a proposed slug per folder, lib/project-id.js's own shape.
   assert.deepEqual(r.data.projects.sort((a, b) => a.name.localeCompare(b.name)), [
-    { name: "-home-alex-Work-northwind-bakery", bytes: 150, files: 2, included: true },
-    { name: "-tmp-scratch", bytes: 10, files: 1, included: true },
+    { name: "-home-alex-Work-northwind-bakery", bytes: 150, files: 2, included: true, project: "home-alex-work-northwind-bakery" },
+    { name: "-tmp-scratch", bytes: 10, files: 1, included: true, project: "tmp-scratch" },
   ]);
   assert.equal(r.data.total, 160);
   assert.deepEqual(r.data.excluded, []);
@@ -110,7 +111,7 @@ test("sync.scan: sizes and file counts per project folder, exclusions honored, a
   assert.deepEqual(ex.data.excluded, ["-tmp-scratch"]);
   assert.equal(ex.data.total, 150);
   const scratch = ex.data.projects.find(p => p.name === "-tmp-scratch");
-  assert.deepEqual(scratch, { name: "-tmp-scratch", bytes: 10, files: 1, included: false });
+  assert.deepEqual(scratch, { name: "-tmp-scratch", bytes: 10, files: 1, included: false, project: "tmp-scratch" });
   assert.notEqual(ex.data.planHash, planAll, "a different set of exclusions is a different plan");
   assert.ok(fs.existsSync(path.join(projects, "-tmp-scratch", "s1.jsonl")), "sync.scan never touches a file");
 
