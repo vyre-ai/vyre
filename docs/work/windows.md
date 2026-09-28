@@ -116,9 +116,19 @@ this round; verification leans on windows-latest CI.
   so `PERSON_ONLY` there has to rest on presence, not ancestry - the lead's final call is Windows
   Hello, then the UAC consent prompt (secure desktop, unspoofable by a model), then phone approve,
   no password (phishable/keyloggable). And ADR 0040's same-uid vault problem needs its own Windows
-  service-account split, not inherited from the Mac fix. **None of this is built yet.**
-  `socketPath` itself does not change again until the squatting fix (random name + refuse-on-
-  conflict) lands as one piece. Windows now ships 0.1.2 or later, not 0.1.1, per the lead.
+  service-account split, not inherited from the Mac fix. Windows now ships 0.1.2 or later, not
+  0.1.1, per the lead.
+- **Squatting fix, parts a and b, built and CI-green (1da650d3).** `pipeToken`
+  (core/config/index.js) folds a random 16-byte token into the pipe name, persisted at
+  `<root>/pipe-token`. Whether libuv sets `FILE_FLAG_FIRST_PIPE_INSTANCE` was left open in 7a
+  rather than guessed from source; instead, `windows-socket-acl` now starts a second `vyred`
+  against the same home and proves it refuses (exits non-zero, first one still listening
+  afterward) - turns out `core/daemon/index.js`'s existing `existsSync`+`ping` pre-check already
+  covers this generically, no `win32` code needed, since a crashed `vyred`'s pipe can't linger the
+  way a POSIX socket file can. Still open from 7a: 2c (client-side owner-SID check, needs the
+  native helper), 3 (the helper exe itself), 4's `winhello` presence method, 6 (Windows `vyre-core`
+  equivalent). `socketPath` itself has now changed (with 2a+2b together, as required); no further
+  change until 2c/3 need one.
 - Capsule (Tier C) scaffold started, per the lead's instruction to begin before capsule-pro's
   contract reply: `local/capsule/native-win/src/hotkey.rs` (fdd392a6), the Alt+Space-default /
   Ctrl+Alt+Space-fallback decision and the exact focused-panel-vs-system-menu logic app-design
