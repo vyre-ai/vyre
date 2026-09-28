@@ -62,6 +62,9 @@ const ROUTES = [
   ["/planner/:firing", "planner"],
   // `vyre phone add --tailscale-only` points the phone here (views/pair.js).
   ["/pair", "pair"],
+  // Scan your avatar to pair your phone (ADR 0037, "Wink"): phone.vyre.run points here
+  // (views/wink.js, js/pair-scan.js's sheet).
+  ["/pair/scan", "wink"],
 ];
 // The places and their order are the rail's (js/rail.js PLACES).
 // The phone's three pages, in pager order. Every other address is pushed over them.
