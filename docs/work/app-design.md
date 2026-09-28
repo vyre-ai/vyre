@@ -595,6 +595,31 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   context, section 3) to state this and move plain QR to "considered, not chosen," committed
   d24e9c3f. avatar.md never claimed a fallback, so it needed no change.
 
+## Now (28 Sep, widened the Vyre-code outer margin per pwa's decode finding)
+
+- Lead relayed pwa's decoder finding (work/pwa bdca618b, docs/work/pwa.md): the outer margin was
+  too thin (~15px), clipping at 120% scale and limiting perspective correction; the two rings were
+  also bleeding into each other. Asked to widen the outer margin to 8-10% of the diameter and keep
+  the ring gap clearly wider than the longest tick + its cap, then tell pwa and launch the new
+  constants.
+- Root cause, found by doing the actual arithmetic rather than trusting the old comment: the
+  orientation marker (the disguised 3-dot cue), not the ticks, was setting the real outer edge -
+  it reached `RING_R[1] + 37.1` versus the longest tick's `RING_R[1] + 31.25`. The first pass's
+  margin math only ever checked the ticks.
+- Fixed in `round5/vyrecode2.js`: pulled the rings in tight against the face
+  (`RING_R = [FACE_R+8, FACE_R+8+34]` = `[188, 222]`, was `[210, 245]`), shortened
+  `ticksSunburst`'s tick lengths to `6, 12, 18, 24` (was `8, 15, 22, 29`), and tightened the
+  marker's own offsets (`r0+8+k*6`, radius `2+k*1`, was `r0+14+k*9`, radius `2.5+k*1.3`) so it no
+  longer out-reaches the ticks. Verified by computing both reaches directly, not by eye: outer
+  margin is now 51.75 units (8.6% of the 600 canvas), ring-gap clearance 7.75px. Re-rendered and
+  confirmed the module still executes clean (no visual regression check on this Mac - headless
+  only, per the no-visible-windows rule).
+- Wrote the fix and the corrected invariant into ADR 0033 (814d0b08): the outer edge is
+  `max(tick reach, marker reach)`, not tick reach alone - restated so the next person doesn't
+  repeat the same mistake.
+- Sent the new constants to pwa and launch directly. Not verified end-to-end against pwa's real
+  decode harness on my side - that's theirs to re-run against the new numbers.
+
 ## Now (28 Sep, launch built the pairing screen off ADR 0033)
 
 - `launch` vendored `rs.js`/`payload.js`/`identity.js`/`vyrecode2.js` into
