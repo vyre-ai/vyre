@@ -39,16 +39,13 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   only the throwaway debug script, since deleted.
 
 ## Doing
-- reviewer CLEARED work/github 3a72ea7f..84e76681; sent them acfcefd2 (the stdin fix) as a
-  follow-up look. Pushed back (with evidence) on their LOW asking for
-  `-c credential.interactive=never`: invalid value, and the real `false` value disables askpass
-  entirely (confirmed empirically while building) - `GIT_TERMINAL_PROMPT=0`, already forced
-  unconditionally, is what actually satisfies "no interactive credential prompt". Told the lead
-  the same; waiting on either side to confirm this is settled (no new sha expected for item 1).
+- reviewer CLEARED work/github through acfcefd2 (both 3a72ea7f..84e76681 and the stdin fix).
+  The credential.interactive LOW is WITHDRAWN (reviewer agreed the evidence was right); the lead
+  confirmed item 1 is done with no new sha. github range fully clear, no open reviewer asks.
 - Sent launch the full tool contract for Settings/onboarding (sign-in flow, event names, account
   list, disconnect, error codes). Waiting on their questions/build.
 - Pinged sessions: does acfcefd2 clear their HIGH, and status on the start/end hook (offered to
-  draft it as a diff against their file, their call).
+  draft it as a diff against their file, their call). Waiting on their reply.
 
 ## Next
 1. Send `sessions` the actual gitWithAskpass diff (lib/git-safe.js + lib/git-safe-askpass.test.js)
