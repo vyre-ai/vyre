@@ -37,8 +37,8 @@ test("session: threads.get's events become the transcript; idle is not ended", {
   const text = /** @type {any} */ (s.items[3]);
   assert.equal(text.text, "Using Estate intake v2.");
   assert.equal(text.streaming, false);
-  assert.equal(s.state, "idle");
-  assert.deepEqual(stateWords(s), { word: "idle", note: "Resumes on your next message", ended: false });
+  assert.equal(s.state, "paused");
+  assert.deepEqual(stateWords(s), { word: "paused", note: "Resumes on your next message", ended: false });
   assert.equal(busy(s.state), false);
   // Another thread's event is not this one's.
   const other = toSessionEvent({ id: 11, type: "thread.text", thread: "t2", payload: { message: "x", delta: "no" } }, "t1");
@@ -49,14 +49,14 @@ test("session: threads.get's events become the transcript; idle is not ended", {
 test("session: a stop that is not for idleness reads as ended", { skip: !strip }, async () => {
   const { stateWords, stateOf } = await load();
   assert.deepEqual(stateWords({ state: "stopped", stopped: "stopped" }), { word: "ended", note: "Stopped", ended: true });
-  assert.equal(stateOf("stopped", "idle"), "idle");
-  assert.equal(stateOf("working"), "running");
-  assert.equal(stateOf("waiting"), "waiting");
+  assert.equal(stateOf("stopped", "idle"), "paused");
+  assert.equal(stateOf("working"), "working");
+  assert.equal(stateOf("waiting"), "asking");
 });
 
 test("session: a failed record is stopped for the core, and reads as failed", { skip: !strip }, async () => {
   const { stateOf, stoppedOf, stateWords } = await load();
-  assert.equal(stateOf("failed"), "stopped");
+  assert.equal(stateOf("failed"), "failed");
   assert.equal(stoppedOf("failed"), "failed");
   assert.equal(stoppedOf("stopped", "idle"), "idle");
   assert.equal(stoppedOf("running"), null);
@@ -65,10 +65,10 @@ test("session: a failed record is stopped for the core, and reads as failed", { 
 
 test("session: Stop flips the chip to stopping at once, until the turn has ended", { skip: !strip }, async () => {
   const { stateWords } = await load();
-  assert.equal(stateWords({ state: "running", stopped: null }, true).word, "stopping");
-  assert.equal(stateWords({ state: "running", stopped: null }, false).word, "running");
+  assert.equal(stateWords({ state: "working", stopped: null }, true).word, "stopping");
+  assert.equal(stateWords({ state: "working", stopped: null }, false).word, "working");
   // The box said it ended: the stop is over, the words are the state's.
-  assert.equal(stateWords({ state: "idle", stopped: null }, true).word, "idle");
+  assert.equal(stateWords({ state: "paused", stopped: null }, true).word, "paused");
 });
 
 test("session: runs of tools fold into one row, open on a tap", { skip: !strip }, async () => {

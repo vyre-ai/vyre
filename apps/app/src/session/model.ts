@@ -22,18 +22,26 @@ export function toSessionEvent(e: unknown, thread: string): SessionEvent | null 
 }
 
 /**
- * The record's status (apps/CONTRACT.md 3.2) in session-state's words. The core has no "failed"
- * state: a failed session is stopped, and its reason (stoppedOf) says it failed.
+ * The record's raw status (apps/CONTRACT.md 3.2: starting|working|waiting|idle|stopped, the
+ * switchboard's own internal vocabulary, not a person's) in session-state's canonical words.
+ * Mirrors lib/thread-status.js's threadStatus() (sessions owns that mapping) by hand, since this
+ * file imports no runtime code but types: raw "waiting" (an ask is open) is "asking" to a person;
+ * raw "idle" (ready, nothing open) is "waiting"; a "stopped" record reads its stopped_reason -
+ * idle/restart/rewind is "paused" (resumable, nothing wrong), done/exited is "finished", an
+ * "exited <code>" is "failed", anything else is plain "stopped".
  */
 export function stateOf(status: unknown, stoppedReason?: unknown): Session["state"] {
-  switch (status) {
-    case "working": case "running": return "running";
-    case "waiting": return "waiting";
-    case "starting": return "starting";
-    case "failed": return "stopped";
-    case "stopped": return stoppedReason === "idle" ? "idle" : "stopped";
-    default: return "idle";
+  if (status === "waiting") return "asking";
+  if (status === "idle") return "waiting";
+  if (status === "stopped") {
+    const r = typeof stoppedReason === "string" ? stoppedReason : "";
+    if (r === "idle" || r === "restart" || r === "rewind") return "paused";
+    if (r === "done" || r === "exited") return "finished";
+    if (r.startsWith("exited ")) return "failed";
+    return "stopped";
   }
+  const known: Session["state"][] = ["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"];
+  return typeof status === "string" && (known as string[]).includes(status) ? (status as Session["state"]) : "stopped";
 }
 
 /** Why the record stopped, as session-state keeps it (s.stopped): its reason, or "failed" for a failed one. */
@@ -42,17 +50,18 @@ export function stoppedOf(status: unknown, stoppedReason?: unknown): string | nu
   return status === "failed" ? "failed" : null;
 }
 
-/** A turn is on: the composer steers or queues, and Stop shows. */
-export const busy = (state: string) => state === "running" || state === "waiting" || state === "starting";
+/** A turn is on: the composer steers or queues, and Stop shows. Matches deck/chat/session.js's own BUSY set. */
+export const busy = (state: string) => state === "working" || state === "asking" || state === "starting";
 
 /**
- * The words under the title. A session closed for idleness is idle, not ended: the next message
- * resumes it (ADR 0030 section 7). `stopping`: Stop was pressed and the box has not said the turn
- * ended yet; the chip says so at once (native bar 10).
+ * The words under the title. A session closed for idleness is "paused", not ended: the next
+ * message resumes it (ADR 0030 section 7; lib/thread-status.js, deck/chat/session.js's own
+ * idleClosed). `stopping`: Stop was pressed and the box has not said the turn ended yet; the chip
+ * says so at once (native bar 10).
  */
 export function stateWords(s: Pick<Session, "state" | "stopped">, stopping = false): { word: string; note: string | null; ended: boolean } {
   if (stopping && busy(s.state)) return { word: "stopping", note: null, ended: false };
-  if (s.state === "idle" || s.stopped === "idle") return { word: "idle", note: s.stopped === "idle" ? "Resumes on your next message" : null, ended: false };
+  if (s.state === "paused") return { word: "paused", note: "Resumes on your next message", ended: false };
   if (s.state === "stopped" && s.stopped === "failed") return { word: "failed", note: null, ended: true };
   if (s.state === "stopped") return { word: "ended", note: s.stopped && s.stopped !== "stopped" ? s.stopped : "Stopped", ended: true };
   return { word: s.state, note: null, ended: false };

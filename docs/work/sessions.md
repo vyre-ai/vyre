@@ -43,6 +43,33 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
+- 0.1.1 test-fix queue from team-lead (branch work/sessions-011 off stage/0.1.1 d9b916d4, both
+  failures predate today, also seen on 029756bc): fixed.
+  1. `apps/app/src/session/model.test.js` "idle is not ended": `deck/chat/core/session-state.js`
+     already speaks the canonical vocabulary (lib/thread-status.js: a `thread.stopped` reason
+     idle/restart/rewind guesses "paused", not "idle" - matches deck/chat/session.js's own
+     `idleClosed`). The app's own `apps/app/src/session/model.ts` had drifted: `stateOf()` was a
+     hand-rolled, WRONG mirror of raw record status (starting/working/waiting/idle/stopped, apps/
+     CONTRACT.md 3.2) - raw "waiting" (an ask open) passed through as "waiting" instead of
+     "asking", raw "idle" fell to a default of "idle" instead of "waiting", and "working" mapped
+     to the non-canonical "running". `stateWords()`/`busy()` matched that same stale "idle"/
+     "running" vocabulary. Rewrote `stateOf()` to mirror `threadStatus()` by hand (this file is
+     pure, no runtime imports, so it can't just import lib/thread-status.js), and `stateWords()`/
+     `busy()` to use "paused"/"working"/"asking" like deck/chat/session.js's BUSY set does. Test
+     file updated to match (it was internally self-consistent with the old wrong vocabulary, so it
+     never caught the drift). 9/9 model.test.js, 23/23 with pwa+vault+thread-status, testbox.
+  2. `core/cli/commands/home.test.js` "inside a project folder..." and "New session in a
+     project...": not the switchboard/where() worktree hook (ADR 0041) - `registry.call(tool,
+     input, caller)` defaults `caller` to "unknown" when omitted (core/modules/index.js:590), and
+     these two tests called `registry.call("projects.create", {...})` with no third argument.
+     projects.create's callers list (OWNER + "module") denied "unknown" outright, so the project
+     was never created; the screen then had no project to preselect/expand, the cursor landed on
+     "New session without a project", and the resume/new-in flow never fired. Added the missing
+     `"cli"` caller argument (matches the working pattern already used elsewhere in this same file,
+     and in core/projects/projects.test.js:323). 7/7 home.test.js, testbox.
+  Full sweep of apps/app/session+pwa, deck/vault, lib/thread-status, core/cli/commands, core/cli/
+  screen and deck/chat: 680/680 on a second clean run (one flake on the first pass under load
+  13.6, per RULES.md's "wait if load is over 12" - not our two files, did not reproduce).
 - Reviewer SIGNED OFF the whole planner-task range as one: b786a799 + db916908 + dfc402e9 +
   7483788d. Open LOW for later (not blocking, not done): a missed firing after downtime runs its
   task immediately on catch-up; reviewer's suggestion is to hold a stale one for the person instead
