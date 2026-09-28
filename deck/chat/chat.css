@@ -218,6 +218,17 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .lease-bar .lease-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .composer-note { font-size: 12px; line-height: 16px; color: var(--beacon-ink); padding: 0 2px; }
 .composer-note:empty { display: none; }
+/* "From your past sessions" (recall.related): quiet, dismissible, never focused on its own. */
+.composer-hints { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px;
+  border-radius: var(--radius-field, 8px); border: 1px solid var(--rule); padding: 6px 8px; }
+.composer-hints[hidden] { display: none; }
+.composer-hints-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.composer-hints-close { width: 20px; height: 20px; color: var(--label); }
+.composer-hint-row { display: flex; align-items: baseline; gap: 8px; width: 100%; min-width: 0; padding: 3px 2px;
+  border: none; border-radius: 6px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.composer-hint-row:hover, .composer-hint-row:focus-visible { background: var(--hover); }
+.composer-hint-snip { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 18px; }
+.composer-hint-meta { flex-shrink: 0; font-size: 12px; line-height: 16px; white-space: nowrap; }
 /* {sent: false, note}: the session is busy elsewhere, not broken. Quiet, with a way to retry. */
 .composer-note.soft { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; color: var(--text-2); }
 .composer-retry { margin-left: -4px; }

@@ -54,6 +54,7 @@ import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
 import { listMenu, keysLine } from "./pickers.js";
 import { voiceStatus, listen as listenVoice } from "./core/voice.js";
+import { ago, agoLong } from "../js/need-rows.js";
 
 const touch = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 const isMacOS = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(String(navigator.platform || navigator.userAgent || ""));
@@ -105,10 +106,13 @@ const COMMANDS_RETRY_MS = 15_000;
  * @param {{ thread: string, agents?: string[], threads?: { id: string, name: string|null }[], holder?: string|null, surface?: string,
  *   machine?: string|null, onOffline?: (machine: string|null) => void, onQueue?: (n: number, name: string) => void, onStop?: () => void,
  *   session?: import("./core/session-state.js").Session, patch?: (keys: string[]) => void, cwd?: () => string|null, name?: () => string,
- *   onRewind?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean, onFind?: (query: string) => void }} opts
+ *   onRewind?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean, onFind?: (query: string) => void,
+ *   onRecall?: (hit: { session: string, seq: number, role: string, ts: number, name: string|null, title: string|null, cwd: string|null, snippet: string }) => void }} opts
  * session and patch: the view's session-state and how it redraws what changed (steers, queue rows and shell rows are drawn
  * here, on send). onOffline: called with the Mac's name when a send finds it offline, with null when a send goes through.
  * onFind: "/find [words]" (a local command, nothing sent) - words is "" when none were typed.
+ * onRecall: a "From your past sessions" row was tapped (recall.related's own hit shape) - opening
+ * and rendering that session at its seq is the caller's job; without onRecall the hint never shows.
  * @returns {{ el: HTMLElement, focus: () => void, stop: () => void, setMachine: (m: string|null) => void, setBusy: (on: boolean) => void,
  *   setText: (text: string, note?: string) => void, editQueued: (q: { uuid: string|null, queued?: any, text: string }) => void,
  *   key: (e: KeyboardEvent) => boolean, draw: () => void, value: () => string }}
@@ -145,7 +149,7 @@ export function mountComposer(opts) {
 
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
     rows: 1, placeholder: "Message this session", "aria-label": "Message", enterkeyhint: "send",
-    oninput: () => { grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); },
+    oninput: () => { grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); scheduleHint(); },
     onkeydown: onKey, onpaste: onPaste,
   }));
   const thumbs = h("div", { class: "composer-images", hidden: true });
@@ -157,6 +161,8 @@ export function mountComposer(opts) {
   const stopBtn = h("button", { class: "btn btn-ghost btn-sm composer-stop", type: "button", hidden: true, title: "Stop this turn (Esc)",
     onclick: () => opts.onStop?.() }, "Stop", h("span", { class: "kbd" }, "Esc"));
   const chips = h("div", { class: "composer-chips" });
+  /** "From your past sessions" (recall.related), quiet rows above the input row. */
+  const hintBox = h("div", { class: "composer-hints", hidden: true });
   // Attach: the same path as a paste (a picked or dropped file).
   const picker = /** @type {HTMLInputElement} */ (h("input", { type: "file", accept: IMAGE_TYPES.join(","), multiple: true, hidden: true,
     onchange: () => { const fs = [...(picker.files || [])]; picker.value = ""; takeFiles(fs); } }));
@@ -176,7 +182,7 @@ export function mountComposer(opts) {
   // The tip sits on the left of the hint line, the key hints stay on the right (tip.md; chat's tip-line.js fills it).
   const tipSlot = h("div", { class: "composer-tip", hidden: true });
   const hint = h("div", { class: "composer-hint" }, tipSlot, h("span", { class: "composer-keys" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "memory"])));
-  const root = h("div", { class: "composer" }, note, thumbs, wrap, chips, hint);
+  const root = h("div", { class: "composer" }, note, thumbs, hintBox, wrap, chips, hint);
 
   // The box fits its text. Where CSS can size it (field-sizing, chat.css) nothing runs per key.
   // Elsewhere it is measured once a frame, and the height is reset only when the text got
@@ -195,7 +201,11 @@ export function mountComposer(opts) {
     });
   }
   const caret = () => (typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length);
-  const setValue = (/** @type {string} */ v, at = v.length) => { ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} grow(); drawChips(); flushDraft(); };
+  const setValue = (/** @type {string} */ v, at = v.length) => {
+    ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} grow(); drawChips(); flushDraft();
+    // An empty box is a fresh compose: the next message gets its own hint, not the last one's "not now".
+    if (!v) { clearTimeout(hintTimer); hintDismissed = false; hideHints(); }
+  };
   const say = (/** @type {any} */ what, soft = true) => { note.classList.toggle("soft", soft); put(note, what); };
 
   function maybeLease() {
@@ -431,6 +441,56 @@ export function mountComposer(opts) {
   function stopTalk() {
     if (voiceSession) { voiceSession.stop(); return; }
     if (voiceOpening) voiceWantStop = true;
+  }
+
+  // ---- "From your past sessions" (recall.related) ------------------------------------------
+
+  /** Under this many characters, no call - the hint is for a real thought in progress, not "hi". */
+  const HINT_MIN_CHARS = 12;
+  const HINT_DEBOUNCE_MS = 350;
+  let hintTimer = /** @type {any} */ (null);
+  /** Guards a stale answer: only the most recent request's reply is drawn. */
+  let hintSeq = 0;
+  /** "Not now" for this compose - cleared the next time the box goes empty (a send or a clear). */
+  let hintDismissed = false;
+  /** @type {{ session: string, seq: number, role: string, ts: number, name: string|null, title: string|null, cwd: string|null, snippet: string }[]} */
+  let hints = [];
+
+  function scheduleHint() {
+    clearTimeout(hintTimer);
+    if (!wantHint()) { hideHints(); return; }
+    hintTimer = setTimeout(runHint, HINT_DEBOUNCE_MS);
+  }
+  /** Whether the box is in a state worth asking recall.related about at all. */
+  function wantHint() {
+    return !!opts.onRecall && !machine && draftKind(ta.value) === "message" && ta.value.trim().length >= HINT_MIN_CHARS && !hintDismissed;
+  }
+  async function runHint() {
+    if (!wantHint()) { hideHints(); return; }
+    const cwd = opts.cwd?.();
+    if (!cwd) { hideHints(); return; }
+    const text = ta.value.trim();
+    const my = ++hintSeq;
+    const r = await attempt("recall.related", { project_cwds: [cwd], text, limit: 3 });
+    if (my !== hintSeq || !wantHint()) return; // a newer keystroke, or the box moved on, while this was in flight
+    if (r.error) { hideHints(); return; }
+    const d = /** @type {any} */ (r.data) || {};
+    hints = Array.isArray(d.hits) ? d.hits : [];
+    drawHints();
+  }
+  function hideHints() { if (!hints.length && hintBox.hidden) return; hints = []; drawHints(); }
+  function dismissHints() { hintDismissed = true; hideHints(); }
+  function drawHints() {
+    if (!hints.length) { hintBox.hidden = true; hintBox.replaceChildren(); return; }
+    hintBox.hidden = false;
+    put(hintBox,
+      h("div", { class: "composer-hints-head" }, h("span", { class: "lbl" }, "From your past sessions"),
+        h("button", { type: "button", class: "ibtn composer-hints-close", "aria-label": "Dismiss", title: "Dismiss (Esc)", onclick: () => dismissHints() }, icon("close", 12))),
+      hints.map(hit => h("button", { type: "button", class: "composer-hint-row", title: agoLong(hit.ts),
+        onclick: () => opts.onRecall?.(hit) },
+        h("span", { class: "composer-hint-snip ellipsis" }, hit.snippet || ""),
+        h("span", { class: "composer-hint-meta faint" }, (hit.role === "user" ? "you said" : "you were told") + " · " + ago(hit.ts)))),
+    );
   }
 
   function showFiles(/** @type {import("./core/composer-state.js").MentionRange} */ range) {
@@ -727,6 +787,8 @@ export function mountComposer(opts) {
     if (goal) { cancelGoal(); return true; }
     // A sheet over the composer (the rewind picker) closes first.
     if (opts.onOverlayEscape?.()) return true;
+    // A past-sessions hint dismisses easily: Esc while it shows closes it, not the box's own escape.
+    if (hints.length) { dismissHints(); return true; }
     const act = escape(esc, { now: Date.now(), running: busy && !machine && !!opts.onStop, text: ta.value, pickerOpen: menu.isOpen(), recalled: recalling(hist) || !!editing });
     if (act === "close") { menu.close(); return true; }
     if (act === "interrupt") { opts.onStop?.(); return true; }
@@ -832,7 +894,7 @@ export function mountComposer(opts) {
       drawChips();
     },
     setText: (t, why) => { setValue(String(t ?? "")); if (why) say(why); ta.focus(); },
-    stop: () => { flushDraft(); voiceSession?.stop(); for (const off of offs) off(); clearTimeout(leaseTimer); clearTimeout(fileTimer); clearTimeout(holdTimer); menu.close(); },
+    stop: () => { flushDraft(); voiceSession?.stop(); clearTimeout(hintTimer); for (const off of offs) off(); clearTimeout(leaseTimer); clearTimeout(fileTimer); clearTimeout(holdTimer); menu.close(); },
   };
 }
 
