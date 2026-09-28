@@ -118,7 +118,9 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     func makeStatusItem() {
         let bar = MenuBarItem(health: health)
         bar.content = { [unowned self] in
-            AnyView(MenuBarPopover(health: self.health, hotkeys: self.hotkeyWords, canTurnOnControl: !self.hotkeys.doubleControl,
+            // Who is who, as last read; read again so the next open is current.
+            Task { await self.model.loadIdentities() }
+            return AnyView(MenuBarPopover(health: self.health, identities: self.model.identities, hotkeys: self.hotkeyWords, canTurnOnControl: !self.hotkeys.doubleControl,
                                    open: { [unowned self] in self.menuBar?.close(); self.openCapsule() },
                                    turnOnControl: { [unowned self] in self.menuBar?.close(); self.turnOnDoubleControl() },
                                    start: { [unowned self] in self.menuBar?.close(); self.openCapsule(); self.model.startVyre() },

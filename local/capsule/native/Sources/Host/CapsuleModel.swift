@@ -210,6 +210,8 @@ public final class CapsuleModel: ObservableObject {
     /// answered yet.
     public struct CapsuleModels: Equatable { public var quick = CapsuleModel.quickModel; public var deeper = CapsuleModel.deeperModel }
     @Published public internal(set) var models = CapsuleModels()
+    /// Who the person and the assistant are (system.info), for their marks (Host/Identities.swift).
+    @Published public internal(set) var identities = Identities()
     /// Today's fallback for the quick model: sessions.models.get's purpose "capsule" overrides it.
     static let quickModel = ModelFallback.quick
 
@@ -248,6 +250,7 @@ public final class CapsuleModel: ObservableObject {
             _ = await vyred.refreshTools()
             guard vyred.isUp else { return }
             await self.loadModels()
+            await self.loadIdentities()
             self.catalog = await CatalogLoader.load(vyred)
             if self.mentionQuery != nil { self.search() }
             self.targetChanged()

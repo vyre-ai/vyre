@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### capsule: the identity marks where the Capsule shows people and answers
+
+- The Capsule reads system.info once per show, beside the models, and keeps the owner's and the
+  assistant's name and fingerprint8 (`CapsuleModel.identities`, published only when the answer
+  changes). An older vyred without fingerprints gets the marks' no-fingerprint look.
+- Marks beside who speaks: the person's circle by "You" over an answer, on the user's lines in
+  the side view and in a direct conversation; an agent's blob when an agent answers (a thread's
+  own agent in the side view, which now also labels the reply with that agent); the assistant's
+  creature for Vyre IQ, a quick or deeper answer, and everything else. A memory quote wears the
+  mark of who said it, and Vyre IQ's source chip the assistant's.
+- The menu-bar popover gains an account row: the person's circle and the owner's name.
+
 #### capsule: the five identity marks of ADR 0043, drawn natively and byte for byte with the Deck
 
 - `local/capsule/native/Sources/Core/Avatars` ports the Deck's locked renderers (deck/vendor/vyrecode
