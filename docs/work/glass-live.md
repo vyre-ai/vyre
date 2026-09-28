@@ -88,7 +88,17 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
   --bounding-set=-all silently no-ops without CAP_SETPCAP, which REQUIRED_CAPS doesn't grant
   (CapEff/CapAmb/CapPrm are correctly zero regardless). Torn down after; full detail in
   agent-browsers.md.
-- Next: reviewer clearance on 1ae6fe9e; e2e's real-stack run on /srv/vyre-e2e.
+- RESUME NOTE (28 Sep, restart prep): a9d57668 is CLEARED by the reviewer, with one condition --
+  a live isolation.test.js run including CapEff/CapAmb/CapPrm=0 -- which is ALREADY DONE, above,
+  at 1ae6fe9e (before the lead's "run it yourself on testbox" message arrived; that message
+  crossed with this work, already sent to the reviewer/e2e/lead). A fresh session picking this up
+  should NOT re-run the live isolation check from scratch -- check with the reviewer/lead first
+  whether the 1ae6fe9e numbers already sent are sufficient, since e2e's own real-stack run
+  (/srv/vyre-e2e, still owed) covers the fuller Glass-viewing/Chrome-flow check anyway.
+  Leftover on testbox, not mine: volumes run.vyre.glass-browser-alex/run.vyre.glass-home-alex from
+  an earlier (26/27 Sep) glass-live session -- not cleaned up this pass, unclear if still wanted.
+- Next: reviewer's call on the two flagged residuals (AT-SPI timing, CAP_SETPCAP for
+  --bounding-set); e2e's real-stack run on /srv/vyre-e2e.
 
 ## Rollout (must ship together)
 - The new computer image and the new vyred go out in the same deploy: the image starts as root and
