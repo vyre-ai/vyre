@@ -48,9 +48,19 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   `test/projects-cli.test.js` test 22 ("vyre start opens a new named thread ... pick and unpick
   change the marker") exercises exactly this against a real `vyre`/vyred with a fake `claude`.
   Reran on testbox: 23/23 (`test/projects-cli.test.js` + `core/projects/projects.test.js`).
-  No gap found; no code change needed. Residual, not chased today: a session picked seconds
-  after it starts may not appear in `projects.catalog`/`findThread` until Recall/the catalogue
-  indexes it (indexing latency, not a projects bug) — worth a note to recall if this ever bites.
+- Lead flagged the residual: picking a session seconds after it starts (exactly when a person
+  says "put this in project X") could fail if it isn't in Recall's catalogue yet. Turned out
+  `Projects.addThreads` never looked at the catalogue at all — it just writes the marker off
+  whatever id it's given. The real gap was the CLI's `findThread`, whose non-numeric path only
+  matched rows already in `projects.catalog`. Fixed at edf8c0bc: `findThread` now recognises the
+  shape of a Claude Code session id (UUID, optional `/agent-...` suffix) and passes it through
+  literally when no catalogue row matches, instead of refusing. New test in
+  `test/projects-cli.test.js` ("vyre pick takes a live thread id straight away, before Recall has
+  indexed it"); also checks a near-miss string is still refused. 24/24 on testbox
+  (`test/projects-cli.test.js` + `core/projects/projects.test.js`), boundaries 5/5.
+- Asked chat whether the Deck/phone already have an "Add to project" action for a project-less
+  live session (tap the project chip); if not, chat builds it on `projects.add-threads`, which
+  now works pre-index too.
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
@@ -83,6 +93,10 @@ optional deps; without them the tests silently run on the CLI).
   error); `threads.interrupt`; `busy` refusal on start; sessions.prompt.* for a settings screen.
 
 ## Changed contracts
+- CLI `vyre pick <project> <thread>` (and `unpick`): a `<thread>` shaped like a Claude Code
+  session id (UUID, optional `/agent-...` suffix) is now accepted even when Recall's catalogue
+  has no row for it yet, instead of erroring "no thread matches". `projects.add-threads` itself
+  is unchanged (it never depended on the catalogue).
 - threads: send {mode}, unqueue, edit, send-now, fork, mode, interrupt; events thread.turn, state,
   usage, steered, unqueued, mode.changed; `turn` on every turn event; thread.text `block`;
   thread.tool `call`/`name`/`status`; thread.finished `total_cost_usd`, `canceled`; cost_usd is the
