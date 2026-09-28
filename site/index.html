@@ -8,8 +8,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Run Claude Code on your own server · Vyre</title>
-  <meta name="description" content="Vyre runs Claude Code on a Linux server you own. Your sessions keep going when you close your laptop, and you can search all of them later. Free and open source.">
+  <title>Claude Code, running on your own machine · Vyre</title>
+  <meta name="description" content="Agents that keep working when you close the laptop. Your memory, your keys, your server. Vyre runs Claude Code on a Mac and a Linux server you own, free and open source.">
   <link rel="canonical" href="https://vyre.run/">
   <meta name="theme-color" content="#0E0D0C">
   <meta name="color-scheme" content="dark">
@@ -18,15 +18,15 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Vyre">
   <meta property="og:url" content="https://vyre.run/">
-  <meta property="og:title" content="Run Claude Code on your own server · Vyre">
-  <meta property="og:description" content="Claude Code on a Linux server you own. Sessions keep going when your laptop is closed, and you can search every one. Open source.">
+  <meta property="og:title" content="Claude Code, running on your own machine · Vyre">
+  <meta property="og:description" content="Agents that keep working when you close the laptop. Your memory, your keys, your server.">
   <meta property="og:image" content="https://vyre.run/og.png">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="The Vyre mark, one wire bent into a v with a green dot leaving its end">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="Claude Code, running on your own machine. Agents that keep working when you close the laptop. Your memory, your keys, your server.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Run Claude Code on your own server · Vyre">
-  <meta name="twitter:description" content="Claude Code on a Linux server you own. Sessions keep going when your laptop is closed, and you can search every one. Open source.">
+  <meta name="twitter:title" content="Claude Code, running on your own machine · Vyre">
+  <meta name="twitter:description" content="Agents that keep working when you close the laptop. Your memory, your keys, your server.">
   <meta name="twitter:image" content="https://vyre.run/og.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -64,11 +64,11 @@
   <section class="hero" id="top" aria-labelledby="hero-h">
     <div class="wrap">
       <p class="lbl eyebrow"><span>Open source, Apache 2.0</span><span aria-hidden="true">&#183;</span><span>Built on Claude Code</span></p>
-      <h1 id="hero-h" class="h-display">Run Claude Code on your own server.</h1>
+      <h1 id="hero-h" class="h-display">Claude Code, running on your own machine.</h1>
 
       <div class="hero-grid">
         <div class="hero-copy">
-          <p class="lead">Sessions you start in Vyre run on the server, so they keep going after you close your laptop. Vyre also reads every Claude Code session you run. Next month, ask what you decided about the Harlow contract and you get the answer, with the session it came from.</p>
+          <p class="lead">Agents that keep working when you close the laptop. Your memory, your keys, your server. Ask what you decided about the Harlow contract next month, and you get the answer, with the session it came from.</p>
 
           <div class="install" id="install" data-install>
             <div class="install-cmd">
@@ -90,7 +90,7 @@
             <div class="ipanel" role="tabpanel" id="h-pan-mac" aria-labelledby="h-tab-mac" tabindex="0" hidden>
               <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-hero-mac">npm install -g https://vyre.run/box/vyre.tgz</code><button class="btn btn-line btn-sm copy" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" data-copy-target="cmd-hero-mac" aria-label="Copy the Mac install command">Copy</button></div>
               <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-hero-up">vyre up</code><button class="btn btn-line btn-sm copy" type="button" data-copy="vyre up" data-copy-target="cmd-hero-up" aria-label="Copy vyre up">Copy</button></div>
-              <p>This connects your Mac to your Vyre server over Tailscale, so set up the server first. A Mac-only setup is coming. Vyre isn&#39;t on npm yet, so you install it from the same file the server uses.</p>
+              <p>This connects your Mac to a Vyre server over Tailscale. Vyre isn&#39;t on npm yet, so you install it from the same file the server uses. No server yet? <code>vyre up --box</code> runs Vyre on just this Mac.</p>
             </div>
             <div class="ipanel" role="tabpanel" id="h-pan-needs" aria-labelledby="h-tab-needs" tabindex="0" hidden>
               <ul class="needs">
@@ -463,7 +463,7 @@
           </details>
           <details>
             <summary>Do I need a server?</summary>
-            <p>Yes, for now. Vyre needs a Linux server with Docker, like a small cloud server or a spare PC at home. Your Mac connects to it. A setup that runs on one Mac, with no server, is coming.</p>
+            <p>No, but it helps. A server, like a small cloud box or a spare PC at home, keeps agents working while your Mac sleeps and lets your phone reach them from anywhere. <code>vyre up --box</code> runs Vyre on just this Mac instead.</p>
           </details>
           <details>
             <summary>Does it replace Claude Code?</summary>
@@ -511,7 +511,7 @@
           <div class="ipanel" role="tabpanel" id="e-pan-mac" aria-labelledby="e-tab-mac" tabindex="0" hidden>
             <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-end-mac">npm install -g https://vyre.run/box/vyre.tgz</code><button class="btn btn-line btn-sm copy" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" data-copy-target="cmd-end-mac" aria-label="Copy the Mac install command">Copy</button></div>
             <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-end-up">vyre up</code><button class="btn btn-line btn-sm copy" type="button" data-copy="vyre up" data-copy-target="cmd-end-up" aria-label="Copy vyre up">Copy</button></div>
-            <p>This connects your Mac to your Vyre server over Tailscale, so set up the server first. A Mac-only setup is coming. Vyre isn&#39;t on npm yet, so you install it from the same file the server uses.</p>
+            <p>This connects your Mac to a Vyre server over Tailscale. Vyre isn&#39;t on npm yet, so you install it from the same file the server uses. No server yet? <code>vyre up --box</code> runs Vyre on just this Mac.</p>
           </div>
           <div class="ipanel" role="tabpanel" id="e-pan-needs" aria-labelledby="e-tab-needs" tabindex="0" hidden>
             <ul class="needs">

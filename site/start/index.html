@@ -52,7 +52,7 @@
       <p class="lbl">Install guide</p>
       <h1 class="h-display">Install Vyre on your server and your Mac.</h1>
       <p class="lead">Every step, in the order you run them.</p>
-      <p class="body">Vyre isn&#39;t on npm yet, and we haven&#39;t signed the Mac app. For now the server and the Mac both install from one tarball on vyre.run, and the installer checks it against a published SHA-256. Vyre needs a Linux server today. A setup that runs on one Mac is coming.</p>
+      <p class="body">Vyre isn&#39;t on npm yet, and we haven&#39;t signed the Mac app. For now the server and the Mac both install from one tarball on vyre.run, and the installer checks it against a published SHA-256. A server is recommended, so agents keep working while your Mac sleeps, but <code>vyre up --box</code> runs Vyre on just this Mac instead.</p>
     </div>
 
     <section class="part" aria-labelledby="need-h">
@@ -159,12 +159,12 @@
             <li><strong>The Mac CLI and Claude Code plugin.</strong> <code>npm install -g</code> from the tarball, <code>vyre up</code>, and Vyre's tools inside Claude Code.</li>
             <li><strong>The Capsule.</strong> <code>vyre capsule</code> builds it on your Mac. Option-Space opens it, or Control twice if you switch.</li>
             <li><strong>Finding the server.</strong> <code>vyre up</code> on the Mac finds the server on your tailnet, or takes its address.</li>
+            <li><strong>Running with no server.</strong> <code>vyre up --box</code> makes this Mac the box. Your phone reaches it only while the Mac is awake.</li>
           </ul>
           <p>We haven&#39;t yet checked the Tailscale sign-in, the certificate for your address or pairing on a real server. They pass in tests against a simulated tailnet.</p>
           <h2 class="h2">What's coming</h2>
           <ul class="need">
             <li><strong>npm.</strong> <code>npm install -g vyre</code> works once the package is published. Until then, use the tarball URL.</li>
-            <li><strong>A Mac-only setup.</strong> Today Vyre needs a Linux server. A setup that runs on one Mac, with no server, is coming.</li>
             <li><strong>A published image.</strong> Today each server builds its own image from the tarball, which takes a few minutes. <code>vyre update</code> rebuilds it.</li>
             <li><strong>A signed, notarized Mac app to download.</strong> Until then the Capsule is built on your Mac by <code>vyre capsule</code>.</li>
             <li><strong>A vyre.run name.</strong> Your address is your tailnet name today. A <code>&lt;you&gt;.vyre.run</code> name needs a hosted name directory. We&#39;ve designed it (ADR 0002) but not built it.</li>
