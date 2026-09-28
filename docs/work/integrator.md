@@ -32,6 +32,20 @@ since work/ci-rc 5b1c5b33 was stale against everything landed tonight). NOT push
   clean now (no leaked homes, no orphaned vyred-present processes of mine; left another team's
   own processes alone).
 
+- Full suite run 4 (2026-09-28 ~00:53-01:06 UTC, `--test-concurrency=4 --test-timeout=90000`,
+  tmp-guard by hand before/after, `nice -n 15`, backgrounded over ssh, logged to
+  `/tmp/rc2-full4.log` on testbox): confirmed 4 REAL failures team-lead spotted reading the log
+  live — `vyred cannot read which processes this call runs under, so this is refused` in
+  test/cli.test.js:51 (x2), test/projects-cli.test.js:199, test/upgrade.test.js:87 — the peer
+  check fails closed under load and refuses the real CLI — plus test/onboard.test.js timing out
+  at 90003ms. **Not a false hang/load artifact**; team-lead says don't push, e2e is fixing it off
+  pre/rc, land once reviewer clears, then rerun. The backgrounded ssh job itself then died
+  (exit 144, no OOM/dmesg/journal signal, no final `# tests` summary — the nohup'd child did not
+  survive the ssh session ending; use `setsid` or run under `tmux`/`screen` next time instead of
+  plain `nohup ... &` over a one-shot `ssh host 'cmd'`) before printing a final tally, so no
+  clean pass/fail/skip totals for this run. tmp-guard **after** ran clean (exit 0, no leaks).
+  Do not rerun until e2e's peer-check fix lands and the reviewer clears it.
+
 **Next for rc.2 (in order):**
 1. Rerun the full suite one more time (concurrency-limited is safer given other teams share the
    box; check `uptime` first, hold if load is high) and get a clean 0-fail, 0-leak result.
