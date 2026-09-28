@@ -242,6 +242,8 @@ test("open: blocks as rows, one Vyre header per run, tool runs folded, the turn 
 });
 
 test("live: text streams, a tool card runs, then the transcript's blocks replace them in place", async () => {
+  // api-key billing: the only auth where a $ figure means a real charge, so the footer shows one.
+  emit("thread.started", { provider: "claude", model: "claude-sonnet-4-5", auth: "api-key" });
   emit("thread.sent", { text: "Now add Saturday slots", surface: "deck" });
   emit("thread.text", { message: "msg_10", delta: "Adding Saturday" });
   await wait(150);
@@ -324,6 +326,7 @@ test("a live thread the transcript cannot find yet: threads.get's events drawn, 
   assert.ok($(box, ".cv-tool[data-state=done]"), "the tool is done");
   assert.equal($$(box, ".cv-turn").length, 1);
   assert.ok($(box, ".cv-q"), "the card stays");
+  assert.doesNotMatch(text($(box, ".cv-turn")), /\$/, "no auth known: no $ figure, even with a cost_usd (the user's rule)");
   stop2();
 });
 
