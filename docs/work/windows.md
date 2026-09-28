@@ -104,13 +104,26 @@ this round; verification leans on windows-latest CI.
   (`currentUserPrincipal`, via `whoami /user`) instead of the account name, and added `whoami
   /user` + a plain-file-create probe to the workflow's diagnostic step for the next round if
   needed. 20 local tests green (core/config/config.test.js, core/daemon/bindsocket.test.js) +
-  test/boundaries.test.js and test/docs-*.test.js (66) all green. Pushed to work/windows, run
-  36368506105 in flight — watching it now.
+  test/boundaries.test.js and test/docs-*.test.js (66) all green. Pushed 723f7b07, run 36368506105
+  came back still failing, but at a `ParserError`, not the runtime EACCES: the diagnostic probe I
+  pushed alongside the retry had its own bug (`"in $dir: ok"` parses in PowerShell as the scoped
+  variable `$dir:`, not "the value of `$dir` then a colon"), so the whole PowerShell step failed
+  to parse and `vyred` never even started. Fixed in b7f37f5c (`${dir}:`, delimited). Run
+  36369204175 in flight, watching it now; the retry fix itself is still unproven against a real
+  transient EACCES until this run comes back clean.
+- Also wrote docs/design/windows-plan.md sections 8 (Windows Solo build plan, ADR 0039's
+  config.machine seam filled in for win32: one-command install, a Windows Service + keep-awake
+  twin of anywhere.md's Mac server-setup flow, Deck-in-browser already covered by Tier A) and 9
+  (Tier C Capsule build plan, against app-design's capsule-windows.md spec, d044f0e1: Tauri
+  confirmed, hotkey/tray/toast/Windows Hello/sign-and-pin, capsule-win.yml on windows-latest),
+  per the lead's 2026-09-28 "Vyre anywhere" pace instruction. Pushed 87bcd02d. Messaged capsule-pro
+  to confirm the tools/events contract before wiring the Rust side, and app-design to confirm the
+  spec's received and the hotkey question is closed per the lead's call.
 - Asked e2e for a quick read of the role-default change (win32 now defaults to a device), per the
   lead. Waiting on that before sending cac517d4 onward.
 - Sending cac517d4 (+ follow-ups) to the integrator for the first 0.1.1 batch, after rc.2, per the
   lead.
-- Will send the reviewer the sha once the windows-socket-acl job is green (not yet — waiting on
+- Will send the reviewer the sha once the windows-socket-acl job is green (not yet, waiting on
   36368506105).
 
 ## Next
