@@ -576,8 +576,9 @@ test("peer: under a root leader vyred cannot read (a real ssh login), the first 
   // real to test against.
   const self = insideClaude(process.pid, { self: 999999 });
   if (self.server?.exe !== "uid0") { t.skip("not under an unreadable root leader (run over ssh on testbox)"); return; }
-  // vyred runs detached, as `vyre up` starts it: an in-process one would count this test's own
-  // ancestry (the sshd chain) as its own and never look at it.
+  // vyred runs outside this test's ancestry (setsid -f, parent init), as a service would: an
+  // in-process or merely detached one counts this test's own chain (the sshd one) as its own and
+  // never looks at it.
   const home = tempHome(t);
   const { generateKeyPairSync, sign, randomBytes } = await import("node:crypto");
   const { inputHash } = await import("../core/presence/index.js");
@@ -589,13 +590,12 @@ test("peer: under a root leader vyred cannot read (a real ssh login), the first 
   const script = `const { start } = await import(${JSON.stringify(path.resolve(import.meta.dirname, "../core/daemon/index.js"))});
     const d = await start({ root: process.env.VYRE_HOME, log: () => {} });
     const k = d.registry.deps.presence.enroll({ kind: "device", name: "test key", public_key: process.env.KEY, alg: -7 });
-    (await import("node:fs")).writeFileSync(process.env.KEY_FILE, k.id);`;
-  const child = spawn(process.execPath, ["--input-type=module", "-e", script], { detached: true, stdio: "ignore", env: { ...process.env, VYRE_HOME: home, KEY: spki, KEY_FILE: keyFile } });
-  child.unref();
-  t.after(() => { try { process.kill(child.pid); } catch {} });
+    (await import("node:fs")).writeFileSync(process.env.KEY_FILE, JSON.stringify({ id: k.id, pid: process.pid }));`;
+  execFileSync("setsid", ["-f", process.execPath, "--input-type=module", "-e", script], { stdio: "ignore", env: { ...process.env, VYRE_HOME: home, KEY: spki, KEY_FILE: keyFile } });
   const socket = config.ensure(home).socket;
   for (let n = 0; n < 100 && !(fs.existsSync(keyFile) && await ping(socket)); n++) await new Promise(r => setTimeout(r, 100));
-  const keyId = fs.readFileSync(keyFile, "utf8");
+  const { id: keyId, pid: vyred } = JSON.parse(fs.readFileSync(keyFile, "utf8"));
+  t.after(() => { try { process.kill(vyred); } catch {} });
   const proof = server => {
     const ts = Date.now(), nonce = randomBytes(12).toString("base64url");
     const sig = sign("sha256", Buffer.from(`vyre-presence-v1\nsession.trust\n${inputHash(server)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
@@ -622,6 +622,23 @@ test("peer: under a root leader vyred cannot read (a real ssh login), the first 
   const again = call("agents.create", { name: "kit" });
   assert.equal(again.error, undefined, JSON.stringify(again));
   assert.ok(names().includes("juno") && names().includes("kit") && !names().includes("nova"));
+});
+
+test("peer: the trusted-leader test seam cannot reach a real vyred", async () => {
+  // Only a verifier handed to start() may pre-trust a server. vyred's own Presence has no such
+  // method, main.js never hands start() a verifier, and the fixture refuses a home outside temp.
+  const { Presence } = await import("../core/presence/index.js");
+  assert.equal("trustsServer" in Presence.prototype, false);
+  const main = fs.readFileSync(path.resolve(import.meta.dirname, "../core/daemon/main.js"), "utf8");
+  assert.doesNotMatch(main, /presence\s*:/, "main.js must not pass a verifier to start()");
+  const fixture = path.resolve(import.meta.dirname, "fixtures/vyred-leader.js");
+  const r = await new Promise(resolve => {
+    const c = spawn(process.execPath, [fixture], { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, VYRE_HOME: "/nonexistent/vyre-home" } });
+    let err = ""; c.stderr.on("data", d => { err += d; });
+    c.on("close", code => resolve({ code, err }));
+  });
+  assert.equal(r.code, 1);
+  assert.match(r.err, /only for a temp VYRE_HOME/);
 });
 
 test("peer: the Capsule's own proof is a pinned cdhash, checked and cached once per connection, bound to the pid's start time", async () => {

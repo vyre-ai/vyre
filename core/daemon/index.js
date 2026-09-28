@@ -329,6 +329,10 @@ async function serverTrusted(server, proofHeader, caller, registry) {
   const key = `${server.exe}:${server.pid}:${server.started}`;
   if (serverTrust.has(key)) return true;
   const presence = registry.deps.presence;
+  // Test seam only: a verifier handed to start() in-process may already trust the leader its own
+  // test runs under (test/fixtures/vyred-leader.js, temp homes only), so CLI tests run over ssh on
+  // the testbox. vyred's own Presence has no such method, and main.js never passes a verifier.
+  if (presence && typeof presence.trustsServer === "function" && presence.trustsServer(server) === true) { serverTrust.set(key, true); return true; }
   const proof = parsePresence(/** @type {string} */ (proofHeader));
   if (!presence || !proof || !SERVER_TRUST_METHODS.has(proof.method)) return false;
   // Plain wording, naming exactly what is asking -- the lead's decision, 28 Sep: a model can name

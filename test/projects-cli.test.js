@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempHome } from "./helpers.js";
+import { tempHome, upLeader } from "./helpers.js";
 import { open } from "../core/store/index.js";
 import { SESSIONS, HOME, seedRecall } from "./fixtures/corpus.js";
 
@@ -186,6 +186,8 @@ test("cli: vyre projects move --dry-run on a box says what would move and change
   fs.writeFileSync(path.join(w.root, "config.json"), JSON.stringify({
     role: "box", projectsDir: old, roots: [w.work], transcripts: [], modules: { disable: ["recall", "memory"] },
   }));
+  // The real verifier, trusting only the terminal server this test runs under (the testbox's sshd).
+  assert.equal((await upLeader(w.root, w.env)).code, 0);
   const home = path.join(old, "harlow-legal");
   const made = await w.run(["new", "Harlow Legal", "--home", home, "--no-pick"]);
   assert.equal(made.code, 0, made.out);

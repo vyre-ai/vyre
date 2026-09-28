@@ -83,14 +83,26 @@ export const present = {
  * verifier. `vyre down` stops it as usual.
  * @param {string} home
  */
-export async function upPresent(home) {
+export async function upPresent(home) { return upFixture(home, "vyred-present.js"); }
+
+/**
+ * Start vyred in a child process for a temp home with the REAL verifier, except that it trusts the
+ * terminal server this test runs under (over ssh on the testbox, the root sshd vyred cannot read,
+ * which otherwise asks for one presence proof no headless test can give). Refusals still come
+ * from the real verifier. `vyre down` stops it as usual.
+ * @param {string} home @param {Record<string, string|undefined>} [env]
+ */
+export async function upLeader(home, env) { return upFixture(home, "vyred-leader.js", env); }
+
+/** @param {string} home @param {string} fixture @param {Record<string, string|undefined>} [env] */
+async function upFixture(home, fixture, env = process.env) {
   const { spawn } = await import("node:child_process");
   const { ping } = await import("../core/daemon/index.js");
   const config = await import("../core/config/index.js");
   const p = config.ensure(home);
   const fd = fs.openSync(path.join(p.logs, "vyred.out"), "a");
-  const child = spawn(process.execPath, [path.join(import.meta.dirname, "fixtures", "vyred-present.js")],
-    { detached: true, stdio: ["ignore", fd, fd], env: { ...process.env, VYRE_HOME: home } });
+  const child = spawn(process.execPath, [path.join(import.meta.dirname, "fixtures", fixture)],
+    { detached: true, stdio: ["ignore", fd, fd], env: { ...env, VYRE_HOME: home } });
   child.unref();
   for (let i = 0; i < 100; i++) {
     await new Promise(r => setTimeout(r, 100));
