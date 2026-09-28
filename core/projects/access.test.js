@@ -247,10 +247,10 @@ test("projects.access: agent names are case-insensitive, on write and on read (t
 test("projects.reach: the true owner is unrestricted; an unnamed, unrecognised caller is refused outright (cohesion's one-system audit)", async t => {
   const w = await started(t);
   for (const caller of ["cli", "local", "deck", "capsule", "module:memory", "mcp", "mcp:thread:t1"]) {
-    assert.deepEqual(await w.call("projects.reach", {}, { caller }), { all: true, agent: null }, caller);
+    assert.deepEqual(await w.call("projects.reach", { caller }), { all: true, agent: null }, caller);
   }
   for (const caller of ["unknown", "tailnet-guest:eve@example.com", "hook"]) {
-    const r = await w.call("projects.reach", {}, { caller }).catch(e => e);
+    const r = await w.call("projects.reach", { caller }).catch(e => e);
     assert.equal(r.code, "denied", `${caller}: ${r.message}`);
   }
 });
@@ -260,10 +260,10 @@ test("projects.reach: a named agent gets its own granted projects, intersected w
   // started() already ran the one-time auto-seed (2fb4258c), which backfills kit's own
   // agents.projects entry into projects.access — so this starts granted, not denied; revoking
   // it directly is what actually exercises "intersected with projects.access, deny by default".
-  const r = await w.call("projects.reach", { agent: "kit" }, { caller: "mcp:agent:kit" });
+  const r = await w.call("projects.reach", { agent: "kit", caller: "mcp:agent:kit" });
   assert.deepEqual(r.projects.map(p => p.slug), ["harlow-legal"]);
   await w.call("projects.access.revoke", { project: "harlow-legal", agent: "kit" }, { caller: "cli" });
-  const r2 = await w.call("projects.reach", { agent: "kit" }, { caller: "mcp:agent:kit" });
+  const r2 = await w.call("projects.reach", { agent: "kit", caller: "mcp:agent:kit" });
   assert.deepEqual(r2.projects, []);
 });
 
@@ -274,15 +274,15 @@ test("projects.reach: a projects: \"*\" agent is checked against projects.access
   // the brand-new project at once. harlow-legal predates this fixture's agents but the one-time
   // auto-seed (2fb4258c) backfills wilma's own "*" against every project that existed when it
   // ran, harlow-legal included — so wilma starts with both, same as if it had always been there.
-  assert.deepEqual((await w.call("projects.reach", { agent: "wilma" }, { caller: "mcp:agent:wilma" })).projects.map(p => p.slug).sort(), ["harlow-legal", "northwind"]);
+  assert.deepEqual((await w.call("projects.reach", { agent: "wilma", caller: "mcp:agent:wilma" })).projects.map(p => p.slug).sort(), ["harlow-legal", "northwind"]);
   await w.call("projects.access.revoke", { project: "northwind", agent: "wilma" }, { caller: "cli" });
-  assert.deepEqual((await w.call("projects.reach", { agent: "wilma" }, { caller: "mcp:agent:wilma" })).projects.map(p => p.slug), ["harlow-legal"]);
+  assert.deepEqual((await w.call("projects.reach", { agent: "wilma", caller: "mcp:agent:wilma" })).projects.map(p => p.slug), ["harlow-legal"]);
   // The assistant is never checked against projects.access at all, even an explicit revoke
   // under its own name: every project, unconditional.
   await w.call("projects.access.revoke", { project: "northwind", agent: "juno" }, { caller: "cli" });
-  const j = await w.call("projects.reach", { agent: "juno" }, { caller: "mcp:agent:juno" });
+  const j = await w.call("projects.reach", { agent: "juno", caller: "mcp:agent:juno" });
   assert.deepEqual(j.projects.map(p => p.slug).sort(), ["harlow-legal", "northwind"]);
   assert.equal(j.all, false, "the assistant is not r.all for content: it still names its projects, unfiled stays the true owner's alone");
   // kind: "facts" gives the assistant true all:true (personal facts, distilled, not raw content).
-  assert.deepEqual(await w.call("projects.reach", { agent: "juno", kind: "facts" }, { caller: "mcp:agent:juno" }), { all: true, agent: "juno" });
+  assert.deepEqual(await w.call("projects.reach", { agent: "juno", kind: "facts", caller: "mcp:agent:juno" }), { all: true, agent: "juno" });
 });
