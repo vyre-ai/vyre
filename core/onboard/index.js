@@ -228,7 +228,14 @@ export default {
     /** How the name step serves: what it already uses, else a vyre.run claim when a zone token or own domain is here, else ts.net. */
     function via(n) {
       const d = Boolean(net().domain);
-      if (n && n.via) return n.via === "vyre.run" && d ? "domain" : n.via;
+      if (n && n.via === "vyre.run") return d ? "domain" : "vyre.run";
+      // A persisted "ts.net" is trusted only once the box is actually serving under it. Before
+      // that (blocked, failed, or a fallback attempt never finished), it was only ever the
+      // fallback default at the time, not a commitment — so a zone token that appears afterward
+      // (e2e review, 28 Sep: fallback() can throw before it ever saves this, but a later success
+      // does persist it, and nothing re-checked after that) is offered again rather than the
+      // person being stuck retrying a blocked ts.net forever.
+      if (n && n.via === "ts.net" && (n.phase === "serving" || n.address)) return "ts.net";
       return d ? "domain" : n && n.zone ? "vyre.run" : "ts.net";
     }
 
