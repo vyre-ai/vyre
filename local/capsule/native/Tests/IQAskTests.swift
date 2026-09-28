@@ -169,6 +169,9 @@ let iqAskSuite = Suite("iq ask") { t in
             v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "searching"])
             v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "reading"])
             v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "checking"])
+            // A real answer takes seconds; give the SSE thread (a separate connection) time to
+            // read and dispatch these before the call itself resolves, as it always does live.
+            Thread.sleep(forTimeInterval: 0.06)
             return ["answer": "You drive a blue Volvo XC40.", "answer_id": "a1", "confidence": 0.9, "abstained": false, "known": [Any](),
                     "sources": [["session": "s1", "seq": 4, "name": "Insurance renewal", "quote": "I drive a blue Volvo XC40"]], "via": "fact"]
         }
@@ -180,7 +183,7 @@ let iqAskSuite = Suite("iq ask") { t in
             _ = await until { !v.callsOf("memory.ask").isEmpty }
             let id = VJ.s(v.callsOf("memory.ask").first?["id"])
             let stream = VJ.truthy(v.callsOf("memory.ask").first?["stream"])
-            let stage = await until { await MainActor.run { m.iqStage == "Checking the answer" } }
+            let stage = await until { m.iqStage == "Checking the answer" }
             _ = await until { m.reply?.finished == true }
             let cleared = await MainActor.run { m.iqStage == nil }
             let answerId = await MainActor.run { m.iqAnswerId }
@@ -260,7 +263,9 @@ let iqAskSuite = Suite("iq ask") { t in
             _ = await until { m.iqFixed != nil }
             let afterReplace = await MainActor.run { [m.replyText, VJ.s(lastCorrect?["answer"]), "\(m.iqFixed?.action ?? "")"] }
             await MainActor.run { m.undoIQFix() }
-            _ = await until { m.iqFixed == nil }
+            // iqFixed clears at once (Undo hides eagerly); the restore itself lands after
+            // memory.uncorrect answers, so wait on the text, not the flag.
+            _ = await until { m.replyText == "You drive a blue Volvo XC40." }
             let afterUndo = await MainActor.run { m.replyText }
             await MainActor.run { m.didHide() }
             return ["\(opened)"] + afterReplace + [afterUndo]
