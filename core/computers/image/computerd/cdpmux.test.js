@@ -514,6 +514,35 @@ test("cdpmux: two agent clients with different agentNames get different browserC
   assert.equal(fake.seen.filter(s => s.method === "Target.createBrowserContext").length, 2, "one per agent name");
 });
 
+test("cdpmux: closeAgent drops the agent's clients AND disposes its browser context -- a name reused later gets a fresh one, never the revoked agent's cookies (reviewer revocation point 4, 28 Sep)", async () => {
+  const { mux, fake } = world();
+  const a = client(mux, "agent", "alice");
+  await a.call("Target.createTarget", { url: "about:blank#alice" });
+  const firstCtx = mux.contextStore.get("alice");
+  assert.ok(firstCtx, "alice never got a context to begin with");
+
+  const n = mux.closeAgent("alice");
+  assert.equal(n, 1, "closeAgent did not drop alice's own client");
+  assert.ok(a.state.closed, "alice's client was not actually dropped");
+  assert.equal(mux.contextStore.get("alice"), undefined, "the revoked agent's context is still in contextStore");
+  await tick(20); // the mux's own disposeBrowserContext call, fire-and-forget, writes asynchronously
+  assert.ok(fake.seen.some(s => s.method === "Target.disposeBrowserContext" && s.params.browserContextId === firstCtx),
+    "Target.disposeBrowserContext was never called for the revoked context");
+
+  // The same name, reused later (a genuinely different agent given "alice"), gets a brand new
+  // context -- never the revoked one, and never anything it once held.
+  const a2 = client(mux, "agent", "alice");
+  await a2.call("Target.createTarget", { url: "about:blank#alice-again" });
+  const secondCtx = mux.contextStore.get("alice");
+  assert.ok(secondCtx, "the reused name got no context at all");
+  assert.notEqual(secondCtx, firstCtx, "the reused name inherited the revoked agent's own context");
+});
+
+test("cdpmux: closeAgent on a name with no live clients and no context is a harmless no-op", async () => {
+  const { mux } = world();
+  assert.equal(mux.closeAgent("nobody-ever-heard-of"), 0);
+});
+
 test("cdpmux: an agent client's own Target.createTarget with no browserContextId gets its own injected before it reaches Chrome", async () => {
   const { mux, fake } = world();
   const a = client(mux, "agent", "alice");
@@ -663,6 +692,40 @@ test("cdpmux: Target.autoAttachRelated targeting another agent's target is refus
   const fine = await a.call("Target.autoAttachRelated", { targetId: aTargetId, waitForDebuggerOnStart: false });
   assert.notEqual(fine.error && fine.error.code, -32602, "autoAttachRelated with no waitForDebuggerOnStart was wrongly refused as if it carried one");
   assert.notEqual(fine.error && fine.error.code, -32000, "autoAttachRelated on alice's own target was wrongly refused as a foreign-target claim");
+});
+
+test("cdpmux: a context-scoped agent's browser-level session is an allowlist -- Tracing.start (browser-wide, records every context) is refused; Target.*, Browser.getVersion and the pinned OPTIONAL_CONTEXT_METHODS still work (reviewer M5, 28 Sep)", async () => {
+  const { mux, fake } = world();
+  const a = client(mux, "agent", "alice");
+  const fill = client(mux, "fill"); // no context -- M5 is about scoped clients only
+  const unscoped = client(mux, "agent"); // an agent with no agentName: also unaffected, still dormant
+
+  for (const method of ["Tracing.start", "Tracing.end", "IO.read", "Extensions.loadUnpacked"]) {
+    const before = fake.seen.filter(s => s.method === method).length;
+    const r = await a.call(method, {});
+    assert.equal(r.error && r.error.code, -32000, `${method} on alice's browser-level session was not refused`);
+    assert.equal(fake.seen.filter(s => s.method === method).length, before, `${method} reached Chrome despite being refused`);
+  }
+  // Allowed at the browser level for a scoped client: Target.* (already fenced individually),
+  // Browser.getVersion, and an OPTIONAL_CONTEXT_METHODS entry (Storage.setCookies, pinned by M3).
+  assert.ok(!(await a.call("Browser.getVersion")).error, "Browser.getVersion was wrongly refused");
+  assert.ok(!(await a.call("Target.getTargets")).error, "Target.getTargets was wrongly refused");
+  // fake-chrome does not implement Storage.setCookies (-32601, "not found"); what matters is that
+  // the mux itself did not refuse it (-32000) as if it were outside the M5 allowlist.
+  const setCookies = await a.call("Storage.setCookies", { cookies: [] });
+  assert.notEqual(setCookies.error && setCookies.error.code, -32000, "a pinned OPTIONAL_CONTEXT_METHODS call was wrongly refused");
+
+  // Unaffected: a fill client, and an agent with no agentName (still dormant -- unscoped).
+  const fillTracing = await fill.call("Tracing.start", {});
+  assert.notEqual(fillTracing.error && fillTracing.error.code, -32000, "a fill client's Tracing.start was refused by the M5 allowlist");
+  const unscopedTracing = await unscoped.call("Tracing.start", {});
+  assert.notEqual(unscopedTracing.error && unscopedTracing.error.code, -32000, "an unscoped agent's Tracing.start was refused by the M5 allowlist");
+
+  // A child (page) session is unaffected: it is already bound to alice's own target.
+  const { result: { targetId } } = await a.call("Target.createTarget", { url: "about:blank#alice" });
+  const { result: { sessionId } } = await a.call("Target.attachToTarget", { targetId, flatten: true });
+  const onPage = await a.call("Test.echo", { n: 1 }, sessionId);
+  assert.ok(!onPage.error, "a call on alice's own child session was wrongly refused by the M5 allowlist");
 });
 
 test("cdpmux: the target-event fence drops an event with no browserContextId at all, not only a known mismatch (reviewer M1, 28 Sep)", async () => {

@@ -111,9 +111,16 @@ function readAgentTokensRaw() {
   return { raw: env, found: env.length > 0 };
 }
 
-/** @returns {Map<string, string>} token -> agentName, parsed from readAgentTokensRaw()'s raw text */
-function readAgentTokens() {
-  const { raw } = readAgentTokensRaw();
+/**
+ * Parses AGENT_TOKENS_FILE's raw text into a token -> agentName map. Never exits: a bad shape, a
+ * duplicate name or a duplicate token is reported back as a refusal, not a process.exit -- the
+ * reviewer's revocation point 2 (28 Sep). readAgentTokens() (startup) turns a refusal into a fatal
+ * exit itself; reloadAgentTokens() (a running computer) does not, so one bad reload cannot take
+ * every agent down with it.
+ * @param {string} raw
+ * @returns {{ ok: true, tokens: Map<string, string> } | { ok: false, why: string }}
+ */
+function parseAgentTokens(raw) {
   /** @type {Map<string, string>} token -> agentName */
   const byToken = new Map();
   const seenNames = new Set();
@@ -121,14 +128,27 @@ function readAgentTokens() {
     const trimmed = line.trim();
     if (!trimmed) continue;
     const m = /^([a-z][a-z0-9-]{0,40})=([A-Za-z0-9_-]{32,128})$/.exec(trimmed);
-    if (!m) { console.error("computerd: AGENT_TOKENS_FILE has a line that is not \"name=token\"; refusing to start with a partial identity list"); process.exit(1); }
+    if (!m) return { ok: false, why: "a line is not \"name=token\"-shaped" };
     const [, name, tok] = m;
-    if (seenNames.has(name)) { console.error(`computerd: AGENT_TOKENS_FILE names "${name}" more than once; refusing to start`); process.exit(1); }
+    if (seenNames.has(name)) return { ok: false, why: `"${name}" is named more than once` };
     seenNames.add(name);
-    for (const other of byToken.keys()) if (sameToken(tok, other)) { console.error("computerd: two agents in AGENT_TOKENS_FILE share one token; refusing to start"); process.exit(1); }
+    for (const other of byToken.keys()) if (sameToken(tok, other)) return { ok: false, why: "two agents share one token" };
     byToken.set(tok, name);
   }
-  return byToken;
+  return { ok: true, tokens: byToken };
+}
+
+/** @returns {Map<string, string>} token -> agentName, parsed from readAgentTokensRaw()'s raw text.
+ *  Startup only: a bad shape here is fatal, not a refusal -- there is no earlier good map to fall
+ *  back to, and starting with a partial identity list is worse than not starting at all. */
+function readAgentTokens() {
+  const { raw } = readAgentTokensRaw();
+  const parsed = parseAgentTokens(raw);
+  if (!parsed.ok) {
+    console.error(`computerd: AGENT_TOKENS_FILE ${parsed.why}; refusing to start with a partial identity list`);
+    process.exit(1);
+  }
+  return parsed.tokens;
 }
 // Whether this is a shared/browser-kind computer at all -- decided once, at start, from whether
 // AGENT_TOKENS_FILE actually existed (readAgentTokensRaw().found), and never revisited after.
@@ -165,16 +185,31 @@ function identifyClient(token) {
 }
 
 /**
- * Revocation (the reviewer's gate item 3, 28 Sep): re-reads AGENT_TOKENS_FILE and, for every name
- * that is no longer in it (removed outright, or now maps to a different token than any live
- * client authenticated with), closes that agent's own live CDP clients too -- reloading the map
- * alone would only stop a NEW connection; an already-open WebSocket does not re-authenticate.
- * Only meaningful in AGENT_MODE; called from POST /agents/reload (owner-token only).
- * @returns {{ agents: number, revoked: string[] }}
+ * Revocation (the reviewer's gate item 3, 28 Sep): re-reads AGENT_TOKENS_FILE and, for every OLD
+ * (token, name) pair that the new map no longer matches identically (removed outright, or now
+ * mapping that name to a different token -- a rotation), calls mux.closeAgent(name) -- closing
+ * that agent's own live CDP clients AND disposing its browser context. Reloading the map alone
+ * would only stop a NEW connection; an already-open WebSocket does not re-authenticate.
+ *
+ * Two things this refuses rather than applies (the reviewer's points 1 and 2, 28 Sep):
+ * - A parse failure (parseAgentTokens, never process.exit at reload time -- one bad file must not
+ *   take the whole computer down, unlike at startup, where there is no earlier good map to fall
+ *   back to).
+ * - An empty or missing result. "Once shared, always shared" (AGENT_MODE, above) already stops
+ *   the bare owner token from becoming an unscoped agent identity if the map is briefly empty, but
+ *   an empty reload is also very likely a mistake (a truncated file, a bad write) rather than a
+ *   real "every agent just left" moment, and revoking every agent on a stray empty read would be
+ *   its own outage. A computer that legitimately has no agents left is removed outright, not kept
+ *   running with an empty identity list.
+ * @returns {{ ok: true, agents: number, revoked: string[] } | { ok: false, why: string }}
  */
 function reloadAgentTokens() {
-  const before = new Map(AGENT_TOKENS); // token -> name, as it was before this reload
-  AGENT_TOKENS = readAgentTokens();
+  const { raw } = readAgentTokensRaw();
+  const parsed = parseAgentTokens(raw);
+  if (!parsed.ok) return { ok: false, why: parsed.why };
+  if (parsed.tokens.size === 0) return { ok: false, why: "the reloaded file has no agents; refusing rather than revoking everyone" };
+  const before = AGENT_TOKENS; // token -> name, as it was before this reload
+  AGENT_TOKENS = parsed.tokens;
   /** @type {string[]} */
   const revoked = [];
   // Per OLD (token, name) pair, not per name alone: a name re-added with a DIFFERENT token
@@ -183,7 +218,7 @@ function reloadAgentTokens() {
   for (const [oldToken, name] of before) {
     if (AGENT_TOKENS.get(oldToken) !== name) { mux.closeAgent(name); revoked.push(name); }
   }
-  return { agents: AGENT_TOKENS.size, revoked };
+  return { ok: true, agents: AGENT_TOKENS.size, revoked };
 }
 
 const ATSPI = new URL("./atspi.py", import.meta.url).pathname;
@@ -662,7 +697,8 @@ const server = createServer(async (req, res) => {
     // control-plane class as /shield and /fs, never an agent's own. Re-reads AGENT_TOKENS_FILE and
     // closes the live CDP clients of any agent that is no longer in it (removed or rotated).
     if (req.method === "POST" && pathname === "/agents/reload") {
-      return send(200, reloadAgentTokens());
+      const r = reloadAgentTokens();
+      return r.ok ? send(200, { agents: r.agents, revoked: r.revoked }) : send(400, { error: { message: r.why } });
     }
     if (shielded && SHIELDED_ROUTES.has(`${req.method} ${pathname}`)) return send(423, { error: { code: "shielded", message: "a person is signing in on this computer" } });
 

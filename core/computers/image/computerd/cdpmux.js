@@ -75,6 +75,17 @@
 // targetContext instead (reviewer H2, 28 Sep): an id targetContext has never learned is refused,
 // not assumed safe, the same allowlist-not-denylist shape the rest of this file uses.
 //
+// A scoped client's session-LESS calls (no sessionId -- Chrome's own browser-level session, not
+// any one target) are an ALLOWLIST, not a denylist (reviewer M5, 28 Sep): Target.* (fenced
+// individually, above), Browser.getVersion and OPTIONAL_CONTEXT_METHODS are the only things
+// allowed there; everything else is refused. This exists because the browser session carries
+// domains that are browser-WIDE, not per-context, and nothing above touches them --
+// Tracing.start/end plus IO.read would record every context's URLs (and, with the screenshot
+// category, other agents' own page contents), Extensions.loadUnpacked would load into every
+// context if that flag is ever on, and a future browser-wide domain would be the same shape
+// again. A child page session is unaffected: it is already bound to one target, which H2 already
+// binds to this client's own context, so nothing here narrows it further.
+//
 // Target.setDiscoverTargets and auto-attach are native per session (above) but not per context:
 // Chrome fans a browser session's Target.targetCreated/attachedToTarget/targetInfoChanged/
 // targetDestroyed out across every context in the browser, not just the one it was opened for
@@ -267,10 +278,12 @@ const CONTEXT_READONLY_METHODS = new Set(["Browser.getVersion"]);
  *   agentName: string|null, browserContextId: string|null }} Client
  * @typedef {{ client: Client|null, origId?: number, method: string, sessionId?: string,
  *   resolve?: (v: any) => void, reject?: (e: Error) => void, timer?: any, browserContextId?: string }} Pending
- * @typedef {{ get(agentName: string): string|undefined, set(agentName: string, browserContextId: string): void }} ContextStore
- *   Where an agent's browserContextId lives. Deliberately tiny -- get one, set one, nothing else --
+ * @typedef {{ get(agentName: string): string|undefined, set(agentName: string, browserContextId: string): void,
+ *   delete(agentName: string): void }} ContextStore
+ *   Where an agent's browserContextId lives. Deliberately tiny -- get, set, delete, nothing else --
  *   so a plain Map works as the default (and is all these tests need) while a caller like index.js
- *   can later back it with something that outlives this process.
+ *   can later back it with something that outlives this process. delete() is closeAgent's own
+ *   revocation hook (reviewer, 28 Sep): without it a revoked name's context would survive forever.
  */
 
 export class CdpMux {
@@ -616,16 +629,30 @@ export class CdpMux {
   }
 
   /**
-   * Drop every "agent" client with this agentName, detaching its sessions -- revocation
-   * (index.js's own /agents/reload): an agent taken off a shared computer must lose its live CDP
-   * connections too, not just fail to open a new one. Its browser context (contextStore) is left
-   * alone on purpose: if the same name is ever re-added, its cookies and logins pick back up
-   * rather than starting over, the same way a stopped and restarted computer's profile does today.
-   * @param {string} agentName @returns {number} how many were dropped
+   * Drop every "agent" client with this agentName, detaching its sessions, AND dispose its
+   * browser context -- revocation (index.js's own /agents/reload). Both matter: an agent taken
+   * off a shared computer must lose its live CDP connections (reloading the token map alone only
+   * stops a NEW connection), and its context must not survive it. The first cut here left the
+   * context alone on purpose ("a re-added name picks its cookies back up"), which the reviewer
+   * correctly called out as its own hole: if the NAME is ever reused for a genuinely different
+   * agent, that new agent would silently inherit the revoked one's cookies and logins. So the
+   * context goes with the clients now; a re-added name starts fresh, same as a brand new one.
+   * @param {string} agentName @returns {number} how many clients were dropped
    */
   closeAgent(agentName) {
     let n = 0;
     for (const c of [...this.clients]) if (c.kind === "agent" && c.agentName === agentName) { n++; this._drop(c); }
+    const ctxId = this.contextStore.get(agentName);
+    if (typeof ctxId === "string") {
+      this.contextStore.delete(agentName);
+      // A residual, not closed here: if this name's very first _contextFor call is still in
+      // flight (a brand-new client joining at the exact moment it is revoked), that call's own
+      // .then still calls contextStore.set once it resolves, re-adding an entry this delete just
+      // removed. Narrow and low-stakes (an unused, freshly made context with nothing on it yet,
+      // not a leak of the revoked agent's own data) -- not worth the extra bookkeeping here.
+      this.contextInFlight.delete(agentName);
+      this.call("Target.disposeBrowserContext", { browserContextId: ctxId }).catch(() => {});
+    }
     if (n) this.log(`cdp: closed ${n} client(s) for a revoked agent`);
     return n;
   }
@@ -767,6 +794,24 @@ export class CdpMux {
         this.log(`cdp: refused ${method} from an agent client naming a target outside its own browser context`);
         return fail(-32000, `${method} may name only a target in this agent's own browser context`);
       }
+    }
+    // M5 (reviewer, 28 Sep): the browser-level session (no sessionId -- everything above fences
+    // per-context or per-target calls, but the browser session itself carries domains that are
+    // browser-WIDE, not per-context, and neither fence above touches them: Tracing.start/end plus
+    // IO.read record every context's URLs (and, with the screenshot category, other agents'
+    // pages), Extensions.loadUnpacked would load into every context if that flag is ever on, and
+    // any future browser-wide domain would be the same shape again. Flipped to an allowlist for a
+    // scoped client's session-less calls, rather than refusing methods one at a time: Target.*
+    // (individually fenced above already), Browser.getVersion and the two OPTIONAL_CONTEXT_
+    // METHODS/CONTEXT_READONLY_METHODS sets (already pinned or vetted, above) are the only things
+    // a scoped client's browser session may do; everything else with no sessionId is refused, not
+    // assumed safe just because this file has not enumerated a reason to refuse it by name. A
+    // child page session is unaffected -- it is already bound to one target, and that target is
+    // already bound to this client's own context (H2), so nothing here narrows it further.
+    if (c.kind === "agent" && c.browserContextId && sid === undefined
+      && !method.startsWith("Target.") && !OPTIONAL_CONTEXT_METHODS.has(method) && !CONTEXT_READONLY_METHODS.has(method)) {
+      this.log(`cdp: refused ${method} from a context-scoped agent client's browser-level session`);
+      return fail(-32000, `${method} is not allowed on this agent's browser-level session`);
     }
     if (sid !== undefined && !this._ownsChild(c, sid)) return fail(-32001, "No session with given id");
     if (!this.up) return fail(-32000, "Chrome is not running");

@@ -326,7 +326,7 @@ test("computerd: POST /agents/reload revokes a removed agent's live CDP clients,
   };
   const alice = await ws(await wsUrlFor(ALICE));
   const bob = await ws(await wsUrlFor(BOB));
-  assert.ok((await bob.call("Test.echo", { n: 1 })).result, "bob's own connection is not live before revocation");
+  assert.ok((await bob.call("Target.getTargets")).result, "bob's own connection is not live before revocation");
 
   // Not the computer's own owner token: refused, and nothing changes.
   assert.equal((await req(c.base, "POST", "/agents/reload", { token: ALICE })).status, 401, "an agent's own token could reload");
@@ -340,7 +340,7 @@ test("computerd: POST /agents/reload revokes a removed agent's live CDP clients,
   await bob.closedP;
   assert.equal(bob.closed, true, "bob's own live WebSocket was not closed by revocation");
   // Alice is untouched: her own connection, made before the reload, still answers.
-  assert.ok((await alice.call("Test.echo", { n: 2 })).result, "alice was dropped even though she was not revoked");
+  assert.ok((await alice.call("Target.getTargets")).result, "alice was dropped even though she was not revoked");
   // Neither can open a NEW session with bob's now-revoked token; alice's own still works.
   const { json: stillAlice } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
   const wsPath = new URL(stillAlice.webSocketDebuggerUrl).pathname;
@@ -357,7 +357,7 @@ test("computerd: reloading a rotated (not just removed) agent's token also cuts 
   const { json } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
   const wsPath = new URL(json.webSocketDebuggerUrl).pathname;
   const alice = await ws(`${c.base}${wsPath}?token=${ALICE}`);
-  assert.ok((await alice.call("Test.echo")).result);
+  assert.ok((await alice.call("Target.getTargets")).result);
 
   const rotated = "a".repeat(40); // a fresh token for the same name
   fs.writeFileSync(tokensFile, `alice=${rotated}\n`);
@@ -367,8 +367,48 @@ test("computerd: reloading a rotated (not just removed) agent's token also cuts 
   assert.equal(alice.closed, true, "the old session, on the now-rotated-away token, was not closed");
 
   const alice2 = await ws(`${c.base}${wsPath}?token=${rotated}`);
-  assert.ok((await alice2.call("Test.echo")).result, "the new token could not open a session after rotation");
+  assert.ok((await alice2.call("Target.getTargets")).result, "the new token could not open a session after rotation");
   assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${ALICE}`), 401, "the old token still worked after rotation");
+});
+
+test("computerd: an empty or missing reload is refused, not applied -- shared mode is kept and nobody is revoked by a stray truncated file (reviewer revocation point 1, 28 Sep)", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-emptyreload-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const tokensFile = path.join(dir, "agent-tokens");
+  fs.writeFileSync(tokensFile, `alice=${ALICE}\n`);
+  const c = await computerd(t, { AGENT_TOKENS_FILE: tokensFile });
+  const { json } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
+  const wsPath = new URL(json.webSocketDebuggerUrl).pathname;
+  const alice = await ws(`${c.base}${wsPath}?token=${ALICE}`);
+
+  fs.writeFileSync(tokensFile, "");
+  const r1 = await req(c.base, "POST", "/agents/reload", { token: TOKEN });
+  assert.equal(r1.status, 400, "an empty file's reload was applied instead of refused");
+  assert.ok(!alice.closed, "alice was revoked by an empty-file reload");
+  assert.ok((await alice.call("Target.getTargets")).result, "alice's session broke after a refused reload");
+
+  fs.rmSync(tokensFile);
+  const r2 = await req(c.base, "POST", "/agents/reload", { token: TOKEN });
+  assert.equal(r2.status, 400, "a missing file's reload was applied instead of refused");
+  assert.ok(!alice.closed, "alice was revoked by a missing-file reload");
+
+  // Shared mode itself is kept throughout: the bare owner token still cannot open a CDP session.
+  assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${TOKEN}`), 401, "the owner token became an unscoped agent identity after an empty/missing reload");
+  assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${ALICE}`), 101, "alice's own (never-changed) token stopped working");
+});
+
+test("computerd: a reload with a badly-shaped line is refused (not a fatal exit) and the previous map is kept", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-badreload-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const tokensFile = path.join(dir, "agent-tokens");
+  fs.writeFileSync(tokensFile, `alice=${ALICE}\n`);
+  const c = await computerd(t, { AGENT_TOKENS_FILE: tokensFile });
+  fs.writeFileSync(tokensFile, "this is not name=token shaped at all");
+  const r = await req(c.base, "POST", "/agents/reload", { token: TOKEN });
+  assert.equal(r.status, 400);
+  // computerd is still up and alice's own token is still exactly as valid as before.
+  const { json } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
+  assert.ok(json && json.webSocketDebuggerUrl, "computerd stopped answering after a bad reload");
 });
 
 test("computerd: in shared mode the bare owner token is refused as a CDP identity, on the upgrade and on /cdp/json/version, though it still opens POST /shield", async t => {
