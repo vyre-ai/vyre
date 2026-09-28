@@ -15,7 +15,7 @@ import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { seams, merge } from "./index.js";
+import { seams, merge, openReal, openChecked } from "./index.js";
 import { guard } from "./safety.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -560,4 +560,72 @@ test("files: a restricted agent never reaches the other machine, whatever it ask
   // search still works locally (this role's own label is "mac"), just never crosses to the box.
   const r = await callAs(reg, "kit", "files.search", { q: "engagement", where: "all" });
   assert.deepEqual(r.sources.map(s => s.source), ["mac"]);
+});
+
+test("files: openReal refuses a symlink outright, closing the check-then-open gap between describe() and the actual read (reviewer's LOW on 450c34b6)", async t => {
+  const base = tmp(t);
+  const secret = path.join(base, "outside", "id_rsa"); // deliberately outside anything a real path would ever resolve into
+  put(secret, "not a real key, just outside\n");
+  const real = path.join(base, "real.txt");
+  put(real, "hello\n");
+  const link = path.join(base, "link.txt");
+  fs.symlinkSync(secret, link);
+  // The ordinary case: a real file opens fine.
+  const fd = openReal(real);
+  fs.closeSync(fd);
+  // describe() resolved a real path once; if the final component were swapped for a symlink in
+  // the gap before this actually opens it, O_NOFOLLOW must refuse rather than follow it to
+  // wherever the symlink now points, in or out of the granted folder.
+  assert.throws(() => openReal(link), /not available/);
+});
+
+test("files: openChecked refuses a parent-directory swap between describe()'s stat and the open (e2e's follow-up on e8560b79)", async t => {
+  const base = tmp(t);
+  const real = path.join(base, "dir", "notes.txt");
+  put(real, "hello\n");
+  const before = fs.statSync(real);
+  // The ordinary case: describe()'s own dev/ino still match what is actually opened.
+  const okFd = openChecked({ real, dev: before.dev, ino: before.ino });
+  fs.closeSync(okFd);
+  // The residual O_NOFOLLOW alone does not close: the final component (notes.txt) never became
+  // a symlink, but its parent directory was renamed out and a new one dropped in its place in
+  // the gap between describe()'s stat and the actual open — the path string still resolves,
+  // through the swapped-in parent, to a different real file (same name, different inode), which
+  // was never checked against scope or the guard.
+  fs.renameSync(path.join(base, "dir"), path.join(base, "dir-old"));
+  fs.mkdirSync(path.join(base, "dir"));
+  put(real, "a different file the swap dropped in the same place\n");
+  assert.throws(() => openChecked({ real, dev: before.dev, ino: before.ino }), /not available/);
+  // Describing it fresh (as a caller would after the swap, not reusing the stale stat) agrees:
+  // it opens fine on its own dev/ino, since only the comparison against the STALE stat refuses.
+  const after = fs.statSync(real);
+  const freshFd = openChecked({ real, dev: after.dev, ino: after.ino });
+  fs.closeSync(freshFd);
+});
+
+test("files: chunk()'s inline dev/ino check closes the fd on a mismatch too, not just openChecked (reviewer's LOW on c6cda1aa)", async t => {
+  const base = tmp(t);
+  const work = path.join(base, "work");
+  const real = path.join(work, "notes.txt");
+  put(real, "hello\n");
+  const reg = await registry(t, { role: "box", files: { roots: [work] } });
+  // The actual race (an ancestor directory swapped out from under a still-open path between
+  // describe()'s stat and chunk()'s own fstat) cannot be forced from outside a single-threaded
+  // synchronous function with no await between the two calls, so this fakes the fstat chunk()
+  // takes to look like the file changed underneath it instead, and watches whether the fd it
+  // opened gets closed either way. chunk() folds this compare into the SAME fstat it already
+  // took for size/mtime (not a second one through openChecked, reviewer's own note on c6cda1aa),
+  // so faking that one call's return is the exact seam the real mismatch would hit.
+  const realFstat = fs.fstatSync, realClose = fs.closeSync;
+  let closedFd = null;
+  t.mock.method(fs, "fstatSync", fd => {
+    const st = realFstat(fd);
+    return Object.create(st, { dev: { value: st.dev + 1 }, ino: { value: st.ino } });
+  });
+  t.mock.method(fs, "closeSync", fd => { closedFd = fd; return realClose(fd); });
+  await refused(reg, "files.fetch", { path: real });
+  assert.ok(closedFd !== null, "chunk() must close the fd on its own dev/ino mismatch, the same as openChecked does on its");
+  t.mock.restoreAll();
+  // No fd leaked from the refusal above: the same file reads fine right after, unmocked.
+  assert.equal(Buffer.from((await call(reg, "files.fetch", { path: real })).base64, "base64").toString(), "hello\n");
 });

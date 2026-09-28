@@ -17,11 +17,13 @@ import { tempHome } from "../../test/helpers.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** A box-role registry with the link and sync modules running (sync requires link's peerOf). */
-async function boxRegistry(t) {
+/** A box-role registry with the link and sync modules running (sync requires link's peerOf).
+ * modules: extra core modules to load alongside them (projects, for Vyre Drive step 4's tests). */
+async function boxRegistry(t, { modules = [] } = {}) {
   const home = tempHome(t);
   const p = config.ensure(home);
-  const found = discover([CORE]).filter(f => f.manifest && ["link", "sync"].includes(f.manifest.name));
+  const want = ["link", "sync", ...modules];
+  const found = discover([CORE]).filter(f => f.manifest && want.includes(f.manifest.name));
   const db = open(p.db);
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {} });
@@ -29,7 +31,7 @@ async function boxRegistry(t) {
   let stopped = false;
   const stop = async () => { if (stopped) return; stopped = true; await reg.stop(); db.close(); };
   t.after(stop);
-  for (const name of ["link", "sync"]) assert.equal(reg.modules.get(name).state, "running", reg.modules.get(name).error);
+  for (const name of want) assert.equal(reg.modules.get(name).state, "running", reg.modules.get(name).error);
   const call = (tool, input = {}, caller = "cli", meta = {}) => reg.call(tool, input, caller, meta);
   return { reg, db, events, call, root: home };
 }
@@ -478,4 +480,39 @@ test("sync: an approved plan's exclusions are enforced, not merely tagged — a 
   await call("sync.consent", { machine: name, on: true, planHash: "planY" }, "cli");
   const now = await call("sync.upload.start", { path: outFile.path, bytes: outFile.bytes, hash: outFile.hash }, "tailnet:owner", { peer });
   assert.ok(!now.error, JSON.stringify(now.error));
+});
+
+test("sync: Vyre Drive step 4 — a synced folder's confirmed mapping attaches it to a project once its first file lands", async t => {
+  const { call, root } = await boxRegistry(t, { modules: ["projects"] });
+  const { name } = await paired(call, { kind: "device" });
+  const peer = { stableId: "nPEER0001" };
+  const text = "hello\n";
+  const h = hash(text);
+
+  await call("sync.consent", { machine: name, on: true, folders: [{ name: "harlow-site", project: "harlow-legal" }] }, "cli");
+  const start = await call("sync.upload.start", { path: "projects/harlow-site/s1.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
+  assert.ok(!start.error, JSON.stringify(start.error));
+  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text) }, "tailnet:owner", { peer });
+  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "tailnet:owner", { peer });
+  assert.deepEqual(finish.data, { ok: true, path: "projects/harlow-site/s1.jsonl" });
+
+  const list = await call("projects.list", {}, "cli");
+  const p = list.data.projects.find(x => x.slug === "harlow-legal");
+  assert.ok(p, JSON.stringify(list.data.projects));
+  assert.equal(p.home, fs.realpathSync(path.join(root, "synced", name, "projects", "harlow-site")));
+
+  // A second file in the same folder finds the project already made: no error, no duplicate.
+  const text2 = "again\n", h2 = hash(text2);
+  const start2 = await call("sync.upload.start", { path: "projects/harlow-site/s2.jsonl", bytes: text2.length, hash: h2 }, "tailnet:owner", { peer });
+  await call("sync.upload.chunk", { upload: start2.data.upload, offset: 0, data: Buffer.from(text2) }, "tailnet:owner", { peer });
+  const finish2 = await call("sync.upload.finish", { upload: start2.data.upload, hash: h2 }, "tailnet:owner", { peer });
+  assert.ok(!finish2.error, JSON.stringify(finish2.error));
+  assert.equal((await call("projects.list", {}, "cli")).data.projects.filter(x => x.slug === "harlow-legal").length, 1);
+
+  // A folder with no confirmed mapping syncs but is attached to nothing.
+  const text3 = "unmapped\n", h3 = hash(text3);
+  const start3 = await call("sync.upload.start", { path: "projects/other-folder/s1.jsonl", bytes: text3.length, hash: h3 }, "tailnet:owner", { peer });
+  await call("sync.upload.chunk", { upload: start3.data.upload, offset: 0, data: Buffer.from(text3) }, "tailnet:owner", { peer });
+  await call("sync.upload.finish", { upload: start3.data.upload, hash: h3 }, "tailnet:owner", { peer });
+  assert.equal((await call("projects.list", {}, "cli")).data.projects.length, 1, "no project made for the unmapped folder");
 });

@@ -81,6 +81,10 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // is never held up behind a prompt to shut a door. Granting it (projects.access.grant) is
   // HUMAN_ONLY above.
   "projects.access.revoke",
+  // Attaching an existing folder to an existing project (Vyre Drive step 4): a placement
+  // decision, the same weight a pick carries, but instant, no presence, so confirming
+  // sync.consent's proposed mapping is never held up behind a Touch ID prompt.
+  "projects.add-workspace",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
   "learn.accept", "learn.retire", "learn.relax",
   // What every session is told and runs on (ADR 0030): a model never edits a system prompt, a

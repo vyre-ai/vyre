@@ -12,6 +12,7 @@ import { moveProjects, RECORD } from "./move.js";
 import { boxProjectsDir, oldProjectsDir, workDir, home as vyreHome } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
 import { isProjectId } from "../../lib/project-id.js";
+import { ownerDevice } from "../modules/index.js";
 
 const str = { type: "string" };
 const strs = { type: "array", items: str };
@@ -56,6 +57,31 @@ export async function withLive(ctx, cat) {
 }
 /** The person's own surfaces. The loader refuses every other caller (agents' MCP, models' harness, guests, modules). */
 const OWNER = ["cli", "local", "capsule", "deck"];
+// Reviewer's MEDIUM 2 on f8330ccc: callers: ["module"] alone lets ANY module reach these three,
+// third-party ones installed into the modules folder included — modules skip presence entirely,
+// so an installed module could grant an agent any project, or clear a person's explicit revokes
+// (clear deletes them outright; a wildcard grant then re-applies as if they never happened).
+// Only agents (option (a)'s own sync) and this module itself (projects.create's own wildcard
+// grant) may reach them this way; everyone else keeps the owner-plus-presence door above.
+const MODULE_ALLOWED = new Set(["module:agents", "module:projects"]);
+const moduleOK = meta => MODULE_ALLOWED.has(String((meta && meta.caller) || ""));
+// Reviewer's MEDIUM on 7021d4e1: projects.create had no callers at all (open to an agent's own
+// MCP, a guest, a hook — anything), so an agent could map any folder into a brand-new project
+// and, through f8330ccc's own auto-grant, walk straight in with projects.access on it (a
+// never-unmapped folder became a mapped one at the agent's own request). The loader-level
+// callers list below closes that (OWNER, plus module callers only); this narrows further, to
+// the one module that has any business proposing a folder-to-project mapping on its own: sync's
+// attachMapped (core/sync/index.js), which calls exactly these two tools the first time a
+// synced folder's confirmed mapping actually lands a file (create when the confirmed slug is
+// new, add-workspace when the project already exists).
+const SYNC_ALLOWED = new Set(["module:sync"]);
+const syncOK = meta => SYNC_ALLOWED.has(String((meta && meta.caller) || ""));
+const moduleCallerRefusal = (meta, tool) => {
+  const caller = String((meta && meta.caller) || "");
+  if (caller.startsWith("module:") && !syncOK(meta)) {
+    throw refuse(`${tool} is the person's own door plus sync's proposed mapping, not ${caller}'s`, "denied");
+  }
+};
 /** A caller that names an agent ("cli:agent:kit"): the same test as drive's and glass's. */
 const isAgent = (/** @type {any} */ caller) => /(?:^|[\s:])agent:/.test(String(caller || ""));
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
@@ -89,9 +115,26 @@ export default {
       },
     });
     ctx.tool("projects.create", {
-      description: "Make a project by hand: a name, a home folder (default: a new folder in the projects folder), other folders it owns, the threads picked into it, and its people.",
+      description: "Make a project by hand: a name, a home folder (default: a new folder in the projects folder), other folders it owns, the threads picked into it, and its people. Every projects: \"*\" agent (never the assistant, whose \"*\" is a different rule) is granted projects.access on it at once too, option (a) (the lead's decision, so agents.projects and projects.access never drift apart): a wildcard agent reads a brand-new project the moment it exists, with no separate step. callers is the person's own surfaces plus sync's own door (module:sync), for its consent flow's proposed folder-to-project mapping; every other module is refused.",
       input: { type: "object", required: ["name"], properties: { name: str, home: str, org: str, workspaces: strs, threads: strs, people: { type: "array", items: person }, watchers: strs } },
-      run: async input => P.create(input),
+      callers: [...OWNER, "module"],
+      run: async (input, meta = {}) => {
+        moduleCallerRefusal(meta, "projects.create");
+        const created = P.create(input);
+        const r = await ctx.call("agents.list", {});
+        if (!r.error) {
+          const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
+          for (const a of list) {
+            if (!a || !a.name || a.kind === "assistant" || a.projects !== "*") continue;
+            // A brand-new project can never already have a projects.access row (grant/revoke
+            // both require it to exist first), so there is nothing here to weigh against a
+            // person's own earlier revoke: always safe to grant outright.
+            const g = await ctx.call("projects.access.grant", { project: created.slug, agent: a.name });
+            if (g.error) throw new Error(`${created.slug} was created, but could not grant ${a.name} access to it: ${g.error.message}`);
+          }
+        }
+        return created;
+      },
     });
     ctx.tool("projects.add-threads", {
       description: "Pick threads (Claude Code session ids) into a project. A thread can be in several projects.",
@@ -114,6 +157,15 @@ export default {
       input: { type: "object", required: ["project", "watchers"], properties: { project: str, watchers: strs } },
       callers: OWNER,
       run: async ({ project, watchers }) => P.removeWatchers(project, watchers),
+    });
+    ctx.tool("projects.add-workspace", {
+      description: "Attach an existing folder to an existing project as one of its workspaces (Vyre Drive step 4): the folder starts counting as the project's own, the same as one listed at projects.create time. For confirming sync.consent's proposed folder-to-project mapping, or attaching any other folder by hand. Person-only, instant, no presence: a placement decision, same weight as a pick. Refuses a project that does not exist; a folder that resolves to the project's own home is a no-op (added: null), not an error. callers is the person's own surfaces plus sync's own door (module:sync), the same named exception as projects.create; every other module is refused.",
+      input: { type: "object", required: ["project", "folder"], properties: { project: str, folder: str } },
+      callers: [...OWNER, "module"],
+      run: async ({ project, folder }, meta = {}) => {
+        moduleCallerRefusal(meta, "projects.add-workspace");
+        return P.addWorkspace(project, folder);
+      },
     });
     ctx.tool("projects.catalog", {
       description: "Every session on this device for picking into projects, with its /rename name, first message, folder, last activity, projects, and live (a terminal has it open now). q searches names, first messages, folders and, through Recall, what was said.",
@@ -219,16 +271,37 @@ export default {
     };
 
     ctx.tool("projects.access.grant", {
-      description: "Let an agent reach a project's data (Drive, synced sessions, anything project-scoped asks projects.access.check before serving an agent). agent left out or empty grants every agent. Needs the owner's presence, the same weight a vault grant to an agent carries: Drive and sync refuse an ungranted project's data outright, they do not merely leave it off a list.",
+      description: "Let an agent reach a project's data (Drive, synced sessions, anything project-scoped asks projects.access.check before serving an agent). agent left out or empty grants every agent. Needs the owner's presence, the same weight a vault grant to an agent carries: Drive and sync refuse an ungranted project's data outright, they do not merely leave it off a list. callers includes \"module\": agents.create/update and projects.create write this grant internally, as part of the person's own already-gated action (option (a), the lead's decision), never reachable this way by a model, since only the loader itself can set a \"module:<name>\" caller.",
       input: { type: "object", required: ["project"], properties: { project: str, agent: str } },
-      callers: OWNER,
-      run: async ({ project, agent }, meta = {}) => setAccess(project, agent, "granted", String((meta && meta.caller) || "unknown")),
+      callers: [...OWNER, "module"],
+      run: async ({ project, agent }, meta = {}) => {
+        if (String((meta && meta.caller) || "").startsWith("module:") && !moduleOK(meta)) {
+          throw refuse(`projects.access.grant is agents' and this module's own internal door, not ${meta.caller}'s`, "denied");
+        }
+        return setAccess(project, agent, "granted", String((meta && meta.caller) || "unknown"));
+      },
     });
     ctx.tool("projects.access.revoke", {
-      description: "Take an agent's (or, agent left out, every agent's) access to a project away. Instant, no presence needed: taking access away is never held up behind a prompt.",
+      description: "Take an agent's (or, agent left out, every agent's) access to a project away. Instant, no presence needed: taking access away is never held up behind a prompt. callers includes \"module\": agents.update revokes internally when a project drops off an agent's own list, and only agents' or this module's own internal calls (module:agents, module:projects), never any other installed module.",
       input: { type: "object", required: ["project"], properties: { project: str, agent: str } },
-      callers: OWNER,
-      run: async ({ project, agent }, meta = {}) => setAccess(project, agent, "revoked", String((meta && meta.caller) || "unknown")),
+      callers: [...OWNER, "module"],
+      run: async ({ project, agent }, meta = {}) => {
+        if (String((meta && meta.caller) || "").startsWith("module:") && !moduleOK(meta)) {
+          throw refuse(`projects.access.revoke is agents' and this module's own internal door, not ${meta.caller}'s`, "denied");
+        }
+        return setAccess(project, agent, "revoked", String((meta && meta.caller) || "unknown"));
+      },
+    });
+    ctx.tool("projects.access.clear", {
+      description: "Delete every projects.access row for one agent outright, not merely revoke: for agents.delete's own case, where the agent no longer exists at all, so there is nothing left for a future re-add to distinguish from a person's own explicit revoke. Internal: agents' own door alone (module:agents), never any other module, a person or a model.",
+      input: { type: "object", required: ["agent"], properties: { agent: str } },
+      callers: ["module"],
+      run: async ({ agent }, meta = {}) => {
+        if (!moduleOK(meta)) throw refuse(`projects.access.clear is agents' own internal door, not ${meta && meta.caller}'s`, "denied");
+        const a = normAgent(agent);
+        const info = db.prepare("DELETE FROM projects_access WHERE agent = ?").run(a);
+        return { agent: a, cleared: info.changes };
+      },
     });
     ctx.tool("projects.access.check", {
       description: "Whether a named agent may reach a project's data: deny by default, an agent-specific grant wins over the wildcard grant (a grant or revoke that left agent out, covering everyone). Drive, sync and anything else that serves a project's files or sessions to an agent asks this first. Internal to first-party modules and the owner's own surfaces; a model never asks this on its own behalf to learn what exists: the row it wants is simply left out of a listing instead. agent is required (reviewer's LOW): an empty agent would otherwise read the wildcard row directly, conflating 'no agent specified' with 'the wildcard grant', two different things.",
@@ -256,6 +329,53 @@ export default {
           ? db.prepare("SELECT project, agent, status, by, at FROM projects_access WHERE project = ? ORDER BY at DESC").all(P.resolve(project).slug)
           : db.prepare("SELECT project, agent, status, by, at FROM projects_access ORDER BY at DESC").all();
         return { grants: rows };
+      },
+    });
+
+    // Cohesion's one-system audit (28 Sep 2026): core/memory, core/recall and core/files each
+    // grew their own copy of "which projects may this caller reach", and drifted (memory's never
+    // intersected agents.projects with projects.access at all; files' treated any unnamed caller
+    // as the owner). projects.reach is the one door now: this module owns projects.access, so
+    // the ctx.call fan-out (agents.list, projects.list, projects.access.check) belongs in one
+    // place, not three. Landed with one fix on cohesion's own proposal (flagged to them first):
+    // the assistant is never checked against projects.access at all (a different privilege tier,
+    // not the wildcard agent's own per-project door — THE assistant rule, team-lead, restated
+    // twice), so it skips the projects.access.check loop entirely rather than running through it
+    // with every project as its candidate set.
+    const REACH_OWNER = new Set(["deck", "cli", "local", "capsule"]);
+    const reachOwner = c => REACH_OWNER.has(String(c)) || String(c || "").startsWith("module:");
+    const reachOwnSession = c => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(c || ""));
+    const reachAgentOf = c => /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(c || ""))?.[1] || null;
+    ctx.tool("projects.reach", {
+      description: "Which projects (and their folders) a caller may reach: the one door core/memory, core/recall and core/files all ask instead of keeping their own copy of this check. caller is the ORIGINAL caller the asking module itself received (ctx.call always relabels the actual meta.caller \"module:<name>\", so the owner-vs-refused decision below has to be told this explicitly rather than reading it off the call the registry sees); trusted because only a first-party module can reach this tool at all, and that module is the one responsible for forwarding it faithfully. { all: true } for the true owner (its own surfaces, a module, its own session, or an owner device): no restriction. Otherwise { all: false, agent, projects: [{slug, name, folders, threads}] }, deny by default. kind \"facts\" additionally gives the assistant { all: true } too (personal facts, distilled, not raw content); kind \"content\" (the default) never does, even for the assistant, which instead gets every project that exists, unconditional and never checked against projects.access (a different privilege tier from a projects: \"*\" agent, which is checked). A model never asks this on its own behalf: it cannot, callers being module-only.",
+      input: { type: "object", properties: { agent: str, caller: str, kind: { type: "string", enum: ["facts", "content"] } } },
+      callers: ["module"],
+      run: async ({ agent, caller, kind = "content" }) => {
+        const said = reachAgentOf(caller);
+        if (said && agent && said !== agent) throw refuse(`the call came from agent ${said} but names agent ${agent}`, "denied");
+        const who = said || agent || null;
+        if (!who) {
+          if (reachOwner(caller) || reachOwnSession(caller) || ownerDevice(caller)) return { all: true, agent: null };
+          throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}`, "denied");
+        }
+        const r = await ctx.call("agents.list", {});
+        if (r.error) throw new Error(`agent ${who}: its projects cannot be checked (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`);
+        const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
+        const a = list.find(x => x && x.name === who);
+        if (!a) throw refuse(`no agent ${who}`, "denied");
+        const assistant = a.kind === "assistant";
+        if (assistant && kind === "facts") return { all: true, agent: who };
+        const all = P.list().projects.map(p => ({ slug: p.slug, name: p.name, folders: p.workspaces ? [p.home, ...p.workspaces] : [p.home], threads: p.picks || [] }));
+        if (assistant) return { all: false, agent: who, projects: all };
+        const wildcard = a.projects === "*";
+        const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
+        const candidate = wildcard ? all : all.filter(p => mine.has(p.slug) || mine.has(p.name));
+        const checked = await Promise.all(candidate.map(async p => {
+          const c = await ctx.call("projects.access.check", { project: p.slug, agent: who });
+          if (c.error && c.error.code === "no_such_tool") return p; // no gate installed: agents.projects' own scope, unchanged
+          return c.data && c.data.granted ? p : null;
+        }));
+        return { all: false, agent: who, projects: checked.filter(Boolean) };
       },
     });
 
@@ -309,22 +429,28 @@ export default {
     // its memory access. Retried a few times, spaced out, in case agents starts after projects
     // in this boot (module.json declares no hard "requires" on agents: projects works fine
     // without it, so this can't be a real dependency edge, just a startup-order one). Marked
-    // done in projects_access_seeded (its own migration step) the moment any attempt succeeds,
-    // agents.list's own error included, no_such_tool means agents genuinely is not running, so
-    // there is nothing to seed either way. Six tries, 500ms apart, is not enough to rule out a
-    // permanent problem, only a boot-order race; a real, lasting outage leaves this unmarked, so
-    // the next start tries again, and the manual tool above is the fallback in between.
+    // done in projects_access_seeded (its own migration step) ONLY once it has actually read a
+    // real list from agents.list (reviewer's seed-order LOW, still open on 2fb4258c): a
+    // no_such_tool answer used to be treated as final ("agents genuinely is not installed"),
+    // but that is only true when agents really is disabled, which this cannot tell apart from
+    // "agents hasn't started yet" by the error code alone. Retried the same as any other error
+    // now; six tries, 500ms apart, is not enough to rule out a permanent problem, only a
+    // boot-order race, so a real, lasting outage (or a genuinely agents-less install) leaves
+    // this unmarked and retries again next boot, cheap either way. Going forward this matters
+    // less: agents.create/update and projects.create write the grant as it happens (option (a)
+    // below), so this seed only ever backfills what existed before this version.
     // The returned promise is here for tests to await determinism on, never used by real
     // callers: nothing in production needs to wait on the auto-seed before start() returns.
+    // A test that awaits this promise (access.test.js's own started()) would otherwise pay the
+    // full 6-try, 2.5s retry cost on every no_such_tool too, now that no_such_tool is retried
+    // like any other error: sped up under node --test, same convention core/config/dialogs.js
+    // and core/recall/index.js use, never in production.
+    const RETRY_MS = process.env.NODE_TEST_CONTEXT ? 5 : 500;
     const autoSeed = db.prepare("SELECT 1 FROM projects_access_seeded").get() ? Promise.resolve() : (async () => {
-      const done = () => db.prepare("INSERT OR IGNORE INTO projects_access_seeded (id, at) VALUES (1, ?)").run(Date.now());
       for (let i = 0; i < 6; i++) {
         const r = await seedFromAgents();
-        // No error, or agents genuinely is not installed (no_such_tool): either way agents.list
-        // gave a real answer, so there is nothing left to retry for. Any other error might be
-        // agents starting later in this same boot, worth the next retry.
-        if (!r.error || r.error.code === "no_such_tool") { done(); return; }
-        await new Promise(res => setTimeout(res, 500));
+        if (!r.error) { db.prepare("INSERT OR IGNORE INTO projects_access_seeded (id, at) VALUES (1, ?)").run(Date.now()); return; }
+        await new Promise(res => setTimeout(res, RETRY_MS));
       }
       ctx.log("projects.access: could not auto-seed from agents.projects after 6 tries; run projects.access.migrate by hand once agents is up");
     })();

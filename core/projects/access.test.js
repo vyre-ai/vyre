@@ -20,8 +20,10 @@ import { checkInput } from "../modules/index.js";
 /** A world with one real project, "Harlow Legal", and a fake ctx running the real module's start().
  * agents, when given, answers agents.list (core/agents' own shape) instead of no_such_tool.
  * state.agents can be changed after start() too, for tests of the auto-seed running before
- * agents exists and the manual tool filling in once it does. */
-function world(t, { agents = null } = {}) {
+ * agents exists and the manual tool filling in once it does. failFirst: agents.list answers
+ * this error the first N calls (a boot-order race, agents not up yet), then answers normally,
+ * for the seed-order LOW: only a real answer, no_such_tool included, may mark the seed done. */
+function world(t, { agents = null, failFirst = 0 } = {}) {
   const root = fs.realpathSync(tempHome(t));
   const home = path.join(root, "alex", "Work", "harlow-site");
   fs.mkdirSync(home, { recursive: true });
@@ -29,7 +31,7 @@ function world(t, { agents = null } = {}) {
   t.after(() => db.close());
   const cfg = config.load(root);
   const tools = new Map(), events = [];
-  const state = { agents };
+  const state = { agents, calls: 0 };
   const ctx = {
     config: { ...cfg, role: "box", roots: [] },
     store: { db, migrate: steps => migrate(db, "projects", steps) },
@@ -37,7 +39,21 @@ function world(t, { agents = null } = {}) {
     log: () => {},
     events: { emit: (type, payload) => events.push({ type, payload }), on: () => () => {} },
     tool: (name, def) => tools.set(name, def),
-    call: async tool => tool === "agents.list" && state.agents ? { data: state.agents } : { error: { code: "no_such_tool", message: "none" } },
+    // agents.list is the one external fixture; anything else this module's own tools declare
+    // (projects.list, projects.access.check) is a real self-call, routed the same way
+    // core/modules/index.js's ctx.call does for a module calling its own tool — projects.reach
+    // needs both, not just agents.list.
+    call: async (tool, input = {}) => {
+      if (tool === "agents.list") {
+        state.calls++;
+        if (state.calls <= failFirst) return { error: { code: "unreachable", message: "agents is not up yet" } };
+        return state.agents ? { data: state.agents } : { error: { code: "no_such_tool", message: "none" } };
+      }
+      const def = tools.get(tool);
+      if (!def) return { error: { code: "no_such_tool", message: "none" } };
+      try { return { data: await def.run(input, { caller: "module:projects" }) }; }
+      catch (e) { return { error: { code: /** @type {any} */ (e).code || "failed", message: /** @type {Error} */ (e).message } }; }
+    },
   };
   return { root, home, db, tools, events, ctx, state };
 }
@@ -129,6 +145,17 @@ test("projects.access: grant is HUMAN_ONLY (needs the owner's presence), revoke 
   assert.ok(!HUMAN_ONLY.has("projects.access.revoke"));
 });
 
+test("projects.add-workspace: person-only, instant, and calls through to Projects.addWorkspace (Vyre Drive step 4)", async t => {
+  assert.ok(PERSON_ONLY.has("projects.add-workspace"), "a placement decision, no presence needed");
+  assert.ok(!HUMAN_ONLY.has("projects.add-workspace"));
+  const w = await started(t);
+  const intake = path.join(w.root, "alex", "Work", "harlow-intake");
+  fs.mkdirSync(intake, { recursive: true });
+  const r = await w.call("projects.add-workspace", { project: "harlow-legal", folder: intake }, { caller: "cli" });
+  assert.equal(r.added, "../harlow-intake");
+  await assert.rejects(w.call("projects.add-workspace", { project: "no-such-project", folder: intake }, { caller: "cli" }), /no project/);
+});
+
 test("projects.access: auto-seeds from agents.projects on start, no manual step needed (reviewer's MEDIUM 2 on 656b3f79)", async t => {
   const w = await started(t, { agents: [
     { name: "kit", kind: "agent", projects: ["harlow-legal"] },
@@ -141,6 +168,15 @@ test("projects.access: auto-seeds from agents.projects on start, no manual step 
   // hal has no projects to seed; the assistant's "*" is its own rule, never a per-project row.
   assert.equal((await w.call("projects.access.check", { project: "harlow-legal", agent: "hal" })).granted, false);
   assert.equal((await w.call("projects.access.check", { project: "harlow-legal", agent: "vyre" })).granted, false);
+});
+
+test("projects.access: the auto-seed retries a boot-order race, and marks itself done only once agents.list actually answers (reviewer's seed-order LOW)", async t => {
+  // agents.list fails twice (not no_such_tool: a real "not up yet" error) before it answers,
+  // simulating agents starting after projects in the same boot.
+  const w = await started(t, { agents: [{ name: "kit", kind: "agent", projects: ["harlow-legal"] }], failFirst: 2 });
+  assert.ok(w.state.calls >= 3, `expected at least 3 attempts (2 failures + 1 success), got ${w.state.calls}`);
+  assert.equal((await w.call("projects.access.check", { project: "harlow-legal", agent: "kit" })).granted, true, "seeded once agents finally answered");
+  assert.ok(w.db.prepare("SELECT 1 FROM projects_access_seeded").get(), "marked done only after a real answer");
 });
 
 test("projects.access: auto-seed covers a projects: \"*\" agent too, one row per project (reviewer's follow-up on d897210d)", async t => {
@@ -206,4 +242,86 @@ test("projects.access: agent names are case-insensitive, on write and on read (t
   assert.equal((await w.call("projects.access.check", { project: "harlow-legal", agent: "KIT" })).granted, true);
   assert.equal((await w.call("projects.access.revoke", { project: "harlow-legal", agent: "kIt" }, { caller: "cli" })).agent, "kit");
   assert.equal((await w.call("projects.access.check", { project: "harlow-legal", agent: "Kit" })).granted, false);
+});
+
+test("projects.reach: the true owner is unrestricted; an unnamed, unrecognised caller is refused outright (cohesion's one-system audit)", async t => {
+  const w = await started(t);
+  for (const caller of ["cli", "local", "deck", "capsule", "module:memory", "mcp", "mcp:thread:t1"]) {
+    assert.deepEqual(await w.call("projects.reach", { caller }), { all: true, agent: null }, caller);
+  }
+  for (const caller of ["unknown", "tailnet-guest:eve@example.com", "hook"]) {
+    const r = await w.call("projects.reach", { caller }).catch(e => e);
+    assert.equal(r.code, "denied", `${caller}: ${r.message}`);
+  }
+});
+
+test("projects.reach: a named agent gets its own granted projects, intersected with projects.access, deny by default", async t => {
+  const w = await started(t, { agents: [{ name: "kit", kind: "agent", projects: ["harlow-legal"] }] });
+  // started() already ran the one-time auto-seed (2fb4258c), which backfills kit's own
+  // agents.projects entry into projects.access — so this starts granted, not denied; revoking
+  // it directly is what actually exercises "intersected with projects.access, deny by default".
+  const r = await w.call("projects.reach", { agent: "kit", caller: "mcp:agent:kit" });
+  assert.deepEqual(r.projects.map(p => p.slug), ["harlow-legal"]);
+  await w.call("projects.access.revoke", { project: "harlow-legal", agent: "kit" }, { caller: "cli" });
+  const r2 = await w.call("projects.reach", { agent: "kit", caller: "mcp:agent:kit" });
+  assert.deepEqual(r2.projects, []);
+});
+
+test("projects.reach: a projects: \"*\" agent is checked against projects.access; the assistant never is", async t => {
+  const w = await started(t, { agents: [{ name: "wilma", kind: "agent", projects: "*" }, { name: "juno", kind: "assistant", projects: "*" }] });
+  await w.call("projects.create", { name: "Northwind", home: path.join(w.root, "northwind") }, { caller: "cli" });
+  // projects.create auto-grants every existing wildcard agent (option (a), f8330ccc): wilma reads
+  // the brand-new project at once. harlow-legal predates this fixture's agents but the one-time
+  // auto-seed (2fb4258c) backfills wilma's own "*" against every project that existed when it
+  // ran, harlow-legal included — so wilma starts with both, same as if it had always been there.
+  assert.deepEqual((await w.call("projects.reach", { agent: "wilma", caller: "mcp:agent:wilma" })).projects.map(p => p.slug).sort(), ["harlow-legal", "northwind"]);
+  await w.call("projects.access.revoke", { project: "northwind", agent: "wilma" }, { caller: "cli" });
+  assert.deepEqual((await w.call("projects.reach", { agent: "wilma", caller: "mcp:agent:wilma" })).projects.map(p => p.slug), ["harlow-legal"]);
+  // The assistant is never checked against projects.access at all, even an explicit revoke
+  // under its own name: every project, unconditional.
+  await w.call("projects.access.revoke", { project: "northwind", agent: "juno" }, { caller: "cli" });
+  const j = await w.call("projects.reach", { agent: "juno", caller: "mcp:agent:juno" });
+  assert.deepEqual(j.projects.map(p => p.slug).sort(), ["harlow-legal", "northwind"]);
+  assert.equal(j.all, false, "the assistant is not r.all for content: it still names its projects, unfiled stays the true owner's alone");
+  // kind: "facts" gives the assistant true all:true (personal facts, distilled, not raw content).
+  assert.deepEqual(await w.call("projects.reach", { agent: "juno", kind: "facts", caller: "mcp:agent:juno" }), { all: true, agent: "juno" });
+});
+
+test("projects.access: grant, revoke and clear are agents' and this module's own internal door, never a third-party module (reviewer's MEDIUM 2 on f8330ccc)", async t => {
+  const w = await started(t);
+  for (const [tool, input] of [["projects.access.grant", { project: "harlow-legal", agent: "kit" }], ["projects.access.revoke", { project: "harlow-legal", agent: "kit" }], ["projects.access.clear", { agent: "kit" }]]) {
+    const r = await w.call(tool, input, { caller: "module:evil-plugin" }).catch(e => e);
+    assert.equal(r.code, "denied", `${tool} by module:evil-plugin should have been refused`);
+  }
+  // The two doors that are meant to reach these still can.
+  assert.ok(!(await w.call("projects.access.grant", { project: "harlow-legal", agent: "kit" }, { caller: "module:agents" })).error);
+  assert.ok(!(await w.call("projects.access.revoke", { project: "harlow-legal", agent: "kit" }, { caller: "module:agents" })).error);
+  assert.ok(!(await w.call("projects.access.clear", { agent: "kit" }, { caller: "module:agents" })).error);
+  // The owner's own surfaces are unaffected: this is a module-caller-only narrowing.
+  assert.ok(!(await w.call("projects.access.grant", { project: "harlow-legal", agent: "kit" }, { caller: "cli" })).error);
+});
+
+test("projects.create: a module caller is refused unless it is sync's own door (reviewer's MEDIUM on 7021d4e1)", async t => {
+  const w = await started(t);
+  const input = { name: "Northwind", home: path.join(w.root, "alex", "Work", "northwind") };
+  const r = await w.call("projects.create", input, { caller: "module:evil-plugin" }).catch(e => e);
+  assert.equal(r.code, "denied", "an agent's own module cannot map any folder it likes into a brand-new project");
+  // sync's own door (attachMapped's create-new-project branch, core/sync/index.js) still works.
+  const created = await w.call("projects.create", input, { caller: "module:sync" });
+  assert.equal(created.slug, "northwind");
+});
+
+test("projects.add-workspace: a module caller is refused unless it is sync's own door, and sync's attach-to-existing path actually works end to end (reviewer's MEDIUM on 7021d4e1: \"attach-to-existing is dead\")", async t => {
+  const w = await started(t);
+  const intake = path.join(w.root, "alex", "Work", "harlow-intake");
+  fs.mkdirSync(intake, { recursive: true });
+  const refused = await w.call("projects.add-workspace", { project: "harlow-legal", folder: intake }, { caller: "module:evil-plugin" }).catch(e => e);
+  assert.equal(refused.code, "denied", "an agent's own module cannot attach a folder to an existing project");
+  // The exact call attachMapped makes on its "exists" branch: an existing project, sync's own caller.
+  const attached = await w.call("projects.add-workspace", { project: "harlow-legal", folder: intake }, { caller: "module:sync" });
+  assert.equal(attached.added, "../harlow-intake");
+  // A person's own surfaces are unaffected: this is a module-caller-only narrowing.
+  const other = path.join(w.root, "alex", "Work", "harlow-other");
+  fs.mkdirSync(other, { recursive: true });
+  assert.ok(!(await w.call("projects.add-workspace", { project: "harlow-legal", folder: other }, { caller: "cli" })).error);
 });

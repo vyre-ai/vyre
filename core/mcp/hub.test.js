@@ -129,6 +129,34 @@ test("whoFrom: people see all, a model is scoped by what vyred verified", () => 
   assert.equal(whoFrom("harness:agent:kit").person, false);
 });
 
+test("whoFrom: an owner-surface-shaped agent claim is never person: true (cohesion's audit, 2026-09-28)", () => {
+  // The bug: stripping "agent:kit" off "cli:agent:kit" before checking PEOPLE read the kind as
+  // "cli", so this named agent came back person AND agent at once. inScope() trusts who.person
+  // to skip every per-agent scope check outright, so this would have let it reach every
+  // connected server the true owner can, not just its own agents/projects scope.
+  for (const c of ["cli:agent:kit", "local:agent:kit", "deck:agent:kit", "capsule:agent:kit", "module:agent:kit"]) {
+    const who = whoFrom(c);
+    assert.equal(who.person, false, c);
+    assert.equal(who.agent, "kit", c);
+  }
+});
+
+test("whoFrom: the same bypass with a space instead of a colon, or an agent claim with no name after it (reviewer's round-2 MEDIUM on 513f984d)", () => {
+  // "mcp agent:kit" is a real transport shape this file's own callerKind treats identically to
+  // "mcp:agent:kit" (the space-or-colon boundary is deliberate, not this file's own invention:
+  // core/memory/floor.test.js's own test calls both). The first fix's named regex was anchored
+  // to "<kind>:agent:<name>" exactly, so a space before "agent:", or a claim with nothing after
+  // it at all, matched neither the old PEOPLE-strip nor the old named capture: person still came
+  // back true.
+  assert.equal(whoFrom("cli agent:kit").person, false, "a space, not a colon, before agent:");
+  assert.equal(whoFrom("cli agent:kit").agent, "kit");
+  assert.equal(whoFrom("cli:agent:").person, false, "an agent claim with no name after it");
+  assert.equal(whoFrom("cli:agent:").agent, null);
+  // A thread: claim is refused the same way callerKind's own strip already treats it: identically
+  // to an agent: claim, not the person's own surface either.
+  assert.equal(whoFrom("deck:thread:t1").person, false, "a thread: claim is not the person either");
+});
+
 // ---- a hub with a fake connect ----
 
 function fakeHub({ values = {}, behave = {}, ...extra } = {}) {

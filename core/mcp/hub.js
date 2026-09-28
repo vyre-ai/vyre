@@ -356,9 +356,29 @@ const PEOPLE = ["cli", "local", "deck", "capsule", "module"];
 /** Who is calling, from the registry's caller and what vyred verified. @returns {Who} */
 export function whoFrom(caller, meta = {}) {
   const c = String(caller || "");
-  const kind = c.startsWith("module:") ? "module" : c.replace(/[\s:]agent:.*$/s, "");
-  const named = /^[a-z]+:agent:(.+)$/.exec(c);
-  return { person: PEOPLE.includes(kind), agent: meta.agent || (named ? named[1] : null), thread: meta.thread || null };
+  const kind = c.startsWith("module:") ? "module" : c.replace(/[\s:](agent|thread):.*$/s, "");
+  // Cohesion's audit, 2026-09-28: this used to check PEOPLE.includes(kind) alone, which strips
+  // "agent:kit" off "cli:agent:kit" before the check, reading it as person AND agent at once.
+  // inScope() below trusts who.person to skip every per-agent scope check outright, so that let
+  // an agent whose caller string carried an owner-surface prefix (however it got there) reach
+  // every connected server the true owner can, not just its own scope.
+  //
+  // Reviewer's MEDIUM (round 2) on 513f984d: the first fix only refused a caller anchored exactly
+  // "<kind>:agent:<name>" (its own named regex's shape) — "cli agent:kit" (a space before
+  // "agent:", the same boundary callerKind's own strip already treats as equivalent to a colon;
+  // "mcp agent:kit" is a real shape this file's own test used) and "cli:agent:" (a claim with no
+  // name after it at all) both still read as kind "cli" with no match for the old anchored regex,
+  // so person came back true either way. claimed below tests the bare claim itself, unanchored,
+  // no name required — the same class core/modules' agentClaim recognizes — and, like
+  // callerKind's own strip, treats a thread: claim the same as an agent: one: "mcp:thread:<id>"
+  // (ADR 0030, a Vyre-owned session) is not the person's own surface either, whatever kind it
+  // otherwise reads as. An agent's or a thread's own claim is never the person (the same fix
+  // lib/caller.js gives isPerson/isAgent, once this branch can take that dependency — not yet
+  // mergeable here, see the note left for cohesion).
+  const claimed = /(?:^|[\s:])(agent|thread):/.test(c);
+  const named = /(?:^|[\s:])agent:(\S+)/.exec(c);
+  const person = !claimed && PEOPLE.includes(kind);
+  return { person, agent: meta.agent || (named ? named[1] : null), thread: meta.thread || null };
 }
 
 export class Hub {

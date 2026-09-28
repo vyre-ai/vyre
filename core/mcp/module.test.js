@@ -156,6 +156,11 @@ test("mcp: an agent's outward call is held, edited by the person, and reaches th
 
 test("mcp: scope by agent, by an agent's projects, and by a session's thread", async t => {
   const v = await vyred(t);
+  // option (a): agents.create now grants projects.access as part of making the agent, so the
+  // projects it names have to exist first (they never did before this, since this test only
+  // cares about MCP scoping, not real project folders).
+  assert.ok((await v.cli("projects.create", { name: "Harlow Legal", home: path.join(v.root, "harlow-legal") })).data);
+  assert.ok((await v.cli("projects.create", { name: "Northwind", home: path.join(v.root, "northwind") })).data);
   assert.ok((await v.cli("agents.create", { name: "juno", projects: ["harlow-legal"] })).data);
   assert.ok((await v.cli("agents.create", { name: "kit", projects: ["northwind"] })).data);
   const log = path.join(v.root, "x.log");

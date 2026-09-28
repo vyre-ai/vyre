@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { open, migrate } from "../store/index.js";
 import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
 import { tempHome } from "../../test/helpers.js";
@@ -203,6 +204,37 @@ test("projects: a marker edited by hand is followed; a folder added to it brings
   assert.equal(M.load(p.home).name, "Harlow Legal", "a write dropped a field it did not name");
 });
 
+test("projects: addWorkspace attaches an existing folder once, and a folder that is the home itself is a no-op (Vyre Drive step 4)", async t => {
+  const w = world(t);
+  const p = w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site") });
+  const intake = path.join(w.work, "harlow-intake");
+  fs.mkdirSync(intake, { recursive: true });
+  w.events.length = 0;
+  const r = w.P.addWorkspace(p.slug, intake);
+  assert.equal(r.added, "../harlow-intake");
+  // .workspaces is loaded, home-prefixed and absolute (markers.js's own load() shape); "added" is
+  // the relative form, the same shape create()'s own workspaces takes.
+  assert.deepEqual(r.workspaces, [p.home, fs.realpathSync(intake)]);
+  assert.deepEqual(w.events.filter(e => e.type === "project.changed").map(e => e.fields), [["workspaces"]]);
+  // The folder now brings its sessions, the same as one listed at create time.
+  const again = w.P.resolve(p.slug);
+  assert.ok(w.P.threadsOf(again).some(x => x.id === ID.intake && x.how.includes("folder")));
+
+  // Adding the same folder again is a no-op, not a duplicate.
+  w.events.length = 0;
+  const r2 = w.P.addWorkspace(p.slug, intake);
+  assert.equal(r2.added, null);
+  assert.deepEqual(r2.workspaces, [p.home, fs.realpathSync(intake)]);
+  assert.equal(w.events.length, 0, "no project.changed for a no-op");
+
+  // The project's own home resolves to "." (M.relative), filtered out: nothing to add.
+  const r3 = w.P.addWorkspace(p.slug, p.home);
+  assert.equal(r3.added, null);
+  assert.deepEqual(r3.workspaces, [p.home, fs.realpathSync(intake)]);
+
+  assert.throws(() => w.P.addWorkspace("no-such-project", intake), /no project/);
+});
+
 test("projects: a project outside the roots is remembered; one under them is discovered; a removed marker ends it", async t => {
   const w = world(t);
   const away = path.join(w.root, "elsewhere", "harlow");
@@ -288,7 +320,7 @@ test("tools: projects.of answers the Harness's shape for a subfolder, and null o
     transcripts: [], modules: { disable: ["recall", "memory"] } }));
   const d = await start({ root, log: () => {} });
   try {
-    const made = await d.registry.call("projects.create", { name: "Harlow Legal", home, workspaces: [intake] });
+    const made = await d.registry.call("projects.create", { name: "Harlow Legal", home, workspaces: [intake] }, "cli");
     assert.ok(made.data, JSON.stringify(made.error));
     const of = await d.registry.call("projects.of", { cwd: path.join(home, "src", "deep") });
     assert.equal(of.data.slug, "harlow-legal");
@@ -333,6 +365,56 @@ test("projects: a catalogue search costs one Recall call and no per-session path
   // for 2,000 sessions; this is roughly 80x that, so it only trips on an actual
   // algorithmic regression, not on load from other test suites running concurrently).
   assert.ok(ms < 2000, `a catalogue search over 2,000 sessions took ${Math.round(ms)}ms`);
+});
+
+test("projects: create() and addWorkspace() refuse the whole disk, the real home, and the credential/vault folders under it (reviewer's LOW on 7021d4e1)", async t => {
+  const w = world(t);
+  const home = os.homedir();
+  const bad = ["/", home, path.join(home, ".vyre"), path.join(home, ".vyre", "vault"),
+    path.join(home, ".ssh"), path.join(home, ".ssh", "id_ed25519"), path.join(home, ".claude"),
+    path.join(home, ".claude", "projects"), path.join(home, ".gnupg"), path.join(home, ".aws"),
+    path.join(home, ".config", "gcloud"), path.join(home, ".docker"), path.join(home, ".kube"), path.join(home, ".netrc")];
+  for (const p of bad) assert.throws(() => w.P.create({ name: "Bad", home: p }), /cannot be a project's folder/, p);
+  // A workspace named at create time is checked exactly the same as the home.
+  assert.throws(() => w.P.create({ name: "Bad Workspace", home: path.join(w.work, "bad-workspace"), workspaces: [path.join(home, ".ssh")] }),
+    /cannot be a project's folder/);
+  assert.ok(!fs.existsSync(path.join(w.work, "bad-workspace")), "refused before the home folder was even made");
+  const harlow = w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site") });
+  for (const p of bad) assert.throws(() => w.P.addWorkspace(harlow.slug, p), /cannot be a project's folder/, p);
+  // An ordinary folder is unaffected.
+  const ok = path.join(w.work, "harlow-intake");
+  fs.mkdirSync(ok, { recursive: true });
+  assert.equal(w.P.addWorkspace(harlow.slug, ok).added, "../harlow-intake");
+});
+
+test("projects: create() refuses an ancestor of the real home or a sensitive folder too, not just the folder itself (reviewer's MEDIUM 3, second pass)", async t => {
+  const w = world(t);
+  const home = os.homedir();
+  const bad = [
+    path.dirname(home),               // "/Users" (or whatever holds the real home): contains it
+    path.join(home, ".config"),       // the parent of ~/.config/gcloud specifically
+    path.join(home, "Library"),       // Keychains, Mail, Cookies and more all live under it
+  ];
+  for (const p of bad) assert.throws(() => w.P.create({ name: "Bad", home: p }), /cannot be a project's folder/, p);
+});
+
+test("projects: refuseSensitiveRoot never refuses an ordinary project merely for sitting under the real home (reviewer's HIGH regression on 13e7b0e8)", async t => {
+  // The bug: the first ancestor fix's single "abs is inside OR an ancestor of" check applied to
+  // home itself too, so /Users/alex/Projects/harlow (an entirely ordinary project, exactly
+  // where almost every real one lives) was refused the same as /Users or ~/alex itself. Proven
+  // here against a FAKE $HOME (os.homedir() reads it on POSIX), since this worktree's own real
+  // home is not guaranteed to hold any of these folders either way.
+  const realHome = os.homedir();
+  const fakeHome = fs.realpathSync(tempHome(t));
+  process.env.HOME = fakeHome;
+  t.after(() => { process.env.HOME = realHome; });
+  const w = world(t);
+  const nested = path.join(fakeHome, "Projects", "harlow-legal");
+  const p = w.P.create({ name: "Harlow Legal", home: nested });
+  assert.equal(p.home, fs.realpathSync(nested));
+  // The fake home's own ancestor, and a sensitive folder under it, are still refused.
+  assert.throws(() => w.P.create({ name: "Bad", home: path.dirname(fakeHome) }), /cannot be a project's folder/);
+  assert.throws(() => w.P.create({ name: "Bad2", home: path.join(fakeHome, ".ssh") }), /cannot be a project's folder/);
 });
 
 test("projects: the catalogue says live for a session a terminal has open now, and false without the Switchboard", async () => {

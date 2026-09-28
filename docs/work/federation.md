@@ -751,3 +751,157 @@ pending (queued behind testbox load).
   person confirms/edits).
 - Wire an actual caller (files.drive.*, or whatever serves synced content to an agent) to
   projects.access.check.
+
+## Move engine: contract only, before the build (28 Sep 2026)
+
+Per anywhere's move contract (ADR 0039 section 4, docs/design/anywhere.md): four pieces
+(projects, memory, vault, sessions), source stays live and untouched until the destination
+confirms every piece, then the flip is anywhere's own (onboard.machine), never mine. No
+auto-delete: the pre-move copy sits at ~/.vyre/moved-<date>/ (core/projects/move.js's existing
+pattern) until the person explicitly frees it from Settings.
+
+Sent to launch and tailnet as the contract to build against; the engine itself is next.
+
+- `move.plan { destination }` (HUMAN_ONLY): dry run against a reachable destination (a paired
+  device or box, already verified by tailnet's onboard.join). Counts and bytes per piece
+  (projects, memory, vault, sessions), a planId (hash of the four pieces' current state, so a
+  stale plan is never started against). No write, nothing moved.
+- `move.start { planId }` (HUMAN_ONLY): begins copying to the destination over Tailscale or the
+  relay, piece by piece, source untouched and fully itself the whole time. Returns a moveId.
+  Refuses a stale planId (source changed since plan) rather than starting against a wrong count.
+- `move.status { moveId }`: `{ stage: "copying"|"verifying"|"ready"|"confirmed"|"failed",
+  pieces: { projects: { bytes, of, done, error }, memory: {...}, vault: {...}, sessions: {...} } }`.
+  Resumable: a status check after a restart of either machine picks up where copying left off,
+  never re-starts a finished piece.
+- `move.confirm { moveId }` (HUMAN_ONLY): the person's go-ahead once `stage: "ready"` (every
+  piece copied and the destination has verified its checksums and, for vault, re-encrypted to
+  its own device key). Marks the move confirmed and emits `move.confirmed { moveId }`; anywhere's
+  onboard.machine is what actually listens for that and flips config.machine on the source.
+  Nothing here calls onboard.machine directly: that boundary is anywhere's, this engine only
+  reports.
+- `move.cancel { moveId }` (PERSON_ONLY, instant): stops an in-flight or ready-but-unconfirmed
+  move. The source was never touched (never flipped, per the contract), so this is cleanup of
+  the partial destination copy only, not a rollback.
+- Events: `move.progress { moveId, piece, bytes, of }` (throttled, not per-chunk), `move.piece.done
+  { moveId, piece }`, `move.failed { moveId, piece, error }` (a dead network mid-copy: retried by
+  a fresh move.start against the same planId, not a special recovery path), `move.confirmed
+  { moveId }`.
+- Checksums verified on the destination before `stage` reaches "ready": a piece whose checksum
+  fails is retried, never surfaced to the person as "ready" with a silent mismatch.
+
+Open question sent back to anywhere: whether vault and sessions need to move atomically together
+(a session mid-thread holding a vault-derived credential) or each piece can lag independently as
+above; the four-piece split otherwise fits the engine's real constraints (each piece copies and
+verifies on its own, no cross-piece ordering needed except the final confirm gate).
+
+## Both HOLDs fixed after the restart: f8330ccc, 7021d4e1 (28 Sep 2026)
+
+db2d94fd: f8330ccc's M1 (guard() hands back r.cwds for every raw reader, not just memory.graph's
+own drawing) and M2 (projects.access.grant/revoke/clear refuse any module caller that is not
+module:agents or module:projects) were already written, uncommitted, from before the restart;
+verified them against the reviewer's exact notes, ran the tests, committed. 7021d4e1 built fresh
+this round: projects.create and projects.add-workspace both gained real callers (OWNER plus a
+named module:sync exception, the only module with real business proposing a folder-to-project
+mapping, sync's own attachMapped) and a real test exercising sync's attach-to-existing and
+create-new-project calls plus a third-party-module refusal; Projects.create()/addWorkspace() now
+refuse "/", the real home, and the credential/vault folders under it as a project's own home or
+workspace. One pre-existing test (projects.test.js "tools: projects.of...") called
+registry.call("projects.create", ...) with the default "unknown" caller; fixed to "cli", the real
+surface it was standing in for. docs:ref regenerated. Tests, testbox nice -n 15: 234/234
+core/projects, 417/417 (1 pre-existing skip) core/memory + core/sync + core/link + link* +
+federation-* + docs-* + onboard* + harness/floor, 9/9 boundaries + mcp-server-tools +
+cohesion-drift.
+
+c6cda1aa: the e8560b79 dev/ino follow-up (fstat vs describe()'s stat, to catch a parent-dir swap
+the O_NOFOLLOW fix alone does not). describe() now carries dev/ino; new openChecked(d) in
+core/files/index.js opens and fstats, refusing on a mismatch; wired into files.preview's
+small-image and text reads, and folded into chunk()'s existing fstat rather than a second one.
+Thumbnail generation (external convert/sips by path) stays the accepted residual. Tests: 84/84
+core/files + hygiene + boundaries.
+
+CHANGELOG entries added in a follow-up commit (391c4840): missed landing them in the same commit
+the first time.
+
+Shas sent to reviewer and integrator. Told memory-iq db2d94fd/c6cda1aa so work/memory-reach can
+branch off work/federation. Move-engine contract (below, already built and sent to launch and
+tailnet before the restart) re-confirmed with both after the restart, in case the message did not
+survive it.
+
+## Next
+
+- The move engine itself (move.plan/start/status/confirm/cancel), per the contract above: not
+  started this round, time went to the two HOLDs and the dev/ino follow-up instead.
+
+## core/mcp/hub.js: whoFrom()'s backwards person check, cohesion's audit (28 Sep 2026)
+
+513f984d. cohesion's caller-check audit (core/ and local/, no edits made on their side) found
+whoFrom() stripped "agent:kit" off "cli:agent:kit" before checking PEOPLE, reading it as person
+AND agent at once; inScope() trusts who.person to skip every per-agent scope check, so this let
+such a caller reach every connected MCP server, not just its own scope. Fixed: the agent claim is
+checked first, person refuses immediately if one exists. Not a real ownership question (git log
+shows no recent federation touch on hub.js) but team-lead and cohesion both routed it here, and it
+is a live privilege-escalation bug, so fixed rather than passed back.
+
+Round 2 (reviewer, same day): the first fix only caught the exact "<kind>:agent:<name>" shape.
+"cli agent:kit" (space, not colon) and "cli:agent:" (a claim with no name) both still slipped
+through the same PEOPLE.includes(kind)-plus-anchored-regex gap. Fixed at cb85c3eb: an unanchored
+claimed test with no name required, and a thread: claim refused the same as an agent: one
+(callerKind's own strip already treats them identically). Reviewer's LOW (PEOPLE includes
+"module", so any module skips inScope) deferred, as they asked, to the lib/caller.js swap.
+
+Could not take lib/caller.js (cohesion's fix path, work/cohesion 87149563) as a real dependency:
+it imports agentClaim from core/modules and PERSON_SURFACES from core/presence, and neither is
+merged into work/federation's tree (main at this branch's base, a3a844e4, predates both; agentClaim
+itself is still unmerged into main too, per e2e-agentclaim's branch history). Wrote the equivalent
+fix locally instead, with a note in the code and this doc for whoever swaps it onto lib/caller.js
+once this branch takes a main merge that carries it.
+
+Tests, testbox nice -n 15, load under 3: 43/43 across core/mcp, hygiene, boundaries.
+
+## db2d94fd reviewer HOLD, round 2: three MEDIUMs (28 Sep 2026)
+
+13e7b0e8 (memory MEDIUM 1 and 2, projects MEDIUM 3), a262b9ed (c6cda1aa's LOW, verified already
+fixed by the existing try/finally, a test added rather than a code change). MEDIUM 1: guard()'s
+NOTHING sentinel (a cwds value under /dev/null) replaces an empty r.folders wherever it would
+otherwise become "unscoped" downstream. MEDIUM 2: scopedCwds() now checks every caller-supplied
+folder against r.folders for the assistant, refusing outright rather than the old
+non-empty-means-unchecked shortcut. MEDIUM 3: refuseSensitiveRoot now refuses an ancestor of "/",
+home, or any SENSITIVE entry too (not just the folder itself or something inside it), and
+"Library" joined the list. Tests: 354/354 on testbox across core/mcp, core/memory, core/projects,
+core/files, hygiene, boundaries.
+
+## Reviewer's HIGH on 13e7b0e8: fixed, b2e64518 (28 Sep 2026)
+
+The ancestor fix for MEDIUM 3 (previous entry) put root and home into the SAME "inside-or-ancestor"
+check as the SENSITIVE folders, which refused every real project nested anywhere under the actual
+home directory - exactly where almost every real project lives (checked with home /Users/alex:
+/Users/alex/Projects/harlow was refused). Fixed: root/home refused only as themselves or an
+ancestor; SENSITIVE folders keep all three checks. New test against a fake $HOME proves the fix
+without depending on this worktree's own real home holding anything in particular. Also backfilled
+the ancestor/Library tests MEDIUM 3's fix should have shipped with the first time (I'd changed the
+code but not added the test the reviewer specifically asked for - won't skip that again). Tests:
+51/51 core/projects, 305/305 across core/mcp, core/memory, core/files, hygiene, boundaries.
+
+## Reviewer signed off the whole range: 342d3a15..b2e64518 (28 Sep 2026)
+
+f8330ccc and 7021d4e1 are CLOSED; 2fb4258c's old "release blocked" note is lifted. Range: 450c34b6,
+c6b4856c, f8330ccc, 7021d4e1, e8560b79, 35188a38, 59d6833c, db2d94fd, c6cda1aa, 513f984d, 13e7b0e8,
+a262b9ed, cb85c3eb, b2e64518, plus docs. Reviewer ran core/projects + core/memory + core/files +
+core/mcp + boundaries + hygiene on testbox themselves at b2e64518: 263/263.
+
+New LOW, on projects.reach (35188a38/59d6833c, previously unreviewed): `callers: ["module"]`
+trusts the forwarded `caller` from any module, third-party included; consistent with third-party
+modules already running in-process today, so not a hold, but narrow to firstParty at the same time
+as the hub.js and projects.access module-caller LOWs, once lib/caller.js/the firstParty stamp is a
+real dependency here.
+
+Sent to integrator: work/federation ready to land.
+
+## docs/design/projects-map.md: not on this branch (team-lead's docs-check report)
+
+Checked: docs/design/projects-map.md does not exist on work/federation. It is sessions' own doc
+(28408df8, d65353a8; front matter owner: sessions), on a branch not merged here. The file I do have at that similar name, docs/work/projects-map.md (the MIGRATIONS slot map), is
+not itself subject to docs-check's nav/front-matter rules (docs/work/ is in nav.json's own
+unpublished list), but it did carry one em dash (RULES bans them repo-wide, not just where
+docs-check enforces it); fixed that in passing. Flagged the real docs/design/projects-map.md back
+to team-lead rather than guessing at a file this branch cannot see.

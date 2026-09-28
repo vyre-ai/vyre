@@ -576,6 +576,116 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - core/cli/commands/projects.js: the `vyre projects` command summary and the `move` verb's
   summary both said "on a box"; both now say "on a server" (ADR 0038). docs/reference/cli.md
   regenerated to match.
+#### projects: fix a HIGH regression 13e7b0e8 introduced (reviewer's third pass)
+
+- `refuseSensitiveRoot`'s ancestor fix (MEDIUM 3, previous entry) applied its single
+  "inside-or-ancestor" check to root and home themselves too, so every real project nested under
+  the actual home directory (`~/Work`, `~/Projects`, and so on - where almost every real project
+  actually lives) was refused the same as `/Users` or the home directory itself. root and home
+  are now refused only as an exact match or an ancestor of them (which would enclose them, and so
+  every credential folder they hold, as a project's own subfolder); each named SENSITIVE folder
+  keeps all three checks (itself, inside it, or an ancestor of it) unchanged. New test against a
+  fake `$HOME` (a temp dir; `os.homedir()` reads it on POSIX) proves an ordinary nested project
+  still works, while the fake home's own ancestor and a sensitive folder under it are still
+  refused. Also added the ancestor/Library tests the previous entry's fix should have shipped
+  with the first time (`/Users`-style ancestor of the real home, `~/.config`, `~/Library`).
+
+Tests, testbox nice -n 15, load under 6: 51/51 core/projects, 305/305 across core/mcp +
+core/memory + core/files + hygiene + boundaries.
+
+#### memory,projects: reviewer's second-pass HOLD on db2d94fd, three MEDIUMs
+
+- MEDIUM 1: `graph.view`/`scoped` read an empty cwds array as "no scope at all" (the main graph,
+  unlimited), not "scoped to nothing" - so an assistant with zero mapped projects (a fresh
+  install, `r.folders === []`) read every session, unfiled included, through guard()'s own
+  `cwds: r.folders`. New `NOTHING` sentinel (`core/memory/index.js`, a cwds value under
+  `/dev/null` that can only ever match zero sessions and zero projects) stands in for an empty
+  `r.folders` wherever guard() or scopedCwds() would otherwise hand back `[]`.
+- MEDIUM 2: `scopedCwds(sees=true, ...)` returned the caller's own `project_cwds` unchecked
+  whenever it was non-empty, so the assistant's own call to memory.answer/retrieve/ask/suggest
+  could pass "/" (or any real folder outside every mapped project) and read straight past its
+  scope - only the empty-`project_cwds` branch was ever narrowed to `r.folders`. Every
+  caller-supplied folder is now checked against `r.folders` exactly as guard() already checks a
+  named agent's, refusing outright (not silently narrowing) when any of them falls outside.
+- MEDIUM 3: `refuseSensitiveRoot` (`core/projects/projects.js`) missed ancestors: "/Users" (or
+  whatever holds the real home) contains the home directory, and so every credential folder
+  under it, as a subfolder the moment IT becomes a project's own folder; "~/.config" is the
+  parent of gcloud's own creds the same way. Now refuses an ancestor of "/", the home, or any
+  SENSITIVE entry too, not just the folder itself or something inside it. "Library" (Keychains,
+  Mail, Cookies and more) added to SENSITIVE, not just Keychains.
+
+Tests, testbox nice -n 15, load under 5: 354/354 across core/mcp + core/memory + core/projects +
+core/files + hygiene + boundaries.
+
+#### files: reviewer's LOW on c6cda1aa, verified rather than changed
+
+`chunk()`'s inline dev/ino check already threw from inside the same `try`/`finally` that already
+closed the fd for every other refusal chunk() could hit (offset past the end, and so on): the
+`finally { fs.closeSync(fd); }` wrapping the whole body runs on that throw too, no leak. Added a
+test (`fs.fstatSync` faked for chunk()'s own call, since the real race cannot be forced from
+outside a synchronous function with no `await` in it) proving the fd is closed either way, rather
+than changing code that was already correct.
+
+#### mcp: whoFrom()'s agent/thread claim check catches a space boundary and a nameless claim too
+
+- Reviewer's round-2 MEDIUM on 513f984d: the first fix refused only a caller anchored exactly
+  "<kind>:agent:<name>" (its own named regex's shape). "cli agent:kit" (a space, not a colon,
+  before "agent:" - callerKind's own strip already treats the two the same) and "cli:agent:" (a
+  claim with no name after it at all) both still read as kind "cli" with person: true. `whoFrom()`
+  now tests the bare claim itself, unanchored and with no name required, and treats a `thread:`
+  claim the same as an `agent:` one (callerKind's own strip already does; ADR 0030's
+  "mcp:thread:<id>" is not the person's own surface either). LOW, deferred per the reviewer:
+  `PEOPLE` here still includes `"module"`, so any module (third-party included) skips inScope's
+  scope check; narrow to `firstParty` once lib/caller.js is a real dependency on this branch.
+
+#### mcp: whoFrom() no longer reads an agent's own claim as the person too (cohesion's audit)
+
+- `core/mcp/hub.js`'s `whoFrom()` stripped "agent:kit" off a caller like "cli:agent:kit" before
+  checking it against PEOPLE, so it came back `person: true` and `agent: "kit"` at once.
+  `inScope()` trusts `who.person` to skip every per-agent scope check outright, so this let an
+  agent whose caller string carried an owner-surface prefix reach every connected MCP server the
+  true owner can, not just its own agents/projects scope. Fixed: an agent claim is checked first
+  and refuses `person` immediately, matching the semantics lib/caller.js's isPerson/isAgent give
+  (not yet a dependency this branch can take: it needs agentClaim and PERSON_SURFACES, both
+  unmerged into work/federation's tree as of this write).
+
+#### files: dev/ino check closes the parent-dir-swap residual on e8560b79
+
+- `describe()` (core/files/index.js) now carries `dev`/`ino` from its own stat. New
+  `openChecked(d)` opens via `openReal` then fstats the fd and refuses, closing it, unless
+  dev/ino still match `describe()`'s: O_NOFOLLOW alone refuses the final path component turning
+  into a symlink between the stat and the open, not an ancestor directory being renamed out and
+  a new one dropped in its place in that same gap, which still resolves the same path string to
+  a different, unchecked file. Used in files.preview's small-image and text-preview reads;
+  chunk() already fstats its open fd for size/mtime, so the same compare was folded into that
+  one fstat instead of a second one. Thumbnail generation (external convert/sips by path, not
+  fd) is the one residual left uncovered, already accepted per the review.
+
+#### memory,projects: reviewer's HOLDs on f8330ccc and 7021d4e1
+
+- `memory.relevant`, `memory.why`, `memory.facts`, `memory.retrieve`, `memory.ask`,
+  `memory.suggest` and `memory.context` all read graph.view/relevant/why/facts directly, which
+  treated an unscoped call (project_cwds and room both empty) as no scope at all rather than
+  "every mapped project, unfiled excluded". floorPlan's own excludeUnfiled only closed that leak
+  for memory.graph's own drawing. guard() now hands back `r.cwds` (every mapped project's
+  folders) whenever the assistant asks unscoped, and every reader above uses it in place of its
+  own project_cwds from there on.
+- `projects.access.grant`/`revoke`/`clear` refuse any module caller that is not `module:agents`
+  or `module:projects` (this module's own internal grant on projects.create): the loader's
+  `callers: ["module"]` only says "some module", so a third-party module installed with no
+  presence could otherwise grant an agent any project or clear a person's explicit revokes.
+- `projects.create` had no callers at all (open to an agent's own MCP, a guest, a hook), so an
+  agent could map any folder into a brand-new project and, through f8330ccc's own auto-grant,
+  walk straight in with projects.access on it. Now OWNER plus a named `module:sync` exception
+  (sync's `attachMapped`, the only module with real business proposing a folder-to-project
+  mapping). The same exception was added to `projects.add-workspace`, whose OWNER-only callers
+  had excluded module:sync entirely.
+- `Projects.create()` and `Projects.addWorkspace()` (core/projects/projects.js) refuse "/", the
+  real home directory, and the credential/vault folders under it (.vyre, .claude, .ssh, .gnupg,
+  .aws, .config/gcloud, .docker, .kube, .netrc) as a project's own home or workspace, so a
+  project can never be scoped wide enough that granting it hands an agent the person's real
+  keys and vault.
+
 #### projects.access: reviewer's holds on 63af8941/656b3f79, plus docs-check green on this branch
 
 - Fixed docs-check: this branch's own CHANGELOG.md and docs/design/drive-onboarding.md em dashes

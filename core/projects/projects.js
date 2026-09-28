@@ -19,10 +19,49 @@
 // with less, when Recall or Memory is not running.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import * as M from "./markers.js";
 import { untilde } from "../config/index.js";
 import { compose, label } from "./brief.js";
+
+// Reviewer's LOW on 7021d4e1: a project's home or workspace must never be the whole disk, the
+// whole home account, or one of the credential/vault folders under it — granting an agent
+// projects.access on a project scoped that wide hands it the person's real keys and vault the
+// moment the grant lands (create()'s own wildcard-agent grant, and any add-workspace after).
+// Names mirror core/files/safety.js's HOME_DENIED so the two lists never disagree about what is
+// sensitive; kept as its own short list here rather than imported, since core/projects may not
+// import core/files (test/boundaries.test.js — no such edge is allowlisted, and this is three
+// names, not worth a new one). Reviewer's MEDIUM 3 (second pass): "Library" added (Keychains,
+// Mail, Cookies and more all live under it, not just Keychains), and the check below now also
+// refuses an ANCESTOR of any of these, not only the folder itself or something inside it: "/Users"
+// (or whatever holds the real home) contains the home directory, and so every credential folder
+// under it, as a subfolder the moment IT becomes a project's own folder; "~/.config" is the parent
+// of gcloud's own creds the same way.
+const SENSITIVE = [".vyre", ".claude", ".ssh", ".gnupg", ".aws", path.join(".config", "gcloud"), ".docker", ".kube", ".netrc", "Library"];
+/** Throws when p, resolved, is "/", the real home directory, one of SENSITIVE below it, or an
+ * ancestor of any of those three (which contains it as a subfolder once granted). */
+function refuseSensitiveRoot(p) {
+  const abs = M.real(String(p));
+  const home = M.real(os.homedir());
+  const root = path.parse(abs).root;
+  // Reviewer's HIGH on 13e7b0e8: root and home themselves are refused only as an exact match or
+  // an ANCESTOR of them (which would enclose them, and so every credential folder they hold, as
+  // one of the project's own subfolders) - never merely for sitting INSIDE them, which is where
+  // almost every real project actually lives (~/Work, ~/Projects, ...). The earlier version's
+  // single "inside-or-ancestor" check applied to home too, refusing every real project under it.
+  for (const b of [root, home]) {
+    if (abs === b || b.startsWith(abs + path.sep)) throw new Error(`${p} cannot be a project's folder`);
+  }
+  // Each named SENSITIVE folder, unlike root/home above, IS refused for sitting inside it too
+  // (a project must never be nested inside ~/.ssh, say), on top of being it or an ancestor of it.
+  for (const d of SENSITIVE) {
+    const full = path.join(home, d);
+    if (abs === full || abs.startsWith(full + path.sep) || full.startsWith(abs + path.sep)) {
+      throw new Error(`${p} cannot be a project's folder`);
+    }
+  }
+}
 
 export const MIGRATIONS = [
   `
@@ -143,6 +182,8 @@ export class Projects {
     if (!slug) throw new Error(`"${clean}" has no letters or digits to make a slug from`);
     this.refresh({ walk: true });
     const where = M.real(home ? untilde(home) : path.join(this.config.projectsDir, slug));
+    refuseSensitiveRoot(where);
+    for (const w of workspaces) refuseSensitiveRoot(w);
     const clash = this.valid().find(p => p.slug === slug);
     if (clash) throw new Error(`a project called ${clash.name} already exists at ${clash.home}`);
     if (fs.existsSync(path.join(where, M.MARKER))) throw new Error(`${where} is already a project home`);
@@ -172,6 +213,34 @@ export class Projects {
     for (const id of add) this.emit("thread.picked", { project: p.slug, thread: id }, { project: p.slug, thread: id });
     this.emit("project.changed", { project: p.slug, fields: ["threads"] }, { project: p.slug });
     return { project: p.slug, added: add, threads: next.threads.length };
+  }
+
+  /**
+   * Attach an existing folder to an existing project as one of its workspaces (Vyre Drive step
+   * 4): the folder starts counting as the project's own, the same as one listed at create()
+   * time. Person-only (core/presence PERSON_ONLY), the same weight a pick carries: attaching a
+   * folder to a project is a placement decision. Mirrors create()'s own workspaces handling
+   * exactly (sessions' review of this shape, 2026-09-28): M.relative drops the home folder
+   * itself (relative() turns it into "."), and an already-listed folder is left alone rather
+   * than duplicated, the same as addThreads dedupes against p.threads.
+   */
+  addWorkspace(ref, folder) {
+    refuseSensitiveRoot(folder);
+    this.refresh();
+    const p = this.resolve(ref);
+    const rel = M.relative(p.home, [folder]).filter(w => w !== ".");
+    if (!rel.length) return { project: p.slug, added: null, workspaces: p.workspaces }; // the folder IS the project's home
+    const [add] = rel;
+    // p.workspaces (loaded) is absolute and home-prefixed; the marker stores relative paths
+    // without the home, the same shape create() writes. existing strips the load()-added home
+    // (always index 0) and re-derives the relative list, so this never writes p.workspaces'
+    // resolved form back onto disk.
+    const existing = M.relative(p.home, p.workspaces.slice(1));
+    if (existing.includes(add)) return { project: p.slug, added: null, workspaces: p.workspaces };
+    const next = /** @type {Project} */ (M.write(p.home, { workspaces: [...existing, add] }));
+    this.refresh();
+    this.emit("project.changed", { project: p.slug, fields: ["workspaces"] }, { project: p.slug });
+    return { project: p.slug, added: add, workspaces: next.workspaces };
   }
 
   /**
