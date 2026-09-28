@@ -52,8 +52,22 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
   need a real computer and were not run this pass). UNVALIDATED live (this repo's own precedent
   for computers-image work): no throwaway-stack build/run yet, so the vyre-bus group's AT-SPI
   access (the one thing here no unit test exercises) is reasoned about, not checked.
-- Next: the throwaway-stack check above, then send the reviewer and e2e this head; nothing here
-  merged anywhere yet.
+- Reviewer HOLD on b001e641 (before the uid-split commit landed): cookie-scrub HIGH (associatedCookies,
+  headersText, WebSocket handshake headers, Audits rawCookieLine), 2 Downloads MEDIUMs, an fs.js
+  TOCTOU LOW. All fixed as separate commits, new head a7699c08:
+  - ff245155: scrubAgentEvent replaces scrubAgentEventParams -- recurses over every Network/Fetch/
+    Audits event for an agent (was 3 named events); Network.loadNetworkResource refused too.
+  - d4692ee3: the 2 MEDIUMs were already fixed by 7c137cbf (reviewed before it landed); added
+    static Dockerfile-text regression tests. Also fixed a real bug 7c137cbf introduced (Chrome's
+    log pointed at a folder computerd can't write to -- silently lost, never crashed).
+  - a7699c08: resolveOpen pins the checked parent directory's fd (/proc/self/fd chain); every fs
+    op opens/mkdirs/renames the leaf through it, never a re-walked path. resolveIn (guard.js's
+    parity partner) unchanged.
+  Tests (testbox): 261 run, 254 pass, 0 fail, 7 skipped. fs.test.js/fs-parity.test.js need Linux
+  (/proc/self/fd) -- same constraint as the rest of the computers image family.
+- Next: reviewer clearance on a7699c08; e2e's real-stack run on /srv/vyre-e2e (the uid change
+  needs a real Docker check); the throwaway-stack validation still pending for slice 1 overall
+  (no docker host in this session) -- see agent-browsers.md's own "Next" list.
 
 ## Rollout (must ship together)
 - The new computer image and the new vyred go out in the same deploy: the image starts as root and
