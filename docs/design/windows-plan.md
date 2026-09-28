@@ -193,31 +193,45 @@ modules do. Windows Solo is that seam, filled in for `win32`, not a new role sys
   a Solo box with nobody else attaching to it has no need for Docker Compose or the eight
   box-only modules at all, so it skips that cost entirely).
 - **anywhere.md's server-setup flow, a Windows twin**, mirroring the Mac section 1:1, same three
-  steps, different OS primitive:
+  steps, different OS primitive. **Corrected by the lead, 2026-09-28: no Windows Service.** A
+  Service runs as SYSTEM or a dedicated service account, not as the signed-in person, which
+  breaks both the one-user trust model and `ensureWindowsSocketDir`'s ACL (granted to the
+  person's own SID, section 7): a SYSTEM-run vyred would still work for that account, but every
+  other assumption in this plan treats `vyred` as running as the person, not as the machine. Use
+  a **per-user Task Scheduler logon task** instead, via the built-in `schtasks` (no `node-windows`
+  or third-party service-wrapper dependency, no spike needed):
   1. Sets `config.machine` (asks Solo-vs-Server the same way onboarding does).
-  2. Installs a **Windows Service** (via `node-windows` or a small `sc.exe`/NSSM-style wrapper,
-     needs a spike, not assumed) instead of a LaunchAgent: `RunAtLoad`→service `START_AUTOMATIC`,
-     `KeepAlive`→service recovery actions (`sc failure` restart-on-crash, not on a clean `vyre
-     stop`). Logs still go to `core/config`'s existing `~/.vyre/logs/` (Windows equivalent of
-     `~`: `%USERPROFILE%`).
-  3. Keep-awake via `SetThreadExecutionState(ES_SYSTEM_REQUIRED | ES_CONTINUOUS)` held while
-     vyred is the server, blocking idle system sleep only, display sleep untouched: same
-     boundary as the Mac's `caffeinate -s`.
-  4. A Startup-folder shortcut or a Task Scheduler "run at logon" entry stands in for the login
-     item, offered not forced, with the same BitLocker-requires-unlock-first caveat FileVault
-     gets on the Mac.
-  5. `--undo` removes the service and the logon entry; `config.machine` is the move flow's to
+  2. `schtasks /create /tn "Vyre" /tr "node core/daemon/main.js" /sc onlogon /rl limited` runs
+     vyred as the signed-in person the moment they log on, restarting a Solo box's vyred exactly
+     the way the Mac's LaunchAgent `RunAtLoad` does, at the person's own privilege level (never
+     elevated), which is what the socket ACL already assumes. Logs still go to `core/config`'s
+     existing `~/.vyre/logs/` (Windows equivalent of `~`: `%USERPROFILE%`).
+  3. **For "this Windows PC is the server" (always-on), the same user-level task set to run
+     whether or not the person is logged on** (`schtasks`'s `/rl` and `/it` options, or the
+     "Run whether user is logged on or not" flag in the underlying task definition XML), plus a
+     power setting: `powercfg /change standby-timeout-ac 0` (or `SetThreadExecutionState
+     (ES_SYSTEM_REQUIRED | ES_CONTINUOUS)` held by vyred itself while it's the server) blocking
+     idle *system* sleep only, display sleep untouched, same boundary as the Mac's `caffeinate
+     -s`. Still a per-user task, still running as the person, just no longer gated on an
+     interactive logon.
+  4. Task Scheduler's own restart-on-failure action (`schtasks /create ... /ri <minutes> /du
+     9999:59` or the task definition's `<RestartOnFailure>`) stands in for `KeepAlive`, restarting
+     a crashed vyred, not a clean `vyre down`.
+  5. `--undo` runs `schtasks /delete /tn "Vyre" /f`; `config.machine` is the move flow's to
      change, same division as the Mac.
 - **Deck in the browser** is Tier A already: `vyre up` opens `http://localhost:<port>` (or the
   paired device flow once a second device exists); Solo needs nothing new here beyond what Tier A
   verification already covers.
-- **Owner split, per the lead:** windows builds the service/keep-awake/install-script pieces
+- **Owner split, per the lead:** windows builds the schtasks/keep-awake/install-script pieces
   above (this section); anywhere owns ADR 0039 and the role system itself; federation owns the
   move-to-server engine (unchanged by Windows: a Windows Solo box moving to a Linux/Mac server,
   or vice versa, goes through the same copy-then-flip flow, cross-platform by construction since
   it moves files, a re-indexed store and re-encrypted vault entries, not OS-specific state).
-- **Open**: `node-windows` (or equivalent) needs a spike on `windows-latest` CI before committing
-  to it in an ADR update, same "prove it in CI, not on hardware we don't have" discipline as the
+- **Open**: none blocking; `schtasks` is a built-in, no spike needed. Still worth a `capsule-
+  win.yml`-style CI proof (create the task, log off/on isn't drivable in CI, but the "runs whether
+  logged on or not" flag and the restart-on-failure action can both be asserted via
+  `schtasks /query` right after creation) before committing to the exact flag set in an ADR
+  update, same "prove it in CI, not on hardware we don't have" discipline as the
   socket ACL work in section 7.
 
 ## 9. Tier C build plan (the Windows Capsule)

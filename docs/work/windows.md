@@ -119,6 +119,25 @@ this round; verification leans on windows-latest CI.
   per the lead's 2026-09-28 "Vyre anywhere" pace instruction. Pushed 87bcd02d. Messaged capsule-pro
   to confirm the tools/events contract before wiring the Rust side, and app-design to confirm the
   spec's received and the hotkey question is closed per the lead's call.
+- Run 36369204175 (parser bug fixed) came back **still failing**, not transient: the
+  MaxListenersExceededWarning ("11 listening listeners") confirms bindSocket's retry ran all 10
+  attempts, same EACCES every time. And the new plain-file-create probe **succeeded** in the exact
+  same folder the socket bind failed in, so the ACL was never the problem, icacls's grant was
+  always correct. Pushed fa13b1d8 (diagnostics only): `whoami /priv` (does this token actually
+  hold `SeCreateSymbolicLinkPrivilege`, since a bound AF_UNIX socket is an NTFS reparse point) and
+  a from-scratch bind attempt in a brand-new directory with zero icacls calls, to isolate whether
+  socket binding works on this runner image at all. Run 36369527141 in flight, watching it.
+- **Correction from the lead** on Windows Solo (docs/design/windows-plan.md section 8, updated):
+  no Windows Service, a Service runs as SYSTEM/a service account, which breaks both the one-person
+  trust model and the socket ACL (granted to the person's own SID). Use a per-user Task Scheduler
+  logon task via built-in `schtasks` instead, no `node-windows` dependency, no spike needed. Doc
+  updated, not yet committed with this note (will land together).
+- **Correction from the lead** on the Capsule: start scaffolding `local/capsule-win` and
+  `capsule-win.yml` now rather than waiting on capsule-pro's contract reply, since the shell hosts
+  Deck's web views and doesn't need it yet.
+- **Correction from the lead** on tests: "local tests" must mean testbox or Windows CI, never the
+  Mac. I ran `node --test` directly on this Mac for the earlier config/daemon/docs suites; that
+  was wrong per RULES.md's own testing section. Re-running verification on testbox from now on.
 - Asked e2e for a quick read of the role-default change (win32 now defaults to a device), per the
   lead. Waiting on that before sending cac517d4 onward.
 - Sending cac517d4 (+ follow-ups) to the integrator for the first 0.1.1 batch, after rc.2, per the
