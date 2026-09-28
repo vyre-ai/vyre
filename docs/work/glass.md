@@ -65,6 +65,21 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   222/222 pass, 9 skipped (container-only). Not yet built: the "browser" computer kind in
   pool.js/driver/policy.js, on-disk context-profile persistence, hands-chrome/deck-glass wiring --
   next slices, per the design's own build list.
+- Reviewer review of 3f03ddb0 (dormant, index.js:461 passes no agentName yet) found 4 real
+  agent-vs-agent isolation gaps, all fixed at b914fd3a: H1 generalized the browserContextId check
+  from just Target.createTarget to any method that takes one (Storage.setCookies/clearCookies,
+  Browser.grantPermissions/resetPermissions, setDownloadBehavior), plus refusing
+  Target.getBrowserContexts outright; H2 added a targetContext-backed check for the target-id
+  methods (attachToTarget/closeTarget/activateTarget/getTargetInfo), unknown-refused; M1 fixed the
+  event fence's fail-open (undefined context now drops, not just a known mismatch) and, in fixing
+  it, found and fixed a real fan-out race (Chrome delivers targetDestroyed once per subscribed
+  session; deleting targetContext on the first delivery blinded the target's own owner's later
+  one -- fixed by never deleting, a documented bounded residual, plus learning context from the
+  createTarget response itself, not only from an event); M2 refused
+  Target.setAutoAttach{waitForDebuggerOnStart} for scoped clients (a real DoS otherwise). Tests:
+  cdpmux.test.js 32/32 (7 new); testbox core/computers/**/*.test.js 229/229 pass, 9 skipped. Still
+  dormant and unwired -- wiring needs agentName from computerd's own authenticated identity, never
+  the client, and refusing an unscoped agent client in shared mode (reviewer's note, not yet done).
 - Presence enforced once security merges; a passkey step in the Deck.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
