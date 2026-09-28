@@ -43,6 +43,10 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
+- Reviewer SIGNED OFF the whole planner-task range as one: b786a799 + db916908 + dfc402e9 +
+  7483788d. Open LOW for later (not blocking, not done): a missed firing after downtime runs its
+  task immediately on catch-up; reviewer's suggestion is to hold a stale one for the person instead
+  of just running it. Noted here for whoever picks up planner next (could be me).
 - Resume 10 continued: the escalation MEDIUM reviewer held dfc402e9 on (team-lead: a task must
   never ring/escalate like an alarm) fixed at 7483788d - fireItem gives a task's firing next_ring:
   null unconditionally, and fired() only ever runs a task on ring 1 as a second guard. New test:
