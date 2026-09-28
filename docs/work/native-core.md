@@ -125,6 +125,33 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## Resume 2026-09-28 (cont'd 4): push-to-talk voice built (f2dcad85)
+- Blocked briefly on how a browser WS authenticates as caller "deck" (local/voice/listen.js reads
+  x-vyre-caller from the upgrade request's headers, which a browser WebSocket cannot set - only
+  local/voice/talk.js's Node client can, via the `ws` library's `headers` option). team-lead: the
+  answer is term.js's own ticket pattern (authenticated HTTP mints a single-use ticket, the WS
+  opens with it already in the path) - capsule-pro is adding it to voice.listen.
+- **f2dcad85:** deck/chat/core/voice.js (voiceStatus, listen(handlers), voiceErrorText) + a mic
+  button in composer.js (hold to talk, next to attach; no key -> "Add a voice key in Settings" as
+  a real link, no stream opened; partial/final replaces what came after whatever was already
+  typed; release sends {"type":"end"}; Esc cancels the same way; a race guarded - releasing before
+  voice.status/voice.listen resolve stops the session the instant it opens, not the mic left
+  running). Web Audio (getUserMedia -> AudioContext at 16000 Hz directly, no manual resampling ->
+  a MUTED ScriptProcessorNode graph, gain 0, so the mic never plays back through the speakers) for
+  16 kHz mono linear16 PCM, matching capsule-pro's contract with no server-side transcoding.
+- composer-voice.test.js (4/4): fakes AudioContext/WebSocket/getUserMedia entirely (this file
+  never touches a real mic or socket) to drive the actual composer.js/voice.js code - no key
+  blocks correctly, partial/final/done streams text into the box, an error frame ends listening
+  and shows its words, Esc sends "end". Gotcha: the fallback 6 s cleanup timer (in case done/
+  error/close never arrives) must be tracked and cleared in cleanup(), or every test that calls
+  stop() without simulating a close waits out the full 6 s before the process exits - fixed, tests
+  run in ~140ms now. 39/39 on testbox (composer-*, commands, design-components, boundaries).
+- **Still open:** built and tested against the term.js-pattern shape capsule-pro confirmed
+  (voice.status's key/key_state/provider fields, voice.listen -> {path} with the ticket already
+  in it), not yet run against their actual landed voice.listen ticket code. Re-verify once it's in.
+- Also open: no #voice anchor in Settings yet (links to plain /settings) - capsule-pro/whoever owns
+  Settings should let me know the id once that section exists so the link can jump straight there.
+
 ## Resume 2026-09-28 (cont'd 3): confirmed, sent to reviewer-2, voice next
 - **6138a420** fixed reviewer-2's two findings (diff review, testbox was frozen): .lbl's
   var(--size-meta)/var(--line-meta) had no fallback (deck/onboard/device, deck/person/signin don't
