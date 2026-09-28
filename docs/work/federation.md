@@ -842,6 +842,13 @@ checked first, person refuses immediately if one exists. Not a real ownership qu
 shows no recent federation touch on hub.js) but team-lead and cohesion both routed it here, and it
 is a live privilege-escalation bug, so fixed rather than passed back.
 
+Round 2 (reviewer, same day): the first fix only caught the exact "<kind>:agent:<name>" shape.
+"cli agent:kit" (space, not colon) and "cli:agent:" (a claim with no name) both still slipped
+through the same PEOPLE.includes(kind)-plus-anchored-regex gap. Fixed at cb85c3eb: an unanchored
+claimed test with no name required, and a thread: claim refused the same as an agent: one
+(callerKind's own strip already treats them identically). Reviewer's LOW (PEOPLE includes
+"module", so any module skips inScope) deferred, as they asked, to the lib/caller.js swap.
+
 Could not take lib/caller.js (cohesion's fix path, work/cohesion 87149563) as a real dependency:
 it imports agentClaim from core/modules and PERSON_SURFACES from core/presence, and neither is
 merged into work/federation's tree (main at this branch's base, a3a844e4, predates both; agentClaim
@@ -850,6 +857,18 @@ fix locally instead, with a note in the code and this doc for whoever swaps it o
 once this branch takes a main merge that carries it.
 
 Tests, testbox nice -n 15, load under 3: 43/43 across core/mcp, hygiene, boundaries.
+
+## db2d94fd reviewer HOLD, round 2: three MEDIUMs (28 Sep 2026)
+
+13e7b0e8 (memory MEDIUM 1 and 2, projects MEDIUM 3), a262b9ed (c6cda1aa's LOW, verified already
+fixed by the existing try/finally, a test added rather than a code change). MEDIUM 1: guard()'s
+NOTHING sentinel (a cwds value under /dev/null) replaces an empty r.folders wherever it would
+otherwise become "unscoped" downstream. MEDIUM 2: scopedCwds() now checks every caller-supplied
+folder against r.folders for the assistant, refusing outright rather than the old
+non-empty-means-unchecked shortcut. MEDIUM 3: refuseSensitiveRoot now refuses an ancestor of "/",
+home, or any SENSITIVE entry too (not just the folder itself or something inside it), and
+"Library" joined the list. Tests: 354/354 on testbox across core/mcp, core/memory, core/projects,
+core/files, hygiene, boundaries.
 
 ## docs/design/projects-map.md: not on this branch (team-lead's docs-check report)
 
