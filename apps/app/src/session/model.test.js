@@ -63,6 +63,14 @@ test("session: a failed record is stopped for the core, and reads as failed", { 
   assert.deepEqual(stateWords({ state: "stopped", stopped: "failed" }), { word: "failed", note: null, ended: true });
 });
 
+test("session: stateOf's own finished/failed states (not only the legacy stopped+reason shape) read as ended", { skip: !strip }, async () => {
+  const { stateOf, stoppedOf, stateWords } = await load();
+  assert.equal(stateOf("stopped", "done"), "finished");
+  assert.deepEqual(stateWords({ state: stateOf("stopped", "done"), stopped: stoppedOf("stopped", "done") }), { word: "finished", note: null, ended: true });
+  assert.equal(stateOf("stopped", "exited 1"), "failed");
+  assert.deepEqual(stateWords({ state: stateOf("stopped", "exited 1"), stopped: stoppedOf("stopped", "exited 1") }), { word: "failed", note: null, ended: true });
+});
+
 test("session: Stop flips the chip to stopping at once, until the turn has ended", { skip: !strip }, async () => {
   const { stateWords } = await load();
   assert.equal(stateWords({ state: "working", stopped: null }, true).word, "stopping");

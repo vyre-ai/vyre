@@ -57,12 +57,15 @@ export const busy = (state: string) => state === "working" || state === "asking"
  * The words under the title. A session closed for idleness is "paused", not ended: the next
  * message resumes it (ADR 0030 section 7; lib/thread-status.js, deck/chat/session.js's own
  * idleClosed). `stopping`: Stop was pressed and the box has not said the turn ended yet; the chip
- * says so at once (native bar 10).
+ * says so at once (native bar 10). "finished" and "failed" are stateOf's own canonical states now
+ * (a "stopped" record whose stopped_reason was done/exited/"exited <code>"), not only the legacy
+ * {state:"stopped", stopped:"failed"} shape below - both read as ended (reviewer, 3b401df3 LOW).
  */
 export function stateWords(s: Pick<Session, "state" | "stopped">, stopping = false): { word: string; note: string | null; ended: boolean } {
   if (stopping && busy(s.state)) return { word: "stopping", note: null, ended: false };
   if (s.state === "paused") return { word: "paused", note: "Resumes on your next message", ended: false };
-  if (s.state === "stopped" && s.stopped === "failed") return { word: "failed", note: null, ended: true };
+  if (s.state === "failed" || (s.state === "stopped" && s.stopped === "failed")) return { word: "failed", note: null, ended: true };
+  if (s.state === "finished") return { word: "finished", note: null, ended: true };
   if (s.state === "stopped") return { word: "ended", note: s.stopped && s.stopped !== "stopped" ? s.stopped : "Stopped", ended: true };
   return { word: s.state, note: null, ended: false };
 }
