@@ -436,7 +436,7 @@ export default {
         if (action === "relay") return call("relay.pair.start");
         if (action === "verify") {
           const health = await call("link.health", node ? { node } : {});
-          if (becomeDevice && health.online) await tryCall("onboard.machine", { action: "set", machine: "device" });
+          if (becomeDevice && health.online) await tryCall("onboard.machine", { machine: "device" });
           return health;
         }
         const relay = await tryCall("relay.status");

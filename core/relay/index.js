@@ -291,7 +291,7 @@ export default {
         let paired;
         try { paired = await redeem(url, { root: ctx.paths.root, name }); }
         catch (e) { throw fail("bad_input", /** @type {Error} */ (e).message); }
-        if (becomeDevice) await ctx.call("onboard.machine", { action: "set", machine: "device" }).catch(() => {});
+        if (becomeDevice) await ctx.call("onboard.machine", { machine: "device" }).catch(() => {});
         return paired;
       },
     });
