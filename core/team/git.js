@@ -38,8 +38,18 @@ const GIT_MS = 15_000;
  * a line worth keeping bright rather than punching a caller-supplied hole in for one identity —
  * these two config keys cover both GIT_AUTHOR_* and GIT_COMMITTER_* at once anyway. Must come
  * before the subcommand name in `args` (global git options, not merge/reset/commit options).
+ *
+ * Also forces signing and signature-checking off (reviewer LOW): the old local OFF list did this
+ * before the git-safe move dropped it, since lib/git-safe.js's own gpg.program=false already makes
+ * a real signature impossible to produce or check either way — but a teammate can still write
+ * commit.gpgSign=true or merge.verifySignatures=true into the shared .git/config, and gpg.program
+ * being neutered then just means every vyred merge fails outright ("gpg failed to sign", or a
+ * signature check with no way to pass), a cheap denial of service the command line can prevent
+ * outright rather than merely neuter. Named VYRE_IDENTITY still: git.js's git() only ever adds
+ * these config overrides where it is already stamping vyre as the author, i.e. on a merge.
  */
-const VYRE_IDENTITY = ["-c", "user.name=Vyre", "-c", "user.email=vyre@localhost"];
+const VYRE_IDENTITY = ["-c", "user.name=Vyre", "-c", "user.email=vyre@localhost",
+  "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", "-c", "merge.verifySignatures=false"];
 
 /**
  * Run git in `dir` through lib/git-safe.js. Never rejects.

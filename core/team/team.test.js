@@ -500,6 +500,39 @@ test("a worktree teammate's dispatch merges main in first, and runs in its own w
   assert.ok(launch, "the teammate's own session should run with its worktree as cwd, not the project's home");
 });
 
+test("a repo forcing signing on cannot deny vyred's own merges (reviewer LOW)", async t => {
+  const { tool, root, project, repo } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  // A commit of design's own, so it is genuinely ahead of main and a merge back is actually
+  // queued to the integrator below (mergeBranchIn) — not only mergeBaseIn's own merge-main-in.
+  // Setup commits (this and main's, below) are the person's own, made before the repo is set to
+  // force signing, so they need no override themselves — only vyred's own merges, after, do.
+  await commitOnDesign(repo);
+  fs.writeFileSync(path.join(project.home, "CHANGES.md"), "a later change on main\n");
+  git(project.home, ["add", "."]);
+  git(project.home, ["commit", "-q", "-m", "later, on main"]);
+  // A teammate can write the shared .git same as any other config here: commit.gpgSign and
+  // merge.verifySignatures are both real git settings, not a filter/diff/merge driver name, so
+  // unsafeConfig's own refusal never catches them — only the command line forcing them back off
+  // (VYRE_IDENTITY) does. Without that, lib/git-safe.js's gpg.program=false alone would turn this
+  // into a denial of service: every vyred merge failing outright ("gpg failed to sign", or a
+  // signature check with nothing that can ever pass), not merely a neutered signature.
+  git(project.home, ["config", "commit.gpgSign", "true"]);
+  git(project.home, ["config", "merge.verifySignatures", "true"]);
+  // mergeBaseIn: the per-dispatch merge of main into a worktree teammate's own branch.
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"ok","notes":"unchanged","reason":"test"}' });
+  assert.equal(ask.state, "done", "mergeBaseIn should not be denied by the repo's own forced signing");
+  // mergeBranchIn: the integrator's own automatic merge back into main, from that same request.
+  const integratorAgent = /** @type {any} */ (openStore(paths(root).db).prepare("SELECT agent FROM team_teammates WHERE project = ? AND role = 'integrator'").get(project.slug)).agent;
+  const merge = await until(async () => {
+    const db = openStore(paths(root).db);
+    const row = /** @type {any} */ (db.prepare("SELECT * FROM team_requests WHERE teammate = ? ORDER BY created_at DESC LIMIT 1").get(integratorAgent));
+    db.close();
+    return row && row.state !== "queued" && row.state !== "running" ? row : null;
+  }, "the merge to finish");
+  assert.equal(merge.state, "done", "mergeBranchIn should not be denied by the repo's own forced signing either");
+});
+
 test("a merge conflict fails the request cleanly, and leaves the worktree ready for the next one", async t => {
   const { tool, project, repo } = await bootGit(t);
   await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
