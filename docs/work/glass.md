@@ -161,6 +161,21 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   rotated token then got a genuinely fresh context (its earlier target was gone, not just
   invisible). testbox core/computers/**/*.test.js + dockerproxy: 268/268 pass, 9 skipped -- freeze
   lifted mid-pass, both the targeted suite and the live run are now done. Sent to the reviewer.
+- Reviewer's MEDIUM at 09de900b: policy.js's own AGENT_TOKENS_LINE/agentTokensTar/
+  allowAgentTokensTar had stayed on "name=token" after computerd moved to "id:name=token"
+  (2d0b8685) -- in the real path (driver writes, proxy checks, computerd reads) the two would
+  never have agreed; every earlier live run used docker cp, which bypasses the proxy, so this
+  never showed up there. Fixed: all three take {id, name, token} now, ids/tokens unique, a
+  repeated display name across two ids explicitly fine. Added the shared-fixture test the reviewer
+  asked for (policy.test.js): isolates computerd/index.js's own parseAgentTokens by source (a
+  sandboxed Function, no server, no side effects) and feeds it exactly what agentTokensTar/
+  allowAgentTokensTar produce and accept, so the two can't drift apart again silently. Tests:
+  policy.test.js 21/21 (1 new), docker.test.js + proxy.test.js 31/31. Live-verified THIS time
+  through the real path the reviewer named: stood up the real dockerproxy (real policy.js) in
+  front of the real docker.sock on testbox, called DockerDriver.seedAgentTokens against it (not
+  docker cp), booted the real image against the result -- computerd started clean, no refusal,
+  and alice's token answered a real /cdp/json/version 200. testbox core/computers/**/*.test.js +
+  dockerproxy: 269/269 pass, 9 skipped. Stack torn down after. Sent to the reviewer.
 - Presence enforced once security merges; a passkey step in the Deck.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
