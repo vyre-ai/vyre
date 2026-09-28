@@ -36,9 +36,27 @@ optional lint (chat).
 
 ## Doing
 
-Nothing right now; section 1's equivalent (sessions calling `style.append` at session start,
-next to `team.project-append`) is the next ask to sessions, same shape as before. Sent to
-reviewer (the prompt-injection path) and reviewer-2 (the settings UI) per the lead's ask.
+**Reviewer signed off core/style at 4732c3a8**, one LOW: pin down that `PATTERNS` can't hang on a
+long adversarial message (ReDoS). Fixed at 48261fba: two timing tests in
+`lib/plain-prose.test.js` (all 7 patterns, plus `normalizeProse` itself, against 100KB+ fixtures,
+under 50ms each). None of the 7 regexes has a nested or overlapping quantifier, so this was
+already expected; now it is measured.
+
+**sessions wired `style.append` in at 36caa4ad** (`core/harness/index.js`, on their own branch,
+not yet merged into work/teammates): ranked first in the append, ahead of `team.project-append`,
+the project brief and lessons; applies outside a project too, unlike team's project-scoped
+nudge (their own design call, ADR 0037 is "every session," not just project ones; no objection
+from me). Sent that sha to the reviewer as asked.
+
+**Team-lead's remaining ask: cap the TOTAL text appended (style plus team together), not just
+each piece separately.** Both are already individually bounded (`style.append` maxes at 1408
+characters: `HOUSE_VOICE` 906 + `style.rules` capped at 500 + a separator; `team.project-append`
+maxes at 600), so the combined worst case is a known ~2008 characters today, not literally
+unbounded. Proposed a concrete patch to `core/harness/index.js`'s `harness.brief` (sessions'
+file, sent directly to them): a single `APPEND_TOTAL_MAX` (2000, their call to size) ceiling on
+`[styleText, teamText].join("\n\n")`, truncated with an ellipsis, not an em dash, matching
+`team.project-append`'s own truncation. That is defense in depth: bounded even if either
+module's own cap ever drifts, or a third append joins this spot later. Waiting on sessions.
 
 ## Next
 
