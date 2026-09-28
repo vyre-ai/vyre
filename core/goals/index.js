@@ -1,12 +1,14 @@
 // @ts-check
 // goals: a goal and an ordered milestone list, attached to a session or a project (the user's
 // decision, 2026-09-28). An agent may propose one; only a person's tap turns it into a real goal
-// (goals.accept) - the same shape as team_propose needing a person's team.add. Milestones are
-// ticked off with goals.milestone-done, scoped to the goal's own session or project: an agent
-// working somewhere else cannot tick another project's goal. Notifications ride on core/push's
-// existing kinds.goal (goal.milestone, goal.done) - nothing new to build there.
+// (goals.accept) - the same shape as team_propose needing a person's team.add. Every read and
+// write an agent does (set, milestone-done, get, list) is scoped to its own calling thread or
+// that thread's own project - it never proposes into, ticks or reads another project's goal.
+// Notifications ride on core/push's existing kinds.goal (goal.milestone, goal.done) - nothing new
+// to build there.
 
 import crypto from "node:crypto";
+import { callerKind, ownerDevice } from "../modules/index.js";
 
 export const MIGRATIONS = [
   `
@@ -28,8 +30,15 @@ export const MIGRATIONS = [
 ];
 
 const STATES = ["pending", "active", "done", "cancelled"];
-/** A caller that names an agent: "mcp:agent:kit", "harness:agent:kit" (same shape as core/planner's AGENT_CLAIM). */
-const isAgent = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
+// Owner surfaces only (reviewer's MEDIUM 1, fixed): checking "does the caller name an agent"
+// and treating everything else as the person was backwards - a bare "mcp" caller (a model in
+// the person's own session, no agent name at all) and a spoofed "cli" (relabelled "mcp" upstream)
+// both read as "person" under that test. isPerson checks the owner surfaces and owner devices
+// explicitly instead; every other caller kind, guests and hooks included, is never the person.
+// Mirrors personguard's semantics until cohesion's lib/caller.js isPerson() lands.
+const PEOPLE = ["cli", "local", "deck", "capsule"];
+const AGENTS = ["mcp", "harness", "module"];
+const isPerson = caller => PEOPLE.includes(callerKind(caller)) || ownerDevice(caller);
 const newId = () => `g_${crypto.randomBytes(6).toString("base64url")}`;
 const refuse = (message, code) => Object.assign(new Error(message), { code });
 
@@ -55,23 +64,31 @@ export default {
       return r && r.data && r.data.thread ? r.data.thread.project ?? null : null;
     };
 
-    /** Rule 3: a person may always tick a milestone; an agent only inside the goal's own thread
-     * or project. @param {any} g @param {{ caller?: string, thread?: string }} meta */
-    const inScope = async (g, meta) => {
-      if (!isAgent(meta && meta.caller)) return true;
+    /** Rule 3 (and the LOW: an agent proposes only in its own scope): a person is always in
+     * scope; anyone else only inside the named thread, or their own calling thread's project. A
+     * caller with no thread at all (a bare module, an assistant with no session) is in scope of
+     * nothing but its own proposals. @param {{ project?: string|null, thread?: string|null }} target
+     * @param {{ caller?: string, thread?: string }} meta */
+    const inScope = async (target, meta) => {
+      if (isPerson(meta && meta.caller)) return true;
       const thread = meta && meta.thread;
-      if (g.thread) return thread === g.thread;
-      if (g.project) return (await callerProject(thread)) === g.project;
-      return true; // a goal with neither is nobody's in particular
+      if (target.thread) return Boolean(thread) && thread === target.thread;
+      if (target.project) return Boolean(thread) && (await callerProject(thread)) === target.project;
+      return true; // neither a thread nor a project named: nobody's in particular
     };
 
     ctx.tool("goals.set", {
-      description: "Set a goal with its ordered milestones, on a session or a project (at least one of thread, project). A person's own call is the goal at once; an agent's is a proposal (state pending) until goals.accept.",
+      description: "Set a goal with its ordered milestones, on a session or a project (at least one of thread, project). A person's own call is the goal at once; an agent's is a proposal (state pending) until goals.accept, and only in its own session or project.",
       input: { type: "object", required: ["goal", "milestones"], properties: { project: str, thread: str, goal: str, milestones: { type: "array", items: str, minItems: 1 } } },
+      callers: [...PEOPLE, ...AGENTS],
       run: async (i, meta) => {
         if (!i.project && !i.thread) throw refuse("a goal needs a project or a thread", "bad_input");
         const id = newId();
-        const person = !isAgent(meta && meta.caller);
+        const person = isPerson(meta && meta.caller);
+        // LOW: an agent proposes only into its own session or project, never another's.
+        if (!person && !(await inScope({ project: i.project || null, thread: i.thread || null }, meta))) {
+          throw refuse("a goal may only be proposed in the caller's own session or project", "denied");
+        }
         const state = person ? "active" : "pending";
         const created_by = person ? "person" : String((meta && meta.caller) || "agent");
         const milestones = i.milestones.map(text => ({ text: String(text), done: false, done_at: null }));
@@ -87,6 +104,7 @@ export default {
     ctx.tool("goals.accept", {
       description: "Turn a proposed goal (an agent's goals.set) into a real one. The person's own - a model never accepts its own proposal.",
       input: { type: "object", required: ["goal"], properties: { goal: str } },
+      callers: PEOPLE,
       run: async i => {
         const g = must(i.goal);
         if (g.state !== "pending") throw refuse(`${i.goal} is ${g.state}, not pending`, "bad_state");
@@ -99,6 +117,7 @@ export default {
     ctx.tool("goals.milestone-done", {
       description: "Mark a milestone done, by its index (0-based). Scoped to the goal's own session or project - an agent elsewhere is refused. Marks the goal itself done, and emits goal.done, when the last one lands.",
       input: { type: "object", required: ["goal", "index"], properties: { goal: str, index: { type: "integer", minimum: 0 } } },
+      callers: [...PEOPLE, ...AGENTS],
       run: async (i, meta) => {
         const g = must(i.goal);
         if (g.state !== "active") throw refuse(`${i.goal} is ${g.state}, not active`, "bad_state");
@@ -117,18 +136,40 @@ export default {
     });
 
     ctx.tool("goals.get", {
-      description: "One goal by id.",
+      description: "One goal by id. An agent reads only a goal in its own session or project.",
       input: { type: "object", required: ["goal"], properties: { goal: str } },
-      run: async i => must(i.goal),
+      callers: [...PEOPLE, ...AGENTS],
+      run: async (i, meta) => {
+        const g = must(i.goal);
+        if (!(await inScope(g, meta))) throw refuse(`${i.goal} belongs to another ${g.thread ? "session" : "project"}`, "denied");
+        return g;
+      },
     });
 
     ctx.tool("goals.list", {
-      description: "Goals for a project or a thread (or every one, with neither), newest first.",
+      description: "Goals for a project or a thread (or every one, with neither, person only), newest first. An agent sees only its own session or project - given or, with neither, its own calling thread's.",
       input: { type: "object", properties: { project: str, thread: str, state: { type: "string", enum: STATES } } },
-      run: async i => {
+      callers: [...PEOPLE, ...AGENTS],
+      run: async (i, meta) => {
+        // M2: an agent's read is scoped the same way a milestone tick is - never every project's.
+        const { project, thread } = i;
         const where = [], args = [];
-        if (i.project) { where.push("project = ?"); args.push(i.project); }
-        if (i.thread) { where.push("thread = ?"); args.push(i.thread); }
+        if (!isPerson(meta && meta.caller)) {
+          const ownProject = await callerProject(meta && meta.thread);
+          if (thread !== undefined && thread !== (meta && meta.thread)) throw refuse("an agent reads only its own session's goals", "denied");
+          if (project !== undefined && project !== ownProject) throw refuse("an agent reads only its own project's goals", "denied");
+          if (thread === undefined && project === undefined) {
+            // Neither given: its own scope, project or thread - an OR, never an AND, since a goal
+            // has one or the other, and never "every goal here".
+            const mine = [];
+            if (ownProject) { mine.push("project = ?"); args.push(ownProject); }
+            if (meta && meta.thread) { mine.push("thread = ?"); args.push(meta.thread); }
+            if (!mine.length) return []; // no session context at all: nothing is its own
+            where.push(`(${mine.join(" OR ")})`);
+          }
+        }
+        if (project) { where.push("project = ?"); args.push(project); }
+        if (thread) { where.push("thread = ?"); args.push(thread); }
         if (i.state) { where.push("state = ?"); args.push(i.state); }
         const sql = `SELECT * FROM goals_items ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY created_at DESC LIMIT 200`;
         return /** @type {any[]} */ (db.prepare(sql).all(...args)).map(shape);
