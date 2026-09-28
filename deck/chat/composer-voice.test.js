@@ -119,6 +119,39 @@ test("a tap starts and stays open after release; a second tap stops and keeps th
   c.stop();
 });
 
+test("session-view voice states: recording reads Listening, a stop tap reads Transcribing until done, then clears", async () => {
+  listenAnswer = { path: "/v1/streams/voice/listen?ticket=states1" };
+  const c = mountComposer({ thread: thread() });
+  await tap(c);
+  assert.match(text($(c.el, ".composer-voice-pill")), /Listening \d:\d\d$/, "recording");
+  assert.equal(mic(c).classList.contains("stopping"), false);
+  const ws = /** @type {any} */ (FakeWebSocket).last;
+  ws.onmessage({ data: JSON.stringify({ type: "final", text: "hello there" }) });
+
+  await tap(c); // the second tap: stop
+  assert.equal(mic(c).classList.contains("on"), true, "still open - the box has not answered yet");
+  assert.equal(mic(c).classList.contains("stopping"), true, "transcribing");
+  assert.equal(mic(c).getAttribute("aria-label"), "Transcribing");
+  assert.match(text($(c.el, ".composer-voice-pill")), /Transcribing…$/);
+
+  ws.onmessage({ data: JSON.stringify({ type: "done", text: "hello there" }) });
+  assert.equal(mic(c).classList.contains("on"), false);
+  assert.equal(mic(c).classList.contains("stopping"), false);
+  assert.equal(mic(c).getAttribute("aria-label"), "Talk");
+  assert.equal($(c.el, ".composer-voice-pill").hidden, true, "cleared once done answers");
+  c.stop();
+});
+
+test("no voice key: the mic never reads Transcribing, since it never opened", async () => {
+  statusAnswer = { key: false, provider: "deepgram" };
+  const c = mountComposer({ thread: thread() });
+  await tap(c);
+  assert.equal($(c.el, ".composer-voice-pill").hidden, true);
+  assert.equal(mic(c).classList.contains("stopping"), false);
+  statusAnswer = { key: true, provider: "deepgram" };
+  c.stop();
+});
+
 test("two quick taps (open, then stop) before the socket ever opens still closes it (reviewer-2's WS-leak finding)", async () => {
   listenAnswer = { path: "/v1/streams/voice/listen?ticket=lateopen1" };
   FakeWebSocket.autoOpen = false; // held CONNECTING: onOpen (voiceListening=true) fires on its

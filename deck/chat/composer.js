@@ -432,6 +432,10 @@ export function mountComposer(opts) {
   let voiceOpening = false;
   /** True once actually streaming (voiceOpening resolved to a live session). */
   let voiceListening = false;
+  /** True from a stop tap until onDone/onError answers: the box is finishing the last words, not
+   *  hearing new ones - the pill and mic read differently (session-view voice states, queued
+   *  after native-core's composer piece landed). */
+  let voiceStopping = false;
   let voiceWantStopOnOpen = false, voiceWantCancelOnOpen = false;
   /** This press/hold's own bookkeeping, reset at the start of every press. */
   let voicePressTimer = /** @type {any} */ (null), voiceHeld = false, voicePressWasOpen = false;
@@ -467,6 +471,7 @@ export function mountComposer(opts) {
   function drawVoicePill() {
     if (!voiceListening) { voicePill.hidden = true; voicePill.replaceChildren(); return; }
     voicePill.hidden = false;
+    if (voiceStopping) { put(voicePill, h("span", { class: "composer-voice-dot" }), "Transcribing…"); return; }
     put(voicePill, h("span", { class: "composer-voice-dot" }), "Listening " + voiceElapsedText());
   }
   function startVoiceElapsed() { voiceStartedAt = Date.now(); clearInterval(voiceElapsedTimer); voiceElapsedTimer = setInterval(drawVoicePill, 1000); voiceElapsedTimer.unref?.(); }
@@ -485,8 +490,8 @@ export function mountComposer(opts) {
   }
 
   function finishTalk() {
-    voiceListening = false; voiceSession = null;
-    micBtn.classList.remove("on", "held");
+    voiceListening = false; voiceStopping = false; voiceSession = null;
+    micBtn.classList.remove("on", "held", "stopping");
     micBtn.style.removeProperty("--voice-level");
     micBtn.setAttribute("aria-label", "Talk");
     stopVoiceElapsed(); clearSilenceTimers(); drawVoicePill();
@@ -554,7 +559,14 @@ export function mountComposer(opts) {
     voiceSession = session;
   }
   function stopTalk() {
-    if (voiceSession) { voiceSession.stop(); return; }
+    if (voiceSession) {
+      voiceStopping = true;
+      micBtn.classList.add("stopping");
+      micBtn.setAttribute("aria-label", "Transcribing");
+      stopVoiceElapsed(); clearSilenceTimers(); drawVoicePill();
+      voiceSession.stop();
+      return;
+    }
     if (voiceOpening) voiceWantStopOnOpen = true;
   }
   /** Stops and removes exactly [voiceStart, voiceEnd) - nothing else in the box moves. */
