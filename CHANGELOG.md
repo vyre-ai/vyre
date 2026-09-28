@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Wink: the ring carries the real pairing secret, not a hash of it (ADR 0043)
+
+- `deck/js/phone-code.js`: `ticketLevels`/`ticketRingSvg` decode `relay.pair.ticket`'s base64url
+  `ticket` field to its 8 raw bytes (`ticketToBytes`) and encode those directly — the earlier
+  `fingerprint8` (SHA-256) approach was a placeholder that couldn't be reversed back into the
+  literal ticket a phone needs to redeem. The lead's ruling, confirmed independently by tailnet.
+  A malformed/placeholder ticket degrades to a ring that draws but won't scan, never a throw.
+  Both functions are sync now (no more `crypto.subtle` digest in the path).
+- New `idleAvatarSvg()`: once a ticket expires, both Wink cards swap the ring's contents to the
+  plain avatar (no ticks) instead of leaving an already-spent ticket's bits on screen — "swap
+  back to the identity" once expired or redeemed (redemption already did this, via
+  `showConnected` replacing the ring outright).
+- `deck/js/phone-code.test.js`: ticket fixtures are now real `TICKET_BYTES=8` base64url values,
+  plus a test proving the raw bytes (not a digest) are what's encoded, and `idleAvatarSvg`
+  coverage.
+
 #### Settings > Devices: the same Wink ring, so a phone can be added after onboarding too
 
 - `deck/css/phone-code.css`: the `.phone-code-*` rules (ring, shimmer, dance, burst, connected
