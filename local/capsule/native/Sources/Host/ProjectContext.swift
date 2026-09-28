@@ -40,9 +40,13 @@ public enum ProjectContext {
 
     /// Apps whose windows are never read, even for a path.
     static let privateApps: [String] = ["com.apple.keychainaccess", "com.1password.", "com.agilebits.", "com.bitwarden.", "com.lastpass.", "com.dashlane.",
-                                          "com.apple.Passwords", "org.keepassxc.keepassxc", "me.proton.pass"]
+                                          "com.apple.Passwords", "org.keepassxc.keepassxc", "me.proton.pass", "com.nordsec.nordpass",
+                                          "in.sinew.Enpass", "com.keepersecurity.", "com.markmcguill.strongbox", "com.hicknhacksoftware.MacPass",
+                                          "com.siber.roboform", "com.siber.RoboForm"]
 
-    static func isPrivate(_ bundle: String) -> Bool { privateApps.contains { bundle == $0 || ($0.hasSuffix(".") && bundle.hasPrefix($0)) } }
+    static func isPrivate(_ bundle: String) -> Bool {
+        privateApps.contains { bundle == $0 || bundle.hasPrefix($0.hasSuffix(".") ? $0 : $0 + ".") || ($0.hasPrefix("in.sinew.") && bundle.hasPrefix($0)) }
+    }
 
     /// The front app's document or working directory, from its focused window's AXDocument; nil
     /// without Accessibility (never asked for here), for a private app, or when it says none.
