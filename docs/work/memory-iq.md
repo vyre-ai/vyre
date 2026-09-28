@@ -117,6 +117,62 @@ facts are not a project's.
   precision 0.057, 4 confident wrong (the husband answered as "Claire", Owen's wife from a
   pasted email). The held-out world is the real number.
 
+## Doing (28 Sep, the projects.reach swap)
+- Branch work/memory-reach, worktree ../vyre-memory-reach, off federation's work/federation
+  (35188a38 projects.reach + 59d6833c caller-as-input-field). Moved core/memory/index.js's own
+  reach() and core/files/access.js's own reach() onto ctx.call("projects.reach", { agent, caller,
+  kind }) instead of each keeping its own agents.list/projects.list/projects.access.check chain.
+  Both were reviewer-cleared on their own; this is the DRY follow-up 59d6833c's commit message
+  flagged (files/access.js and memory/index.js not done in that sha).
+- memory/index.js's reach() needs one extra bit projects.reach's content-kind reply does not
+  carry: whether the resolved agent is literally the assistant (a different privilege tier for
+  guard()'s unscoped grace and personalOnly()'s personal facts, neither ever subject to
+  projects.access) — the assistant and a wildcard agent read the same shape once every project is
+  granted. Answered with a second projects.reach call, kind: "facts" (the one place its reply
+  distinguishes them, { all: true } only for the assistant), rather than opening a second door
+  onto agents.list for one bit this door does not need to answer.
+  files/access.js needed no such thing: it never had an `assistant` field in its own reach()
+  shape to begin with (files are raw content either way, no unscoped grace).
+- Error codes: both files preserve projects.reach's own thrown code/message verbatim
+  (`Object.assign(new Error(r.error.message), { code: r.error.code })`) instead of re-deciding
+  denied vs failed locally — one behaviour change worth flagging: files/access.js used to force
+  "denied" even when the underlying cause was `agents.list` itself being unreachable
+  (`no_such_tool`); it now gets "failed" for that one obscure case, same as memory's reach()
+  always did and the same as projects.reach's own thrown error already is. No test exercises it.
+- The known snag (59d6833c's own note): core/files/files.test.js and drive.test.js's registry()
+  only stood up a fake agents+projects module when a test passed `agents:`, so most existing tests
+  had no projects.reach to answer at all — a deny-by-default fallback there would have refused the
+  OWNER (a bare "cli"/"deck" caller) in nearly every test, since access.js's reach() now asks
+  projects.reach even to decide who the owner is. Fixed with a new shared fixture,
+  test/fixtures/fake-reach.js (`reachLogic` the pure decision, `fakeReachCall` for a hand-built
+  fake ctx.call, `installFakeReach`/`clearFakeReach` for a real Registry with fake "agents"/
+  "projects" modules), always installed now regardless of whether a test cares about agent
+  scoping. `access` left out of the fixture entirely (vs. `{}`) simulates projects.access not
+  being installed at all (agents.projects' own scope, unchanged, matching both reach()'s own
+  documented no_such_tool fallback); `access: {}` or a map simulates it present, deny by default.
+  Wired into: core/files/files.test.js, core/files/drive.test.js (Registry harness), and every
+  hand-built fake ctx.call that starts the memory module directly — core/memory/access.test.js,
+  scope.test.js, personal/answer.test.js, personal/store.test.js (grep for `memory.start(ctx)`
+  found all four; no others).
+- One real test-visible change, not a bug: core/memory/scope.test.js's "a caller that names no
+  agent and no room reads the main graph" test asserted every unnamed non-owner caller's refusal
+  contained "main graph" — projects.reach's own owner-vs-not decision now refuses an unnamed,
+  unrecognised caller (e.g. "harness", "unknown") immediately with "refused for X", before guard()
+  ever gets a say; a bare "mcp" session still counts as the owner there (projects.reach's own
+  reachOwnSession) and still reaches guard()'s own, more specific message. Both are refusals
+  either way; widened the assertion regex to accept either wording rather than re-deriving the
+  old message inside memory/index.js.
+- Verified on testbox (load 3-4 at the time): `core/memory/**/*.test.js` + core/files/files.test.js
+  + core/files/drive.test.js together, 233/233, `npm run docs:ref` clean, test/docs-*.test.js
+  61/61, test/boundaries.test.js 5/5. Locally on the Mac, 3 of files.test.js's agent-scoping tests
+  fail on a pre-existing, unrelated macOS quirk (SCRATCH lives under /var/folders, which realpaths
+  to /private/var/folders, and describe()'s within() check compares the realpath'd file against
+  the fixture's non-realpath'd project.home) — reproduced identically on an untouched
+  work/federation checkout, so not a regression; core/memory/module.test.js also hangs locally
+  on this Mac on an unmodified work/federation checkout (unrelated, pre-existing, passes on
+  testbox), so the local run is not a reliable signal for this repo on this machine.
+- Sent shas to reviewer and integrator. Sha: (fill in after commit).
+
 ## Doing (SAVED 27 Sep, before a restart)
 - RC handed to the integrator: work/memory-iq 1a76d383, the leak fix via e2e's transcriptFolders
   (88c90d56 merged; recall readable() wraps it), source trust, memory.retrieve/ask/suggest,

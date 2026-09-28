@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### memory,files: onto projects.reach, the one door for "which projects may this caller reach"
+
+- `core/memory/index.js`'s own `reach()` and `core/files/access.js`'s own `reach()` now ask
+  `projects.reach` (core/projects, 35188a38 + 59d6833c) instead of each keeping its own
+  agents.list/projects.list/projects.access.check chain: the DRY follow-up that sha's own commit
+  flagged as not done yet. Behaviour unchanged (both were reviewer-cleared on their own); memory's
+  `reach()` asks a second, `kind: "facts"` call only for the one bit projects.reach's `content`
+  reply does not carry (whether the resolved agent is literally the assistant, which needs
+  guard()'s unscoped grace and personalOnly()'s personal facts, unlike a wildcard agent that reads
+  the same shape once granted every project).
+- New `test/fixtures/fake-reach.js`: a shared fake `projects.reach` (plus agents.list/
+  projects.list/projects.access.check) for every test that starts the memory or files module,
+  in both harness shapes this repo uses (a hand-built fake `ctx.call`, and a real Registry with
+  fake "agents"/"projects" modules), always installed now, not only when a test names an
+  `agents:` fixture, since access.js's reach() asks projects.reach even to decide who the OWNER
+  is.
+
 #### projects: fix a HIGH regression 13e7b0e8 introduced (reviewer's third pass)
 
 - `refuseSensitiveRoot`'s ancestor fix (MEDIUM 3, previous entry) applied its single

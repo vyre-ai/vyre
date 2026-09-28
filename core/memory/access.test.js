@@ -9,6 +9,7 @@ import path from "node:path";
 import { open } from "../store/index.js";
 import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
 import { tempHome } from "../../test/helpers.js";
+import { fakeReachCall } from "../../test/fixtures/fake-reach.js";
 import memory from "./index.js";
 
 const W = `${HOME}/Work`;
@@ -29,7 +30,7 @@ async function module_(t) {
   const ctx = {
     name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
-    call: async tool => tool === "projects.list" ? { data: { projects: PROJECTS } } : tool === "agents.list" ? { data: AGENTS } : { error: { code: "no_such_tool", message: tool } },
+    call: async (tool, input) => fakeReachCall(tool, input, { agents: AGENTS, projects: PROJECTS }),
     tool: (name, def) => tools.set(name, def),
   };
   const handle = await memory.start(ctx);
@@ -102,12 +103,7 @@ test("agents.projects is not the only door any more: projects.access also has to
   const ctx = {
     name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
-    call: async (tool, input) => {
-      if (tool === "projects.list") return { data: { projects: PROJECTS } };
-      if (tool === "agents.list") return { data: AGENTS };
-      if (tool === "projects.access.check") return { data: { granted: Boolean(access[`${input.project}:${input.agent}`]) } };
-      return { error: { code: "no_such_tool", message: tool } };
-    },
+    call: async (tool, input) => fakeReachCall(tool, input, { agents: AGENTS, projects: PROJECTS, access }),
     tool: (name, def) => tools.set(name, def),
   };
   const memory = (await import("./index.js")).default;
