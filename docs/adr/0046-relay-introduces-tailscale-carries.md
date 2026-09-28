@@ -3,7 +3,7 @@ title: "ADR 0046: The relay introduces, Tailscale carries"
 summary: A server signs in to Tailscale once at setup; Wink pairs every device over the relay; a Touch ID-confirmed pairing mints a short-lived, tagged auth key and sends it over the paired channel so a desktop auto-joins the tailnet, which Vyre then prefers. Phones stay on the relay by default.
 audience: builders
 owner: tailnet
-status: accepted
+status: stable
 ---
 
 # ADR 0046: The relay introduces, Tailscale carries

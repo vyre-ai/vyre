@@ -3063,7 +3063,7 @@ Devices paired through the relay: id, name, when paired and last seen, whether p
 
 ### `relay.devices.node`
 
-A paired relay device's own Noise identity and, if it has reported one, its tailnet node — for a module to check ownership or open a direct connection, never for a person or a device to call about itself.
+A paired relay device's own Noise identity and, if it has reported one, its tailnet node - for a module to check ownership or open a direct connection, never for a person or a device to call about itself.
 
 - Input:
   - `id` string, required
