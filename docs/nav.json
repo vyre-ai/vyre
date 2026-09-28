@@ -90,7 +90,7 @@
       "adr/0034-vyre-iq.md",
       "adr/0035-settings-hub.md",
       "adr/0036-one-system.md",
-      "adr/0041-move-engine.md"
+      "adr/0042-move-engine.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
     { "title": "Contributing", "pages": [

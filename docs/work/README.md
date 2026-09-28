@@ -66,4 +66,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0034 | memory-iq | Vyre IQ: cited answers from every session, fact and the graph |
 | 0035 | native-core | The settings hub: one file, four levels, read live by every surface |
 | 0036 | cohesion | One system |
-| 0041 | federation | The move engine (tentative: this branch's copy of this table predates several other teams' claims through at least 0040; flag a collision if one exists) |
+| 0042 | federation | The move engine (0041 collided with work/github's "GitHub everywhere", per the reviewer; renumbered) |

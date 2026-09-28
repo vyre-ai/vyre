@@ -901,7 +901,8 @@ Sent to integrator: work/federation ready to land.
 
 team-lead's next item: memory-iq has the projects.reach swap, so the move engine ("Move to a
 server", launch's UI already targets the earlier contract) is federation's. Wrote ADR 0041
-(docs/adr/0041-move-engine.md, sha 9c3fe3cc) covering the four pieces (unchanged from the earlier
+(docs/adr/0042-move-engine.md, sha 9c3fe3cc, renumbered from 0041 which collided with work/github)
+covering the four pieces (unchanged from the earlier
 contract) plus the team-lead's five constraints and the new transport plan (relay introduces via
 tailnet's own join flow, Tailscale carries every byte of the actual copy). New move.free/
 move.free.preview tools split "confirm the new machine" from "free the old one's disk", per
