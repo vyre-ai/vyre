@@ -140,6 +140,21 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   boundaries+person-only-guard+docs-check suites, 177/177.
 - Sent b2da8bc8 to the reviewer and the integrator.
 
+## Done (cont. 7): 28 Sep, reviewer's LOW on c5d7d318 (port 7300)
+- Reviewer flagged that a Mac chosen as server still resumes/mints the setup loopback on
+  onboardPort's default, 7300, the exact port RULES forbid binding on a Mac (its own real
+  onboarding tunnel to the box). "Next free port if taken" (ADR 0002) still names 7300 on the
+  first listen() call before failing over, so the fix is a different default outright, not a
+  better fallback.
+- `defaultOnboardPort(platform)`, at 74f8832a: 7301 on darwin, 7300 (ADR 0002, unchanged)
+  everywhere else; an explicit `network.onboardPort` still wins on every platform, box included.
+  Pure and exported (same pattern as `canRelayJoin`), so the darwin branch has a direct unit
+  test rather than mutating `process.platform`. Updated ADR 0002's listener table and the
+  generated config.md description (scripts/lib/docs/reference.js's hand-authored copy).
+- Green on testbox: onboard.test.js 26/26 (1 new), config+modules+presence+boundaries+
+  person-only-guard+docs-check, 178/178.
+- Sent 74f8832a to the reviewer.
+
 ## Next
 1. ADR 0040 (vyre-core, drafted by e2e at 644c9e50 on work/e2e-setsid): write my three named
    sections -- install mechanics under the no-Apple-Developer-ID constraint (sudo once,
