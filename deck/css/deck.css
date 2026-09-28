@@ -48,8 +48,9 @@ code, .mono { font-family: var(--mono); }
 .small { font-size: 13px; line-height: 18px; }
 .muted { color: var(--text-2); }
 .faint { color: var(--label); }
-.lbl { font-family: var(--mono); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;
-  text-transform: uppercase; color: var(--label); margin: 0; }
+/* A second line of meta, not a caption (copy.md: sentence case everywhere, no caps labels and no
+   letter-spaced mono - Design A retires the old mono/uppercase/tracked look). */
+.lbl { font-size: var(--size-meta, 12px); line-height: var(--line-meta, 16px); font-weight: 500; color: var(--label); margin: 0; }
 .lbl.beacon { color: var(--beacon-ink); }
 /* A memory source ("From memory"): a source chip, 1 px --rule-strong, at the start. Never gold. */
 .lbl.recall { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; width: fit-content; padding: 0 6px;

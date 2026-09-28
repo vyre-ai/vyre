@@ -303,6 +303,27 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok((await w.said(th.id)).includes("echo: still here"));
   });
 
+  // native-core: does a message queued (mode "queue") for after a turn still reach Claude when
+  // that turn ends by Stop instead of finishing on its own? turnEnded (core/switchboard) hands
+  // queued words over on any thread.finished, cancelled or not, unless st.stopping is set (a
+  // hard threads.stop, not this soft threads.interrupt) - so it should, but nothing tested the
+  // combination end to end.
+  test(`${driver}: a message queued while a turn runs is still handed over when Stop ends that turn`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const queued = (await w.tool("threads.send", { thread: th.id, text: "check the hours too", surface: "deck", mode: "queue" })).data;
+    assert.equal(queued.queued, true, JSON.stringify(queued));
+    assert.deepEqual((await w.tool("threads.queue", { thread: th.id })).data.queued.map(r => r.queued), [queued.queued_id]);
+    assert.equal((await w.tool("threads.interrupt", { thread: th.id })).data.interrupted, true);
+    await w.finished(th.id);
+    const handed = await until(async () => (await w.events(th.id)).find(e => e.type === "thread.sent" && e.payload.queued === queued.queued_id), "the queued words handed over");
+    assert.equal(handed.payload.via, "turn");
+    await w.finished(th.id, 2);
+    assert.ok((await w.said(th.id)).includes("echo: check the hours too"));
+    assert.deepEqual((await w.tool("threads.queue", { thread: th.id })).data.queued, [], "nothing left waiting");
+  });
+
   test(`${driver}: an idle session is closed and comes back on the next message`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { idle_minutes: 0.02 } });           // 1.2 s
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
@@ -792,6 +813,40 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(again.parentUuid, two.parentUuid, "the new message hangs where the old one did");
     assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[0].uuid })).data.rewound, false, "the first message starts a new session instead");
     assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[1].uuid }, "mcp")).error.code, "denied");
+  });
+
+  // native-core: Claude Code parity item 3, "fork from any turn" - rewind's other menu item.
+  // threads.fork already forks from the live end (--fork-session + --resume); rewind already
+  // resumes at a message's parentUuid (--resume-session-at) in place. Neither combined the two,
+  // so there was no way to fork FROM an earlier turn, leaving the original untouched - only
+  // "fork from now" or "rewind in place". threads.fork's new `at` does both together.
+  test(`${driver}: fork from an earlier turn leaves the original untouched, past that point`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "one", surface: "deck" })).data;
+    await w.finished(th.id);
+    for (const [n, text] of [[2, "two"], [3, "three"]]) { await w.tool("threads.send", { thread: th.id, text, surface: "deck" }); await w.finished(th.id, n); }
+    const turns = (await w.events(th.id)).filter(e => e.type === "thread.turn").map(e => e.payload);
+    const file = path.join(w.transcripts, w.work.replace(/[^A-Za-z0-9]/g, "-"), `${th.id}.jsonl`);
+    const before = fs.readFileSync(file, "utf8");
+    const two = before.trim().split("\n").map(l => JSON.parse(l)).find(l => l.type === "user" && l.uuid === turns[1].uuid);
+    assert.ok(two, "a user message's transcript uuid is the one thread.turn gave");
+
+    const f = (await w.tool("threads.fork", { thread: th.id, at: turns[1].uuid, prompt: "two, forked", surface: "deck" })).data;
+    assert.notEqual(f.id, th.id);
+    await w.finished(f.id);
+    const argv = w.launches().at(-1).argv;
+    assert.ok(argv.includes("--fork-session"), "forked, not rewound in place");
+    assert.equal(argv[argv.indexOf("--resume") + 1], th.id);
+    assert.equal(argv[argv.indexOf("--resume-session-at") + 1], two.parentUuid, "goes on from just before turn two");
+    assert.deepEqual(await w.said(f.id), ["echo: two, forked"]);
+
+    assert.equal(fs.readFileSync(file, "utf8"), before, "the original session is untouched");
+    await w.tool("threads.send", { thread: th.id, text: "still going", surface: "deck" });
+    await w.finished(th.id, 4);
+    assert.ok((await w.said(th.id)).includes("echo: still going"), "the original session still has its own three turns and can keep going");
+
+    assert.equal((await w.tool("threads.fork", { thread: th.id, at: "no-such-uuid" })).error.code, "bad_input");
+    assert.equal((await w.tool("threads.fork", { thread: th.id, at: turns[0].uuid })).error.code, "bad_input", "the first message: fork the whole session instead");
   });
 
   test(`${driver}: a failed turn is a state with its turn, and a stop cancels the tool calls it left open`, { skip }, async t => {
