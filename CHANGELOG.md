@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Security: recall.search/thread/sessions had no project scoping at all
+
+- A named agent limited to one project could search, read or list any other project's sessions —
+  recall.search accepted `project_cwds` as a caller-chosen suggestion, never enforced it, and
+  recall.thread/sessions did not check the caller at all. Recall now mirrors core/memory/index.js's
+  reach()/guard() (the owner's surfaces and modules see everything; a named agent is scoped by
+  agents.projects intersected with projects.access, deny by default; the assistant unrestricted):
+  `agent` on recall.search/thread/sessions, empty `project_cwds` defaults to the agent's own
+  grants, an out-of-grant cwd or session is refused (a session outside the grant reads back as
+  "no session", same as one that does not exist, so a scoped agent learns nothing about what it
+  may not read). A paired Mac's answers are filtered the same way, in case it is on an older build.
+  Coordinated with federation (owns projects.access); this worktree predates that module, so
+  reach() falls back to agents.projects alone until it lands (the same no_such_tool fallback
+  memory's own reach() uses).
+
 #### Graph cheap wins: three hot-path indexes, and a circuit breaker on a broken model
 
 - Three hot lookups were full table scans as the tables grow: the reader's `SELECT MAX(started)

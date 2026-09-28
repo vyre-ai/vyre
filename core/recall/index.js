@@ -208,49 +208,130 @@ export default {
     const stringArray = { type: "array", items: { type: "string" } };
     // On the box, "all" takes in the paired Macs' rows too (the default for the person), "local" only the box's.
     const machines = { type: "string", enum: ["all", "local"] };
+
+    // Project scoping (security: recall.search/thread/sessions had none — an agent limited to
+    // project A could search or read any other project's sessions). Mirrors core/memory/index.js's
+    // reach()/guard() 1:1 by design, so the two modules never drift into two different answers for
+    // "what may this agent read." Coordinate any shape change with federation (owns projects.access
+    // and agents.projects) rather than diverging here.
+    /** A folder is inside one of these granted folders. Recall's own copy: no cross-feature import
+     * (module boundary) — this is memory's teach.js `within`, restated. */
+    const within = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
+    const denied = message => Object.assign(new Error(message), { code: "denied" });
+    /** The user's own surfaces and modules see every session; only a named agent is scoped. */
+    const OWNER = new Set(["deck", "cli", "local", "capsule"]);
+    const owner = caller => OWNER.has(String(caller)) || String(caller).startsWith("module:");
+    /** Projects, as the projects module knows them: slug and its folders. No module without projects: no scoping to do. */
+    const projectList = async () => {
+      const r = await ctx.call("projects.list", {});
+      if (r.error && r.error.code !== "no_such_tool") throw new Error(r.error.message);
+      const list = r.error ? [] : (Array.isArray(r.data) ? r.data : r.data?.projects || []);
+      return list.filter(p => p && p.slug).map(p => ({ slug: String(p.slug), name: String(p.name || p.slug),
+        folders: [...new Set([p.home, ...(p.workspaces || []), ...(p.folders || [])].filter(Boolean).map(String))] }));
+    };
+    /**
+     * What a caller may read: { all: true } for the user's own surfaces, modules, and the
+     * assistant; else { all: false, agent, folders } — a named agent's granted projects'
+     * folders, intersected with projects.access (deny by default; an install without that
+     * module keeps today's behavior unchanged). A wildcard (projects: "*") agent walks the same
+     * per-project path as a named-projects agent, starting from every project (2026-09-28
+     * decision, as core/memory/index.js's reach() applies it): never the whole corpus by that
+     * alone. Who the agent is comes from the caller ("...agent:<name>") or input.agent; if both
+     * are given they must agree. When agents cannot be checked, a named agent is refused.
+     * @param {string|undefined} agent @param {string|undefined} caller
+     */
+    const reach = async (agent, caller) => {
+      const said = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
+      if (said && agent && said !== agent) throw denied(`the call came from agent ${said} but names agent ${agent}`);
+      const who = said || agent || null;
+      if (!who) return { all: true, agent: null, folders: [] };
+      const r = await ctx.call("agents.list", {});
+      if (r.error) throw new Error(`agent ${who}: its projects cannot be checked (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`);
+      const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
+      const a = list.find(x => x && x.name === who);
+      if (!a) throw denied(`no agent ${who}`);
+      if (a.kind === "assistant") return { all: true, agent: who, folders: [] };
+      const wildcard = a.projects === "*";
+      const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
+      const granted = wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
+      const checked = await Promise.all(granted.map(async p => {
+        const c = await ctx.call("projects.access.check", { project: p.slug, agent: who });
+        if (c.error && c.error.code === "no_such_tool") return p;
+        return c.data && c.data.granted ? p : null;
+      }));
+      return { all: false, agent: who, folders: checked.filter(Boolean).flatMap(p => p.folders) };
+    };
+    /** Narrows q.project_cwds to what a scoped agent may read, or throws. Owners/modules pass through. */
+    const scopeQuery = async (q, caller) => {
+      const r = await reach(q.agent, caller);
+      delete q.agent;
+      if (r.all) return r;
+      const requested = (q.project_cwds || []).map(String);
+      if (requested.length) {
+        const outside = requested.filter(c => !within(c, r.folders));
+        if (outside.length) throw denied(`${r.agent} is not granted ${outside.join(", ")}`);
+      } else {
+        if (!r.folders.length) throw denied(`${r.agent} is not granted any project yet`);
+        q.project_cwds = r.folders;
+      }
+      return r;
+    };
+    const agentField = { agent: { type: "string" } };
+
     ctx.tool("recall.search", {
       description: "Search every Claude Code session on this machine for turns about something. Returns the best turns with their session's name, title and folder.",
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
         sessions: { ...stringArray, description: "also these sessions wherever they ran (a project's attached sessions); from modules and the person's surfaces only" },
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
-        per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines,
+        per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines, ...agentField,
       } },
       run: async (input, { caller } = {}) => {
         const { machines: _, ...q } = input;
         // sessions widens a scope, so only a module or the person's own surface may name them: a
         // model's scope is its folders (the MCP server holds an agent to its projects' folders).
         if (q.sessions && !/^(?:module:|deck$|cli$|local$|capsule$)/.test(String(caller || ""))) delete q.sessions;
+        // A named agent (a project-scoped one, or one asked for by a module on its behalf) reads
+        // only its granted projects' folders: no project_cwds, no cross-project cwds, no whole corpus.
+        const scopeR = await scopeQuery(q, caller);
+        // Defense in depth: q.project_cwds already carries the grant, so this is a no-op unless a
+        // paired Mac is on an older build that does not scope its own side yet.
+        const scoped = hits => scopeR.all ? hits : hits.filter(h => within(h.cwd, scopeR.folders));
         const here = async () => {
           // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
           const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
           const e = q.hybrid === false || !any ? null : await embedder();
-          return (await search(db, q, e, dense)).hits;
+          return scoped((await search(db, q, e, dense)).hits);
         };
         if (!wantsMacs(ctx, input, caller)) return here();
         // On the box, for the person: the Macs' best turns too, by score, capped at the limit.
         const [own, answers] = await Promise.all([here(), askMacs(ctx, "recall.search", q)]);
-        return mergeRows(ctx, own, answers, { compare: (a, b) => b.score - a.score, limit: Math.max(1, Math.min(100, q.limit || 10)) });
+        return mergeRows(ctx, own, answers, { rows: scoped, compare: (a, b) => b.score - a.score, limit: Math.max(1, Math.min(100, q.limit || 10)) });
       },
     });
     ctx.tool("recall.thread", {
       description: "One session and its turns, in order. Takes a session id or an unambiguous prefix of one.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, machines,
-        source: { type: "string", enum: ["box", "mac"] } } },
+        source: { type: "string", enum: ["box", "mac"] }, ...agentField } },
       run: async (input, { caller } = {}) => {
-        const { machines: _, source, ...q } = input;
-        if (!wantsMacs(ctx, input, caller)) return thread(db, q);
+        const { machines: _, source, agent, ...q } = input;
+        const r = await reach(agent, caller);
+        // A scoped agent reads a session only inside its granted projects' folders: not by naming
+        // any session id it likes. Thrown the same way as "not found", so a scoped agent learns
+        // nothing about a session it may not read (not even that it exists).
+        const gate = row => { if (!r.all && !within(row?.session?.cwd, r.folders)) throw new Error(`no session ${q.session}`); return row; };
+        if (!wantsMacs(ctx, input, caller)) return gate(thread(db, q));
         // On the box, for the person: the box's own session first. A session the box does not
         // have, or one the caller says is on the Mac, is asked of the Macs, and the first that
         // has it answers. Its turns go back to the caller and are never stored here.
         if (source !== "mac") {
-          try { return { ...thread(db, q), ...boxLabel(ctx) }; }
+          try { return gate({ ...thread(db, q), ...boxLabel(ctx) }); }
           catch (e) { if (!/^no session /.test(/** @type {Error} */ (e).message)) throw e; }
         }
         const answers = await askMacs(ctx, "recall.thread", q);
         const found = answers.find(a => a.ok && a.data);
-        if (found) return { ...found.data, ...macLabel(found) };
+        if (found) return gate({ ...found.data, ...macLabel(found) });
         const why = answers.length ? answers.map(a => `${a.name}: ${a.error ? a.error.code : "no answer"}`).join(", ") : "no Mac is paired";
         throw new Error(`no session ${q.session} (${why})`);
       },
@@ -327,13 +408,18 @@ export default {
     ctx.tool("recall.sessions", {
       description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
-        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines } },
+        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines, ...agentField } },
       run: async (input, { caller } = {}) => {
-        const { machines: _, ...q } = input;
-        if (!wantsMacs(ctx, input, caller)) return sessions(db, q);
+        const { machines: _, agent, ...q } = input;
+        const r = await reach(agent, caller);
+        if (!r.all && q.cwd && !within(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
+        // ids can name any session (the box's cross-project resolve for a Mac's picked ones): a
+        // scoped agent's own list still narrows to what it is granted, never all of them.
+        const scoped = rows => r.all ? rows : rows.filter(row => within(row.cwd, r.folders));
+        if (!wantsMacs(ctx, input, caller)) return scoped(sessions(db, q));
         // On the box, for the person: the Macs' sessions too, newest first, capped at the limit.
         const [own, answers] = await Promise.all([sessions(db, q), askMacs(ctx, "recall.sessions", q)]);
-        return mergeRows(ctx, own, answers, { compare: (a, b) => (b.ended || 0) - (a.ended || 0), limit: Math.max(1, Math.min(1000, q.limit || 50)) });
+        return mergeRows(ctx, scoped(own), answers, { rows: scoped, compare: (a, b) => (b.ended || 0) - (a.ended || 0), limit: Math.max(1, Math.min(1000, q.limit || 50)) });
       },
     });
     ctx.tool("recall.forget", {

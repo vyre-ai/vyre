@@ -177,6 +177,28 @@ facts are not a project's.
   memory.ask (6adfc4b6), memory.suggest offered to suggest + suggest.ready (f50c5f21). All 0.1.1
   unless the lead says otherwise.
 
+## Doing (28 Sep, security: recall had no project scoping)
+- The lead's ask: recall.search ran unrestricted for any caller, including a named agent limited
+  to one project — it could search, read (recall.thread) or list (recall.sessions) any other
+  project's sessions, since nothing checked who was asking. Built `reach()` in core/recall/index.js,
+  mirroring core/memory/index.js's reach()/guard() 1:1 on purpose (same owner set, same
+  agents.projects ∩ projects.access intersection, same wildcard-walks-every-project rule, same
+  no_such_tool fallback for an install without projects.access yet). New `agent` input on
+  recall.search/thread/sessions; a scoped agent's empty project_cwds/cwd defaults to its own
+  grants rather than the whole corpus; an out-of-grant ask is refused (a session it can't read
+  reads back as "no session", the same message a nonexistent one gets); a paired Mac's answers
+  are filtered the same way as a defense against an older, unpatched Mac. Test:
+  core/recall/scope.test.js (5 tests: search, thread, sessions, a project taken away narrows
+  reach immediately, a mismatched/unknown agent is refused). 273/273 on testbox
+  (core/recall + core/memory + boundaries).
+- This worktree predates federation's projects.access module (work/federation, d897210d and
+  its predecessors) — recall.access.check calls it and gets `no_such_tool`, so reach() falls back
+  to agents.projects alone, same as memory's own reach() does on an install without it. Once
+  federation's branch lands, extend core/recall/scope.test.js with a projects.access.grant/revoke
+  pass (core/memory/floor.test.js's wilma/kit tests are the pattern) to cover the intersection and
+  the revoke-narrows-immediately case for real.
+- Sent to reviewer (access/trust change).
+
 ## Next
 - Built 28 Sep: memory.card (e67ba34d), memory.contradictions/settle (fd7f57ab).
 - 0.1.1 queue, in order: import.start/stop/cancel
@@ -250,6 +272,12 @@ before landing (not "straight away"):
   memory curator's background pass, in bounded batches that yield.
 
 ## Changed contracts
+- core/recall/index.js: recall.search/thread/sessions take `agent` (a caller-named agent, checked
+  against the caller string's own `agent:<name>` the way memory's reach() does). A named agent's
+  reads are scoped by agents.projects ∩ projects.access; empty project_cwds/cwd default to its
+  own granted folders rather than the whole corpus; a session or folder outside its grant is
+  refused (a scoped-out session reads back exactly like a nonexistent one). recall.sessions'
+  `ids` and a paired Mac's answers are filtered by the same grant.
 - core/modules/index.js: a module's ctx.call passes { firstParty } (from the loader) in the callee's meta.
 - core/config/index.js: default transcripts add <home>/synced; recall reads each device folder under it. recall.forget (internal). Event recall.embedded. memory listens to sync.revoked and emits memory.forgot. New module core/import (import.scan/plan/status, event import.progress).
 - core/harness/index.js harness.brief adds memory.today's lines ("Lately in this project") for a project session.
