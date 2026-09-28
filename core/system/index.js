@@ -7,10 +7,15 @@ import { build } from "../daemon/build.js";
 import { hostedOrigins } from "../config/index.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
 
-// owner.id's only valid shape (config.ownerId(): 16 random bytes, hex). Any process running as
-// this OS user can edit config.json, so owner.id is display identity only, never a trust anchor
-// -- a malformed value here is just bad data to shrug off, not something to pass through.
-const OWNER_ID_RE = /^[0-9a-f]{32}$/;
+// Both fingerprints, or null for either if owner.id is missing or malformed (lib/identity
+// itself owns the shape check, so this doesn't keep its own copy of that regex). Any process
+// running as this OS user can edit config.json, so owner.id is display identity only, never a
+// trust anchor -- a malformed value here is just bad data to shrug off, not something to pass
+// through.
+function ownerFingerprints(id) {
+  try { return { person: toBase64url(fingerprint8(id, "person")), assistant: toBase64url(fingerprint8(id, "assistant")) }; }
+  catch { return { person: null, assistant: null }; }
+}
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -24,13 +29,12 @@ export default {
         // read-only. Both fingerprints share the one formula and the one encoding (base64url,
         // matching the relay's pairing ticket) from lib/identity.js, so this and tailnet's relay
         // can never drift apart.
-        const ownerId = ctx.config.owner && OWNER_ID_RE.test(ctx.config.owner.id) ? ctx.config.owner.id : null;
+        const fp = ownerFingerprints(ctx.config.owner && ctx.config.owner.id);
         return { ...build(), role: ctx.config.role, host: os.hostname().split(".")[0], platform: process.platform, node: process.version,
-          owner: { name: (ctx.config.onboard && ctx.config.onboard.person) || null,
-            fingerprint8: ownerId ? toBase64url(fingerprint8(ownerId, "person")) : null },
+          owner: { name: (ctx.config.onboard && ctx.config.onboard.person) || null, fingerprint8: fp.person },
           // The name the user gave their assistant in onboarding, else the agent it was created as.
           assistant: { name: (ctx.config.onboard && (ctx.config.onboard.assistant || (ctx.config.onboard.greeted && ctx.config.onboard.greeted.agent))) || null,
-            fingerprint8: ownerId ? toBase64url(fingerprint8(ownerId, "assistant")) : null },
+            fingerprint8: fp.assistant },
           network: { origins: hostedOrigins(ctx.config.network) } };
       },
     });
