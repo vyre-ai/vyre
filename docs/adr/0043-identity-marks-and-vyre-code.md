@@ -52,13 +52,43 @@ rule written down, not inferred from code): person and assistant are covered in 
   (`<role>-<project>`, `core/team/index.js`'s `agentName`) - unchanged from round 3b, not new here.
 - **Project.** Seeded from the project's own stored `avatar_seed` (`core/projects` marker,
   native-core commit cbd41296) - the project's slug, or the chat's id when the project was made
-  from a chat (`projects.create`'s `from_thread`). **The exact byte derivation every surface must
-  match** (native-core's `deck/js/avatars.js`, `projectBytes(seed)`): two FNV-1a 32-bit words over
-  `"vyre:project:v1:" + seed`, 8 bytes total - the same `"vyre:<kind>:v1:"` prefix convention 2f
-  already set for the person and assistant fingerprints, extended to a seed that's a string (a
-  slug or a chat id) rather than `owner.id`. Any surface computing a project's or a draft chat's
-  tile (App, Capsule, a future one) must derive bytes this same way, not invent its own hash - the
-  whole point of a fixed seed is that every surface draws the identical tile.
+  from a chat (`projects.create`'s `from_thread`). A draft tile's seed is the chat's id directly,
+  before any project exists. One home for the derivation now: `lib/avatar-seed/index.js`
+  (native-core commit ddc75e75), imported by both the Deck and Node - no second copy anywhere.
+  Same `"vyre:<kind>:v1:"` prefix convention 2f already set for the person and assistant
+  fingerprints, extended to a seed that's a string (a slug or a chat id) rather than `owner.id`.
+
+  **The exact algorithm, binding on every surface** (written out in full so the Capsule's Swift
+  port matches byte for byte, not just "close enough"):
+  1. `s = "vyre:project:v1:" + seed`, iterated as UTF-16 code units - JS's own `charCodeAt`; in
+     Swift, `seed.utf16`, never `.utf8` bytes and never `.unicodeScalars` (those diverge from JS on
+     any character outside the BMP - an emoji is two UTF-16 units, a surrogate pair, and must be
+     hashed as two units here too, not one scalar).
+  2. `a = FNV-1a 32(s)`, offset basis `0x811C9DC5` (the standard FNV-1a 32 basis).
+  3. `b = FNV-1a 32(s)`, offset basis `0x811C9DC5 XOR 0x5BD1E995 = 0xDACD7450` - a second,
+     independent 32-bit word from the same string, not a second hash function.
+  4. Each FNV-1a step: `h = (h XOR unit) * 16777619 mod 2^32` (the standard FNV-1a 32 prime).
+  5. `bytes = a as 4 big-endian bytes, then b as 4 big-endian bytes` - 8 bytes total, the same
+     shape `fingerprint8` already produces for the person and assistant.
+  6. `projectTile` reads byte 0 for the colour index and byte 1 for the mark index (both mod their
+     own list length, per the "Seed" bullet in avatar.md's project-tile section).
+
+  **Test vectors** (seed -> 8 bytes, hex), independently re-derived and confirmed against
+  native-core's own values before this was written down, not transcribed on trust:
+
+  | Seed | Bytes (hex) |
+  |---|---|
+  | `harlow-legal` | `ee53a80eb372fa43` |
+  | `northwind` | `3b03f25e73bb44e5` |
+  | `9d0e4c1a-5b2f-4c1e-9a0b-3f2d1c0b9a88` | `3298bd291db714fc` |
+  | `` (empty string) | `b9de60c138d8b8f0` |
+  | `café-menu` | `3a3a125825ad9923` |
+  | `🍞 bakery` | `3607ac119874645a` |
+
+  Any surface computing a project's or a draft chat's tile (App, Capsule, a future one) must
+  derive bytes this same way, not invent its own hash or import a second implementation - the
+  whole point of a fixed seed is that every surface draws the identical tile, and these vectors
+  are what "matches" means, checkable, not just asserted.
 
 The assistant is deliberately its own species, not a fifth agent and not a smaller person: round 4
 first gave it a squircle with an abstract mark (`assistantAvatar`), but the user's later direction
