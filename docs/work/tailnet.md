@@ -86,6 +86,19 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, latest still: fixed reviewer's MEDIUM on relay.join before the stay-connected
+follow-up (6cd9c02d). The Touch ID prompt was generic ("Pair this device with another Vyre");
+now it parses the URL and names the actual box, its relay host, and a short key fingerprint
+(base32 of sha256 of the box's public key, 8 chars as two groups of 4), so a phishing message's
+pairing link can't blend in as "just pairing", and a url that fails to parse gets an honest
+summary instead of a silent generic fallback. Refuses before any prompt at the schema layer
+(checkInput runs before presence.required) for anything not shaped like a pairing link, and again
+in run() via parsePairUrl for a well-formed-looking but corrupt fragment. Testbox: 54/54.
+
+Standing by per the lead: review anywhere's shared onboarding-on-Mac check (setup tools refused on
+a Mac unless Solo genuinely needs one, 127.0.0.1:7300 only on a server) when it lands — that's
+reviewer's condition 2, still open, and not mine to build a second version of. Idle otherwise.
+
 28 Sep 2026, latest: two more items from the lead. First, extracted relay's key access into
 `core/relay/keys.js` (3ab44de2) — loadKeys(root) unchanged in behavior, just its own file, so
 moving where the box's Noise/route keys live (vyre-core's `_vyre` service user, ADR 0040) is a
