@@ -46,7 +46,9 @@ readable by nobody else. Nothing under this path is
 writable by the person's uid, by a model's shell running as that uid, or by `vyre-agent`.
 
 vyre-core holds no business logic and loads no third-party modules, ever -- it is the smallest
-thing that can plausibly stay honest. Its job: hold every secret and trust anchor, verify a
+thing that can plausibly stay honest. **core never executes, loads or reads code from any path the
+person's uid can write** (their home, `~/.vyre/helpers`, `/Applications`, `$PATH`): only from its
+own root-owned code tree. The same holds for the root updater. Its job: hold every secret and trust anchor, verify a
 proof against them, and then either release the secret / execute the send, or refuse.
 
 ### 2. What moves into vyre-core -- by module, not by tool
@@ -172,10 +174,18 @@ Capsule's own presence key and `core/link/se`'s CLI key.
 
 **The Capsule's signing identity belongs to vyre-core** (decided 28 Sep). There is no Apple
 Developer ID, and a "Vyre Local" certificate in the login keychain is readable by the same uid as
-a model, so self-signing with it proves nothing. Instead vyre-core generates and holds its own
-code-signing key under its root-owned tree, and signs the Capsule at install and at every update.
-The keychain ACL of the Capsule's presence key then binds to that designated requirement, which
-no same-uid binary can meet.
+a model, so self-signing with it proves nothing. Instead vyre-core generates its own code-signing
+key at install and keeps it in its `_vyre` data directory (never the root-owned code tree, which
+holds code only).
+
+**Only a Capsule from a verified release is ever signed.** The signing happens inside the
+install and the root apply step (section 5), on the `Capsule.app` taken out of the release
+tarball whose signed manifest has just been verified, never on whatever `.app` sits at a
+person-writable path such as `/Applications`. The signed `.app` lives in the root-owned code
+tree (`/Library/Application Support/Vyre/current/Capsule.app`), and is launched from there;
+`/Applications` gets only an alias to it. The keychain ACL on the Capsule's presence key binds to
+that signature's designated requirement. A swapped or patched binary, anywhere, fails the DR, so
+the keychain refuses it the key and `presence.capsule.pin` refuses its cdhash.
 
 **Until then, `presence.capsule.pin` refuses an ad-hoc or unsigned Capsule outright**, with a
 plain message ("This Capsule build can't prove who it is yet"). vyred does this today (8cf64fe9);
@@ -211,7 +221,8 @@ ask for it again. `vyre up`:
    `/Library/LaunchDaemons/com.vyre.core.update.plist` (section 5's update flow).
 3. `launchctl bootstrap system /Library/LaunchDaemons/com.vyre.core.plist` starts it
    immediately; no reboot needed, and it now survives one on its own.
-4. vyre-core creates its Capsule signing key (section 4) and re-signs the installed Capsule.
+4. The installer has vyre-core create its Capsule signing key (section 4), then signs the
+   `Capsule.app` from the tarball it just verified and places it in the root-owned code tree.
 
 `SMAppService` is out, not because it requires a Developer ID outright, but because its approval
 UI (System Settings > Login Items, needing the person's explicit "allow") is built around
@@ -246,8 +257,11 @@ anything that can't be rotated blind.
 3. Only after that, the apply step runs. vyre-core can't write its own code (section 1), so a
    second LaunchDaemon, `com.vyre.core.update`, runs as root and does only this: it re-verifies
    the manifest's signature, the tarball's hash and the version floor itself (it never trusts
-   core's verdict), then extracts it
-   to a fresh versioned directory under the root-owned code tree (never
+   core's verdict), then extracts it to a fresh versioned directory under the root-owned code
+   tree. Extraction refuses the whole tarball if any entry has an absolute path, a `..`
+   component, or is a symlink, a hardlink or a device file, and it never keeps the tarball's
+   owners or modes (everything is root:wheel, no setuid). Before the flip it signs the new
+   `Capsule.app` with core's signing key (section 4). It writes (never
    overwrite files in place -- the same tmp-then-rename atomicity core/config/index.js's `save()`
    already uses for one file, extended to a whole directory: write the new version beside the
    old, then one atomic rename/symlink flip to make it current), then `launchctl kickstart`s
@@ -282,10 +296,13 @@ nothing.
   rows are never read by core.
 - **Dropped:** sessions, pairing codes, relay nonces. The person signs in again.
 
-**The vault key never moves either.** Today it sits in the login keychain behind a helper under
-`~/.vyre/helpers`, both reachable by the same uid as a model. core mints its own vault key under
-its data directory and re-encrypts every imported secret with it. Nothing core stores is
-readable with the old key.
+**The vault key never moves either.** Today the items are encrypted under a key in the person's
+LOGIN keychain (core/vault/vault.js's keystore, through the helper under `~/.vyre/helpers`). A
+model can reach both; `_vyre` can reach neither, and must not try: running that helper would be
+core executing person-writable code (section 1). So the old key is only ever used person-side.
+core mints its own vault key in its `_vyre` data directory and re-encrypts every imported secret
+under it. It never stores an old blob as it is, and nothing core stores is readable with the old
+key.
 
 **The sequence**, after install and re-enrollment:
 
@@ -293,34 +310,44 @@ readable with the old key.
    under vyre-core's data directory, readable by `_vyre` only. This is a safety copy, not the
    migration itself.
 2. core shows the person how many items there are and each item's name, and nothing else from
-   the old db. The person unticks anything they don't recognise and confirms with a presence
-   proof from a key enrolled AFTER install (Touch ID on the new Capsule key, or Approve on a
-   re-paired phone).
-3. core decrypts each confirmed item with the old key (read once, through the old helper, during
-   this step only), re-encrypts it with its own key, and upserts it by item id. Row by row and
-   idempotent: re-running after a crash re-upserts what's there and adds what's missing, never
-   doubles anything.
+   the old db, plus one line: "the old copy will be erased once these are moved", with the
+   erase ticked by default. The person unticks any item they don't recognise (or the erase) and
+   confirms with a presence proof from a key enrolled AFTER install (Touch ID on the new Capsule
+   key, or Approve on a re-paired phone). core records the approval under an id.
+3. The decrypt runs PERSON-side: the Capsule (or `vyre` in the terminal), as the person, reads
+   each confirmed item with the old key and streams its plaintext to core's socket, bound to the
+   approval id. core accepts only items on that approved list, only for that id, and only once.
+   It re-encrypts each item with its own key and upserts it by item id; an item that doesn't
+   decrypt is reported by name, not stored. Row by row and idempotent: re-running after a crash
+   re-upserts what's there and adds what's missing, never doubles anything.
 4. Only once every confirmed item is present does core write its migration marker, in core's
    OWN data directory, never vyred's config. A model can delete anything in vyred's config and
    would then send vyred back to the old vault. From the moment vyre-core is installed, vyred
-   sends `vault.*` to core whatever its own config says; the only way back to the old local
-   vault is the break-glass command below, which core itself must approve with a presence proof.
-5. core then offers, with a preview (the file path, the item count, the keychain items by name),
-   a one-tap wipe of the old vault tables, the old helper and its keychain items. It is offered,
-   not automatic: the move-to-server flows' no-auto-delete rule holds.
+   sends `vault.*` to core whatever its own config says: at start it asks core "do you own the
+   vault?", and core's answer is the truth. vyred's own vault store refuses every write once
+   vyre-core is installed, so an item saved after cutover can never land in the old store. The
+   only way back to the old local vault is the break-glass command below.
+5. If the person left the erase ticked in step 2 (the default), the same approved step then
+   erases the old vault tables and the old key's keychain items. This runs person-side too,
+   since only the person's uid can reach their keychain, and the erase is shown as done by name.
+   It is the person's own previewed choice in step 2, never an automatic deletion, so the
+   move-to-server flows' no-auto-delete rule holds. Unticked, the Capsule keeps offering it.
 
-**The residual, stated plainly:** until the person taps that wipe, the old copy stays
-decryptable by any program running as their uid, a model included. And a model that read a
-secret before vyre-core was installed still has it. vyre-core protects secrets from install on;
-it can't take back what was already readable. The wipe offer says both in one line.
+**The residual, stated plainly:** any secret that sat in the old store could already have been
+read by a model, since it was readable by the person's uid. vyre-core protects secrets from
+install on; it can't take back what was already readable. And if the person unticks the erase,
+the old copy stays readable to a model until they erase it. The last screen says so in one line,
+and lists the moved items to rotate first: cloud and API keys, SSH keys, email and bank or
+payment logins, and the Mac's credentials toward its box.
 
 **Failure modes**:
 
 - Crash between steps 1 and 4. core has no marker, so it resumes at step 2 (the list is shown
   again) on its next start. vyred already routes to core, and core answers `vault.*` with "your
   vault is still moving; finish it in the Capsule" until the marker exists.
-- The copy is static (step 1), so nothing the import reads can be torn by a concurrent write to
-  the old db.
+- The person-side read in step 3 can't be torn by a concurrent write: vyred's old vault store
+  refuses writes from the moment vyre-core is installed (step 4), so the old store no longer
+  changes.
 - vyred restarts still pointed at the old path. `vyre doctor` says "vyre-core is installed but
   vault calls aren't reaching it" and offers to redo the switch-over alone.
 - vyre-core unreachable after a bad update. A break-glass `vyre vault fallback` points vyred at
@@ -363,9 +390,9 @@ presence and gate state exactly as it does today.
    unsigned one regardless, and notarization is the thing we don't have), an offline Ed25519
    release key baked in as a source constant, and an atomic extract-then-flip update flow.
 2. **The vault migration sequence**: section 6, above. Only item secrets move, from a names
-   list the person confirms with a post-install proof, re-encrypted under core's own key; all
-   trust state is made again; the marker lives in core; the old copy gets a previewed wipe
-   offer, and its residual is named.
+   list the person confirms with a post-install proof, decrypted person-side and re-encrypted under core's own key; all trust state is made again;
+   core owns the marker; the old copy is erased in the same confirmed step (ticked by default),
+   and the residual is named, with what to rotate first.
 3. **gate.held/get and the relay loop**: resolved into section 2's table directly -- gate moves
    WHOLE (held/get/revise/reject included); the relay/link.call transport stays OUT of core (an
    audit item on caller-label forgery at the relay boundary, not a design change).
