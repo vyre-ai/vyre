@@ -3,7 +3,7 @@ title: ADR 0041: GitHub everywhere
 summary: How Vyre signs in to GitHub, lists repos, turns one into a project, and gives every session its own worktree and branch.
 audience: builders
 owner: github
-status: proposed
+status: stable
 ---
 
 # ADR 0041: GitHub everywhere
@@ -59,8 +59,8 @@ is nothing to paste. `github.accounts` lists `{name, login, avatar_url}`, never 
 
 `github.remove {name}` (reviewer: a live non-expiring `repo` token must not just sit in the vault
 once disconnected) fetches the item, calls `DELETE /applications/{client_id}/token` with HTTP
-basic auth `client_id:client_secret` and `{ "access_token": token }` as the body — the one call in
-this module that reads `VYRE_GITHUB_OAUTH_CLIENT_SECRET` — which revokes the token at GitHub, then
+basic auth `client_id:client_secret` and `{ "access_token": token }` as the body, the one call in
+this module that reads `VYRE_GITHUB_OAUTH_CLIENT_SECRET`, which revokes the token at GitHub, then
 deletes the vault item and drops the account row. A revoke that fails (GitHub unreachable, already
 revoked) still removes the account and item locally and says so plainly, so a person is never
 stuck with a connected-looking account whose token doesn't work; it never leaves the token behind
@@ -82,7 +82,7 @@ filtered client-side by `q` against `full_name` and `description`. Returns
 `[{ full_name, name, owner, private, default_branch, description, updated_at, html_url }]`, never
 a clone URL with a token in it. `account` picks the connected account when there is more than one
 (the same `forRead`/`forWait` shape as Google's). `callers`: people (`cli`, `local`, `deck`,
-`capsule`) plus `module:sessions` and `module:launch` only — this lists every private repo the
+`capsule`) plus `module:sessions` and `module:launch` only, this lists every private repo the
 account can reach, so it is never model-reachable, the same as `github.connect`/`.remove`/
 `.project`. No tool in this module that a model can call ever touches the token: reads (`repos`)
 are person/module-only, and there is no model-reachable write in 0.1.1 (clone and worktree
@@ -106,7 +106,7 @@ account?}`:
 1. `github.repos` to resolve `repo` (`owner/name` or a full URL) to its clone URL and default
    branch, for the resolved account.
 2. Clone into `<projects dir>/<repo name>` (`config.js`'s `boxProjectsDir()`/local equivalent;
-   `<repo name>` sanitised — `[A-Za-z0-9._-]` only, no leading dot, no `..` — and de-duplicated
+   `<repo name>` sanitised, `[A-Za-z0-9._-]` only, no leading dot, no `..`, and de-duplicated
    the way `scanEnv` de-dupes names) with `lib/git-safe.js`'s new `gitWithAskpass`, the only way
    this module runs git that needs a network call, ever.
 
@@ -119,7 +119,7 @@ account?}`:
      value, as an env var), read once and printed, then the script is gone: it lives in a `0700`
      temp dir made fresh per call and removed the moment the call ends.
    - **`credential.helper` must not run at all.** macOS ships `credential.helper=osxkeychain` in
-     git's system config, and many people set one globally too — though `git-safe.js`'s
+     git's system config, and many people set one globally too, though `git-safe.js`'s
      `GIT_CONFIG_NOSYSTEM`/`GIT_CONFIG_GLOBAL=devNull` already rule out both scopes, so the actual
      residual risk proven in the test is a **repo-local** helper (in the destination's own
      `.git/config`, a scope neither of those two touches): without an override, a successful
@@ -136,14 +136,14 @@ account?}`:
      call (tested: a local repo path is refused exactly like any other non-https source).
    - **One username for every account.** `credential.username` is fixed to `x-access-token`
      (GitHub's own convention: any non-empty username works with a PAT as the password), so git
-     only ever prompts askpass once, for the password. Without this it asks twice — once for the
-     username, once for the password — and the fd, read once, would answer the first ask and
+     only ever prompts askpass once, for the password. Without this it asks twice, once for the
+     username, once for the password, and the fd, read once, would answer the first ask and
      leave the second empty. Tested via `git credential fill` (the exact credential-resolution
      path a clone takes), so nothing here depends on reaching real GitHub in a test.
 
    This is a small, tested addition to `git-safe.js` (`gitWithAskpass(dir, args, { token,
    username?, stdin? })`), sent to `sessions` (git-safe.js's owner) as a self-contained new-file
-   diff for review — their branch doesn't carry `git-safe.js` yet and a full merge mid-task was
+   diff for review, their branch doesn't carry `git-safe.js` yet and a full merge mid-task was
    too large to do safely, so they review it standalone and the integrator reconciles it against
    main's copy at the stage/0.1.1 fold, the same as everything else piling up there. `github`
    calls it and never reimplements auth.
@@ -154,12 +154,12 @@ account?}`:
    machine's real stored GitHub credential answer instead, printing a real username and PAT into
    tool output that is now in this session's transcript. Reported to the reviewer and the lead
    immediately; the value was not reused or sent anywhere; a rotation is recommended. The actual
-   `gitWithAskpass` code path was never affected (it always goes through the real isolation) — the
+   `gitWithAskpass` code path was never affected (it always goes through the real isolation), the
    leak was in a throwaway debug script that has since been deleted.
 3. `ctx.call("projects.create", { name, home: clonedPath })`, or when the person already has a
    project and just wants to attach the repo, `projects.add-workspace`. `github` never writes to
    `projects`' own tables; it only calls its tools, per the module contract. (Needs federation's
-   sign-off: today's caller allowlist for `add-workspace` names `module:sync` as an exception —
+   sign-off: today's caller allowlist for `add-workspace` names `module:sync` as an exception;
    `module:github` needs the same one, see docs/work/github.md.)
 4. The project row remembers the repo (`github_projects (project, account, full_name,
    default_branch)`, keyed by the project's slug), so later steps (worktree-per-session, and
@@ -187,7 +187,7 @@ project-change event today; `thread.started` is real, emitted by the Switchboard
 - `github.session.worktree { project, session }` (`internal: true`, callers `["module:sessions"]`
   only, never a model, never a person surface directly): if the project is not a GitHub project,
   returns `null` (sessions then uses the project's home folder directly, as today). Otherwise:
-  the session id is reduced to a safe short id first (git's own check-ref-format rules — no
+  the session id is reduced to a safe short id first (git's own check-ref-format rules, no
   leading `.` or `-`, no `..` anywhere, no trailing `.`, since this becomes a path segment and a
   branch name), then `git worktree add <repo>/.sessions/<safe-id> -b vyre/<safe-id>
   <default_branch>` through `git-safe`, and returns the new path. `sessions` sets the session's
@@ -196,13 +196,13 @@ project-change event today; `thread.started` is real, emitted by the Switchboard
   rule: no auto-delete, ever; deletion is always previewed.** The worktree is removed, and its
   branch pruned, only when nothing would be lost: no uncommitted change, no untracked file, and
   no commit that isn't already on the default branch or some remote (`git rev-list <branch>
-  --not <default_branch> --remotes`). If any of those is true, **nothing is removed** — the
-  worktree and branch are left exactly as they were — and `github.cleanup-needed { project,
+  --not <default_branch> --remotes`). If any of those is true, **nothing is removed**, the
+  worktree and branch are left exactly as they were, and `github.cleanup-needed { project,
   session, path, branch, dirty, commits }` is emitted with what's at stake, for a surface to show
   "Clean up this session's worktree?" and the person to decide by hand. `git worktree remove
   --force` and `git branch -D` never appear anywhere in this path; the removal that does happen
   uses their plain, non-force forms, which independently refuse if the check above ever turns
-  out to be wrong — a second backstop, not a substitute for the check.
+  out to be wrong, a second backstop, not a substitute for the check.
 - `.sessions/` is repo-local and machine-local: it is written to the project's own `.git/info/
   exclude` once (never the repo's committed `.gitignore`, which is the person's file) so `git
   status` in the person's own clone of the same repo never shows Vyre's worktrees.
@@ -214,7 +214,7 @@ reads through `ctx.call("github.project.of", { project })`, never a direct table
 
 **Built by sessions (79bd2bf1): cleanup fires only on canonical status `finished`**, never
 `stopped` or `paused` (`lib/thread-status.js`), since both of those are resumable on their
-existing cwd and `threads.send` on resume never re-resolves it — cleaning up on them would strand
+existing cwd and `threads.send` on resume never re-resolves it, cleaning up on them would strand
 the resume. This is the right, conservative default for 0.1.1, decided jointly: an ordinary
 interactive session, which typically ends `stopped` rather than `finished`, keeps its worktree
 indefinitely under today's hook. Nothing breaks (disk isn't reclaimed, not correctness), but it is

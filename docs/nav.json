@@ -94,6 +94,7 @@
       "adr/0040-vyre-core.md",
       "adr/0039-vyre-anywhere.md",
       "adr/0046-relay-introduces-tailscale-carries.md",
+      "adr/0041-github-everywhere.md",
       "adr/0042-move-engine.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
