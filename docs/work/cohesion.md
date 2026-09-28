@@ -296,3 +296,35 @@ status isn't in this tree yet (6e2f8a71's switchboard change is still on session
 only the standalone lib got cherry-picked in at 48d70ed1). Deferred on purpose -- swap
 statusWord(t) to `t.canonical_status` once that switchboard sha reaches this branch, same small-
 sha style. Not done yet.
+
+## New job from the lead: one shared reach() for memory/recall/files
+
+Read all three existing copies before writing anything:
+- core/recall/index.js's reach() (memory-iq) is the most correct and closest to the lead's spec
+  already: unnamed callers refused by default (not admitted), assistant unchecked against
+  projects.access (being the assistant is the exemption) but SCOPED to mapped projects for raw
+  content, a named/wildcard agent intersected with projects.access per project, ownerDevice
+  (core/modules, the kernel's own relay-paired/tailnet-verified-owner check) used correctly.
+- core/memory/index.js's reach() is the stale copy: never intersects agents.projects with
+  projects.access at all (a named agent's own agents.list grant is trusted outright, the exact
+  "guests let in" class of bug), uses a local viaTailnet regex instead of the kernel's ownerDevice,
+  and gives the assistant unconditional all:true (no mapped-projects distinction) -- arguably by
+  design for facts, but not distinguished from project content at all today.
+- core/files/access.js (federation) is a plain-function port of memory's OLD logic: an unnamed
+  caller gets {all:true} unconditionally, with no owner/module check at all -- the worst copy,
+  exactly the "unnamed callers unrestricted" bug the lead named.
+
+Proposed the single door as `projects.reach` (core/projects, federation's module, since it owns
+projects.access and the ctx.call fan-out — agents.list, projects.list, projects.access.check per
+project — belongs in one place, not three). Takes {agent?, kind: "facts"|"content"}; kind only
+matters once an agent is named (the assistant skips projects.access under "facts", is scoped to
+every mapped project under "content" per the lead's 2026-09-28 ruling); an unnamed caller's
+admission never depends on kind — owner/module/ownerDevice/a model's own session is {all:true},
+everything else refused, full stop. Sent the complete tool code to federation, and the specific
+bugs plus the migration path (their reach()/personalOnly() call sites) to memory-iq.
+
+NOT landed anywhere: this needs core/projects' own projects.access (not on main yet, so not in
+this tree either — same gap markers.js hit) and touches core/memory/core/recall (memory-iq) and
+core/files (federation), none of which are my worktrees to commit in. Design + exact code handed
+off; waiting on federation to land the tool, then memory-iq and federation to move their own
+callers onto it with tests, per the lead's ask.
