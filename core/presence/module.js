@@ -22,7 +22,8 @@ export default {
     ctx.tool("presence.keys", {
       description: "The Capsule keys, device keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themselves.",
       input: obj({}),
-      run: async () => presence.keys(),
+      // On a Mac with vyre-core, the list is core's (a read vyred may proxy, ADR 0040 section 3).
+      run: async () => (presence.coreLink ? presence.coreLink.keys() : presence.keys()),
     });
 
     ctx.tool("presence.enroll", {

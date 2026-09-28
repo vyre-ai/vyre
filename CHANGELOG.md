@@ -15,6 +15,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   start from a tree the owner's uid could write, or as the owner's uid.
 - `lib/vyre-core-client.js`: the client vyred, the CLI and tests use.
 - Nothing starts it yet; the installer is phase 4 (docs/work/vyre-core-plan.md).
+- Phase 1b: on a Mac whose root-owned core.json names vyre-core, vyred's presence checks every
+  capsule, device, passkey and code proof through core, lists core's keys and methods, gets
+  passkey challenges from core, and refuses to enroll or remove a key or mint a code itself
+  (`core_owned`). A proof is sent only to a socket owned by core's uid. Linux is unchanged.
 
 #### install-box.sh: shellcheck actually clean, and a quiet line for Docker's own wait
 

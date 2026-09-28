@@ -20,7 +20,8 @@ import { Registry, discover, ownerDevice } from "../modules/index.js";
 import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
-import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence } from "../presence/index.js";
+import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
+import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
 import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, canReadPeers } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
@@ -84,6 +85,13 @@ async function startLocked(opts, root, p, release) {
   const events = new Events(db);
   // vyred always checks presence. A test may pass a verifier, or a function that builds one on
   // this store (to give the real one fake OS touch points).
+  // On a Mac with vyre-core installed (ADR 0040), core holds the trust anchors: every presence
+  // check that rests on a key goes to core. Only a root-owned core.json turns this on; Linux never.
+  if (process.platform === "darwin" && opts.presence === undefined) {
+    const c = readCoreConfig();
+    coreHolder.link = c ? coreLink(c) : null;
+    if (c) log(`presence: keys and proofs are vyre-core's (${c.socket})`);
+  }
   const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.role, network: () => cfg.network || {} });
   // Who is the person over the network, not only their device (core/presence/person.js).
   const people = new PersonSessions({ db });

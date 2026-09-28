@@ -107,4 +107,16 @@ tested on Linux where it can be. "Mac check" marks what only a Mac run can confi
 - Mac check still needed: LOCAL_PEERCRED's uid read (xucred layout) and /bin/ps, by capsule-pro
   with a temp home and no sudo. Running as _vyre under launchd waits for phase 4 (a real system
   user on the user's Mac needs their explicit OK).
-- Next: phase 1b (vyred asks core), then phase 2.
+- Phase 1b (vyred asks core) done: a root-owned core.json (root's file in a root folder, never
+  the environment) turns on core.link in vyred's daemon, on darwin only. Every Presence then
+  checks capsule, device, passkey and code proofs through core (the socket checked as core's
+  before a proof is sent), takes the method list and presence.keys from core, gets passkey
+  challenges from core, and refuses enroll, remove and presence.code (core_owned). A key planted
+  in vyred's own presence_keys proves nothing. A core that's down refuses; nothing falls back.
+  Testbox: 99/99 (vyre-core, presence, boundaries, presence-bypass, daemon).
+- Still vyred's own, advisory on a Mac (ADR 0040 section 3): Touch ID, the terminal code, the
+  CLI window and presence sessions. Sessions become core's with the Deck rule, next to the vault
+  (phase 2), since that is what they serve.
+- Next, phase 1c: the person's clients write to core directly. The Capsule enrolls its key and
+  removes keys through core (with capsule-pro); `vyre presence` in a terminal does the same;
+  core's first key comes from the installer's code. Then phase 2.
