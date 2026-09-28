@@ -4,6 +4,37 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### PERSON_ONLY is derived from the manifests, default-deny (security hotfix)
+
+- A tool whose callers name only the person's own surfaces (cli, local, deck, capsule) read as
+  person-only, but core/daemon's floor block (the own-process check that refuses a `claude` or
+  thread process even when it spoofs "cli") only ever fired for a tool core/presence's hand-kept
+  PERSON_ONLY named, or one that asked for presence itself. Anything else had nothing beyond the
+  ordinary caller-kind check, which a model's own shell can pass exactly as a real terminal would.
+  files.receive was the latest instance found this way; a sweep of every module's real tool
+  definitions (the same sandboxed load docs:ref uses) found dozens more: link.pair, link.unpair,
+  vault.device.join, vault.device.revoke, vault.vaults.create, files.drive.mount/unmount/open,
+  files.send, agents.delete, memory.correct/uncorrect/merge/split/read, and more.
+- Fixed: core/presence's new `personOnly(name, def)` treats a tool as person-only whenever its own
+  declared callers are person-surfaces alone, default-deny, unless the tool is named in the new
+  `OPT_OUT` set (harmless even under a spoofed "cli", one line of reason each: tips.*, a suggested
+  skill-install dismissal, local voice output, a local diagnostic bundle, a read-only tailnet probe,
+  ending this Mac's own person session). OPT_OUT may only shrink; a new entry needs the reviewer's
+  own sign-off (test/person-only-guard.test.js freezes it, same shape as boundaries.test.js's
+  ALLOW). Nothing that sends, pairs, joins, or changes what is remembered may ever be opted out.
+- core/daemon/index.js's floor check now calls `personOnly(name, def)` in place of a bare
+  `PERSON_ONLY.has(name)`; `link.call`'s carried `inner` tool (no local def available for it) is
+  unchanged, checked by name against PERSON_ONLY/HUMAN_ONLY only, as before.
+- Tests: test/person-only-guard.test.js (every real tool's callers agree with personOnly(); OPT_OUT
+  only shrinks; OPT_OUT never names anything on the reviewer's protect list), and a new case in
+  test/peer.test.js proving a previously-unprotected tool (link.pair, not on PERSON_ONLY's own list)
+  is now refused under a claude exactly as agents.create (which is) already was, while an opted-out
+  one (link.find) is correctly left alone by the derivation. One pre-existing test's expectation
+  updated to match (probe.mine now takes the explicit "inside a Claude session" path instead of
+  falling through to a caller-kind mismatch: same refusal, clearer reason).
+- Verified nothing legitimate breaks: core/harness, core/daemon, core/cli, deck, core/presence,
+  test/presence-bypass.test.js, test/presence-cli.test.js, all green on testbox (1445+ tests).
+
 #### The docker-api bearer's folder exists in the image
 
 - box/Dockerfile makes /var/lib/vyre-secrets owned by vyre (1000), mode 700. Without it the new

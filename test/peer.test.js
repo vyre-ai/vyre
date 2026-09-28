@@ -123,6 +123,33 @@ test("peer: a person-only call from under a claude is refused silently; the same
   assert.match(held.body.error.message, /inside a Claude session/);
 });
 
+test("peer: a tool with person-only callers is refused under a claude by name alone, even off PERSON_ONLY's own hand-kept list (e2e review, 28 Sep)", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [], vault: { keystore: "file" } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const dir = fs.mkdtempSync(path.join(root, "peer-"));
+  const socket = d.paths.socket;
+
+  // link.pair is not on PERSON_ONLY's own hand-kept list, and its callers are person surfaces
+  // alone, so this is derived; it names no address at all, so this never reaches its own logic --
+  // the floor refuses it first, the same "inside a Claude session" 403 agents.create (which IS on
+  // the hand-kept list) gets above.
+  const inside = await client(dir, socket, "link.pair", {}, { underClaude: true });
+  assert.equal(inside.status, 403, JSON.stringify(inside));
+  assert.equal(inside.body.error.code, "denied");
+  assert.match(inside.body.error.message, /inside a Claude session/);
+  const outside = await client(dir, socket, "link.pair", { box: "https://127.0.0.1:1" });
+  assert.notEqual(outside.status, 403, JSON.stringify(outside));
+
+  // link.find is opted out (core/presence's OPT_OUT: a read-only tailnet probe). Its callers are
+  // person surfaces too, but personOnly() must say no for it, or this whole mechanism would
+  // block every opted-out tool exactly as it blocks link.pair.
+  const { personOnly } = await import("../core/presence/index.js");
+  assert.equal(personOnly("link.find", { callers: ["cli", "local", "capsule"] }), false);
+  assert.equal(personOnly("link.pair", { callers: ["cli", "local", "capsule"] }), true);
+});
+
 test("peer: a person's label from under a claude is the session's own, for every tool; from outside it stays the person's", async t => {
   const root = tempHome(t);
   // A probe that says who vyred took the caller to be, and one open only to the person's surfaces
@@ -142,9 +169,12 @@ test("peer: a person's label from under a claude is the session's own, for every
     const inside = await client(dir, socket, "probe.who", {}, { underClaude: true, headers });
     assert.equal(inside.status, 200, JSON.stringify(inside));
     assert.equal(inside.body.data.caller, "mcp", `${label} from a model's shell is the model's`);
+    // probe.mine's callers are person surfaces alone, so it is now derived person-only
+    // (core/presence's personOnly(), e2e review 28 Sep): the floor refuses it by name, before the
+    // model's relabel to "mcp" is even reached, rather than a plain caller-kind mismatch.
     const mine = await client(dir, socket, "probe.mine", {}, { underClaude: true, headers });
     assert.equal(mine.status, 403, `${label}: ${JSON.stringify(mine)}`);
-    assert.match(mine.body.error.message, /not available to mcp callers/);
+    assert.match(mine.body.error.message, /inside a Claude session/);
     // The person at a terminal, the Deck and the Capsule on the socket keep their label.
     const outside = await client(dir, socket, "probe.who", {}, { headers });
     assert.equal(outside.body.data.caller, label, JSON.stringify(outside));
