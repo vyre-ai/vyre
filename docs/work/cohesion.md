@@ -92,10 +92,10 @@ answer first. Top 5, sent to owners:
    reads the RAW "working" value directly — a mismatch inside switchboard's own blast radius, not
    just across surfaces), and asks.js's ask.raised. Sent to sessions with the harness detail so
    thread.status's shape accounts for it before chat/Capsule/CLI converge on it.
-5. **The assistant's "sees all linked projects" rule bypasses projects.access** (reads memory's own
-   graph project set, `{all:true}`, not the grants table) — probably correct by design (the
-   assistant is privileged, always-there) but not yet stated as intentional anywhere. Sent to
-   memory-iq: one doc line once they touch that code, no build change asked.
+5. **The assistant's "sees all linked projects" rule bypasses projects.access — RESOLVED.** memory-iq
+   added a one-line comment at core/memory/index.js's {all:true} branch (b4377004, work/memory-iq):
+   deliberately independent of projects.access; a future restriction is a rule change there, not a
+   projects.access row. Comment-only, no behavior change.
 
 Chat-cohesion pass (item 3, same session): Deck chat and pwa share the same deck/chat/session.js
 (monorepo — pwa's own work/pwa branch (waiting/context/sight-pills) hasn't merged to main yet, so
