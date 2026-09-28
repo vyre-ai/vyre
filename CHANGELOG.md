@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Landing page: a tap hint on touch/narrow screens, and the Mac tab names what it does
+
+- The hero's "Press Option-Space to try the Capsule right here" hint made no sense without a
+  keyboard. `@media (pointer: coarse), (max-width: 720px)` now swaps the key chip and that line
+  for "Tap to try the Capsule right here."; the "Or open it" button already opens the demo on tap
+  either way, so nothing else changes. Scoped to `.hint` only, not the other Option-Space mentions
+  further down the page describing the Capsule feature generally.
+- The install command's "Mac" tab (both the hero and the closing copy) only said "Vyre is not on
+  npm yet, so it installs from the same tarball the server uses.", never that this Mac becomes a
+  paired device, not the server (the server is Linux only). Leads with "This puts Vyre on your Mac
+  as a device that pairs with your server (Linux only) over your tailnet." before the existing
+  sentence.
+
 #### install-box.sh: shellcheck actually clean, and a quiet line for Docker's own wait
 
 - Fixed a real, previously undetected bug: `pick_look()`'s escape-code assignments

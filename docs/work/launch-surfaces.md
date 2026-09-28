@@ -261,6 +261,12 @@ Resumed after the restart (28 Sep), reading RULES.md/HANDOFF.md fresh:
   committed; the lead asked for paths, not files in the repo), teardown confirmed (no leftover
   chrome/http.server processes on testbox). Worth remembering: any future phone-width screenshot
   on this Chromium build needs CDP device-metrics override, not `--window-size` alone.
+- Two real phone-screen findings from the lead's own look at those screenshots, both fixed and
+  verified with a proper CDP mobile-emulation screenshot: the hero's Option-Space hint now reads
+  "Tap to try the Capsule right here." under `(pointer: coarse), (max-width: 720px)` instead of a
+  keyboard shortcut nobody on a touch device can press; the install command's Mac tab now leads
+  with "This puts Vyre on your Mac as a device that pairs with your server (Linux only) over your
+  tailnet.", since it previously never said the Mac pairs rather than serves.
 
 ## Next
 
