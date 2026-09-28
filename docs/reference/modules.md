@@ -61,7 +61,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 27 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
-| [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
+| [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
 
@@ -558,7 +558,7 @@ Push-to-talk for the Capsule: streams the mic to a speech provider and relays th
 - Folder: `local/voice`, version 0.1.0
 - Runs on: `local`
 - Requires: none
-- Tools: [3](tools.md#voice)
+- Tools: [4](tools.md#voice)
 - Emits: no events
 - Shows on: capsule
 - Streams: `listen`
