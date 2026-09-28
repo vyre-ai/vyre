@@ -11,30 +11,38 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   (`projects.create`, `projects.add-workspace`, both already built by federation).
 
 ## Doing
-- Waiting on reviewer (tokens, scopes, git-safe security) and team-lead sign-off on ADR 0041
-  before any code lands.
+- ADR 0041 reviewer round done: approved with 1 HIGH (credential.helper would save the token
+  after a clone; fixed with `-c credential.helper=` + `-c credential.interactive=never` on every
+  askpass call) and 3 MEDIUM (declare callers on every tool — none model-reachable; revoke the
+  token at GitHub on `github.remove`, not just drop the vault item; wire remind.js). Fixed in the
+  ADR (commit to follow). Building now.
 
 ## Next
 1. `core/github/module.json` + `core/github/index.js`: `github.connect`, `.connect.cancel`,
    `.accounts`, `.remove` (device flow, mirrors `google/connect.js`'s lifecycle but polling
-   instead of a loopback listener).
+   instead of a loopback listener; `.remove` revokes at GitHub via
+   `DELETE /applications/{client_id}/token` before dropping the vault item).
 2. `core/github/connect.js`: RFC 8628 device flow (start + internal poll timer), vault item
    `github-<name>` (kind `pat`), account row in `github_accounts`.
 3. Vault: add `github-oauth` provider entry (`how: "oauth"`, `next: { tool: "github.connect" }`)
-   alongside the existing pasted-PAT `github` entry in `core/vault/providers.js`.
+   alongside the existing pasted-PAT `github` entry in `core/vault/providers.js`; a `github-pat`
+   reminder reason in `remind.js`.
 4. `github.repos`, `github.project`, `github.project.of` (repo list, clone + `projects.create`/
-   `add-workspace`, and the project-to-repo lookup other modules read).
-5. `lib/git-safe.js` addition (coordinate with sessions, its owner): a per-call askpass helper so
-   a private clone/fetch/push never puts a token in the remote URL or repo config.
-6. `github.session.worktree` / `.session.cleanup` (internal), plus the `sessions` side that calls
-   them at session start/end — coordinate with sessions before touching anything there.
+   `add-workspace`, and the project-to-repo lookup other modules read). Callers per the ADR's
+   table — never a model.
+5. `lib/git-safe.js` addition (coordinate with sessions, its owner): `gitWithAskpass(dir, args,
+   { fd })` — token via an inherited one-time pipe fd, never an env var; `credential.helper=` and
+   `credential.interactive=never` forced on top of `SAFE_GIT_ARGS`; a test proving no helper runs
+   and the token never appears in `ps` output or on disk.
+6. `github.session.worktree` / `.session.cleanup` (internal, `module:sessions` only; session id
+   sanitised to a safe path/branch segment before use), plus the `sessions` side that calls them
+   at session start/end — coordinate with sessions before touching anything there.
 7. Settings (launch) and onboarding (launch) UI: device code + verification link, connected
    state with avatar, disconnect. Not this team's code; hand off the tool shapes once cleared.
 
 ## Needs from others
-- reviewer: sign off on ADR 0041 (scope=repo, askpass-per-call auth, PERSON_ONLY on connect/
-  remove/project) before code starts.
-- sessions: the `git-safe.js` askpass addition and the session-start/end hook that calls
+- sessions: the `git-safe.js` askpass addition (`gitWithAskpass`, fd-based token, forced
+  `credential.helper=`) and the session-start/end hook that calls
   `github.session.worktree`/`.cleanup` — this team proposes the shape in the ADR, sessions owns
   the file.
 - federation: confirm `projects.create`/`projects.add-workspace` callers include `module:github`
@@ -43,6 +51,8 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
 - launch: Settings and onboarding screens once the tool shapes are cleared.
 
 ## Changed contracts
-- None yet (design only). Proposed in ADR 0041: `lib/git-safe.js` gains a per-call askpass path;
-  `core/vault/providers.js` gains a `github-oauth` entry; `core/projects/index.js`'s caller
-  allowlist for `projects.create`/`add-workspace` may gain `module:github`.
+- None yet (design only, code starting now). Proposed in ADR 0041: `lib/git-safe.js` gains
+  `gitWithAskpass` (fd-based token, forced no-credential-helper); `core/vault/providers.js` gains
+  a `github-oauth` entry; `core/vault/remind.js` gains a `github-pat` reason;
+  `core/projects/index.js`'s caller allowlist for `projects.create`/`add-workspace` may gain
+  `module:github`.

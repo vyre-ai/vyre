@@ -56,8 +56,16 @@ one row in `github_accounts (name, login, avatar_url, item, added)`.
 `github.connect.cancel {id}` and the sign-in's own 15-minute expiry both end it the way a Google
 sign-in ends. There is no `.finish` here: a device-flow browser never lands back on Vyre, so there
 is nothing to paste. `github.accounts` lists `{name, login, avatar_url}`, never a token.
-`github.remove {name}` disconnects; the vault item stays (the vault's own grant to revoke, as
-`google.remove`'s comment already says for Google).
+
+`github.remove {name}` (reviewer: a live non-expiring `repo` token must not just sit in the vault
+once disconnected) fetches the item, calls `DELETE /applications/{client_id}/token` with HTTP
+basic auth `client_id:client_secret` and `{ "access_token": token }` as the body — the one call in
+this module that reads `VYRE_GITHUB_OAUTH_CLIENT_SECRET` — which revokes the token at GitHub, then
+deletes the vault item and drops the account row. A revoke that fails (GitHub unreachable, already
+revoked) still removes the account and item locally and says so plainly, so a person is never
+stuck with a connected-looking account whose token doesn't work; it never leaves the token behind
+silently. Rotation: `remind.js`'s existing mechanism gets a `github-pat` reason (device-flow
+tokens are non-expiring, so this is "have you looked at this lately", not an expiry).
 
 Vault catalog change: `providers.js`'s `github` entry moves from `how: "field"` (paste a PAT) to
 a second entry `github-oauth` with `how: "oauth"` and `next: { tool: "github.connect" }`, mirroring
@@ -72,7 +80,13 @@ organization_member&sort=updated&per_page=100`, paginated to `limit` (default 30
 filtered client-side by `q` against `full_name` and `description`. Returns
 `[{ full_name, name, owner, private, default_branch, description, updated_at, html_url }]`, never
 a clone URL with a token in it. `account` picks the connected account when there is more than one
-(the same `forRead`/`forWait` shape as Google's).
+(the same `forRead`/`forWait` shape as Google's). `callers`: people (`cli`, `local`, `deck`,
+`capsule`) plus `module:sessions` and `module:launch` only — this lists every private repo the
+account can reach, so it is never model-reachable, the same as `github.connect`/`.remove`/
+`.project`. No tool in this module that a model can call ever touches the token: reads (`repos`)
+are person/module-only, and there is no model-reachable write in 0.1.1 (clone and worktree
+creation run only from `github.project`, itself person/module-only). Any future model-reachable
+push or PR tool goes through the Gate, unheld access is not on the table for it.
 
 **Scope decision: `repo`.** An OAuth App's device-flow scope is fixed at the request that minted
 the token (unlike a GitHub App, there is no per-repo installation), so the choice is between
@@ -91,35 +105,58 @@ account?}`:
 1. `github.repos` to resolve `repo` (`owner/name` or a full URL) to its clone URL and default
    branch, for the resolved account.
 2. Clone into `<projects dir>/<repo name>` (`config.js`'s `boxProjectsDir()`/local equivalent;
-   `<repo name>` de-duplicated the way `scanEnv` de-dupes names) with `lib/git-safe.js`'s
-   `gitAsync`, the only way this module runs git, ever. Authentication for a private clone never
-   touches the remote URL or the repo's own config (both persist to disk and would leak the
-   account across every future git call in that folder): a per-call `GIT_ASKPASS` script and an
-   env var holding the token are set only for this one `clone`/`fetch`/`push` invocation, read
-   once by the script and never written anywhere. This is a small addition to `git-safe.js`
-   (`gitWithAskpass(dir, args, tokenProvider)`), owned by `sessions` (git-safe's owner);
-   `github` calls it, never reimplements auth.
+   `<repo name>` sanitised — `[A-Za-z0-9._-]` only, no leading dot, no `..` — and de-duplicated
+   the way `scanEnv` de-dupes names) with `lib/git-safe.js`'s `gitAsync --no-recurse-submodules`,
+   the only way this module runs git, ever.
+
+   Authentication for a private clone never touches the remote URL or the repo's own config
+   (both persist to disk and would leak the account across every future git call in that folder).
+   Two things the reviewer caught, both fixed here:
+   - **The token never sits in an env var.** A child process's environment is readable by any
+     same-uid process (`ps eww` on a Mac). The askpass script is handed the token over a
+     one-time, already-open pipe fd (an fd number in `GIT_ASKPASS_TOKEN_FD`, the read end passed
+     with `stdio` at spawn, closed the moment the script reads it), not `GITHUB_TOKEN=...` in
+     the environment. The script itself holds no token: it reads the fd and exits. It lives in a
+     `0700` temp dir made fresh per call and removed straight after, never a fixed path.
+   - **`credential.helper` must not run at all.** macOS ships `credential.helper=osxkeychain` in
+     git's system config, and many people set one globally too; without an override, a successful
+     askpass hands the token straight to that helper, which stores it in the login keychain for
+     `github.com` — readable by any same-uid process, and silently reused by every later `git
+     push` in that folder, a model's own terminal `git push` included. Every call through this
+     path adds `-c credential.helper=` (empty clears the configured list) and `-c
+     credential.interactive=never` on top of `git-safe.js`'s existing `SAFE_GIT_ARGS`.
+
+   This is a small, tested addition to `git-safe.js` (`gitWithAskpass(dir, args, { fd })`),
+   owned by `sessions` (git-safe's owner); `github` calls it, never reimplements auth. A test
+   proves no credential helper runs and that the token never appears in `ps` output or on disk.
 3. `ctx.call("projects.create", { name, home: clonedPath })`, or when the person already has a
    project and just wants to attach the repo, `projects.add-workspace`. `github` never writes to
-   `projects`' own tables; it only calls its tools, per the module contract.
+   `projects`' own tables; it only calls its tools, per the module contract. (Needs federation's
+   sign-off: today's caller allowlist for `add-workspace` names `module:sync` as an exception —
+   `module:github` needs the same one, see docs/work/github.md.)
 4. The project row remembers the repo (`github_projects (project, account, full_name,
    default_branch)`, keyed by the project's slug), so later steps (worktree-per-session, and
    0.1.2's PRs and git settings) know which project is a GitHub project without asking again.
+
+`callers` for `github.project`: people plus `module:launch` (the onboarding "connect a repo"
+step). Never a model.
 
 ### 5. A worktree and branch per session
 
 Ownership split, through the registry only: `sessions` decides *when* (a session starting in a
 project `github_projects` knows about); `github` does the git mechanics.
 
-- `github.session.worktree { project, session }` (internal, called by `sessions` at session
-  start, never by a model): if the project is not a GitHub project, returns `null` (sessions then
-  uses the project's home folder directly, as today). Otherwise: `git worktree add
-  <project>/.sessions/<session-short-id> -b vyre/<session-short-id> <default_branch>`
+- `github.session.worktree { project, session }` (`internal: true`, callers `["module:sessions"]`
+  only, never a model, never a person surface directly): if the project is not a GitHub project,
+  returns `null` (sessions then uses the project's home folder directly, as today). Otherwise:
+  the session id is reduced to a safe short id first (`[A-Za-z0-9_-]` only, no leading dot, no
+  `..`, truncated — the reviewer's LOW, since it becomes a path segment and a branch name), then
+  `git worktree add <project>/.sessions/<safe-id> -b vyre/<safe-id> <default_branch>`
   through `git-safe`, and returns the new path. `sessions` sets the session's cwd there.
-- `github.session.cleanup { project, session }` (internal, called by `sessions` when a thread is
-  archived or its project changes): `git worktree remove`. The branch is left in place — a
-  session's work is never deleted by ending the session — unless the worktree has zero commits
-  ahead of its base, in which case the branch is pruned too (nothing to lose).
+- `github.session.cleanup { project, session }` (same caller restriction): `git worktree remove`.
+  The branch is left in place — a session's work is never deleted by ending the session — unless
+  the worktree has zero commits ahead of its base, in which case the branch is pruned too
+  (nothing to lose).
 - `.sessions/` is repo-local and machine-local: it is written to the project's own `.git/info/
   exclude` once (never the repo's committed `.gitignore`, which is the person's file) so `git
   status` in the person's own clone of the same repo never shows Vyre's worktrees.
@@ -129,13 +166,23 @@ project `github_projects` knows about); `github` does the git mechanics.
 This is additive to `sessions`' own contract (ADR 0030): a "project has a repo" fact `sessions`
 reads through `ctx.call("github.project.of", { project })`, never a direct table read.
 
-### 6. Manifest and tools (0.1.1)
+### 6. Manifest, tools and callers (0.1.1)
 
 `module.json`: `requires: ["vault"]`, `does.tools`: `github.connect`, `github.connect.cancel`,
 `github.accounts`, `github.remove`, `github.repos`, `github.project`, `github.project.of`,
 `github.session.worktree` (internal), `github.session.cleanup` (internal). `watches.emits`:
-`github.added`, `github.removed`, `github.connected`, `github.connect-failed`. `shows.deck`:
-`settings:connections` (joins Google there, not a new screen). `needs.vault`: `["per-connection"]`.
+`github.added`, `github.removed`, `github.revoke-failed`, `github.connected`,
+`github.connect-failed`. `shows.deck`: `settings:connections` (joins Google there, not a new
+screen). `needs.vault`: `["per-connection"]`.
+
+| Tool | Callers | Model-reachable |
+|---|---|---|
+| `github.connect`, `.connect.cancel`, `.remove`, `.accounts` | people | never |
+| `github.repos`, `github.project`, `github.project.of` | people, `module:sessions`, `module:launch` | never |
+| `github.session.worktree`, `.session.cleanup` | `module:sessions` only, `internal: true` | never |
+
+No tool a model can call in 0.1.1 touches the token, clones, or writes a worktree. Everything
+that does is a person surface or one of the two modules named above.
 
 ## Consequences
 
