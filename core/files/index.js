@@ -56,6 +56,12 @@ export function merge(local, box, limit) {
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const hasNul = buf => buf.includes(0);
+/** Owner surfaces, modules, an agent's own session (mcp, harness) and the tailnet reader case
+ * (the user's other device). Reviewer's MEDIUM 2 (450c34b6): these four used to declare no
+ * callers at all, so a tailnet guest, a hook or any unrecognised kind reached them the same as
+ * the owner; access.js's reach() now also refuses that internally, but this is the registry's
+ * own backstop, the same list core/memory's tools are read by. */
+const FILES_CALLERS = ["cli", "local", "deck", "capsule", "module", "mcp", "harness", "tailnet"];
 
 /** Only the fields a search result is meant to carry, whatever a remote sent. */
 const tidy = (r, source) => ({ source, path: String(r.path), name: String(r.name), kind: String(r.kind),
@@ -191,6 +197,7 @@ export default {
         q: { type: "string" }, limit: { type: "integer" },
         kinds: { type: "array", items: { type: "string", enum: KINDS } },
         where: { type: "string", enum: ["all", "here", "box"] } } },
+      callers: FILES_CALLERS,
       run: async ({ q, limit = 50, kinds, where = "all" }, { caller } = {}) => {
         q = q.trim();
         if (!q) throw new Error("q is required");
@@ -217,6 +224,7 @@ export default {
     ctx.tool("files.stat", {
       description: "Size, dates and kind of one file or folder, on this machine or the box.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] } } },
+      callers: FILES_CALLERS,
       run: async ({ path: p, source }, { caller } = {}) => {
         const scope = await reach(ctx, caller);
         // See files.search: a named agent's identity does not survive the hop to the box, so
@@ -249,6 +257,7 @@ export default {
     ctx.tool("files.preview", {
       description: "A look inside one file: the start of a text file, or a small image. Other kinds say what they are and show nothing.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] }, max: { type: "integer" } } },
+      callers: FILES_CALLERS,
       run: async ({ path: p, source, max }, { caller } = {}) => {
         const scope = await reach(ctx, caller);
         if (target(source) === "box") {
@@ -340,6 +349,7 @@ export default {
       description: "Bring a file from the box to this Mac (source box), saved under Vyre's folder. Called on the machine holding the file, returns one chunk of it.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] },
         offset: { type: "integer" }, length: { type: "integer" } } },
+      callers: FILES_CALLERS,
       run: async ({ path: p, source, offset, length }, { caller } = {}) => {
         if (role === "local" && source === "mac") throw new Error("already on this Mac");
         const scope = await reach(ctx, caller);

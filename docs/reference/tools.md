@@ -668,7 +668,7 @@ Bring a file from the box to this Mac (source box), saved under Vyre's folder. C
   - `length` integer
   - `offset` integer
   - `source` "mac" or "box"
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ### `files.preview`
 
@@ -678,7 +678,7 @@ A look inside one file: the start of a text file, or a small image. Other kinds 
   - `path` string, required
   - `max` integer
   - `source` "mac" or "box"
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ### `files.receive`
 
@@ -707,7 +707,7 @@ Find files by name or content on this machine and, from the Mac, on the box too.
   - `kinds` list of one of "folder", "text", "code", "image", "pdf", "doc", "audio", "video", "archive", "other"
   - `limit` integer
   - `where` one of "all", "here", "box"
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ### `files.send`
 
@@ -725,7 +725,7 @@ Size, dates and kind of one file or folder, on this machine or the box.
 - Input:
   - `path` string, required
   - `source` "mac" or "box"
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ## gate
 

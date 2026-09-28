@@ -443,9 +443,9 @@ test("files: a Keynote package named *.key is reachable; key files are refused b
   // Keynote saves a document as a folder named *.key.
   put(path.join(work, "talks", "Budget.key", "Index.zip"), "zip");
   put(path.join(work, "talks", "Budget.key", "preview.jpg"), "jpg");
-  const pkg = await reg.call("files.stat", { path: path.join(work, "talks", "Budget.key") });
+  const pkg = await reg.call("files.stat", { path: path.join(work, "talks", "Budget.key") }, "cli");
   assert.equal(pkg.data.dir, true);
-  assert.ok(!(await reg.call("files.stat", { path: path.join(work, "talks", "Budget.key", "Index.zip") })).error);
+  assert.ok(!(await reg.call("files.stat", { path: path.join(work, "talks", "Budget.key", "Index.zip") }, "cli")).error);
   // A private key is a key whatever it is called.
   put(path.join(work, "notes", "server.key"), "budget\n");
   // Put together at run time, so the source itself never looks like it carries a key.
@@ -457,7 +457,7 @@ test("files: a Keynote package named *.key is reachable; key files are refused b
     await refused(reg, "files.preview", { path: path.join(work, "notes", p) });
     await refused(reg, "files.fetch", { path: path.join(work, "notes", p) });
   }
-  const found = (await reg.call("files.search", { q: "budget" })).data.results.map(r => r.name);
+  const found = (await reg.call("files.search", { q: "budget" }, "cli")).data.results.map(r => r.name);
   assert.ok(found.includes("Budget.key"));
   assert.ok(!found.some(n => ["server.key", "budget-deploy.txt", "budget-tls"].includes(n)), found.join());
 });
@@ -472,8 +472,8 @@ test("files: a browser's cookies and saved logins, and a secrets folder, are nev
     await refused(reg, "files.stat", { path: f });
     await refused(reg, "files.fetch", { path: f });
   }
-  assert.ok(!(await reg.call("files.stat", { path: path.join(profile, "Bookmarks") })).error);
-  const found = (await reg.call("files.search", { q: "budget" })).data.results.map(r => r.path);
+  assert.ok(!(await reg.call("files.stat", { path: path.join(profile, "Bookmarks") }, "cli")).error);
+  const found = (await reg.call("files.search", { q: "budget" }, "cli")).data.results.map(r => r.path);
   assert.ok(!found.some(p => /Cookies|Login Data|Web Data|secrets/.test(p)), found.join());
 });
 
@@ -511,13 +511,31 @@ test("files: a named agent reads only its own granted project's folder, deny by 
   assert.deepEqual(all, [harlow, northwind].map(d => path.join(d, "brief.md")).sort());
 });
 
-test("files: the assistant is unrestricted, same as the user's own surfaces", async t => {
+test("files: the assistant reads every mapped project, unconditional, but files are raw content so it is not literally unrestricted (reviewer's M1 on 450c34b6)", async t => {
   const { work, harlow, northwind, vyreHome } = twoProjects(t);
   const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg },
-    agents: [{ name: "juno", kind: "assistant", projects: "*" }], projects: [], access: {} });
+    agents: [{ name: "juno", kind: "assistant", projects: "*" }],
+    projects: [{ slug: "harlow", name: "Harlow Legal", home: harlow, workspaces: [] }, { slug: "northwind", name: "Northwind", home: northwind, workspaces: [] }],
+    access: {} }); // no grants at all: the assistant reaches both anyway, never checked against projects.access
   const s = await callAs(reg, "juno", "files.stat", { path: path.join(harlow, "brief.md") });
   assert.equal(s.name, "brief.md");
   assert.equal((await callAs(reg, "juno", "files.stat", { path: path.join(northwind, "brief.md") })).name, "brief.md");
+  // A folder outside every mapped project is still refused: not truly all:true.
+  const outside = path.join(work, "elsewhere");
+  fs.mkdirSync(outside, { recursive: true });
+  fs.writeFileSync(path.join(outside, "notes.md"), "unmapped\n");
+  await refusedAs(reg, "juno", "files.stat", { path: path.join(outside, "notes.md") });
+});
+
+test("files: an unrecognised caller (a tailnet guest, say) reads with no projects at all, never as the owner (reviewer's M2 on 450c34b6)", async t => {
+  const { work, harlow, vyreHome } = twoProjects(t);
+  const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg } });
+  for (const caller of ["unknown", "tailnet-guest:eve@example.com", "hook"]) {
+    const r = await reg.call("files.stat", { path: path.join(harlow, "brief.md") }, caller);
+    assert.ok(r.error, `${caller} should not read as the owner`);
+  }
+  // The owner's own surfaces, by contrast, still do.
+  assert.ok(!(await reg.call("files.stat", { path: path.join(harlow, "brief.md") }, "cli")).error);
 });
 
 test("files: a projects.access revoke narrows a wildcard agent immediately, same as a named one", async t => {
