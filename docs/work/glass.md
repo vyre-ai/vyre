@@ -195,6 +195,22 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   testbox core/computers' own test files + dockerproxy: 277/277 pass, 9 skipped. Sent to the
   reviewer. Not yet done: wiring memberTokenKey to the real vault (module.json's needs.vault,
   the same shape tailnet.key already uses) -- pool.js takes it injected, faked in tests today.
+- Both reviewer LOWs plus the person-only tools and vault wiring (1c5c257e), the gate for this
+  sha per the lead: LOW 1 -- computers_agent_generations, a ledger that survives removal, so
+  bumpGeneration() never hands out a used generation again; addAgent bumps it on every add, a new
+  rotateAgent bumps it explicitly without touching membership. LOW 2 -- addAgent refuses (before
+  touching anything, including making the row) an agent already on a DIFFERENT shared computer.
+  computers.member.add/.remove/.rotate/.dispose are all PERSON_ONLY now, and memberTokenKey goes
+  to the real vault (MEMBER_TOKEN_ITEM = "vyre-shared-computer-member-key", module.json's
+  needs.vault, fetched fresh every time, never auto-generated -- a person vault.puts it first, the
+  same as tailnet's own key). Tests: pool.test.js 40/40 (5 new), computers.test.js +2. Live-
+  verified on testbox against the real stack: rotation invalidates the old derived token and
+  validates the new one at once; the cross-computer refusal leaves no trace of the second
+  computer at all. Stack torn down after. testbox core/computers/presence/docs suites: 380/380
+  pass, 10 skipped. Also fixed in this pass: docs/work/glass.md itself had literal "**" (several
+  glob mentions) that test/docs-build.test.js's own render check flags anywhere in the output --
+  it had been silently failing since roughly 3f03ddb0's own doc update; reworded, docs:ref
+  regenerated, all 61 docs tests pass now.
 - Presence enforced once security merges; a passkey step in the Deck.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
