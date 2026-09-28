@@ -146,6 +146,21 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   All 4 gate items plus M5 and the revocation checklist are now closed. The shared-computer schema
   shape (team-lead steer: add a kind column to computers_computers, a separate members table,
   existing rows untouched) is next, sent to the lead and reviewer together before any pool.js code.
+- Reviewer's re-review (28 Sep, after M5/f0b6b852 landed) found revocation point 4 was fixed the
+  wrong way: closeAgent auto-disposing the context on revoke and on rotation conflicts with the
+  lead's ruling that deletion is a person-previewed, explicit action, never automatic. Fixed at
+  2d0b8685: AGENT_TOKENS_FILE lines are now "id:name=token" (vyred's own unique agent id, never
+  reused; name is display-only and MAY repeat). cdpmux's contextStore/addClient/closeAgent are
+  keyed by agentId; closeAgent reverts to closing clients only; a new disposeAgentContext(agentId)
+  is the only thing that ever deletes a context, wired to a new owner-only POST /agents/dispose
+  that vyred calls only after a person has previewed the deletion. Tests: cdpmux.test.js 44/44,
+  index.test.js 18/18 (id:name=token throughout, a duplicate-display-name-is-fine test, a
+  dedicated /agents/dispose test). Live-verified on a fresh throwaway stack (vyre-glass-idcontext)
+  against the real image: revoking kit-1 closed its live WebSocket without touching its context;
+  disposing it afterward (the separate action) actually destroyed it; re-adding the same id with a
+  rotated token then got a genuinely fresh context (its earlier target was gone, not just
+  invisible). testbox core/computers/**/*.test.js + dockerproxy: 268/268 pass, 9 skipped -- freeze
+  lifted mid-pass, both the targeted suite and the live run are now done. Sent to the reviewer.
 - Presence enforced once security merges; a passkey step in the Deck.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
