@@ -22,6 +22,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import * as M from "./markers.js";
+
+/** A chat's session id, as Claude Code and the switchboard both mint it (crypto.randomUUID). A
+ * subagent's "<parent>/agent-<id>" is not a chat, so it is refused. */
+export const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { untilde } from "../config/index.js";
 import { compose, label } from "./brief.js";
 
@@ -191,7 +195,8 @@ export class Projects {
     // A chat made into a project (from_thread) is picked into it and gives it its avatar seed, so
     // the chat's draft tile carries over and turns solid (ADR 0043 section 6). Otherwise the seed
     // is the slug at creation, stored, so a later rename never changes the tile.
-    const from = from_thread ? M.parentOf(String(from_thread)) : null;
+    if (from_thread != null && !THREAD_ID.test(String(from_thread))) throw Object.assign(new Error("from_thread must be a chat's session id (a UUID)"), { code: "bad_input" });
+    const from = from_thread ? String(from_thread).toLowerCase() : null;
     const ids = [...new Set([...threads, ...(from ? [from] : [])].map(M.parentOf))];
     const p = /** @type {Project} */ (M.write(where, {
       name: clean, ...(org ? { org: String(org) } : {}), avatar_seed: from || slug,
@@ -307,6 +312,11 @@ export class Projects {
    * Every top-level session with its subagents folded in. A subagent is work done on its
    * parent's behalf: listing it separately would double every thread that used one.
    */
+  /** Whether the Recall index has this session (any turns), for from_thread's existence check. */
+  hasSession(id) {
+    return this.hasIndex() && !!this.db.prepare("SELECT 1 FROM recall_sessions WHERE id = ?").get(String(id));
+  }
+
   sessions() {
     if (!this.hasIndex()) return [];
     const list = this.valid();

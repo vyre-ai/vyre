@@ -28,7 +28,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - A project's marker stores `avatar_seed` at `projects.create`: the new slug, or with
   `from_thread` the chat's id (the chat is picked in too), so a chat's draft tile carries over and
   turns solid. `projects.list` returns it. A marker from before the field defaults to its slug and
-  is not rewritten on read; a rename never changes the seed.
+  is not rewritten on read; a rename never changes the seed. `from_thread` must be a chat's
+  session id (a UUID; a subagent id is refused) that exists, in the Recall index or as a live
+  switchboard thread; otherwise the create is refused with a plain error and nothing is made.
 
 #### deck: the four avatar families (ADR 0043), drawn everywhere a who shows
 

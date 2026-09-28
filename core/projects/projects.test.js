@@ -448,3 +448,30 @@ test("projects: avatar_seed is stored at create (the slug, or the chat a project
   assert.equal(M.load(old)?.avatar_seed, "old-one");
   assert.equal(JSON.parse(fs.readFileSync(path.join(old, M.MARKER), "utf8")).avatar_seed, undefined);
 });
+
+test("projects: from_thread must look like a chat's session id (reviewer LOW)", async t => {
+  const w = world(t);
+  for (const bad of ["harlow-legal", "x".repeat(500), `${ID.hub}/agent-1`, "../../etc"]) {
+    assert.throws(() => w.P.create({ name: "Nope " + bad.length, home: path.join(w.work, "nope-" + bad.length), from_thread: bad }), /from_thread must be/);
+  }
+  assert.ok(w.P.hasSession(ID.hub), "an indexed chat is known");
+  assert.ok(!w.P.hasSession("00000000-0000-4000-8000-000000000000"));
+});
+
+test("tools: projects.create refuses a from_thread chat that does not exist, and makes nothing", async t => {
+  const { start } = await import("../daemon/index.js");
+  const root = tempHome(t);
+  const work = path.join(root, "Work");
+  fs.mkdirSync(work, { recursive: true });
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ projectsDir: path.join(root, "projects"), roots: [work],
+    transcripts: [], modules: { disable: ["recall", "memory"] } }));
+  const d = await start({ root, log: () => {} });
+  try {
+    const home = path.join(work, "northwind");
+    const r = await d.registry.call("projects.create", { name: "Northwind", home, from_thread: "0f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0" }, "cli");
+    assert.match(String(r.error?.message), /no chat 0f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0/);
+    assert.ok(!fs.existsSync(path.join(home, M.MARKER)), "no project was made");
+    const shape = await d.registry.call("projects.create", { name: "Northwind", home, from_thread: "not-a-chat" }, "cli");
+    assert.match(String(shape.error?.message), /from_thread must be a chat's session id/);
+  } finally { await d.stop(); }
+});

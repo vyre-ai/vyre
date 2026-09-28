@@ -6,7 +6,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { Projects, MIGRATIONS } from "./projects.js";
+import { Projects, MIGRATIONS, THREAD_ID } from "./projects.js";
 import { label } from "./brief.js";
 import { moveProjects, RECORD } from "./move.js";
 import { boxProjectsDir, oldProjectsDir, workDir, home as vyreHome } from "../config/index.js";
@@ -122,6 +122,16 @@ export default {
       callers: [...OWNER, "module"],
       run: async (input, meta = {}) => {
         moduleCallerRefusal(meta, "projects.create");
+        // from_thread must name a chat that exists (reviewer LOW): in the Recall index, or a live
+        // switchboard thread not indexed yet. A made-up string would become a pick and the seed.
+        if (input.from_thread != null) {
+          const id = String(input.from_thread);
+          if (!THREAD_ID.test(id)) throw Object.assign(new Error("from_thread must be a chat's session id (a UUID)"), { code: "bad_input" });
+          if (!P.hasSession(id)) {
+            const t = await ctx.call("threads.get", { thread: id, limit: 1 });
+            if (t.error || !t.data?.thread) throw Object.assign(new Error(`there is no chat ${id} to make a project from`), { code: "not_found" });
+          }
+        }
         const created = P.create(input);
         const r = await ctx.call("agents.list", {});
         if (!r.error) {

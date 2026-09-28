@@ -74,7 +74,10 @@ deck/css/deck.css span.vy-av rules; deck/css/views/agents.css, settings.css.
   (core/daemon, next to the resilience route; test/daemon.test.js covers it); avatars.js imports
   it. Also adapted test/daemon.test.js's two system.info asserts to anywhere's fingerprint8 fields.
   Testbox 882/882 (+1 skipped), Chrome 14/14.
-- Needs from app-design: avatar.md and ADR 0043 should say renaming an agent changes its blob
+- Reviewer CLEARED a1d8ac72 + cbd41296. Their LOW done in the follow-up below: from_thread must be
+  a UUID-shaped session id that exists (recall_sessions, else threads.get), else a plain error and
+  no project. Tests in core/projects/projects.test.js. PAUSED here per the lead.
+- (done by app-design d9f6e445) avatar.md and ADR 0043 should say renaming an agent changes its blob
   (seed = name), and name projectBytes() as the project-tile seed-to-bytes rule for other surfaces.
 
 ## Done
