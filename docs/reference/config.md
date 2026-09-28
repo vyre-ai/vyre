@@ -33,6 +33,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `modules.disable` | `string[]` | none | Modules never to start. |
 | `network` | `object` | see [network](#network) | How this machine is reached. See [Tailscale](../using/tailscale.md). |
 | `onboard` | `any` | unset | Onboarding's own settings. |
+| `owner` | `{ id: string }` | unset | The person's own, non-secret identity. Written only by core/onboard's own startup, never by a tool's input. |
 | `glass` | `{ roots?: string[], egress: { enabled: boolean, sites: string[] } }` | none | Not described yet. |
 | `computers` | `{ tailnet: { enabled: boolean, tag: string }, [k: string]: any }` | none | Not described yet. |
 | `hooks` | `{ enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> }` | none | Not described yet. |

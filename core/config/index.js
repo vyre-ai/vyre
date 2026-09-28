@@ -114,7 +114,7 @@ export function isDevice(machine) { return machine === "device" || machine === "
 
 /** @typedef {{ name?: string, role: "box"|"local", machine: "solo"|"server"|"device", projectsDir: string, roots: string[],
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
- *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any,
+ *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any, owner?: { id: string },
  *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
  *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any },
  *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> },
@@ -122,7 +122,9 @@ export function isDevice(machine) { return machine === "device" || machine === "
  *   app: { root: boolean },
  *   term: { keep_hours: number, max?: number, shell?: string },
  *   projects?: { move?: "enabled" } }} Config
- * projects.move "enabled" lets projects.move really move a box's homes (off until box-deploy validates it).
+ * owner.id: the person's public, non-secret 16-byte id (hex), for the phone's avatar (team-lead,
+ * 28 Sep) -- see ownerId()/fingerprint8() below. projects.move "enabled" lets projects.move
+ * really move a box's homes (off until box-deploy validates it).
  * app.root: off until the one app (ADR 0027) actually takes over "/" from the Deck; while off,
  * /app/* still serves the app beside the Deck as it does today (core/daemon/app.js). Once mobile
  * flips it, /app/* becomes a 301 to the same path under "/", so an installed /app/ Home Screen
@@ -295,6 +297,34 @@ export function save(patch, root = home(), live) {
     } else live[k] = v;
   }
   return user;
+}
+
+/**
+ * The person's public, non-secret id: 16 random bytes, hex. Made once -- during onboarding (the
+ * first time anything reads it, which for a fresh install is right away) or, for an install that
+ * predates this field, on the first read after an upgrade -- and never changed after. Only
+ * core/onboard's own startup ever calls this with `root`/`live` to persist a fresh one; every
+ * other reader gets whatever is already there, or null before anything has run since the upgrade
+ * (system.info's own "owner.name" already works this way).
+ * @param {any} cfg @param {string} [root] @param {any} [live]
+ */
+export function ownerId(cfg, root, live) {
+  if (cfg.owner && cfg.owner.id) return cfg.owner.id;
+  if (!root) return null;
+  const id = crypto.randomBytes(16).toString("hex");
+  save({ owner: { id } }, root, live);
+  return id;
+}
+
+/**
+ * What a surface may show before anyone is proven present: not the id itself (an unguessable
+ * secret's worth of entropy, kept out of logs and screens on principle even though it isn't a
+ * credential), but a short, stable fingerprint of it -- the same 8 hex characters every time, for
+ * this person, everywhere (a phone matching its own scan against the box it is pairing to).
+ * @param {string} id
+ */
+export function fingerprint8(id) {
+  return crypto.createHash("sha256").update(`vyre:person:v1:${id}`).digest("hex").slice(0, 8);
 }
 
 /** Create the data folders if they are missing. Safe to call every start. */

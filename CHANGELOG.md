@@ -42,6 +42,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a purely declarative/metadata mismatch with no functional regression). Fixed the key. New test
   (`core/sync/sync.test.js`) proves the underlying watch actually turns sync off on `link.unpair`
   alone, not only reachable through `sync.consent { on: false }` as the existing coverage showed.
+#### owner.id: a public, non-secret person id, for the phone's avatar
+
+- `config.ownerId()` makes one, 16 random bytes as hex, the first time anything reads it: right
+  away on a fresh install (core/onboard's own startup calls it before the wizard's first
+  `onboard.status`), or on the next restart for an install that predates this field. Never
+  changed after. Only onboard's own startup ever writes it; no tool takes it as input.
+- `system.info`'s `owner` object gains `fingerprint8`, a short, stable, non-secret fingerprint of
+  the id (`sha256("vyre:person:v1:" + hex(owner.id))[0:8]`, `config.fingerprint8()`). The id
+  itself never leaves this machine through any tool.
 
 #### link: link.unpair is person-only again, with one machine exception
 

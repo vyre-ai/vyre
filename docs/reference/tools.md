@@ -4229,7 +4229,7 @@ Returns what it was given. For checking that tools and the rules path work.
 
 ### `system.info`
 
-What this machine is running: Vyre version and the commit it was built from, role, host and platform, the owner's name as onboarding saved it (for a surface's avatar), and the assistant's name, which every surface uses to label replies (null: surfaces say "Vyre"), and network.origins: the other sites (Vyre's hosted app) that may call this box from the owner's browser ([] when off).
+What this machine is running: Vyre version and the commit it was built from, role, host and platform, the owner's name as onboarding saved it and their fingerprint8 (a short, stable, non-secret fingerprint of owner.id, for a surface's avatar), and the assistant's name, which every surface uses to label replies (null: surfaces say "Vyre"), and network.origins: the other sites (Vyre's hosted app) that may call this box from the owner's browser ([] when off).
 
 - Input: none
 - Callers: any caller
