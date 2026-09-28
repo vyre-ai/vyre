@@ -751,3 +751,45 @@ pending (queued behind testbox load).
   person confirms/edits).
 - Wire an actual caller (files.drive.*, or whatever serves synced content to an agent) to
   projects.access.check.
+
+## Move engine: contract only, before the build (28 Sep 2026)
+
+Per anywhere's move contract (ADR 0039 section 4, docs/design/anywhere.md): four pieces
+(projects, memory, vault, sessions), source stays live and untouched until the destination
+confirms every piece, then the flip is anywhere's own (onboard.machine), never mine. No
+auto-delete: the pre-move copy sits at ~/.vyre/moved-<date>/ (core/projects/move.js's existing
+pattern) until the person explicitly frees it from Settings.
+
+Sent to launch and tailnet as the contract to build against; the engine itself is next.
+
+- `move.plan { destination }` (HUMAN_ONLY): dry run against a reachable destination (a paired
+  device or box, already verified by tailnet's onboard.join). Counts and bytes per piece
+  (projects, memory, vault, sessions), a planId (hash of the four pieces' current state, so a
+  stale plan is never started against). No write, nothing moved.
+- `move.start { planId }` (HUMAN_ONLY): begins copying to the destination over Tailscale or the
+  relay, piece by piece, source untouched and fully itself the whole time. Returns a moveId.
+  Refuses a stale planId (source changed since plan) rather than starting against a wrong count.
+- `move.status { moveId }`: `{ stage: "copying"|"verifying"|"ready"|"confirmed"|"failed",
+  pieces: { projects: { bytes, of, done, error }, memory: {...}, vault: {...}, sessions: {...} } }`.
+  Resumable: a status check after a restart of either machine picks up where copying left off,
+  never re-starts a finished piece.
+- `move.confirm { moveId }` (HUMAN_ONLY): the person's go-ahead once `stage: "ready"` (every
+  piece copied and the destination has verified its checksums and, for vault, re-encrypted to
+  its own device key). Marks the move confirmed and emits `move.confirmed { moveId }`; anywhere's
+  onboard.machine is what actually listens for that and flips config.machine on the source.
+  Nothing here calls onboard.machine directly: that boundary is anywhere's, this engine only
+  reports.
+- `move.cancel { moveId }` (PERSON_ONLY, instant): stops an in-flight or ready-but-unconfirmed
+  move. The source was never touched (never flipped, per the contract), so this is cleanup of
+  the partial destination copy only, not a rollback.
+- Events: `move.progress { moveId, piece, bytes, of }` (throttled, not per-chunk), `move.piece.done
+  { moveId, piece }`, `move.failed { moveId, piece, error }` (a dead network mid-copy: retried by
+  a fresh move.start against the same planId, not a special recovery path), `move.confirmed
+  { moveId }`.
+- Checksums verified on the destination before `stage` reaches "ready": a piece whose checksum
+  fails is retried, never surfaced to the person as "ready" with a silent mismatch.
+
+Open question sent back to anywhere: whether vault and sessions need to move atomically together
+(a session mid-thread holding a vault-derived credential) or each piece can lag independently as
+above; the four-piece split otherwise fits the engine's real constraints (each piece copies and
+verifies on its own, no cross-piece ordering needed except the final confirm gate).
