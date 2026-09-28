@@ -92,12 +92,26 @@ this round; verification leans on windows-latest CI.
     silently accepted as fixed.
 
 ## Doing
+- windows-socket-acl's first real run (36356508140, 2026-09-27) failed: the folder's ACL was
+  exactly right (owner SID + SYSTEM, full control, inheritance stripped — confirmed by the
+  diagnostic icacls dump) but `listen()` still threw `EACCES` on the very first attempt. Root
+  cause: Windows implements a bound socket file as a reparse point, and a fresh one can be held
+  briefly by AV/indexing right after creation, surfacing as a transient EACCES/EPERM, not a real
+  permission refusal — this is a timing bug, not an ACL bug. Pushed 723f7b07: `bindSocket()`
+  (core/daemon/index.js) retries up to 10x with linear 150ms*i backoff on win32 only, only for
+  EACCES/EPERM; every other platform/error still throws on attempt 1, so the second-user refusal
+  is untouched. Also switched `ensureWindowsSocketDir`'s grant to the live token's SID
+  (`currentUserPrincipal`, via `whoami /user`) instead of the account name, and added `whoami
+  /user` + a plain-file-create probe to the workflow's diagnostic step for the next round if
+  needed. 20 local tests green (core/config/config.test.js, core/daemon/bindsocket.test.js) +
+  test/boundaries.test.js and test/docs-*.test.js (66) all green. Pushed to work/windows, run
+  36368506105 in flight — watching it now.
 - Asked e2e for a quick read of the role-default change (win32 now defaults to a device), per the
   lead. Waiting on that before sending cac517d4 onward.
 - Sending cac517d4 (+ follow-ups) to the integrator for the first 0.1.1 batch, after rc.2, per the
   lead.
-- Asking ci for the workflow slot on the new windows-socket-acl job, per the lead's instruction.
-- Will send the reviewer the sha once the CI job's first real run comes back, per their ask.
+- Will send the reviewer the sha once the windows-socket-acl job is green (not yet — waiting on
+  36368506105).
 
 ## Next
 - Watch the first real `windows-socket-acl` run once pushed; the icacls output parsing, the
