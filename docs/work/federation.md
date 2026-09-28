@@ -897,6 +897,23 @@ real dependency here.
 
 Sent to integrator: work/federation ready to land.
 
+## Move engine: design doc sent to reviewer, before any code (28 Sep 2026)
+
+team-lead's next item: memory-iq has the projects.reach swap, so the move engine ("Move to a
+server", launch's UI already targets the earlier contract) is federation's. Wrote ADR 0041
+(docs/adr/0041-move-engine.md, sha 9c3fe3cc) covering the four pieces (unchanged from the earlier
+contract) plus the team-lead's five constraints and the new transport plan (relay introduces via
+tailnet's own join flow, Tailscale carries every byte of the actual copy). New move.free/
+move.free.preview tools split "confirm the new machine" from "free the old one's disk", per
+constraint 5. Flagged to tailnet: core/link/transport.js's transport is scoped to the Mac-to-box
+pairing shape only; needs generalising before move.start can build on it. Sent to reviewer per
+team-lead's "design note first" instruction; no code yet.
+
+ADR number 0041 claimed tentatively - this branch's own docs/work/README.md table is stale
+relative to several other teams' claims (box-deploy 0038, anywhere 0039, e2e-setsid 0040
+referenced in HANDOFF.md but not in this branch's own copy of the table); flagged for a
+collision check rather than guessed past.
+
 ## docs/design/projects-map.md: not on this branch (team-lead's docs-check report)
 
 Checked: docs/design/projects-map.md does not exist on work/federation. It is sessions' own doc
