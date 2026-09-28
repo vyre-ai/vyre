@@ -1,18 +1,18 @@
 // @ts-check
 // Settings > Server ("Move to a server", docs/design/anywhere.md, ADR 0039): the pure formatting
 // and gating logic in deck/js/server-rows.js, checked against the real fixtures it renders in the
-// Deck (deck/fixtures/federation.json's move.plan/move.confirm, deck/fixtures/onboard.json's
-// status), the way deck/test/settings-drive.test.js checks Drive's rows against Drive's shapes.
-// The move.* and onboard.machine tool shapes are launch's own proposal, not yet confirmed by
-// federation or shipped by anywhere (docs/work/launch-surfaces.md); this is why the test reads
-// the fixtures rather than the (not yet real) tools directly.
+// Deck (deck/fixtures/federation.json's move.plan/move.status/move.confirm, deck/fixtures/
+// onboard.json's status), the way deck/test/settings-drive.test.js checks Drive's rows against
+// Drive's shapes. onboard.machine is real and shipped (anywhere, 73d03d39); federation's move.*
+// contract is confirmed (docs/work/federation.md) but the engine itself is not built yet, so the
+// fixture is what this test (and the Deck) reads.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { fmtBytes, pieceLabel, pieceLine, totalBytes, pieceState, readyToConfirm, destinationName, forgetGate, FORGET_WAIT_MS } from "../js/server-rows.js";
+import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, pieceState, readyToConfirm, allReady, destinationName, forgetGate, FORGET_WAIT_MS } from "../js/server-rows.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const federation = JSON.parse(fs.readFileSync(path.join(HERE, "../fixtures/federation.json"), "utf8"));
@@ -42,13 +42,30 @@ test("server rows: the plan fixture's four pieces format as the dry-run screen s
 
 test("server rows: the status fixture's five stages read as done/doing/waiting, and only the last is ready to confirm", () => {
   const stages = federation["federation.move.status"].$seq;
+  const keys = ["projects", "memory", "vault", "sessions"];
   assert.equal(stages.length, 5);
+  assert.equal(piecePct(stages[0].pieces.projects), 15);
   assert.equal(pieceState(stages[0].pieces.projects), "15%");
-  assert.equal(pieceState(stages[0].pieces.memory), "Waiting");
+  assert.equal(pieceState(stages[0].pieces.memory), "Waiting", "of>0 but bytes still 0");
   assert.equal(pieceState(stages[1].pieces.projects), "Done");
-  for (const s of stages.slice(0, 4)) assert.equal(readyToConfirm(s), false);
+  assert.equal(stages[0].stage, "copying");
+  assert.equal(stages[3].stage, "verifying");
+  for (const s of stages.slice(0, 4)) {
+    assert.equal(readyToConfirm(s), false, `stage "${s.stage}" is not ready`);
+    assert.equal(allReady(s.pieces, keys), false, `not every piece is done yet at "${s.stage}"`);
+  }
+  assert.equal(stages[4].stage, "ready");
   assert.equal(readyToConfirm(stages[4]), true);
+  assert.equal(allReady(stages[4].pieces, keys), true, "the Deck's own inference agrees with move.status's own stage");
   for (const [k, v] of Object.entries(stages[4].pieces)) assert.equal(pieceState(v), "Done", `${k} is done at the last stage`);
+});
+
+test("server rows: allReady and pieceState handle a failed piece and an empty plan", () => {
+  assert.equal(pieceState({ bytes: 900000, of: 2100000000, error: "disk full on destination" }), "Failed");
+  assert.equal(allReady({ a: { done: true }, b: { done: true, error: "oops" } }, ["a", "b"]), false, "one failed piece blocks ready, even if marked done");
+  assert.equal(allReady({}, []), false, "an empty plan is never ready (there is nothing to confirm)");
+  assert.equal(piecePct(undefined), 0);
+  assert.equal(piecePct({ bytes: 50, of: 0 }), 0, "no total yet, never divide by zero");
 });
 
 test("server rows: destinationName falls back the way both callers need", () => {

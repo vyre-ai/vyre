@@ -1,8 +1,18 @@
 // @ts-check
 // Pure helpers for Settings > Server ("Move to a server", docs/design/anywhere.md, ADR 0039),
 // pulled out of deck/views/settings.js the way deck/js/drive-rows.js did for Drive, so the state
-// machine's formatting and gating logic has a testable surface even while the real move.* tool
-// shapes (federation) and onboard.machine (anywhere) are still fixtures, not shipped tools.
+// machine's formatting and gating logic has a testable surface even while federation's real
+// move.* tool is not built yet (their contract is confirmed, docs/work/federation.md; the engine
+// itself is next). onboard.machine (anywhere) is real and shipped.
+//
+// The status shape (`pieceState`, `readyToConfirm`) matches federation's contract exactly:
+// move.status returns { stage: "copying"|"verifying"|"ready"|"confirmed"|"failed", pieces: {
+// <key>: { bytes, of, done, error } } } — bytes/of for a live percent, done a per-piece
+// boolean, error a string when that piece failed. No explicit "ready" event exists (federation's
+// four events are move.progress/move.piece.done/move.failed/move.confirmed), so the Deck infers
+// "ready to confirm" itself once every known piece is done and none has failed (allReady, below);
+// move.status's own `stage` is still authoritative once a call to it is made (after start, or a
+// reload), allReady only covers the gap between events with no full-status refetch.
 
 import { plural } from "./fmt.js";
 
@@ -25,13 +35,21 @@ export const pieceLine = v => `${plural(v?.count || 0, "item")} · ${fmtBytes(v?
 /** The plan's total, summed across every piece. @param {Record<string, { bytes?: number }>} pieces */
 export const totalBytes = pieces => Object.values(pieces || {}).reduce((n, v) => n + (v?.bytes || 0), 0);
 
-/** A piece's live state during the copy: "Done", "Waiting", or "NN%".
- * @param {{ state?: string, pct?: number }} [v] */
-export const pieceState = v => v?.state === "done" ? "Done" : v?.state === "doing" ? `${v.pct || 0}%` : "Waiting";
+/** A piece's live progress as a percent (0-100), for the meter's width. @param {{ bytes?: number, of?: number }} [v] */
+export const piecePct = v => v?.of ? Math.min(100, Math.round(100 * (v.bytes || 0) / v.of)) : 0;
 
-/** True once every piece is done (the status is ready for the person to confirm the flip).
- * @param {{ state?: string }} status */
-export const readyToConfirm = status => status?.state === "ready_to_confirm";
+/** A piece's live state during the copy: "Failed", "Done", "Waiting", or "NN%".
+ * @param {{ bytes?: number, of?: number, done?: boolean, error?: string }} [v] */
+export const pieceState = v => v?.error ? "Failed" : v?.done ? "Done" : v?.bytes ? `${piecePct(v)}%` : "Waiting";
+
+/** True once move.status itself says so. @param {{ stage?: string }} status */
+export const readyToConfirm = status => status?.stage === "ready";
+
+/** True once every named piece is done and none has failed — the Deck's own inference between
+ * events, since federation's contract has no explicit "ready" event (only progress/piece.done/
+ * failed/confirmed). @param {Record<string, { done?: boolean, error?: string }>} pieces
+ * @param {string[]} keys the piece keys the plan actually named */
+export const allReady = (pieces, keys) => keys.length > 0 && keys.every(k => pieces?.[k]?.done && !pieces[k].error);
 
 /** The server's name to show, from whichever shape handed it over: federation.move.confirm's own
  * data right after the flip (`destination.name`), or onboard.status once machine is "device"

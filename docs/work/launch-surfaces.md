@@ -490,10 +490,17 @@ hygiene/settings-server/settings-drive.
   client-side peer-scan is unbuilt and, per tailnet, not gated on anything of theirs now; worth
   deciding whether it's still needed given onboard.join's own `status` action, rather than
   building both.
-- federation: move-engine tool shapes for "Move to server" (plan/what's-moving with sizes,
-  start, live status per category, undo). Proposed names: `federation.move.plan`,
-  `federation.move.start`, `federation.move.status`, `federation.move.undo` — open to
-  federation's own naming. Asked 28 Sep, no answer yet.
+- ~~federation: move-engine tool shapes~~ answered and confirmed (docs/work/federation.md):
+  `move.plan{destination}`, `move.start{planId}`, `move.status{moveId}` ({stage, pieces:
+  {bytes,of,done,error}}), `move.confirm{moveId}`, `move.cancel{moveId}` (the Undo, full stop
+  before confirm; no undo after — that's the separate 24h+ "free up space" flow), and events
+  (move.progress/move.piece.done/move.failed/move.confirmed) for live progress instead of
+  polling. Wired the whole panel to this shape and switched from a 5 s poll to the event stream
+  (deck/js/api.js's `on()`), since Settings has the real stream, unlike onboarding's loopback.
+  Asked federation one open question: no explicit "ready" event exists, so the Deck infers it
+  itself (`allReady`, every named piece done with no error) — asked whether that's a safe
+  inference or whether there's a checksum/verify race it should poll `move.status` once more to
+  cover instead. Not yet answered.
 - app-design: a second pass on the Server panel's five fixes (card, vault lock note, real
   progress bar, status-mark vocabulary, lime radio fill), landed after their first screenshot
   pass but not yet re-reviewed.

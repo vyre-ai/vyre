@@ -13,7 +13,7 @@
 // per group under "Sessions and Claude"; ?key=<key> scrolls to one and highlights it.
 
 import { h, put, link, head, empty } from "../js/dom.js";
-import { attempt, modules, canProve } from "../js/api.js";
+import { attempt, modules, canProve, on } from "../js/api.js";
 import { pushState, subscribePush, unsubscribePush, enrollPasskey, passkeyState, deviceName, deniedHelp } from "../js/phone-setup.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { when, since, plural } from "../js/fmt.js";
@@ -22,7 +22,7 @@ import { pathMark, statusMark } from "../js/status-mark.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
-import { fmtBytes, pieceLabel, pieceLine, totalBytes, readyToConfirm, destinationName, forgetGate } from "../js/server-rows.js";
+import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, destinationName, forgetGate } from "../js/server-rows.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -630,29 +630,38 @@ async function drawServer(el, ctx) {
         : "No Tailscale, nothing else running, until you move to a server.")),
     h("div", { class: "set-server-card" }, panel, st));
 
-  let poll = null;
-  ctx.cleanup(() => clearTimeout(poll));
+  // Event-driven, not polled: federation's contract (docs/work/federation.md) emits move.progress/
+  // move.piece.done/move.failed/move.confirmed over the same stream every other Deck view reads
+  // (deck/js/api.js's on()), so watching a move never needs to poll faster than 60 s (SPEC
+  // principle 8) the way onboarding's history step has to (its loopback door carries no stream
+  // at all, a different situation). One move.status call establishes the baseline right after
+  // start (in case an event fired before the listener was attached); everything live after that
+  // is the event stream. No explicit "ready" event exists, so allReady (server-rows.js) infers it
+  // from every named piece being done with no error, same information move.status's own `stage`
+  // would give on a fresh load.
+  let offEvents = null;
+  ctx.cleanup(() => offEvents && offEvents());
 
   const point = () => {
-    const code = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Paste the setup code your server showed", "aria-label": "Server setup code" }));
+    const dest = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Paste the setup code your server showed", "aria-label": "Server setup code" }));
     const go = async () => {
-      const v = code.value.trim();
+      const v = dest.value.trim();
       if (!v) { put(st, "Paste the code first."); return; }
       put(st, "Looking for that server.");
-      const p = await attempt("federation.move.plan", { code: v });
+      const p = await attempt("federation.move.plan", { destination: v });
       if (!ctx.alive()) return;
       if (p.error) { put(st, errText(p.error)); return; }
       put(st);
-      plan(p.data, v);
+      plan(p.data);
     };
     put(panel,
       h("div", { class: "rows" },
-        row(h("label", { for: "move-code" }, "Point at a server"), Object.assign(code, { id: "move-code" }),
+        row(h("label", { for: "move-code" }, "Point at a server"), Object.assign(dest, { id: "move-code" }),
           h("div", { class: "small faint" }, "From the new computer's own setup, or Settings > Your devices > Add a device."))),
       foot(h("button", { type: "button", class: "btn btn-primary", onclick: go }, "Continue")));
   };
 
-  const plan = (p, code) => {
+  const plan = p => {
     const pieces = Object.entries(p.pieces || {});
     put(panel,
       row("Moving to", mono(destinationName(p)), h("span", { class: "small muted" }, p.destination?.address || "")),
@@ -662,55 +671,74 @@ async function drawServer(el, ctx) {
         k === "vault" ? h("div", { class: "small muted set-vault-note" }, icon("lock", 12),
           h("span", null, "Encrypted end to end. Never written to disk unencrypted on either side.")) : null))),
       note(`${fmtBytes(totalBytes(p.pieces))} total. This computer keeps working, unchanged, until the move finishes and you confirm it.`),
-      foot(h("button", { type: "button", class: "btn btn-primary", onclick: () => start(code) }, "Start moving"),
+      foot(h("button", { type: "button", class: "btn btn-primary", onclick: () => start(p.planId, Object.keys(p.pieces || {})) }, "Start moving"),
         h("button", { type: "button", class: "btn btn-ghost", onclick: point }, "Back")));
   };
 
-  const start = async code => {
+  const start = async (planId, keys) => {
     put(panel, h("div", { class: "empty" }, "Starting."));
-    const s = await attempt("federation.move.start", { code });
+    const s = await attempt("federation.move.start", { planId });
     if (!ctx.alive()) return;
     if (s.error) { put(panel, empty("Could not start the move.", s.error), foot(h("button", { type: "button", class: "btn", onclick: point }, "Try again"))); return; }
-    watch();
+    watch(s.data.moveId, keys);
   };
 
-  const watch = async () => {
-    const s = await attempt("federation.move.status");
-    if (!ctx.alive()) return;
-    if (s.error) { put(panel, empty("Lost track of the move.", s.error)); return; }
-    const d = s.data;
+  const drawPieces = (moveId, keys, pieces) => {
     // app-design's #4 finding: use the shared status-mark vocabulary (statusMark, running/done)
     // instead of plain "Done"/"NN%" words, matching list-row.md's running ring elsewhere in the
     // Deck. A piece that hasn't started yet has no mark of its own in that model (only running,
     // done, needs, failed, unread), so "Waiting" stays plain text for that one case.
-    put(panel, h("div", { class: "rows" }, Object.entries(d.pieces || {}).map(([k, v]) => h("div", { class: "set-move-row" },
-      h("div", { class: "set-move-main" }, h("div", null, pieceLabel(k, v)), h("div", { class: "set-meter" }, h("span", { style: { width: (v.pct || 0) + "%" } }))),
-      v?.state === "doing" ? statusMark("running", { word: `${v.pct || 0}%` })
-        : v?.state === "done" ? statusMark("done", { word: true })
-        : h("span", { class: "small faint" }, "Waiting")))));
-    if (readyToConfirm(d)) { ready(); return; }
-    poll = setTimeout(watch, 5000);
+    put(panel, h("div", { class: "rows" }, keys.map(k => {
+      const v = pieces[k] || {};
+      return h("div", { class: "set-move-row" },
+        h("div", { class: "set-move-main" }, h("div", null, pieceLabel(k, v)), h("div", { class: "set-meter" }, h("span", { style: { width: piecePct(v) + "%" } }))),
+        v.error ? statusMark("failed", { word: true })
+          : v.done ? statusMark("done", { word: true })
+          : v.bytes ? statusMark("running", { word: `${piecePct(v)}%` })
+          : h("span", { class: "small faint" }, "Waiting"));
+    })));
+    if (allReady(pieces, keys)) ready(moveId);
   };
 
-  const ready = () => {
+  const watch = async (moveId, keys) => {
+    const s = await attempt("federation.move.status", { moveId });
+    if (!ctx.alive()) return;
+    if (s.error) { put(panel, empty("Lost track of the move.", s.error)); return; }
+    let pieces = s.data.pieces || {};
+    drawPieces(moveId, keys, pieces);
+    if (readyToConfirm(s.data)) { ready(moveId); return; }
+    offEvents?.();
+    offEvents = on("move.*", e => {
+      if (e.payload?.moveId !== moveId) return;
+      if (e.type === "move.progress") pieces = { ...pieces, [e.payload.piece]: { ...pieces[e.payload.piece], bytes: e.payload.bytes, of: e.payload.of } };
+      else if (e.type === "move.piece.done") pieces = { ...pieces, [e.payload.piece]: { ...pieces[e.payload.piece], done: true, bytes: pieces[e.payload.piece]?.of } };
+      else if (e.type === "move.failed") pieces = { ...pieces, [e.payload.piece]: { ...pieces[e.payload.piece], error: e.payload.error || "failed" } };
+      else return;
+      drawPieces(moveId, keys, pieces);
+    });
+  };
+
+  const ready = moveId => {
+    offEvents?.(); offEvents = null;
     panel.append(note("The copy is verified and ready. This computer stays as it is until you confirm."),
-      foot(h("button", { type: "button", class: "btn btn-primary", onclick: confirmFlip }, "Confirm: make this a device"),
-        h("button", { type: "button", class: "btn btn-ghost", onclick: undo }, "Undo")));
+      foot(h("button", { type: "button", class: "btn btn-primary", onclick: () => confirmFlip(moveId) }, "Confirm: make this a device"),
+        h("button", { type: "button", class: "btn btn-ghost", onclick: () => cancelMove(moveId) }, "Undo")));
   };
 
-  const undo = async () => {
+  const cancelMove = async moveId => {
     put(panel, h("div", { class: "empty" }, "Undoing."));
-    await attempt("federation.move.undo");
+    offEvents?.(); offEvents = null;
+    await attempt("federation.move.cancel", { moveId });
     if (!ctx.alive()) return;
     point();
   };
 
-  const confirmFlip = async () => {
+  const confirmFlip = async moveId => {
     put(panel, h("div", { class: "empty" }, "Finishing up."));
-    const c = await attempt("federation.move.confirm");
+    const c = await attempt("federation.move.confirm", { moveId });
     if (!ctx.alive()) return;
     if (c.error) { put(panel, empty("Could not finish the move.", c.error)); return; }
-    drawAlreadyMoved(el, { role: "device", movedAt: Date.now(), ...c.data }, true);
+    drawAlreadyMoved(el, { movedAt: Date.now(), ...c.data }, true);
   };
 
   point();

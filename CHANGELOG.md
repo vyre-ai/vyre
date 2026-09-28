@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Settings > Server: wired to federation's confirmed move-engine contract, event-driven
+
+- Rebuilt against the real, confirmed shapes (docs/work/federation.md): `move.plan{destination}
+  -> {planId, ...}`, `move.start{planId} -> {moveId}`, `move.status{moveId} -> {stage, pieces:
+  {bytes, of, done, error}}`, `move.confirm{moveId}`, `move.cancel{moveId}`. Fixtures updated to
+  match exactly.
+- Switched live progress from a 5-second poll to federation's event stream (move.progress/
+  move.piece.done/move.failed, via `deck/js/api.js`'s `on()`), since Settings has the real event
+  stream unlike onboarding's loopback door. One `move.status` call establishes the baseline right
+  after start; everything after that is events, so this never polls faster than the SPEC's 60 s
+  floor. "Ready to confirm" is inferred client-side (`allReady`, every named piece done with no
+  error) since federation's four events don't include an explicit "ready" one; asked federation
+  whether that's safe or needs one more `move.status` check to cover a verify/checksum race.
+
 #### fix(onboard): a wrong join code proceeded like a right one; the onboard page's own fixtures 403'd
 
 - The Device path's `onboard.join{action:"verify"}` call checked only for a transport error,
