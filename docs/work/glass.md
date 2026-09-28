@@ -47,6 +47,14 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   project (vyre-glass-throwaway, own network, no ports, never /srv/vyre) on testbox: 13/13
   isolation.test.js pass, 0 fail, 0 skipped, including the new FIFO test and the shielded-freeze
   test. Stack fully torn down after. Sent to the reviewer, integrator and team-lead.
+- Reviewer's second HIGH on 2c55a4ae fixed at 2ebb5034: /var/lib/vyre is the computer's own named
+  volume, kept across stop/start and a Docker restart, so a first boot's own chrome-pipes/ was
+  refusing every later boot. Fixed exactly as specified: `rm -rf` the dir (safe, vyre's own 0711,
+  nothing but vyre/root could have left anything there) right before the bare mkdir, checks after
+  it unchanged. Live-verified on a fresh throwaway compose stack: first boot correct, then
+  `docker restart` (the reviewer's exact repro) comes back running, no refusal in the logs, fresh
+  FIFOs, computerd answering the shield endpoint, isolation.test.js 13/13 pass against the
+  restarted container. Torn down after. Sent to the reviewer.
 - Agent-browsers slice 2 started (3f03ddb0): per-agent `Target.createBrowserContext` scoping in
   `cdpmux.js`, the concrete new mechanism docs/design/agent-browsers.md's level 2 needs. An "agent"
   client can join with an `agentName`; the mux gets or creates that name's own browser context and
