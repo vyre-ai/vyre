@@ -4,22 +4,16 @@
 // branch into it before each request. Vyred runs every one of these, never the model, and never
 // `git init`s on the person's behalf (team.add refuses isolation: worktree outside a real repo).
 //
-// No shell, no prompt, no network, a deadline: the same pattern core/switchboard/changes.js uses
-// for `git diff --numstat` behind a push ask.
+// Every call goes through lib/git-safe.js's gitAsync (e2e, safe-git): no shell, no prompt, no
+// network, no hooks or fsmonitor, no system or global config, every filter/diff/merge driver the
+// repo names overridden, a repo's own gpg.program never run even to check a signature. That is
+// the one place vyred starts git at all (test/safe-git.test.js walks the tree and fails on any
+// other file that does).
 //
-// And nothing the repo says to run (e2e and reviewer, slice A, HIGH). A teammate writes the
-// repo's shared .git to commit, so it can plant hooks, set config that names programs, or add a
-// .gitattributes naming a filter or merge driver. vyred's own git would then run that program as
-// vyred's own child: outside Claude's permission floor, and, on a Mac, with vyred's ancestry, not
-// claude's, so the socket would take it for the person. So every call:
-//   - turns off what can be turned off from the command line, which beats any repo config:
-//     hooks (core.hooksPath=/dev/null, and --no-verify on merge), signing and signature checks,
-//     the global attributes file, fsmonitor, the pager and editors, ssh (protocol.allow=never);
-//   - reads no system or global config (GIT_CONFIG_NOSYSTEM, GIT_CONFIG_GLOBAL=/dev/null);
-// and anything that runs git's content through a program named only in repo config (a filter, a
-// diff textconv, a merge driver), or pulls in config from elsewhere (include, includeIf), or an
-// alias, cannot be switched off by name from here, so checkout and merge refuse to run at all
-// while the repo's own config has one, and say which (unsafeConfig).
+// On top of that, and nothing the repo says to run (e2e and reviewer, slice A, HIGH): a teammate
+// writes the repo's shared .git to commit, so it can pull in config from elsewhere (include,
+// includeIf) or name an alias — neither is a driver git-safe.js can override by name, so checkout
+// and merge refuse to run at all while the repo's own config has one, and say which (unsafeConfig).
 //
 // Revs and paths go after --end-of-options. Branch names come only from `symbolic-ref` on the
 // person's own checkout and from a teammate's role, which team.add has already checked against
@@ -28,31 +22,20 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { gitAsync } from "../../lib/git-safe.js";
 
 const GIT_MS = 15_000;
-
-/** Settings a repo's own config cannot override, since the command line wins. */
-const OFF = ["protocol.allow=never", "core.fsmonitor=false", "core.hooksPath=/dev/null", "commit.gpgSign=false", "tag.gpgSign=false",
-  "merge.verifySignatures=false", "core.attributesFile=/dev/null", "core.pager=cat", "core.editor=:", "sequence.editor=:", "core.sshCommand=false"]
-  .flatMap(kv => ["-c", kv]);
 
 /** Whoever made a merge vyred ran: vyred, not whoever last committed. Global config is off, so git would otherwise refuse to guess. */
 const VYRED = { GIT_AUTHOR_NAME: "Vyre", GIT_AUTHOR_EMAIL: "vyre@localhost", GIT_COMMITTER_NAME: "Vyre", GIT_COMMITTER_EMAIL: "vyre@localhost" };
 
 /**
- * Run git in `dir`. Never rejects.
+ * Run git in `dir` through lib/git-safe.js. Never rejects.
  * @param {string} dir @param {string[]} args @param {{ ms?: number, env?: Record<string, string> }} [o]
  * @returns {Promise<{ ok: boolean, stdout: string, stderr: string }>}
  */
-export function git(dir, args, { ms = GIT_MS, env = {} } = {}) {
-  return new Promise(resolve => {
-    execFile("git", [...OFF, "-C", dir, ...args], {
-      timeout: ms, killSignal: "SIGKILL", maxBuffer: 16 * 1024 * 1024, windowsHide: true,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_NO_LAZY_FETCH: "1", GIT_OPTIONAL_LOCKS: "0",
-        GIT_PAGER: "cat", PAGER: "cat", LC_ALL: "C", GIT_ASKPASS: "", SSH_ASKPASS: "",
-        GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", ...env },
-    }, (err, stdout, stderr) => resolve({ ok: !err, stdout: String(stdout), stderr: String(stderr || (err ? err.message : "")) }));
-  });
+export function git(dir, args, { ms = GIT_MS, env } = {}) {
+  return gitAsync(dir, args, { timeout: ms, env });
 }
 
 /** Repo config keys that name a program git would run on the repo's content, or pull in config from elsewhere. */
