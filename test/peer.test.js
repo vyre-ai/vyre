@@ -308,9 +308,12 @@ test("peer: a tmux or screen server needs one presence proof, then every pane on
   const { inputHash } = await import("../core/presence/index.js");
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   const key = presence.enroll({ kind: "device", name: "test key", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
-  const proof = (tool, input) => {
+  // The proof is bound to exactly the server object the presence_required error handed back
+  // (exe, pid, started): sign anything else and it does not verify (the reviewer's MEDIUM, 28
+  // Sep -- a proof over an empty input could be replayed to trust the wrong server).
+  const proof = server => {
     const ts = Date.now(), nonce = randomBytes(12).toString("base64url");
-    const sig = sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
+    const sig = sign("sha256", Buffer.from(`vyre-presence-v1\nsession.trust\n${inputHash(server)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
     return `device key=${key.id} ts=${ts} nonce=${nonce} sig=${sig}`;
   };
 
@@ -341,14 +344,16 @@ test("peer: a tmux or screen server needs one presence proof, then every pane on
   }
 
   try {
-    // No proof: presence_required, nothing made.
+    // No proof: presence_required, nothing made -- and the error names exactly this server.
     const bare = await inTmux("harlow-a", "kit");
     assert.equal(bare.error?.code, "presence_required", JSON.stringify(bare));
+    assert.equal(bare.error.server.exe, "/usr/bin/tmux", JSON.stringify(bare));
+    assert.match(bare.error.message, /\/usr\/bin\/tmux/, "the reason names the full path, not a basename");
 
     // With a valid proof, from the SAME server (-L harlow-a again reaches it, tmux servers persist
     // across `tmux -L <name>` invocations until killed): it goes through, and the server is now
     // trusted for good.
-    const proved = await inTmux("harlow-a", "juno", proof("session.trust", {}));
+    const proved = await inTmux("harlow-a", "juno", proof(bare.error.server));
     assert.equal(proved.error, undefined, JSON.stringify(proved));
     assert.ok((await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "juno"));
 
@@ -443,21 +448,37 @@ test("peer: presence.capsule.pin is presence-required and lives in vyred's own d
   assert.equal(bare.error?.code, "presence_required", JSON.stringify(bare));
   assert.equal(presence.capsulePin(), null);
 
-  // With a real proof (the same device-key machinery presence already has, standing in for Touch
-  // ID, which cannot run on this Linux testbox): it pins, as a db row -- there is no file anywhere
-  // under root for a model's shell (the same uid) to overwrite directly, which was the reviewer's
-  // HIGH against the first version of this (a flat capsule-pin.json, 28 Sep).
+  // A valid proof, but from an ENROLLED DEVICE key (a passkey or a phone would look the same):
+  // refused, even though it's a perfectly good presence proof. This tool needs the Capsule's own
+  // enrolled identity specifically -- some other proof of "the person is here" says nothing about
+  // which binary is asking (the lead's decision, 28 Sep).
   const { generateKeyPairSync, sign, randomBytes } = await import("node:crypto");
   const { inputHash } = await import("../core/presence/index.js");
-  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const key = presence.enroll({ kind: "device", name: "t", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
-  const proof = (tool, input) => {
+  const dk = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const deviceKey = presence.enroll({ kind: "device", name: "t", public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
+  const deviceProof = (tool, input) => {
     const ts = Date.now(), nonce = randomBytes(12).toString("base64url");
-    const sig = sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
-    return { method: "device", key: key.id, ts: String(ts), nonce, sig };
+    const sig = sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: dk.privateKey, dsaEncoding: "der" }).toString("base64url");
+    return { method: "device", key: deviceKey.id, ts: String(ts), nonce, sig };
   };
   const cdhash = "b".repeat(40);
-  const pinned = await d.registry.call("presence.capsule.pin", { cdhash }, "cli", { proof: proof("presence.capsule.pin", { cdhash }) });
+  const wrongMethod = await d.registry.call("presence.capsule.pin", { cdhash }, "cli", { proof: deviceProof("presence.capsule.pin", { cdhash }) });
+  assert.equal(wrongMethod.error?.code, "denied", JSON.stringify(wrongMethod));
+  assert.equal(presence.capsulePin(), null, "a device key, however valid, does not pin a Capsule build");
+
+  // The Capsule's own enrolled identity key (Ed25519, the "capsule" kind presence already has --
+  // capsule-pro found this already works with no box paired): now it pins, as a db row -- there
+  // is no file anywhere under root for a model's shell (the same uid) to overwrite directly,
+  // which was the reviewer's HIGH against the first version of this (a flat capsule-pin.json,
+  // 28 Sep).
+  const ck = generateKeyPairSync("ed25519");
+  const capsuleKey = presence.enroll({ kind: "capsule", name: "Capsule", public_key: ck.publicKey.export({ format: "der", type: "spki" }).toString("base64url") });
+  const capsuleProof = (tool, input) => {
+    const ts = Date.now(), nonce = randomBytes(12).toString("base64url");
+    const sig = sign(null, Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), ck.privateKey).toString("base64url");
+    return { method: "capsule", key: capsuleKey.id, ts: String(ts), nonce, sig };
+  };
+  const pinned = await d.registry.call("presence.capsule.pin", { cdhash }, "cli", { proof: capsuleProof("presence.capsule.pin", { cdhash }) });
   assert.equal(pinned.error, undefined, JSON.stringify(pinned));
   assert.equal(presence.capsulePin()?.cdhash, cdhash);
 });

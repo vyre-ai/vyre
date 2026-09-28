@@ -2546,7 +2546,7 @@ Change an item: title, body, list, priority, pinned, tags, project, thread, pare
 
 ### `presence.capsule.pin`
 
-Pins the Capsule build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous, tty-less process shape (its own proof, not ancestry: core/daemon/peer.js's verifiedCapsule). Needs presence, same as enrolling a key.
+Pins the Capsule build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous, tty-less process shape (its own proof, not ancestry: core/daemon/peer.js's verifiedCapsule). Signed by the Capsule's own enrolled presence key (method "capsule"), the same identity a paired Capsule already proves with, not a new one -- so only the real Capsule, not a model's shell with a same-uid file write, can ever set this.
 
 - Input:
   - `cdhash` string, required

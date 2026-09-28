@@ -287,13 +287,22 @@ const serverTrust = new Map();
 // be at a DIFFERENT terminal.
 const SERVER_TRUST_METHODS = new Set(["touchid", "capsule", "device", "passkey"]);
 
+/** What the proof is over -- so a signature made for one server's prompt can never answer a
+ * different one's, and so the client signs exactly what the presence_required error already told
+ * it about this leader. */
+const sessionInput = server => ({ exe: server.exe, pid: server.pid, started: server.started });
+
 async function serverTrusted(server, proofHeader, caller, registry) {
   const key = `${server.exe}:${server.pid}:${server.started}`;
   if (serverTrust.has(key)) return true;
   const presence = registry.deps.presence;
   const proof = parsePresence(/** @type {string} */ (proofHeader));
   if (!presence || !proof || !SERVER_TRUST_METHODS.has(proof.method)) return false;
-  const r = await presence.verify({ tool: "session.trust", input: {}, caller, proof });
+  // Plain wording, naming exactly what is asking -- the lead's decision, 28 Sep: a model can name
+  // its own process anything, so the reason must be specific enough that a real person can tell
+  // their own Warp window from a model-caused prompt apart, not just "an app wants to act as you".
+  const summary = `A program Vyre doesn't recognise wants to act as you: ${server.exe} (pid ${server.pid}, started ${server.started}). Did you just open this?`;
+  const r = await presence.verify({ tool: "session.trust", input: sessionInput(server), caller, proof, def: { presence: { summary: async () => summary } } });
   if (r.ok) { serverTrust.set(key, true); return true; }
   return false;
 }
@@ -525,8 +534,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
           // is that the PERSON can tell a real terminal from a model-caused one apart (the
           // reviewer's MEDIUM, 28 Sep).
           const all = registry.deps.presence ? await registry.deps.presence.methods() : [];
+          // `server` rides the error as structured fields too, not only inside the message: a
+          // client signs its proof over exactly this (sessionInput), so it needs it verbatim, not
+          // parsed back out of a sentence.
           return send(res, who.server ? 401 : 403, who.server
-            ? { error: { code: "presence_required", message: `this runs inside ${who.server.exe} (pid ${who.server.pid}, started ${who.server.started}): prove you're here once for this session`, methods: all.filter(m => SERVER_TRUST_METHODS.has(m)) } }
+            ? { error: { code: "presence_required", message: `this runs inside ${who.server.exe} (pid ${who.server.pid}, started ${who.server.started}): prove you're here once for this session`, methods: all.filter(m => SERVER_TRUST_METHODS.has(m)), server: sessionInput(who.server) } }
             : { error: { code: "denied", message: "vyred cannot read which processes this call runs under, so this is refused" } });
         }
       }
