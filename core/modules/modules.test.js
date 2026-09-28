@@ -215,6 +215,24 @@ test("modules: a second module with a name already loaded is reported, and the f
   assert.equal((await reg.call("notes.other", {})).error.code, "no_such_tool");
 });
 
+test("modules: a bad manifest is logged at warn level, not silently dropped, and status() still carries it", async t => {
+  // A camelCase tool name once failed validate() and took the whole module with it, with no line
+  // in the log to say so - found only by calling discover() by hand (teammates, 2026-09-28).
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  writeModule(root, "notes", { ...good, does: { tools: ["notes.addNote"] } }, echo);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const logs = [];
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: (m) => logs.push(m) });
+  await reg.start(discover([root]), { role: "local" });
+  assert.ok(logs.some(l => /^warn: module notes invalid: .*must look like module\.verb/.test(l)), logs.join("\n"));
+  const st = reg.status();
+  const m = st.find(x => x.name === "notes");
+  assert.equal(m.state, "invalid");
+  assert.match(m.error, /must look like module\.verb/);
+});
+
 test("modules: a per-<thing> declaration lets a module fetch items named at run time", async t => {
   const vault = `export default { async start(ctx) {
     ctx.tool("vault.release", { internal: true, run: async ({ name }, { caller }) => ({ value: "value-of-" + name + "-for-" + caller }) });

@@ -11,6 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { FORBIDDEN, SECRET } from "../scripts/lib/hygiene.js";
+import { discover } from "../core/modules/index.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SHIPPED = ["bin", "core", "harness", "local", "deck", "modules"];
@@ -69,4 +70,13 @@ test("hygiene: git tracks no node_modules, not even a worktree's symlink to anot
   if (r.status !== 0) return; // not a git checkout (a packed tree): nothing to check
   const hits = r.stdout.split("\0").filter(f => /(^|\/)node_modules(\/|$)/.test(f));
   assert.deepEqual(hits, []);
+});
+
+test("hygiene: every shipped module's manifest is one discover() finds no problem with", () => {
+  // A camelCase tool or event name (or any other validate() problem) used to take the whole
+  // module down with no line anywhere saying so (teammates, 2026-09-28); this catches it in CI
+  // before it ships, not only when someone happens to call discover() by hand.
+  const found = discover(["core", "local", "modules"].map(d => path.join(ROOT, d)));
+  const bad = found.filter(f => f.problems.length).map(f => `${path.relative(ROOT, f.dir)}: ${f.problems.join("; ")}`);
+  assert.deepEqual(bad, []);
 });

@@ -310,13 +310,24 @@ export class Registry {
   async start(found, { role, enable = [], disable = [] }) {
     for (const f of found) {
       const name = f.manifest && f.manifest.name;
-      if (f.problems.length) { this.modules.set(name || f.dir, { manifest: f.manifest, dir: f.dir, state: "invalid", error: f.problems.join("; ") }); continue; }
+      // A module with a problem never starts, but it never disappears without a word either: it
+      // used to (a camelCase tool or event name failed validate() and the whole module just
+      // was not there, with no line in the log to say why - found only by calling discover() by
+      // hand). Every problem, and the two below, are logged at warn level as they happen, and
+      // status() (vyre modules, /v1/modules) already carries the same reason for later.
+      if (f.problems.length) {
+        const error = f.problems.join("; ");
+        this.modules.set(name || f.dir, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
+        this.deps.log(`warn: module ${name || f.dir} invalid: ${error}`);
+        continue;
+      }
       // Two modules with one name: the first found wins (Vyre's own folders come before the
       // user's), and the other is reported, never silently dropped. A user's module named like a
       // core one once vanished without a word, and so did every tool it offered.
       if (this.modules.has(name)) {
-        this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid",
-          error: `a module named ${name} is already loaded from ${this.modules.get(name).dir}; this one is ignored` });
+        const error = `a module named ${name} is already loaded from ${this.modules.get(name).dir}; this one is ignored`;
+        this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
+        this.deps.log(`warn: module ${name}@${f.dir} invalid: ${error}`);
         continue;
       }
       const roles = f.manifest.roles || ["box", "local"];
@@ -325,7 +336,7 @@ export class Registry {
     }
     const candidates = found.filter(f => { const r = this.modules.get(f.manifest && f.manifest.name); return r?.state === "pending" && r.dir === f.dir; });
     const { ordered, problems } = order(candidates);
-    for (const [n, why] of problems) Object.assign(this.modules.get(n), { state: "failed", error: why });
+    for (const [n, why] of problems) { Object.assign(this.modules.get(n), { state: "failed", error: why }); this.deps.log(`warn: module ${n} invalid: ${why}`); }
     for (const f of ordered) await this.startOne(f);
     return this.status();
   }
