@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### install-box.sh: shellcheck actually clean, and a quiet line for Docker's own wait
+
+- Fixed a real, previously undetected bug: `pick_look()`'s escape-code assignments
+  (`BONE="$e[38;2;..."` etc.) and `step()`'s `"$ASH[$STEP/$STEPS]$RESET"` shellcheck as SC1087
+  (a bare `$var[` reads as an attempted array index). `core/names/system.test.js`'s "shellcheck is
+  clean when available" test only skips when the binary is missing, so it had silently never run
+  anywhere shellcheck was actually installed; installing it on testbox to check this branch's own
+  work surfaced the pre-existing failure. Fixed by bracing every one of the 7 flagged expansions
+  (`"${e}[...`, `"${ASH}[...`); confirmed clean with `shellcheck -s sh`, and
+  `core/names/system.test.js` + `test/install-box*.test.js` green (38/38).
+- Added one quiet line (`wait_line()`, picked by pid from a short WAITS list) right before the one
+  real silent gap in the installer: Docker's own `curl | sh` script, which can run a minute or two
+  before it says anything. Never shown under `--dry-run` (nothing runs that long there); `--yes`
+  is unaffected, still silent for prompts. No new shellcheck findings from the addition.
+
 #### A per-step celebration, and a warm line for the still-stub steps
 
 - Onboarding now gives a step a quick, silent pop (480ms, CSS only, `@keyframes obPop`) the moment
