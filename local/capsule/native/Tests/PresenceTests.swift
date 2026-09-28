@@ -44,6 +44,45 @@ let presenceSuite = Suite("presence") { t in
         }
     }
 
+    // CapsulePin.swift: presence.capsule.pin, signed with this same enrolled key. ownCdhash()
+    // reads this test binary's own real code signature (real Security.framework, no fake, no
+    // dialog needed); the full sign-and-call happy path needs VYRE_TEST_DIALOGS=1 to get past
+    // dialogsAllowed(), which only the lead sets, so it is covered by the existing "under tests
+    // no proof is attempted" test above (pinSelf() calls the same proof()) rather than repeated here.
+    t.test("ownCdhash: this test binary's own real cdhash, lower-case hex") {
+        let h = CapsulePresence.ownCdhash()
+        t.ok((h?.count ?? 0) >= 40, "at least a sha1-length hex string: \(h ?? "nil")")
+        t.ok(h.map { $0.allSatisfy { $0.isHexDigit && !$0.isUppercase } } ?? false, h ?? "nil")
+    }
+
+    t.test("pinSelf: under tests, dialogsAllowed() is false, so no proof and no call to vyred") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        var called = 0
+        v.tool("presence.capsule.pin") { _ in called += 1; return ["pinned": true] }
+        let out: Int? = t.wait {
+            let p = await MainActor.run { CapsulePresence(home: vyScratch("pin1"), vyred: VyredClient(socket: v.socket)) }
+            await p.pinSelf()
+            return called
+        }
+        t.eq(out, 0)
+    }
+
+    t.test("pinSelf: already pinned this process's own cdhash -- no proof attempted either") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        var called = 0
+        v.tool("presence.capsule.pin") { _ in called += 1; return ["pinned": true] }
+        let out: Int? = t.wait {
+            let p = await MainActor.run { () -> CapsulePresence in
+                let p = CapsulePresence(home: vyScratch("pin2"), vyred: VyredClient(socket: v.socket))
+                p.pinnedCdhash = CapsulePresence.ownCdhash()
+                return p
+            }
+            await p.pinSelf()
+            return called
+        }
+        t.eq(out, 0, "the cache alone stops it; a real device could reconnect all day without re-asking")
+    }
+
     t.test("under tests no proof is attempted: no key made, no ask shown, and it says why") {
         let out: (String, Bool, Bool)? = t.wait {
             let (p, store, asked) = await MainActor.run { () -> (CapsulePresence, MemoryKeyStore, () -> Bool) in

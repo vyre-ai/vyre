@@ -81,7 +81,10 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         }
         vyred.follower.onState = { [weak self] st in
             self?.health.set(up: st == .open)
-            if st == .open { self?.hotkeys.reportRetry() }
+            if st == .open {
+                self?.hotkeys.reportRetry()
+                Task { await self?.presence.pinSelf() }
+            }
         }
         vyred.follower.start()
         panel.onShownChange = { [weak self] shown in if shown { self?.health.refresh() } else { self?.menuBar?.close() } }

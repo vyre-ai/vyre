@@ -147,6 +147,9 @@ public final class CapsulePresence {
     var ask: ((PresenceAsk) async -> Bool)?
     /// Makes the LAContext (a fake in tests).
     var makeContext: () -> LAContext = { LAContext() }
+    /// CapsulePin.swift's pinSelf(): the cdhash last successfully pinned with vyred, in memory
+    /// only, so a reconnect for the same build never re-signs or re-asks Touch ID.
+    var pinnedCdhash: String?
 
     struct Enrolled: Codable { var id: String; var publicKey: String }
 
