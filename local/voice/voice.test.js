@@ -192,11 +192,17 @@ test("voice: push-to-talk through a real vyred, every failure visible, and the k
   });
 
   await t.test("the stream is refused to anyone but this Mac's own callers", async () => {
-    for (const caller of ["tailnet:juno", "mcp", "deck", "module:notes", ""]) {
+    for (const caller of ["tailnet:juno", "mcp", "module:notes", ""]) {
       const s = await listen(root, caller);
       assert.equal(s.refused, 403, caller);
       assert.equal(JSON.parse(String(s.body)).error.code, "denied");
     }
+    // "deck" is allowed (chat's push-to-talk, native-core, 28 Sep): the Deck served locally on
+    // this same Mac, gated the same way as capsule/local/cli -- but only when it is not a peer
+    // connection (checked just below), which is what actually keeps a remote Deck out.
+    const asDeck = await listen(root, "deck");
+    assert.ok(asDeck.peer, "deck is now a local caller: the upgrade succeeds, not a 403");
+    asDeck.peer.close(1000);
     // A listener that forwards an upgrade with the peer it established is refused too, whatever
     // caller it names: the handler checks the peer, not just the label.
     const l = listener({ vault: { fetch: async () => GOOD }, config: d.config, log: () => {} });
