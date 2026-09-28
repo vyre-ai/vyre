@@ -218,6 +218,15 @@ export default {
       return { all: false, agent: who, folders: allowed.flatMap(p => p.folders), slugs: new Set(allowed.map(p => p.slug)) };
     };
     const clean = cwds => (cwds || []).map(c => path.resolve(String(c)));
+    // Reviewer's MEDIUM 1 on db2d94fd: graph.view/scoped read an EMPTY cwds array as "no scope
+    // at all" (the main graph, unlimited), not "scoped to nothing" — so an assistant with zero
+    // mapped projects (a fresh install, r.folders === []) got cwds: [] from guard() and read
+    // every session, unfiled included, the same leak M1 had already fixed for a non-empty
+    // r.folders. No real session's cwd is ever under /dev/null (a character device; nothing can
+    // be a directory under it), so this is a cwds value scoped(), roomFor() and view() all agree
+    // matches zero sessions and zero projects, without touching graph.js's own "empty means
+    // unscoped" rule at all.
+    const NOTHING = ["/dev/null/vyre-assistant-has-no-mapped-projects"];
     /** The user's own surfaces. Only these, modules, and a verified all-projects agent read the main graph. */
     const OWNER = new Set(["deck", "cli", "local", "capsule"]);
     const owner = caller => OWNER.has(String(caller)) || String(caller).startsWith("module:");
@@ -273,7 +282,10 @@ export default {
       // construction, not a special case bolted onto each reader.
       if (room === "unfiled") throw denied(`the unfiled room is for the user only, not ${r.agent}`);
       if (!scoped) {
-        if (r.assistant) return { ...r, cwds: r.folders };
+        // r.folders.length ? r.folders : NOTHING — reviewer's MEDIUM 1 on db2d94fd: an empty
+        // r.folders (the assistant has no mapped projects yet) must read as "nothing", not fall
+        // through to graph.view/scoped's own "empty cwds means unscoped" rule.
+        if (r.assistant) return { ...r, cwds: r.folders.length ? r.folders : NOTHING };
         throw denied(`the main graph is for the assistant; ask for one of ${r.agent}'s projects with room or project_cwds`);
       }
       const sc = /** @type {{ room: string|null }} */ (graph.view(cwds, room && room !== "*" ? room : undefined));
@@ -496,14 +508,27 @@ export default {
      * passing project_cwds straight through unchanged — for the assistant, called unscoped, that
      * meant reading every session including unfiled ones raw, the same leak fixed in guard()
      * itself. sees is true only for the true owner or the assistant (personalOnly above); for
-     * the owner nothing changes (project_cwds as given). For the assistant, unscoped, this
-     * widens to every mapped project's folders, the same value guard() would hand back.
+     * the owner nothing changes (project_cwds as given): only the true owner passes cwds through
+     * as given.
+     *
+     * Reviewer's MEDIUM 2 on db2d94fd: this used to return the assistant's OWN caller-supplied
+     * project_cwds unchecked too (only the empty-project_cwds branch was narrowed to r.folders),
+     * so memory.answer/retrieve/ask/suggest/context all still read whatever the assistant's own
+     * call named directly — "/", or any real folder outside every mapped project, unfiled
+     * sessions included. Every caller-supplied folder is now checked against r.folders exactly
+     * as guard() checks a named agent's, refusing outright rather than silently narrowing (a
+     * partly-outside request is a mistake worth surfacing, not a quiet drop); no folders given
+     * at all keeps the fresh-install "empty means nothing" rule from guard()'s own fix (MEDIUM 1)
+     * rather than repeating it as a second, easy-to-miss copy.
      */
     const scopedCwds = async (sees, agent, caller, project_cwds) => {
       if (!sees) return (await guard({ agent, project_cwds }, caller, { tailnet: true })).cwds;
-      if (project_cwds.length) return project_cwds;
       const r = await reach(agent, caller);
-      return r.assistant ? r.folders : project_cwds;
+      if (!r.assistant) return project_cwds;
+      if (!project_cwds.length) return r.folders.length ? r.folders : NOTHING;
+      const outside = project_cwds.filter(c => !within(c, r.folders));
+      if (outside.length) throw denied(`the assistant is not granted ${outside.join(", ")}`);
+      return project_cwds;
     };
     const answer = answerer({ personal, graph, db: ctx.store.db, me: ctx.config.me || null, call: (tool, input) => ctx.call(tool, input),
       scratch: askDir, quick: quickDir });

@@ -284,6 +284,69 @@ test("graph: THE assistant rule — every mapped project and the main graph, per
   assert.ok(!facts.error, JSON.stringify(facts.error));
 });
 
+test("graph: an assistant with ZERO mapped projects reads nothing, never everything (reviewer's MEDIUM 1 on db2d94fd)", async t => {
+  const root = fs.realpathSync(tempHome(t));
+  const work = path.join(root, "Work");
+  const moved = [...SESSIONS, CROSSOVER].map(s => ({ ...s, cwd: s.cwd.replace(W, work) }));
+  const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const opts = { root };
+  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  // No project created at all: a fresh install, r.folders === []. graph.view/scoped read an
+  // empty cwds array as "no scope at all" (the main graph, unlimited) -- so before this fix an
+  // assistant asking unscoped here, with nothing yet mapped, still read every session raw,
+  // unfiled included, the exact leak already fixed above for a NON-empty r.folders.
+  const why = await call("memory.why", { agent: "juno", fact: "Dana Reyes" }, opts);
+  assert.ok(!why.error, JSON.stringify(why.error));
+  assert.equal(why.data.turns.length, 0, JSON.stringify(why.data.turns));
+  const relevant = await call("memory.relevant", { agent: "juno", text: "Dana Reyes" }, opts);
+  assert.ok(!relevant.error, JSON.stringify(relevant.error));
+  assert.equal(relevant.data.length, 0, JSON.stringify(relevant.data));
+  const facts = await call("memory.facts", { agent: "juno", about: "Dana Reyes" }, opts);
+  assert.ok(!facts.error, JSON.stringify(facts.error));
+  assert.equal(facts.data.facts.length, 0, JSON.stringify(facts.data));
+  const retrieve = await call("memory.retrieve", { agent: "juno", question: "what does Dana need this week" }, opts);
+  assert.ok(!retrieve.error, JSON.stringify(retrieve.error));
+  assert.equal(retrieve.data.passages.length, 0, JSON.stringify(retrieve.data.passages));
+  // Personal facts still answer: the assistant's other privilege (personalOnly), untouched by
+  // this fix, which is only ever about raw project/session content.
+  assert.ok(!(await call("memory.answer", { agent: "juno", q: "who is my wife" }, opts)).error);
+});
+
+test("graph: the assistant's own caller-supplied project_cwds are checked against its mapped projects too, not passed through unchecked (reviewer's MEDIUM 2 on db2d94fd)", async t => {
+  const root = fs.realpathSync(tempHome(t));
+  const work = path.join(root, "Work");
+  const moved = [...SESSIONS, CROSSOVER].map(s => ({ ...s, cwd: s.cwd.replace(W, work) }));
+  const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const opts = { root };
+  assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
+  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  await call("memory.curate", {}, opts);
+  // A real, mapped folder still works, exactly as before this fix.
+  assert.ok(!(await call("memory.retrieve", { agent: "juno", question: "Dana Reyes", project_cwds: [path.join(work, "northwind")] }, opts)).error);
+  // "/" (or any real folder outside every project the assistant is mapped to) used to pass
+  // straight through unchecked here: memory.answer/retrieve/ask/suggest only narrowed an EMPTY
+  // project_cwds to r.folders, never checked one the assistant supplied itself. scoped() reads
+  // "/" as "every session on the machine" (its own explicit root special case), so this was a
+  // full bypass of the assistant's own project scope, unfiled sessions included.
+  for (const [tool, input] of [
+    ["memory.retrieve", { question: "Dana Reyes" }],
+    ["memory.ask", { question: "who is Dana Reyes" }],
+    ["memory.answer", { q: "who is Dana Reyes" }],
+    ["memory.suggest", { prefix: "dana" }],
+  ]) {
+    const r = await call(tool, { ...input, agent: "juno", project_cwds: ["/"] }, opts);
+    assert.equal(r.error?.code, "denied", `${tool} with project_cwds ["/"] should have been refused; got ${JSON.stringify(r)}`);
+  }
+  // A folder outside every mapped project (not "/" itself, just not granted) is refused the
+  // same way, not silently narrowed to nothing.
+  const outside = await call("memory.retrieve", { agent: "juno", question: "Dana Reyes", project_cwds: [path.join(work, "some-other-client")] }, opts);
+  assert.equal(outside.error?.code, "denied", JSON.stringify(outside));
+});
+
 test("graph: a named agent is refused when agents cannot be checked", async t => {
   const root = tempHome(t);
   // Agents is a core module now; switch it off to see Memory refuse rather than trust.

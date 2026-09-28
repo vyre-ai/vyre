@@ -32,17 +32,23 @@ import { compose, label } from "./brief.js";
 // Names mirror core/files/safety.js's HOME_DENIED so the two lists never disagree about what is
 // sensitive; kept as its own short list here rather than imported, since core/projects may not
 // import core/files (test/boundaries.test.js — no such edge is allowlisted, and this is three
-// names, not worth a new one).
-const SENSITIVE = [".vyre", ".claude", ".ssh", ".gnupg", ".aws", path.join(".config", "gcloud"), ".docker", ".kube", ".netrc"];
-/** Throws when p, resolved, is "/", the real home directory itself, or one of SENSITIVE below it. */
+// names, not worth a new one). Reviewer's MEDIUM 3 (second pass): "Library" added (Keychains,
+// Mail, Cookies and more all live under it, not just Keychains), and the check below now also
+// refuses an ANCESTOR of any of these, not only the folder itself or something inside it: "/Users"
+// (or whatever holds the real home) contains the home directory, and so every credential folder
+// under it, as a subfolder the moment IT becomes a project's own folder; "~/.config" is the parent
+// of gcloud's own creds the same way.
+const SENSITIVE = [".vyre", ".claude", ".ssh", ".gnupg", ".aws", path.join(".config", "gcloud"), ".docker", ".kube", ".netrc", "Library"];
+/** Throws when p, resolved, is "/", the real home directory, one of SENSITIVE below it, or an
+ * ancestor of any of those three (which contains it as a subfolder once granted). */
 function refuseSensitiveRoot(p) {
   const abs = M.real(String(p));
-  if (abs === path.parse(abs).root) throw new Error(`${p} cannot be a project's folder`);
   const home = M.real(os.homedir());
-  if (abs === home) throw new Error(`${p} cannot be a project's folder`);
-  for (const d of SENSITIVE) {
-    const full = path.join(home, d);
-    if (abs === full || abs.startsWith(full + path.sep)) throw new Error(`${p} cannot be a project's folder`);
+  const bad = [path.parse(abs).root, home, ...SENSITIVE.map(d => path.join(home, d))];
+  for (const b of bad) {
+    if (abs === b || abs.startsWith(b + path.sep) || b.startsWith(abs + path.sep)) {
+      throw new Error(`${p} cannot be a project's folder`);
+    }
   }
 }
 
