@@ -303,6 +303,27 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok((await w.said(th.id)).includes("echo: still here"));
   });
 
+  // native-core: does a message queued (mode "queue") for after a turn still reach Claude when
+  // that turn ends by Stop instead of finishing on its own? turnEnded (core/switchboard) hands
+  // queued words over on any thread.finished, cancelled or not, unless st.stopping is set (a
+  // hard threads.stop, not this soft threads.interrupt) - so it should, but nothing tested the
+  // combination end to end.
+  test(`${driver}: a message queued while a turn runs is still handed over when Stop ends that turn`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const queued = (await w.tool("threads.send", { thread: th.id, text: "check the hours too", surface: "deck", mode: "queue" })).data;
+    assert.equal(queued.queued, true, JSON.stringify(queued));
+    assert.deepEqual((await w.tool("threads.queue", { thread: th.id })).data.queued.map(r => r.queued), [queued.queued_id]);
+    assert.equal((await w.tool("threads.interrupt", { thread: th.id })).data.interrupted, true);
+    await w.finished(th.id);
+    const handed = await until(async () => (await w.events(th.id)).find(e => e.type === "thread.sent" && e.payload.queued === queued.queued_id), "the queued words handed over");
+    assert.equal(handed.payload.via, "turn");
+    await w.finished(th.id, 2);
+    assert.ok((await w.said(th.id)).includes("echo: check the hours too"));
+    assert.deepEqual((await w.tool("threads.queue", { thread: th.id })).data.queued, [], "nothing left waiting");
+  });
+
   test(`${driver}: an idle session is closed and comes back on the next message`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { idle_minutes: 0.02 } });           // 1.2 s
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
