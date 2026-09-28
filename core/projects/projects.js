@@ -19,10 +19,32 @@
 // with less, when Recall or Memory is not running.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import * as M from "./markers.js";
 import { untilde } from "../config/index.js";
 import { compose, label } from "./brief.js";
+
+// Reviewer's LOW on 7021d4e1: a project's home or workspace must never be the whole disk, the
+// whole home account, or one of the credential/vault folders under it — granting an agent
+// projects.access on a project scoped that wide hands it the person's real keys and vault the
+// moment the grant lands (create()'s own wildcard-agent grant, and any add-workspace after).
+// Names mirror core/files/safety.js's HOME_DENIED so the two lists never disagree about what is
+// sensitive; kept as its own short list here rather than imported, since core/projects may not
+// import core/files (test/boundaries.test.js — no such edge is allowlisted, and this is three
+// names, not worth a new one).
+const SENSITIVE = [".vyre", ".claude", ".ssh", ".gnupg", ".aws", path.join(".config", "gcloud"), ".docker", ".kube", ".netrc"];
+/** Throws when p, resolved, is "/", the real home directory itself, or one of SENSITIVE below it. */
+function refuseSensitiveRoot(p) {
+  const abs = M.real(String(p));
+  if (abs === path.parse(abs).root) throw new Error(`${p} cannot be a project's folder`);
+  const home = M.real(os.homedir());
+  if (abs === home) throw new Error(`${p} cannot be a project's folder`);
+  for (const d of SENSITIVE) {
+    const full = path.join(home, d);
+    if (abs === full || abs.startsWith(full + path.sep)) throw new Error(`${p} cannot be a project's folder`);
+  }
+}
 
 export const MIGRATIONS = [
   `
@@ -143,6 +165,8 @@ export class Projects {
     if (!slug) throw new Error(`"${clean}" has no letters or digits to make a slug from`);
     this.refresh({ walk: true });
     const where = M.real(home ? untilde(home) : path.join(this.config.projectsDir, slug));
+    refuseSensitiveRoot(where);
+    for (const w of workspaces) refuseSensitiveRoot(w);
     const clash = this.valid().find(p => p.slug === slug);
     if (clash) throw new Error(`a project called ${clash.name} already exists at ${clash.home}`);
     if (fs.existsSync(path.join(where, M.MARKER))) throw new Error(`${where} is already a project home`);
@@ -184,6 +208,7 @@ export class Projects {
    * than duplicated, the same as addThreads dedupes against p.threads.
    */
   addWorkspace(ref, folder) {
+    refuseSensitiveRoot(folder);
     this.refresh();
     const p = this.resolve(ref);
     const rel = M.relative(p.home, [folder]).filter(w => w !== ".");

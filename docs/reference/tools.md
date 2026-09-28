@@ -2700,7 +2700,7 @@ Whether a named agent may reach a project's data: deny by default, an agent-spec
 
 ### `projects.access.clear`
 
-Delete every projects.access row for one agent outright, not merely revoke: for agents.delete's own case, where the agent no longer exists at all, so there is nothing left for a future re-add to distinguish from a person's own explicit revoke. Internal: never a person or model's own door directly.
+Delete every projects.access row for one agent outright, not merely revoke: for agents.delete's own case, where the agent no longer exists at all, so there is nothing left for a future re-add to distinguish from a person's own explicit revoke. Internal: agents' own door alone (module:agents), never any other module, a person or a model.
 
 - Input:
   - `agent` string, required
@@ -2732,7 +2732,7 @@ Bootstrap for projects.access (Vyre Drive step 3, one source of truth): seeds a 
 
 ### `projects.access.revoke`
 
-Take an agent's (or, agent left out, every agent's) access to a project away. Instant, no presence needed: taking access away is never held up behind a prompt. callers includes "module": agents.update revokes internally when a project drops off an agent's own list.
+Take an agent's (or, agent left out, every agent's) access to a project away. Instant, no presence needed: taking access away is never held up behind a prompt. callers includes "module": agents.update revokes internally when a project drops off an agent's own list, and only agents' or this module's own internal calls (module:agents, module:projects), never any other installed module.
 
 - Input:
   - `project` string, required
@@ -2750,12 +2750,12 @@ Pick threads (Claude Code session ids) into a project. A thread can be in severa
 
 ### `projects.add-workspace`
 
-Attach an existing folder to an existing project as one of its workspaces (Vyre Drive step 4): the folder starts counting as the project's own, the same as one listed at projects.create time. For confirming sync.consent's proposed folder-to-project mapping, or attaching any other folder by hand. Person-only, instant, no presence: a placement decision, same weight as a pick. Refuses a project that does not exist; a folder that resolves to the project's own home is a no-op (added: null), not an error.
+Attach an existing folder to an existing project as one of its workspaces (Vyre Drive step 4): the folder starts counting as the project's own, the same as one listed at projects.create time. For confirming sync.consent's proposed folder-to-project mapping, or attaching any other folder by hand. Person-only, instant, no presence: a placement decision, same weight as a pick. Refuses a project that does not exist; a folder that resolves to the project's own home is a no-op (added: null), not an error. callers is the person's own surfaces plus sync's own door (module:sync), the same named exception as projects.create; every other module is refused.
 
 - Input:
   - `folder` string, required
   - `project` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `projects.catalog`
 
@@ -2780,7 +2780,7 @@ The brief for a thread starting in a project, as plain text for Claude: what the
 
 ### `projects.create`
 
-Make a project by hand: a name, a home folder (default: a new folder in the projects folder), other folders it owns, the threads picked into it, and its people. Every projects: "*" agent (never the assistant, whose "*" is a different rule) is granted projects.access on it at once too, option (a) (the lead's decision, so agents.projects and projects.access never drift apart): a wildcard agent reads a brand-new project the moment it exists, with no separate step.
+Make a project by hand: a name, a home folder (default: a new folder in the projects folder), other folders it owns, the threads picked into it, and its people. Every projects: "*" agent (never the assistant, whose "*" is a different rule) is granted projects.access on it at once too, option (a) (the lead's decision, so agents.projects and projects.access never drift apart): a wildcard agent reads a brand-new project the moment it exists, with no separate step. callers is the person's own surfaces plus sync's own door (module:sync), for its consent flow's proposed folder-to-project mapping; every other module is refused.
 
 - Input:
   - `name` string, required
@@ -2792,7 +2792,7 @@ Make a project by hand: a name, a home folder (default: a new folder in the proj
   - `threads` list of string
   - `watchers` list of string
   - `workspaces` list of string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `projects.list`
 

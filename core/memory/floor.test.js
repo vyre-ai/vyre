@@ -265,6 +265,23 @@ test("graph: THE assistant rule — every mapped project and the main graph, per
   // Personal facts are the one thing it keeps despite no longer reading the unfiled room most
   // of them are drawn from: distilled facts, not raw transcripts.
   assert.ok(!(await call("memory.answer", { agent: "juno", q: "who is my wife" }, opts)).error);
+
+  // Reviewer's MEDIUM on f8330ccc: floorPlan's excludeUnfiled closed the leak for memory.graph's
+  // own drawing, but relevant/why/facts read raw content straight from graph.js's own
+  // view()/edgeIn(), which treats an unscoped call (project_cwds and room both empty) as "no
+  // scope at all", not "every mapped project, unfiled excluded" — so a session that ran in no
+  // project (this fixture's hub session, "11111111-aaaa-4000-8000-000000000004", cwd
+  // ${HOME}/Work, which mentions Dana Reyes: "Dana is waiting on the intake form") still had its
+  // turns and facts surface to the assistant asking unscoped. guard() now hands back r.cwds
+  // (every mapped project's folders) for exactly this case, and every reader below uses it.
+  const HUB = "11111111-aaaa-4000-8000-000000000004";
+  const why = await call("memory.why", { agent: "juno", fact: "Dana Reyes" }, opts);
+  assert.ok(!why.error, JSON.stringify(why.error));
+  assert.ok(!why.data.turns.some(t => t.session === HUB), JSON.stringify(why.data.turns));
+  const relevant = await call("memory.relevant", { agent: "juno", text: "what does Dana need this week" }, opts);
+  assert.ok(!relevant.error, JSON.stringify(relevant.error));
+  const facts = await call("memory.facts", { agent: "juno", about: "Dana Reyes" }, opts);
+  assert.ok(!facts.error, JSON.stringify(facts.error));
 });
 
 test("graph: a named agent is refused when agents cannot be checked", async t => {

@@ -250,26 +250,40 @@ export default {
       const scoped = Boolean((room && room !== "*") || cwds.length);
       if (r.all) {
         if (!scoped && !whole && !r.agent && !(tailnet ? reader(caller) : owner(caller))) throw denied("the main graph is drawn for the Deck and the assistant; pass room (a project's slug, or unfiled) or project_cwds");
-        return r;
+        return { ...r, cwds: project_cwds };
       }
       // THE assistant rule: unfiled is never the assistant's either, only the true owner's
       // (r.all above). r.assistant still reaches the unscoped main-graph-equivalent view (every
-      // mapped project's room together, unfiled excluded — memory.graph's own call strips it via
-      // floorPlan's excludeUnfiled) and any one mapped project's room by name, the same door a
-      // named-projects or wildcard agent uses below.
+      // mapped project's room together, unfiled excluded) and any one mapped project's room by
+      // name, the same door a named-projects or wildcard agent uses below.
+      //
+      // Reviewer's MEDIUM on f8330ccc: floorPlan's excludeUnfiled closed the leak for
+      // memory.graph's own drawing, but every OTHER reader (relevant, why, retrieve, ask,
+      // suggest, context, facts) still called graph.view/relevant/why/facts with the caller's
+      // own (empty) project_cwds when r.assistant && !scoped, which graph.js's view() and
+      // edgeIn() read as "no scope at all" rather than "every mapped project, unfiled
+      // excluded" — sc falsy skips the sessions.has() filter entirely, so why()'s raw turns in
+      // particular came back for every session including unfiled ones. Fixed at the source:
+      // guard() now hands back r.cwds, every mapped project's folders combined, whenever the
+      // assistant asked unscoped; every caller below uses r.cwds in place of its own
+      // project_cwds from here on. Passed to graph.view()/relevant()/why()/facts(), roomFor()
+      // never finds one project owning folders from several different ones, so it falls to the
+      // multi-project branch: sessions = scoped(cwds), the union of sessions inside those
+      // folders only. That is a real project-boundary scope, unfiled sessions excluded by
+      // construction, not a special case bolted onto each reader.
       if (room === "unfiled") throw denied(`the unfiled room is for the user only, not ${r.agent}`);
       if (!scoped) {
-        if (r.assistant) return r;
+        if (r.assistant) return { ...r, cwds: r.folders };
         throw denied(`the main graph is for the assistant; ask for one of ${r.agent}'s projects with room or project_cwds`);
       }
       const sc = /** @type {{ room: string|null }} */ (graph.view(cwds, room && room !== "*" ? room : undefined));
       if (sc.room) {
         if (!r.slugs.has(sc.room)) throw denied(`${r.agent} is not granted ${sc.room}`);
-        return r;
+        return { ...r, cwds };
       }
       const outside = cwds.filter(c => !within(c, r.folders));
       if (outside.length) throw denied(`${r.agent} is not granted ${outside.join(", ")}`);
-      return r;
+      return { ...r, cwds };
     };
     const agentField = { agent: { type: "string" } };
     // A room by name: a project's slug, or "unfiled" for sessions in no project. project is the
@@ -306,8 +320,8 @@ export default {
           await guard({ agent, room }, caller, { tailnet: true });
           return graph.threadFacts({ thread, room, limit: Math.min(200, Math.max(1, limit ?? 50)) });
         }
-        await guard({ agent, project_cwds, room }, caller, { tailnet: true });
-        return graph.facts({ about, project_cwds, room, limit: Math.min(200, Math.max(1, limit ?? 20)) });
+        const r = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        return graph.facts({ about, project_cwds: r.cwds, room, limit: Math.min(200, Math.max(1, limit ?? 20)) });
       },
     });
     ctx.tool("memory.relevant", {
@@ -315,12 +329,20 @@ export default {
       input: { type: "object", required: ["text"], properties: { text: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer" }, ...agentField } },
       // The owner on a phone reads it too: Find searches memory by meaning with it, account-wide,
       // as the Deck does on the Mac. A session still names its room.
-      run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, { caller } = {}) => { const room = roomOf(rest); return (await guard({ agent, project_cwds, room }, caller, { tailnet: true }), graph.relevant({ text, project_cwds, room, limit: Math.min(20, Math.max(1, limit)) })); },
+      run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, { caller } = {}) => {
+        const room = roomOf(rest);
+        const r = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        return graph.relevant({ text, project_cwds: r.cwds, room, limit: Math.min(20, Math.max(1, limit)) });
+      },
     });
     ctx.tool("memory.why", {
       description: "The turns that support a fact (its id, src|rel|dst) or where a thing came up (a name). Turns that no longer exist are counted as gone.",
       input: { type: "object", required: ["fact"], properties: { fact: { type: "string" }, limit: { type: "integer" }, project_cwds: cwds, ...roomField, ...agentField } },
-      run: async ({ fact, limit = 10, project_cwds = [], agent, ...rest }, { caller } = {}) => { const room = roomOf(rest); return (await guard({ agent, project_cwds, room }, caller, { tailnet: true }), graph.why({ fact, project_cwds, room, limit: Math.min(50, Math.max(1, limit)) })); },
+      run: async ({ fact, limit = 10, project_cwds = [], agent, ...rest }, { caller } = {}) => {
+        const room = roomOf(rest);
+        const r = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        return graph.why({ fact, project_cwds: r.cwds, room, limit: Math.min(50, Math.max(1, limit)) });
+      },
     });
     const steer = mode => ({
       description: mode === "pin"
@@ -466,6 +488,23 @@ export default {
         throw denied(r.agent ? `personal facts are not a project's: only the assistant reads them, not ${r.agent}` : `${name} is for the user's own surfaces and the assistant, not ${plain(caller || "an unnamed caller", 60)}`);
       }
     };
+    /**
+     * The project_cwds a reader should actually pass to graph.relevant/why/facts or retrieve's
+     * own search, for a tool that reads personal facts (sees) alongside project content and so
+     * only calls guard() when sees is false. Reviewer's MEDIUM on f8330ccc: memory.retrieve,
+     * memory.ask and memory.suggest skipped guard() entirely when sees (owner or the assistant),
+     * passing project_cwds straight through unchanged — for the assistant, called unscoped, that
+     * meant reading every session including unfiled ones raw, the same leak fixed in guard()
+     * itself. sees is true only for the true owner or the assistant (personalOnly above); for
+     * the owner nothing changes (project_cwds as given). For the assistant, unscoped, this
+     * widens to every mapped project's folders, the same value guard() would hand back.
+     */
+    const scopedCwds = async (sees, agent, caller, project_cwds) => {
+      if (!sees) return (await guard({ agent, project_cwds }, caller, { tailnet: true })).cwds;
+      if (project_cwds.length) return project_cwds;
+      const r = await reach(agent, caller);
+      return r.assistant ? r.folders : project_cwds;
+    };
     const answer = answerer({ personal, graph, db: ctx.store.db, me: ctx.config.me || null, call: (tool, input) => ctx.call(tool, input),
       scratch: askDir, quick: quickDir });
     ctx.tool("memory.answer", {
@@ -473,7 +512,8 @@ export default {
       input: { type: "object", properties: { q: { type: "string" }, question: { type: "string", description: "the same as q" }, project_cwds: cwds, ...roomField, sources: { type: "boolean" }, ...agentField } },
       run: async (input, { caller } = {}) => {
         await personalOnly(input, caller, "memory.answer");
-        return answer({ q: String(input.q ?? input.question ?? ""), project_cwds: clean(input.project_cwds), sources: Boolean(input.sources) });
+        const effectiveCwds = await scopedCwds(true, input.agent, caller, clean(input.project_cwds));
+        return answer({ q: String(input.q ?? input.question ?? ""), project_cwds: effectiveCwds, sources: Boolean(input.sources) });
       },
     });
     // Vyre IQ's retrieval (ADR 0034, core/memory/iq/retrieve.js): the passages a question's answer
@@ -490,8 +530,8 @@ export default {
         const project_cwds = clean(input.project_cwds);
         let sees = true;
         try { await personalOnly(input, caller, "memory.retrieve"); } catch { sees = false; }
-        if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
-        return retrieve({ question: String(input.question || ""), project_cwds, k: input.k ?? 8, personal: sees,
+        const effectiveCwds = await scopedCwds(sees, input.agent, caller, project_cwds);
+        return retrieve({ question: String(input.question || ""), project_cwds: effectiveCwds, k: input.k ?? 8, personal: sees,
           expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, knobs: input.knobs || {} });
       },
     });
@@ -522,8 +562,8 @@ export default {
         const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && input.context.project ? [input.context.project] : [])];
         let sees = true;
         try { await personalOnly(input, caller, "memory.ask"); } catch { sees = false; }
-        if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
-        return ask({ question: String(input.question || ""), project_cwds, personal: sees, thread: typeof input.context?.thread === "string" ? input.context.thread : null });
+        const effectiveCwds = await scopedCwds(sees, input.agent, caller, project_cwds);
+        return ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, thread: typeof input.context?.thread === "string" ? input.context.thread : null });
       },
     });
     // Suggestions while typing (cohesion's suggest.query): people, pets, places and things memory
@@ -539,7 +579,7 @@ export default {
         if (pre.length < 1) return { suggestions: [] };
         let sees = true;
         try { await personalOnly(input, caller, "memory.suggest"); } catch { sees = false; }
-        if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
+        const effectiveCwds = await scopedCwds(sees, input.agent, caller, project_cwds);
         const out = [], seen = new Set();
         const add = (text, kind, id, via) => { const k = text.toLowerCase(); if (seen.has(k) || out.length >= limit) return; seen.add(k); out.push({ text, kind, id, via }); };
         if (sees) {
@@ -548,7 +588,7 @@ export default {
               WHERE a.alias >= ? AND a.alias < ? ORDER BY length(a.alias), a.alias LIMIT 40`).all(pre, pre + "\uffff"))) add(String(r.alias), String(r.kind), String(r.id), "personal");
         }
         try {
-          const sc = graph.view(project_cwds);
+          const sc = graph.view(effectiveCwds);
           const { phrases } = graph.phrases(sc?.room || "*");
           const hits = [...phrases.keys()].filter(k => k.startsWith(pre)).sort((x, y) => x.length - y.length || (x < y ? -1 : 1));
           for (const k of hits) {
@@ -642,8 +682,8 @@ export default {
       input: { type: "object", required: ["text"], properties: { text: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer", minimum: 1, maximum: 20 }, ...agentField } },
       run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, { caller } = {}) => {
         const room = roomOf(rest);
-        await guard({ agent, project_cwds, room }, caller, { tailnet: true });
-        const lines = graph.relevant({ text, project_cwds, room, limit: Math.min(20, Math.max(1, limit)) }).map(x => String(x.text));
+        const g = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        const lines = graph.relevant({ text, project_cwds: g.cwds, room, limit: Math.min(20, Math.max(1, limit)) }).map(x => String(x.text));
         let a = null;
         // Only a question memory's rules can read, only a fact (never a loose quote), only for
         // callers who may read the user's personal facts.
@@ -651,7 +691,7 @@ export default {
           const may = await personalOnly({ agent }, caller, "memory.context").then(() => true, () => false);
           if (may) {
             if (running) await running.catch(() => {});
-            const r = await answer({ q: String(text), project_cwds: clean(project_cwds), sources: false });
+            const r = await answer({ q: String(text), project_cwds: g.cwds, sources: false });
             if (r.answer && r.kind === "fact" && Number(r.confidence) >= 0.5) a = { text: r.answer, confidence: r.confidence, from: r.from };
           }
         }

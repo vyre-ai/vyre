@@ -286,3 +286,42 @@ test("projects.reach: a projects: \"*\" agent is checked against projects.access
   // kind: "facts" gives the assistant true all:true (personal facts, distilled, not raw content).
   assert.deepEqual(await w.call("projects.reach", { agent: "juno", kind: "facts", caller: "mcp:agent:juno" }), { all: true, agent: "juno" });
 });
+
+test("projects.access: grant, revoke and clear are agents' and this module's own internal door, never a third-party module (reviewer's MEDIUM 2 on f8330ccc)", async t => {
+  const w = await started(t);
+  for (const [tool, input] of [["projects.access.grant", { project: "harlow-legal", agent: "kit" }], ["projects.access.revoke", { project: "harlow-legal", agent: "kit" }], ["projects.access.clear", { agent: "kit" }]]) {
+    const r = await w.call(tool, input, { caller: "module:evil-plugin" }).catch(e => e);
+    assert.equal(r.code, "denied", `${tool} by module:evil-plugin should have been refused`);
+  }
+  // The two doors that are meant to reach these still can.
+  assert.ok(!(await w.call("projects.access.grant", { project: "harlow-legal", agent: "kit" }, { caller: "module:agents" })).error);
+  assert.ok(!(await w.call("projects.access.revoke", { project: "harlow-legal", agent: "kit" }, { caller: "module:agents" })).error);
+  assert.ok(!(await w.call("projects.access.clear", { agent: "kit" }, { caller: "module:agents" })).error);
+  // The owner's own surfaces are unaffected: this is a module-caller-only narrowing.
+  assert.ok(!(await w.call("projects.access.grant", { project: "harlow-legal", agent: "kit" }, { caller: "cli" })).error);
+});
+
+test("projects.create: a module caller is refused unless it is sync's own door (reviewer's MEDIUM on 7021d4e1)", async t => {
+  const w = await started(t);
+  const input = { name: "Northwind", home: path.join(w.root, "alex", "Work", "northwind") };
+  const r = await w.call("projects.create", input, { caller: "module:evil-plugin" }).catch(e => e);
+  assert.equal(r.code, "denied", "an agent's own module cannot map any folder it likes into a brand-new project");
+  // sync's own door (attachMapped's create-new-project branch, core/sync/index.js) still works.
+  const created = await w.call("projects.create", input, { caller: "module:sync" });
+  assert.equal(created.slug, "northwind");
+});
+
+test("projects.add-workspace: a module caller is refused unless it is sync's own door, and sync's attach-to-existing path actually works end to end (reviewer's MEDIUM on 7021d4e1: \"attach-to-existing is dead\")", async t => {
+  const w = await started(t);
+  const intake = path.join(w.root, "alex", "Work", "harlow-intake");
+  fs.mkdirSync(intake, { recursive: true });
+  const refused = await w.call("projects.add-workspace", { project: "harlow-legal", folder: intake }, { caller: "module:evil-plugin" }).catch(e => e);
+  assert.equal(refused.code, "denied", "an agent's own module cannot attach a folder to an existing project");
+  // The exact call attachMapped makes on its "exists" branch: an existing project, sync's own caller.
+  const attached = await w.call("projects.add-workspace", { project: "harlow-legal", folder: intake }, { caller: "module:sync" });
+  assert.equal(attached.added, "../harlow-intake");
+  // A person's own surfaces are unaffected: this is a module-caller-only narrowing.
+  const other = path.join(w.root, "alex", "Work", "harlow-other");
+  fs.mkdirSync(other, { recursive: true });
+  assert.ok(!(await w.call("projects.add-workspace", { project: "harlow-legal", folder: other }, { caller: "cli" })).error);
+});

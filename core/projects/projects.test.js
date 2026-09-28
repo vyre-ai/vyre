@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { open, migrate } from "../store/index.js";
 import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
 import { tempHome } from "../../test/helpers.js";
@@ -301,7 +302,7 @@ test("tools: projects.of answers the Harness's shape for a subfolder, and null o
     transcripts: [], modules: { disable: ["recall", "memory"] } }));
   const d = await start({ root, log: () => {} });
   try {
-    const made = await d.registry.call("projects.create", { name: "Harlow Legal", home, workspaces: [intake] });
+    const made = await d.registry.call("projects.create", { name: "Harlow Legal", home, workspaces: [intake] }, "cli");
     assert.ok(made.data, JSON.stringify(made.error));
     const of = await d.registry.call("projects.of", { cwd: path.join(home, "src", "deep") });
     assert.equal(of.data.slug, "harlow-legal");
@@ -346,6 +347,26 @@ test("projects: a catalogue search costs one Recall call and no per-session path
   // for 2,000 sessions; this is roughly 80x that, so it only trips on an actual
   // algorithmic regression, not on load from other test suites running concurrently).
   assert.ok(ms < 2000, `a catalogue search over 2,000 sessions took ${Math.round(ms)}ms`);
+});
+
+test("projects: create() and addWorkspace() refuse the whole disk, the real home, and the credential/vault folders under it (reviewer's LOW on 7021d4e1)", async t => {
+  const w = world(t);
+  const home = os.homedir();
+  const bad = ["/", home, path.join(home, ".vyre"), path.join(home, ".vyre", "vault"),
+    path.join(home, ".ssh"), path.join(home, ".ssh", "id_ed25519"), path.join(home, ".claude"),
+    path.join(home, ".claude", "projects"), path.join(home, ".gnupg"), path.join(home, ".aws"),
+    path.join(home, ".config", "gcloud"), path.join(home, ".docker"), path.join(home, ".kube"), path.join(home, ".netrc")];
+  for (const p of bad) assert.throws(() => w.P.create({ name: "Bad", home: p }), /cannot be a project's folder/, p);
+  // A workspace named at create time is checked exactly the same as the home.
+  assert.throws(() => w.P.create({ name: "Bad Workspace", home: path.join(w.work, "bad-workspace"), workspaces: [path.join(home, ".ssh")] }),
+    /cannot be a project's folder/);
+  assert.ok(!fs.existsSync(path.join(w.work, "bad-workspace")), "refused before the home folder was even made");
+  const harlow = w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site") });
+  for (const p of bad) assert.throws(() => w.P.addWorkspace(harlow.slug, p), /cannot be a project's folder/, p);
+  // An ordinary folder is unaffected.
+  const ok = path.join(w.work, "harlow-intake");
+  fs.mkdirSync(ok, { recursive: true });
+  assert.equal(w.P.addWorkspace(harlow.slug, ok).added, "../harlow-intake");
 });
 
 test("projects: the catalogue says live for a session a terminal has open now, and false without the Switchboard", async () => {
