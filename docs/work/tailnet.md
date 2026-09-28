@@ -667,19 +667,25 @@ Then on the box: `vyre call --tty files.drive.share '{"name":"projects"}'`, and
 ### Taildrop (files to the box)
 
 Admin console, Settings: Send Files on. The box stays a tagged server, so grant file sharing to
-its tag. The grant's exact form is checked on the first real run:
+its tag, owner only — not `autogroup:member`, which would let anyone sharing or family-sharing
+into this tailnet drop a file onto the box too, where an agent may read it. The grant's exact
+form is checked on the first real run:
 
 ```json
-{ "grants": [ { "src": ["autogroup:member"], "dst": ["tag:vyre-box"],
+{ "grants": [ { "src": ["alex@example.com"], "dst": ["tag:vyre-box"],
     "app": { "https://tailscale.com/cap/file-sharing-target": [{}] } } ] }
 ```
 
 ### Tailscale SSH (for `vyre box add`)
 
-On the server, `tailscale up --ssh` (or `tailscale set --ssh`), with a policy SSH rule:
+On the server, `tailscale up --ssh` (or `tailscale set --ssh`), with a policy SSH rule. `action`
+is `check` (a fresh sign-in each time), not `accept` (which would let any of the owner's own
+devices, a phone included, SSH straight in with no fresh sign-in). `users` is the unix account on
+the server itself — the admin account this server was set up with — never a service account like
+`vyre` or `vyre-agent`:
 
 ```json
-{ "ssh": [ { "action": "accept", "src": ["alex@example.com"], "dst": ["tag:vyre-box"], "users": ["autogroup:nonroot"] } ] }
+{ "ssh": [ { "action": "check", "src": ["alex@example.com"], "dst": ["tag:vyre-box"], "users": ["alex"] } ] }
 ```
 
 ### HTTPS (a ts.net address)

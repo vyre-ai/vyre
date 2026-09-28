@@ -284,14 +284,21 @@ export default {
         ],
         grants: [
           { src: [mac], dst: [boxHost], app: { "tailscale.com/cap/drive": [{ shares, access: "ro" }] } },
-          { src: ["autogroup:member"], dst: [boxHost], app: { "https://tailscale.com/cap/file-sharing-target": [{}] } },
+          // Owner-only (reviewer HOLD, 28 Sep): autogroup:member would let anyone sharing or
+          // family-sharing into this tailnet drop a file onto the box, where an agent may read it.
+          { src: [owner], dst: [boxHost], app: { "https://tailscale.com/cap/file-sharing-target": [{}] } },
         ],
-        ssh: [{ action: "accept", src: [owner], dst: [boxHost], users: ["autogroup:nonroot"] }],
+        // check, not accept (reviewer HOLD, 28 Sep): accept would let any of the owner's own
+        // devices — a phone included — SSH straight in with no fresh sign-in, as whatever unix
+        // account "users" names. users names the account `vyre box add` actually uses (their own
+        // admin login on that server, with sudo), never the vyre daemon account or an agent's.
+        ssh: [{ action: "check", src: [owner], dst: [boxHost], users: ["[the admin account you set up this server with]"] }],
       };
       const notes = [
         "Add hosts." + boxHost + " once (its tailnet IP may change less often than you'd think, but check `tailscale status` if this stops working).",
         "The Taildrive grant's src names your Mac by its own node, not your whole account, so your phone does not also get the server's folders.",
         "For read-write Taildrive, change that grant's \"access\" to \"rw\", then run files.drive.access to match.",
+        "The SSH rule's \"users\" is the unix account on the server itself, not a Tailscale login — put the admin account you set it up with (never a service account like vyre or vyre-agent), and \"check\" asks for a fresh sign-in each time rather than trusting the device forever.",
       ];
       const egress = await tryCall("computers.egress.status");
       if (!egress.__error && egress.enabled) {
