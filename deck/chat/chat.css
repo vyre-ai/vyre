@@ -404,6 +404,22 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-tool-inner > .cv-diff { margin-left: 0; margin-right: 0; }
 @media (prefers-reduced-motion: reduce) { .cv-tool-body, .cv-chev { transition: none; } .cv-spin { animation: none; } }
 
+/* A teammate handoff (teammates.md section 3, tool-row.md's Handoff variant): the teammate's own
+   avatar tile (never the generic sub-agent icon), never coloured (avatar.md's "no per-teammate
+   hue" ruling - distinct comes from the tile+name+tag, not a hue). Always its own line
+   (core/grouping.js exempts it from folding into a run), collapsed by default; the reply is turn
+   prose, not a code block, so it drops cv-tool-inner's mono/--code-bg open styling. */
+.cv-handoff-head { gap: 8px; }
+.cv-handoff-head .av-agent { margin: 0; }
+.cv-handoff-head:disabled { cursor: default; }
+.cv-handoff-head:disabled .cv-chev { opacity: 0.35; }
+.cv-handoff-line { flex-grow: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 13px; line-height: 18px; }
+.cv-handoff-name { font-weight: 600; color: var(--text); }
+.cv-handoff-tag { font-family: var(--sans); font-size: 12px; line-height: 16px; font-weight: 400; color: var(--text-2); background: var(--hover); border: 0; height: auto; padding: 1px 6px; }
+.cv-handoff-sum { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cv-tool[data-open] .cv-handoff-reply { background: none; font-family: var(--sans); font-size: 15px; line-height: 22px; }
+.cv-tool[data-open] .cv-handoff-reply > * { margin-left: 0; margin-right: 0; }
+
 .cv-cmd, .cv-out, .cv-raw { margin: 0; padding: 10px 12px; border-radius: 6px; background: var(--code-bg); overflow-x: auto; }
 .cv-tool-inner .cv-cmd, .cv-tool-inner .cv-out { padding: 0; background: transparent; border-radius: 0; }
 .cv-cmd code, .cv-out code { font-family: var(--mono); font-size: 12.5px; line-height: 20px; white-space: pre; }

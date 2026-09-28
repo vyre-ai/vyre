@@ -88,7 +88,9 @@ import { toolDetail } from "./tool-detail.js";
  * @typedef {{ key: string, kind: "text"|"reasoning", message: string|null, block: number, text: string, streaming: boolean, at?: number, seq?: number }} TextItem
  * @typedef {{ key: string, kind: "tool", call: string, name: string, status: "running"|"completed"|"failed"|"canceled", summary?: string,
  *   error?: string|boolean, input?: any, output?: string|null, detail?: import("./tool-detail.js").ToolDetail, duration_ms?: number|null,
- *   patch?: any, images?: import("./composer-state.js").Attachment[], at?: number, seq?: number }} ToolItem
+ *   patch?: any, images?: import("./composer-state.js").Attachment[], at?: number, seq?: number,
+ *   reply?: string }} ToolItem
+ *   reply: a teammate's answer (team_ask/team.ask only, attachHandoffReply below), once it lands.
  * @typedef {{ key: string, kind: "turn", n?: number, ok?: boolean, result?: string, cost_usd?: number, tokens?: any, duration_ms?: number|null,
  *   error?: string, canceled?: boolean, reason?: string|null, model?: string|null, open?: boolean, at?: number, seq?: number }} TurnItem
  * @typedef {{ key: string, kind: "notice", text: string, at?: number, seq?: number }} NoticeItem
@@ -818,6 +820,12 @@ function onTool(s, p, at, out) {
   if (name && !item.name) item.name = String(name);
   if (typeof p.summary === "string" && p.summary) item.summary = p.summary;
   if (p.error !== undefined && p.error !== false && p.error !== null) item.error = p.error;
+  // Most tools' live events carry no input yet (built up as the call streams; the transcript
+  // fills it in later) - but a handoff's whole input is one small object, present as soon as the
+  // call starts, and the row needs the teammate's role and the ask's own words right away, not
+  // after a reopen. Never overwrites input that already arrived (a later live event, or the
+  // transcript read patching it in).
+  if (p.input !== undefined && item.input === undefined) item.input = p.input;
   out.add(key);
   guess(s, "working");
 }
@@ -925,6 +933,26 @@ function steersRun(s, p, at, out) {
 }
 
 /**
+ * A teammate's answer (core/team's threads.post -> thread.sent {kind: "teammate-result", surface:
+ * <teammate's role>, text}), landing back in the thread that asked. Attaches to the OPEN handoff
+ * tool item (the team_ask call that started it) rather than drawing a new row: the most recent
+ * one for this role with no reply yet, oldest-first FIFO if more than one is open at once.
+ * KNOWN GAP: threads.post's payload carries no request id, only the role, so this cannot tell
+ * apart two concurrent open asks to the SAME teammate - flagged to teammates/sessions; the common
+ * one-open-ask-per-role case is exact.
+ * @param {Session} s @param {any} p @param {Set<string>} out
+ */
+function attachHandoffReply(s, p, out) {
+  const role = String(p.surface ?? "");
+  if (!role) return;
+  const item = /** @type {ToolItem|undefined} */ (s.items.find(it => it.kind === "tool" && (it.name === "team_ask" || it.name === "team.ask")
+    && it.input?.to === role && !it.reply));
+  if (!item) return;
+  item.reply = typeof p.text === "string" ? p.text : "";
+  out.add(item.key);
+}
+
+/**
  * thread.sent: a message went in. via "turn" (a queued row handed over at a turn's end) and a
  * plain send are messages of their own; via "steer" (threads.send into a running turn) and "now"
  * (threads.send-now, a queued row into the running turn) are steers: the words and a "steering"
@@ -935,6 +963,9 @@ function steersRun(s, p, at, out) {
  * @param {Session} s @param {any} p @param {number|undefined} at @param {Set<string>} out
  */
 function onSent(s, p, at, out) {
+  // A teammate's result (core/team's threads.post, kind "teammate-result"): never an ordinary
+  // user message - it attaches to the handoff row that asked, not a new row of its own.
+  if (p.kind === "teammate-result") { attachHandoffReply(s, p, out); return; }
   const row = s.queued.find(q => (p.queued != null && q.queued === p.queued) || (p.uuid && q.uuid === p.uuid));
   const uuid = p.uuid || row?.uuid || undefined;
   const text = typeof p.text === "string" && p.text ? p.text : row?.text ?? (uuid ? s.meta.texts.get(uuid) : undefined) ?? "";
@@ -1022,6 +1053,10 @@ export function applyEvent(s, e) {
       break;
     }
     case "thread.queued": {
+      // A teammate's result arriving while this thread is busy: it lands as an ordinary
+      // thread.sent once this turn ends (threads.post -> queue()'s owned path), not a message to
+      // draw meanwhile - never a "queued for after" row for it.
+      if (p.kind === "teammate-result") break;
       /** @type {Queued} */
       const q = { uuid: p.uuid ?? null, text: String(p.text ?? ""), queued: p.queued ?? null, at: at ?? null };
       // The same row: by its id (threads.edit re-emits it with new words), by uuid (the row drawn

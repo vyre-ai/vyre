@@ -876,3 +876,30 @@ test("sight.frame stills: a computer that goes live after the thread opens still
   stop10();
   sightWorld = null;
 });
+
+test("a teammate handoff (team_ask): its own card, the teammate's tile+name+Teammate tag, 'Asked' then 'Replied' once the result lands (teammates.md section 3)", async () => {
+  const box11 = new El("div");
+  doc.body.append(box11);
+  const stop11 = mountSession(box11, { thread: NEW, project: null, onBack() {} });
+  await wait(30);
+  emit("thread.tool", { id: "tu_h1", tool: "team_ask", phase: "started", input: { to: "design", text: "make the intake form calmer" } }, NEW);
+  await wait();
+  const row = $(box11, ".cv-handoff");
+  assert.ok(row, "its own row, not a generic tool card");
+  assert.match(text($(row, ".cv-handoff-name")), /^design$/);
+  assert.match(text($(row, ".cv-handoff-tag")), /^Teammate$/);
+  assert.match(text($(row, ".cv-tool-name")), /^Asked\s*$/);
+  assert.match(text($(row, ".cv-handoff-sum")), /make the intake form calmer/);
+  assert.ok($(row, ".av-agent"), "the teammate's own tile, not a generic sub-agent icon");
+  assert.equal($(row, ".cv-handoff-head").disabled, true, "nothing to open yet");
+  // The reply lands as thread.sent {kind: teammate-result}, never a message of its own.
+  emit("thread.sent", { text: "Warmed up the copy in three places.", surface: "design", kind: "teammate-result", uuid: "post-h1" }, NEW);
+  await wait();
+  assert.match(text($(row, ".cv-tool-name")), /^Replied\s*$/);
+  assert.equal($$(box11, ".cv-user").length, 0, "still no ordinary message for it");
+  assert.equal($(row, ".cv-handoff-head").disabled, false, "now openable");
+  await $(row, ".cv-handoff-head").click();
+  assert.ok(row.hasAttribute("data-open"));
+  assert.match(text($(row, ".cv-handoff-reply")), /Warmed up the copy in three places/);
+  stop11();
+});
