@@ -683,6 +683,23 @@ shape. sha f7059424, testbox targeted (build.test.js, app.test.js, pair-scan.tes
 Sent to team-lead and integrator. Next: tailnet's ticket-record encryption in resolveTicket()
 (watching for their sha), then the real relay.vyre.run scan-to-pair check once tailnet deploys it.
 
+## Doing (tailnet's Wink record sealing, ADR 0045, 2026-09-28)
+Cherry-picked tailnet's d65ad771 (not a full work/tailnet merge - that branch also carries
+unrelated ADR 0046 churn with its own em-dash back-and-forth; this task only needed the one
+commit) into work/pwa as 8a18930b. Seals the whole ticket record with AES-256-GCM under a fourth
+ticket-derived key (`vyre-pair-enc`); the relay now stores and returns ciphertext only.
+`resolveTicket()`/`pairOffer()` keep the same calls and error codes (a record that fails to
+decrypt throws the same `bad_ticket`-shaped refusal a MAC failure already did) - reviewer
+confirmed and cleared it (d65ad771), and confirmed "nothing for pwa to change." Conflicts were
+all either the ongoing hyphen-vs-em-dash wording fight in core/relay/index.js's own comments
+(kept the hyphen, HEAD's side) or generated reference docs (docs/index.json,
+docs/reference/index.md - regenerated with `npm run docs:ref` rather than hand-merged) plus one
+real addition to docs/adr/0026-relay.md's threat table (Wink mitigation row, took theirs).
+Reran on testbox: test/docs-check.test.js, deck/views/pair-scan.test.js,
+relay/client/client.test.js, test/relay.test.js, relay/node/server.test.js,
+relay/worker/worker.test.js - 105/105 pass. Nothing in pwa's own files needed a change; the
+Wink phone-side contract above is unaffected. Reported to team-lead.
+
 ## Next
 - No test coverage of scan.js/scan-worker.js's own lifecycle (the busy flag, the transferred
   buffer, worker.terminate() on stop) - reviewer-2 hand-verified fa619b4a and confirmed it's
