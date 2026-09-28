@@ -71,6 +71,7 @@ import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
+import { threadHref } from "./lib/routes.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, handoffCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
 import { frameToPicture } from "./core/images.js";
@@ -206,7 +207,9 @@ export function mountSession(container, opts) {
     onRewind: () => openRewind(),
     onTasks: () => tray.toggle(),
     onThinkingView: () => setHideThinking(!hideThinking),
-    onOverlayEscape: () => { if (!rewind) return false; closeRewind(); return true; } });
+    onOverlayEscape: () => { if (!rewind) return false; closeRewind(); return true; },
+    onRecall,
+  });
   /** The live todo list and the background tasks, above the composer. */
   const pin = todoPin();
   const tray = tasksTray({
@@ -220,6 +223,21 @@ export function mountSession(container, opts) {
       return d.killed === false ? String(d.note || "Could not stop it") : null;
     },
   });
+
+  /**
+   * "From your past sessions" (native-core's composer.js, memory-iq's recall.related): a hint row
+   * was tapped. Opens that session (its own thread, almost always a different one - a session
+   * rarely surfaces its own past turns as "past") at the point it was said, the way any other
+   * cross-session link does (threadHref + go), never a special reveal-in-place: this session's
+   * own view has no reason to change. The moment is a real timestamp (hit.ts), so it rides the
+   * existing ?at= deep link (line ~1351 below, want.at) rather than a new one keyed by seq.
+   * @param {{ session: string, seq?: number, role?: string, ts?: number, name?: string|null, title?: string|null, cwd?: string|null, snippet?: string }} hit
+   */
+  function onRecall(hit) {
+    if (!hit?.session) return;
+    const href = threadHref({ id: hit.session }, record.current?.project || opts.project || null) + (hit.ts ? `?at=${hit.ts}` : "");
+    go(href);
+  }
   /** The rewind sheet (Esc Esc), while it is open: a real overlay (sheet.css's --scrim/--float
    * tokens), not drawn in the transcript's own flow above the composer - on a phone, that stack
    * (lease bar, todos, queued row, this) pushed the composer's mode row off the bottom of the
