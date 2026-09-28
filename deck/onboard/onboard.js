@@ -60,6 +60,10 @@ const state = {
    * unchanged), fixture-backed until anywhere's and tailnet's onboard.* tools ship for real
    * (asked, docs/work/launch-surfaces.md "Where should Vyre live?"). */
   /** @type {"solo"|"server"|"device"|null} */ live: null,
+  /** The Device choice's "same Tailscale network" input: the existing server's tailnet name,
+   * for the `verify{node}` call once Tailscale connects (tailnet, docs/work/launch-surfaces.md
+   * "Two separate paths for 'I have a server'"). Client-only. */
+  serverNode: "",
 };
 /** Timers and listeners of the current screen, cleared when the screen changes. */
 let cleanup = [];
@@ -353,28 +357,30 @@ const SCREENS = {
   // stays "box"|"local" and is untouched by this screen.
   //
   // Unified per the lead (the user was explicit: Move to server is the SAME flow in onboarding
-  // and later): the old tailscale/name screens are no longer part of this step for any choice.
-  // They only run later, when a second device actually joins (anywhere's capability ladder,
-  // rung 2) — via Settings > Your devices > Add a device, not here.
+  // and later): "name" (reserving this machine's own address) never runs for Device — a device
+  // never reserves an address, only a server does. "tailscale" DOES still run for Device (a
+  // device joining IS "a second device joining", the case the lead said triggers it), just not
+  // for Solo or Server, which both skip both screens and defer to Settings > Your devices > Add
+  // a device later.
   //   - Solo: onboard.machine{machine:"solo"} (a safe no-op per anywhere, called anyway so the
   //     server has it on record), then straight to Claude sign-in. Real tool, sha 73d03d39 —
   //     `service` always comes back null for now (anywhere's own launchd installer isn't built
   //     yet), so nothing here reads it.
   //   - Server: onboard.machine{machine:"server"}, same real tool. `service.warning` is not
   //     surfaced yet either, for the same reason; will add once anywhere says it's populated.
-  //   - Device: pairs with a server the person already has. Nothing to move yet (a fresh
-  //     device, anywhere.md's Entry A). Calls the real, consolidated `onboard.join` (tailnet,
-  //     sha 5807096d, folded core/join back into core/onboard/index.js per launch's ask — not
-  //     merged to main yet): {action:"verify", node, becomeDevice:true} — becomeDevice is
-  //     required for this exact card (only the connecting device's own verify call should flip
-  //     config.machine; anything else defaults to false and never flips). `node` still expects
-  //     a device/node id, not a setup code, which is what this screen's input collects — the
-  //     box-role gating question is resolving (tailnet is widening onboard.join to a "local"
-  //     role with anywhere's sign-off), but the node-vs-code mismatch is still open. Degrades
-  //     gracefully either way (a missing tool never blocks Continue), and once the tool answers
-  //     for real, a false `online` (link.health's real field, not `ok`/`reachable`) keeps the
-  //     person on this step with an error instead of proceeding as if it worked — the bug
-  //     reviewer-2 caught, see test/onboard-page.test.js's regression test for it.
+  //   - Device: two real paths, per tailnet (docs/work/launch-surfaces.md "Two separate paths
+  //     for 'I have a server'"), not one made-up "setup code" field:
+  //       - Same Tailscale network (built here): this machine's own Tailscale connect (the
+  //         existing `tailscale` screen, reused as-is, `onboard.tailscale`), then
+  //         `onboard.join{action:"verify", node:<the server's tailnet name>, becomeDevice:true}`
+  //         once connected. No code exchanged; the person supplies the server's tailnet name.
+  //       - Pair with a code (not built): a one-time code minted server-side
+  //         (`onboard.join{action:"relay"}`, run ON the server) and redeemed by the relay
+  //         client protocol, not by anything on this device's own onboard module — squarely
+  //         relay's/federation's territory per tailnet, not built there yet either. Shown as a
+  //         plain "not yet available" line, not a live choice, since there's no reliable
+  //         client-side signal here for whether this machine even has vyre-core to redeem it
+  //         with (onboard's loopback tool allowlist has no platform/system.info access).
   // Fixture-backed (deck/fixtures/onboard.json): onboard.machine is real; onboard.join is not.
   live(col, s) {
     col.append(
@@ -384,15 +390,15 @@ const SCREENS = {
     const st = h("div", { class: "check-line", "aria-live": "polite" });
     col.append(body, st);
     let choice = state.live;
-    const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "join-code", placeholder: "Setup code or address", autocomplete: "off" }));
+    const nodeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "server-node", placeholder: "kit", autocomplete: "off",
+      value: state.serverNode, oninput: () => { state.serverNode = nodeIn.value; } }));
 
-    const skipPairing = async () => { await mark_("tailscale", "skipped"); await mark_("name", "skipped"); };
     const toClaude = () => goto(STEPS.findIndex(x => x.id === "claude"));
 
     const syncFoot = () => s.foot({ label: choice === "device" ? "Connect" : "Continue", disabled: !choice, run: async () => {
       if (choice === "solo") {
         await attempt("onboard.machine", { machine: "solo" });
-        await mark_("live", "done"); await skipPairing(); toClaude();
+        await mark_("live", "done"); await mark_("tailscale", "skipped"); await mark_("name", "skipped"); toClaude();
         return;
       }
       if (choice === "server") {
@@ -400,22 +406,17 @@ const SCREENS = {
         const r = await attempt("onboard.machine", { machine: "server" });
         if (r.error && !r.error.missing) { put(st, String(r.error.message)); return; }
         put(st, "");
-        await mark_("live", "done"); await skipPairing(); toClaude();
+        await mark_("live", "done"); await mark_("tailscale", "skipped"); await mark_("name", "skipped"); toClaude();
         return;
       }
-      // device: point at a server the person already has, per anywhere.md's Entry A.
-      const v = codeIn.value.trim();
-      if (!v) { put(st, "Paste the code first."); return; }
-      put(st, "Looking for your server.");
-      const j = await attempt("onboard.join", { action: "verify", node: v, becomeDevice: true });
-      if (j.error && !j.error.missing) { put(st, String(j.error.message)); return; }
-      // A tool that answers without erroring still says whether it actually found the server:
-      // verify forwards to link.health, whose real shape (core/link/health.js) is `online`
-      // (and `path: "unknown"` with a `why`), not `ok`/`reachable` — reviewer-2 caught this
-      // being skipped entirely (the real bug: any code, right or wrong, always proceeded).
-      if (j.data && j.data.online === false) { put(st, j.data.why || "That code did not reach a server. Check it and try again."); return; }
-      put(st, "");
-      await mark_("live", "done"); await skipPairing(); toClaude();
+      // device, same Tailscale network: this machine still needs to join it (the "tailscale"
+      // screen is real and does that), so it runs, unlike Solo/Server above. "name" never
+      // applies to a device, wherever this flow lands next (see SCREENS.name's own skip).
+      const v = nodeIn.value.trim();
+      if (!v) { put(st, "Your server's tailnet name first (the same one its own setup showed)."); return; }
+      state.serverNode = v;
+      await mark_("live", "done");
+      goto(STEPS.findIndex(x => x.id === "tailscale"));
     } });
     const opt = (value, title, more) => h("label", { class: value === choice ? "on" : "" },
       h("input", { type: "radio", name: "live", value, checked: value === choice, onchange: () => { choice = state.live = value; put(body, choiceEl()); syncFoot(); } }),
@@ -424,8 +425,10 @@ const SCREENS = {
     const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "How Vyre runs" },
       opt("solo", "Just on this computer"),
       opt("server", "This computer stays on for me, and I'll use other devices too"),
-      opt("device", "I already have a Vyre server",
-        h("div", { class: "field" }, h("label", { for: "join-code" }, "Setup code or address"), codeIn)));
+      opt("device", "I already have a Vyre server", [
+        h("div", { class: "field" }, h("label", { for: "server-node" }, "Your server's tailnet name"), nodeIn,
+          h("span", { class: "hint" }, "Both on the same tailnet already? This machine just needs to join it too.")),
+        h("p", { class: "small muted" }, "Pairing with a code instead is not yet available here.")]));
     put(body, choiceEl());
     syncFoot();
   },
@@ -523,8 +526,23 @@ const SCREENS = {
       h("p", { class: "lead" }, "Tailscale lets your phone and laptop reach Vyre, and nothing else can. You sign in on Tailscale's own page, so Vyre never sees your password."),
       h("p", { class: "small muted", style: { marginTop: "8px" } }, "No Tailscale account? Sign in with Google, GitHub, Apple or Microsoft; that makes one, free for personal use. Use the same account as your Mac."));
     const panel = h("div", { class: "ob-panel" }, h("div", { class: "found" }, h("span", { class: "faint" }, "Looking for Tailscale")));
-    col.append(panel);
+    const st = h("div", { class: "check-line", "aria-live": "polite" });
+    col.append(panel, st);
     s.foot(null);
+    const toClaude = () => goto(STEPS.findIndex(x => x.id === "claude"));
+    const verifyDevice = async () => {
+      put(st, "Checking your server.");
+      s.foot({ label: "Checking", disabled: true, run: () => {} });
+      const j = await attempt("onboard.join", { action: "verify", node: state.serverNode, becomeDevice: true });
+      if (j.error && !j.error.missing) { put(st, String(j.error.message)); s.foot({ label: "Continue", run: verifyDevice }); return; }
+      // A tool that answers without erroring still says whether it actually found the server:
+      // verify forwards to link.health, whose real shape (core/link/health.js) is `online` (and
+      // `path: "unknown"` with a `why`), not `ok`/`reachable` — reviewer-2 caught this being
+      // skipped entirely (the real bug: any node, right or wrong, always proceeded).
+      if (j.data && j.data.online === false) { put(st, j.data.why || `Could not reach ${state.serverNode}. Check the name and try again.`); s.foot({ label: "Continue", run: verifyDevice }); return; }
+      put(st, "");
+      await mark_("tailscale", "done"); await mark_("name", "skipped"); toClaude();
+    };
 
     // The merged policy snippet (tailnet, ecd89c0c): one JSON object for Taildrive, Taildrop,
     // egress (when on) and the SSH rule, replacing the four separate placeholders in ADR 0014.
@@ -575,7 +593,14 @@ const SCREENS = {
         t.loginUrl && !signed ? h("p", { class: "notice" }, "The sign-in page did not open? ",
           h("a", { class: "link", href: t.loginUrl, target: "_blank", rel: "noopener" }, "Open it here")) : null,
         null);
-      if (signed) { s.foot({ label: "Continue", run: s.next }); drawPolicy(); }
+      if (signed) {
+        // A device joining an existing server (the "live" step's Device choice, above): verify
+        // reachability and flip config.machine before moving on, instead of the plain s.next()
+        // every other path here uses. becomeDevice:true per tailnet's design call — only the
+        // connecting device's own verify should ever flip the machine.
+        s.foot({ label: "Continue", run: state.live === "device" ? verifyDevice : s.next });
+        drawPolicy();
+      }
       else if (opened) s.foot({ label: "Waiting for Tailscale", disabled: true, run: () => {} });
       else s.foot({ label: "Connect", run: connect });
     };
@@ -601,6 +626,10 @@ const SCREENS = {
   },
 
   name(col, s) {
+    // A device never reserves its own address, only a server does (the "live" step's Device
+    // choice already routes around this screen via its own verify step; this is the safety net
+    // for anything that lands here anyway — a reload mid-flow, say).
+    if (state.live === "device") { mark_("name", "skipped").then(() => goto(STEPS.findIndex(x => x.id === "claude"))); return; }
     col.append(
       h("h1", { class: "h1" }, "Your address."),
       // ADR 0008 section 4: v0.1 defaults to a ts.net address (tailscale cert), not <you>.vyre.run;

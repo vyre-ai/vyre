@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Onboarding: the Device path is two real mechanisms, not one placeholder code field
+
+- "How will Vyre run?" > "I already have a Vyre server" now offers what tailnet's join module
+  actually supports: joining the same Tailscale network (built — collects the server's tailnet
+  name, runs the existing Tailscale sign-in screen, then verifies and flips this machine to a
+  device) or pairing with a code (not built yet; that redemption is relay's/federation's
+  territory, shown as a plain "not yet available" line rather than a fake live choice). A device
+  still runs the Tailscale screen, unlike Solo or Server, since joining a server is exactly the
+  "second device" case that screen exists for; it just never reserves its own address.
+
 #### Settings > Server: wired to federation's confirmed move-engine contract, event-driven
 
 - Rebuilt against the real, confirmed shapes (docs/work/federation.md): `move.plan{destination}

@@ -107,38 +107,39 @@ test("onboard page: step 1 takes a name on a box with no vyre.run token, and say
 
     await page.run(`document.querySelector("#primary").click()`);
     // "How will Vyre run?" (28 Sep, docs/design/anywhere.md, ADR 0039) now sits between step 1
-    // and Claude sign-in. Unified per the lead: every choice here (Solo, Server, or Device, this
-    // test picks Device) skips the old tailscale/name screens outright — they only run later,
-    // when a second device actually joins (Settings > Your devices > Add a device), not during
-    // this step. onboard.join isn't a real server tool yet (core/join folded into onboard.join,
-    // work/tailnet 5807096d, not on main), so typing any code and continuing degrades gracefully
-    // straight through to Claude sign-in, same as a stub step — the "missing tool" path, not the
-    // "the tool answered and said no" path the next test below covers.
+    // and pairing. This test picks Device: unlike Solo/Server, a device DOES still need to join
+    // Tailscale (tailnet: "the Tailscale path... your 'Connect' button is onboard.join{action:
+    // 'tailscale', step:'connect'}... no code exchanged"), so it reaches the same "tailscale"
+    // screen a fresh Server setup would, once it has the server's tailnet name. This fake
+    // tailscale reports NeedsLogin, so it stops there, same as any first-run sign-in would.
     await page.until(`location.hash === "#live"`, "the how-will-vyre-run step");
     await page.run(`document.querySelector('input[name="live"][value="device"]').click()`);
-    await page.run(`document.querySelector("#join-code").value = "test-code"; document.querySelector("#join-code").dispatchEvent(new Event("input", { bubbles: true }))`);
+    await page.run(`document.querySelector("#server-node").value = "kit"; document.querySelector("#server-node").dispatchEvent(new Event("input", { bubbles: true }))`);
     await page.run(`document.querySelector("#primary").click()`);
-    await page.until(`location.hash === "#claude"`, "Claude sign-in, straight through");
+    await page.until(`location.hash === "#tailscale"`, "still needs to join Tailscale, even as a device");
     const saved = config.load(root);
     assert.equal(saved.name, "alex");
     assert.equal(saved.onboard.person, "alex");
-    assert.deepEqual([...(saved.onboard.skipped || [])].sort(), ["name", "tailscale"],
-      "the old pairing screens are skipped, not shown, for the Device choice too");
   });
 
-  test("onboard page: \"How will Vyre run?\" Device with a wrong code stays on the step and says so (reviewer-2's caught bug)",
+  test("onboard page: Device, already on the same Tailscale network, verifies the server's name before proceeding (reviewer-2's caught bug)",
     { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
       // Regression for a real bug: the Device branch checked only the call's error, never
       // whether onboard.join actually said the server was reachable (link.health's real shape
-      // is `online`, not `ok`/`reachable`), so a wrong code proceeded to Claude sign-in exactly
+      // is `online`, not `ok`/`reachable`), so a wrong node proceeded to Claude sign-in exactly
       // like a right one. No real onboard.join exists yet to answer this for real, so this test
       // drives it through the Deck's own fixtures (?fixtures=1, deck/js/api.js), whose
-      // onboard.join `verify` case answers `online: false` for node "wrong-code" specifically.
+      // onboard.join `verify` case answers `online: false` for node "wrong-node" specifically
+      // and `online: true` for anything else (deck/fixtures/onboard.json).
       const root = tempHome(t);
       const bins = fs.mkdtempSync(path.join(root, "bin-"));
       const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
-      process.env.VYRE_TAILSCALE_BIN = fakeBin(bins, "tailscale", JSON.stringify({ BackendState: "NeedsLogin", AuthURL: "https://login.tailscale.com/a/fake", TUN: true,
-        OperatorUser: os.userInfo().username }));
+      // Already connected (BackendState: Running), same shape test/onboard.test.js's own
+      // reserve/cert tests use: this device is on the tailnet already, so the "tailscale" screen
+      // (which Device still runs, unlike Solo/Server) reaches its `signed` state at once, no
+      // sign-in click to simulate.
+      process.env.VYRE_TAILSCALE_BIN = fakeBin(bins, "tailscale", JSON.stringify({ BackendState: "Running", TUN: true,
+        Self: { HostName: "alex-box", DNSName: "alex-box.tail1.ts.net.", TailscaleIPs: ["100.64.0.9"], ID: "n1", UserID: 1 }, User: {}, CertDomains: [], OperatorUser: os.userInfo().username }));
       process.env.VYRE_CLAUDE_BIN = fakeBin(bins, "claude", "2.1.0 (Claude Code)");
       delete process.env.CLOUDFLARE_VYRE_TOKEN;
       fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], network: { onboardPort: 0 } }));
@@ -175,13 +176,32 @@ test("onboard page: step 1 takes a name on a box with no vyre.run token, and say
       await page.run(`document.querySelector("#primary").click()`);
       await page.until(`location.hash === "#live"`, "the how-will-vyre-run step");
       await page.run(`document.querySelector('input[name="live"][value="device"]').click()`);
-      await page.run(`document.querySelector("#join-code").value = "wrong-code"; document.querySelector("#join-code").dispatchEvent(new Event("input", { bubbles: true }))`);
+      await page.run(`document.querySelector("#server-node").value = "wrong-node"; document.querySelector("#server-node").dispatchEvent(new Event("input", { bubbles: true }))`);
+      await page.run(`document.querySelector("#primary").click()`);
+      await page.until(`location.hash === "#tailscale"`, "already on the tailnet, straight through");
+
+      // Already signed in: "Continue" runs verify at once, no login click needed.
+      await page.until(`!document.querySelector("#primary").disabled && document.querySelector("#primary").textContent === "Continue"`, "signed in already");
       await page.run(`document.querySelector("#primary").click()`);
       const said = await page.until(
-        `/did not reach a server|offline/i.test(document.querySelector("#ob .check-line")?.innerText || "") && document.querySelector("#ob .check-line").innerText`,
-        "an error line for the wrong code");
-      assert.match(said, /did not reach a server|offline/i);
-      assert.equal(await page.run(`return location.hash;`), "#live", "stays on the step, never Claude sign-in on a wrong code");
+        `/could not reach|offline/i.test(document.querySelector("#ob .check-line")?.innerText || "") && document.querySelector("#ob .check-line").innerText`,
+        "an error line for the wrong node");
+      assert.match(said, /could not reach|offline/i);
+      assert.equal(await page.run(`return location.hash;`), "#tailscale", "stays on this step, never Claude sign-in, on a wrong node");
+
+      // Fix the node (there is no field on this screen itself, only on "live"; Back and forward
+      // again, already-connected Tailscale needs no re-signing-in) and try again: this proceeds.
+      await page.run(`[...document.querySelectorAll(".ob-foot button")].find(b => b.textContent === "Back").click()`);
+      await page.until(`location.hash === "#live"`, "back to fix the node");
+      await page.run(`document.querySelector("#server-node").value = "kit"; document.querySelector("#server-node").dispatchEvent(new Event("input", { bubbles: true }))`);
+      await page.run(`document.querySelector("#primary").click()`);
+      await page.until(`location.hash === "#tailscale"`, "still connected, straight through again");
+      await page.until(`!document.querySelector("#primary").disabled && document.querySelector("#primary").textContent === "Continue"`, "signed in still");
+      await page.run(`document.querySelector("#primary").click()`);
+      await page.until(`location.hash === "#claude"`, "the right node proceeds to Claude sign-in");
+      const st = await call("onboard.status", {}, { root });
+      assert.equal(st.data.steps.tailscale, "done", "tailscale itself really did connect");
+      assert.equal(st.data.steps.name, "skipped", "a device never reserves its own address");
     });
 
 test("onboard page: \"How will Vyre run?\" Solo skips Tailscale and the address, landing on Claude sign-in",

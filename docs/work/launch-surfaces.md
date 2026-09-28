@@ -452,12 +452,29 @@ fragment, not after) was also fixed. Both are real bugs this test caught, not th
 written for. Verified together on testbox: 36/36 across onboard-page/onboard/boundaries/
 hygiene/settings-server/settings-drive.
 
+~~Get app-design's second pass~~ done: all five confirmed fixed, running the real flow again, no
+new findings.
+
+Rebuilt the Device path per tailnet's actual, detailed answer (there is no single "setup code"):
+two real mechanisms, not one placeholder field.
+- **Same Tailscale network** (built): the "live" step now collects the server's tailnet name,
+  then routes through the existing `tailscale` screen (which Device now runs, unlike Solo/Server
+  — a device joining IS "a second device joining", the case that screen was always meant for;
+  only "name", reserving this machine's own address, never applies to a device). Once signed in,
+  "Continue" calls `onboard.join{action:"verify", node, becomeDevice:true}` there instead of the
+  screen's normal `s.next()`, showing the real error on a wrong node (reviewer-2's bug, now
+  actually reachable by a test: fake Tailscale already `BackendState: "Running"`, no login click
+  to simulate) or proceeding to Claude sign-in with `tailscale` marked done and `name` skipped.
+- **Pair with a code** (not built): per tailnet, this is relay's/federation's territory — a
+  code minted server-side by `onboard.join{action:"relay"}` and redeemed by the relay client
+  protocol, nothing `onboard.join` itself does on the joining device. Shown as a plain
+  "not yet available" line rather than a fake live choice, since onboarding's loopback tool
+  allowlist has no platform signal to gate it on a Mac-vs-vyre-core basis anyway.
+Rewrote the regression test accordingly (connects a fake Tailscale, verifies a wrong node fails
+with an error and stays put, then Back-and-fix proceeds for real). Verified on testbox: 37/37.
+
 ## Next
 
-- Get app-design's second pass on the five fixes above.
-- Resolve the Device-path mechanism with tailnet (the node/code mismatch, box-role gating) and
-  rebuild that part of the `live` step once there's a real answer, not the "paste a code"
-  placeholder that can never actually resolve as written.
 - Build "Move off this server" (Device -> Solo, the reverse direction anywhere.md names) in
   Settings > Server; only the forward direction is built.
 - Wire `service.warning` into the Server step once anywhere's launchd installer actually
@@ -485,11 +502,12 @@ hygiene/settings-server/settings-drive.
 - ~~tailnet: onboard.join shape~~ answered and REAL-shaped (not merged to main yet):
   `onboard.join{action:"status"|"tailscale"|"relay"|"verify", step?, node?, becomeDevice?}`.
   ~~confirm the join flow never renders on the Solo path~~ confirmed: nothing in join runs unless
-  something actually joins. Still open: the Device-path mismatch (`node` id vs. a setup code, and
-  box-role gating a fresh device out entirely) — asked, not yet answered. names.discover's
-  client-side peer-scan is unbuilt and, per tailnet, not gated on anything of theirs now; worth
-  deciding whether it's still needed given onboard.join's own `status` action, rather than
-  building both.
+  something actually joins. ~~the Device-path mismatch~~ answered in full: same-Tailscale (no
+  code, the server's tailnet name via `node`) is built; pair-with-a-code is relay's/federation's
+  territory, not onboard.join's, and stays a "not yet available" line until that exists. Still
+  open: names.discover's client-side peer-scan is unbuilt and, per tailnet, not gated on anything
+  of theirs now; worth deciding whether it's still needed given onboard.join's own `status`
+  action, rather than building both.
 - ~~federation: move-engine tool shapes~~ answered and confirmed (docs/work/federation.md):
   `move.plan{destination}`, `move.start{planId}`, `move.status{moveId}` ({stage, pieces:
   {bytes,of,done,error}}), `move.confirm{moveId}`, `move.cancel{moveId}` (the Undo, full stop
