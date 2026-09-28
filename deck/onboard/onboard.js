@@ -429,8 +429,15 @@ const SCREENS = {
 
     const syncFoot = () => s.foot({ label: label(), disabled: !choice, run: async () => {
       if (choice === "solo") {
+        // Order matters: onboard.skip's tailscale/name calls are boxOnly() (core/onboard/index.js),
+        // refused once the machine is actually "solo" (config.isServer("solo") is false, correctly,
+        // since neither step applies to a solo machine at all). Skip them first, while this
+        // machine still counts as a server for that check, then flip it to solo - the other order
+        // silently failed the skip server-side, leaving onboard.status().steps stuck at "todo"
+        // forever even though the page had already moved on to Claude sign-in.
+        await mark_("tailscale", "skipped"); await mark_("name", "skipped");
         await attempt("onboard.machine", { machine: "solo" });
-        await mark_("live", "done"); await mark_("tailscale", "skipped"); await mark_("name", "skipped"); toClaude();
+        await mark_("live", "done"); toClaude();
         return;
       }
       if (choice === "server") {

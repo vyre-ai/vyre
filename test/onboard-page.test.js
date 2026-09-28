@@ -15,7 +15,13 @@ import { call } from "../core/daemon/client.js";
 import * as config from "../core/config/index.js";
 import { tempHome } from "./helpers.js";
 
-const CHROME_BIN = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+// An explicit override, then a real Chrome for local Mac use, then testbox's own
+// chrome-headless-shell (deck/test's own default path, e.g. deck/test/settings-browser.js):
+// without this second fallback these tests silently skip on testbox, which has no Chrome.app, so
+// they never actually ran there (caught only once CI ran them for real on a Mac runner).
+const CHROME_CANDIDATES = [process.env.CHROME_BIN, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  path.join(os.homedir(), "vyre-ci/pwa-chrome/chrome-headless-shell/linux-154.0.8037.57/chrome-headless-shell-linux64/chrome-headless-shell")].filter(Boolean);
+const CHROME_BIN = CHROME_CANDIDATES.find(p => fs.existsSync(p)) || CHROME_CANDIDATES[0];
 const HAVE_CHROME = fs.existsSync(CHROME_BIN);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -26,11 +32,16 @@ function fakeBin(dir, name, out) {
   return p;
 }
 
-/** Headless Chrome with its own profile, and one page driven over CDP. */
+/** Headless Chrome with its own profile, and one page driven over CDP. chrome-headless-shell
+ * (testbox's own binary) is already headless with no window to make invisible, and rejects
+ * --no-default-browser-check; --headless=new and --no-sandbox are both needed for a real
+ * Chrome.app under CI/no display, and harmless either way for headless-shell. */
 async function chrome(t, dir) {
+  const isShell = /headless-shell/.test(CHROME_BIN);
   const profile = fs.mkdtempSync(path.join(dir, "chrome-"));
-  const child = spawn(CHROME_BIN, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run",
-    "--no-default-browser-check", "--window-size=1280,900", "about:blank"], { stdio: "ignore", detached: true });
+  const args = [...(isShell ? [] : ["--headless=new"]), "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-sandbox",
+    ...(isShell ? [] : ["--no-default-browser-check"]), "--window-size=1280,900", "about:blank"];
+  const child = spawn(CHROME_BIN, args, { stdio: "ignore", detached: true });
   // Chrome writes its profile until it exits, and tempHome's own cleanup may already have run:
   // wait for the exit, then remove the profile, or a late write brings the home back.
   t.after(async () => {
@@ -124,6 +135,13 @@ test("onboard page: step 1 takes a name on a box with no vyre.run token, and say
     // tailscale reports NeedsLogin, so it stops there, same as any first-run sign-in would.
     await page.until(`location.hash === "#live"`, "the how-will-vyre-run step");
     await page.run(`document.querySelector('input[name="live"][value="device"]').click()`);
+    // On this platform (never darwin here: testbox and CI are both Linux) canRelayJoin reads
+    // true, so "Pair with a code" (relay) is the device-via default and the manual tailnet-name
+    // field lives under the "Use my own Tailscale setup" advanced fallback: open it and pick
+    // tailscale explicitly, same as a person who already runs their own Tailscale would.
+    await page.until(`document.querySelector('input[name="device-via"][value="tailscale"]')`, "the \"Use my own Tailscale setup\" fallback");
+    await page.run(`document.querySelector(".ob-collapse").open = true; document.querySelector('input[name="device-via"][value="tailscale"]').click()`);
+    await page.until(`document.querySelector("#server-node")`, "the tailnet-name field");
     await page.run(`document.querySelector("#server-node").value = "kit"; document.querySelector("#server-node").dispatchEvent(new Event("input", { bubbles: true }))`);
     await page.run(`document.querySelector("#primary").click()`);
     await page.until(`location.hash === "#tailscale"`, "still needs to join Tailscale, even as a device");
@@ -182,6 +200,12 @@ test("onboard page: Device, already on the same Tailscale network, verifies the 
     await page.run(`document.querySelector("#primary").click()`);
     await page.until(`location.hash === "#live"`, "the how-will-vyre-run step");
     await page.run(`document.querySelector('input[name="live"][value="device"]').click()`);
+    // Same fallback as the other test: canRelayJoin reads true here (never darwin), so the
+    // manual tailnet-name field is under "Use my own Tailscale setup", not the device-via
+    // default (relay/"Pair with a code").
+    await page.until(`document.querySelector('input[name="device-via"][value="tailscale"]')`, "the \"Use my own Tailscale setup\" fallback");
+    await page.run(`document.querySelector(".ob-collapse").open = true; document.querySelector('input[name="device-via"][value="tailscale"]').click()`);
+    await page.until(`document.querySelector("#server-node")`, "the tailnet-name field");
     await page.run(`document.querySelector("#server-node").value = "wrong-node"; document.querySelector("#server-node").dispatchEvent(new Event("input", { bubbles: true }))`);
     await page.run(`document.querySelector("#primary").click()`);
     await page.until(`location.hash === "#tailscale"`, "already on the tailnet, straight through");
@@ -199,6 +223,11 @@ test("onboard page: Device, already on the same Tailscale network, verifies the 
     // again, already-connected Tailscale needs no re-signing-in) and try again: this proceeds.
     await page.run(`[...document.querySelectorAll(".ob-foot button")].find(b => b.textContent === "Back").click()`);
     await page.until(`location.hash === "#live"`, "back to fix the node");
+    // deviceVia stayed "tailscale" (client state persists across Back/forward within the page),
+    // so the field exists again without re-clicking the via radio; the <details> element's own
+    // open/closed attribute is not state and always renders closed, but that only hides it
+    // visually, not from the DOM or from a direct value assignment.
+    await page.until(`document.querySelector("#server-node")`, "the tailnet-name field, still there");
     await page.run(`document.querySelector("#server-node").value = "kit"; document.querySelector("#server-node").dispatchEvent(new Event("input", { bubbles: true }))`);
     await page.run(`document.querySelector("#primary").click()`);
     await page.until(`location.hash === "#tailscale"`, "still connected, straight through again");
@@ -248,18 +277,15 @@ test("onboard page: \"How will Vyre run?\" Solo skips Tailscale and the address,
     assert.equal(st.data.steps.name, "skipped", "Solo never shows the address step");
   });
 
-test("onboard page: \"How will Vyre run?\" Device hides \"Pair with a code\" until anywhere ships can.relayJoin",
+test("onboard page: \"How will Vyre run?\" Device shows \"Pair with a code\" as the default once anywhere ships can.relayJoin (every non-darwin platform, including this one)",
   { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
-    // This used to click through the code-pairing radio via ?fixtures=1 (deck/fixtures/relay.json)
-    // as if it were live. It never was: relay.join isn't a real tool yet, so that click only ever
-    // hit the fixture fallback, not a real presence round trip (reviewer-2's gap, closed in
-    // deck/js/api.test.js's new "asked" tests instead, where the call sequence can actually be
-    // driven and asserted). Now that "Pair with a code" is gated on
-    // onboard.status.can.relayJoin (deck/js/join-caps.js), and the real onboard.status
-    // (core/onboard/index.js) does not return a `can` field at all yet, this device path is
-    // unconditionally hidden in a real onboarding flow — correctly, per the no-guess rule. This
-    // test now asserts that real, current behaviour: only the tailnet-name field shows, no
-    // device-via radios at all.
+    // Was written when the real onboard.status returned no `can` field at all, so "Pair with a
+    // code" stayed unconditionally hidden. can.relayJoin is real now (core/onboard/index.js's
+    // canRelayJoin: false only on darwin, true everywhere else, including testbox/CI's Linux),
+    // and relay.pair.ticket/relay.join are real and reviewer-cleared, so this platform now gets
+    // the real, current design: relay ("Pair with a code") is the device-via default, and the
+    // manual tailnet-name field moves under "Use my own Tailscale setup," an advanced fallback
+    // (the user's pivot, 28 Sep, docs/work/launch-surfaces.md). Rewritten to assert that.
     const root = tempHome(t);
     const bins = fs.mkdtempSync(path.join(root, "bin-"));
     const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
@@ -288,14 +314,27 @@ test("onboard page: \"How will Vyre run?\" Device hides \"Pair with a code\" unt
     await page.run(`document.querySelector("#primary").click()`);
     await page.until(`location.hash === "#live"`, "the how-will-vyre-run step");
     await page.run(`document.querySelector('input[name="live"][value="device"]').click()`);
-    await page.until(`document.querySelector("#server-node")`, "the tailnet-name field");
-    const hasRelayRadio = await page.run(`return !!document.querySelector('input[name="device-via"][value="relay"]');`);
-    assert.equal(hasRelayRadio, false, "no code-pairing option: this real onboard.status has no can.relayJoin field, which reads as false");
+    await page.until(`document.querySelector('input[name="device-via"][value="relay"]')`, "the code-pairing option");
+    const relayChecked = await page.run(`return document.querySelector('input[name="device-via"][value="relay"]').checked;`);
+    assert.equal(relayChecked, true, "relay (\"Pair with a code\") is the device-via default now that can.relayJoin is real and true here");
+    assert.equal(await page.run(`return !!document.querySelector("#pair-code");`), true, "its own pairing-code field shows");
+    assert.equal(await page.run(`return !!document.querySelector("#server-node");`), false, "the tailnet-name field is not rendered until the advanced fallback is picked");
     const btnLabel = await page.run(`return document.querySelector("#primary").textContent;`);
-    assert.equal(btnLabel, "Connect", "the only path left is the Tailscale one");
+    assert.equal(btnLabel, "Pair", "the primary action matches the relay default");
 
-    await page.run(`document.querySelector("#server-node").focus()`);
-    await page.send("Input.insertText", { text: "kit" });
+    // The advanced fallback still works: picking it reveals the tailnet-name field and changes
+    // the primary action, same manual path the earlier tests in this file exercise end to end.
+    await page.run(`document.querySelector(".ob-collapse").open = true; document.querySelector('input[name="device-via"][value="tailscale"]').click()`);
+    await page.until(`document.querySelector("#server-node")`, "the tailnet-name field, once the fallback is picked");
+    assert.equal(await page.run(`return document.querySelector("#primary").textContent;`), "Connect", "the primary action switches to the Tailscale one");
+
+    // Input.insertText (CDP's real-keystroke path, used above for the name field) does not reach
+    // #server-node here: it sits inside a <details> this test just forced open with a direct
+    // property assignment, not a real click on its own <summary>, and apparently that is not
+    // enough for the renderer to treat the field as a real focus/typing target yet. Assigning
+    // .value and dispatching input (tests 1 and 2's own pattern for this same field) works
+    // regardless, so used here too rather than chasing that CDP/<details> interaction further.
+    await page.run(`document.querySelector("#server-node").value = "kit"; document.querySelector("#server-node").dispatchEvent(new Event("input", { bubbles: true }))`);
     await page.run(`document.querySelector("#primary").click()`);
-    await page.until(`location.hash === "#tailscale"`, "the only device path left falls through to the Tailscale screen");
+    await page.until(`location.hash === "#tailscale"`, "the advanced fallback still falls through to the Tailscale screen");
   });
