@@ -86,6 +86,17 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep ~14:35 UTC: the reviewer CLEARED d65ad771, and the lead approved the relay.vyre.run custom
+domain (46900338: workers_dev=false, custom_domain route). Account checked read-only: Workers
+Free, zone Free, migrations are new_sqlite_classes. The deploy FAILED at upload with Cloudflare
+10063 (the account has no workers.dev subdomain, which is required even with workers_dev=false).
+Nothing is live (0 scripts). Asked the lead to OK creating the subdomain "vyre-run" (free, no
+billing). After that: redeploy from a scratch copy (HOME=scratch, vault env, never printed), then
+smoke from the testbox (mint on a test box there, resolve with relay/client, plus the 404, 429
+and expiry paths). 7588fdd6: LOW 2 (random nonce in the sealed record), LOW 1 (the ADR states
+64-bit strength), identityFingerprint from lib/identity.js (kind "person"; anywhere suggested
+"assistant", so I asked the lead). With the reviewer.
+
 28 Sep 2026, after the restart (0.1.1, the user's two YESes): step 1 of 3 done, the Wink ticket
 record is sealed. `core/relay/wire.js` `ticketSeal`/`ticketOpen`: AES-256-GCM under
 `ticketDerive("enc")` (tag `vyre-pair-enc`, apart from loc/sec/mac), zero nonce (one record per
