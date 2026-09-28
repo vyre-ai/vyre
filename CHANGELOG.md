@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### recall.related: "From your past sessions" for chat
+
+- New tool `recall.related { project_cwds, text, limit? }` -> `{ hits: [{ session, seq, ts, name,
+  title, cwd, snippet, score }] }`, for chat's inline hint when a person starts a message in a
+  project: 1 to 3 of that project's own past turns relevant to what they're typing, one per
+  session. Owner surfaces only (chat and native-core call it as themselves; no "mcp" caller, so
+  no agent ever reaches it), and only inside a real, mapped project — `project_cwds` is checked
+  against `projects.list`, and an unmapped or made-up folder gets an empty hint, never the whole
+  corpus. Reuses recall's own `search()` (already fast; no new ranker).
+
 #### Security: recall.search/thread/sessions had no project scoping at all
 
 - A named agent limited to one project could search, read or list any other project's sessions —

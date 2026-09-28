@@ -234,6 +234,9 @@ export default {
      * neither of us has thought of yet is refused by default, not admitted by default.
      */
     const READERS = ["cli", "local", "deck", "capsule", "module", "mcp"];
+    /** recall.related is never an agent's: the person's own surfaces and first-party modules
+     * only (chat, native-core render it; no MCP server ever forwards it to a model). */
+    const OWNERS_ONLY = ["cli", "local", "deck", "capsule", "module"];
     /** Projects, as the projects module knows them: slug and its folders. No module without projects: no scoping to do. */
     const projectList = async () => {
       const r = await ctx.call("projects.list", {});
@@ -332,6 +335,31 @@ export default {
         // On the box, for the person: the Macs' best turns too, by score, capped at the limit.
         const [own, answers] = await Promise.all([here(), askMacs(ctx, "recall.search", q)]);
         return mergeRows(ctx, own, answers, { rows: scoped, compare: (a, b) => b.score - a.score, limit: Math.max(1, Math.min(100, q.limit || 10)) });
+      },
+    });
+    ctx.tool("recall.related", {
+      description: "1 to 3 of a project's own past sessions relevant to what the person is about to say, for chat's \"From your past sessions\" hint while they type. Each hit is one turn (its own session, seq, ts, name, cwd and a short snippet); chat/native-core render the reason sentence and the link. Owner surfaces only, and only inside a real, mapped project — project_cwds must name at least one folder that is actually a project's; an ad-hoc or unmapped folder gets no hint rather than the whole corpus.",
+      input: { type: "object", required: ["project_cwds", "text"], properties: {
+        project_cwds: stringArray, text: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 3 } } },
+      callers: OWNERS_ONLY,
+      run: async (input, { caller } = {}) => {
+        // Never an agent (OWNERS_ONLY already refuses one at the gate); reach() with no agent
+        // still runs, so a caller kind that slips past OWNERS_ONLY some day is refused here too,
+        // the same way recall.search's does.
+        if (!(await reach(undefined, caller)).all) return { hits: [] };
+        const text = String(input.text || "").trim();
+        const cwds = [...new Set((input.project_cwds || []).map(String).filter(Boolean))];
+        if (!text || !cwds.length) return { hits: [] };
+        // Never an unmapped folder: at least one given folder must be a real project's own (or
+        // inside one), never a raw path a caller made up.
+        const projects = await projectList();
+        const mapped = cwds.filter(c => projects.some(p => within(c, p.folders)));
+        if (!mapped.length) return { hits: [] };
+        const limit = Math.max(1, Math.min(3, input.limit || 3));
+        const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
+        const e = any ? await embedder() : null;
+        const { hits } = await search(db, { q: text, project_cwds: mapped, per_session: 1, limit }, e, dense);
+        return { hits: hits.map(h => ({ session: h.session, seq: h.seq, ts: h.ts, name: h.name, title: h.title, cwd: h.cwd, snippet: h.snippet, score: h.score })) };
       },
     });
     ctx.tool("recall.thread", {

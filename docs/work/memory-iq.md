@@ -177,6 +177,27 @@ facts are not a project's.
   memory.ask (6adfc4b6), memory.suggest offered to suggest + suggest.ready (f50c5f21). All 0.1.1
   unless the lead says otherwise.
 
+## Doing (28 Sep, chat win #1: "From your past sessions")
+- The lead's ask: chat's inline hint when a person starts a message in a project — 1 to 3
+  relevant snippets from that project's own past sessions, each with a link and a reason. My
+  side is the tool: `recall.related { project_cwds, text, limit? }` -> `{ hits: [{ session, seq,
+  ts, name, title, cwd, snippet, score }] }`. Built in core/recall/index.js, right after
+  recall.search: owner surfaces only (`callers: OWNERS_ONLY`, no "mcp" at all — chat and
+  native-core call it as themselves, never forwarded to a model), and never an unmapped folder
+  (project_cwds is checked against projects.list; nothing mapped means an empty hint, not the
+  whole corpus). Reuses recall's own `search()` (per_session: 1, limit capped at 3) rather than a
+  new ranker — same infra recall.search already runs, already fast.
+- Test: core/recall/related.test.js (5 tests: a project's own relevant turns one-per-session,
+  an unmapped folder gets nothing, empty text/cwds is a quiet empty hint not an error, never an
+  agent even one granted the project, under the 150ms budget on the fixture corpus). WRITTEN, NOT
+  YET RUN: testbox is frozen for the integrator's rc.2 suite until about 02:27 UTC (the lead's
+  instruction was to write the code now and test after). Run on testbox once the freeze lifts,
+  then send to the reviewer (a new tool, owner-only, worth a look even though it adds no new
+  read path recall.search didn't already have).
+- Shape to agree with chat and native-core (message sent 28 Sep): the reason sentence ("you
+  fixed this in thread X on Sep 20") is theirs to render from `name`/`ts`/`snippet`, not
+  generated here — recall.related returns facts, not prose.
+
 ## Doing (28 Sep, security: recall had no project scoping)
 - The lead's ask: recall.search ran unrestricted for any caller, including a named agent limited
   to one project — it could search, read (recall.thread) or list (recall.sessions) any other
@@ -331,3 +352,6 @@ before landing (not "straight away"):
 - memory.ask takes `stream` and `id`; events memory.thinking {id, stage} and memory.answered {id, abstained, limited}.
 - core/recall/index.js readable(folders, root, env): the person's ~/.claude only for the real ~/.vyre (or VYRE_ALLOW_REAL_TRANSCRIPTS=1). New tool memory.retrieve. Table memory_me_trust. Config memory.personal.skipCwds.
 - New tools `memory.answer`, `memory.profile`, `memory.remember` (see above); event `memory.remembered`; table `memory_me_told`. New table family `memory_me_*` (memory's own).
+- New tool `recall.related { project_cwds, text, limit? }` -> `{ hits: [...] }` (chat's "From your
+  past sessions" hint). `callers: OWNERS_ONLY` (no "mcp": never an agent). No new tables, no new
+  events.
