@@ -38,6 +38,7 @@ import { Watches } from "./watch.js";
 import { blocks, find, peek } from "../transcripts/index.js";
 import { transcriptFolders } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
+import { ownerOverTailnet } from "../modules/index.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -221,6 +222,18 @@ export default {
     /** The user's own surfaces and modules see every session; only a named agent is scoped. */
     const OWNER = new Set(["deck", "cli", "local", "capsule"]);
     const owner = caller => OWNER.has(String(caller)) || String(caller).startsWith("module:");
+    /** A model's own session: a bare "mcp", or "mcp:thread:<id>" (a session Vyre runs for the
+     * user, ADR 0030). Neither names an agent, so it reads as the user's own surfaces do. */
+    const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller || ""));
+    /** Every tool a caller kind may reach, checked before run() at all (core/modules/index.js's
+     * callerAllowed): the person's surfaces, first-party modules, and "mcp" (a model's own
+     * session, or a named agent — reach() below tells those apart and scopes the latter). Not
+     * "tailnet": callerAllowed still lets the owner's OWN verified device through via "deck"
+     * (ownerDevice), so this is "no guest, no unknown tailnet peer, no hook", not "no tailnet at
+     * all". Declared here (reviewer's MEDIUM, alongside the reach() fix below) so a caller kind
+     * neither of us has thought of yet is refused by default, not admitted by default.
+     */
+    const READERS = ["cli", "local", "deck", "capsule", "module", "mcp"];
     /** Projects, as the projects module knows them: slug and its folders. No module without projects: no scoping to do. */
     const projectList = async () => {
       const r = await ctx.call("projects.list", {});
@@ -230,36 +243,47 @@ export default {
         folders: [...new Set([p.home, ...(p.workspaces || []), ...(p.folders || [])].filter(Boolean).map(String))] }));
     };
     /**
-     * What a caller may read: { all: true } for the user's own surfaces, modules, and the
-     * assistant; else { all: false, agent, folders } — a named agent's granted projects'
-     * folders, intersected with projects.access (deny by default; an install without that
-     * module keeps today's behavior unchanged). A wildcard (projects: "*") agent walks the same
-     * per-project path as a named-projects agent, starting from every project (2026-09-28
-     * decision, as core/memory/index.js's reach() applies it): never the whole corpus by that
-     * alone. Who the agent is comes from the caller ("...agent:<name>") or input.agent; if both
-     * are given they must agree. When agents cannot be checked, a named agent is refused.
+     * What a caller may read: { all: true } only for the user's own surfaces, modules, the
+     * owner's own verified device over the tailnet, and a model's own session (never a named
+     * agent); else { all: false, agent, folders }. The assistant and a wildcard (projects: "*")
+     * agent both walk the per-project path, starting from every MAPPED project (the user's
+     * 2026-09-28 decision: linked projects, never an unmapped folder) — the assistant unchecked
+     * against projects.access (being the assistant is what grants it, the same as
+     * core/memory/index.js's reach()), a wildcard or named agent intersected with it (deny by
+     * default; an install without that module keeps today's behavior unchanged). Everyone else
+     * with no agent named — a guest, an unrecognised tailnet peer, a hook, any caller kind
+     * neither this nor callerAllowed's READERS list has been taught about — is refused outright,
+     * not defaulted to "all" (reviewer's MEDIUM on the first cut of this). Who the agent is comes
+     * from the caller ("...agent:<name>") or input.agent; if both are given they must agree. When
+     * agents cannot be checked, a named agent is refused.
      * @param {string|undefined} agent @param {string|undefined} caller
      */
     const reach = async (agent, caller) => {
       const said = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
       if (said && agent && said !== agent) throw denied(`the call came from agent ${said} but names agent ${agent}`);
       const who = said || agent || null;
-      if (!who) return { all: true, agent: null, folders: [] };
+      if (!who) {
+        if (owner(caller) || ownSession(caller) || ownerOverTailnet(String(caller || ""))) return { all: true, agent: null, folders: [] };
+        throw denied(`recall is for the user's own surfaces, modules and named agents, not ${String(caller || "an unnamed caller").slice(0, 60)}`);
+      }
       const r = await ctx.call("agents.list", {});
       if (r.error) throw new Error(`agent ${who}: its projects cannot be checked (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`);
       const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
       const a = list.find(x => x && x.name === who);
       if (!a) throw denied(`no agent ${who}`);
-      if (a.kind === "assistant") return { all: true, agent: who, folders: [] };
+      const assistant = a.kind === "assistant";
       const wildcard = a.projects === "*";
       const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
-      const granted = wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
-      const checked = await Promise.all(granted.map(async p => {
+      const granted = assistant || wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
+      // The assistant's reach is a property of being the assistant, never a grant
+      // projects.access can revoke (core/memory/index.js's reach() applies the same rule): every
+      // mapped project, unchecked. A wildcard or named agent is still intersected with it.
+      const checked = assistant ? granted : await Promise.all(granted.map(async p => {
         const c = await ctx.call("projects.access.check", { project: p.slug, agent: who });
         if (c.error && c.error.code === "no_such_tool") return p;
         return c.data && c.data.granted ? p : null;
       }));
-      return { all: false, agent: who, folders: checked.filter(Boolean).flatMap(p => p.folders) };
+      return { all: false, agent: who, assistant, folders: checked.filter(Boolean).flatMap(p => p.folders) };
     };
     /** Narrows q.project_cwds to what a scoped agent may read, or throws. Owners/modules pass through. */
     const scopeQuery = async (q, caller) => {
@@ -271,7 +295,7 @@ export default {
         const outside = requested.filter(c => !within(c, r.folders));
         if (outside.length) throw denied(`${r.agent} is not granted ${outside.join(", ")}`);
       } else {
-        if (!r.folders.length) throw denied(`${r.agent} is not granted any project yet`);
+        if (!r.folders.length) throw denied(r.assistant ? "no project is mapped yet" : `${r.agent} is not granted any project yet`);
         q.project_cwds = r.folders;
       }
       return r;
@@ -286,6 +310,7 @@ export default {
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
         per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines, ...agentField,
       } },
+      callers: READERS,
       run: async (input, { caller } = {}) => {
         const { machines: _, ...q } = input;
         // sessions widens a scope, so only a module or the person's own surface may name them: a
@@ -314,6 +339,7 @@ export default {
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, machines,
         source: { type: "string", enum: ["box", "mac"] }, ...agentField } },
+      callers: READERS,
       run: async (input, { caller } = {}) => {
         const { machines: _, source, agent, ...q } = input;
         const r = await reach(agent, caller);
@@ -321,12 +347,25 @@ export default {
         // any session id it likes. Thrown the same way as "not found", so a scoped agent learns
         // nothing about a session it may not read (not even that it exists).
         const gate = row => { if (!r.all && !within(row?.session?.cwd, r.folders)) throw new Error(`no session ${q.session}`); return row; };
-        if (!wantsMacs(ctx, input, caller)) return gate(thread(db, q));
+        // Resolved among only what this caller may read, so an id or prefix outside its grant
+        // never surfaces even as "more than one session starts with X" (reviewer's LOW: that
+        // told a scoped agent such a session exists before the gate above ever ran).
+        const resolveScoped = session => {
+          if (r.all) return session;
+          const exact = /** @type {any} */ (db.prepare("SELECT cwd FROM recall_sessions WHERE id = ?").get(session));
+          if (exact) { if (!within(exact.cwd, r.folders)) throw new Error(`no session ${session}`); return session; }
+          const like = /** @type {any[]} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE substr(id, 1, ?) = ?").all(session.length, session))
+            .filter(row => within(row.cwd, r.folders));
+          if (!like.length) throw new Error(`no session ${session}`);
+          if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
+          return like[0].id;
+        };
+        if (!wantsMacs(ctx, input, caller)) return gate(thread(db, { ...q, session: resolveScoped(q.session) }));
         // On the box, for the person: the box's own session first. A session the box does not
         // have, or one the caller says is on the Mac, is asked of the Macs, and the first that
         // has it answers. Its turns go back to the caller and are never stored here.
         if (source !== "mac") {
-          try { return gate({ ...thread(db, q), ...boxLabel(ctx) }); }
+          try { return gate({ ...thread(db, { ...q, session: resolveScoped(q.session) }), ...boxLabel(ctx) }); }
           catch (e) { if (!/^no session /.test(/** @type {Error} */ (e).message)) throw e; }
         }
         const answers = await askMacs(ctx, "recall.thread", q);
@@ -409,6 +448,7 @@ export default {
       description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
         cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines, ...agentField } },
+      callers: READERS,
       run: async (input, { caller } = {}) => {
         const { machines: _, agent, ...q } = input;
         const r = await reach(agent, caller);

@@ -19,6 +19,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   reach() falls back to agents.projects alone until it lands (the same no_such_tool fallback
   memory's own reach() uses).
 
+#### Security follow-up: recall.search/thread/sessions declare their callers, and the assistant is mapped-only too
+
+- Reviewer's MEDIUM on the fix above: a caller naming no agent got `all: true` unconditionally, so
+  a tailnet guest, a hook, or any caller kind nobody had thought of yet read the whole corpus too —
+  the scoping only ever engaged for a caller that named an agent. Fixed both ways: the three tools
+  now declare `callers` (the person's surfaces, first-party modules, and "mcp" — a model's own
+  session or a named agent, which reach() still tells apart), and reach() itself only grants
+  `all: true` to the owner's surfaces, a model's own session, and the owner's own verified device
+  over the tailnet; everyone else with no agent named is refused outright.
+- The assistant follows the user's rule here too (2026-09-28: linked projects, never an unmapped
+  folder) — it now walks the same per-project path a wildcard agent does, starting from every
+  MAPPED project, unchecked against projects.access (being the assistant is what grants it, same
+  as memory's reach()). It no longer reads a session that belongs to no project.
+- Reviewer's LOW: recall.thread resolved an id or an unambiguous prefix before the grant check, so
+  "more than one session starts with X" told a scoped agent that an ungranted session with that
+  prefix exists. Prefix resolution now happens only among the sessions the caller may read.
+
 #### Graph cheap wins: three hot-path indexes, and a circuit breaker on a broken model
 
 - Three hot lookups were full table scans as the tables grow: the reader's `SELECT MAX(started)

@@ -20,11 +20,13 @@ const HARLOW_SESSION = "11111111-aaaa-4000-8000-000000000001";
 const UNMAPPED_SESSION = "11111111-aaaa-4000-8000-000000000004";
 
 /** The fixture corpus, moved under a real work dir so real projects can own its folders (as
- * core/memory/floor.test.js does for the same reason). */
-async function world(t) {
+ * core/memory/floor.test.js does for the same reason). `extra` sessions use the same `${HOME}/...`
+ * convention as the fixture and are moved the same way, for a test that needs to craft a specific
+ * id collision. */
+async function world(t, extra = []) {
   const root = fs.realpathSync(tempHome(t));
   const work = path.join(root, "Work");
-  const moved = SESSIONS.map(s => ({ ...s, cwd: s.cwd.replace(HOME, root) }));
+  const moved = [...SESSIONS, ...extra].map(s => ({ ...s, cwd: s.cwd.replace(HOME, root) }));
   const dir = path.join(root, "transcripts");
   writeTranscripts(dir, moved);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [dir], recall: { every: 0 } }));
@@ -61,12 +63,16 @@ test("recall.search: a named agent reads only its granted project, never the who
   assert.match(cross.error?.message || "", /kit is not granted/);
   // A module forwarding a specific agent's call is scoped the same way as that agent directly.
   assert.equal((await d.registry.call("recall.search", { q: "intake form", agent: "kit" }, "module:memory")).data.length, 0);
-  // The assistant sees every project, mapped or not (the fixture's session 4 belongs to none).
-  // A quoted phrase (recall's own exact-phrase mode) keeps this to session 4 alone: an unquoted
-  // "left this week" also OR-matches "week" in northwind's "a weekly total on Fridays".
+  // The assistant sees every MAPPED project (both Northwind and Harlow), but never an unmapped
+  // folder (the fixture's session 4 belongs to no project) — the user's rule, applied here the
+  // way federation applied it to memory's wildcard-agent path. A quoted phrase (recall's own
+  // exact-phrase mode) keeps this to session 4 alone: an unquoted "left this week" also
+  // OR-matches "week" in northwind's "a weekly total on Fridays".
   const phrase = { q: '"is left this week"' };
-  assert.ok((await d.registry.call("recall.search", phrase, "mcp:agent:juno")).data.length > 0);
+  assert.equal((await d.registry.call("recall.search", phrase, "mcp:agent:juno")).data.length, 0, "the assistant reads no unmapped folder");
   assert.equal((await d.registry.call("recall.search", phrase, "mcp:agent:kit")).data.length, 0);
+  assert.ok((await d.registry.call("recall.search", { q: "invoice" }, "mcp:agent:juno")).data.length > 0, "the assistant reads a mapped project kit is not granted");
+  assert.ok((await d.registry.call("recall.search", { q: "intake form" }, "mcp:agent:juno")).data.length > 0, "and every other mapped project too");
 });
 
 test("recall.thread: a named agent reads a session only inside its granted project", async t => {
@@ -109,4 +115,41 @@ test("recall: a named agent that came from a mismatched caller is refused, and a
   const { d } = await world(t);
   assert.match((await d.registry.call("recall.search", { q: "invoice", agent: "juno" }, "mcp:agent:kit")).error?.message || "", /came from agent kit but names agent juno/);
   assert.match((await d.registry.call("recall.search", { q: "invoice" }, "mcp:agent:nobody")).error?.message || "", /no agent nobody/);
+});
+
+test("recall: a guest, an unknown tailnet peer or a hook names no agent, and none is defaulted to the whole corpus (reviewer's MEDIUM)", async t => {
+  const { d } = await world(t);
+  for (const caller of ["tailnet-guest:bob", "onboard", "tailnet:agent:kit"]) {
+    const r = await d.registry.call("recall.search", { q: "invoice" }, caller);
+    assert.match(r.error?.message || "", /not available|recall is for the user's own surfaces/, caller);
+  }
+  // "hook" is a caller kind of its own (a rules hook, never a reader): recall.search declares no
+  // hook tool, so this is refused earlier still, as "no such tool" (never "denied" with a hint
+  // that recall exists to poke at).
+  assert.equal((await d.registry.call("recall.search", { q: "invoice" }, "hook")).error?.code, "no_such_tool");
+  assert.match((await d.registry.call("recall.thread", { session: NORTHWIND_SESSION }, "tailnet-guest:bob")).error?.message || "", /not available/);
+  assert.match((await d.registry.call("recall.sessions", {}, "tailnet-guest:bob")).error?.message || "", /not available/);
+  // The owner's own device, verified over the tailnet (never a guest, never an agent's own node),
+  // reads as any other of the user's surfaces does — this is the case the MEDIUM's fix must not
+  // break: "no guest, no unknown peer", not "no tailnet at all".
+  const owner = await d.registry.call("recall.search", { q: "invoice" }, "tailnet:someone");
+  assert.ok(owner.data.length > 0);
+});
+
+test("recall.thread: a prefix that matches sessions inside and outside the grant resolves to the grant's own, never revealing the other (reviewer's LOW)", async t => {
+  const collide = [
+    { id: "22222222-dddd-4000-8000-000000000001", cwd: `${HOME}/Work/northwind`, start: Date.now(),
+      turns: [{ role: "user", text: "A colliding-prefix session, in scope." }, { role: "assistant", text: "Noted." }] },
+    { id: "22222222-dddd-4000-8000-000000000002", cwd: `${HOME}/Work/harlow-site`, start: Date.now(),
+      turns: [{ role: "user", text: "A colliding-prefix session, out of scope." }, { role: "assistant", text: "Noted." }] },
+  ];
+  const { d } = await world(t, collide);
+  const prefix = "22222222-dddd-4000-8000-00000000000";
+  // An owner sees both, so the id is genuinely ambiguous to them.
+  const forOwner = await d.registry.call("recall.thread", { session: prefix }, "cli");
+  assert.match(forOwner.error?.message || "", /more than one session starts with/);
+  // kit (granted only northwind) sees exactly one: no ambiguity, and no hint that a second,
+  // ungranted session shares the prefix.
+  const forKit = await d.registry.call("recall.thread", { session: prefix }, "mcp:agent:kit");
+  assert.equal(forKit.data?.turns?.[0]?.text, "A colliding-prefix session, in scope.");
 });

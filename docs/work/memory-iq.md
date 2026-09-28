@@ -198,6 +198,27 @@ facts are not a project's.
   pass (core/memory/floor.test.js's wilma/kit tests are the pattern) to cover the intersection and
   the revoke-narrows-immediately case for real.
 - Sent to reviewer (access/trust change).
+- **Reviewer signed off, with a MEDIUM and a LOW, both fixed and re-sent:**
+  - MEDIUM: `reach()`'s "no agent named" branch returned `all: true` unconditionally, so a
+    tailnet guest, a hook, or any caller kind nobody had classified yet read the whole corpus —
+    the scoping only ever engaged once an agent was named. Fixed both ways the reviewer offered:
+    declared `callers: ["cli","local","deck","capsule","module","mcp"]` on all three tools (kernel
+    utility `ownerOverTailnet` from core/modules/index.js lets the owner's own verified tailnet
+    device through via the existing "deck" clause in callerAllowed — not "no tailnet at all", just
+    "no guest, no unknown peer"), and narrowed `reach()`'s own fallback to
+    `owner(caller) || ownSession(caller) || ownerOverTailnet(caller)`, refusing everyone else.
+  - LOW: recall.thread resolved an id/prefix before the grant check, so an ambiguous-prefix error
+    told a scoped agent an ungranted session with that prefix exists. Prefix resolution
+    (`resolveScoped`, local to the tool) now only considers sessions the caller may read.
+  - Also folded in the lead's parallel decision: recall's assistant branch no longer returns
+    `all: true` (which included unmapped sessions) — it now walks the same per-project path a
+    wildcard agent does, starting from every MAPPED project, unchecked against projects.access
+    (being the assistant is what grants it, exactly as memory's own reach() treats its assistant
+    branch). scope.test.js's assistant assertions flipped to match: sees both mapped projects,
+    never the unmapped one.
+  - 2 new tests (guest/hook/unknown-tailnet refusal + owner-tailnet-device still works; the
+    prefix-collision LOW), 7 total in scope.test.js. 275/275 on testbox
+    (core/recall + core/memory + boundaries). Sent back to reviewer.
 
 ## Next
 - Built 28 Sep: memory.card (e67ba34d), memory.contradictions/settle (fd7f57ab).
@@ -277,7 +298,9 @@ before landing (not "straight away"):
   reads are scoped by agents.projects ∩ projects.access; empty project_cwds/cwd default to its
   own granted folders rather than the whole corpus; a session or folder outside its grant is
   refused (a scoped-out session reads back exactly like a nonexistent one). recall.sessions'
-  `ids` and a paired Mac's answers are filtered by the same grant.
+  `ids` and a paired Mac's answers are filtered by the same grant. All three now declare
+  `callers: ["cli","local","deck","capsule","module","mcp"]`; recall's assistant branch grants
+  every MAPPED project (never `all: true`, never an unmapped folder).
 - core/modules/index.js: a module's ctx.call passes { firstParty } (from the loader) in the callee's meta.
 - core/config/index.js: default transcripts add <home>/synced; recall reads each device folder under it. recall.forget (internal). Event recall.embedded. memory listens to sync.revoked and emits memory.forgot. New module core/import (import.scan/plan/status, event import.progress).
 - core/harness/index.js harness.brief adds memory.today's lines ("Lately in this project") for a project session.
