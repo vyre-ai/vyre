@@ -6,6 +6,70 @@ Scope (lead, 2026-09-27): the phone app ships first as the Deck installed as a w
 Tailscale; the native apps (team mobile) come after, on the same API and design. Branched from
 work/polish-surfaces (phone Chat, five tabs, title truncation), with main merged in (2e5d78a).
 
+## Phone-side contract: scan your avatar to pair your phone (for launch, 2026-09-28)
+
+launch can't message pwa directly, so this section is the handoff: what the Deck's "Add your
+phone" screen needs to know about what happens after it shows the code. Written after reviewer's
+verdict on work/pwa bdca618b redesigned the ticket handling (see "Doing" below for why); sha
+9408fb66 has the doc fix, the redesign itself lands in this session's next commit.
+
+**No Tailscale in this flow, relay only** (team-lead, 2026-09-28) — the phone never touches the
+tailnet; everything below goes over the relay (`relay/client/client.js`'s `pair()`, the same
+library the Expo app uses) or a plain HTTPS fetch to a directory host.
+
+1. **The Deck mints a ticket and shows it as a code ring** around the person's avatar (tailnet +
+   app-design's side, not pwa's). The ticket is 8 random bytes; the ring encodes it plus a CRC-8
+   and Reed-Solomon parity (`deck/vyrecode/payload.js`), 144 bits total, in app-design's 2-ring/
+   36-mark/2-bit-per-mark layout. Per reviewer: **Touch ID happens here, at mint** (option A) —
+   not later, at redeem.
+2. **The phone scans it** (`deck/js/scan.js`): camera → decode-core2.js's search → an 8-byte
+   ticket, recovered but never turned into a string, logged, or put in a URL (it is this flow's
+   pairing secret — see point 3).
+3. **The phone resolves the ticket to a box identity WITHOUT sending the ticket itself**
+   (`deck/js/pair-ticket.js`, reviewer's HIGH 1 and HIGH 2 on bdca618b). It derives three values
+   locally with domain-separated SHA-256:
+   - `locator = sha256("vyre-pair-loc" || ticket)` — sent to the relay/directory; on its own it
+     only names a row, it doesn't let anyone pair.
+   - `secret = sha256("vyre-pair-sec" || ticket)` — used as the Noise handshake's pairing secret
+     in step 5; never transmitted.
+   - `macKey = sha256("vyre-pair-mac" || ticket)` — verifies the resolved record before trusting
+     anything in it.
+
+   **ASSUMED, not confirmed with tailnet:** `GET <PAIR_BASE's origin>/api/pair/ticket/<locator>`
+   (`PAIR_BASE` is `relay/client/client.js`'s own `https://vyre.run/pair`), returning JSON
+   `{ relay, route, box (base64url, 32 bytes), mac (base64url), name, handle }` — `handle` is
+   this file's own addition for the redirect in step 6, also unconfirmed. Refusals: 404 →
+   `ticket_not_found`, 410 → `ticket_expired`, 409 → `ticket_used`, 429 → `rate_limited`. The
+   phone computes `expectedMac = hmacSha256(macKey, utf8(route) || box)` and refuses
+   (`bad_ticket`) if it doesn't match `mac` — this is what stops a compromised relay from
+   substituting a different box. The fingerprint shown to the person is computed locally from
+   the verified `box` public key (`sha256(box).slice(0,4)`, hex, grouped) — never the server's
+   own word for it. **TODO**: swap for the shared `keyFingerprint()` once it exists somewhere in
+   this tree, so both sides format it identically; not found yet.
+4. **The person confirms**: "Pair with `<box>` (`<fingerprint>`)?" with an editable "Name this
+   device" field, pre-filled from User-Agent Client Hints' `model` (Android: often the real model,
+   e.g. "Pixel 8"; iOS Safari has no UA-CH at all) prefixed with the person's first name (from
+   `system.info`'s `owner.name`) — "Alex's iPhone" (team-lead's decision, 2026-09-28). Tapping
+   "Not this one" goes back to scanning without contacting anything past step 3.
+5. **The handshake**: `deck/js/pair-ticket.js`'s `completePairing()` builds the same offer-URL
+   shape `relay/client/client.js`'s `parsePairUrl` expects from the verified `relay`/`route`/`box`
+   and the LOCALLY-DERIVED `secret` (never the response's own fields past `relay`/`route`/`box`),
+   and calls that same file's `pair(offerUrl, { name, about: { kind: "web" } })` — no separate
+   presence/Touch-ID call from the phone (dropped per reviewer's MEDIUM: that gate is step 1's
+   job, and `relay.join`/`presence:true` was the wrong tool anyway — `relay.join` refuses on
+   darwin and is for a Vyre joining another box, not this). The box, other devices and the Deck
+   learn about the new device the normal way, via relay's own `device.paired` notice ("Alex's
+   iPhone was added, just now. Not you? Remove it") — not something this flow raises itself.
+6. **Success**: the phone shows the SAME avatar it just scanned (a small crop of the decoded
+   camera frame, upright-rotated — not a redrawn copy; this scanner has no access to app-design's
+   avatar renderer/seed) doing a short celebratory hop-plus-confetti (under 1.2s, skipped under
+   `prefers-reduced-motion`, `deck/css/pair.css`'s `.ms-done`/`.confetti-bit`, ui-ux's motion
+   prototype's "goal done" moment), then redirects to the person's own `https://<handle>.vyre.run`
+   (ASSUMED to come back from step 3's resolve; confirm with tailnet).
+7. **Errors**: worded per refusal code (see step 3's list, plus a pairing-side `denied`), always
+   with a "Scan again" that returns to step 2 without re-deriving anything from a ticket the
+   person no longer holds on screen.
+
 ## Install it on an iPhone
 
 1. Install the Tailscale app from the App Store and sign in with the same account as the box.
@@ -478,9 +542,11 @@ others"); this is the camera + decoder + redeem-flow half.
   NOTES.md scoped this same gap out from the start ("a solved problem... just not built here").
 - **The redeem-flow UI**: `deck/views/pair-scan.js` (pure state machine: scanning → resolving →
   confirm → pairing → done/error, with worded refusals for expired/used/unrecognised tickets and
-  a Mac-side denial — tested without any camera or DOM) and `deck/js/pair-scan.js` (the sheet:
-  camera preview in a ring frame, "Pair with `<box>` (`<fingerprint>`)?" before anything happens,
-  Touch ID happens on the box's own side while this shows "Confirm on `<box>`…").
+  a pairing denial — tested without any camera or DOM) and `deck/js/pair-scan.js` (the sheet:
+  camera preview in a ring frame, "Pair with `<box>` (`<fingerprint>`)?" with an editable device
+  name, before anything happens). Superseded once by reviewer's verdict on bdca618b (below) — the
+  first version sent the raw ticket to a server tool and trusted a server-supplied fingerprint,
+  both wrong; the current version is described in full in "Phone-side contract".
 
 ## Next
 - Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
@@ -553,14 +619,16 @@ chat/term.js (`term-dot`), chat/chat.css (`.cv-state-*`, `.rail-sub .count`), vi
 - lead or e2e: confirm the phone's first passkey code comes from `vyre presence code` on the Mac
   (the box refuses terminal codes, ADR 0004). The card says "on your Mac".
 - mobile: told the tool names, push payload and tab order so the native apps match.
-- tailnet: `deck/js/pair-scan.js` calls a PROPOSED `relay.pair.ticket.resolve({ ticket })` ->
-  `{ box, fingerprint }`, refusing with one of `ticket_expired`, `ticket_used`,
-  `ticket_not_found`/`bad_ticket`, `rate_limited` — this file's own guess at the shape the brief
-  described ("resolve the ticket... get back the box's name, relay host and public key"), not
-  confirmed against tailnet's actual mint/resolve. Also calls the existing `relay.join` with
-  `{ ticket }` and `presence: true` (for the box's own Touch ID confirm) — its real input/output
-  past what's documented elsewhere in this repo is assumed. Please correct both against the real
-  implementation once it lands on work/tailnet.
+- tailnet: rebuilt the ticket redeem flow (2026-09-28) against reviewer's verdict on the first
+  version (raw ticket over the wire, a server-supplied fingerprint, `relay.join`+`presence:true`
+  — all three wrong; see reviewer's message for the exact findings). The new shape is written up
+  in full below ("Phone-side contract"), including the exact resolve endpoint URL, request/
+  response and MAC encoding this file ASSUMES — none of it is confirmed against your real
+  mint/resolve implementation yet. Please read that section and correct anything that doesn't
+  match; `deck/js/pair-ticket.js` is the one file that would need to change.
+- tailnet: the resolve response's `handle` field (for the success screen's redirect to
+  `<handle>.vyre.run`, team-lead's 2026-09-28 decision) is this file's own addition to the
+  assumed shape — confirm it's really there, or say where the handle actually comes from.
 - app-design: the FINAL ring geometry (2 rings x 36 marks x 2 bits, ticksSunburst tick lengths
   8/15/22/29px, RING_R = FACE_R+30/FACE_R+65) is now baked into `deck/vyrecode/decode-core2.js`
   as fixed constants (RINGS, PER_RING, RING_R, LEVELS) and mirrored in the test-only

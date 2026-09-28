@@ -16,8 +16,16 @@
 //   startScan({ video, onFound, onError }) -> { stop() }
 //     video: an existing <video> element this attaches the camera stream to (muted, playsinline,
 //     autoplay are set here; the caller lays it out).
-//     onFound(idHex): called once, with the recovered id as lowercase hex, the first time a
-//     frame decodes. The caller stops the scan itself (or calls stop() again defensively).
+//     onFound(ticket, avatarDataUrl): called once, the first time a frame decodes. `ticket` is
+//     the raw 8-byte value AS BYTES, never as a string - deck/js/pair-ticket.js is the only
+//     thing that touches it past here, and it is the pairing SECRET in this flow (reviewer's
+//     HIGH 1 on work/pwa bdca618b), so it is never hex-encoded, logged or put anywhere a string
+//     would be (a URL, localStorage) on the way there. `avatarDataUrl` is a small crop of the
+//     decoded frame's own centre (the face the ring was drawn around, upright-rotated using the
+//     winning candidate's own rot/scale) for the success screen's dance - not a re-derived
+//     vector avatar (this scanner has no access to app-design's renderer/seed), a photo of the
+//     real one that was just on screen. The caller stops the scan itself (or calls stop() again
+//     defensively).
 //     onError(err): camera permission refused, no camera, or the stream ending unexpectedly.
 
 import { decodeCore2 } from "../vyrecode/decode-core2.js";
@@ -27,8 +35,11 @@ const ATTEMPT_MS = 350; // gap between the END of one decode attempt and the sta
 const FRAME_SIZE = 640; // grabbed frame side, in CSS px equivalent - plenty for a code held at
                          // arm's length; bigger only costs decode time, not accuracy past this
 
+const FACE_R = 180; // decode-core2.js's own FACE_R: half the face diameter, in the code's
+                     // reference units - a captured frame's face radius is this * cand.scale
+
 /**
- * @param {{ video: HTMLVideoElement, onFound: (idHex: string) => void, onError: (err: Error) => void }} opts
+ * @param {{ video: HTMLVideoElement, onFound: (ticket: Uint8Array, avatarDataUrl: string | null) => void, onError: (err: Error) => void }} opts
  * @returns {{ stop: () => void }}
  */
 export function startScan({ video, onFound, onError }) {
@@ -87,11 +98,34 @@ export function startScan({ video, onFound, onError }) {
       const recovered = payload.recoverId(bytes);
       if (recovered) {
         found = true;
-        onFound(recovered.id8.map(b => b.toString(16).padStart(2, "0")).join(""));
+        onFound(new Uint8Array(recovered.id8), cropAvatar(canvas, cand));
         return;
       }
     }
     scheduleAttempt();
+  }
+
+  /** A small, upright crop of the decoded frame's own centre (the face the ring was drawn
+   * around), using the winning candidate's own rotation and scale - this scanner has no avatar
+   * renderer of its own (that's app-design's), so the success screen's "same avatar" is a photo
+   * of the real one, not a redrawn copy. Skipped (returns null) when a perspective correction was
+   * used: cropping straight from the raw (still-tilted) frame would look wrong, and a slightly
+   * plainer success screen beats a warped one. */
+  function cropAvatar(/** @type {HTMLCanvasElement} */ src, /** @type {any} */ cand) {
+    if (cand.correction && cand.correction !== "none") return null;
+    try {
+      const side = Math.round(FACE_R * 2 * cand.scale * 1.05);
+      const out = document.createElement("canvas");
+      out.width = out.height = 128;
+      const octx = out.getContext("2d");
+      if (!octx) return null;
+      octx.save();
+      octx.translate(64, 64);
+      octx.rotate(-cand.rot * Math.PI / 180);
+      octx.drawImage(src, FRAME_SIZE / 2 - side / 2, FRAME_SIZE / 2 - side / 2, side, side, -64, -64, 128, 128);
+      octx.restore();
+      return out.toDataURL("image/png");
+    } catch { return null; } // a transient canvas error here just means no crop, not a failure
   }
 
   return {

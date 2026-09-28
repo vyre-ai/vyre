@@ -1,10 +1,16 @@
-// Builds and parses the Vyre code's payload: an 8-byte public identifier (a stand-in for a
-// public-key fingerprint - never a secret), a CRC-8, and 9 bytes of Reed-Solomon parity.
-// 8 + 1 = 9 data bytes (72 bits, inside the "64 to 96 bits plus a checksum" the lead asked for),
-// 9 parity bytes (corrects up to 4 byte errors), 18 bytes total = 144 bits. Layout-agnostic: how
-// those 144 bits map onto marks (round5's 4 rings x 36 dots x 1 bit, or the final 2 rings x 36
-// marks x 2 bits app-design's renderer draws) is the renderer/decoder's own concern, not this
-// file's - see decode-core2.js for the current layout's geometry.
+// Builds and parses the Vyre code's payload: an 8-byte data value, a CRC-8, and 9 bytes of
+// Reed-Solomon parity. 8 + 1 = 9 data bytes (72 bits, inside the "64 to 96 bits plus a checksum"
+// the lead asked for), 9 parity bytes (corrects up to 4 byte errors), 18 bytes total = 144 bits.
+// Layout-agnostic: how those 144 bits map onto marks (round5's 4 rings x 36 dots x 1 bit, or the
+// final 2 rings x 36 marks x 2 bits app-design's renderer draws) is the renderer/decoder's own
+// concern, not this file's - see decode-core2.js for the current layout's geometry.
+//
+// Whether the 8 data bytes are a SECRET is entirely up to the caller, not this file: round5's
+// original design used them as a public identity fingerprint (never a secret); the scan-to-pair
+// ticket flow (deck/js/pair-ticket.js) uses them as a one-time PAIRING SECRET instead, and that
+// caller is the one responsible for never logging it, putting it in a URL, or storing it -
+// reviewer's catch on work/pwa bdca618b, when this comment still said "never a secret"
+// unconditionally.
 import * as rs from "./rs.js";
 
 const PARITY = 9;
