@@ -328,6 +328,35 @@ test("onboard: when tailscale cert itself refuses because HTTPS is off, the addr
   assert.equal(r.adminUrl, "https://login.tailscale.com/admin/dns");
 });
 
+test("onboard: a zone token that appears after a blocked ts.net attempt is offered again; one that already serves is not (e2e review)", async t => {
+  // Not yet committed: an earlier attempt left "ts.net" as the last thing via() computed, but
+  // nothing ever actually served (no address on record) — a token that shows up afterward is
+  // offered, exactly like a box that never tried at all.
+  const blocked = await box(t, { network: { onboardPort: 0, via: "ts.net" } });
+  {
+    const { url, port } = (await call("onboard.link", {}, { root: blocked.root })).data;
+    const before = (await (await tool(`http://127.0.0.1:${port}`, (await redeem(url)).session, "onboard.status")).json()).data;
+    assert.equal(before.detail.name.via, "ts.net", "no token yet: still ts.net");
+  }
+  await freeZone(t);
+  {
+    const { url, port } = (await call("onboard.link", {}, { root: blocked.root })).data;
+    const after = (await (await tool(`http://127.0.0.1:${port}`, (await redeem(url)).session, "onboard.status")).json()).data;
+    assert.equal(after.detail.name.via, "vyre.run", "a token that shows up now is offered, not stuck behind an old blocked attempt");
+  }
+});
+
+test("onboard: a box already serving on ts.net keeps saying so once a zone token appears (e2e review)", async t => {
+  // Committed: this box has an address on record, so it already serves under ts.net for real.
+  // A zone token appearing later does not pull the rug out from under a working address.
+  const serving = await box(t, { network: { onboardPort: 0, via: "ts.net", address: "https://box.tail1.ts.net" } });
+  await freeZone(t);
+  const { url, port } = (await call("onboard.link", {}, { root: serving.root })).data;
+  const status = (await (await tool(`http://127.0.0.1:${port}`, (await redeem(url)).session, "onboard.status")).json()).data;
+  assert.equal(status.detail.name.via, "ts.net", "already serving: a later token does not change what is live");
+  assert.equal(status.detail.name.address, "https://box.tail1.ts.net");
+});
+
 /** Can this machine run claude under a pty the way onboard.claude does? */
 const ptyMissing = (() => { try { execFileSync(ptyCommand("true")[0] === "script" ? "script" : "python3", ["--version"], { stdio: "ignore" }); return false; } catch { return "no pty helper (script or python3) here"; } })();
 

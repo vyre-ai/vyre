@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The address step's `via` could get stuck on a blocked ts.net attempt forever
+
+- core/onboard/index.js's `via(n)` trusted a persisted `network.via === "ts.net"` unconditionally,
+  even when nothing had actually served yet (a blocked or failed fallback attempt, from before a
+  Cloudflare zone token was ever added). Once a box tried and failed to fall back to ts.net, a zone
+  token that showed up afterward was never offered again: the address step kept suggesting a
+  ts.net retry rather than the vyre.run name that was now available. Fixed: a persisted "ts.net" is
+  trusted only once the box is actually serving under it (its own recorded `address`, or the live
+  `serving` phase); before that, `via` is derived fresh from the current zone/domain state every
+  time, same as a box that never tried at all. A box already serving on ts.net for real still keeps
+  saying so once a token appears later; nothing pulls a working address out from under it.
+- Tests: test/onboard.test.js, two new cases (not-yet-committed offers the token; already-serving
+  does not flip).
+
+
 #### The docker-api bearer's folder exists in the image
 
 - box/Dockerfile makes /var/lib/vyre-secrets owned by vyre (1000), mode 700. Without it the new
