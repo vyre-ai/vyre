@@ -125,6 +125,34 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## Resume 2026-09-28 (cont'd 9): WS-leak fixed, trailers stripped, merged chat, HEAD 88f9eefd
+- **reviewer-2's WS-leak finding, fixed (476f920c):** listen()'s stop()/cleanup() never touched
+  `ws` - a stop before the socket reached OPEN (the common case for a quick tap-to-toggle, since
+  voiceListening flips true the instant openVoice()'s local setup finishes, independent of the
+  socket's own handshake) just walked away from the connection. cleanup() now closes it (moved
+  `let ws` up next to the other handles, since cleanup can now run - via the early `if (stopped)`
+  return - before the old, later declaration site). Also found+fixed while testing this: stop()'s
+  6 s fallback timer was scheduled unconditionally even when cleanup() had already run
+  synchronously - real, dangling, harmless-but-slow. New test: a fake socket held CONNECTING
+  through two quick taps (reviewer-2's exact scenario). 12/12 (was 11).
+- **Credit rule: stripped Claude trailers from the two cherry-picked commits** (capsule-pro's
+  originals predated the rule). Rebuilt that stretch via cherry-pick + amend on a temp branch (no
+  `-i`), verified trees byte-identical before/after. New shas: a53d0361 (was 1fdccb81), c5b2bd65
+  (was baad35a8); everything after got new shas too since history changed underneath -
+  work/native-core-composer now points at 476f920c for that stretch, then the merge below.
+- Sent the full voice chain to reviewer-2 for logic/state-machine review (the ring/pill CSS
+  follows separately once app-design's look lands).
+- **Merged work/chat (a25ffff1):** onRecall wired in session.js (b61a506e - opens the hit's
+  session via threadHref+go(), landing at hit.ts through the existing ?at= deep link rather than
+  a new seq-keyed one), a new `project` opt on mountComposer for @role routing. One composer.js
+  JSDoc conflict (both sides added options to the same typedef line), kept both. chat's own timer
+  hardening (holdTimer/leaseTimer/fileTimer.unref?.(), 41ed798b) carried forward to every timer
+  I've added since (88f9eefd): draft-save debounce, recall-hint debounce, and voice's five
+  (press-hold detector, both silence timers, the elapsed-pill interval, the 6 s fallback).
+- 110/110 on testbox (composer-*, commands, composer-state, cards, design-components, boundaries,
+  local/voice + talk).
+- Still open: app-design (ring/pill look), capsule-pro/chat replies not yet in.
+
 ## Resume 2026-09-28 (cont'd 8): voice rebuilt as tap-to-talk (e21c019d)
 User's cutting-edge voice spec, replacing hold-to-talk entirely. Full state machine in
 composer.js's "tap-to-talk / push-to-talk" section: voicePressBegin/voicePressEnd (350 ms
