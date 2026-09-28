@@ -15,6 +15,7 @@ import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { installFakeReach, clearFakeReach } from "../../test/fixtures/fake-reach.js";
 import { seams, merge, openReal, openChecked } from "./index.js";
 import { guard } from "./safety.js";
 
@@ -77,9 +78,10 @@ function fakeRg(args) {
 }
 
 /**
- * A Registry with the files module (and optionally a fake link, and a fake agents+projects
- * pair for Vyre Drive step 5's agent scoping) running, the way vyred would start it, but
- * without the rest of vyred.
+ * A Registry with the files module (and optionally a fake link) running, the way vyred would
+ * start it, but without the rest of vyred. Always installs the fake-reach fixture (agents.list,
+ * projects.list, projects.access.check, projects.reach): access.js's reach() asks projects.reach
+ * even to decide who the OWNER is, so a test that never mentions an agent still needs it there.
  * @param {{ role: string, files: any, home?: string, seam?: any, link?: any,
  *   agents?: any[], projects?: any[], access?: Record<string, boolean> }} opts
  *   agents/projects: the shapes agents.list/projects.list answer with.
@@ -103,26 +105,10 @@ async function registry(t, { role, files, home, seam = undefined, link = undefin
       } };`);
     found.push(...discover([mods]));
   }
-  if (agents) {
-    // Two modules, not one: a tool's name must start with its own module's name, so
-    // agents.list and projects.list/projects.access.check cannot live in the same fake module.
+  {
     const mods = tmp(t, "vyre-fake-agents-");
-    globalThis.__filesFakeAgents = globalThis.__filesFakeAgents || new Map();
-    globalThis.__filesFakeAgents.set(root, { agents, projects: projects || [], access: access || {} });
-    t.after(() => globalThis.__filesFakeAgents.delete(root));
-    writeModule(mods, "agents", { roles: ["local", "box"], does: { tools: ["agents.list"] } },
-      `export default { async start(ctx) {
-        ctx.tool("agents.list", { input: { type: "object", properties: {} }, run: async () => globalThis.__filesFakeAgents.get(ctx.paths.root).agents });
-        return { async stop() {} };
-      } };`);
-    writeModule(mods, "projects", { roles: ["local", "box"], does: { tools: ["projects.list", "projects.access.check"] } },
-      `export default { async start(ctx) {
-        const fx = () => globalThis.__filesFakeAgents.get(ctx.paths.root);
-        ctx.tool("projects.list", { input: { type: "object", properties: {} }, run: async () => ({ projects: fx().projects }) });
-        ctx.tool("projects.access.check", { input: { type: "object", required: ["project", "agent"], properties: { project: { type: "string" }, agent: { type: "string" } } },
-          run: async ({ project, agent }) => ({ project, agent, granted: Boolean(fx().access[project + ":" + agent]) }) });
-        return { async stop() {} };
-      } };`);
+    installFakeReach(mods, root, { agents: agents || [], projects: projects || [], access: access || {} });
+    t.after(() => clearFakeReach(root));
     found.push(...discover([mods]));
   }
   const db = open(p.db);
@@ -158,8 +144,10 @@ const refusedAs = async (reg, agent, tool, input, msg = /not available/) => {
 test("files: the manifest loads and offers its four tools to every caller", async t => {
   const { work, vyreHome } = workspace(t);
   const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg } });
-  // VyreDrive's tools (files.drive.*) have their own tests in drive.test.js.
-  const names = reg.listTools("mcp").map(x => x.name).filter(n => !n.startsWith("files.drive.")).sort();
+  // VyreDrive's tools (files.drive.*) have their own tests in drive.test.js. agents.list,
+  // projects.list and projects.access.check are the always-installed fake-reach fixture
+  // (test/fixtures/fake-reach.js), not one of the files module's own tools.
+  const names = reg.listTools("mcp").map(x => x.name).filter(n => n.startsWith("files.") && !n.startsWith("files.drive.")).sort();
   assert.deepEqual(names, ["files.dirs", "files.fetch", "files.preview", "files.recent", "files.search", "files.stat"]);
 });
 

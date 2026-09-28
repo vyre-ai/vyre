@@ -8,6 +8,7 @@ import path from "node:path";
 import { open } from "../../store/index.js";
 import { seedRecall } from "../../../test/fixtures/corpus.js";
 import { tempHome } from "../../../test/helpers.js";
+import { fakeReachCall } from "../../../test/fixtures/fake-reach.js";
 import { Personal } from "./store.js";
 import memory from "../index.js";
 
@@ -219,7 +220,7 @@ test("personal store: memory.me through the module, for the user and never for a
   const ctx = {
     name: "memory", config: {}, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: (type, fn) => { handlers.set(type, fn); return () => {}; }, emit: () => {}, since: () => [], prune: () => 0 },
-    call: async tool => tool === "agents.list" ? { data: [{ name: "kit", projects: ["northwind"] }] } : { error: { code: "no_such_tool", message: tool } },
+    call: async (tool, input) => fakeReachCall(tool, input, { agents: [{ name: "kit", projects: ["northwind"] }] }),
     tool: (name, def) => tools.set(name, def),
   };
   const handle = await memory.start(ctx);

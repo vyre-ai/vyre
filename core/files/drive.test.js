@@ -15,6 +15,7 @@ import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { installFakeReach, clearFakeReach } from "../../test/fixtures/fake-reach.js";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import { seams, parseDriveList, driveCap, driveUrl, shareMap, shareSpecs, mountStep, gitConfigCredential } from "./drive.js";
 
@@ -80,25 +81,13 @@ async function registry(t, { role, cfg = {}, link = undefined, seam = undefined,
   const p = config.ensure(root);
   if (seam) { seams.set(root, seam); t.after(() => seams.delete(root)); }
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "files");
-  if (agents) {
-    // Two modules, not one: a tool's name must start with its own module's name.
+  {
+    // Always installed (not just when a test cares about agent scoping): access.js's reach() now
+    // asks projects.reach even to decide who the OWNER is, so without this a plain "cli" caller
+    // in a test that never mentioned an agent would be refused too.
     const mods = tmp(t, "vyre-fake-agents-");
-    globalThis.__driveFakeAgents = globalThis.__driveFakeAgents || new Map();
-    globalThis.__driveFakeAgents.set(root, { agents, projects: projects || [], access: access || {} });
-    t.after(() => globalThis.__driveFakeAgents.delete(root));
-    writeModule(mods, "agents", { roles: ["local", "box"], does: { tools: ["agents.list"] } },
-      `export default { async start(ctx) {
-        ctx.tool("agents.list", { input: { type: "object", properties: {} }, run: async () => globalThis.__driveFakeAgents.get(ctx.paths.root).agents });
-        return { async stop() {} };
-      } };`);
-    writeModule(mods, "projects", { roles: ["local", "box"], does: { tools: ["projects.list", "projects.access.check"] } },
-      `export default { async start(ctx) {
-        const fx = () => globalThis.__driveFakeAgents.get(ctx.paths.root);
-        ctx.tool("projects.list", { input: { type: "object", properties: {} }, run: async () => ({ projects: fx().projects }) });
-        ctx.tool("projects.access.check", { input: { type: "object", required: ["project", "agent"], properties: { project: { type: "string" }, agent: { type: "string" } } },
-          run: async ({ project, agent }) => ({ project, agent, granted: Boolean(fx().access[project + ":" + agent]) }) });
-        return { async stop() {} };
-      } };`);
+    installFakeReach(mods, root, { agents: agents || [], projects: projects || [], access: access || {} });
+    t.after(() => clearFakeReach(root));
     found.push(...discover([mods]));
   }
   if (link) {

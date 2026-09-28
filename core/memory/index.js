@@ -251,48 +251,28 @@ export default {
      */
     /** A refusal the caller can act on: vyred passes err.code through as the tool error's code. */
     const denied = message => Object.assign(new Error(message), { code: "denied" });
+    // The owner-vs-scoped decision itself is core/projects's projects.reach (35188a38 + 59d6833c,
+    // "the one door core/memory, core/recall and core/files all ask" instead of each keeping its
+    // own copy — this file's own copy is what drifted first: it never intersected agents.projects
+    // with projects.access at all, the reviewer's MEDIUM that made a shared door worth building).
+    // `caller` is forwarded verbatim: projects.reach needs the ORIGINAL caller, since ctx.call
+    // always relabels the caller it sees "module:memory".
     const reach = async (agent, caller) => {
-      const said = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
-      if (said && agent && said !== agent) throw denied(`the call came from agent ${said} but names agent ${agent}`);
-      const who = said || agent || null;
-      if (!who) return { all: true, agent: null, folders: [], slugs: new Set() };
-      const r = await ctx.call("agents.list", {});
-      if (r.error) throw new Error(`agent ${who}: its projects cannot be checked (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`);
-      const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
-      const a = list.find(x => x && x.name === who);
-      if (!a) throw denied(`no agent ${who}`);
-      // THE assistant rule (binding, team-lead, 2026-09-28): the assistant sees every MAPPED
-      // project's content and keeps personal facts, but never raw content from an unmapped
-      // folder (the unfiled room). So it is not r.all (the true owner's unconditional reach,
-      // unfiled included): a separate r.assistant flag, unconditional over every project that
-      // exists right now (never gated by projects.access, unlike a projects: "*" agent below;
-      // the assistant is a different privilege tier, not subject to a per-agent revoke) that
-      // guard() and personalOnly() both check for on top of r.all.
-      if (a.kind === "assistant") {
-        const projects = await projectList();
-        return { all: false, assistant: true, agent: who, folders: projects.flatMap(p => p.folders), slugs: new Set(projects.map(p => p.slug)) };
-      }
-      const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
-      const granted = a.projects === "*" ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
-      // agents.projects alone is not the only door any more (reviewer's MEDIUM, Vyre Drive step
-      // 3): a project also has to be live in projects.access, the one place Drive, Recall and
-      // memory's own reads are all meant to check the same way. Intersected here rather than
-      // replacing agents.projects outright, so an agent's own scope (its folders, its Harness
-      // bound) is unaffected; only which of its named projects still counts for a memory read
-      // narrows. Where projects.access is not running at all, nothing changes: an install
-      // without it (or not yet migrated onto it) keeps today's behavior exactly.
-      const checked = await Promise.all(granted.map(async p => {
-        const c = await ctx.call("projects.access.check", { project: p.slug, agent: who });
-        if (c.error && c.error.code === "no_such_tool") return p;
-        return c.data && c.data.granted ? p : null;
-      }));
-      const allowed = checked.filter(Boolean);
-      // Not all: a projects: "*" agent reads every mapped project's room the same way a
-      // named-projects agent reads its own, never the main graph or the unfiled room, which
-      // stay the assistant's alone. Personal facts follow the same rule now too (the user's
-      // decision, 2026-09-28, narrowing docs/adr/0007-intelligence.md decision 1: a wildcard
-      // agent is no longer the assistant's equal there either, see personalOnly below).
-      return { all: false, agent: who, folders: allowed.flatMap(p => p.folders), slugs: new Set(allowed.map(p => p.slug)) };
+      const r = await ctx.call("projects.reach", { ...(agent ? { agent } : {}), caller, kind: "content" });
+      if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
+      const { all, agent: who, projects } = r.data;
+      if (all) return { all: true, agent: who, folders: [], slugs: new Set() };
+      // Whether `who` is literally the assistant (a different privilege tier: the unscoped grace
+      // in guard() below and personalOnly()'s personal facts, neither ever subject to
+      // projects.access) is not carried in the content-kind reply just read above — the
+      // assistant and a projects: "*" agent read the same shape there, once every project is
+      // granted. The facts-kind reply answers exactly that question instead ({ all: true } only
+      // for the assistant, docs on projects.reach itself), so ask it that way rather than opening
+      // a second door onto agents.list for one bit this door does not need to answer.
+      const f = await ctx.call("projects.reach", { agent: who, caller, kind: "facts" });
+      const assistant = Boolean(!f.error && f.data && f.data.all === true);
+      const granted = projects || [];
+      return { all: false, ...(assistant ? { assistant: true } : {}), agent: who, folders: granted.flatMap(p => p.folders), slugs: new Set(granted.map(p => p.slug)) };
     };
     const clean = cwds => (cwds || []).map(c => path.resolve(String(c)));
     // Reviewer's MEDIUM 1 on db2d94fd: graph.view/scoped read an EMPTY cwds array as "no scope

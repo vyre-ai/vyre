@@ -9,6 +9,7 @@ import { open } from "../../store/index.js";
 import { seedRecall } from "../../../test/fixtures/corpus.js";
 import { tempHome } from "../../../test/helpers.js";
 import { search } from "../../recall/search.js";
+import { fakeReachCall } from "../../../test/fixtures/fake-reach.js";
 import { parse, normalize, answerer } from "./answer.js";
 import { Personal } from "./store.js";
 import memory from "../index.js";
@@ -61,9 +62,7 @@ async function world(t, life = LIFE) {
     events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
     call: async (tool, input) => {
       if (tool === "recall.search") return { data: (await search(db, input, null, null)).hits };
-      if (tool === "projects.list") return { data: { projects: PROJECTS } };
-      if (tool === "agents.list") return { data: AGENTS };
-      return { error: { code: "no_such_tool", message: tool } };
+      return fakeReachCall(tool, input, { agents: AGENTS, projects: PROJECTS });
     },
     tool: (name, def) => tools.set(name, def),
   };
