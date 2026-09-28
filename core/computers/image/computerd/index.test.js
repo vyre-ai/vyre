@@ -265,6 +265,99 @@ test("computerd: the token comes from COMPUTERD_TOKEN_FILE (the .boot file), nev
   assert.ok(!c.output().includes(fileToken) && !c.output().includes("Ab-_1234"), "a secret reached the log");
 });
 
+// ---- per-agent identity (agent-browsers.md level 2, a shared computer) ----------------------
+// AGENT_TOKENS_FILE (mirrored here by the raw AGENT_TOKENS env, the file-vs-env split
+// COMPUTERD_TOKEN_FILE already has): "name=token" pairs, one per line. Any pair at all switches
+// the computer into shared mode, where the bare owner token (TOKEN/COMPUTERD_TOKEN) no longer
+// answers as an agent's own CDP identity -- only a listed per-agent token does, and computerd is
+// the one that says which name that token belongs to, never the connecting client.
+
+const ALICE = "alice-token-0123456789abcdefghijklmn";
+const BOB = "bob-token-0123456789abcdefghijklmnop";
+
+/** Spawn computerd expecting it to exit before ever becoming ready (a malformed AGENT_TOKENS_FILE). */
+async function computerdRefusesToStart(t, env) {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-badboot-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const port = await freePort();
+  const child = spawn(process.execPath, [path.join(HERE, "index.js")], {
+    env: { PATH: process.env.PATH, HOME: dir, COMPUTERD_TOKEN: TOKEN, COMPUTERD_PORT: String(port), COMPUTERD_FS_ROOT: dir, ...env },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  child.stdout.on("data", d => { out += d; });
+  child.stderr.on("data", d => { out += d; });
+  const code = await new Promise(resolve => child.once("exit", resolve));
+  return { code, out };
+}
+
+test("computerd: two agents sharing one computer each get their own CDP identity, and neither can reach the other's context", async t => {
+  const c = await computerd(t, { AGENT_TOKENS: `alice=${ALICE}\nbob=${BOB}` });
+  const wsUrlFor = async token => {
+    const { json } = await req(c.base, "GET", "/cdp/json/version", { token });
+    return `${c.base}${new URL(json.webSocketDebuggerUrl).pathname}?token=${token}`;
+  };
+  const alice = await ws(await wsUrlFor(ALICE));
+  const bob = await ws(await wsUrlFor(BOB));
+  const { result: aCreate } = await alice.call("Target.createTarget", { url: "about:blank#alice" });
+  const { result: bCreate } = await bob.call("Target.createTarget", { url: "about:blank#bob" });
+  assert.ok(aCreate.targetId && bCreate.targetId);
+
+  const aTargets = (await alice.call("Target.getTargets")).result.targetInfos.map(t => t.targetId);
+  const bTargets = (await bob.call("Target.getTargets")).result.targetInfos.map(t => t.targetId);
+  assert.ok(aTargets.includes(aCreate.targetId), "alice cannot see her own target");
+  assert.ok(!aTargets.includes(bCreate.targetId), "alice can see bob's target");
+  assert.ok(bTargets.includes(bCreate.targetId), "bob cannot see his own target");
+  assert.ok(!bTargets.includes(aCreate.targetId), "bob can see alice's target");
+
+  const cross = await alice.call("Target.closeTarget", { targetId: bCreate.targetId });
+  assert.equal(cross.error && cross.error.code, -32000, "alice could close bob's target");
+});
+
+test("computerd: in shared mode the bare owner token is refused as a CDP identity, on the upgrade and on /cdp/json/version, though it still opens POST /shield", async t => {
+  const c = await computerd(t, { AGENT_TOKENS: `alice=${ALICE}` });
+  const { json } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
+  const wsPath = new URL(json.webSocketDebuggerUrl).pathname;
+  assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${TOKEN}`), 401, "the owner token opened a CDP session in shared mode");
+  assert.equal((await req(c.base, "GET", "/cdp/json/version", { token: TOKEN })).status, 401, "the owner token read cdp/json/version's identity-gated route");
+  // But the owner token is still the computer's own control-plane secret: /shield keeps working.
+  assert.equal((await req(c.base, "POST", "/shield", { token: TOKEN, body: { on: false } })).status, 200);
+  // An agent's own per-agent token, by contrast, never opens /shield or /fs -- those stay owner-only.
+  assert.equal((await req(c.base, "POST", "/shield", { token: ALICE, body: { on: false } })).status, 401);
+  assert.equal((await req(c.base, "GET", "/fs/list?path=", { token: ALICE })).status, 401);
+});
+
+test("computerd: a computer with no AGENT_TOKENS_FILE at all is unaffected -- the owner token is still the one agent identity, exactly as before", async t => {
+  const c = await computerd(t);
+  const { json } = await req(c.base, "GET", "/cdp/json/version");
+  const wsPath = new URL(json.webSocketDebuggerUrl).pathname;
+  assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${TOKEN}`), 101);
+});
+
+test("computerd: AGENT_TOKENS_FILE naming a path that does not exist is the ordinary case, not an error -- entrypoint.sh may pass it unconditionally", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-noagenttokens-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const c = await computerd(t, { AGENT_TOKENS_FILE: path.join(dir, "does-not-exist") });
+  const { json } = await req(c.base, "GET", "/cdp/json/version");
+  const wsPath = new URL(json.webSocketDebuggerUrl).pathname;
+  assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${TOKEN}`), 101, "a missing AGENT_TOKENS_FILE put the computer into shared mode");
+  assert.ok(!c.output().toLowerCase().includes("could not read"), "a missing (ordinary) AGENT_TOKENS_FILE logged an error");
+});
+
+test("computerd: a malformed AGENT_TOKENS_FILE refuses to start rather than run with a partial identity list", async t => {
+  for (const [why, value] of [
+    ["not name=token shaped", "not-a-valid-line-at-all"],
+    ["a duplicate name", `alice=${ALICE}\nalice=${BOB}`],
+    ["a duplicate token", `alice=${ALICE}\nbob=${ALICE}`],
+    ["a name that isn't lowercase-kebab", `Alice=${ALICE}`],
+    ["a token shorter than 32 characters", "alice=too-short"],
+  ]) {
+    const { code, out } = await computerdRefusesToStart(t, { AGENT_TOKENS: value });
+    assert.notEqual(code, 0, `computerd started with an AGENT_TOKENS_FILE that is ${why}`);
+    assert.ok(!out.includes(ALICE) && !out.includes(BOB), "a token reached the log even while refusing to start");
+  }
+});
+
 // The root-launcher design (reviewer, 28 Sep): with no CHROME_BIN, computerd never spawns
 // anything for Chrome -- it only opens two named FIFOs and waits, the same way it would wait on
 // the image for entrypoint.sh's chrome_loop to bring Chrome up. Needs mkfifo (Linux; testbox).

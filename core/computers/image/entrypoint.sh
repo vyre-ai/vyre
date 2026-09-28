@@ -369,6 +369,7 @@ exec setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \
     COMPUTERD_TOKEN_FILE="${BOOT_FILE}" SCREEN="${SCREEN}" \
     ${COMPUTERD_PORT:+COMPUTERD_PORT="${COMPUTERD_PORT}"} \
     CHROME_IN="${CHROME_IN}" CHROME_OUT="${CHROME_OUT}" COMPUTERD_FS_ROOT="${AGENT_HOME}" \
+    AGENT_TOKENS_FILE="${VYRE_HOME}/.agent-tokens" \
     AGENT_DOWNLOADS="${BROWSER_HOME}/downloads" \
     VYRE_FREEZE_FD=9 \
   node /opt/computerd/index.js

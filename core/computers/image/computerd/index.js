@@ -71,6 +71,83 @@ if (!TOKEN) {
   process.exit(1);
 }
 
+// ---- per-agent identity, for a computer shared across many agents (agent-browsers.md level 2) --
+//
+// A desktop-kind computer (today's every computer) belongs to exactly one agent, so TOKEN above
+// IS that agent's own identity as well as the computer's owner secret -- there was never a
+// separate "who is this" question to ask. A shared browser computer answers many agents through
+// one computerd, so cdpmux's own per-agent BrowserContext scoping (agentName, cdpmux.js) is only
+// as strong as where agentName comes from: it must be computerd's own answer to "which credential
+// did this connect with", never a name the client itself sends on the wire (there is no such
+// field on the wire today, and there must not be one).
+//
+// AGENT_TOKENS_FILE (mirroring COMPUTERD_TOKEN_FILE above; AGENT_TOKENS is the raw env, tests
+// only) holds one "name=token" pair per line, vyred's own doing -- issued and rotated per agent,
+// never derived from anything the agent's own client controls. A computer with no such file (or
+// an empty one) is in today's single-agent, single-token mode, unchanged in every way; one with
+// at least one pair is "shared": in shared mode TOKEN (the computer's OWN control-plane secret --
+// see isOwner below) no longer identifies a CDP client as an agent at all, closing the gap the
+// reviewer named (an unscoped "agent" client would otherwise see every context, since cdpmux only
+// fences a client that HAS an agentName). TOKEN still authenticates /fs and POST /shield: those
+// are the computer's own control routes, called by vyred itself, never by an agent's own client,
+// in either mode.
+function readAgentTokens() {
+  const raw = (() => {
+    const file = process.env.AGENT_TOKENS_FILE;
+    if (file) {
+      // ENOENT is the ordinary case here, not an error: entrypoint.sh may pass this path
+      // unconditionally (the way it does not for COMPUTERD_TOKEN_FILE, which is mandatory) and
+      // most computers -- every desktop-kind one today -- simply have no such file. Anything
+      // else (denied, a directory, ...) is worth the same warning readToken()'s own file read
+      // gives, since it is not the ordinary "this computer is not shared" case.
+      try { return fs.readFileSync(file, "ascii"); }
+      catch (e) {
+        if (/** @type {any} */ (e).code !== "ENOENT") console.error(`computerd: could not read ${file}: ${/** @type {any} */ (e).code || e}`);
+        return "";
+      }
+    }
+    return process.env.AGENT_TOKENS || "";
+  })();
+  /** @type {Map<string, string>} token -> agentName */
+  const byToken = new Map();
+  const seenNames = new Set();
+  for (const line of raw.split(/[\n,]/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const m = /^([a-z][a-z0-9-]{0,40})=([A-Za-z0-9_-]{32,128})$/.exec(trimmed);
+    if (!m) { console.error("computerd: AGENT_TOKENS_FILE has a line that is not \"name=token\"; refusing to start with a partial identity list"); process.exit(1); }
+    const [, name, tok] = m;
+    if (seenNames.has(name)) { console.error(`computerd: AGENT_TOKENS_FILE names "${name}" more than once; refusing to start`); process.exit(1); }
+    seenNames.add(name);
+    for (const other of byToken.keys()) if (sameToken(tok, other)) { console.error("computerd: two agents in AGENT_TOKENS_FILE share one token; refusing to start"); process.exit(1); }
+    byToken.set(tok, name);
+  }
+  return byToken;
+}
+/** @type {Map<string, string>} */
+const AGENT_TOKENS = readAgentTokens();
+delete process.env.AGENT_TOKENS;
+/** Whether this computer answers more than one agent (AGENT_TOKENS_FILE was non-empty). */
+const SHARED = AGENT_TOKENS.size > 0;
+
+/**
+ * Who a bearer/query token identifies for CDP purposes: an agent (with the name computerd itself
+ * looked up, never one the client sent) or the fill flow, or neither. In shared mode the
+ * computer's own TOKEN answers neither -- see the block comment above.
+ * @param {string} token
+ * @returns {{ kind: "agent", agentName: string } | { kind: "fill" } | null}
+ */
+function identifyClient(token) {
+  if (SHARED) {
+    for (const [tok, name] of AGENT_TOKENS) if (sameToken(token, tok)) return { kind: "agent", agentName: name };
+    if (fillToken && sameToken(token, fillToken)) return { kind: "fill" };
+    return null;
+  }
+  if (sameToken(token, TOKEN)) return { kind: "agent", agentName: /** @type {any} */ (null) };
+  if (fillToken && sameToken(token, fillToken)) return { kind: "fill" };
+  return null;
+}
+
 const ATSPI = new URL("./atspi.py", import.meta.url).pathname;
 
 // ---- Chrome: two named FIFOs, entrypoint.sh's launcher on the other end -------------------
@@ -435,8 +512,11 @@ function cdpUpgrade(req, socket, head) {
   let url;
   try { url = new URL(req.url || "/", "http://computerd"); } catch { return refuse("400 Bad Request"); }
   const token = url.searchParams.get("token") || "";
-  const kind = sameToken(token, TOKEN) ? "agent" : (fillToken && sameToken(token, fillToken)) ? "fill" : null;
-  if (!kind) return refuse("401 Unauthorized");
+  // Identity comes only from which credential this token is (identifyClient), never from
+  // anything else on this URL -- there is no agentName param here to trust or distrust, by design.
+  const id = identifyClient(token);
+  if (!id) return refuse("401 Unauthorized");
+  const { kind } = id;
   if (url.pathname !== BROWSER_PATH) return refuse("404 Not Found");
   // While a person signs in, the agent does not attach to Chrome: a CDP session could read the form.
   if (kind === "agent" && shielded) return refuse("423 Locked");
@@ -458,7 +538,7 @@ function cdpUpgrade(req, socket, head) {
       setTimeout(() => socket.destroy(), 1000).unref();
     },
   };
-  const client = mux.addClient(kind, transport);
+  const client = mux.addClient(kind, transport, kind === "agent" ? id.agentName : undefined);
   const parser = new FrameParser();
   /** @param {Buffer} chunk */
   const onData = chunk => {
@@ -493,9 +573,27 @@ const server = createServer(async (req, res) => {
     const auth = req.headers["authorization"];
     const bearer = typeof auth === "string" && auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
     const isVersion = req.method === "GET" && pathname === "/cdp/json/version";
-    // The fill token opens /cdp/json/version (and the upgrade) and nothing else.
-    const kind = sameToken(bearer, TOKEN) ? "agent" : (isVersion && fillToken && sameToken(bearer, fillToken)) ? "fill" : null;
-    if (!kind) return send(401, { error: { message: "missing or wrong bearer token" } });
+    // isOwner: the computer's OWN control-plane secret -- /fs and POST /shield are vyred's own
+    // routes, called by vyred itself, never by an agent's own client, in either mode, so they
+    // are gated on this alone below, never on identifyClient. /cdp/json/version is the one CDP-
+    // identity-relevant route reachable over plain HTTP (the WS upgrade is the other, in
+    // cdpUpgrade above) -- it accepts identifyClient's answer instead, which in shared mode
+    // refuses the bare owner token the same way cdpUpgrade does (the reviewer's "an unscoped
+    // agent client sees every context" note; this route touches no context itself, but nothing
+    // here treats it as a different credential class than the WS upgrade does). The fill token
+    // opens /cdp/json/version (and the upgrade) and nothing else, same as before.
+    const isOwner = sameToken(bearer, TOKEN);
+    const cdpId = isVersion ? identifyClient(bearer) : null;
+    // For isVersion, kind comes from cdpId alone (identifyClient), even when isOwner is also
+    // true: in legacy/non-shared mode identifyClient already answers "agent" for the owner token
+    // too (agent and owner are the same secret there), so this changes nothing for today's
+    // desktop-kind computers -- it only stops a shared computer's bare owner token from reading
+    // as an unscoped "agent" on this route, matching cdpUpgrade.
+    const kind = isVersion ? (cdpId ? cdpId.kind : null) : (isOwner ? "agent" : null);
+    // isVersion is gated on cdpId alone here too -- an isOwner-true, cdpId-null request (the bare
+    // owner token in shared mode) must not fall through this gate just because SOME credential
+    // was valid; every other route stays isOwner-only, exactly as before.
+    if (isVersion ? !cdpId : !isOwner) return send(401, { error: { message: "missing or wrong bearer token" } });
 
     if (pathname.startsWith("/fs/")) return files(req, res, url);
     if (req.method === "POST" && pathname === "/shield") {
