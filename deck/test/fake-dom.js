@@ -30,7 +30,9 @@ class Element extends Node {
     this.tagName = tag.toUpperCase();
     /** @type {Map<string, string>} */ this.attrs = new Map();
     /** @type {Map<string, Function[]>} */ this.listeners = new Map();
-    this.style = {};
+    // Plain properties (el.style.color = "red") plus the custom-property methods real
+    // CSSStyleDeclaration has, which a view may call (a live level driving a CSS var, say).
+    this.style = { setProperty(k, v) { this[k] = v; }, removeProperty(k) { delete this[k]; }, getPropertyValue(k) { return this[k] || ""; } };
     this._value = undefined;
     this.checked = false;
     this.disabled = false;
@@ -59,7 +61,12 @@ class Element extends Node {
     if (this._value !== undefined) return this._value;
     return this.attrs.get("value") || (this.tagName === "INPUT" && this.attrs.get("type") === "checkbox" ? "on" : "");
   }
-  set value(v) { this._value = String(v); }
+  set value(v) { this._value = String(v); if (this._selStart == null || this._selStart > this._value.length) { this._selStart = this._selEnd = this._value.length; } }
+  /** A textarea/input's caret: composer.js's caret() falls back to the text's length without
+   *  this, so a test that needs a mid-string cursor sets it with setSelectionRange. */
+  get selectionStart() { return this._selStart ?? this.value.length; }
+  get selectionEnd() { return this._selEnd ?? this.value.length; }
+  setSelectionRange(start, end) { this._selStart = start; this._selEnd = end ?? start; }
   options() { return all(this, "option"); }
   append(...kids) {
     for (const k of kids) {
@@ -171,6 +178,10 @@ export function install() {
     querySelector: sel => documentElement.querySelector(sel),
   };
   Object.assign(globalThis, { document, Node, Element, Text, Event, HTMLElement: Element });
+  // window === globalThis (below); a bare Node process has neither - views that guard nothing
+  // call window.addEventListener("blur"/"resize"/...) at mount, so this needs to at least not
+  // throw. No-op by default, same convention as document's; a test overrides it to track calls.
+  if (!globalThis.addEventListener) Object.assign(globalThis, { addEventListener() {}, removeEventListener() {} });
   if (!globalThis.window) Object.defineProperty(globalThis, "window", { value: globalThis, configurable: true, writable: true });
   if (!globalThis.location) Object.defineProperty(globalThis, "location", { value: { search: "", hostname: "localhost", host: "localhost:4747", pathname: "/settings", hash: "" }, configurable: true, writable: true });
   return document;

@@ -206,6 +206,9 @@ export function mountSession(container, opts) {
     name: () => agentName(),
     project: () => record.current?.project || opts.project || null,
     onRewind: () => openRewind(),
+    // "/find [words]" (native-core/commands.js): the existing Find page already queries
+    // recall.search + memory.relevant and has its own scoping rules; the composer just gets there fast.
+    onFind: q => go("/find" + (q ? "?q=" + encodeURIComponent(q) : "")),
     onTasks: () => tray.toggle(),
     onThinkingView: () => setHideThinking(!hideThinking),
     onOverlayEscape: () => { if (!rewind) return false; closeRewind(); return true; },
@@ -1357,6 +1360,15 @@ export function mountSession(container, opts) {
     if (composer.key(e)) e.preventDefault();
   };
   document.addEventListener("keydown", onKey);
+  // Ctrl+M's release (native-core's voice.js): the textarea's own keyup handles the focused
+  // case; this is the same key everywhere else in the session view, same guard as onKey above.
+  const onKeyUp = (/** @type {KeyboardEvent} */ e) => {
+    if (e.defaultPrevented || !container.isConnected || container.closest?.(".away")) return;
+    if (opts.shown && !opts.shown()) return;
+    if (editable(/** @type {any} */ (e.target))) return;
+    if (composer.keyUp?.(e)) e.preventDefault();
+  };
+  document.addEventListener("keyup", onKeyUp);
   /** Back on screen: streaming replies catch up at the display rate. */
   const onVisible = () => { if (visible()) for (const el of els.values()) el.kick?.(); };
   document.addEventListener("visibilitychange", onVisible);
@@ -1579,6 +1591,7 @@ export function mountSession(container, opts) {
   return () => {
     health.stop(); for (const off of offs) off(); composer.stop(); stick.stop(); win.stop(); tip?.stop();
     document.removeEventListener("keydown", onKey);
+    document.removeEventListener("keyup", onKeyUp);
     document.removeEventListener("visibilitychange", onVisible);
     if (rawTimer) clearTimeout(rawTimer);
     if (tickTimer) clearTimeout(tickTimer);

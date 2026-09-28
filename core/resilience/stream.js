@@ -31,10 +31,11 @@ import { backoff as makeBackoff } from "./backoff.js";
  *   onReset?: (e: VyreEvent) => void, onState?: (s: StreamState) => void,
  *   cursor?: number|null, save?: (cursor: number) => void, type?: string, headers?: Record<string, string>,
  *   stallMs?: number, probeMs?: number, backoff?: ReturnType<typeof makeBackoff>,
+ *   fastProbeMs?: number, fastProbeFor?: number,
  * }} o
  */
 export function follow({ paths, open, onEvent, onReset, onState, cursor = null, save, type = "*", headers = {},
-  stallMs = 45_000, probeMs = 60_000, backoff = makeBackoff() }) {
+  stallMs = 45_000, probeMs = 60_000, backoff = makeBackoff(), fastProbeMs = 150, fastProbeFor = 5_000 }) {
   if (!paths.length) throw new Error("follow needs at least one path to the box");
   let at = 0;                   // the path in use, an index into paths
   let tried = 0;                // paths tried since the last open, so a round ends before a wait
@@ -43,6 +44,8 @@ export function follow({ paths, open, onEvent, onReset, onState, cursor = null, 
   /** @type {AbortController|null} */ let ac = null;
   /** @type {any} */ let wait = null;
   /** @type {any} */ let probe = null;
+  /** @type {any} */ let fastTimer = null;
+  let probing = false;
   let downSince = /** @type {number|null} */ (null);
 
   const tell = (/** @type {StreamState["state"]} */ state, /** @type {string|undefined} */ why = undefined) => onState?.({ state, path: paths[at] ?? null, attempt, why, since: downSince });
@@ -51,6 +54,7 @@ export function follow({ paths, open, onEvent, onReset, onState, cursor = null, 
   async function connect() {
     if (paused || stopped) return;
     clearTimeout(wait); wait = null;
+    clearInterval(fastTimer); fastTimer = null;
     const my = ac = new AbortController();
     tell(attempt ? "reconnecting" : "connecting");
     let stall = setTimeout(() => my.abort(), stallMs);
@@ -104,6 +108,28 @@ export function follow({ paths, open, onEvent, onReset, onState, cursor = null, 
     tried = 0; at = 0;
     tell("reconnecting", why);
     wait = setTimeout(connect, backoff.delay());
+    fastReach();
+  }
+
+  // While a backoff wait is pending, probe path 0 every fastProbeMs and reconnect at once the
+  // moment it answers, instead of waiting out whatever step the backoff timer is on: a wait
+  // scheduled before the box comes back has no way to know it came back (native-bar budget 8).
+  // Capped at fastProbeFor from the first failure (not each wait), so a box that stays down for a
+  // while falls back to backoff alone rather than polling it forever.
+  function fastReach() {
+    clearInterval(fastTimer); fastTimer = null;
+    if (downSince != null && Date.now() - downSince >= fastProbeFor) return;
+    fastTimer = setInterval(async () => {
+      if (probing || paused || stopped || !wait) return;
+      probing = true;
+      const pa = new AbortController();
+      const t = setTimeout(() => pa.abort(), Math.min(2_000, fastProbeMs * 4));
+      try {
+        const r = await open({ base: paths[0], path: "/v1/health", headers, signal: pa.signal });
+        for await (const _ of r.chunks) break;
+        if (r.status === 200 && wait) { clearTimeout(wait); wait = null; clearInterval(fastTimer); fastTimer = null; at = 0; connect(); }
+      } catch {} finally { clearTimeout(t); probing = false; }
+    }, fastProbeMs);
   }
 
   // On a worse path, look for a better one now and then, and move when it answers.
@@ -128,7 +154,7 @@ export function follow({ paths, open, onEvent, onReset, onState, cursor = null, 
     get cursor() { return cursor; },
     get path() { return paths[at]; },
     /** The app went to the background: close, and do not come back until resume(). */
-    pause() { paused = true; clearTimeout(wait); clearInterval(probe); ac?.abort(); tell("paused"); },
+    pause() { paused = true; clearTimeout(wait); clearInterval(probe); clearInterval(fastTimer); ac?.abort(); tell("paused"); },
     /** Back in front: reconnect now, from the cursor. */
     resume() { if (!paused || stopped) return; paused = false; backoff.reset(); tried = 0; at = 0; connect(); },
     /** The network changed or the device woke: the stream may be dead without knowing it. */
@@ -137,6 +163,6 @@ export function follow({ paths, open, onEvent, onReset, onState, cursor = null, 
       backoff.reset(); tried = 0;
       if (ac) { /** @type {any} */ (ac).switchTo = 0; ac.abort(); } else { at = 0; connect(); }
     },
-    stop() { stopped = true; clearTimeout(wait); clearInterval(probe); ac?.abort(); tell("stopped"); },
+    stop() { stopped = true; clearTimeout(wait); clearInterval(probe); clearInterval(fastTimer); ac?.abort(); tell("stopped"); },
   };
 }

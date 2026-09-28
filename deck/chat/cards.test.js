@@ -541,6 +541,35 @@ test("the rewind sheet: Claude Code's three restores, code off on a box that res
   assert.deepEqual(chose, [["u1", "code"]]);
 });
 
+test("the rewind sheet: 'Fork from here' is the fourth item only when onFork is given, and it does not call onChoose", async () => {
+  const { rewindSheet } = await import("./pickers.js");
+  const barren = rewindSheet({ points: [{ uuid: "u1", text: "Read the intake folder", at: null }],
+    can: () => true, onChoose: async () => null, onClose: () => {} });
+  assert.deepEqual($$(barren.el, ".cv-rw-opt").map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code"], "no onFork: three items, as before");
+  /** @type {any[]} */
+  const chose = [];
+  /** @type {any[]} */
+  const forked = [];
+  let forkOk = /** @type {boolean|null} */ (null);
+  const sheet = rewindSheet({ points: [{ uuid: "u2", text: "Rebuild the Estate intake", at: null }, { uuid: "u1", text: "Read the intake folder", at: null }],
+    can: () => true, codeOk: () => true, canFork: () => forkOk,
+    onChoose: async (p, r) => { chose.push([p.uuid, r]); return null; },
+    onFork: async p => { forked.push(p.uuid); return null; }, onClose: () => {} });
+  const opts = () => $$(sheet.el, ".cv-rw-opt");
+  assert.deepEqual(opts().map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code", "Fork from here"]);
+  assert.equal(opts()[3].disabled, true, "canFork null: waits, off");
+  forkOk = true;
+  sheet.refresh();
+  assert.equal(opts()[3].disabled, false);
+  sheet.key(/** @type {any} */ ({ key: "ArrowLeft" }));
+  assert.equal(sheet.restore(), "fork", "left from the default (both) wraps to the last item");
+  assert.equal(text($(sheet.el, ".cv-rw-go")).replace("⏎", "").trim(), "Fork here");
+  sheet.key(/** @type {any} */ ({ key: "Enter" }));
+  await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(forked, ["u2"]);
+  assert.deepEqual(chose, [], "fork never calls onChoose");
+});
+
 test("tool row (tool-row.md): a verb, the path relative to the session's folder, no 'done' word; waiting on you has no clock; failed says so", async () => {
   const { toolCard } = await import("./blocks.js");
   const cwd = "/home/alex/Work/harlow-site";
