@@ -119,21 +119,29 @@ test("harness: brief and enrich use projects and memory when they are running", 
     ctx.tool("team.project-append", { run: async ({ project }) => ({ project, text: project === "harlow-legal" ? "This project has teammates: design." : null }) });
     return {};
   } };`;
+  // core/style (ADR 0037): the house voice, for every session - project or not.
+  const style = `export default { async start(ctx) {
+    ctx.tool("style.append", { run: async ({ project } = {}) => ({ project: project || null, text: "Write plainly, no em dashes." }) });
+    return {};
+  } };`;
   const { reg, events } = await harness(t, [
     ["projects", { version: "0.1.0", does: { tools: ["projects.of", "projects.context"] } }, projects],
     ["memory", { version: "0.1.0", does: { tools: ["memory.relevant"] } }, memory],
     ["team", { version: "0.1.0", does: { tools: ["team.project-append"] } }, team],
+    ["style", { version: "0.1.0", does: { tools: ["style.append"] } }, style],
   ]);
   const b = await reg.call("harness.brief", { cwd: "/w/harlow-site", session: "s1", source: "startup" });
-  // The team nudge comes ahead of the project's own brief.
-  assert.equal(b.data.text, "This project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
+  // The house voice comes first, then the team nudge, then the project's own brief.
+  assert.equal(b.data.text, "Write plainly, no em dashes.\n\nThis project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
   assert.equal(events.since(0).find(e => e.type === "thread.started").payload.session, "s1");
   assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site" })).data.text, /Dana Reyes is at Harlow Legal/);
   assert.equal((await reg.call("harness.enrich", { prompt: "/compact", cwd: "/w/harlow-site" })).data.text, "", "slash commands get nothing");
-  assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind" })).data.text, "", "outside a project, no brief");
+  // Outside a project there is no project brief, but the house voice still applies (ADR 0037:
+  // "for every session").
+  assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind" })).data.text, "Write plainly, no em dashes.", "no brief, but still the house voice");
   // An agent's scope, as the switchboard hands it to the hooks.
-  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "harlow-legal,northwind" })).data.text, "This project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
-  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "northwind" })).data.text, "", "an agent outside its projects gets no brief");
+  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "harlow-legal,northwind" })).data.text, "Write plainly, no em dashes.\n\nThis project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
+  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "northwind" })).data.text, "Write plainly, no em dashes.", "an agent outside its projects gets no brief, but still the house voice");
   assert.equal((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "northwind" })).data.text, "", "nor their memory");
   assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "*" })).data.text, /Dana Reyes/, "the assistant sees every project");
 });
@@ -156,6 +164,16 @@ test("harness: brief's team nudge is null-safe - team.default off, or core/team 
     ["team", { version: "0.1.0", does: { tools: ["team.project-append"] } }, teamOff],
   ]);
   assert.equal((await withTeamOff.call("harness.brief", { cwd: "/w/harlow-site" })).data.text, "Project harlow-legal.");
+  // core/style running, but the person turned it off (its own tool says so).
+  const styleOff = `export default { async start(ctx) {
+    ctx.tool("style.append", { run: async () => ({ project: null, text: null }) });
+    return {};
+  } };`;
+  const { reg: withStyleOff } = await harness(t, [
+    ["projects", { version: "0.1.0", does: { tools: ["projects.context"] } }, projects],
+    ["style", { version: "0.1.0", does: { tools: ["style.append"] } }, styleOff],
+  ]);
+  assert.equal((await withStyleOff.call("harness.brief", { cwd: "/w/harlow-site" })).data.text, "Project harlow-legal.");
 });
 
 test("harness: learn records changed files; touched lists them; the vault rule emits tool.held", async t => {

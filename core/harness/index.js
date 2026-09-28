@@ -96,14 +96,19 @@ export default {
         // The lessons the user taught apply in every thread, in a project or not.
         const lessons = await ask("learn.check", { stage: "brief", cwd, session });
         const lessonText = lessons && lessons.text ? lessons.text : "";
-        // An agent outside its projects gets no brief, only the lessons.
-        if (!inScope(projects, slug)) return { text: withWarning(lessonText), project: null };
+        // core/style (ADR 0037): the person's house writing voice, for every session - project or
+        // not, in scope or not - null when they turned it off. Null-safe the same way as the rest
+        // of this hook, so no core/style leaves every session exactly as it was.
+        const style = await ask("style.append", slug ? { project: slug } : {});
+        const styleText = style && typeof style.text === "string" ? style.text : "";
+        // An agent outside its projects gets no brief, only the lessons and the house voice.
+        if (!inScope(projects, slug)) return { text: withWarning([styleText, lessonText].filter(Boolean).join("\n\n")), project: null };
         // Teammates section 1 (docs/design/teammates.md): every ordinary project session gets a
         // nudge toward team_ask, ahead of the project's own brief - null when the person turned
         // team.default off for this project, or core/team is not running.
         const teamAppend = slug ? await ask("team.project-append", { project: slug }) : null;
         const teamText = teamAppend && typeof teamAppend.text === "string" ? teamAppend.text : "";
-        return { text: withWarning([teamText, text, lessonText].filter(Boolean).join("\n\n")), project: slug };
+        return { text: withWarning([styleText, teamText, text, lessonText].filter(Boolean).join("\n\n")), project: slug };
       },
     });
 
