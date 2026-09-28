@@ -470,3 +470,13 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 - Sent (msg_id bb2f3ce4): sheet-combined.png (12 teammates + 8 blobs, both themes, both sizes),
   mock-combined.png (an in-chat scene showing design/reviewer/qa together so the variety reads in
   context). All in the same local scratch folder as rounds 1-2, not this repo.
+
+## Now (28 Sep, launch's Server panel: second pass, all 5 confirmed)
+
+- launch fixed all 5 findings from the first pass (72d69271: .set-server-card wrapping the whole
+  wizard, the vault lock+encryption line, a real .set-meter track+fill, statusMark for
+  running/done instead of plain words, the onboarding radio's lime selected dot) and asked for a
+  re-check rather than assuming it landed right.
+- Re-ran the same real flow on 72d69271 (fresh screenshots, not a diff read): all 5 confirmed
+  fixed with the actual UI, not just the code. Sent to launch (msg_id 3cdebc62). Nothing new
+  found; cleared it.
