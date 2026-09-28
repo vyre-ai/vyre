@@ -70,6 +70,13 @@ export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive 
     const r = await attempt("relay.pair.ticket", {}, { presence: "asked" });
     if (!alive()) return; // the section unmounted while the presence prompt was pending
     mintedAt = Date.now();
+    // Reviewer's MEDIUM: ringDrawn is only ever cleared by blank(). Left true across a fresh
+    // mint, tick()'s `if (!ringDrawn) drawRing()` never fires again, so Refresh (a live ring
+    // already drawn) kept showing the OLD ring under the new countdown, and "Add another
+    // device" (ringEl re-attached still holding the just-REDEEMED ring, since showConnected
+    // never blanked it either, see below) never drew the new ticket at all. A fresh mint
+    // always needs a fresh draw, whether it lands a ticket or comes back empty.
+    blank();
     if (r.data?.ticket) { ticket = r.data.ticket; ttlMs = Math.max(0, (r.data.expiresAt ?? mintedAt + ttlMs) - mintedAt); }
     else ticket = ""; // a declined passkey, or the tool is still unmerged: nothing real to draw yet
   };
@@ -119,6 +126,11 @@ export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive 
   const showConnected = (/** @type {string} */ deviceId, /** @type {string} */ initialName, /** @type {string|null} */ fingerprint) => {
     shown = false;
     ticket = ""; // redeemed: gone from memory, not just off-screen
+    // Reviewer's MEDIUM: ringEl itself is reused (not recreated) by the next start(), still
+    // holding this just-redeemed ring's content. Without this, "Add another device" re-attaches
+    // ringEl showing the OLD, spent ring until the countdown's own next expiry, since ringDrawn
+    // being (wrongly) still true also skips the fresh draw mint() now forces above.
+    ringDrawn = false;
     const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", value: initialName, "aria-label": "Device name" }));
     let saved = initialName;
     const save = async () => {
