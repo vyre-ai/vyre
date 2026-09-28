@@ -213,6 +213,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   person's CLI and got the person session (and the Secure Enclave signature for a human-only
   tool) on its call to the box. It now refuses any caller with an agent or thread claim first,
   then checks the kind, lib/caller.js's isPerson rule.
+#### rc-smoke: step 6 proves vault.connect with a device key, and checks it is refused without one
+
+- `vault.connect` is person-only, so the smoke's plain `vyre call` from `docker exec` gets
+  no_terminal (or presence_required with a pty). Step 6 now checks that refusal, then adds the
+  account through scripts/rc-smoke/person.mjs: a fresh P-256 device key enrolled into the smoke's
+  own throwaway box db, one signed call, the key removed. vyred's guard is unchanged.
 
 #### Project teammates: vyred's own git runs nothing the repo names
 
