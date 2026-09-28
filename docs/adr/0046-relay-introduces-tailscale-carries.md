@@ -3,12 +3,14 @@ title: "ADR 0046: The relay introduces, Tailscale carries"
 summary: A server signs in to Tailscale once at setup; Wink pairs every device over the relay; a Touch ID-confirmed pairing mints a short-lived, tagged auth key and sends it over the paired channel so a desktop auto-joins the tailnet, which Vyre then prefers. Phones stay on the relay by default.
 audience: builders
 owner: tailnet
-status: draft
+status: accepted
 ---
 
 # ADR 0046: The relay introduces, Tailscale carries
 
-Status: draft, 28 Sep 2026 · Workstream: tailnet · Builds on ADR 0002 (network and identity),
+Status: accepted, 28 Sep 2026 (the reviewer's HIGH and two MEDIUMs from the first pass fixed the
+same day — the key never on argv, the box binds a proven stable ID rather than trusting the
+desktop's own report, no `tailnet:<owner>` path for a tagged node) · Workstream: tailnet · Builds on ADR 0002 (network and identity),
 ADR 0014 (tailnet), ADR 0026 (the relay), ADR 0032 (the person and the device). Renumbered from
 this workstream's own "ADR 0038" (team/ADR-NUMBERS.md). Supersedes the relay-first design this
 workstream sent for review as "ADR 0038" on 28 Sep, which the user's later, approved direction
@@ -62,33 +64,57 @@ confirmed it, per ADR 0045/0026 section 6, no new prompt — the box:
 
 1. Calls the Tailscale API (`https://api.tailscale.com/api/v2/tailnet/-/keys`) with an OAuth
    client credential (below) to create an auth key that is:
-   - **single-use** (`reusable: false`);
-   - **short-lived** — minutes, not the default 90 days (`expirySeconds`, on the order of 300);
-   - **ephemeral where the device's role allows it** (a phone or a temporary machine; not a
-     server, which needs to persist as a node);
+   - **single-use** (`reusable: false`) and **pre-approved** (`preauthorized: true` — without it
+     the join still waits on device approval in the console, defeating the point);
+   - **short-lived**, not the default 90 days: `expirySeconds` 300, or 600 if installs run slow —
+     single-use either way, so a longer window costs nothing (reviewer's answer to open question
+     1, below);
+   - **not ephemeral** (`ephemeral: false`) for anything meant to persist — a desktop, or a server
+     acting as a device — since an ephemeral node is removed the moment it disconnects; `true`
+     only for a machine explicitly meant to be temporary (reviewer's answer to open question 2);
    - **pre-tagged** with a dedicated tag, `tag:vyre-device` (distinct from `tag:vyre-box` and
      `tag:vyre-agent`, ADR 0014 parts 1 and 9), so the tailnet policy can grant it only what a
-     paired device needs and nothing else.
+     paired device needs and nothing else. **No role or trust is ever derived from this tag or any
+     tag** (reviewer's rule, answering open question 3): whoever holds a key for a tag can set it,
+     so a tag names an ACL bucket, never an identity. `anywhere` confirmed separately that nothing
+     in `config.role`/`config.machine` reads a Tailscale tag either, so this holds end to end.
+   - **This mint is an internal function the pairing handler calls directly, never a registered
+     tool** — nothing else in Vyre, no script, no agent, can ask for one on its own.
 2. Sends the key to the desktop **inside the already-open, already-authenticated Noise channel**
    the pairing just established — never through the relay's HTTP surface, never in a URL, never
    logged. This is the entire reason the key can be short-lived and single-use instead of a
    standing secret: the channel that carries it already proved both ends are who they say they
    are.
-3. The desktop runs `tailscale up --authkey=<key> --advertise-tags=tag:vyre-device` (via the same
-   `upArgs`/`operator` machinery `core/names/tailscale.js` already has for the box's own
-   `vyre up`), **holds the key only in memory for that one call, and never writes it to disk.** A
-   failed or aborted `tailscale up` does not retry with the same key — it asks the box to mint a
-   fresh one on the next attempt (the old one expires within minutes regardless, per the minting
-   scope below).
-4. Once the desktop's tailnet node is up, it reads its own new stable ID and sends it back over
-   the same relay channel. The box binds that stable ID to the paired device's row
-   (`relay_devices`, ADR 0026), the same row `device:<id>` already keys off.
-5. Vyre now has two ways to reach this desktop: the relay (`device:<id>`) and the tailnet
-   (`tailnet:<owner>`, once the node's whois resolves to the owner's login — see section on
-   identity below). **Vyre prefers the tailnet for this device from then on**, using exactly
-   `relay/client/paths.js`'s existing direct-then-relay preference (ADR 0026 section 8, ADR 0029)
-   — no new preference logic, since that mechanism was already built for "the tailnet name first
-   when the device can reach it, then the relay."
+3. **The desktop never puts the key on a command line.** On macOS, `ps` shows every user's process
+   arguments, and any process at the same uid sees them too (the exact threat ADR 0002 already
+   defends against for everything else) — a racing process could read `tailscale up`'s argv, spend
+   the single-use key first, and join as `tag:vyre-device` itself, which the ACL then lets reach
+   `tag:vyre-box` (reviewer's HIGH). The key goes in a 0600 file in a private temp directory,
+   passed as `--auth-key=file:<path>`, deleted immediately after the command returns (success or
+   failure) — never argv, never an environment variable a child process could also read. The
+   desktop **holds the key only for that one call and never writes it anywhere else.** A failed or
+   aborted `tailscale up` does not retry with the same key — it asks the box to mint a fresh one on
+   the next attempt (the old one is single-use and short-lived regardless).
+4. **The box never trusts a stable ID the desktop reports.** A paired device could claim another
+   node's ID, or its own racer's (reviewer's MEDIUM 1). Instead, the box learns it the same way it
+   already trusts anything on the tailnet: the newly-joined node makes its first tailnet
+   connection back to the box, which runs `tailscale whois` on that connection *and* requires the
+   connection to prove the same Noise identity it paired with (the device's own static key,
+   ADR 0026) before binding whois's stable ID to that paired device's row (`relay_devices`, the
+   same row `device:<id>` already keys off). Only a bound, proven node is admitted — the desktop
+   reporting "I am node X" proves nothing by itself; only the two facts together (whois says this
+   connection is node X, *and* this connection also proves the paired device's own key) bind it.
+5. Vyre now has two ways to reach this desktop: the relay (still `device:<id>`) and the tailnet.
+   **Both are, and stay, `device:<id>`** — a tagged node's whois never returns a login (see the
+   identity section below), so there is no `tailnet:<owner>` path for it, on either transport.
+   **Vyre prefers the tailnet for this device once bound**, using exactly `relay/client/paths.js`'s
+   existing direct-then-relay preference (ADR 0026 section 8, ADR 0029) — no new preference logic,
+   since that mechanism was already built for "the tailnet name first when the device can reach
+   it, then the relay."
+6. **Tagged auth keys do not expire on their own once redeemed** — Tailscale's own default for a
+   node, not something this ADR can shorten. Revoke (below) is the only off-switch for a device
+   once it has joined; this ADR does not propose, and should not be read as proposing, any
+   time-based expiry for an already-joined desktop.
 
 ### 4. Phones stay on the relay; joining is optional, in Settings
 
@@ -102,7 +128,7 @@ required for anything to work.
 
 ### 5. No Tailscale installed on the desktop
 
-If `tailscale up --authkey=...` fails because Tailscale is not installed on the desktop, Vyre:
+If `tailscale up --auth-key=file:<path>` fails because Tailscale is not installed on the desktop, Vyre:
 
 - offers the platform's install command (`core/names/tailscale.js`'s existing
   `installCommand(platform)`, already returns the right one-liner per OS) with a "Faster
@@ -130,7 +156,7 @@ service.js`), and what it means once the relay can introduce an owner without wh
 | `network.ownerSeen` (`core/names/service.js:269`, set once the owner is first seen live) | Set only by the tailnet listener (`core/names/service.js:241`) | **Also set the moment the first owner device completes pairing** (not just a later tailnet sign-in), since that is now a real, presence-backed arrival. Every "no owner yet" branch below is audited against this. |
 | `onboard/index.js:103,423,437` — the loopback onboarding link keeps reopening while `!ownerSeen` | Stayed open forever with no tailnet | Closes once `ownerSeen` is set by pairing, same as it would by a tailnet sign-in today. |
 | `anywhere`'s `onboard.machine` first-setup presence exemption (`role box && !ownerSeen`, c5d7d318) | Exempted until a tailnet owner signs in | Exempted only until `ownerSeen` — audited to fail closed the instant it is set by a pairing, not left open because "no tailnet sign-in has happened yet." |
-| `ownerOverTailnet(caller)` / `ownerDevice(caller)` (`core/modules/index.js`) | `tailnet:<owner>` only, or `device:<id>` (ADR 0026) | **Unchanged.** A desktop that later joins the tailnet (section 3) is *also* reachable as `tailnet:<owner>` once its node's whois resolves to the owner's login (below) — `ownerDevice()` already treats both as equal. No new caller class. |
+| `ownerOverTailnet(caller)` / `ownerDevice(caller)` (`core/modules/index.js`) | `tailnet:<owner>` only, or `device:<id>` (ADR 0026) | **Unchanged, and a desktop that joins the tailnet via section 3 never becomes `tailnet:<owner>`.** A `tag:vyre-device` node's whois returns the tag, never a login (below), so it is admitted as `device:<id>` over the tailnet transport too, exactly as it already is over the relay — `ownerDevice()` needs nothing new, since `device:<id>` already covers both. |
 
 ### A tagged node has no login — whois breaks, and that is fine, because nothing relies on it here
 
@@ -174,6 +200,12 @@ is a meaningful capability — so:
 - minting a key happens only as a direct consequence of a pairing's own presence proof (the Touch
   ID that already confirmed the device, ADR 0026 section 6) — never on its own trigger, and never
   callable as a bare tool a script could invoke to mint keys for no device in particular.
+- **on a Mac acting as a server, this credential waits for vyre-core** (ADR 0040's GA list): the
+  same reasoning that already keeps relay hosting off by default on a Mac (`core/relay/keys.js`,
+  `macCoreRefusal`) applies here too — a process at the person's own uid can read anything a Mac
+  process holds, so a Tailscale OAuth client capable of minting keys is exactly the kind of secret
+  that needs vyre-core's own holder, not `~/.vyre/`, before it ships on a Mac. A Linux server has
+  no such gap and is unaffected.
 
 ### Revoke goes both directions
 
@@ -219,13 +251,19 @@ on the Mac or on the test box.
 - A device that never installs Tailscale works exactly as well as one that does, just slower on
   the relay path — this is a deliberate design property, not a degraded fallback to fix later.
 
-## Open questions for the reviewer
+## Resolved (the reviewer's verdict, 28 Sep)
 
-1. Auth key `expirySeconds`: this note suggests "minutes" (order of 300s) without picking an exact
-   number — is there a floor below which `tailscale up` itself becomes flaky (control-plane round
-   trip time), or is 300s safe?
-2. Whether a *server*'s own desktop-style join (a Linux box acting as `role: local`, joining
-   another box's tailnet as a device rather than being the tailnet's own box) needs `ephemeral:
-   true` or `false` — this note left it role-dependent without fully specifying the rule.
-3. Confirm the tag name `tag:vyre-device` does not collide with anything `anywhere`'s config.role
-   work already assumes about tag-derived role detection.
+The HIGH (the key on argv) and both MEDIUMs (the box trusting a self-reported stable ID; the
+`tailnet:<owner>` line) are fixed above, in sections 3 and the identity table. The reviewer's
+answers to the three open questions this note originally asked, now folded into the decision
+rather than left open:
+
+1. `expirySeconds`: 300 is fine, 600 if installs run slow — single-use either way, so the exact
+   number is not security-critical. `preauthorized: true` is required alongside it, or the join
+   blocks on device approval in the console.
+2. `ephemeral`: `false` for anything meant to persist (a desktop, a server acting as a device);
+   `true` only for an explicitly temporary machine.
+3. No role or trust is ever derived from a tag, `tag:vyre-device` included — confirmed separately
+   by `anywhere`: nothing in `config.role`/`config.machine` reads Tailscale status or tags at all,
+   and `core/onboard/index.js`'s own claim flow already treats a tagged node as having no inherent
+   owner for exactly this reason.
