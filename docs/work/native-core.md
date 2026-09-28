@@ -8,6 +8,41 @@ back.
 
 Definition of done: the user uses Vyre chat for a full working day instead of the terminal.
 
+## 2026-09-28: the four avatar families (0.1.1, user decision: avatars LOCKED)
+Branch work/native-core-avatars off stage/0.1.1 (4a595c99).
+Done:
+- deck/js/avatars.js: the ONE importer of deck/vendor/vyrecode (identity.js, creature.js, new
+  characters.js = app-design round3b blob + character, vyrecode2.js/geometry.js) and
+  deck/vyrecode/payload.js. API: setIdentity(system.info), readSystem/readTeammates/readIdentity,
+  avatar(family, seed, {size, label, title, cls}), personAvatar({ring}), assistantAvatar,
+  agentAvatar(id), teammateAvatar(id), whoAvatar(agent), teammateId(role, project),
+  avatarSource (pure), installAvatarMotion. Seeds: person = owner.fingerprint8, assistant =
+  assistant.fingerprint8 (both 16 hex from system.info), agent = its name (agents_agents PK),
+  teammate = "<role>-<project>" (core/team agentName). Fallbacks: face/creature from the name, no ring.
+- Wired: chat user rows, assistant/agent head rows, session header (.cv-head-av, 32), handoff card
+  (teammate from the session's project), chat thread list, Agents page rows and board head, a new
+  Teammates section on /agents (team.list), Settings > You (160 with the Vyre code ring, redraws
+  on a theme switch). pair-avatar.js renders through avatars.js. sw.js precaches the new modules.
+- Tap hop (deck.css .vy-av-play), off under prefers-reduced-motion; one capture listener in app.js.
+- Perf: one parse per (family, seed, size band), cloned after; LRU 256; unique gradient ids per copy.
+Tests (testbox): deck/js/avatars.test.js 13/13; "deck/**/*.test.js" + boundaries 706/706 after the
+cards/session test updates; test/docs-*.test.js + boundaries 66/66; docs-check 0 problems other than
+262 mtime-only shot staleness (untouched files too, environmental). Headless Chrome
+(deck/test/avatars-browser.js, temp profile, testbox) 13/13: 61 avatars draw in Dark and Paper, 0
+duplicate ids, every gradient ref resolves once, ring at Settings size, chat rows + header, hop, Reduce
+Motion still. Native bar (avatars vs stage base): all pass except 8 (reconnect; fails on base too).
+5 read CLS 0.0063 once in the full run, then 0 in 3 of 3 reruns (base 0). 7.cold 838 vs 666 ms,
+9 send 12.4 vs 4.4 ms, all within budget.
+Needs from others:
+- anywhere (via lead): config.fingerprint8 slices 8 HEX chars (4 bytes); ADR 0043 2f says 8 bytes
+  (16 hex). And system.info needs assistant.fingerprint8. Until then the assistant uses its fallback.
+- app-design: the locked files (darker-skin contrast floors). Swap = deck/vendor/vyrecode/* and, if
+  the API moved, deck/js/avatars.js only.
+Next: swap in app-design's locked files; rerun avatars.test.js, avatars-browser.js, native bar.
+Changed contracts: deck/chat/blocks.js personAv/agentAv now draw avatars (same classes kept);
+handoffCard reads b.project; deck/chat/lib/names.js readNames feeds setIdentity; deck/sw.js SHELL;
+deck/css/deck.css span.vy-av rules; deck/css/views/agents.css, settings.css.
+
 ## Done
 - 2026-09-27 77faf1e3: core/settings (registry of ~70 keys, stores: settings_values, config.json,
   module tools, Claude Code files), settings.schema/get/set/reset/resolve, settings.changed,

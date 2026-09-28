@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: the four avatar families (ADR 0043), drawn everywhere a who shows
+
+- `deck/js/avatars.js` is the Deck's one importer of the vendored avatar renderers
+  (`deck/vendor/vyrecode/`, plus `characters.js` for agents' blobs and teammates' characters).
+  The person is a circle seeded from `system.info` `owner.fingerprint8`, with its Vyre code ring
+  at Settings > You; the assistant is its creature, seeded from `assistant.fingerprint8`; an agent
+  is a blob seeded from its stable id (its name); a teammate is a character on a tile, seeded from
+  its teammate id (`<role>-<project>`). A missing fingerprint falls back to a face or creature from
+  the name, never a crash and never a ring.
+- Drawn in chat rows (you, the assistant, agents), the session header, the teammate handoff card,
+  the chat thread list, the Agents page (plus a new Teammates section from `team.list`) and
+  Settings > You. `deck/js/pair-avatar.js` now renders through avatars.js.
+- A tap on any avatar plays a small hop; nothing under Reduce Motion. One document listener.
+- Inline SVG, parsed once per author and cloned after that, each copy with its own gradient ids.
+  `deck/test/avatars-browser.js` checks it in headless Chrome.
+
 #### presence: the Capsule's key is P-256 from the Secure Enclave; Ed25519 Capsule keys are refused
 
 - `presence.enroll` kind `capsule` takes only an EC P-256 key (alg -7), the kind the Mac's Secure
