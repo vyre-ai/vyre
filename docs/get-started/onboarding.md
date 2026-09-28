@@ -153,7 +153,7 @@ in [Install, step 8](install.md#8-your-address).
 > [!WHY] What about my own domain?
 > The address step has a collapsed **Your own domain** section. A domain of your own, or a
 > `<you>.vyre.run` name, needs a Cloudflare API token set in the box's configuration
-> (`CLOUDFLARE_vyre_token` in `/srv/vyre/vyre.env` for `vyre.run`) until the hosted name
+> (`CLOUDFLARE_VYRE_TOKEN` in `/srv/vyre/vyre.env` for `vyre.run`) until the hosted name
 > directory exists. That directory is not built yet. The tailnet name needs nothing. The steps
 > are in [Troubleshooting](troubleshooting.md).
 
