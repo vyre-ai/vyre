@@ -11,7 +11,7 @@ import { open } from "../store/index.js";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 import { floorPlan } from "./floor.js";
@@ -198,6 +198,42 @@ test("graph: the main graph is only for the user and the assistant; an agent see
   assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp" })).error?.message || "", /drawn for the Deck/);
   assert.equal((await call("memory.graph", { project_cwds: [path.join(work, "northwind")] }, { ...opts, caller: "mcp" })).data?.scope, "project");
   assert.equal((await call("memory.graph", {}, { ...opts, caller: "deck" })).data?.scope, "main");
+});
+
+test("graph: a projects: \"*\" agent is not the assistant — every mapped project's room, never the main graph, unfiled, or personal facts", async t => {
+  const root = fs.realpathSync(tempHome(t));
+  const work = path.join(root, "Work");
+  const moved = [...SESSIONS, CROSSOVER].map(s => ({ ...s, cwd: s.cwd.replace(W, work) }));
+  const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
+  const d = await start({ presence: present, root, log: () => {} });
+  t.after(() => d.stop());
+  const opts = { root };
+  assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
+  assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
+  assert.ok(!(await call("agents.create", { name: "wilma", projects: "*" }, opts)).error);
+  // A projects: "*" agent gets no seed from migrate (its "*" is not per-project, same as the
+  // assistant): projects.access still has to grant it each mapped project by name.
+  assert.ok(!(await call("projects.access.grant", { project: "northwind", agent: "wilma" }, opts)).error);
+  assert.ok(!(await call("projects.access.grant", { project: "harlow", agent: "wilma" }, opts)).error);
+  await call("memory.curate", {}, opts);
+
+  // Every mapped project, one room at a time: granted.
+  const nw = await call("memory.graph", { agent: "wilma", project_cwds: [path.join(work, "northwind")] }, opts);
+  assert.equal(nw.data?.scope, "project");
+  const hl = await call("memory.graph", { agent: "wilma", project_cwds: [path.join(work, "harlow-site")] }, opts);
+  assert.equal(hl.data?.scope, "project");
+
+  // Never the main graph or the unfiled room: those are the assistant's alone now.
+  assert.match((await call("memory.graph", { agent: "wilma" }, opts)).error?.message || "", /main graph is for the assistant/);
+  assert.match((await call("memory.facts", { agent: "wilma", room: "unfiled" }, opts)).error?.message || "", /unfiled room is for the user and the assistant/);
+  // Personal facts are the one place a projects: "*" agent still reads as the assistant does
+  // (answer.test.js's own contract, unchanged by this narrowing): no wife fact seeded here, so
+  // it simply comes back null rather than denied.
+  assert.ok(!(await call("memory.answer", { agent: "wilma", q: "who is my wife" }, opts)).error);
+
+  // A project.access revoke narrows it immediately, same as a named-projects agent.
+  assert.ok(!(await call("projects.access.revoke", { project: "harlow", agent: "wilma" }, opts)).error);
+  assert.match((await call("memory.graph", { agent: "wilma", project_cwds: [path.join(work, "harlow-site")] }, opts)).error?.message || "", /not granted/);
 });
 
 test("graph: a named agent is refused when agents cannot be checked", async t => {

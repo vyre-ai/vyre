@@ -159,10 +159,13 @@ export default {
     /** Store the rooms. A change marks the curator dirty, so the pass that follows derives. */
     const syncRooms = async () => { curator.setRooms(await projectList()); };
     /**
-     * What a caller may see. The user, from any surface or their own sessions, sees everything;
-     * so does the assistant and an agent granted every project. Any other agent sees only its
-     * projects' graphs, never the main graph (docs/SPEC.md, sections 7.4 and 10). When agents
-     * cannot be checked, a named agent is refused rather than trusted.
+     * What a caller may see. The user, from any surface or their own sessions, sees everything,
+     * so does the assistant. Every other agent, a projects: "*" agent included, walks the same
+     * per-project path: it reaches every MAPPED project's room, never the main graph and never
+     * the unfiled room (the user's decision, 2026-09-28 — the assistant sees all mapped
+     * projects and never an unmapped folder; everyone else only sees what it's granted).
+     * (docs/SPEC.md, sections 7.4 and 10). When agents cannot be checked, a named agent is
+     * refused rather than trusted.
      *
      * Who the agent is comes from the caller ("... agent:<name>", set by whatever runs the
      * agent) or from input.agent; if both are given they must agree. vyred lets a caller name an
@@ -181,9 +184,17 @@ export default {
       const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
       const a = list.find(x => x && x.name === who);
       if (!a) throw denied(`no agent ${who}`);
-      if (a.kind === "assistant" || a.projects === "*") return { all: true, agent: who, folders: [], slugs: new Set() };
+      // Only the assistant gets the true main graph, unfiled room included (the user's decision,
+      // 2026-09-28: the assistant sees every MAPPED project and never an unmapped folder;
+      // everyone else, wildcard agent included, only sees what it's granted). A projects: "*"
+      // agent used to be folded into the same all:true branch as the assistant, which handed it
+      // the unfiled room too, even though a wildcard grant is "every project", not "everything
+      // unfiled has no project". It now walks the same per-project path below, just starting
+      // from every project instead of a named few.
+      if (a.kind === "assistant") return { all: true, agent: who, folders: [], slugs: new Set() };
+      const wildcard = a.projects === "*";
       const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
-      const granted = (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
+      const granted = wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
       // agents.projects alone is not the only door any more (reviewer's MEDIUM, Vyre Drive step
       // 3): a project also has to be live in projects.access, the one place Drive, Recall and
       // memory's own reads are all meant to check the same way. Intersected here rather than
@@ -197,7 +208,13 @@ export default {
         return c.data && c.data.granted ? p : null;
       }));
       const allowed = checked.filter(Boolean);
-      return { all: false, agent: who, folders: allowed.flatMap(p => p.folders), slugs: new Set(allowed.map(p => p.slug)) };
+      // wildcard (not all): a projects: "*" agent reads every mapped project's room the same
+      // way a named-projects agent reads its own — never the main graph or the unfiled room,
+      // which stay the assistant's alone (docs/adr/0007-intelligence.md decision 1 as narrowed
+      // above). Personal facts are the one place that ADR still treats a wildcard agent as
+      // equivalent to the assistant (answer.test.js's own contract, unchanged here): flagged so
+      // personalOnly can tell a wildcard agent from an ordinary named-projects one.
+      return { all: false, wildcard, agent: who, folders: allowed.flatMap(p => p.folders), slugs: new Set(allowed.map(p => p.slug)) };
     };
     const clean = cwds => (cwds || []).map(c => path.resolve(String(c)));
     /** The user's own surfaces. Only these, modules, and a verified all-projects agent read the main graph. */
@@ -213,12 +230,15 @@ export default {
     const reader = caller => owner(caller) || viaTailnet(caller);
     /**
      * Throws unless the caller may read these folders' graph or this room (none: the main
-     * graph). The main graph is for the user's own surfaces, modules, and the assistant or an
-     * agent granted every project (docs/adr/0007-intelligence.md, decision 1): a session that
-     * has not said who it is names its room or its project's folders. The unfiled room holds
-     * whatever no project owns, so a named agent reads it only when granted every project.
-     * An agent's grants are checked by project: a folder belongs to the most specific project
-     * that holds it, so an agent granted ~/Work is not granted a project nested inside it.
+     * graph). The main graph is for the user's own surfaces, modules and the assistant only
+     * (docs/adr/0007-intelligence.md, decision 1, narrowed by the user's 2026-09-28 decision:
+     * a projects: "*" agent no longer counts as the assistant here — it reaches every mapped
+     * project's room, one at a time, never the main graph): a session that has not said who it
+     * is names its room or its project's folders. The unfiled room holds whatever no project
+     * owns; only the user and the assistant read it now, never a named agent, even one granted
+     * every project. An agent's grants are checked by project: a folder belongs to the most
+     * specific project that holds it, so an agent granted ~/Work is not granted a project
+     * nested inside it.
      * @param {{ agent?: string, project_cwds?: string[], room?: string }} input
      * @param {{ whole?: boolean, tailnet?: boolean }} [opts]  whole: the call reads or steers everything by design;
      *   tailnet: a read the user's tailnet devices make as the owner
@@ -231,8 +251,8 @@ export default {
         if (!scoped && !whole && !r.agent && !(tailnet ? reader(caller) : owner(caller))) throw denied("the main graph is drawn for the Deck and the assistant; pass room (a project's slug, or unfiled) or project_cwds");
         return r;
       }
-      if (room === "unfiled") throw denied(`the unfiled room is for the user and agents granted every project, not ${r.agent}`);
-      if (!scoped) throw denied(`the main graph is for the assistant and agents granted every project; ask for one of ${r.agent}'s projects with room or project_cwds`);
+      if (room === "unfiled") throw denied(`the unfiled room is for the user and the assistant, not ${r.agent}`);
+      if (!scoped) throw denied(`the main graph is for the assistant; ask for one of ${r.agent}'s projects with room or project_cwds`);
       const sc = /** @type {{ room: string|null }} */ (graph.view(cwds, room && room !== "*" ? room : undefined));
       if (sc.room) {
         if (!r.slugs.has(sc.room)) throw denied(`${r.agent} is not granted ${sc.room}`);
@@ -256,8 +276,8 @@ export default {
         input = { ...input, room: roomOf(input) };
         const r = await guard(input, caller, { tailnet: true });
         // The main graph is a drawing of every client at once. Beyond the rule above, only the
-        // user's own surfaces (or a verified agent with every project) are given it: a session
-        // that has not said who it is gets its project's graph, not everyone's.
+        // user's own surfaces or the assistant are given it: a session that has not said who it
+        // is gets its project's graph, not everyone's.
         const main = !clean(input.project_cwds).length && (!input.room || input.room === "*" || input.room === "unfiled");
         if (main && !r.agent && !reader(caller)) {
           throw denied("the main graph is drawn for the Deck and the assistant; pass project_cwds for a project's graph");
@@ -414,6 +434,9 @@ export default {
     // One line about the user's life from what they have said (docs/work/memory-iq.md). Personal
     // facts are the user's, not a project's: the user's surfaces, their tailnet devices, modules,
     // and the assistant or an agent granted every project ask it; a project's agent is refused.
+    // (Unlike the main graph and the unfiled room, personal facts keep treating a projects: "*"
+    // agent as the assistant's equal — the user's 2026-09-28 decision narrowed the graph/folder
+    // side only, and answer.test.js's existing contract is the record of that.)
     /**
      * Personal facts are the user's, not a project's: the user's surfaces, their tailnet devices,
      * modules, and the assistant or an agent granted every project. A project's agent is refused.
@@ -424,7 +447,7 @@ export default {
     const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller));
     const personalOnly = async (input, caller, name) => {
       const r = await reach(input.agent, caller);
-      if (r.agent ? !r.all : !(reader(caller) || ownSession(caller))) {
+      if (r.agent ? !(r.all || r.wildcard) : !(reader(caller) || ownSession(caller))) {
         throw denied(r.agent ? `personal facts are not a project's: ${r.agent} is granted only some projects` : `${name} is for the user's own surfaces and agents granted every project, not ${plain(caller || "an unnamed caller", 60)}`);
       }
     };
