@@ -175,6 +175,7 @@ final class ExtensionHost: CapsuleHost {
     func cancelTalking() -> Bool { extensions.contains { $0.cancelTalking() } }
     func say(_ line: String) { model.line = line }
     func stepAside() async -> Bool { await panel?.stepAside() ?? false }
+    func sessionShown(thread: String?, project: String?) { model.sessionShown(thread: thread, project: project) }
 
     func notify(title: String, body: String) {
         if isShown { say(body) } else { Notifier.shared.post(title: title, body: body) }

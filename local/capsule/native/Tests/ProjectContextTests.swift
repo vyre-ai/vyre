@@ -2,7 +2,8 @@
 // The Capsule's current project (Host/ProjectContext.swift): the session window's first, then the
 // project holding the front document or folder, else none. Pure: no real window is read here.
 
-import Foundation
+import AppKit
+import SwiftUI
 
 private let harlow = VyreProject(slug: "harlow", name: "Harlow Legal", home: "/Users/alex/Work/Harlow")
 private let intake = VyreProject(slug: "harlow-intake", name: "Harlow intake", home: "/Users/alex/Work/Harlow/intake/")
@@ -43,5 +44,56 @@ let projectContextSuite = Suite("project context") { t in
             t.eq(ProjectContext.frontPath(nil), nil)
             t.eq(ProjectContext.frontPath(FrontApp(bundle: "com.1password.1password", pid: 1, name: "1Password")), nil, "refused before any window is touched")
         }
+    }
+
+    t.test("memory.ask carries context:{project}: the session window's, then the front document's, never a guess") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        v.tool("memory.ask") { _ in ["answer": "Rye and sourdough.", "confidence": 0.8, "sources": []] }
+        let out: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in
+                let m = CapsuleModel(home: vyScratch("proj-home"), vyred: VyredClient(socket: v.socket), providers: [])
+                m.catalog = CAT
+                m.frontPath = { _ in "/Users/alex/Work/Northwind/menu.md" }
+                return m
+            }
+            _ = await m.vyred.refreshTools()
+            var got: [String] = []
+            func ask() async {
+                _ = await m.askIQ("what is on the menu today")
+                let c = v.callsOf("memory.ask").last?["context"] as? [String: Any]
+                got.append(VJ.str(c?["project"]) ?? "none")
+            }
+            await MainActor.run { m.refreshProject() }
+            await ask()
+            await MainActor.run { m.sessionShown(thread: "t-harlow", project: nil) }
+            await ask()
+            await MainActor.run { m.sessionShown(thread: "", project: nil) }     // the assistant's tab
+            await ask()
+            await MainActor.run { m.sessionShown(thread: nil, project: nil) }    // the window closed
+            await ask()
+            await MainActor.run { m.frontPath = { _ in "/Users/alex/Desktop/x.txt" }; m.refreshProject() }
+            await ask()
+            return got
+        }
+        t.eq(out, ["northwind", "harlow", "none", "northwind", "none"])
+    }
+
+    t.test("the bar shows the project's tile and name") {
+        let ok: Bool = MainActor.assumeIsolated {
+            let m = CapsuleModel(home: vyScratch("proj-view"), vyred: VyredClient(socket: vyScratch("pv") + "/none.sock"), providers: [])
+            m.catalog = CAT
+            m.sessionShown(thread: nil, project: "northwind")
+            guard m.currentProject?.name == "Northwind Bakery" else { return false }
+            let host = NSHostingView(rootView: CapsuleView(model: m, focus: FocusTicket(), snapshot: true))
+            host.frame = NSRect(x: 0, y: 0, width: Theme.width, height: CapsuleLayout.panelHeight(m))
+            host.layoutSubtreeIfNeeded()
+            guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return false }
+            host.cacheDisplay(in: host.bounds, to: rep)
+            if let dir = ProcessInfo.processInfo.environment["VYRE_CAPSULE_SNAP"], let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("project-chip.png"))
+            }
+            return rep.pixelsWide > 0
+        }
+        t.ok(ok)
     }
 }

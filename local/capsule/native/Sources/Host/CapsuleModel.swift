@@ -157,6 +157,12 @@ public final class CapsuleModel: ObservableObject {
     @Published var credentialAsk: CredentialAsk?
     /// `vyre ...` run from the box, and what it said (CommandRun.swift).
     @Published var commandRun: CommandRun?
+    /// The session window's session while it is open (ProjectContext.swift), else nil.
+    var sessionFront: (thread: String?, project: String?)?
+    /// The project the Capsule is in: memory.ask's context and the chip in the bar.
+    @Published var currentProject: VyreProject?
+    /// The front app's document or folder, for the project rule (a fake in tests).
+    var frontPath: (FrontApp?) -> String? = { ProjectContext.frontPath($0) }
     /// The CLI to run instead of vyred's own (tests: a fake vyre).
     var cliOverride: [String]?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
@@ -252,12 +258,14 @@ public final class CapsuleModel: ObservableObject {
             await self.loadModels()
             await self.loadIdentities()
             self.catalog = await CatalogLoader.load(vyred)
+            self.refreshProject()
             if self.mentionQuery != nil { self.search() }
             self.targetChanged()
             await self.loadBox()
             self.desk.follow()
             await self.desk.load()
         }
+        refreshProject()
         if !text.isEmpty { search() }
     }
 

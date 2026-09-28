@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### capsule: 0.1.1, offline start, the current project, models from sessions.models, pin without nagging
+
+- Offline, the Capsule starts Vyre itself. The Offline line is "Start Vyre" (Return on an empty
+  box, a click, or the menu-bar popover); `vyre up` typed offline is that action, and any other
+  `vyre ...` says "Start Vyre first". It runs `vyre up --no-capsule --view` by argv with the CLI
+  `vyre capsule` now records in `<home>/capsule/cli.json` (else VYRE_CLI, else PATH), shows its
+  frames, and turns online when /v1/health answers. Before, `vyre up` in the Capsule failed
+  because commands ran through vyred's own CLI path.
+- The current project: the session window's session, else the project whose folder holds the
+  front app's document or working directory (AXDocument, only with Accessibility already
+  granted, never for a password manager), else none. Its tile and name show in the bar, and
+  memory.ask gets `context: {project}` (the slug only; the path never leaves the Mac).
+  `CapsuleHost.sessionShown(thread:project:)` is the new seam call; projects carry avatar_seed.
+- The quick and deeper models come from sessions.models.get (purposes capsule and agent); the
+  fallback names live once, in ModelFallback. The drift allowlist shrank to Route.swift.
+- presence.capsule.pin asks Touch ID only when vyred can pin this build: the Capsule checks its
+  own signature first (signed, not ad hoc), and a refusal or "Not now" is remembered for the
+  process, so a reconnect never asks again.
+
 #### capsule: the identity marks where the Capsule shows people and answers
 
 - The Capsule reads system.info once per show, beside the models, and keeps the owner's and the

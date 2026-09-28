@@ -145,6 +145,20 @@ struct CapsuleView: View {
                 .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
                 .fixedSize()
             }
+            // The project the Capsule is in (ProjectContext.swift): its tile and name, read-only.
+            if model.target == nil, model.attachments.isEmpty, model.current?.sendsTo == nil, let p = model.currentProject {
+                HStack(spacing: 5) {
+                    AvatarView(.project(seed: p.tileSeed, draft: false), size: 14)
+                    Text(p.name).lineLimit(1).truncationMode(.tail)
+                }
+                .font(Theme.type(Tokens.TypeScale.meta, .medium))
+                .foregroundColor(Theme.stone)
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
+                .frame(maxWidth: 160)
+                .fixedSize(horizontal: false, vertical: true)
+                .help("Answers use this project")
+            }
         }
         .padding(.horizontal, Theme.inset)
         .frame(height: Theme.barHeight)

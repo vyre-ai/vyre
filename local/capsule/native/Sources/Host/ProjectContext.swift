@@ -46,6 +46,8 @@ public enum ProjectContext {
     /// The front app's document or working directory, from its focused window's AXDocument; nil
     /// without Accessibility (never asked for here), for a private app, or when it says none.
     @MainActor static func frontPath(_ front: FrontApp?) -> String? {
+        // The Swift tests never read a real app's window.
+        guard ProcessInfo.processInfo.environment["VYRE_CAPSULE_TEST"] != "1" else { return nil }
         guard let front, front.pid > 0, !isPrivate(front.bundle), AXIsProcessTrusted() else { return nil }
         let app = AXUIElementCreateApplication(front.pid)
         AXUIElementSetMessagingTimeout(app, 0.05)
@@ -64,4 +66,24 @@ public enum ProjectContext {
         guard let u = URL(string: s), u.isFileURL else { return nil }
         return u.path
     }
+}
+
+extension CapsuleModel {
+    /// The session window shows a session (a thread of "" is one with no thread yet, such as a
+    /// fresh assistant tab), or closed (both nil).
+    func sessionShown(thread: String?, project: String?) {
+        sessionFront = thread == nil && project == nil ? nil : (thread, project)
+        refreshProject()
+    }
+
+    /// Decide the current project again: on show, when the catalog lands, when the session window changes.
+    func refreshProject() {
+        let s = sessionFront
+        let path = s == nil ? frontPath(front) : nil
+        let p = ProjectContext.current(sessionThread: s?.thread, sessionProject: s?.project, frontPath: path, catalog: catalog)
+        if p != currentProject { currentProject = p }
+    }
+
+    /// memory.ask's context: the current project's slug, or nothing.
+    var askContext: [String: Any]? { currentProject.map { ["project": $0.slug] } }
 }

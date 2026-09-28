@@ -25,6 +25,8 @@ struct PanelSession: Equatable, Identifiable {
     var status: String?
     /// The agent running a switchboard thread (threads.list's agent), when one does.
     var runBy: String? = nil
+    /// The project a switchboard thread belongs to (threads.list's project), when it says.
+    var project: String? = nil
 
     var isAssistant: Bool { if case .assistant = kind { return true }; return false }
     var isTerminal: Bool { kind == .terminal }
@@ -51,7 +53,8 @@ struct PanelSession: Equatable, Identifiable {
             let id = VJ.s(x["id"])
             guard !id.isEmpty, seen.insert(id).inserted else { continue }
             let label = VJ.nonEmpty(x["name"]) ?? folder(x) ?? String(id.prefix(8))
-            run.append(PanelSession(id: "thread:\(id)", label: label, kind: .thread, thread: id, status: VJ.nonEmpty(x["status"]), runBy: VJ.nonEmpty(x["agent"])))
+            run.append(PanelSession(id: "thread:\(id)", label: label, kind: .thread, thread: id, status: VJ.nonEmpty(x["status"]), runBy: VJ.nonEmpty(x["agent"]),
+                                    project: VJ.nonEmpty(x["project"])))
         }
         let recent = ((catalog as? [String: Any])?["sessions"] as? [[String: Any]]) ?? []
         for x in recent {
@@ -136,6 +139,8 @@ final class SessionPanelModel: ObservableObject {
     /// system.info's owner and assistant, for the marks beside the lines (read with the name).
     @Published var identities = Identities()
     private var namesRead = false
+    /// Told the session now shown (nil when the panel stops): the Capsule's current project.
+    var onShown: (PanelSession?) -> Void = { _ in }
     /// Voice from the panel's mic button or Option-Return in its box.
     var onTalk: () -> Void = {}
 
@@ -157,6 +162,7 @@ final class SessionPanelModel: ObservableObject {
     }
 
     func stop() {
+        if shown != nil { onShown(nil) }
         sub?.cancel(); sub = nil
         endWatch()
         buffered = []
@@ -209,6 +215,7 @@ final class SessionPanelModel: ObservableObject {
     func show(_ s: PanelSession) async {
         endWatch()
         shown = s
+        onShown(s)
         line = nil
         note = nil
         if s.isTerminal { await showIndexed(s); return }

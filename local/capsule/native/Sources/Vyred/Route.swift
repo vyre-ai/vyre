@@ -43,9 +43,12 @@ public struct VyreProject: Sendable, Equatable {
     public var threads: Int?
     public var last: Double?
     public var people: [VyrePerson]
-    public init(slug: String, name: String, org: String? = nil, home: String? = nil, threads: Int? = nil, last: Double? = nil, people: [VyrePerson] = []) {
-        self.slug = slug; self.name = name; self.org = org; self.home = home; self.threads = threads; self.last = last; self.people = people
+    /// The stored tile seed (ADR 0043), else the slug draws the tile.
+    public var avatarSeed: String?
+    public init(slug: String, name: String, org: String? = nil, home: String? = nil, threads: Int? = nil, last: Double? = nil, people: [VyrePerson] = [], avatarSeed: String? = nil) {
+        self.slug = slug; self.name = name; self.org = org; self.home = home; self.threads = threads; self.last = last; self.people = people; self.avatarSeed = avatarSeed
     }
+    public var tileSeed: String { Avatars.projectSeed(slug: slug, avatarSeed: avatarSeed) }
 }
 
 public struct VyreThread: Sendable, Equatable {

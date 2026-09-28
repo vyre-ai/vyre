@@ -346,6 +346,9 @@ public protocol CapsuleHost: AnyObject {
     /// id; a second owner gets the same window and the first is told nothing, so take it only
     /// from a command the user ran.
     func sessionWindow(owner: String) -> SessionWindow
+    /// The session window now shows this session (nil: it closed). The Capsule takes that
+    /// session's project as the current one (memory.ask's context, the project chip).
+    func sessionShown(thread: String?, project: String?)
     /// Your `commands` (or `providers`) changed while the Capsule is open, for example a session
     /// started: the Capsule reads them again and redraws the list.
     func commandsChanged()
@@ -385,6 +388,7 @@ public struct CredentialNeed: Sendable, Equatable {
 public extension CapsuleHost {
     /// A host with no windows (a test's fake host) hands out one that shows nothing.
     func sessionWindow(owner: String) -> SessionWindow { NoSessionWindow() }
+    func sessionShown(thread: String?, project: String?) {}
     func currentQuery() -> String { "" }
     func dictate(_ text: String, final: Bool) { setQuery(text) }
     func submitDictation() {}
