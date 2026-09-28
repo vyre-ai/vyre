@@ -464,9 +464,15 @@ async function threadPane(ctx, id, o) {
   let fromMac = isMac(o.known?.live) || isMac(o.known?.rec);
   const isLive = !!o.known?.live && !fromMac;
   let thread = null, events = [], recorded = null, loadErr = null;
-  // Who is who for the avatars (each read once per page; a missing one just means a fallback look).
-  // chat/lib/names.js's readNames reads system.info once for the page and passes it to the avatars too.
-  const identity = Promise.all([readNames(attempt), readTeammates(attempt), readProjects(attempt)]);
+  // Who is who for the avatars and names (each read once per page; a missing one just means a
+  // fallback). chat/lib/names.js's readNames reads system.info and passes it to the avatars too.
+  // The thread never waits on these: it draws at once, and whoReady() redraws the avatars and the
+  // reply names in place if they land after it (reviewer's nit on 6fea1c16).
+  /** @type {{ assistant?: string|null, owner?: string|null }} */ let names = {};
+  let identityIn = false;
+  /** @type {() => void} */ let whoReady = () => {};
+  Promise.all([readNames(attempt), readTeammates(attempt), readProjects(attempt)])
+    .then(([nm]) => { names = nm || {}; identityIn = true; whoReady(); }, () => {});
   if (isLive) {
     const r = await attempt("threads.get", { thread: id });
     if (r.data) ({ thread, events } = { thread: r.data.thread, events: r.data.events || [] }); else loadErr = r.error;
@@ -480,7 +486,6 @@ async function threadPane(ctx, id, o) {
       if (g.data?.thread) ({ thread, events } = { thread: g.data.thread, events: g.data.events || [] }); else loadErr = loadErr || r.error;
     }
   }
-  const [names] = await identity;
   if (!ctx.alive()) return;
 
   const swMissing = !!(o.switchboard?.error?.missing);
@@ -504,6 +509,17 @@ async function threadPane(ctx, id, o) {
 
   // The stream of things said and done, in order.
   const stream = h("div", { class: "th-stream" });
+  // The identity reads landed after the thread drew: the right avatars and reply names, in place.
+  if (!identityIn) whoReady = () => {
+    if (!ctx.alive()) return;
+    for (const m of stream.querySelectorAll(".th-msg")) {
+      const name = m.querySelector(".th-name");
+      const user = m.classList.contains("user");
+      if (!user && name) put(name, labelFor({ role: "assistant", agent }, names));
+      const who = name?.textContent || "";
+      m.querySelector(".th-av")?.replaceWith(user ? youAv(who) : replyAv(who));
+    }
+  };
   put(body, stream);
   let toolGroup = /** @type {HTMLElement|null} */ (null);
   const byMsg = new Map();

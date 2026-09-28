@@ -18,6 +18,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   agent's blob or a teammate's character) instead of letter chips.
   Its replies are named the way chat names them (chat/lib/names.js): the agent's name, else the
   assistant's, never "Claude".
+  The pane never waits on the identity reads: the thread draws at once, and its avatars and reply
+  names are filled in place when system.info, team.list and projects.list answer.
 - A session's replies and header wear its project's tile (seeded from the stored avatar_seed); a
   chat in no project wears a dashed draft tile seeded from its id, which carries over when it is
   made into a project ("New project from this", projects.create from_thread) and switches in place

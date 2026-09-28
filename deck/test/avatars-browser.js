@@ -146,6 +146,18 @@ try {
   say("project pane, a chat in no project: you, and its draft tile on replies", loose.you === "person" && loose.reply === "project" && loose.draft && loose.letters === 0, JSON.stringify(loose));
   say("project pane: replies are named the way chat names them, never Claude", loose.claude === 0 && !!loose.name, JSON.stringify({ name: loose.name, claude: loose.claude }));
   await shot("project-pane-draft");
+  // The pane never waits on the identity reads: with system.info held back 2.5 s, the thread's
+  // text is on screen first, and the avatars and names are right once it lands.
+  const slow = await tab.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => { const f = window.fetch;
+    window.fetch = (u, o) => String(u).includes("/v1/tools/system.info") ? new Promise(r => setTimeout(r, 2500)).then(() => f(u, o)) : f(u, o); })();` });
+  await tab.go(`${world.url}/threads/${encodeURIComponent(world.s40)}`, 1200);
+  const early = await tab.run(`await waitFor(".th-msg", 8000); return { rows: document.querySelectorAll(".th-msg").length, at: performance.now() };`);
+  await sleep(3000);
+  const late = await tab.run(`const r = document.querySelector(".th-msg.assistant"); return { reply: r?.querySelector(".vy-av")?.dataset.family,
+    you: document.querySelector(".th-msg.user .vy-av")?.dataset.family, name: r?.querySelector(".th-name")?.textContent };`);
+  say("project pane draws before system.info answers, then fills avatars and names in place", early.rows > 0 && early.at < 2500 && late.reply === "project" && late.you === "person" && !/claude/i.test(String(late.name)),
+    `${early.rows} rows at ${Math.round(early.at)} ms (system.info held to 2500 ms); then ${JSON.stringify(late)}`);
+  await tab.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: slow.result?.identifier });
   const made = await tool("projects.create", { name: "Northwind Bakery", from_thread: world.s40 });
   if (made.error) say("made a project from the chat", false, JSON.stringify(made.error));
   else {
