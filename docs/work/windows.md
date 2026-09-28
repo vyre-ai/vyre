@@ -125,10 +125,26 @@ this round; verification leans on windows-latest CI.
   against the same home and proves it refuses (exits non-zero, first one still listening
   afterward) - turns out `core/daemon/index.js`'s existing `existsSync`+`ping` pre-check already
   covers this generically, no `win32` code needed, since a crashed `vyred`'s pipe can't linger the
-  way a POSIX socket file can. Still open from 7a: 2c (client-side owner-SID check, needs the
-  native helper), 3 (the helper exe itself), 4's `winhello` presence method, 6 (Windows `vyre-core`
-  equivalent). `socketPath` itself has now changed (with 2a+2b together, as required); no further
-  change until 2c/3 need one.
+  way a POSIX socket file can. `socketPath` itself has now changed (with 2a+2b together, as
+  required).
+- **2c built and CI-green (72b595b2, docs 2fa769f4).** `core/daemon/native-win`
+  (`vyre-pipe-verify`, Rust + `windows` crate): opens the pipe as a client,
+  `GetNamedPipeServerProcessId` for the server's owning pid, `EqualSid` against the caller's own
+  token SID. Exit 0 only on a proven match. `lib.rs`'s verdict logic unit-tested cross-platform (3
+  tests); `main.rs`'s real Win32 calls only run on `windows-latest`
+  (`.github/workflows/windows-pipe-verify.yml`), first fully green run: passes against `vyred`'s
+  own pipe, refuses a different local account's (same `net user` trick as `windows-socket-acl`).
+  Took 3 CI rounds for the exact API shapes (a missing crate feature, `LocalFree` in a different
+  module, `EqualSid` being `Result<()>`-wrapped here rather than raw `BOOL`, `Ok` meaning equal) -
+  the security logic itself never changed across those. **Not yet wired into the CLI's real
+  connection path** - the tool is built and proven, integration is next.
+- Started the `core/presence` conversation directly with reviewer (the lead's call, e2e being
+  restarted): proposed `winhello`'s shape (Hello, else UAC consent on the secure desktop, else
+  phone) and sharing `core/daemon/native-win` between 2c and point 3's peer-check helper. Not
+  agreed yet, no reply.
+- Still open from 7a: 1 (worth a deliberate look at the DACL claim specifically, though the gate
+  passes), 3 (the peer-check helper exe, likely sharing `native-win` with 2c), 4's `winhello`
+  presence method, 6 (Windows `vyre-core` equivalent, waits on ADR 0040).
 - Capsule (Tier C) scaffold started, per the lead's instruction to begin before capsule-pro's
   contract reply: `local/capsule/native-win/src/hotkey.rs` (fdd392a6), the Alt+Space-default /
   Ctrl+Alt+Space-fallback decision and the exact focused-panel-vs-system-menu logic app-design
