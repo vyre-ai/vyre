@@ -245,8 +245,14 @@
         }
       },
       "relay": { "pairing": { "url": "https://relay.vyre.run/pair/abc123", "qr": "abc123" } },
-      "verify": { "reachable": true, "kind": "owner", "name": "kit" },
-      "*": { "reachable": false }
+      "verify": {
+        "$by": "node",
+        "cases": {
+          "wrong-code": { "path": "unknown", "relay": null, "latencyMs": null, "lastHandshake": null, "online": false, "why": "the node is offline" },
+          "*": { "path": "direct", "relay": null, "endpoint": "100.101.12.9:41641", "latencyMs": 14, "lastHandshake": "$ago:5s", "online": true, "checkedAt": "$ago:0s", "cached": false }
+        }
+      },
+      "*": { "online": false }
     }
   }
 }

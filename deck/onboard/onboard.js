@@ -364,12 +364,17 @@ const SCREENS = {
   //     surfaced yet either, for the same reason; will add once anywhere says it's populated.
   //   - Device: pairs with a server the person already has. Nothing to move yet (a fresh
   //     device, anywhere.md's Entry A). Calls the real, consolidated `onboard.join` (tailnet,
-  //     not merged to main yet): {action:"verify", node, becomeDevice:true} — becomeDevice is
-  //     required for this exact card (per tailnet: only the connecting device's own verify call
-  //     should flip config.machine; anything else defaults to false and never flips). `node`
-  //     still expects a device/node id, not a setup code, which is what this screen's input
-  //     collects — same shape mismatch as before, still unresolved with tailnet, still degrades
-  //     gracefully (a missing tool never blocks Continue).
+  //     sha 5807096d, folded core/join back into core/onboard/index.js per launch's ask — not
+  //     merged to main yet): {action:"verify", node, becomeDevice:true} — becomeDevice is
+  //     required for this exact card (only the connecting device's own verify call should flip
+  //     config.machine; anything else defaults to false and never flips). `node` still expects
+  //     a device/node id, not a setup code, which is what this screen's input collects — the
+  //     box-role gating question is resolving (tailnet is widening onboard.join to a "local"
+  //     role with anywhere's sign-off), but the node-vs-code mismatch is still open. Degrades
+  //     gracefully either way (a missing tool never blocks Continue), and once the tool answers
+  //     for real, a false `online` (link.health's real field, not `ok`/`reachable`) keeps the
+  //     person on this step with an error instead of proceeding as if it worked — the bug
+  //     reviewer-2 caught, see test/onboard-page.test.js's regression test for it.
   // Fixture-backed (deck/fixtures/onboard.json): onboard.machine is real; onboard.join is not.
   live(col, s) {
     col.append(
@@ -404,6 +409,11 @@ const SCREENS = {
       put(st, "Looking for your server.");
       const j = await attempt("onboard.join", { action: "verify", node: v, becomeDevice: true });
       if (j.error && !j.error.missing) { put(st, String(j.error.message)); return; }
+      // A tool that answers without erroring still says whether it actually found the server:
+      // verify forwards to link.health, whose real shape (core/link/health.js) is `online`
+      // (and `path: "unknown"` with a `why`), not `ok`/`reachable` — reviewer-2 caught this
+      // being skipped entirely (the real bug: any code, right or wrong, always proceeded).
+      if (j.data && j.data.online === false) { put(st, j.data.why || "That code did not reach a server. Check it and try again."); return; }
       put(st, "");
       await mark_("live", "done"); await skipPairing(); toClaude();
     } });

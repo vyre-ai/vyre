@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### fix(onboard): a wrong join code proceeded like a right one; the onboard page's own fixtures 403'd
+
+- The Device path's `onboard.join{action:"verify"}` call checked only for a transport error,
+  never the tool's own answer, so a wrong setup code sailed through to Claude sign-in exactly
+  like a correct one (caught by reviewer-2, ahead-reviewing from git). Now checks `online`
+  (`link.health`'s real field) and shows the error instead of proceeding.
+- `core/onboard/loopback.js`'s static-asset whitelist never included `/fixtures/*`, so the
+  onboarding page's own `?fixtures=1` mechanism always 403'd and silently fell back to "missing
+  tool" — found while writing the regression test above, the first real end-to-end exercise of
+  onboarding-with-fixtures. Added `fixtures` to the whitelist; a `..` traversal attempt still
+  403s.
+
 #### Settings > Server: app-design's screenshot-pass fixes, and the real onboard.machine/onboard.join
 
 - Wired against the real, shipped tools: `onboard.machine{machine} -> {machine, service}` (sha

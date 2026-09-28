@@ -437,6 +437,21 @@ for "not started", only running/done/needs/failed/unread (#4). The onboarding ra
 fill is `--focus` (lime) now, not `--text`, matching every other checked/selected state in the
 system (#5). Not re-screenshotted yet; asked app-design for a second pass.
 
+Fixed reviewer-2's caught bug (a real one, ahead-reviewed from git before I'd even sent shas):
+the Device branch checked only `j.error`, never whether `onboard.join` actually said the server
+was reachable, so a wrong code proceeded to Claude sign-in exactly like a right one. The real
+tool's `verify` forwards to `link.health`, whose actual field is `online` (checked in
+`core/link/health.js`), not `ok`/`reachable` as my earlier fixture guessed; now checks
+`j.data.online === false` and shows the error (`why`, or a fallback line) instead of proceeding.
+Added a real regression test (`test/onboard-page.test.js`, "Device with a wrong code..."),
+driven through `?fixtures=1` since no real `onboard.join` exists yet to answer this for real —
+which is how the `core/onboard/loopback.js` gap above (Changed contracts) was found: the test
+failed with "the page never showed the name field" until that fix landed, then failed differently
+("never showed an error line") until the URL-construction bug (query params before the `#`
+fragment, not after) was also fixed. Both are real bugs this test caught, not the one it was
+written for. Verified together on testbox: 36/36 across onboard-page/onboard/boundaries/
+hygiene/settings-server/settings-drive.
+
 ## Next
 
 - Get app-design's second pass on the five fixes above.
@@ -516,3 +531,12 @@ system (#5). Not re-screenshotted yet; asked app-design for a second pass.
   (default `""`); existing callers are unaffected.
 - `core/cli/screen/index.js`: now imports `fortune` from `../delight.js` to fill that option each
   frame.
+- `core/onboard/loopback.js`'s `assetPath` (not launch's file; smallest change through the
+  contract, per RULES): added `fixtures` to the static-path whitelist regex. Found while writing
+  a real regression test for reviewer-2's caught bug (see Doing): the onboarding page's own
+  `?fixtures=1` mechanism (deck/js/api.js) 403'd on every `/fixtures/*.json` fetch, since that
+  path was never in the whitelist, silently degrading to "missing tool" instead of ever serving a
+  fixture. Verified additive and safe: `/fixtures/onboard.json` now 200s, a `..` traversal
+  attempt still 403s (the existing `!p.includes("..")` guard is unaffected, checked directly).
+  No existing test named this path. Flagged to whoever owns onboard's loopback/sessions, since
+  it's the first thing that's actually exercised onboarding-with-fixtures end to end.
