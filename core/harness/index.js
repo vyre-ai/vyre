@@ -40,6 +40,9 @@ export default {
      * @param {string|undefined} projects @param {string|null} slug
      */
     const inScope = (projects, slug) => !projects || projects === "*" || (slug != null && projects.split(",").includes(slug));
+    // A hard ceiling on the style-plus-team nudge harness.brief prepends (defense in depth: both
+    // already cap their own text, this bounds the sum even if either drifts).
+    const APPEND_TOTAL_MAX = 2000;
 
     /**
      * The agent a hook speaks for. The caller "harness:agent:<name>" is checked by vyred against
@@ -96,19 +99,29 @@ export default {
         // The lessons the user taught apply in every thread, in a project or not.
         const lessons = await ask("learn.check", { stage: "brief", cwd, session });
         const lessonText = lessons && lessons.text ? lessons.text : "";
+        // Computed once, used both for the style.append call below and the early return: an
+        // agent out of scope must not see that project's own style.rules (a person's free text)
+        // any more than it sees the project's brief (reviewer's LOW on 36caa4ad).
+        const scoped = inScope(projects, slug);
         // core/style (ADR 0037): the person's house writing voice, for every session - project or
-        // not, in scope or not - null when they turned it off. Null-safe the same way as the rest
-        // of this hook, so no core/style leaves every session exactly as it was.
-        const style = await ask("style.append", slug ? { project: slug } : {});
+        // not - null when they turned it off. {} still asks for the account-level voice when out
+        // of scope; only style.rules (the project-specific part) needs the project to be in scope.
+        const style = await ask("style.append", scoped && slug ? { project: slug } : {});
         const styleText = style && typeof style.text === "string" ? style.text : "";
         // An agent outside its projects gets no brief, only the lessons and the house voice.
-        if (!inScope(projects, slug)) return { text: withWarning([styleText, lessonText].filter(Boolean).join("\n\n")), project: null };
+        if (!scoped) return { text: withWarning([styleText, lessonText].filter(Boolean).join("\n\n")), project: null };
         // Teammates section 1 (docs/design/teammates.md): every ordinary project session gets a
         // nudge toward team_ask, ahead of the project's own brief - null when the person turned
         // team.default off for this project, or core/team is not running.
         const teamAppend = slug ? await ask("team.project-append", { project: slug }) : null;
         const teamText = teamAppend && typeof teamAppend.text === "string" ? teamAppend.text : "";
-        return { text: withWarning([styleText, teamText, text, lessonText].filter(Boolean).join("\n\n")), project: slug };
+        // Defense in depth (both style and team already cap their own text; this bounds the sum
+        // even if either drifts, or a third append joins them later): a hard ceiling at the one
+        // place they are joined, never split mid-word - an ellipsis, not an em dash, matching
+        // team.project-append's own truncation.
+        let nudge = [styleText, teamText].filter(Boolean).join("\n\n");
+        if (nudge.length > APPEND_TOTAL_MAX) nudge = nudge.slice(0, APPEND_TOTAL_MAX - 1) + "…";
+        return { text: withWarning([nudge, text, lessonText].filter(Boolean).join("\n\n")), project: slug };
       },
     });
 

@@ -121,7 +121,7 @@ test("harness: brief and enrich use projects and memory when they are running", 
   } };`;
   // core/style (ADR 0037): the house voice, for every session - project or not.
   const style = `export default { async start(ctx) {
-    ctx.tool("style.append", { run: async ({ project } = {}) => ({ project: project || null, text: "Write plainly, no em dashes." }) });
+    ctx.tool("style.append", { run: async ({ project } = {}) => ({ project: project || null, text: project ? "Write plainly, no em dashes (project rules)." : "Write plainly, no em dashes." }) });
     return {};
   } };`;
   const { reg, events } = await harness(t, [
@@ -131,19 +131,48 @@ test("harness: brief and enrich use projects and memory when they are running", 
     ["style", { version: "0.1.0", does: { tools: ["style.append"] } }, style],
   ]);
   const b = await reg.call("harness.brief", { cwd: "/w/harlow-site", session: "s1", source: "startup" });
-  // The house voice comes first, then the team nudge, then the project's own brief.
-  assert.equal(b.data.text, "Write plainly, no em dashes.\n\nThis project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
+  // The house voice comes first, then the team nudge, then the project's own brief. In scope:
+  // style gets the project, so its (project rules) text is the one that shows.
+  assert.equal(b.data.text, "Write plainly, no em dashes (project rules).\n\nThis project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
   assert.equal(events.since(0).find(e => e.type === "thread.started").payload.session, "s1");
   assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site" })).data.text, /Dana Reyes is at Harlow Legal/);
   assert.equal((await reg.call("harness.enrich", { prompt: "/compact", cwd: "/w/harlow-site" })).data.text, "", "slash commands get nothing");
   // Outside a project there is no project brief, but the house voice still applies (ADR 0037:
-  // "for every session").
+  // "for every session") - the account-level text, since there is no project to scope it to.
   assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind" })).data.text, "Write plainly, no em dashes.", "no brief, but still the house voice");
   // An agent's scope, as the switchboard hands it to the hooks.
-  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "harlow-legal,northwind" })).data.text, "Write plainly, no em dashes.\n\nThis project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
-  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "northwind" })).data.text, "Write plainly, no em dashes.", "an agent outside its projects gets no brief, but still the house voice");
+  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "harlow-legal,northwind" })).data.text, "Write plainly, no em dashes (project rules).\n\nThis project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
+  // Reviewer's LOW on 36caa4ad: cwd resolves to a real project (harlow-legal), but this agent's
+  // own scope is "northwind" only - out of scope, so style.append must get no project at all
+  // (the account-level text), never harlow-legal's own style.rules.
+  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "northwind" })).data.text, "Write plainly, no em dashes.", "out of scope: the account voice, never this project's own rules");
   assert.equal((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "northwind" })).data.text, "", "nor their memory");
   assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "*" })).data.text, /Dana Reyes/, "the assistant sees every project");
+});
+
+test("harness: the style-plus-team nudge is capped at APPEND_TOTAL_MAX, ellipsis not an em dash, even though each already caps its own text", async t => {
+  const projects = `export default { async start(ctx) {
+    ctx.tool("projects.context", { run: async () => ({ project: "harlow-legal", candidates: [], text: "Project harlow-legal." }) });
+    return {};
+  } };`;
+  const longStyle = `export default { async start(ctx) {
+    ctx.tool("style.append", { run: async () => ({ project: "harlow-legal", text: "s".repeat(1200) }) });
+    return {};
+  } };`;
+  const longTeam = `export default { async start(ctx) {
+    ctx.tool("team.project-append", { run: async () => ({ project: "harlow-legal", text: "t".repeat(1200) }) });
+    return {};
+  } };`;
+  const { reg } = await harness(t, [
+    ["projects", { version: "0.1.0", does: { tools: ["projects.context"] } }, projects],
+    ["style", { version: "0.1.0", does: { tools: ["style.append"] } }, longStyle],
+    ["team", { version: "0.1.0", does: { tools: ["team.project-append"] } }, longTeam],
+  ]);
+  const text = (await reg.call("harness.brief", { cwd: "/w/harlow-site" })).data.text;
+  const nudge = text.slice(0, text.indexOf("\n\nProject harlow-legal."));
+  assert.equal(nudge.length, 2000);
+  assert.equal(nudge.at(-1), "…");
+  assert.ok(!nudge.includes("—"), "an ellipsis, never an em dash");
 });
 
 test("harness: brief's team nudge is null-safe - team.default off, or core/team not running, changes nothing", async t => {

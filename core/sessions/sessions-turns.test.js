@@ -364,16 +364,32 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(usage.context.used > 2400 && usage.context.share > 0 && usage.context.share < 1, JSON.stringify(usage.context));
     await w.tool("threads.send", { thread: th.id, text: "bash npm test", surface: "deck" });
     const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
-    const r = await w.tool("probe.post", { thread: th.id, text: "kit found the menu file", kind: "teammate-result", from: "teammate:kit" });
+    // request: core/team's own id for the ask this reply answers, so a surface with two open
+    // asks to the same teammate matches the reply by id, not by role, FIFO (teammates, ADR 0031).
+    const r = await w.tool("probe.post", { thread: th.id, text: "kit found the menu file", kind: "teammate-result", from: "teammate:kit", request: "req_abc123" });
     const posted = r.data && r.data.data ? r.data.data : r.data;
     assert.ok(posted, JSON.stringify(r));
     assert.equal(posted.queued, true, "queued behind the running turn, not steered");
+    const queued = (await w.tool("threads.queue", { thread: th.id })).data.queued;
+    assert.equal(queued.find(q => q.uuid === posted.uuid).request, "req_abc123", "readable back before it is even delivered");
+    const queuedEvent = (await w.events(th.id)).find(e => e.type === "thread.queued" && e.payload.kind === "teammate-result");
+    assert.equal(queuedEvent.payload.request, "req_abc123");
     await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
     await w.finished(th.id, 3);
     const sent = (await w.events(th.id)).find(e => e.type === "thread.sent" && e.payload.kind === "teammate-result");
-    assert.deepEqual([sent.payload.via, sent.payload.surface], ["turn", "teammate:kit"]);
+    assert.deepEqual([sent.payload.via, sent.payload.surface, sent.payload.request], ["turn", "teammate:kit", "req_abc123"]);
     assert.equal((await w.said(th.id)).at(-1), "echo: kit found the menu file");
     assert.doesNotMatch((await w.said(th.id)).join(" "), /took in: kit/, "it never steered");
+  });
+
+  test(`${driver}: a teammate's post to an idle thread carries its request id straight into thread.sent too`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    await w.tool("probe.post", { thread: th.id, text: "kit is done", kind: "teammate-result", from: "teammate:kit", request: "req_xyz" });
+    await w.finished(th.id, 2);
+    const sent = (await w.events(th.id)).find(e => e.type === "thread.sent" && e.payload.kind === "teammate-result");
+    assert.equal(sent.payload.request, "req_xyz");
   });
 
   test(`${driver}: switch the model (/model), list the slash commands, and rewind the files a turn changed`, { skip }, async t => {
