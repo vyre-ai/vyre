@@ -87,10 +87,18 @@ function seedAccount(db, { name = "home", login = "alex", item = `github-${name}
   return { name, login, item };
 }
 
-/** A fake `fetch` standing in for the GitHub REST API: /user/repos (paged) and /repos/:full_name. */
-function fakeFetch({ repos = [], reachable = new Set(repos.map(r => r.full_name)) } = {}) {
-  return async (url) => {
+/**
+ * A fake `fetch` standing in for the GitHub REST API: /user/repos (paged) and /repos/:full_name.
+ * `brokenToken`, when given, makes a credentialed request using exactly that token 401 (GitHub's
+ * own "bad credentials" behavior), the same as connect.test.js's fakes model one specific failure
+ * mode rather than a whole server. An anonymous request (no Authorization header at all) still
+ * succeeds for anything in `reachable`, matching real GitHub serving a public repo's metadata
+ * with no credential required.
+ */
+function fakeFetch({ repos = [], reachable = new Set(repos.map(r => r.full_name)), brokenToken = null } = {}) {
+  return async (url, opts) => {
     const u = new URL(String(url));
+    const auth = opts && opts.headers && opts.headers.authorization;
     if (u.pathname === "/user/repos") {
       const page = Number(u.searchParams.get("page")) || 1;
       const perPage = Number(u.searchParams.get("per_page")) || 30;
@@ -101,6 +109,7 @@ function fakeFetch({ repos = [], reachable = new Set(repos.map(r => r.full_name)
     const m = /^\/repos\/([^/]+)\/([^/]+)$/.exec(u.pathname);
     if (m) {
       const full_name = `${m[1]}/${m[2]}`;
+      if (brokenToken && auth === `Bearer ${brokenToken}`) return { ok: false, status: 401, json: async () => ({ message: "Bad credentials" }) };
       if (!reachable.has(full_name)) return { ok: false, status: 404, json: async () => ({}) };
       const r = repos.find(x => x.full_name === full_name) || { full_name, default_branch: "main" };
       return { ok: true, status: 200, json: async () => ({ full_name: r.full_name, name: full_name.split("/")[1], default_branch: r.default_branch || "main", clone_url: `https://github.com/${full_name}.git`, html_url: `https://github.com/${full_name}`, private: Boolean(r.private) }) };
@@ -198,6 +207,52 @@ test("github.project.detect: a remote cloned with a credential embedded in the U
   assert.equal(r.data.workspaces[0].remotes[0].full_name, "alex/harlow-legal");
   assert.equal(r.data.workspaces[0].remotes[0].match.full_name, "alex/harlow-legal");
 });
+
+test("github.project.detect: a broken token never gets credited as able to reach a repo, even one that's public and readable anonymously - and it's flagged, not silently swallowed (reviewer's LOW on 119ef290)", async t => {
+  const BROKEN = "gho_thisisdeadorrevoked000000000";
+  const home = makeRepo(t, "https://github.com/alex/harlow-legal.git");
+  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home }], tokens: { "github-home": BROKEN } });
+  seedAccount(w.db);
+  withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal", default_branch: "main" }], brokenToken: BROKEN }));
+
+  const r = await w.as("cli")("github.project.detect", { project: "harlow" });
+  assert.equal(r.data.workspaces[0].remotes[0].full_name, "alex/harlow-legal", "the repo is real and public");
+  assert.equal(r.data.workspaces[0].remotes[0].match, null, "but the only connected account's broken token is never credited with reaching it");
+  assert.ok(w.events.some(e => e.type === "github.token-invalid" && e.payload.name === "home"), "the broken token is flagged, not swallowed");
+});
+
+test("github.project: a repo a broken token can't see even anonymously (private, or genuinely gone) fails with token_invalid and a clear \"reconnect\" message - never the vague refusal a real not-found gets - and still flags the account", async t => {
+  const BROKEN = "gho_thisisdeadorrevoked000000000";
+  const w = await world(t, { tokens: { "github-home": BROKEN } });
+  seedAccount(w.db);
+  // reachable: [] - nothing is readable anonymously either, standing in for a private repo (or
+  // one truly gone); brokenToken makes the credentialed attempt 401 regardless.
+  withFetch(t, fakeFetch({ repos: [], reachable: new Set(), brokenToken: BROKEN }));
+
+  const r = await w.as("cli")("github.project", { repo: "alex/private-repo" });
+  assert.equal(r.error.code, "token_invalid");
+  assert.match(r.error.message, /reconnect/i);
+  assert.ok(w.events.some(e => e.type === "github.token-invalid" && e.payload.name === "home"));
+});
+
+test("github.project.add-repo: the project check still runs first (not_found), but once past it a broken token that can't see the repo even anonymously is token_invalid too", async t => {
+  const BROKEN = "gho_thisisdeadorrevoked000000000";
+  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home: "/tmp/vyre-gh-doesnt-need-to-exist" }], tokens: { "github-home": BROKEN } });
+  seedAccount(w.db);
+  withFetch(t, fakeFetch({ repos: [], reachable: new Set(), brokenToken: BROKEN }));
+
+  const noProject = await w.as("cli")("github.project.add-repo", { project: "nope", repo: "alex/private-repo" });
+  assert.equal(noProject.error.code, "not_found", "the project check runs before the repo is ever resolved");
+
+  const r = await w.as("cli")("github.project.add-repo", { project: "harlow", repo: "alex/private-repo" });
+  assert.equal(r.error.code, "token_invalid");
+  assert.ok(w.events.some(e => e.type === "github.token-invalid" && e.payload.name === "home"));
+});
+
+// A public repo still resolving despite a broken token (the anonymous fallback actually working,
+// end to end through a real clone) is proven live, not here - see index.live.test.js, which
+// already runs with a placeholder token throughout and now also checks github.token-invalid
+// fires for it.
 
 // The actual clone step (cloneRepo/gitWithAskpass) needs a real https-reachable git server -
 // git-safe.js's own protocol.allow=never blocks a local file:// stand-in on purpose (git.test.js

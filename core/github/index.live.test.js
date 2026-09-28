@@ -41,8 +41,10 @@ async function world(t) {
   t.after(() => db.close());
   const tools = new Map(), events = [], calls = [];
   const rows = [];
+  const projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-live-projdir-"));
+  t.after(() => fs.rmSync(projectsDir, { recursive: true, force: true }));
   const ctx = {
-    config: { projectsDir: fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-live-projdir-")) },
+    config: { projectsDir },
     store: { db, migrate: steps => { for (const s of steps) db.exec(s); } },
     log: () => {},
     events: { emit: (type, payload) => events.push({ type, payload }) },
@@ -96,6 +98,10 @@ test(`LIVE (real network, testbox only): github.project and .add-repo really clo
   assert.ok(fs.existsSync(path.join(created.data.home, ".git")), "a real clone exists at .home");
   assert.ok(fs.existsSync(path.join(created.data.home, "README")) || fs.existsSync(path.join(created.data.home, "README.md")), "the clone has real file content, not an empty shell");
   assert.ok(hasNoCredentialHelper(created.data.home), "no credential helper got configured on the clone");
+  // DUMMY_TOKEN is not a real GitHub credential, so the real API 401s it for real, and the
+  // anonymous-fallback fix must still flag it (team-lead/reviewer, 119ef290 review, LOW): the
+  // fallback succeeding for a public repo must never quietly hide a broken token.
+  assert.ok(w.events.some(e => e.type === "github.token-invalid" && e.payload.name === "dummy"), "the placeholder token is flagged as broken, not silently accepted");
 
   const of = await w.as("cli")("github.project.of", { project: created.data.project });
   assert.equal(of.data.full_name, REPO, "the primary-repo row was recorded");
@@ -111,7 +117,12 @@ test(`LIVE (real network, testbox only): github.project and .add-repo really clo
   // add-repo never sets the primary repo: github.project.of still answers with the first clone.
   assert.equal((await w.as("cli")("github.project.of", { project: created.data.project })).data.full_name, REPO);
 
-  // 3. github.project.detect: sees BOTH real clones as real GitHub repos it can reach.
+  // 3. github.project.detect: sees BOTH real clones as real GitHub repos, correctly parsed -
+  //    but `match` is null for both: the only connected account's token is the same real-broken
+  //    DUMMY_TOKEN, and accountFor never credits a broken token with reaching anything, even a
+  //    public repo it could read anonymously (the LOW this same live test drove the fix for).
+  //    Proving a real, working match end to end needs a real GitHub token, which this file never
+  //    has; index.test.js's fakes already prove the match-when-working branch on its own.
   const detected = await w.as("cli")("github.project.detect", { project: created.data.project });
   assert.equal(detected.error, undefined, JSON.stringify(detected));
   assert.equal(detected.data.workspaces.length, 2);
@@ -119,10 +130,9 @@ test(`LIVE (real network, testbox only): github.project and .add-repo really clo
     assert.equal(ws.isRepo, true, ws.folder);
     assert.equal(ws.remotes.length, 1, ws.folder);
     assert.equal(ws.remotes[0].full_name, REPO, ws.folder);
-    assert.ok(ws.remotes[0].match, `no account could reach ${REPO}: ${JSON.stringify(ws.remotes[0])}`);
-    assert.equal(ws.remotes[0].match.account, "dummy", ws.folder);
-    assert.equal(ws.remotes[0].match.full_name, REPO, ws.folder);
-    assert.equal(typeof ws.remotes[0].match.default_branch, "string", ws.folder);
-    assert.ok(ws.remotes[0].match.default_branch.length > 0, ws.folder);
+    assert.equal(ws.remotes[0].match, null, `a broken token must never be credited: ${JSON.stringify(ws.remotes[0])}`);
   }
+  // detect's own token-invalid emissions (one per remote checked) land on top of github.project's
+  // one from earlier - at least one is enough to prove the flag, not an exact count.
+  assert.ok(w.events.filter(e => e.type === "github.token-invalid").length >= 1);
 });

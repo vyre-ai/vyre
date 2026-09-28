@@ -214,6 +214,24 @@ placeholder token or not. The live test also checks the clone's own `.git/config
 `credential.helper` afterward (there should be none) as a second, concrete proof next to
 `git-safe-askpass.test.js`'s existing ones.
 
+**The reviewer and the lead caught what that first fix was missing**: the anonymous retry must
+never *hide* a broken token, only work around it for a repo that never needed one in the first
+place. `getRepo` now returns `{ info, tokenBroken }`: `tokenBroken` is true exactly when the
+account's own credentialed request 401'd, independent of whether the anonymous retry then
+succeeded. `accountFor` (what `github.project.detect` uses to decide which connected account can
+reach a repo) never credits a broken-token account with reaching anything, public repo or not -
+`match` stays `null` for that account even when the anonymous read would have worked, since
+"this account can reach it" is exactly the false confidence a revoked or expired token must not
+get to claim. `github.project`/`.add-repo` (`resolveRepo`, their shared repo-resolution helper)
+still let the anonymous fallback through for a public repo, since a dead token shouldn't block a
+person from cloning something public, but they emit `github.token-invalid { name }` every time
+the credentialed attempt 401'd, and when the repo *isn't* reachable even anonymously (private, or
+genuinely gone) they throw a distinct `token_invalid` error with a plain "reconnect this account"
+message, never the generic "GitHub does not show a repo" a real not-found gets. `github.token-
+invalid` is a new event (`module.json`'s `watches.emits`) for a surface to show "Reconnect
+GitHub" - nothing here signs an account out or removes it; that stays a person's own call via
+`github.remove`.
+
 ### 4b. Detecting a project's repos, per workspace
 
 `github.project.detect {project}` is how a surface knows what's already there, since nothing is
@@ -313,8 +331,8 @@ you what you'd need... without a new tool from me"). Not started; 0.1.2.
 `github.accounts`, `github.remove`, `github.repos`, `github.project`, `github.project.add-repo`,
 `github.project.of`, `github.project.detect`, `github.session.worktree` (internal),
 `github.session.cleanup` (internal). `watches.emits`: `github.added`, `github.removed`,
-`github.connected`, `github.connect-failed`, `github.cleanup-needed`. `shows.deck`:
-`settings:connections` (joins Google there, not a new screen). `needs.vault`:
+`github.connected`, `github.connect-failed`, `github.cleanup-needed`, `github.token-invalid`.
+`shows.deck`: `settings:connections` (joins Google there, not a new screen). `needs.vault`:
 `["per-connection"]`.
 
 | Tool | Callers | Model-reachable |

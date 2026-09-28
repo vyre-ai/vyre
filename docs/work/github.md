@@ -222,6 +222,48 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
     1 skip clean on the second run, after the docs-check catch above was fixed. Sending this sha
     back to the reviewer.
 
+## Done (2026-09-28, the 401-fallback LOW - reviewer + lead, both closed)
+- reviewer reviewed 119ef290 separately: the URL-scrub MEDIUM was confirmed NOT yet in that sha
+  (it landed in 5b1c69f1, which the lead then confirmed closes it) - nit taken too, the live
+  test's `projectsDir` mkdtemp is now cleaned up with `t.after`. New LOW on 119ef290's own fix:
+  the 401-to-anonymous retry in `getRepo` changes real product behavior to suit a test fixture - a
+  real revoked/expired token now reads as fine for any public repo, `detect`'s `match` would say
+  the account can reach it, and `github.project` only fails later, on a push or a private repo.
+  Lead: same finding, plus "mark the account as needing sign-in again" and "don't report the
+  account as able to reach a repo" as the two concrete asks.
+  - `getRepo` (index.js) now returns `{ info, tokenBroken }` instead of a bare repo-or-null.
+    `tokenBroken` is true exactly when the credentialed request 401'd, independent of whether the
+    anonymous retry then found the repo.
+  - `accountFor` (detect's per-remote account matching): a broken-token account is skipped as a
+    match candidate entirely - `github.token-invalid { name }` is emitted and the loop moves to
+    the next account, never crediting it with reaching a repo just because the repo happens to be
+    public. `match` stays `null` for that account even when the anonymous read succeeded.
+  - New shared helper `resolveRepo(acct, token, full_name)` for `github.project`/`.add-repo`:
+    still lets a public repo resolve through the anonymous fallback (a dead token shouldn't block
+    cloning something public), still emits `github.token-invalid` every time, but throws a new,
+    distinct `token_invalid` error ("<account>'s GitHub sign-in isn't working anymore; reconnect
+    it and try again") instead of the generic "refused" whenever the repo *isn't* reachable even
+    anonymously (private, or truly gone) - never a vague not-found for what's actually a dead
+    credential.
+  - `module.json`: `watches.emits` gains `github.token-invalid`.
+  - Tests: `index.test.js` gained a `fakeFetch` `brokenToken` option (401s a specific token's
+    credentialed request, still serves an anonymous one from `reachable`) and 3 new tests -
+    detect never credits a broken token even for a public repo (and flags it); `github.project`
+    gets `token_invalid` with a "reconnect" message for a repo unreachable even anonymously (and
+    flags it); `github.project.add-repo` checks the project first (`not_found`), then the same
+    `token_invalid` once past that. Proving the "public repo still clones, but gets flagged" branch
+    needed a REAL network call (the fake fetch doesn't intercept git's own clone), so that's
+    proven in `index.live.test.js` instead: it already runs with a placeholder token throughout
+    (which really is broken against the real API), and now asserts `github.token-invalid` fires
+    for `github.project`, and that `detect`'s `match` is `null` for both real clones since the
+    one connected account's token is the same broken one.
+  - ADR 0041 4a updated with what drove the follow-up fix and the exact contract.
+  - Tested on testbox (temp `HOME`, never locally): default suite 92/92 clean (+1 opt-in live
+    test skipped), twice; with `VYRE_LIVE_GITHUB=1`, the live test ran alone and passed for real -
+    the placeholder token 401'd against the real GitHub API as expected, the anonymous fallback
+    still cloned both repos, `github.token-invalid` fired, and `detect`'s `match` came back
+    `null` for both (the exact behavior this fix was for). Sent to reviewer and launch.
+
 ## Doing
 - reviewer CLEARED work/github through acfcefd2 (both 3a72ea7f..84e76681 and the stdin fix).
   The credential.interactive LOW is WITHDRAWN (reviewer agreed the evidence was right); the lead

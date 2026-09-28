@@ -153,19 +153,46 @@ export default {
         clone_url: r.clone_url }));
     }
 
-    /** GET /repos/{full_name}, mapped down to what detect/project/add-repo need, or null (not found, no access). */
+    /** GET /repos/{full_name} raw, mapped down to what detect/project/add-repo need. */
+    function mapRepo(r) {
+      return { full_name: r.full_name, name: r.name, default_branch: r.default_branch, clone_url: r.clone_url, html_url: r.html_url, private: Boolean(r.private) };
+    }
+
+    /**
+     * GET /repos/{full_name}: `{ info, tokenBroken }`. `info` is null when the repo isn't found
+     * (or isn't reachable) either way. `tokenBroken` is true exactly when the account's own
+     * credentialed request came back 401 - GitHub validates whatever credential is offered
+     * before ever falling back to public access, so a broken or revoked token 401s outright even
+     * for a repo anyone could read anonymously. That anonymous retry still runs (so a dead token
+     * doesn't block reading a public repo), but `tokenBroken` is never dropped on the floor: a
+     * caller that resolves a repo *through an account* (`accountFor`, `github.project`,
+     * `.add-repo`) must emit `github.token-invalid` and, for `accountFor`, never credit that
+     * account with reaching the repo just because the anonymous read happened to work (reviewer,
+     * 119ef290 review, LOW - the anonymous retry must not silently hide a revoked token).
+     */
     async function getRepo(token, full_name) {
       const url = `https://api.github.com/repos/${full_name}`;
       const accept = "application/vnd.github+json";
-      let res = await fetch(url, { headers: { authorization: `Bearer ${token}`, accept }, signal: AbortSignal.timeout(15_000) });
-      // A broken or placeholder token 401s outright, even for a repo anyone could read
-      // anonymously (GitHub validates whatever credential is offered before falling back to
-      // public access); retry once with no credential at all rather than wrongly reporting a
-      // public repo as inaccessible over a bad token.
-      if (res.status === 401 && token) res = await fetch(url, { headers: { accept }, signal: AbortSignal.timeout(15_000) });
-      if (!res.ok) return null;
-      const r = await res.json();
-      return { full_name: r.full_name, name: r.name, default_branch: r.default_branch, clone_url: r.clone_url, html_url: r.html_url, private: Boolean(r.private) };
+      const authed = await fetch(url, { headers: { authorization: `Bearer ${token}`, accept }, signal: AbortSignal.timeout(15_000) });
+      if (authed.status !== 401) return { info: authed.ok ? mapRepo(await authed.json()) : null, tokenBroken: false };
+      if (!token) return { info: null, tokenBroken: false };
+      const anon = await fetch(url, { headers: { accept }, signal: AbortSignal.timeout(15_000) });
+      return { info: anon.ok ? mapRepo(await anon.json()) : null, tokenBroken: true };
+    }
+
+    /**
+     * `github.project`/`.add-repo`'s shared repo resolution: emits `github.token-invalid` when
+     * the account's own token is what failed, and throws a distinct, clear error ("reconnect
+     * this account") rather than a vague "not found" when that broken token is *also* why the
+     * repo couldn't be read at all (most likely a private repo the anonymous fallback can't see).
+     */
+    async function resolveRepo(acct, token, full_name) {
+      const { info, tokenBroken } = await getRepo(token, full_name);
+      if (tokenBroken) ctx.events.emit("github.token-invalid", { name: acct.name });
+      if (info) return info;
+      throw tokenBroken
+        ? fail(`${acct.name}'s GitHub sign-in isn't working anymore; reconnect it and try again.`, "token_invalid")
+        : fail(`GitHub does not show a repo at ${full_name} for ${acct.login}.`, "refused");
     }
 
     /** Every folder a project owns (home plus every workspace), deduplicated, or null when there is no such project. */
@@ -183,14 +210,21 @@ export default {
       return rows.find(x => x.slug === project || x.name === project) || null;
     }
 
-    /** The GitHub account that can reach `full_name`, or null - checked once per full_name, first match wins. */
+    /**
+     * The GitHub account that can reach `full_name`, or null - checked once per full_name, first
+     * match wins. An account whose token is broken is never credited with reaching anything here,
+     * even when the repo happens to be public and an anonymous read would have worked: `detect`
+     * showing "this account can reach it" is exactly the false confidence a revoked or expired
+     * token must not get away with (reviewer, 119ef290 review, LOW).
+     */
     async function accountFor(full_name, cache) {
       if (cache.has(full_name)) return cache.get(full_name);
       let match = null;
       for (const acct of accounts.all()) {
         let token;
         try { token = await ctx.vault.fetch(acct.item, { field: "token" }); } catch { continue; }
-        const info = await getRepo(token, full_name).catch(() => null);
+        const { info, tokenBroken } = await getRepo(token, full_name).catch(() => ({ info: null, tokenBroken: false }));
+        if (tokenBroken) { ctx.events.emit("github.token-invalid", { name: acct.name }); continue; }
         if (info) { match = { account: acct.name, full_name: info.full_name, default_branch: info.default_branch }; break; }
       }
       cache.set(full_name, match);
@@ -216,8 +250,7 @@ export default {
         const acct = forOne(accounts.all(), named(a));
         const token = await ctx.vault.fetch(acct.item, { field: "token" });
         const full_name = repoName(repo);
-        const info = await getRepo(token, full_name);
-        if (!info) throw fail(`GitHub does not show a repo at ${full_name} for ${acct.login}.`, "refused");
+        const info = await resolveRepo(acct, token, full_name);
         const projectsDir = ctx.config && ctx.config.projectsDir;
         if (!projectsDir) throw fail("this device has no projects folder configured", "config");
         const cloned = await cloneRepo({ projectsDir, name: info.name, url: info.clone_url, token });
@@ -239,8 +272,7 @@ export default {
         const acct = forOne(accounts.all(), named(a));
         const token = await ctx.vault.fetch(acct.item, { field: "token" });
         const full_name = repoName(repo);
-        const info = await getRepo(token, full_name);
-        if (!info) throw fail(`GitHub does not show a repo at ${full_name} for ${acct.login}.`, "refused");
+        const info = await resolveRepo(acct, token, full_name);
         const projectsDir = ctx.config && ctx.config.projectsDir;
         if (!projectsDir) throw fail("this device has no projects folder configured", "config");
         const cloned = await cloneRepo({ projectsDir, name: named(folder) || info.name, url: info.clone_url, token });
