@@ -86,7 +86,7 @@ export class WebSocketRequestResponsePair {
 
 /** ctx.storage: an async Map with the KV API's per-value and per-call limits. */
 export class FakeStorage {
-  constructor() { /** @type {Map<string, any>} */ this.map = new Map(); this.writes = 0; }
+  constructor() { /** @type {Map<string, any>} */ this.map = new Map(); this.writes = 0; /** @type {number|null} */ this.alarmAt = null; }
   async get(key) { return structuredClone(this.map.get(key)); }
   async put(key, value) {
     const entries = typeof key === "string" ? [[key, value]] : Object.entries(key);
@@ -107,6 +107,12 @@ export class FakeStorage {
   async list({ prefix = "" } = {}) {
     return new Map([...this.map].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, v]) => [k, structuredClone(v)]));
   }
+  async deleteAll() { const n = this.map.size; this.map.clear(); return n; }
+  // Recorded, not fired: nothing in this harness simulates wall-clock alarms. A test that needs
+  // one to actually fire calls the object's own alarm() directly, as PairTicket's own tests do.
+  async setAlarm(t) { this.alarmAt = t; }
+  async getAlarm() { return this.alarmAt ?? null; }
+  async deleteAlarm() { this.alarmAt = null; }
 }
 
 /**
@@ -130,18 +136,24 @@ export function install() {
 }
 
 /**
- * A fake Workers runtime around one Worker module.
- * @param {{ worker: any, Class: any, env?: Record<string, any>, hibernateEveryEvent?: boolean }} o
+ * A fake Workers runtime around one Worker module. `Class` binds as `env.ROUTES`, as it always
+ * did; `classes` binds any further Durable Object namespaces the Worker uses (a plain
+ * `{ BINDING_NAME: Class }` map), each with its own isolated object registry so two bindings
+ * minting the same name never collide.
+ * @param {{ worker: any, Class: any, classes?: Record<string, any>, env?: Record<string, any>, hibernateEveryEvent?: boolean }} o
  */
 export function createRuntime(o) {
   install();
   /** @type {Error[]} */
   const errors = [];
-  /** @type {Map<string, any>} */
-  const objects = new Map();
+  /** @type {Map<string, Map<string, any>>} one registry per binding name */
+  const registries = new Map();
   let constructed = 0;
 
-  const object = name => {
+  /** @param {string} binding @param {any} Class @param {string} name */
+  const object = (binding, Class, name) => {
+    let objects = registries.get(binding);
+    if (!objects) { objects = new Map(); registries.set(binding, objects); }
     let obj = objects.get(name);
     if (obj) return obj;
     /** @type {Set<End>} */
@@ -176,7 +188,7 @@ export function createRuntime(o) {
     /** @param {(inst: any) => any} fn */
     const run = fn => {
       const p = queue.then(async () => {
-        if (!obj.instance) { obj.instance = new o.Class(ctx, env); constructed++; }
+        if (!obj.instance) { obj.instance = new Class(ctx, env); constructed++; }
         try { return await fn(obj.instance); } finally { if (o.hibernateEveryEvent) obj.instance = null; }
       });
       queue = p.then(() => {}, e => { errors.push(e); });
@@ -187,12 +199,19 @@ export function createRuntime(o) {
     return obj;
   };
 
+  /** @param {string} binding @param {any} Class */
+  const namespace = (binding, Class) => ({
+    idFromName: name => ({ name, toString: () => name }),
+    // A stub's fetch mirrors global fetch: either a Request, or (url, init). The real runtime
+    // accepts both; this fake normalises to a Request the same way, so callers here don't have
+    // to know which style a Durable Object binding happens to be called with.
+    get: id => ({ fetch: (input, init) => object(binding, Class, id.name).run(inst => inst.fetch(input instanceof Request ? input : new Request(input, init))) }),
+  });
+
   const env = {
     ...(o.env || {}),
-    ROUTES: {
-      idFromName: name => ({ name, toString: () => name }),
-      get: id => ({ fetch: request => object(id.name).run(inst => inst.fetch(request)) }),
-    },
+    ROUTES: namespace("ROUTES", o.Class),
+    ...Object.fromEntries(Object.entries(o.classes || {}).map(([binding, Class]) => [binding, namespace(binding, Class)])),
   };
 
   /** @param {string} url @param {Record<string, string>} [headers] */
@@ -245,16 +264,18 @@ export function createRuntime(o) {
     fetch,
     WebSocket: FakeWebSocket,
     errors,
-    /** The Durable Object for a route (created on first use). */
-    object,
-    /** Throws away every DO instance (or one route's): the next event constructs a new one. */
-    hibernate(name) { for (const obj of objects.values()) if (name === undefined || obj.name === name) obj.instance = null; },
+    /** The Durable Object for a route (created on first use). Pass a binding name for any
+     * namespace other than ROUTES (`object(name, "TICKETS")`). */
+    object: (name, binding = "ROUTES") => object(binding, binding === "ROUTES" ? o.Class : (o.classes || {})[binding], name),
+    /** Throws away every DO instance (or one route's, across every binding): the next event
+     * constructs a new one. */
+    hibernate(name) { for (const objects of registries.values()) for (const obj of objects.values()) if (name === undefined || obj.name === name) obj.instance = null; },
     get constructed() { return constructed; },
-    /** Waits until every queued event has run. */
+    /** Waits until every queued event, on every binding, has run. */
     async settle() {
       for (let i = 0; i < 5; i++) {
         await new Promise(r => setImmediate(r));
-        await Promise.all([...objects.values()].map(x => x.idle()));
+        await Promise.all([...registries.values()].flatMap(objects => [...objects.values()].map(x => x.idle())));
       }
     },
   };

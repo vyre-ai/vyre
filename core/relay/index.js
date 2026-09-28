@@ -511,6 +511,24 @@ export default {
     // For presence.person.start (ADR 0032): the presence key this box enrolled when it paired a
     // device, so a relayed device signs in only with its own key. Modules only; null for a device
     // that is removed, unknown or paired without one.
+    // For the move engine's ownedNode/openPeer seams (ADR 0042, federation): the one thing that
+    // proves "this id is one of the owner's own paired nodes" without re-deriving identity from
+    // the network. stableId/staticKey are this pairing's own Noise identity (ADR 0026), never a
+    // tailnet stable id; `node` is only ever filled once this device has ALSO reported itself over
+    // its own tailnet node (relay.devices.path, already built, no dependency on ADR 0046's
+    // auth-key auto-join) - the same node_id/node_name columns that already exist for exactly this
+    // purpose. Module-only: never a tool a person, an agent or a relayed device calls directly.
+    ctx.tool("relay.devices.node", {
+      internal: true,
+      description: "A paired relay device's own Noise identity and, if it has reported one, its tailnet node - for a module to check ownership or open a direct connection, never for a person or a device to call about itself.",
+      input: obj({ id: str }, ["id"]),
+      run: async input => {
+        const row = /** @type {any} */ (db.prepare("SELECT id, pub, node_id, node_name FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(String(input.id)));
+        if (!row) return { stableId: null, staticKey: null, node: null };
+        return { stableId: row.id, staticKey: row.pub, node: row.node_id ? { stableId: row.node_id, name: row.node_name || null } : null };
+      },
+    });
+
     ctx.tool("relay.device.presence", {
       internal: true,
       description: "The presence key id enrolled for a paired relay device, or null.",

@@ -6,12 +6,22 @@
 //   GET /v1/box?route=<id>                  the box's control socket, after a signed challenge
 //   GET /v1/box?route=<id>&c=<conn>&t=<ticket>   the box's data socket for one device connection
 //   GET /v1/device?route=<id>               a device; the relay tells the box, then pipes frames
+//   POST /v1/pair                           resolve a Wink pairing ticket's locator (ADR 0045)
 //   GET /health
 //
 // Hibernation: the DO holds no timers and no alarms, and keeps no state in instance fields. Every
 // socket carries its role in a serialized attachment, frames buffered for a waiting device live in
 // ctx.storage, and a text "ping" is answered at the edge without waking the object. An idle route
 // costs nothing. No dependencies: WebCrypto only.
+//
+// Wink tickets (ADR 0045) get their own Durable Object, `PairTicket`, bound as `env.TICKETS`, one
+// object per locator (`env.TICKETS.idFromName(loc)`) rather than living in `RouteRelay`: a
+// resolve request carries only a locator, not a route id, so there is nothing to route it to a
+// specific RouteRelay object by. `RouteRelay`'s control socket writes to it (`registerTicket`,
+// below); `/v1/pair` reads it. Same contract as relay/node/server.js's `pairTickets` map: stores
+// only what the box handed the relay (record, mac, exp), single-use (deleted on the one resolve
+// that finds it, whether it answers or not), and never the pairing secret itself, which the relay
+// never sees at all (core/relay/wire.js's ticketDerive).
 
 /**
  * These repeat core/relay/wire.js, which uses node:crypto and so cannot load here.
@@ -100,6 +110,12 @@ export function sameTicket(a, b) {
 /** @param {string|ArrayBuffer|ArrayBufferView} m */
 const size = m => typeof m === "string" ? enc.encode(m).length : m.byteLength;
 
+/** ADR 0045's own ticket TTL (core/relay/wire.js's TICKET_TTL); repeated here so a box that ever
+ * sent a wildly long exp cannot make a PairTicket object outlive what the mechanism promises. */
+const TICKET_TTL_MAX = 5 * 60_000;
+const LOC_RE = /^[A-Za-z0-9_-]{20,64}$/;
+const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
 /**
  * The Worker: health, request checks, per-address limiting, then the route's Durable Object.
  * Per-address rate limiting uses Cloudflare's rate limiting binding when DEVICE_LIMITER is bound
@@ -112,6 +128,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/health") return new Response('{"ok":true}', { headers: { "content-type": "application/json" } });
     if (!url.pathname.startsWith("/v1/")) return new Response(null, { status: 404 });
+    if (url.pathname === "/v1/pair" && request.method === "POST") return onPairResolve(request, env);
     if (String(request.headers.get("upgrade")).toLowerCase() !== "websocket") return new Response(null, { status: 426 });
     const route = url.searchParams.get("route") || "";
     if ((url.pathname !== "/v1/box" && url.pathname !== "/v1/device") || !ROUTE_RE.test(route)) return new Response(null, { status: 400 });
@@ -123,6 +140,66 @@ export default {
     return env.ROUTES.get(env.ROUTES.idFromName(route)).fetch(request);
   },
 };
+
+/**
+ * Resolve a Wink pairing ticket's locator (ADR 0045): a POST body, never a URL, so it never lands
+ * in an access log. Single-use either way -- found or not, the PairTicket object it named is gone
+ * after this call. Rate-limited per address (env.PAIR_LIMITER) and, if bound, globally
+ * (env.PAIR_LIMITER_GLOBAL), the same optional-binding pattern DEVICE_LIMITER already uses for
+ * /v1/device; a zone rate limiting rule covers it otherwise.
+ * @param {Request} request @param {any} env
+ */
+async function onPairResolve(request, env) {
+  const who = request.headers.get("cf-connecting-ip") || "unknown";
+  if (env.PAIR_LIMITER) { const { success } = await env.PAIR_LIMITER.limit({ key: who }); if (!success) return json(429, { error: "too many pairing attempts; wait a minute" }); }
+  if (env.PAIR_LIMITER_GLOBAL) { const { success } = await env.PAIR_LIMITER_GLOBAL.limit({ key: "*" }); if (!success) return json(429, { error: "too many pairing attempts; wait a minute" }); }
+  if (!env.TICKETS) return json(404, { error: "this relay does not support scan-to-pair" });
+  let body;
+  try { body = await request.json(); } catch { return json(400, { error: "bad request" }); }
+  const loc = String((body && body.loc) || "");
+  if (!LOC_RE.test(loc)) return json(400, { error: "bad request" });
+  const res = await env.TICKETS.get(env.TICKETS.idFromName(loc)).fetch("https://ticket/resolve", { method: "POST" });
+  if (res.status !== 200) return json(404, { error: "this pairing code has expired or was already used" });
+  return json(200, await res.json());
+}
+
+/**
+ * One Wink pairing ticket (ADR 0045), keyed by its locator: what a box's control socket
+ * registered (record, mac, exp), single-use. No timers, no alarm: expiry is checked lazily on the
+ * one read that matters, and an unread, expired object simply sits in cheap Durable Object
+ * storage until Cloudflare reclaims it -- a locator is an unguessable 256-bit hash, so there is
+ * nothing worth actively sweeping.
+ */
+export class PairTicket {
+  /** @param {any} ctx */
+  constructor(ctx) { this.ctx = ctx; }
+  /** @param {Request} request */
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (request.method === "PUT" && url.pathname === "/register") {
+      let body;
+      try { body = await request.json(); } catch { return new Response(null, { status: 400 }); }
+      const record = String((body && body.record) || ""), mac = String((body && body.mac) || "");
+      const exp = Math.min(Number(body && body.exp) || 0, Date.now() + TICKET_TTL_MAX);
+      if (!record || !mac || record.length > 2048 || exp <= Date.now()) return new Response(null, { status: 400 });
+      await this.ctx.storage.put("t", { record, mac, exp });
+      // A locator nobody ever resolves would otherwise sit in storage forever (reviewer's LOW,
+      // 28 Sep): clean it up at its own exp either way, resolved or not.
+      await this.ctx.storage.setAlarm(exp);
+      return new Response(null, { status: 204 });
+    }
+    if (request.method === "POST" && url.pathname === "/resolve") {
+      const t = await this.ctx.storage.get("t");
+      if (t) { await this.ctx.storage.deleteAll(); await this.ctx.storage.deleteAlarm(); }
+      if (!t || t.exp <= Date.now()) return new Response(null, { status: 404 });
+      return json(200, { record: t.record, mac: t.mac });
+    }
+    return new Response(null, { status: 404 });
+  }
+
+  /** The alarm set at register time: gone by its own exp either way (reviewer's LOW, 28 Sep). */
+  async alarm() { await this.ctx.storage.deleteAll(); }
+}
 
 /**
  * @typedef {{ k: "pending", n: string, route: string } | { k: "control", ticket: string } | { k: "device", c: string, piped: boolean, n: number }
@@ -140,6 +217,19 @@ export class RouteRelay {
     this.limits = { ...LIMITS, ...(env && env.RELAY_LIMITS ? JSON.parse(env.RELAY_LIMITS) : {}) };
     // The keepalive answered by the edge; it never wakes the object (link.js sends it every 60 s).
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+    // A per-route cap on ticket registrations (ADR 0045), hygiene against a runaway or
+    // compromised box, not the real defence (the MAC is). In-memory only: resets on hibernation,
+    // which only weakens the cap, never the pairing security it sits in front of.
+    this.ticketRegs = 0;
+    this.ticketRegWindow = 0;
+  }
+
+  /** @returns {boolean} under the 60/route/minute registration cap */
+  ticketRegAllowed() {
+    const now = Date.now(), minute = Math.floor(now / 60_000);
+    if (minute !== this.ticketRegWindow) { this.ticketRegWindow = minute; this.ticketRegs = 0; }
+    this.ticketRegs++;
+    return this.ticketRegs <= 60;
   }
 
   /** @param {any} ws @returns {Role} */
@@ -217,7 +307,7 @@ export class RouteRelay {
     // The edge answers "ping"; this covers a runtime that delivers it anyway.
     if (message === "ping") { try { ws.send("pong"); } catch {} return; }
     if (r.k === "pending") return this.onAuth(ws, r, message);
-    if (r.k === "control") return;
+    if (r.k === "control") return this.onTicket(message);
     if (!binary) return;
     if (r.k === "data") {
       const device = this.live(`dev:${r.c}`)[0];
@@ -252,6 +342,31 @@ export class RouteRelay {
     ws.serializeAttachment({ k: "control", ticket });
     const waiting = this.live("device", x => !(/** @type {any} */ (x).piped)).map(d => /** @type {any} */ (this.role(d)).c);
     this.json(ws, { t: "ready", ticket, waiting });
+  }
+
+  /**
+   * The only thing a control socket sends after auth: registering a Wink pairing ticket's locator
+   * (ADR 0045) with its own PairTicket object. Everything here is the box's own word about its
+   * own route, so this is not a trust boundary the way /v1/pair's resolve side is (that's where
+   * the MAC matters); the size caps and the per-route cap are hygiene against a runaway or
+   * compromised box, not the real defence. Not "ticket" as in the per-connection auth ticket
+   * above -- ADR 0045's pairing ticket, a different thing with the same English word.
+   * @param {string|ArrayBuffer} message
+   */
+  async onTicket(message) {
+    if (typeof message !== "string" || !this.ticketRegAllowed()) return;
+    let m;
+    try { m = JSON.parse(message); } catch { return; }
+    if (m?.t !== "ticket") return;
+    const loc = String(m.loc || ""), record = String(m.record || ""), mac = String(m.mac || "");
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(loc) || !/^[A-Za-z0-9_-]{20,64}$/.test(mac) || record.length > 2048) return;
+    const exp = Math.min(Number(m.exp) || 0, Date.now() + TICKET_TTL_MAX);
+    if (exp <= Date.now() || !this.env.TICKETS) return;
+    try {
+      await this.env.TICKETS.get(this.env.TICKETS.idFromName(loc)).fetch("https://ticket/register", {
+        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ record, mac, exp }),
+      });
+    } catch {}
   }
 
   /** @param {any} ws */
