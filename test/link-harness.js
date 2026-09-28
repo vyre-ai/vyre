@@ -121,7 +121,7 @@ export async function pair(t, { approve = true, hold = 300, allow, macTranscript
     const failed = d.registry.status().filter(m => ["link", "files"].includes(m.name) && m.state !== "running");
     assert.deepEqual(failed, [], `${n}: link and files are running`);
   }
-  const macCall = (tool, input = {}, caller = "cli") => mac.registry.call(tool, input, caller);
+  const macCall = (tool, input = {}, caller = "cli", meta = {}) => mac.registry.call(tool, input, caller, meta);
   const boxCall = (tool, input = {}, caller = "cli", meta = {}) => box.registry.call(tool, input, caller, meta);
   let code = null;
   const find = (await macCall("link.find")).data;

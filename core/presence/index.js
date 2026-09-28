@@ -45,6 +45,10 @@ export const HUMAN_ONLY = new Set([
   "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
   "computers.tailnet.set", "computers.egress.set",
+  // Letting an agent reach a project's data at all (Vyre Drive step 3, federation): the same
+  // weight a vault grant to an agent carries. Taking it away (projects.access.revoke) is
+  // PERSON_ONLY below, instant, so revoking is never held up behind a prompt.
+  "projects.access.grant",
 ]);
 
 /**
@@ -70,9 +74,13 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // review, HIGH 1, f8cbc882); the lead moved that fix into the daemon instead, for every tool at
   // once, so it is not repeated per module (2026-09-28). See core/daemon/index.js.
   "team.add",
-  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access", "projects.move",
+  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access", "files.receive", "projects.move",
   // Who watches a project's Needs without running a session in it: the owner's own list to edit.
   "projects.watchers.add", "projects.watchers.remove",
+  // Taking an agent's project access away (Vyre Drive step 3): instant, no presence, so the owner
+  // is never held up behind a prompt to shut a door. Granting it (projects.access.grant) is
+  // HUMAN_ONLY above.
+  "projects.access.revoke",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
   "learn.accept", "learn.retire", "learn.relax",
   // What every session is told and runs on (ADR 0030): a model never edits a system prompt, a

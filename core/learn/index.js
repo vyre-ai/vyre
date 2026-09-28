@@ -481,6 +481,8 @@ export default {
     const offAnswered = ctx.events.on("ask.answered", e => { onAnswer(e).catch(err => ctx.log("answer not counted: " + err.message)); });
     const onAnswer = async e => {
       const p = e.payload || {};
+      // A paired Mac's ask, relayed to the box (source "mac"): the Mac's own learn counts it there.
+      if (p.source === "mac") return;
       const session = e.thread || p.thread || null;
       if (!session || !["allow", "deny"].includes(p.decision) || !p.tool) return;
       const c = /** @type {any} */ (db.prepare("SELECT * FROM learn_calls WHERE session = ? AND tool = ? AND outcome IS NULL ORDER BY at DESC LIMIT 1").get(session, p.tool));

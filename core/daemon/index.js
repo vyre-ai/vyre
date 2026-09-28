@@ -182,6 +182,18 @@ async function rawBody(req) {
   return raw;
 }
 
+/** A request's body as bytes, capped, for sync.upload's chunks (never JSON: octet-stream only). */
+async function rawBinary(req, max) {
+  const parts = [];
+  let got = 0;
+  for await (const chunk of req) {
+    got += chunk.length;
+    if (got > max) throw Object.assign(new Error(`a chunk is at most ${max} bytes`), { code: "bad_input" });
+    parts.push(chunk);
+  }
+  return Buffer.concat(parts);
+}
+
 async function body(req) {
   // The router may have read it already, to check a person session's signature over it.
   const raw = req.vyreRaw !== undefined ? req.vyreRaw : await rawBody(req);
@@ -205,7 +217,9 @@ async function body(req) {
  */
 export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(v) ? v : null);
 
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|onboard$|hook$)/;
+// "link:" is the paired box's person on a Mac, which only the link module may call as (CALL_AS in
+// core/modules): threads.answer takes it only with the box's signed assertion checked.
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|onboard$|hook$)/;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
@@ -454,6 +468,22 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     if (person) { people.revoke(person.id); events.emit("presence", "presence.signed-out", { id: person.id }); }
     res.setHeader("set-cookie", `${COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0`);
     return send(res, 200, { data: { ended: Boolean(person) } });
+  }
+  // sync.upload's chunk data: octet-stream only, never JSON (e2e, session-import review), so it
+  // never goes through body()'s JSON parse. Only a paired peer's own tailnet node reaches it -
+  // never the relay, a guest or an agent's node, since none of those carry policy.peer.stableId
+  // the way an owner device's does. sync.upload.chunk (core/link/box.js) checks the rest: which
+  // peer, whether its sync switch is on, quota, and that this upload is that peer's own.
+  if (req.method === "POST" && url.pathname.startsWith("/v1/sync/upload/")) {
+    const upload = decodeURIComponent(url.pathname.slice("/v1/sync/upload/".length));
+    const offset = Number(url.searchParams.get("offset"));
+    if (!policy.peer || !policy.peer.stableId) return send(res, 403, { error: { code: "denied", message: "sync.upload is for a paired device's own tailnet connection only" } });
+    if (!Number.isFinite(offset) || offset < 0) return send(res, 400, { error: { code: "bad_input", message: "offset must be a non-negative number" } });
+    let data;
+    try { data = await rawBinary(req, 4 * 1024 * 1024); }
+    catch (e) { return send(res, 400, { error: { code: /** @type {any} */ (e).code || "bad_input", message: /** @type {Error} */ (e).message } }); }
+    const r = await registry.call("sync.upload.chunk", { upload, offset, data }, caller, { peer: policy.peer });
+    return send(res, r.error ? (r.error.code === "denied" ? 403 : r.error.code === "bad_input" ? 400 : 409) : 200, r);
   }
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));

@@ -441,7 +441,8 @@ export class Registry {
         const as = opts && opts.as;
         const rec = this.modules.get(m.name);
         // firstParty: the loader's word that this module ships in the repo, for a tool that must
-        // trust a first-party caller only (a home module could take a free name).
+        // trust a first-party caller only (a home module could take a free name). Same mechanism
+        // as memory-iq's 2ecf79ba (reviewer-cleared, 0.1.1 batch) — kept identical, not a second one.
         if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: Boolean(rec && firstParty(rec.dir)) });
         const core = Boolean(rec && path.resolve(rec.dir).startsWith(CORE_DIR + path.sep));
         if (!core || !(CALL_AS[m.name] || []).includes(String(as))) throw new Error(`${m.name} may not call ${tool} as ${as}`);

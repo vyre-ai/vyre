@@ -210,10 +210,186 @@ box.
   `thread.contended`, `thread.limit`; every payload also carries `thread`, `source: "mac"` and
   `machine`.
 
+- **Answering a Mac's ask from the box** (ADR 0021 "v2", ADR 0030 step 7). The box's Ed25519
+  key (core/link/assert.js, `link-assert-key.json` at 0600 in its home), pinned by the Mac at
+  pairing or once over the pinned channel by a Mac paired before. Every Mac ask reaches the box
+  (`ask.raised`, `ask.answered`, labelled `source`, `machine`, `node`). `threads.answer` on the
+  box, for the person, forwards to the Mac that raised the ask with an assertion bound to that
+  Mac, ask and exact input for 60 s and one use; the Mac checks all of it before running as
+  `link:box`, and refuses with `denied` otherwise. Decisions:
+  - How the box knows an ask is a Mac's: the relayed `ask.raised` (the box remembers ask -> Mac),
+    with a `machine` input as the fallback after a box restart. No hint and no record means the
+    box's own answer; an assertion never goes to every Mac.
+  - Asks are forwarded for all Mac threads, not only followed ones: the phone must see every
+    ask, asks are few, and it costs a listener and the existing batches, no timer.
+  - No follow for an answer: `write()` follows `input.thread`, which an answer has none of, so it
+    is free and nothing was added.
+  - `machine` on relayed ask events is the Mac's name (as mergeRows and the relayed thread events
+    label them), and `node` carries its stableId.
+  - The Mac learns its own node from the box (`you.stableId` in pair.poll and hello), since the
+    Mac never asks Tailscale about itself; A.mac is checked against it.
+  - The box's learn module ignores relayed asks (`source: "mac"`); the Mac's learn counts them.
+  - A socket client may not claim a `link:` caller label (core/daemon FORBIDDEN_LABEL), now that
+    `threads.answer` lists `link:box`.
+  - The lead's conditions (after 06441c6f): an owner device forwards only in a person session
+    (`person_session_required` otherwise, nothing signed); gated asks (`gatedAsk`: a HUMAN_ONLY
+    tool by exact name or exact Vyre MCP name, or `presence.required: true`) need a fresh proof
+    on the box (`presence_required`; a presence session is not one) and the Mac checks it again
+    from its own ask. An unseen ask named by `machine` counts as gated. A carries `person` and
+    `presence`. The spent-nonce set already kept each nonce until its exp and refused when full.
+  - Held: the Mac-owned default (the Deck answering Mac asks for owner devices) stays held until
+    e2e's person session is live on the box; until then only the socket's callers and a
+    device already carrying a person session get through.
+
 ## Doing
 
-27 Sep 2026: the Mac-send loose ends are done (below); next is rich Mac transcripts (chat's ask),
-then Taildrive on work/tailnet.
+28 Sep 2026, later the same day: the user overruled a condition — unpairing, turning sync off, or
+losing a device deletes nothing; what it brought is the person's. Reworked: `sync.consent { on:
+false }` and `link.unpaired` now only stop new uploads and emit `sync.revoked` informationally.
+New `sync.delete { machine }` (person-only) is the one thing that deletes `synced/<machine>/`,
+emitting `sync.deleted`. Built `sync.send { files, mode }` too (agreed with memory-iq: they own
+`import.start`/`import.scan`/`import.plan`, module-only door into this) — walks a file list
+through `sync.upload.plan/start/finish`, acking each file and a done summary (`sync.sending`,
+`sync.sent`), which is also cohesion's "synced" status-event ask (interaction.md, sha 5debc1bc)
+folded in rather than built twice. New carrier `link.upload` on the Mac (core/link/mac.js) for the
+one thing `link.remote`'s JSON-only channel can't send: the chunk bytes, as a Buffer, straight to
+the box's raw route. `link.pair`/`link.pair.request` take `kind`.
+
+New test core/sync/sync-send.test.js: a real file, over a real paired link (test/link-harness.js's
+`pair()`, `router: true`), through the actual daemon route — the HTTP-level gap flagged in the
+previous entry is closed for the common path (resume-after-restart and Windows are still
+untested, no client exists yet). core/sync/sync.test.js updated for the keep-everything behavior.
+Tests on the test box, nice -n 15, load under 5: 113/113 across core/sync + core/link + link +
+link-federation + federation-answer + federation-send + federation-reads + boundaries + hygiene +
+docs-build. Sent to e2e, memory-iq, and the lead. Replied to memory-iq's module-ownership question
+(sync.deleted, sync.revoked and the acks are all core/sync's, confirmed) and cohesion's ask
+(folded into sync.send rather than answered separately).
+
+Still open: whether `import.start` records consent by calling `sync.consent` itself (my
+recommendation, so the box's copy of the switch stays the one and only record — see the message
+to memory-iq) or some other path; the plan-hash re-consent question memory-iq raised (not built:
+`sync.consent` is on/off only, no plan binding yet); "Replace this device" (whose folder name the
+new device's files land under is undecided — flagged back to memory-iq); Drive onboarding
+(docs/design/drive-onboarding.md, the lead's ask) not started this round.
+
+28 Sep 2026: session import (ADR 0008 5a) pulled forward to 0.1.1, memory-iq leading, this stream
+owning the transport. Built the box side: new module core/sync (`sync.consent`,
+`sync.upload.plan/start/chunk/finish`), core/sync/scrub.js (content secret scan at ingest,
+quarantine not redact), `link_peers.kind` ("mac"|"device", capability lives on the peer row per
+e2e's review, not a second identity path) plus `link.peer-of` for core/sync to resolve a
+connection's own tailnet node without reaching into link's table, and a dedicated daemon route
+(`POST /v1/sync/upload/<id>`, raw octet-stream body, never JSON). Design doc:
+docs/design/federation-plan.md (work/federation-transcript, f7108e07) has the full ownership split
+with memory-iq's import.* tools (they own the device-facing surface and consent recording;
+`import.start` calls our sender). CHANGELOG has the file-by-file detail.
+
+Not built yet: the device-side sender (`sync.send`, which walks a plan and calls
+`sync.upload.start/chunk/finish` against the box — this is what `import.start` actually calls),
+a Windows client (this protocol works for any client; nothing Windows-specific was needed on the
+box side), and a real HTTP-level test of the new daemon route (the tool logic underneath it is
+tested directly and thoroughly; the route itself is a small, mechanical body-reading and
+status-code layer). Refactor note for whoever builds `sync.send` next: an earlier draft put the
+sync.* tools inside core/link/box.js directly, using link_peers columns (sync_on, used_bytes,
+quota_bytes, a link_synced_files table) — this failed the registry's own naming rule (a tool must
+start with its module's name) and would have coupled sync's data to link's schema besides. It's a
+separate module now, on purpose; don't merge it back into link.
+
+Tests on the test box, nice -n 15, load under 6: 13/13 on core/sync/sync.test.js, 4/4 on
+core/sync/scrub.test.js, 110/110 across core/sync + core/link + link + link-federation +
+federation-answer + federation-send + federation-reads + boundaries + hygiene + docs-build. One
+run caught my own mistake: two secret-shaped literals in the new tests tripped hygiene's own
+scanner, since it scans all of core/ (fixed: built at run time instead, as the existing switchboard
+redaction fixture already does).
+
+28 Sep 2026: e2e signed off work/federation at aa9cb40c, with one nit: `!cfg.receive` counts the
+string "false" as on. Fixed (`cfg.receive !== true`), with a test trying several truthy-but-wrong
+values. Also tried adding files.receive as a real declared setting (core/files/module.json
+"settings", ADR 0035) so it would show in Settings, not just config.json — reverted: a
+device-level setting has no `store.config` (settings.set refuses it, "a device's value is kept in
+the hub, so a setting set per device has no store"), which broke every drop.test.js test since
+the files module failed to start. Wiring files.receive through the hub properly is follow-up work
+for whoever picks up Settings-facing polish, not a blocker: the config.json switch is what both
+reviewers signed off on. Tests on the test box, nice -n 15, load under 5: 18/18 on drop.test.js
+(1 new) + hygiene, 96/96 on `core/files/**/*.test.js` + docs-build. Sending the sha to the
+integrator next.
+
+28 Sep 2026: e2e amended their f712e7d7 review after reading 0c645473 (files.deliver) more
+closely — not signed off for that part, since it wasn't flagged as included when asked to review.
+Note for next time: name every commit in a sha handed over for review. Fixed: a Mac's own inbox
+receiver is off by default (config files.receive; without it, pairing changes nothing about a
+Mac's existing Tailscale file flow, MEDIUM); files.deliver drops "module" from its callers (LOW,
+no first-party need); the tool description now says a stableId gap answers no_link (LOW, already
+handled in code, just undocumented). CHANGELOG has the exact wording. Along the way, found and
+fixed an unrelated markdown bug this doc's own "Doing" text introduced: a bare `**/*.test.js`
+glob outside backticks reads as unmatched bold to the markdown renderer, which
+test/docs-build.test.js's "every Markdown file... renders" catches (any doc using a `**` glob
+must backtick it). Tests on the test box, nice -n 15, load under 2: 14/14 on drop.test.js (2 new:
+default-off, and the LOW's dropped caller), 115/115 on core/files + hygiene + docs-build +
+federation-answer + assert.
+
+28 Sep 2026: e2e reviewed 0f2a8752, then the lead asked for the LOWs too if small. All three
+fixed: core/link/mac.js's `answer()` fails closed ("could not read this ask") when threads.asks
+errors or does not have the ask, instead of `gatedAsk(null)` calling it ungated (MEDIUM); the
+box's `gatedOnMac` treats an unknown ask as gated by default, not ungated (LOW 1); core/link/
+assert.js's `Nonces` now persists what it has seen to the Mac's home (`link-assert-nonces.json`,
+0600, best-effort write, pruned on load), so a Mac restart inside a used assertion's 60 s window
+still refuses a replay (LOW 2). test/federation-answer.test.js: 2 new tests, plus the first test's
+tail updated (an ask the box never saw now needs a fresh proof before it is even forwarded, and
+the Mac's fail-closed message replaces the switchboard's "no ask" for one it can't find).
+core/link/assert.test.js: a new test for the persisted nonces, which needed `Nonces` to take a
+test seam `now` for load-time pruning (the file's real timestamps vs. the test's simulated clock
+otherwise looked expired on "restart" and the first version of this test caught nothing — fixed
+before it shipped). CHANGELOG has the detail. Tests on the test box, nice -n 15, load under 2:
+8/8 on assert, 9/9 on federation-answer, 106/106 on link + link-federation + federation-reads +
+federation-send + assert + link/transport + switchboard + hygiene + federate.
+Sending the sha to e2e for sign-off next.
+
+28 Sep 2026, after the merge (below): built the "Mac and box as one" pieces the lead ordered for
+0.1.x from docs/design/federation-plan.md (work/federation-transcript).
+
+- 1a (chat's Mac-session boot from recall.transcript): already done, by another stream, before
+  this merge landed it here. deck/chat/session.js's `boot()` already calls `recall.transcript`
+  with `source: "mac"` for a Mac session and falls back to `legacyBoot` only when the box has
+  neither the Switchboard record nor the transcript. No work needed; federation's own doc was
+  stale (it still listed this under "Next").
+- 1b (box→Mac file placement, the reverse of Taildrop): built. `files.deliver { path, mac }` on
+  the box; a Mac now also runs a receiver into its own inbox. `link.macs` gained `stableId` so
+  the box can find a named Mac among its own tailnet peers (see CHANGELOG). Tests: 13/13 on
+  core/files/drop.test.js (6 new), 97/97 on `core/files/**/*.test.js` + hygiene + docs-build,
+  on the test box, nice -n 15, load 1.6-2.6. `npm run docs:ref` regenerated for the new tool.
+  Not built (deferred to 1c/cohesion, per the plan): any drag-and-drop UI, and Chat/Deck surfacing
+  files.deliver — this round is the tool and the Mac's inbox only.
+
+28 Sep 2026: merged origin/main (a3a844e4, 0.1.0-rc.1 plus the post-rc `packages/module-sdk` fix)
+into work/federation (cd646008). Conflicts: CHANGELOG.md (append, both sides kept),
+core/daemon/index.js (FORBIDDEN_LABEL gained both `link:` and main's new `device:`; kept main's
+new `callId` export), core/link/mac.js (import merge only — checkAnswer/Nonces/gatedAsk plus
+main's HUMAN_ONLY/PERSON_ONLY/inputHash/enclave/signed/PEOPLE, no functional overlap),
+core/link/module.json (tool/event lists unioned: ours plus main's link.signin/signout and
+ask.raised/answered events), core/switchboard/index.js (threads.answer: Mac-forward check first,
+then main's `device` param on sb.answer; callers list unions `tailnet` (main) with `link:box`
+(ours); `stop()` runs both cleanups), core/switchboard/testing/fake-claude.js (comment-only,
+implementations for both sides were already present unconflicted). docs/reference/* and
+docs/index.json taken from main then regenerated with `npm run docs:ref` against the merged code.
+Ran node --check on every touched core file.
+
+Compat check for the per-thread socket (e9a6bebd) and the caller-label fix (1941f2cf): `sb.send`,
+`queuesFor`, `fromLink`, `surfaceOf`, `guard` all merged with no conflicts (git's line-level merge
+succeeded cleanly, confirming the two branches touched adjacent, non-overlapping parts of the
+same functions) — reviewed by hand too. Tests on the test box (nice -n 15, load 2.9-4.4, under
+the RULES cap of 6): test/link.test.js, test/link-federation.test.js,
+test/federation-reads.test.js, test/federation-send.test.js, core/link/transport.test.js,
+core/switchboard/switchboard.test.js, core/harness/floor.test.js, core/harness/harness.test.js,
+test/harness.test.js, test/hygiene.test.js, core/modules/federate.test.js: 129/129. Separately:
+test/docs-build.test.js, test/docs-index.test.js, test/onboard.test.js,
+core/projects/projects.test.js, core/recall/recall.test.js, core/recall/module.test.js:
+105/106 (1 skipped, none failed).
+
+Sent to e2e for security review (presence gates on threads.answer's Mac forward,
+person_session_required, gatedOnMac) before the integrator, targeted for 0.1.x after rc.2.
+
+27 Sep 2026: answering a Mac's ask from the box is built (Done, above). Before that, the Mac-send
+loose ends (below); next is rich Mac transcripts (chat's ask), then Taildrive on work/tailnet.
 
 - capsule-now's answers, applied (d86afcc): 1 was already built (WRITE allowlist, `as: "person"`
   checked on the Mac). 2: `fromLink` in core/switchboard/index.js, an explicit caller kind for
@@ -262,9 +438,23 @@ then Taildrive on work/tailnet.
 - chat: a composer for Mac sessions, sending with `threads.send { thread, text, machine }` and
   showing the answers above; the note and the offline chip stay for everything else.
 - capsule-now: answered (applied in d86afcc).
+- chat: a Mac-owned ask can be answered from the Deck now. deck/chat/question.js and
+  deck/chat/ask-item.js show "Answer it on <mac>" (`ask.elsewhere`, set in deck/chat/session.js)
+  with no buttons. Replace that with the usual buttons, calling `threads.answer { ask, decision,
+  message?, answers?, scope?, surface, machine: <the Mac's name> }` (machine is optional when the
+  box saw the ask, and needed after a box restart). The answer comes back with `source: "mac"`,
+  `machine`; errors `mac_offline` ("<mac> is offline; your answer was not sent"), `timeout`,
+  `denied` (the Mac refused the box's assertion: pair again), or the Mac's own ("no ask <id>",
+  final). Mac asks arrive on the box's stream as `ask.raised` / `ask.answered` with `source:
+  "mac"`, `machine`, `node`; `threads.asks` on the box does not list them, so a reconnecting
+  Deck sees only asks raised since. The phone's push for a Mac ask opens `/needs/<ask>`, which
+  the box cannot load with `threads.asks` either (pwa).
 
 ## Changed contracts
 
+- New box tool `files.deliver { path, mac }` (files module, CHANGELOG has detail): sends a file to
+  one paired Mac by Taildrop. `link.macs` gained `stableId` (additive). A Mac now also runs an
+  inbox receiver (default `~/Vyre/inbox`), where it had none before.
 - New box tools: `link.serve { key }` (answers `{ id, tool, input }`, `null` after the hold, or
   `{ paired: false }`), `link.reply { key, id, result }` (`{ ok }`, or `{ paired: false }`),
   `link.macs.call { tool, input?, timeout? }` (internal: modules only; refuses a tool outside the
@@ -337,6 +527,27 @@ then Taildrive on work/tailnet.
   `fromLink` in core/switchboard/index.js; `queuesFor("link:box")` is true by name. The Harness's
   hand-over names a `box:<surface>` as "<surface> on the box" (core/harness/index.js).
 
+- Answering a Mac's ask (v2): `WRITE = ["threads.send", "threads.answer"]` and new `ASKS =
+  ["ask.raised", "ask.answered"]` in core/link/allow.js; new core/link/assert.js (`boxKey`,
+  `signAnswer`, `checkAnswer`, `Nonces`, `canonical`, `decisionHash`). `link.pair.poll`'s
+  approved answer and `link.hello` gain `box.assertKey` and `you: { stableId } | null`; the Mac's
+  link.json gains `box.assertKey` and `self`. `link.macs.call` takes `by: { caller, device? }`
+  and, for threads.answer, sends only to the Mac the ask is on (or `mac`); the queued request
+  carries `assertion: { a, sig }`. `link.events` takes `ask.raised`/`ask.answered` for any
+  thread of the Mac; relayed events gain `node`. The link manifest emits both. `threads.answer`
+  takes `machine`, lists `link:box` in its callers, and on the box forwards for the person
+  (answer gains `source`, `machine`; errors `mac_offline`, `timeout`, `denied` or the Mac's).
+  core/learn skips `ask.answered` with `source: "mac"`. core/daemon: `link:` joins the socket's
+  forbidden caller labels.
+- Person session and gated asks: A gains `person` (session id or null) and `presence` (method
+  or null); `link.macs.call`'s `by` takes `person` and `presence`. New shared `gatedAsk(ask)` in
+  core/modules/federate.js (imports HUMAN_ONLY from core/presence). On a box, `threads.answer`
+  declares `presence: { when, summary }` (true only for a gated Mac-bound answer), so
+  `/v1/tools` lists it with `presence: true` there; a Mac declares none. New errors on the box
+  forward: `person_session_required`, `presence_required`. `checkAnswer` takes `gated`. The Mac
+  reads its own ask with `threads.asks` before it checks. The switchboard's fake claude takes
+  `use <tool>` (asks permission for that tool).
+
 ## Notes for Task B
 
 - The Mac runs the box's input as given, as `module:link`. Once the Mac's own tools federate
@@ -366,3 +577,177 @@ then Taildrive on work/tailnet.
 - The Mac answers one question at a time, so a busy Mac delays the next read up to the link's 5 s
   timeout; the Deck should show the box's rows first if it ever waits on that.
 
+
+## threads.asks merges the Macs' open asks (27 Sep 2026, sessions' decision)
+
+threads.asks on a box, for the person, merges each Mac's open asks (ALLOW read), labelled
+source/machine, oldest first, with the box's gated rule in presence.required; listing records
+each ask's gated flag for threads.answer's presence rule. Test box: 117 of 117 (federation
+answer, reads, send, core/link, switchboard, hygiene, docs-build, docs-index).
+
+## Session-import security fixes (e2e review, 28 Sep 2026)
+
+Fixed everything open from e2e's review of 96cbf078/6816e83c, plus the two new asks in this
+round's brief (per-import delete, sync.upload.cancel). One sha, all in core/sync and
+core/link/mac.js. Detail in CHANGELOG.md; summary:
+
+- HIGH `link.upload` path traversal: fixed. The carrier takes `{ upload, offset, data }`; the box
+  path is built from a validated UUID, never a caller string.
+- MEDIUM `sync.consent`/`sync.send` module-caller widths: fixed (`cli`/`local`/`deck`/`capsule` for
+  consent; `module:sync`/`module:import` only for send). `sync.send` now resolves every path for
+  real and refuses anything outside `~/.claude`/`CLAUDE_CONFIG_DIR`.
+- The five earlier MEDIUMs (declared-size quota bypass, in-flight + MAX_OPEN cap, person-only
+  consent, streamed finish, the swallowed symlink refusal): all fixed, all with tests.
+- New: `sync.upload.cancel`, `sync.delete.import` (per-plan delete, `sync.consent`'s new
+  `planHash` stamped onto each landed file). `sync.delete`'s confirm+preview shape (from last
+  session) unchanged.
+- Changed contracts: `sync.consent` input gains `planHash` (optional); `sync_peers` and
+  `sync_files` gain a `plan_hash` column (migration, additive); `link.upload`'s input shape
+  changed from `{ path, data }` to `{ upload, offset, data }` (internal-only tool, sync's own
+  carrier — no other caller exists). module.json's `does.tools` gains `sync.delete.import`,
+  `sync.upload.cancel`.
+- Tests: core/sync/sync.test.js, sync-send.test.js. All green on testbox before this note (37/37
+  on the pre-cancel/pre-import-delete batch); the added tests for cancel/streamed-finish/per-plan
+  delete are new this round and need one more testbox run before the sha goes out (testbox was
+  mid-resize when this was written).
+
+## Reviewer's second pass (28 Sep 2026)
+
+HOLD lifted. Fixed the MEDIUM and both LOWs reviewer flagged on 656ed493:
+- MEDIUM: finish() now scans every chunk while streaming (small overlap across chunk boundaries),
+  not just an 8 MB prefix.
+- LOW: sync.send requires meta.firstParty too, not just the caller label. New kernel bit:
+  core/modules/index.js's ctx.call now stamps `firstParty` on every module-to-module call, from
+  the calling module's own directory (the existing firstParty() helper), never a manifest's claim.
+  test/link-harness.js's macCall gained an optional meta param for this (additive, every existing
+  caller unaffected).
+- LOW: start()'s resume path was already correct (returns before MAX_OPEN/quota); added a
+  regression test rather than changing working code.
+- LOW: sync.consent { on: true } with no planHash now clears plan_hash instead of keeping a stale one.
+
+All green: 139/139 (core/sync, core/link, core/modules, test/link*, test/federation-*,
+core/planner/link.test.js, hygiene, docs-index) on testbox post-resize.
+
+## Needs from others
+
+- None open. Sent the sha to e2e and reviewer per the brief once testbox confirms green.
+
+## De-duplicated meta.firstParty (team-lead check, 28 Sep 2026)
+
+team-lead flagged that memory-iq (work/memory-iq 2ecf79ba, reviewer-cleared, 0.1.1 batch) already
+added a loader-set firstParty flag on module calls in core/modules/index.js — same idea, built
+independently on a different branch. Checked line for line: 2ecf79ba's change is in
+`context(m).call`'s `!as` branch, exactly where mine was. Replaced mine with the identical code
+(same variable order, same call site, same comment intent) rather than keeping a second version.
+Did not do a literal `git rebase` onto 2ecf79ba — that commit is 850+ commits from this branch's
+base (memory-iq's own unrelated history), so a real rebase would pull in work far outside this
+review's scope. The kernel diff is now byte-for-byte the same logic as 2ecf79ba's, so a later
+real merge of that commit is a no-op here. Confirmed with `diff` against
+`git show 2ecf79ba:core/modules/index.js`.
+
+139/139 green on testbox again after the swap (core/sync, core/link, core/modules, test/link*,
+test/federation-*, core/planner/link.test.js, hygiene, docs-index).
+
+## Vyre Drive step 1: files.receive toggle + conflict note (28 Sep 2026)
+
+team-lead's order for Vyre Drive (user decision, HANDOFF.md): 1) files.receive toggle + conflict
+note (this), 2) what-to-sync picker, 3) per-folder agent/project access (vault grant pattern +
+sessions' lib/project-id.js), 4) launch's Drive API step + windows coordination. Each its own sha.
+
+- `files.receive { on }` (core/files/drop.js): starts/stops a Mac's Taildrop inbox receiver live,
+  person-only, persists via `config.save` (same pattern as `computers.egress.set`). No restart
+  needed; previously this was a config.json-only key read once at startup.
+- `files.received` gains `conflict`/`note` when Tailscale's `--conflict=rename` kept both copies:
+  read off its own `--verbose` line (which names both the original and final filename), not
+  guessed from the final name's shape. `parseWrote` gains `orig`.
+- Did not claim a new ADR number for this step: it is a small, additive change to an existing tool
+  and event, not a new architectural decision — the Drive-wide design is already the HANDOFF.md
+  entry. A dedicated ADR may be worth claiming at step 3 (per-folder access) if that turns out to
+  need one; will check docs/work/README.md's ADR table before that step.
+- Tests: core/files/drop.test.js. 81/81 (core/files, hygiene, docs-index, boundaries) on testbox.
+
+## Vyre Drive step 2: sync.scan (28 Sep 2026)
+
+New `sync.scan { exclude? }`, device role: lists project folders under ~/.claude/projects or
+CLAUDE_CONFIG_DIR/projects with size and file count, honors an exclude list, returns a planHash
+(sha256 of the sorted included names) meant to be passed straight to sync.consent's own planHash.
+Read-only. Bounded scan (50,000 entries, symlinks never followed), matching files/drive.js's
+share-scan posture.
+
+Caught and fixed in the same commit: sessionRoots() (shared with sync.send) pulled in the real
+~/.claude unconditionally, even under tests. sync.send only ever compared a path against it, so
+this was latent and harmless there, but sync.scan actually lists a folder's contents — under a
+test run that would have read the real machine's real Claude Code folder. Gated behind
+NODE_TEST_CONTEXT now, matching core/config/dialogs.js's transcriptFolders.
+
+Tests: core/sync/sync-send.test.js. 57/57 (core/sync, core/link, hygiene, docs-index, boundaries)
+green on testbox.
+
+## Next
+- Step 3: per-folder agent/project access (vault's grant pattern + sessions' lib/project-id.js) —
+  not started; will need to read those two before designing it.
+
+## Both Vyre Drive HOLDs fixed, one sha (28 Sep 2026)
+
+**Step 1 (files.receive):** it was person-only by its callers list alone, never in
+core/presence's PERSON_ONLY (or HUMAN_ONLY), so neither the daemon's model-shell check nor the
+harness floor's MODEL_NEVER set actually refused a model's own "cli" call to it. Added to
+PERSON_ONLY next to files.drive.access (a switch on an existing capability, not a secret reveal —
+HUMAN_ONLY is for presence-proof tools like computers.egress.set). Reordered files.receive's
+run(): ctx.paths check and config.save happen before the receiver starts or stops, so a save
+failure never leaves the running state and config.json disagreeing (reviewer's LOW).
+
+**Step 2 (sync.scan's exclusions):** they were advisory — planHash tagged what landed, nothing
+refused a file outside the reviewed set. sync.consent now takes `included` (project folder
+names) alongside planHash, stored on sync_peers as plan_included (additive migration).
+sync.upload.plan reports an excluded file separately; sync.upload.start refuses it outright
+(code "excluded") regardless of what a device sends or what upload.plan said before — enforced
+where a device cannot route around it. sync.send never attempts a file upload.plan already
+called excluded, and reports its own excluded count.
+
+**Step 2 LOW (double-counted real-vs-CLAUDE_CONFIG_DIR root):** moot now — see below, claudeHome
+resolves to exactly one folder.
+
+**team-lead's real-home rule:** replaced the NODE_TEST_CONTEXT gate with core/config's own
+claudeHome(root) rule (sessionRoots(root), threaded from ctx.paths.root down through
+allowedSessionPath and sync.scan): the real folder only for the real ~/.vyre, `<root>/claude`
+for any dev world, demo, trial or test home — the same rule every other module gets (connectors'
+claudeJson included), not a second one sync invented. Test fixtures (core/sync/sync-send.test.js)
+now write straight to `<macRoot>/claude` instead of setting CLAUDE_CONFIG_DIR, since that env var
+no longer has any effect outside the real home.
+
+Tests: core/harness/floor.test.js (files.receive denied for a model's shell), core/sync/
+sync.test.js and sync-send.test.js (excluded-folder refusal at both upload.plan and
+upload.start, end to end through sync.send, a later consent with no included lifting the
+restriction). 270/270 (1 skipped, pre-existing) across core/sync, core/link, core/files,
+core/presence, core/harness, core/config, core/modules, mcp-server-tools, hygiene, docs-index,
+boundaries, cohesion-drift — testbox.
+
+## Step 3 built: projects.access, deny by default (28 Sep 2026)
+
+team-lead's design calls (over 181ef960): grants live in core/projects (a project-level fact
+Drive, vault and memory will all ask about), not sync; the folder-to-project mapping happens at
+consent time with the person confirming or editing a proposed project id; granting is HUMAN_ONLY,
+revoking is PERSON_ONLY.
+
+Built the grant itself: projects.access.grant/revoke/check/list in core/projects/index.js, table
+projects_access (id, project, agent, status, by, at), appended to projects.js's own MIGRATIONS
+array so version numbers continue rather than collide. Brought in lib/project-id.js verbatim from
+e87f63df (not otherwise on this branch): SLUG_RE, slugify, isProjectId.
+
+Not yet built, flagged rather than guessed at: the folder-to-project mapping itself (sync.scan
+proposing a project id per folder, the person confirming at sync.consent time), and wiring an
+actual caller (Drive's files.* tools, whatever serves synced session content to an agent) to ask
+projects.access.check before serving. This lands the grant with deny-by-default and full test
+coverage, with nothing yet asking it, since those two pieces touch Drive's and sync's own
+consent/serving paths and deserve their own review pass rather than being folded in unreviewed.
+
+Tests: core/projects/access.test.js (new), core/harness/floor.test.js (both tools alongside
+files.receive). lib/project-id.test.js (brought in with the lib). Full local + testbox run
+pending (queued behind testbox load).
+
+## Next
+- Wire sync.consent's picker to propose a project id per folder (marker or slugify fallback,
+  person confirms/edits).
+- Wire an actual caller (files.drive.*, or whatever serves synced content to an agent) to
+  projects.access.check.

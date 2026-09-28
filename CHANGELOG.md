@@ -355,8 +355,282 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - core/cli/commands/projects.js: the `vyre projects` command summary and the `move` verb's
   summary both said "on a box"; both now say "on a server" (ADR 0038). docs/reference/cli.md
-  regenerated to match.
+  regenerated to match.#### Vyre Drive step 3: projects.access, deny-by-default per-project agent access
 
+- New module addition, `core/projects` (sessions owns it, paused; built here per team-lead):
+  `projects.access.grant`, `.revoke`, `.check`, `.list`. New table `projects_access
+  (id, project, agent, status, by, at)`, `UNIQUE (project, agent)`, appended after
+  `projects.js`'s own `MIGRATIONS` so its version numbers continue the sequence. Deny by
+  default: no row means no access. An empty `agent` grants every agent; a named agent's own
+  row, when one exists, wins over the wildcard for that agent.
+- `projects.access.grant` is `HUMAN_ONLY` (`core/presence/index.js`): the same weight a vault
+  grant to an agent carries, needs the owner's presence proof. `projects.access.revoke` is
+  `PERSON_ONLY`: instant, no proof, so taking access away is never held up behind a prompt.
+  Both added to the harness floor's `MODEL_NEVER` set for free (it is built from the same two
+  lists) and to `test/mcp-server-tools.test.js`'s generic exclusion the same way.
+- `projects.access.check` (callers: `module`, plus the owner's own surfaces) is the one Drive,
+  sync or anything else that serves a project's data to an agent asks before doing so: `deny by
+  default` means the row is simply left out of a listing or refused outright, never guessed.
+  Project ids are validated with `lib/project-id.js`'s `isProjectId` (`check`) and resolved
+  through `Projects.resolve` (`grant`/`revoke`, so a typed name or an existing slug both work,
+  and a project that does not exist is refused, matching every other `projects.*` tool).
+- Brought in `lib/project-id.js` (verbatim from `e87f63df`, not on this branch's history yet):
+  `SLUG_RE`, `slugify`, `isProjectId`, the canonical project-id shape every part is meant to
+  share rather than growing its own.
+- Design first, per team-lead: `docs/design/drive-onboarding.md`'s "Step 3 design" section (this
+  session, superseded by the actual build here) proposed a `sync`-owned `sync_grants` table;
+  team-lead's read placed it in `core/projects` instead (a project-level fact several modules
+  will ask about) and settled the `HUMAN_ONLY`/`PERSON_ONLY` split explicitly up front, so it
+  would not become a second `files.receive`-style HOLD.
+- Tests: `core/projects/access.test.js` (deny by default, grant/check/revoke, the wildcard vs.
+  named-agent precedence, resolving a project by name, a malformed id answering `false` rather
+  than throwing, `projects.access.list`, and the two tools' exact list membership).
+  `core/harness/floor.test.js` gains both tools alongside `files.receive`. Folder-to-project
+  mapping (where a device's `sync.scan` folder gets tagged with a project id) and wiring Drive's
+  and sync's own read paths to call `projects.access.check` are next, not yet built: this
+  lands the grant itself, deny by default, with nothing yet asking it.
+
+#### Both Vyre Drive HOLDs fixed, one sha: files.receive genuinely person-only, sync.scan's exclusions enforced, the real ~/.claude gated by the kernel's own rule
+
+- Step 1 MEDIUM: `files.receive`'s callers list said person-only, but it was never in
+  `core/presence`'s `PERSON_ONLY` (or `HUMAN_ONLY`), so the daemon's model-shell check
+  (`core/daemon/index.js`'s `personal`) and the harness floor's `MODEL_NEVER` set never
+  refused it — a Claude session's own Bash could call it as "cli" and turn a Mac's receiver
+  on, the exact boundary the switch exists to guard. Added `files.receive` to `PERSON_ONLY`
+  (`core/presence/index.js`), next to `files.drive.access`, its closest precedent (a switch on
+  an existing capability, not a secret reveal, so `PERSON_ONLY` rather than `HUMAN_ONLY`'s
+  presence-proof tools).
+- Step 1 LOW: turning the switch on started or stopped the receiver before the `ctx.paths`
+  check and `config.save`; a failure there left it running (or stopped) with config.json
+  disagreeing. Reordered: the check and the save happen first, and only a successful save
+  starts or stops anything.
+- Step 2 MEDIUM: `sync.scan`'s exclusions were advisory only — `planHash` tagged what landed,
+  but nothing refused a file outside the reviewed set. `sync.consent` now takes `included`
+  (the approved plan's project folder names) alongside `planHash`, stored on `sync_peers`
+  (`plan_included`, additive migration). `sync.upload.plan` reports an excluded file
+  separately from new/changed/done, and `sync.upload.start` refuses it outright (`excluded`),
+  whatever a device sends and whatever `sync.upload.plan` said before it — enforced at the one
+  place no device can route around, not merely reported. `sync.send` never even attempts a
+  file `sync.upload.plan` already called excluded, and reports its own `excluded` count
+  alongside `sent`/`failed`/`quarantined`/`skipped`.
+- Step 2 LOW: if `CLAUDE_CONFIG_DIR` resolved to the same real path as `~/.claude`,
+  `sessionRoots()` returned it twice, double-counting `sync.scan`'s sizes. Moot now:
+  `sessionRoots()` resolves through `claudeHome(root)` (below), which answers exactly one
+  folder.
+- Replaced the `NODE_TEST_CONTEXT` gate on the real `~/.claude` with `core/config`'s own
+  `claudeHome(root)` rule (`sessionRoots(root)`, threaded from `ctx.paths.root`): the real
+  folder only for the real `~/.vyre`, `<root>/claude` for any dev world, demo, trial or test
+  home, whatever env var happens to be set — the same rule `core/config/dialogs.js`'s
+  `claudeHome` already gives every other module, connectors' `claudeJson` included. A
+  `NODE_TEST_CONTEXT`-only check is too easy to get wrong (team-lead); this is the kernel's
+  one rule instead of a second one sync invented.
+- Tests: `core/harness/floor.test.js` (`vyre call files.receive` denied for a model's shell),
+  `core/sync/sync.test.js` and `sync-send.test.js` (an excluded file refused by both
+  `sync.upload.plan` and `sync.upload.start`, end to end through `sync.send` too, even passed
+  in explicitly; a later consent with no `included` lifts the restriction). 270/270, 1 skipped
+  pre-existing (core/sync, core/link, core/files, core/presence, core/harness, core/config,
+  core/modules, mcp-server-tools, hygiene, docs-index, boundaries, cohesion-drift) green on
+  testbox.
+
+#### Vyre Drive, step 2: sync.scan, the what-to-sync picker
+
+- New `sync.scan { exclude? }` (core/sync/index.js, device role): lists every project folder under
+  this device's own Claude Code folder (`~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects`), each
+  with its session-file count and total size, so the person can see what is there and leave
+  folders out before turning `sync.consent` on. Read-only — nothing is opened or sent, only sizes.
+  Answers `{ projects: [{ name, bytes, files, included }], total, excluded, planHash }`; `planHash`
+  is a sha256 of the sorted included names, meant to be passed straight to `sync.consent`'s own
+  `planHash` so an approved import is tied to what was actually reviewed here.
+- Bounded like `files/drive.js`'s share scan: `SCAN_LIMIT` (50,000 entries) across the whole scan,
+  symlinks never followed (skipped, not resolved-and-descended, so a cycle cannot loop and a linked-
+  in folder is never sized as if it were this device's own data).
+- Fixed in the same commit: `sessionRoots()` (shared by `sync.send` and now `sync.scan`) included
+  the real `~/.claude` unconditionally, even under a test run. `sync.send` only ever compared a
+  given path against it (harmless), but `sync.scan` lists a folder's actual contents — under tests
+  that would have read the real machine's real Claude Code folder, which RULES forbids outright.
+  Now gated by `NODE_TEST_CONTEXT`, the same way `core/config/dialogs.js`'s `transcriptFolders`
+  already gates it; a test reaches its own fake home only through `CLAUDE_CONFIG_DIR`.
+- module.json: `sync.scan` added to `does.tools`, plus its tip.
+- Tests: core/sync/sync-send.test.js — sizes and file counts per project, an excluded folder
+  dropping out of `total` and flipping `included` without touching disk, the same exclusions
+  landing on the same `planHash` and a different set landing on a different one, and an empty
+  answer (not an error) when there is no `projects` folder yet. 57/57 (core/sync, core/link,
+  hygiene, docs-index, boundaries) green on testbox.
+
+#### Vyre Drive, step 1: the files.receive toggle, and a conflict note when Taildrop keeps both copies
+
+- New `files.receive { on }` (core/files/drop.js): turns a Mac's inbox receiver for what the box
+  delivers with `files.deliver` on or off live, no restart. Person-only callers (cli, local, deck,
+  capsule), same as `files.deliver`. Persists to config.json (`config.save`, the same pattern
+  `computers.egress.set` already uses) so the choice survives a restart too. Previously
+  `files.receive` was a config.json key read once at startup; a Mac never had a live way to turn it
+  on beside hand-editing the file.
+- `files.received`'s payload gains `conflict: true` and a plain-language `note` when Tailscale's
+  `--conflict=rename` kept both copies rather than overwriting an existing file — its own
+  `--verbose` line names both the file it was handed and the file it wrote, so this is read off
+  that line, not guessed from the final name's shape. `parseWrote` gains `orig` (the name before
+  any rename) to carry it.
+- module.json: `files.receive` added to `does.tools`; the `receive-config` tip now says "turn on"
+  with a `command`, not "set in config.json".
+- Tests: core/files/drop.test.js — the toggle starting and stopping the receiver live and writing
+  config.json, person-only callers, a conflict-note case and a no-conflict case, parseWrote's new
+  `orig` field.
+
+#### Reviewer's second pass on the session-import fixes: full-file scrub, a firstParty flag, two LOWs
+
+- MEDIUM (reviewer): `sync.upload.finish` scrubbed only a bounded prefix of the file (the old
+  `SCRUB_MAX_BYTES`), so a secret past that point landed unquarantined and Recall indexed it.
+  Fixed: it now scans every chunk as it streams past to hash it, carrying a small overlap into the
+  next window so a pattern split across a chunk boundary is still caught, not just a prefix.
+- LOW (reviewer): `sync.send`'s check trusted the caller label `module:import` by name alone — a
+  home module can call itself "import" and get that same label. `core/modules/index.js`'s loader
+  now stamps `meta.firstParty` on every module-to-module `ctx.call`, from the calling module's own
+  directory (shipped in core/, local/ or modules/, reusing the existing `firstParty()` helper) — a
+  manifest cannot grant this, same as `as`. `sync.send` now requires both the label and the flag.
+  This is the same mechanism memory-iq's 2ecf79ba already added for `memory.pace` (reviewer-cleared,
+  0.1.1 batch) — checked line for line against it and kept identical rather than a second one; not
+  a rebase, since 2ecf79ba sits 850+ commits from this branch's base, but the same code.
+- LOW (reviewer): `sync.upload.start`'s resume path already returned before the `MAX_OPEN` check
+  and the quota's in-flight sum (read closely to confirm); added a regression test locking that in.
+- LOW (reviewer): `sync.consent { on: true }` without a `planHash` used to keep whatever plan_hash
+  was already on the peer, so new files landed tagged with a stale plan. Now clears it when none
+  is given; turning consent off leaves plan_hash untouched (it stops new uploads either way).
+- Tests: core/sync/sync.test.js (the past-8MB scrub test, the resume-vs-cap regression),
+  core/sync/sync-send.test.js (the firstParty spoof case), core/modules/index.js's own test suite
+  unaffected (40/40). test/link-harness.js's `macCall` now takes an optional `meta`, used by the
+  new sync-send test; every existing caller is unaffected (meta defaults to `{}`).
+
+#### Session-import security review fixes (e2e): path traversal, quota bypass, whole-file reads, per-import delete
+
+- HIGH: `link.upload`'s path was built from a caller-given string; `new URL()`'s own ".." handling
+  could resolve it onto any box tool. Fixed: the carrier now takes `{ upload, offset, data }`, and
+  the path to the box's `/v1/sync/upload/<id>` route is built here, entirely from a validated UUID
+  the box itself handed back at `sync.upload.start`, never from the caller.
+- MEDIUM: `sync.consent` listed `module` as a caller, so any home module could turn a device's
+  import on. Now person-only (`cli`, `local`, `deck`, `capsule`).
+- MEDIUM: `sync.send`'s caller was any `module`, and read whatever path it was given. Now only
+  `module:sync` and `module:import` may call it, and every path is resolved for real (symlinks
+  followed) and refused unless it lands inside `~/.claude` or `CLAUDE_CONFIG_DIR` — the device's
+  own Claude Code folder, nothing else, ever.
+- MEDIUM x2 (quota): a chunk could grow a file past what `sync.upload.start` declared, filling the
+  disk while the quota check only ever saw the declared number; and parallel starts, none finished,
+  each checked alone against `used_bytes`, could together blow the quota. Fixed: a chunk that would
+  grow the file past its declared `bytes` is refused; in-flight declared bytes across all of a
+  peer's open uploads count against the quota too; and a new `MAX_OPEN` (8) caps how many uploads
+  one peer may have open at once, independent of quota. `sync.upload.finish` books the real size on
+  disk, not the declared one.
+- LOW: `safeDest`'s symlink check at the final path segment was inside the same `try` as "does it
+  exist", so the refusal was silently swallowed by the catch. Split apart; the refusal now fires.
+- Whole-file reads: `sync.upload.finish` read the entire temp file into one string to hash and
+  scrub it, undoing `MAX_FILE`'s own memory bound for anything near the cap. Now streams it once
+  (`fs.createReadStream` into a running hash), keeping only the scrub scan's bounded prefix in
+  memory past the stream.
+- New `sync.upload.cancel { upload }`: drops an open upload's temp file and slot before it
+  finishes, freeing one of `MAX_OPEN` without waiting for the idle sweep. Never another device's
+  upload to cancel.
+- New `sync.consent`'s optional `planHash`, stamped onto every file an approved import plan lands
+  in `sync_files`. New `sync.delete.import { machine, planHash, confirm }`: deletes just one
+  approved plan's files, leaving a later, separately-approved plan's files for the same device
+  untouched. Same preview-then-confirm shape as `sync.delete` (added last session): without
+  `confirm: true`, answers file and byte counts and deletes nothing.
+- core/sync/module.json: `sync.delete.import`, `sync.upload.cancel` added to `does.tools`.
+- Tests: core/sync/sync.test.js and sync-send.test.js cover all of the above (path traversal via
+  the UUID carrier, quota bypass, in-flight accounting, MAX_OPEN, cancel, the streamed finish on a
+  ~10 MB file, per-plan delete leaving the other plan's file alone, and the caller restrictions).
+
+#### Unpairing or turning sync off keeps everything a device sent; sync.delete is its own action; sync.send built
+
+- The user overruled the original design: what a device brought is the person's, not the
+  device's. `sync.consent { on: false }` and unpairing (`link.unpaired`) now only stop new
+  uploads and emit `sync.revoked` informationally — neither deletes anything. New tool
+  `sync.delete { machine }`, person-only, deletes `synced/<machine>/` and everything derived from
+  it, and emits `sync.deleted`.
+- New tool `sync.send { files, mode }` (device role, module-only caller — `import.start`'s one
+  door): walks a given file list through `sync.upload.plan/start/finish`, acks each file
+  (`sync.sending`) and summarizes when done (`sync.sent { sent, failed, quarantined, of, skipped }`
+  — the status line cohesion asked for, so a surface never goes quiet mid-import).
+- core/link/mac.js: a new internal carrier, `link.upload { path, data }`, for the one thing
+  `link.remote` (JSON only) cannot send — an upload's chunk bytes as a Buffer, POSTed straight to
+  the box's `/v1/sync/upload/<id>` route. Scoped to that one route only, never a general proxy.
+  `link.pair` and `link.pair.request` take `kind` ("mac" or "device").
+- core/sync/module.json: sync.delete, sync.send in "does"; sync.deleted, sync.sending, sync.sent
+  in "watches.emits" (event names must be one dot, noun.verb — `sync.send.progress` and
+  `sync.send.done`, my first names, failed the registry's own check).
+- Tests: core/sync/sync-send.test.js (new) sends a real file over a real paired link, chunked
+  route included, not only the tool logic in isolation. core/sync/sync.test.js updated for the
+  keep-everything behavior, plus new tests for sync.delete.
+
+#### sync.upload: a paired device sends its own Claude Code sessions to the box (ADR 0008 5a, session import, box side only)
+
+- New module core/sync: `sync.consent` (the box's own record of a peer's import switch, off by
+  default, never the device's say-so), `sync.upload.plan` (dedupe against what the box already
+  has, and quota), `sync.upload.start` (offset-based resume, matched by path and hash),
+  `sync.upload.chunk` (the actual bytes) and `sync.upload.finish` (verifies the hash, scrubs for
+  secrets, lands the file or quarantines it). Turning consent off, or unpairing the device
+  entirely (`link.unpaired`), deletes everything it sent and emits `sync.revoked { machine }`.
+- core/sync/scrub.js: a first-pass content scan for known secret shapes (Anthropic, OpenAI,
+  GitHub, Slack, AWS, Google, Stripe keys; PEM private keys) at ingest, before a file's final
+  rename. Never redacts (a transcript's meaning depends on its exact words): an unsafe file is
+  quarantined whole, under `synced/.quarantine/<machine>/`, for the person to look at.
+- core/link/box.js: `link_peers` gains `kind` ("mac", the default, or "device" — a peer paired
+  only to import its own sessions). `link.macs` and `link.macs.call` now filter to `kind = 'mac'`
+  — capability lives on the peer row, not a second identity path (e2e's review). `link.pair.
+  request` takes `kind`. New internal tool `link.peer-of { stableId }` so core/sync can turn a
+  connection's own tailnet node into the peer it is, without reaching into link's table itself.
+- core/daemon/index.js: a dedicated route, `POST /v1/sync/upload/<id>?offset=<n>`, reads the
+  request body as raw bytes (never JSON — a chunk is application/octet-stream) and calls
+  `sync.upload.chunk` with the Buffer. Refuses at once (403) when the connection carries no
+  tailnet peer identity — never reachable over the relay, from a guest, or from an agent's node.
+- core/link/transport.js: `connector().open`/`.json` accept a Buffer body as-is (octet-stream,
+  content-length from its byte length) instead of always JSON-stringifying, for whichever side
+  eventually sends a chunk this way (the device sender, `sync.send`, is not built yet — see
+  docs/work/federation.md).
+- Tests: 13 in core/sync (plan, start, chunk, finish, resume, cross-peer isolation, quota, unsafe
+  quarantine, an unsafe machine-name folder, consent-off and unpair both deleting and emitting
+  `sync.revoked`, and `link.macs`/`link.macs.call` never seeing a "device" peer), 4 for scrub.js.
+  Not yet built or tested: the device-side sender (`sync.send`), a real HTTP-level test of the
+  daemon's new route (only the tool logic is tested directly; the route itself is a small,
+  mechanical translation layer, reviewed by hand), and upload state surviving a box restart
+  (in-memory only, matching link.serve's own request-holding, which has the same limit).
+
+#### files.deliver's opt-in checks the value exactly, not merely truthily (e2e nit on aa9cb40c)
+
+- core/files/drop.js: `cfg.receive !== true` gates the Mac's receiver, not `!cfg.receive`, so a
+  config value that comes back as the string "false" cannot switch it on. New test in
+  drop.test.js tries several truthy-but-wrong values.
+
+#### threads.answer's Mac forward fails closed on an unreadable or unknown ask (e2e review of 0f2a8752)
+
+- core/link/mac.js `answer()`: if the Mac cannot read its own threads.asks, or the ask is not in
+  it, it refuses with "could not read this ask" rather than let `gatedAsk(null)` call it ungated
+  and accept an assertion with no fresh proof for what may be a gated ask (MEDIUM).
+- core/switchboard/index.js `gatedOnMac`: an ask the box does not know about (after a restart, or
+  a name it never saw) is treated as gated, not ungated, so the person is asked for a fresh proof
+  instead of getting a plain "refused" (LOW 1).
+- core/link/assert.js `Nonces`: takes an optional file (the Mac's `link-assert-nonces.json`,
+  0600) and persists what it sees there, best-effort, loaded back and pruned to what has not
+  expired on restart, so a Mac restart inside a used assertion's 60 s window still refuses a
+  replay (LOW 2).
+- test/federation-answer.test.js: two new tests, and the first test's "an ask the box never saw"
+  section updated for the new fail-closed error text and the LOW 1 gating.
+  core/link/assert.test.js: a new test for persisted nonces surviving a restart.
+
+#### files.deliver: the box sends a file to a paired Mac with Taildrop (ADR 0021, "Mac and box as one")
+
+- core/files/drop.js: the reverse of files.send. The box names one paired Mac (mac: its id or
+  name), looks up its tailnet peer id from link.macs (stableId, not its name, which can be
+  reused), and hands the file to `tailscale file cp` the same way the Mac already does for the
+  box.
+- A Mac's own receiver for what the box delivers is off by default: config files.receive turns
+  it on. Without it, pairing never changes what Tailscale's own file flow does on a Mac — no
+  `tailscale file get --loop` runs, and every device's Taildrop keeps working exactly as before
+  (e2e review of 0c645473, MEDIUM). On, it lands in `~/Vyre/inbox` (or config files.inbox), and
+  is announced with files.received, unchanged.
+- files.deliver's callers drop "module": no first-party module needs to push box files onto a
+  Mac, and it stays the person's own choice each time (e2e review of 0c645473, LOW).
+- core/link/box.js: `link.macs` gains `stableId` (the Mac's tailnet peer id), additive; `node`
+  keeps meaning the paired name shown to surfaces.
+- core/files/module.json: files.deliver in "does", two teaching tips (files.deliver, files.receive).
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at
@@ -595,7 +869,31 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `safari-csv` kept as an alias. `vyre vault import <file>` previews, then imports with the token;
   `--preview` stops after the preview and `--update-conflicts` takes the file's passwords. The
   import result adds `updated`, `same`, `conflicts` and `renamed`, and keeps `duplicate`. Audit rows
-  carry counts only (ADR 0028, decision 1).
+  carry counts only (ADR 0028, decision 1).#### The box lists the Macs' open asks
+
+- `threads.asks` on a box, for the person, merges each paired Mac's open asks (a new link read,
+  `threads.asks` in ALLOW), labelled `source` and `machine`, oldest first; `machines: "local"`
+  keeps the box's own. Each Mac row's `presence.required` is the box's rule (a gated ask needs a
+  fresh proof), and listing teaches the box which asks are gated. A surface that reconnects has
+  one list to reconcile from. Agents, MCP and modules get the box's own list.
+
+#### The person answers a Mac session's ask from the box (ADR 0021 v2, ADR 0030 step 7)
+
+- core/link: the box signs the person's answer to a paired Mac's ask with its own Ed25519 key
+  (made on first need, 0600 in its home), bound to that Mac, that ask and that exact answer, for
+  60 s and one use. The Mac pins the key at pairing, or once over the pinned channel if it paired
+  before, and checks every part before `threads.answer` runs as `link:box`; anything else is
+  refused with `denied`. `threads.answer` joins the link's WRITE list. Every Mac ask
+  (`ask.raised`, `ask.answered`) now reaches the box's bus labelled `source: "mac"`, `machine`,
+  `node`.
+- core/switchboard: `threads.answer` on a box forwards an ask the box does not have to the Mac
+  that raised it, for the person's own callers only; it takes `machine` and lists `link:box`.
+- core/learn ignores a Mac's relayed answers on the box. core/daemon: a socket client can no
+  longer claim a `link:` caller label.
+- An owner device answers a Mac's ask only in a person session (`person_session_required`), and
+  an ask that approves a floor tool (vault, gate approval, pairing, ...) needs a fresh proof of
+  presence on the box (`presence_required`), which the Mac checks again from its own ask. The
+  assertion carries the person session and the proof's method.
 ## 0.1.0
 
 The first release, previewed as 0.1.0-rc.1. Everything below landed before it.

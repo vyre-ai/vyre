@@ -27,7 +27,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`computers`](#computers) | `core/computers` | `box` | 23 | 15 | cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
-| [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
+| [`files`](#files) | `core/files` | `box`, `local` | 19 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 10 | 6 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
@@ -37,7 +37,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`import`](#import) | `core/import` | `box`, `local` | 6 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
-| [`link`](#link) | `core/link` | `box`, `local` | 21 | 14 | capsule, cli, deck |
+| [`link`](#link) | `core/link` | `box`, `local` | 23 | 16 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 29 | 13 | capsule, cli, deck |
@@ -46,7 +46,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 6 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 11 | 6 | capsule, cli, deck |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 11 | 5 | cli |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 15 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 11 | 4 | cli |
 | [`relay`](#relay) | `core/relay` | `box` | 13 | 5 | capsule, cli, deck |
@@ -58,6 +58,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
+| [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 9 | 5 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
@@ -186,10 +187,10 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [17](tools.md#files)
+- Tools: [19](tools.md#files)
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
-- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## gate
 
@@ -297,8 +298,8 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/link`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [21](tools.md#link), 2 of them only for other modules
-- Emits: [14 events](events.md#link)
+- Tools: [23](tools.md#link), 4 of them only for other modules
+- Emits: [16 events](events.md#link)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -393,7 +394,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/projects`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [11](tools.md#projects)
+- Tools: [15](tools.md#projects)
 - Emits: [5 events](events.md#projects)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -522,6 +523,18 @@ Predictive text for every surface: names after @, commands after /, entities, ac
 - Tools: [3](tools.md#suggest), 1 of them only for other modules
 - Emits: [1 events](events.md#suggest)
 - Shows on: cli
+
+## sync
+
+A paired device (a Mac or a Windows PC) sends its own Claude Code session files to the box, once its person turns import on for it (ADR 0008 5a).
+
+- Folder: `core/sync`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: `link`
+- Tools: [10](tools.md#sync)
+- Emits: [5 events](events.md#sync)
+- Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
 
 ## system
 

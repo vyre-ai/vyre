@@ -50,8 +50,8 @@ to ask it anything, and a new box showed "0 sessions" to a person whose whole hi
   timeout. The box's own rows never wait on it.
 - A Mac that drops off while holding its request looks online for up to the 60 s hold. A read in
   that window answers `timeout`, not `mac_offline`.
-- Sending to a Mac thread is the one write (below). Answering its permission questions, taking
-  or releasing its keyboard, starting or stopping it from the box are not in this version.
+- Sending to a Mac thread and answering its asks are the two writes (below). Taking or releasing
+  its keyboard, starting or stopping it from the box are not in this version.
 
 ## Sending to a Mac session
 
@@ -97,8 +97,8 @@ phone.
    the follow goes on. Each send starts or extends the follow. No listener or timer runs while
    nothing is followed. A batch the box does not take is dropped, never retried: the Deck can
    read the thread again with `recall.thread`.
-6. **Not forwarded in v1:** `threads.answer` (permission questions are answered on the Mac;
-   the Deck says "Answer it on <mac>"),
+6. **Not forwarded in v1:** `threads.answer` (answered on the Mac in v1, the Deck saying "Answer
+   it on <mac>"; forwarded since v2, below),
    `threads.lease` and `threads.release` (the box cannot hold a Mac's lease; the send takes the
    Mac's lease for `box:<surface>` as any send does), and every other thread tool.
 7. **Offline is an answer.** A Mac that is not polling makes `threads.send` fail at once with
@@ -108,23 +108,92 @@ phone.
 **Trust.** The Mac trusts its paired box's `as: "person"`, because on the box only the
 switchboard's person rule produces it, and `link.macs.call` is internal (modules only). A box
 that was taken over could claim it; what it gains is typing into the Mac's sessions as the owner
-would from the Deck, the same reach the owner's Deck already has. It still cannot answer a
-permission question, run any other write, or read beyond the allowlist, because the Mac checks
-those itself.
+would from the Deck, the same reach the owner's Deck already has. It still cannot run any other
+write or read beyond the allowlist, because the Mac checks those itself, and an answer to a
+permission question needs the box's signed assertion as well (v2).
 
-**v2: answering a Mac's permission question from the box** (recorded, not built). A permission
-answer needs presence, and the Mac cannot see a passkey pressed on the box. So the box verifies
-presence itself, then sends a presence assertion signed by the paired box's key, bound to the
-one ask (its id, the thread, the decision) with a short expiry. The Mac checks the signature
-against the key it pinned at pairing and accepts the assertion for `threads.answer` on that ask
-only: never for another tool, another ask, or a second use. Until then v1 ships the Deck line
-"Answer it on <mac>".
+## v2: answering a Mac's permission question from the box
+
+Built 27 Sep 2026 (ADR 0030 step 7), so the person answers a Mac session's ask from the Deck and
+the phone.
+
+1. **The box's key.** The box keeps an Ed25519 key, made on first need and stored at 0600 in its
+   home (`link-assert-key.json`, `core/link/assert.js`). `link.pair.poll` hands the public half to
+   the Mac with the pairing key (`box.assertKey`), with the Mac's own node as the box sees it
+   (`you.stableId`), and the Mac saves both in its `link.json`. A Mac paired before v2 takes them
+   once from `link.hello`, over the channel it already pinned to the box's node (trust on first
+   use of that pin). A pinned key is never replaced: a box with a new key means pairing again.
+2. **The Mac's asks reach the box.** While paired, the Mac forwards every `ask.raised` and
+   `ask.answered` (its decision is `cancelled` when an ask closed unanswered) for all of its
+   threads, not only the ones the box sent to: the point is that the phone sees every ask, and
+   asks are few. They ride the same `link.events` batches (a listener, no timer). The box
+   re-emits them with `source: "mac"`, `machine` (the Mac's name, as listings label rows) and
+   `node` (its stableId), the thread in the envelope and no project, and remembers which Mac
+   each open ask is on (memory only, at most 500, for a day at most).
+3. **The forward.** `threads.answer` on the box, for an ask the box does not have, goes to the
+   Mac that raised it, only for the person's own callers (the same rule as `threads.send`:
+   `wantsMacs`; an agent, MCP, a guest and a module never forward, and a call traced to a session
+   never does). The ask names its Mac; `machine` names one when the box has not seen the ask
+   (after a box restart). An ask no Mac raised and no `machine` goes nowhere, and the box answers
+   as before (`no ask <id>`). The box signs, for that Mac alone, A = `{ v: 1, tool:
+   "threads.answer", mac: <the Mac's stableId>, ask, thread?, decision: <sha256 base64url of the
+   canonical JSON of the exact input sent>, caller, device: <the calling device's stableId or
+   null>, person: <the person session's id, or null for a socket caller>, presence: <the proof's
+   method, or null>, iat, exp: iat + 60 s, nonce: <16 random bytes> }`, and sends it with the
+   write, `as: "person"`.
+3a. **The person, and gated asks** (the lead's conditions, 27 Sep 2026). An owner device over the
+   tailnet or the relay (`tailnet:<login>`, not `tailnet:agent:*`, or `device:<id>`) forwards an
+   answer only inside a person session (`meta.person`, ADR 0032); without one the box refuses
+   with `person_session_required` and signs and sends nothing. This is defence in depth: the
+   registry's own person-session rule is on work/e2e, not yet here. The socket's callers (the
+   Deck, the terminal, the Capsule) are the person already. An ask is **gated** when allowing it
+   approves a floor tool that needs a fresh proof (`gatedAsk` in core/modules/federate.js): its
+   `tool` is a HUMAN_ONLY name, or `mcp__vyre__<name>` or `mcp__plugin_vyre_vyre__<name>` with
+   the name spelled as Vyre's MCP server spells it (each character outside `[A-Za-z0-9_-]` as
+   `_`), exactly; or the ask says `presence.required: true`. On the box `threads.answer` carries
+   a presence rule that asks only for an answer bound for a Mac that is gated, or for an ask the
+   box never saw that names a `machine` (it could approve anything, so it fails closed); the
+   registry verifies the proof, and the forward refuses with `presence_required` when there is
+   none or it is a presence session. Every other answer asks nothing (the no-nag rule). On the
+   Mac, the Mac looks up its own ask; for a gated one it refuses an assertion whose `presence` is
+   null or `session`, however good its signature. The answer comes back unchanged plus `source: "mac"` and `machine`. It is never
+   retried: "no ask" or "cancelled" from the Mac is final, and a retry would need a new nonce.
+4. **The Mac's checks.** `threads.answer` is in `WRITE` at both ends. Before it runs as
+   `link:box`, the Mac checks the signature against the pinned key, `tool` is `threads.answer`,
+   `mac` is its own node, `ask` is the input's, the hash matches the input exactly, now is before
+   `exp`, `iat` is at most 60 s ahead, the life is at most 60 s, the nonce is unseen (kept in
+   memory until its `exp`, so for the whole window, at most 1000; past that, answers are refused
+   rather than a nonce forgotten early), and a gated ask carries a fresh proof (3a). Any failure answers `denied` with the reason, and `threads.answer` never
+   runs. The assertion is read for `threads.answer` only: `threads.send` keeps its own rule.
+   `threads.answer` lists `link:box` among its callers, and a socket client can no longer claim
+   a `link:` label (core/daemon), so only the link reaches it that way.
+5. **No follow.** The Mac's `write()` follows the `thread` of its input, and an answer names
+   none, so an answer follows nothing. The ask's end reaches the box through (2); what the
+   session says next reaches the box only if the box is following that thread for a send.
+
+**Trust.** The key proves the answer came from the paired box, for that ask, that answer and
+that Mac, once, within a minute. For most asks it does not prove that a person pressed anything:
+on the box, only the switchboard's person rule (the Deck, the terminal, the Capsule, the owner's
+devices in a person session) makes the call, as for `threads.send`, and answering takes no
+presence proof (ADR 0024, "No nagging"). A gated ask is the exception: the box signs the proof's
+method, and the Mac refuses without a fresh one. A box that was taken over could sign answers, the same reach the
+owner's Deck on the box already has. A captured assertion is no use on another Mac, another
+ask, another answer, a second time or after a minute.
+
+**Fixed (v2, e2e review, LOW 2):** seen nonces are persisted to the Mac's home
+(`link-assert-nonces.json`, 0600, best-effort write), not kept in memory alone, so a Mac that
+restarts inside a used assertion's 60 s window still remembers it saw that nonce and refuses a
+replay. Loading prunes what has already expired by the Mac's own clock. A write that fails (a
+full disk, say) never blocks the answer; that one restart's window is the only one it could
+widen, and only for a captured assertion bound to one Mac, one ask and the exact answer hash.
 
 ## Consequences
 
 - A paired Mac keeps one held request open to the box: one request a minute while idle.
 - A send to a Mac thread costs the Mac at most four link.events calls a second while its answer
   streams, and nothing once it has finished.
+- Every ask on a paired Mac costs two small events to the box (raised, then answered or
+  cancelled), batched with the rest; an answer from the box is one link request.
 - The box's reads can take up to 5 s longer when a Mac is slow, never longer.
 - Onboarding's history step counts the Mac's sessions, held for 30 s and keyed on the Macs'
   online state, so its 2 s poll asks the Mac at most twice a minute.
