@@ -34,6 +34,29 @@ person's button to Places. Drawn on almost every board; see "Agents and their co
 Agents, teammates (kit, design) and places get tiles; only the person gets a circle. There are no photos, and no
 colour per agent or person.
 
+**Teammates specifically** (ADR 0031, `docs/work/teammates.md` section 3, decided with teammates
+and chat 2026-09-28): a teammate's tile is the same neutral agent tile as any other agent, initial
+lower case, `--hover` fill, no per-teammate hue. Considered and turned down: a role-hashed accent
+colour (a coloured disc, a 3 px left border on bubbles, a coloured dot in rows). `docs/design/
+one-app/README.md`'s System section already draws this line for the whole product: "lime for
+action, focus, running and selection, violet for needs you (teal the one alternative). No other
+hue. Devices and hosts never get a colour." A teammate is exactly this kind of entity, not a
+person, and giving each one its own hue would be the first crack in a rule that's held since
+Design A: reads well on day one with three teammates, badly once a project has eight. The name
+next to the tile is already how kit and juno are told apart today; a teammate needs nothing more.
+Distinct-in-chat instead comes from the author line itself (turn.md) plus the handoff card
+(tool-row.md, "Handoff" variant): a session asking a teammate is its own visible row, named by the
+teammate's role, not a colour to memorize.
+
+**One narrow exception: the CLI.** `vyre team list` and `vyre team` output <!-- terms: ignore -->
+may colour a teammate's name with a role-hashed ANSI 256 colour, the way `git log --graph` colours
+branches: text-only,
+degrades to plain text under `NO_COLOR`, chosen from a fixed set of about 8 pre-picked, AA-tested
+hues (never an arbitrary hash-to-hue) so a hash never lands near lime (`2` in the xterm 256 sense)
+or violet, which would misread as a status signal in a terminal. This stays a CLI-only convention;
+it does not leak into the Deck, the App or the Capsule, where the rule above holds without
+exception.
+
 ## Variants
 
 | Variant | Shape | Content |

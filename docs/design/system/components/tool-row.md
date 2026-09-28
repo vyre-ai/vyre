@@ -44,6 +44,18 @@ with "Show all".
 - **Plain** (one call), **folded run**, **running**, **failed**, **opened**.
 - **Shell line** you ran with `!`: verb "Shell", meta "you · 0.2 s", then one line under the block:
   "Ran in ~/work/harlow-legal. kit sees the output on its next turn."
+- **Handoff** (a session calling `team_ask` or `@role`, ADR 0031/teammates): the sub-agent icon
+  (already in the set above), verb "Asked" while it waits, "Replied" once it lands, summary is the
+  teammate's role name in `--text` (not mono, it's a name, not a path or command): "Asked design to
+  make the intake form calmer." Folded and collapsed by default, exactly like any other tool row;
+  opens to the reply. The one difference from every other row: the detail block is not code or a
+  diff, so it does not sit on `--code-bg` in mono. It renders as plain turn prose (turn.md's Prose
+  spec, read size, `--text`), because a teammate's reply is words, not a tool's output. No colour
+  change to the row, the icon or the detail on account of which teammate answered: identity here is
+  the same author-line pattern (avatar tile plus name) any agent thread already uses, not a new
+  per-teammate hue (see avatar.md, "no colour per agent"). Right meta while waiting: nothing (no
+  elapsed timer; a teammate's own pace is its business, not a thing to watch tick up). Failed
+  (refused, timed out): crossed circle, meta "no answer", same as any other failed row.
 
 ## Sizes
 
