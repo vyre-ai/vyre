@@ -86,6 +86,23 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, latest: two more items from the lead. First, extracted relay's key access into
+`core/relay/keys.js` (3ab44de2) — loadKeys(root) unchanged in behavior, just its own file, so
+moving where the box's Noise/route keys live (vyre-core's `_vyre` service user, ADR 0040) is a
+swap of this one file, never a rewrite of relay's pairing logic. Second, and bigger: built
+`relay.join` (93754fa2), the redemption side reviewer wanted to see — a fresh Vyre install
+becoming a device of another box, over the relay, with a one-time pairing code. New
+`relay/client/nodecrypto.js`: a Node-native CryptoProvider for `relay/client/*` (the SAME
+cross-platform library the Expo app uses, so this is not a second protocol implementation), since
+Node's own `globalThis.crypto.subtle` makes non-extractable keys that cannot survive a CLI's next
+process, and `@noble` is the Expo app's own dependency, never this repo's. New `core/relay/redeem.js`
+(a plain function) and the tool `relay.join`: takes a pairing URL, runs the handshake, persists this
+device's key so its identity survives a restart, refuses guest/agent/hook/anonymous the same as
+relay's own owner(). Does not keep a connection open afterward — that is `connect()`'s job, not
+built yet. Tested end to end: two real daemons, a real local relay server, the box mints a code
+with `relay.pair.first`, the device redeems it with `relay.join`, the box's own device list shows
+it, a second redemption from the same root reuses the same device id. Testbox: 59/59.
+
 28 Sep 2026, still later still: reviewer OK'd the Solo-join shape with 4 conditions; anywhere OK'd
 widening relay's roles (theirs is landing onboard's own roles change separately). Built (2a02f4d8):
 relay/module.json roles -> `["box","local"]`, no code change (audited start(): startLink() only
