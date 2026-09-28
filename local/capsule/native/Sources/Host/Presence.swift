@@ -209,6 +209,11 @@ public final class CapsulePresence {
         guard let key = enrolled else { return .failure(VyredFailure("The Capsule's key is not enrolled.")) }
         let context = makeContext()
         context.localizedCancelTitle = "Not now"
+        // The reviewer's nit on a4e3e171: one Touch ID must never be usable for a third signature.
+        // Every signing use of this context (the main header, and the re-enroll branch's own
+        // best-effort presence.remove header) happens synchronously below, before this function
+        // returns, so invalidating here on every exit closes the window right after.
+        defer { context.invalidate() }
         let words = summary ?? Self.defaultSummary(tool, input)
         let a = PresenceAsk(tool: tool, summary: words, context: context)
         guard let ask, await ask(a) else { return .failure(VyredFailure("Not approved. Nothing was done.")) }
