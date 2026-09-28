@@ -34,11 +34,20 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
   regenerated). Then moved core/team's git calls onto lib/git-safe.js's gitAsync at 4ddd9bbd — see
   "Changed contracts". work/projects (e87f63df, the shared project-id slug regex) is not on main
   yet, so step 4 of the resume brief (switching to it) is still open.
-- Slice B (compare-and-swap merge, `team.merge`) is still the WIP draft from 88420c64, now sitting
-  on top of 4ddd9bbd: 4 tests still fail (`team.merge` and the automatic integrator-merge path),
-  same 4 before and after every fix above (confirmed against the baseline wip commit), so they are
-  pre-existing bugs in the draft itself, not caused by the tag-hijack fix or the git-safe move.
-  Not yet debugged; next up.
+- Slice B (compare-and-swap merge, `team.merge`) **finished at 68a1b890**: all 4 pre-existing
+  failures were real bugs in the draft, never run before this resume. `resetTo()` used
+  `--end-of-options` on `git reset`, which refuses that flag outright whatever position it's
+  given (unlike every other parse-options command in the file) — dropped it there; safe anyway
+  since the sha always comes from `headSha()`'s own `--verify`. `mergeBranchIn()` had no `--no-ff`,
+  so the common case (a teammate's branch with nothing new from main since it forked) silently
+  fast-forwarded with no merge commit at all — both the result message and what `team.merge`
+  checks in afterward were fiction. One test itself raced `pump()`'s "running" state (set the
+  instant a request is picked up) against the actual launch (a beat later, after the reset/merge/
+  test-command work) — wrapped in `until()`. 36/36 green, stable over 3 repeats on testbox;
+  boundaries 10/10, safe-git 5/5, docs:ref up to date. Compare-and-swap is against a `main_sha`
+  vyred records itself on the integrator's own row (`attemptMerge`/`finalizeMerge` in index.js),
+  never a fresh read of the ref at swap time — a moved ref (the person's own push, or a teammate's
+  Bash) is caught and resynced, not overwritten, per the resume brief's step 5.
 
 ## Where ADR 0031 stands
 - Built (step 1, a876e5e4): `core/team` (roles box, local; requires threads, projects, sessions).
