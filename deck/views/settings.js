@@ -25,7 +25,7 @@ import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
 import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, mergeEvent, destinationName, forgetGate } from "../js/server-rows.js";
 import { canRelayJoin } from "../js/join-caps.js";
-import { ticketRingSvg, ticketPhase, countdown, playDance } from "../js/phone-code.js";
+import { ticketRingSvg, ticketPhase, countdown, playDance, idleAvatarSvg } from "../js/phone-code.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -612,12 +612,17 @@ function winkCard(status, ctx) {
     if (!ctx.alive() || forId !== ticketId) return;
     ringEl.innerHTML = svg;
   };
+  let expiredDrawn = false;
   const tick = () => {
     if (!ctx.alive()) return;
     const { phase, msLeft } = ticketPhase(mintedAt, ttlMs);
     ringEl.classList.toggle("shimmer", phase === "live" && !calm());
     ringEl.classList.toggle("expiring", phase === "expiring");
     ringEl.classList.toggle("expired", phase === "expired");
+    // Swap the spent ticket's ring for the plain avatar once, not on every tick (the lead,
+    // 28 Sep: never go on displaying an already-expired ticket's bits).
+    if (phase === "expired" && !expiredDrawn) { expiredDrawn = true; ringEl.innerHTML = idleAvatarSvg({ size: 280 }); }
+    else if (phase !== "expired") expiredDrawn = false;
     put(meta, phase === "expired"
       ? [h("p", { class: "small muted" }, "This code expired."), refreshBtn]
       : h("p", { class: "small muted" }, `Expires in ${countdown(msLeft)}`));

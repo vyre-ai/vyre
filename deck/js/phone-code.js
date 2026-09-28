@@ -8,33 +8,77 @@
 // everything in this file is launch's own.
 //
 // tailnet's relay.pair.ticket is built (work/tailnet 2990a810, sent to their reviewer): mint {}
-// -> {ticket, expiresAt, connected}. Callers (deck/onboard/onboard.js, deck/views/settings.js)
-// pass its `ticket` string straight through as `ticketId` here. Open question, asked, not yet
-// answered: `ticketLevels` still runs `ticket` through `fingerprint8` (a one-way hash) rather
-// than encoding its raw bytes directly — fine for a permanent public identifier (this module's
-// original use), but if phone.vyre.run's decoder needs to recover the literal ticket to redeem
-// it, a hash can't be reversed back into one. Flagged so this isn't mistaken for a finished,
-// redeemable pairing until that's confirmed either way.
-import { fingerprint8, buildCodeword, bytesToBits } from "../vendor/vyrecode/payload.js";
+// -> {ticket, expiresAt, connected}, `ticket` a base64url encoding of TICKET_BYTES=8 random
+// bytes (core/relay/wire.js on work/tailnet). Per the lead (28 Sep), while Wink pairing is on
+// screen the ring encodes those RAW ticket bytes directly, not a hash of them: the phone decodes
+// the same 8 bytes and derives the pairing from them (pwa's deck/vyrecode/payload.js). This is
+// why `ticketLevels` no longer calls `fingerprint8` for a ticket — that one-way hash belongs only
+// on a permanent identity avatar outside pairing (not built here), never on the pairing ring
+// itself, since a hash can't be reversed back into the literal ticket the phone needs to redeem.
+// Security (the lead): treat the ticket as a secret — never logged, never put in a URL, never in
+// the DOM as text or a data attribute. Only the drawn SVG (ticksSunburst's tick lengths/marker
+// dots) carries it; callers must stop drawing it (swap back to the placeholder/idle state) once
+// it expires or a phone redeems it, not go on re-rendering an already-spent or stale ticket.
+import { buildCodeword, bytesToBits } from "../vendor/vyrecode/payload.js";
 import { renderCode2, bitsToLevels } from "../vendor/vyrecode/vyrecode2.js";
+import { userAvatar } from "../vendor/vyrecode/identity.js";
 
-/** The 72-level payload for one ticket id, ready for renderCode2. @param {string} ticketId @returns {Promise<number[]>} */
-export async function ticketLevels(ticketId) {
-  const id8 = await fingerprint8(String(ticketId));
-  const codeword = buildCodeword(id8);
+/** A relay.pair.ticket `ticket` string (base64url) to its 8 raw bytes. Any string that doesn't
+ * decode to exactly 8 bytes (a placeholder, or a still-mismatched real shape) is coerced by
+ * truncating or zero-padding rather than throwing: this ring is never itself the redemption path
+ * (the phone still resolves the offer through the relay), so a malformed input degrades to "a
+ * ring that draws but won't scan," never a crash. @param {string} s @returns {number[]} */
+function ticketToBytes(s) {
+  try {
+    const b64 = String(s).replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+    const bin = atob(b64 + pad);
+    const bytes = Array.from(bin, c => c.charCodeAt(0) & 0xFF);
+    if (bytes.length === 8) return bytes;
+    return Array.from({ length: 8 }, (_, i) => bytes[i] ?? 0);
+  } catch {
+    return Array.from({ length: 8 }, (_, i) => s.charCodeAt(i % s.length) & 0xFF);
+  }
+}
+
+/** The 72-level payload for one ticket, ready for renderCode2. @param {string} ticket @returns {number[]} */
+export function ticketLevels(ticket) {
+  const codeword = buildCodeword(ticketToBytes(ticket));
   return bitsToLevels(bytesToBits(codeword));
 }
 
 /**
  * The ring's SVG markup for one ticket. `userOption`/`theme` match the person's own avatar so the
  * ring reads as "the same identity," per the ADR's "same hand" rule.
- * @param {string} ticketId
+ * @param {string} ticket
  * @param {{ userOption?: number, theme?: "dark"|"light", size?: number }} [opts]
- * @returns {Promise<string>}
+ * @returns {string}
  */
-export async function ticketRingSvg(ticketId, { userOption = 0, theme = "dark", size = 280 } = {}) {
-  const levels = await ticketLevels(ticketId);
+export function ticketRingSvg(ticket, { userOption = 0, theme = "dark", size = 280 } = {}) {
+  const levels = ticketLevels(ticket);
   return renderCode2(levels, { userOption, style: "ticksSunburst", theme, size });
+}
+
+/**
+ * The plain avatar, no ring: what a caller shows once a ticket expires or is redeemed, in place
+ * of going on displaying its now-spent bits (the lead, 28 Sep — "swap back to the identity").
+ * Same `userOption` as the ring it replaces, so the face doesn't visibly change, only the ticks
+ * around it disappear. Centred and padded to `size` so it drops into the same ring-shaped slot.
+ * @param {{ userOption?: number, size?: number }} [opts]
+ * @returns {string}
+ */
+export function idleAvatarSvg({ userOption = 0, size = 280 } = {}) {
+  const d = Math.round(size * 0.6); // matches the ring's own FACE_D:CENTER*2 ratio (360:600)
+  const face = userAvatar(userOption, d);
+  // Same viewBox-aware scaling renderCode2 does for the ring's own face (userAvatar always draws
+  // into its native 0 0 120 120 regardless of the width/height passed to it).
+  const faceViewBox = /viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/.exec(face);
+  const faceNativeW = faceViewBox ? parseFloat(faceViewBox[1]) : d;
+  const scale = d / faceNativeW;
+  const inset = (size - d) / 2;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+    <g transform="translate(${inset}, ${inset}) scale(${scale})">${face.replace(/<svg[^>]*>|<\/svg>/g, "")}</g>
+  </svg>`;
 }
 
 /**

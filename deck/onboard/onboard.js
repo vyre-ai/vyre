@@ -11,7 +11,7 @@ import { pairRequests } from "../js/pair.js";
 import qrcode from "../vendor/qrcode.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { canRelayJoin } from "../js/join-caps.js";
-import { ticketRingSvg, ticketPhase, countdown, playDance } from "../js/phone-code.js";
+import { ticketRingSvg, ticketPhase, countdown, playDance, idleAvatarSvg } from "../js/phone-code.js";
 
 // Reconciled with docs/design/onboarding-v2.md's 10-step table (the lead, 29 Sep): this array's
 // order now matches it exactly, with two client screens standing in for the doc's single step 2
@@ -1280,11 +1280,16 @@ const SCREENS = {
         if (forId !== ticketId) return; // superseded by a later mint mid-flight (a fast double-click on Refresh)
         ringEl.innerHTML = svg;
       };
+      let expiredDrawn = false;
       const tick = () => {
         const { phase, msLeft } = ticketPhase(mintedAt, ttlMs);
         ringEl.classList.toggle("shimmer", phase === "live" && !calm());
         ringEl.classList.toggle("expiring", phase === "expiring");
         ringEl.classList.toggle("expired", phase === "expired");
+        // Swap the spent ticket's ring for the plain avatar once, not on every tick (the lead,
+        // 28 Sep: never go on displaying an already-expired ticket's bits).
+        if (phase === "expired" && !expiredDrawn) { expiredDrawn = true; ringEl.innerHTML = idleAvatarSvg({ size: 280 }); }
+        else if (phase !== "expired") expiredDrawn = false;
         put(meta, phase === "expired"
           ? [h("p", { class: "small muted" }, "This code expired."), refreshBtn]
           : h("p", { class: "small muted" }, `Expires in ${countdown(msLeft)}`));
