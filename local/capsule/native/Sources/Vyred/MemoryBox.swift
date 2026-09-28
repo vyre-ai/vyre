@@ -23,6 +23,8 @@ public struct MemoryAnswer: Sendable, Equatable {
     /// How many conversations back the answer, when memory counts them (memory.answer); else the
     /// sessions among `sources`.
     public var conversations: Int?
+    /// From memory.ask (Vyre IQ): the chip says its confidence (IQAnswer.chip).
+    public var iq = false
     public var conversationCount: Int { conversations ?? Set(sources.map(\.session)).count }
     public init(text: String, answer: String? = nil, answerKind: Kind? = nil, answerAge: String? = nil, confidence: Double? = nil,
                 more: [String] = [], sources: [MemorySource] = [], ms: Double = 0, error: String? = nil) {

@@ -163,3 +163,23 @@ test("a build folder others can read is refused", { skip: process.platform !== "
   fs.chmodSync(out, 0o755);
   await assert.rejects(new Helper({ name: "clip", dir: out, swiftc: "/usr/bin/true" }).ensure(), /not a private folder/);
 });
+
+test("a private pasteboard never falls back to pbcopy, so the real clipboard is untouched", async t => {
+  const dir = tmp(t);
+  // A fake pbcopy that records anything written: it must stay empty.
+  const bin = path.join(dir, "bin");
+  fs.mkdirSync(bin);
+  const log = path.join(dir, "pbcopy.log");
+  fs.writeFileSync(path.join(bin, "pbcopy"), `#!/bin/sh\ncat >> ${JSON.stringify(log)}\n`, { mode: 0o755 });
+  const clip = new Clipboard({ helper: null, platform: "darwin", pasteboard: "vyre-test-private", env: { ...process.env, PATH: bin + ":" + process.env.PATH }, timers: timers() });
+  const v = canary();
+  await assert.rejects(clip.copy(v), e => /private pasteboard needs the clipboard helper/.test(e.message) && !e.message.includes(v));
+  assert.ok(!fs.existsSync(log), "pbcopy was not run");
+});
+
+test("vault.clipboard.pasteboard is read from config, and only a plausible name", async () => {
+  const { privatePasteboard } = await import("./tools/surfaces.js");
+  assert.equal(privatePasteboard({ vault: { clipboard: { pasteboard: "vyre-demo" } } }), "vyre-demo");
+  assert.equal(privatePasteboard({ vault: { clipboard: { pasteboard: "bad name; rm" } } }), undefined);
+  assert.equal(privatePasteboard({}), undefined);
+});

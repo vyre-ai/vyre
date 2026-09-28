@@ -28,6 +28,7 @@ let routeSuite = Suite("route") { t in
         t.eq(Route.age(NOW - 4 * DAY, now: NOW), "4 days")
         t.eq(Route.age(NOW - DAY, now: NOW), "1 day")
         t.eq(Route.age(0, now: NOW), "")
+        t.eq(Route.age(1000, now: NOW), "", "a test's small number is no time, not 691 months")
     }
 
     t.test("an @ is being completed only while the caret is inside it") {

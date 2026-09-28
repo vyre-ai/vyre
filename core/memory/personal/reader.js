@@ -359,10 +359,25 @@ export function modelFor(config) {
   return String(m.memory || m.background || config?.memory?.model?.model || READER.model);
 }
 
+/** Keys that make Claude Code bill API dollars instead of the person's Claude plan. */
+export const API_BILLING_KEYS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"];
+
+/**
+ * The environment for a model call: the person's Claude login, never API dollars, unless
+ * config.memory.model.billing is "api".
+ * @param {NodeJS.ProcessEnv} env @param {string|undefined} billing
+ */
+export function modelEnv(env, billing) {
+  const out = { ...env, MAX_THINKING_TOKENS: "0" };
+  if (billing !== "api") for (const k of API_BILLING_KEYS) delete out[k];
+  return out;
+}
+
 /**
  * A runner that asks `claude -p` once: no tools, no MCP, no settings, no session kept (so nothing
  * lands in ~/.claude/projects for Recall to read back). Returns the answer and what it cost.
- * @param {{ bin?: string, cwd?: string, env?: NodeJS.ProcessEnv }} [o]
+ * billing: "api" keeps an API key in the environment; anything else runs on the Claude login.
+ * @param {{ bin?: string, cwd?: string, env?: NodeJS.ProcessEnv, billing?: () => string|undefined }} [o]
  * @returns {(r: { system: string, prompt: string, model: string, maxUsd: number }) => Promise<{ text: string, usd: number, tokens_in: number, tokens_out: number }>}
  */
 export function claudeOnce(o = {}) {
@@ -370,7 +385,7 @@ export function claudeOnce(o = {}) {
     const args = ["-p", "--model", model, "--output-format", "json", "--tools", "", "--strict-mcp-config", "--setting-sources", "",
       "--no-session-persistence", "--disable-slash-commands", "--system-prompt", system, "--max-budget-usd", String(Math.max(0.01, maxUsd))];
     // No extended thinking: on this job it spent 21k tokens and three minutes a batch for the same reads.
-    const env = { ...(o.env || process.env), MAX_THINKING_TOKENS: "0" };
+    const env = modelEnv(o.env || process.env, o.billing ? o.billing() : undefined);
     const p = spawn(o.bin || process.env.VYRE_CLAUDE_BIN || "claude", args, { cwd: o.cwd || process.cwd(), env, stdio: ["pipe", "pipe", "pipe"] });
     let out = "", err = "";
     const timer = setTimeout(() => { p.kill("SIGKILL"); reject(new Error("the model did not answer in time")); }, READER.timeoutMs);

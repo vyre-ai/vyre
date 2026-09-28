@@ -17,6 +17,18 @@ export async function ensureUp() {
   }
   const p = config.ensure();
   if (await ping(p.socket)) return { ok: true, started: false };
+  // In the box's container a supervisor owns vyred (the loop under the spawner, core/daemon/loop.sh)
+  // and brings it back 2 s after it exits. A `vyre` run with docker exec in that gap must not start
+  // a second vyred of its own: that one lacks the spawner, makes the loop's vyred exit "already
+  // running" until the loop gives up, and dies with the exec. Wait for the supervisor's instead.
+  if (process.env.VYRE_SUPERVISOR === "docker") {
+    const wait = Number(process.env.VYRE_UP_WAIT_MS) || 20_000;
+    for (let t = 0; t < wait; t += 200) {
+      await new Promise(r => setTimeout(r, 200));
+      if (await ping(p.socket)) return { ok: true, started: false };
+    }
+    return { ok: false, started: false, error: "vyred is not answering in its container: docker compose -p vyre logs vyre" };
+  }
   const log = path.join(p.logs, "vyred.out");
   const fd = fs.openSync(log, "a");
   const child = spawn(process.execPath, [path.join(REPO, "core", "daemon", "main.js")], {

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
-import { acquire } from "./lock.js";
+import { acquire, startOf } from "./lock.js";
 import { start } from "./index.js";
 import { socketPath } from "../config/index.js";
 
@@ -54,4 +54,22 @@ test("lock: another live vyre process holds it; a dead one, or one from before t
   assert.throws(() => acquire(root), /already running in this process/);
   r2();
   assert.equal(fs.existsSync(file), false);
+});
+
+test("lock: a pid another process reuses (a box container replaced, the same boot) does not hold it", t => {
+  const root = home(t);
+  const file = path.join(fs.realpathSync(root), "vyred.lock");
+  const boot = Math.round((Date.now() - os.uptime() * 1000) / 60_000);
+  const started = startOf(process.ppid);
+  assert.ok(started, "the kernel says when the parent started");
+  // The lock's vyred started at another time: this live pid is someone else now.
+  fs.writeFileSync(file, JSON.stringify({ pid: process.ppid, boot, started: `${started}0` }));
+  const r = acquire(root);
+  r();
+  // The process that took it, still running, holds it.
+  fs.writeFileSync(file, JSON.stringify({ pid: process.ppid, boot, started }));
+  if (/vyre/i.test(fs.existsSync(`/proc/${process.ppid}/cmdline`) ? fs.readFileSync(`/proc/${process.ppid}/cmdline`, "utf8") : process.cwd())) {
+    assert.throws(() => acquire(root), /already running \(pid/);
+  }
+  fs.rmSync(file, { force: true });
 });

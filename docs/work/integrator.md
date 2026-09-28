@@ -7,6 +7,101 @@ Branch: work/integrator · Worktree: ../vyre-integrator · Merges into main at .
 Own merges into main, one at a time, with targeted tests on the test box after each and a full suite on
 the test box when it matters. Keep the suite green on the test box (Linux, node 22, the box image's node).
 
+## State at restart (2026-09-28, ~00:50 UTC, usage-limit prep)
+
+**rc.2 (pre/rc):** head is `e0c578ad` (= a5eff01f's merge + the rc.2 version bump 0.1.0-rc.1 ->
+rc.2 applied directly to package.json/package-lock.json x2 + harness/.claude-plugin/plugin.json,
+since work/ci-rc 5b1c5b33 was stale against everything landed tonight). NOT pushed to main yet.
+
+- Full suite run 1 (fresh env, `npm test`): 4024 tests, 3931 pass, **0 fail**, 90 skipped, 3 todo.
+  BUT posttest tmp-guard failed: 8 leaked temp homes, 6 were live `vyred-present.js` processes
+  still running 19+ min after the suite finished (killed and cleaned by hand). AND both shellcheck
+  tests (test/box-update.test.js's two) were skipped ("shellcheck not installed"/"no shellcheck
+  here") even though /usr/bin/shellcheck 0.9.0 is on testbox's default PATH and both files pass
+  when run directly (`node --test test/box-update.test.js` finds and runs it). Root cause of the
+  skip-under-npm-test not found; team-lead's read is a sanitised PATH somewhere in the harness —
+  logged as a 0.1.1 task below, not an rc.2 blocker (lead's call, since CI's node job runs
+  shellcheck too and must be checked green on the pushed sha).
+- Full suite run 2 hung for real (not load): stuck on core/cli/commands/threads-sessions.test.js
+  for 11+ min, killed. Ran that file alone 3x with `timeout 120` on testbox: 18/18 pass every time,
+  ~30-33 s each. Conclusion: load contention (other teams' concurrent testbox runs), not an rc.2
+  bug. No need to loop in e2e on this.
+- Full suite run 3 (`--test-concurrency=4 --test-timeout=90000`, tmp-guard run by hand
+  before/after since bypassing the npm script wrapper) was killed mid-run for this restart-prep
+  window; log is at `/tmp/rc2-full3.log` on testbox but incomplete/no final summary. testbox is
+  clean now (no leaked homes, no orphaned vyred-present processes of mine; left another team's
+  own processes alone).
+
+- Full suite run 4 (2026-09-28 ~00:53-01:06 UTC, `--test-concurrency=4 --test-timeout=90000`,
+  tmp-guard by hand before/after, `nice -n 15`, backgrounded over ssh, logged to
+  `/tmp/rc2-full4.log` on testbox): confirmed 4 REAL failures team-lead spotted reading the log
+  live — `vyred cannot read which processes this call runs under, so this is refused` in
+  test/cli.test.js:51 (x2), test/projects-cli.test.js:199, test/upgrade.test.js:87 — the peer
+  check fails closed under load and refuses the real CLI — plus test/onboard.test.js timing out
+  at 90003ms. **Not a false hang/load artifact**; team-lead says don't push, e2e is fixing it off
+  pre/rc, land once reviewer clears, then rerun. The backgrounded ssh job itself then died
+  (exit 144, no OOM/dmesg/journal signal, no final `# tests` summary — the nohup'd child did not
+  survive the ssh session ending; use `setsid` or run under `tmux`/`screen` next time instead of
+  plain `nohup ... &` over a one-shot `ssh host 'cmd'`) before printing a final tally, so no
+  clean pass/fail/skip totals for this run. tmp-guard **after** ran clean (exit 0, no leaks).
+  Do not rerun until e2e's peer-check fix lands and the reviewer clears it.
+
+**Next for rc.2 (in order):**
+1. Rerun the full suite one more time (concurrency-limited is safer given other teams share the
+   box; check `uptime` first, hold if load is high) and get a clean 0-fail, 0-leak result.
+2. Confirm both shellcheck tests pass when run directly (already shown true above) — that alone
+   satisfies the lead's criterion 2, no further action needed unless they want it re-verified.
+3. Push `main` from pre/rc's `e0c578ad` (or later, if the rerun adds a fixup commit).
+4. Watch CI's node job (and box-image) on the pushed sha; confirm shellcheck is green there.
+5. Report sha + numbers to team-lead, then tell box-deploy to deploy. NO tag, NO release — user's
+   call only, via team-lead.
+
+**0.1.1 stage (`stage/0.1.1`, worktree `../vyre-stage-011`, pushed as `work/integrator-0.1.1`):**
+head `7f71b682`, built off main `4fd286d7` (pre-rc.2 safe-git). Contains, in order: projects
+`e87f63df`, cohesion agentClaim `1a8bf671`, memory-iq `c5cfd005`+`2ecf79ba`, connectors `b3bbec29`,
+launch `cc24ac19` (superseded — see below), box-deploy `2ce5150d`, plus a fix of my own:
+`core/vault/envfiles.js`'s `gitState()` called `execFileSync("git", ...)` directly, unguarded —
+converted to `lib/git-safe.js`'s `gitSync` (reviewer-cleared, testbox 359/359). **This stage still
+needs a rebase onto the post-rc.2 main** once rc.2 pushes (the lead's instruction: rc.2 first, then
+rebase stage/0.1.1 onto new main — the onboard casing fix disappears as a diff there since it's
+already in main).
+
+Cleared heads not yet folded into stage/0.1.1 (take exactly these, newest first supersedes):
+- launch: `a206ad6d` (supersedes `cc24ac19`, reviewer-2 cleared the chain)
+- native-core: `215bed2d` (reviewer-2 cleared)
+- teammates: `4d2defee` (supersedes `b720a002` and `work/teammates-a` entirely incl. `5dfa6b41`
+  and `60b42d3d` — land ONLY 4d2defee, nothing else from teammates)
+- federation: `85bc9ec5` (supersedes `87b2a243`; step-2 fix `63af8941` is HELD, migration-ordering
+  MEDIUM — do not take)
+- chat: `18980d2d` (sight strip/screen-still, reviewer-cleared, 1 LOW with chat) — reviewer also
+  cleared `d9d1cafb`'s core/transcripts half (strict base64 + 12 MB image budget) but its UI half
+  needs reviewer-2 too before taking that sha; `9fd902ac` and `62b254f4` are earlier/parallel chat
+  shas, check with reviewer-2 which head is actually current before landing chat
+- pwa: `082915b8` (open-redirect fix, cleared)
+- onboard via-staleness (0.1.1, NOT rc.2): `work/e2e-onboardvia-main` `7bf34043`, off main,
+  reviewer-cleared, cherry-pick of `cd376351`
+
+Held, do not take: teammates slice B alone (HIGH: vyred runs project tests as itself — but
+4d2defee/b720a002 already fold slice B in, cleared); glass-live (`a9d57668` cleared conditionally
+for a LATER 0.1.x train, gated on glass running `isolation.test.js` live on a throwaway stack
+first — not this stage); federation `63af8941`; teammates `work/teammates-a` (any sha) once
+`4d2defee` is taken instead; connectors/launch/box-deploy anything past the shas listed above
+unless a new clearance message says otherwise.
+
+## 0.1.1 task: test hygiene gaps found during rc.2's full suite (2026-09-28)
+
+Not an rc.2 blocker (lead's call). Two confirmed sources, `t.after` kills without waiting or
+removing the home:
+- `core/cli/screen/screen-live.test.js`: `t.after(() => { try { process.kill(up.pid, "SIGTERM"); }
+  catch {} });` — no wait, no rmSync of the tempHome-managed dir's leftover state.
+- `core/vault/login-keychain.test.js` (first test, ~line 64): `t.after(() => { try {
+  child.kill("SIGTERM"); } catch {} });` — same pattern.
+Compare `test/vault-cli-totp.test.js`'s `vyred()` helper, which does it right: SIGTERM, wait up to
+5 s for `child.exitCode`, then `fs.rmSync(h, { recursive: true, force: true })`. 4 more leaks in
+that 8-leak run are unexplained — only 2 call sites found via grep for `vyred-present`/`upPresent`;
+worth a broader audit of anything spawning a real vyred and killing it in `t.after` without
+waiting, next time someone has the cycles.
+
 ## Done (2026-09-27)
 
 - Baseline on the test box at bfbfd69: 1445 tests, 21 fail, all from the machine (node 22 has no
@@ -52,8 +147,28 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   list, onboard.css raw tokens, voice usage exit, plugin version, thread.status), 3 todo. Fixed in
   8ff0d6d5 + ac60d3c5; those files plus onboard, docs, hygiene and boundaries rerun green with
   tmp-guard before/after clean.
-- rc.2 queue: vault-next (HELD for e2e's sign-off on the send_mail takeover fix) + connectors
-  8be461a9, launch 4d3b808f, then ci bumps to rc.2.
+- rc.2 on pre/rc: e2e-surfaces 5a646023, launch 4d3b808f, hotfix a3a844e4, e2e-agentclaim 1ff45c03,
+  cohesion 4b9c0c0d (targeted 144/0). cl.py now checks headings across the whole CHANGELOG.
+- rc.2 also: memory-iq 4ff57bb6, pack fix 607fcca0. capsule-pro 4022d388 merged; launch bb2ef63e merged;
+  vault f3d39f3f + 17dd7a05 and connectors 8be461a9 merged Six edges frozen as 0.1.1 debt
+  (lead OK, 30416e64 + boundaries.md), Capsule IQ model names in the drift list. Waiting only on glass-live.
+- memory-iq aaf4fcb5 merged (9cac53a0). main's two node reds fixed (09f5e02a).
+- e2e-peerfix a8eee5dc (072fab3d) + follow-up ae9c6cdc (a007577f, reviewer cleared; testbox 92/92).
+- rc.2 BLOCKER: e2e's lib/git-safe.js fix (vault's gitState/gitWarnings run a planted core.fsmonitor as
+  vyred's uid), built on pre/rc, reviewer-cleared. Also a main hotfix, with glass's docker-api hotfix if
+  they are ready near the same time (fast-forward, targeted run, box-deploy redeploys after a backup).
+- Hotfix shas so far: glass 0f17b106 (on 779cc852, adds /var/lib/vyre-secrets; e2e passes a real stack), waiting
+  for the reviewer. safe-git: pre/rc work/e2e-safegit 9efb1851, main work/e2e-safegit-main a26793cd (NOT 9eb2ee32/2f43126d); land only when the reviewer clears THESE heads.
+  Land 0f17b106 the moment it is cleared (do not wait for e2e's crash-loop follow-up, its own sha later).
+  box-deploy confirms computers.list works and docker-api is stable after the redeploy.
+  work/docker-api-hotfix (cohesion b54d2521) is DROPPED by the lead: never land it.
+- rc.2 candidate, NOT gating: cohesion agentClaim parser (5ef364c3 + fix sha) once e2e AND reviewer sign
+  off the fix sha. If glass is ready first, land without it.
+- rc.2 waits on: glass (14f1824c HELD by reviewer, 2 HIGH; take only a sha reviewer signs off). Was also e2e's fix
+  sha for the macOS hang in 1941f2cf's per-connection peer check (ps or perl).
+  MUST also take glass-live's rebased sha (two e2e HIGHs: container Env secrets, unfenced CDP), via
+  e2e; its computer image rollout goes with box-deploy. Waiting: vault-next
+  (HELD for e2e's sign-off on the send_mail takeover fix) + connectors 8be461a9, then ci bumps to rc.2.
 
 ## Earlier: the RC batch on pre/rc (2026-09-27 ~19:00 UTC)
 
@@ -65,6 +180,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   e2e 88610b5e, capsule-pro a127335d, ci 35bfed5f.
 - Waiting: vault work/vault-next (green sha from the vault team) with connectors 8be461a9.
 - Then: full suite once on testbox, ci-rc 1d8ae652 LAST, push main, report to the lead.
+- testbox has no shellcheck; a user copy is at ~/.local/sc/shellcheck-v0.10.0 (put it on PATH for the
+  full suite, as CI has it).
 - Generated docs on a conflict: take ours, rerun `node scripts/gen-docs-reference`.
 - Fixes on pre/rc: 75148174 onboard reserve test waits for its claim (tmp-guard leak), ae6fe249
   switchboard fake key built at run time (hygiene), 2913b069 drift allowlist shrinks. Targeted run
@@ -113,7 +230,32 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 - Debts after 0.1.0: the five sessions/switchboard edges (sessions); drift copies (mobile x2,
   native-core, capsule-pro).
 
-## Next: batch 5 queue
+## Next: 0.1.1 batch 1 (right after rc.2 lands)
+
+- federation 9338a6a5 (supersedes aa9cb40c; e2e signed off: fail-closed ask checks, persisted nonces, files.deliver opt-in).
+- windows e56c45e9 (on 8cd4722d; Tier A+B, ADR 0037, test-windows job non-blocking; reviewer cleared).
+- docs 40dcb26d (supersedes 53bbc146): ADR 0038 terminology, glossary, docs-check terminology rule
+  (hard-fails docs-owned pages only).
+- memory-iq's 0.1.1 sha (memory.ask stream: true cutover, around ffae4f08) BEFORE capsule-pro's
+  Capsule change that depends on it; memory-iq coordinates, target 30 Sep.
+- mac test guard: branch work/mac-test-guard 6a2bb019 (worktree ../vyre-integrator-guard): tempHome and
+  tmp-guard refuse on darwin unless VYRE_ALLOW_MAC_TESTS=1; capsule-mac sets it. Mac refuses, testbox 34/34.
+- HOTFIX first when it comes: work/glass-hotfix (vyred-only bearer on docker-api). After reviewer's
+  sign-off: fast-forward main, targeted run, tell box-deploy to redeploy (backup first). Then merge into pre/rc.
+- Reviewer (security) now signs off shas. Cleared for 0.1.1: teammates 9d9e6688 (on 20d0f121, fixes its LOW; supersedes b19f10c2),
+  memory-iq d0b916b9 + 7ee03df6 (together). windows 8cd4722d cleared (with cac517d4 + 63156fe9).
+- connectors 482f7b6d (21beb66b e2e-signed; then 9ca2c50a discover fixes, vault-next merged, Connections card;
+  kernel add: core/config claudeJson()). Needs sign-off on 482f7b6d itself. vault-next is already in rc.2, so it
+  is on main before batch 1.
+- memory-iq batch 1 head 0a7ea3e7: fd7f57ab + 0a7ea3e7 cleared; e67ba34d (memory.card) HELD (MEDIUM: a
+  project agent's card lists other projects). Wait for the reviewer's cleared fix sha before taking the head.
+- box -> server (ADR 0038): core/cli user strings listed by docs; I asked docs to route them to polish-cli with
+  the vyre server rename (one pass, no conflicts). If the lead gives them to me: 0.1.1, after rc.2.
+- box-deploy 2ce5150d (ADR 0038 sweep of `vyre projects` strings; docs/reference/cli.md regenerated).
+- teammates b19f10c2 (core/team, ADR 0031 step 1; e2e signed off). It carries a cherry-pick of 1941f2cf
+  in core/daemon/index.js, already on main: expect a trivial conflict there.
+
+## Older: batch 5 queue
 
 - native-core ac34c322 hub step 1 (after e2e review), app-design b756d128 (core/appearance),
   platform 7398763b, mobile 503414d4, pwa 34195805, sessions db4af9c3 (501ca3fc held for e2e's
@@ -131,3 +273,18 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 - `core/vault`: `Vault.later(fn, ms)` and `Vault.stop()`; the module's stop calls it in place of
   `lock()`. After stop, `key()` refuses with code `stopping`.
 - `core/vault/testing.js` exports `TEST_KDF`.
+
+## Gotcha (2026-09-28 ~01:50 UTC): setsid+disown over a one-shot ssh does not survive
+
+Two rc.2 full-suite attempts (`nohup ... &` and later `setsid nice ... & disown`, both inside a
+one-shot `ssh testbox '...'`) produced real progress in their log for several minutes, then the
+whole process vanished with no final `# tests` tally and no OOM/dmesg/journal trace, well before
+completion. Neither `nohup` nor `setsid`+`disown` kept the job alive once the ssh connection that
+launched it closed, even though other teams' jobs (started the same way, per RULES's own
+recipe) were still running fine hours later in the same `ps` snapshot. Root cause not fully
+pinned down (systemd-logind session cleanup on the launching connection is the leading theory,
+since it would explain surviving vs dying by whether the user still has *another* live session at
+the moment this one closes), but the fix that reliably works: launch under `tmux new-session -d
+-s <name> "<command> > log 2>&1"` on testbox, then poll with `tmux has-session -t <name>` instead
+of `pgrep`. The tmux *server* persists independent of any one ssh connection. Next integrator:
+always use tmux for a full-suite run on testbox, not nohup/setsid/disown.

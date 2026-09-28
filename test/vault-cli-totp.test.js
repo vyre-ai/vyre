@@ -235,7 +235,7 @@ test("vault cli: totp --json and piped print one result and exit, with the item'
   const j = await vyre(home, ["vault", "totp", "harlow-mail", "--json"]);
   assert.equal(j.code, 0, j.all);
   const d = JSON.parse(j.out).data;
-  assert.deepEqual(Object.keys(d).sort(), ["code", "period", "remaining"], "no next code is invented");
+  assert.deepEqual(Object.keys(d).sort(), ["code", "next", "period", "remaining"], "the next code rides along, so a rollover is never a guess (ADR 0028)");
   assert.equal(d.period, 30);
   const now = Date.now();
   assert.ok([totp(seed, { at: now }).code, totp(seed, { at: now - 30_000 }).code].includes(d.code));

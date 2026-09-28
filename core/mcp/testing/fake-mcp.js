@@ -13,6 +13,9 @@
 //     FAKE_MCP_PING_CLIENT   before each call, ping the client and send it an unknown request,
 //                            and put both answers in the result
 //     FAKE_MCP_IGNORE_TERM   ignore SIGTERM, to prove close() falls back to SIGKILL
+//     FAKE_MCP_IDENTITY_ENV  the name of an env var: adds a `whoami` tool to the default list that
+//                            returns the sha256 hex of that var's value (never the value), so a
+//                            test can tell which credential a child got without seeing it
 // - `startFakeMcpHttp(t, opts)` in-process, streamable HTTP or legacy SSE on 127.0.0.1 port 0.
 //
 // A custom tool is `{ name, description?, inputSchema?, annotations?, result?, delay?, bytes? }`:
@@ -41,6 +44,9 @@ export const DEFAULT_TOOLS = [
   { name: "echo_env", description: "Say whether an env var is set in the server, never its value.", inputSchema: obj({ name: { type: "string" } }, ["name"]) },
 ];
 
+/** The opt-in tool FAKE_MCP_IDENTITY_ENV adds. It is not in DEFAULT_TOOLS, so tool counts stay. */
+export const WHOAMI = { name: "whoami", description: "Say which credential this server holds, as a sha256 hex, never the value.", inputSchema: obj({}) };
+
 /** @param {any} value */
 const ok = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], structuredContent: value });
 /** @param {string} text */
@@ -61,10 +67,10 @@ const BEHAVIOUR = {
  * (stdio only). `beforeCall` can refuse to answer (the crash option).
  * @param {{ tools?: any[], pageSize?: number, requireEnv?: string, env?: Record<string, string | undefined>,
  *   onCall?: (c: {name: string, arguments: any}) => void, beforeCall?: (n: number) => void,
- *   pingClient?: boolean }} o
+ *   pingClient?: boolean, identityEnv?: string }} o
  */
 export function fakeCore(o = {}) {
-  const tools = o.tools || DEFAULT_TOOLS;
+  const tools = o.tools || (o.identityEnv ? [...DEFAULT_TOOLS, WHOAMI] : DEFAULT_TOOLS);
   const pageSize = o.pageSize || 4;
   const env = o.env || {};
   let calls = 0;
@@ -112,7 +118,11 @@ export function fakeCore(o = {}) {
         }
         if (tool.result) return result(tool.result);
         if (tool.bytes) return result({ content: [{ type: "text", text: "x".repeat(tool.bytes) }] });
-        const b = BEHAVIOUR[tool.name];
+        if (tool.name === "whoami" && o.identityEnv) {
+      const v = env[o.identityEnv];
+      return result(ok({ sha256: v === undefined ? null : crypto.createHash("sha256").update(v).digest("hex") }));
+    }
+    const b = BEHAVIOUR[tool.name];
         return result(b ? b(args, env) : ok({ echo: args }));
       }
       default: return error(-32601, `method not found: ${method}`);
@@ -148,6 +158,7 @@ function runStdio() {
     requireEnv: env.FAKE_MCP_REQUIRE_ENV || undefined,
     env,
     pingClient: !!env.FAKE_MCP_PING_CLIENT,
+    identityEnv: env.FAKE_MCP_IDENTITY_ENV || undefined,
     beforeCall: n => { if (n >= crashAfter) process.exit(3); },
     onCall: c => log(`call ${c.name} ${JSON.stringify(c.arguments)}`),
   });
