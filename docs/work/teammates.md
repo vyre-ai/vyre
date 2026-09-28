@@ -22,6 +22,23 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
 ## Doing
 - RESUMED (2026-09-28): merged origin/main (bc751624/68463d04, batch 4, sessions' slot ledger)
   cleanly, no conflicts. Building migration step 1. Sha a876e5e4 has it green; see below.
+- RESUMED again (2026-09-28, resume 8, RULES order): (1) committed the slice B draft as a wip
+  commit (88420c64) before touching anything. (2) Fixed the reviewer's slice A MEDIUM at 2cb7bb14:
+  a planted tag sharing the base branch's short name (e.g. "main") wins git's own ambiguity
+  resolution ahead of `refs/heads/<name>`, hijacking every merge and diff range `core/team/git.js`
+  computes. Every base/branch name now goes through a new `B()` helper (`refs/heads/<name>`); also
+  found and fixed the same ambiguity leaking through `currentBranch()` itself (git's `--short` is
+  ambiguity-aware and was handing back `"heads/main"` once a same-named tag existed) while writing
+  the regression test. Sent to reviewer and e2e. (3) Merged main at 3177ee73 (safe-git 60b3673b
+  already landed there; resolved CHANGELOG.md/fake-claude.js/docs:ref conflicts, docs:ref
+  regenerated). Then moved core/team's git calls onto lib/git-safe.js's gitAsync at 4ddd9bbd — see
+  "Changed contracts". work/projects (e87f63df, the shared project-id slug regex) is not on main
+  yet, so step 4 of the resume brief (switching to it) is still open.
+- Slice B (compare-and-swap merge, `team.merge`) is still the WIP draft from 88420c64, now sitting
+  on top of 4ddd9bbd: 4 tests still fail (`team.merge` and the automatic integrator-merge path),
+  same 4 before and after every fix above (confirmed against the baseline wip commit), so they are
+  pre-existing bugs in the draft itself, not caused by the tag-hijack fix or the git-safe move.
+  Not yet debugged; next up.
 
 ## Where ADR 0031 stands
 - Built (step 1, a876e5e4): `core/team` (roles box, local; requires threads, projects, sessions).
@@ -398,3 +415,11 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   real JSON body (was always `{}`) so a test can attempt a forged call that would actually
   succeed if not caught. Every switchboard/agents/presence test still green (52) after each of
   these changes; core/team's own suite (11) is green throughout.
+- lib/git-safe.js (2026-09-28, 4ddd9bbd): `gitSync`/`gitAsync` take an optional `env`, merged on
+  top of `safeGitEnv()` (never as its base, which strips a caller's own `GIT_*` keys back out) —
+  `core/team`'s merge commits need `GIT_AUTHOR_NAME` etc to say vyred made them, not whoever last
+  committed. Additive and backward compatible; core/daemon/build.js, core/switchboard/changes.js
+  and core/vault/tools/cli.js (the other three callers) pass no `env` and are unaffected.
+  `core/team/git.js` itself no longer starts git directly — every call now goes through
+  `gitAsync`, so `test/safe-git.test.js`'s tree-wide "nothing but lib/git-safe.js starts git" guard
+  passes again (it started failing the moment safe-git 60b3673b landed on main, before this).
