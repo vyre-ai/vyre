@@ -287,6 +287,55 @@ test("onboard: onboard.machine records solo or server, rejects a bad value, and 
   assert.equal(s.role, "box", "role is untouched by this tool");
 });
 
+// Reviewer, 28 Sep: onboard.machine changes which modules load, so it must be the person's own
+// action, never an agent's, and moving TO server (once an owner exists) needs a presence proof.
+test("onboard: onboard.machine refuses an agent caller outright", async t => {
+  const { root, d } = await box(t);
+  const r = await d.registry.call("onboard.machine", { machine: "server" }, "mcp:agent:kit");
+  assert.equal(r.error.code, "denied");
+  assert.match(r.error.message, /not available to mcp callers/);
+});
+
+test("onboard: moving to server needs no proof during first-time setup (no owner yet)", async t => {
+  const { d } = await box(t);
+  // Matches onboarding's own passkey-enrollment exemption -- there is no passkey to prove
+  // presence with yet either, and the caller is already proven by the one-time link.
+  const r = await d.registry.call("onboard.machine", { machine: "server" }, "cli");
+  assert.equal(r.data.machine, "server");
+});
+
+test("onboard: moving to server needs a presence proof once an owner already exists", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [],
+    network: { onboardPort: 0, ownerSeen: new Date().toISOString(), owner: "alex@example.com" }, machine: "solo" }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const later = await d.registry.call("onboard.machine", { machine: "server" }, "cli");
+  assert.equal(later.error.code, "presence_required");
+  // solo and device never need it, even with an owner established.
+  const solo = await d.registry.call("onboard.machine", { machine: "solo" }, "cli");
+  assert.equal(solo.data.machine, "solo");
+});
+
+// Reviewer, 28 Sep: onboard now loads on a Solo machine too (so onboard.machine can), but its old
+// box wizard tools must stay refused there -- only onboard.machine (and, separately, tailnet's
+// onboard.join) are exempt.
+test("onboard: the box wizard's tools refuse on a machine that isn't a server", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "solo", transcripts: [], network: { onboardPort: 0 } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  for (const [tool, input] of [["onboard.you", { name: "alex" }], ["onboard.name", { name: "alex" }], ["onboard.claude", {}],
+    ["onboard.tailscale", {}], ["onboard.history", {}], ["onboard.skip", { step: "you" }], ["onboard.passkey", {}],
+    ["onboard.finish", {}], ["onboard.link", {}]]) {
+    const r = await d.registry.call(tool, input, "cli");
+    assert.equal(r.error?.code, "not_a_server", `${tool} should refuse on solo`);
+  }
+  // status and machine, the two exceptions, still work.
+  assert.equal((await d.registry.call("onboard.status", {}, "cli")).data.machine, "solo");
+  assert.equal((await d.registry.call("onboard.machine", { machine: "solo" }, "cli")).data.machine, "solo");
+});
+
 test("onboard: reserve goes to ts.net without a zone token and says so when the tailnet has HTTPS off; with a token it is vyre.run", async t => {
   const { root } = await box(t);
   process.env.VYRE_TAILSCALE_BIN = fakeBin(fs.mkdtempSync(path.join(root, "ts-")), "tailscale", JSON.stringify({ BackendState: "Running", TUN: true,

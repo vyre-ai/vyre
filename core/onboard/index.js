@@ -119,6 +119,13 @@ export default {
     };
     const tryCall = (tool, input) => call(tool, input).catch(e => ({ __error: e.message }));
     const mark = (step, s) => skipped().has(step) && s.state !== "done" ? { ...s, state: "skipped" } : s;
+    // ADR 0039: onboard now loads on a Solo machine too (so onboard.machine and, on tailnet's
+    // branch, onboard.join can reach it), but the six-step box wizard below assumes box things
+    // (a public address, Tailscale, an owner-claim flow) it must not run on a machine that isn't
+    // one. Reviewer's condition, 28 Sep: refuse up front, through this one guard, on every wizard
+    // tool but the two that are meant to work on Solo (onboard.status, which only reads, and
+    // onboard.machine, which is how a Solo machine becomes a server in the first place).
+    const boxOnly = () => { if (!config.isServer(ctx.config.machine)) throw Object.assign(new Error("this step is part of the box's onboarding wizard, not available on this machine"), { code: "not_a_server" }); };
 
     async function status(caller = "local") {
       const [version, names, recall] = await Promise.all([claudeVersion(), tryCall("names.status"), tryCall("recall.status")]);
@@ -253,6 +260,7 @@ export default {
       description: "Step 1: your name as you like it shown, and your assistant's name. A name that is also a valid vyre.run name becomes the default candidate.",
       input: obj({ name: { type: "string" }, assistant: { type: "string" } }, ["name"]),
       run: async ({ name, assistant }, { caller }) => {
+        boxOnly();
         const p = String(name ?? "").trim(), a = String(assistant ?? "").trim();
         if (!p || p.length > 60 || /[\u0000-\u001f]/.test(p)) throw new Error("your name is one line of up to 60 characters");
         if (a.length > 40 || /[\u0000-\u001f]/.test(a)) throw new Error("the assistant's name is one line of up to 40 characters");
@@ -267,6 +275,20 @@ export default {
     ctx.tool("onboard.machine", {
       description: "ADR 0039: how Vyre runs on this machine. solo (everything here) or server (always on for other devices) are the person's own choice; device is set by onboard.join once a connection to another server is confirmed, never chosen directly here.",
       input: obj({ machine: { type: "string", enum: ["solo", "server", "device"] } }, ["machine"]),
+      // Reviewer, 28 Sep: this tool changes which modules load, so it is the person's own action,
+      // never an agent's. "onboard" is the pre-owner loopback session (only reachable through a
+      // one-time link cli/local/capsule minted); "module" is onboard.join (tailnet, same module)
+      // calling this internally once IT has confirmed a real connection -- a different question
+      // from "can an agent flip this machine to a server by itself" (no, "mcp" is not listed).
+      callers: ["cli", "local", "deck", "capsule", "onboard", "module"],
+      // Moving TO server turns on the eight box-only modules -- a real network-facing change --
+      // so it needs an actual presence proof; solo and device (which only ever narrow what runs)
+      // don't. Exempt while there is no owner yet (net().ownerSeen false): first-time setup is
+      // already proven by the one-time link only cli/local/capsule can mint, matching onboarding's
+      // documented passkey-enrollment exemption (ADR 0032) -- there is no passkey to prove with
+      // yet anyway. A LATER solo-to-server change, with an owner and a passkey established, does
+      // need the proof.
+      presence: { when: input => Boolean(input && input.machine === "server" && net().ownerSeen) },
       run: async ({ machine }) => {
         // machine's own default (config/index.js defaults()) already covers "no choice made
         // yet"; this tool only ever records an actual choice, so calling it with the value
@@ -282,6 +304,7 @@ export default {
       description: "Checks <name>.vyre.run and saves it; reserve serves this machine at its address (DNS and certificate, as progress rows): the vyre.run name with a zone token or own domain, else the ts.net name. `via` says which; again retries.",
       input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] }, confirm: { type: "boolean" } }),
       run: async ({ name, action = "check", confirm }, { caller }) => {
+        boxOnly();
         if (action === "check") {
           if (!name) throw new Error("name is required to check");
           // No zone token and no own domain: the address is this machine's ts.net name, so there
@@ -316,6 +339,7 @@ export default {
       input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key"] }, key: { type: "string" }, code: { type: "string" },
         kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),
       run: async ({ mode, key, code, kind, token }, { caller }) => {
+        boxOnly();
         if (mode === "setup-token" && !key && !token) {
           if (!code) return { ...(await stepOf("claude", caller)), url: await signin.start(), needsCode: true };
           [kind, token] = ["subscription", await signin.finish(code)];
@@ -338,6 +362,7 @@ export default {
       description: "Tailscale on this machine; connect starts `tailscale up` and returns its sign-in link. lock reads Tailnet Lock (read-only): whether it is on, this box's lock key, how many keys are trusted, whether this box is signed, and the commands the person runs on their Mac to turn it on.",
       input: obj({ action: { type: "string", enum: ["status", "detect", "poll", "connect", "lock"] } }),
       run: async ({ action = "status" }, { caller }) => {
+        boxOnly();
         if (action === "lock") {
           const l = await lockStatus();
           return { ...l, key: l.nodeKey, commands: lockCommands(l.nodeKey) };
@@ -357,6 +382,7 @@ export default {
       description: "Find and index this machine's Claude Code sessions, in the background.",
       input: obj({ action: { type: "string", enum: ["status", "start"] } }),
       run: async ({ action = "status" }, { caller }) => {
+        boxOnly();
         if (action === "start" && !indexing) {
           save({ onboard: { history: true } });
           indexing = call("recall.index").catch(e => ctx.log("onboard: indexing failed: " + e.message)).finally(() => { indexing = null; });
@@ -369,6 +395,7 @@ export default {
       description: "Skip a step for now; it can be finished later from Settings.",
       input: obj({ step: { type: "string", enum: STEPS } }, ["step"]),
       run: async ({ step }, { caller }) => {
+        boxOnly();
         save({ onboard: { skipped: [...new Set([...skipped(), step])] } });
         return status(caller);
       },
@@ -422,6 +449,7 @@ export default {
       description: "A one-time link to make the first passkey at this box's address, while none exists. Only to the loopback session or the box's terminal.",
       input: obj(),
       run: async (_, { caller }) => {
+        boxOnly();
         const address = (await status(caller)).address || net().address || null;
         return { address, passkeyUrl: address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null };
       },
@@ -431,6 +459,7 @@ export default {
       description: "Finish the onboarding.",
       input: obj(),
       run: async (_, { caller }) => {
+        boxOnly();
         const assistant = await meet();
         save({ onboard: { finished: new Date().toISOString() } });
         ctx.events.emit("onboard.finished", {});
@@ -444,6 +473,7 @@ export default {
       description: "A one-time link to the onboarding page on this machine's loopback address. Only from this machine's own socket. With mint false it makes nothing and says whether an unused link is still open (url null, pending with its expiry), so an update never voids the link the user was sent.",
       input: obj({ mint: { type: "boolean" } }),
       run: async (input, { caller }) => {
+        boxOnly(); // revisit once the Solo Deck loopback design (docs/design/anywhere.md) lands and reuses this link
         if (!["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
         // Once the owner has come in over the tailnet, or onboarding is finished and the address

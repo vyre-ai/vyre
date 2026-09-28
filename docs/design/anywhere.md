@@ -54,6 +54,23 @@ inputs. If the person picks the middle option on a laptop that sleeps when the l
 Server flow says so plainly ("Vyre needs this Mac to stay reachable: plug it in and turn off
 sleep, or pick a Mac mini or a box instead") rather than silently degrading.
 
+## The eight box-only modules: which ones Solo needs
+
+Reviewer's HOLD (28 Sep) narrowed this to only what Solo's own story actually needs. Default is
+NO for each; a module widens to `"local"` only when Solo itself, not a later capability, needs
+it running:
+
+| Module | Widen to `"local"`? | Why |
+|---|---|---|
+| `onboard` | **Yes** (shipped) | Solo has no box to onboard *from*; it must onboard itself. Its wizard tools (you, claude, name, tailscale, history, skip, finish, passkey, link) stay refused on a non-server machine through one shared guard, per reviewer; only `onboard.machine` and (tailnet's) *onboard.join* are exempt. |
+| `relay` | **Yes** (tailnet, in progress) | The only way a phone reaches a Solo Mac without Tailscale -- exactly rung 2 of the ladder, needed the moment a device joins. |
+| `names` | No | The box's own tailnet listener. Nothing to listen for without Tailscale, which Solo never turns on until it becomes a server. |
+| `network` | No | Who besides the owner the tailnet listener serves. Meaningless with no listener. |
+| `hooks` | No | Public webhooks over Tailscale Funnel. No Funnel without Tailscale. |
+| `releases` (core/apps) | No | Serves the Android APK to a paired phone. By the time a phone exists, Solo has already become a server (section on Solo plus a phone) and gets this for free. |
+| `computers` | No | Agent computers. Team-lead's own framing: Docker plus an opt-in, a capability layered ON a server, not part of Solo's base -- and it carries real complexity (VNC passwords, tailnet-per-agent-computer, egress) not worth the surface for a story that doesn't need it. |
+| `glass` | No | Screen and files for an agent's computer; same reasoning as `computers`, and already gated on Docker being present. |
+
 ## The role-choice tool
 
 Agreed 28 Sep, for launch's onboarding cards and tailnet's *onboard.join*:
@@ -75,37 +92,67 @@ Agreed 28 Sep, for launch's onboarding cards and tailnet's *onboard.join*:
 
 ## How the Deck reaches a Solo Mac, day to day
 
-Raised by e2e, 28 Sep: this is core to "Solo works on day one." vyred today has three listeners
-(ADR 0002): the unix socket (same-machine callers: cli, capsule, local), the tailnet listener
-(the owner's own devices, once Tailscale is on), and onboarding's loopback HTTP server on
-`127.0.0.1:7300`, which closes once onboarding finishes. Solo never turns Tailscale on, so
-without a fourth answer, nothing would serve a browser Deck to alex once onboarding closes.
+Raised by e2e, 28 Sep, and revised after reviewer's read of the first draft below (which had a
+security mistake reviewer caught: see the correction inline). This goes to reviewer again, in
+full, before any code -- team-lead's condition. This is core to "Solo works on day one."
 
-Two surfaces, two different answers:
+vyred today has three listeners (ADR 0002): the unix socket (same-machine callers with a proven
+ancestry: cli, capsule, local), the tailnet listener (the owner's own devices, once Tailscale is
+on), and onboarding's loopback HTTP server on `127.0.0.1:7300`, which closes once onboarding
+finishes. Solo never turns Tailscale on, so without a fourth answer, nothing would serve a
+browser Deck to alex once onboarding closes.
 
 - **The Capsule** (a native Mac app) already talks to vyred over the unix socket directly, the
-  same as `cli`. Nothing changes for Solo: this keeps working exactly as it does today, with or
-  without a browser involved at all.
+  same as `cli`, and ADR 0040's split makes this doubly true: it is one of the two clients
+  (with the CLI) that may reach vyre-core's own socket straight, with its own ancestry proof.
+  Nothing about Solo changes this.
 - **The Deck, in a browser**, needs an HTTP surface, because a browser cannot open a unix socket.
   The fix: generalize onboarding's own loopback listener (`core/onboard/loopback.js`) from an
   onboarding-only, close-when-finished server into an always-available one on Solo and Server
-  machines with no tailnet address yet: `127.0.0.1:<port>` (same port, same one-time-link and
-  session-cookie mechanism `onboard.link` already uses to hand a browser a session). A new small
-  CLI, *vyre open*, mints a fresh one-time link and opens the browser straight to it, the same
-  way `vyre up --box` already opens onboarding's link on a Mac. The session it grants carries a
-  new caller label (not `"onboard"`, which is onboarding-specific) -- call it `"loopback"` -- so
-  the registry's existing PERSON_ONLY/HUMAN_ONLY rules (ADR 0032) can tell it apart from a real
-  tailnet device: it is trusted the way `local` is (only a process on this same machine can ever
-  reach `127.0.0.1`'s listening socket -- no different a guarantee than the unix socket already
-  gives), never treated as `tailnet:<login>`.
+  machines with no tailnet address yet, at `127.0.0.1:<port>`.
+
+**The mistake in the first draft:** it called the loopback listener "trusted the way `local` is."
+That is wrong, and reviewer's condition corrects it. `local` on the unix socket means the kernel
+told vyred which process connected, and its ancestry was walked back to a known caller (ADR
+0032). Loopback HTTP carries none of that: any process on the machine, a model's shell included,
+can `curl 127.0.0.1:<port>` exactly as a real browser would. So:
+
+- **The `"loopback"` caller label is never person-level, never HUMAN_ONLY, never PERSON_ONLY by
+  itself.** It gets exactly what an unauthenticated caller gets: nothing privileged.
+- **The session cookie is won through a one-time link**, the same mechanism `onboard.link`
+  already uses, minted only by an already-trusted caller (the CLI or the Capsule, over the unix
+  socket, or later vyre-core's own socket under ADR 0040) and opened straight into the browser
+  (`vyre open`, a new small command). The cookie is unguessable (a long random value, `HttpOnly`,
+  `Secure` where the browser allows it on `127.0.0.1`, `SameSite=Strict`) and identifies a
+  *browser tab*, never a person.
+- **A session cookie alone still isn't presence.** Reads through the loopback listener (static
+  Deck assets, listing sessions, non-mutating status) are fine once a plain session exists,
+  because a model reading its own transcripts back is not new exposure. Every write or privileged
+  call (sending a message that runs an agent, approving a held draft, revealing a vault secret,
+  anything HUMAN_ONLY or PERSON_ONLY today) still needs an actual presence proof: a WebAuthn
+  passkey signature made in that browser, or a Capsule Touch ID confirm relayed over the socket
+  -- checked cryptographically by the presence verifier (under ADR 0040, by vyre-core itself,
+  never by the person-side vyred, which shares the model's uid and could otherwise be asked to
+  rubber-stamp its own forged proof). This is not a new primitive: it's today's HUMAN_ONLY rule
+  (ADR 0004/0032), enforced strictly rather than loosened for loopback's convenience.
+- **A Host/Origin allowlist stops DNS rebinding.** The listener checks the `Host` header is
+  literally `127.0.0.1:<port>` or `localhost:<port>` (never trusting a name that merely
+  *resolves* to `127.0.0.1`, which a page controlled by an attacker's DNS can arrange after the
+  browser already loaded it), and checks `Origin` on any request that carries one against the
+  same allowlist. A request failing either is refused before it reaches a tool.
+- **CSRF protection on every write.** `SameSite=Strict` on the cookie already stops a
+  cross-site form post from carrying it; writes additionally require a custom header
+  (`x-vyre-caller: loopback` or similar) that only same-origin `fetch` can set, so even a
+  same-site navigation link can't trigger one.
 - Once a Solo machine becomes a **Server** (pairs a device, or runs *vyre server here*), the
   tailnet listener takes over serving the Deck at the owner's real address, and the loopback
   listener becomes exactly what it is today: an onboarding-only fallback, open just for the
   window before the owner's own device first reaches the tailnet address.
 
-Not yet built: this needs its own small, reviewed sha (generalizing loopback.js, *vyre open*,
-the `"loopback"` caller label and its registry rule) -- next on my list, coordinating with
-tailnet since it extends ADR 0002's identity model with a fourth listener type.
+Not yet built. Sending this design to reviewer before writing any of it (generalizing
+loopback.js, `vyre open`, the `"loopback"` caller label and its registry rule, the presence-proof
+enforcement, the Host/Origin/CSRF checks) -- coordinating with tailnet (ADR 0002's owner) and
+with e2e/ADR 0040 (vyre-core owns presence verification once it exists).
 
 ## The move-to-server flow
 

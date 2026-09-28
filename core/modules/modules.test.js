@@ -16,14 +16,24 @@ test("modules: a good manifest has no problems", () => {
 // ADR 0039: config.machine (solo/server/device) is what start() is actually called with now;
 // manifests keep saying "box"/"local", so this is the seam between the two.
 test("modules: roleBuckets maps config.machine onto the manifests' box/local vocabulary", () => {
-  assert.deepEqual(roleBuckets("server"), ["box"]);
-  assert.deepEqual(roleBuckets("device"), ["local"]);
+  assert.deepEqual(roleBuckets("server", "linux"), ["box"]);
+  assert.deepEqual(roleBuckets("device", "linux"), ["local"]);
   // Reviewer's HOLD on 80fd866e, 28 Sep: solo is the full local core and none of the eight
   // box-only modules -- it is a device, never a server, until the person chooses otherwise.
-  assert.deepEqual(roleBuckets("solo"), ["local"]);
+  assert.deepEqual(roleBuckets("solo", "linux"), ["local"]);
   // A raw legacy value (existing tests, or a caller not yet updated) passes straight through.
-  assert.deepEqual(roleBuckets("box"), ["box"]);
-  assert.deepEqual(roleBuckets("local"), ["local"]);
+  assert.deepEqual(roleBuckets("box", "linux"), ["box"]);
+  assert.deepEqual(roleBuckets("local", "linux"), ["local"]);
+});
+
+// team-lead, 28 Sep: a Mac chosen as the server is still, often, someone's own desk -- Capsule,
+// voice and the rest of the local core stay. A Linux box never had those modules to begin with.
+test("modules: roleBuckets gives a darwin server the local bucket too, but not a Linux one", () => {
+  assert.deepEqual(roleBuckets("server", "darwin").sort(), ["box", "local"]);
+  assert.deepEqual(roleBuckets("server", "linux"), ["box"]);
+  // device and solo are unaffected by platform: a device is never also a server.
+  assert.deepEqual(roleBuckets("device", "darwin"), ["local"]);
+  assert.deepEqual(roleBuckets("solo", "darwin"), ["local"]);
 });
 
 test("modules: tools must carry the module's own name", () => {

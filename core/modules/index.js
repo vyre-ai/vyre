@@ -56,11 +56,13 @@ const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsul
  * caller, mostly tests, that still passes one directly) passes straight through unchanged.
  * @param {string} role @returns {string[]}
  */
-export function roleBuckets(role) {
+export function roleBuckets(role, platform = process.platform) {
   if (role === "box" || role === "local") return [role];
   const out = [];
   if (config.isServer(role)) out.push("box");
-  if (config.isDevice(role)) out.push("local");
+  // A Mac chosen as the server is still, often, someone's own desk: Capsule, voice and the
+  // rest of the local core stay (team-lead, 28 Sep). A Linux box never had those anyway.
+  if (config.isDevice(role) || (role === "server" && platform === "darwin")) out.push("local");
   return out;
 }
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
@@ -299,8 +301,10 @@ export class Registry {
     } catch { /* the counts stay in memory for status(); the next change tries again */ }
   }
 
-  /** Start every discovered module that is enabled for this machine's role. */
-  async start(found, { role, enable = [], disable = [] }) {
+  /** Start every discovered module that is enabled for this machine's role. `platform` is
+   * injectable (default process.platform) so a test can cover the darwin server case on any CI
+   * machine, same as roleBuckets() and core/config's defaults(). */
+  async start(found, { role, enable = [], disable = [], platform = process.platform }) {
     for (const f of found) {
       const name = f.manifest && f.manifest.name;
       if (f.problems.length) { this.modules.set(name || f.dir, { manifest: f.manifest, dir: f.dir, state: "invalid", error: f.problems.join("; ") }); continue; }
@@ -313,7 +317,7 @@ export class Registry {
         continue;
       }
       const roles = f.manifest.roles || ["box", "local"];
-      const on = !disable.includes(name) && (roles.some(r => roleBuckets(role).includes(r)) || enable.includes(name));
+      const on = !disable.includes(name) && (roles.some(r => roleBuckets(role, platform).includes(r)) || enable.includes(name));
       this.modules.set(name, { manifest: f.manifest, dir: f.dir, state: on ? "pending" : "off" });
     }
     const candidates = found.filter(f => { const r = this.modules.get(f.manifest && f.manifest.name); return r?.state === "pending" && r.dir === f.dir; });

@@ -78,7 +78,7 @@ are active (`roleBuckets()`):
 
 | config.machine | loads `"box"` modules | loads `"local"` modules |
 |---|---|---|
-| `server` | yes | no |
+| `server` | yes | yes on darwin, no on Linux (team-lead, 28 Sep: a Mac chosen as the server is still, often, someone's own desk -- Capsule, voice and the rest of the local core stay; a Linux box never had them anyway) |
 | `device` | no | yes |
 | `solo` | no | yes |
 
@@ -125,9 +125,19 @@ real choice.
 
 ### 3. The Mac as a server: a real service, not a session
 
-A Mac chosen as `"server"` or `"solo"` needs vyred to survive logout, sleep and reboot the way
-the box's container does. `vyre server here` (new CLI, `core/onboard` or a small new
-`core/anywhere`: see Build plan) does on a Mac what the install script does on Linux:
+**Superseded in its mechanics by ADR 0040 (drafted 28 Sep with e2e), kept here for the
+capability it still names.** The section below assumed vyred itself (the person-side daemon,
+sharing the person's uid) could be made to survive logout, sleep and reboot directly. ADR 0040's
+trusted-root split changes who runs what: `vyre-core`, a root-owned process the person's own uid
+cannot write to, is what must survive logout/reboot and hold anything privileged; person-side
+vyred stays a thin, forgeable client. `vyre server here`'s actual install mechanics (the admin
+password, the LaunchDaemon, the signed-update story) now live in ADR 0040. What stays true here:
+a Mac chosen as `"server"` or `"solo"` still needs *something* always-on and reachable, machine
+still flips to `"server"`, and Solo's own path is unaffected until it becomes a server.
+
+A Mac chosen as `"server"` or `"solo"` needs something on it to survive logout, sleep and reboot
+the way the box's container does. `vyre server here` (new CLI) does on a Mac what the install
+script does on Linux, built out fully in ADR 0040:
 
 1. Sets `config.machine` to `"server"` (or `"solo"` if no device will ever join: the person is
    asked, matching the capability ladder in `docs/design/anywhere.md`).

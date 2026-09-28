@@ -2300,7 +2300,8 @@ ADR 0039: how Vyre runs on this machine. solo (everything here) or server (alway
 
 - Input:
   - `machine` one of "solo", "server", "device", required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `onboard`
+- Needs a person present.
 
 ### `onboard.name`
 
