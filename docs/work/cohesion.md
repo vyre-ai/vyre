@@ -382,3 +382,23 @@ option/description so a person still sees the gap, and the diagnostic line names
 went, so the day up.js's mac() actually names the peer, that line says so and is the one to turn
 back into a real assertion. testbox: journey.test.js 7/9 pass, 1 pre-existing unrelated skip, 1
 todo clean with its diagnostic, 0 fail; boundaries 5/5. Sent to reviewer-2 and the integrator.
+
+## settings.test.js hang, built (fcce3d4a)
+
+teammates found core/settings/settings.test.js hanging (0% CPU) on work/teammates 38c64017.
+Confirmed it does not reproduce on main (settings.js/settings.test.js are byte-identical there --
+diffed via git archive of their commit into a scratch dir, never touched their worktree). Root
+cause was at the kernel level, not settings: core/modules/index.js's Registry.stop() awaited each
+module's own stop() with no bound at all, so any one module's stuck stop() (an open handle, an
+unresolved promise) hangs every caller of stop() forever -- settings.test.js just happens to start
+a full in-process vyred in 16 of its own tests, exposing it to any such bug anywhere in a default
+box role's module set.
+
+Fix: races each module's stop() against MODULE_STOP_MS (5s, matching daemon's own DRAIN_MS),
+logs loudly and moves on. New regression test uses node:test's mock timers (t.mock.timers.tick) to
+prove it deterministically and fast -- a real multi-second wait would either leave a dangling
+promise past the test (node:test's own pending-promise-at-exit check flags this, learned the hard
+way) or genuinely cost the real MODULE_STOP_MS every run. Also added { timeout: 30_000 } to all 16
+settings.test.js tests that start a real daemon, so a hang anywhere else in this path fails loudly
+under a minute rather than tying up CI forever. testbox: modules+settings+boundaries+hygiene
+70/70, docs:ref clean. Sent to reviewer-2 and the integrator.
