@@ -110,11 +110,10 @@ canvas** - inside the asked 8-10%. Ring-gap clearance (34 minus the longest tick
 reach) is **7.75px**, comfortably positive and wider than before in relative terms even though
 the raw gap number barely moved, because the ticks themselves got shorter.
 
-**Frozen constants** (`round5/vyrecode2.js`, at a 600x600 canvas; `pwa` has ported these as
-fixed values into `deck/vyrecode/decode-core2.js`, not by importing the source, so a change here
-does not propagate automatically - see the note below): `FACE_D = 360` (`FACE_R = 180`),
-`RINGS = 2`, `PER_RING = 36`, `RING_R = [188, 222]`, `ticksSunburst` tick lengths
-`6, 12, 18, 24`, marker offsets `r0 + 8 + k*6` with radius `2 + k*1`.
+**Frozen constants**, now sourced from `round5/geometry.js` (see 2b below), at a 600x600 canvas:
+`FACE_D = 360` (`FACE_R = 180`), `RINGS = 2`, `PER_RING = 36`, `RING_R = [188, 222]`,
+`ticksSunburst` tick lengths `6, 12, 18, 24`, marker offsets `r0 + 8 + k*6` with radius
+`2 + k*1`.
 
 **The invariant, restated correctly this time:** the outer edge is set by
 `max(RING_R[1] + longest-tick-reach, RING_R[1] + marker-reach)`, not by the ticks alone - the
@@ -123,12 +122,32 @@ marker's own offsets must recompute both reaches and keep the outer margin at 8-
 canvas and the ring-gap clearance clearly positive (treat today's 7.75px as thin, not a target to
 shrink further), not just check the ticks.
 
-Because `pwa`'s decoder hardcodes a second copy of these numbers rather than importing
-`vyrecode2.js` directly, the two files can silently drift if either changes alone (as just
-happened here - this revision required a direct message to `pwa` and `launch` with the new
-values, not an automatic update). Whoever next touches either file should either keep both in
-lockstep by hand (cross-check before merging) or - the safer fix - have the decoder import the
-constants from a single vendored copy of `vyrecode2.js` instead of restating them.
+Because `pwa`'s decoder hardcoded a second copy of these numbers rather than importing
+`vyrecode2.js` directly, the two files drifted out of sync exactly once, requiring a manual
+message to `pwa` and `launch` with the new values instead of an automatic update. Consolidated
+below (2b) rather than left as a standing risk.
+
+### 2b. Consolidation: one shared constants module (28 Sep, same day)
+
+Lead's call once the drift above actually happened once: stop passing the numbers by hand and
+give the geometry its own file both sides import. `round5/geometry.js` is now the single source
+of truth for every constant and reach formula this ADR names - `CENTER`, `FACE_D`/`FACE_R`,
+`RINGS`, `PER_RING`, `ANGLE_STEP`, `LEVELS`, `RING_R`, the tick-length formula (`tickLength(level)`,
+`TICK_STROKE_WIDTH`, `tickReach(level)`), and the marker's offset/radius formulas
+(`markerOffset(k)`, `markerRadius(k)`, `markerReach()`). It also exports `outerReach()` and
+`validateGeometry()`, which recomputes both the margin-percent and gap-clearance invariants from
+section 2a and throws with a specific reason if either regresses - a change that breaks the
+invariant now fails loudly at load time instead of shipping unnoticed. `vyrecode2.js` imports
+from it and calls `validateGeometry()` at module load; verified live (not just read) - a
+deliberately-broken threshold throws the expected message, a real render still produces the same
+51.75px margin / 7.75px clearance as 2a.
+
+`pwa` and `launch` should both vendor `geometry.js` itself (alongside the other vendored files:
+`rs.js`, `payload.js`, `identity.js`, `vyrecode2.js`, `creature.js`) and import its constants and
+`tickLength`/`markerOffset`/`markerRadius` functions, rather than hand-copying values into
+`decode-core2.js` or a second render-side file. Any future geometry change then lands once, in
+one file both sides pull from, and `validateGeometry()` catches a bad edit before it ships
+instead of relying on a person to notice.
 
 ### 3. What the code carries, and what it doesn't
 
@@ -167,3 +186,7 @@ on shipping the visual spec.
   120 units inside a 360-unit slot (a third size) until the wrapper read the face's own viewBox
   and scaled explicitly. Fixed generically (reads whatever viewBox the face source declares),
   not pinned to today's 120.
+- `round5/geometry.js` is the shared constants module (2b); `pwa` and `launch` both vendor and
+  import it rather than restating its values. Its `validateGeometry()` is the enforcement point
+  for the margin/gap invariant from 2a - run it (or let module load do so) after any edit to the
+  file.
