@@ -86,9 +86,14 @@ The user's approved 5th family, 0.1.1: a project isn't a being, so `projectTile(
 teammate tiles use) with a mark and a colour, never a face or a creature. `projectTile(seedBytes,
 { draft, theme, size })`:
 
-- **Seed.** The project's stored `avatar_seed`, or its permanent id with no stored seed yet -
-  never the project's name (a rename must never reseed it), never a device or box key. Byte 0
-  picks one of 8 colours (`PROJECT_COLORS`, identity.js), byte 1 one of 6 marks (square, triangle,
+- **Seed.** The project's stored `avatar_seed` (`core/projects` marker, native-core commit
+  cbd41296) - the project's slug, or the chat's id when the project was made from a chat
+  (`projects.create`'s `from_thread`) - never the project's name (a rename must never reseed it),
+  never a device or box key. `projectTile` takes bytes, not the seed string itself: every surface
+  must derive them the same way native-core's `deck/js/avatars.js` `projectBytes(seed)` does - two
+  FNV-1a 32-bit words over `"vyre:project:v1:" + seed`, 8 bytes (ADR 0043 section 1's "Seeds, by
+  family" has the full rule and the agent/teammate seeds too). Byte 0 picks one of 8 colours
+  (`PROJECT_COLORS`, identity.js), byte 1 one of 6 marks (square, triangle,
   diamond, cross, bars, grid - geometric and inanimate, a different set from the assistant's own
   marks, checked against "No AI-brand lookalikes" below the same as everything else here).
 - **Same contrast floors.** `PROJECT_COLORS` runs through the identical `validatePalette()` this

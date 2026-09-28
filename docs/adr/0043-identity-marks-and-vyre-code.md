@@ -27,9 +27,9 @@ stripped-viewBox bug); the beauty pass fixed both and is what this ADR specs.
 
 ## Decision
 
-### 1. Four identity families, one silhouette rule
+### 1. Five identity families, one silhouette rule
 
-Every mark in Vyre is one of exactly four families, each with a shape no other family uses, so
+Every mark in Vyre is one of exactly five families, each with a shape no other family uses, so
 identity reads before any content (name, colour, initial) loads:
 
 | Family | Shape | Content | Source |
@@ -37,7 +37,28 @@ identity reads before any content (name, colour, initial) loads:
 | Person (you) | True circle | Warm two-tone gradient, a calm face (no hair, no accessory) | `round4/identity.js` `userAvatar` |
 | Assistant | Companion creature | A plump rounded body, glow halo, ears, curled tail, a sparkle-eyed face | `round5/creature.js` `creature` |
 | Agent | Organic blob | A spikier, more angular wobble; a plain dot-eyed face | `round3b` generator |
-| Teammate | Rounded-square tile | Initial or a rolled character (hair/headwear/glasses/role prop), radius size/4 | `round3b` generator, `docs/design/system/components/avatar.md` |
+| Teammate | Rounded-square tile | Initial or a rolled character (hair/headwear/glasses/role prop), radius size/4, plus its project's colour as a small badge | `round3b` generator, `docs/design/system/components/avatar.md` |
+| Project | Rounded-square tile | A mark and a colour, never a face or creature; dashed and unfilled as a draft (section 6) | `round4/project.js` `projectTile` |
+
+**Seeds, by family** (added 28 Sep as native-core wired the App/Capsule side and needed the exact
+rule written down, not inferred from code): person and assistant are covered in full in 2d/2f
+(`fingerprint8` over `owner.id`, never a device or box key). The other three:
+
+- **Agent.** Seeded from the agent's own name (`agents_agents`' primary key) - the lead's ruling.
+  Renaming an agent therefore changes its blob; an immutable agent id, if one gets added later,
+  would be the more correct long-term seed, but the name is what exists today and blobs are
+  low-stakes enough that this is fine for 0.1.1.
+- **Teammate.** Seeded from the teammate id `core/team` already computes for a role in a project
+  (`<role>-<project>`, `core/team/index.js`'s `agentName`) - unchanged from round 3b, not new here.
+- **Project.** Seeded from the project's own stored `avatar_seed` (`core/projects` marker,
+  native-core commit cbd41296) - the project's slug, or the chat's id when the project was made
+  from a chat (`projects.create`'s `from_thread`). **The exact byte derivation every surface must
+  match** (native-core's `deck/js/avatars.js`, `projectBytes(seed)`): two FNV-1a 32-bit words over
+  `"vyre:project:v1:" + seed`, 8 bytes total - the same `"vyre:<kind>:v1:"` prefix convention 2f
+  already set for the person and assistant fingerprints, extended to a seed that's a string (a
+  slug or a chat id) rather than `owner.id`. Any surface computing a project's or a draft chat's
+  tile (App, Capsule, a future one) must derive bytes this same way, not invent its own hash - the
+  whole point of a fixed seed is that every surface draws the identical tile.
 
 The assistant is deliberately its own species, not a fifth agent and not a smaller person: round 4
 first gave it a squircle with an abstract mark (`assistantAvatar`), but the user's later direction
