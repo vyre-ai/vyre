@@ -184,6 +184,21 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   SIGNED OFF by reviewer-2 (306/306 on deck/chat's own suite, targeted). Pushed work/chat for the
   integrator: 378c7f54.
 
+## Done (28 Sep, cohesion item 18: inline pictures)
+- core/transcripts (9fd902ac, made in sessions' place per the lead - they were paused): `images:
+  [{media_type, data}]` on a user or tool block, capped (2 MB/image, 4/block, 6 MB/block total).
+  Sent to reviewer; noted in docs/work/sessions.md.
+- chat's own half (62b254f4): core/images.js (DOM-free caps/shaping, shared with pwa/mobile),
+  lightbox.js (one overlay, tap-to-zoom, Esc/backdrop close, focus returns to the opener),
+  blocks.js renders real thumbnails (userRow and toolCard) instead of a bare "N images" count,
+  composer.js's local echo carries the actual pictures so a just-sent message looks right at once,
+  session-state.js never lets a server confirmation's bare count downgrade a richer local array.
+  Every thumbnail is a fixed box before it decodes (interaction.md section 1: never a layout jump).
+  Sent to reviewer-2. testbox: deck/chat+deck/test+transcripts+switchboard 602/603 (1 pre-existing
+  skip), 0 fail; boundaries+docs-check 66/66.
+- Open for later: sight.frame stills at a running step (needs a target-per-thread lookup, not yet
+  built); rate-limiting sight.frame across chat and Glass's own caller (cohesion's item).
+
 ## Doing (28 Sep, restart after cohesion's hand-over)
 
 - Merged origin/main clean (4032bf03; no conflicts). ADR 0038 (server, not box): renamed the
