@@ -181,6 +181,24 @@
 .dev-card .pair-list:not(:empty) + .dev-state { display: none; }
 @media (prefers-reduced-motion: reduce) { .dev-wait .busy { animation: none; border-color: var(--text); } }
 
+/* "Add your phone": the Vyre code ring (ADR 0033, deck/js/phone-code.js). Three states only —
+   live (a slow shimmer says "this is current"), expiring (the last 30s: shimmer stops, the
+   countdown alone carries the urgency, never a colour change that would fight the ring's own
+   palette), expired (dimmed, inert, Refresh is the only action). */
+.phone-code-ring { width: 200px; max-width: 100%; align-self: center; border-radius: 50%; position: relative; overflow: hidden; }
+.phone-code-ring svg { display: block; width: 100%; height: 100%; }
+.phone-code-ring .busy { display: block; margin: 76px auto; width: 12px; height: 12px; border-radius: 6px; border: 1.5px solid var(--rule-strong); border-top-color: var(--text); animation: spin 900ms linear infinite; }
+.phone-code-ring.shimmer::after { content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.10) 48%, transparent 66%);
+  background-size: 220% 220%; animation: phone-code-shimmer 3.2s ease-in-out infinite; }
+.phone-code-ring.expired { opacity: 0.4; }
+.phone-code-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+@keyframes phone-code-shimmer { 0% { background-position: 130% 130%; } 100% { background-position: -30% -30%; } }
+@media (prefers-reduced-motion: reduce) {
+  .phone-code-ring .busy { animation: none; border-color: var(--text); }
+  .phone-code-ring.shimmer::after { animation: none; display: none; }
+}
+
 .notice { font-size: 13px; line-height: 18px; color: var(--text-2); display: flex; gap: 8px; align-items: flex-start; }
 .notice svg { flex-shrink: 0; margin-top: 1px; color: var(--label); }
 .need { border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); padding: 13px 15px; font-size: 14px; line-height: 20px; }

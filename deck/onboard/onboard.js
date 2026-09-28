@@ -11,6 +11,7 @@ import { pairRequests } from "../js/pair.js";
 import qrcode from "../vendor/qrcode.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { canRelayJoin } from "../js/join-caps.js";
+import { ticketRingSvg, ticketPhase, countdown } from "../js/phone-code.js";
 
 // Reconciled with docs/design/onboarding-v2.md's 10-step table (the lead, 29 Sep): this array's
 // order now matches it exactly, with two client screens standing in for the doc's single step 2
@@ -1221,7 +1222,50 @@ const SCREENS = {
     };
     drawNet();
 
-    col.append(h("div", { class: "ob-panel" }, h("div", { class: "dev-grid" }, macCard, phoneCard)));
+    // "Add your phone" (the user's decision, 28 Sep, ADR 0033): a live Vyre code ring, scanned
+    // by phone.vyre.run instead of the Tailscale-QR path above. Same gate as "Pair with a code"
+    // (deck/js/join-caps.js) — hidden on a Mac until vyre-core. No relay.pair.ticket tool exists
+    // yet (asked tailnet, see docs/work/launch-surfaces.md "Add your phone"), so this mints a
+    // placeholder ticket id client-side purely to prove the ring/shimmer/countdown/refresh
+    // mechanics; swap `mint()` for the real call the moment it lands, nothing else here changes.
+    const relay = canRelayJoin(state.status);
+    let phoneCodeCard = null;
+    if (relay.allowed) {
+      const ttlMs = 5 * 60_000;
+      let mintedAt = Date.now();
+      let ticketId = `placeholder-ticket-${mintedAt}`;
+      const mint = () => { mintedAt = Date.now(); ticketId = `placeholder-ticket-${mintedAt}`; };
+      const ringEl = h("div", { class: "phone-code-ring", "aria-live": "polite" }, h("span", { class: "busy" }));
+      const meta = h("div", { class: "phone-code-meta" });
+      const refreshBtn = h("button", { class: "btn", type: "button" }, "Refresh");
+      refreshBtn.addEventListener("click", () => { mint(); drawRing(); tick(); });
+      const drawRing = async () => {
+        const forId = ticketId;
+        const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+        const svg = await ticketRingSvg(forId, { theme });
+        if (forId !== ticketId) return; // superseded by a later mint mid-flight (a fast double-click on Refresh)
+        ringEl.innerHTML = svg;
+      };
+      const tick = () => {
+        const { phase, msLeft } = ticketPhase(mintedAt, ttlMs);
+        ringEl.classList.toggle("shimmer", phase === "live" && !calm());
+        ringEl.classList.toggle("expiring", phase === "expiring");
+        ringEl.classList.toggle("expired", phase === "expired");
+        put(meta, phase === "expired"
+          ? [h("p", { class: "small muted" }, "This code expired."), refreshBtn]
+          : h("p", { class: "small muted" }, `Expires in ${countdown(msLeft)}`));
+      };
+      drawRing();
+      tick();
+      every(tick, 1000);
+      phoneCodeCard = h("section", { class: "dev-card", "aria-labelledby": "dev-phone-code-h" },
+        h("div", { class: "lbl" }, "Add your phone"),
+        h("h2", { class: "h3", id: "dev-phone-code-h" }, "Scan with phone.vyre.run"),
+        ringEl,
+        h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and scan this."),
+        meta);
+    }
+    col.append(h("div", { class: "ob-panel" }, h("div", { class: "dev-grid" }, macCard, phoneCard, phoneCodeCard)));
 
     let asking = false;
     const refresh = async () => {

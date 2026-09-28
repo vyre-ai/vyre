@@ -70,6 +70,7 @@ don't fit this pass without their own picker UI, left for a follow-up rather tha
 | README hero image | launch (file), docs (README text) | doing |
 | install.sh terminal output | launch | doing |
 | Onboard loopback pages | launch (look/copy), sessions (logic) | doing |
+| Add your phone (onboarding + Settings > Devices) | launch (placement/gate), app-design (ring), tailnet (ticket), pwa (phone side) | doing |
 | `vyre` no args, `vyre --version` banner | polish-cli | asked |
 | `vyre up` ending | polish-cli | asked |
 | Release notes header | docs | spec to hand over |
@@ -283,6 +284,18 @@ Filled in as each lands.
   asserts exactly that (no radio, tailnet-name field alone, "Connect" not "Pair") — 4/4 in that
   file on testbox with `CHROME_BIN=/usr/local/bin/vyre-chrome` (headless, testbox's Playwright
   Chromium; the RULES `CHROME_BIN` default is a Mac path and testbox has no Chrome install).
+
+- "Add your phone": app-design sent the geometry/palette handoff (ADR 0033, round5/vyrecode2.js
+  `renderCode2`, `ticksSunburst` picked). Vendored their code (CommonJS -> ESM, `fingerprint8`
+  ported onto `crypto.subtle` for the browser) into `deck/vendor/vyrecode/`. Built the piece
+  they flagged as still launch's own: `deck/js/phone-code.js`'s live/expiring/expired state
+  machine, shimmer, countdown. Wired into onboarding's `devices` step next to the existing
+  Tailscale-QR phone card, behind the same `can.relayJoin` gate, with a client-side placeholder
+  ticket id (no real `relay.pair.ticket` yet). `deck/js/phone-code.test.js` 6/6 on testbox;
+  `test/onboard-page.test.js` re-run clean (4/4) — no browser test yet drives this card visible,
+  same real-daemon limitation as the relay-radio test above (no `can` field from a real
+  onboard.status today). Settings > Devices integration and the real ticket wiring wait on
+  tailnet/pwa's answers (see Needed from others).
 
 ## Doing
 

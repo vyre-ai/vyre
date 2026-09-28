@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### "Add your phone": the Vyre code ring, shimmer/countdown/expiry, in onboarding's devices step
+
+- `deck/vendor/vyrecode/` (rs.js, payload.js, identity.js, vyrecode2.js): app-design's ADR 0033
+  code, vendored CommonJS -> ESM with no logic changes except `payload.js`'s `fingerprint8`,
+  ported off Node's `crypto` onto Web Crypto's `crypto.subtle.digest` (browser + Node `--test`
+  both have it; no build-time swap needed).
+- `deck/js/phone-code.js` (launch's own): `ticketLevels`/`ticketRingSvg` turn a ticket id into
+  the 144-bit ring per the ADR; `ticketPhase`/`countdown` are the live/expiring/expired state
+  machine and its m:ss text — the "live variant" app-design flagged as still needed from launch.
+- Wired into `deck/onboard/onboard.js`'s `devices` step, alongside the existing Tailscale-QR
+  phone card, gated on `onboard.status.can.relayJoin` (deck/js/join-caps.js, same helper as
+  "Pair with a code"). No `relay.pair.ticket` mint tool exists yet (asked tailnet); mints a
+  placeholder ticket id client-side so the ring/shimmer/countdown/refresh mechanics are real and
+  testable today, swapped for the real call the moment it lands.
+- `deck/js/phone-code.test.js`: 6/6 (deterministic + distinct encodings, SVG shape, the three
+  phases' boundaries, countdown formatting), run on testbox.
+
 #### capsule: 0.1.1, offline start, the current project, models from sessions.models, pin without nagging
 
 - Offline, the Capsule starts Vyre itself. The Offline line is "Start Vyre" (Return on an empty
