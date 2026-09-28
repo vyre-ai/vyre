@@ -233,7 +233,17 @@ isn't a git repo at all. `full_name` is `owner/name` when a remote's URL parses 
 (`originFullName`, `core/github/git.js`), `null` for anything else (a `gitlab.com` remote, say).
 `match` is `{ account, full_name, default_branch }` for the first connected account that can
 reach that repo, or `null` when the remote isn't GitHub, or is a repo none of the connected
-accounts can see (someone else's fork, an account not yet connected).
+accounts can see (someone else's fork, an account not yet connected). `url` is `sanitizeRemoteUrl`'s
+output, never git's raw answer (reviewer, e5a612c0 review, MEDIUM): a folder cloned by hand with
+a personal access token embedded in the remote's `https://` URL (a userinfo prefix before the
+host) was otherwise sending that credential straight back out through this tool. Userinfo, the
+query string and any fragment are stripped from a `scheme://` URL; the scp-like ssh form
+(`git@host:path`) has no such syntax and is returned unchanged.
+`originFullName`'s and `repoName`'s (index.js) owner/name character classes were also tightened
+the same review (LOW): the old `[^/\s]+` for owner let a value like `../user` resolve to
+`/repos/user` once built into an `api.github.com` path; both now use GitHub's own charset
+(owner `[A-Za-z0-9-]{1,39}`, name `[A-Za-z0-9._-]{1,100}`, name additionally never exactly `.`
+or `..`).
 
 ### 5. A worktree and branch per session
 

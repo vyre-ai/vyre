@@ -18,7 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { gitSync } from "../../lib/git-safe.js";
-import { cloneRepo, worktreeAdd, worktreeRemove, freeFolder, safeSegment, originFullName, remoteUrl, listRemotes, folderGitState } from "./git.js";
+import { cloneRepo, worktreeAdd, worktreeRemove, freeFolder, safeSegment, originFullName, sanitizeRemoteUrl, remoteUrl, listRemotes, folderGitState } from "./git.js";
 
 const plainGit = (dir, args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull } });
 
@@ -191,6 +191,25 @@ test("originFullName: reads owner/name out of https (with or without a userinfo 
   assert.equal(originFullName("https://gitlab.com/alex/harlow-legal.git"), null);
   assert.equal(originFullName("/local/path/harlow-legal"), null);
   assert.equal(originFullName(""), null);
+  // repo names with a real dot in them still work (the charset allows dots; only the exact
+  // literal "." or ".." is excluded, next).
+  assert.equal(originFullName("https://github.com/alex/harlow.legal.git"), "alex/harlow.legal");
+});
+
+test("originFullName: a path-traversal owner or a bare '.'/'..' name is refused, not resolved (reviewer's LOW on e5a612c0 - the old owner charset let '../user' reach /repos/user)", () => {
+  assert.equal(originFullName("https://github.com/../user/harlow-legal.git"), null, "owner's charset has no slash or dot to traverse with");
+  assert.equal(originFullName("https://github.com/alex/."), null);
+  assert.equal(originFullName("https://github.com/alex/.."), null);
+  assert.equal(originFullName("git@github.com:alex/..git"), null, "the lazy name match takes '.' here once the optional .git suffix absorbs the rest, and a bare '.' must still be refused");
+});
+
+test("sanitizeRemoteUrl: strips userinfo, query and fragment from a scheme:// URL; leaves scp-like ssh (no such syntax) and an unparsable value alone", () => {
+  assert.equal(sanitizeRemoteUrl("https://x-access-token:ghp_supersecrettoken123@github.com/alex/harlow-legal.git"), "https://github.com/alex/harlow-legal.git");
+  assert.equal(sanitizeRemoteUrl("https://ghp_supersecrettoken123@github.com/alex/harlow-legal.git"), "https://github.com/alex/harlow-legal.git");
+  assert.equal(sanitizeRemoteUrl("https://github.com/alex/harlow-legal.git?token=ghp_leak#frag"), "https://github.com/alex/harlow-legal.git");
+  assert.equal(sanitizeRemoteUrl("git@github.com:alex/harlow-legal.git"), "git@github.com:alex/harlow-legal.git");
+  assert.equal(sanitizeRemoteUrl(""), "");
+  assert.equal(sanitizeRemoteUrl("not a url at all"), "not a url at all");
 });
 
 test("remoteUrl: the URL a named remote points at, or null when there is no remote by that name", async t => {

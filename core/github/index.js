@@ -11,7 +11,7 @@
 
 import { connector, revoke } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
-import { cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState } from "./git.js";
+import { cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl } from "./git.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -267,7 +267,10 @@ export default {
           for (const r of state.remotes) {
             const full_name = originFullName(r.url);
             const match = full_name ? await accountFor(full_name, cache) : null;
-            remotes.push({ name: r.name, url: r.url, full_name, match });
+            // Never the raw URL: a folder cloned by hand as https://user:TOKEN@github.com/...
+            // would otherwise send that credential straight back out through this tool
+            // (reviewer, e5a612c0 review, MEDIUM).
+            remotes.push({ name: r.name, url: sanitizeRemoteUrl(r.url), full_name, match });
           }
           workspaces.push({ folder, isRepo: true, remotes });
         }
@@ -309,10 +312,15 @@ export default {
   },
 };
 
+// GitHub's own charset for owner/name (reviewer, e5a612c0 review, LOW): the old `[^/\s]+` for
+// owner let a value like "../user" resolve to /repos/user once put in an api.github.com path;
+// name keeps an explicit "." / ".." exclusion below since its charset (unlike owner's) has dots.
+const REPO_RE = /^(?:https?:\/\/github\.com\/)?([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)(?:\.git)?\/?$/;
+
 /** owner/name or a GitHub URL, to "owner/name". */
 function repoName(repo) {
   const s = String(repo || "").trim();
-  const m = /^(?:https?:\/\/github\.com\/)?([^/\s]+)\/([^/\s.]+?)(?:\.git)?\/?$/.exec(s);
-  if (!m) throw fail(`repo must be owner/name or a github.com URL, not "${s.slice(0, 60)}"`);
+  const m = REPO_RE.exec(s);
+  if (!m || m[2] === "." || m[2] === "..") throw fail(`repo must be owner/name or a github.com URL, not "${s.slice(0, 60)}"`);
   return `${m[1]}/${m[2]}`;
 }

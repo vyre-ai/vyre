@@ -182,6 +182,23 @@ test("github.project.detect: covers every workspace a project owns, not just its
   assert.deepEqual(r.data.workspaces[2].remotes, []);
 });
 
+test("github.project.detect: a remote cloned with a credential embedded in the URL never sends that credential back out (reviewer's MEDIUM on e5a612c0)", async t => {
+  const SECRET = "ghp_reallysecrettoken0000000000";
+  const home = makeRepo(t, `https://x-access-token:${SECRET}@github.com/alex/harlow-legal.git`);
+  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home }] });
+  seedAccount(w.db);
+  withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal", default_branch: "main" }] }));
+
+  const r = await w.as("cli")("github.project.detect", { project: "harlow" });
+  const url = r.data.workspaces[0].remotes[0].url;
+  assert.equal(url, "https://github.com/alex/harlow-legal.git");
+  assert.ok(!url.includes(SECRET), "the token never appears in the returned url");
+  assert.ok(!JSON.stringify(r.data).includes(SECRET), "the token never appears anywhere in the response");
+  // full_name/match still resolve correctly - sanitizing the displayed url doesn't break parsing
+  assert.equal(r.data.workspaces[0].remotes[0].full_name, "alex/harlow-legal");
+  assert.equal(r.data.workspaces[0].remotes[0].match.full_name, "alex/harlow-legal");
+});
+
 // The actual clone step (cloneRepo/gitWithAskpass) needs a real https-reachable git server -
 // git-safe.js's own protocol.allow=never blocks a local file:// stand-in on purpose (git.test.js
 // proves exactly that refusal), so github.project and .add-repo's happy paths (a real successful
@@ -218,4 +235,16 @@ test("github.project: narrowed to making a brand-new project - no project param 
   const r = await w.as("cli")("github.project", { repo: "alex/does-not-exist" });
   assert.equal(r.error.code, "refused");
   assert.equal(w.calls.some(c => c.tool === "projects.create"), false, "never got as far as creating a project");
+});
+
+test("github.project: repoName refuses a path-traversal owner or a bare '.'/'..' name before ever touching the GitHub API (reviewer's LOW on e5a612c0)", async t => {
+  const w = await world(t);
+  seedAccount(w.db);
+  withFetch(t, fakeFetch({ repos: [] })); // any real fetch call here would be the bug
+
+  const traversal = await w.as("cli")("github.project", { repo: "../user/harlow-legal" });
+  assert.equal(traversal.error.code, "bad_input");
+  const dotName = await w.as("cli")("github.project", { repo: "alex/.." });
+  assert.equal(dotName.error.code, "bad_input");
+  assert.equal(w.calls.length, 0, "repoName's own validation runs before any tool call at all");
 });

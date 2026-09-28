@@ -190,6 +190,38 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
     4a updated with what the live run proved and the fix it drove. Sending this sha to the
     reviewer as part of the same packet.
 
+## Done (2026-09-28, reviewer's e5a612c0 findings - MEDIUM + LOW, both fixed)
+- reviewer HOLD on e5a612c0 (range 4e9c6d7d..e5a612c0): one MEDIUM, one LOW, everything else
+  passed (add-repo person-only and using the cleared clone path correctly, the primary-row fix
+  confirmed correct, detect read-only/git-safe/bounded, repos paging bounded, link/unlink fully
+  gone, no trailers on 12 commits - relied on the 85/85 report rather than rerunning).
+  - **MEDIUM**: `github.project.detect` returned each remote's raw `url`. A folder cloned by hand
+    with a token embedded in the remote's `https://` URL (userinfo before the host) would send
+    that credential straight back out through the tool, onto whatever screen shows it. Fixed:
+    `core/github/git.js` gained `sanitizeRemoteUrl(url)` (strips userinfo, query string and
+    fragment from a `scheme://` URL; the scp-like ssh form has no such syntax and passes through
+    unchanged; never throws on something unparsable). `github.project.detect` runs every remote's
+    `url` through it before returning. `listRemotes` itself still returns the raw URL (git's own
+    answer) - sanitizing is the caller's job, since a future caller might have a reason to need
+    the real value (the doc comment says so explicitly now).
+  - **LOW**: `repoName` (index.js) and `originFullName` (git.js) accepted any non-slash owner
+    (`[^/\s]+`), so `../user` as an owner resolved to `/repos/user` once built into an
+    `api.github.com` path. Both now use GitHub's own charset: owner `[A-Za-z0-9-]{1,39}`, name
+    `[A-Za-z0-9._-]{1,100}`, plus an explicit check that name is never exactly `.` or `..` (its
+    charset, unlike owner's, allows dots, so that needs a real check rather than just the
+    charset).
+  - Tests: `git.test.js` gained a `sanitizeRemoteUrl` test and an `originFullName` path-traversal/
+    dot-name test (4 new); `index.test.js` gained a detect test proving a token embedded in a
+    remote URL never appears anywhere in the response, and a `github.project` test proving a
+    path-traversal repo string is refused (`bad_input`) before any tool call or fetch happens (2
+    new). 12 new/changed assertions total across the two findings.
+  - Also had to fix the ADR's own prose once regenerated docs caught it: `user:TOKEN@github.com`
+    in a sentence explaining the MEDIUM read as an email address to `docs-check`'s hygiene sweep
+    (not an `@example.com` one) - reworded to avoid the pattern rather than exempt it.
+  - Tested on testbox (temp `HOME`): 90 tests (89 + the live one, skipped by default), 88 pass +
+    1 skip clean on the second run, after the docs-check catch above was fixed. Sending this sha
+    back to the reviewer.
+
 ## Doing
 - reviewer CLEARED work/github through acfcefd2 (both 3a72ea7f..84e76681 and the stdin fix).
   The credential.interactive LOW is WITHDRAWN (reviewer agreed the evidence was right); the lead

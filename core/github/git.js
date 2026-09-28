@@ -56,6 +56,20 @@ export async function cloneRepo({ projectsDir, name, url, token }) {
   return { path: dest };
 }
 
+// GitHub's own charset for the two path segments in owner/name (reviewer, e5a612c0 review, LOW):
+// bounded and specific enough that neither can smuggle a ".." or a "?" into an api.github.com
+// path built from it (repoName's old `[^/\s]+` for owner let "../user" resolve to /user). name
+// keeps its own explicit "." / ".." exclusion below since its charset (unlike owner's) allows dots.
+const OWNER_CHARS = "[A-Za-z0-9-]{1,39}";
+const NAME_CHARS = "[A-Za-z0-9._-]{1,100}";
+const HTTPS_ORIGIN = new RegExp(`^https?://(?:[^@/\\s]+@)?github\\.com[:/](${OWNER_CHARS})/(${NAME_CHARS}?)(?:\\.git)?/?$`, "i");
+const SSH_ORIGIN = new RegExp(`^(?:ssh://)?git@github\\.com[:/](${OWNER_CHARS})/(${NAME_CHARS}?)(?:\\.git)?/?$`, "i");
+
+/** `owner/name`, or null when `name` is exactly "." or ".." (the charset above allows dots, unlike owner's). */
+function ownerName(owner, name) {
+  return name === "." || name === ".." ? null : `${owner}/${name}`;
+}
+
 /**
  * A git remote URL's `owner/name`, or null when it is not github.com at all. Reads https
  * (`https://github.com/owner/name(.git)`, with or without a userinfo prefix), ssh
@@ -65,11 +79,33 @@ export async function cloneRepo({ projectsDir, name, url, token }) {
  */
 export function originFullName(url) {
   const s = String(url || "").trim();
-  const https = /^https?:\/\/(?:[^@/\s]+@)?github\.com[:/]([^/\s]+)\/([^/\s.]+?)(?:\.git)?\/?$/i.exec(s);
-  if (https) return `${https[1]}/${https[2]}`;
-  const ssh = /^(?:ssh:\/\/)?git@github\.com[:/]([^/\s]+)\/([^/\s.]+?)(?:\.git)?\/?$/i.exec(s);
-  if (ssh) return `${ssh[1]}/${ssh[2]}`;
+  const https = HTTPS_ORIGIN.exec(s);
+  if (https) return ownerName(https[1], https[2]);
+  const ssh = SSH_ORIGIN.exec(s);
+  if (ssh) return ownerName(ssh[1], ssh[2]);
   return null;
+}
+
+/**
+ * A remote URL with any embedded credential, query string or fragment stripped, for anything
+ * that shows a remote's URL to a person (reviewer, e5a612c0 review, MEDIUM: a folder cloned by
+ * hand as `https://user:ghp_...@github.com/...` was sending that token straight back out through
+ * `github.project.detect`). Only a `scheme://` URL can carry userinfo like that; the scp-like ssh
+ * form (`git@host:path`) has no such syntax, so it is returned unchanged. Never throws: an
+ * unparsable URL is returned as-is rather than dropped.
+ * @param {string} url
+ */
+export function sanitizeRemoteUrl(url) {
+  const s = String(url || "");
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return s;
+  try {
+    const u = new URL(s);
+    u.username = "";
+    u.password = "";
+    u.search = "";
+    u.hash = "";
+    return u.toString();
+  } catch { return s; }
 }
 
 /** The URL a named remote points at, or null when the repo has no remote by that name. */
@@ -78,7 +114,7 @@ export async function remoteUrl(dir, name) {
   return r.ok ? r.stdout.trim() : null;
 }
 
-/** Every remote in `dir`: `[{ name, url }]`, in git's own listing order. Local-only, no network. */
+/** Every remote in `dir`: `[{ name, url }]`, in git's own listing order. Local-only, no network. `url` is exactly what git reports, not sanitized - callers that show it to a person use `sanitizeRemoteUrl` first (`github.project.detect` does). */
 export async function listRemotes(dir) {
   const names = await gitAsync(dir, ["remote"]);
   if (!names.ok) return [];
