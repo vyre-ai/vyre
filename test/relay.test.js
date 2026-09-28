@@ -13,7 +13,7 @@ import { HUMAN_ONLY } from "../core/presence/index.js";
 import { createRelay } from "../relay/node/server.js";
 import { keyPair } from "../core/relay/noise.js";
 import { deviceSide } from "../core/relay/channel.js";
-import { parsePairUrl } from "../core/relay/pairing.js";
+import { parsePairUrl, pairUrl } from "../core/relay/pairing.js";
 import { useReleasesFile } from "../core/relay/releases.js";
 import { signed } from "../core/presence/person.js";
 import crypto from "node:crypto";
@@ -416,4 +416,24 @@ test("relay: relay.join refuses a guest, an agent's own claim, and a bad code, b
   // "hook" is refused even earlier, before caller-kind matching reaches relay.join at all: hooks
   // reach only tools declared hook: true, and relay.join is not one.
   assert.equal((await d.registry.call("relay.join", { url: bogus }, "hook", PROOF)).error.code, "no_such_tool");
+});
+
+test("relay: relay.join's presence prompt names the box, its relay host and a key fingerprint; a garbage url refuses before any prompt at all", async t => {
+  const { d } = await world(t);
+  const def = d.registry.tools.get("relay.join");
+  const goodUrl = pairUrl({ relay: "wss://relay.example.com", route: "a".repeat(26), box: Buffer.alloc(32, 7), secret: "s", name: "Northwind Bakery" });
+  const summary = await def.presence.summary({ url: goodUrl });
+  assert.match(summary, /^Pair this device with "Northwind Bakery" on relay\.example\.com \(key [a-z2-7]{4} [a-z2-7]{4}\)$/);
+
+  // A well-formed vyre.run/pair# link whose fragment does not decode to a real offer: the prompt
+  // says so plainly rather than falling back to a generic "relay.join {...}" line.
+  const nonsense = "https://vyre.run/pair#bm90LWEtcmVhbC1vZmZlcg";
+  assert.match(await def.presence.summary({ url: nonsense }), /does not look like a real Vyre pairing code/);
+
+  // A url that is not even shaped like a pairing link: the schema refuses it before presence or
+  // run() ever see it, so no prompt of any kind is possible.
+  const r = await d.registry.call("relay.join", { url: "https://evil.example/steal-me" }, "cli", PROOF);
+  assert.equal(r.error.code, "bad_input");
+  const r2 = await d.registry.call("relay.join", { url: nonsense }, "cli", PROOF);
+  assert.equal(r2.error.code, "bad_input", "passes the schema pattern but fails parsePairUrl, still refused in run()");
 });

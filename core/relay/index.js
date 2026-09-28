@@ -19,7 +19,7 @@ import * as config from "../config/index.js";
 import { routeId, base32 } from "./wire.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
-import { pairUrl } from "./pairing.js";
+import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { loadKeys } from "./keys.js";
 import { redeem } from "./redeem.js";
@@ -265,13 +265,29 @@ export default {
       },
     });
 
+    // A short fingerprint for the Touch ID prompt: the box's key, never the relay it happens to
+    // sit behind. Same shape as core/relay's own device ids (base32 of sha256), just short enough
+    // to read: 8 characters as two groups of 4.
+    const keyFingerprint = box => { const s = base32(crypto.createHash("sha256").update(box).digest()).slice(0, 8); return `${s.slice(0, 4)} ${s.slice(4)}`; };
+
     ctx.tool("relay.join", {
-      description: "This Vyre becomes a device of another box, redeeming a one-time pairing code minted there (relay.pair.start or onboard.join{action:\"relay\"}). One redemption: the channel closes once paired, then this tool returns what the other box said (its name, this device's id, whether presence enrolled). becomeDevice, when true, flips this machine to \"device\" once paired (onboard.machine) — the shape onboard.join{action:\"verify\",becomeDevice} uses on the Tailscale path, so the onboarding card calls the same flag either way. Does not keep a connection open; that is not built yet.",
-      input: obj({ url: str, name: str, becomeDevice: { type: "boolean" } }, ["url"]),
+      description: "This Vyre becomes a device of another box, redeeming a one-time pairing code minted there (relay.pair.start or onboard.join{action:\"relay\"}). One redemption: the channel closes once paired, then this tool returns what the other box said (its name, this device's id, whether presence enrolled). becomeDevice, when true, flips this machine to \"device\" once paired (onboard.machine) — the shape onboard.join{action:\"verify\",becomeDevice} uses on the Tailscale path, so the onboarding card calls the same flag either way. Does not keep a connection open; that is not built yet. A pasted URL that is not a real Vyre pairing code is refused before any prompt.",
+      input: obj({ url: { type: "string", pattern: "^https://vyre\\.run/pair#[A-Za-z0-9_-]+$" }, name: str, becomeDevice: { type: "boolean" } }, ["url"]),
       callers: ["cli", "local", "deck", "capsule"],
-      presence: { summary: async () => "Pair this device with another Vyre, without Tailscale" },
+      // The prompt names what is actually being joined: a phishing message could paste in a real
+      // pairing link for a stranger's box, and once connect() lands that box can send this device
+      // work, so "pair this device" alone is not enough for a person to judge (reviewer, 28 Sep).
+      presence: {
+        summary: async i => {
+          const offer = parsePairUrl(i && i.url);
+          if (!offer) return "This does not look like a real Vyre pairing code; refusing to pair.";
+          const host = (offer.relay.match(/^wss?:\/\/([^/]+)/) || [])[1] || offer.relay;
+          return `Pair this device with "${offer.name || "a Vyre box"}" on ${host} (key ${keyFingerprint(offer.box)})`;
+        },
+      },
       run: async ({ url, name, becomeDevice = false }, meta = {}) => {
         owner(meta.caller, meta, "joining another box");
+        if (!parsePairUrl(url)) throw fail("bad_input", "that does not look like a real Vyre pairing code");
         let paired;
         try { paired = await redeem(url, { root: ctx.paths.root, name }); }
         catch (e) { throw fail("bad_input", /** @type {Error} */ (e).message); }
