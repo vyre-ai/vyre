@@ -420,6 +420,31 @@ out to be a plain `$` vs `$$` typo in a new test, not a hang.
   66/66; deck/chat/*.test.js (native-core's original hang-report glob) 97/97, clean, re-run after
   every commit in this batch.
 
+## Done (28 Sep, native-core-composer merge, hang found and killed, e9d68c84)
+- Merged origin/work/native-core-composer (65296734) into work/chat: clean, no conflicts (voice.js,
+  the composer's voice UI, native-bar.md, stream.js's fast-reconnect probe).
+- Reproduced the hang native-core kept re-hitting: session.test.js's test 12 (typing steers/queues/
+  rewind) threw partway through - native-core's pickers.js now always offers "Fork from here" in
+  the rewind sheet's keyboard cycling (allowed()), even while canFork() was still null, so
+  ArrowLeft landed on Fork instead of "Restore code". The thrown assertion skipped that test's own
+  stop4(), leaving a mounted session still listening, which crossed thread ids into test 13's
+  assertions and doubled test 17's sight-refresh count - three failures, one cause, and the still-
+  live session's stream kept the whole file from exiting (a 15s file-level timeout on top).
+  Fixed pickers.js's allowed() to gate Fork on forkOk() === true, the same pattern RESTORES already
+  uses for codeOk() (still rendered, disabled, in the visible list either way - only cycling order
+  changed). Updated session.test.js's rewind-sheet assertion for the now-real fourth option.
+  Separately found and fixed (native-core's file, a one-line contract-safe change, told them):
+  core/resilience/stream.js's fastReach() interval and its abort setTimeout were never unref'd, so
+  two real, never-closing sockets survived every test that ever went "reconnecting" - this is what
+  actually kept the process alive for the file-level timeout once the crossed-session symptom above
+  was ruled out as the sole cause.
+  Also added /chat/core/voice.js to deck/sw.js's SHELL list (pwa's file per fa2e43e's precedent,
+  told pwa) so the new voice module installs offline.
+  testbox: deck/chat + deck/test + core/switchboard + core/resilience + local/voice 589/589 (2 skip,
+  0 fail); boundaries 66/66. docs-check: 2 pre-existing failures, both in native-core's own newly-
+  merged docs (docs/work/pwa.md fails to render, em dashes in docs/design/native-bar.md) - flagged
+  to native-core, not chat's files.
+
 ## Doing (28 Sep, restart after cohesion's hand-over)
 
 - Merged origin/main clean (4032bf03; no conflicts). ADR 0038 (server, not box): renamed the
