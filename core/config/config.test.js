@@ -233,11 +233,11 @@ test("config: ownerId() makes one 16-byte hex id, persists it, and never changes
   assert.equal(config.ownerId(c, undefined), id);
 });
 
-test("config: fingerprint8() matches the spec's formula, sha256(\"vyre:person:v1:\"+hex(id))[0:8]", () => {
+test("config: fingerprint8() matches the spec's formula, the first 8 bytes of sha256(\"vyre:person:v1:\"+hex(id)), as 16 hex chars", () => {
   const id = "0123456789abcdef0123456789abcdef";
   // Computed independently (node -e with crypto), not by re-running the function under test.
-  assert.equal(config.fingerprint8(id), "5ab34bc6");
+  assert.equal(config.fingerprint8(id), "5ab34bc68c763d2f");
   assert.equal(config.fingerprint8(id), config.fingerprint8(id), "deterministic");
   assert.notEqual(config.fingerprint8(id), config.fingerprint8("f".repeat(32)), "a different id fingerprints differently");
-  assert.equal(config.fingerprint8(id).length, 8);
+  assert.equal(config.fingerprint8(id).length, 16, "16 hex chars = the lib's 8 raw bytes");
 });

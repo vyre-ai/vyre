@@ -6,6 +6,11 @@ import os from "node:os";
 import { build } from "../daemon/build.js";
 import { hostedOrigins, fingerprint8 } from "../config/index.js";
 
+// owner.id's only valid shape (config.ownerId(): 16 random bytes, hex). Any process running as
+// this OS user can edit config.json, so owner.id is display identity only, never a trust anchor
+// -- a malformed value here is just bad data to shrug off, not something to pass through.
+const OWNER_ID_RE = /^[0-9a-f]{32}$/;
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
@@ -16,7 +21,7 @@ export default {
         // owner.id itself never leaves this machine -- only its fingerprint, and only core/onboard
         // ever writes owner.id (config.ownerId(), on its own startup); this is read-only.
         owner: { name: (ctx.config.onboard && ctx.config.onboard.person) || null,
-          fingerprint8: (ctx.config.owner && ctx.config.owner.id) ? fingerprint8(ctx.config.owner.id) : null },
+          fingerprint8: (ctx.config.owner && OWNER_ID_RE.test(ctx.config.owner.id)) ? fingerprint8(ctx.config.owner.id) : null },
         // The name the user gave their assistant in onboarding, else the agent it was created as.
         assistant: { name: (ctx.config.onboard && (ctx.config.onboard.assistant || (ctx.config.onboard.greeted && ctx.config.onboard.greeted.agent))) || null },
         network: { origins: hostedOrigins(ctx.config.network) } }),

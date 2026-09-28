@@ -10,6 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { claudeHome, claudeJson, transcriptFolders } from "./dialogs.js";
+import { fingerprint8 as fingerprint8Bytes } from "../../lib/identity.js";
 
 export { claudeHome, claudeJson, transcriptFolders };
 
@@ -319,12 +320,16 @@ export function ownerId(cfg, root, live) {
 /**
  * What a surface may show before anyone is proven present: not the id itself (an unguessable
  * secret's worth of entropy, kept out of logs and screens on principle even though it isn't a
- * credential), but a short, stable fingerprint of it -- the same 8 hex characters every time, for
- * this person, everywhere (a phone matching its own scan against the box it is pairing to).
+ * credential), but a short, stable fingerprint of it -- the same 16 hex characters (the lib's 8
+ * bytes) every time, for this person, everywhere (a phone matching its own scan against the box
+ * it is pairing to). The formula itself lives in lib/identity.js, the one place both sides of a
+ * pairing (this and tailnet's relay) compute it, so they can never drift apart.
+ *
+ * owner.id is display identity only, never a trust anchor -- see lib/identity.js.
  * @param {string} id
  */
 export function fingerprint8(id) {
-  return crypto.createHash("sha256").update(`vyre:person:v1:${id}`).digest("hex").slice(0, 8);
+  return fingerprint8Bytes(id, "person").toString("hex");
 }
 
 /** Create the data folders if they are missing. Safe to call every start. */

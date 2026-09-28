@@ -17,7 +17,7 @@ test("system: system.info exposes only a fingerprint of owner.id, never the id i
 
   const r = await d.registry.call("system.info", {}, "cli");
   assert.equal(r.error, undefined, JSON.stringify(r.error));
-  assert.match(r.data.owner.fingerprint8, /^[0-9a-f]{8}$/);
+  assert.match(r.data.owner.fingerprint8, /^[0-9a-f]{16}$/);
 
   const saved = JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8"));
   assert.match(saved.owner.id, /^[0-9a-f]{32}$/, "onboard's own startup generated and persisted it");
@@ -41,4 +41,15 @@ test("system: two fresh installs never collide, and each keeps its id across a r
   t.after(() => d1b.stop());
   const r1b = await d1b.registry.call("system.info", {}, "cli");
   assert.equal(r1b.data.owner.fingerprint8, r1.data.owner.fingerprint8, "the same id survives a restart, never regenerated");
+});
+
+test("system: a malformed owner.id (any process running as this user can edit config.json) yields fingerprint8 null, not garbage", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "solo", transcripts: [], network: { onboardPort: 0 }, owner: { id: "not-a-valid-hex-id" } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+
+  const r = await d.registry.call("system.info", {}, "cli");
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(r.data.owner.fingerprint8, null, "malformed owner.id is not passed through to the fingerprint formula");
 });
