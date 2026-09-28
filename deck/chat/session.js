@@ -55,7 +55,8 @@
 //
 // Nothing here uses innerHTML: text is untrusted, so it goes through lib/markdown.js or text nodes.
 
-import { h, put, empty } from "../js/dom.js";
+import { h, put, empty, go } from "../js/dom.js";
+import { openHref } from "./newsession.js";
 import { attempt, on, onResume } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
@@ -505,6 +506,25 @@ export function mountSession(container, opts) {
       can: () => CAPS.has("threads.rewind"),
       codeOk: () => CAPS.has(REWIND_CODE),
       onClose: closeRewind,
+      // native-core's contract (docs/work/native-core.md, "Fork from here"): threads.fork's answer
+      // is a thread record (`.id`, not `.thread` - checked against core/switchboard/index.js's
+      // record()), so this opens exactly the way a new session from openHref does; the original
+      // thread's own view is left untouched (no rewinding/patch() here, unlike onChoose above).
+      onFork: async p => {
+        const res = await CAPS.use("threads.fork", () => attempt("threads.fork", { thread, at: p.uuid }));
+        if (res.error) return res.missing ? NEEDS_UPDATE : "Could not fork: " + (res.error.message || res.error.code);
+        const href = openHref(res.data, record.current?.project || opts.project || null);
+        if (!href) return "The fork started, but the server did not say which thread it is.";
+        if (rewind) closeRewind();
+        go(href);
+        return null;
+      },
+      // Off until threads.fork is known to be there (no cheap way to probe it without a real fork's
+      // side effect); becomes true the first time onFork above actually succeeds. Flagged to
+      // native-core/sessions: unlike REWIND_CODE (piggybacks on threads.commands via LINKED),
+      // nothing yet marks this true before a first real use, so the item may stay off indefinitely
+      // on a box that has never forked - worth a LINKED entry once threads.fork's release is known.
+      canFork: () => CAPS.has("threads.fork"),
       onChoose: async (p, restore) => {
         rewinding = { uuid: p.uuid, text: p.text, at: p.at };
         // Conversation is the box's default and all an older box does: sent without restore.
