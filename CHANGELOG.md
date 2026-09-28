@@ -11,6 +11,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   over the same message as before, checked only against the key enrolled for its id. A Capsule
   key enrolled as Ed25519 (kept in the login keychain, usable by any program running as the same
   user) is refused with "re-enroll the Capsule's key". Lands with capsule-pro's Swift change.
+- Capsule and device rows always store alg -7: a migration fills any device row without one, and
+  a trigger refuses a capsule or device row with any other alg. A proof is also refused when the
+  stored key itself isn't P-256. The refusal names the kind: "re-enroll the Capsule's key" for a
+  Capsule, "pair the phone again" for a phone.
 
 #### sync: module.json's watches.hears was never a real schema key (it's watches.on)
 

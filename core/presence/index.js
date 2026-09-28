@@ -314,6 +314,17 @@ export const MIGRATIONS = [`
     cdhash TEXT NOT NULL,
     pinned_at INTEGER NOT NULL
   );
+`, `
+  -- A key that signs a call itself (capsule, device) always stores its kind: ES256, alg -7. Device
+  -- keys were always enrolled that way; fill any row that isn't, then refuse one that would not be.
+  -- An old Ed25519 capsule row keeps its -8, so it is refused at proof time rather than rewritten.
+  UPDATE presence_keys SET alg = -7 WHERE kind = 'device' AND alg IS NULL;
+  CREATE TRIGGER presence_keys_signer_alg BEFORE INSERT ON presence_keys
+    WHEN NEW.kind IN ('capsule', 'device') AND (NEW.alg IS NULL OR NEW.alg <> -7)
+    BEGIN SELECT RAISE(ABORT, 'a capsule or device key must store alg -7'); END;
+  CREATE TRIGGER presence_keys_signer_alg_update BEFORE UPDATE OF kind, alg ON presence_keys
+    WHEN NEW.kind IN ('capsule', 'device') AND (NEW.alg IS NULL OR NEW.alg <> -7)
+    BEGIN SELECT RAISE(ABORT, 'a capsule or device key must store alg -7'); END;
 `];
 
 const CHALLENGE_TTL = 120_000;
@@ -389,8 +400,8 @@ export const fingerprint = b64 => crypto.createHash("sha256").update(Buffer.from
  */
 const ES256 = pub => ["sha256", { key: spki(pub), dsaEncoding: /** @type {const} */ ("der") }];
 const SIGNERS = {
-  capsule: { label: "Capsule", check: ES256 },
-  device: { label: "device", check: ES256 },
+  capsule: { label: "Capsule", check: ES256, stale: "that Capsule key is an old kind Vyre no longer accepts; re-enroll the Capsule's key" },
+  device: { label: "device", check: ES256, stale: "that phone's key is not a P-256 key Vyre accepts; pair the phone again" },
 };
 
 /** EC P-256 and nothing else: what a Secure Enclave or StrongBox holds. @param {crypto.KeyObject} key */
@@ -684,13 +695,16 @@ export class Presence {
     }
 
     if (method === "capsule" || method === "device") {
-      const { label, check } = SIGNERS[method];
+      const { label, check, stale } = SIGNERS[method];
       const { key, ts, nonce, sig } = proof;
       const row = /** @type {any} */ (this.db.prepare("SELECT id, public_key, alg FROM presence_keys WHERE id = ? AND kind = ?").get(String(key || ""), method));
       if (!row) return refuse(`that ${label} key is not enrolled`);
       // A Capsule key from before the Secure Enclave (Ed25519 in the login keychain, which any
       // program running as the same user could use): never a proof again, whatever it signed.
-      if (Number(row.alg) !== -7) return refuse(`that ${label} key is an old kind Vyre no longer accepts; re-enroll the Capsule's key`);
+      // The stored key itself must be P-256 too, so the check never rests on the alg column alone.
+      let stored = null;
+      try { stored = spki(row.public_key); } catch { /* unreadable: refused below */ }
+      if (Number(row.alg) !== -7 || !stored || !isP256(stored)) return refuse(stale);
       if (!/^\d{1,16}$/.test(String(ts || "")) || Math.abs(this.now() - Number(ts)) > CAPSULE_SKEW) return refuse(`the ${label} signature is too old or from the future`);
       if (!/^[A-Za-z0-9_-]{8,128}$/.test(String(nonce || ""))) return refuse(`the ${label} nonce is missing or malformed`);
       // One set for both kinds: a nonce is spent whichever key signed with it.
