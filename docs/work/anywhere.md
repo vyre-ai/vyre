@@ -94,32 +94,52 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   test/onboard.test.js 16/16, test/boundaries.test.js 5/5, all green.
 - Sent to reviewer.
 
+## Done (cont. 5): 28 Sep, team-lead's calls + reviewer's onboard-widening condition
+- `roleBuckets` and `Registry.start` take an injectable `platform` param; on darwin, `"server"`
+  now includes the `"local"` bucket too (Capsule/voice stay on a Mac chosen as the server), on
+  Linux it's `"box"` only, as before. Tested both.
+- Six-module audit table added to docs/design/anywhere.md: `onboard`/`relay` widen to `"local"`
+  (shipped/tailnet-in-progress); `names`, `network`, `hooks`, `releases`, `computers`, `glass`
+  stay box-only -- none of their reasons for existing apply without Tailscale or Docker, which
+  Solo doesn't turn on by default. Default was NO per team-lead; nothing overrode it.
+- Reviewer's condition on the onboard widening, shipped as ONE coordinated change (not split
+  with tailnet): the nine box wizard tools get a shared `boxOnly()` guard, refusing on a
+  non-server machine; `onboard.machine` is now `callers: [cli, local, deck, capsule, onboard,
+  module]` (no `mcp`, so an agent is refused outright) and requires a presence proof to move TO
+  server once an owner already exists (exempt during first-time setup -- no passkey exists yet
+  either, and the caller's already proven by the one-time link only cli/local/capsule can mint).
+  Tested: an agent caller refused, presence required post-owner, exempt pre-owner, all nine
+  wizard tools refuse on solo, onboard.machine/status don't.
+- Rewrote "How the Deck reaches a Solo Mac" after reviewer caught a real error in the first
+  draft (calling loopback HTTP "trusted like local" -- wrong, no ancestry check exists over
+  HTTP). New version: loopback session is never person-level; a session cookie alone is not
+  presence; every write needs an actual proof verified independent of person-side vyred; a
+  Host/Origin allowlist against DNS rebinding; CSRF on writes. Sent to reviewer, not built.
+- Told reviewer the confirmed fix sha (041f87f0, then 6300ecaf for this round) directly; team-lead
+  had asked about ae8ee38c, which was the docs-check commit before the actual fix.
+
 ## Next
-1. Generalize the loopback listener for Solo/Server's day-to-day Deck access (see the new design
-   section) -- needs its own small sha; coordinating with tailnet since it's a fourth listener
-   type under ADR 0002's identity model.
-2. The launchd plist + keep-awake installer (`vyre server here` CLI and `onboard.machine`'s
-   darwin+server path both call into it) -- once it lands, tell launch/tailnet `service` is real
-   and update `onboard.machine`'s doc comment.
-3. Audit the remaining six box-only modules (releases=core/apps, computers, glass, hooks,
-   network) for Linux-only assumptions beyond the manifest gate; decide (with tailnet, who's
-   already doing relay) whether any besides onboard/relay need widening to `"local"` too, and
-   whether `roleBuckets("server")` should also include `"local"` (a Mac-as-server keeping
-   Capsule/voice) -- open question, not yet decided.
-4. `core/cli/commands/up.js`: stop assuming role=local means "find a box"; ask/default Solo.
-5. Coordinate the move engine contract (section 4) with federation.
-6. Send launch the full contract they asked for: config.machine values and how they're set, the
-   "point at a server" connect call, and the vyre server here flow.
+1. ADR 0040 (vyre-core, drafted by e2e at 644c9e50 on work/e2e-setsid): write my three named
+   sections -- install mechanics under the no-Apple-Developer-ID constraint (sudo once,
+   LaunchDaemon+LaunchAgent, root-owned bundled node, self-verified Ed25519 release-signed
+   updates), the vault migration sequence (~/.vyre/vyre.db into vyre-core's root-owned store) and
+   its failure modes, and whether the Solo-Deck loopback design above needs to change once
+   vyre-core exists (presence verification moves to vyre-core; person-side vyred may proxy reads
+   only, never a privileged write, per team-lead's binding constraint).
+2. Once ADR 0040's install design is agreed, redo `vyre server here` / the Mac server service
+   against it -- the plan in ADR 0039 section 3 is explicitly superseded, not a thing to build
+   as originally written.
+3. `core/cli/commands/up.js`: stop assuming role=local means "find a box"; ask/default Solo.
+4. Coordinate the move engine contract (section 4) with federation -- done (see Needs).
 
 ## Needs from others
-- federation: confirm the move engine can implement ADR 0039 section 4's four-piece contract
-  (projects, memory, vault, sessions), the source-stays-live-until-destination-confirms
-  ordering, and the no-auto-delete rule (tweak 1 above: "Free up space" is explicit-confirm
-  only, federation's engine should not itself schedule any cleanup).
+- federation: answered their vault/sessions atomicity question (no atomic pairing needed; their
+  existing final-confirm-gate-before-flip already covers it, as long as nothing on the
+  destination acts before the flip). Flagged that ADR 0040 may change WHERE the vault piece
+  lands on the destination once it exists, not the four-piece shape.
 - windows: Windows Solo needs the seam this ADR names (role mapping is OS-agnostic; `local/*`
   macOS-only modules need Windows equivalents, out of scope here).
-- tailnet: sign-off exchanged on widening onboard (done, mine) and relay (theirs) to `"local"`;
-  still open whether hooks/network/apps/computers/glass/names ever need the same treatment.
+- e2e: co-owns ADR 0040 with me; three sections still owed (see Next item 1).
 
 ## Changed contracts
 - New, additive: `config.machine` (`"solo"|"server"|"device"`), alongside the unchanged
