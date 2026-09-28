@@ -596,6 +596,29 @@ Done this session:
 
 Next: task 3 (federation re-review) is done. Idle; watch for a new assignment from the lead.
 
+## Design note: link.find can't say "seen but unreachable" (0.1.1 follow-up)
+
+Confirmed by the lead as a 0.1.1 follow-up, not an rc.2 blocker (test/journey.test.js:221 is
+already `{ todo }`-marked for exactly this). To build after rc.2:
+
+- `core/link/mac.js`'s `link.find` (around line 363) probes every tailnet peer whose cert name
+  matches, but `found.map(...)` returns `null` for a peer that never answered `/v1/health` (wrong
+  role, TLS failure, timeout), and the final `found.filter(Boolean)` drops those nulls before
+  returning `{ boxes }`. A peer that was seen but never answered is indistinguishable from no peer
+  at all.
+- `core/cli/commands/up.js`'s `mac()` (around line 318) only branches on `found.length` (0, 1,
+  many); the `0` case goes straight to "Tailscale is not running" / "no box on this tailnet" copy,
+  never mentioning a candidate that was seen and didn't answer.
+- Fix shape: `link.find` keeps the per-candidate reason instead of discarding it (e.g. `{ address,
+  node, reason: "no_answer" | "wrong_role" | ... }` alongside the successful `{ address, node,
+  version }` shape, or a second `seen` array next to `boxes`). `vyre up --json`'s `box: null` case
+  gains a `candidates` or `reason` field so a caller (and journey.test.js's now-todo case) can tell
+  "no box" from "box seen but unreachable" apart, and the interactive path says which tailnet name
+  it saw and why it didn't answer (cert mismatch, refused connection, timeout, wrong role).
+- Needs a design call from the lead on the exact shape before implementing (breaking a public
+  `vyre up --json` field beyond additive would need care), so this is a start-here note, not a
+  finished plan.
+
 - New task: rc.2 CI blocker on work/integrator-rc. Reproduced on testbox against pre/rc
   77641c5b/98f2a155. Correction on scope: only test/onboard.test.js:265 ("with a token it is
   vyre.run") is a real failure; test/journey.test.js:221 is `{ todo: ... }`-marked and node's test
