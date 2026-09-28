@@ -209,6 +209,23 @@ Plan (to the lead before building):
   cookie store is keychain-encrypted, Safari's is TCC-protected; IndexedDB keys are not). The
   session raises the bar from one curl to stealing a browser's store.
 
+## Doing (28 Sep, e2e2, rc-smoke for 0.1.1, work/e2e-011 off stage/0.1.1 73293a6e)
+
+rc-smoke on stage/0.1.1 was 15 pass, 6 fail, 1 skip (same on 029756bc). All four failing steps
+were the smoke script, none the product. After the fix, on testbox with build-site.sh's
+site/box/vyre.tgz (0.1.0-rc.2): 27 pass, 0 fail, 1 skip (the phone-enrol skip, as always).
+
+| step | cause | fix |
+|---|---|---|
+| 3 vault | `ready()` grepped `running`, which "vyred not running" matches, so step 3 ran before vyred was up (unreachable) | script: wait for "vyred running" |
+| 6 mail | a `docker exec` process has parent 0, so the leader check names it as an unknown server and wants one session.trust proof (personguard, by design, reviewer's rulings 28 Sep). person.mjs sent only the tool's own proof | script: person.mjs proves session.trust over the answer's `server`, then repeats the call |
+| 7 theme | settings.set is PERSON_ONLY; a bare `vyre call` from docker exec gets no_terminal, read as "theme.css unchanged" | script: step 7 goes through person.mjs; a presence refusal is reported as such |
+| 8 update | follows from 3 (no vault item was ever written); `ready()` after update also passed early | same fix as 3 |
+
+The leader check is right: a docker exec shell on the box has the cron/atd shape, so one proof
+per server is the intended floor. To rerun: rsync the worktree to testbox, build-site.sh, then
+`sh scripts/rc-smoke.sh site/box/vyre.tgz` over plain ssh with stdin from /dev/null.
+
 ## Doing (28 Sep, e2e2, after the RESUME 10 restart)
 
 - ADR 0040 revised on 91c02d81 against the settled decisions: presence keys and the Capsule pin

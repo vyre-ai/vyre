@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### rc-smoke: steps 3, 6, 7 and 8 were the script's, not the product's (15/6/1 to 27/0/1)
+
+- `ready()` matched `running`, which "vyred not running" also contains, so it returned while
+  vyred was still starting. Step 3's onboard.claude then met no vyred (unreachable), the token
+  never reached the vault, and step 8 found no vault item after the update and the rollback. It
+  now waits for "vyred running".
+- A `docker exec` process has parent 0, so vyred's leader check names it as an unknown server
+  and asks one `session.trust` proof for it (personguard, by design). `scripts/rc-smoke/person.mjs`
+  now signs that proof over the `server` the presence_required answer names, then repeats the call
+  with its own proof. Step 6's vault.connect goes through again.
+- Step 7 called settings.set as a bare CLI call, but settings.set is person-only, so the CLI
+  answered no_terminal and the step read it as "theme.css did not change". It goes through
+  person.mjs now, and a presence refusal is reported as one.
+
 #### Desktops paired over the relay join the tailnet on their own (ADR 0046)
 
 - A desktop's pairing asks to join; the box mints a single-use, pre-approved, 5-minute auth key
