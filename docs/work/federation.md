@@ -722,3 +722,32 @@ upload.start, end to end through sync.send, a later consent with no included lif
 restriction). 270/270 (1 skipped, pre-existing) across core/sync, core/link, core/files,
 core/presence, core/harness, core/config, core/modules, mcp-server-tools, hygiene, docs-index,
 boundaries, cohesion-drift — testbox.
+
+## Step 3 built: projects.access, deny by default (28 Sep 2026)
+
+team-lead's design calls (over 181ef960): grants live in core/projects (a project-level fact
+Drive, vault and memory will all ask about), not sync; the folder-to-project mapping happens at
+consent time with the person confirming or editing a proposed project id; granting is HUMAN_ONLY,
+revoking is PERSON_ONLY.
+
+Built the grant itself: projects.access.grant/revoke/check/list in core/projects/index.js, table
+projects_access (id, project, agent, status, by, at), appended to projects.js's own MIGRATIONS
+array so version numbers continue rather than collide. Brought in lib/project-id.js verbatim from
+e87f63df (not otherwise on this branch): SLUG_RE, slugify, isProjectId.
+
+Not yet built, flagged rather than guessed at: the folder-to-project mapping itself (sync.scan
+proposing a project id per folder, the person confirming at sync.consent time), and wiring an
+actual caller (Drive's files.* tools, whatever serves synced session content to an agent) to ask
+projects.access.check before serving. This lands the grant with deny-by-default and full test
+coverage, with nothing yet asking it, since those two pieces touch Drive's and sync's own
+consent/serving paths and deserve their own review pass rather than being folded in unreviewed.
+
+Tests: core/projects/access.test.js (new), core/harness/floor.test.js (both tools alongside
+files.receive). lib/project-id.test.js (brought in with the lib). Full local + testbox run
+pending (queued behind testbox load).
+
+## Next
+- Wire sync.consent's picker to propose a project id per folder (marker or slugify fallback,
+  person confirms/edits).
+- Wire an actual caller (files.drive.*, or whatever serves synced content to an agent) to
+  projects.access.check.

@@ -138,7 +138,7 @@ export default {
     });
 
     ctx.tool("sync.consent", {
-      description: "Turn a paired peer's session import on or off, on the box's own record — never the device's say-so. Off only stops new uploads: nothing already sent is touched. sync.delete removes what a device sent, as its own action. planHash and included, when the surface reviewed a sync.scan plan with the person, are stored with the consent: sync.delete.import can later remove just that import by its planHash, and every project folder not in included is refused by sync.upload.plan and sync.upload.start, not merely left untagged — the picker's exclusions are enforced, not advisory.",
+      description: "Turn a paired peer's session import on or off, on the box's own record: never the device's say-so. Off only stops new uploads: nothing already sent is touched. sync.delete removes what a device sent, as its own action. planHash and included, when the surface reviewed a sync.scan plan with the person, are stored with the consent: sync.delete.import can later remove just that import by its planHash, and every project folder not in included is refused by sync.upload.plan and sync.upload.start, not merely left untagged. The picker's exclusions are enforced, not advisory.",
       input: { type: "object", required: ["machine", "on"], properties: { machine: { type: "string" }, on: { type: "boolean" }, planHash: { type: "string" }, included: { type: "array", items: { type: "string" }, description: "Project folder names (sync.scan's own names) this plan lets in. Omitted or on: false: no restriction." } } },
       // The person's own surfaces only, never a module (e2e's review: "module" let any home
       // module turn a device's import on). No presence needed to turn it off (ADR 0024); import
@@ -180,7 +180,7 @@ export default {
     });
 
     ctx.tool("sync.delete.import", {
-      description: "Delete just one approved import's files — those sync.consent's planHash tagged as they landed — leaving anything a separately-approved plan sent for the same device untouched. Its own person-only action, same as sync.delete. Without confirm: true, answers a preview (file and byte counts) and deletes nothing.",
+      description: "Delete just one approved import's files (those sync.consent's planHash tagged as they landed), leaving anything a separately-approved plan sent for the same device untouched. Its own person-only action, same as sync.delete. Without confirm: true, answers a preview (file and byte counts) and deletes nothing.",
       input: { type: "object", required: ["machine", "planHash"], properties: { machine: { type: "string" }, planHash: { type: "string" }, confirm: { type: "boolean" } } },
       callers: ["cli", "local", "deck", "capsule"],
       run: async ({ machine, planHash, confirm }) => {
@@ -205,7 +205,7 @@ export default {
     });
 
     ctx.tool("sync.upload.plan", {
-      description: "For a paired peer's own connection: which of its files are new, changed, already here, or outside the approved plan's included folders (excluded, sync.upload.start refuses these too — not merely reported), and its quota. Internal to the device's sender.",
+      description: "For a paired peer's own connection: which of its files are new, changed, already here, or outside the approved plan's included folders (excluded, sync.upload.start refuses these too, not merely reported), and its quota. Internal to the device's sender.",
       input: { type: "object", required: ["files"], properties: { files: { type: "array", items: { type: "object", required: ["path", "bytes", "hash"], properties: { path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } } } } },
       callers: ["tailnet"],
       run: async ({ files }, meta) => {
@@ -296,7 +296,7 @@ export default {
     });
 
     ctx.tool("sync.upload.cancel", {
-      description: "Give up on an open upload before it finishes: drops its temp file and its slot, freeing one of the peer's " + MAX_OPEN + " open uploads without waiting for the idle sweep. Not an error if the id is already gone (finished, expired, or never existed) — cancel always succeeds.",
+      description: "Give up on an open upload before it finishes: drops its temp file and its slot, freeing one of the peer's " + MAX_OPEN + " open uploads without waiting for the idle sweep. Not an error if the id is already gone (finished, expired, or never existed); cancel always succeeds.",
       input: { type: "object", required: ["upload"], properties: { upload: { type: "string" } } },
       callers: ["tailnet"],
       run: async ({ upload }, meta) => {
@@ -439,7 +439,7 @@ function walkSize(dir, budget) {
 
 async function deviceSide(ctx) {
   ctx.tool("sync.scan", {
-    description: "What this device would offer to sync to the box (Vyre Drive's what-to-sync picker): every project folder under this device's own Claude Code folder (~/.claude/projects or CLAUDE_CONFIG_DIR/projects), each with its session-file count and total size, so the person sees what is there and can leave folders out before turning sync.consent on. Read-only: nothing is sent, nothing is opened, only sizes are read. planHash stands for the choice made here — pass it straight to sync.consent's own planHash — so an approved import is tied to what was actually reviewed, not a plan that silently drifted.",
+    description: "What this device would offer to sync to the box (Vyre Drive's what-to-sync picker): every project folder under this device's own Claude Code folder (~/.claude/projects or CLAUDE_CONFIG_DIR/projects), each with its session-file count and total size, so the person sees what is there and can leave folders out before turning sync.consent on. Read-only: nothing is sent, nothing is opened, only sizes are read. planHash stands for the choice made here: pass it straight to sync.consent's own planHash, so an approved import is tied to what was actually reviewed, not a plan that silently drifted.",
     input: { type: "object", properties: { exclude: { type: "array", items: { type: "string" } } } },
     callers: ["cli", "local", "deck", "capsule"],
     run: async ({ exclude }) => {

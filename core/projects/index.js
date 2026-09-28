@@ -3,6 +3,7 @@
 // ctx.call and are not listed under requires, because projects must still start, list and
 // brief without them; it only searches less and says so.
 
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Projects, MIGRATIONS } from "./projects.js";
@@ -10,6 +11,7 @@ import { label } from "./brief.js";
 import { moveProjects, RECORD } from "./move.js";
 import { boxProjectsDir, oldProjectsDir, workDir, home as vyreHome } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
+import { isProjectId } from "../../lib/project-id.js";
 
 const str = { type: "string" };
 const strs = { type: "array", items: str };
@@ -61,7 +63,14 @@ const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Ob
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    ctx.store.migrate(MIGRATIONS);
+    // projects_access: which agent may reach a project's data at all (Drive, sync and anything
+    // else that serves a project's files or sessions to an agent asks this, through ctx.call,
+    // federation's Vyre Drive step 3, ADR pending). Appended after MIGRATIONS' own steps, so its
+    // version numbers continue the sequence rather than colliding with them.
+    ctx.store.migrate([...MIGRATIONS,
+      `CREATE TABLE projects_access (id TEXT PRIMARY KEY, project TEXT NOT NULL, agent TEXT NOT NULL DEFAULT '',
+         status TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, UNIQUE (project, agent))`,
+    ]);
     const P = new Projects({
       db: ctx.store.db, config: ctx.config, call: ctx.call,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
@@ -168,6 +177,65 @@ export default {
         return { dry: false, ...out, restart: true, next: `Restart vyred: the projects folder is now ${to}` };
       },
     });
+
+    // projects.access: deny by default. An empty agent grants every agent; a named agent's own
+    // row, when there is one, wins over the wildcard for that agent (team-lead's decision, Vyre
+    // Drive step 3). Granting needs the owner's presence (HUMAN_ONLY, core/presence/index.js):
+    // the same weight a vault grant to an agent carries; revoking is instant (PERSON_ONLY), so
+    // taking access away is never held up behind a Touch ID prompt.
+    const db = ctx.store.db;
+    const accessRow = (project, agent) => {
+      const own = /** @type {any} */ (db.prepare("SELECT * FROM projects_access WHERE project = ? AND agent = ?").get(project, String(agent || "")));
+      if (own) return own;
+      if (agent) return /** @type {any} */ (db.prepare("SELECT * FROM projects_access WHERE project = ? AND agent = ?").get(project, ""));
+      return null;
+    };
+    const setAccess = (project, agent, status, by) => {
+      const slug = P.resolve(project).slug;
+      const a = String(agent || "");
+      // ON CONFLICT keeps the existing row's id (never in the SET clause); the id supplied here
+      // is only ever used for a genuinely new row.
+      db.prepare(`INSERT INTO projects_access (id, project, agent, status, by, at) VALUES (?,?,?,?,?,?)
+        ON CONFLICT (project, agent) DO UPDATE SET status = excluded.status, by = excluded.by, at = excluded.at`)
+        .run(crypto.randomUUID(), slug, a, status, by, Date.now());
+      return { project: slug, agent: a, status };
+    };
+
+    ctx.tool("projects.access.grant", {
+      description: "Let an agent reach a project's data (Drive, synced sessions, anything project-scoped asks projects.access.check before serving an agent). agent left out or empty grants every agent. Needs the owner's presence, the same weight a vault grant to an agent carries: Drive and sync refuse an ungranted project's data outright, they do not merely leave it off a list.",
+      input: { type: "object", required: ["project"], properties: { project: str, agent: str } },
+      callers: OWNER,
+      run: async ({ project, agent }, meta = {}) => setAccess(project, agent, "granted", String((meta && meta.caller) || "unknown")),
+    });
+    ctx.tool("projects.access.revoke", {
+      description: "Take an agent's (or, agent left out, every agent's) access to a project away. Instant, no presence needed: taking access away is never held up behind a prompt.",
+      input: { type: "object", required: ["project"], properties: { project: str, agent: str } },
+      callers: OWNER,
+      run: async ({ project, agent }, meta = {}) => setAccess(project, agent, "revoked", String((meta && meta.caller) || "unknown")),
+    });
+    ctx.tool("projects.access.check", {
+      description: "Whether this agent (or, agent left out, the box itself) may reach a project's data: deny by default, an agent-specific grant wins over the wildcard for that agent. Drive, sync and anything else that serves a project's files or sessions to an agent asks this first. Internal to first-party modules and the owner's own surfaces; a model never asks this on its own behalf to learn what exists: the row it wants is simply left out of a listing instead.",
+      input: { type: "object", required: ["project"], properties: { project: str, agent: str } },
+      callers: ["module", "cli", "local", "deck", "capsule"],
+      run: async ({ project, agent }) => {
+        if (!isProjectId(project)) return { project, agent: String(agent || ""), granted: false };
+        const row = accessRow(project, agent);
+        return row ? { project, agent: String(agent || ""), granted: row.status === "granted", status: row.status, by: row.by, at: row.at }
+          : { project, agent: String(agent || ""), granted: false };
+      },
+    });
+    ctx.tool("projects.access.list", {
+      description: "Every grant and revoke on record, for a project or every project, newest first, for the owner to review who can reach what.",
+      input: { type: "object", properties: { project: str } },
+      callers: OWNER,
+      run: async ({ project }) => {
+        const rows = project
+          ? db.prepare("SELECT project, agent, status, by, at FROM projects_access WHERE project = ? ORDER BY at DESC").all(P.resolve(project).slug)
+          : db.prepare("SELECT project, agent, status, by, at FROM projects_access ORDER BY at DESC").all();
+        return { grants: rows };
+      },
+    });
+
     return { async stop() {} };
   },
 };

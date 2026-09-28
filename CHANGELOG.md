@@ -4,6 +4,41 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Vyre Drive step 3: projects.access, deny-by-default per-project agent access
+
+- New module addition, `core/projects` (sessions owns it, paused; built here per team-lead):
+  `projects.access.grant`, `.revoke`, `.check`, `.list`. New table `projects_access
+  (id, project, agent, status, by, at)`, `UNIQUE (project, agent)`, appended after
+  `projects.js`'s own `MIGRATIONS` so its version numbers continue the sequence. Deny by
+  default: no row means no access. An empty `agent` grants every agent; a named agent's own
+  row, when one exists, wins over the wildcard for that agent.
+- `projects.access.grant` is `HUMAN_ONLY` (`core/presence/index.js`): the same weight a vault
+  grant to an agent carries, needs the owner's presence proof. `projects.access.revoke` is
+  `PERSON_ONLY`: instant, no proof, so taking access away is never held up behind a prompt.
+  Both added to the harness floor's `MODEL_NEVER` set for free (it is built from the same two
+  lists) and to `test/mcp-server-tools.test.js`'s generic exclusion the same way.
+- `projects.access.check` (callers: `module`, plus the owner's own surfaces) is the one Drive,
+  sync or anything else that serves a project's data to an agent asks before doing so: `deny by
+  default` means the row is simply left out of a listing or refused outright, never guessed.
+  Project ids are validated with `lib/project-id.js`'s `isProjectId` (`check`) and resolved
+  through `Projects.resolve` (`grant`/`revoke`, so a typed name or an existing slug both work,
+  and a project that does not exist is refused, matching every other `projects.*` tool).
+- Brought in `lib/project-id.js` (verbatim from `e87f63df`, not on this branch's history yet):
+  `SLUG_RE`, `slugify`, `isProjectId`, the canonical project-id shape every part is meant to
+  share rather than growing its own.
+- Design first, per team-lead: `docs/design/drive-onboarding.md`'s "Step 3 design" section (this
+  session, superseded by the actual build here) proposed a `sync`-owned `sync_grants` table;
+  team-lead's read placed it in `core/projects` instead (a project-level fact several modules
+  will ask about) and settled the `HUMAN_ONLY`/`PERSON_ONLY` split explicitly up front, so it
+  would not become a second `files.receive`-style HOLD.
+- Tests: `core/projects/access.test.js` (deny by default, grant/check/revoke, the wildcard vs.
+  named-agent precedence, resolving a project by name, a malformed id answering `false` rather
+  than throwing, `projects.access.list`, and the two tools' exact list membership).
+  `core/harness/floor.test.js` gains both tools alongside `files.receive`. Folder-to-project
+  mapping (where a device's `sync.scan` folder gets tagged with a project id) and wiring Drive's
+  and sync's own read paths to call `projects.access.check` are next, not yet built: this
+  lands the grant itself, deny by default, with nothing yet asking it.
+
 #### Both Vyre Drive HOLDs fixed, one sha: files.receive genuinely person-only, sync.scan's exclusions enforced, the real ~/.claude gated by the kernel's own rule
 
 - Step 1 MEDIUM: `files.receive`'s callers list said person-only, but it was never in
