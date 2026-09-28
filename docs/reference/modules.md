@@ -61,6 +61,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 27 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
+| [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
@@ -550,6 +551,18 @@ One short tip at a time about the part of Vyre you are using, the parts you have
 - Emits: [31 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## vitals
+
+How the server and this device are doing: CPU, RAM, GPU, disk, network and battery, plus a breakdown per running computer on the server. Person-level only; an agent gets a summary with no process or window detail.
+
+- Folder: `core/vitals`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [5](tools.md#vitals)
+- Emits: [2 events](events.md#vitals)
+- Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
 
 ## voice
 

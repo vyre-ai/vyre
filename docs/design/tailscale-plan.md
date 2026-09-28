@@ -26,7 +26,7 @@ doc-only updates (4fa25b16, 1d194c9f): safe to drop or fold in, no code.
 | 6 | Tailnet Lock | yes | Read-only (`lock status`), onboarding card + Settings row; never writes |
 | 7 | Grants (app capabilities) | yes | `vault.relay.grants`, `vault.grants.status`; narrows only, never widens |
 | 8 | Guests | yes | `network` module; GUEST_SAFE is `threads.list` only as of the CORS/session work |
-| 9 | Agent nodes | **not wired** | Computer side written (`computerd/tailnet.js`) but the image still runs everything as `USER agent` (`core/computers/image/Dockerfile:75`): no root-then-drop step exists. `computers.tailnet.set` reports `problem` and sends nothing. This is Decision 4 below, unchanged since 27 Sep. |
+| 9 | Agent nodes | **redesigned, not built** | The user approved glass's shared-headless-Chrome-plus-desktop-pool design (agent-browsers.md) over a computer per agent. Part 9 changes with it: not a node per computer, but a userspace tailscaled sidecar per agent that has a tailnet grant, exposing a local SOCKS5 proxy that agent's browser context is pointed at. See "Agent nodes, redesigned" below. |
 | 10 | Funnel / hooks | yes | `hooks` module, own listener on 127.0.0.1:7310, signature-verified, never calls a tool |
 
 Adjacent, not mine: work/federation carries the Mac-session `threads.answer` v2 (signed server
@@ -36,7 +36,7 @@ assertion): still on its own branch, queued batch 4, not part of ADR 0014's ten.
 
 | Idea | Value | Size | Admin step |
 |---|---|---|---|
-| Agent-node image change (finish part 9) | Every agent gets its own tailnet identity, not just a shared key: stronger caller class, per-agent tags/grants become real | M | none new (tag already defined) |
+| Agent nodes, redesigned (see below) | Every agent with a grant gets its own tailnet identity for its browsing, without the per-computer image change part 9 used to need | M | none new (tag already defined) |
 | MagicDNS name shown everywhere the server's address appears (onboarding, Settings, `vyre box add` suggestion) | One name to remember instead of an IP; nothing new to build, mostly surfacing what `tailscale cert`'s target already is | S | Enable MagicDNS (usually on by default) |
 | Device posture as a second gate on vault relay grants (`vault.relay.grants`) and egress | A stolen laptop stays off even with valid Tailscale login | M | Posture policy in admin console (needs a device posture add-on, paid tier) |
 | Tags per device role, generated ACL snippet Vyre hands the person to paste (see section 3) | Cuts hand-editing the policy JSON to near zero | S | Paste once |
