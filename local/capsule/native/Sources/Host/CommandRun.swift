@@ -193,7 +193,7 @@ extension CapsuleModel {
         Task { @MainActor [vyred] in
             var cli = self.cliOverride
             if cli == nil { cli = await Self.cliPath(vyred) }
-            guard let cli else { run.finish(nil, failure: vyred.isUp ? "This vyred does not say where its CLI is (it needs a newer vyred)." : "vyred is not running, so its commands cannot run."); return }
+            guard let cli else { run.finish(nil, failure: vyred.isUp ? "This vyred does not say where its CLI is (it needs a newer vyred)." : "Start Vyre first: vyred is not running, so its commands cannot run."); return }
             let code = await self.exec(run, cli: cli, args: argv + ["--view"], frames: true)
             // A CLI without --view: a usage exit and no frames. Only then, once more, plainly.
             if code == 2, run.views.isEmpty, !run.stopped {
@@ -215,7 +215,7 @@ extension CapsuleModel {
 
     /// One run of the CLI; lines are handed over as they come. The exit code, or nil if it could
     /// not start.
-    func exec(_ run: CommandRun, cli: [String], args: [String], frames: Bool) async -> Int32? {
+    func exec(_ run: CommandRun, cli: [String], args: [String], frames: Bool, errorsAlways: Bool = false) async -> Int32? {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: cli[0])
         p.arguments = Array(cli.dropFirst()) + args
@@ -257,9 +257,9 @@ extension CapsuleModel {
         var tail: [String] = []
         for l in rest { if frames, let f = CLIRun.frame(l) { if let v = f.view { run.add(v) }; if let c = f.exit { doneCode.value = c } } else { tail.append(CLIRun.plain(l)) } }
         run.addText(tail)
-        // Its error words, when there is nothing else to show; not for the --view usage exit,
-        // which runs once more plainly.
-        if run.views.isEmpty, code != 0, !(frames && code == 2) {
+        // Its error words, when there is nothing else to show (or always, for `vyre up`, whose
+        // failure is the one thing to see); not for the --view usage exit, which runs once more plainly.
+        if run.views.isEmpty || errorsAlways, code != 0, !(frames && code == 2 && !errorsAlways) {
             let e = errText.split(separator: "\n").map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
             run.addText(e)
         }

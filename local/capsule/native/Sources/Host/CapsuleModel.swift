@@ -389,7 +389,7 @@ public final class CapsuleModel: ObservableObject {
         if let argv = CLIRun.parse(q.text) {
             autoTask?.cancel(); recallTask?.cancel(); memory = nil; attachments = []
             partial = [:]
-            groups = [Group(section: .top, items: [commandRunItem(argv)])]
+            groups = [Group(section: .top, items: [offline ? startFirstItem(argv) : commandRunItem(argv)])]
             selected = 0
             return
         }
@@ -532,7 +532,7 @@ public final class CapsuleModel: ObservableObject {
         selected = was.flatMap { id in flat.firstIndex { $0.id == id } } ?? 0
         if !rows.isEmpty { line = nil }
         else if let chip = nestingChip { line = "Nothing called that in \(chip.label)." }
-        else { line = vyred.isUp ? "Nothing called that in Vyre yet." : "vyred is not running. Start it with vyre up." }
+        else { line = vyred.isUp ? "Nothing called that in Vyre yet." : "vyred is not running. Start Vyre: Return on an empty Capsule." }
     }
 
     /// Candidates for the `@` words, and the words left over as the message. The whole text is

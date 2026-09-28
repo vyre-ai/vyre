@@ -121,6 +121,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
             AnyView(MenuBarPopover(health: self.health, hotkeys: self.hotkeyWords, canTurnOnControl: !self.hotkeys.doubleControl,
                                    open: { [unowned self] in self.menuBar?.close(); self.openCapsule() },
                                    turnOnControl: { [unowned self] in self.menuBar?.close(); self.turnOnDoubleControl() },
+                                   start: { [unowned self] in self.menuBar?.close(); self.openCapsule(); self.model.startVyre() },
                                    quit: { NSApp.terminate(nil) }))
         }
         bar.menu = { [unowned self] in self.plainMenu() }

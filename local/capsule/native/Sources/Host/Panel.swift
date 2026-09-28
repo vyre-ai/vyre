@@ -279,6 +279,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             // Plain ⏎ while listening: stop the mic (keeping the words already heard) and send,
             // same as chat's tap-to-talk. ⌘⏎/⇧⏎ are left alone -- only a plain ⏎ means "send".
             if !shift, !cmd { _ = extensions?.stopTalking() }
+            // Offline with an empty box: ⏎ is the Offline line's "Start Vyre".
+            if !shift, !cmd, model.returnStartsVyre() { return true }
             // A question: ⏎ asks (or keeps the answer and opens the follow-up box), ⌘⏎ thinks deeper.
             if !shift, model.handleReturn(command: cmd) { return true }
             if cmd || shift { return model.run(shortcut: KeyShortcut("return", command: cmd, shift: shift)) }
