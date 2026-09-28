@@ -26,6 +26,7 @@ import { open } from "../store/index.js";
 import { Presence, parse } from "../presence/index.js";
 import { insideClaude, loginOf } from "../daemon/peer.js";
 import { readPeerCred } from "./peercred.js";
+import { procTable } from "./procs.js";
 
 export const PROTOCOL = 1;
 /** The proofs core can check itself. */
@@ -41,10 +42,13 @@ const MAX_BODY = 256 * 1024;
  * @param {number} pid @returns {{ person: boolean, why: string }}
  */
 export function personOf(pid) {
-  const inside = insideClaude(pid);
+  // One table for the whole verdict, read by core itself (procs.js): peer.js's walks are pure
+  // given it, and never reach its own ps-from-PATH or tmux.
+  const look = procTable();
+  const inside = insideClaude(pid, { look });
   if (inside.inside) return { person: false, why: "inside a Claude session" };
   if (inside.unknown) return { person: false, why: "its ancestry can't be read to the top" };
-  if (!loginOf(pid)) return { person: false, why: "no login terminal" };
+  if (!loginOf(pid, /** @type {any} */ (look))) return { person: false, why: "no login terminal" };
   return { person: true, why: "a login terminal" };
 }
 

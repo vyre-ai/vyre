@@ -8,10 +8,11 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { startCore, openStore, CORE_METHODS } from "./server.js";
+import { startCore, openStore, CORE_METHODS, personOf } from "./server.js";
 import { strictProblems } from "./strict.js";
 import { canReadPeers } from "./peercred.js";
-import { coreCall, coreTool, coreHello } from "../../lib/vyre-core-client.js";
+import { coreCall, coreTool, coreHello, socketProblem } from "../../lib/vyre-core-client.js";
+import { procTable } from "./procs.js";
 import { inputHash } from "../presence/index.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
@@ -72,7 +73,7 @@ test("vyre-core: the first key needs the installer's one-time code; touchid and 
   assert.equal(bare.error.code, "presence_required");
   assert.deepEqual(bare.error.methods, [...CORE_METHODS]);
   for (const h of ["touchid", "tty id=x code=123456"]) {
-    const r = await coreTool("presence.enroll", input, { socket: c.socket, presence: h });
+    const r = await coreTool("presence.enroll", input, { socket: c.socket, coreUid: uid, presence: h });
     assert.equal(r.status, 401, h);
     assert.match(r.error.message, /doesn't take a (touchid|tty) proof/, h);
   }
@@ -80,13 +81,13 @@ test("vyre-core: the first key needs the installer's one-time code; touchid and 
   const store = openStore(path.join(c.dir, "data"));
   const { code } = store.presence.mintCode();
   store.db.close();
-  const made = await coreTool("presence.enroll", input, { socket: c.socket, presence: `code code=${code}` });
+  const made = await coreTool("presence.enroll", input, { socket: c.socket, coreUid: uid, presence: `code code=${code}` });
   assert.ok(!made.error, JSON.stringify(made.error));
   assert.equal(made.data.kind, "device");
-  const again = await coreTool("presence.enroll", { ...input, public_key: deviceKey().pub }, { socket: c.socket, presence: `code code=${code}` });
+  const again = await coreTool("presence.enroll", { ...input, public_key: deviceKey().pub }, { socket: c.socket, coreUid: uid, presence: `code code=${code}` });
   assert.match(again.error.message, /wrong, used or expired/);
   // A code enrolls and does nothing else.
-  assert.equal((await coreTool("presence.remove", { id: made.data.id }, { socket: c.socket, presence: `code code=${code}` })).status, 401);
+  assert.equal((await coreTool("presence.remove", { id: made.data.id }, { socket: c.socket, coreUid: uid, presence: `code code=${code}` })).status, 401);
   // Listing never shows a public key.
   const keys = (await coreTool("presence.keys", {}, { socket: c.socket })).data;
   assert.deepEqual(keys.map(r => r.id), [made.data.id]);
@@ -100,20 +101,20 @@ test("vyre-core: a write is proved by an enrolled key over that exact input, onc
   const other = c.presence.enroll({ kind: "device", name: "kit-phone", public_key: deviceKey().pub, alg: -7 }).id;
 
   // Signed for removing kit-phone, sent to remove alex-phone: refused.
-  const wrong = await coreTool("presence.remove", { id }, { socket: c.socket, presence: phone.sign("presence.remove", { id: other })(id) });
+  const wrong = await coreTool("presence.remove", { id }, { socket: c.socket, coreUid: uid, presence: phone.sign("presence.remove", { id: other })(id) });
   assert.equal(wrong.status, 401);
   assert.match(wrong.error.message, /does not check out/);
   // Signed by a key that isn't enrolled under this id: refused.
   const stranger = deviceKey();
-  assert.equal((await coreTool("presence.remove", { id: other }, { socket: c.socket, presence: stranger.sign("presence.remove", { id: other })(id) })).status, 401);
+  assert.equal((await coreTool("presence.remove", { id: other }, { socket: c.socket, coreUid: uid, presence: stranger.sign("presence.remove", { id: other })(id) })).status, 401);
 
   const header = phone.sign("presence.remove", { id: other })(id);
-  const ok = await coreTool("presence.remove", { id: other }, { socket: c.socket, presence: header });
+  const ok = await coreTool("presence.remove", { id: other }, { socket: c.socket, coreUid: uid, presence: header });
   assert.deepEqual(ok.data, { removed: true });
-  assert.match((await coreTool("presence.remove", { id: other }, { socket: c.socket, presence: header })).error.message, /nonce was already used/);
+  assert.match((await coreTool("presence.remove", { id: other }, { socket: c.socket, coreUid: uid, presence: header })).error.message, /nonce was already used/);
 
   // A session from a live key, never from a code.
-  const s = await coreTool("presence.session.open", {}, { socket: c.socket, presence: phone.sign("presence.session.open", {})(id) });
+  const s = await coreTool("presence.session.open", {}, { socket: c.socket, coreUid: uid, presence: phone.sign("presence.session.open", {})(id) });
   assert.ok(s.data && s.data.session && s.data.secret, JSON.stringify(s));
 });
 
@@ -167,4 +168,59 @@ test("vyre-core: strict mode refuses a tree the owner's uid could write", () => 
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vc-strict-"));
   try { assert.ok(strictProblems({ codeDir: dir, dataDir: path.join(dir, "d"), ownerUid: uid, uid }).length > 0); }
   finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("vyre-core: a proof goes only to a socket vyre-core's uid owns, in a folder others can't write", async t => {
+  const c = await core(t, { peerCred: async () => ({ pid: process.pid, uid }) });
+  assert.equal(socketProblem(c.socket, uid), null);
+  assert.match(String(socketProblem(c.socket, uid + 1)), /belongs to uid/);
+  assert.match(String(socketProblem(path.join(c.dir, "nope.sock"), uid)), /isn't there/);
+  // Without core's uid, no proof is sent at all.
+  const r = await coreTool("presence.remove", { id: "x" }, { socket: c.socket, presence: "device key=x ts=1 nonce=abcdefgh sig=x" });
+  assert.equal(r.error.code, "core_untrusted");
+  assert.equal((await coreTool("presence.remove", { id: "x" }, { socket: c.socket, coreUid: uid + 1, presence: "device key=x ts=1 nonce=abcdefgh sig=x" })).error.code, "core_untrusted");
+  // A squatted socket: a plain file, or a socket in a folder others can write.
+  const fake = { isSocket: () => false, isDirectory: () => true, uid, mode: 0o755 };
+  assert.match(String(socketProblem("/x/s", uid, p => (p === "/x/s" ? /** @type {any} */ (fake) : /** @type {any} */ ({ ...fake, mode: 0o40755 })))), /isn't a socket/);
+  const sock = { isSocket: () => true, isDirectory: () => false, uid, mode: 0o140777 };
+  const open = { isSocket: () => false, isDirectory: () => true, uid: 0, mode: 0o41777 };
+  assert.match(String(socketProblem("/x/s", uid, p => /** @type {any} */ (p === "/x/s" ? sock : open))), /others can write/);
+});
+
+test("vyre-core: strict mode checks the socket's folder too", () => {
+  const OWNER = 501, VYRE = 280;
+  const root = { uid: 0, mode: 0o755 };
+  const tree = { "/": root, "/Library": root, "/Library/Application Support": root, "/Library/Application Support/Vyre": root,
+    "/Library/Application Support/Vyre/current": root, "/Library/Application Support/Vyre/data": { uid: VYRE, mode: 0o700 },
+    "/var": root, "/var/run": root, "/var/run/vyre": { uid: VYRE, mode: 0o755 } };
+  const at = { codeDir: "/Library/Application Support/Vyre/current", dataDir: "/Library/Application Support/Vyre/data", socketDir: "/var/run/vyre", ownerUid: OWNER, uid: VYRE };
+  const statOf = t => p => { const s = t[p]; if (!s) throw new Error("ENOENT"); return s; };
+  assert.deepEqual(strictProblems({ ...at, stat: statOf(tree) }), []);
+  assert.match(strictProblems({ ...at, stat: statOf({ ...tree, "/var/run/vyre": { uid: OWNER, mode: 0o755 } }) }).join("\n"), /\/var\/run\/vyre is owned by uid 501/);
+  assert.match(strictProblems({ ...at, stat: statOf({ ...tree, "/var/run/vyre": { uid: VYRE, mode: 0o777 } }) }).join("\n"), /can be written by other users/);
+});
+
+test("vyre-core: core reads its own process table, and its whole peer verdict never runs tmux or a PATH lookup", { skip: process.platform !== "linux" && "the /proc half; the Mac half is /bin/ps, a Mac check" }, () => {
+  const look = procTable();
+  const me = look(process.pid);
+  assert.ok(me && me.ppid === process.ppid, JSON.stringify(me));
+  assert.match(me.args, /node/);
+  assert.equal(look(2 ** 30), null);
+  // A PATH full of someone else's ps and tmux changes nothing: nothing here looks them up.
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vc-path-"));
+  try {
+    for (const b of ["ps", "tmux"]) fs.writeFileSync(path.join(dir, b), `#!/bin/sh\ntouch ${dir}/ran-${b}\n`, { mode: 0o755 });
+    const prev = process.env.PATH, prevTmux = process.env.VYRE_TMUX_BIN;
+    process.env.PATH = `${dir}:${prev}`;
+    process.env.VYRE_TMUX_BIN = path.join(dir, "tmux");
+    try {
+      procTable()(process.pid);
+      const v = personOf(process.pid);
+      assert.equal(typeof v.person, "boolean");
+    } finally {
+      process.env.PATH = prev;
+      if (prevTmux === undefined) delete process.env.VYRE_TMUX_BIN; else process.env.VYRE_TMUX_BIN = prevTmux;
+    }
+    assert.deepEqual(fs.readdirSync(dir).filter(f => f.startsWith("ran-")), []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

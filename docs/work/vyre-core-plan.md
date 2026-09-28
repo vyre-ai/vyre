@@ -92,6 +92,19 @@ tested on Linux where it can be. "Mac check" marks what only a Mac run can confi
     device keys (P-256).
   - The person verdict uses main's peer.js (inside-Claude + login terminal); it picks up the
     setsid exact-leader rule when that lands on main.
-- Mac check still needed: LOCAL_PEERCRED's uid read (xucred layout), running as _vyre under
-  launchd, strict mode against the real /Library tree, the socket at /var/run.
+- Reviewer (9528c1ee signed off as dormant) MEDIUMs, fixed in the next sha: the socket lives in
+  /var/run/vyre/ (root-made, _vyre's, 0755; strict checks it) and the client sends a proof only
+  to a socket owned by core's uid in a folder others can't write (socketProblem); core reads its
+  own process table (procs.js: /proc, or /bin/ps with an empty env), never tmux, and main.js
+  pins PATH and drops every VYRE_* but its four.
+- Reviewer LOWs, carried:
+  - presence.verify spends the proof it checks (a nonce or a code), like any use of it. Only a
+    holder of a valid proof can burn it, and that holder could use it instead; vyred's 1b use
+    treats a verify as the proof's one use.
+  - LOCAL_PEERPID can be reused before core judges the pid: switch to the audit token (Mac) when
+    1b makes the verdict load-bearing.
+  - The installer runs `main.js code` as _vyre (sudo -u _vyre), or core.db ends up root-owned.
+- Mac check still needed: LOCAL_PEERCRED's uid read (xucred layout) and /bin/ps, by capsule-pro
+  with a temp home and no sudo. Running as _vyre under launchd waits for phase 4 (a real system
+  user on the user's Mac needs their explicit OK).
 - Next: phase 1b (vyred asks core), then phase 2.

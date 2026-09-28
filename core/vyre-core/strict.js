@@ -11,11 +11,11 @@ import path from "node:path";
 
 /**
  * What stops core starting here, as plain sentences; an empty list means it may.
- * @param {{ codeDir: string, dataDir: string, ownerUid: number, uid: number, stat?: (p: string) => { uid: number, mode: number } }} o
+ * @param {{ codeDir: string, dataDir: string, socketDir?: string, ownerUid: number, uid: number, stat?: (p: string) => { uid: number, mode: number } }} o
  *   uid: the uid core runs as. stat: tests only.
  * @returns {string[]}
  */
-export function strictProblems({ codeDir, dataDir, ownerUid, uid, stat = p => fs.statSync(p) }) {
+export function strictProblems({ codeDir, dataDir, socketDir, ownerUid, uid, stat = p => fs.statSync(p) }) {
   const out = [];
   if (uid === ownerUid) out.push(`vyre-core runs as uid ${uid}, the owner's own uid: it needs its own account`);
   if (uid === 0) out.push("vyre-core must not run as root");
@@ -37,5 +37,11 @@ export function strictProblems({ codeDir, dataDir, ownerUid, uid, stat = p => fs
   check(data, [uid]);
   try { if (stat(data).mode & 0o077) out.push(`${data} must be readable by vyre-core alone (0700)`); } catch {}
   for (const d of upward(path.dirname(data))) check(d, [0]);
+  // The socket's folder: core's own (or root's), so nobody else can put a socket of theirs there
+  // for a client to hand its proof to.
+  if (socketDir) {
+    check(path.resolve(socketDir), [uid, 0]);
+    for (const d of upward(path.dirname(path.resolve(socketDir)))) check(d, [0]);
+  }
   return [...new Set(out)];
 }
