@@ -467,3 +467,37 @@ test("daemon: the Deck's resilience client is served from core/resilience, and n
     assert.doesNotMatch(r.body, /^\/\/ @ts-check/, p);
   }
 });
+
+test("daemon: Wink's relay client (deck/js/pair-ticket.js's ../../relay/client/*.js imports) is served from relay/client, and the Deck's CSP allows the relay it needs", { timeout: 20_000 }, async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], relay: { url: "wss://relay.example.com" } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const { socketPath } = await import("../core/config/index.js");
+  const http = await import("node:http");
+  const get = (/** @type {string} */ p) => new Promise((resolve, reject) => http.get({ socketPath: socketPath(root), path: p }, res => {
+    let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
+  }).on("error", reject));
+  for (const f of ["client", "channel", "bytes", "response", "sse", "webcrypto", "noise"]) {
+    const r = /** @type {any} */ (await get(`/relay/client/${f}.js`));
+    assert.equal(r.status, 200, f);
+    assert.equal(r.headers["content-type"], "text/javascript");
+    assert.equal(r.body, fs.readFileSync(path.join(import.meta.dirname, "..", "relay", "client", f + ".js"), "utf8"));
+    // The default relay and this box's own configured one, both wss: and the https: resolveTicket()
+    // fetches /v1/pair on - never a wildcard.
+    const csp = r.headers["content-security-policy"];
+    assert.match(csp, /connect-src [^;]*'self'/);
+    for (const origin of ["wss://relay.vyre.run", "https://relay.vyre.run", "wss://relay.example.com", "https://relay.example.com"]) {
+      assert.ok(csp.includes(origin), `${f}: connect-src missing ${origin} (${csp})`);
+    }
+  }
+  // relay/client/nodecrypto.js is Node-only, never imported from the Deck; not on the allowlist,
+  // so it falls through to the Deck's own client-routing shell (as any unmatched path does), not
+  // the real file.
+  const nodeOnly = /** @type {any} */ (await get("/relay/client/nodecrypto.js"));
+  assert.notEqual(nodeOnly.body, fs.readFileSync(path.join(import.meta.dirname, "..", "relay", "client", "nodecrypto.js"), "utf8"));
+  // The Deck's own shell carries the same connect-src fix (deck/views/wink.js's own fetch/WebSocket
+  // to the relay runs from here, not from /relay/client/*.js).
+  const shell = /** @type {any} */ (await get("/pair/scan"));
+  assert.ok(shell.headers["content-security-policy"].includes("wss://relay.vyre.run"));
+});

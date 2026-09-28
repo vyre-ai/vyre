@@ -25,6 +25,7 @@ import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, canReadPee
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
+import { DEFAULT_RELAY } from "../relay/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -704,10 +705,21 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // ../../core/resilience/<file>.js: that resolves here in a browser and to the repo file in Node,
   // so the Deck and its tests load the one copy. Only these five files; nothing else in core/.
   const res29 = req.method === "GET" && /^\/core\/resilience\/(backoff|sse|stream|outbox|web)\.js$/.exec(url.pathname);
-  if (res29) return serveFile(res, path.join(REPO, "core", "resilience", res29[1] + ".js"));
+  if (res29) return serveFile(res, path.join(REPO, "core", "resilience", res29[1] + ".js"), cfg);
+  // tailnet's relay client (ADR 0045/0037 "Wink"), which the Deck imports as
+  // ../../relay/client/<file>.js (deck/js/pair-ticket.js, deck/js/pair-scan.js): that resolves
+  // here in a browser and to the repo file in Node, so the Deck and its tests load the one copy.
+  // Only these seven files - client.js's own browser-safe closure (checked by hand: channel.js,
+  // bytes.js, response.js, sse.js, webcrypto.js, noise.js) - nothing else in relay/client/
+  // (nodecrypto.js is Node-only and never imported from the Deck). A real browser hitting
+  // /pair/scan without this fell straight through to serveDeck's catch-all shell (team-lead,
+  // reviewer of stage, 2026-09-28) - headless tests missed it because they never loaded the page
+  // through a real vyred the way a phone does.
+  const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise)\.js$/.exec(url.pathname);
+  if (resRelay) return serveFile(res, path.join(REPO, "relay", "client", resRelay[1] + ".js"), cfg);
   // lib/avatar-seed (ADR 0043 section 6): the one rule for a project tile's bytes, which the Deck
   // imports as ../../lib/avatar-seed/index.js, so the Deck and Node load the one copy. Only this file.
-  if (req.method === "GET" && url.pathname === "/lib/avatar-seed/index.js") return serveFile(res, path.join(REPO, "lib", "avatar-seed", "index.js"));
+  if (req.method === "GET" && url.pathname === "/lib/avatar-seed/index.js") return serveFile(res, path.join(REPO, "lib", "avatar-seed", "index.js"), cfg);
   // The one app (ADR 0027), beside the Deck until it takes over /. Once config app.root flips
   // (mobile's client-side migration, off by default: core/config/index.js), /app/* is a 301 to
   // the same path under "/" instead, so an installed /app/ Home Screen icon or a stale bookmark
@@ -725,7 +737,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     return serveApp(res, url.pathname);
   }
-  if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
+  if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname, cfg);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }
 
@@ -792,7 +804,7 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
  * are not files get index.html, so the Deck can route on the client. Nothing outside deck/ is
  * ever served, whatever the path says.
  */
-function serveDeck(res, pathname) {
+function serveDeck(res, pathname, cfg) {
   const dir = path.join(REPO, "deck");
   const shell = path.join(dir, "index.html");
   let file = path.resolve(dir, "." + path.posix.normalize(decodeURIComponent(pathname)));
@@ -813,19 +825,41 @@ function serveDeck(res, pathname) {
   // The service worker carries the build, so a release is a new sw.js and a phone swaps its cache
   // at once (deck/sw.js BUILD).
   if (file === path.join(dir, "sw.js")) buf = Buffer.from(swWithBuild(buf.toString("utf8")));
-  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...DECK_HEADERS });
+  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...deckHeaders(cfg) });
   res.end(buf);
 }
 
-/** What every Deck file goes out with. */
-const DECK_HEADERS = { "cache-control": "no-cache", "x-content-type-options": "nosniff",
-  "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'" };
+/**
+ * The relay origins Wink's pre-pairing fetch needs in connect-src (ADR 0045's resolveTicket(),
+ * a plain cross-origin POST to `<relay>/v1/pair` that runs BEFORE any pairing, so it cannot ride
+ * the one already-open channel ADR 0026's "no CORS/connect-src needed" reasoning covers - that
+ * reasoning only ever applied to traffic AFTER pairing). Always the production default
+ * (DEFAULT_RELAY); also this box's own configured relay (relay.status's url), so a self-hosted
+ * relay (relay/client/README.md's own documented case) is never silently blocked either. Exact
+ * origins only, both wss: (the socket pairOffer opens) and the matching https: (resolveTicket's
+ * own fetch, same scheme swap relay/client/client.js does) - never a wildcard.
+ * @param {any} cfg
+ */
+function relaySources(cfg) {
+  const urls = new Set([DEFAULT_RELAY]);
+  const configured = cfg && cfg.relay && cfg.relay.url;
+  if (typeof configured === "string" && /^wss?:\/\/[^\s/]+$/.test(configured)) urls.add(configured);
+  const out = [];
+  for (const u of urls) out.push(u, u.replace(/^ws/, "http"));
+  return out.join(" ");
+}
 
-/** One module from outside deck/ that the Deck imports (core/resilience), with the Deck's headers. */
-function serveFile(res, file) {
+/** What every Deck file goes out with. @param {any} cfg */
+function deckHeaders(cfg) {
+  return { "cache-control": "no-cache", "x-content-type-options": "nosniff",
+    "content-security-policy": `default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ${relaySources(cfg)}; frame-ancestors 'none'` };
+}
+
+/** One module from outside deck/ that the Deck imports (core/resilience, relay/client), with the Deck's headers. @param {any} cfg */
+function serveFile(res, file, cfg) {
   let buf;
   try { buf = fs.readFileSync(file); } catch { return send(res, 404, { error: { code: "not_found", message: path.basename(file) } }); }
-  res.writeHead(200, { "content-type": "text/javascript", ...DECK_HEADERS });
+  res.writeHead(200, { "content-type": "text/javascript", ...deckHeaders(cfg) });
   res.end(buf);
 }
 
