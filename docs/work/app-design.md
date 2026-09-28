@@ -386,3 +386,26 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   (windows-plan.md section 9, 87bcd02d). Taking the lead's Alt+Space resolution as final; will do
   the hands-on focused-panel check before shipping it as default and report back. No open
   questions on the rest of the spec.
+
+## Now (28 Sep, generated avatars: agents vs teammates)
+
+- Lead: evaluate DiceBear (fallback Boring Avatars, not needed) for cute per-entity avatars, one
+  style for agents, one for teammates, offline, seeded on vyred's unique agent id not the name,
+  licence-checked, colour economy honestly assessed. Design only, no product code. Not in this
+  repo: `@dicebear/core`/`@dicebear/collection` installed and rendered in a local scratch folder
+  outside the repo (path in the message to the lead, not here); Mac local Chrome headless for the
+  contact-sheet screenshots, per the lead, no test box needed.
+- Recommendation sent (msg_id 1e8d6982): agents get `bottts-neutral`, teammates get `notionists`.
+  Compared against `pixelArtNeutral` (agent fallback), `thumbs` and `funEmoji` (teammate
+  fallbacks). Licence table in NOTICE-draft.md: notionists is CC0 (clean); bottts-neutral's
+  "free for personal and commercial use" (bottts.com) is not a standard licence and is flagged as
+  a real open item, not papered over, since it's the only robot-styled set in the collection.
+  funEmoji not recommended on fit, not licence or legibility: a fixed identity that's literally a
+  crying or worried face reads odd.
+  Colour honestly assessed: for the two recommended styles, full colour does not read much better
+  than greyscale/duotone (both are line/shape-carried, not hue-carried); pixelArtNeutral and
+  thumbs are the two where colour is doing real legibility work.
+- Named the tension plainly rather than picking quietly: full-colour generated avatars are a
+  deliberate exception to "no colour per agent, no photos" (avatar.md, reaffirmed twice already
+  this session for teammates and the Windows accent colour). Left the call with the lead; will
+  write it into avatar.md for real once decided.
