@@ -125,6 +125,50 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## Resume 2026-09-28 (cont'd 8): voice rebuilt as tap-to-talk (e21c019d)
+User's cutting-edge voice spec, replacing hold-to-talk entirely. Full state machine in
+composer.js's "tap-to-talk / push-to-talk" section: voicePressBegin/voicePressEnd (350 ms
+tap-vs-hold), openVoice/finishTalk/finishTalkAndSend/cancelTalk, voiceReplace (insert at
+voiceStart..voiceEnd, never touching text outside it), the command-diffing in onFinal (see
+below), silence timers, the elapsed pill.
+- **IMPORTANT protocol fact, easy to get wrong (I did, caught by my own test):**
+  local/voice/listen.js's "final" is CUMULATIVE - `committed = committed + " " + text`, resent
+  in full on every final, not a delta. "scratch that"/segment tracking must diff against
+  voiceCommittedLen (how much of that cumulative string is already box text), never treat each
+  final as its own separate insertable chunk.
+- Ctrl+M: composer-state.js's KEYMAP (literal "Ctrl+M", the same mechanism Ctrl+O/Ctrl+B already
+  use - never "Mod+M", which would be Cmd+M on a Mac and collide with the OS's minimize-window).
+  composer.js's key()/keyUp() pair (keyUp is new) handle it both textarea-focused (onKey/
+  onkeyup) and globally; session.js needed one added line (a keyup listener mirroring the
+  existing keydown one) - smallest possible touch, flagged to chat.
+- **Shared test-helper fixes, deck/test/fake-dom.js (real gotchas, not just this feature's):**
+  window.addEventListener/removeEventListener (missing entirely - composer.js now calls it at
+  every mount for the blur-stops-listening rule) and style.setProperty/removeProperty/
+  getPropertyValue (missing too - the --voice-level custom property). Both threw silently deep
+  in an event handler, which look EXACTLY like the deck/chat hang (a dangling handle, node --test
+  never exits) but are a different, composer.js-specific problem - spent real time chasing the
+  wrong lead before finding these. Also added selectionStart/selectionEnd/setSelectionRange
+  (missing too), needed for the cursor-insertion test.
+- **A second, genuinely separate gotcha:** even with those fixed, a test that stops a session
+  without simulating the server's close (ws.close(), matching a real done/error/close) hits
+  voice.js's real 6 s fallback-cleanup timer, which is NOT mocked by node:test's mock.timers
+  unless mocking was enabled before the session opened (mock.timers only intercepts timers
+  scheduled after enable() runs) - dangles the file for a few real seconds, easily mistaken for
+  the actual pre-existing deck/chat hang. Every stop in composer-voice.test.js now simulates a
+  close.
+- composer-voice.test.js rewritten, 11/11. 65/65 across composer-*/commands/composer-state/
+  design-components/boundaries. local/voice unaffected, 22/22 + talk 7/7.
+- Ran session.test.js (my one-line touch there): 3 pre-existing failures (unrelated - a stale
+  rewind-sheet count, a mismatched fixture, an unrelated sight test) plus the file-level hang
+  recurred. Sent chat the exact repro (branch, sha, command) since they'd asked to be pinged.
+- **Sent for coordination, not yet replied:** app-design (the ring/pill's real Design A look -
+  what's shipped is functional placeholder CSS only), chat (whether session-state needs anything
+  for "currently dictating", plus the hang repro), capsule-pro (parity - Option+Space stays
+  theirs, no conflict with Ctrl+M; offered to share the tap/hold state machine if useful).
+- **Not yet sent to reviewer-2** - waiting to hear back from the above before calling it done,
+  and still need a screen capture/screenshot sequence for the user per team-lead's ask (once
+  app-design's look lands, so it's not the placeholder CSS).
+
 ## Resume 2026-09-28 (cont'd 7): voice.listen ticket cherry-picked, verified against the real server
 capsule-pro landed the ticket at f967b3de - confirmed my guessed shape exactly, no client code
 changes needed (voice.js already called voice.listen and opened `new WebSocket(wsUrl(path))` with
