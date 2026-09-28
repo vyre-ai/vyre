@@ -664,9 +664,12 @@ One observation worth a note, not a fix: at the worst-case combo (already report
 failure), the search ran to ~2s and returned a WRONG codeword (id `00000000...`) that still
 passed RS/CRC - a false accept under extreme degradation, distinct from the CRC/RS module's own
 fuzz coverage (reviewer-2: 0 false accepts across 40k synthetic-error trials) since this is real
-rendered-and-degraded pixels finding an unlucky alignment, not a synthetic bit-flip test. Not
-alarming on its own (this scenario already fails the id-match check either way, so nothing
-mispairs), but worth keeping in mind if the false-accept rate ever needs bounding formally.
+rendered-and-degraded pixels finding an unlucky alignment, not a synthetic bit-flip test. **Safe
+for pairing either way** (team-lead, 2026-09-28): a wrong 8-byte ticket still has to survive
+`resolveTicket()`'s own lookup (its locator won't match any real ticket the box minted) and its
+MAC check, both of which a decoded-but-wrong id fails - so this can never actually pair with
+anything, only fail to scan, which is already the outcome recorded above. Worth keeping in mind
+if the false-accept rate ever needs bounding formally, but not a pairing-safety concern.
 
 ## Next
 - Settings > Setup rows could rerun a step in place instead of naming `vyre up`.

@@ -13,6 +13,13 @@ import { attempt } from "../js/api.js";
 // any reason (a stale cache, a box that hasn't enabled the relay) so the sheet still has
 // something to try. A `?relay=` override is for a self-hosted relay only (relay/client/
 // README.md's own note); anything other than a real wss:// address is ignored, not trusted as-is.
+//
+// team-lead, 2026-09-28: on phone.vyre.run the phone isn't paired yet, so there's no session for
+// relay.status to answer to. Checked (core/relay/index.js's `owner()`): an unrecognised caller
+// gets a synchronous `denied` thrown at once, not a hang or a prompt - it isn't
+// `person_session_required`, so js/api.js never retries it through a sign-in flow either. `attempt`
+// below just returns `{ error }` for that, `r.data?.url` is then undefined, and the ternary falls
+// straight to DEFAULT_RELAY with no wait and nothing shown to the person.
 const DEFAULT_RELAY = "wss://relay.vyre.run";
 
 /** @param {any} ctx */
