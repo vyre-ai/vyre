@@ -62,7 +62,11 @@ let frecencySuite = Suite("frecency") { t in
         let f = Frecency(file: file, delay: 0.02)
         f.pick("setting:com.apple.wifi-settings-extension", query: "wifi please turn it on")
         t.ok(!FileManager.default.fileExists(atPath: file.path), "not written on the keystroke")
-        Thread.sleep(forTimeInterval: 0.15)
+        // The debounce is 20 ms; a loaded CI runner can take far longer to run it, so wait for the
+        // file (and its rename) rather than for a fixed time.
+        for _ in 0..<250 where (try? FileManager.default.contentsOfDirectory(atPath: file.deletingLastPathComponent().path)) != ["frecency.json"] {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
         let raw = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
         t.ok(!raw.contains("please"), "only a short prefix is stored")
         t.ok(raw.contains("\"wifi p\""), raw)

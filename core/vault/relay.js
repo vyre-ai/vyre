@@ -21,8 +21,8 @@
 //   almost never is (ADR 0006, finding 5).
 // - Upstream requests are https, except to loopback. A value in clear text on a network is a
 //   value given to whoever is on the path.
-// - Cards, tickets and envelopes are signed over a domain tag, so a signature made for one can
-//   never be replayed as another. Envelopes also name their audience, the owner's relay address,
+// - Cards, tickets and envelopes (relay, sync and emergency) are signed over a domain tag, so a
+//   signature made for one can never be replayed as another. Envelopes also name their audience, the owner's relay address,
 //   so one signed for Dana's box cannot be spent at Alex's.
 
 import crypto from "node:crypto";
@@ -254,6 +254,38 @@ export function checkSync(env, { audience, now = Date.now(), seen }) {
   return null;
 }
 
+const EMERGENCY_TAG = "vyre:emergency:v1";
+/** What an emergency envelope's signature covers. The shape of a sync envelope, under its own tag. */
+const emergencyBody = e => ({ tag: EMERGENCY_TAG, v: e.v, aud: e.aud, from: e.from, op: e.op, ts: e.ts, nonce: e.nonce });
+
+/**
+ * An emergency-access request from a contact to an owner's relay (`aud`), signed by the
+ * contact's device key. `op` is "request" or "status". The same guards as a sync envelope: a
+ * domain tag of its own, the audience, a timestamp and a nonce.
+ * @param {{ op: string, from: string, privDer: string, aud: string, now?: number }} a
+ */
+export function emergencyEnvelope({ op, from, privDer, aud, now = Date.now() }) {
+  const e = { v: 1, aud: String(aud), from, op, ts: now, nonce: crypto.randomBytes(16).toString("base64url") };
+  return { ...e, sig: sign(privDer, emergencyBody(e)) };
+}
+
+/**
+ * Check an emergency envelope. `env.from` is the sender's sign key, which the caller has already
+ * matched to a pinned person. The signature is checked before the audience, so a stranger who
+ * knows a contact's public key learns nothing from the reason. Null when valid, or a short reason.
+ * @param {any} env @param {{ audience: string, now?: number, seen: { prune(now: number): void, claim(nonce: string, ts: number): boolean } }} o
+ */
+export function checkEmergency(env, { audience, now = Date.now(), seen }) {
+  seen.prune(now);
+  if (!env || typeof env !== "object" || env.v !== 1 || !isStr(env.from) || !isStr(env.op) || !isStr(env.nonce)
+    || !isStr(env.sig) || typeof env.ts !== "number" || !isStr(env.aud)) return "malformed emergency request";
+  if (!verify(env.from, emergencyBody(env), env.sig)) return "bad signature";
+  if (env.aud !== audience) return "this request was signed for another relay";
+  if (Math.abs(now - env.ts) > SKEW_MS) return "timestamp outside 60 s window";
+  if (!seen.claim(env.nonce, env.ts)) return "replayed nonce";
+  return null;
+}
+
 /** 127.0.0.0/8, ::1 and localhost. */
 export function isLoopback(host) {
   const h = String(host || "").replace(/^\[|\]$/g, "").toLowerCase();
@@ -448,21 +480,25 @@ async function readJson(req) {
 }
 
 /**
- * Start the relay listener. One route, `POST /v1/relay`; everything else is 404.
+ * Start the relay listener. `POST /v1/relay`, and `/v1/sync` and `/v1/emergency` when their
+ * handlers are given; everything else is 404.
  * `login` is the Tailscale-User-Login header that `tailscale serve` adds to what it proxies. It
  * means something only when the listener is reachable through serve alone, so it is passed on
  * only with `identity: "tailscale"`, and that is refused on a bind other than loopback: anyone
  * who can reach a public bind can write the header themselves.
- * @param {{ host?: string, port?: number, identity?: string|null, onRelay: (env: any, meta: { remoteAddress?: string, login?: string|null }) => Promise<{ status: number, body: any }> }} o
+ * @param {{ host?: string, port?: number, identity?: string|null, onRelay: (env: any, meta: { remoteAddress?: string, login?: string|null }) => Promise<{ status: number, body: any }>,
+ *   onSync?: ((env: any, meta: any) => Promise<{ status: number, body: any }>) | null, onEmergency?: ((env: any, meta: any) => Promise<{ status: number, body: any }>) | null }} o
  * @returns {Promise<{ url: string, close: () => Promise<void> }>}
  */
-export async function serve({ host = "127.0.0.1", port = 0, identity = null, onRelay, onSync = null }) {
+export async function serve({ host = "127.0.0.1", port = 0, identity = null, onRelay, onSync = null, onEmergency = null }) {
   checkBind(host, identity);
   const server = http.createServer(async (req, res) => {
     try {
       const path = new URL(req.url || "/", "http://relay").pathname;
       // /v1/sync: shared vaults, answered only by a home that has them (share.js, shared.js).
-      const handler = path === "/v1/relay" ? onRelay : path === "/v1/sync" && onSync ? onSync : null;
+      // /v1/emergency: a contact asking for, or collecting, emergency access (emergency.js).
+      const handler = path === "/v1/relay" ? onRelay : path === "/v1/sync" && onSync ? onSync
+        : path === "/v1/emergency" && onEmergency ? onEmergency : null;
       if (req.method !== "POST" || !handler) return reply(res, 404, { error: { code: "not_found", message: `${req.method} ${path}` } });
       const env = await readJson(req);
       const login = identity === "tailscale" ? req.headers["tailscale-user-login"] : null;

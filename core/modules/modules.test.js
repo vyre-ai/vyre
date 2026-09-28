@@ -2,7 +2,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, roleBuckets } from "./index.js";
+import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, roleBuckets, firstParty } from "./index.js";
+import { fileURLToPath } from "node:url";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
@@ -97,6 +98,25 @@ test("modules: a module installed into a home never calls as another caller, eve
       assert.match((await reg.call(`${name}.try`, { as })).data, /may not call/, `${name} as ${as}`);
     }
   }
+});
+
+test("modules: meta.firstParty is set by the registry, from the loader's firstParty rule", async t => {
+  // A module in a home asks another tool what it was told; a claimed firstParty is overwritten.
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.seen", { input: { type: "object" }, run: async (_, meta) => ({ firstParty: meta.firstParty, caller: meta.caller }) });
+    ctx.tool("notes.ask", { input: { type: "object" }, run: async () => (await ctx.call("notes.seen", {})).data });
+    return { async stop() {} };
+  } };`;
+  const reg = await registry(t, [["notes", { version: "0.1.0", does: { tools: ["notes.seen", "notes.ask"] } }, src]]);
+  assert.deepEqual((await reg.call("notes.ask", {})).data, { firstParty: false, caller: "module:notes" });
+  assert.equal((await reg.call("notes.seen", {}, "module:notes", { firstParty: true })).data.firstParty, false, "a claim is overwritten");
+  assert.equal((await reg.call("notes.seen", {}, "cli", { firstParty: true })).data.firstParty, false);
+  assert.equal((await reg.call("notes.seen", {}, "module:nobody", {})).data.firstParty, false);
+  // A module shipped in the repo's core/ is first party, by the same rule the loader uses.
+  const shipped = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mail");
+  assert.equal(firstParty(shipped), true);
+  reg.modules.set("mail", { ...reg.modules.get("notes"), dir: shipped });
+  assert.equal((await reg.call("notes.seen", {}, "module:mail", {})).data.firstParty, true);
 });
 
 test("modules: a module that throws on start is failed, and the rest still run", async t => {
@@ -328,7 +348,7 @@ test("modules: a tool learns how presence was proved, and never sees the proof i
   const reg = new Registry({ db, events: new Events(db), config: {}, log: () => {}, presence });
   await reg.start(discover([path.join(home, "mods")]), { role: "local" });
   const r = await reg.call("notes.add", {}, "cli", { proof: { method: "capsule", sig: "secret" }, thread: "t1" });
-  assert.deepEqual(r.data.meta, { thread: "t1", presence: { method: "capsule", keyId: "k1" }, caller: "cli" });
+  assert.deepEqual(r.data.meta, { thread: "t1", presence: { method: "capsule", keyId: "k1" }, caller: "cli", firstParty: false });
 });
 
 test("modules: a \"tailnet\" entry in callers lets the owner's devices in, and nothing else that looks like one", async t => {
@@ -359,6 +379,43 @@ test("modules: the owner's Deck at the box's tailnet address may use what the De
   assert.equal(callerAllowed(deck, "tailnet-guest:juno@example.com"), false);
   assert.equal(callerAllowed(deck, "mcp:agent:kit"), false);
   assert.equal(callerAllowed(null, "anonymous"), true);
+});
+
+test("modules: needs.credentials is a list of {id, kind, provider, purpose}, with item, optional and group", () => {
+  const need = { id: "deepgram", kind: "api-key", provider: "deepgram", purpose: "push-to-talk", group: "speech" };
+  assert.deepEqual(validate({ ...good, needs: { credentials: [need, { ...need, id: "openai", provider: "openai", item: "notes-openai-key", optional: true }] } }), []);
+  const bad = c => validate({ ...good, needs: { credentials: c } }).join("; ");
+  assert.match(bad({ id: "x" }), /needs.credentials must be a list/);
+  assert.match(bad([{ ...need, id: "Bad Id" }]), /\.id must be a lowercase name/);
+  assert.match(bad([need, need]), /declared twice/);
+  assert.match(bad([{ ...need, kind: 3 }]), /\.kind must be a string/);
+  assert.match(bad([{ ...need, purpose: "" }]), /\.purpose must be a string/);
+  assert.match(bad([{ ...need, item: "a b" }]), /\.item must be a vault item name/);
+  assert.match(bad([{ ...need, group: "Speech!" }]), /\.group must be a lowercase name/);
+  assert.match(bad([{ ...need, optional: "yes" }]), /\.optional must be true or false/);
+  assert.match(bad(["deepgram"]), /must be an object/);
+});
+
+test("modules: ctx.vault.fetch accepts items named by needs.credentials, by item or <module>-<id>", async t => {
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.release", { internal: true, run: async ({ name }, { caller }) => ({ value: "value-of-" + name + "-for-" + caller }) });
+    return {};
+  } };`;
+  const user = `export default { async start(ctx) {
+    ctx.tool("talker.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
+    ctx.tool("talker.mods", { run: async () => ctx.modules.status().find(m => m.name === "talker").credentials.map(c => c.id) });
+    return {};
+  } };`;
+  const creds = [{ id: "deepgram", kind: "api-key", provider: "deepgram", purpose: "speech", item: "talker-deepgram-key" },
+    { id: "openai", kind: "api-key", provider: "openai", purpose: "speech" }];
+  const reg = await registry(t, [
+    ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
+    ["talker", { version: "0.1.0", does: { tools: ["talker.check", "talker.mods"] }, needs: { credentials: creds } }, user],
+  ]);
+  assert.deepEqual(await reg.call("talker.check", { item: "talker-deepgram-key" }, "cli"), { data: { got: "value-of-talker-deepgram-key-for-module:talker" } });
+  assert.deepEqual(await reg.call("talker.check", { item: "talker-openai" }, "cli"), { data: { got: "value-of-talker-openai-for-module:talker" } });
+  assert.match((await reg.call("talker.check", { item: "talker-deepgram" }, "cli")).error.message, /does not declare/);
+  assert.deepEqual((await reg.call("talker.mods", {}, "cli")).data, ["deepgram", "openai"]);
 });
 
 test("modules: a use is a tool that ran for a person, a surface or a model; refusals, modules and hooks are not", async t => {
@@ -459,41 +516,4 @@ test("modules: first-party means shipped in the repo's core/, local/ or modules/
   assert.equal(firstParty(path.join(repo, ".dev", "modules", "bakery")), false, "a dev home's module");
   assert.equal(firstParty(path.join(repo, "test", "fixtures", "oven")), false, "anywhere else in the checkout");
   assert.equal(firstParty(path.join(repo, "core", "settings", "nested")), false, "only a folder directly in core/");
-});
-
-test("modules: needs.credentials is a list of {id, kind, provider, purpose}, with item, optional and group", () => {
-  const need = { id: "deepgram", kind: "api-key", provider: "deepgram", purpose: "push-to-talk", group: "speech" };
-  assert.deepEqual(validate({ ...good, needs: { credentials: [need, { ...need, id: "openai", provider: "openai", item: "notes-openai-key", optional: true }] } }), []);
-  const bad = c => validate({ ...good, needs: { credentials: c } }).join("; ");
-  assert.match(bad({ id: "x" }), /needs.credentials must be a list/);
-  assert.match(bad([{ ...need, id: "Bad Id" }]), /\.id must be a lowercase name/);
-  assert.match(bad([need, need]), /declared twice/);
-  assert.match(bad([{ ...need, kind: 3 }]), /\.kind must be a string/);
-  assert.match(bad([{ ...need, purpose: "" }]), /\.purpose must be a string/);
-  assert.match(bad([{ ...need, item: "a b" }]), /\.item must be a vault item name/);
-  assert.match(bad([{ ...need, group: "Speech!" }]), /\.group must be a lowercase name/);
-  assert.match(bad([{ ...need, optional: "yes" }]), /\.optional must be true or false/);
-  assert.match(bad(["deepgram"]), /must be an object/);
-});
-
-test("modules: ctx.vault.fetch accepts items named by needs.credentials, by item or <module>-<id>", async t => {
-  const vault = `export default { async start(ctx) {
-    ctx.tool("vault.release", { internal: true, run: async ({ name }, { caller }) => ({ value: "value-of-" + name + "-for-" + caller }) });
-    return {};
-  } };`;
-  const user = `export default { async start(ctx) {
-    ctx.tool("talker.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
-    ctx.tool("talker.mods", { run: async () => ctx.modules.status().find(m => m.name === "talker").credentials.map(c => c.id) });
-    return {};
-  } };`;
-  const creds = [{ id: "deepgram", kind: "api-key", provider: "deepgram", purpose: "speech", item: "talker-deepgram-key" },
-    { id: "openai", kind: "api-key", provider: "openai", purpose: "speech" }];
-  const reg = await registry(t, [
-    ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
-    ["talker", { version: "0.1.0", does: { tools: ["talker.check", "talker.mods"] }, needs: { credentials: creds } }, user],
-  ]);
-  assert.deepEqual(await reg.call("talker.check", { item: "talker-deepgram-key" }, "cli"), { data: { got: "value-of-talker-deepgram-key-for-module:talker" } });
-  assert.deepEqual(await reg.call("talker.check", { item: "talker-openai" }, "cli"), { data: { got: "value-of-talker-openai-for-module:talker" } });
-  assert.match((await reg.call("talker.check", { item: "talker-deepgram" }, "cli")).error.message, /does not declare/);
-  assert.deepEqual((await reg.call("talker.mods", {}, "cli")).data, ["deepgram", "openai"]);
 });

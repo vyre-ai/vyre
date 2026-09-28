@@ -4,7 +4,7 @@ Branch: work/connectors · Worktree: ../vyre-connectors · ADR: 0016
 
 ## Scope
 
-Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect.js`,
+Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/mail/`, `core/cli/commands/connect.js`,
 `deck/views/connections.js`. Small changes by contract in `core/gate/` (a module sender),
 `core/harness/rules.js` (the hub's namespace), `harness/mcp/server.js` (aggregation) and
 `deck/views/settings.js` (the Connections section).
@@ -57,25 +57,38 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect
 
 ## Doing
 
-- Nothing in flight. Main has the hub, Google and the google.connect backend (d0e35c3, merged at
-  53a994a). Waiting on the lead to approve the rest: the Deck sign-in form and admin-console
-  helper (2483c77), the pre-opened tab fix (672b709) and the google.test description (7e03b8c).
-  After main was merged back: 114/114 connectors tests green on the test box.
+- work/connectors 20f49371: mail + e2e fixes, green on testbox 2026-09-27 (load under 5): 226/226
+  targeted (modules, mcp, google, mail, connectors, connect, harness, gate), docs 50/50. e2e: OK
+  once green (sent). Kernel commit af11226d is with platform for review.
+- Landing (lead): push as finished and hand the integrator the sha for the batch after batch 4,
+  together with vault's 9b (connections list {caller}, get, use). Then real-vyred mail tests.
 
 ## Next
 
-- Docs: patch for docs/using/connectors.md and docs/build/mcp-hub.md sent to the docs team
-  (scratchpad docs-connectors.patch, against work/docs 502b97e). They apply it once the Deck
-  form reaches main too.
-- CLI `vyre connect add google <name> --sign-in` (prints the URL, waits for google.connected,
-  takes a pasted address) if the lead wants it.
-- The real-account Google run only after the user connects one himself.
+1. e2e review of the mcp.call `hold`/`on_behalf` and google.mail.send `on_behalf` inputs (lead's
+   condition before merge).
+2. After vault lands connections: real-vyred mail tests (IMAP, Apps Script, Google, two MCP
+   instances) and drop the fake-ctx gap note.
+3. capsule-pro: render mail.find rows ("Send from ...") and open the Gate card after mail.compose.
+4. `vyre connect` for mail.map (CLI), and the Deck row in Connections (with pwa/native-core).
 
 ## Needs from others
+
+- vault: module-only vault.connections.list {capability?, caller} answering for that caller's surface; useOf send_mail/read_mail of every source -> mail.send/mail.search {account: id}; google-apps-script default capabilities send_mail+read_mail; take core/mail out of work/vault-next (6a0c0760).
+- e2e: review hold/on_behalf (lead's condition).
+- capsule-pro: Capsule rendering of mail rows.
 
 - Lead: whoever owns scripts/perf-check, on the first-sample flake.
 
 ## Changed contracts
+
+- KERNEL, its own commit af11226d for platform's review (lead OK): registry.call sets `meta.firstParty` from the loader's `firstParty(dir)`, taken verbatim from native-core 98412a66 (one rule), overwriting any passed value. Test in core/modules/modules.test.js.
+- on_behalf needs meta.firstParty (anyone else is refused, code denied) and a real thread of the named agent (core/connectors/behalf.js), and sets who.person=false in the hub (e2e HIGH and MEDIUM 1, 2).
+
+- `mcp.call` takes `hold: true` and `on_behalf {thread, agent}`, heard from module callers only (core/mcp/index.js, hub.js).
+- `google.mail.send` takes `on_behalf {thread, agent}`, heard from module callers only.
+- core/google/mail.js helpers moved to core/connectors/message.js (re-exported; same behaviour).
+- New module `mail` with tools mail.*; Gate senders `mail:<connection id>`; event mail.needs-credential.
 
 - `gate.request` accepts `agent` in its input from a module caller only (core/gate/index.js), so
   the MCP hub can file a held call under the agent vyred verified for it.

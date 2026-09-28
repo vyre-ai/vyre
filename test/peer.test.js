@@ -9,6 +9,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
+import { SURFACE_LABELS } from "../core/modules/index.js";
 import { ancestry, insideClaude, controllingTty, loginOf, tmuxClients } from "../core/daemon/peer.js";
 
 const tree = {
@@ -123,6 +124,33 @@ test("peer: a person-only call from under a claude is refused silently; the same
   assert.match(held.body.error.message, /inside a Claude session/);
 });
 
+test("peer: a tool with person-only callers is refused under a claude by name alone, even off PERSON_ONLY's own hand-kept list (e2e review, 28 Sep)", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [], vault: { keystore: "file" } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const dir = fs.mkdtempSync(path.join(root, "peer-"));
+  const socket = d.paths.socket;
+
+  // link.pair is not on PERSON_ONLY's own hand-kept list, and its callers are person surfaces
+  // alone, so this is derived; it names no address at all, so this never reaches its own logic --
+  // the floor refuses it first, the same "inside a Claude session" 403 agents.create (which IS on
+  // the hand-kept list) gets above.
+  const inside = await client(dir, socket, "link.pair", {}, { underClaude: true });
+  assert.equal(inside.status, 403, JSON.stringify(inside));
+  assert.equal(inside.body.error.code, "denied");
+  assert.match(inside.body.error.message, /inside a Claude session/);
+  const outside = await client(dir, socket, "link.pair", { box: "https://127.0.0.1:1" });
+  assert.notEqual(outside.status, 403, JSON.stringify(outside));
+
+  // link.find is opted out (core/presence's OPT_OUT: a read-only tailnet probe). Its callers are
+  // person surfaces too, but personOnly() must say no for it, or this whole mechanism would
+  // block every opted-out tool exactly as it blocks link.pair.
+  const { personOnly } = await import("../core/presence/index.js");
+  assert.equal(personOnly("link.find", { callers: ["cli", "local", "capsule"] }), false);
+  assert.equal(personOnly("link.pair", { callers: ["cli", "local", "capsule"] }), true);
+});
+
 test("peer: a person's label from under a claude is the session's own, for every tool; from outside it stays the person's", async t => {
   const root = tempHome(t);
   // A probe that says who vyred took the caller to be, and one open only to the person's surfaces
@@ -142,13 +170,23 @@ test("peer: a person's label from under a claude is the session's own, for every
     const inside = await client(dir, socket, "probe.who", {}, { underClaude: true, headers });
     assert.equal(inside.status, 200, JSON.stringify(inside));
     assert.equal(inside.body.data.caller, "mcp", `${label} from a model's shell is the model's`);
+    // probe.mine's callers are person surfaces alone, so it is now derived person-only
+    // (core/presence's personOnly(), e2e review 28 Sep): the floor refuses it by name, before the
+    // model's relabel to "mcp" is even reached, rather than a plain caller-kind mismatch.
     const mine = await client(dir, socket, "probe.mine", {}, { underClaude: true, headers });
     assert.equal(mine.status, 403, `${label}: ${JSON.stringify(mine)}`);
-    assert.match(mine.body.error.message, /not available to mcp callers/);
+    assert.match(mine.body.error.message, /inside a Claude session/);
     // The person at a terminal, the Deck and the Capsule on the socket keep their label.
     const outside = await client(dir, socket, "probe.who", {}, { headers });
     assert.equal(outside.body.data.caller, label, JSON.stringify(outside));
     assert.equal((await client(dir, socket, "probe.mine", {}, { headers })).status, 200);
+  }
+  // Every surface's label in the kernel's list, and a surface name no module uses yet, is the
+  // session's own from inside; from outside each stays what it said.
+  for (const label of [...SURFACE_LABELS, "phone", "glass-now"]) {
+    const headers = { "x-vyre-caller": label };
+    assert.equal((await client(dir, socket, "probe.who", {}, { underClaude: true, headers })).body.data.caller, "mcp", label);
+    assert.equal((await client(dir, socket, "probe.who", {}, { headers })).body.data.caller, label, label);
   }
   // A model's own label is not traced and not changed; a person-only tool from inside is still
   // refused out loud, never run as the model's.
@@ -156,6 +194,111 @@ test("peer: a person's label from under a claude is the session's own, for every
   const made = await client(dir, socket, "agents.create", { name: "juno" }, { underClaude: true });
   assert.equal(made.status, 403);
   assert.match(made.body.error.message, /inside a Claude session/);
+});
+
+test("peer: an agent is named only as mcp:agent or harness:agent; a surface's label naming one is refused before any key is checked", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const dir = fs.mkdtempSync(path.join(root, "peer-"));
+  const socket = d.paths.socket;
+  for (const label of ["cli:agent:kit", "cli agent:kit", "deck agent:kit", "capsule:agent:kit", "mobile:agent:kit", "mcp agent:kit"]) {
+    const r = await client(dir, socket, "system.echo", { text: "hi" }, { headers: { "x-vyre-caller": label, "x-vyre-agent-key": "k-northwind" } });
+    assert.equal(r.status, 403, `${label}: ${JSON.stringify(r)}`);
+    assert.match(r.body.error.message, /named only as mcp:agent/, label);
+  }
+  // The MCP server's and the hooks' own forms go on to the key check (this key is no thread's).
+  for (const label of ["mcp:agent:kit", "harness:agent:kit"]) {
+    const r = await client(dir, socket, "system.echo", { text: "hi" }, { headers: { "x-vyre-caller": label, "x-vyre-agent-key": "k-northwind" } });
+    assert.equal(r.status, 403, label);
+    assert.match(r.body.error.message, /no thread of that agent is running with this key/, label);
+  }
+});
+
+test("peer: after a peer check the connection stays non-blocking, so a large answer never stalls vyred", { timeout: 90_000 }, async t => {
+  // On macOS the peer check's child used to leave vyred's socket blocking; the next large write
+  // (the tool list) then blocked vyred's event loop, and with the client in the same process it
+  // never finished. In a child process, so a stall is a timeout here, not a hung test runner.
+  const root = tempHome(t);
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+  const js = path.join(root, "big.mjs");
+  fs.writeFileSync(js, `
+const { start } = await import(${JSON.stringify(path.join(repo, "core/daemon/index.js"))});
+const { request } = await import(${JSON.stringify(path.join(repo, "core/daemon/client.js"))});
+const d = await start({ root: ${JSON.stringify(root)}, log: () => {} });
+for (const who of ["cli", "deck", "capsule", "local", "deck", "capsule"]) {
+  const r = await request("GET", "/v1/tools", undefined, { root: ${JSON.stringify(root)}, caller: who });
+  if (!r.data || !r.data.length) { console.log("no tools for " + who + ": " + JSON.stringify(r).slice(0, 200)); process.exit(1); }
+}
+await d.stop();
+console.log("ok");
+`);
+  const r = await new Promise(res => {
+    const c = spawn(process.execPath, [js], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, VYRE_NO_DIALOGS: "1" } });
+    let out = "";
+    c.stdout.on("data", d => (out += d));
+    const timer = setTimeout(() => c.kill("SIGKILL"), 60_000);
+    c.on("close", code => { clearTimeout(timer); res({ code, out }); });
+  });
+  assert.equal(r.code, 0, `vyred stalled or failed: ${r.out}`);
+  assert.match(r.out, /ok/);
+});
+
+/** Run a small module in its own node, so a stall is a timeout here, not a hung test runner. */
+function isolated(t, root, name, source, ms = 30_000) {
+  const js = path.join(root, name);
+  fs.writeFileSync(js, source);
+  return new Promise(res => {
+    const c = spawn(process.execPath, [js], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, VYRE_NO_DIALOGS: "1" } });
+    let out = "";
+    c.stdout.on("data", d => (out += d));
+    c.stderr.on("data", d => (out += d));
+    const timer = setTimeout(() => c.kill("SIGKILL"), ms);
+    c.on("close", code => { clearTimeout(timer); res({ code, out }); });
+  });
+}
+const PEER = JSON.stringify(path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "core/daemon/peer.js"));
+
+test("peer: a perl earlier in PATH, or PERL5OPT and PERL5LIB, never reads the peer", { skip: !["darwin", "linux"].includes(process.platform) }, async t => {
+  const root = tempHome(t);
+  // A fake perl first in PATH, and a module PERL5OPT would load into the real one: both say pid 1.
+  const bin = path.join(root, "bin"); fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, "perl"), "#!/bin/sh\necho 1\n", { mode: 0o755 });
+  fs.writeFileSync(path.join(root, "Fake.pm"), "package Fake; BEGIN { print 1; exit 0 } 1;\n");
+  const r = await isolated(t, root, "path.mjs", `
+import net from "node:net"; import path from "node:path";
+process.env.PATH = ${JSON.stringify(bin)} + ":" + process.env.PATH;
+process.env.PERL5OPT = "-MFake"; process.env.PERL5LIB = ${JSON.stringify(root)};
+const { readPeerPid } = await import(${PEER});
+const sock = path.join(${JSON.stringify(root)}, "p.sock");
+const srv = net.createServer(async s => { console.log("pid", await readPeerPid(s), "self", process.pid); s.end(); srv.close(); });
+srv.listen(sock, () => net.connect(sock));
+`);
+  const m = /pid (\S+) self (\d+)/.exec(r.out);
+  assert.ok(m, r.out);
+  assert.equal(m[1], m[2], "the real /usr/bin/perl read this process as the peer, not the planted one's 1");
+});
+
+test("peer: a check that fails before its first line still leaves vyred's socket non-blocking", { skip: !["darwin", "linux"].includes(process.platform) }, async t => {
+  const root = tempHome(t);
+  // A program in perl's place that exits at once: it never restores O_NONBLOCK itself. The server
+  // then writes far more than a socket buffer holds while its in-process reader waits 300 ms; a
+  // blocking socket would stall this process for good, a non-blocking one lets the timer run.
+  const r = await isolated(t, root, "fail.mjs", `
+import net from "node:net"; import path from "node:path";
+const { readPeerPid } = await import(${PEER});
+const sock = path.join(${JSON.stringify(root)}, "f.sock");
+let ticked = false;
+const srv = net.createServer(async s => {
+  console.log("peer", await readPeerPid(s, { bin: "/bin/sh", args: ["-c", "exit 5"] }));
+  setTimeout(() => { ticked = true; }, 50);
+  s.write(Buffer.alloc(16 * 1024 * 1024), () => { console.log("written ticked", ticked); s.end(); srv.close(); });
+});
+srv.listen(sock, () => { const c = net.connect(sock); c.pause(); setTimeout(() => c.resume(), 300); c.on("data", () => {}); });
+`, 20_000);
+  assert.equal(r.code, 0, `stalled: ${r.out}`);
+  assert.match(r.out, /peer null/);
+  assert.match(r.out, /written ticked true/, "the event loop ran while the large write waited");
 });
 
 test("peer: a detached process has no controlling terminal, whatever it says", async () => {

@@ -339,6 +339,10 @@ test("google: Sign in with Google over the loopback adds an account that works, 
   }
   assert.equal(tcp(), idle, "nothing listens before a sign-in");
   assert.match((await v.cli("google.connect", { name: "home", client: "google-client", base: "https://example.org" })).error.message, /loopback/);
+  // With no client named, the default item google-oauth-client is the one asked for (vault.connect's `next` passes only a name).
+  const dflt = await v.cli("google.connect", { name: "home", base: fake.base });
+  assert.match(dflt.error.message, /google-oauth-client/, JSON.stringify(dflt));
+  assert.equal(tcp(), idle, "a sign-in that could not start leaves no listener");
 
   const started = (await v.cli("google.connect", { name: "home", client: "google-client", base: fake.base })).data;
   assert.ok(started?.id && started.url && started.redirect, JSON.stringify(started));
@@ -405,4 +409,34 @@ test("google: a sign-in finished by the pasted address works once, and a cancell
   const types = v.d.registry.deps.events.since(0, { limit: 5000 }).filter(e => e.type.startsWith("google.")).map(e => e.type);
   assert.deepEqual(types, ["google.added", "google.connected", "google.connect-failed", "google.connect-failed"]);
   assertNoLeak(v, [client.client_secret, ...fake.issued.keys(), ...fake.tokens.keys(), new URL(back).searchParams.get("code") || ""]);
+});
+
+test("google: on_behalf files a first-party module's held send under the thread and agent it names; anyone else is refused", async t => {
+  const fake = await startFakeGoogle(t);
+  const v = await vyred(t);
+  await item(v, "work-google", "secret", { value: fake.serviceAccount(ME) });
+  assert.ok((await v.cli("google.add", { name: "work", email: ME, auth: { type: "service-account", item: "work-google" }, base: fake.base })).data);
+  const mail = { to: "dana@northwind-bakery.example", subject: "Oven rota", body: "Hi Dana, the rota is ready. Alex" };
+  const now = Date.now();
+  v.d.registry.deps.db.prepare("INSERT INTO threads_runs (id, cwd, agent, status, started_at, last_at) VALUES (?,?,?,?,?,?)").run("t-9", v.root, "kit", "stopped", now, now);
+
+  // The mail module sends for a chat (or an agent) that vyred verified for it.
+  const fromModule = await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } }, "module:mail", {});
+  assert.ok(fromModule.data?.held, JSON.stringify(fromModule));
+  const a = (await v.local("gate.get", { id: fromModule.data.held })).data;
+  assert.deepEqual([a.via, a.thread, a.agent], ["google:work", "t-9", "kit"]);
+
+  // Anyone else who passes on_behalf is refused: a model, a person's CLI, a module label the
+  // loader does not count as shipped (and passing firstParty in changes nothing).
+  assert.equal((await v.model("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } })).error.code, "denied");
+  assert.equal((await v.cli("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } })).error.code, "denied");
+  assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } }, "module:bakery-helper", { firstParty: true })).error.code, "denied");
+  // Without on_behalf a model's send is filed under its own verified thread, as before.
+  const fromModel = await v.model("google.mail.send", mail);
+  assert.equal((await v.local("gate.get", { id: fromModel.data.held })).data.thread, "t-1");
+
+  // A thread that does not exist, or that is another agent's, is refused.
+  assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-none" } }, "module:mail", {})).error.code, "bad_input");
+  assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "juno" } }, "module:mail", {})).error.code, "denied");
+  assert.equal(fake.mail.sent.length, 0, "a held send reached Gmail");
 });
