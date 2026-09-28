@@ -63,7 +63,7 @@ deck/css/deck.css span.vy-av rules; deck/css/views/agents.css, settings.css.
 - Project tile bytes: projectBytes(seed) = two FNV-1a words over "vyre:project:v1:" + seed. Every
   surface drawing a project tile (the App, the Capsule) needs this same function.
 - Rail account button and the phone header show the person's avatar.
-- Tests (testbox): targeted deck/**, boundaries, docs-*, core/projects, core/system, core/config
+- Tests (testbox): targeted `deck/**`, boundaries, `docs-*`, core/projects, core/system, core/config
   850/850 after the docs fix; docs-check shots-only (mtime); avatars-browser.js 14/14 in headless
   Chrome (93 avatars, five families, Dark and Paper, ring, chat draft tiles, rail, hop, Reduce
   Motion). Native bar: all pass but 5 and 8. Both fail on stage base too: 8 always; 5 only when

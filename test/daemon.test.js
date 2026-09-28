@@ -47,8 +47,11 @@ test("daemon: answers health, lists the system module and runs its tools", { tim
   assert.deepEqual(await call("system.echo", { text: "hello" }, { root }), { data: { text: "hello" } });
   const info = (await call("system.info", {}, { root })).data;
   assert.match(info.version, /^\d+\.\d+\.\d+/);
-  assert.deepEqual(info.owner, { name: null }, "no name before onboarding step 1");
-  assert.deepEqual(info.assistant, { name: null }, "no assistant name before onboarding: surfaces say Vyre");
+  // owner.id's fingerprints ride along (anywhere, ADR 0043 2f): base64url, 8 bytes; never the id itself.
+  assert.equal(info.owner.name, null, "no name before onboarding step 1");
+  assert.ok(info.owner.fingerprint8 == null || /^[A-Za-z0-9_-]{11}$/.test(info.owner.fingerprint8), String(info.owner.fingerprint8));
+  assert.ok(!("id" in info.owner), "owner.id never leaves the box");
+  assert.equal(info.assistant.name, null, "no assistant name before onboarding: surfaces say Vyre");
   const ev = (await request("GET", "/v1/events", undefined, { root })).data;
   assert.ok(ev.some(e => e.type === "system.started"));
   // A surface follows the stream from here rather than replaying the whole log.
@@ -390,8 +393,10 @@ test("daemon: system.info names the owner as onboarding saved them, for a device
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const info = (await call("system.info", {}, { root })).data;
-  assert.deepEqual(info.owner, { name: "Alex Rivera" });
-  assert.deepEqual(info.assistant, { name: "juno" }, "replies are labelled with the assistant's name");
+  assert.equal(info.owner.name, "Alex Rivera");
+  assert.match(String(info.owner.fingerprint8), /^[A-Za-z0-9_-]{11}$/, "and the fingerprint a device's avatar is seeded from");
+  assert.equal(info.assistant.name, "juno", "replies are labelled with the assistant's name");
+  assert.ok(!("id" in info.owner) && !("id" in info.assistant), "owner.id never leaves the box");
 });
 
 test("daemon: without the appearance module, /theme.css serves config's theme.colors, read on every request", { timeout: 20_000 }, async t => {
@@ -451,8 +456,13 @@ test("daemon: the Deck's resilience client is served from core/resilience, and n
     assert.match(r.headers["content-security-policy"], /default-src 'self'/);
     assert.equal(r.body, fs.readFileSync(path.join(import.meta.dirname, "..", "core", "resilience", f + ".js"), "utf8"));
   }
-  // node.js (Node transports) and the tests are not the Deck's; neither is anything else in core/.
-  for (const p of ["/core/resilience/node.js", "/core/resilience/sse.test.js", "/core/daemon/index.js"]) {
+  // lib/avatar-seed (ADR 0043 section 6): the project tile's one shared rule, served the same way.
+  const seed = /** @type {any} */ (await get("/lib/avatar-seed/index.js"));
+  assert.equal(seed.status, 200);
+  assert.equal(seed.headers["content-type"], "text/javascript");
+  assert.equal(seed.body, fs.readFileSync(path.join(import.meta.dirname, "..", "lib", "avatar-seed", "index.js"), "utf8"));
+  // node.js (Node transports) and the tests are not the Deck's; neither is anything else in core/ or lib/.
+  for (const p of ["/core/resilience/node.js", "/core/resilience/sse.test.js", "/core/daemon/index.js", "/lib/avatar-seed/index.test.js", "/lib/identity.js"]) {
     const r = /** @type {any} */ (await get(p));
     assert.doesNotMatch(r.body, /^\/\/ @ts-check/, p);
   }

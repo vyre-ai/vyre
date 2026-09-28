@@ -32,7 +32,7 @@ const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/app
   "/js/pwa.js", "/js/reconnect.js", "/js/theme-live.js", "/js/context-report.js", "/js/glass-mini.js", "/js/keyboard.js", "/glass/util.js", "/js/health.js", "/js/machine.js", "/js/phone-setup.js", "/css/views/phone-setup.css", "/js/pair.js", "/css/pair.css", "/js/commands.js", "/js/first-passkey.js", "/js/assistant-setup.js", "/js/agent-create.js", "/js/empty-actions.js",
   "/js/now-phone.js", "/js/sheet.js", "/css/sheet.css", "/js/person.js", "/js/need-sheet.js", "/js/need-rows.js", "/js/capsule.js", "/js/places.js",
   "/js/avatars.js", "/vendor/vyrecode/identity.js", "/vendor/vyrecode/creature.js", "/vendor/vyrecode/characters.js", "/vendor/vyrecode/project.js", "/vendor/vyrecode/vyrecode2.js",
-  "/vendor/vyrecode/geometry.js", "/vyrecode/payload.js", "/vyrecode/rs.js",
+  "/vendor/vyrecode/geometry.js", "/vyrecode/payload.js", "/vyrecode/rs.js", "/lib/avatar-seed/index.js",
   "/views/now.js", "/css/views/now.css", "/views/projects.js", "/css/views/projects.css", "/views/chat.js", "/css/views/chat.css",
   "/views/find.js", "/css/views/find.css", "/views/agents.js", "/css/views/agents.css", "/views/needs.js", "/css/views/needs.css",
   "/chat/index.js", "/chat/session.js", "/chat/composer.js", "/chat/nav.js", "/chat/ask-item.js", "/chat/gate-item.js",

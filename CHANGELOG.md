@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### lib/avatar-seed: the project tile's bytes, one shared file
+
+- `lib/avatar-seed/index.js` is the one rule for a project tile's 8 bytes (two FNV-1a 32 words over
+  "vyre:project:v1:" + seed, big-endian), pure JavaScript. Node imports it; vyred serves it to the
+  Deck at /lib/avatar-seed/index.js (only that file), so there is no second copy. Fixed test
+  vectors, checked against an independent BigInt FNV, are the port target for the Capsule.
+
 #### deck: project tiles (the fifth avatar family), locked renderers, base64url fingerprints
 
 - A session's replies and header wear its project's tile (seeded from the stored avatar_seed); a

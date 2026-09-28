@@ -38,6 +38,11 @@ import { blob, character } from "../vendor/vyrecode/characters.js";
 import { projectTile } from "../vendor/vyrecode/project.js";
 import { renderCode2, bitsToLevels } from "../vendor/vyrecode/vyrecode2.js";
 import { buildCodeword, bytesToBits } from "../vyrecode/payload.js";
+// A project tile's 8 bytes: the one shared rule (Node and the Deck load this same file; the
+// Capsule ports it against its vectors). core/daemon serves it at /lib/avatar-seed/index.js.
+import { projectBytes, fnv1a32, BASIS_A } from "../../lib/avatar-seed/index.js";
+
+export { projectBytes };
 
 /** @typedef {"person" | "assistant" | "agent" | "teammate" | "project"} Family */
 /** @typedef {{ size?: number, label?: string|null, title?: string|null, cls?: string }} Opts */
@@ -140,26 +145,9 @@ export const readIdentity = attempt => Promise.all([readSystem(attempt), readTea
 
 // ---- drawing -------------------------------------------------------------------------------
 
-/** FNV-1a over a string from a given offset basis. */
-function fnv(/** @type {string} */ s, basis = 2166136261) {
-  let h = basis;
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return h >>> 0;
-}
-/** A small stable number from a string, for a fallback option only. */
-const small = (/** @type {string} */ s) => fnv(s);
+/** A small stable number from a string (FNV-1a), for a fallback option only. */
+const small = (/** @type {string} */ s) => fnv1a32(s, BASIS_A);
 
-/**
- * A project seed (avatar_seed, a slug or a chat id) as the 8 bytes projectTile reads (byte 0 the
- * colour, byte 1 the mark). Two FNV-1a words over "vyre:project:v1:" + seed: not a secret and
- * not a fingerprint, just stable and spread. Every surface that draws a project tile uses this.
- * @param {string} seed @returns {number[]}
- */
-export function projectBytes(seed) {
-  const s = "vyre:project:v1:" + seed;
-  const a = fnv(s), b = fnv(s, 0x811c9dc5 ^ 0x5bd1e995);
-  return [a >>> 24, (a >>> 16) & 255, (a >>> 8) & 255, a & 255, b >>> 24, (b >>> 16) & 255, (b >>> 8) & 255, b & 255];
-}
 /** A project's colour (the teammate badge), from its seed. */
 export const projectColor = (/** @type {string} */ seed) => PROJECT_COLORS[projectBytes(seed)[0] % PROJECT_COLORS.length];
 
