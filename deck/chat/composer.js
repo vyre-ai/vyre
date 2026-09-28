@@ -935,13 +935,15 @@ export function mountComposer(opts) {
     put(note); note.classList.remove("soft");
     say([
       h("span", null, `There's no ${role} teammate yet. I'll create one and send it your message.`), " ",
-      h("button", { class: "btn btn-primary btn-sm", type: "button", onclick: () => createAndAsk(role, text, project) }, "Create and send"),
+      h("button", { class: "btn btn-primary btn-sm", type: "button", onclick: () => createAndAsk(role, text, project, raw) }, "Create and send"),
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { put(note); note.classList.remove("soft"); sendMessage(raw, null); } }, "Don't create, answer here"),
     ]);
   }
 
-  /** @param {string} role @param {string} text @param {string} project */
-  async function createAndAsk(role, text, project) {
+  /** @param {string} role @param {string} text @param {string} project @param {string} raw the
+   *  whole draft, passed through so a not_found right after team.add still has it (createAndAsk
+   *  calls askTeammate again, which needs raw for its own possible confirmCreate). */
+  async function createAndAsk(role, text, project, raw) {
     sending = true; send.disabled = true;
     // A generic template on a guess (teammates.md section 2): no role-specific brief guessed from
     // the name (guessing wrong is worse than asking), never worktree isolation (a deliberate,
@@ -952,7 +954,7 @@ export function mountComposer(opts) {
       isolation: "folder", tools: ["files", "web"], model: "sonnet" });
     if (r.error) { sending = false; send.disabled = false; say(`Could not add ${role}: ${r.error.message || r.error.code}`); return; }
     sending = false; send.disabled = false;
-    askTeammate(role, text);
+    askTeammate(role, text, raw);
   }
 
   /** A queued message back in the box: Enter saves the new words (threads.edit), Esc lets it be. */
