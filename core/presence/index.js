@@ -73,7 +73,10 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   "presence.person.revoke",
   // Every setting is the person's own: a model never changes one, and settings relays the
   // person to the owning module's setter (e2e review, HIGH 1).
-  "settings.set", "settings.reset"]);
+  "settings.set", "settings.reset",
+  // core/goals: an agent may propose a goal (goals.set, state pending), but only a person's tap
+  // turns it into a real one - the same shape as team_propose needing a person's team.add.
+  "goals.accept"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
 
