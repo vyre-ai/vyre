@@ -610,6 +610,20 @@ Next: task 3 (federation re-review) is done. Idle; watch for a new assignment fr
   98f2a155): corrected the casing plus the 7 docs files that quoted the old one. Verified on
   testbox: onboard.test.js + onboard-page.test.js 120/120, core/names/**/*.test.js 105/106 (1
   pre-existing skip), docs-check + docs-index + hygiene 22/22. Sent to reviewer and integrator.
+  Integrator merged the token fix to pre/rc (ae442545) before the diagnosis correction landed.
+- Correction: integrator separately diagnosed a real but different gap in via(n) (a persisted
+  network.via="ts.net" trusted forever, never re-checked once a zone token appears) and the lead
+  reassigned the "last rc.2 gate" to me for that too. Checked: it wasn't what failed CI (fallback()
+  throws before persisting via in that exact test), but it's real for the case fallback() succeeds
+  first. Fixed on work/e2e-onboardvia cd376351 (off pre/rc, worktree vyre-e2e-onboardvia): "ts.net"
+  now trusted only once actually serving (recorded address or live phase); otherwise re-derived
+  fresh each call. Two new tests. Verified on testbox: onboard.test.js 17/17 (incl. both new
+  cases), onboard-page + core/names + docs-check + docs-index + hygiene 127/129 (2 pre-existing
+  unrelated skips). Sent to reviewer and integrator — this is the last rc.2 gate.
+- federation's reviewer-round delta 656ed493..87b2a243 (streaming scrub scan over every chunk with
+  overlap, meta.firstParty added to sync.send's caller check, plan_hash cleared on a bare
+  re-approval) re-reviewed and SIGNED OFF: verified independently on testbox (isolated copy, not
+  federation's live worktree) 51/51.
 
 ## Next
 
