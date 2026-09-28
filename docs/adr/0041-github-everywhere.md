@@ -192,10 +192,17 @@ project-change event today; `thread.started` is real, emitted by the Switchboard
   branch name), then `git worktree add <repo>/.sessions/<safe-id> -b vyre/<safe-id>
   <default_branch>` through `git-safe`, and returns the new path. `sessions` sets the session's
   cwd there.
-- `github.session.cleanup { project, session }` (same caller restriction): `git worktree remove`.
-  The branch is left in place — a session's work is never deleted by ending the session — unless
-  the worktree has zero commits ahead of its base, in which case the branch is pruned too
-  (nothing to lose).
+- `github.session.cleanup { project, session }` (same caller restriction). **The user's binding
+  rule: no auto-delete, ever; deletion is always previewed.** The worktree is removed, and its
+  branch pruned, only when nothing would be lost: no uncommitted change, no untracked file, and
+  no commit that isn't already on the default branch or some remote (`git rev-list <branch>
+  --not <default_branch> --remotes`). If any of those is true, **nothing is removed** — the
+  worktree and branch are left exactly as they were — and `github.cleanup-needed { project,
+  session, path, branch, dirty, commits }` is emitted with what's at stake, for a surface to show
+  "Clean up this session's worktree?" and the person to decide by hand. `git worktree remove
+  --force` and `git branch -D` never appear anywhere in this path; the removal that does happen
+  uses their plain, non-force forms, which independently refuse if the check above ever turns
+  out to be wrong — a second backstop, not a substitute for the check.
 - `.sessions/` is repo-local and machine-local: it is written to the project's own `.git/info/
   exclude` once (never the repo's committed `.gitignore`, which is the person's file) so `git
   status` in the person's own clone of the same repo never shows Vyre's worktrees.
@@ -219,8 +226,8 @@ thread nor a resumable `stopped`/`paused` status. Owner (sessions or github) not
 `module.json`: `requires: ["vault"]`, `does.tools`: `github.connect`, `github.connect.cancel`,
 `github.accounts`, `github.remove`, `github.repos`, `github.project`, `github.project.of`,
 `github.session.worktree` (internal), `github.session.cleanup` (internal). `watches.emits`:
-`github.added`, `github.removed`, `github.revoke-failed`, `github.connected`,
-`github.connect-failed`. `shows.deck`: `settings:connections` (joins Google there, not a new
+`github.added`, `github.removed`, `github.connected`, `github.connect-failed`,
+`github.cleanup-needed`. `shows.deck`: `settings:connections` (joins Google there, not a new
 screen). `needs.vault`: `["per-connection"]`.
 
 | Tool | Callers | Model-reachable |

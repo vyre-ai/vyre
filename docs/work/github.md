@@ -51,6 +51,14 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   interactive sessions rarely reach `finished`, so their worktrees pile up) as a deferred 0.1.2
   GC item in the ADR. Confirmed acfcefd2 already answers their ECONNRESET question (sent before,
   may have crossed in flight).
+- **Lead: `github.session.cleanup` must never auto-delete work (user's binding rule).** Fixed
+  (58d0dd87): `worktreeRemove` now only removes when there's no uncommitted change, no untracked
+  file, and no commit missing from the default branch and every remote; otherwise nothing is
+  touched and `github.cleanup-needed { project, session, path, branch, dirty, commits }` is
+  emitted for a surface to show a confirm card. `git worktree remove --force` and `git branch -D`
+  no longer appear anywhere in this file. 29/29 on testbox (5 new/changed worktree-safety cases:
+  clean removal, dirty-file block, untracked-file block, unmerged-commit block, merged-or-pushed
+  allow). Sent to reviewer.
 
 ## Next
 1. Send `sessions` the actual gitWithAskpass diff (lib/git-safe.js + lib/git-safe-askpass.test.js)
