@@ -37,11 +37,11 @@ boards "Session, phone and desktop" and "Session · the composer, like Claude Co
    plan-card).
 9. **Picture.** A person's pasted or dropped image, or a tool's own (a screenshot, a read file,
    sight's still): a fixed 240x180 thumbnail (never a layout jump while it loads), tap opens it
-   full size in the one shared lightbox (`deck/chat/lightbox.js`) — a single overlay mounted once
+   full size in the one shared lightbox (`deck/chat/lightbox.js`), a single overlay mounted once
    per page, not a per-picture dialog. Esc or a tap on the backdrop closes it and returns focus to
    the thumbnail that opened it. Past 4 MB a picture is a file chip (name, size), never inline.
 10. **Session header** (the top of the session, not a turn, but every turn sits under it): the
-    title and its folder, then a row of tags and the state — project (see chip.md, a Tag: the
+    title and its folder, then a row of tags and the state: project (see chip.md, a Tag, the
     thread's project, e.g. "harlow-legal", no icon, title attribute names it in full), provider ·
     model (Tag, "Claude · opus"), the state word (mode-chip.md, "running"/"waiting"/"stopped"). A
     **sight strip** below the header, only for a thread with a computer running and only once one
@@ -120,7 +120,7 @@ Deck (work/chat)
 - [ ] `.cv-text` is 15/24; spec: 15/22.
 - [ ] Thinking body border 2 px `--rule-strong`; spec: 1 px `--rule`.
 - [ ] The "lease bar" above the composer (`deck/chat/session.js` `drawHead`, icon lock) falls back
-      to "No one is typing" when no other device holds or resumes the session — copy that reads as
+      to "No one is typing" when no other device holds or resumes the session, copy that reads as
       a chat-presence indicator, not a keyboard-lease one, and shows on every solo, single-device
       session (the common case), not just a real handoff. Either hide the row entirely with
       nothing to say, or give the idle-solo state its own quiet copy, not the multi-device word.
@@ -128,9 +128,9 @@ Deck (work/chat)
       "Rewind here"/"Cancel", though `threads.fork {at}` shipped on native-core's branch
       (`48de0bd3`) with exactly that framing ("the other item in the rewind menu"). Until it lands,
       a person can only overwrite the live thread from an earlier point, never branch off it
-      without losing the original — the one explicit ask this review was sent to check.
+      without losing the original: the one explicit ask this review was sent to check.
 - [ ] On the phone, the rewind sheet draws in the transcript's own flow (pushed down by the lease
-      bar and the queued/todos rows already stacked above the composer), not as an overlay sheet —
+      bar and the queued/todos rows already stacked above the composer), not as an overlay sheet:
       sheet.md's own pattern (a raised card over the page, not inline). At a typical phone height
       "Rewind here" sits at the very bottom of the viewport and the composer's mode row scrolls
       off entirely.
@@ -140,7 +140,7 @@ Deck (work/chat)
       Enter`/`/`/`@`/`!`/`#` row) is the bordered `.kbd` chip from key-hint.md. Reuse it here too,
       or the reader has no visual cue "A" and "D" are shortcuts at all.
 - [ ] The lightbox (`deck/chat/lightbox.js`) is `role="dialog"` `aria-modal="true"` but its own
-      comment says it "never traps focus outside itself" — under `aria-modal="true"`, assistive
+      comment says it "never traps focus outside itself"; under `aria-modal="true"`, assistive
       tech treats the rest of the page as inert, so Tab should cycle inside the lightbox while
       it's open (or drop `aria-modal` if that's intentionally out of scope for now).
 

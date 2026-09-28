@@ -48,7 +48,7 @@ Rows are separated by a 1 px `--rule` top border inside a list (none on the firs
   message waiting to join the session at its next step, before the row is a real turn. 1 px
   dashed `--rule-strong` border (dotted for a message queued locally, not yet confirmed by the
   box), no fill, min height 32, padding 0 6 0 12. Label "Queued for after" (`.lbl`, sentence
-  case, 12/16 600 sans — never the retired mono/uppercase `.lbl`, see tokens.md Retired names),
+  case, 12/16 600 sans, never the retired mono/uppercase `.lbl` (see tokens.md Retired names),
   then the queued text in `--text-2`, ellipsis. Trailing: ghost buttons "Edit", "Take back",
   "Steer now" (or "Send now"), ⏎/key hints per key-hint.md. Wraps on the phone: the text drops to
   its own full-width line under the label.
@@ -109,7 +109,7 @@ Deck
 - [ ] Queued row and the todos pin (`deck/chat/session.js` `.cv-queued-row`, `deck/chat/tray.js`)
       both label themselves with the base `.lbl` in `deck/css/deck.css`, which is still the
       retired mono 11, uppercase, 0.16em spec (TOKENS.md line 60's old "Buttons: Mono 12/16, 500,
-      uppercase" carried over) — reads "QUEUED FOR AFTER" and "TODOS 1 of 3" on screen instead of
+      uppercase" carried over), reads "QUEUED FOR AFTER" and "TODOS 1 of 3" on screen instead of
       sentence case. This is the base class, used about 146 places across the whole Deck
       (chat, glass, vault, views/*, onboarding); fixing `.lbl` itself in deck.css to 12/16 600
       sans, sentence case, fixes every caller at once rather than patching each one. app-design

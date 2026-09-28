@@ -119,7 +119,7 @@ mono, never a coloured tag.
   `--text-2`, and `.chip-on`.
 - [ ] Deck: `.tag` is mono 11 with a `--rule-strong` border; use sans 12 on a `--hover` fill.
   Confirmed live in chat's session header (`.cv-project`, `deck/chat/chat.css`): the thread's
-  project ("harlow-legal") is correctly a Tag, not a new kind — it just inherits this gap.
+  project ("harlow-legal") is correctly a Tag, not a new kind: it just inherits this gap.
 - [ ] Deck (work/native-core): source labels include "Default" and "Not set"; show no chip for a
   default value, and add the "Claude Code file" chip.
 - [ ] App: the devices badge is bordered with radius chip; no filter chips, no source chip.
