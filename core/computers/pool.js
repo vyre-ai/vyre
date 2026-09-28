@@ -58,6 +58,15 @@ export const MIGRATIONS = [
      PRIMARY KEY (computer_id, agent_id)
    );
    CREATE UNIQUE INDEX computers_members_agent_id ON computers_members(agent_id);`,
+  // The reviewer's LOW 1 (28 Sep): computers_members' own generation is lost when a member is
+  // removed (the row is deleted outright), so re-adding the same agent id re-derived the SAME
+  // token -- a leaked token had no rotate path once the agent came back. This ledger survives
+  // removal (it is never deleted), so bumpGeneration() always hands out a number higher than any
+  // this agent id has ever used, on this computer or a previous one.
+  `CREATE TABLE computers_agent_generations (
+     agent_id TEXT PRIMARY KEY,
+     generation INTEGER NOT NULL
+   );`,
 ];
 
 /** What a person may set a computer's limits to. */
@@ -733,6 +742,17 @@ export class Pool {
     if (!AGENT.test(String(computerId || ""))) throw new Error(`"${computerId}" is not a computer id`);
     if (!AGENT.test(String(agentId || ""))) throw new Error(`"${agentId}" is not an agent id`);
     return this.serial(computerId, async () => {
+      // LOW 2 (reviewer, 28 Sep): an agent belongs to at most one shared computer at a time.
+      // computers_members_agent_id's own unique index enforces this at the storage layer, but the
+      // ON CONFLICT below would otherwise silently reseed this agent onto THIS computer while it
+      // still looks (to anything querying computers_members) like a member of whichever one it
+      // was already on. Checked and refused, loudly, BEFORE anything else here -- including
+      // making computerId's own row, if it did not exist yet, which a refused call must leave no
+      // trace of at all, not an empty shared computer nobody asked for.
+      const elsewhere = /** @type {any} */ (this.db.prepare("SELECT computer_id FROM computers_members WHERE agent_id = ?").get(agentId));
+      if (elsewhere && elsewhere.computer_id !== computerId) {
+        throw new Error(`${agentId} is already a member of ${elsewhere.computer_id}; remove it there first`);
+      }
       let r = this.row(computerId);
       if (!r) {
         const at = this.now();
@@ -742,16 +762,55 @@ export class Pool {
       } else if (r.kind !== "browser") {
         throw new Error(`${computerId} already exists and is not a shared computer`);
       }
-      // A re-added id (the same agent, taken off and put back on) keeps its own generation, so its
-      // derived token -- and so its browser context, which cdpmux never disposes on its own --
-      // picks back up. A genuinely new row starts at 0.
-      this.db.prepare(`INSERT INTO computers_members (computer_id, agent_id, agent_name, generation, added_at) VALUES (?, ?, ?, 0, ?)
-        ON CONFLICT(agent_id) DO UPDATE SET agent_name = excluded.agent_name`).run(computerId, agentId, agentName, this.now());
+      // LOW 1 (reviewer, 28 Sep): every add gets a fresh generation from the ledger (bumpGeneration,
+      // which survives removal), never reusing one -- re-adding a removed agent, or an agent
+      // leaked from a past membership, must never re-derive the same token it had before.
+      const generation = this.bumpGeneration(agentId);
+      this.db.prepare(`INSERT INTO computers_members (computer_id, agent_id, agent_name, generation, added_at) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(agent_id) DO UPDATE SET agent_name = excluded.agent_name, generation = excluded.generation`)
+        .run(computerId, agentId, agentName, generation, this.now());
       await this.ensure(computerId);
       await this.reseedMembers(computerId);
-      this.emit("computer.member-added", { computer: computerId, agent: agentId });
-      this.log(`${agentId} added to shared computer ${computerId}`);
-      return { computer: computerId };
+      this.emit("computer.member-added", { computer: computerId, agent: agentId, generation });
+      this.log(`${agentId} added to shared computer ${computerId} (generation ${generation})`);
+      return { computer: computerId, generation };
+    });
+  }
+
+  /**
+   * The next generation for an agent id, from a ledger that is never deleted (unlike
+   * computers_members, whose row disappears on removeAgent) -- so a generation, once used, is
+   * never handed out again for this agent, on this computer or a different one later. Always
+   * one higher than any this agent id has ever used.
+   * @param {string} agentId @returns {number}
+   */
+  bumpGeneration(agentId) {
+    const cur = /** @type {any} */ (this.db.prepare("SELECT generation FROM computers_agent_generations WHERE agent_id = ?").get(agentId));
+    const next = cur ? cur.generation + 1 : 0;
+    this.db.prepare(`INSERT INTO computers_agent_generations (agent_id, generation) VALUES (?, ?)
+      ON CONFLICT(agent_id) DO UPDATE SET generation = excluded.generation`).run(agentId, next);
+    return next;
+  }
+
+  /**
+   * Rotate a member's own token without taking it off the computer -- the reviewer's LOW 1 (28
+   * Sep): a leaked token needs a path to invalidate itself that does not require removeAgent then
+   * addAgent, which would also churn the membership row's own added_at and emit remove/add events
+   * for something that never actually left.
+   * @param {string} computerId @param {string} agentId
+   */
+  async rotateAgent(computerId, agentId) {
+    return this.serial(computerId, async () => {
+      const r = this.row(computerId);
+      if (!r || r.kind !== "browser") throw new Error(`${computerId} is not a shared computer`);
+      const had = this.db.prepare("SELECT 1 FROM computers_members WHERE computer_id = ? AND agent_id = ?").get(computerId, agentId);
+      if (!had) throw new Error(`${agentId} is not on ${computerId}`);
+      const generation = this.bumpGeneration(agentId);
+      this.db.prepare("UPDATE computers_members SET generation = ? WHERE computer_id = ? AND agent_id = ?").run(generation, computerId, agentId);
+      await this.reseedMembers(computerId);
+      this.emit("computer.member-rotated", { computer: computerId, agent: agentId, generation });
+      this.log(`${agentId}'s token on ${computerId} rotated (generation ${generation})`);
+      return { computer: computerId, agent: agentId, generation };
     });
   }
 

@@ -61,7 +61,7 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   reuses it, forces `Target.createTarget` onto it (inject if absent, refuse if it names another),
   and fences `Target.attachedToTarget`/`targetCreated`/`targetInfoChanged`/`targetDestroyed`/
   `getTargets` to the caller's own context (all browser-wide in real CDP, not per-context).
-  `kind: "fill"` untouched. Tests: cdpmux.test.js 25/25 (8 new); testbox `core/computers/**/*.test.js`
+  `kind: "fill"` untouched. Tests: cdpmux.test.js 25/25 (8 new); testbox `core/computers' own test files`
   222/222 pass, 9 skipped (container-only). Not yet built: the "browser" computer kind in
   pool.js/driver/policy.js, on-disk context-profile persistence, hands-chrome/deck-glass wiring --
   next slices, per the design's own build list.
@@ -77,7 +77,7 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   one -- fixed by never deleting, a documented bounded residual, plus learning context from the
   createTarget response itself, not only from an event); M2 refused
   Target.setAutoAttach{waitForDebuggerOnStart} for scoped clients (a real DoS otherwise). Tests:
-  cdpmux.test.js 32/32 (7 new); testbox core/computers/**/*.test.js 229/229 pass, 9 skipped. Still
+  cdpmux.test.js 32/32 (7 new); testbox core/computers' own test files 229/229 pass, 9 skipped. Still
   dormant and unwired -- wiring needs agentName from computerd's own authenticated identity, never
   the client, and refusing an unscoped agent client in shared mode (reviewer's note, not yet done).
 - Authenticated per-agent identity, at ba1f766d: computerd/index.js's identifyClient() is now the
@@ -90,7 +90,7 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   on a throwaway compose stack (vyre-glass-identity) against the REAL image and real Chrome: two
   real agents each saw only their own target in Target.getTargets and were refused (-32000)
   reaching each other's by id; isolation.test.js 13/13 pass on the same container after. Tests:
-  index.test.js 12/12 (6 new); testbox core/computers/**/*.test.js 234/234 pass, 9 skipped. Sent to
+  index.test.js 12/12 (6 new); testbox core/computers' own test files 234/234 pass, 9 skipped. Sent to
   the reviewer. Next: the "browser" computer kind in pool.js/driver/policy.js, which is what will
   actually write .agent-tokens for a real shared computer.
 - Reviewer's 2 MEDIUMs on b914fd3a fixed at 9d2d20e8, required before the browser kind turns
@@ -101,7 +101,7 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   call with no context is refused (CONTEXT_READONLY_METHODS excepted, e.g. Browser.getVersion). M4
   -- Target.autoAttachRelated was missing from H2's TARGET_ID_METHODS enumeration (the same pause
   DoS as M2); added, and the waitForDebuggerOnStart refusal now covers any method that carries it.
-  Tests: cdpmux.test.js 35/35 (3 new); testbox core/computers/**/*.test.js 237/237 pass, 9 skipped.
+  Tests: cdpmux.test.js 35/35 (3 new); testbox core/computers' own test files 237/237 pass, 9 skipped.
   ba1f766d (identity) is SIGNED OFF by the reviewer and may land. Still gating the browser kind:
   .agent-tokens' own permissions (0400 vyre, archive-API, tested), revocation (reload the map and
   close live clients, or restart, when an agent is dropped), and the shield's shared-mode semantics
@@ -114,7 +114,7 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   identical for both); a policy with no allowAgentTokensTar just never allows .agent-tokens
   through, .boot unaffected. isolation.test.js's two existing live secrets checks (browser uid,
   agent uid) extended to probe .agent-tokens too. Tests: 111 pass locally, 9 skipped; testbox
-  core/computers/**/*.test.js + dockerproxy: 257/257 pass. Live-verified on a fresh throwaway
+  core/computers' own test files + dockerproxy: 257/257 pass. Live-verified on a fresh throwaway
   compose stack (vyre-glass-perms) with a real .agent-tokens seeded: isolation.test.js 13/13 pass
   against the real container, confirming neither the browser nor the agent uid can read it.
   Lead's decision on gate item 4 (the shield): every agent pauses while one signs in, matches
@@ -159,7 +159,7 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   against the real image: revoking kit-1 closed its live WebSocket without touching its context;
   disposing it afterward (the separate action) actually destroyed it; re-adding the same id with a
   rotated token then got a genuinely fresh context (its earlier target was gone, not just
-  invisible). testbox core/computers/**/*.test.js + dockerproxy: 268/268 pass, 9 skipped -- freeze
+  invisible). testbox core/computers' own test files + dockerproxy: 268/268 pass, 9 skipped -- freeze
   lifted mid-pass, both the targeted suite and the live run are now done. Sent to the reviewer.
 - Reviewer's MEDIUM at 09de900b: policy.js's own AGENT_TOKENS_LINE/agentTokensTar/
   allowAgentTokensTar had stayed on "name=token" after computerd moved to "id:name=token"
@@ -174,7 +174,7 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   through the real path the reviewer named: stood up the real dockerproxy (real policy.js) in
   front of the real docker.sock on testbox, called DockerDriver.seedAgentTokens against it (not
   docker cp), booted the real image against the result -- computerd started clean, no refusal,
-  and alice's token answered a real /cdp/json/version 200. testbox core/computers/**/*.test.js +
+  and alice's token answered a real /cdp/json/version 200. testbox core/computers' own test files +
   dockerproxy: 269/269 pass, 9 skipped. Stack torn down after. Sent to the reviewer.
 - pool.js's own "browser" computer kind built against the lead's signed-off schema (0a440416,
   572b58e9): a `kind` column (existing rows untouched), `computers_members(computer_id, agent_id
@@ -192,7 +192,7 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   exercised for real, catching one more bug live (computerd's own startup lag behind the VNC
   probe ensure() already waits for; fixed with a bounded connection retry, _helperFetch).
   Volumes confirmed still present after the last member's removal. Stack torn down after.
-  testbox core/computers/**/*.test.js + dockerproxy: 277/277 pass, 9 skipped. Sent to the
+  testbox core/computers' own test files + dockerproxy: 277/277 pass, 9 skipped. Sent to the
   reviewer. Not yet done: wiring memberTokenKey to the real vault (module.json's needs.vault,
   the same shape tailnet.key already uses) -- pool.js takes it injected, faked in tests today.
 - Presence enforced once security merges; a passkey step in the Deck.

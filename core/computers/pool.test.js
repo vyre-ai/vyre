@@ -538,3 +538,75 @@ test("pool: with no memberTokenKey configured, addAgent refuses cleanly rather t
   const { pool } = setup(t, { driver }); // no memberTokenKey
   await assert.rejects(pool.addAgent("browser-abc123", "kit-1", "alice"), /no member-token key configured/);
 });
+
+test("pool: re-adding a removed agent gets a NEW generation and a different derived token (reviewer LOW 1, 28 Sep)", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
+
+  const first = await pool.addAgent("browser-abc123", "kit-1", "alice");
+  assert.equal(first.generation, 0);
+  const firstToken = [...driver.containers.values()][0].agentTokens.find(a => a.id === "kit-1").token;
+
+  await pool.removeAgent("browser-abc123", "kit-1");
+  const second = await pool.addAgent("browser-abc123", "kit-1", "alice");
+  assert.equal(second.generation, 1, "re-adding the same agent id reused its old generation");
+  const secondToken = [...driver.containers.values()][0].agentTokens.find(a => a.id === "kit-1").token;
+  assert.notEqual(secondToken, firstToken, "re-adding the same agent id re-derived the same token");
+});
+
+test("pool: an explicit rotate bumps the generation and reseeds a new token, without touching membership", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
+  await pool.addAgent("browser-abc123", "kit-1", "alice");
+  const before = [...driver.containers.values()][0].agentTokens.find(a => a.id === "kit-1").token;
+  const membersBefore = pool.members("browser-abc123");
+
+  const r = await pool.rotateAgent("browser-abc123", "kit-1");
+  assert.equal(r.generation, 1);
+  const after = [...driver.containers.values()][0].agentTokens.find(a => a.id === "kit-1").token;
+  assert.notEqual(after, before, "rotateAgent did not change the derived token");
+  const membersAfter = pool.members("browser-abc123");
+  assert.equal(membersAfter.length, membersBefore.length, "rotate changed who is a member");
+  assert.equal(membersAfter[0].added_at, membersBefore[0].added_at, "rotate churned the membership row's own added_at");
+});
+
+test("pool: rotateAgent refuses an agent that is not on the computer, or a computer id that is not shared", async t => {
+  const { pool } = setup(t, { driver: new FakeDriver(), memberTokenKey: () => Promise.resolve("k") });
+  await assert.rejects(pool.rotateAgent("browser-abc123", "kit-1"), /not a shared computer/);
+});
+
+test("pool: addAgent refuses an agent that already belongs to a DIFFERENT shared computer (reviewer LOW 2, 28 Sep)", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
+  await pool.addAgent("browser-abc123", "kit-1", "alice");
+
+  await assert.rejects(pool.addAgent("browser-xyz789", "kit-1", "alice"), /already a member of browser-abc123/);
+  // The first computer's own membership, and its reseeded file, are untouched by the refused call.
+  assert.deepEqual(pool.members("browser-abc123").map(m => m.agent_id), ["kit-1"]);
+  assert.equal(pool.row("browser-xyz789"), null, "a refused addAgent still created the second computer's row");
+});
+
+test("pool: addAgent called again for an agent already on THIS SAME computer is fine (not a cross-computer conflict), and still bumps the generation", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
+  await pool.addAgent("browser-abc123", "kit-1", "alice");
+  const r = await pool.addAgent("browser-abc123", "kit-1", "alice-renamed");
+  assert.equal(r.generation, 1);
+  assert.equal(pool.members("browser-abc123")[0].agent_name, "alice-renamed");
+});

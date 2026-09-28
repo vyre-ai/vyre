@@ -82,7 +82,9 @@ test("computers: the manifest loads on the box with its tools and the glass stre
   const tools = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("computers."));
   assert.deepEqual(tools.sort(), ["computers.checkout", "computers.egress.set", "computers.egress.status", "computers.get", "computers.giveback",
     "computers.handback.set", "computers.handback.status",
-    "computers.limits", "computers.list", "computers.pause", "computers.release", "computers.restart", "computers.resume", "computers.stop",
+    "computers.limits", "computers.list",
+    "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate",
+    "computers.pause", "computers.release", "computers.restart", "computers.resume", "computers.stop",
     "computers.tailnet.set", "computers.tailnet.status", "computers.takeover", "computers.watch"]);
   assert.equal((await s.cli("computers.endpoint", { agent: "kit" })).error.code, "no_such_tool", "an internal tool was reachable from the socket");
   // Glass is another file; whether or not it is there yet, the module runs and says which.
@@ -537,4 +539,24 @@ test("computers: node.agent is internal and for modules only, and knows no node 
   assert.equal((await s.cli("computers.node.agent", { stableId: "nKit7CNTRL" })).error.code, "no_such_tool");
   assert.equal((await s.kit("computers.node.agent", { stableId: "nKit7CNTRL" })).error.code, "no_such_tool");
   assert.deepEqual((await s.module("computers.node.agent", { stableId: "nKit7CNTRL" })).data, { agent: null });
+});
+
+// ---- shared (browser-kind) computers: membership tools ---------------------------------
+
+test("computers: all four member tools are on the PERSON_ONLY floor -- the same protection computers.takeover already stands behind, enforced by the harness's own rules layer and presence checks, not this module", () => {
+  for (const tool of ["computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose"]) {
+    assert.ok(PERSON_ONLY.has(tool), `${tool} is not on the PERSON_ONLY floor`);
+  }
+});
+
+test("computers: computers.member.add reaches pool.js and the vault (there is no vault module running here, so it fails there, not at the tool's own gate)", async t => {
+  const s = await boot(t);
+  const r = await s.cli("computers.member.add", { computer: "browser-abc123", agent: "kit-1", name: "alice" });
+  assert.ok(r.error, "add succeeded with no vault running to derive a token from");
+  assert.match(r.error.message, /vault/i);
+  // ensure() itself (seedMembersBeforeStart, before the container ever starts) is what hits the
+  // vault -- so the row and container exist, created but never started, the same partial-
+  // construction shape any other seed failure here already leaves for the next attempt to retry.
+  const row = s.h.pool.row("browser-abc123");
+  assert.ok(row && row.kind === "browser" && row.state !== "running", "the row is in an unexpected shape after a failed add");
 });

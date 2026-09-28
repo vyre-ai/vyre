@@ -24,7 +24,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
-| [`computers`](#computers) | `core/computers` | `box` | 25 | 17 | cli, deck |
+| [`computers`](#computers) | `core/computers` | `box` | 29 | 20 | cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
@@ -148,11 +148,11 @@ Every CLI verb the running modules declare, in one list any surface can draw.
 - Folder: `core/computers`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [25](tools.md#computers), 7 of them only for other modules
-- Emits: [17 events](events.md#computers)
+- Tools: [29](tools.md#computers), 7 of them only for other modules
+- Emits: [20 events](events.md#computers)
 - Shows on: cli, deck
 - Streams: `glass`
-- Needs vault: `tailscale-agent-authkey`
+- Needs vault: `tailscale-agent-authkey`, `vyre-shared-computer-member-key`
 
 ## context
 
