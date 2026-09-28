@@ -267,6 +267,13 @@ Resumed after the restart (28 Sep), reading RULES.md/HANDOFF.md fresh:
   keyboard shortcut nobody on a touch device can press; the install command's Mac tab now leads
   with "This puts Vyre on your Mac as a device that pairs with your server (Linux only) over your
   tailnet.", since it previously never said the Mac pairs rather than serves.
+- PUBLISHED (the user approved, the lead ran the actual deploy): vyre.run is live from `site/` at
+  2d13e42a (this branch), Cloudflare Pages project vyre-site, deploy
+  https://103488f4.vyre-site.pages.dev. The box files and install.sh in that deploy are built
+  from `main` 4fd286d7, not this branch, so installers get reviewed main code; my install-box.sh
+  polish (5b6c17e9, the shellcheck fix + wait_line()) reaches the live installer once it lands on
+  main. Verified: https://vyre.run 200 with the new headline and the tap hint live,
+  https://vyre.run/install.sh 200.
 
 ## Next
 
