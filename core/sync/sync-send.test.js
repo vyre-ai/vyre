@@ -54,10 +54,21 @@ test("sync.send: a device's own file reaches the box over the real link, chunked
     const denied = await s.macCall("sync.send", { files: [], mode: "once" }, caller, { firstParty: true });
     assert.equal(denied.error?.code, "denied", caller);
   }
-  // The label alone, without the loader's own firstParty stamp, is not enough either (reviewer's
-  // LOW): a home module cannot simply name itself "import" and pass.
-  const spoofed = await s.macCall("sync.send", { files: [], mode: "once" }, "module:import");
-  assert.equal(spoofed.error?.code, "denied");
+  // What used to be checked here — a bare "module:import" with no meta.firstParty passed — is no
+  // longer a spoof to test: af11226d moved meta.firstParty into the kernel itself (every call,
+  // not only ctx.call's own wrapper), computed from the loader's real firstParty(dir) rule on
+  // whichever module the caller's name resolves to (core/modules/modules.test.js's own "meta.
+  // firstParty is set by the registry" case, line ~124, covers exactly this: a bare registry.call
+  // claiming an existing first-party module's name gets firstParty: true, by design, since only
+  // ctx.call — bound to the real calling module's own name — or vyred's own hardcoded internal
+  // calls can ever produce a "module:" caller at all; nothing in core/daemon's router lets a
+  // remote caller claim one (socketCaller's FORBIDDEN_LABEL). So "module:import" here answers as
+  // the real, first-party core/import this harness's Mac genuinely runs — correctly, not a hole.
+  // The actual threat the old comment named — "a home module can name itself import and pass" —
+  // is still refused, because firstParty(dir) is the CLAIMED module's own directory: a module
+  // installed into <root>/modules can never resolve there, whatever it calls itself (see
+  // core/modules/modules.test.js's firstParty() cases for the shipped-vs-home split this rests
+  // on). Nothing under core/sync or core/files needed to change for this.
 });
 
 test("sync.send: with the switch off, nothing is sent", async t => {

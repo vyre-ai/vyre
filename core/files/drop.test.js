@@ -14,6 +14,7 @@ import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
+import { installFakeReach, clearFakeReach } from "../../test/fixtures/fake-reach.js";
 import { unavailable, parseWrote } from "./drop.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -56,28 +57,33 @@ const peer = extra => ({ ID: BOX_ID, DNSName: "box.tail0000.ts.net.", HostName: 
   Online: true, Tags: [], TaildropTarget: 1, NoFileSharingReason: "", ...extra });
 const running = peers => ({ BackendState: "Running", Self: { ID: "nMac", DNSName: "mac.tail0000.ts.net." }, Peer: Object.fromEntries(peers.map((p, i) => [`k${i}`, p])) });
 
-/** A Registry with files (and a stand-in link module answering link.status or link.macs) running. */
+/** A Registry with files (and a stand-in link module answering link.status or link.macs) running.
+ * Also installs the shared fake projects.reach fixture (files.test.js's own pattern): files'
+ * reach() asks projects.reach even for the plain owner caller ("cli") these tests use, so without
+ * it every files.search/stat/preview/fetch call here would be refused as denied-by-default,
+ * exactly like a missing projects module rather than "nothing to check" (see
+ * test/fixtures/fake-reach.js's header). */
 async function registry(t, home, { role, files, link = null, macs = null }) {
   const vh = path.join(home, "vh");
   const p = config.ensure(vh);
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "files");
+  const mods = path.join(home, "mods");
+  installFakeReach(mods, p.root);
+  t.after(() => clearFakeReach(p.root));
   if (role === "local") {
-    const mods = path.join(home, "mods");
     writeModule(mods, "link", { roles: ["local"], does: { tools: ["link.status"] } },
       `export default { async start(ctx) {
         ctx.tool("link.status", { run: async () => (${JSON.stringify(link)}) });
         return { async stop() {} };
       } };`);
-    found.push(...discover([mods]));
   } else if (macs) {
-    const mods = path.join(home, "mods");
     writeModule(mods, "link", { roles: ["box"], does: { tools: ["link.macs"] } },
       `export default { async start(ctx) {
         ctx.tool("link.macs", { run: async () => (${JSON.stringify(macs)}) });
         return { async stop() {} };
       } };`);
-    found.push(...discover([mods]));
   }
+  found.push(...discover([mods]));
   const db = open(p.db);
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role, files }, paths: p, log: () => {} });
