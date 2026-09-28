@@ -388,8 +388,32 @@ with your server (Linux only)" (ADR 0038 wording), which ADR 0039 supersedes now
 be Solo or Server too. Flagged to site-copy and the lead rather than touched, since that page is
 mid-rewrite by site-copy right now.
 
+Extracted (the lead + reviewer-2, "pull it into a testable module like Drive did, don't wait for
+federation"): `deck/js/server-rows.js`, pure functions (`fmtBytes`, `pieceLabel`, `pieceLine`,
+`totalBytes`, `pieceState`, `readyToConfirm`, `destinationName`, `forgetGate`), the same shape as
+`drive-rows.js`. `drawServer`/`drawAlreadyMoved` in `settings.js` now call these instead of inline
+duplicates. Committed `deck/test/settings-server.test.js`, 6 tests, checked against the real
+fixture data (`deck/fixtures/federation.json`'s move.plan/move.status/move.confirm,
+`deck/fixtures/onboard.json`'s status/machine) per the lead's "test it against the fixtures", not
+synthetic literals. Runs with plain `node --test`, no daemon or Chrome needed: 6/6 locally
+alongside `settings-drive.test.js`'s existing 4/4.
+
+Read tailnet's real, shipped `core/join` (work/tailnet, af604cf8, not on main yet) to wire the
+Device path against something real instead of my earlier guess, and found a genuine mismatch:
+`join.verify` takes an optional `node` id and forwards to `link.health` — a reachability check for
+a device that already paired, not something that accepts a "setup code" to start one. It's also
+box-role only, the same gap tailnet flagged for "a phone joins a Solo Mac": a fresh device
+choosing "I already have a server" is role solo/local at that point, so `join.*` never even loads
+on its own daemon. Renamed the call to the real `join.verify` and moved the fixture to
+`deck/fixtures/join.json` for naming accuracy, but the actual mechanism for this path is still
+unresolved — asked tailnet rather than guess a UI around a tool that structurally can't run here.
+Degrades gracefully either way (a missing tool never blocks Continue), so nothing is broken, just
+not truly wired.
+
 ## Next
 
+- Resolve the Device-path mechanism with tailnet (see above) and rebuild that part of the `live`
+  step once there's a real answer, not the "paste a code" placeholder.
 - Get app-design's eyes on the new Server panel (no board exists for it yet; asked implicitly by
   building ahead of the tools, per the lead's "don't block" instruction).
 - Build "Move off this server" (Device -> Solo, the reverse direction anywhere.md names) in

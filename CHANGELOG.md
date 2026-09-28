@@ -4,22 +4,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### Settings > Server: "Move to a server", fixture-backed
+#### Settings > Server: "Move to a server", fixture-backed, and pulled into a testable module
 
 - New "Server" section (`deck/views/settings.js`): point at a server with a setup code, a
   dry-run plan (projects, memory, vault, sessions, each with a count and size), start the move
   while the source stays live, live per-piece progress, undo, a separate confirm before this
   computer becomes a device, and a "Free up space on this laptop" button gated 24 hours, never
-  automatic. Follows `docs/design/anywhere.md` (ADR 0039). Tool shapes are launch's proposal
-  against `deck/fixtures/federation.json`, not yet confirmed by federation.
+  automatic. Follows `docs/design/anywhere.md` (ADR 0039). Reads `onboard.status`'s `machine`
+  field (`config.machine`, additive; `config.role` is unrelated and untouched); `federation.
+  move.*` tool shapes are launch's proposal, not yet confirmed by federation.
+- The state machine's formatting and gating logic (`fmtBytes`, `pieceLabel`, `pieceLine`,
+  `totalBytes`, `pieceState`, `readyToConfirm`, `destinationName`, `forgetGate`) lives in the new
+  `deck/js/server-rows.js`, pure and unit-tested against the real fixtures
+  (`deck/test/settings-server.test.js`), the same shape as Drive's `drive-rows.js`.
 
-#### Onboarding: "How will Vyre run?", ahead of pairing
+#### Onboarding: "How will Vyre run?", unified with Move to a server
 
-- New step (`live`) between "You" and "Tailscale": Just on this computer (Solo, no Tailscale),
-  this computer stays on for me (Server), or I already have a Vyre server (Device). Solo skips
-  straight to Claude sign-in; the other two fall through to today's pairing screens unchanged,
-  which is still where Tailscale first appears. Copy matches `docs/design/anywhere.md`, which
-  owns it. Client-only choice for now, pending anywhere's role-choice contract.
+- New step (`live`) between "You" and "Tailscale": Just on this computer (Solo, no Tailscale
+  ever), this computer stays on for me (Server, sets up inline), or I already have a Vyre server
+  (Device). None of the three fall through to the old tailscale/name screens anymore — those only
+  run later, when a second device actually joins (Settings > Your devices > Add a device), per
+  the same "one flow" decision Move to a server follows. Copy matches `docs/design/anywhere.md`,
+  which owns it. Fixture-backed against `onboard.machine` (anywhere) and `join.verify` (tailnet);
+  the Device path's real mechanism is still an open question with tailnet, see the work doc.
 
 #### Landing page: a tap hint on touch/narrow screens, and the Mac tab names what it does
 

@@ -1,0 +1,14 @@
+{
+  "join.status": { "tailscale": { "state": "off" }, "relay": { "available": true, "enabled": false, "connected": false, "pairing": null } },
+  "join.tailscale": {
+    "$by": "action",
+    "cases": {
+      "status": { "state": "off", "installed": true },
+      "connect": { "loginUrl": "https://login.tailscale.com/a/example" },
+      "policy": { "ready": true, "policy": { "note": "same merged ACL snippet as onboard.tailscale action=policy" } },
+      "lock": { "enabled": false }
+    }
+  },
+  "join.relay": { "pairing": { "url": "https://relay.vyre.run/pair/abc123", "qr": "abc123" } },
+  "join.verify": { "reachable": true, "kind": "owner", "name": "kit" }
+}

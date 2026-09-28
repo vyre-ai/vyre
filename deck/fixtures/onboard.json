@@ -230,22 +230,5 @@
       "server": { "machine": "server", "service": { "installed": true } },
       "*": { "machine": "solo" }
     }
-  },
-  "onboard.join": {
-    "$by": "action",
-    "cases": {
-      "status": { "tailscale": { "state": "off" }, "relay": { "paired": false, "ready": false } },
-      "tailscale": {
-        "$by": "step",
-        "cases": {
-          "policy": { "ready": true, "policy": { "note": "same merged ACL snippet as onboard.tailscale action=policy" } },
-          "connect": { "loginUrl": "https://login.tailscale.com/a/example" },
-          "lock": { "enabled": false }
-        }
-      },
-      "relay": { "pairing": { "url": "https://relay.vyre.run/pair/abc123", "qr": "abc123" } },
-      "verify": { "ok": true, "machine": "device", "path": "tailscale", "destination": { "name": "kit", "address": "kit.tail-example.ts.net" } },
-      "*": { "ok": false }
-    }
   }
 }

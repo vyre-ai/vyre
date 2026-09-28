@@ -22,6 +22,7 @@ import { pathMark } from "../js/status-mark.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
+import { fmtBytes, pieceLabel, pieceLine, totalBytes, pieceState, readyToConfirm, destinationName, forgetGate } from "../js/server-rows.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -595,11 +596,6 @@ async function drawDevices(el) {
 
 // ---- 5c. Server ------------------------------------------------------------------------------
 
-/** Bytes, short form, matching deck/onboard/onboard.js's fmtBytes, extended for whole-project sizes. */
-const fmtBytes = n => n < 1e6 ? Math.round(n / 1e3) + " KB" : n < 1e9 ? (n / 1e6).toFixed(1) + " MB" : (n / 1e9).toFixed(1) + " GB";
-const FORGET_WAIT_MS = 24 * 3600 * 1000;
-const PIECE_LABEL = { projects: "Projects", memory: "Memory", vault: "Vault", sessions: "Sessions" };
-
 /** Settings > Server: config.machine ("solo"|"server"|"device", additive, ADR 0039 — NOT
  * config.role, which drawMachine below reads and is unrelated), and "Move to a server"
  * (docs/design/anywhere.md, work/anywhere 11328815). Reads onboard.status for machine, same
@@ -609,7 +605,9 @@ const PIECE_LABEL = { projects: "Projects", memory: "Memory", vault: "Vault", se
  * shapes here are launch's proposal, not yet confirmed. Only the Solo/Server -> Device direction
  * is built; "Move off this server" (the reverse move, back to Solo) is not, see the work doc's
  * Next. No auto-delete anywhere in this flow: the pre-move copy is only ever removed by the
- * person's own "Free up space" click, gated 24 hours per anywhere.md's forget guard. */
+ * person's own "Free up space" click, gated 24 hours per anywhere.md's forget guard. The
+ * formatting and gating logic itself lives in ../js/server-rows.js, pure and unit-tested
+ * (deck/test/settings-server.test.js), the way Drive's does in drive-rows.js. */
 async function drawServer(el, ctx) {
   const r = await attempt("onboard.status");
   if (r.error) {
@@ -653,12 +651,10 @@ async function drawServer(el, ctx) {
 
   const plan = (p, code) => {
     const pieces = Object.entries(p.pieces || {});
-    const totalBytes = pieces.reduce((n, [, v]) => n + (v.bytes || 0), 0);
     put(panel,
-      row("Moving to", mono(p.destination?.name || "your server"), h("span", { class: "small muted" }, p.destination?.address || "")),
-      h("div", { class: "rows" }, pieces.map(([k, v]) => row(v.label || PIECE_LABEL[k] || k,
-        h("span", null, `${plural(v.count || 0, "item")} · ${fmtBytes(v.bytes || 0)}`)))),
-      note(`${fmtBytes(totalBytes)} total. This computer keeps working, unchanged, until the move finishes and you confirm it.`),
+      row("Moving to", mono(destinationName(p)), h("span", { class: "small muted" }, p.destination?.address || "")),
+      h("div", { class: "rows" }, pieces.map(([k, v]) => row(pieceLabel(k, v), h("span", null, pieceLine(v))))),
+      note(`${fmtBytes(totalBytes(p.pieces))} total. This computer keeps working, unchanged, until the move finishes and you confirm it.`),
       foot(h("button", { type: "button", class: "btn btn-primary", onclick: () => start(code) }, "Start moving"),
         h("button", { type: "button", class: "btn btn-ghost", onclick: point }, "Back")));
   };
@@ -677,9 +673,9 @@ async function drawServer(el, ctx) {
     if (s.error) { put(panel, empty("Lost track of the move.", s.error)); return; }
     const d = s.data;
     put(panel, h("div", { class: "rows" }, Object.entries(d.pieces || {}).map(([k, v]) => h("div", { class: "set-move-row" },
-      h("div", null, h("div", null, PIECE_LABEL[k] || k), h("div", { class: "set-meter" }, h("span", { style: { width: (v.pct || 0) + "%" } }))),
-      h("span", { class: "small faint" }, v.state === "done" ? "Done" : v.state === "doing" ? `${v.pct || 0}%` : "Waiting")))));
-    if (d.state === "ready_to_confirm") { ready(); return; }
+      h("div", null, h("div", null, pieceLabel(k, v)), h("div", { class: "set-meter" }, h("span", { style: { width: (v.pct || 0) + "%" } }))),
+      h("span", { class: "small faint" }, pieceState(v))))));
+    if (readyToConfirm(d)) { ready(); return; }
     poll = setTimeout(watch, 5000);
   };
 
@@ -712,16 +708,15 @@ async function drawServer(el, ctx) {
 function drawAlreadyMoved(el, d, justMoved = false) {
   // d is either onboard.status (machine: "device", a real server's identity not shaped yet by
   // anywhere) or federation.move.confirm's own data (destination.name) right after the flip.
-  const dest = d.destination?.name || d.server?.name || d.host || "your server";
-  const freeAt = (d.movedAt || Date.now()) + FORGET_WAIT_MS;
+  const dest = destinationName(d);
   const panel = h("div");
   put(el,
     justMoved ? note(`This computer is now a device. Your server is ${dest}.`) : null,
     row("This computer", h("span", null, "Is a device."), h("div", { class: "small muted" }, `Your server is ${dest}.`)),
     panel);
-  const left = freeAt - Date.now();
-  if (left > 0) {
-    put(panel, note(`The copy this computer kept during the move stays for ${Math.max(1, Math.ceil(left / 3600000))} more hours, in case anything looks off. After that, free it up any time.`));
+  const gate = forgetGate(d.movedAt || Date.now());
+  if (!gate.ready) {
+    put(panel, note(`The copy this computer kept during the move stays for ${gate.hoursLeft} more hours, in case anything looks off. After that, free it up any time.`));
     return;
   }
   const idle = () => put(panel, row("Old local copy", h("span", { class: "small muted" }, "Still here, from the move.")),

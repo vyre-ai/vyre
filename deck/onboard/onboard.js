@@ -362,11 +362,15 @@ const SCREENS = {
   //     inline (launchd/keep-awake on darwin) and may hand back a `service.warning` (e.g. sleep
   //     settings that would fight it) to show, not block on.
   //   - Device: pairs with a server the person already has. Nothing to move yet (a fresh
-  //     device, anywhere.md's Entry A) — `onboard.join{action:"verify"}` (tailnet, ADR 0021)
-  //     does the pairing itself and calls onboard.machine{machine:"device"} internally; this
-  //     screen just takes the setup code and shows the result.
-  // Fixture-backed (deck/fixtures/onboard.json): onboard.machine and onboard.join are anywhere's
-  // and tailnet's proposals, not shipped yet (asked both, docs/work/launch-surfaces.md).
+  //     device, anywhere.md's Entry A). Calls `join.verify` (tailnet's real, shipped shape,
+  //     work/tailnet af604cf8) — but that module is box-role only and verify takes a `node` id,
+  //     not a setup code, so this screen's own "paste a code" premise does not match what
+  //     tailnet actually built (a fresh, non-box device has no join module loaded at all, same
+  //     gap tailnet flagged for "a phone joins a Solo Mac"). Asked tailnet/the lead how a fresh
+  //     device should really point at an existing server; left as-is until answered, since
+  //     either way it degrades gracefully (a missing tool never blocks Continue here).
+  // Fixture-backed (deck/fixtures/join.json, deck/fixtures/onboard.json): onboard.machine and
+  // join.verify are anywhere's and tailnet's tools, not wired for this case yet.
   live(col, s) {
     col.append(
       h("h1", { class: "h1" }, "How will Vyre run?"),
@@ -398,7 +402,7 @@ const SCREENS = {
       const v = codeIn.value.trim();
       if (!v) { put(st, "Paste the code first."); return; }
       put(st, "Looking for your server.");
-      const j = await attempt("onboard.join", { action: "verify", code: v });
+      const j = await attempt("join.verify", { node: v });
       if (j.error && !j.error.missing) { put(st, String(j.error.message)); return; }
       put(st, "");
       await mark_("live", "done"); await skipPairing(); toClaude();
