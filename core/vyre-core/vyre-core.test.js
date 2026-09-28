@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { startCore, openStore, CORE_METHODS, personOf } from "./server.js";
+import { startCore, openStore, CORE_METHODS, personOf, INSTALL_CODE } from "./server.js";
 import { strictProblems } from "./strict.js";
 import { canReadPeers } from "./peercred.js";
 import { coreCall, coreTool, coreHello, socketProblem } from "../../lib/vyre-core-client.js";
@@ -223,4 +223,22 @@ test("vyre-core: core reads its own process table, and its whole peer verdict ne
     }
     assert.deepEqual(fs.readdirSync(dir).filter(f => f.startsWith("ran-")), []);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("vyre-core: the installer's code is 6 characters for 2 minutes, and five wrong codes void every open one", async t => {
+  const c = await core(t, { peerCred: async () => ({ pid: process.pid, uid }) });
+  const store = openStore(path.join(c.dir, "data"));
+  const { code, expires } = store.presence.mintCode(INSTALL_CODE);
+  store.db.close();
+  assert.equal(code.length, 6);
+  assert.ok(expires - Date.now() <= 2 * 60_000 && expires - Date.now() > 110_000);
+  assert.throws(() => c.presence.mintCode({ length: 4 }), /6 to 16/);
+  assert.throws(() => c.presence.mintCode({ ttl: 11 * 60_000 }), /at most 10 minutes/);
+  const input = { kind: "device", name: "alex-phone", public_key: deviceKey().pub, alg: -7 };
+  for (let i = 0; i < 5; i++) {
+    const r = await coreTool("presence.enroll", input, { socket: c.socket, coreUid: uid, presence: "code code=ZZZZZZ" });
+    assert.equal(r.status, 401);
+  }
+  const late = await coreTool("presence.enroll", input, { socket: c.socket, coreUid: uid, presence: `code code=${code}` });
+  assert.equal(late.status, 401, "the right code after five wrong ones is void");
 });

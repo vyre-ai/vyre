@@ -759,12 +759,17 @@ export class Presence {
     return Number(this.db.prepare("DELETE FROM presence_sessions WHERE id = ?").run(String(id)).changes) > 0;
   }
 
-  /** A one-time code for presence.enroll: 8 characters, stored hashed, valid 10 minutes. */
-  mintCode() {
+  /**
+   * A one-time code for presence.enroll: 8 characters, stored hashed, valid 10 minutes. vyre-core's
+   * installer code is shorter lived and shorter to type (length 6, ttl 2 minutes).
+   * @param {{ ttl?: number, length?: number }} [o]
+   */
+  mintCode({ ttl = CODE_TTL, length = 8 } = {}) {
     if (this.coreLink) throw coreOwned("one-time enrollment codes are made");
     const now = this.now();
-    const code = randomCode(8);
-    const expires = now + CODE_TTL;
+    if (!(length >= 6 && length <= 16) || !(ttl > 0 && ttl <= CODE_TTL)) throw new Error("a code is 6 to 16 characters and lasts at most 10 minutes");
+    const code = randomCode(length);
+    const expires = now + ttl;
     this.db.prepare("DELETE FROM presence_codes WHERE expires < ?").run(now - 24 * 3600_000);
     this.db.prepare("INSERT INTO presence_codes (hash, expires, used) VALUES (?,?,NULL)").run(sha(code).toString("hex"), expires);
     return { code, expires };

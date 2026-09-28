@@ -34,6 +34,9 @@ export const CORE_METHODS = new Set(["capsule", "device", "passkey", "code", "se
 /** The proofs a core session may open from: a live key, never a code or another session. */
 const SESSION_OPENERS = new Set(["capsule", "device", "passkey"]);
 const MAX_BODY = 256 * 1024;
+const CODE_MISSES = 5;
+/** The installer's one-time code: typed or handed to the Capsule once, so short and short-lived. */
+export const INSTALL_CODE = { ttl: 2 * 60_000, length: 6 };
 
 /**
  * core's default verdict on a peer pid: the person's own surface, as vyred's socket judges it
@@ -89,12 +92,21 @@ export async function startCore(o) {
     return p;
   };
 
+  let codeMisses = 0;
   /** A write's proof, checked by core against its own keys. @returns {Promise<{ ok: true, method: string, keyId: string|null } | { ok: false, code: string, message: string, methods?: string[] }>} */
   const prove = async (tool, input, header) => {
     const proof = parse(header);
     if (!proof) return { ok: false, code: "presence_required", message: `${tool} needs a proof vyre-core can check`, methods: [...CORE_METHODS] };
     if (!CORE_METHODS.has(proof.method)) return { ok: false, code: "presence_required", message: `vyre-core doesn't take a ${proof.method} proof`, methods: [...CORE_METHODS] };
     const r = await presence.verify({ tool, input, caller: "core", proof });
+    // The installer's code is short (6 characters, 2 minutes): five wrong ones void every open
+    // code, so nobody on the owner's uid can guess one in time.
+    if (!r.ok && proof.method === "code" && ++codeMisses >= CODE_MISSES) {
+      db.prepare("DELETE FROM presence_codes WHERE used IS NULL").run();
+      codeMisses = 0;
+      log("vyre-core: five wrong enrollment codes; every open code is void");
+    }
+    if (r.ok && proof.method === "code") codeMisses = 0;
     return r.ok ? { ok: true, method: r.method, keyId: r.keyId ?? null } : { ok: false, code: r.code, message: r.message, methods: [...CORE_METHODS] };
   };
 

@@ -104,6 +104,7 @@ tested on Linux where it can be. "Mac check" marks what only a Mac run can confi
   - LOCAL_PEERPID can be reused before core judges the pid: switch to the audit token (Mac) when
     1b makes the verdict load-bearing.
   - The installer runs `main.js code` as _vyre (sudo -u _vyre), or core.db ends up root-owned.
+  - A live tty value from a real terminal on a Mac is still owed before /v1/peer gates anything.
 - Mac check still needed: LOCAL_PEERCRED's uid read (xucred layout) and /bin/ps, by capsule-pro
   with a temp home and no sudo. Running as _vyre under launchd waits for phase 4 (a real system
   user on the user's Mac needs their explicit OK).
@@ -127,10 +128,24 @@ tested on Linux where it can be. "Mac check" marks what only a Mac run can confi
   - The Capsule reads core.json itself (the same trust rule as readCoreConfig) and talks to
     core's socket only after the same socketProblem check. With no core.json it keeps talking
     to vyred exactly as today.
-  - First key: `vyre up` (phase 4) shows the installer's one-time code; the Capsule sends
+  - First key (lead's decision, 28 Sep): the install step `vyre up` runs in the person's
+    terminal mints the installer code (`main.js code` as _vyre: 6 characters, 2 minutes, single
+    use) and launches the Capsule with the code on an INHERITED file descriptor (a pipe or
+    socketpair), never argv, env or a file. The Capsule reads it, then sends
     POST /v1/tools/presence.enroll {kind:"capsule", name, public_key, alg:-7} with
-    x-vyre-presence `code code=<code>`. Every later key is enrolled with a proof from an
-    already-enrolled key (`capsule key=... ts nonce sig` over that exact input).
+    x-vyre-presence `code code=<code>`. Only if the handoff fails does the Capsule ask "Type the
+    6-character code shown in your terminal", and the terminal shows it.
+    - The Capsule is launched by exec'ing its binary inside the signed .app from the root-owned
+      tree, not with `open`: LaunchServices doesn't pass inherited descriptors.
+    - The step that mints and hands over the code runs from core's root-owned tree under the
+      install's sudo, not from the person's own `vyre` CLI code, which a model could patch to
+      copy the code out.
+    - The Capsule is signed with the hardened runtime and no get-task-allow (phase 4's signing
+      step), so a same-user process can't attach and read the code from its memory.
+    - core voids every open code after five wrong code proofs (a 6-character code in 2 minutes
+      is then out of reach of guessing), and a code only ever proves presence.enroll.
+    Every later key is enrolled with a proof from an already-enrolled key (`capsule key=... ts
+    nonce sig` over that exact input).
   - Removing a key (its own old key after re-enroll, or one the person picks):
     presence.remove {id} with a capsule proof.
   - A proof for a tool that stays in vyred is still sent to vyred as today; vyred asks core.

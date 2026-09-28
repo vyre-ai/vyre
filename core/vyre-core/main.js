@@ -13,7 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { startCore, openStore } from "./server.js";
+import { startCore, openStore, INSTALL_CODE } from "./server.js";
 import { strictProblems } from "./strict.js";
 
 // Nothing from the environment but these four, and a PATH core sets itself: a VYRE_* override
@@ -41,7 +41,7 @@ if (strict) {
 const cmd = process.argv[2] || "serve";
 if (cmd === "code") {
   const { db, presence } = openStore(dataDir, { log });
-  const { code, expires } = presence.mintCode();
+  const { code, expires } = presence.mintCode(INSTALL_CODE);
   db.close();
   process.stdout.write(`${code} ${expires}\n`);
 } else if (cmd === "serve") {

@@ -19,6 +19,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   capsule, device, passkey and code proof through core, lists core's keys and methods, gets
   passkey challenges from core, and refuses to enroll or remove a key or mint a code itself
   (`core_owned`). A proof is sent only to a socket owned by core's uid. Linux is unchanged.
+- The installer's enrollment code is 6 characters and lasts 2 minutes (`presence.mintCode` takes
+  a length and ttl, within 6 to 16 characters and 10 minutes), and vyre-core voids every open
+  code after five wrong ones.
 
 #### install-box.sh: shellcheck actually clean, and a quiet line for Docker's own wait
 
