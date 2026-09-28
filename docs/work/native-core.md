@@ -125,6 +125,50 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## Resume 2026-09-28 (cont'd): .lbl, /find, testbox frozen for rc.2
+- **a6436f9e:** deck.css's base .lbl (mono/uppercase/letter-spaced, ~146 callers) fixed to Design A
+  (sentence case, --size-meta/--line-meta, no letter-spacing). Checked in real Chrome
+  (deck/test/lbl-shot.js). Found, not fixed: .rail-disclose (chat.css) has its own separate
+  uppercase rule ("No project" -> "NO PROJECT" in the rail) - flagged, not mine to touch.
+- **5b602dd0:** "/find [words]" composer command (user's cheap-wins list, item 5) - local command
+  in commands.js/composer.js, one-line session.js wire to the existing Find page. Both sent to
+  reviewer-2.
+- Merged chat's work/chat (d2d4628c: budget 8 fixed 106px->4-13px, session.js's Fork wiring using
+  `.id` per my correction, caps.js canFork). Re-measured budgets 6/7 on the merged tree: both pass
+  (16.7 ms fling, 933.9 ms cold open) - my earlier 67 ms/2,420 ms numbers were stale (my own tree,
+  pre-chat's-fixes); struck from the top-5 gap list below as confirmed, not reopened.
+- sessions fixed the .id/.thread naming footgun I flagged (d16a345f, work/sessions): threads.start/
+  fork/launch answers now carry .thread as an alias of .id; threads.rewind gains .id. Not yet
+  merged into this tree - low urgency, my own code already assumed .id.
+- **User's final cheap-wins list (team-lead, 2026-09-28):** 1 IQ-inline, 2 push-to-talk voice
+  (shared STT provider setting, Capsule + chat), 3 Goals+milestones, 4 /later MAXED (one-off,
+  relative, recurring, "when X finishes do Y", runs while the laptop is closed, cancel/edit in
+  chat), 5 /find (done above). 6/7 parked for 0.2. Order: 3 and 4 first (the server's
+  superpowers), then 1, 5, 2.
+  - #3/#4 are planner/sessions/pwa territory (recurring schedules, push/Capsule notifications,
+    rendering scheduled items in chat), not composer.js's. Found the planner tool that already
+    does most of #4's job: core/planner/index.js's planner.add (kind alarm/timer/reminder/todo/
+    note/event, at/in_ms/wall+repeat{every,days,interval,until}), planner.parse (reads "remind me
+    to call the printer at 6" into a proposed item), planner.agenda/upcoming (what's coming,
+    48h ahead, for a device's own notifications), planner.list (cancel/edit surface). If chat's
+    session already has these tools, "/later" barely needs new server code - mostly: (a) make sure
+    the tool is available to a chat session, (b) render scheduled/ringing items in the transcript
+    (a new block type, chat's/blocks.js), (c) a discoverable "/later" command (mine, trivial, NOT
+    built yet pending team-lead's call on ownership). No "goal + milestones" kind exists in
+    planner.js yet - #3 needs real new modeling, not just wiring.
+  - Sent findings to team-lead, offered the composer-sized "/later" discoverability entry, asked
+    whether to wait for chat/sessions to scope #3/#4's actual engine or take a specific piece.
+- **Testbox frozen 20 min (team-lead, integrator's rc.2 canonical suite):** no full suites; single
+  targeted files under a minute OK if load < 4. A stray full-suite run from before the freeze
+  (deck/chat/*.test.js + core/switchboard + core/sessions) hung at test 218 (cards.test.js's plan
+  cards) for 9+ minutes at ~0% CPU with load otherwise low - killed it (mine, idle, not
+  progressing). Worth someone checking whether session.test.js or a switchboard/sessions test has
+  a real hang, separate from the freeze itself, once the tree can run a full suite again.
+- Gotcha hit twice this session: `rsync file1 file2 core/sub/file3 dest/` puts ALL sources flat
+  into dest/, not at their relative paths - core/commands.js landed at deck/chat/commands.js by
+  mistake (caught and removed before it could confuse a test run). Sync files one at a time with
+  their own destination path, or use `--relative`.
+
 ## Top 5 chat-feel gaps left vs Paseo (2026-09-28, for team-lead)
 Read against reference/paseo and this file's own Paseo mapping table + native-bar.md's results.
 1. **No draft persistence.** Paseo's input/state.ts saves the unsent composer text every 200 ms;
