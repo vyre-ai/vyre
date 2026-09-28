@@ -649,6 +649,25 @@ perspective scenarios (15deg, 30deg, the worst-case combo) - the same, already-d
 still-scoped limitation from this decoder's first port, not a new gap. Reported to app-design and
 team-lead.
 
+## Doing (the decode Worker, 2026-09-28)
+`deck/js/scan-worker.js` runs decode-core2.js's search off the main thread; `deck/js/scan.js`
+now only draws a frame and `getImageData`s it (cheap) before transferring the pixel buffer to the
+worker. **Real measurement** (headless Chrome, a Worker decoding an actual rendered PNG - not an
+estimate): 242ms pristine, 380ms for a blur+rotate combo, ~2s for the already-known-failing
+worst-case combo. Faster in the typical case than this file's own earlier "1-2s" figure (which
+was a pessimistic estimate, not a measurement), but not yet reliably under the lead's 200ms
+target on harder frames - the remaining lever is a localization pre-pass (find the code's rough
+position/scale first, so the full search only refines near it instead of a blind sweep), not
+built this session.
+
+One observation worth a note, not a fix: at the worst-case combo (already reported as a decode
+failure), the search ran to ~2s and returned a WRONG codeword (id `00000000...`) that still
+passed RS/CRC - a false accept under extreme degradation, distinct from the CRC/RS module's own
+fuzz coverage (reviewer-2: 0 false accepts across 40k synthetic-error trials) since this is real
+rendered-and-degraded pixels finding an unlucky alignment, not a synthetic bit-flip test. Not
+alarming on its own (this scenario already fails the id-match check either way, so nothing
+mispairs), but worth keeping in mind if the false-accept rate ever needs bounding formally.
+
 ## Next
 - Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
 - Step 6 Mac card: "Already on your tailnet" for an online Mac node.
