@@ -327,19 +327,44 @@ architecture, since today's model is still one whole container per agent (no sha
 container to isolate). That guarantee is level 2's own job (per-agent `BrowserContext`s inside one
 shared Chrome process, above) and should be checked again once that's built.
 
-**Next**:
-1. A throwaway-stack build and run (this repo's own precedent for computers-image work: written
-   by inspection first, checked live once a stack exists) -- `docker build`, `isolation.test.js`
-   with `VYRE_COMPUTER_CONTAINER` set, specifically: Chrome's uid, the CapEff/CapAmb=0 check, the
-   isolation checks above, and that AT-SPI/`chrome.snapshot` still works (the vyre-bus group
-   access is the one mechanism here never exercised by a unit test, only reasoned about).
-2. computerd's own residual: its process keeps CAP_SETUID/CAP_SETGID in its ambient set for its
-   whole life, not just the moment it spawns Chrome (Node has no built-in way to drop a
-   capability from a running process, and re-exec would lose the live Chrome pipe fds). Bounded by
-   the container's own capability set (nothing but SETUID/SETGID exists to gain, and DAC_OVERRIDE
-   is not among them, so even a compromised computerd cannot bypass file permissions to read
-   vyre's own secrets some other uid it might switch to) but worth the reviewer's own read.
-3. Send the reviewer and e2e the head sha with what's above; not merged anywhere yet.
+**Throwaway-stack run, done (28 Sep, after the root-launcher redesign)**: built
+`vyre/computer:glass-browser` from this branch and ran `isolation.test.js` against a real
+container (`docker create`/`start`, the driver's own capability/volume/read-only shape by hand;
+`.boot` seeded via `docker cp`'s archive API through a throwaway unprivileged helper container,
+since the driver's own seed() path needs the whole vyred, not stood up here). All 11 tests pass,
+including the CapEff/CapAmb/CapPrm=0 check for both computerd and Chrome -- the reviewer's own
+condition before this ships (1ae6fe9e has the numbers). Found and fixed two design assumptions
+that were wrong, and one implementation bug, none caught by a unit test:
+- dbus-launch on this box puts its socket directly in `/tmp` (a file), not a private directory --
+  the code chgrp'd `/tmp` itself, which failed (root lacks CAP_CHOWN) and would have opened all
+  of `/tmp` to browser had it somehow succeeded. Fixed: chgrp/chmod the socket file only.
+- Root creating `/run/vyre-chrome` hit the same CAP_CHOWN wall trying to hand it to `vyre-bus`.
+  Moved it under `/tmp` (sticky, world-writable) and had vyre make and own it instead.
+- `chrome_once`'s FIFO/log redirects were on the `setpriv` command line itself -- bash opens
+  those as root, before setpriv's own uid switch, so root (no group access) was the one failing
+  to open them. Fixed: the redirects now live inside the inner `sh -c` setpriv already switches
+  to browser before running.
+- AT-SPI's own bus (`org.a11y.Bus`) is a second, separately D-Bus-activated bus under vyre's own
+  home, not the session bus -- lazily created on first use. Chrome's accessibility tree was empty
+  until something forced it to exist early and opened it to `vyre-bus` too.
+
+**Not fully resolved**: even after the permission fix, Chrome's own accessibility-bus registration
+(dbind) intermittently answered "did not receive a reply" -- both buses were independently
+reachable with the right group when checked directly, so this reads as a D-Bus service-activation
+timing/reliability issue in `org.a11y.Bus`'s own lifecycle in this environment, not a uid or
+permission gap. Flagged to the reviewer as a follow-up rather than blocking on it.
+
+**Also found, not yet fixed**: Chrome's `setpriv --bounding-set=-all` silently does not drop the
+bounding set (`CapBnd` stayed non-zero, `00000000000000c0`) -- dropping bounding-set capabilities
+itself needs `CAP_SETPCAP`, which root here does not have (only SETUID/SETGID, per
+`driver/policy.js`'s `REQUIRED_CAPS`). `CapEff`/`CapAmb`/`CapPrm` are all correctly zero regardless
+(the property the reviewer's isolation test actually checks), so nothing currently *usable* survives;
+the bounding set only bounds what a *future* exec with file capabilities could regain, and this
+image ships no such binary. Flagged to the reviewer rather than changing `REQUIRED_CAPS` (a
+security-critical file) unilaterally -- adding `SETPCAP` would fix it if wanted.
+
+Containers, volumes and images from the throwaway run torn down; `vyre/computer:glass-browser`
+itself left cached on testbox (harmless, matches this repo's own existing precedent).
 
 ## Build list (once the rest of this design is approved)
 
