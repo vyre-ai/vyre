@@ -718,3 +718,22 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   override's storage field remains open, explicitly marked "not needed for 0.1.1." Added a proper
   "Avatar option" section to avatar.md and a new ADR 0043 2d documenting the full ruling.
   Committed 6676b4a6.
+
+## Now (28 Sep, pwa's per-mark blur diagnostic: geometry, not palette, tried first)
+
+- pwa sent raw per-mark error counts for the 8/17 run (dark theme, userOption 1): blur 2/4/6px
+  gave 18/38/56 errors (all fail), rotation and noise stayed at 3-6 (fine), scale-80 borderline
+  at 12. Blur is clearly the dominant failure, not rotation or noise.
+- Checked the maths before assuming contrast was the lever (pwa's framing, since their real
+  palette scored 8/17 against an 11/17 flat-colour fixture): dark theme's WCAG contrast is
+  already 11.74-12.31:1, very high. What actually changed since round 5's original prototype
+  (which passed all 3 blur levels clean, per NOTES.md) was 2a's tick-length shrink (8-29px ->
+  6-24px) to buy back margin - a short, thin stroke loses proportionally more signal to a
+  fixed-pixel blur kernel than a wider one does, independent of colour. Team-lead had also told
+  pwa not to touch the palette themselves.
+- Tried the geometry-only lever first: widened TICK_STROKE_WIDTH 4.5->6 in geometry.js (matching
+  dashesRounded's own width), not the lengths (would reopen the margin problem) or the palette.
+  Re-verified margin/gap: 8.5%/7px, still comfortably within spec. Documented as ADR 0043 2e
+  (0612f4c2), told pwa plainly this is a hypothesis to test against their real harness, not a
+  claimed fix - if it doesn't move the blur numbers, palette contrast or a scoped blur-tolerance
+  gap (the same treatment perspective already gets) is next.
