@@ -292,7 +292,7 @@ async function computerdRefusesToStart(t, env) {
 }
 
 test("computerd: two agents sharing one computer each get their own CDP identity, and neither can reach the other's context", async t => {
-  const c = await computerd(t, { AGENT_TOKENS: `alice=${ALICE}\nbob=${BOB}` });
+  const c = await computerd(t, { AGENT_TOKENS: `alice-1:alice=${ALICE}\nbob-1:bob=${BOB}` });
   const wsUrlFor = async token => {
     const { json } = await req(c.base, "GET", "/cdp/json/version", { token });
     return `${c.base}${new URL(json.webSocketDebuggerUrl).pathname}?token=${token}`;
@@ -318,7 +318,7 @@ test("computerd: POST /agents/reload revokes a removed agent's live CDP clients,
   const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-revoke-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const tokensFile = path.join(dir, "agent-tokens");
-  fs.writeFileSync(tokensFile, `alice=${ALICE}\nbob=${BOB}\n`);
+  fs.writeFileSync(tokensFile, `alice-1:alice=${ALICE}\nbob-1:bob=${BOB}\n`);
   const c = await computerd(t, { AGENT_TOKENS_FILE: tokensFile });
   const wsUrlFor = async token => {
     const { json } = await req(c.base, "GET", "/cdp/json/version", { token });
@@ -333,10 +333,10 @@ test("computerd: POST /agents/reload revokes a removed agent's live CDP clients,
   assert.equal(bob.closed, false, "bob was dropped by a call that was itself refused");
 
   // Bob is taken off the computer: rewrite the file without him, then reload as the owner.
-  fs.writeFileSync(tokensFile, `alice=${ALICE}\n`);
+  fs.writeFileSync(tokensFile, `alice-1:alice=${ALICE}\n`);
   const r = await req(c.base, "POST", "/agents/reload", { token: TOKEN });
   assert.equal(r.status, 200);
-  assert.deepEqual(r.json, { agents: 1, revoked: ["bob"] });
+  assert.deepEqual(r.json, { agents: 1, revoked: ["bob-1"] });
   await bob.closedP;
   assert.equal(bob.closed, true, "bob's own live WebSocket was not closed by revocation");
   // Alice is untouched: her own connection, made before the reload, still answers.
@@ -352,7 +352,7 @@ test("computerd: reloading a rotated (not just removed) agent's token also cuts 
   const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-rotate-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const tokensFile = path.join(dir, "agent-tokens");
-  fs.writeFileSync(tokensFile, `alice=${ALICE}\n`);
+  fs.writeFileSync(tokensFile, `alice-1:alice=${ALICE}\n`);
   const c = await computerd(t, { AGENT_TOKENS_FILE: tokensFile });
   const { json } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
   const wsPath = new URL(json.webSocketDebuggerUrl).pathname;
@@ -360,9 +360,9 @@ test("computerd: reloading a rotated (not just removed) agent's token also cuts 
   assert.ok((await alice.call("Target.getTargets")).result);
 
   const rotated = "a".repeat(40); // a fresh token for the same name
-  fs.writeFileSync(tokensFile, `alice=${rotated}\n`);
+  fs.writeFileSync(tokensFile, `alice-1:alice=${rotated}\n`);
   const r = await req(c.base, "POST", "/agents/reload", { token: TOKEN });
-  assert.deepEqual(r.json, { agents: 1, revoked: ["alice"] }, "a rotation is not a no-op just because the name survived");
+  assert.deepEqual(r.json, { agents: 1, revoked: ["alice-1"] }, "a rotation is not a no-op just because the name survived");
   await alice.closedP;
   assert.equal(alice.closed, true, "the old session, on the now-rotated-away token, was not closed");
 
@@ -375,7 +375,7 @@ test("computerd: an empty or missing reload is refused, not applied -- shared mo
   const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-emptyreload-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const tokensFile = path.join(dir, "agent-tokens");
-  fs.writeFileSync(tokensFile, `alice=${ALICE}\n`);
+  fs.writeFileSync(tokensFile, `alice-1:alice=${ALICE}\n`);
   const c = await computerd(t, { AGENT_TOKENS_FILE: tokensFile });
   const { json } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
   const wsPath = new URL(json.webSocketDebuggerUrl).pathname;
@@ -401,7 +401,7 @@ test("computerd: a reload with a badly-shaped line is refused (not a fatal exit)
   const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-badreload-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const tokensFile = path.join(dir, "agent-tokens");
-  fs.writeFileSync(tokensFile, `alice=${ALICE}\n`);
+  fs.writeFileSync(tokensFile, `alice-1:alice=${ALICE}\n`);
   const c = await computerd(t, { AGENT_TOKENS_FILE: tokensFile });
   fs.writeFileSync(tokensFile, "this is not name=token shaped at all");
   const r = await req(c.base, "POST", "/agents/reload", { token: TOKEN });
@@ -411,8 +411,30 @@ test("computerd: a reload with a badly-shaped line is refused (not a fatal exit)
   assert.ok(json && json.webSocketDebuggerUrl, "computerd stopped answering after a bad reload");
 });
 
+test("computerd: POST /agents/dispose is the separate, explicit deletion action -- owner-token only, does not itself close a live client, and reports whether a context existed at all", async t => {
+  const c = await computerd(t, { AGENT_TOKENS: `alice-1:alice=${ALICE}` });
+  const { json } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
+  const wsPath = new URL(json.webSocketDebuggerUrl).pathname;
+
+  // Not the owner: refused, same class as /shield and /agents/reload.
+  assert.equal((await req(c.base, "POST", "/agents/dispose", { token: ALICE, body: { id: "alice-1" } })).status, 401);
+  // No body / no id: a clean 400, not a crash.
+  assert.equal((await req(c.base, "POST", "/agents/dispose", { token: TOKEN, body: {} })).status, 400);
+
+  const alice = await ws(`${c.base}${wsPath}?token=${ALICE}`);
+  const r = await req(c.base, "POST", "/agents/dispose", { token: TOKEN, body: { id: "alice-1" } });
+  assert.equal(r.status, 200);
+  // Nothing about the context has been created yet in this test (no CDP call was made that would
+  // trigger _contextFor) -- disposed is false, and that itself is the "reports whether one
+  // existed" contract, not a failure.
+  assert.equal(typeof r.json.disposed, "boolean");
+  // Disposal alone never drops a live client, and alice's own connection is still answering.
+  assert.equal(alice.closed, false, "disposeAgentContext (via the route) closed a live client on its own");
+  assert.ok((await alice.call("Target.getTargets")).result, "alice's connection stopped answering after disposal");
+});
+
 test("computerd: in shared mode the bare owner token is refused as a CDP identity, on the upgrade and on /cdp/json/version, though it still opens POST /shield", async t => {
-  const c = await computerd(t, { AGENT_TOKENS: `alice=${ALICE}` });
+  const c = await computerd(t, { AGENT_TOKENS: `alice-1:alice=${ALICE}` });
   const { json } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
   const wsPath = new URL(json.webSocketDebuggerUrl).pathname;
   assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${TOKEN}`), 401, "the owner token opened a CDP session in shared mode");
@@ -443,16 +465,23 @@ test("computerd: AGENT_TOKENS_FILE naming a path that does not exist is the ordi
 
 test("computerd: a malformed AGENT_TOKENS_FILE refuses to start rather than run with a partial identity list", async t => {
   for (const [why, value] of [
-    ["not name=token shaped", "not-a-valid-line-at-all"],
-    ["a duplicate name", `alice=${ALICE}\nalice=${BOB}`],
-    ["a duplicate token", `alice=${ALICE}\nbob=${ALICE}`],
-    ["a name that isn't lowercase-kebab", `Alice=${ALICE}`],
-    ["a token shorter than 32 characters", "alice=too-short"],
+    ["not id:name=token shaped", "not-a-valid-line-at-all"],
+    ["a duplicate id", `alice-1:alice=${ALICE}\nalice-1:alice2=${BOB}`],
+    ["a duplicate token", `alice-1:alice=${ALICE}\nbob-1:bob=${ALICE}`],
+    ["a name that isn't lowercase-kebab", `alice-1:Alice=${ALICE}`],
+    ["a token shorter than 32 characters", "alice-1:alice=too-short"],
   ]) {
     const { code, out } = await computerdRefusesToStart(t, { AGENT_TOKENS: value });
     assert.notEqual(code, 0, `computerd started with an AGENT_TOKENS_FILE that is ${why}`);
     assert.ok(!out.includes(ALICE) && !out.includes(BOB), "a token reached the log even while refusing to start");
   }
+});
+
+test("computerd: a duplicate DISPLAY NAME across two different agent ids is fine -- names are cosmetic only, ids are the identity (reviewer + lead, 28 Sep)", async t => {
+  const c = await computerd(t, { AGENT_TOKENS: `alice-1:alice=${ALICE}\nalice-2:alice=${BOB}` });
+  const { json } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
+  assert.ok(json && json.webSocketDebuggerUrl, "a duplicate display name stopped computerd from starting");
+  assert.equal((await req(c.base, "GET", "/cdp/json/version", { token: BOB })).status, 200);
 });
 
 // The root-launcher design (reviewer, 28 Sep): with no CHROME_BIN, computerd never spawns

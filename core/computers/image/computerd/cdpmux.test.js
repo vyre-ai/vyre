@@ -24,8 +24,8 @@ function world() {
 
 const tick = (ms = 5) => new Promise(r => setTimeout(r, ms));
 
-/** @param {CdpMux} mux @param {string} [kind] @param {string} [agentName] */
-function client(mux, kind = "agent", agentName) {
+/** @param {CdpMux} mux @param {string} [kind] @param {string} [agentId] @param {string} [agentName] */
+function client(mux, kind = "agent", agentId, agentName) {
   /** @type {any[]} */
   const inbox = [];
   /** @type {Array<() => void>} */
@@ -38,7 +38,7 @@ function client(mux, kind = "agent", agentName) {
       const w = waiters; waiters = []; for (const f of w) f();
     },
     close: () => { state.closed = true; },
-  }, agentName);
+  }, agentId, agentName);
   let seq = 0;
   /** @param {(m: any) => boolean} pred @param {number} [ms] */
   const waitFor = (pred, ms = 2000) => new Promise((resolve, reject) => {
@@ -514,33 +514,75 @@ test("cdpmux: two agent clients with different agentNames get different browserC
   assert.equal(fake.seen.filter(s => s.method === "Target.createBrowserContext").length, 2, "one per agent name");
 });
 
-test("cdpmux: closeAgent drops the agent's clients AND disposes its browser context -- a name reused later gets a fresh one, never the revoked agent's cookies (reviewer revocation point 4, 28 Sep)", async () => {
+test("cdpmux: closeAgent drops the agent's own clients but leaves its browser context alone -- deletion is a separate, explicit action (reviewer + lead, 28 Sep, revising the first cut's auto-dispose)", async () => {
   const { mux, fake } = world();
-  const a = client(mux, "agent", "alice");
+  const a = client(mux, "agent", "id-alice", "alice");
   await a.call("Target.createTarget", { url: "about:blank#alice" });
-  const firstCtx = mux.contextStore.get("alice");
-  assert.ok(firstCtx, "alice never got a context to begin with");
+  const ctx = mux.contextStore.get("id-alice");
+  assert.ok(ctx, "alice never got a context to begin with");
 
-  const n = mux.closeAgent("alice");
+  const n = mux.closeAgent("id-alice");
   assert.equal(n, 1, "closeAgent did not drop alice's own client");
   assert.ok(a.state.closed, "alice's client was not actually dropped");
-  assert.equal(mux.contextStore.get("alice"), undefined, "the revoked agent's context is still in contextStore");
-  await tick(20); // the mux's own disposeBrowserContext call, fire-and-forget, writes asynchronously
-  assert.ok(fake.seen.some(s => s.method === "Target.disposeBrowserContext" && s.params.browserContextId === firstCtx),
-    "Target.disposeBrowserContext was never called for the revoked context");
+  assert.equal(mux.contextStore.get("id-alice"), ctx, "closeAgent disposed the context -- that is disposeAgentContext's own job now, not revocation's");
+  assert.ok(!fake.seen.some(s => s.method === "Target.disposeBrowserContext"), "closeAgent called disposeBrowserContext on its own");
 
-  // The same name, reused later (a genuinely different agent given "alice"), gets a brand new
-  // context -- never the revoked one, and never anything it once held.
-  const a2 = client(mux, "agent", "alice");
-  await a2.call("Target.createTarget", { url: "about:blank#alice-again" });
-  const secondCtx = mux.contextStore.get("alice");
-  assert.ok(secondCtx, "the reused name got no context at all");
-  assert.notEqual(secondCtx, firstCtx, "the reused name inherited the revoked agent's own context");
+  // Reconnecting with the SAME id (the same agent, just a fresh client) picks the same context
+  // back up -- that is the point of leaving it alone on revoke.
+  const a2 = client(mux, "agent", "id-alice", "alice");
+  await a2.call("Target.getTargets");
+  assert.equal(mux.contextStore.get("id-alice"), ctx, "the same agent id lost its own context across a reconnect");
 });
 
-test("cdpmux: closeAgent on a name with no live clients and no context is a harmless no-op", async () => {
+test("cdpmux: closeAgent is keyed by agentId, never agentName -- a reused display name for a genuinely different (different-id) agent never touches the old agent's context, with no dispose needed at all", async () => {
+  const { mux } = world();
+  const a = client(mux, "agent", "id-1", "alice");
+  await a.call("Target.createTarget", { url: "about:blank#1" });
+  const firstCtx = mux.contextStore.get("id-1");
+  mux.closeAgent("id-1"); // revoke the first "alice" (id-1); its context is untouched, per above
+
+  // A genuinely different agent, given the SAME display name "alice" but a NEW id, never reaches
+  // id-1's context -- contextStore is keyed by id, so this was already true before closeAgent was
+  // even involved; closeAgent's own change (not disposing) does not create this gap, it just no
+  // longer auto-closes it either -- disposal (below) is how a person actually reclaims it.
+  const b = client(mux, "agent", "id-2", "alice");
+  await b.call("Target.createTarget", { url: "about:blank#2" });
+  const secondCtx = mux.contextStore.get("id-2");
+  assert.ok(secondCtx, "the new agent (same display name, different id) got no context of its own");
+  assert.notEqual(secondCtx, firstCtx, "the same display name reached the old agent's own context");
+});
+
+test("cdpmux: closeAgent on an id with no live clients and no context is a harmless no-op", async () => {
   const { mux } = world();
   assert.equal(mux.closeAgent("nobody-ever-heard-of"), 0);
+});
+
+test("cdpmux: disposeAgentContext deletes the context and disposes it in Chrome, is a no-op with none, and does not itself touch live clients (reviewer + lead, 28 Sep -- the explicit, owner-only deletion action)", async () => {
+  const { mux, fake } = world();
+  assert.equal(mux.disposeAgentContext("nobody-ever-heard-of"), false, "disposing a nonexistent context reported one existed");
+
+  const a = client(mux, "agent", "id-alice", "alice");
+  await a.call("Target.createTarget", { url: "about:blank#alice" });
+  const ctx = mux.contextStore.get("id-alice");
+  assert.ok(ctx);
+
+  const disposed = mux.disposeAgentContext("id-alice");
+  assert.equal(disposed, true, "disposeAgentContext reported no context to dispose");
+  assert.equal(mux.contextStore.get("id-alice"), undefined, "the context is still in contextStore after disposal");
+  await tick(20); // the mux's own disposeBrowserContext call, fire-and-forget, writes asynchronously
+  assert.ok(fake.seen.some(s => s.method === "Target.disposeBrowserContext" && s.params.browserContextId === ctx),
+    "Target.disposeBrowserContext was never called");
+  // disposeAgentContext does not itself drop clients -- that is closeAgent's job, and the lead's
+  // own note says callers should closeAgent first, not rely on this to do it.
+  assert.ok(!a.state.closed, "disposeAgentContext dropped a still-live client on its own");
+
+  // A later client for the SAME id now gets a genuinely fresh context, made once.
+  const before = fake.seen.filter(s => s.method === "Target.createBrowserContext").length;
+  const a2 = client(mux, "agent", "id-alice", "alice");
+  await a2.call("Target.getTargets");
+  const freshCtx = mux.contextStore.get("id-alice");
+  assert.ok(freshCtx && freshCtx !== ctx, "the same id, after disposal, reused the old context instead of a fresh one");
+  assert.equal(fake.seen.filter(s => s.method === "Target.createBrowserContext").length, before + 1, "a fresh context was not actually made");
 });
 
 test("cdpmux: an agent client's own Target.createTarget with no browserContextId gets its own injected before it reaches Chrome", async () => {

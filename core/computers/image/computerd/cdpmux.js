@@ -40,14 +40,19 @@
 // Kinds: each client is marked "agent" or "fill". closeKind(kind) drops every client of that
 // kind and detaches its sessions; raising the shield uses it to cut the agent off.
 //
-// Browser contexts: an "agent" client may join with an agentName (addClient's third argument).
-// The mux gets or creates that name's own Target.createBrowserContext (disposeOnDetach: false) on
-// first use, in contextStore (a plain Map by default; index.js may back it with something
-// durable), and reuses it for every later client of that name -- so two connections/sessions for
-// the same agent share one set of cookies, storage and targets, and two different agent names
-// never do. NOT YET WIRED (28 Sep): index.js's own addClient call passes no agentName, so this is
-// all dormant until it does -- see the reviewer's H1/H2/M1/M2 fixes below, closed before wiring,
-// and the wiring note at the very end of this comment.
+// Browser contexts: an "agent" client may join with an agentId (addClient's third argument) --
+// vyred's own unique id for the agent, NEVER its display name (reviewer, 28 Sep): a name can be
+// reused (an agent removed and a different one later given the same display name), an id never
+// is, and contextStore is keyed by id for exactly that reason -- a reused name must never reach a
+// different agent's cookies and logins. agentName (the fourth argument, optional, defaults to
+// agentId) is cosmetic only: logs, nothing else. The mux gets or creates that id's own
+// Target.createBrowserContext (disposeOnDetach: false) on first use, in contextStore (a plain Map
+// by default; index.js may back it with something durable), and reuses it for every later client
+// of that id -- so two connections/sessions for the same agent share one set of cookies, storage
+// and targets, and two different agents never do. NOT YET WIRED (28 Sep): index.js's own
+// addClient call passes no agentId, so this is all dormant until it does -- see the reviewer's
+// H1/H2/M1-M5 fixes below, closed before wiring, and the wiring note at the very end of this
+// comment.
 //
 // Any call a context-scoped agent client sends that names a browserContextId DIFFERENT from its
 // own is refused outright, never silently rewritten (reviewer H1, 28 Sep) -- the same "refuse a
@@ -108,10 +113,17 @@
 // each open target's context from two places: whichever of the other three events named it
 // first, AND (reviewer M1's fix exposed this gap too) the response to the client's own
 // Target.createTarget call, so H2's own checks work even when nobody ever turns discovery on for
-// this target at all. An "agent" client joined with no agentName, and every "fill" client, keep
+// this target at all. An "agent" client joined with no agentId, and every "fill" client, keep
 // today's unscoped behaviour exactly.
 //
-// Wiring, when it happens (not yet -- reviewer, 28 Sep): agentName must come from computerd's own
+// Revocation (closeAgent) drops a revoked agent's live clients, but never disposes its context --
+// deletion is disposeAgentContext, a separate, explicit, owner-only action the lead and reviewer
+// both want previewed by a person first (28 Sep), never automatic on revoke, a reload race, or a
+// restart. Keying by agentId already closes the hole disposing-on-revoke was meant to close (a
+// reused NAME can never reach an old agent's context, since nothing addresses it by name), so
+// leaving the context in place on revoke costs nothing extra.
+//
+// Wiring, when it happens (not yet -- reviewer, 28 Sep): agentId must come from computerd's own
 // authenticated identity, never from the client itself, and in shared mode an unscoped "agent"
 // client must be refused outright, since it would see every context unfenced.
 //
@@ -275,15 +287,19 @@ const CONTEXT_READONLY_METHODS = new Set(["Browser.getVersion"]);
  * @typedef {{ send(text: string): void, close(): void }} Transport
  * @typedef {{ id: number, kind: string, transport: Transport, closed: boolean,
  *   browserSid: string|null, queue: string[], sessions: Set<string>,
- *   agentName: string|null, browserContextId: string|null }} Client
+ *   agentId: string|null, agentName: string|null, browserContextId: string|null }} Client
  * @typedef {{ client: Client|null, origId?: number, method: string, sessionId?: string,
  *   resolve?: (v: any) => void, reject?: (e: Error) => void, timer?: any, browserContextId?: string }} Pending
- * @typedef {{ get(agentName: string): string|undefined, set(agentName: string, browserContextId: string): void,
- *   delete(agentName: string): void }} ContextStore
- *   Where an agent's browserContextId lives. Deliberately tiny -- get, set, delete, nothing else --
- *   so a plain Map works as the default (and is all these tests need) while a caller like index.js
- *   can later back it with something that outlives this process. delete() is closeAgent's own
- *   revocation hook (reviewer, 28 Sep): without it a revoked name's context would survive forever.
+ * @typedef {{ get(agentId: string): string|undefined, set(agentId: string, browserContextId: string): void,
+ *   delete(agentId: string): void }} ContextStore
+ *   Where an agent's browserContextId lives, keyed by agentId -- vyred's own unique id for the
+ *   agent, NEVER its display name (reviewer, 28 Sep: a revoked name later reused for a genuinely
+ *   different agent must never reach the old agent's cookies and logins just because the display
+ *   name matches; an id is never reused, a name might be). Deliberately tiny -- get, set, delete,
+ *   nothing else -- so a plain Map works as the default (and is all these tests need) while a
+ *   caller like index.js can later back it with something that outlives this process.
+ *   disposeAgentContext (below) is the only thing that ever calls delete(): an explicit,
+ *   owner-only action, never automatic on revoke (see closeAgent's own comment).
  */
 
 export class CdpMux {
@@ -544,21 +560,26 @@ export class CdpMux {
 
   /**
    * A new client. `kind` marks it for closeKind and AGENT_REFUSED. For an "agent" client, the
-   * optional `agentName` scopes it to that agent's own browser context (get-or-created via
-   * _contextFor, then enforced on Target.createTarget and the four target events by _fromClient/
-   * _event below); an "agent" client joined with no agentName behaves exactly as before, unscoped.
-   * Ignored for "fill" clients -- the private sign-in flow has no browser-context scope, and this
-   * does not give it one.
+   * optional `agentId` (vyred's own unique id for the agent, NEVER its display name -- reviewer,
+   * 28 Sep) scopes it to that agent's own browser context (get-or-created via _contextFor, then
+   * enforced on Target.createTarget and the four target events by _fromClient/_event below); an
+   * "agent" client joined with no agentId behaves exactly as before, unscoped. `agentName` is
+   * cosmetic only (logs; defaults to agentId when an id is given but no name) -- it plays no part
+   * in context scoping, closeAgent or disposeAgentContext, so a display name can be reused freely
+   * without reaching a different agent's context. Ignored for "fill" clients -- the private
+   * sign-in flow has no browser-context scope, and this does not give it one.
    * Returns its handle: receive() takes one CDP message as text, leave() says it has gone (safe to
-   * call more than once). Messages that arrive before its browser session (and, for a named agent,
-   * its browser context) is ready wait for it.
-   * @param {string} kind @param {Transport} transport @param {string} [agentName]
+   * call more than once). Messages that arrive before its browser session (and, for an identified
+   * agent, its browser context) is ready wait for it.
+   * @param {string} kind @param {Transport} transport @param {string} [agentId] @param {string} [agentName]
    */
-  addClient(kind, transport, agentName) {
+  addClient(kind, transport, agentId, agentName) {
+    const hasId = kind === "agent" && typeof agentId === "string" && agentId;
     /** @type {Client} */
     const c = {
       id: ++this.nextClient, kind, transport, closed: false, browserSid: null, queue: [], sessions: new Set(),
-      agentName: kind === "agent" && typeof agentName === "string" && agentName ? agentName : null,
+      agentId: hasId ? agentId : null,
+      agentName: hasId ? (typeof agentName === "string" && agentName ? agentName : agentId) : null,
       browserContextId: null,
     };
     const handle = {
@@ -575,11 +596,11 @@ export class CdpMux {
       if (c.closed) { this._detachInChrome(sid); return; }
       c.browserSid = sid;
       this.sessions.set(sid, { client: c, browser: true });
-      if (c.agentName) {
+      if (c.agentId) {
         try {
-          c.browserContextId = await this._contextFor(c.agentName);
+          c.browserContextId = await this._contextFor(c.agentId);
         } catch {
-          if (!c.closed) { this.log(`cdp: could not open a browser context for a "${c.agentName}" agent client`); this._drop(c); }
+          if (!c.closed) { this.log(`cdp: could not open a browser context for an agent client`); this._drop(c); }
           return;
         }
         if (c.closed) return;
@@ -596,26 +617,26 @@ export class CdpMux {
   }
 
   /**
-   * The browserContextId for an agent name: contextStore's own if one is already there, else a
+   * The browserContextId for an agent id: contextStore's own if one is already there, else a
    * fresh Target.createBrowserContext {disposeOnDetach: false} (survives past any one client's
    * session, the same way a person's Chrome profile survives past any one login) stored there for
-   * every later call to reuse. Two clients joining for the same name at once share the one call in
+   * every later call to reuse. Two clients joining for the same id at once share the one call in
    * flight rather than each making their own and racing to store the result.
-   * @param {string} agentName @returns {Promise<string>}
+   * @param {string} agentId @returns {Promise<string>}
    */
-  async _contextFor(agentName) {
-    const existing = this.contextStore.get(agentName);
+  async _contextFor(agentId) {
+    const existing = this.contextStore.get(agentId);
     if (typeof existing === "string") return existing;
-    let inFlight = this.contextInFlight.get(agentName);
+    let inFlight = this.contextInFlight.get(agentId);
     if (!inFlight) {
       inFlight = this.call("Target.createBrowserContext", { disposeOnDetach: false }).then(r => {
         const id = r && r.browserContextId;
         if (typeof id !== "string") throw new Error("Target.createBrowserContext returned no browserContextId");
-        this.contextStore.set(agentName, id);
+        this.contextStore.set(agentId, id);
         return id;
       });
-      this.contextInFlight.set(agentName, inFlight);
-      inFlight.catch(() => {}).finally(() => { this.contextInFlight.delete(agentName); });
+      this.contextInFlight.set(agentId, inFlight);
+      inFlight.catch(() => {}).finally(() => { this.contextInFlight.delete(agentId); });
     }
     return inFlight;
   }
@@ -629,32 +650,47 @@ export class CdpMux {
   }
 
   /**
-   * Drop every "agent" client with this agentName, detaching its sessions, AND dispose its
-   * browser context -- revocation (index.js's own /agents/reload). Both matter: an agent taken
-   * off a shared computer must lose its live CDP connections (reloading the token map alone only
-   * stops a NEW connection), and its context must not survive it. The first cut here left the
-   * context alone on purpose ("a re-added name picks its cookies back up"), which the reviewer
-   * correctly called out as its own hole: if the NAME is ever reused for a genuinely different
-   * agent, that new agent would silently inherit the revoked one's cookies and logins. So the
-   * context goes with the clients now; a re-added name starts fresh, same as a brand new one.
-   * @param {string} agentName @returns {number} how many clients were dropped
+   * Drop every "agent" client with this agentId, detaching its sessions -- revocation (index.js's
+   * own /agents/reload): reloading the token map alone only stops a NEW connection, since an
+   * already-open WebSocket does not re-authenticate. Its browser context is left alone on
+   * purpose, unlike the first cut here: the reviewer and the lead both want deletion to be a
+   * separate, explicit, owner-only action a person previews first (disposeAgentContext, below),
+   * never automatic on revoke -- a computer's own crash, a reload race, or vyred restarting
+   * should not silently lose an agent's logins. Keying by agentId (never agentName) already means
+   * a re-added id is impossible (vyred's ids are never reused) and a reused NAME never reaches
+   * this context either way, so leaving it here is safe: nothing else can ever address it by that
+   * name again unless the same id comes back, which does not happen.
+   * @param {string} agentId @returns {number} how many clients were dropped
    */
-  closeAgent(agentName) {
+  closeAgent(agentId) {
     let n = 0;
-    for (const c of [...this.clients]) if (c.kind === "agent" && c.agentName === agentName) { n++; this._drop(c); }
-    const ctxId = this.contextStore.get(agentName);
-    if (typeof ctxId === "string") {
-      this.contextStore.delete(agentName);
-      // A residual, not closed here: if this name's very first _contextFor call is still in
-      // flight (a brand-new client joining at the exact moment it is revoked), that call's own
-      // .then still calls contextStore.set once it resolves, re-adding an entry this delete just
-      // removed. Narrow and low-stakes (an unused, freshly made context with nothing on it yet,
-      // not a leak of the revoked agent's own data) -- not worth the extra bookkeeping here.
-      this.contextInFlight.delete(agentName);
-      this.call("Target.disposeBrowserContext", { browserContextId: ctxId }).catch(() => {});
-    }
+    for (const c of [...this.clients]) if (c.kind === "agent" && c.agentId === agentId) { n++; this._drop(c); }
     if (n) this.log(`cdp: closed ${n} client(s) for a revoked agent`);
     return n;
+  }
+
+  /**
+   * Disposes an agent's browser context outright and forgets it in contextStore -- the explicit,
+   * owner-only deletion the lead and reviewer want (28 Sep), separate from closeAgent/revocation:
+   * a person previews what they are deleting (cookies, logins) before this runs, never as a side
+   * effect of taking an agent off a computer. Safe to call on an agent with no context at all (a
+   * no-op) or one that is still live (closeAgent it first if that matters to the caller; this does
+   * not itself drop clients, so a live client's own next call would simply get a brand new
+   * context underneath it, mid-session -- callers should closeAgent before disposing, not after).
+   * @param {string} agentId @returns {boolean} whether there was a context to dispose
+   */
+  disposeAgentContext(agentId) {
+    const ctxId = this.contextStore.get(agentId);
+    if (typeof ctxId !== "string") return false;
+    this.contextStore.delete(agentId);
+    // A residual, not closed here: if this id's very first _contextFor call is still in flight
+    // (a brand-new client joining at the exact moment its context is disposed), that call's own
+    // .then still calls contextStore.set once it resolves, re-adding an entry this delete just
+    // removed. Narrow and low-stakes (an unused, freshly made context with nothing on it yet) --
+    // not worth the extra bookkeeping here.
+    this.contextInFlight.delete(agentId);
+    this.call("Target.disposeBrowserContext", { browserContextId: ctxId }).catch(() => {});
+    return true;
   }
 
   /** Drop every client. */

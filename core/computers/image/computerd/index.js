@@ -76,21 +76,25 @@ if (!TOKEN) {
 // A desktop-kind computer (today's every computer) belongs to exactly one agent, so TOKEN above
 // IS that agent's own identity as well as the computer's owner secret -- there was never a
 // separate "who is this" question to ask. A shared browser computer answers many agents through
-// one computerd, so cdpmux's own per-agent BrowserContext scoping (agentName, cdpmux.js) is only
-// as strong as where agentName comes from: it must be computerd's own answer to "which credential
-// did this connect with", never a name the client itself sends on the wire (there is no such
+// one computerd, so cdpmux's own per-agent BrowserContext scoping (agentId, cdpmux.js) is only
+// as strong as where agentId comes from: it must be computerd's own answer to "which credential
+// did this connect with", never anything the client itself sends on the wire (there is no such
 // field on the wire today, and there must not be one).
 //
 // AGENT_TOKENS_FILE (mirroring COMPUTERD_TOKEN_FILE above; AGENT_TOKENS is the raw env, tests
-// only) holds one "name=token" pair per line, vyred's own doing -- issued and rotated per agent,
-// never derived from anything the agent's own client controls. A computer with no such file (or
-// an empty one) is in today's single-agent, single-token mode, unchanged in every way; one with
-// at least one pair is "shared": in shared mode TOKEN (the computer's OWN control-plane secret --
-// see isOwner below) no longer identifies a CDP client as an agent at all, closing the gap the
-// reviewer named (an unscoped "agent" client would otherwise see every context, since cdpmux only
-// fences a client that HAS an agentName). TOKEN still authenticates /fs and POST /shield: those
-// are the computer's own control routes, called by vyred itself, never by an agent's own client,
-// in either mode.
+// only) holds one "id:name=token" triple per line, vyred's own doing -- issued and rotated per
+// agent, never derived from anything the agent's own client controls. id is vyred's own unique id
+// for the agent, never reused; name is a display name only (logs, cdpmux's own agentName field)
+// and MAY repeat -- a name freed by one agent's removal and later given to a genuinely different
+// one must never reach the first agent's own browser context, which is why cdpmux keys
+// contextStore by id, not name (reviewer, 28 Sep). A computer with no such file (or an empty one)
+// is in today's single-agent, single-token mode, unchanged in every way; one with at least one
+// triple is "shared": in shared mode TOKEN (the computer's OWN control-plane secret -- see isOwner
+// below) no longer identifies a CDP client as an agent at all, closing the gap the reviewer named
+// (an unscoped "agent" client would otherwise see every context, since cdpmux only fences a
+// client that HAS an agentId). TOKEN still authenticates /fs and POST /shield: those are the
+// computer's own control routes, called by vyred itself, never by an agent's own client, in
+// either mode.
 /** @returns {{ raw: string, found: boolean }} found: the file (or, tests only, the raw env) was
  *  actually there -- ENOENT is the ordinary case, not an error, but still "not found". */
 function readAgentTokensRaw() {
@@ -112,35 +116,36 @@ function readAgentTokensRaw() {
 }
 
 /**
- * Parses AGENT_TOKENS_FILE's raw text into a token -> agentName map. Never exits: a bad shape, a
- * duplicate name or a duplicate token is reported back as a refusal, not a process.exit -- the
+ * Parses AGENT_TOKENS_FILE's raw text into a token -> {id, name} map. Never exits: a bad shape, a
+ * duplicate id or a duplicate token is reported back as a refusal, not a process.exit -- the
  * reviewer's revocation point 2 (28 Sep). readAgentTokens() (startup) turns a refusal into a fatal
  * exit itself; reloadAgentTokens() (a running computer) does not, so one bad reload cannot take
- * every agent down with it.
+ * every agent down with it. Names, unlike ids and tokens, may repeat: they are display-only.
  * @param {string} raw
- * @returns {{ ok: true, tokens: Map<string, string> } | { ok: false, why: string }}
+ * @returns {{ ok: true, tokens: Map<string, { id: string, name: string }> } | { ok: false, why: string }}
  */
 function parseAgentTokens(raw) {
-  /** @type {Map<string, string>} token -> agentName */
+  /** @type {Map<string, { id: string, name: string }>} token -> {id, name} */
   const byToken = new Map();
-  const seenNames = new Set();
+  const seenIds = new Set();
   for (const line of raw.split(/[\n,]/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    const m = /^([a-z][a-z0-9-]{0,40})=([A-Za-z0-9_-]{32,128})$/.exec(trimmed);
-    if (!m) return { ok: false, why: "a line is not \"name=token\"-shaped" };
-    const [, name, tok] = m;
-    if (seenNames.has(name)) return { ok: false, why: `"${name}" is named more than once` };
-    seenNames.add(name);
+    const m = /^([A-Za-z0-9][A-Za-z0-9_-]{0,63}):([a-z][a-z0-9-]{0,40})=([A-Za-z0-9_-]{32,128})$/.exec(trimmed);
+    if (!m) return { ok: false, why: "a line is not \"id:name=token\"-shaped" };
+    const [, id, name, tok] = m;
+    if (seenIds.has(id)) return { ok: false, why: `agent id "${id}" is named more than once` };
+    seenIds.add(id);
     for (const other of byToken.keys()) if (sameToken(tok, other)) return { ok: false, why: "two agents share one token" };
-    byToken.set(tok, name);
+    byToken.set(tok, { id, name });
   }
   return { ok: true, tokens: byToken };
 }
 
-/** @returns {Map<string, string>} token -> agentName, parsed from readAgentTokensRaw()'s raw text.
- *  Startup only: a bad shape here is fatal, not a refusal -- there is no earlier good map to fall
- *  back to, and starting with a partial identity list is worse than not starting at all. */
+/** @returns {Map<string, { id: string, name: string }>} token -> {id, name}, parsed from
+ *  readAgentTokensRaw()'s raw text. Startup only: a bad shape here is fatal, not a refusal --
+ *  there is no earlier good map to fall back to, and starting with a partial identity list is
+ *  worse than not starting at all. */
 function readAgentTokens() {
   const { raw } = readAgentTokensRaw();
   const parsed = parseAgentTokens(raw);
@@ -162,34 +167,36 @@ function readAgentTokens() {
 // empty at start (0 agents from the first boot of a browser-kind computer, before anyone's added)
 // still counts as shared: it exists, so this computer is one, whatever its content says today.
 const AGENT_MODE = readAgentTokensRaw().found;
-/** @type {Map<string, string>} reassigned whole by reloadAgentTokens(), below. */
+/** @type {Map<string, { id: string, name: string }>} reassigned whole by reloadAgentTokens(). */
 let AGENT_TOKENS = readAgentTokens();
 delete process.env.AGENT_TOKENS;
 
 /**
- * Who a bearer/query token identifies for CDP purposes: an agent (with the name computerd itself
- * looked up, never one the client sent) or the fill flow, or neither. In shared mode the
- * computer's own TOKEN answers neither -- see the block comment above.
+ * Who a bearer/query token identifies for CDP purposes: an agent (with the id and display name
+ * computerd itself looked up, never anything the client sent) or the fill flow, or neither. In
+ * shared mode the computer's own TOKEN answers neither -- see the block comment above.
  * @param {string} token
- * @returns {{ kind: "agent", agentName: string } | { kind: "fill" } | null}
+ * @returns {{ kind: "agent", agentId: string, agentName: string } | { kind: "fill" } | null}
  */
 function identifyClient(token) {
   if (AGENT_MODE) {
-    for (const [tok, name] of AGENT_TOKENS) if (sameToken(token, tok)) return { kind: "agent", agentName: name };
+    for (const [tok, a] of AGENT_TOKENS) if (sameToken(token, tok)) return { kind: "agent", agentId: a.id, agentName: a.name };
     if (fillToken && sameToken(token, fillToken)) return { kind: "fill" };
     return null;
   }
-  if (sameToken(token, TOKEN)) return { kind: "agent", agentName: /** @type {any} */ (null) };
+  if (sameToken(token, TOKEN)) return { kind: "agent", agentId: /** @type {any} */ (null), agentName: /** @type {any} */ (null) };
   if (fillToken && sameToken(token, fillToken)) return { kind: "fill" };
   return null;
 }
 
 /**
  * Revocation (the reviewer's gate item 3, 28 Sep): re-reads AGENT_TOKENS_FILE and, for every OLD
- * (token, name) pair that the new map no longer matches identically (removed outright, or now
- * mapping that name to a different token -- a rotation), calls mux.closeAgent(name) -- closing
- * that agent's own live CDP clients AND disposing its browser context. Reloading the map alone
- * would only stop a NEW connection; an already-open WebSocket does not re-authenticate.
+ * (token, id) pair that the new map no longer matches identically (removed outright, or now
+ * mapping that id to a different token -- a rotation), calls mux.closeAgent(id) -- closing that
+ * agent's own live CDP clients. Its browser context is left alone (disposeAgentContext, a
+ * separate owner-only route, is the only thing that ever removes it -- the lead and reviewer both
+ * want deletion previewed by a person first, never automatic here). Reloading the map alone would
+ * only stop a NEW connection; an already-open WebSocket does not re-authenticate.
  *
  * Two things this refuses rather than applies (the reviewer's points 1 and 2, 28 Sep):
  * - A parse failure (parseAgentTokens, never process.exit at reload time -- one bad file must not
@@ -208,15 +215,18 @@ function reloadAgentTokens() {
   const parsed = parseAgentTokens(raw);
   if (!parsed.ok) return { ok: false, why: parsed.why };
   if (parsed.tokens.size === 0) return { ok: false, why: "the reloaded file has no agents; refusing rather than revoking everyone" };
-  const before = AGENT_TOKENS; // token -> name, as it was before this reload
+  const before = AGENT_TOKENS; // token -> {id, name}, as it was before this reload
   AGENT_TOKENS = parsed.tokens;
   /** @type {string[]} */
   const revoked = [];
-  // Per OLD (token, name) pair, not per name alone: a name re-added with a DIFFERENT token
-  // (rotation, not just removal) must still cut the old live session -- it authenticated with a
-  // credential that is no longer valid, even though its name still exists in the new map.
-  for (const [oldToken, name] of before) {
-    if (AGENT_TOKENS.get(oldToken) !== name) { mux.closeAgent(name); revoked.push(name); }
+  // Per OLD (token, id) pair, not per id alone: an id re-added with a DIFFERENT token (rotation,
+  // not just removal) must still cut the old live session -- it authenticated with a credential
+  // that is no longer valid, even though its id still exists in the new map. (ids are never
+  // reused across different agents, unlike names, but a single agent's own token can still
+  // rotate.)
+  for (const [oldToken, a] of before) {
+    const still = AGENT_TOKENS.get(oldToken);
+    if (!still || still.id !== a.id) { mux.closeAgent(a.id); revoked.push(a.id); }
   }
   return { ok: true, agents: AGENT_TOKENS.size, revoked };
 }
@@ -611,7 +621,7 @@ function cdpUpgrade(req, socket, head) {
       setTimeout(() => socket.destroy(), 1000).unref();
     },
   };
-  const client = mux.addClient(kind, transport, kind === "agent" ? id.agentName : undefined);
+  const client = mux.addClient(kind, transport, kind === "agent" ? id.agentId : undefined, kind === "agent" ? id.agentName : undefined);
   const parser = new FrameParser();
   /** @param {Buffer} chunk */
   const onData = chunk => {
@@ -699,6 +709,18 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && pathname === "/agents/reload") {
       const r = reloadAgentTokens();
       return r.ok ? send(200, { agents: r.agents, revoked: r.revoked }) : send(400, { error: { message: r.why } });
+    }
+    // Deletion (the lead + reviewer, 28 Sep): a separate, explicit action from revocation --
+    // owner-token only, same as reload. vyred calls this only after a person has previewed what
+    // it deletes (the agent's cookies and logins); it is never a side effect of /agents/reload or
+    // of an agent simply being removed from AGENT_TOKENS_FILE. Does not itself close any live
+    // client -- callers should reload/revoke first if that matters, this only ever touches the
+    // context.
+    if (req.method === "POST" && pathname === "/agents/dispose") {
+      const body = await readBody(req);
+      const agentId = body && body.id;
+      if (typeof agentId !== "string" || !agentId) return send(400, { error: { message: "id is required" } });
+      return send(200, { disposed: mux.disposeAgentContext(agentId) });
     }
     if (shielded && SHIELDED_ROUTES.has(`${req.method} ${pathname}`)) return send(423, { error: { code: "shielded", message: "a person is signing in on this computer" } });
 
