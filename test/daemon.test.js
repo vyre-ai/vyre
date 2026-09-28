@@ -7,9 +7,33 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { start } from "../core/daemon/index.js";
+import { start, retryUnknown } from "../core/daemon/index.js";
 import { request, call } from "../core/daemon/client.js";
 import { tempHome, writeModule } from "./helpers.js";
+
+test("daemon: retryUnknown gives a /proc TOCTOU race a second look, bounded, still failing closed", async () => {
+  // A flat unknown (no named server) succeeds on a later attempt: the race resolved, trusted.
+  const calls1 = [{ unknown: true }, { inside: false }];
+  assert.deepEqual(await retryUnknown(() => calls1.shift(), 2, 1), { inside: false });
+
+  // Every attempt agrees it's unknown: still unknown after exhausting attempts, never more than
+  // asked (2 retries -> 3 calls total, not stretched into a long hang).
+  let n = 0;
+  assert.deepEqual(await retryUnknown(() => { n++; return { unknown: true }; }, 2, 1), { unknown: true });
+  assert.equal(n, 3, "the first try plus exactly 2 retries, never more");
+
+  // A NAMED server (the terminal-host allowlist's other unknown shape) is not a race: never
+  // retried, returned as-is on the first call.
+  let calledOnce = 0;
+  const server = { unknown: true, server: { exe: "/usr/bin/tmux", pid: 1, started: "t" } };
+  assert.deepEqual(await retryUnknown(() => { calledOnce++; return server; }, 2, 1), server);
+  assert.equal(calledOnce, 1);
+
+  // A definite answer (inside:true, or inside:false with no unknown) is never retried either.
+  let definiteCalls = 0;
+  assert.deepEqual(await retryUnknown(() => { definiteCalls++; return { inside: true, by: 42 }; }, 2, 1), { inside: true, by: 42 });
+  assert.equal(definiteCalls, 1);
+});
 
 test("daemon: answers health, lists the system module and runs its tools", { timeout: 20_000 }, async t => {
   const root = tempHome(t);

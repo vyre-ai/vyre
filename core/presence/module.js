@@ -69,6 +69,28 @@ export default {
       },
     });
 
+    ctx.tool("presence.capsule.pin", {
+      description: "Pins the Capsule build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous, tty-less process shape (its own proof, not ancestry: core/daemon/peer.js's verifiedCapsule). Signed by the Capsule's own enrolled presence key (method \"capsule\"), the same identity a paired Capsule already proves with, not a new one -- so only the real Capsule, not a model's shell with a same-uid file write, can ever set this.",
+      presence: { summary: async () => "Pin this Mac's Capsule build" },
+      input: obj({ cdhash: str }, ["cdhash"]),
+      run: async ({ cdhash }, meta = {}) => {
+        // presence:{} above accepts any of touchid/passkey/device/capsule (whichever methods
+        // this Mac has enrolled); narrowed here to exactly the identity this claim is ABOUT --
+        // the Capsule proving it is itself, not the person separately vouching for it by some
+        // other means, which would prove nothing about which binary is asking.
+        if (meta.presence?.method !== "capsule") throw Object.assign(new Error("only the Capsule's own enrolled key pins a Capsule build"), { code: "denied" });
+        // The calling binary's own signature, read by vyred from the socket (core/daemon), never
+        // from the input. An ad-hoc build has no signing identity, so a same-uid program could
+        // pass as it: refused until the Capsule is signed with a stable identity (the lead's
+        // decision, 28 Sep).
+        const sig = meta.codeSignature;
+        if (!sig || !sig.cdhash) throw Object.assign(new Error("Vyre could not read this Capsule's code signature, so it cannot pin it. Pin from the Capsule app on this Mac."), { code: "denied" });
+        if (!sig.signed || sig.adhoc) throw Object.assign(new Error("This Capsule is ad-hoc signed, so Vyre cannot tell it apart from another app on this Mac. Reinstall it with `vyre capsule install`, which signs it, then try again."), { code: "denied" });
+        if (sig.cdhash !== cdhash) throw Object.assign(new Error("A Capsule can only pin its own build."), { code: "denied" });
+        return presence.pinCapsule(cdhash);
+      },
+    });
+
     ctx.tool("presence.code", {
       description: "A one-time code, valid 10 minutes, that enrolls one passkey from the Deck. Needs presence.",
       presence: { summary: async () => "Make a one-time code to enroll a passkey" },

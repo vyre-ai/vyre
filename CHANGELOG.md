@@ -11,6 +11,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   itself with exactly `{ key }` (`machineSelf` in core/presence); the box's byKey still matches
   the key and the calling node, so it can never forget a different Mac.
 
+#### presence: capsule.pin refuses an ad-hoc-signed Capsule, and a build other than the caller's own
+
+- vyred reads the calling process's code signature from the socket (`codesign -dvvv +pid`, start
+  time checked before and after) and hands it to `presence.capsule.pin`. An ad-hoc or unsigned
+  build is refused with a plain message pointing at `vyre capsule install`; so is a cdhash that
+  is not the caller's own, or a call whose signature vyred cannot read. Only vyred's router can
+  pass the signature (a module's ctx.call carries no meta).
+
+#### daemon: a root leader vyred cannot read asks for presence once, never trusted outright
+
+- An ssh login's top of chain on the box is the root sshd, whose program vyred cannot read. It is
+  no longer trusted on uid 0 alone (cron and atd run a model's scheduled jobs with the same
+  shape). It is a server keyed `{exe: "uid0", pid, started}`: the first person-only call asks for
+  one proof (Touch ID, the Capsule, a device key or a passkey, never a tty code), and that leader
+  is trusted until it exits. An unreadable leader at any other uid stays refused. The prompt
+  describes it in plain words. The bounded retry for a flat unknown stays.
+- Tests: `upLeader` (test/helpers.js, fixture test/fixtures/vyred-leader.js) starts a temp-home
+  vyred with the real verifier that also trusts the test's own terminal server, so CLI tests pass
+  over ssh on the testbox. Only a verifier handed to start() can do this; vyred's own Presence
+  cannot, and a test checks both.
+
 #### install-box.sh: shellcheck actually clean, and a quiet line for Docker's own wait
 
 - Fixed a real, previously undetected bug: `pick_look()`'s escape-code assignments

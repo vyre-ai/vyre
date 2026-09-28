@@ -21,7 +21,7 @@ import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, canReadPeers } from "./peer.js";
+import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -245,11 +245,14 @@ const MODEL_LABEL = /^(mcp|harness)(?=$|[\s:])/;
  * kernel which process connected (core/daemon/peer.js). From under a `claude`, or under a process
  * vyred runs a thread in, it is a model's shell however it names itself: it is an agent caller,
  * refused silently, and no presence proof or session counts for it. So is a caller whose ancestry
- * vyred cannot read to the top.
- * @param {import("node:net").Socket} socket @param {any} registry
+ * vyred cannot read to the top -- unless it claims to be the Capsule and proves it another way
+ * (core/daemon/peer.js's verifiedCapsule): the Capsule's own process has this same ambiguous
+ * shape (its own session, no controlling terminal) and is not on the terminal-host allowlist, so
+ * ancestry alone would always refuse it.
+ * @param {import("node:net").Socket} socket @param {any} registry @param {string} [caller]
  */
-async function fromClaude(socket, registry) {
-  const who = await above(socket, registry);
+async function fromClaude(socket, registry, caller) {
+  const who = await above(socket, registry, caller);
   if (who.nopid) return "vyred cannot tell which process is calling, so this is refused";
   if (who.inside) return "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence";
   return who.unknown ? "vyred cannot read which processes this call runs under, so this is refused" : null;
@@ -257,18 +260,108 @@ async function fromClaude(socket, registry) {
 
 /**
  * What runs above the process on this socket: a `claude` or one of vyred's threads (inside), an
- * ancestry vyred cannot read to the top (unknown), or no pid at all (nopid).
- * @param {import("node:net").Socket} socket @param {any} registry
+ * ancestry vyred cannot read to the top (unknown), or no pid at all (nopid). A caller claiming to
+ * be the Capsule gets one more chance before "unknown": its own pinned code identity, checked and
+ * cached once per connection (core/daemon/peer.js's verifiedCapsule).
+ * @param {import("node:net").Socket} socket @param {any} registry @param {string} [caller]
  * @returns {Promise<{ inside: boolean, unknown?: boolean, nopid?: boolean }>}
  */
-async function above(socket, registry) {
+/**
+ * Retries `check()` a bounded few times while it says unknown with no named server, so a process
+ * that exits between the socket connecting and a /proc read (sessions' find, 28 Sep: a real race
+ * under a loaded box spawning many short-lived vyre CLI children) gets a second look before this
+ * is trusted as final. Never more than `attempts` retries, so this cannot be stretched into a
+ * long hang; still fails closed if every attempt agrees. Peer.js's OTHER unknown shapes (an
+ * orphan whose group died, or a named server with no readable start time) are deterministic, not
+ * a race, so retrying them changes nothing -- harmless, just a little slower.
+ * @param {() => { unknown?: boolean, server?: any }} check
+ * @param {number} [attempts] @param {number} [delayMs]
+ */
+export async function retryUnknown(check, attempts = 2, delayMs = 25) {
+  let result = check();
+  for (let n = 0; result.unknown && !result.server && n < attempts; n++) {
+    await new Promise(res => setTimeout(res, delayMs));
+    result = check();
+  }
+  return result;
+}
+
+async function above(socket, registry, caller) {
   const pid = await peerPid(socket);
   if (!pid) return { inside: false, nopid: true };
   const r = await registry.call("threads.pids", {}, "module:vyred");
   // The processes vyred runs threads in, their process groups and sessions (core/sessions/spawn.js
   // keeps a group listed until its last process is gone, so an orphan is still caught).
   const d = r.data || {};
-  return insideClaude(pid, { threads: [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])] });
+  const threads = [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])];
+  const result = await retryUnknown(() => insideClaude(pid, { threads }));
+  // The pin lives in vyred's own db (presence.capsulePin()), never a file the same uid a model's
+  // shell runs as could write to directly.
+  if (result.unknown && caller === "capsule" && registry.deps.presence
+    && await verifiedCapsule(socket, pid, registry.deps.presence.capsulePin())) return { inside: false };
+  return result;
+}
+
+/**
+ * A server this process lives in (tmux, screen, sshd, Ghostty, iTerm2's server, a setsid'd model
+ * -- anything insideClaude names rather than flatly refusing), once trusted -- for the rest of
+ * that exact server's life (the lead's decision, 28 Sep: nobody with a real, unlisted terminal
+ * gets locked out; one proof, then trusted). A Map, not a socket-scoped cache, since the same
+ * server is reached over many different connections (every pane or ssh session's own call). Keyed
+ * by the server's exe, pid and start time, never a bare pid (a recycled pid never matches an old
+ * key) and never shared with a different server (a model-started one is its own process with its
+ * own pid and start time, so it always needs its own proof -- it can never inherit the person's).
+ * @type {Map<string, true>}
+ */
+const serverTrust = new Map();
+
+/**
+ * One presence proof on any call trusts that server for every later call from any of its panes or
+ * sessions, until it exits. @param {{exe:string,pid:number,started:string}} server
+ * @param {string|string[]|undefined} proofHeader @param {string} caller @param {any} registry
+ */
+// Hardware or a key a model cannot read, same as presence's own SESSION_FROM (a session opens
+// only from one of these too). NOT "tty": a model in its own detached tmux pane, or under a
+// setsid'd script/pty, IS the terminal that method writes its code to, so it could read the code
+// and answer its own challenge -- circular, not a proof at all here (the reviewer's MEDIUM,
+// 28 Sep). NOT "code" or "session" either, for the same reason: nothing here needs the person to
+// be at a DIFFERENT terminal.
+const SERVER_TRUST_METHODS = new Set(["touchid", "capsule", "device", "passkey"]);
+
+/** What the proof is over -- so a signature made for one server's prompt can never answer a
+ * different one's, and so the client signs exactly what the presence_required error already told
+ * it about this leader. */
+const sessionInput = server => ({ exe: server.exe, pid: server.pid, started: server.started });
+
+/** How the person is told what is asking. peer.js keys an unreadable root leader "uid0" (sshd,
+ * cron, a login manager: vyred cannot read which binary), so that one is described, not named. */
+const serverName = server => server.exe === "uid0"
+  ? `a system service running as root that Vyre cannot identify (pid ${server.pid}, started ${server.started}; for example sshd, cron or a login manager)`
+  : `${server.exe} (pid ${server.pid}, started ${server.started})`;
+
+/** The code signature of the process on this socket, or null when it cannot be read. @param {import("node:net").Socket} socket */
+async function signedBy(socket) {
+  const pid = await peerPid(socket);
+  return pid ? signatureOf(pid) : null;
+}
+
+async function serverTrusted(server, proofHeader, caller, registry) {
+  const key = `${server.exe}:${server.pid}:${server.started}`;
+  if (serverTrust.has(key)) return true;
+  const presence = registry.deps.presence;
+  // Test seam only: a verifier handed to start() in-process may already trust the leader its own
+  // test runs under (test/fixtures/vyred-leader.js, temp homes only), so CLI tests run over ssh on
+  // the testbox. vyred's own Presence has no such method, and main.js never passes a verifier.
+  if (presence && typeof presence.trustsServer === "function" && presence.trustsServer(server) === true) { serverTrust.set(key, true); return true; }
+  const proof = parsePresence(/** @type {string} */ (proofHeader));
+  if (!presence || !proof || !SERVER_TRUST_METHODS.has(proof.method)) return false;
+  // Plain wording, naming exactly what is asking -- the lead's decision, 28 Sep: a model can name
+  // its own process anything, so the reason must be specific enough that a real person can tell
+  // their own Warp window from a model-caused prompt apart, not just "an app wants to act as you".
+  const summary = `A program Vyre doesn't recognise wants to act as you: ${serverName(server)}. Did you just open this?`;
+  const r = await presence.verify({ tool: "session.trust", input: sessionInput(server), caller, proof, def: { presence: { summary: async () => summary } } });
+  if (r.ok) { serverTrust.set(key, true); return true; }
+  return false;
 }
 
 /**
@@ -506,8 +599,24 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));
     if (socket && personal && (shell.model || !MODEL_LABEL.test(caller))) {
-      const why = await fromClaude(req.socket, registry);
-      if (why) return send(res, 403, { error: { code: "denied", message: why } });
+      const who = await above(req.socket, registry, caller);
+      if (who.nopid) return send(res, 403, { error: { code: "denied", message: "vyred cannot tell which process is calling, so this is refused" } });
+      if (who.inside) return send(res, 403, { error: { code: "denied", message: "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence" } });
+      if (who.unknown) {
+        if (!(who.server && await serverTrusted(who.server, req.headers["x-vyre-presence"], caller, registry))) {
+          // The full path, pid and start time, never a basename: a model can name its own process
+          // anything (`exec -a login`, `-title`), and the whole point of naming it in the prompt
+          // is that the PERSON can tell a real terminal from a model-caused one apart (the
+          // reviewer's MEDIUM, 28 Sep).
+          const all = registry.deps.presence ? await registry.deps.presence.methods() : [];
+          // `server` rides the error as structured fields too, not only inside the message: a
+          // client signs its proof over exactly this (sessionInput), so it needs it verbatim, not
+          // parsed back out of a sentence.
+          return send(res, who.server ? 401 : 403, who.server
+            ? { error: { code: "presence_required", message: `this runs inside ${serverName(who.server)}: prove you're here once for this session`, methods: all.filter(m => SERVER_TRUST_METHODS.has(m)), server: sessionInput(who.server) } }
+            : { error: { code: "denied", message: "vyred cannot read which processes this call runs under, so this is refused" } });
+        }
+      }
     }
     // Held in `inflight` until the answer has left, not just until the tool returns: stop()
     // closes every connection once these settle.
@@ -520,7 +629,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const terminal = socket && terminalOf && SESSIONABLE.has(name) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
     // Only a caller vyred bound to a thread above says which chat tool call this is.
     const call = via.thread ? callId(req.headers["x-vyre-call-id"]) : null;
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}), ...(call ? { call } : {}),
+    // presence.capsule.pin judges the calling binary's own signature, read here from the socket's
+    // pid: only vyred's router can hand a tool this (a module's ctx.call carries no meta).
+    const signed = socket && name === "presence.capsule.pin" ? await signedBy(req.socket) : undefined;
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
