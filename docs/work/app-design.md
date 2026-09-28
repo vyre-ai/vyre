@@ -381,3 +381,8 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   list), always its own visible line, "collapsed" only ever meaning the reply detail is shut. The
   Handoff row's icon is now the teammate's own avatar tile, not the generic sub-agent icon. Final
   versions sent to teammates (msg_id bbfec377) and chat (msg_id ecd9d16b).
+
+- windows confirmed receipt of capsule-windows.md, building Tier C against it
+  (windows-plan.md section 9, 87bcd02d). Taking the lead's Alt+Space resolution as final; will do
+  the hands-on focused-panel check before shipping it as default and report back. No open
+  questions on the rest of the spec.
