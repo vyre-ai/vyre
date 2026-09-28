@@ -125,3 +125,16 @@ Net: budgets 5 and 10 are effectively fixed (5 has a negligible residual CLS ent
 1 s inside a 2.5 s outage — reconnecting on the `online`/visibility event in addition to backoff
 would close the gap; 9 needs chat to confirm whether the previous-turn footer text change is
 intended.
+
+Budget 5's residual 0.0088 traced and fixed, 2026-09-28: a per-frame `getBoundingClientRect`
+sampler on every `.cv-row` (temporary, not kept) caught the exact moment, always ~6.9 s into the
+burst, in the same JS tick as `thread.finished`: turnRow's (blocks.js) "open" placeholder — an
+empty `<div class="cv-turn">`, `display: none` while `:empty` — gets its footer text
+("18 s · 4.2k tokens · $0.04") and switches to `display: block`, inserting a 26 px box where
+there was none and pushing every row below it (the next headRow, tool cards) down by exactly that
+much. No DOM mutation or font-load event lined up with the shift; the CSS collapse/expand did.
+Fixed in chat.css: `.cv-turn` keeps `min-height: 26px` (its own padding + one line) at all times,
+and `:empty` is `visibility: hidden` instead of `display: none` — the box is always there,
+invisible until it has words. Re-run confirms CLS 0 (0 shift entries, was 1 at 0.0088), no
+regression on 8/9/10, and deck/chat's 86/86 tests still green. sha: chat.css only, on
+native-core-composer (native-core).
