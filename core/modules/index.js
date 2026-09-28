@@ -15,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
-import { PERSON_ONLY } from "../presence/index.js";
+import { PERSON_ONLY, core as coreHolder, format as formatProof } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 
@@ -498,8 +498,11 @@ export class Registry {
         // tool is refused to, and left out of the listing for, any other. Omitted means all.
         // hook: reachable only as vyred's webhook route POST /v1/<module>/<name>/hook (caller
         // "hook"), and left out of every listing. The tool checks its own secret.
+        // core: vyre-core answers it on this Mac and checks its proof itself (ADR 0040 phase 2);
+        // only a first-party module may say so, since it turns vyred's own presence check off.
+        if (def.core && !firstParty(m.dir)) throw new Error(`${m.name} is not one of Vyre's own modules, so ${name} can't be a vyre-core tool`);
         this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, internal: Boolean(def.internal),
-          callers: Array.isArray(def.callers) ? def.callers : null, hook: Boolean(def.hook), presence: def.presence || false });
+          callers: Array.isArray(def.callers) ? def.callers : null, hook: Boolean(def.hook), presence: def.presence || false, core: Boolean(def.core) });
       },
     };
   }
@@ -549,7 +552,12 @@ export class Registry {
     // A human-only tool needs a proof that a person is there, whatever the caller claims
     // (docs/adr/0004-presence.md). Only modules are exempt: only the loader makes those callers.
     const presence = this.deps.presence;
-    if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
+    // A tool vyre-core answers on this Mac (def.core, ADR 0040 phase 2): core checks the proof
+    // itself, over the exact input, so vyred passes it through untouched rather than checking (and
+    // spending) it first. Only when core is linked; everywhere else the floor below applies.
+    if (def.core && coreHolder.link) {
+      meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
+    } else if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
       const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.

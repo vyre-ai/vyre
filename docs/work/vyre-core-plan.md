@@ -131,7 +131,18 @@ Also for 2a:
   or a core session bound to that process (pid and start time). presence.session.open is
   Capsule-only and binds the session. Testbox: 92/93 of the wider run, then docs 19/19.
 - Boundary edge core/vyre-core -> core/vault (vault.js, kinds.js), next "host": lead's OK pending.
-- Next in 2a: vyred's side. On a core-linked Mac, the vault module's tools forward to core (the
+- vyred's side built: a `core` tool flag (first-party modules only) makes the registry pass the
+  proof through untouched on a core-linked Mac instead of checking and spending it;
+  core/vault/forward.js registers every declared vault tool on a core Mac. The 2a tools forward
+  to core, reveal, copy and totp refuse with "only in the Capsule", and every other tool answers
+  core_owned "not on this Mac yet". vault.release forwards only the module the registry vouched
+  for. The old store is never opened. Testbox: vyre-core + modules + vault suites, 0 failures.
+- Lead's rulings (28 Sep): no core/vyre-core -> core/vault edge. Move the Vault closure (34
+  files) and capValues to lib/vault as its own paths-only commit, on a branch rebased on main
+  AFTER stage/0.1.1 merges; 2d32d72e's edge stays pending until then. After the move, a note
+  on which files core reaches at runtime, and a proposed split so core hosts only the store,
+  grants, crypto and keys.
+- Left for later in 2a: vyred's side (below, as first written). On a core-linked Mac, the vault module's tools forward to core (the
   proof passes through), its own store stays shut, ctx.vault.fetch releases through core, and
   `vyre vault reveal` in a terminal says to use the Capsule. Then the grant re-approval of
   existing needs.vault grants, the vault.copy/type path in the Capsule, events forwarded as

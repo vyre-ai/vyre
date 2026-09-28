@@ -368,7 +368,8 @@ function writeTty(file, text) {
  * code and sessions stay vyred's own, and advisory on a Mac, as ADR 0040 section 3 says of every
  * vyred-side control. Linux never sets it.
  * @typedef {{ verify(tool: string, input: any, header: string): Promise<{ ok: boolean, method?: string, keyId?: string|null, message?: string }>,
- *   keys(): Promise<any[]>, challenge(tool: string, input: any): Promise<any> }} CoreLink
+ *   keys(): Promise<any[]>, challenge(tool: string, input: any): Promise<any>,
+ *   call?(tool: string, input: any, header?: string): Promise<{ data?: any, error?: any }> }} CoreLink
  */
 export const core = { link: /** @type {CoreLink|null} */ (null) };
 /** The proofs vyre-core checks in vyred's place. */
