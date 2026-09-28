@@ -2717,7 +2717,7 @@ Every grant and revoke on record, for a project or every project, newest first, 
 
 ### `projects.access.migrate`
 
-One-time bootstrap for projects.access (Vyre Drive step 3, one source of truth): seeds a granted row for every agent's own agents.projects entry that has none yet, so an agent already scoped to a project by agents.create/update keeps reading it once memory's guard starts checking projects.access too. Never overwrites a person's own revoke: only inserts a row where none exists. "*"-projects agents (the assistant included) are untouched here; what they see is the assistant rule, not a per-project grant. Safe to run more than once: later runs add only what a newer agent needs.
+Bootstrap for projects.access (Vyre Drive step 3, one source of truth): seeds a granted row for every agent's own agents.projects entry, including a projects: "*" agent's every project, for any project projects.access has never recorded a grant or revoke on. Never touches a project once it has any row at all, so a person's own revoke (even a wildcard one that covers every agent) is never undone. The assistant is untouched: its reach is the assistant rule, not a per-project grant. Runs automatically once, on the first start after this version, and is also here as a manual OWNER tool in case agents was not reachable yet at that first start (see projects.access.check's fallback to agents.projects alone when this module cannot be asked).
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `local`

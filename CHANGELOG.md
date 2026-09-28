@@ -4,6 +4,34 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### projects.access: reviewer's holds on 63af8941/656b3f79, plus docs-check green on this branch
+
+- Fixed docs-check: this branch's own CHANGELOG.md and docs/design/drive-onboarding.md em dashes
+  (24 and 12 lines), drive-onboarding.md missing from docs/nav.json, and "federation" missing
+  from scripts/lib/docs/check.js's OWNERS list (drive-onboarding.md's own `owner: federation`
+  front matter had never validated against it).
+- `projects.access.check`'s empty-agent LOW, still open after `required: ["agent"]` (that only
+  rejects a missing key): `{ agent: "" }` matched the wildcard row's own key, so it read the
+  wildcard grant as if it were "no agent" asked at all. Refused explicitly now, before the row
+  lookup runs.
+- Agent names are case-insensitive in `projects_access` now (team-lead's call): normalised to
+  lower case on every grant, revoke and check, so a grant to "Kit" reaches agent "kit".
+- `projects.access.migrate`'s two MEDIUMs (reviewer, on 656b3f79):
+  1. It checked only the (project, agent) pair, so a wildcard revoke (`projects.access.revoke
+     { project }`, agent left out, meaning every agent) was undone the next run: it inserted a
+     fresh per-agent "granted" row anyway. Fixed the safer way team-lead called for: a project is
+     skipped entirely, for every agent, once it has any row at all on record.
+  2. Nothing ran it: on the first boot after 656b3f79, a scoped agent silently lost memory access
+     until the owner found and ran the tool by hand. Now runs automatically, once, on start,
+     retried a few times in case agents starts after projects in the same boot (new table
+     `projects_access_seeded`, its own MIGRATIONS step, records that it has run). The manual tool
+     remains as a fallback for whenever agents shows up later than the retry window.
+  Also now seeds a `projects: "*"` agent (not the assistant, whose "*" is a different rule), one
+  row per project, matching d897210d's narrowing of what a wildcard agent reads.
+- Tests: `core/projects/access.test.js` gains the empty-agent refusal, case-insensitivity, the
+  auto-seed itself (with and without a wildcard agent), the wildcard-revoke-not-undone case, and
+  the manual tool's fallback role once agents turns up after the auto-seed already ran empty.
+
 #### Vyre Drive step 3: projects.access, deny-by-default per-project agent access
 
 - New module addition, `core/projects` (sessions owns it, paused; built here per team-lead):
@@ -44,7 +72,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Step 1 MEDIUM: `files.receive`'s callers list said person-only, but it was never in
   `core/presence`'s `PERSON_ONLY` (or `HUMAN_ONLY`), so the daemon's model-shell check
   (`core/daemon/index.js`'s `personal`) and the harness floor's `MODEL_NEVER` set never
-  refused it — a Claude session's own Bash could call it as "cli" and turn a Mac's receiver
+  refused it: a Claude session's own Bash could call it as "cli" and turn a Mac's receiver
   on, the exact boundary the switch exists to guard. Added `files.receive` to `PERSON_ONLY`
   (`core/presence/index.js`), next to `files.drive.access`, its closest precedent (a switch on
   an existing capability, not a secret reveal, so `PERSON_ONLY` rather than `HUMAN_ONLY`'s
@@ -53,12 +81,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   check and `config.save`; a failure there left it running (or stopped) with config.json
   disagreeing. Reordered: the check and the save happen first, and only a successful save
   starts or stops anything.
-- Step 2 MEDIUM: `sync.scan`'s exclusions were advisory only — `planHash` tagged what landed,
+- Step 2 MEDIUM: `sync.scan`'s exclusions were advisory only: `planHash` tagged what landed,
   but nothing refused a file outside the reviewed set. `sync.consent` now takes `included`
   (the approved plan's project folder names) alongside `planHash`, stored on `sync_peers`
   (`plan_included`, additive migration). `sync.upload.plan` reports an excluded file
   separately from new/changed/done, and `sync.upload.start` refuses it outright (`excluded`),
-  whatever a device sends and whatever `sync.upload.plan` said before it — enforced at the one
+  whatever a device sends and whatever `sync.upload.plan` said before it: enforced at the one
   place no device can route around, not merely reported. `sync.send` never even attempts a
   file `sync.upload.plan` already called excluded, and reports its own `excluded` count
   alongside `sent`/`failed`/`quarantined`/`skipped`.
@@ -69,7 +97,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Replaced the `NODE_TEST_CONTEXT` gate on the real `~/.claude` with `core/config`'s own
   `claudeHome(root)` rule (`sessionRoots(root)`, threaded from `ctx.paths.root`): the real
   folder only for the real `~/.vyre`, `<root>/claude` for any dev world, demo, trial or test
-  home, whatever env var happens to be set — the same rule `core/config/dialogs.js`'s
+  home, whatever env var happens to be set: the same rule `core/config/dialogs.js`'s
   `claudeHome` already gives every other module, connectors' `claudeJson` included. A
   `NODE_TEST_CONTEXT`-only check is too easy to get wrong (team-lead); this is the kernel's
   one rule instead of a second one sync invented.
@@ -86,7 +114,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - New `sync.scan { exclude? }` (core/sync/index.js, device role): lists every project folder under
   this device's own Claude Code folder (`~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects`), each
   with its session-file count and total size, so the person can see what is there and leave
-  folders out before turning `sync.consent` on. Read-only — nothing is opened or sent, only sizes.
+  folders out before turning `sync.consent` on. Read-only: nothing is opened or sent, only sizes.
   Answers `{ projects: [{ name, bytes, files, included }], total, excluded, planHash }`; `planHash`
   is a sha256 of the sorted included names, meant to be passed straight to `sync.consent`'s own
   `planHash` so an approved import is tied to what was actually reviewed here.
@@ -95,12 +123,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   in folder is never sized as if it were this device's own data).
 - Fixed in the same commit: `sessionRoots()` (shared by `sync.send` and now `sync.scan`) included
   the real `~/.claude` unconditionally, even under a test run. `sync.send` only ever compared a
-  given path against it (harmless), but `sync.scan` lists a folder's actual contents — under tests
+  given path against it (harmless), but `sync.scan` lists a folder's actual contents: under tests
   that would have read the real machine's real Claude Code folder, which RULES forbids outright.
   Now gated by `NODE_TEST_CONTEXT`, the same way `core/config/dialogs.js`'s `transcriptFolders`
   already gates it; a test reaches its own fake home only through `CLAUDE_CONFIG_DIR`.
 - module.json: `sync.scan` added to `does.tools`, plus its tip.
-- Tests: core/sync/sync-send.test.js — sizes and file counts per project, an excluded folder
+- Tests: core/sync/sync-send.test.js: sizes and file counts per project, an excluded folder
   dropping out of `total` and flipping `included` without touching disk, the same exclusions
   landing on the same `planHash` and a different set landing on a different one, and an empty
   answer (not an error) when there is no `projects` folder yet. 57/57 (core/sync, core/link,
@@ -115,13 +143,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `files.receive` was a config.json key read once at startup; a Mac never had a live way to turn it
   on beside hand-editing the file.
 - `files.received`'s payload gains `conflict: true` and a plain-language `note` when Tailscale's
-  `--conflict=rename` kept both copies rather than overwriting an existing file — its own
+  `--conflict=rename` kept both copies rather than overwriting an existing file: its own
   `--verbose` line names both the file it was handed and the file it wrote, so this is read off
   that line, not guessed from the final name's shape. `parseWrote` gains `orig` (the name before
   any rename) to carry it.
 - module.json: `files.receive` added to `does.tools`; the `receive-config` tip now says "turn on"
   with a `command`, not "set in config.json".
-- Tests: core/files/drop.test.js — the toggle starting and stopping the receiver live and writing
+- Tests: core/files/drop.test.js: the toggle starting and stopping the receiver live and writing
   config.json, person-only callers, a conflict-note case and a no-conflict case, parseWrote's new
   `orig` field.
 
@@ -131,13 +159,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `SCRUB_MAX_BYTES`), so a secret past that point landed unquarantined and Recall indexed it.
   Fixed: it now scans every chunk as it streams past to hash it, carrying a small overlap into the
   next window so a pattern split across a chunk boundary is still caught, not just a prefix.
-- LOW (reviewer): `sync.send`'s check trusted the caller label `module:import` by name alone — a
+- LOW (reviewer): `sync.send`'s check trusted the caller label `module:import` by name alone: a
   home module can call itself "import" and get that same label. `core/modules/index.js`'s loader
   now stamps `meta.firstParty` on every module-to-module `ctx.call`, from the calling module's own
-  directory (shipped in core/, local/ or modules/, reusing the existing `firstParty()` helper) — a
+  directory (shipped in core/, local/ or modules/, reusing the existing `firstParty()` helper): a
   manifest cannot grant this, same as `as`. `sync.send` now requires both the label and the flag.
   This is the same mechanism memory-iq's 2ecf79ba already added for `memory.pace` (reviewer-cleared,
-  0.1.1 batch) — checked line for line against it and kept identical rather than a second one; not
+  0.1.1 batch): checked line for line against it and kept identical rather than a second one; not
   a rebase, since 2ecf79ba sits 850+ commits from this branch's base, but the same code.
 - LOW (reviewer): `sync.upload.start`'s resume path already returned before the `MAX_OPEN` check
   and the quota's in-flight sum (read closely to confirm); added a regression test locking that in.
@@ -159,7 +187,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   import on. Now person-only (`cli`, `local`, `deck`, `capsule`).
 - MEDIUM: `sync.send`'s caller was any `module`, and read whatever path it was given. Now only
   `module:sync` and `module:import` may call it, and every path is resolved for real (symlinks
-  followed) and refused unless it lands inside `~/.claude` or `CLAUDE_CONFIG_DIR` — the device's
+  followed) and refused unless it lands inside `~/.claude` or `CLAUDE_CONFIG_DIR`: the device's
   own Claude Code folder, nothing else, ever.
 - MEDIUM x2 (quota): a chunk could grow a file past what `sync.upload.start` declared, filling the
   disk while the quota check only ever saw the declared number; and parallel starts, none finished,
@@ -191,19 +219,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - The user overruled the original design: what a device brought is the person's, not the
   device's. `sync.consent { on: false }` and unpairing (`link.unpaired`) now only stop new
-  uploads and emit `sync.revoked` informationally — neither deletes anything. New tool
+  uploads and emit `sync.revoked` informationally: neither deletes anything. New tool
   `sync.delete { machine }`, person-only, deletes `synced/<machine>/` and everything derived from
   it, and emits `sync.deleted`.
-- New tool `sync.send { files, mode }` (device role, module-only caller — `import.start`'s one
+- New tool `sync.send { files, mode }` (device role, module-only caller: `import.start`'s one
   door): walks a given file list through `sync.upload.plan/start/finish`, acks each file
-  (`sync.sending`) and summarizes when done (`sync.sent { sent, failed, quarantined, of, skipped }`
-  — the status line cohesion asked for, so a surface never goes quiet mid-import).
+  (`sync.sending`) and summarizes when done (`sync.sent { sent, failed, quarantined, of, skipped }`,
+  the status line cohesion asked for, so a surface never goes quiet mid-import).
 - core/link/mac.js: a new internal carrier, `link.upload { path, data }`, for the one thing
-  `link.remote` (JSON only) cannot send — an upload's chunk bytes as a Buffer, POSTed straight to
+  `link.remote` (JSON only) cannot send: an upload's chunk bytes as a Buffer, POSTed straight to
   the box's `/v1/sync/upload/<id>` route. Scoped to that one route only, never a general proxy.
   `link.pair` and `link.pair.request` take `kind` ("mac" or "device").
 - core/sync/module.json: sync.delete, sync.send in "does"; sync.deleted, sync.sending, sync.sent
-  in "watches.emits" (event names must be one dot, noun.verb — `sync.send.progress` and
+  in "watches.emits" (event names must be one dot, noun.verb: `sync.send.progress` and
   `sync.send.done`, my first names, failed the registry's own check).
 - Tests: core/sync/sync-send.test.js (new) sends a real file over a real paired link, chunked
   route included, not only the tool logic in isolation. core/sync/sync.test.js updated for the
@@ -221,18 +249,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   GitHub, Slack, AWS, Google, Stripe keys; PEM private keys) at ingest, before a file's final
   rename. Never redacts (a transcript's meaning depends on its exact words): an unsafe file is
   quarantined whole, under `synced/.quarantine/<machine>/`, for the person to look at.
-- core/link/box.js: `link_peers` gains `kind` ("mac", the default, or "device" — a peer paired
-  only to import its own sessions). `link.macs` and `link.macs.call` now filter to `kind = 'mac'`
-  — capability lives on the peer row, not a second identity path (e2e's review). `link.pair.
+- core/link/box.js: `link_peers` gains `kind` ("mac", the default, or "device": a peer paired
+  only to import its own sessions). `link.macs` and `link.macs.call` now filter to `kind = 'mac'`:
+  capability lives on the peer row, not a second identity path (e2e's review). `link.pair.
   request` takes `kind`. New internal tool `link.peer-of { stableId }` so core/sync can turn a
   connection's own tailnet node into the peer it is, without reaching into link's table itself.
 - core/daemon/index.js: a dedicated route, `POST /v1/sync/upload/<id>?offset=<n>`, reads the
-  request body as raw bytes (never JSON — a chunk is application/octet-stream) and calls
+  request body as raw bytes (never JSON: a chunk is application/octet-stream) and calls
   `sync.upload.chunk` with the Buffer. Refuses at once (403) when the connection carries no
-  tailnet peer identity — never reachable over the relay, from a guest, or from an agent's node.
+  tailnet peer identity: never reachable over the relay, from a guest, or from an agent's node.
 - core/link/transport.js: `connector().open`/`.json` accept a Buffer body as-is (octet-stream,
   content-length from its byte length) instead of always JSON-stringifying, for whichever side
-  eventually sends a chunk this way (the device sender, `sync.send`, is not built yet — see
+  eventually sends a chunk this way (the device sender, `sync.send`, is not built yet: see
   docs/work/federation.md).
 - Tests: 13 in core/sync (plan, start, chunk, finish, resume, cross-peer isolation, quota, unsafe
   quarantine, an unsafe machine-name folder, consent-off and unpair both deleting and emitting
@@ -271,7 +299,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   reused), and hands the file to `tailscale file cp` the same way the Mac already does for the
   box.
 - A Mac's own receiver for what the box delivers is off by default: config files.receive turns
-  it on. Without it, pairing never changes what Tailscale's own file flow does on a Mac — no
+  it on. Without it, pairing never changes what Tailscale's own file flow does on a Mac: no
   `tailscale file get --loop` runs, and every device's Taildrop keeps working exactly as before
   (e2e review of 0c645473, MEDIUM). On, it lands in `~/Vyre/inbox` (or config files.inbox), and
   is announced with files.received, unchanged.
