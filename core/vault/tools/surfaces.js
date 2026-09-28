@@ -19,14 +19,15 @@ import { LockWatch } from "../watch.js";
 import { Helper } from "../mac/helper.js";
 import { fillNative, appLabel } from "../native.js";
 import { callerKind } from "../../modules/index.js";
+import { defaultField } from "../kinds.js";
+
+const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const APP = { type: "object", properties: { bundle: { type: "string" }, pid: { type: "integer" } } };
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 
-/** The field a kind shows when nobody names one, as in vault.js. env-set has none. */
-const DEFAULT_FIELD = { secret: "value", "api-key": "value", login: "password", card: "number", note: "text", "env-set": null };
 export const CONCEAL_AFTER_S = 30;
 
 /**
@@ -39,6 +40,12 @@ function testOptions(config) {
   if (!process.env.NODE_TEST_CONTEXT) return { test: false };
   const t = config && config.vault && config.vault.testHelpers;
   return { test: true, ...(t && typeof t === "object" ? t : {}) };
+}
+
+/** vault.clipboard.pasteboard, when it is a plausible pasteboard name. */
+export function privatePasteboard(config) {
+  const p = config && config.vault && config.vault.clipboard && config.vault.clipboard.pasteboard;
+  return typeof p === "string" && /^[A-Za-z0-9._-]{1,100}$/.test(p) ? p : undefined;
 }
 
 /**
@@ -65,7 +72,9 @@ export function register({ ctx, vault }) {
   const clipboard = new Clipboard({
     helper: clipHelper,
     env: t.test && t.env ? { ...process.env, ...t.env } : process.env,
-    pasteboard: t.test ? t.pasteboard : undefined,
+    // vault.clipboard.pasteboard: a named private NSPasteboard instead of the real one (demos and
+    // click-throughs); tests may also set it through vault.testHelpers.
+    pasteboard: (t.test && t.pasteboard) || privatePasteboard(config),
     log: ctx.log,
     onEmpty: () => maybeIdle(),
   });
@@ -101,8 +110,11 @@ export function register({ ctx, vault }) {
   const pick = (name, field) => {
     const r = vault.row(name);
     if (!r) throw new Error(`no item named ${name}`);
-    const want = field || DEFAULT_FIELD[r.kind];
-    if (!want) throw new Error(`${name} is an env-set; name the field you want`);
+    // The private half of a signing key never leaves vyred: it signs there.
+    if ((r.kind === "ssh-key" && (field || "private") === "private") || (r.kind === "passkey" && (field || "private_key") === "private_key"))
+      throw new Error(`${name} is ${r.kind === "passkey" ? "a passkey" : "an ssh key"}; its private key signs inside the vault and is never shown or copied`);
+    const want = field || defaultField(r.kind, json(r.fields, []));
+    if (!want) throw new Error(`${name} is ${r.kind === "env-set" ? "an env-set" : `a ${r.kind}`}; name the field you want`);
     return { r, want };
   };
 
@@ -124,7 +136,7 @@ export function register({ ctx, vault }) {
   // unless it is reprompt, which always asks afresh.
   const sessionable = input => { const n = input && (input.name ?? input.id); return typeof n === "string" && !reprompt(vault, n); };
   const kindOf = name => { try { return vault.row(name)?.kind || "item"; } catch { return "item"; } };
-  const fieldFor = (name, field) => field || DEFAULT_FIELD[kindOf(name)] || "value";
+  const fieldFor = (name, field) => field || defaultField(kindOf(name)) || "value";
   const minutes = ttl_s => Math.max(1, Math.round((ttl_s ? Math.min(lock.max, Number(ttl_s) * 1000) : lock.max) / 60_000));
 
   // ---- sessions --------------------------------------------------------------------------

@@ -23,9 +23,13 @@ public final class Suite: @unchecked Sendable {
 
     public init(_ name: String, _ body: @escaping (Suite) -> Void) { self.name = name; self.body = body }
 
+    static let trace = ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] != nil || ProcessInfo.processInfo.environment["VYRE_CAPSULE_TRACE"] == "1"
+
     public func test(_ title: String, _ fn: () throws -> Void) {
         if let f = filter, !"\(name) \(title)".localizedCaseInsensitiveContains(f) { return }
         current = title
+        // On CI, say which test runs, so a crash (which prints nothing else) names its test.
+        if Suite.trace { FileHandle.standardError.write(Data("# \(name) · \(title)\n".utf8)) }
         let before = failures.count
         do { try fn() } catch { failures.append("\(name) · \(title): threw \(error)") }
         if failures.count == before { passed += 1 }

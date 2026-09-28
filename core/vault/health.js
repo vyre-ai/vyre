@@ -10,6 +10,8 @@
 //   rotate         marked for rotation (a sealed pass ended, or someone marked it)
 //   2fa-available  a login for a site on the bundled list that has no TOTP seed here
 //   unprotected    a personal kind still in the agents class (only when the vault has classes)
+//   expired        its details say it ended (a PAT, a certificate, a licence)
+//   expiring       it ends within EXPIRING_MS
 //
 // The breach check is separate and opt-in (vault.breach: "ask"), because it is a network call:
 // the first five characters of each password's SHA-1 go to api.pwnedpasswords.com, with padding,
@@ -19,10 +21,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { PERSONAL_KINDS, defaultField } from "./kinds.js";
 
 export const WEAK_BITS = 50;
 export const OLD_MS = 365 * 86400_000;
-const PERSONAL_KINDS = ["login", "card", "note"];
+export const EXPIRING_MS = 14 * 86400_000;
 
 /** The bundled list of domains that offer two-factor codes. */
 export function twofaDomains() {
@@ -95,7 +98,7 @@ function hostsOf(item) {
 /**
  * Judge every item. `items` carry their opened fields; the result carries none of them.
  * @param {{ name: string, kind: string, fields: Record<string, string>, url?: string|null, hosts?: string[],
- *   updated: number, rotate?: any, class?: string|null }[]} items
+ *   updated: number, rotate?: any, class?: string|null, details?: { expires?: number } }[]} items
  * @param {{ now?: number, twofa?: Set<string>, classes?: boolean }} [opts]
  * @returns {{ items: { name: string, kind: string, reasons: string[], group?: string }[], counts: Record<string, number>, checked: number }}
  */
@@ -119,7 +122,7 @@ export function judge(items, { now = Date.now(), twofa = twofaDomains(), classes
     for (const n of names) if (!groupOf.has(n)) groupOf.set(n, id);
   }
 
-  const counts = { weak: 0, reused: 0, old: 0, rotate: 0, "2fa-available": 0, unprotected: 0 };
+  const counts = { weak: 0, reused: 0, old: 0, rotate: 0, "2fa-available": 0, unprotected: 0, expired: 0, expiring: 0 };
   const out = [];
   for (const it of items) {
     const reasons = [];
@@ -130,18 +133,26 @@ export function judge(items, { now = Date.now(), twofa = twofaDomains(), classes
     if (it.rotate) reasons.push("rotate");
     if (it.kind === "login" && !it.fields.totp && hostsOf(it).some(h => twofa.has(registrable(h)) || twofa.has(h))) reasons.push("2fa-available");
     if (classes && it.class === "agents" && (PERSONAL_KINDS.includes(it.kind) || it.fields.totp)) reasons.push("unprotected");
+    const ends = it.details && Number(it.details.expires);
+    if (ends && ends <= now) reasons.push("expired");
+    else if (ends && ends - now <= EXPIRING_MS) reasons.push("expiring");
     for (const r of reasons) counts[r] += 1;
     if (reasons.length) out.push({ name: it.name, kind: it.kind, reasons, ...(groupOf.has(it.name) ? { group: /** @type {string} */ (groupOf.get(it.name)) } : {}) });
   }
   return { items: out, counts, checked: items.length };
 }
 
-/** The values reuse is judged on: passwords and single-value secrets, not usernames or notes. */
+/** The values reuse is judged on: passwords, single-value secrets and tokens, not usernames or notes. */
 function secretsOf(it) {
   const f = it.fields || {};
   if (it.kind === "login") return f.password ? [f.password] : [];
   if (it.kind === "secret" || it.kind === "api-key") return f.value ? [f.value] : [];
   if (it.kind === "env-set") return Object.values(f).filter(v => typeof v === "string" && v.length >= 8);
+  // A typed credential is judged on the value it hands over (a PAT's token, a cloud secret key).
+  if (["pat", "oauth", "cloud", "db-url", "wifi", "license"].includes(it.kind)) {
+    const k = defaultField(it.kind, Object.keys(f));
+    return k && typeof f[k] === "string" && f[k].length >= 8 ? [f[k]] : [];
+  }
   return [];
 }
 

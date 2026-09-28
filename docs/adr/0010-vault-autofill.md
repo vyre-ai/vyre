@@ -39,8 +39,9 @@ Defended:
   the tab moved between the click and the fill.
 - **A stolen browser profile.** The device token in `chrome.storage.local` lists login names for
   a page and nothing more. A value needs a session. The session token lives in memory and
-  `chrome.storage.session`, both cleared when the browser closes, and it ends after 10 minutes
-  idle or 12 hours at most.
+  `chrome.storage.session`, both cleared when the browser closes, and it ends 30 minutes after
+  the proof that opened it (ADR 0028, decision 5; this ADR first said 10 minutes idle or 12 hours
+  at most).
 - **Guessing the unlock passphrase with a stolen device token.** 5 wrong passphrases from a
   device within 15 minutes lock that device out for the rest of the window, even from the right
   passphrase. The verifier is scrypt (N=2^17, r=8, p=1), as for the vault key.
@@ -102,8 +103,9 @@ many sessions it holds. `vault.device.revoke {id}` ends a device at once, sessio
 ### A3. Unlock and sessions
 
 A device token alone never reveals a value. `unlock {passphrase}` opens a session: a second
-32-byte token, stored as sha256 in `vault_sessions`, bound to that device, ending after 10
-minutes without a fill or 12 hours after it opened, whichever is first.
+32-byte token, stored as sha256 in `vault_sessions`, bound to that device. Since ADR 0028 (decision 5) it ends 30
+minutes after it opened and use does not extend it; `vault.fill.window` (minutes, 1 to 30) can
+only shorten that. This section first said 10 minutes without a fill or 12 hours at most.
 
 The passphrase is the **unlock passphrase**, set with `vault.unlock-passphrase {passphrase}` and
 kept as a scrypt verifier in `vault_meta` under the key `unlock`. It is separate from the vault
@@ -150,7 +152,8 @@ addresses, so the extension cannot reach anything else.
 
 - A paired browser is useless on its own: a thief also needs the unlock passphrase within five
   tries, or the person's finger on the Mac.
-- A person unlocks at most every 10 minutes of use, and twice a day at most.
+- A person proves presence at most every 30 minutes of use (ADR 0028, decision 5; first every 10
+  minutes of use and twice a day at most).
 - Lookalike-domain phishing fails closed. A site that moved to a new origin needs its login put
   again with the new host, which is the price of exact matching.
 - The existing `vault.match` tool keeps its looser hostname rule for local clients. The fill

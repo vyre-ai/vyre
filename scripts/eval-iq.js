@@ -8,6 +8,8 @@
 //   node scripts/eval-iq.js --json            the same, as JSON
 //   node scripts/eval-iq.js --answer          also memory.ask on every question, its replies replayed
 //                                             from test/eval/asks/<world>.json (CI calls no model)
+//   node scripts/eval-iq.js --explain --json  --answer, and every miss with why (never on a sealed world)
+//   node scripts/eval-iq.js --fix             --answer, then correct every wrong answer as a person would and ask again
 //   node scripts/eval-iq.js --answer --record  ask the fast model (`claude -p`, testbox) and keep
 //                                             its replies there; the sealed world is recorded unread
 //   node scripts/eval-iq.js --embedder real   meaning by the real model (all-MiniLM-L6-v2), installed
@@ -42,11 +44,14 @@ import { claudeOnce, modelFor } from "../core/memory/personal/reader.js";
 import { VERSION as ASK_VERSION } from "../core/memory/iq/ask.js";
 import * as openWorld from "../test/fixtures/iq-open.js";
 import * as sealedWorld from "../test/fixtures/iq-sealed.js";
+import * as trustWorld from "../test/fixtures/personal-trust.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const WORLDS = {
   open: () => ({ world: openWorld, gold: JSON.parse(fs.readFileSync(path.join(ROOT, "test/eval/iq-open.json"), "utf8")), sealed: false }),
   sealed: () => ({ world: sealedWorld, gold: JSON.parse(fs.readFileSync(path.join(ROOT, "test/eval/iq-sealed.json"), "utf8")), sealed: true }),
+  // Source trust (the "Jordan" trap) through memory.ask: the personal trust world's sessions and questions.
+  trust: () => ({ world: { SESSIONS: trustWorld.TRUST_SESSIONS, ME: trustWorld.ME, NOW: trustWorld.NOW }, gold: JSON.parse(fs.readFileSync(path.join(ROOT, "test/eval/answer-trust.json"), "utf8")), sealed: false }),
 };
 
 export const ABLATIONS = {
@@ -55,6 +60,7 @@ export const ABLATIONS = {
   dense: { expand: false, when: false, recency: false, knobs: { dense_weight: 1 } },
   "+expand": { when: false, recency: false },
   "+when": { recency: false },
+  "-replies": { replies: false },
   full: {},
 };
 
@@ -76,11 +82,12 @@ export function scoreRetrieval(questions, got, ms) {
     if (!q.expect) return;
     n++;
     const t = targets(q), ps = got[i].slice(0, K);
-    const rank = ps.findIndex(p => t.turns.has(`${p.session}:${p.seq}`));
+    // A passage holds its turn and, for a user turn, the reply that followed.
+    const rank = ps.findIndex(p => t.turns.has(`${p.session}:${p.seq}`) || (p.reply && t.turns.has(`${p.session}:${p.reply.seq}`)));
     const h = rank >= 0;
     if (h) { hit++; rr += 1 / (rank + 1); }
     if (ps.some(p => t.sessions.has(p.session))) sess++;
-    if (ps.some(p => correct(p.text, q.expect))) ans++;
+    if (ps.some(p => correct(`${p.text}\n${p.reply ? p.reply.text : ""}`, q.expect))) ans++;
     const k = kinds[q.kind] || (kinds[q.kind] = { n: 0, hit: 0 });
     k.n++; if (h) k.hit++;
   });
@@ -92,7 +99,7 @@ export function scoreRetrieval(questions, got, ms) {
 }
 
 /**
- * @param {{ world?: "open"|"sealed", embedder?: "fake"|"real", only?: string[], answer?: boolean, record?: boolean }} [opts]
+ * @param {{ world?: "open"|"sealed"|"trust", embedder?: "fake"|"real", only?: string[], answer?: boolean, record?: boolean, fix?: boolean, explain?: boolean }} [opts]
  */
 export async function runIq(opts = {}) {
   const w = WORLDS[opts.world || "open"];
@@ -151,6 +158,8 @@ export async function runIq(opts = {}) {
       // memory.ask: right (an acceptable answer, or an abstention where there is none),
       // confident-wrong, abstained, ungrounded, and the same answer when asked again.
       let right = 0, cw = 0, abst = 0, ungrounded = 0, incons = 0, usd = 0;
+      if (opts.explain && sealed) throw new Error("--explain never runs on a sealed world");
+      const misses = [];
       const ms = [], kinds = {}, whys = {};
       for (const q of questions) {
         const r = await mem.call("memory.ask", { question: q.q });
@@ -163,10 +172,35 @@ export async function runIq(opts = {}) {
         const again = await mem.call("memory.ask", { question: q.q });
         if (again.answer !== r.answer || JSON.stringify((again.sources || []).map(x => `${x.session}:${x.seq}`)) !== JSON.stringify((r.sources || []).map(x => `${x.session}:${x.seq}`))) incons++;
         const k = kinds[q.kind] || (kinds[q.kind] = { n: 0, ok: 0 }); k.n++; if (ok) k.ok++;
+        // --explain: why each miss missed, on a world one may tune on. Never on a sealed one.
+        if (opts.explain && !sealed && !ok) {
+          const ps = (await mem.call("memory.retrieve", { question: q.q, k: K })).passages || [];
+          const t = targets(q);
+          misses.push({ kind: q.kind, q: q.q, expect: q.expect, answer: r.answer, confidence: r.confidence, why: r.why || null, known: r.known,
+            gold_in_8: ps.some(p => t.turns.has(`${p.session}:${p.seq}`) || (p.reply && t.turns.has(`${p.session}:${p.reply.seq}`))), answer_in_8: q.expect ? ps.some(p => correct(p.text, q.expect)) : null,
+            // How far the nearest retrieved turn of the gold's session is from the gold turn.
+            near: Math.min(99, ...(q.where || []).flatMap(g => ps.filter(p => p.session === g.session).map(p => Math.abs(p.seq - g.seq)))),
+            gold_role: (q.where || []).map(g => /** @type {any} */ (db.prepare("SELECT role FROM recall_turns WHERE session = ? AND seq = ?").get(g.session, g.seq))?.role).join(",") });
+        }
       }
       answered = { accuracy: round(right / questions.length), confident_wrong: cw, abstain_rate: round(abst / questions.length), ungrounded, inconsistent: incons,
         p50_ms: round(pct(ms, 0.5)), p95_ms: round(pct(ms, 0.95)), cost_usd: round(usd * 1e3) / 1e3, cost_per_question: round(usd / questions.length * 1e4) / 1e4,
-        by_kind: Object.fromEntries(Object.entries(kinds).map(([k, v]) => [k, round(v.ok / v.n)])), abstained_why: whys };
+        by_kind: Object.fromEntries(Object.entries(kinds).map(([k, v]) => [k, round(v.ok / v.n)])), abstained_why: whys, ...(opts.explain ? { misses } : {}) };
+      // --fix: the person corrects every answer IQ got wrong where it was shown, then everything is
+      // asked again. A corrected question must now be right, and nothing that was right may change.
+      if (opts.fix) {
+        const before = [], after = [];
+        for (const q of questions) { const r = await mem.call("memory.ask", { question: q.q }); before.push({ q, r, ok: q.expect ? correct(r.answer, q.expect) : !r.answer }); }
+        let applied = 0;
+        for (const b of before) {
+          if (b.ok || !b.r.answer_id) continue;
+          await mem.call("memory.correct", b.q.expect ? { answer: b.r.answer_id, action: "replace", object: String(b.q.expect[0]) } : { answer: b.r.answer_id, action: "wrong" });
+          applied++;
+        }
+        for (const q of questions) { const r = await mem.call("memory.ask", { question: q.q }); after.push(q.expect ? correct(r.answer, q.expect) : !r.answer); }
+        answered.fix = { applied, fixed: before.filter((b, i) => !b.ok && after[i]).length, still_wrong: before.filter((b, i) => !b.ok && !after[i]).length,
+          regressed: before.filter((b, i) => b.ok && !after[i]).length, accuracy_after: round(after.filter(Boolean).length / questions.length) };
+      }
       if (opts.record) {
         const replies = Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT hash, reply FROM memory_iq_asks WHERE v = ? ORDER BY hash").all(ASK_VERSION)).map(r => [String(r.hash), String(r.reply)]));
         fs.mkdirSync(path.dirname(asksFile), { recursive: true });
@@ -202,6 +236,7 @@ function print(r) {
     out.push(`    latency p50/p95 ${a.p50_ms} / ${a.p95_ms} ms (replayed replies take no model time), cost $${a.cost_usd} ($${a.cost_per_question} a question)`);
     out.push(`    by kind: ${Object.entries(a.by_kind).map(([k, v]) => `${k} ${v}`).join(", ")}`);
     out.push(`    abstained because: ${Object.entries(a.abstained_why).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+    if (a.fix) out.push(`  corrections: ${a.fix.applied} applied, ${a.fix.fixed} now right, ${a.fix.still_wrong} still wrong, ${a.fix.regressed} regressed, accuracy after ${a.fix.accuracy_after}`);
   }
   const full = r.ablations.full;
   if (full) out.push(`  full, by kind: ${Object.entries(full.by_kind).map(([k, v]) => `${k} ${v}`).join(", ")}`);
@@ -211,7 +246,7 @@ function print(r) {
 async function main(argv) {
   const wi = argv.indexOf("--world"), ei = argv.indexOf("--embedder");
   const r = await runIq({ world: /** @type {any} */ (wi >= 0 ? argv[wi + 1] : "open"), embedder: /** @type {any} */ (ei >= 0 ? argv[ei + 1] : "fake"),
-    answer: argv.includes("--answer"), record: argv.includes("--record"), only: argv.includes("--answer") ? ["full"] : undefined });
+    answer: argv.includes("--answer") || argv.includes("--fix") || argv.includes("--explain"), record: argv.includes("--record"), fix: argv.includes("--fix"), explain: argv.includes("--explain"), only: argv.includes("--answer") || argv.includes("--fix") || argv.includes("--explain") ? ["full"] : undefined });
   if (argv.includes("--json")) process.stdout.write(JSON.stringify(r, null, 1) + "\n"); else print(r);
 }
 

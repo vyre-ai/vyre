@@ -9,6 +9,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { tempHome } from "./helpers.js";
 import { safeGitEnv, gitSync } from "../lib/git-safe.js";
+import { gitState } from "../core/vault/envfiles.js";
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 
@@ -40,11 +41,13 @@ const runs = ran => (fs.existsSync(ran) ? fs.readFileSync(ran, "utf8").trim().sp
 
 test("safe git: the vault's tracked and ignored checks never run a planted fsmonitor", t => {
   const { dir, ran } = planted(t);
+  // The trap works: plain git runs it (so the test would see a regression).
   try { execFileSync("git", ["-C", dir, "ls-files", "--error-unmatch", "--", ".env"], { stdio: "ignore" }); } catch {}
   assert.ok(runs(ran).length > 0, "the planted fsmonitor runs under plain git");
   fs.rmSync(ran, { force: true });
   assert.equal(gitSync(dir, ["ls-files", "--error-unmatch", "--", ".env"]).ok, true);
   assert.equal(gitSync(dir, ["check-ignore", "-q", "--", ".env"]).ok, false);
+  assert.deepEqual(gitState(path.join(dir, ".env")), { tracked: true, ignored: false });
   assert.deepEqual(runs(ran), [], "nothing planted ran");
 });
 

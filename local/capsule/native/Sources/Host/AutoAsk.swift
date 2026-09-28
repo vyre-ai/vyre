@@ -152,7 +152,10 @@ extension CapsuleModel {
     func followUpSend(_ words: String) {
         text = ""
         guard let r = reply, !r.thread.isEmpty else {
-            Task { @MainActor in self.handle(await self.ask(words)) }
+            // A Vyre IQ answer has no thread: the follow-up starts one, told the conversation.
+            let said = convo.map { "Q: \($0.q)\nA: \($0.a)" }.joined(separator: "\n\n")
+            let context = said.isEmpty ? nil : "Earlier in this conversation:\n\n" + said
+            Task { @MainActor in self.handle(await self.ask(words, context: context)) }
             return
         }
         let who = VyreCandidate(kind: .thread, id: r.thread, label: "this answer")

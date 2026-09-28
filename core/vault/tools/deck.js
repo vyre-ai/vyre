@@ -13,6 +13,7 @@
 import { judge, breachCheck } from "../health.js";
 import { generate as makeValue } from "../generate.js";
 import { KINDS } from "../vault.js";
+import { DETAILS } from "../kinds.js";
 import { callerAllowed } from "../../modules/index.js";
 
 const str = { type: "string" };
@@ -39,7 +40,7 @@ export function register({ ctx, vault, fetch = globalThis.fetch }) {
   });
 
   ctx.tool("vault.health", {
-    description: "Watchtower: items that are weak, reused, old, marked to rotate, missing two-factor or unprotected. Names and reason codes only.",
+    description: "Watchtower: items that are weak, reused, old, marked to rotate, missing two-factor, unprotected, expired or expiring. Names and reason codes only.",
     input: obj({}),
     run: async (_input, { caller }) => {
       const cols = ctx.store.db.prepare("PRAGMA table_info(vault_items)").all().map(c => String(c.name));
@@ -55,7 +56,9 @@ export function register({ ctx, vault, fetch = globalThis.fetch }) {
         }
         let hosts = [];
         try { hosts = JSON.parse(r.hosts || "[]"); } catch {}
-        items.push({ name: r.name, kind: r.kind, fields, url: r.url, hosts, updated: r.updated, rotate: r.rotate, class: classes ? r.class : null });
+        let details = {};
+        try { details = JSON.parse(r.details || "{}"); } catch {}
+        items.push({ name: r.name, kind: r.kind, fields, url: r.url, hosts, updated: r.updated, rotate: r.rotate, class: classes ? r.class : null, details });
       }
       const out = judge(items, { classes });
       vault.audit("health", null, caller, true, `${out.checked} items, ${out.items.length} flagged`);
@@ -87,7 +90,7 @@ export function register({ ctx, vault, fetch = globalThis.fetch }) {
     description: "Add or change an item by merging fields: only the fields given are replaced, `remove` drops fields, and `generate` makes a new value on this machine that is never returned.",
     input: obj({
       name: str, kind: { type: "string", enum: KINDS }, description: str, url: str, hosts: strs,
-      fields: { type: "object" }, remove: strs,
+      fields: { type: "object" }, remove: strs, details: DETAILS,
       generate: obj({ field: str, length: { type: "integer" }, words: { type: "integer" }, symbols: { type: "boolean" } }),
     }, ["name"]),
     callers: PEOPLE,
@@ -118,7 +121,7 @@ export function register({ ctx, vault, fetch = globalThis.fetch }) {
       let hosts = input.hosts;
       if (hosts === undefined && old) { try { hosts = JSON.parse(old.hosts || "[]"); } catch { hosts = []; } }
       const r = await vault.put({ name: input.name, kind, description: input.description ?? (old ? old.description : ""), fields,
-        url: input.url !== undefined ? (input.url || undefined) : (old && old.url) || undefined, hosts }, caller);
+        url: input.url !== undefined ? (input.url || undefined) : (old && old.url) || undefined, hosts, details: input.details }, caller);
       const changed = [...Object.keys(input.fields || {}), ...(input.remove || []), ...(generated ? [generated] : [])];
       return { ...r, changed: [...new Set(changed)].sort(), ...(generated ? { generated, bits } : {}) };
     },

@@ -16,13 +16,15 @@ import { encodeTicket, encodeCard } from "./relay.js";
 import { newIdentity } from "./crypto.js";
 
 export const NEEDS_PRESENCE = [
-  "vault.put", "vault.delete", "vault.import", "vault.grant", "vault.approve", "vault.inject", "vault.totp",
+  "vault.put", "vault.delete", "vault.import", "vault.import.preview", "vault.grant", "vault.approve", "vault.inject", "vault.totp",
   "vault.backup", "vault.restore", "vault.pass.create", "vault.pass.accept", "vault.offboard", "vault.unlock",
   "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock", "vault.account.enroll-touchid", "vault.revert", "vault.migrate-key",
   "vault.resolve", "vault.render", "vault.edit", "vault.git", "vault.ssh.add", "vault.ssh.approve",
   "vault.session.open", "vault.reveal", "vault.copy", "vault.fill.native", "vault.breach.check", "vault.update",
   "vault.members.invite", "vault.members.accept", "vault.members.role", "vault.members.remove", "vault.vaults.rotate", "vault.move",
-  "vault.device.approve",
+  "vault.device.approve", "vault.agent.grant", "vault.codes", "vault.codes.import", "vault.sweep", "vault.rotate",
+  "vault.emergency.add", "vault.emergency.refresh", "vault.emergency.request", "vault.emergency.status",
+  "vault.connect", "vault.connections.grant", "vault.connections.update",
 ];
 /** Taking access away, reading names and asking for pending things never needs a person. */
 const NO_PRESENCE = ["vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
@@ -30,7 +32,11 @@ const NO_PRESENCE = ["vault.list", "vault.revoke", "vault.pending", "vault.audit
   "vault.people", "vault.fingerprint", "vault.vaults.create", "vault.vaults.list", "vault.vaults.sync",
   "vault.device.join", "vault.device.list", "vault.device.sync",
   "vault.item", "vault.ssh.keys", "vault.ssh.generate", "vault.ssh.approvals", "vault.ssh.forget",
-  "vault.session.close", "vault.session.status", "vault.caps", "vault.health", "vault.clipboard.clear", "vault.search"];
+  "vault.session.close", "vault.session.status", "vault.caps", "vault.health", "vault.clipboard.clear", "vault.search",
+  "vault.agent.grants", "vault.agent.revoke", "vault.uses", "vault.remind.run", "vault.rotation",
+  "vault.emergency.deny", "vault.emergency.remove", "vault.emergency.list", "vault.need",
+  "vault.connections.list", "vault.connections.get", "vault.connections.revoke", "vault.connections.sync",
+  "vault.connections.register", "vault.connections.unregister", "vault.connections.allowed"];
 
 test("presence: every value-out or access-giving tool declares it, with a summary", async t => {
   const { tools } = await recorded(t);

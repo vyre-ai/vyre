@@ -171,7 +171,8 @@ public enum Route {
 
     /// "4 days", "18 min". What the boards show beside a thread or a held item.
     public static func age(_ ms: Double?, now: Double = vyNowMs()) -> String {
-        guard let ms, ms != 0 else { return "" }
+        // No time, or one before 2001 (a zero or a test's small number): no age, never "691 months".
+        guard let ms, ms >= 1_000_000_000_000 else { return "" }
         let s = max(0, ((now - ms) / 1000).rounded())
         if s < 60 { return "now" }
         let m = (s / 60).rounded()

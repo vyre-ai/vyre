@@ -37,6 +37,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 21 | 14 | capsule, cli, deck |
+| [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 23 | 6 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
@@ -60,7 +61,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 27 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 109 | 42 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
@@ -288,6 +289,17 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Emits: [14 events](events.md#link)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## mail
+
+- Folder: `core/mail`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: `vault`, `gate`
+- Tools: [9](tools.md#mail), 1 of them only for other modules
+- Emits: [4 events](events.md#mail)
+- Shows on: capsule, deck
+- Needs credentials: `[object Object]`, `[object Object]`
+- Needs vault: `per-connection`
 
 ## mcp
 
@@ -547,8 +559,8 @@ One short tip at a time about the part of Vyre you are using, the parts you have
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [80](tools.md#vault), 1 of them only for other modules
-- Emits: [31 events](events.md#vault)
+- Tools: [109](tools.md#vault), 1 of them only for other modules
+- Emits: [42 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -575,6 +587,7 @@ Push-to-talk for the Capsule: streams the mic to a speech provider and relays th
 - Emits: no events
 - Shows on: capsule
 - Streams: `listen`
+- Needs credentials: `[object Object]`, `[object Object]`, `[object Object]`
 - Needs vault: `voice-deepgram-key`, `voice-openai-key`, `voice-elevenlabs-key`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
