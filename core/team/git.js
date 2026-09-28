@@ -87,15 +87,36 @@ export async function repoRoot(dir) {
   return r.ok ? r.stdout.trim() : null;
 }
 
-/** The branch currently checked out at `dir`, or null (detached HEAD, an empty repo with no commit yet). */
+/**
+ * The branch currently checked out at `dir`, or null (detached HEAD, an empty repo with no commit
+ * yet). Reads the full ref and strips the `refs/heads/` prefix ourselves, rather than asking git
+ * for `--short`: git's own shortening is ambiguity-aware, so a tag sharing the branch's short name
+ * makes `--short` hand back `"heads/<name>"` instead of `"<name>"` to disambiguate — exactly the
+ * tag-hijack shape (reviewer, slice A, MEDIUM), just leaking through here instead of a merge.
+ */
 export async function currentBranch(dir) {
-  const r = await git(dir, ["symbolic-ref", "--short", "HEAD"]);
-  return r.ok ? r.stdout.trim() : null;
+  const r = await git(dir, ["symbolic-ref", "HEAD"]);
+  if (!r.ok) return null;
+  const ref = r.stdout.trim();
+  return ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : null;
 }
 
 /** Where a role's worktree lives, and the branch it runs on: siblings of the repo, like `../vyre-<team>`. */
 export const worktreePath = (repo, role) => path.join(path.dirname(repo), `${path.basename(repo)}-${role}`);
 export const branchOf = role => `team/${role}`;
+
+/**
+ * A branch name, fully qualified as `refs/heads/<name>`, for every place vyred hands a branch or
+ * base name to git as a revision. A bare name is ambiguous: gitrevisions' own disambiguation order
+ * checks `refs/tags/<name>` *before* `refs/heads/<name>`, so a teammate's Bash (a worktree is not
+ * a security boundary) can plant a tag named like the base branch — "main", say — and have every
+ * merge and every diff range vyred computes quietly run against that tag's commit instead of the
+ * real branch tip (reviewer, slice A, MEDIUM). Never applied to a plain sha or to "HEAD", and
+ * never to `worktree add`'s own branch argument (see ensureWorktree: that one call resolves a
+ * bare name through its own branch dwim, and a fully qualified name defeats it, checking out a
+ * detached HEAD instead — a second, distinct MEDIUM the reviewer found once this fix landed).
+ */
+export const B = name => `refs/heads/${name}`;
 
 /** Does this branch already exist in the repo? */
 async function hasBranch(repo, branch) {
@@ -134,9 +155,16 @@ export async function ensureWorktree(repo, role, base) {
   }
   const bad = await unsafeConfig(repo);
   if (bad.length) return { dir, branch, ...refuse(bad, "check out a worktree") };
+  // The re-add case (an existing branch) takes the bare `branch`, not `B(branch)`: unlike merge,
+  // rev-parse and the rest of this file, `worktree add <dir> <name>` resolves a bare name through
+  // its own branch dwim (refs/heads/<name> first, to check the branch out) before it is ever
+  // treated as a generic revision, so a same-named tag can't hijack it here either way — but a
+  // fully qualified refs/heads/<name> defeats that dwim outright and checks out a detached HEAD
+  // instead (reviewer, slice A, MEDIUM, reproduced): isOwnWorktree then finds no branch at all,
+  // and every request to a re-added teammate fails as "not its own worktree any more".
   const args = (await hasBranch(repo, branch))
     ? ["worktree", "add", "--end-of-options", dir, branch]
-    : ["worktree", "add", "-b", branch, "--end-of-options", dir, base];
+    : ["worktree", "add", "-b", branch, "--end-of-options", dir, B(base)];
   const r = await git(repo, args);
   return { ok: r.ok, dir, branch, stderr: r.stderr };
 }
@@ -149,21 +177,21 @@ export async function ensureWorktree(repo, role, base) {
 export async function mergeBaseIn(worktreeDir, base) {
   const bad = await unsafeConfig(worktreeDir);
   if (bad.length) return refuse(bad, "merge");
-  const r = await git(worktreeDir, ["merge", "--no-verify", "--no-edit", "-m", `merge ${base} for the next request`, "--end-of-options", base], { env: VYRED });
+  const r = await git(worktreeDir, ["merge", "--no-verify", "--no-edit", "-m", `merge ${base} for the next request`, "--end-of-options", B(base)], { env: VYRED });
   if (!r.ok) await git(worktreeDir, ["merge", "--abort"]);
   return r;
 }
 
 /** Is `branch` ahead of `base` (real commits worth merging back)? */
 export async function aheadOf(repo, branch, base) {
-  const r = await git(repo, ["rev-list", "--count", "--end-of-options", `${base}..${branch}`]);
+  const r = await git(repo, ["rev-list", "--count", "--end-of-options", `${B(base)}..${B(branch)}`]);
   return r.ok && Number(r.stdout.trim()) > 0;
 }
 
 /** `base..branch`, as the short shas a merge request names ("team/design a1b2c3d..9e8f7a6"). */
 export async function shaRange(repo, branch, base) {
-  const from = await git(repo, ["merge-base", "--end-of-options", base, branch]);
-  const to = await git(repo, ["rev-parse", "--verify", "--end-of-options", branch]);
+  const from = await git(repo, ["merge-base", "--end-of-options", B(base), B(branch)]);
+  const to = await git(repo, ["rev-parse", "--verify", "--end-of-options", B(branch)]);
   if (!from.ok || !to.ok) return null;
   return { from: from.stdout.trim().slice(0, 7), to: to.stdout.trim().slice(0, 7) };
 }
