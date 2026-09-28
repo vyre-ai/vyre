@@ -79,7 +79,14 @@ export function createWindowView(box, opts) {
     let changed = false, prevTop = null;
     for (let i = range.end - 1; i >= range.start; i--) {
       const el = mounted.get(keys[i]);
-      if (!el) { prevTop = null; continue; }
+      // A row the caller swapped in place (session.js's patch(), for a changed turn/tool/user row,
+      // replaces the element directly in the DOM and in its own cache before calling layout()) leaves
+      // this Map holding the old, now-detached node until the mount() a few lines below refreshes it.
+      // A detached element's rect is all zeros in every browser; trusting it corrupts the chain this
+      // loop builds (each row's slot is the next mounted row's top), moving rows above it that never
+      // changed. Treat it exactly like "not mounted yet": skip it, break the chain, remeasure once
+      // mount() has put the real element back.
+      if (!el || (typeof el.isConnected === "boolean" && !el.isConnected)) { prevTop = null; continue; }
       const r = rect(el);
       if (!r) return false;
       // The next element's top: the next row, or the bottom spacer (or the row's own height when last).
