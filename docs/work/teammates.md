@@ -57,6 +57,28 @@ sessions can start section 1 now (no dependency on 2/3); chat can build `@role` 
 today's `team.ask`/`team.add` and wire the setting check once sessions ships it; chat+app-design
 agree the visual system in parallel. Sent build asks to sessions, chat and app-design.
 
+**Team-lead approved (2026-09-28)**: Sonnet+folder for an `@role`-made teammate and the hashed
+accent are both right. sessions is overloaded (rc.2 fixes, then this, then goals/`/later`), so
+to keep chat from waiting on them, I built section 1's pieces myself, at head **686e08e7**:
+`team.default.get`/`team.default.set` (a per-project on/off, person-only, new table
+`team_project_settings`), `team.project-has-any` and `team.project-append` (the actual append
+string sessions injects: the empty-project "no teammates yet" line, or the existing-teammates
+list, or `null` when the person turned the setting off). Declared as a `settings` entry
+(`team.default`, project level) in module.json so it shows in Settings without any Deck work.
+sessions' own remaining piece is small: call `team.project-append` at session start and put its
+`text` (when not null) into the session's append, ahead of the project brief. **Gotcha that cost
+real time**: tool/event names must be dash-case after the module prefix (the validator's regex),
+and a manifest that fails `validate()` is marked "invalid" with NO log line anywhere (only
+`startOne()` failures log) — `team.projectHasAny`/`team.projectAppend`/`teammate.default.changed`
+silently dropped the WHOLE `team` module out of the daemon (every existing tool, `team.add`
+included, started answering "no such tool"), and `node --check` says nothing about it since it is
+a runtime manifest-validation rule, not a syntax error. Found by booting a real daemon with
+logging on and diffing `discover()`'s `problems` directly. Renamed to `team.project-has-any` /
+`team.project-append` / `teammate.default-changed`; fixed. 42/42 team tests green (3 new), 5/5
+boundaries, `npm run docs:ref` regenerated. `test/docs-check.test.js`'s em-dash/section-sign check
+on `reference/tools.md` fails on **main already** (confirmed with `git stash`), pre-existing and
+not touched here, flagged to the lead rather than fixed on this branch.
+
 **Resume 8 brief: all 5 steps done, except step 4** (switch to sessions' lib/project-id.js slug
 regex), still blocked — work/projects (e87f63df) is still not on main as of this check. Nothing
 else queued; watching for it to land.
