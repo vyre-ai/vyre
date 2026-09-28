@@ -444,8 +444,12 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-todo-in_progress .cv-todo-text { color: var(--text); font-weight: 600; }
 .cv-todo-in_progress .cv-todo-box { border-color: var(--focus); background: var(--signal-wash); }
 
-.cv-turn { padding: 2px 0 8px; font-family: var(--sans, inherit); font-size: 12px; line-height: 16px; color: var(--label); }
-.cv-turn:empty { display: none; }
+/* An open turn's footer (blocks.js turnRow) draws no text until it ends, but the space is kept
+   from the first frame (min-height: its own line box, padding included) so the row that ends up
+   holding "18s · 4.2k tokens · $0.04" never pushes the reply below it down when it arrives
+   (native-bar budget 5: a bare `display: none` while :empty cost a 26 px shift right there). */
+.cv-turn { padding: 2px 0 8px; font-family: var(--sans, inherit); font-size: 12px; line-height: 16px; color: var(--label); min-height: 26px; }
+.cv-turn:empty { visibility: hidden; }
 .cv-earlier { display: flex; justify-content: center; padding: 4px 0 8px; }
 .cv-earlier[hidden] { display: none; }
 .cv-earlier-turns { display: flex; flex-direction: column; gap: 2px; }
