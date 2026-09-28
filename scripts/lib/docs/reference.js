@@ -510,7 +510,7 @@ const MEANING = {
   "network.port": "The port the tailnet listener serves on.",
   "network.acme": "`staging` to get test certificates while trying things out; `production` otherwise.",
   "network.box": "On a Mac: the address of the box it is paired with.",
-  "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset.",
+  "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset, except 7301 on a Mac chosen as server, which never binds 7300.",
   "network.ownerSeen": "When the owner was first seen on the tailnet. Written by Vyre.",
   "network.origins": "Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `[\"https://app.vyre.run\"]` when unset; `[]` turns it off. Each call but the reachability probe and the token exchange needs a person session.",
   term: "Terminals in the browser. `keep_hours`: how long a terminal nobody is looking at is kept before it ends (12). `max`: how many may be open at once (8). `shell`: the shell to run, in place of your login shell.",

@@ -44,6 +44,15 @@ const RELAY_JOIN_DARWIN_REASON = "relay pairing needs vyre-core to hold its keys
 export function canRelayJoin(platform) {
   return platform === "darwin" ? { relayJoin: false, reason: RELAY_JOIN_DARWIN_REASON } : { relayJoin: true, reason: null };
 }
+/**
+ * Pure, for tests: the loopback's default port when network.onboardPort is unset. 7300 (ADR
+ * 0002) everywhere except a Mac chosen as server, which must never even attempt the port a real
+ * Mac's own onboarding tunnel binds (reviewer's LOW, 28 Sep round 2) -- 7301 instead. An explicit
+ * network.onboardPort always wins, on every platform, box included.
+ */
+export function defaultOnboardPort(platform) {
+  return platform === "darwin" ? 7301 : 7300;
+}
 const GREETING = "Vyre is set up. Say hello to me in two or three sentences: who you are, and one thing you can do for me now.";
 /**
  * The commands the Tailnet Lock card shows. The person runs them on their Mac; Vyre never runs
@@ -108,12 +117,15 @@ export default {
       load: () => { try { return JSON.parse(fs.readFileSync(kept, "utf8")); } catch { return null; } },
       save: s => { if (s) fs.writeFileSync(kept, JSON.stringify(s), { mode: 0o600 }); else fs.rmSync(kept, { force: true }); },
     };
-    const lb = loopback({ handler: p => ctx.handler(p), port: Number(net().onboardPort ?? 7300), log: m => ctx.log(m), keep });
+    // Reviewer, 28 Sep round 2 (LOW): the box's own default, 7300, is the exact port RULES.md
+    // forbids binding on a Mac (the user's real onboarding tunnel to the box lives there); a
+    // Mac chosen as server must never even attempt it, "next free port if taken" (ADR 0002)
+    // notwithstanding. Solo/Server on darwin defaults one port over instead; an explicit
+    // network.onboardPort still wins on every platform, box included.
+    const lb = loopback({ handler: p => ctx.handler(p), port: Number(net().onboardPort ?? defaultOnboardPort(process.platform)), log: m => ctx.log(m), keep });
     // Reviewer, 28 Sep: onboard now loads on Solo too, so this can no longer resume
-    // unconditionally -- on a Mac that would bind the setup listener (port 7300 by default,
-    // which RULES.md forbids outright: it's the user's real onboarding tunnel to the box) with
-    // no server chosen and nothing to onboard into. Belt and braces alongside the boxOnly()
-    // guard on onboard.link itself.
+    // unconditionally -- on a Mac that would bind the setup listener with no server chosen and
+    // nothing to onboard into. Belt and braces alongside the boxOnly() guard on onboard.link.
     if (config.isServer(ctx.config.machine) && !net().ownerSeen) await lb.resume().catch(e => ctx.log(`onboard: the kept link did not reopen: ${e.message}`));
     else keep.save(null);
     let claimUrl = null;

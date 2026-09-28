@@ -52,7 +52,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `network.port` | `number` | unset | The port the tailnet listener serves on. |
 | `network.acme` | `'production'\|'staging'` | unset | `staging` to get test certificates while trying things out; `production` otherwise. |
 | `network.box` | `string` | unset | On a Mac: the address of the box it is paired with. |
-| `network.onboardPort` | `number` | unset | The loopback port onboarding listens on. 7300 when unset. |
+| `network.onboardPort` | `number` | unset | The loopback port onboarding listens on. 7300 when unset, except 7301 on a Mac chosen as server, which never binds 7300. |
 | `network.ownerSeen` | `string` | unset | When the owner was first seen on the tailnet. Written by Vyre. |
 | `network.origins` | `string[]` | unset | Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `["https://app.vyre.run"]` when unset; `[]` turns it off. Each call but the reachability probe and the token exchange needs a person session. |
 | `network.guests` | `{ enabled: boolean, people: Record<string, { tools: string[] }> }` | unset | Not described yet. |

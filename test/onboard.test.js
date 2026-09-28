@@ -15,7 +15,7 @@ import { tempHome } from "./helpers.js";
 import { bindAddress } from "../core/onboard/loopback.js";
 import { execFileSync } from "node:child_process";
 import { ptyCommand } from "../core/onboard/setup-token.js";
-import { canRelayJoin } from "../core/onboard/index.js";
+import { canRelayJoin, defaultOnboardPort } from "../core/onboard/index.js";
 
 /** A fake executable that prints `out` for any arguments. */
 function fakeBin(dir, name, out) {
@@ -297,6 +297,15 @@ test("onboard: canRelayJoin is false with a reason on darwin, true elsewhere", (
   assert.match(canRelayJoin("darwin").reason, /vyre-core/);
   assert.deepEqual(canRelayJoin("linux"), { relayJoin: true, reason: null });
   assert.deepEqual(canRelayJoin("win32"), { relayJoin: true, reason: null });
+});
+
+// Reviewer's LOW, 28 Sep round 2: a Mac chosen as server must never even attempt port 7300,
+// which a real Mac's own onboarding tunnel binds -- not "next free port if taken" (ADR 0002),
+// an outright different default.
+test("onboard: defaultOnboardPort is 7301 on darwin (never 7300), 7300 (ADR 0002) elsewhere", () => {
+  assert.equal(defaultOnboardPort("darwin"), 7301);
+  assert.equal(defaultOnboardPort("linux"), 7300);
+  assert.equal(defaultOnboardPort("win32"), 7300);
 });
 
 // Reviewer, 28 Sep: onboard.machine changes which modules load, so it must be the person's own
