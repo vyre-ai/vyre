@@ -525,7 +525,13 @@ test("peer: exePath reads the kernel's own record of the binary, not the process
   finally { child.kill(); }
 });
 
-test("peer: a real root-owned system daemon (sshd, the box's own ssh listener) with an unreadable exe is named as a server, never trusted outright", { skip: process.platform !== "linux" ? "needs /proc" : false }, () => {
+/** The oldest running sshd's pid, or 0: a CI runner (GitHub's Linux image) has no ssh daemon at all. */
+function sshdPid() {
+  if (process.platform !== "linux") return 0;
+  try { return Number(execFileSync("pgrep", ["-o", "-x", "sshd"], { encoding: "utf8" }).trim()) || 0; } catch { return 0; }
+}
+
+test("peer: a real root-owned system daemon (sshd, the box's own ssh listener) with an unreadable exe is named as a server, never trusted outright", { skip: process.platform !== "linux" ? "needs /proc" : !sshdPid() ? "no sshd running here (a CI runner); the testbox has one" : false }, () => {
   // Found running the actual CLI suite over a real ssh connection (28 Sep): the box's own sshd
   // LISTENER (root, ppid 1, its own session -- exactly the ambiguous shape a real login's top of
   // chain has) makes exePath() fail with EACCES, not "nothing to read" -- readlink on another
@@ -541,7 +547,7 @@ test("peer: a real root-owned system daemon (sshd, the box's own ssh listener) w
   // `vyre call ...`) pass as the person, no prompt, ever. So this reads unknown with a `server`
   // (the presence-once fallback everything else unrecognised gets), keyed "uid0" since there is
   // no real exe path to name -- never `{inside:false}` outright.
-  const sshd = Number(execFileSync("pgrep", ["-o", "-x", "sshd"], { encoding: "utf8" }).trim());
+  const sshd = sshdPid();
   assert.ok(sshd > 0, "this Linux testbox has no sshd to test against");
   assert.equal(exePath(sshd), null, "vyred's own uid cannot read root's /proc/<pid>/exe -- confirms the wall this fix is for");
   assert.equal(processUid(sshd), 0, "but its uid, permission-safe, says root");
