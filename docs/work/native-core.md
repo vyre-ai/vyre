@@ -125,6 +125,30 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## Resume 2026-09-28 (post-restart, cont'd)
+- **6fb2e02a: pickers.js/composer.js side of "Fork from here" done and tested.** rewindSheet
+  takes optional `onFork`/`canFork`; without them (an older caller, or chat before it wires
+  session.js) the sheet is exactly the three Restore items, unchanged. With `onFork`, a fourth
+  radio item "Fork from here" appears (off until `canFork()` says true, defaulting to `can()`);
+  picking it and hitting Enter/the go button calls `onFork(p)` only, never `onChoose`. Checked
+  threads.fork's actual answer shape in switchboard/index.js: `sb.launch`/`sb.forkAt` both return
+  `this.record(id)`, whose id field is `.id`, NOT `.thread` (my last-session note had this wrong -
+  correcting the contract I hand to chat below). composer.js needed no change: it only opens the
+  sheet via `opts.onRewind()`; the fork wiring lives entirely in pickers.js + whoever instantiates
+  rewindSheet (session.js, chat's file). 38/38 targeted (cards.test.js + session.test.js) +
+  boundaries 5/5 on testbox.
+- **Contract for chat (session.js):** pass `onFork: async p => { const res = await
+  CAPS.use("threads.fork", () => attempt("threads.fork", { thread, at: p.uuid, surface }));
+  if (res.error) return ...; open the new session the way openHref does, using res.data.id (not
+  .thread) as the session id; the original thread's own view is untouched. }` and `canFork: () =>
+  CAPS.has("threads.fork")`. Sent to chat with the status-check message; waiting on their reply on
+  session.js availability (they were mid the budget-8 reconnect fix) before that side lands.
+- **48de0bd3 and 8c0b36ca:** team-lead confirmed budget 9 (8c0b36ca) cleared. 48de0bd3 still
+  awaiting reviewer-2's sign-off - pinged them for status.
+- Next: once chat confirms session.js is free, or wires onFork themselves, verify end to end in a
+  real Chrome run; then back to the parity-gap list (top 5 chat-feel gaps still open) team-lead
+  asked for.
+
 ## RESUME HERE (saved before a restart, usage 84%)
 - **Head: 7a586676** on work/native-core-composer (this team's own worktree). Clean working tree,
   nothing uncommitted, no test-box runs left running.
