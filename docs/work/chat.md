@@ -240,16 +240,30 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   so this is safe as written, but if sight.targets ever grows a separate id/name field, match on
   that instead since two agents could in theory share a display label.
 
-## RESTART (28 Sep, post canonical-status/app-design session, head 74017fb8)
-Status for whoever resumes: budget 8's scroll jump FIXED (130f7e8d); the sight strip's LOW and nit
-FIXED (cfc98f23); session.js's side of "Fork from here" wired to native-core's contract (ffc22ef8);
-the local STATUS map dropped for sessions' canonical thread.status (f8ce247a, lead's ask after
-6e2f8a71/28a8b4f8); four of app-design's review items fixed (74017fb8: kbd chips, the rewind sheet
-as a real overlay, the lightbox focus trap - "No one is typing" on solo sessions is folded into
-f8ce247a since it touched the same lease-bar code nearby). All sent to reviewer-2 (non-security).
-Nothing uncommitted; no testbox processes running (checked and cleared several stray/stuck ones
-from earlier in the session - other teams' load spiked testbox past the load-12 rule twice; waited
-both times). Next: reviewer-2's sign-off, then whatever the lead assigns.
+## RESTART (28 Sep, post teammates-handoff session, head 2bf8ceab)
+Status for whoever resumes: budget 8, the sight strip, fork wiring, canonical status and
+app-design's first review batch (see the RESTART note below this one) are all SIGNED OFF by
+reviewer-2 (621/622 on their rerun). Since then: the teammate handoff card (2bf8ceab, teammates.md
+section 3) - its own card for team_ask/team.ask, not a generic tool row; see that commit's message
+for the KNOWN GAP (threads.post's teammate-result payload carries no request id, FIFO-by-role
+correlation only). Not yet sent to reviewer-2 - do that first on resume, non-security.
+Nothing uncommitted; no testbox processes running.
+
+Lead's fuller ask still open (not started this session, see "Next" below): @role routing in the
+composer (teammates.md section 2, create-on-first-use), and session-view states for voice
+(recording/transcribing/no-key prompt) and "From your past sessions" (memory-iq's recall.related,
+shape agreed, message id in the team inbox). Each is its own real feature, not a quick add - flag
+that honestly on resume rather than rushing a thin version of all three.
+
+LESSON for whoever runs tests on testbox this session: a `node --test` run of session.test.js
+(now ~900 lines, many `await wait()` calls) can look STUCK from `ps`'s %CPU column (0.2-0.5%
+sampled at any instant, because most of its wall-clock time really is inside those waits, not
+computing) even when it is genuinely still working and will complete in well under two minutes.
+Don't kill it on a low-CPU snapshot alone - watch the SAME PID for a few samples across a couple
+of MINUTES, or just let the foreground command exceed 120s and background itself; only kill it if
+elapsed time keeps growing with the OUTPUT FILE staying byte-for-byte empty for several minutes,
+not just a low %CPU reading. Killed it prematurely three times this session chasing what turned
+out to be a plain `$` vs `$$` typo in a new test, not a hang.
 
 ## Done (28 Sep, budget 8: reconnect scroll jump - FIXED, 130f7e8d)
 - Added temporary diagnostic logging (window.__WV_DEBUG, removed after) to measure() and the
@@ -338,6 +352,32 @@ both times). Next: reviewer-2's sign-off, then whatever the lead assigns.
 - Still open from that review: the item 2 fix (deck.css's base `.lbl` mono/uppercase is the retired
   label style, ~146 callers across the whole Deck) is cross-team, not chat's alone to land.
   testbox: deck/chat + deck/test 563/564 (1 pre-existing skip), 0 fail; boundaries + docs-check 66/66.
+  SIGNED OFF by reviewer-2 (621/622 on their rerun of deck/chat+deck/test+boundaries+docs-check+
+  core/switchboard, covering this plus 130f7e8d/cfc98f23/ffc22ef8 together).
+
+## Done (28 Sep, the teammate handoff card - teammates.md section 3, 2bf8ceab)
+- blocks.js's handoffCard(): a session calling team_ask/team.ask gets its own card (tool-row.md's
+  Handoff variant, app-design 83434944) - the teammate's avatar tile (agentAv, never coloured, per
+  avatar.md's ruling), role name, a plain "Teammate" tag, verb Asked -> Replied. The reply is turn
+  prose (markdown), not a code block. Dispatched from session.js's itemEl on tool name team_ask/
+  team.ask instead of the generic toolCard.
+- core/grouping.js: a handoff is exempt from the "folded run" collapse (BY_NAME/foldable), the
+  same exemption a plan or a todo list gets - always its own visible line, new test in
+  grouping.test.js.
+- core/session-state.js: onTool now captures a live thread.tool event's `input` when present (most
+  tools build it up as the call streams; a handoff's whole input is one small object, present from
+  the start, and the row needs the role right away, not after a reopen). New attachHandoffReply():
+  a teammate's result (threads.post -> thread.sent {kind: "teammate-result"}) attaches to the open
+  handoff that asked, never an ordinary user message; the busy-session path (thread.queued {kind:
+  "teammate-result"}) is suppressed the same way.
+- KNOWN GAP, flagged to teammates/sessions (not fixable from chat's side): threads.post's
+  teammate-result payload carries no request id, only the role - correlation is FIFO-by-role
+  (oldest open handoff for that role), exact for the common one-open-ask-per-teammate case,
+  ambiguous with more than one open at once for the same teammate.
+- Not done: this session's own live team_ask events (Chat as the composer that TYPES @role, per
+  section 2) don't exist yet - this renders whatever a MODEL's team_ask tool call produces, once
+  section 1 and 2 land. Nothing to verify end-to-end against yet on this tree.
+  testbox: deck/chat + deck/test 566/567 (1 pre-existing skip), 0 fail; boundaries + docs-check 66/66.
 
 ## Doing (28 Sep, restart after cohesion's hand-over)
 
@@ -462,9 +502,24 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
   /chat/core/caps.js, /chat/core/commands.js, /chat/core/match.js (the last two were missing already).
 
 ## Next
-- FIRST (whoever resumes): reviewer-2's sign-off on 130f7e8d (budget 8), cfc98f23 (sight strip),
-  ffc22ef8 (fork wiring), f8ce247a (canonical status) and 74017fb8 (app-design's review) - check
-  for a reply before starting new work.
+- FIRST (whoever resumes): send 2bf8ceab (the handoff card) to reviewer-2 - the other five already
+  signed off (621/622).
+- The lead's three remaining chat items (user's picks, 28 Sep), each real work, not started:
+  1. @role routing in the composer (teammates.md section 2): typing @name at the start of a
+     message sends team.ask instead of spending this session's turn; auto-create via team.add on
+     first use (team.default check, generic brief, model Sonnet); an inline confirm card
+     ("There's no research teammate yet...") with a "Don't create, answer here" fallback. Lives in
+     composer.js/composer-state.js, chat's own files - no native-core split needed for this part
+     (they're doing #5, /find, and the composer half of #3).
+  2. Session-view states for voice: recording, transcribing, no-key prompt (team-lead: capsule-pro
+     owns the setting/tool, native-core owns the composer mic - chat's part is these three states
+     in the session view once native-core's composer piece exists to hang them off of).
+  3. "From your past sessions" inline IQ card: memory-iq's recall.related shape is agreed
+     (recall.related({project_cwds, text, limit?}) -> {hits: [{session, seq, ts, name, title, cwd,
+     snippet, score}]}, msg to chat's inbox) - build the card (name/ts/snippet, a link per hit via
+     recall.thread({session})) and the composer-side trigger (as the person types, debounced).
+  None of these three are started - flagging honestly rather than shipping a rushed thin slice of
+  all three. Pick one, build it whole, then the next.
 - Budget 8's residual 4-13 px jump (down from 106 px; 6-13 px on a tree with pwa's reconnect fix
   merged): a different, smaller category than the fix above - a row above the anchor measured for
   real for the first time, replacing its ESTIMATES default. Not chased further this session (the
