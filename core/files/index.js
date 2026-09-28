@@ -56,6 +56,15 @@ export function merge(local, box, limit) {
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const hasNul = buf => buf.includes(0);
+/** Open a file the safety guard already resolved, refusing outright if the final component
+ * turns out to be a symlink by the time this actually opens it (reviewer's LOW, TOCTOU on
+ * 450c34b6): describe() checks the real path once; a model on the same uid could otherwise swap
+ * the file for a symlink out of its granted folder in the gap before this reads it. O_NOFOLLOW
+ * makes that swap fail closed (ELOOP) rather than silently follow it. */
+export function openReal(real) {
+  try { return fs.openSync(real, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); }
+  catch (e) { throw /** @type {any} */ (e).code === "ELOOP" ? new Refused() : e; }
+}
 /** Owner surfaces, modules, an agent's own session (mcp, harness) and the tailnet reader case
  * (the user's other device). Reviewer's MEDIUM 2 (450c34b6): these four used to declare no
  * callers at all, so a tailnet guest, a hook or any unrecognised kind reached them the same as
@@ -270,7 +279,12 @@ export default {
         if (d.kind === "image") {
           const t = await thumbnail(d.real, path.extname(d.name).toLowerCase());
           if (t && t.buf && t.buf.length) return { source: here, path: d.path, kind: "image", mime: t.mime, base64: t.buf.toString("base64"), thumbnail: true, size: d.size };
-          if (d.size <= SMALL_IMAGE) return { source: here, path: d.path, kind: "image", mime: d.mime, base64: fs.readFileSync(d.real).toString("base64"), thumbnail: false, size: d.size };
+          if (d.size <= SMALL_IMAGE) {
+            const ifd = openReal(d.real);
+            let ibuf;
+            try { ibuf = fs.readFileSync(ifd); } finally { fs.closeSync(ifd); }
+            return { source: here, path: d.path, kind: "image", mime: d.mime, base64: ibuf.toString("base64"), thumbnail: false, size: d.size };
+          }
           return { source: here, path: d.path, kind: "image", mime: d.mime, base64: null, thumbnail: false, size: d.size, note: "too large to preview" };
         }
         // A file with no known extension (README, LICENSE, Makefile) is tried as text too; the
@@ -278,7 +292,7 @@ export default {
         if (d.kind !== "text" && d.kind !== "code" && d.kind !== "other") return other();
         const limit = clamp(max ?? PREVIEW, 1, PREVIEW_CAP);
         const buf = Buffer.alloc(Math.min(limit, d.size));
-        const fd = fs.openSync(d.real, "r");
+        const fd = openReal(d.real);
         let n = 0;
         try { n = fs.readSync(fd, buf, 0, buf.length, 0); } finally { fs.closeSync(fd); }
         const head = buf.subarray(0, n);
@@ -298,7 +312,7 @@ export default {
       if (d.dir) throw new Error("a folder cannot be fetched");
       if (offset < 0) throw new Error("offset must not be negative");
       const len = clamp(length, 1, CHUNK);
-      const fd = fs.openSync(d.real, "r");
+      const fd = openReal(d.real);
       try {
         // Size and date from the open file itself, so they describe exactly what is read.
         const st = fs.fstatSync(fd);

@@ -15,7 +15,7 @@ import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { seams, merge } from "./index.js";
+import { seams, merge, openReal } from "./index.js";
 import { guard } from "./safety.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -560,4 +560,21 @@ test("files: a restricted agent never reaches the other machine, whatever it ask
   // search still works locally (this role's own label is "mac"), just never crosses to the box.
   const r = await callAs(reg, "kit", "files.search", { q: "engagement", where: "all" });
   assert.deepEqual(r.sources.map(s => s.source), ["mac"]);
+});
+
+test("files: openReal refuses a symlink outright, closing the check-then-open gap between describe() and the actual read (reviewer's LOW on 450c34b6)", async t => {
+  const base = tmp(t);
+  const secret = path.join(base, "outside", "id_rsa"); // deliberately outside anything a real path would ever resolve into
+  put(secret, "not a real key, just outside\n");
+  const real = path.join(base, "real.txt");
+  put(real, "hello\n");
+  const link = path.join(base, "link.txt");
+  fs.symlinkSync(secret, link);
+  // The ordinary case: a real file opens fine.
+  const fd = openReal(real);
+  fs.closeSync(fd);
+  // describe() resolved a real path once; if the final component were swapped for a symlink in
+  // the gap before this actually opens it, O_NOFOLLOW must refuse rather than follow it to
+  // wherever the symlink now points, in or out of the granted folder.
+  assert.throws(() => openReal(link), /not available/);
 });
