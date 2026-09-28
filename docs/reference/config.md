@@ -85,6 +85,10 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_COMPUTERS_IMAGE` | The container image agent computers run. Default `vyre/computer:0.1`. | `core/dockerproxy/main.js` |
 | `VYRE_COMPUTERS_LABEL_PREFIX` | The label prefix that marks Vyre's containers. Default `run.vyre.computers`. | `core/dockerproxy/main.js` |
 | `VYRE_COMPUTERS_NETWORK` | The Docker network agent computers join. Default `vyre-computers`. | `core/dockerproxy/main.js` |
+| `VYRE_CORE_DATA` | vyre-core's data directory (ADR 0040). Default `/Library/Application Support/Vyre/data`. | `core/vyre-core/main.js` |
+| `VYRE_CORE_OWNER` | The owner's uid: the only uid vyre-core answers. Required. | `core/vyre-core/main.js` |
+| `VYRE_CORE_SOCKET` | vyre-core's socket. Default `/var/run/vyre-core.sock`. | `core/vyre-core/main.js` |
+| `VYRE_CORE_STRICT` | `0` lets vyre-core start from a tree its owner could write (dev and Linux tests only). On by default on a Mac. | `core/vyre-core/main.js` |
 | `VYRE_DEBUG` | Not described yet. | `core/cli/index.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
 | `VYRE_DRIVE_ACCESS` | `ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for VyreDrive (built on Tailscale's Taildrive). `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change. | `core/files/drive.js` |

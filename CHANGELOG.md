@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### vyre-core phase 1: the daemon skeleton and presence (ADR 0040, not installed yet)
+
+- `core/vyre-core/`: vyre-core's own socket (HTTP over a unix socket), answered only for the
+  owner's uid by the kernel's word (SO_PEERCRED; LOCAL_PEERCRED on a Mac), with its own data dir
+  and presence tables. Writes (`presence.enroll`, `presence.remove`, `presence.session.open`)
+  need a proof core checks against its own keys: capsule, device or passkey signatures, or the
+  installer's one-time code for the first key. It never takes touchid or tty. `/v1/peer` is
+  core's own ancestry verdict on its own connection. Strict mode (default on a Mac) refuses to
+  start from a tree the owner's uid could write, or as the owner's uid.
+- `lib/vyre-core-client.js`: the client vyred, the CLI and tests use.
+- Nothing starts it yet; the installer is phase 4 (docs/work/vyre-core-plan.md).
+
 #### install-box.sh: shellcheck actually clean, and a quiet line for Docker's own wait
 
 - Fixed a real, previously undetected bug: `pick_look()`'s escape-code assignments
