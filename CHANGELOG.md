@@ -13,6 +13,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `core/push` routes `goal.milestone`/`goal.done` through a new `goal` kind (`kinds.goal`,
   default on), the same way it already routes `planner.fired`.
 
+#### /later: planner kind "task" and waits_on
+
+- New planner kind `task`: fires by running an instruction (`threads.post` into a named thread,
+  or `threads.launch` a fresh one under the creator's own agent - never more scope than that
+  agent already has) instead of ringing a notification. Reuses every existing time path
+  (one-off, relative, recurring) unchanged. `waits_on` chains a task after another item's own
+  `done` ("when X finishes, do Y"), resolved outside the scheduler entirely. `run_count`/
+  `last_result` on every fire; `paused` stops one task without losing its history.
+
 #### sessions.test.js split into two files (rc.2, capacity)
 
 - `core/sessions/sessions.test.js`'s ~80 real subprocess-spawning tests (both drivers) sat right

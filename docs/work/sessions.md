@@ -189,9 +189,21 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
     always tick one; re-ticking an already-done one is a no-op not a second event; the last one
     marks the goal done and emits `goal.done`), `goals.get`/`goals.list`. Self-contained, no
     cross-feature imports. 4/4 new tests, 30/30 with push + harness + boundaries.
-  Not yet built: the planner "task" kind + `waits_on` (rules 1 and 2, /later's actual firing
-  mechanism - `threads.post`/`threads.launch`, creator-scope, recurring run-count/pause). Sent
-  core/goals to the reviewer (real scoping/security logic); push routing to reviewer-2.
+  - `b786a799`: planner kind `task` + `waits_on` (rules 1 and 2 - /later's actual firing
+    mechanism). Reuses every existing time path unchanged (resolveTime, the scheduler) for
+    one-off/relative/recurring; a task with a `thread` fires via `threads.post` (the thread's own
+    scope governs it); with none, `threads.launch` with `agent: <name>` parsed from the item's
+    own `source` column (`"agent:<name>"`, already how core/planner tags an agent's item) - rule
+    1, never more than that agent's own scope; a person's own task passes no agent, ambient.
+    `waits_on` chains a task after another item's `done`, via a `planner.changed` listener,
+    entirely outside the scheduler. `run_count`/`last_result` on every fire (rule 2, a runaway
+    loop must be visible); `paused` stops one task without losing its history. Caught and fixed
+    two real bugs before shipping: `waits_on`/`paused` were accepted by the schema but silently
+    dropped at insert (missing from the row literal), and `planner.update` had no handling for
+    either despite `EDITABLE` listing them (`EDITABLE` itself turns out unused elsewhere - dead).
+    21/21 on planner.test.js, 55/55 with the rest of core/planner + boundaries.
+  Sent core/goals to the reviewer (real scoping/security logic); push routing and the planner
+  task kind to reviewer-2 (mechanical extensions of existing, already-reviewed patterns).
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
