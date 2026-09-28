@@ -312,9 +312,51 @@ test("onboard: moving to server needs a presence proof once an owner already exi
   t.after(() => d.stop());
   const later = await d.registry.call("onboard.machine", { machine: "server" }, "cli");
   assert.equal(later.error.code, "presence_required");
-  // solo and device never need it, even with an owner established.
+  // solo never needs it, even with an owner established.
   const solo = await d.registry.call("onboard.machine", { machine: "solo" }, "cli");
   assert.equal(solo.data.machine, "solo");
+});
+
+// Reviewer's HIGH, round 2: the first version exempted "no owner seen", which is permanently
+// true for every Solo Mac (role is never "box"), so a Mac was proof-free forever -- the opposite
+// of the fix. A Mac must always prove presence to become a server, with or without an owner.
+test("onboard: a Solo Mac always needs a presence proof to become a server, even with no owner ever seen", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [],
+    network: { onboardPort: 0 }, machine: "solo" }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const r = await d.registry.call("onboard.machine", { machine: "server" }, "cli");
+  assert.equal(r.error.code, "presence_required");
+});
+
+// Reviewer, round 2: "device" is set internally, once onboard.join/relay.join have already
+// confirmed a real connection; a person, an agent, or any other module must never set it, and no
+// module may set solo/server on someone's behalf either.
+test("onboard: device is set only by module:onboard or module:relay; nobody else may set it, and no module may choose solo or server", async t => {
+  const { d } = await box(t);
+  const asDevice = raw => d.registry.call("onboard.machine", { machine: "device" }, raw);
+  assert.equal((await asDevice("module:onboard")).data.machine, "device");
+  assert.equal((await asDevice("module:relay")).data.machine, "device");
+  assert.equal((await asDevice("cli")).error.code, "denied");
+  assert.equal((await asDevice("module:notes")).error.code, "denied");
+  assert.equal((await asDevice("mcp:agent:kit")).error.code, "denied");
+  const asServer = await d.registry.call("onboard.machine", { machine: "server" }, "module:onboard");
+  assert.equal(asServer.error.code, "denied");
+});
+
+// Reviewer's HIGH, round 2: onboard now loads on Solo too, so start() can no longer resume the
+// loopback listener unconditionally -- on a Mac that would bind the setup listener, which
+// RULES.md forbids outright on port 7300 (the user's real onboarding tunnel to the box), with
+// nothing to onboard into.
+test("onboard: the setup listener never binds on a machine that is not a server", async t => {
+  const root = tempHome(t);
+  const port = 17300 + Math.floor(Math.random() * 1000);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [],
+    network: { onboardPort: port }, machine: "solo" }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  await assert.rejects(fetch(`http://127.0.0.1:${port}/`), /fetch failed|ECONNREFUSED/);
 });
 
 // Reviewer, 28 Sep: onboard now loads on a Solo machine too (so onboard.machine can), but its old

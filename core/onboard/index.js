@@ -100,7 +100,12 @@ export default {
       save: s => { if (s) fs.writeFileSync(kept, JSON.stringify(s), { mode: 0o600 }); else fs.rmSync(kept, { force: true }); },
     };
     const lb = loopback({ handler: p => ctx.handler(p), port: Number(net().onboardPort ?? 7300), log: m => ctx.log(m), keep });
-    if (!net().ownerSeen) await lb.resume().catch(e => ctx.log(`onboard: the kept link did not reopen: ${e.message}`));
+    // Reviewer, 28 Sep: onboard now loads on Solo too, so this can no longer resume
+    // unconditionally -- on a Mac that would bind the setup listener (port 7300 by default,
+    // which RULES.md forbids outright: it's the user's real onboarding tunnel to the box) with
+    // no server chosen and nothing to onboard into. Belt and braces alongside the boxOnly()
+    // guard on onboard.link itself.
+    if (config.isServer(ctx.config.machine) && !net().ownerSeen) await lb.resume().catch(e => ctx.log(`onboard: the kept link did not reopen: ${e.message}`));
     else keep.save(null);
     let claimUrl = null;
     let indexing = null;
@@ -273,23 +278,39 @@ export default {
     });
 
     ctx.tool("onboard.machine", {
-      description: "ADR 0039: how Vyre runs on this machine. solo (everything here) or server (always on for other devices) are the person's own choice; device is set by onboard.join once a connection to another server is confirmed, never chosen directly here.",
+      description: "ADR 0039: how Vyre runs on this machine. solo (everything here) or server (always on for other devices) are the person's own choice; device is set by onboard.join/relay.join once a connection to another server is confirmed, never chosen directly by a person.",
+      // "device" stays in the type (checkInput has no per-caller schema, and removing it would
+      // break the already-shipped, already-reviewed relay.join -> onboard.machine wiring); the
+      // run() guard below, not the schema, is what actually stops a person or an agent choosing
+      // it -- reviewer, 28 Sep round 2.
       input: obj({ machine: { type: "string", enum: ["solo", "server", "device"] } }, ["machine"]),
       // Reviewer, 28 Sep: this tool changes which modules load, so it is the person's own action,
-      // never an agent's. "onboard" is the pre-owner loopback session (only reachable through a
-      // one-time link cli/local/capsule minted); "module" is onboard.join (tailnet, same module)
-      // calling this internally once IT has confirmed a real connection -- a different question
-      // from "can an agent flip this machine to a server by itself" (no, "mcp" is not listed).
+      // never an agent's or a third-party module's. "onboard" is the pre-owner loopback session
+      // (only reachable through a one-time link cli/local/capsule minted). "module" stays in the
+      // allowlist only so the two specific callers below can reach run() at all; which of them
+      // may do what is checked there, by the exact caller string, not by this coarse kind.
       callers: ["cli", "local", "deck", "capsule", "onboard", "module"],
       // Moving TO server turns on the eight box-only modules -- a real network-facing change --
-      // so it needs an actual presence proof; solo and device (which only ever narrow what runs)
-      // don't. Exempt while there is no owner yet (net().ownerSeen false): first-time setup is
-      // already proven by the one-time link only cli/local/capsule can mint, matching onboarding's
-      // documented passkey-enrollment exemption (ADR 0032) -- there is no passkey to prove with
-      // yet anyway. A LATER solo-to-server change, with an owner and a passkey established, does
-      // need the proof.
-      presence: { when: input => Boolean(input && input.machine === "server" && net().ownerSeen) },
-      run: async ({ machine }) => {
+      // so it needs an actual presence proof, EXCEPT the very first choice on a real box, before
+      // any owner exists: that's already proven by the one-time link only cli/local/capsule can
+      // mint (ADR 0032's own passkey-enrollment exemption; there's no passkey to prove with yet
+      // either). A Mac never gets this exemption (role is never "box"), so a Solo Mac choosing
+      // server always needs the proof -- reviewer's HIGH, round 2: the first version of this
+      // exempted "no owner seen", which is permanently true for every Solo Mac, so it was
+      // proof-free there always, the opposite of the fix.
+      presence: { when: input => Boolean(input && input.machine === "server" && !(ctx.config.role === "box" && !net().ownerSeen)) },
+      run: async ({ machine }, { caller }) => {
+        const raw = String(caller);
+        if (machine === "device") {
+          // Only onboard's own onboard.join step, or relay's relay.join, ever sets this, each
+          // after its own person-gated, presence-proved pairing (ADR 0039 section 5) -- never a
+          // person or an agent choosing it directly.
+          if (!["module:onboard", "module:relay"].includes(raw)) throw Object.assign(new Error("device is set once a connection to another server is confirmed, not chosen directly"), { code: "denied" });
+        } else if (raw.startsWith("module:")) {
+          // Any other module reaching this tool may only ever set device (above); solo and
+          // server are the person's own choice, whoever is asking on their behalf.
+          throw Object.assign(new Error("only a person chooses solo or server"), { code: "denied" });
+        }
         // machine's own default (config/index.js defaults()) already covers "no choice made
         // yet"; this tool only ever records an actual choice, so calling it with the value
         // already in effect is a safe no-op, not an error.

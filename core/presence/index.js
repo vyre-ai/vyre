@@ -74,7 +74,10 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   "presence.person.revoke",
   // Every setting is the person's own: a model never changes one, and settings relays the
   // person to the owning module's setter (e2e review, HIGH 1).
-  "settings.set", "settings.reset"]);
+  "settings.set", "settings.reset",
+  // ADR 0039: which of the eight box-only modules load is the person's own choice, never an
+  // agent's ancestry-forged one (reviewer's HOLD on 041f87f0/efbf7a2a).
+  "onboard.machine"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
 
