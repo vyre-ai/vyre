@@ -34,10 +34,10 @@ person's button to Places. Drawn on almost every board; see "Agents and their co
 Agents, teammates (kit, design) and places get tiles; only the person gets a circle. There are no photos, and no
 colour per agent or person.
 
-## Four identity families (ADR 0043)
+## Five identity families (ADR 0043)
 
 Generated-avatar work (`docs/work/app-design.md` rounds 1-5) grew the tile/circle split above
-into four families, each with its own silhouette so identity reads before the name or initial
+into five families, each with its own silhouette so identity reads before the name or initial
 does:
 
 | Family | Shape | Content |
@@ -45,7 +45,8 @@ does:
 | Person (you) | True circle | A warm two-tone gradient, a calm face, no hair or accessory - one identity, never a rolled character |
 | Assistant | Companion creature | A plump rounded body, glow halo, small ears, a curled tail, a sparkle-eyed face - its own species, not an agent in a different pose |
 | Agent | Organic blob | A spikier, more angular wobble; a plain dot-eyed face |
-| Teammate | Rounded-square tile | This section's existing tile: initial, or a rolled character with role prop |
+| Teammate | Rounded-square tile | This section's existing tile: initial, or a rolled character with role prop, plus its project's colour as a small badge |
+| Project | Rounded-square tile | A mark and a colour, never a face or creature - a project isn't a being. Dashed and unfilled while it's still a draft chat |
 
 Agent and assistant marks draw from separate palettes on purpose, so a colour coincidence never
 makes one read as the other. Full rationale and sources: ADR 0043.
@@ -77,6 +78,40 @@ the real integration contract, same convention `vyrecode2.js` already uses. Veri
 a headless-Chrome contact sheet across all 8 tones, both themes, both `--panel` and `--hover`
 backdrops (`round3b/contact-sheet-fix.png`) and in the full `avatar-showcase` in context. Locked:
 no further change to this without reopening ADR 0043 section 5.
+
+## Project tiles, locked (ADR 0043 section 6)
+
+The user's approved 5th family, 0.1.1: a project isn't a being, so `projectTile()`
+(`round4/project.js`) draws a rounded-square tile (radius = size/4, the same rule the agent and
+teammate tiles use) with a mark and a colour, never a face or a creature. `projectTile(seedBytes,
+{ draft, theme, size })`:
+
+- **Seed.** The project's stored `avatar_seed`, or its permanent id with no stored seed yet -
+  never the project's name (a rename must never reseed it), never a device or box key. Byte 0
+  picks one of 8 colours (`PROJECT_COLORS`, identity.js), byte 1 one of 6 marks (square, triangle,
+  diamond, cross, bars, grid - geometric and inanimate, a different set from the assistant's own
+  marks, checked against "No AI-brand lookalikes" below the same as everything else here).
+- **Same contrast floors.** `PROJECT_COLORS` runs through the identical `validatePalette()` this
+  section's own SKIN_TONES check uses (fill-vs-backdrop via `rimFor()`, mark-vs-fill via
+  `featureInkFor()`, the same 3:1 floor and the same backdrops) - one function, one floor, for
+  every palette in identity.js. 96 checks total (48 skin + 48 project), worst case 3.68:1.
+- **Draft.** A chat not yet filed under a project gets a tile at once, seeded from the chat's own
+  id, `draft: true`: a dashed outline, no fill, the identical colour and mark it would have as a
+  project - the colour is never swapped for a different one to make it legible. Where the raw
+  colour alone wouldn't clear the backdrop floor in that theme, a continuous rim-coloured line (the
+  same treatment the solid tile's inner ring already uses) sits underneath the dashed line at the
+  same geometry, so the boundary reads clearly without ever hiding the true colour. Becoming a real
+  project keeps the exact seed - `draft: false` is the only change. Filing into an existing project
+  swaps in that project's own seed instead (a caller choice, not something `projectTile()` decides).
+- **Teammates carry their project's colour** as a small badge (a 7px dot, top-left, clear of the
+  existing role badge at bottom-right), not a hue of their own - the "no per-teammate colour"
+  ruling above is unchanged; this is the *project's* identity, not the teammate's.
+  `character(seed, size, theme, projectColor)` draws it via `teammateProjectBadge()`
+  (`round4/project.js`), same rim-ring treatment when that colour needs one.
+
+Verified with a headless-Chrome contact sheet: all 8 colours, solid and draft, both themes, at
+20/24/32/40px - every tile reads clearly at every size down to 20px, the smallest the dashed style
+has to hold up at. Locked: no further change without reopening ADR 0043 section 6.
 
 ## The Vyre code (ADR 0043)
 
@@ -183,7 +218,7 @@ Harlow Legal"). Never a nickname or emoji in the tile.
 
 ## No AI-brand lookalikes
 
-Applies to all four families above, and to the Vyre code's ring marks - not only the assistant's
+Applies to all five families above, and to the Vyre code's ring marks - not only the assistant's
 mark. Any generated mark drawn for an identity here must not resemble a major AI brand's own
 mark: Gemini's four-point sparkle, Claude's starburst, OpenAI's knot, Copilot's shape,
 Perplexity's compass-like glyph.

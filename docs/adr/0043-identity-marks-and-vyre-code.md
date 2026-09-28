@@ -364,6 +364,69 @@ exactly - this round touched no geometry).
 **Locked.** No further changes to the teammate family's skin-tone handling without reopening this
 section.
 
+### 6. A 5th family: project tiles, locked (28 Sep, the user's approved addition)
+
+The user approved a 5th family for 0.1.1: a project isn't a being, so its tile is a rounded
+square with a mark and a colour, not a creature or a face - clearly apart from the person's
+circle, the assistant's squircle, the agent's blob and the teammate's character. Two more pieces
+came with it: a **draft** style for a chat not yet filed under any project, and a small
+**project-colour badge** a teammate wears for the project it belongs to.
+
+- **Seed.** `projectTile(seedBytes, opts)` takes the project's own stored `avatar_seed` - or, with
+  none stored yet, the project's permanent id, per the same rule `defaultAvatarOption` (2d)
+  already sets: never the project's name, never a device or box key. Byte 0 picks one of 8 colours,
+  byte 1 one of 6 marks (`square`, `triangle`, `diamond`, `cross`, `bars`, `grid` - deliberately
+  geometric and inanimate, a different shape set from the assistant's own spark/ring/chevron so a
+  project tile never reads as "an assistant in a box," and checked against "No AI-brand
+  lookalikes" the same as every other mark here).
+- **Colour.** 8 hues (`PROJECT_COLORS`, `identity.js`), spread across the same three arcs every
+  other palette here already keeps clear of lime (~80deg) and violet (~253deg). Saturation and
+  lightness are tuned per hue, not one flat value, so every hue clears the dark-ink floor with
+  margin (3.3-10.8:1) and clears its backdrop floor without help where avoidable (4.6-9.5:1 worst
+  case) - a first pass at one flat S/L across all 8 left a magenta-pink sitting at 3.13:1, legal
+  but too close to the floor for comfort.
+- **Same contrast floors, same mechanism, not a second rule.** `validatePalette()` (section 5) now
+  checks `PROJECT_COLORS` the same way it checks `SKIN_TONES` - fill-vs-backdrop via `rimFor()`,
+  mark-vs-fill via `featureInkFor()`, both against the identical 3:1 floor and the identical
+  `BACKDROPS`. 96 checks total (48 skin + 48 project), all passing, worst case 3.68:1. This is the
+  same reuse the lead asked for: one floor, one set of functions, for every palette in the module.
+- **Draft tiles.** A chat not filed under a project gets a tile at once, seeded from the chat's own
+  id, `draft: true`: a dashed outline instead of a solid fill, the identical colour and mark it
+  would have as a project - never swapped for a different colour. Where the raw colour alone
+  wouldn't clear the backdrop floor in that theme, a continuous rim-coloured line (the same
+  `rimFor()` colour/opacity already validated for the solid tile's inner ring) is drawn at the
+  identical geometry underneath the dashed line, so the boundary reads clearly through the dash
+  gaps without ever hiding the true colour - the same principle the solid tile's rim already uses
+  (add a legibility aid, never replace the identity colour), applied to a shape with no fill to
+  add it to. The mark inside gets the same treatment in miniature: fill is always the true colour,
+  with a thin rim-coloured edge only where that colour needs one. When a chat becomes a new
+  project, the project keeps that exact seed - `draft: false` is the only change, same colour,
+  same mark, now solid. When it's filed into an existing project, the caller passes that project's
+  own seed instead and the chat's own seed is dropped - a caller-side choice of which seed to pass,
+  not something `projectTile()` decides.
+- **Teammates carry their project's colour** as a small badge, not a hue of their own - avatar.md
+  already turned down a per-teammate colour (the "no colour, ever" ruling stands unchanged); this
+  is the *project's* identity showing through a teammate that belongs to it, a different thing.
+  `character()` (round3b/original.js) takes an optional fourth `projectColor` param; when set, a
+  7px dot sits top-left (the existing role badge stays bottom-right, no collision), with the same
+  rim-ring legibility treatment as everything else in this module when that colour needs one
+  against the tile's own backdrop.
+- **Shape distinctness.** Radius = size/4 in the 120-unit canvas, the same rule the agent and
+  teammate tiles already use - not the assistant's rounder size/2.2 squircle and not the person's
+  full circle, so a project tile reads as its own silhouette family at a glance, the rule section 1
+  sets for every family here.
+
+Verified visually with a headless-Chrome contact sheet (temp profile, no visible window): all 8
+colours, solid and draft, both themes, at 20/24/32/40px (20 being the smallest size the dashed
+draft style has to read at) - every tile is legible at every size, the dashed outline reads as
+"draft" even at 20px, and no draft tile's true colour disappears in either theme. The teammate
+project badge was checked the same way, both themes. Ring geometry and the skin-tone fix (section
+5) are both unaffected: `validateGeometry()` and `validatePalette()` both still pass exactly as
+recorded there.
+
+**Locked**, same as section 5: no further change to the project-tile family without reopening this
+section.
+
 ## Consequences
 
 - `avatar.md` gains the four-family table and the Vyre code section below; `pwa` ports
@@ -379,10 +442,13 @@ section.
   import it rather than restating its values. Its `validateGeometry()` is the enforcement point
   for the margin/gap invariant from 2a - run it (or let module load do so) after any edit to the
   file.
-- `round4/identity.js` now also carries `SKIN_TONES`, `featureInkFor()`, `rimFor()` and
-  `validatePalette()` (section 5) - the equivalent enforcement point for skin-tone legibility.
-  `round3b/original.js`'s `character()` imports these rather than restating them, and takes a
-  `theme` param so callers render per the live theme, same convention as `vyrecode2.js`. `native-core`
-  should import `character()`/`blob()` (and `identity.js`'s exports) from
-  `deck/vendor/avatars/round3b/original.js` and `deck/vendor/avatars/round4/identity.js` rather
-  than hand-copying values, for the same reason geometry.js is vendored, not restated.
+- `round4/identity.js` now also carries `SKIN_TONES`, `PROJECT_COLORS`, `featureInkFor()`,
+  `rimFor()` and `validatePalette()` (sections 5, 6) - the equivalent enforcement point for
+  skin-tone and project-colour legibility. `round3b/original.js`'s `character()` imports these
+  rather than restating them, and takes `theme` and `projectColor` params so callers render per
+  the live theme and the teammate's project, same convention as `vyrecode2.js`. `round4/project.js`
+  is the 5th family's own file (`projectTile()`, `teammateProjectBadge()`), importing from
+  `identity.js` the same way. `native-core` should import all of these from
+  `deck/vendor/vyrecode/` (identity.js, characters.js, geometry.js, creature.js, vyrecode2.js,
+  project.js) rather than hand-copying values, for the same reason geometry.js is vendored, not
+  restated - that's the exact path `native-core`'s own `avatars.js` already imports from.

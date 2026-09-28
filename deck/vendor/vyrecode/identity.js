@@ -131,31 +131,48 @@ function rimFor(skinHex, theme) {
   return needsRim(skinHex, theme) ? RIM[theme] : null;
 }
 
+// --- Project tiles (28 Sep, the user's approved 5th family) ---------------------------------
+// A project isn't a being - a rounded tile with a mark and colour, not a creature or a face.
+// Seeded from the project's own stored avatar_seed (falling back to its permanent id, never its
+// name, so a rename never reseeds it). 8 hues, spread across three arcs (0-50, 115-225,
+// 285-360deg) that keep the same wide margin from lime (~80deg) and violet (~253deg) every other
+// palette here already keeps - an even 45deg step would land two hues inside the lime band, so
+// these are picked by hand within the allowed arcs instead. Saturation and lightness are tuned
+// per hue (not one fixed S/L) so every hue clears the dark-ink floor with margin (3.3-10.8:1) AND
+// clears its backdrop floor without needing rimFor()'s help where avoidable (4.6-9.5:1 worst
+// case) - a flat S=60/L=48 across all 8 left one hue (a magenta-pink) sitting at 3.13:1, legal but
+// too close to the floor for comfort.
+const PROJECT_COLORS = ["#A34F3E", "#DA932F", "#2FDA4B", "#2FDA93", "#2FDADA", "#2F93DA", "#B620AA", "#BC2F6A"];
+
 /** Validates every skin tone against every theme's full backdrop set, and every skin tone against
  * its own derived feature ink - the two checks this ruling requires. Throws with the specific
  * failing combination rather than letting a bad palette edit ship silently, the same contract
- * geometry.js's validateGeometry() gives the Vyre code ring. Call after editing SKIN_TONES, DARK_INK,
- * LIGHT_INK, RIM or BACKDROPS. */
+ * geometry.js's validateGeometry() gives the Vyre code ring. Also validates PROJECT_COLORS the
+ * same way (fill-vs-backdrop via rimFor, mark-vs-fill via featureInkFor) - one function, one
+ * floor, for every palette in this module, per the lead's "same contrast floors" instruction.
+ * Call after editing SKIN_TONES, PROJECT_COLORS, DARK_INK, LIGHT_INK, RIM or BACKDROPS. */
 function validatePalette({ floor = CONTRAST_FLOOR } = {}) {
   const results = [];
-  for (const skin of SKIN_TONES) {
-    const ink = featureInkFor(skin);
-    const inkContrast = contrastRatio(skin, ink);
-    if (inkContrast < floor) {
-      throw new Error(`Skin tone ${skin}: feature ink ${ink} is ${inkContrast.toFixed(2)}:1, ` +
-        `below the ${floor}:1 floor.`);
-    }
-    for (const theme of Object.keys(BACKDROPS)) {
-      const rim = rimFor(skin, theme);
-      for (const [name, bd] of Object.entries(BACKDROPS[theme])) {
-        const rendered = rim ? hexBlend(rim.color, bd, rim.opacity) : skin;
-        const c = contrastRatio(rendered, bd);
-        if (c < floor) {
-          throw new Error(`Skin tone ${skin} in ${theme} theme against ${name} (${bd}): ` +
-            `${c.toFixed(2)}:1${rim ? " even with the rim" : " (no rim applied)"}, below the ` +
-            `${floor}:1 floor.`);
+  for (const [group, tones] of [["skin", SKIN_TONES], ["project", PROJECT_COLORS]]) {
+    for (const tone of tones) {
+      const ink = featureInkFor(tone);
+      const inkContrast = contrastRatio(tone, ink);
+      if (inkContrast < floor) {
+        throw new Error(`${group} tone ${tone}: mark/feature ink ${ink} is ${inkContrast.toFixed(2)}:1, ` +
+          `below the ${floor}:1 floor.`);
+      }
+      for (const theme of Object.keys(BACKDROPS)) {
+        const rim = rimFor(tone, theme);
+        for (const [name, bd] of Object.entries(BACKDROPS[theme])) {
+          const rendered = rim ? hexBlend(rim.color, bd, rim.opacity) : tone;
+          const c = contrastRatio(rendered, bd);
+          if (c < floor) {
+            throw new Error(`${group} tone ${tone} in ${theme} theme against ${name} (${bd}): ` +
+              `${c.toFixed(2)}:1${rim ? " even with the rim" : " (no rim applied)"}, below the ` +
+              `${floor}:1 floor.`);
+          }
+          results.push({ group, tone, theme, backdrop: name, contrast: c, rim: !!rim, ink, inkContrast });
         }
-        results.push({ skin, theme, backdrop: name, contrast: c, rim: !!rim, ink, inkContrast });
       }
     }
   }
@@ -235,6 +252,6 @@ function assistantAvatar(option = 0, size = 120) {
 
 export {
   userAvatar, assistantAvatar, USER_GRADIENTS, ASSISTANT_GRADIENTS, defaultAvatarOption,
-  SKIN_TONES, DARK_INK, LIGHT_INK, RIM, BACKDROPS, CONTRAST_FLOOR,
+  SKIN_TONES, PROJECT_COLORS, DARK_INK, LIGHT_INK, RIM, BACKDROPS, CONTRAST_FLOOR,
   featureInkFor, needsRim, rimFor, validatePalette, contrastRatio,
 };

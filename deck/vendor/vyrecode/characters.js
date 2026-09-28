@@ -11,6 +11,11 @@
 // treatment when a tone would otherwise wash into its backdrop. `character()` gained a third
 // `theme` param (default "dark", matching vyrecode2.js's own convention) to pick the right rim.
 import { SKIN_TONES, featureInkFor, rimFor } from "./identity.js";
+// The project-colour badge (the user's 5th-family addition, 28 Sep): a teammate carries its
+// project's colour as a small ring or badge, never a hue of its own (avatar.md already turned
+// that down for teammates directly - this is the project's identity showing through, not the
+// teammate's). Kept in project.js since it's that family's own contrast logic, not restated here.
+import { teammateProjectBadge } from "./project.js";
 
 function hashSeed(seed) {
   let h = 2166136261;
@@ -144,8 +149,10 @@ function roleBadge(role, color) {
  * (before the first "-") matches a known one (design/reviewer/docs/research/qa).
  * `theme` ("dark" default, matching vyrecode2.js's own convention, or "paper") picks the rim
  * colour when this skin tone needs one to clear the backdrop floor - see identity.js's rimFor().
+ * `projectColor` (optional, a PROJECT_COLORS hex): draws this teammate's project-colour badge,
+ * top-left, out of the role badge's way - see project.js's teammateProjectBadge().
  */
-function character(seed, size = 120, theme = "dark") {
+function character(seed, size = 120, theme = "dark", projectColor = null) {
   const rnd = hashSeed("char:" + seed);
   const bodyColor = pick(rnd, PASTELS);       // clothes only, round 3b
   const headColor = pick(rnd, SKIN_TONES);    // the head: a realistic skin tone, never a pastel
@@ -190,6 +197,7 @@ function character(seed, size = 120, theme = "dark") {
     ${gl}
     ${hw}
     ${badge}
+    ${showBadge ? teammateProjectBadge(projectColor, theme) : ""}
   </svg>`;
 }
 
