@@ -10,7 +10,7 @@
 // response was lost to a dropped channel is sent once more on the next channel with the same key.
 
 import { dial, FRAME, MAX_FRAME } from "./channel.js";
-import { EMPTY, base64url, fromBase64url, fromUtf8, toBytes, concat, uuidFrom } from "./bytes.js";
+import { EMPTY, base64url, fromBase64url, utf8, fromUtf8, toBytes, concat, equal, uuidFrom } from "./bytes.js";
 import { Pipe, makeResponse, lowerHeaders } from "./response.js";
 import { followEvents } from "./sse.js";
 import { webCrypto, indexedDbKeyStore } from "./webcrypto.js";
@@ -126,15 +126,14 @@ const about = a => ({
 });
 
 /**
- * Pair with a box from its QR offer: make (or reuse) this device's key, prove the one-time secret
- * and learn this device's id. Returns what `connect()` needs; store it (it holds no secret).
- * @param {string} offerUrl
+ * The handshake both `pair()` and `pairTicket()` run once they have an offer, whichever way they
+ * got it: make (or reuse) this device's key, prove the one-time secret and learn this device's
+ * id. Returns what `connect()` needs; store it (it holds no secret).
+ * @param {{ relay: string, route: string, box: Uint8Array, secret: string, name?: string }} offer
  * @param {{ name?: string, presenceKey?: { public_key: string, alg?: number }, about?: { kind?: "app"|"web", release?: string, manifest?: string }, keyStore?: import("./webcrypto.js").KeyStore,
  *   crypto?: import("./noise.js").CryptoProvider, WebSocket?: any, timeout?: number }} [o]
  */
-export async function pair(offerUrl, o = {}) {
-  const offer = parsePairUrl(offerUrl);
-  if (!offer) throw new Error("not a Vyre pairing code");
+async function pairOffer(offer, o = {}) {
   const d = defaults(o);
   const keys = await deviceKey(d);
   const hello = { v: 1, ...about(o.about), pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}) };
@@ -145,6 +144,62 @@ export async function pair(offerUrl, o = {}) {
     name: (reply && reply.box && reply.box.name) || offer.name,
     device: reply && reply.device, presence: (reply && reply.presence) || null,
   };
+}
+
+/**
+ * Pair with a box from its QR offer: the fragment carries the whole offer, so it never reaches a
+ * server (ADR 0026 section 6).
+ * @param {string} offerUrl
+ * @param {Parameters<typeof pairOffer>[1]} [o]
+ */
+export async function pair(offerUrl, o = {}) {
+  const offer = parsePairUrl(offerUrl);
+  if (!offer) throw new Error("not a Vyre pairing code");
+  return pairOffer(offer, o);
+}
+
+const TICKET_TAG = { loc: "vyre-pair-loc", sec: "vyre-pair-sec", mac: "vyre-pair-mac" };
+/** @param {import("./noise.js").CryptoProvider} crypto @param {"loc"|"sec"|"mac"} which @param {Uint8Array} ticket */
+const ticketDerive = (crypto, which, ticket) => crypto.sha256(concat(utf8(`${TICKET_TAG[which]}\n`), ticket));
+
+// The box's own name, reported by the relay (never signed by anything the relay holds) or later
+// by the box itself in the handshake reply: same stripping as core/relay/index.js's promptSafe,
+// so a name shown in a confirm line can't carry a control character, a bidi override or the like.
+const PROMPT_UNSAFE = /[\u0000-\u001f\u007f-\u009f\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]+/g;
+const promptSafe = (s, fallback, max = 64) => { const t = String(s || "").replace(PROMPT_UNSAFE, " ").replace(/ {2,}/g, " ").trim().slice(0, max); return t || fallback; };
+
+/**
+ * Pair with a box from a compact pairing ticket instead of a QR offer (ADR 0037, "Wink"): scanned
+ * off a Vyre code, which has no room for a full offer. The ticket itself never leaves this
+ * device; every value the relay sees is a one-way derivation of it under its own tag, matching
+ * core/relay/wire.js byte for byte, so the relay can neither redeem this pairing (it never learns
+ * the secret) nor substitute its own record (it never learns the MAC key that authenticates it).
+ * @param {Uint8Array} ticket 8 random bytes, scanned from the Vyre code
+ * @param {{ relay: string, fetch?: typeof fetch } & Parameters<typeof pairOffer>[1]} o
+ */
+export async function pairTicket(ticket, o) {
+  if (!o || !/^wss?:\/\/[^\s/]+/.test(String(o.relay))) throw new Error("pairTicket needs the relay this ticket's box registered with");
+  const d = defaults(o);
+  const fetchFn = o.fetch || globalThis.fetch;
+  if (!fetchFn) throw new Error("no fetch here: pass one");
+  const loc = await ticketDerive(d.crypto, "loc", ticket);
+  const secret = await ticketDerive(d.crypto, "sec", ticket);
+  const macKey = await ticketDerive(d.crypto, "mac", ticket);
+  const base = String(o.relay).replace(/\/+$/, "").replace(/^ws/, "http");
+  const res = await fetchFn(`${base}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: base64url(loc) }) });
+  if (res.status === 404) throw new Error("this pairing code has expired or was already used");
+  if (!res.ok) throw new Error(`the relay would not resolve this pairing code (${res.status})`);
+  const body = await res.json();
+  const recordText = String((body && body.record) || "");
+  const mac = fromBase64url(String((body && body.mac) || ""));
+  const wantMac = await d.crypto.hmacSha256(macKey, utf8(recordText));
+  if (!equal(mac, wantMac)) throw new Error("the relay's answer for this pairing code does not check out; refusing to pair");
+  let record;
+  try { record = JSON.parse(recordText); } catch { throw new Error("the relay's answer for this pairing code is not valid"); }
+  if (record.v !== 1 || typeof record.relay !== "string" || !ROUTE_RE.test(record.route) || typeof record.box !== "string") throw new Error("the relay's answer for this pairing code is not shaped like an offer");
+  const box = fromBase64url(record.box);
+  if (box.length !== 32) throw new Error("the relay's answer for this pairing code is not shaped like an offer");
+  return pairOffer({ relay: record.relay, route: record.route, box, secret: base64url(secret), name: promptSafe(record.name, "a Vyre box") }, o);
 }
 
 /**

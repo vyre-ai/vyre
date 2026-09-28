@@ -48,7 +48,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 9 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 14 | 5 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 15 | 6 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 22 | 8 | cli |
@@ -413,8 +413,8 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#relay), 1 of them only for other modules
-- Emits: [5 events](events.md#relay)
+- Tools: [15](tools.md#relay), 1 of them only for other modules
+- Emits: [6 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 

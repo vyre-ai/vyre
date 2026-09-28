@@ -57,6 +57,21 @@ export const authMessage = (route, challenge) => Buffer.concat([Buffer.from(`${B
 const ED_SPKI = Buffer.from("302a300506032b6570032100", "hex");
 const ED_PKCS8 = Buffer.from("302e020100300506032b657004220420", "hex");
 
+// Pairing tickets (ADR 0037, ADR 0026 section 6 amendment): a compact 64-bit random value a
+// Vyre code can carry, in place of the full offer a QR encodes. Everything derived from it and
+// handed to the relay is a one-way function of the ticket under a distinct tag, so the relay
+// never learns the pairing secret and can't forge or substitute the record it hands back
+// (reviewer, 28 Sep): a locator to store the record under, a MAC key to authenticate it with, and
+// the pairing secret itself, which only ever travels to the box (at redeem, inside the Noise
+// channel) and never to the relay at all.
+export const TICKET_BYTES = 8;
+export const TICKET_TTL = 5 * 60_000;
+const TAG = { loc: "vyre-pair-loc", sec: "vyre-pair-sec", mac: "vyre-pair-mac" };
+/** @param {"loc"|"sec"|"mac"} which @param {Buffer} ticket */
+export const ticketDerive = (which, ticket) => crypto.createHash("sha256").update(`${TAG[which]}\n`).update(ticket).digest();
+/** HMAC over the exact record bytes the relay stores and hands back, never a re-serialized copy. @param {Buffer} ticket @param {Buffer|string} record */
+export const ticketMac = (ticket, record) => crypto.createHmac("sha256", ticketDerive("mac", ticket)).update(record).digest();
+
 /** A new Ed25519 route key, raw. */
 export function newRouteKey() {
   const k = crypto.generateKeyPairSync("ed25519");

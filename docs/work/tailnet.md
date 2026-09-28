@@ -86,6 +86,41 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, latest of all: built relay.pair.ticket (ADR 0037), after the reviewer's two
+blocking fixes on the design. `core/relay/wire.js` gains `TICKET_BYTES` (8), `TICKET_TTL` (5 min),
+`ticketDerive(which, ticket)` and `ticketMac(ticket, record)`: every value derived from the raw
+ticket under its own tag (`vyre-pair-loc`, `vyre-pair-sec`, `vyre-pair-mac`), so the relay only
+ever sees a locator and a MAC-authenticated record, never the pairing secret, and can't forge or
+substitute the record either (it never learns the MAC key). `relay.pair.ticket` mints via the
+existing `mint()`-style machinery reused as `takeLiveSecret()` (a small map of live ticket
+secrets alongside the classic single `pairing` slot, both single-use, both checked by admission);
+registers `{loc, record, mac, exp}` with the relay over the already-open control socket
+(`link.registerTicket`, queued if not yet connected); refuses on darwin via the renamed, shared
+`macCoreRefusal` (was `relayJoinRefusal`). `relay/node/server.js` gets the relay's half: a
+`pairTickets` map (single-use, swept on insert), `POST /v1/pair` (a locator in the body, never a
+URL, so it never lands in an access log), rate-limited per IP and globally, and on the control
+socket a handler for `{t:"ticket", ...}` after auth (previously silently ignored everything post-
+auth). `relay/client/client.js` gets the phone's half: `pairTicket(ticket, o)`, which derives the
+same three values, resolves, verifies the MAC itself (so a dishonest relay operator's substituted
+record fails before any pairing attempt), then reuses the exact same handshake `pair()` already
+ran, refactored into a shared `pairOffer()`. The lead's two additions folded in: the device's own
+name at pairing is sanitised and capped exactly like the box's own name (moved `promptSafe` up so
+`admit()` can use it, replacing the plain regex check); `relay.paired {device, name}` fires
+alongside `device.paired`, but only for a ticket pairing, so the Deck's own scan screen doesn't
+react to someone pairing a different device with the classic QR. `relay.devices.rename` already
+covers the person-only rename ask (its `owner()` check is exactly that; no new tool). Gotcha that
+cost the most time: a module that emits an event or registers a tool not listed in its own
+module.json manifest fails to start AT ALL, silently, everywhere in the daemon (every other
+module's tools still loaded; only relay showed zero tools) — `does.tools` needed
+`relay.pair.ticket` and `watches.emits` needed `relay.paired`, both easy to miss since nothing
+about the tool/event definition itself hints at the manifest requirement. Tests (testbox): 23/23
+relay.test.js (6 new: mint+resolve+redeem end to end with the real relay/client/client.js code
+paired against a real vyred, not a hand-rolled test double; the device's own name sanitised;
+the relay never learns the secret and a tampered record fails the MAC; the darwin refusal; a
+rate-limit check), 78/78 boundaries+hygiene+docs-build+docs-index+modules, 38/38
+relay/worker/worker.test.js (untouched, still green), 24/24 relay/client's own unit tests, 7/7
+relay/node/server.test.js. Regenerated docs/reference/*. Sent to the reviewer.
+
 28 Sep 2026, later still: binding user decision, relay-first everywhere ("Wink" in copy — same
 mechanism as the scan-to-pair note below, renamed). Servers skip Tailscale too by default.
 Claimed ADR 0038 (docs/work/README.md), amends ADR 0002 and ADR 0014. Design note sent to the
@@ -722,11 +757,28 @@ restart vyred, and check with `vyre call vault.grants.status`. `7301` is `vault.
 Listed by the area they touch, so the merge can go in order. Everything below is off by default.
 
 - **relay** (28 Sep, own): `relay.join` refuses on darwin (`not_available_here`) until vyre-core
-  (ADR 0040) holds the joining device's own key; new export `relayJoinRefusal(platform)`; its
-  `presence.when` no longer always requires a proof (skips the prompt on darwin, since the call
-  can only refuse there); its Touch ID prompt now sanitises the relay host the same way as the
-  box's own name (shared `promptSafe` helper, widened to Unicode format/bidi characters, host
-  capped at 64).
+  (ADR 0040) holds the joining device's own key; new export `macCoreRefusal(platform)` (renamed
+  from `relayJoinRefusal`, now shared with `relay.pair.ticket`); its `presence.when` no longer
+  always requires a proof (skips the prompt on darwin, since the call can only refuse there); its
+  Touch ID prompt now sanitises the relay host the same way as the box's own name (shared
+  `promptSafe` helper, moved up so `admit()` can use it too, widened to Unicode format/bidi
+  characters, host capped at 64).
+- **relay** (28 Sep, ADR 0037, own): tool `relay.pair.ticket` (input `{}`, output
+  `{ ticket, expiresAt, connected }`), refuses on darwin like `relay.join`; a device's own name at
+  pairing (both the classic QR and ticket paths) is now sanitised with `promptSafe`, capped at 64,
+  in place of the old plain `NAME` regex check; event `relay.paired { device, name }`, only for a
+  ticket pairing; `core/relay/wire.js` exports `TICKET_BYTES`, `TICKET_TTL`, `ticketDerive(which,
+  ticket)`, `ticketMac(ticket, record)`; `core/relay/link.js`'s `relayLink()` return gains
+  `registerTicket({ loc, record, mac, exp })` (queued until the control socket is connected, sent
+  once, best effort); module.json `does.tools` and `watches.emits` updated (a tool or event a
+  module's own manifest doesn't list fails that module's start silently, with every other module
+  unaffected — the gotcha of this session).
+- **relay/node** (own): `POST /v1/pair` (body `{ loc }`, answers `{ record, mac }` or 404,
+  rate-limited per IP and globally); the control socket, previously silent after auth, now handles
+  `{ t: "ticket", loc, record, mac, exp }`.
+- **relay/client** (own): new export `pairTicket(ticket, o)`; `pair()`'s handshake body extracted
+  into an unexported `pairOffer(offer, o)`, which both now call; no change to either's return
+  shape or to `connect()`.
 - **onboard**: tool `onboard.join` (`{ action: "status"|"tailscale"|"relay"|"verify", step?,
   node?, becomeDevice? }`), box role (matches onboard's own). Forwards only, through onboard's own
   functions for tailscale and ctx.call for relay/link/onboard.machine; reads and writes nothing of

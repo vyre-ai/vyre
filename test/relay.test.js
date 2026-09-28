@@ -14,9 +14,12 @@ import { createRelay } from "../relay/node/server.js";
 import { keyPair } from "../core/relay/noise.js";
 import { deviceSide } from "../core/relay/channel.js";
 import { parsePairUrl, pairUrl } from "../core/relay/pairing.js";
-import { relayJoinRefusal } from "../core/relay/index.js";
+import { macCoreRefusal } from "../core/relay/index.js";
 import { useReleasesFile } from "../core/relay/releases.js";
 import { signed } from "../core/presence/person.js";
+import { pairTicket } from "../relay/client/client.js";
+import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
+import { fromBase64url } from "../relay/client/bytes.js";
 import crypto from "node:crypto";
 import { tempHome } from "./helpers.js";
 
@@ -472,11 +475,11 @@ test("relay: relay.join is not available on a Mac until vyre-core holds its own 
   // A pure function of an explicit platform (like installCommand/operator elsewhere), so this
   // does not depend on the OS running the suite: darwin always refuses, every other platform
   // (this test box's own linux included) never does.
-  const refusal = relayJoinRefusal("darwin");
+  const refusal = macCoreRefusal("darwin");
   assert.equal(refusal.code, "not_available_here");
   assert.match(refusal.message, /vyre-core/);
-  assert.equal(relayJoinRefusal("linux"), null);
-  assert.equal(relayJoinRefusal("win32"), null);
+  assert.equal(macCoreRefusal("linux"), null);
+  assert.equal(macCoreRefusal("win32"), null);
 
   // End to end, as if this box were a Mac: relay/index.js resolves platform once when its
   // start() runs (seam.platform || process.platform), so flip process.platform before starting
@@ -492,4 +495,95 @@ test("relay: relay.join is not available on a Mac until vyre-core holds its own 
   const bogus = `https://vyre.run/pair#${Buffer.from(JSON.stringify({ v: 1, r: "wss://relay.example.com", i: "a".repeat(26), k: Buffer.alloc(32).toString("base64url"), s: "x", n: "test" })).toString("base64url")}`;
   const r = await d.registry.call("relay.join", { url: bogus }, "cli", PROOF);
   assert.equal(r.error.code, "not_available_here");
+});
+
+test("relay: relay.pair.ticket mints a Vyre-code ticket, a phone resolves and redeems it, and only device.paired + relay.paired fire", async t => {
+  const { d } = await world(t);
+  const seen = [];
+  d.events.on("device.paired", e => seen.push(["device.paired", e.payload || e]));
+  d.events.on("relay.paired", e => seen.push(["relay.paired", e.payload || e]));
+
+  const minted = await d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  assert.ok(minted.data, JSON.stringify(minted.error));
+  const { ticket, expiresAt } = minted.data;
+  assert.ok(expiresAt > Date.now() && expiresAt <= Date.now() + 5 * 60_000 + 1000, "5-minute TTL");
+
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const paired = await pairTicket(fromBase64url(ticket), {
+    relay: status.url, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "phone-key.json")),
+  });
+  assert.ok(paired.device, "the phone is paired");
+  assert.equal(paired.name, "alex", "the box's own configured name round-tripped through the relay's record");
+  const devices = (await d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices;
+  const row = devices.find(x => x.id === paired.device);
+  assert.ok(row, "the device shows up in relay.devices.list");
+  assert.equal(row.name, "Alex's iPhone");
+
+  assert.equal(seen.filter(([n]) => n === "device.paired").length, 1);
+  const rp = seen.find(([n]) => n === "relay.paired");
+  assert.ok(rp, "relay.paired fires for a ticket pairing");
+  assert.deepEqual(rp[1], { device: paired.device, name: "Alex's iPhone" });
+
+  // Single-use: resolving (and so redeeming) the same ticket again is refused outright.
+  await assert.rejects(() => pairTicket(fromBase64url(ticket), { relay: status.url, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "phone-key-2.json")) }),
+    /expired or was already used/);
+});
+
+test("relay: a device's own name at ticket pairing is sanitised and capped like the box's own name", async t => {
+  const { d } = await world(t);
+  const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const hostileName = `Alex\u0007's phone‮${"z".repeat(120)}`;
+  const paired = await pairTicket(fromBase64url(minted.ticket), {
+    relay: status.url, name: hostileName, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "phone-key.json")),
+  });
+  const row = (await d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find(x => x.id === paired.device);
+  assert.ok(row.name.length <= 64, row.name);
+  assert.doesNotMatch(row.name, /[\u0007‮]/);
+});
+
+test("relay: the relay never learns the pairing secret, and a tampered record fails the phone's MAC check", async t => {
+  const { ticketDerive } = await import("../core/relay/wire.js");
+  const { d } = await world(t);
+  const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const raw = fromBase64url(minted.ticket);
+  // The same locator a phone would derive from the ticket (this is what proves the derivation
+  // matches byte for byte between core/relay/wire.js and relay/client/client.js: a phone that
+  // derived it differently would never find the record at all).
+  const loc = ticketDerive("loc", Buffer.from(raw)).toString("base64url");
+  const res = await fetch(`${status.url.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(Object.keys(body).sort().join(","), "mac,record", "nothing else, and certainly no secret, ever leaves the relay");
+  assert.doesNotMatch(body.record, /vyre-pair-sec/);
+
+  // A tampered record (a dishonest relay operator substituting their own box) fails the MAC a
+  // phone checks locally, before it ever tries to pair with what the record names.
+  const tampered = JSON.stringify({ ...JSON.parse(body.record), box: Buffer.alloc(32, 9).toString("base64url") });
+  const badFetch = async () => ({ ok: true, status: 200, json: async () => ({ record: tampered, mac: body.mac }) });
+  await assert.rejects(() => pairTicket(raw, { relay: status.url, fetch: badFetch, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "phone-key.json")) }),
+    /does not check out/);
+});
+
+test("relay: relay.pair.ticket refuses on darwin, before any Touch ID prompt, the same as relay.join", async t => {
+  const refusal = macCoreRefusal("darwin");
+  assert.equal(refusal.code, "not_available_here");
+  const real = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+  t.after(() => Object.defineProperty(process, "platform", real));
+  const { d } = await world(t);
+  const def = d.registry.tools.get("relay.pair.ticket");
+  assert.equal(await def.presence.when(), false, "no prompt on darwin: the call can only refuse");
+  const r = await d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  assert.equal(r.error.code, "not_available_here");
+});
+
+test("relay: /v1/pair is rate-limited per IP", async t => {
+  const { d } = await world(t);
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const base = status.url.replace(/^ws/, "http");
+  let last;
+  for (let i = 0; i < 31; i++) last = await fetch(`${base}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "x".repeat(24) }) });
+  assert.equal(last.status, 429);
 });
