@@ -114,6 +114,24 @@ jobs:
             throw "the owner could not connect to their own socket"
           }
 
+          # Reviewer, section 7a point 2b: vyred must win the pipe's first instance and refuse
+          # rather than silently move to a different name on conflict. A second vyred against the
+          # SAME home must exit quickly and never bind a second time. (core/daemon/index.js's
+          # existsSync+ping pre-check should catch this generically; this proves it against a
+          # named pipe specifically, not assumed from the POSIX case.)
+          $second = Start-Process -FilePath node -ArgumentList "core/daemon/main.js" -PassThru -Wait `
+            -RedirectStandardOutput "$env:RUNNER_TEMP\vyred2.out" -RedirectStandardError "$env:RUNNER_TEMP\vyred2.err" -WindowStyle Hidden
+          if ($second.ExitCode -eq 0) {
+            Write-Output "--- vyred2.out ---"; Get-Content "$env:RUNNER_TEMP\vyred2.out" -ErrorAction SilentlyContinue
+            Write-Output "--- vyred2.err ---"; Get-Content "$env:RUNNER_TEMP\vyred2.err" -ErrorAction SilentlyContinue
+            throw "a second vyred against the same home exited 0 instead of refusing to start"
+          }
+          # And the first vyred must still be the one actually listening, not replaced.
+          $alive = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+          if (-not $alive) { throw "the first vyred died while a second one tried to start against the same home" }
+          node scripts/win-connect-probe.mjs "$sockPath"
+          if ($LASTEXITCODE -ne 0) { throw "the original vyred stopped answering after a conflicting second start attempt" }
+
           # net user warns interactively (and hangs, non-interactive) past 14 characters, the old
           # pre-Windows-2000 LM-compat limit; keep this at or under it.
           $pw = "Vy" + [guid]::NewGuid().ToString("N").Substring(0, 9) + "!1"

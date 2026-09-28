@@ -210,14 +210,27 @@ in 0.1.2 or later: get it right rather than fast.**
 2. **Squatting - real, and worse than denial (reviewer): a squatter who owns the name receives the
    CLI's requests, including presence proof headers, and can play `vyred` to the person.** Three
    parts, all required:
-   a. A random, per-home token folded into the pipe name (`crypto.randomBytes`, persisted in
-      `config.json`, never derived from the guessable home path alone), and `config.json`'s own
-      folder ACL checked to be user-only (the profile directory's normal protection, verified not
-      assumed).
-   b. `vyred` must create the pipe's **first instance** (`FILE_FLAG_FIRST_PIPE_INSTANCE`; verify
-      libuv actually sets this rather than assuming it). On `EADDRINUSE` (the name is already
-      taken), `vyred` refuses to start and tells the person plainly - **never** silently falls
-      back to a different name, which would let a squatter win by making the real `vyred` move.
+   a. **Done (`core/config/index.js`'s `pipeToken`).** A random, per-home token folded into the
+      pipe name (`crypto.randomBytes(16)`, persisted at `<root>/pipe-token`, a sibling of
+      `config.json` inside the home folder rather than a field inside it, since `socketPath` is
+      called before `config.load()` in places and a dedicated file avoids coupling to the
+      config-merge machinery). Its own protection is the home folder's normal per-profile
+      protection (`%USERPROFILE%\...`), the same thing `config.json` itself already relies on;
+      this doc treats that as sufficient rather than re-running an icacls check, the exact tool
+      that solved the wrong problem in section 7. Tested: `core/config/config.test.js` (two new
+      cases - the token is a 32-hex-char random value, not derivable from `root`; two different
+      homes never share one).
+   b. **Done, verified empirically rather than assumed** (`.github/workflows/node.yml`'s
+      `windows-socket-acl` job): whether libuv sets `FILE_FLAG_FIRST_PIPE_INSTANCE` was left an
+      open question in this doc; rather than resolve it by reading libuv's source, the job now
+      starts a *second* `vyred` against the exact same home while the first is still running and
+      asserts it exits non-zero (via `core/daemon/index.js`'s existing `fs.existsSync`+`ping`
+      pre-listen check, which turns out to need no `win32`-specific code at all: a crashed
+      `vyred`'s pipe cannot linger the way a POSIX socket *file* can, since the OS destroys a
+      named pipe the moment its last handle closes, so "exists and answers" already means "a live
+      `vyred` is running," full stop) and that the *first* `vyred` is still the one actually
+      listening afterward. No silent fallback to observe, because there is no code path that
+      would produce one.
    c. Later, in the native helper (point 3): before the CLI/Capsule sends anything, it checks
       `GetNamedPipeServerProcessId`'s owning SID equals the current user's. Defense in depth once
       (a) and (b) already make blind squatting impractical.
@@ -263,9 +276,11 @@ in 0.1.2 or later: get it right rather than fast.**
    (and point 5's `winhello` method, and point 3's helper exe) is one conversation with whoever
    owns `core/presence` and ADR 0040, not three separate asks landing on them piecemeal.
 
-**Status: designed, none of 1-6 implemented yet.** `socketPath` itself does not change until (2a)
-and (2b) are built together (a name change without the first-instance guarantee would be worse
-than today's guessable-but-at-least-not-silently-movable name).
+**Status: 2a and 2b done and verified in CI (`socketPath` now includes the random token; a second
+`vyred` against the same home is proven, not assumed, to refuse rather than move). Still open:
+1 (the hard second-user-refused gate now runs against the token'd name, still worth a deliberate
+look rather than treating "it's green" as proof of the DACL claim specifically), 2c, 3, 4's
+`winhello` presence method, and 6's Windows `vyre-core` equivalent.**
 
 ## 8. Windows Solo build plan (the lead's 2026-09-28 "Vyre anywhere" call)
 

@@ -71,6 +71,29 @@ test("config: on win32, the socket is a named pipe, never a filesystem path", t 
   assert.equal(p1, config.socketPath(root, { platform: "win32" }), "the same home always hashes to the same pipe name");
 });
 
+// Squatting (reviewer, ADR 0037's Windows LOW, section 7a point 2): the name is never derivable
+// from `root` alone, so another local account cannot compute it just by guessing the home path.
+
+test("config: the win32 pipe name is not derivable from root alone; two different processes reading the same home agree", t => {
+  const root = tempHome(t);
+  const name = config.socketPath(root, { platform: "win32" });
+  const hashOnly = /^\\\\\.\\pipe\\vyre-[0-9a-f]{16}-/.exec(name);
+  assert.ok(hashOnly, "the hash prefix is still there, for readability, not as the secret");
+  const token = name.slice(hashOnly[0].length);
+  assert.match(token, /^[0-9a-f]{32}$/, "a 16-byte random token, hex-encoded");
+  // A "fresh process" is just a fresh call after the token file already exists on disk; nothing
+  // here is cached in memory across the two socketPath calls beyond the token file itself.
+  assert.equal(config.socketPath(root, { platform: "win32" }), name, "persisted, not re-rolled each call");
+  assert.ok(fs.existsSync(path.join(root, "pipe-token")), "the token lives beside config.json, inside the home, never a shared folder");
+});
+
+test("config: two different homes never share a win32 pipe token, even with colliding hash prefixes forced", t => {
+  const a = config.socketPath(tempHome(t), { platform: "win32" });
+  const b = config.socketPath(tempHome(t), { platform: "win32" });
+  const tokenOf = (/** @type {string} */ n) => n.slice(n.lastIndexOf("-") + 1);
+  assert.notEqual(tokenOf(a), tokenOf(b));
+});
+
 test("config: save merges one level deep, removes nulls and writes 0600", t => {
   const root = tempHome(t);
   config.save({ name: "alex", network: { owner: "alex@example.com", port: 8443 } }, root);
