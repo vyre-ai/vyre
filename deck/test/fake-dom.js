@@ -46,8 +46,8 @@ class Element extends Node {
   get classList() {
     const el = this;
     const list = () => el.className.split(/\s+/).filter(Boolean);
-    return { contains: c => list().includes(c), add: c => el.setAttribute("class", [...new Set([...list(), c])].join(" ")),
-      remove: c => el.setAttribute("class", list().filter(x => x !== c).join(" ")),
+    return { contains: c => list().includes(c), add: (...cs) => el.setAttribute("class", [...new Set([...list(), ...cs])].join(" ")),
+      remove: (...cs) => el.setAttribute("class", list().filter(x => !cs.includes(x)).join(" ")),
       toggle: (c, on) => { const has = list().includes(c); const want = on === undefined ? !has : on; if (want) el.classList.add(c); else el.classList.remove(c); return want; } };
   }
   get value() {
