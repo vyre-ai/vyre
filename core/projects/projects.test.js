@@ -426,3 +426,25 @@ test("projects: the catalogue says live for a session a terminal has open now, a
   assert.deepEqual((await withLive(gone, cat)).sessions.map(s => s.live), [false, false]);
   assert.equal((await withLive(gone, cat)).total, 2);
 });
+
+test("projects: avatar_seed is stored at create (the slug, or the chat a project is made from) and a rename keeps it", async t => {
+  const w = world(t);
+  const plain = w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site") });
+  assert.equal(plain.avatar_seed, "harlow-legal", "no chat: the slug, the project's id");
+  const fromChat = w.P.create({ name: "Northwind", home: path.join(w.work, "northwind"), from_thread: ID.hub });
+  assert.equal(fromChat.avatar_seed, ID.hub, "made from a chat: the chat's id, so its draft tile carries over");
+  assert.ok(fromChat.threads.includes(ID.hub), "and the chat is picked into it");
+  const marker = JSON.parse(fs.readFileSync(path.join(fromChat.home, M.MARKER), "utf8"));
+  assert.equal(marker.avatar_seed, ID.hub, "stored in the marker, not worked out on read");
+  // A rename (a person editing the marker's name) never reseeds the tile.
+  M.write(plain.home, { name: "Harlow Legal Group" });
+  const listed = w.P.list().projects;
+  assert.equal(listed.find(p => p.home === plain.home)?.avatar_seed, "harlow-legal");
+  assert.equal(listed.find(p => p.home === fromChat.home)?.avatar_seed, ID.hub);
+  // A marker from before the field: defaults to the slug, and reading it writes nothing.
+  const old = path.join(w.work, "old-one");
+  fs.mkdirSync(path.join(old, ".vyre"), { recursive: true });
+  fs.writeFileSync(path.join(old, M.MARKER), JSON.stringify({ name: "Old One" }));
+  assert.equal(M.load(old)?.avatar_seed, "old-one");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(old, M.MARKER), "utf8")).avatar_seed, undefined);
+});

@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### projects: a stored avatar_seed, and a chat made into a project keeps its tile
+
+- A project's marker stores `avatar_seed` at `projects.create`: the new slug, or with
+  `from_thread` the chat's id (the chat is picked in too), so a chat's draft tile carries over and
+  turns solid. `projects.list` returns it. A marker from before the field defaults to its slug and
+  is not rewritten on read; a rename never changes the seed.
+
 #### deck: the four avatar families (ADR 0043), drawn everywhere a who shows
 
 - `deck/js/avatars.js` is the Deck's one importer of the vendored avatar renderers

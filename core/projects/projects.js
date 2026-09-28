@@ -175,7 +175,7 @@ export class Projects {
    * Make a project from what a person chose. The home defaults to a new folder in the projects
    * folder. A folder that already has a marker is refused, not overwritten.
    */
-  create({ name, home, org, workspaces = [], threads = [], people = [], watchers = [] }) {
+  create({ name, home, org, workspaces = [], threads = [], people = [], watchers = [], from_thread }) {
     const clean = String(name || "").trim();
     if (!clean) throw new Error("a project needs a name");
     const slug = M.slugify(clean);
@@ -188,9 +188,13 @@ export class Projects {
     if (clash) throw new Error(`a project called ${clash.name} already exists at ${clash.home}`);
     if (fs.existsSync(path.join(where, M.MARKER))) throw new Error(`${where} is already a project home`);
     fs.mkdirSync(where, { recursive: true });
-    const ids = [...new Set(threads.map(M.parentOf))];
+    // A chat made into a project (from_thread) is picked into it and gives it its avatar seed, so
+    // the chat's draft tile carries over and turns solid (ADR 0043 section 6). Otherwise the seed
+    // is the slug at creation, stored, so a later rename never changes the tile.
+    const from = from_thread ? M.parentOf(String(from_thread)) : null;
+    const ids = [...new Set([...threads, ...(from ? [from] : [])].map(M.parentOf))];
     const p = /** @type {Project} */ (M.write(where, {
-      name: clean, ...(org ? { org: String(org) } : {}),
+      name: clean, ...(org ? { org: String(org) } : {}), avatar_seed: from || slug,
       workspaces: M.relative(where, workspaces).filter(w => w !== "."),
       threads: ids, people, watchers,
     }));
@@ -467,7 +471,7 @@ export class Projects {
       // picks: the picked session ids themselves (subagents folded to their parent), for Memory's
       // rooms. threads and picked stay counts: the CLI and the Deck print them.
       return { slug: p.slug, name: p.name, org: p.org, home: p.home, workspaces: p.workspaces, people: p.people,
-        watchers: p.watchers, threads: picked + folder, picked, folder, picks: [...new Set(p.threads.map(M.parentOf))], last };
+        watchers: p.watchers, avatar_seed: p.avatar_seed, threads: picked + folder, picked, folder, picks: [...new Set(p.threads.map(M.parentOf))], last };
     });
     out.sort((a, b) => b.last - a.last || a.name.localeCompare(b.name));
     const problems = this.all.filter(p => p.error).map(p => ({ home: p.home, error: p.error }));
