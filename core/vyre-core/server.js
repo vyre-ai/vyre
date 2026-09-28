@@ -96,7 +96,20 @@ export async function startCore(o) {
   // useless to any other process, a reused pid included.
   const peerKey = o.peerKey || (pid => `${pid}@${(procTable()(pid) || {}).started || "?"}`);
   const { db, presence } = openStore(o.dataDir, { log, now: o.now, webauthn: o.webauthn });
-  const vaults = openVault({ db, dataDir: o.dataDir, log, testKdf: o.testKdf });
+  // What core did, for vyred to show (ADR 0040 phase 2a, condition d): a short ring in memory,
+  // read by a long poll. Information only: vyred can forge its own log, so nothing decides on it.
+  const EVENTS_MAX = 500;
+  /** @type {{ seq: number, type: string, payload: any, at: number }[]} */
+  const ring = [];
+  let seq = 0;
+  /** @type {Set<() => void>} */
+  const waiting = new Set();
+  const emit = (type, payload) => {
+    ring.push({ seq: ++seq, type, payload, at: Date.now() });
+    if (ring.length > EVENTS_MAX) ring.shift();
+    for (const w of waiting) w();
+  };
+  const vaults = openVault({ db, dataDir: o.dataDir, log, emit, testKdf: o.testKdf });
 
   /** @type {WeakMap<object, Promise<{ pid: number, uid: number } | null>>} */
   const creds = new WeakMap();
@@ -200,6 +213,23 @@ export async function startCore(o) {
       }
       const url = new URL(req.url || "/", "http://core");
       if (req.method === "GET" && url.pathname === "/v1/hello") return send(res, 200, { data: { name: "vyre-core", protocol: PROTOCOL, version: o.version || null } });
+      if (req.method === "GET" && url.pathname === "/v1/events") {
+        // Events after `after`, waiting up to `wait` ms (at most 55 s) for one to happen.
+        const after = Math.max(0, Number(url.searchParams.get("after")) || 0);
+        const wait = Math.min(55_000, Math.max(0, Number(url.searchParams.get("wait")) || 0));
+        const pick = () => ring.filter(e => e.seq > after);
+        let got = pick();
+        if (!got.length && wait) {
+          await new Promise(resolve => {
+            const done = () => { waiting.delete(done); clearTimeout(timer); resolve(undefined); };
+            const timer = setTimeout(done, wait);
+            waiting.add(done);
+            req.socket.once("close", done);
+          });
+          got = pick();
+        }
+        return send(res, 200, { data: { events: got, last: seq } });
+      }
       if (req.method === "GET" && url.pathname === "/v1/peer") {
         const v = judge(c.pid);
         return send(res, 200, { data: { pid: c.pid, uid: c.uid, person: v.person, why: v.why } });
@@ -266,6 +296,6 @@ export async function startCore(o) {
   return {
     presence,
     vault: vaults,
-    close: () => new Promise(resolve => { server.close(async () => { try { await vaults.vault.stop(); } catch {} try { db.close(); } catch {} resolve(undefined); }); server.closeAllConnections?.(); }),
+    close: () => new Promise(resolve => { for (const w of [...waiting]) w(); server.close(async () => { try { await vaults.vault.stop(); } catch {} try { db.close(); } catch {} resolve(undefined); }); server.closeAllConnections?.(); }),
   };
 }

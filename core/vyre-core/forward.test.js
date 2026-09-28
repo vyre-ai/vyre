@@ -97,3 +97,21 @@ test("vyre-core forward: the vault module forwards to core, refuses plain values
   // Core's own store has it; nothing was opened on vyred's side.
   assert.ok(c.vault.exists("orders-imap"));
 });
+
+test("vyre-core forward: core's events reach vyred's log as core's and as information only", async t => {
+  const { link } = await world(t);
+  /** @type {Map<string, any>} */
+  const tools = new Map();
+  const seen = [];
+  const ctx = { tool: (n, d) => tools.set(n, d), log: () => {}, events: { emit: (type, payload) => seen.push({ type, payload }) } };
+  const f = startForwarder(ctx, link);
+  t.after(() => f.stop());
+  await tools.get("vault.put").run({ name: "orders-imap", kind: "secret", fields: { value: "imap-pass-1042" } }, {});
+  for (let i = 0; i < 50 && !seen.some(e => e.type === "vault.item-added"); i++) await new Promise(r => setTimeout(r, 20));
+  const ev = seen.find(e => e.type === "vault.item-added");
+  assert.ok(ev, JSON.stringify(seen));
+  assert.equal(ev.payload.name, "orders-imap");
+  assert.equal(ev.payload.source, "vyre-core");
+  assert.equal(ev.payload.informational, true);
+  assert.ok(!JSON.stringify(seen).includes("imap-pass-1042"), "no value ever rides an event");
+});

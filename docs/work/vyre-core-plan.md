@@ -145,6 +145,13 @@ Also for 2a:
 - Reviewer's LOWs on 2d32d72e, done: the Linux stand-in for the signed-Capsule check says yes
   only with `dev` set on purpose (main.js sets it from VYRE_CORE_STRICT=0, never on a Mac);
   unverified puts are capped at 50 per peer and 500 in all (too_many_unverified).
+- Condition (d), done: core keeps its last 500 vault events in memory and serves them on
+  GET /v1/events?after=&wait= (a long poll held up to 55 s; any owner-uid peer, it is a read).
+  vyred's forwarder follows it and emits each into vyred's log with source "vyre-core" and
+  informational: true; after a failure it waits 60 s. No value ever rides an event (tested).
+- Condition (a), the grant re-approval: it needs the old needs.vault grants, which live in the
+  old store and surface only in the migration (section 6: the Capsule reads the old store
+  person-side). It is built with the migration, not before.
 - The refactor round (lead, final): after stage/0.1.1 lands on main, ONE sha moves core/store,
   core/presence and core/daemon/peer.js's pure walks to lib/, and the vault store, kinds and
   crypto to lib/vault (with capValues). No kernel exceptions: a boundaries test fails if anything

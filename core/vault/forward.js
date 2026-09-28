@@ -26,7 +26,7 @@ const fail = (message, code) => Object.assign(new Error(message), { code });
 /**
  * Register the forwarders instead of the vault.
  * @param {any} ctx the vault module's ctx
- * @param {{ call(tool: string, input: any, header?: string): Promise<{ data?: any, error?: any }> }} link core's link
+ * @param {{ call(tool: string, input: any, header?: string): Promise<{ data?: any, error?: any }>, events?: (after: number, wait?: number) => Promise<{ events: any[], last: number }> }} link core's link
  */
 export function startForwarder(ctx, link) {
   const declared = /** @type {string[]} */ (JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")).does.tools);
@@ -61,10 +61,28 @@ export function startForwarder(ctx, link) {
     if (tool in FORWARD || CAPSULE_ONLY.has(tool)) continue;
     ctx.tool(tool, {
       description: `${tool}: not on this Mac yet (vyre-core holds the vault here).`,
-      input: obj, core: true,
+      input: obj, callers: CALLERS, core: true,
       run: async () => { throw fail(`${tool} isn't on this Mac yet: vyre-core holds the vault here, and this part hasn't moved into it`, "core_owned"); },
     });
   }
   ctx.log(`vault: on this Mac vyre-core holds the vault; ${Object.keys(FORWARD).length} tools forward to it`);
-  return { stop: async () => {} };
+
+  // core's events, shown in vyred's log as core's and as information only (condition d): vyred
+  // can forge its own log, so nothing makes a security decision from these. A long poll, held
+  // open by core; after a failure it waits a minute (nothing here polls faster than that).
+  let stopped = false, after = 0;
+  const follow = async () => {
+    while (!stopped && typeof link.events === "function") {
+      try {
+        const r = await link.events(after);
+        after = Math.max(after, Number(r.last) || 0);
+        for (const e of r.events || []) {
+          if (stopped) break;
+          try { ctx.events.emit(e.type, { ...(e.payload || {}), source: "vyre-core", informational: true }); } catch { /* an undeclared event: skipped */ }
+        }
+      } catch { if (!stopped) await new Promise(r => setTimeout(r, 60_000).unref?.()); }
+    }
+  };
+  if (ctx.events && typeof ctx.events.emit === "function") follow();
+  return { stop: async () => { stopped = true; } };
 }
