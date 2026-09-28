@@ -673,3 +673,30 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   table against main understands why app-design's row isn't at 0033.
 - Told pwa (who caught it), launch (who also references the file), and the lead. No product code
   touched; this is a docs/numbering fix only.
+
+## Now (28 Sep, pwa's two findings: paper contrast + avatar-option source)
+
+- pwa vendored geometry.js/vyrecode2.js/identity.js/creature.js as ESM (deck/vendor/vyrecode/,
+  work/pwa 84164e15), decode-core2.js now imports RING_R/tick lengths from geometry.js instead of
+  hardcoding - the 2b consolidation is live on their side. Reran their harness against the real
+  geometry AND the real renderer (not their earlier flat-color test fixture): 8/17, down from an
+  earlier 11/17 measured against synthetic colours. Blur and scale-80 newly failed.
+- Measured why instead of guessing: computed real WCAG contrast ratios for `paletteFor`'s
+  mark/markDeep against the ring's own tint, across all 4 `USER_GRADIENTS` options. Dark theme
+  was fine (8.5-12.3:1). Paper theme wasn't - `markDeep` (levels 2-3) measured a genuinely weak
+  1.59-2.57:1 worst case, because it used the raw gradient "deep" stop with no ink mixed in at
+  all (every other colour in the palette mixes toward `#141311`; this one didn't). Level 0's tick
+  additionally drew at 0.55 opacity with no decode-headroom reasoning behind that number.
+- Fixed at the source in `round5/vyrecode2.js`: paper's `mark` mix deepened 0.3->0.5, `markDeep`
+  0->0.65, level-0 opacity 0.55->0.85. Worst case across all 4 options now 4.86:1 mark / 7.35:1
+  markDeep - roughly double. Verified: re-ran `validateGeometry()` (unaffected, still 51.75px/
+  7.75px), confirmed dark theme's palette is byte-identical to before, re-rendered both themes.
+  Documented as ADR 0043 2c. Have NOT verified this recovers pwa's 8/17 - that needs their real
+  harness, not arithmetic; told them so plainly rather than claiming a fix I didn't measure.
+- Second question, avatar-option source for the phone's "same avatar" pairing screen: checked -
+  there is no real one. round4/identity.js's own comment says the person's avatar is meant to be
+  a deliberate, stored pick ("reroll, or pick from a few, and keep it"), the same kind of thing
+  `onboard.person` already stores for the name - never a hash of a device/box key. pwa's
+  `sha256(box key)[0] % 4` is a reasonable stopgap but not the intended design. Wrote this into
+  avatar.md's Gaps as a real, unbuilt need (`onboard.person.avatarOption` or similar, native-core/
+  onboard's to build) rather than just answering pwa in a message and leaving no trace.

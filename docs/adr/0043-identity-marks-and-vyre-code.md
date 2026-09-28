@@ -142,6 +142,33 @@ from it and calls `validateGeometry()` at module load; verified live (not just r
 deliberately-broken threshold throws the expected message, a real render still produces the same
 51.75px margin / 7.75px clearance as 2a.
 
+### 2c. Paper-theme mark contrast (28 Sep, same day)
+
+`pwa` reran their decode harness against the *real* renderer and palette (not their earlier
+flat-color test fixture) after 2a/2b landed: pass rate dropped to 8/17 from an earlier 11/17,
+with blur and scale-80 newly failing. Measured why rather than guessing, computing real WCAG
+contrast ratios (mark/markDeep vs. the ring's own tint background) across all 4
+`USER_GRADIENTS` options: dark theme was never the problem (8.5-12.3:1, light-on-near-black,
+plenty of headroom). Paper theme was - the old formula gave `mark` (levels 0-1) only 2.96-4.44:1
+and `markDeep` (levels 2-3) a genuinely weak **1.59-2.57:1**, because `markDeep` used the raw
+gradient "deep" stop with no ink mixed in at all, unlike every other colour in the palette.
+Compounding it: level 0's tick additionally rendered at 0.55 opacity with no decode-headroom
+reasoning behind that number - the lowest-value mark was faint twice over.
+
+Fixed in `paletteFor` (`round5/vyrecode2.js`): paper's `mark` mix deepened from a 0.3 to a 0.5
+ink-mix, `markDeep` from an implicit 0 to a 0.65 ink-mix (still the gradient's own hue, just
+enough `#141311` mixed in to hold contrast, not a flat black substitute - the same technique the
+beauty pass already used elsewhere, applied with enough weight this time). Level 0's opacity
+raised 0.55 -> 0.85. Result, computed the same way: worst case across all 4 options is now
+**4.86:1 for mark, 7.35:1 for markDeep** - roughly double the prior floor. Dark theme and the
+ring geometry (2a/2b) are unchanged; verified by re-running `validateGeometry()` and rendering
+both themes after the edit.
+
+Not verified here: whether 8/17 actually recovers with this fix, or by how much - that requires
+`pwa`'s real decode harness, not arithmetic. If a gap remains after this, the next lever is
+`pwa`'s own suggestion of a contrast-adaptive threshold in `decode-core2.js`, as a second layer
+on top of (not instead of) fixing the source colours.
+
 `pwa` and `launch` should both vendor `geometry.js` itself (alongside the other vendored files:
 `rs.js`, `payload.js`, `identity.js`, `vyrecode2.js`, `creature.js`) and import its constants and
 `tickLength`/`markerOffset`/`markerRadius` functions, rather than hand-copying values into
