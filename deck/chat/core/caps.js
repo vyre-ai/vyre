@@ -25,6 +25,11 @@ export const SESSION_TOOLS = Object.freeze([
   "threads.interrupt", "threads.unqueue", "threads.edit", "threads.send-now", "threads.rewind", "threads.mode",
   "threads.model", "threads.commands", "sessions.models.get",
   "threads.shell", "threads.remember", "threads.thinking", "threads.tasks", "threads.kill-task",
+  // "Fork from here" (native-core/pickers.js's rewindSheet, session.js's onFork): no probe rides in
+  // on another tool's answer yet (nothing calls threads.fork until the reader actually tries it),
+  // so it stays off until then even on a box that has it. Worth a LINKED entry, once native-core
+  // or sessions says which release ships it alongside, the way REWIND_CODE rides on threads.commands.
+  "threads.fork",
 ]);
 
 /** Images sent with threads.send: a feature, not a tool, so it has a name of its own here. */
