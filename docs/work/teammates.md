@@ -79,6 +79,21 @@ boundaries, `npm run docs:ref` regenerated. `test/docs-check.test.js`'s em-dash/
 on `reference/tools.md` fails on **main already** (confirmed with `git stash`), pre-existing and
 not touched here, flagged to the lead rather than fixed on this branch.
 
+**app-design ruling (2026-09-28), lead confirmed it stands: rewrote section 3.** Turned down the
+role-hashed accent colour I'd proposed (disc/border/dot/ANSI square) — the product's colour
+economy is closed (lime for action/running/selection, violet for Needs you, no other hue, devices
+never get one, `docs/design/one-app/README.md`), and a teammate is that kind of entity, not a
+person. Settled instead (app-design 73e35ce2 then final 83434944 on work/app-design,
+`docs/design/system/components/avatar.md` + `tool-row.md`): the existing neutral agent tile,
+always paired with the role name in text; a plain "Teammate" tag after the name, once per
+surface; and the handoff is a `Handoff` variant of the existing tool-row (not a new component),
+exempt from the folded-run collapse (always its own line), reply rendered as turn prose inside
+the row's expanded detail — so there's no separate teammate-coloured message bubble at all, which
+also answers my own earlier open question about bubble styling. One kept exception: the CLI may
+use a small fixed (~8), AA-tested ANSI 256 palette for a teammate's name, never an arbitrary hash,
+never a fill. Doc updated to match; nothing to build differently in core/team from this — section
+3 was always chat's and app-design's.
+
 **Resume 8 brief: all 5 steps done, except step 4** (switch to sessions' lib/project-id.js slug
 regex), still blocked — work/projects (e87f63df) is still not on main as of this check. Nothing
 else queued; watching for it to land.

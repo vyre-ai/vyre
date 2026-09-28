@@ -1,9 +1,9 @@
 ---
 title: "Teammates: default, and distinct in chat"
-summary: Makes project teammates the default over subagents in every Vyre SDK session, adds @role routing that creates a teammate on first use, and gives teammates a distinct look in chat.
+summary: Makes project teammates the default over subagents in every Vyre SDK session, adds @role routing that creates a teammate on first use, and makes a teammate's handoffs distinct in chat without a per-teammate colour.
 audience: builders, agents
 owner: teammates
-status: draft
+status: settled (section 3 per app-design 83434944; sections 1-2 building)
 ---
 
 # Teammates: default, and distinct in chat
@@ -98,45 +98,66 @@ What is new:
 
 ## 3. Distinct in chat
 
-The user's ask: "a teammate's turns show its role name and avatar with a distinct accent, a
-handoff shows as a visible card, and teammates' own threads are one tap away." This section is
-the proposal chat and app-design agree on; nothing here is built until they do.
+The user's ask was "a teammate's turns show its role name and avatar with a distinct accent, a
+handoff shows as a visible card, and teammates' own threads are one tap away." app-design ruled
+out the accent-color part of that (below), and the lead confirmed the ruling stands; what
+follows is the settled design (app-design, sha 83434944 on work/app-design,
+`docs/design/system/components/avatar.md` and `tool-row.md`), not a proposal.
 
-- **Identity.** Every teammate gets a stable avatar (a monogram of its role name, e.g. "DS" for
-  `design`, on a role-colored disc — not a photo, not an emoji, so it never implies a real
-  person) and one accent color, assigned when it is created (hashed from `<role>@<project>` so
-  the same role in two projects gets different colors, and a color is never manually picked —
-  one less setting). The accent shows as: a 3px left border on the teammate's message bubbles, the
-  avatar disc, and a matching dot next to its row in the Agents place and in `team.list`/`vyre
-  team` output (CLI: a colored square via ANSI 256, degrading to plain text with `--no-color` or
-  `NO_COLOR`).
-- **Whose turn is this.** A teammate's messages in chat are visually distinct from the person's
-  own session at a glance: avatar + role name (not the agent's internal name) in the message
-  header, accent border, and a slightly indented/inset bubble style (proposed; app-design's call)
-  so a long thread reads as "the person's session, then design's report, then the person's
-  session" without re-reading headers each time.
-- **Handoff card.** The moment a `team.ask` fires from the current session (whether by `@role` or
-  by the model calling `team_ask` on its own), chat inserts a small, non-message card inline: "→
-  Asked **design** to make the intake form calmer" with the teammate's avatar, collapsed by
-  default. When the result lands (`<vyre-teammate-result>`, delivered to the caller's inbox per
-  ADR 0031 section 4), the same card updates in place — "← **design** replied" — and expands to
-  show the result, rather than the result appearing as an ordinary chat message from "the
-  assistant." This is the "@design took this" pattern from the brief: the card is the visible
-  seam between "your session did this" and "design did this," so a person scanning back never
-  mistakes a teammate's work for the session's own.
+**No per-teammate colour, anywhere in the Deck, the App or the Capsule.** The product's colour
+economy is closed: lime for action/focus/running/selection, violet for Needs you (teal the one
+alternative), no other hue, and devices/hosts already don't get one
+(`docs/design/one-app/README.md`'s System section). A teammate is that same kind of entity, not
+a person, so a role-hashed accent (disc, border, dot, ANSI square) was the first crack in a rule
+that reads fine at 3 teammates and breaks at 8, and is the kind of thing nobody walks back once
+it ships. The earlier draft of this section proposed exactly that hashed accent; it is turned
+down.
+
+Distinct instead means three things, none of them colour:
+
+- **Tile + name, always together.** The teammate's avatar tile (the existing neutral agent tile,
+  `avatar.md`, unchanged — lowercase initial, no colour, same as `kit` or `juno` today) is never
+  shown bare. Wherever a teammate appears — its handoff row, its Agents place row, its thread
+  header — the role name sits directly beside the tile in text, same weight as any agent name
+  elsewhere. The name is what tells teammates apart; the tile carries no more meaning than any
+  other agent's.
+- **A "Teammate" tag.** A plain `Tag` (`chip.md`: `--hover` fill, no border, 12/16 `--text-2`)
+  sits after the role name in exactly those three places — once per surface, so a thread header
+  shows it once at the top, not again on every turn. This is what says "design, a persistent
+  project teammate" rather than a one-off subagent or the assistant, in words, since nothing here
+  is said in colour.
+- **The handoff row.** Not a new component: a `Handoff` variant of the existing tool-row
+  (`tool-row.md`). It uses the teammate's own avatar tile (not the generic subagent icon), and
+  its summary reads "Asked **design** [Teammate] to make the intake form calmer" — verb flips to
+  "Replied" once the result lands. It folds and unfolds like any tool row (default: folded,
+  showing the summary only), but it is exempt from `tool-row.md`'s "folded run" collapse that
+  bundles quiet tool calls into one summary line, the same exemption a plan or a todo list gets:
+  a handoff is always its own line, and "collapsed" only ever means the reply detail is shut,
+  never that the row itself is missing. The expanded detail is the teammate's prose reply,
+  rendered as turn prose (`turn.md`) — not a code block on `--code-bg` — since it is written
+  language, not a tool's output. This also settles the earlier open question about a distinct
+  message bubble for a teammate's result: there is no freestanding bubble. A teammate's reply
+  never becomes an ordinary assistant-style message; it lives only inside the handoff row's
+  expanded detail, so there is nothing to mistake for the session's own words and nothing extra
+  to style.
   - If the result arrives after the person has moved to a different chat (their session slept or
-    they navigated away), the same card appears retroactively in that session's history next time
+    they navigated away), the same row appears retroactively in that session's history next time
     it is opened, plus the existing notification/Needs-you-adjacent surfacing ADR 0031 section 4
     already specifies for person-originated requests. No new delivery mechanism — this is a
     rendering rule over the same `threads_inbox` item.
-- **One tap away.** Every handoff card, and every row for a teammate anywhere (Agents place,
+- **One tap away.** Every handoff row, and every row for a teammate anywhere (Agents place,
   `@role` in the composer, the confirmation card in section 2), opens that teammate's own thread
-  in one tap: its Now/Inbox/Results/Notes/Setup pane (ADR 0031 section 9), scrolled to the request
-  in question when opened from a card. This reuses the Agents place's existing detail pane; chat
-  does not build a second teammate viewer.
-- **CLI parity, not CLI parity theater.** `vyre team` and `vyre team ask <role> --wait` show the
-  same accent (ANSI) and the same role name; no card concept applies to a terminal, so the result
-  just prints, prefixed with the avatar's two letters, once.
+  in one tap (`list-row.md`'s existing "row pushes a screen" pattern): its
+  Now/Inbox/Results/Notes/Setup pane (ADR 0031 section 9), scrolled to the request in question
+  when opened from a row. This reuses the Agents place's existing detail pane; chat does not
+  build a second teammate viewer.
+- **The one colour exception: the CLI.** `vyre team` and `vyre team ask <role>` may colour a
+  teammate's name with a role-hashed ANSI 256 colour, but only from a small fixed set (about 8,
+  pre-picked and AA-tested) — never an arbitrary hash-to-hue, so a teammate's colour can never
+  land near lime or violet and misread as a status signal. Text-only (never a fill), degrades
+  under `NO_COLOR`, the same convention terminal tools like `git log --graph` already use, and it
+  never touches the Deck/App/Capsule's colour economy. The palette values land with whoever
+  builds the CLI side; the rule (fixed set, name-only, never a fill) is settled now.
 
 ## What ships, and by whom
 
@@ -149,11 +170,12 @@ the proposal chat and app-design agree on; nothing here is built until they do.
    call shape, not a new tool; nothing here needs a schema change to `agents_teammates` — a
    Sonnet-purposed, `folder`-isolated teammate is just a normal row.
 3. **chat:** the `@role` composer routing and create-on-first-use confirmation (section 2); the
-   handoff card, the distinct message styling, and the one-tap-to-thread links (section 3),
-   agreed with app-design first.
-4. **app-design:** the avatar/accent/card visual system (section 3), including the CLI's ANSI
-   mapping of the same palette, so the look is one system across chat, the Agents place, and the
-   terminal.
+   handoff row, the tile+name+tag treatment, and the one-tap-to-thread links (section 3), against
+   app-design's settled spec.
+4. **app-design:** done for section 3 — `docs/design/system/components/avatar.md` (unchanged
+   neutral tile) and `tool-row.md` (the Handoff variant, the "never folds" exemption), sha
+   83434944 on work/app-design. The CLI's fixed ANSI palette values are the one open item, for
+   whoever builds the CLI side.
 
 Sequencing: section 1 (sessions) can start immediately — it does not depend on section 2 or 3.
 Section 2 (`@role` create-on-first-use) only needs section 1's `team.default` setting to exist;
