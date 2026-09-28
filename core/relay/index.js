@@ -180,7 +180,9 @@ export default {
       // The box's own tailnet address, as the names module saved it (network.address).
       const address = ctx.config.network && typeof ctx.config.network.address === "string" && /^https:\/\/[^\s/]+$/.test(ctx.config.network.address) ? ctx.config.network.address : null;
       if (!address) return answer(res, 409, { error: { code: "no_tailnet", message: "this box is not on a tailnet yet; the relay carries this device" } });
-      db.prepare("UPDATE relay_devices SET join_mints = join_mints + 1, join_last = ? WHERE id = ?").run(now(), id);
+      // The gap holds for every attempt (it paces calls to Tailscale); only a real key counts
+      // toward the cap, so a box whose OAuth client is not set up yet costs the desktop nothing.
+      db.prepare("UPDATE relay_devices SET join_last = ? WHERE id = ?").run(now(), id);
       let minted;
       try { minted = await ts.mintKey(id); }
       catch (e) {
@@ -188,6 +190,7 @@ export default {
         ctx.log(`relay: no tailnet key for device ${id}: ${/** @type {Error} */ (e).message}`);
         return answer(res, code === "not_set_up" ? 409 : 502, { error: { code, message: /** @type {Error} */ (e).message } });
       }
+      db.prepare("UPDATE relay_devices SET join_mints = join_mints + 1 WHERE id = ?").run(id);
       const bindCode = crypto.randomBytes(16).toString("base64url");
       binding.set(id, { hash: sha(bindCode), exp: now() + BIND_TTL });
       ctx.log(`relay: minted a tailnet key for device ${id}`);
