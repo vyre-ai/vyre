@@ -368,18 +368,44 @@ a still) is the fastest way to hand it back — reply with what step, and what h
   touched the page yet, or defers to the next time it is hidden otherwise, so a release never
   mixes old and new modules under someone's finger. core/daemon/build.test.js (3 tests) still
   green. Removed the stale Next bullet; nothing to build here.
+- The /app/ -> / push migration (lead: mobile is paused and the actual flip isn't scheduled
+  yet, so build the forward-compatible piece that's clearly pwa's rather than guess at mobile's
+  client-side code in apps/app). Built:
+  - Confirmed core/push already keys subscriptions by endpoint, not by device id or scope
+    (push_devices.endpoint is UNIQUE, push.subscribe upserts ON CONFLICT(endpoint)), so the app's
+    (scope /app/) and the Deck's (scope /) registrations of the *same browser* naturally collapse
+    to one row once the app re-sends the same endpoint after the flip. Added a test that was
+    missing: "push: devices are keyed by endpoint, so two subscriptions of the same push service
+    upsert to one device, never two" (core/push/push.test.js), including push.unsubscribe by
+    endpoint actually stopping delivery. No code change needed here, only the test.
+  - core/config/index.js: new `app.root` config key, off by default (`app: { root: false }`),
+    merged one level deep like glass/computers/hooks. Test:
+    "config: app.root is off by default... and a user can turn it on" (config.test.js).
+  - core/daemon/index.js route(): while `cfg.app.root` is false (today, always), /app/* behaves
+    exactly as before. Once it flips, GET /app or /app/* becomes a 301 to the same path under /,
+    query string kept (`/app/now?tab=chat` -> `/now?tab=chat`; bare `/app` and `/app/` -> `/`).
+    Test: "app: with config app.root, /app/* is a 301 to the same path under / instead of serving
+    the app" (core/daemon/app.test.js). This does NOT itself move "/" from the Deck to the app —
+    that's a separate, bigger change (whatever serves "/" has to actually be the app) that mobile
+    or the integrator makes when the flip really happens; flipping `app.root` alone today would
+    just make /app/* redirect to a "/" that still answers as the Deck, which is why the flag
+    defaults off and nothing currently sets it.
+  - **What mobile's client-side cleanup will need, when it returns** (this is apps/app's code to
+    write, not built here): at launch, after the flip, call
+    `navigator.serviceWorker.getRegistrations()` (not just `getRegistration(SCOPE)`, since by then
+    the app's own registration is at scope `/`) and look for one whose `.scope` still ends in
+    `/app/` — a leftover from before the flip. If found: read its `pushManager.getSubscription()`
+    (if any), call `push.unsubscribe({ endpoint: sub.endpoint })` (needs no device id — see the
+    test above), `sub.unsubscribe()` on the browser side, then `registration.unregister()`. Do
+    this once (a flag in localStorage, `vyre.push.appScopeCleaned` or similar, is enough) since
+    `getRegistrations()` after the first successful cleanup will simply not find one anymore. No
+    new permission prompt and no re-subscribe: the Deck's own registration at scope `/`, and its
+    subscription, are untouched and keep receiving pushes exactly as before the flip — this is
+    only cleaning up the app's now-redundant one. `apps/app/src/pwa/pwa.web.ts`'s `startPwa()`
+    (or wherever the app's own boot runs once it owns `/`) is the natural place for this, next to
+    where it already does `navigator.serviceWorker.register(SW, { scope: SCOPE })`.
 
 ## Next
-- The push subscription when /app/ becomes /: a subscription belongs to the service worker
-  registration that made it, so the app's (scope /app/) and the Deck's (scope /) are two, and
-  core/push keeps each by its endpoint. When the app takes /, vyred serves the app's worker at
-  /sw.js with scope /, which replaces the Deck's registration in place: the browser keeps the
-  registration, so the Deck's subscription survives and now reaches the app's push handler (same
-  payload, and paths stop needing the /app prefix). The app then calls pushManager.getSubscription()
-  at launch and, if the /app/ registration still exists, unsubscribes it, unregisters it and tells
-  core/push to drop that endpoint, so one phone never rings twice. /app/* becomes a 301 to the same
-  path under / for a release, so an installed /app/ home-screen icon still opens. Nothing is
-  re-subscribed and the person is not asked for permission again.
 - Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
 - Step 6 Mac card: "Already on your tailnet" for an online Mac node.
 - theme.colors: match docs' final shape.

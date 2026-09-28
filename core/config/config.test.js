@@ -92,6 +92,13 @@ test("config: computers.tailnet is off by default, and survives a user's other c
   assert.deepEqual(config.load(root).computers.tailnet, { enabled: true, tag: "tag:vyre-agent" });
 });
 
+test("config: app.root is off by default (the one app stays beside the Deck), and a user can turn it on", t => {
+  const root = tempHome(t);
+  assert.deepEqual(config.load(root).app, { root: false });
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ app: { root: true } }));
+  assert.deepEqual(config.load(root).app, { root: true });
+});
+
 /** Run fn with env vars set, putting them back after. */
 function withEnv(vars, fn) {
   const prev = Object.fromEntries(Object.keys(vars).map(k => [k, process.env[k]]));

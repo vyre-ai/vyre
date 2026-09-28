@@ -95,6 +95,26 @@ test("app: vyred routes /app beside the Deck", async t => {
   assert.equal(deck.status, 200, "the Deck still answers everything else");
 });
 
+test("app: with config app.root, /app/* is a 301 to the same path under / instead of serving the app", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], app: { root: true } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const hit = (/** @type {string} */ p) => new Promise((resolve, reject) => {
+    http.get({ socketPath: socketPath(root), path: p }, res => {
+      let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
+    }).on("error", reject);
+  });
+  const a = /** @type {any} */ (await hit("/app"));
+  assert.deepEqual([a.status, a.headers.location], [301, "/"], "the bare path redirects to root");
+  const b = /** @type {any} */ (await hit("/app/"));
+  assert.deepEqual([b.status, b.headers.location], [301, "/"]);
+  const c = /** @type {any} */ (await hit("/app/now?tab=chat"));
+  assert.deepEqual([c.status, c.headers.location], [301, "/now?tab=chat"], "a deeper path and its query survive the redirect");
+  const deck = /** @type {any} */ (await hit("/now"));
+  assert.equal(deck.status, 200, "the Deck still answers everything else while the flag is on (it does not itself move / yet)");
+});
+
 test("app: the worker's PRECACHE holds only /app/ paths and its BUILD comes from precache.json", t => {
   const dir = dist(t, { build: "abc 123!", files: ["/app/index.html", "/app/_expo/static/js/web/entry-abc.js", "/v1/tools/x", "/now", 7, "/app/../package.json", "https://example.com/app/x"] });
   const src = appWorker({ dir });
