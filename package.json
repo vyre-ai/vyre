@@ -1,6 +1,6 @@
 {
   "name": "vyre",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0-rc.2",
   "description": "Agents with their own computers, on your own box. Runs Claude Code on a machine you own and adds structure, memory, a vault and a private address.",
   "type": "module",
   "bin": {
