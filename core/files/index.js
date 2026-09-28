@@ -18,7 +18,8 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { StringDecoder } from "node:string_decoder";
-import { guard } from "./safety.js";
+import { guard, Refused } from "./safety.js";
+import { reach, within } from "./access.js";
 import { classify, KINDS } from "./kinds.js";
 import { defaults, walk } from "./search.js";
 import { drop } from "./drop.js";
@@ -96,9 +97,13 @@ export default {
       return { ...(r && r.data), source: "box" };
     }
 
-    /** A checked path with what stat and the name say about it. */
-    function describe(p, rs) {
+    /** A checked path with what stat and the name say about it. scope, when given and not
+     * scope.all, additionally refuses anything outside that agent's own granted folders, the
+     * same "not available" way as everything else this guard refuses (Vyre Drive step 5): a
+     * named agent never learns whether a path outside its grant exists at all. */
+    function describe(p, rs, scope) {
       const safe = g.resolveSafe(p, rs);
+      if (scope && !scope.all && !within(safe.real, scope.folders)) throw new Refused();
       const st = fs.statSync(safe.real);
       const name = path.basename(safe.path);
       const { kind, mime } = classify(name, st.isDirectory());
@@ -106,25 +111,38 @@ export default {
         mtime: st.mtime.toISOString() };
     }
 
-    /** Search this machine only. Never throws: a failure is reported in its source entry. */
-    async function searchHere(q, limit, kinds) {
+    /** Search this machine only. Never throws: a failure is reported in its source entry. scope,
+     * when given and not scope.all, narrows the folders actually searched to that agent's own
+     * granted ones (Vyre Drive step 5) as well as filtering results through describe()'s own
+     * check: a restricted agent's search never even reads outside its grant, rather than
+     * reading everything and hiding what it may not see. */
+    async function searchHere(q, limit, kinds, scope) {
       const rs = g.roots();
       const notes = [];
       if (rs.missing.length) notes.push(`skipped folders that do not exist: ${rs.missing.join(", ")}`);
+      // A restricted agent's own folders, clamped to what a configured root actually covers:
+      // the narrower of the two whenever a granted folder and a root overlap, so this can
+      // never search wider than either side allows on its own. Unrestricted otherwise, exactly
+      // today's behavior.
+      const dirs = scope && !scope.all
+        ? [...new Set(rs.live.flatMap(r => scope.folders
+            .map(f => (within(f, [r.real]) ? f : within(r.real, [f]) ? r.real : null))
+            .filter(Boolean)))].filter(d => fs.existsSync(d))
+        : rs.live.map(r => r.real);
       // Ask the backends for more than the limit: some candidates will be filtered out.
       const want = limit * 4 + 100;
       let candidates = [];
       try {
         if (role === "local" && platform === "darwin") {
           // Spotlight matches names and contents, and already knows every file, so it is fast.
-          const lists = await Promise.all(rs.live.map(r => mdfind(["-onlyin", r.real, q], { max: want })));
+          const lists = await Promise.all(dirs.map(d => mdfind(["-onlyin", d, q], { max: want })));
           candidates = lists.flat();
         } else {
           if (role === "local") notes.push("Spotlight is not available here, so the folders were walked");
-          candidates = walk(rs.live.map(r => r.real), q, g, { max: want });
-          if (rs.live.length) {
+          candidates = walk(dirs, q, g, { max: want });
+          if (dirs.length) {
             try {
-              candidates.push(...await rg(["-l", "-i", "-F", "--max-count", "1", "--max-filesize", "2M", "--", q, ...rs.live.map(r => r.real)], { max: want }));
+              candidates.push(...await rg(["-l", "-i", "-F", "--max-count", "1", "--max-filesize", "2M", "--", q, ...dirs], { max: want }));
             } catch (e) {
               notes.push(/** @type {any} */ (e).code === "ENOENT" ? "ripgrep is not installed, so only file names were matched"
                 : "the content search failed, so only file names were matched");
@@ -143,7 +161,7 @@ export default {
         // reachable by stat and preview; they are just not offered.
         if (c.split(path.sep).includes("node_modules")) continue;
         let d;
-        try { d = describe(c, rs); } catch { continue; }
+        try { d = describe(c, rs, scope); } catch { continue; }
         if (kinds && !kinds.includes(d.kind)) continue;
         results.push({ source: here, path: d.path, name: d.name, kind: d.kind, size: d.size, mtime: d.mtime });
       }
@@ -173,18 +191,23 @@ export default {
         q: { type: "string" }, limit: { type: "integer" },
         kinds: { type: "array", items: { type: "string", enum: KINDS } },
         where: { type: "string", enum: ["all", "here", "box"] } } },
-      run: async ({ q, limit = 50, kinds, where = "all" }) => {
+      run: async ({ q, limit = 50, kinds, where = "all" }, { caller } = {}) => {
         q = q.trim();
         if (!q) throw new Error("q is required");
         limit = clamp(limit, 1, 500);
         kinds = kinds && kinds.length ? kinds : undefined;
+        const scope = await reach(ctx, caller);
+        // A restricted agent's caller identity does not survive the hop to the box (ctx.remote
+        // relabels it "module:files"), so there is no way to scope that leg correctly there.
+        // Failing closed: a named agent searches this machine only, never the box through the
+        // link, whatever "where" asked for (Vyre Drive step 5).
         if (role === "box") {
-          const r = await searchHere(q, limit, kinds);
+          const r = await searchHere(q, limit, kinds, scope);
           return { results: r.results, sources: [r.source] };
         }
         const [mine, box] = await Promise.all([
-          where === "box" ? null : searchHere(q, limit, kinds),
-          where === "here" ? null : searchBox(q, limit, kinds, where === "all" ? remoteTimeout : 0),
+          where === "box" && scope.all ? null : searchHere(q, limit, kinds, scope),
+          where === "here" || !scope.all ? null : searchBox(q, limit, kinds, where === "all" ? remoteTimeout : 0),
         ]);
         return { results: merge(mine ? mine.results : [], box ? box.results : [], limit),
           sources: [mine && mine.source, box && box.source].filter(Boolean) };
@@ -194,9 +217,15 @@ export default {
     ctx.tool("files.stat", {
       description: "Size, dates and kind of one file or folder, on this machine or the box.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] } } },
-      run: async ({ path: p, source }) => {
-        if (target(source) === "box") return forward("files.stat", { path: p });
-        const d = describe(p);
+      run: async ({ path: p, source }, { caller } = {}) => {
+        const scope = await reach(ctx, caller);
+        // See files.search: a named agent's identity does not survive the hop to the box, so
+        // the cross-machine leg is refused outright rather than served unscoped there.
+        if (target(source) === "box") {
+          if (!scope.all) throw Object.assign(new Error("an agent reads this machine only, not the box"), { code: "denied" });
+          return forward("files.stat", { path: p });
+        }
+        const d = describe(p, undefined, scope);
         return { source: here, path: d.path, name: d.name, kind: d.kind, size: d.size, mtime: d.mtime, mime: d.mime, dir: d.dir };
       },
     });
@@ -220,9 +249,13 @@ export default {
     ctx.tool("files.preview", {
       description: "A look inside one file: the start of a text file, or a small image. Other kinds say what they are and show nothing.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] }, max: { type: "integer" } } },
-      run: async ({ path: p, source, max }) => {
-        if (target(source) === "box") return forward("files.preview", { path: p, ...(max !== undefined ? { max } : {}) });
-        const d = describe(p);
+      run: async ({ path: p, source, max }, { caller } = {}) => {
+        const scope = await reach(ctx, caller);
+        if (target(source) === "box") {
+          if (!scope.all) throw Object.assign(new Error("an agent reads this machine only, not the box"), { code: "denied" });
+          return forward("files.preview", { path: p, ...(max !== undefined ? { max } : {}) });
+        }
+        const d = describe(p, undefined, scope);
         const other = () => ({ source: here, path: d.path, kind: d.kind, mime: d.mime, size: d.size, preview: null });
         if (d.dir) return other();
         if (d.kind === "image") {
@@ -249,9 +282,10 @@ export default {
       },
     });
 
-    /** One chunk of a file on this machine. The other machine calls this in a loop. */
-    function chunk(p, offset = 0, length = CHUNK) {
-      const d = describe(p);
+    /** One chunk of a file on this machine. The other machine calls this in a loop. scope: see
+     * describe(). */
+    function chunk(p, offset = 0, length = CHUNK, scope) {
+      const d = describe(p, undefined, scope);
       if (d.dir) throw new Error("a folder cannot be fetched");
       if (offset < 0) throw new Error("offset must not be negative");
       const len = clamp(length, 1, CHUNK);
@@ -306,10 +340,16 @@ export default {
       description: "Bring a file from the box to this Mac (source box), saved under Vyre's folder. Called on the machine holding the file, returns one chunk of it.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] },
         offset: { type: "integer" }, length: { type: "integer" } } },
-      run: async ({ path: p, source, offset, length }) => {
+      run: async ({ path: p, source, offset, length }, { caller } = {}) => {
         if (role === "local" && source === "mac") throw new Error("already on this Mac");
-        if (target(source) === "box") return pull(p);
-        return chunk(p, offset, length);
+        const scope = await reach(ctx, caller);
+        if (target(source) === "box") {
+          // See files.search: an agent's identity does not survive the hop, so pulling from the
+          // box is refused outright for a restricted one rather than served unscoped there.
+          if (!scope.all) throw Object.assign(new Error("an agent reads this machine only, not the box"), { code: "denied" });
+          return pull(p);
+        }
+        return chunk(p, offset, length, scope);
       },
     });
 

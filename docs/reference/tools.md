@@ -585,7 +585,7 @@ Make one of the box's shares read-only (ro) or read-write (rw) for the paired Ma
 
 ### `files.drive.audit`
 
-Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding.
+Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding. A tailnet-wide security report, not a per-folder read: never an agent (Vyre Drive step 5), same as share/unshare/access above.
 
 - Input: none
 - Callers: any caller
@@ -628,7 +628,7 @@ Share one of the box's offered folders with the paired Mac over VyreDrive. Owner
 
 ### `files.drive.status`
 
-VyreDrive (built on Tailscale's Taildrive) on the box: whether this box may share folders with the paired Mac, the shares it offers (config files.drive.shares), and what is shared now.
+VyreDrive (built on Tailscale's Taildrive) on the box: whether this box may share folders with the paired Mac, the shares it offers (config files.drive.shares), and what is shared now. A named agent (Vyre Drive step 5) sees only the shares whose folder falls inside one of its own granted projects; a share outside that is simply left off the list, the same as an ungranted project elsewhere.
 
 - Input: none
 - Callers: any caller

@@ -77,10 +77,16 @@ function fakeRg(args) {
 }
 
 /**
- * A Registry with the files module (and optionally a fake link) running, the way vyred would
- * start it, but without the rest of vyred.
+ * A Registry with the files module (and optionally a fake link, and a fake agents+projects
+ * pair for Vyre Drive step 5's agent scoping) running, the way vyred would start it, but
+ * without the rest of vyred.
+ * @param {{ role: string, files: any, home?: string, seam?: any, link?: any,
+ *   agents?: any[], projects?: any[], access?: Record<string, boolean> }} opts
+ *   agents/projects: the shapes agents.list/projects.list answer with.
+ *   access: "<project>:<agent>" -> granted, for a fake projects.access.check; anything not
+ *   listed answers granted: false (deny by default, matching the real module).
  */
-async function registry(t, { role, files, home, seam = undefined, link = undefined }) {
+async function registry(t, { role, files, home, seam = undefined, link = undefined, agents = undefined, projects = undefined, access = undefined }) {
   const root = home || tmp(t, "vyre-test-");
   const p = config.ensure(root);
   if (seam) { seams.set(root, seam); t.after(() => seams.delete(root)); }
@@ -93,6 +99,28 @@ async function registry(t, { role, files, home, seam = undefined, link = undefin
     writeModule(mods, "link", { roles: ["local"], does: { tools: ["link.remote"] } },
       `export default { async start(ctx) {
         ctx.tool("link.remote", { run: async ({ tool, input }) => ({ result: await globalThis.__filesLinks.get(ctx.paths.root)(tool, input) }) });
+        return { async stop() {} };
+      } };`);
+    found.push(...discover([mods]));
+  }
+  if (agents) {
+    // Two modules, not one: a tool's name must start with its own module's name, so
+    // agents.list and projects.list/projects.access.check cannot live in the same fake module.
+    const mods = tmp(t, "vyre-fake-agents-");
+    globalThis.__filesFakeAgents = globalThis.__filesFakeAgents || new Map();
+    globalThis.__filesFakeAgents.set(root, { agents, projects: projects || [], access: access || {} });
+    t.after(() => globalThis.__filesFakeAgents.delete(root));
+    writeModule(mods, "agents", { roles: ["local", "box"], does: { tools: ["agents.list"] } },
+      `export default { async start(ctx) {
+        ctx.tool("agents.list", { input: { type: "object", properties: {} }, run: async () => globalThis.__filesFakeAgents.get(ctx.paths.root).agents });
+        return { async stop() {} };
+      } };`);
+    writeModule(mods, "projects", { roles: ["local", "box"], does: { tools: ["projects.list", "projects.access.check"] } },
+      `export default { async start(ctx) {
+        const fx = () => globalThis.__filesFakeAgents.get(ctx.paths.root);
+        ctx.tool("projects.list", { input: { type: "object", properties: {} }, run: async () => ({ projects: fx().projects }) });
+        ctx.tool("projects.access.check", { input: { type: "object", required: ["project", "agent"], properties: { project: { type: "string" }, agent: { type: "string" } } },
+          run: async ({ project, agent }) => ({ project, agent, granted: Boolean(fx().access[project + ":" + agent]) }) });
         return { async stop() {} };
       } };`);
     found.push(...discover([mods]));
@@ -113,6 +141,17 @@ const call = async (reg, tool, input) => {
 const refused = async (reg, tool, input, msg = /not available/) => {
   const r = await reg.call(tool, input, "cli");
   assert.ok(r.error, `${tool} ${JSON.stringify(input)} should have been refused`);
+  assert.match(r.error.message, msg);
+};
+/** Like call/refused, but as a named agent's own caller ("mcp:agent:<name>"). */
+const callAs = async (reg, agent, tool, input) => {
+  const r = await reg.call(tool, input, `mcp:agent:${agent}`);
+  if (r.error) throw new Error(r.error.message);
+  return r.data;
+};
+const refusedAs = async (reg, agent, tool, input, msg = /not available/) => {
+  const r = await reg.call(tool, input, `mcp:agent:${agent}`);
+  assert.ok(r.error, `${tool} ${JSON.stringify(input)} as ${agent} should have been refused`);
   assert.match(r.error.message, msg);
 };
 
@@ -436,4 +475,71 @@ test("files: a browser's cookies and saved logins, and a secrets folder, are nev
   assert.ok(!(await reg.call("files.stat", { path: path.join(profile, "Bookmarks") })).error);
   const found = (await reg.call("files.search", { q: "budget" })).data.results.map(r => r.path);
   assert.ok(!found.some(p => /Cookies|Login Data|Web Data|secrets/.test(p)), found.join());
+});
+
+// ---- Vyre Drive step 5: files.search/stat/preview/fetch scoped by projects.access for agents
+
+/** A workspace split into two projects' folders, each with one file naming it. */
+function twoProjects(t) {
+  const base = tmp(t);
+  const work = path.join(base, "work");
+  const harlow = path.join(work, "harlow-site"), northwind = path.join(work, "northwind");
+  put(path.join(harlow, "brief.md"), "Harlow Legal engagement notes\n");
+  put(path.join(northwind, "brief.md"), "Northwind Bakery engagement notes\n");
+  return { base, work, harlow, northwind, vyreHome: path.join(work, "vh") };
+}
+
+test("files: a named agent reads only its own granted project's folder, deny by default", async t => {
+  const { work, harlow, northwind, vyreHome } = twoProjects(t);
+  const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg },
+    agents: [{ name: "kit", kind: "agent", projects: ["harlow"] }],
+    projects: [{ slug: "harlow", name: "Harlow Legal", home: harlow, workspaces: [] }, { slug: "northwind", name: "Northwind", home: northwind, workspaces: [] }],
+    access: { "harlow:kit": true } }); // northwind left out: deny by default, same as the real module
+
+  const own = await callAs(reg, "kit", "files.stat", { path: path.join(harlow, "brief.md") });
+  assert.equal(own.name, "brief.md");
+  await refusedAs(reg, "kit", "files.stat", { path: path.join(northwind, "brief.md") });
+  await refusedAs(reg, "kit", "files.preview", { path: path.join(northwind, "brief.md") });
+  await refusedAs(reg, "kit", "files.fetch", { path: path.join(northwind, "brief.md") });
+
+  // Search never even reads northwind for kit, and never offers it in results.
+  const found = (await callAs(reg, "kit", "files.search", { q: "engagement" })).results.map(r => r.path);
+  assert.deepEqual(found, [path.join(harlow, "brief.md")]);
+
+  // The user's own surfaces and a bare session are unaffected: both projects are visible.
+  const all = (await call(reg, "files.search", { q: "engagement" })).results.map(r => r.path).sort();
+  assert.deepEqual(all, [harlow, northwind].map(d => path.join(d, "brief.md")).sort());
+});
+
+test("files: the assistant is unrestricted, same as the user's own surfaces", async t => {
+  const { work, harlow, northwind, vyreHome } = twoProjects(t);
+  const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg },
+    agents: [{ name: "juno", kind: "assistant", projects: "*" }], projects: [], access: {} });
+  const s = await callAs(reg, "juno", "files.stat", { path: path.join(harlow, "brief.md") });
+  assert.equal(s.name, "brief.md");
+  assert.equal((await callAs(reg, "juno", "files.stat", { path: path.join(northwind, "brief.md") })).name, "brief.md");
+});
+
+test("files: a projects.access revoke narrows a wildcard agent immediately, same as a named one", async t => {
+  const { work, harlow, northwind, vyreHome } = twoProjects(t);
+  const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg },
+    agents: [{ name: "wilma", kind: "agent", projects: "*" }],
+    projects: [{ slug: "harlow", name: "Harlow Legal", home: harlow, workspaces: [] }, { slug: "northwind", name: "Northwind", home: northwind, workspaces: [] }],
+    access: { "harlow:wilma": true } }); // northwind never granted
+  assert.equal((await callAs(reg, "wilma", "files.stat", { path: path.join(harlow, "brief.md") })).name, "brief.md");
+  await refusedAs(reg, "wilma", "files.stat", { path: path.join(northwind, "brief.md") });
+});
+
+test("files: a restricted agent never reaches the other machine, whatever it asks for", async t => {
+  const { work, harlow, vyreHome } = twoProjects(t);
+  // No link fixture needed: the refusal happens before this ever tries to reach the box.
+  const reg = await registry(t, { role: "local", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg },
+    agents: [{ name: "kit", kind: "agent", projects: ["harlow"] }],
+    projects: [{ slug: "harlow", name: "Harlow Legal", home: harlow, workspaces: [] }], access: { "harlow:kit": true } });
+  await refusedAs(reg, "kit", "files.stat", { path: path.join(harlow, "brief.md"), source: "box" }, /agent reads this machine only/);
+  await refusedAs(reg, "kit", "files.preview", { path: path.join(harlow, "brief.md"), source: "box" }, /agent reads this machine only/);
+  await refusedAs(reg, "kit", "files.fetch", { path: "/work/whatever", source: "box" }, /agent reads this machine only/);
+  // search still works locally (this role's own label is "mac"), just never crosses to the box.
+  const r = await callAs(reg, "kit", "files.search", { q: "engagement", where: "all" });
+  assert.deepEqual(r.sources.map(s => s.source), ["mac"]);
 });
