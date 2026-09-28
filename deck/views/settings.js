@@ -22,7 +22,7 @@ import { pathMark, statusMark } from "../js/status-mark.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
-import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, destinationName, forgetGate } from "../js/server-rows.js";
+import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, mergeEvent, destinationName, forgetGate } from "../js/server-rows.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -701,21 +701,27 @@ async function drawServer(el, ctx) {
   };
 
   const watch = async (moveId, keys) => {
-    const s = await attempt("federation.move.status", { moveId });
-    if (!ctx.alive()) return;
-    if (s.error) { put(panel, empty("Lost track of the move.", s.error)); return; }
-    let pieces = s.data.pieces || {};
-    drawPieces(moveId, keys, pieces);
-    if (readyToConfirm(s.data)) { ready(moveId); return; }
+    // reviewer-2's finding: attaching the listener only after move.status resolves leaves a
+    // window (the round trip itself) where a fast-finishing piece's event is missed for good,
+    // with no poll left to self-correct. Attach first, buffer until the baseline lands, replay
+    // the buffer onto it, then switch to live — closes the window either way the race lands.
+    let pieces = null, live = false;
+    const buffered = [];
     offEvents?.();
     offEvents = on("move.*", e => {
       if (e.payload?.moveId !== moveId) return;
-      if (e.type === "move.progress") pieces = { ...pieces, [e.payload.piece]: { ...pieces[e.payload.piece], bytes: e.payload.bytes, of: e.payload.of } };
-      else if (e.type === "move.piece.done") pieces = { ...pieces, [e.payload.piece]: { ...pieces[e.payload.piece], done: true, bytes: pieces[e.payload.piece]?.of } };
-      else if (e.type === "move.failed") pieces = { ...pieces, [e.payload.piece]: { ...pieces[e.payload.piece], error: e.payload.error || "failed" } };
-      else return;
+      if (!live) { buffered.push(e); return; }
+      pieces = mergeEvent(pieces, e);
       drawPieces(moveId, keys, pieces);
     });
+    const s = await attempt("federation.move.status", { moveId });
+    if (!ctx.alive()) return;
+    if (s.error) { put(panel, empty("Lost track of the move.", s.error)); return; }
+    pieces = s.data.pieces || {};
+    for (const e of buffered.splice(0)) pieces = mergeEvent(pieces, e);
+    live = true;
+    drawPieces(moveId, keys, pieces);
+    if (readyToConfirm(s.data)) ready(moveId);
   };
 
   const ready = moveId => {

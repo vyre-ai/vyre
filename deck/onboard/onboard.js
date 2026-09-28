@@ -64,6 +64,9 @@ const state = {
    * for the `verify{node}` call once Tailscale connects (tailnet, docs/work/launch-surfaces.md
    * "Two separate paths for 'I have a server'"). Client-only. */
   serverNode: "",
+  /** Which of Device's two real join mechanisms is selected: same Tailscale network (no code,
+   * onboard.join{verify}) or pair with a code (one call, relay.join). */
+  /** @type {"tailscale"|"relay"} */ deviceVia: "tailscale",
 };
 /** Timers and listeners of the current screen, cleared when the screen changes. */
 let cleanup = [];
@@ -368,20 +371,23 @@ const SCREENS = {
   //     yet), so nothing here reads it.
   //   - Server: onboard.machine{machine:"server"}, same real tool. `service.warning` is not
   //     surfaced yet either, for the same reason; will add once anywhere says it's populated.
-  //   - Device: two real paths, per tailnet (docs/work/launch-surfaces.md "Two separate paths
-  //     for 'I have a server'"), not one made-up "setup code" field:
-  //       - Same Tailscale network (built here): this machine's own Tailscale connect (the
-  //         existing `tailscale` screen, reused as-is, `onboard.tailscale`), then
+  //   - Device: two real paths, per tailnet, both built now (docs/work/launch-surfaces.md
+  //     "Concrete answer: relay.join for the code, onboard.join for Tailscale"), each its own
+  //     inner radio under "device", not one made-up "setup code" field:
+  //       - Same Tailscale network: this machine's own Tailscale connect (the existing
+  //         `tailscale` screen, reused as-is, `onboard.tailscale`), then
   //         `onboard.join{action:"verify", node:<the server's tailnet name>, becomeDevice:true}`
-  //         once connected. No code exchanged; the person supplies the server's tailnet name.
-  //       - Pair with a code (not built): a one-time code minted server-side
-  //         (`onboard.join{action:"relay"}`, run ON the server) and redeemed by the relay
-  //         client protocol, not by anything on this device's own onboard module — squarely
-  //         relay's/federation's territory per tailnet, not built there yet either. Shown as a
-  //         plain "not yet available" line, not a live choice, since there's no reliable
-  //         client-side signal here for whether this machine even has vyre-core to redeem it
-  //         with (onboard's loopback tool allowlist has no platform/system.info access).
-  // Fixture-backed (deck/fixtures/onboard.json): onboard.machine is real; onboard.join is not.
+  //         once connected. No code exchanged; the person supplies the server's tailnet name,
+  //         since verify has to be told which server to check reachability against.
+  //       - Pair with a code: one call, `relay.join{url, becomeDevice:true}`, straight from this
+  //         screen — no separate verify step, since a successful pairing already proves
+  //         reachability. `url` is the pairing code/link (relay.pair.start or
+  //         onboard.join{action:"relay"}, minted on the server side, pasted here).
+  //     Both paths pass `becomeDevice:true` and land the same way. Neither existed as real
+  //     tools when this screen was first built (28 Sep); onboard.join is real-shaped but not on
+  //     main yet, relay.join is real-shaped and not on main yet either.
+  // Fixture-backed (deck/fixtures/onboard.json, deck/fixtures/relay.json): onboard.machine is
+  // the only one of these four tools actually shipped on main so far.
   live(col, s) {
     col.append(
       h("h1", { class: "h1" }, "How will Vyre run?"),
@@ -390,12 +396,15 @@ const SCREENS = {
     const st = h("div", { class: "check-line", "aria-live": "polite" });
     col.append(body, st);
     let choice = state.live;
+    let via = state.deviceVia;
     const nodeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "server-node", placeholder: "kit", autocomplete: "off",
       value: state.serverNode, oninput: () => { state.serverNode = nodeIn.value; } }));
+    const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "pair-code", placeholder: "Paste the code your server showed", autocomplete: "off" }));
 
     const toClaude = () => goto(STEPS.findIndex(x => x.id === "claude"));
+    const label = () => choice !== "device" ? "Continue" : via === "relay" ? "Pair" : "Connect";
 
-    const syncFoot = () => s.foot({ label: choice === "device" ? "Connect" : "Continue", disabled: !choice, run: async () => {
+    const syncFoot = () => s.foot({ label: label(), disabled: !choice, run: async () => {
       if (choice === "solo") {
         await attempt("onboard.machine", { machine: "solo" });
         await mark_("live", "done"); await mark_("tailscale", "skipped"); await mark_("name", "skipped"); toClaude();
@@ -404,6 +413,17 @@ const SCREENS = {
       if (choice === "server") {
         put(st, "Setting this computer up as your server.");
         const r = await attempt("onboard.machine", { machine: "server" });
+        if (r.error && !r.error.missing) { put(st, String(r.error.message)); return; }
+        put(st, "");
+        await mark_("live", "done"); await mark_("tailscale", "skipped"); await mark_("name", "skipped"); toClaude();
+        return;
+      }
+      if (via === "relay") {
+        // A single call, no verify step: relay.join proves reachability by pairing.
+        const v = codeIn.value.trim();
+        if (!v) { put(st, "Paste the code first."); return; }
+        put(st, "Pairing.");
+        const r = await attempt("relay.join", { url: v, becomeDevice: true });
         if (r.error && !r.error.missing) { put(st, String(r.error.message)); return; }
         put(st, "");
         await mark_("live", "done"); await mark_("tailscale", "skipped"); await mark_("name", "skipped"); toClaude();
@@ -422,13 +442,19 @@ const SCREENS = {
       h("input", { type: "radio", name: "live", value, checked: value === choice, onchange: () => { choice = state.live = value; put(body, choiceEl()); syncFoot(); } }),
       h("span", { class: "t" }, h("b", null, title)),
       value === choice && more ? h("div", { class: "more" }, more) : null);
+    const viaOpt = (value, title, more) => h("label", { class: value === via ? "on" : "" },
+      h("input", { type: "radio", name: "device-via", value, checked: value === via, onchange: () => { via = state.deviceVia = value; put(body, choiceEl()); syncFoot(); } }),
+      h("span", { class: "t" }, h("b", null, title)),
+      value === via ? h("div", { class: "more" }, more) : null);
     const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "How Vyre runs" },
       opt("solo", "Just on this computer"),
       opt("server", "This computer stays on for me, and I'll use other devices too"),
-      opt("device", "I already have a Vyre server", [
-        h("div", { class: "field" }, h("label", { for: "server-node" }, "Your server's tailnet name"), nodeIn,
-          h("span", { class: "hint" }, "Both on the same tailnet already? This machine just needs to join it too.")),
-        h("p", { class: "small muted" }, "Pairing with a code instead is not yet available here.")]));
+      opt("device", "I already have a Vyre server",
+        h("div", { class: "choice", role: "radiogroup", "aria-label": "How to join it" },
+          viaOpt("tailscale", "Same Tailscale network",
+            h("div", { class: "field" }, h("label", { for: "server-node" }, "Your server's tailnet name"), nodeIn)),
+          viaOpt("relay", "Pair with a code",
+            h("div", { class: "field" }, h("label", { for: "pair-code" }, "Pairing code"), codeIn)))));
     put(body, choiceEl());
     syncFoot();
   },

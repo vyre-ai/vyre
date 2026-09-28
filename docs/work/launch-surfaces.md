@@ -465,13 +465,24 @@ two real mechanisms, not one placeholder field.
   screen's normal `s.next()`, showing the real error on a wrong node (reviewer-2's bug, now
   actually reachable by a test: fake Tailscale already `BackendState: "Running"`, no login click
   to simulate) or proceeding to Claude sign-in with `tailscale` marked done and `name` skipped.
-- **Pair with a code** (not built): per tailnet, this is relay's/federation's territory — a
-  code minted server-side by `onboard.join{action:"relay"}` and redeemed by the relay client
-  protocol, nothing `onboard.join` itself does on the joining device. Shown as a plain
-  "not yet available" line rather than a fake live choice, since onboarding's loopback tool
-  allowlist has no platform signal to gate it on a Mac-vs-vyre-core basis anyway.
+- **Pair with a code** (now built too, tailnet shipped the real shape same day): one call,
+  `relay.join{url, becomeDevice:true}` — no separate verify step, since a successful pairing
+  already proves reachability. `via` is a second, inner radiogroup under "device" (same
+  Tailscale network / pair with a code), each with its own field; the footer's label changes to
+  match ("Connect" vs "Pair") so the button says what it actually does. Fixture-backed
+  (`deck/fixtures/relay.json`); the real tool isn't on main yet.
 Rewrote the regression test accordingly (connects a fake Tailscale, verifies a wrong node fails
-with an error and stays put, then Back-and-fix proceeds for real). Verified on testbox: 37/37.
+with an error and stays put, then Back-and-fix proceeds for real), and added one for the relay
+path. Verified on testbox: onboard-page 4/4, full targeted set 40/40.
+
+Also closed reviewer-2's race-window finding on the Server panel (26ba1830): `watch()` attached
+its `move.*` listener only after `move.status`'s baseline call resolved, so an event landing
+during that round trip (a fast-finishing piece, say) was lost for good, with no poll left to
+self-correct. Now attaches the listener first, buffers anything that arrives before the baseline
+is in, replays the buffer onto it, then switches to live — pulled the merge logic itself into
+`server-rows.js`'s `mergeEvent` (pure, unit-tested: one event applied, and buffered-then-replayed
+producing the same result as applied live) so this DOM-adjacent flow has a real testable seam,
+same ask reviewer-2 made about the rest of this panel earlier.
 
 ## Next
 
@@ -499,15 +510,14 @@ with an error and stays put, then Back-and-fix proceeds for real). Verified on t
   now (their launchd installer is next on their list; will ping when it's real). ~~Solo one-
   command install~~ answered: `npm install -g https://vyre.run/box/vyre.tgz` + `vyre up`, no new
   script; pointed at it in the onboarding comments, not yet in any shipped copy.
-- ~~tailnet: onboard.join shape~~ answered and REAL-shaped (not merged to main yet):
-  `onboard.join{action:"status"|"tailscale"|"relay"|"verify", step?, node?, becomeDevice?}`.
-  ~~confirm the join flow never renders on the Solo path~~ confirmed: nothing in join runs unless
-  something actually joins. ~~the Device-path mismatch~~ answered in full: same-Tailscale (no
-  code, the server's tailnet name via `node`) is built; pair-with-a-code is relay's/federation's
-  territory, not onboard.join's, and stays a "not yet available" line until that exists. Still
-  open: names.discover's client-side peer-scan is unbuilt and, per tailnet, not gated on anything
-  of theirs now; worth deciding whether it's still needed given onboard.join's own `status`
-  action, rather than building both.
+- ~~tailnet: onboard.join shape~~ ~~the Device-path mismatch~~ both answered in full and both
+  built: `onboard.join{action:"status"|"tailscale"|"relay"|"verify", step?, node?, becomeDevice?}`
+  for same-Tailscale (real-shaped, not merged to main yet), `relay.join{url, becomeDevice}` for
+  pair-with-a-code (also real-shaped, also not merged yet — tailnet built it the same day once
+  asked). ~~confirm the join flow never renders on the Solo path~~ confirmed. Still open:
+  names.discover's client-side peer-scan is unbuilt and, per tailnet, not gated on anything of
+  theirs now; worth deciding whether it's still needed given onboard.join's own `status` action,
+  rather than building both.
 - ~~federation: move-engine tool shapes~~ answered and confirmed (docs/work/federation.md):
   `move.plan{destination}`, `move.start{planId}`, `move.status{moveId}` ({stage, pieces:
   {bytes,of,done,error}}), `move.confirm{moveId}`, `move.cancel{moveId}` (the Undo, full stop

@@ -4,15 +4,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### Onboarding: the Device path is two real mechanisms, not one placeholder code field
+#### fix(settings): a move event during the status round trip could be lost for good
+
+- The Server panel's live-progress listener attached only after the baseline `move.status` call
+  resolved, so an event landing during that round trip (a fast-finishing piece) was missed
+  entirely, with no poll left to self-correct (caught by reviewer-2). Now attaches first, buffers
+  anything that arrives before the baseline is in, replays the buffer onto it, then goes live.
+  The merge logic (`mergeEvent`) moved into `deck/js/server-rows.js`, pure and unit-tested.
+
+#### Onboarding: the Device path is two real mechanisms, both built, not one placeholder code field
 
 - "How will Vyre run?" > "I already have a Vyre server" now offers what tailnet's join module
-  actually supports: joining the same Tailscale network (built — collects the server's tailnet
-  name, runs the existing Tailscale sign-in screen, then verifies and flips this machine to a
-  device) or pairing with a code (not built yet; that redemption is relay's/federation's
-  territory, shown as a plain "not yet available" line rather than a fake live choice). A device
-  still runs the Tailscale screen, unlike Solo or Server, since joining a server is exactly the
-  "second device" case that screen exists for; it just never reserves its own address.
+  actually supports, as an inner choice: joining the same Tailscale network (collects the
+  server's tailnet name, runs the existing Tailscale sign-in screen, then verifies and flips this
+  machine to a device) or pairing with a code (one call, no separate verify step, since a
+  successful pairing already proves reachability). A device still runs the Tailscale screen,
+  unlike Solo or Server, since joining a server is exactly the "second device" case that screen
+  exists for; it just never reserves its own address. Neither underlying tool
+  (`onboard.join`/`relay.join`) is on main yet.
 
 #### Settings > Server: wired to federation's confirmed move-engine contract, event-driven
 

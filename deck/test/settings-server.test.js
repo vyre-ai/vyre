@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, pieceState, readyToConfirm, allReady, destinationName, forgetGate, FORGET_WAIT_MS } from "../js/server-rows.js";
+import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, pieceState, readyToConfirm, allReady, mergeEvent, destinationName, forgetGate, FORGET_WAIT_MS } from "../js/server-rows.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const federation = JSON.parse(fs.readFileSync(path.join(HERE, "../fixtures/federation.json"), "utf8"));
@@ -83,6 +83,37 @@ test("server rows: the 24-hour forget gate, never automatic either side of it", 
   assert.equal(forgetGate(now, now + FORGET_WAIT_MS - 3_600_000).ready, false);
   assert.equal(forgetGate(now, now + FORGET_WAIT_MS).ready, true, "ready at exactly 24 hours");
   assert.equal(forgetGate(now, now + FORGET_WAIT_MS + 3_600_000).ready, true, "and any time after");
+});
+
+test("server rows: mergeEvent applies one federation move.* event onto a pieces snapshot", () => {
+  const base = { projects: { bytes: 0, of: 2100000000, done: false }, vault: { bytes: 40000, of: 40000, done: true } };
+  const progressed = mergeEvent(base, { type: "move.progress", payload: { moveId: "m1", piece: "projects", bytes: 315000000, of: 2100000000 } });
+  assert.equal(progressed.projects.bytes, 315000000);
+  assert.equal(progressed.projects.done, false, "progress alone never marks a piece done");
+  assert.equal(progressed.vault.bytes, 40000, "an event for one piece never touches another");
+
+  const done = mergeEvent(progressed, { type: "move.piece.done", payload: { moveId: "m1", piece: "projects" } });
+  assert.equal(done.projects.done, true);
+  assert.equal(done.projects.bytes, 2100000000, "piece.done fills bytes to the total, in case the last progress event was missed");
+
+  const failed = mergeEvent(base, { type: "move.failed", payload: { moveId: "m1", piece: "vault", error: "disk full on destination" } });
+  assert.equal(failed.vault.error, "disk full on destination");
+
+  assert.deepEqual(mergeEvent(base, { type: "move.confirmed", payload: { moveId: "m1" } }), base, "an event this Deck does not otherwise act on changes nothing");
+});
+
+test("server rows: replaying buffered events onto a later baseline lands the same as applying them live", () => {
+  // reviewer-2's race-window finding (26ba1830): an event during the move.status round trip
+  // must not be lost. Replaying it onto the baseline once that call resolves should be
+  // indistinguishable from having applied it before the baseline was ever fetched.
+  const events = [
+    { type: "move.progress", payload: { moveId: "m1", piece: "vault", bytes: 20000, of: 40000 } },
+    { type: "move.piece.done", payload: { moveId: "m1", piece: "vault" } },
+  ];
+  const baseline = { vault: { bytes: 0, of: 40000, done: false } };
+  const replayed = events.reduce(mergeEvent, baseline);
+  assert.equal(replayed.vault.done, true);
+  assert.equal(replayed.vault.bytes, 40000);
 });
 
 test("server rows: onboard.status's machine field, read by drawServer the same as the live onboarding step", () => {

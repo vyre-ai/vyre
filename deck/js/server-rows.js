@@ -51,6 +51,22 @@ export const readyToConfirm = status => status?.stage === "ready";
  * @param {string[]} keys the piece keys the plan actually named */
 export const allReady = (pieces, keys) => keys.length > 0 && keys.every(k => pieces?.[k]?.done && !pieces[k].error);
 
+/**
+ * One federation move.* event, merged onto a pieces snapshot. Pulled out so it is the same
+ * function whether it applies a live event or replays one buffered during the move.status round
+ * trip (reviewer-2's race-window finding, 26ba1830): the watcher attaches its listener before
+ * awaiting the baseline, buffers anything that arrives in between, then replays those buffered
+ * events onto the baseline with this exact function before switching to live.
+ * @param {Record<string, any>} pieces
+ * @param {{ type: string, payload: any }} e
+ */
+export function mergeEvent(pieces, e) {
+  if (e.type === "move.progress") return { ...pieces, [e.payload.piece]: { ...pieces[e.payload.piece], bytes: e.payload.bytes, of: e.payload.of } };
+  if (e.type === "move.piece.done") return { ...pieces, [e.payload.piece]: { ...pieces[e.payload.piece], done: true, bytes: pieces[e.payload.piece]?.of } };
+  if (e.type === "move.failed") return { ...pieces, [e.payload.piece]: { ...pieces[e.payload.piece], error: e.payload.error || "failed" } };
+  return pieces;
+}
+
 /** The server's name to show, from whichever shape handed it over: federation.move.confirm's own
  * data right after the flip (`destination.name`), or onboard.status once machine is "device"
  * (a real server's identity isn't shaped by anywhere yet, hence the further fallbacks).
