@@ -474,3 +474,40 @@ gated on vyred being up. Fails naming the module and vyred's own error sentence 
 tailnet-shaped single failure, multiple failures, and the vyred-down gate. Kept in `IDS`/`LABELS`
 order so `--view`'s live checks frame and `item()` pick it up for free -- no other file hard-codes
 the check list. testbox: doctor 13/13, boundaries+hygiene+modules 58/58 total.
+
+## stage/0.1.1: three test failures fixed (work/cohesion-011, separate worktree)
+
+Blocked the 0.1.1 tag: d9b916d4 (ancestor of stage/0.1.1) already had these three failing, so
+they predate today's work. Branched work/cohesion-011 off stage/0.1.1 (own worktree
+../vyre-cohesion-011). All three, plus the wider affected suites, are green on testbox.
+
+1. **cohesion-drift**: deck/chat/composer.js's createAndAsk hardcoded `model: "sonnet"` for a
+   teammate created on a guess (@role, no existing teammate). Added `guessModel()`: reads
+   sessions.models.get's aliases and picks the middle tier itself (never opus, per the existing
+   comment's own reasoning), so no model id string lives in the surface.
+2. **deck-contract**: `voice.status`/`voice.listen` (local/voice, a Mac-local module) and eight
+   `federation.move.*` calls in deck/views/settings.js (Move to a server, 0.1.2 per
+   team/BACKLOG-0.1.2.md, no federation module built yet) have nothing to answer on a real box.
+   Renamed the test's ELSEWHERE set to OPTIONAL, a tool -> reason map (voice: already
+   missing-tool safe; federation.move.*: gated live). Gated settings.js's drawServer on
+   modules() naming "federation" before it ever draws the move flow or calls move.plan, so 0.1.2
+   turns it on with no revert needed here.
+3. **presence-bypass**: threads.answer's Mac-forward presence rule (core/switchboard/index.js's
+   gatedOnMac) failed closed on ANY unknown ask with no `machine`, even on a box that has never
+   paired a Mac -- the common single-box 0.1.1 case. Traced to the LOW-1 hardening (e2e review of
+   0f2a8752): it widened "unknown, named by machine" to "unknown, period," which is broader than
+   ADR 0021 section 3a documents and broader than the fix's own motivating case needed (a
+   restarted, *paired* box forgetting macAsks). Added a live check of core/link/box.js's
+   link_peers table (kind='mac'; reads may join any module's table, core/modules/index.js) so
+   gatedOnMac only fails closed on an unnamed unknown ask when a Mac has actually ever paired
+   here. test/federation-answer.test.js's own LOW-1 test (a real paired Mac) still passes;
+   presence-bypass's standalone box now asks nothing for an unrecognized ask id, matching the
+   no-nag rule. Updated ADR 0021 section 3a to say so. Sent to the reviewer: this was a
+   regression, not an intended broadening -- the general "answering asks presence" rule stays
+   no-proof (ADR 0024), the Mac-forward exception is unchanged, only which boxes it can apply to.
+   deck/chat/session.test.js's sessions.models.get fixture was also missing `aliases` (unmasked
+   by fix #1 above); added.
+
+testbox: cohesion-drift + deck-contract + presence-bypass + federation-answer + caps +
+composer-state + session + settings-server + team, 114/114. docs:ref regenerated (the ADR edit);
+docs-build/docs-check/docs-index/docs-shots 61/61 locally.

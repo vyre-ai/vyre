@@ -952,6 +952,17 @@ export function mountComposer(opts) {
     ]);
   }
 
+  /** The middle tier of the box's own model list (sessions.models.get's aliases, its one list:
+   *  no model id lives here, test/cohesion-drift.test.js) - never the most capable one, for a
+   *  guessed teammate nobody has scoped yet. Falls back to the cheapest, then to none (the
+   *  server's own default) when the box names one alias or fewer, or the call fails. */
+  async function guessModel() {
+    const r = await attempt("sessions.models.get", {});
+    const aliases = Array.isArray(/** @type {any} */ (r.data)?.aliases) ? /** @type {any} */ (r.data).aliases : [];
+    const id = aliases[1]?.id || aliases[aliases.length - 1]?.id;
+    return typeof id === "string" ? id : null;
+  }
+
   /** @param {string} role @param {string} text @param {string} project @param {string} raw the
    *  whole draft, passed through so a not_found right after team.add still has it (createAndAsk
    *  calls askTeammate again, which needs raw for its own possible confirmCreate). */
@@ -959,11 +970,13 @@ export function mountComposer(opts) {
     sending = true; send.disabled = true;
     // A generic template on a guess (teammates.md section 2): no role-specific brief guessed from
     // the name (guessing wrong is worse than asking), never worktree isolation (a deliberate,
-    // person-made choice, not a side effect of typing a word with an @ in front of it), Sonnet
-    // (not the ADR's Opus default for a person-made teammate) since it exists on a guess and
-    // should not spend Opus turns proving out a role nobody has scoped yet.
+    // person-made choice, not a side effect of typing a word with an @ in front of it), the box's
+    // own middle-tier model (not the ADR's Opus default for a person-made teammate, read from
+    // sessions.models.get rather than named here) since it exists on a guess and should not spend
+    // Opus turns proving out a role nobody has scoped yet.
+    const model = await guessModel();
     const r = await attempt("team.add", { project, role, brief: "Ask me about anything; I'll figure out the role from what you send me.",
-      isolation: "folder", tools: ["files", "web"], model: "sonnet" });
+      isolation: "folder", tools: ["files", "web"], ...(model ? { model } : {}) });
     if (r.error) { sending = false; send.disabled = false; say(`Could not add ${role}: ${r.error.message || r.error.code}`); return; }
     sending = false; send.disabled = false;
     askTeammate(role, text, raw);

@@ -152,7 +152,12 @@ the phone.
    the name spelled as Vyre's MCP server spells it (each character outside `[A-Za-z0-9_-]` as
    `_`), exactly; or the ask says `presence.required: true`. On the box `threads.answer` carries
    a presence rule that asks only for an answer bound for a Mac that is gated, or for an ask the
-   box never saw that names a `machine` (it could approve anything, so it fails closed); the
+   box never saw that names a `machine`, or (e2e review of 0f2a8752, LOW 1) that names no
+   `machine` either on a box that has ever paired one, since macAsks is memory-only and a restart
+   forgets which open asks were gated (it could approve anything, so it fails closed). A box that
+   has never paired a Mac has nothing to fail closed on, and asks nothing for an unknown ask with
+   no `machine` (cohesion, 2026-09-28: this had regressed to failing closed there too, asking a
+   plain single-box install for presence on every already-closed or mistyped ask id); the
    registry verifies the proof, and the forward refuses with `presence_required` when there is
    none or it is a presence session. Every other answer asks nothing (the no-nag rule). On the
    Mac, the Mac looks up its own ask; for a gated one it refuses an assertion whose `presence` is

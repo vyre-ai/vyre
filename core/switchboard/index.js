@@ -1971,14 +1971,24 @@ export default {
       }));
       offs.push(ctx.events.on("ask.answered", e => { const p = e.payload || {}; if (p.source === "mac") macAsks.delete(p.ask); }));
     }
+    // Whether any Mac has ever paired here (core/link/box.js's own table, read across modules:
+    // "reads may join any table", core/modules/index.js). A box that has never paired one can
+    // never have a Mac-gated ask to fail closed on; querying it here, not link's own tool, keeps
+    // this synchronous, the way a presence `when` must be. Missing (link never started) reads as
+    // no Macs, not an error.
+    const hasPairedMacs = () => { try { return Boolean(ctx.store.db.prepare("SELECT 1 FROM link_peers WHERE kind = 'mac' LIMIT 1").get()); } catch { return false; } };
     /**
      * Would this answer go to a Mac, and approve a gated ask there? An ask the box never saw (the
-     * box restarted, or it raced ask.raised) counts as gated too, not only one named by `machine`:
-     * macAsks is memory-only, so "unknown" must fail toward asking for a fresh proof, not toward
-     * skipping it (e2e, review of 0f2a8752, LOW 1). The person sees a proof prompt they didn't
-     * strictly need rather than an ungated pass on an ask that turns out to be gated.
+     * box restarted, or it raced ask.raised) counts as gated too, not only one named by `machine`,
+     * on a box that has ever paired a Mac: macAsks is memory-only, so "unknown, and a Mac could
+     * have it" must fail toward asking for a fresh proof, not toward skipping it (e2e, review of
+     * 0f2a8752, LOW 1). A box with no paired Mac, ever, has nothing to fail closed on (regression,
+     * cohesion 2026-09-28: a plain single-box install asked for presence on every unknown ask,
+     * `threads.answer` typo'd or already-closed alike, though ADR 0021 section 3a only fails
+     * closed for one a Mac could actually own); the person sees a proof prompt they didn't
+     * strictly need only when a Mac is actually in the picture.
      */
-    const gatedOnMac = i => !sb.asks.get(i.ask) && (macAsks.has(i.ask) ? /** @type {any} */ (macAsks.get(i.ask)).gated : true);
+    const gatedOnMac = i => !sb.asks.get(i.ask) && (macAsks.has(i.ask) ? /** @type {any} */ (macAsks.get(i.ask)).gated : Boolean(i.machine) || hasPairedMacs());
     /** The owner's device over the tailnet or the relay: the person needs a person session there (ADR 0032). */
     const ownerDevice = caller => /^tailnet:(?!agent:)./.test(String(caller)) || /^device:[a-z2-7]{16}$/i.test(String(caller));
 

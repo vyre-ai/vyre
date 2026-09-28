@@ -138,8 +138,10 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
   const input = JSON.parse(o.body);
   calls.push({ tool, input });
   let data;
-  // sessions.models.get names no thread: the per-purpose map.
+  // sessions.models.get names no thread: the per-purpose map, and the box's aliases (composer.js's
+  // createAndAsk reads aliases[1] for a guessed teammate's model, never a literal - cohesion-drift).
   if (tool === "sessions.models.get") return { status: 200, statusText: "", json: async () => ({ data: {
+    aliases: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }, { id: "haiku", label: "Haiku" }],
     purposes: { chat: { model: "opus", from: "config:chat" }, job: { model: "claude-haiku-4-5", from: "config:job" } }, projects: {} } }) };
   // sight.targets/sight.frame carry no thread at all: answered here, ahead of every thread branch.
   if (tool === "sight.targets") return { status: 200, statusText: "", json: async () => ({ data: { targets: sightWorld?.targets || [] } }) };

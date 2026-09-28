@@ -4,6 +4,32 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### stage/0.1.1: three test failures fixed (cohesion, work/cohesion-011)
+
+- `test/cohesion-drift.test.js`: `deck/chat/composer.js` kept its own copy of the model list
+  (`model: "sonnet"`, hardcoded, for a guessed teammate's first message). It now reads
+  `sessions.models.get`'s `aliases` at creation time and picks the middle tier itself, so no
+  model id lives in the surface at all.
+- `test/deck-contract.test.js`: the Deck calls `voice.status`/`voice.listen` (a Mac-local module,
+  `deck/chat/core/voice.js`, already optional-tool safe) and `federation.move.*` (0.1.2, not
+  0.1.1: no box in this release registers a "federation" module). The contract test's old
+  `ELSEWHERE` set (one tool, no reason) is now `OPTIONAL`, a tool-to-reason map, covering both.
+  `deck/views/settings.js`'s `drawServer` now checks `modules()` for `"federation"` live before
+  ever drawing the "Move to a server" flow, so it turns itself on the day 0.1.2 ships that module
+  and stays off until then, with nothing to revert.
+- `test/presence-bypass.test.js`: `threads.answer` was asking for presence on any answer to an
+  ask id the box doesn't recognize locally, even on a box that has never paired a Mac (a plain
+  single-box install, the common 0.1.1 case) -- a regression from `core/switchboard/index.js`'s
+  `gatedOnMac`, widened by an earlier fix (e2e review of 0f2a8752, LOW 1) to fail closed on every
+  unknown, unnamed ask, not only on a box that could actually have a Mac to fail closed on.
+  `gatedOnMac` now also checks `link_peers` (core/link/box.js's own table, read across modules)
+  for any paired Mac, ever, before failing closed on an unnamed unknown ask; a genuinely paired
+  box keeps the LOW-1 protection (covered by `test/federation-answer.test.js`'s own LOW-1 test),
+  a standalone one goes back to asking nothing, matching the no-nag rule and ADR 0021 section 3a.
+  ADR 0021 updated to say so.
+- `deck/chat/session.test.js`'s `sessions.models.get` fixture was missing `aliases` (the real
+  tool always returns it); added, matching the shape composer.js's picker already read it for.
+
 #### Wink: the relay's /v1/pair answers any origin, so a real phone can look a ticket up
 
 - Chrome blocked `resolveTicket()`'s cross-origin POST before the confirm screen (pwa's live

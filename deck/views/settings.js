@@ -617,9 +617,14 @@ async function drawDevices(el) {
  * Next. No auto-delete anywhere in this flow: the pre-move copy is only ever removed by the
  * person's own "Free up space" click, gated 24 hours per anywhere.md's forget guard. The
  * formatting and gating logic itself lives in ../js/server-rows.js, pure and unit-tested
- * (deck/test/settings-server.test.js), the way Drive's does in drive-rows.js. */
+ * (deck/test/settings-server.test.js), the way Drive's does in drive-rows.js.
+ *
+ * Move to a server is 0.1.2 (team/BACKLOG-0.1.2.md): no box in 0.1.1 registers a "federation"
+ * module, so federation.move.* has nothing to answer it. Gated on that module actually being
+ * there (checked live, never a build flag) so the flow turns itself back on the day 0.1.2 ships
+ * it, with nothing here to revert. */
 async function drawServer(el, ctx) {
-  const r = await attempt("onboard.status");
+  const [r, mods] = await Promise.all([attempt("onboard.status"), modules()]);
   if (r.error) {
     put(el, empty("The server role is read by the box module.", r.error),
       note("Once it's running, this is where you move your work to a server, or back."));
@@ -627,6 +632,12 @@ async function drawServer(el, ctx) {
   }
   const machine = r.data?.machine || "solo";
   if (machine !== "solo" && machine !== "server") { drawAlreadyMoved(el, r.data || {}); return; }
+  if (!mods.some(m => m.name === "federation")) {
+    put(el, row("This computer", h("span", null, "Runs everything, on its own."),
+      h("div", { class: "small muted" }, "No Tailscale, nothing else running.")),
+      note("Moving your work to a server is coming in a later update."));
+    return;
+  }
 
   // app-design's #1 finding (ce9c4c5f screenshot pass): a consequential, multi-step flow (moving
   // the whole vault/projects/memory to another machine) needs its own weight, a card
