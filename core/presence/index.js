@@ -14,6 +14,7 @@ import fs from "node:fs";
 import { execFile } from "node:child_process";
 import { migrate } from "../store/index.js";
 import { dialogsAllowed, NO_DIALOG } from "../config/dialogs.js";
+import { isServer } from "../config/index.js";
 
 /**
  * The floor's list. These need presence whatever their owners declare; a module can add to the
@@ -425,7 +426,7 @@ export class Presence {
    * @param {string} [tool]
    */
   ttyAllowed(tool) {
-    return this.role !== "box";
+    return !isServer(this.role);
   }
 
   /**
@@ -616,7 +617,7 @@ export class Presence {
       if (tool !== "presence.enroll") return refuse("a one-time code only enrolls a passkey or a device key");
       // On the box, Claude's sessions share vyred's socket and can ask onboarding for a fresh code.
       // So the code counts only from the owner's own device over the tailnet, where they cannot be.
-      if (this.role === "box") {
+      if (isServer(this.role)) {
         const owner = String((this.network() || {}).owner || "").toLowerCase();
         if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
       }

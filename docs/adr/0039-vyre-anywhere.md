@@ -37,9 +37,20 @@ becomes a device."
 
 ## Decision
 
-### 1. Role is a person's choice, not a platform guess
+### 1. The choice is a new field, `config.machine`, not a rewrite of `config.role`
 
-`config.role` becomes one of three values, replacing `"box"` | `"local"`:
+A first pass tried replacing `config.role`'s two values with three (`"solo"|"server"|"device"`).
+That breaks on contact: about fifteen files outside this ADR's ownership — `core/planner`,
+`core/term`, `core/projects`, `core/statusline`, `core/link`, `core/files` (and `drop.js`,
+`drive.js`), `core/vault/watch.js`, `core/sessions/config.js`, `core/modules/federate.js`, and
+several `core/cli/commands/*` (`link`, `assistant`, `up`, `phone`, `doctor`) — read
+`ctx.config.role === "box"` or `"local"` directly, not through a contract, because `core/config`
+is the kernel and every part is allowed to import it. Renaming the value space silently breaks
+every one of them; rewriting all fifteen unreviewed, in one pass, owned by other teams, is
+exactly the repo-wide change this ADR is supposed to avoid.
+
+Instead: `config.role` keeps its old two values and its old OS-guessed default, untouched.
+`config.machine` is a new, additive field — the person's actual choice:
 
 - `"server"` — this machine is the always-on server. Serves the Deck, runs watchers, owns the
   vault, the box-only modules run here.
@@ -49,16 +60,42 @@ becomes a device."
 - `"solo"` — this one machine is both. Every module that needs `"server"` or `"device"` runs;
   nothing needs Tailscale because there is only one machine to reach.
 
+`defaults()` computes `machine` the same way `role` always was (`darwin` → `"solo"`, else →
+`"server"`), so a fresh install's behavior doesn't change until the person actually chooses
+otherwise (onboarding, `vyre server here`, or pairing a second device). An old config.json with
+an explicit `role` but no `machine` migrates once: `role: "box"` implies `machine: "server"`
+(someone who set that by hand meant a real server); `role: "local"` implies `machine: "solo"`.
+
 `core/modules/index.js`'s loader keeps its two-bucket manifest vocabulary (`"roles": ["box"]`,
 `["local"]`, `["box","local"]`) unchanged — forty-plus manifests across every team's modules
-already speak it, and this ADR's job is the smallest change through that contract, not a
-repo-wide rename. The loader maps the new config values onto the old buckets:
+already speak it — and now reads `config.machine`, not `config.role`, to decide which buckets
+are active (`roleBuckets()`):
 
-| config.role | loads `"box"` modules | loads `"local"` modules |
+| config.machine | loads `"box"` modules | loads `"local"` modules |
 |---|---|---|
 | `server` | yes | no |
 | `device` | no | yes |
 | `solo` | yes | yes |
+
+Two new kernel helpers, `config.isServer(machine)` and `config.isDevice(machine)`, also accept
+the legacy `role` strings `"box"`/`"local"` as aliases, so a caller that hasn't moved to
+`machine` yet — a test, or one of the fifteen files above, if it later needs the third state —
+gets the right answer either way. `core/daemon/index.js` now builds the module registry and
+`Presence` with `cfg.machine`; the three places that gated real behavior on "is this the server"
+rather than a form-following-function `role` value — `core/presence/index.js`,
+`core/presence/module.js`, `core/onboard/index.js` — were moved from `role === "box"` to
+`isServer(machine)` because their behavior (restricting code-based passkey enrollment to the
+owner's tailnet device; the "is this the box" branch in onboard's session catalogue) is exactly
+the server/not-server distinction ADR 0039 exists to make explicit, not an OS artifact.
+
+The other fifteen files' `role`-based branches (file roots, term roots, statusline wording,
+vault sleep/lock detection, link's box-vs-Mac protocol, CLI command framing) stay exactly as
+they are. Most of them encode a real, per-consumer decision about what "solo" should look like
+that this ADR does not make unilaterally for every owner — e.g. should a Solo Mac's `core/term`
+default to `/work`-style roots or the home directory? That is a question for `core/term`'s
+owner, informed by this ADR, not a string swap. Each such file keeps working today and gets its
+own `machine`-aware pass, owner by owner, tracked under "Next" in docs/work/anywhere.md — this
+ADR unblocks that work without forcing it into one unreviewed commit.
 
 `computers` and `glass` (already `"roles": ["box"]`) stay additionally gated on Docker being
 present, unchanged from today — a Mac server with no Docker still runs `onboard`, `names`,
@@ -71,21 +108,15 @@ new copy uses the right word without archaeology.
 
 ### 2. Migration for existing installs
 
-An existing `config.json` has `role: "box"` or `role: "local"` (or nothing, defaulting by OS).
-`core/config/load()` migrates on read:
-
-- `"box"` → `"server"`
-- `"local"` → `"device"`
-- missing, on a machine with no other device ever paired (no `relay` device, no `names`
-  tailnet peer recorded) → `"solo"`, not `"server"` — a fresh single-Mac install that never
-  chose anything is Solo, matching what it actually does today (no Tailscale needed, no second
-  device exists).
-- missing, on a box that already has a paired device or a tailnet peer → `"server"` (it's
-  already acting as one).
-
-The migrated value is written back once (`problems` notes it happened), so `load()` is
-idempotent and a person who explicitly sets `"box"` or `"local"` by hand still gets migrated
-rather than rejected — old values are read-compatible, never round-tripped.
+`config.machine` is new, so there's nothing to migrate away from — only a value to infer for an
+existing `config.json` that has no `machine` key yet, per section 1: `defaults()` gives it the
+same OS guess `role` always used (`darwin` → `"solo"`, else → `"server"`), unless the person
+already made an explicit choice by hand (`role: "box"` or `role: "local"` in the file, with no
+`machine`), in which case that choice wins — `"box"` → `"server"`, `"local"` → `"solo"` — over
+the OS guess, since setting `role` by hand said more than the platform does. Nothing is written
+back to disk by this inference; `load()` computes it fresh every time, same as it always has for
+`role`, and only `core/config/save()` (onboarding, `vyre server here`, the move flow) persists a
+real choice.
 
 ### 3. The Mac as a server: a real service, not a session
 

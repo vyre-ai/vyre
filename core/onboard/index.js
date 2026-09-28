@@ -169,7 +169,7 @@ export default {
         // total does not depend on the limit, so one row is enough. On the box the catalogue
         // counts the paired Mac's sessions too (a module asks for that with machines: "all"), and
         // sources says which machines answered.
-        const box = ctx.config.role === "box";
+        const box = config.isServer(ctx.config.machine);
         // The page asks every couple of seconds, and each federated answer is a question to the
         // Mac, so the box keeps it for 30 s, or until a Mac pairs, unpairs, comes or goes
         // (link.macs is the box's own record, so reading it costs the Mac nothing). The box's own

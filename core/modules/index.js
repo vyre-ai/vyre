@@ -48,6 +48,21 @@ export const firstParty = dir => {
  */
 // settings passes a person's change on to the module that keeps the value, as that person.
 const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"] };
+/**
+ * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
+ * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
+ * with `config.machine` -- the person's actual choice, "solo", "server" or "device" -- and this
+ * is where the two meet: which manifest buckets are active for it. A raw "box" or "local" (a
+ * caller, mostly tests, that still passes one directly) passes straight through unchanged.
+ * @param {string} role @returns {string[]}
+ */
+export function roleBuckets(role) {
+  if (role === "box" || role === "local") return [role];
+  const out = [];
+  if (config.isServer(role)) out.push("box");
+  if (config.isDevice(role)) out.push("local");
+  return out;
+}
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
 /** Use counts reach vyre.db at most this often; nothing is written while nothing was used. */
@@ -298,7 +313,7 @@ export class Registry {
         continue;
       }
       const roles = f.manifest.roles || ["box", "local"];
-      const on = !disable.includes(name) && (roles.includes(role) || enable.includes(name));
+      const on = !disable.includes(name) && (roles.some(r => roleBuckets(role).includes(r)) || enable.includes(name));
       this.modules.set(name, { manifest: f.manifest, dir: f.dir, state: on ? "pending" : "off" });
     }
     const candidates = found.filter(f => { const r = this.modules.get(f.manifest && f.manifest.name); return r?.state === "pending" && r.dir === f.dir; });

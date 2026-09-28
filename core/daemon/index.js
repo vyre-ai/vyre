@@ -84,7 +84,7 @@ async function startLocked(opts, root, p, release) {
   const events = new Events(db);
   // vyred always checks presence. A test may pass a verifier, or a function that builds one on
   // this store (to give the real one fake OS touch points).
-  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.role, network: () => cfg.network || {} });
+  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, network: () => cfg.network || {} });
   // Who is the person over the network, not only their device (core/presence/person.js).
   const people = new PersonSessions({ db });
   const started = Date.now();
@@ -122,7 +122,9 @@ async function startLocked(opts, root, p, release) {
   // Every call passes the floor's rules (SPEC 5.3), whoever makes it; a test may pass its own.
   const rules = opts.rules || registryRules({ home: root });
   registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence });
-  await registry.start(discover(moduleRoots(root)), { role: cfg.role, ...cfg.modules });
+  // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
+  // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
+  await registry.start(discover(moduleRoots(root)), { role: cfg.machine, ...cfg.modules });
 
   // A stale socket from a crash would make listen() fail with EADDRINUSE. If nothing answers on
   // it, it is safe to remove; if something does, another vyred is running and this one stops.
@@ -410,7 +412,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // log, and a guessed cursor past the end drops every live event.
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
     const b = build();
-    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
+    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
       // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
       // its box by argv, never through a shell, and must run the same version.
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],

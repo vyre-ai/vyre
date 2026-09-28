@@ -23,7 +23,7 @@ rung 2 directly (a cloud server is never `"solo"`; there's no local presence to 
 
 ## The role choice
 
-Three values, one config key (`config.role`, ADR 0039 section 1):
+Three values, one config key (`config.machine`, ADR 0039 section 1):
 
 - **Solo** — "this computer does everything." Default for a fresh single-machine install.
 - **Server** — "this computer is always on for the others." Chosen by running `vyre server
@@ -74,7 +74,7 @@ all live only there. alex buys a Mac mini and wants it to take over.
    The source keeps running, fully itself, for the whole copy. Nothing on it changes until
    step 3 confirms.
 3. **The destination confirms, then the source flips.** Only after the destination has
-   decrypted and verified every piece does the source's `config.role` change (to `"device"`, or
+   decrypted and verified every piece does the source's `config.machine` change (to `"device"`, or
    it can stay `"solo"` a little longer if alex is only trying this out — the flip is a separate
    confirm, not automatic). The eight box-only modules stop on the source's next `vyred`
    restart. Everything else — Capsule, voice, the local Chat — keeps working on the source,
@@ -120,7 +120,7 @@ all live only there. alex buys a Mac mini and wants it to take over.
 
 `vyre server here` (ADR 0039 section 3):
 
-1. Sets `config.role` (asks Solo-vs-Server if ambiguous — a lone Mac with no device ever paired
+1. Sets `config.machine` (asks Solo-vs-Server if ambiguous — a lone Mac with no device ever paired
    defaults to staying Solo unless the person says otherwise).
 2. Installs `~/Library/LaunchAgents/com.vyre.vyred.plist`:
    - `RunAtLoad: true`, `KeepAlive: { SuccessfulExit: false }` — restarts on crash, not on a
@@ -135,7 +135,7 @@ all live only there. alex buys a Mac mini and wants it to take over.
    a home server that stays logged in, not a shared family Mac that logs out each night. FileVault
    machines that require login before disk unlock are told this plainly: full unattended
    restart-after-reboot isn't possible without the person's account unlocking the disk first.
-5. `--undo` removes the LaunchAgent and login item, and leaves `config.role` for the move flow
+5. `--undo` removes the LaunchAgent and login item, and leaves `config.machine` for the move flow
    to change, not this command.
 
 ## Windows later
