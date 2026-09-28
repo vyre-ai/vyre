@@ -48,7 +48,13 @@
 // stay as they are, so nothing is dropped and no branch is abandoned) or "both". files
 // {restored, files_changed, why} says how the files went: a notice "Restored 3 files".
 //
-// thread.state is one of starting, running, waiting, idle, stopped. thread.usage names the turn's
+// thread.state (legacy) is one of starting, running, waiting, idle, stopped, in the switchboard's
+// own internal vocabulary - two of those words mean something different to a person ("waiting" is
+// only ever set while an ask is open; "idle" is what a person calls "waiting"). thread.status
+// (canonical, sessions' lib/thread-status.js) says the same word a person would use directly:
+// starting, working, asking, waiting, paused, stopped, finished, failed - read as-is, never
+// relabeled here. Both fire at the same point; once a box sends thread.status even once, the
+// legacy word is ignored (see the thread.state case). thread.usage names the turn's
 // own cost (cost_usd) and the session's (total_cost_usd), and context {used, max, share}: what the
 // last request held of the model's window (contextLabel). The mode is mode.changed {mode}; the
 // model is model.switched {model} (threads.model), model.changed {model} on older boxes (a
@@ -70,7 +76,10 @@
 import { toolDetail } from "./tool-detail.js";
 
 /**
- * @typedef {"starting"|"idle"|"running"|"waiting"|"stopped"} SessionState
+ * @typedef {"starting"|"working"|"asking"|"waiting"|"paused"|"stopped"|"finished"|"failed"} SessionState
+ *   Sessions' canonical, person-facing vocabulary (lib/thread-status.js, on work/sessions):
+ *   thread.status/canonical_status. "idle" default below is legacy, replaced by the first
+ *   thread.state or thread.status event/snapshot.
  * @typedef {{ key: string, kind: "user", text: string, uuid?: string, at?: number, seq?: number, command?: true, surface?: string|null,
  *   steered?: boolean, step?: number|null, local?: boolean, confirmed?: boolean, opened?: boolean,
  *   images?: number|import("./composer-state.js").Attachment[] }} UserItem
@@ -103,7 +112,7 @@ import { toolDetail } from "./tool-detail.js";
  *   mode: string|null, modes: string[]|null, thinking: boolean|null,
  *   todos: { key: string, todos: Todo[] }|null, tasks: Map<string, Task>,
  *   rewound: { uuid: string, text: string, at: number|null }|null, purpose: string|null,
- *   meta: { live: number, notices: number, turns: number, lastId: number, stateSeen: boolean,
+ *   meta: { live: number, notices: number, turns: number, lastId: number, stateSeen: boolean, statusSeen: boolean,
  *     uuids: Map<string, string>, idents: Map<string, string>, texts: Map<string, string>, taskEvents: boolean,
  *     rewinds: Rewind[], restores: { uuid: string, local: boolean, key: string }[] }
  * }} Session
@@ -116,11 +125,14 @@ export function createSession(thread) {
     items: [], byKey: new Map(), queued: [], asks: new Map(), usage: null, limit: null, stopped: null,
     mode: null, modes: null, thinking: null, todos: null, tasks: new Map(), rewound: null, purpose: null,
     // Bookkeeping a view does not read: counters for keys, the newest event id applied, whether
-    // the switchboard sends thread.state (then state is never guessed), uuid -> key for users
-    // whose key was minted before their uuid was known, transcript block identity -> key, the
-    // words of queued messages by uuid (a hand-over or a steer from the queue may name only the
-    // uuid), and whether thread.task events come (then tasks are theirs).
-    meta: { live: 0, notices: 0, turns: 0, lastId: -Infinity, stateSeen: false, uuids: new Map(), idents: new Map(),
+    // the switchboard sends thread.state (then state is never guessed), whether it sends the
+    // canonical thread.status too (then the legacy thread.state's word is stale noise and
+    // ignored - thread.status fires at the same point, for every future change too, so this never
+    // needs to reset), uuid -> key for users whose key was minted before their uuid was known,
+    // transcript block identity -> key, the words of queued messages by uuid (a hand-over or a
+    // steer from the queue may name only the uuid), and whether thread.task events come (then
+    // tasks are theirs).
+    meta: { live: 0, notices: 0, turns: 0, lastId: -Infinity, stateSeen: false, statusSeen: false, uuids: new Map(), idents: new Map(),
       texts: new Map(), taskEvents: false, rewinds: [], restores: [] },
   };
 }
@@ -152,6 +164,12 @@ function insert(s, item, at) {
 
 /** @param {Session} s @param {SessionState} state */
 function guess(s, state) {
+  // These guesses (below, at every place an event implies the thread must now be running, waiting
+  // on an ask, or idle again) speak the same canonical vocabulary as thread.status now (lib/
+  // thread-status.js: starting, working, asking, waiting, paused, stopped, finished, failed) -
+  // never the switchboard's old internal words a person would misread ("waiting" only while an
+  // ask is open, "idle" meaning ready). A guess never overrides a real thread.state/thread.status
+  // once one has arrived (stateSeen).
   if (!s.meta.stateSeen) s.state = state;
 }
 
@@ -776,7 +794,7 @@ function onText(s, p, at, e, out) {
   if (text !== null) item.text = text;
   item.streaming = !done;
   out.add(item.key);
-  guess(s, "running");
+  guess(s, "working");
 }
 
 /** @param {Session} s @param {any} p @param {number|undefined} at @param {Set<string>} out */
@@ -801,7 +819,7 @@ function onTool(s, p, at, out) {
   if (typeof p.summary === "string" && p.summary) item.summary = p.summary;
   if (p.error !== undefined && p.error !== false && p.error !== null) item.error = p.error;
   out.add(key);
-  guess(s, "running");
+  guess(s, "working");
 }
 
 /** @param {Session} s @param {string} type @param {any} p @param {number|undefined} at @param {Set<string>} out */
@@ -818,7 +836,7 @@ function onAsk(s, type, p, at, out) {
     else insert(s, /** @type {AskItem} */ ({ key, kind: "ask", ask: id, askKind: a.kind, tool: a.tool, state: "open", decision: null,
       summary: p.summary ?? null, ...(at !== undefined ? { at } : {}) }));
     out.add(key);
-    guess(s, "waiting");
+    guess(s, "asking");
     return;
   }
   // The old switchboard says a withdrawn ask as ask.answered with decision "cancelled".
@@ -834,7 +852,7 @@ function onAsk(s, type, p, at, out) {
     if (p.answers) item.answers = p.answers;
     out.add(key);
   }
-  if (![...s.asks.values()].some(x => x.state === "open")) guess(s, "running");
+  if (![...s.asks.values()].some(x => x.state === "open")) guess(s, "working");
 }
 
 /** @param {Session} s @param {any} p @param {number|undefined} at @param {Set<string>} out */
@@ -856,7 +874,7 @@ function onFinished(s, p, at, out) {
     reason: p.reason ?? p.stop_reason ?? null,
   });
   out.add(key);
-  guess(s, "idle");
+  guess(s, "waiting");
   out.add("@session");
 }
 
@@ -903,7 +921,7 @@ function steersRun(s, p, at, out) {
   if (first.seq === undefined) move(s, first);
   if (uuid) s.meta.texts.delete(uuid);
   out.add(first.key);
-  guess(s, "running");
+  guess(s, "working");
 }
 
 /**
@@ -950,7 +968,7 @@ function onSent(s, p, at, out) {
       out.add(user.key);
     }
   }
-  guess(s, "running");
+  guess(s, "working");
   out.add("@session");
 }
 
@@ -982,7 +1000,16 @@ export function applyEvent(s, e) {
       out.add("@session");
       break;
     case "thread.state":
+      // thread.status (below) is canonical and, once a box sends it at all, fires at the same
+      // point as this legacy event for every future change too - so once seen, this raw word
+      // (old vocabulary: "waiting" meaning an ask is open, "idle" meaning ready - swapped from
+      // what a person would guess) is stale noise. An older box that never sends thread.status
+      // keeps working exactly as before.
+      if (s.meta.statusSeen) break;
       if (typeof p.state === "string") { s.state = p.state; s.meta.stateSeen = true; out.add("@session"); }
+      break;
+    case "thread.status":
+      if (typeof p.status === "string") { s.state = p.status; s.meta.stateSeen = true; s.meta.statusSeen = true; out.add("@session"); }
       break;
     case "thread.sent": onSent(s, p, at, out); break;
     case "thread.turn": {
@@ -1075,9 +1102,15 @@ export function applyEvent(s, e) {
     case "thread.stopped":
       settle(s, out);
       s.stopped = String(p.reason || "stop");
-      // Closed for idleness (ADR 0030 section 7): no process, but the next message resumes it.
-      // A crash is stopped too (the reason says why); there is no "failed" state.
-      guess(s, s.stopped === "idle" ? "idle" : "stopped");
+      // Mirrors lib/thread-status.js's threadStatus() (sessions, 28a8b4f8) for the best guess
+      // before any real thread.status arrives: an idle timeout, a restart or a rewind are all
+      // "paused" (resumable, not wrong); a one-shot's own "done" or a bare exit is "finished"; a
+      // nonzero code or a signal is "failed" - never read back as an ordinary idle close, and an
+      // idle close never read back as a crash. Anything else (the person pressed Stop) is "stopped".
+      guess(s, s.stopped === "idle" || s.stopped === "restart" || s.stopped === "rewind" ? "paused"
+        : s.stopped === "done" || s.stopped === "exited" ? "finished"
+        : s.stopped.startsWith("exited ") ? "failed"
+        : "stopped");
       out.add("@session");
       break;
     default: break;

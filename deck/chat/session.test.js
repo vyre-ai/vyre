@@ -106,7 +106,7 @@ const res = {
 // and queued another (the screenshot run's shape: threads.get holds both, the transcript neither).
 const REOPEN = "6a7b8c9d-reopen-thread";
 const reopen = {
-  thread: { id: REOPEN, name: "Northwind specials", cwd: "/home/alex/work/northwind", status: "waiting", holder: "deck", agent: null },
+  thread: { id: REOPEN, name: "Northwind specials", cwd: "/home/alex/work/northwind", status: "waiting", canonical_status: "asking", holder: "deck", agent: null },
   events: [
     { id: 1, type: "thread.sent", thread: REOPEN, at: T0, payload: { text: "demo", surface: "deck", uuid: "u-demo" } },
     { id: 2, type: "thread.turn", thread: REOPEN, at: T0, payload: { turn: `${REOPEN}:1`, uuid: "u-demo", text: "demo" } },
@@ -117,7 +117,7 @@ const reopen = {
     { id: 6, type: "thread.unqueued", thread: REOPEN, at: T0 + 400, payload: { queued: 3, uuid: "q-old", reason: "taken" } },
     { id: 7, type: "thread.tool", thread: REOPEN, at: T0 + 1000, payload: { call: "toolu_e", id: "toolu_e", tool: "Edit", name: "Edit", phase: "started", status: "running", summary: "Edit menu.md" } },
     { id: 8, type: "ask.raised", thread: REOPEN, at: T0 + 1100, payload: { ask: "ask_e", kind: "permission", tool: "Edit", summary: "menu.md", tool_use_id: "toolu_e" } },
-    { id: 9, type: "thread.state", thread: REOPEN, at: T0 + 1100, payload: { state: "waiting" } },
+    { id: 9, type: "thread.status", thread: REOPEN, at: T0 + 1100, payload: { status: "asking" } },
     { id: 10, type: "thread.sent", thread: REOPEN, at: T0 + 2000, payload: { text: "use the rye price too", surface: "deck", uuid: "s-new", via: "steer" } },
     { id: 11, type: "thread.queued", thread: REOPEN, at: T0 + 3000, payload: { queued: 5, uuid: "q-new", text: "then check the hours", surface: "deck" } },
   ],
@@ -142,7 +142,7 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
   if (tool === "sight.targets") return { status: 200, statusText: "", json: async () => ({ data: { targets: sightWorld?.targets || [] } }) };
   if (tool === "sight.frame") return { status: 200, statusText: "", json: async () => ({ data: sightWorld?.frame(input) || { target: input.target, image: null } }) };
   if (input.thread === RES || input.session === RES) {
-    if (tool === "threads.get") data = { thread: { id: RES, name: "Northwind order form", cwd: "/home/alex/work/northwind", status: "idle", holder: null, agent: null },
+    if (tool === "threads.get") data = { thread: { id: RES, name: "Northwind order form", cwd: "/home/alex/work/northwind", status: "idle", canonical_status: "waiting", holder: null, agent: null },
       events: res.events.filter(e => e.id > (input.since ?? 0)), asks: res.asks };
     else if (tool === "recall.transcript") {
       const from = input.from ?? 0;
@@ -161,7 +161,7 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
   if (input.thread === NEW || input.session === NEW) {
     if (tool === "threads.interrupt" && interruptMissing) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no tool threads.interrupt" } }) };
     if (MISSING.has(tool)) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no such tool here" } }) };
-    if (tool === "threads.get") data = { thread: { id: NEW, name: "Q3 report and Estate intake", cwd: "/home/alex/work/harlow-legal", status: "idle", holder: null, agent: "kit", project: "harlow-legal" }, events: [], asks: [] };
+    if (tool === "threads.get") data = { thread: { id: NEW, name: "Q3 report and Estate intake", cwd: "/home/alex/work/harlow-legal", status: "idle", canonical_status: "waiting", holder: null, agent: "kit", project: "harlow-legal" }, events: [], asks: [] };
     else if (tool === "recall.transcript") data = { session: { id: NEW, cwd: "/home/alex/work/harlow-legal" }, blocks: [], next: 0, first: 0 };
     else if (tool === "threads.asks") data = [];
     else if (tool === "threads.answer") data = { answered: true };
@@ -187,7 +187,7 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
     return { status: 200, statusText: "", json: async () => ({ data }) };
   }
   if (input.thread === LIVE || input.session === LIVE) {
-    if (tool === "threads.get") data = { thread: { id: LIVE, name: null, cwd: fx.session.cwd, status: "running", holder: null, agent: null }, events: liveEvents, asks: [fx.asks[0]] };
+    if (tool === "threads.get") data = { thread: { id: LIVE, name: null, cwd: fx.session.cwd, status: "running", canonical_status: "working", holder: null, agent: null }, events: liveEvents, asks: [fx.asks[0]] };
     else if (tool === "recall.transcript") {
       if (liveReads++ === 0) return { status: 404, statusText: "", json: async () => ({ error: { code: "not_found", message: "no transcript for this session yet" } }) };
       data = { session: { id: LIVE, cwd: fx.session.cwd }, blocks: liveBlocks, next: 3, first: 0 };
@@ -196,7 +196,7 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
     return { status: 200, statusText: "", json: async () => ({ data }) };
   }
   if (tool === "system.info") data = owner ? { owner: { name: owner } } : {};
-  else if (tool === "threads.get") data = { thread: { id: SID, name: "order form fix", cwd: fx.session.cwd, status: "running", holder: "deck", agent: null }, events: [], asks: [] };
+  else if (tool === "threads.get") data = { thread: { id: SID, name: "order form fix", cwd: fx.session.cwd, status: "running", canonical_status: "working", holder: "deck", agent: null }, events: [], asks: [] };
   else if (tool === "recall.transcript") data = reads++ === 0 ? { session: fx.session, blocks: fx.blocks, next: 0, first: 0 } : { session: fx.session, blocks: second, next: 19, first: 0 };
   else if (tool === "threads.asks") data = fx.asks.filter(a => a.kind === "question");
   else if (tool === "memory.facts") data = { facts: [] };
@@ -351,13 +351,13 @@ test("the header chip names provider, model and auth, and the state word follows
   await wait(30);
   assert.equal($(box3, ".cv-chip"), null, "nothing known, no chip");
   assert.equal(text($(box3, ".cv-project")), "Harlow Legal", "kit's own thread names its project, once threads.get says which (finding 6)");
-  assert.match(text($(box3, ".cv-state")), /^idle$/);
+  assert.match(text($(box3, ".cv-state")), /^waiting$/, "canonical_status (sessions' 6e2f8a71), not the raw legacy status");
   assert.equal(stopBtn().hidden, true, "no Stop while idle");
   at("thread.started", { provider: "claude", model: "claude-opus-4-5", auth: "subscription" });
   assert.equal(text($(box3, ".cv-chip")), "Claude · opus · subscription");
   assert.match(text($(box3, ".cv-state")), /^starting$/);
   at("thread.stopped", { reason: "idle" });
-  assert.match(text($(box3, ".cv-state")), /^idle$/);
+  assert.match(text($(box3, ".cv-state")), /^paused$/, "the guess mirrors lib/thread-status.js: an idle close is paused, not stopped or failed");
   assert.match(text($(box3, ".lease-bar")), /Resumes on your next message/);
 });
 
@@ -517,6 +517,7 @@ test("typing while a turn runs steers it ('steering', then 'you steered here · 
   const sheet = $(box4, ".cv-rewind");
   assert.ok(sheet, "Esc Esc opens the rewind sheet");
   assert.match(text(sheet), /Use Estate intake v2 instead/);
+  assert.equal($(box4, ".cv-rewind-scrim").hidden, false, "a real overlay (app-design's review), not drawn in the flow");
   await wait();
   // Claude Code's three choices; the box answered threads.commands, so it can put files back.
   assert.deepEqual($$(box4, ".cv-rw-opt").map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code"]);
@@ -527,6 +528,7 @@ test("typing while a turn runs steers it ('steering', then 'you steered here · 
   assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: "box-steer-1", restore: "both" }, "the box's uuid for the message");
   assert.deepEqual(went, [], "the same thread: nothing opens");
   assert.equal($(box4, ".cv-rewind"), null);
+  assert.equal($(box4, ".cv-rewind-scrim").hidden, true);
   assert.equal($$(box4, ".cv-user").length, 1, "the message and everything after it are gone");
   assert.equal($$(box4, ".cv-steer").length, 0);
   assert.equal(ta.value, "Use Estate intake v2 instead", "the words come back to edit");
@@ -553,6 +555,17 @@ test("typing while a turn runs steers it ('steering', then 'you steered here · 
   at("thread.rewound", { uuid: "u-first", restore: "code", files: { restored: true, files_changed: ["src/intake/estate.ts", "src/intake/forms.ts"] } });
   await wait();
   assert.equal($$(box4, ".thread-view .cv-notice").filter(n => /Restored 2 files/.test(text(n))).length, 1, "its event is the same restore");
+
+  // A tap on the scrim closes it too (the tap-on-backdrop convention, lightbox.js), no threads.rewind call.
+  ta.value = ""; // the code-restore flow leaves the draft as it was; clear it first, same as the two flows above
+  key("Escape"); key("Escape");
+  await wait();
+  assert.ok($(box4, ".cv-rewind"));
+  const rewindCallsBefore = calls.filter(c => c.tool === "threads.rewind").length;
+  $(box4, ".cv-rewind-scrim").click();
+  assert.equal($(box4, ".cv-rewind"), null);
+  assert.equal($(box4, ".cv-rewind-scrim").hidden, true);
+  assert.equal(calls.filter(c => c.tool === "threads.rewind").length, rewindCallsBefore, "closed, not chosen");
 
   // The context meter, only once the box says the share; the model chip follows model.switched.
   assert.equal($(box4, ".cv-context"), null);
@@ -765,12 +778,12 @@ test("the composer grows with its text once a frame, and a key on a line that fi
   stop7();
 });
 
-test("reopened while an Edit waits on Allow: the pending steer and the queued row come back from threads.get; the state word is waiting", async () => {
+test("reopened while an Edit waits on Allow: the pending steer and the queued row come back from threads.get; the state word is asking", async () => {
   const box5 = new El("div");
   doc.body.append(box5);
   const stop5 = mountSession(box5, { thread: REOPEN, project: null, onBack() {} });
   await wait(30);
-  assert.match(text($(box5, ".cv-state")), /^waiting$/, "an open ask: waiting on you");
+  assert.match(text($(box5, ".cv-state")), /^asking$/, "an open ask: canonical_status (sessions' 6e2f8a71) says asking, not the swapped legacy waiting");
   assert.ok($(box5, ".cv-ask"), "the ask is still there");
   // The steer: its words and a "Steering" marker, since Claude has not taken them in yet.
   const steers = $$(box5, ".cv-steer");
