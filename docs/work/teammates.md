@@ -11,6 +11,24 @@ Reviewer signed off work/teammates-a at 60b42d3d with one LOW (this file's own O
 lib/git-safe.js's already-reviewed defaults); team-lead asked for the git-safe move (without the
 env param) on top, as its own commit. Merged main in (29ca7d65, brings in lib/git-safe.js itself)
 then applied the move at 5dfa6b41 — pushed, sent to reviewer and integrator.
+**Superseded**: the reviewer and integrator then routed on work/teammates b720a002 (both slices
+together, including the git-safe move) as what actually lands in the 0.1.1 stage; teammates-a is
+not merged separately. Diffed 5dfa6b41 against b720a002's core/team/git.js first (comment wording
+only, no functional difference) and confirmed that to the reviewer and integrator. teammates-a's
+worktree/branch are left as they are (pushed, reviewed, just not the one landing) rather than
+cleaned up, in case anyone wants to point at them later.
+
+**Reviewer SIGNED OFF work/teammates b720a002** (both slices, 2026-09-28): the HIGH (vyred running
+tests) and both MEDIUMs (tag hijack, detached HEAD) and the LOW (git-safe move) all closed. One
+non-finding note carried forward as a fix: the test-pass attestation is the integrator model's own
+word, and a merge it attests moves the person's base branch by compare-and-swap, so a person
+reading the result should be told an agent vouched for it. Fixed at ba6afea2: team.merge's result
+now leads with "Tests passed (checked by the integrator; <command>, thread <id>)" rather than the
+more technical "attested exit 0 by thread <id>". 48/48 green.
+
+**Resume 8 brief: all 5 steps done, except step 4** (switch to sessions' lib/project-id.js slug
+regex), still blocked — work/projects (e87f63df) is still not on main as of this check. Nothing
+else queued; watching for it to land.
 
 Scope: persistent project teammates (a named agent per role per project, durable notes, a serial
 inbox, a summon tool in every session of the project), designed on ADR 0030's session model. The
