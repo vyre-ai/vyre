@@ -73,12 +73,12 @@ pick_look() {
   [ "${TERM:-dumb}" != dumb ] || return 0
   COLOR=1
   e=$(printf '\033')
-  BONE="$e[38;2;241;238;230m"
-  SIGNAL="$e[38;2;198;243;107m"
-  ASH="$e[38;2;140;135;125m"
-  BEACON="$e[38;2;184;164;255m"
-  BOLD="$e[1m"
-  RESET="$e[0m"
+  BONE="${e}[38;2;241;238;230m"
+  SIGNAL="${e}[38;2;198;243;107m"
+  ASH="${e}[38;2;140;135;125m"
+  BEACON="${e}[38;2;184;164;255m"
+  BOLD="${e}[1m"
+  RESET="${e}[0m"
   OK=$(printf '\342\234\223')
 }
 
@@ -103,11 +103,25 @@ hello() {
 step() {
   STEP=$((STEP + 1))
   [ "$STEP" = 1 ] || say ""
-  say "$ASH[$STEP/$STEPS]$RESET $BOLD$1$RESET"
+  say "${ASH}[$STEP/$STEPS]$RESET $BOLD$1$RESET"
 }
 
 # done_step TEXT: the step finished, with a check mark (or "ok" in plain text).
 done_step() { say "  $SIGNAL$OK$RESET $1"; }
+
+# WAITS: one quiet line for the one real wait in this installer (Docker's own script). Picked by
+# pid, not by odds, since something has to show while it's genuinely quiet: this is look only,
+# never invented data, never a name or anything a person typed.
+WAITS="this part is Docker's own installer, not ours
+nothing is stuck: it's just quiet before apt gets going
+the next lines on screen are curl's, not ours
+a fine moment for a coffee"
+
+wait_line() {
+  n=$(printf '%s\n' "$WAITS" | wc -l)
+  i=$(( ($$ % n) + 1 ))
+  printf '%s\n' "$WAITS" | sed -n "${i}p"
+}
 
 # rule: a short line across, before the finish.
 rule() {
@@ -208,6 +222,10 @@ need_docker() {
   cmd="curl -fsSL https://get.docker.com | sh"
   if ! command -v docker >/dev/null 2>&1; then
     if ask "Docker is not installed. Install it now with: $cmd ?"; then
+      # The one real silent gap in this installer: Docker's own script takes a minute or two
+      # before it says anything. One quiet line so it doesn't look stuck; --dry-run never gets
+      # here for real, so it stays out of that output.
+      [ "$DRY" = 1 ] || say "  $ASH$(wait_line)...$RESET"
       priv sh -c "$cmd"
       [ "$DRY" = 1 ] && return 0
     else

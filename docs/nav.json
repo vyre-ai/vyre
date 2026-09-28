@@ -82,6 +82,7 @@
       "adr/0025-planner.md",
       "adr/0026-relay.md",
       "adr/0027-one-app.md",
+      "adr/0028-vault-everywhere.md",
       "adr/0029-resilience.md",
       "adr/0030-sessions.md",
       "adr/0031-teammates.md",

@@ -11,6 +11,7 @@ import { call } from "../core/daemon/client.js";
 import { ensureUp } from "../core/cli/daemonctl.js";
 import { callAsPerson } from "../core/cli/presence.js";
 import { tempHome } from "./helpers.js";
+import { socketPath } from "../core/config/index.js";
 import { SCRATCH } from "./scratch.mjs";
 
 /** A stand-in for a thread's socket that answers every call with which socket it is. */
@@ -48,6 +49,25 @@ test("ensureUp: inside a session it never starts a vyred, it only checks the ses
   assert.equal(r.ok, false);
   assert.match(String(r.error), /session's socket/);
   assert.ok(!fs.existsSync(path.join(root, "vyred.pid")), "no vyred was started");
+});
+
+test("ensureUp: in the box's container it waits for the supervisor's vyred and never starts its own", async t => {
+  const root = tempHome(t);
+  env(t, { VYRE_HOME: root, VYRE_SUPERVISOR: "docker", VYRE_UP_WAIT_MS: "600", VYRE_THREAD: undefined, VYRE_SOCKET: undefined });
+  const t0 = Date.now();
+  const r = await ensureUp();
+  assert.equal(r.ok, false);
+  assert.match(String(r.error), /not answering in its container/);
+  assert.ok(Date.now() - t0 >= 500, "it waited for the supervisor");
+  assert.ok(!fs.existsSync(path.join(root, "vyred.pid")), "no vyred was started");
+  // The supervisor's vyred answering mid-wait is taken as up.
+  const sock = socketPath(root);
+  const server = http.createServer((req, res) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data: { ok: true } })); });
+  env(t, { VYRE_UP_WAIT_MS: "5000" });
+  setTimeout(() => server.listen(sock), 400);
+  t.after(() => new Promise(res => server.close(() => res(undefined))));
+  const up = await ensureUp();
+  assert.deepEqual(up, { ok: true, started: false });
 });
 
 test("vyre call inside a session: callAsPerson leaves the root to the client, so VYRE_SOCKET is used", async t => {

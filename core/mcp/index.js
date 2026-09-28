@@ -19,6 +19,7 @@
 // server's sender stays offered until vyred restarts; release refuses it.
 
 import { Credentials } from "../connectors/auth.js";
+import { checkBehalf } from "../connectors/behalf.js";
 import { connect } from "./client.js";
 import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom } from "./hub.js";
 
@@ -123,8 +124,26 @@ export default {
 
     ctx.tool("mcp.call", {
       description: "Call a tool on an MCP server: { server, tool, arguments } or { name: \"<server>__<tool>\", arguments }. A read runs and returns the server's result. Anything else is held at the Gate and returns { held, message }: nothing reaches the server until the user approves it, so do not try it another way.",
-      input: obj({ server: str, tool: str, name: str, arguments: { type: "object" } }),
-      run: (input, meta) => hub.call(input, who(meta)),
+      input: obj({ server: str, tool: str, name: str, arguments: { type: "object" },
+        hold: { type: "boolean", description: "modules only: hold this call at the Gate even if the tool reads" },
+        on_behalf: obj({ thread: str, agent: str }) }),
+      run: async (input, meta) => {
+        // One of Vyre's own modules (mail) calls for a chat or an agent: the held item is filed
+        // under that thread and agent, checked against the Switchboard (connectors/behalf.js), and
+        // the server scope becomes that agent's or that thread's project, never the person's.
+        // From anyone else on_behalf is dropped, never trusted. `hold` only makes a call stricter,
+        // so any module may ask for it.
+        const mod = String(meta.caller || "").startsWith("module:");
+        const { hold, on_behalf, ...rest } = input;
+        const w = who(meta);
+        const b = await checkBehalf((tool, x) => ctx.call(tool, x), meta, on_behalf);
+        if (b) {
+          if (b.thread) w.thread = b.thread;
+          if (b.agent) w.agent = b.agent;
+          w.person = false;
+        }
+        return hub.call({ ...rest, ...(mod && hold === true ? { hold: true } : {}) }, w);
+      },
     });
 
     ctx.tool("mcp.release", {

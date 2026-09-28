@@ -71,6 +71,27 @@ export function parseTarget(t) {
  */
 export const offMac = meta => Boolean(meta && (meta.peer || /^(tailnet|tailnet-guest|device):/.test(String(meta.caller || ""))));
 
+/** A caller claiming to be an agent, in any of the forms vyred recognizes: "mcp:agent:kit", "harness:agent:kit". */
+const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+
+/**
+ * The agent name this call's real caller claims to be, when it is not the assistant, or null.
+ * sight.watch forwards to computers.watch as "module:sight" (core/modules/index.js's call
+ * wrapper), so computers.js's own ownSurface floor (which refuses an ordinary agent claiming a
+ * person's surface) never sees who really called; from computers' side every sight-proxied watch
+ * looks like the same trusted module, whoever asked. sight still has meta.caller before that
+ * relabeling happens, so it checks the same thing itself and refuses before forwarding.
+ * @param {any} ctx @param {any} meta
+ */
+export const agentCaller = async (ctx, meta) => {
+  const claim = AGENT_CLAIM.exec(String((meta && meta.caller) || ""));
+  if (!claim) return null;
+  const r = await ctx.call("agents.list", {});
+  if (r.error) return claim[1]; // can't tell who this is: fail closed, treat it as an ordinary agent
+  const a = (r.data || []).find(x => x && x.name === claim[1]);
+  return a && String(a.kind) === "assistant" ? null : claim[1];
+};
+
 /**
  * One acted event as a step, or null when it is not one. Only the named fields are read, so
  * whatever else an acting module puts on its event never reaches the table.
@@ -260,9 +281,11 @@ export default {
         target: { type: "string" }, surface: { type: "string" }, slow: { type: "boolean" },
       } },
       callers: CALLERS,
-      run: async i => {
+      run: async (i, meta) => {
         const t = parseTarget(i.target);
         if (t.kind === "mac") throw fail("local_only", "this Mac's pixels never leave this Mac");
+        const claimant = await agentCaller(ctx, meta);
+        if (claimant) throw fail("denied", `"${claimant}" is an agent, not a person's screen; sight.watch opens a screen for a person, not for an agent to watch itself`);
         const r = await ctx.call("computers.watch", { agent: t.agent, ...(i.surface !== undefined ? { surface: i.surface } : {}), ...(i.slow !== undefined ? { slow: i.slow } : {}) });
         if (r && r.error && r.error.code === "no_such_tool") return { target: i.target, ticket: null, why: "this machine runs no agent computers" };
         if (!r || r.error) throw fail((r && r.error && r.error.code) || "failed", (r && r.error && r.error.message) || "computers.watch failed");
@@ -276,9 +299,11 @@ export default {
         target: { type: "string" }, maxWidth: { type: "integer", minimum: 160, maximum: 1280 },
       } },
       callers: CALLERS,
-      run: async i => {
+      run: async (i, meta) => {
         const t = parseTarget(i.target);
         if (t.kind === "mac") throw fail("local_only", "this Mac's pixels never leave this Mac");
+        const claimant = await agentCaller(ctx, meta);
+        if (claimant) throw fail("denied", `"${claimant}" is an agent, not a person's screen; sight.frame opens a screen for a person, not for an agent to watch itself`);
         const maxWidth = Number.isInteger(i.maxWidth) ? i.maxWidth : 480;
         const r = await ctx.call("hands-desktop.screenshot", { agent: t.agent, format: "jpeg", maxWidth });
         if (r && r.error && r.error.code === "no_such_tool") return { target: i.target, image: null, why: "this machine runs no agent computers" };

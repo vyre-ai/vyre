@@ -92,7 +92,7 @@ export default {
     };
     const runner = ctx.memoryRunner !== undefined ? ctx.memoryRunner
       : process.env.NODE_TEST_CONTEXT && !process.env.VYRE_CLAUDE_BIN ? null
-      : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()) }) : null;
+      : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()), billing: () => ctx.config.memory?.model?.billing }) : null;
     const model = createReader({
       db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log, config: () => ctx.config,
       // Never a real model under node --test unless a test points VYRE_CLAUDE_BIN at a fake.
@@ -429,11 +429,13 @@ export default {
     // would be read from, fused from Recall's searches and widened by names memory knows. Personal
     // names widen it only for a caller that may see personal facts.
     const retrieve = retriever({ graph, personal, askDir, quickDir, now: () => Date.now(),
+      // A user turn carries the reply that followed: the answer is often one turn after the question.
+      next: async (session, seq) => { const r = await ctx.call("recall.thread", { session, from: seq + 1, limit: 1 }); return r?.error ? null : (r?.data?.turns || [])[0] || null; },
       search: async q => { const r = await ctx.call("recall.search", q); if (r?.error) throw new Error(r.error.message || "recall.search failed"); return Array.isArray(r?.data) ? r.data : r?.data?.hits || []; } });
     ctx.tool("memory.retrieve", {
       description: "The turns Vyre IQ would read to answer a question: { passages: [{ id, session, seq, role, ts, text, name, cwd, score, via }], expanded, window }. No model. expand, when, recency and hybrid switch steps off, for the evaluation.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds, k: { type: "integer", minimum: 1, maximum: 30 },
-        expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" },
+        expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" }, replies: { type: "boolean" },
         knobs: { type: "object", description: "evaluation only: passed to recall.search" }, ...agentField } },
       run: async (input, { caller } = {}) => {
         const project_cwds = clean(input.project_cwds);
@@ -441,7 +443,7 @@ export default {
         try { await personalOnly(input, caller, "memory.retrieve"); } catch { sees = false; }
         if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
         return retrieve({ question: String(input.question || ""), project_cwds, k: input.k ?? 8, personal: sees,
-          expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, knobs: input.knobs || {} });
+          expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, replies: input.replies !== false, knobs: input.knobs || {} });
       },
     });
     // Vyre IQ's answer (ADR 0034, core/memory/iq/ask.js): a personal fact, else the fast model over
@@ -457,7 +459,24 @@ export default {
       if (r?.error || !r?.data?.ok) throw new Error(r?.error?.message || "threads.quick did not answer");
       return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0 };
     });
-    const ask = asker({ db: ctx.store.db, answer, retrieve, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
+    // Source trust (ADR 0034): a question about the user's own life stands only on their own words
+    // in sessions trust keeps (core/memory/iq/ask.js).
+    const LIFE = new Set(["kin", "of", "birthday", "car", "carFate", "diet", "lives", "born", "myname", "owns"]);
+    const trustOf = ctx.store.db.prepare("SELECT ok FROM memory_me_trust WHERE session = ?");
+    const humanOf = () => { try { return ctx.store.db.prepare("SELECT human FROM recall_sessions WHERE id = ?"); } catch { return null; } };
+    const ask = asker({ db: ctx.store.db, answer, retrieve,
+      personalQ: q => {
+        // About the user's own life: a relative, their car, home, diet, birthday, name. Work
+        // questions that the personal parser also reads ("who's priya") stay work questions.
+        const p = /** @type {any} */ (parseQuestion(q));
+        const t = String(q).toLowerCase();
+        if (!p || !LIFE.has(p.kind) || !/\b(?:my|our|i|me|mine)\b/.test(t)) return false;
+        return !p.word || new RegExp(`\\b${String(p.word).replace(/[^a-z]/g, "")}s?\\b`).test(t);
+      },
+      // A session source trust refused, or one a program started (a subagent, a headless run), never grounds a personal answer.
+      // Fails closed (e2e, 28 Sep): a session counts only once recall says a person started it.
+      trusted: session => /** @type {any} */ (trustOf.get(session))?.ok !== 0 && /** @type {any} */ (humanOf()?.get(session))?.human === 1,
+      runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
       budget: {
         allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd) : ASK_DAILY_USD) + 1e-9,
         charge: usd => void ctx.store.db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
