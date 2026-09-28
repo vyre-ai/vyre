@@ -166,6 +166,7 @@
   .ag-row { flex-wrap: wrap; gap: 12px; min-height: 64px; position: relative; }
   .ag-row:hover { margin: 0; padding-left: 0; padding-right: 0; }
   .ag-tile { width: 36px; height: 36px; }
+  span.ag-av { --av: 36px !important; }
   .ag-row-main { flex-basis: calc(100% - 80px); }
   .ag-row-projects { order: 3; justify-content: flex-start; max-width: none; padding-left: 48px; }
   .ag-chev { display: none; }
@@ -183,6 +184,7 @@
 
   .ab-head { flex-wrap: wrap; gap: 14px; padding: 16px 16px 18px; }
   .ab-tile { width: 44px; height: 44px; font-size: 18px; border-radius: var(--radius-field, 8px); }
+  span.ab-av { --av: 44px !important; }
   .ab-id { flex-basis: calc(100% - 60px); }
   .ab-acts { width: 100%; }
   .ab-acts > * { flex: 1; }
@@ -198,3 +200,9 @@
 }
 .asst-check { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; color: var(--text); cursor: pointer; }
 .asst-check input { width: 18px; height: 18px; margin: 1px 0 0; flex-shrink: 0; accent-color: var(--primary-bg); }
+
+/* Teammates (team.list): a character on its tile, the role name beside it, a "Teammate" tag
+   (avatar.md: the tile is never shown bare). */
+.ag-team-row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.ag-team-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.ag-team-name { display: flex; align-items: center; gap: 8px; }

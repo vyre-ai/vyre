@@ -121,3 +121,6 @@
 @media (prefers-reduced-motion: reduce) { .set-meter > span { transition: none; } }
 .set-vault-note { display: flex; align-items: flex-start; gap: 8px; }
 .set-vault-note svg { flex-shrink: 0; margin-top: 2px; color: var(--text-2); }
+
+/* Your own avatar, large, with its Vyre code ring (js/avatars.js). */
+.set-you-av { display: flex; margin: 4px 0 20px; }

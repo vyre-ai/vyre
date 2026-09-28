@@ -22,13 +22,15 @@
 // 2026-09-28); this file is the ONE place that imports it, so swapping renderers later is a
 // one-file change, not a hunt through pair-scan.js.
 
-import { userAvatar, USER_GRADIENTS, defaultAvatarOption } from "../vendor/vyrecode/identity.js";
+// The renderer itself now comes through js/avatars.js, the Deck's one importer of the vendored
+// avatar files (native-core, 0.1.1), so a locked-renderer swap never touches this file.
+import { avatarSource, PERSON_OPTIONS } from "./avatars.js";
 
 /** The wrong-but-stopgap derivation this file used before ADR 0043 2d ruled on the real one.
  * @param {Uint8Array} boxKey */
 async function fallbackOptionFromBoxKey(boxKey) {
   const digest = await crypto.subtle.digest("SHA-256", boxKey);
-  return new Uint8Array(digest)[0] % USER_GRADIENTS.length;
+  return new Uint8Array(digest)[0] % PERSON_OPTIONS;
 }
 
 /**
@@ -38,8 +40,6 @@ async function fallbackOptionFromBoxKey(boxKey) {
  * @param {number} [size]
  */
 export async function renderPersonAvatar(o, size = 120) {
-  const option = o.identityFingerprint
-    ? defaultAvatarOption(Array.from(o.identityFingerprint), USER_GRADIENTS.length)
-    : await fallbackOptionFromBoxKey(o.boxKey);
-  return userAvatar(option, size);
+  if (o.identityFingerprint) return avatarSource("person", "", size, { fp: Array.from(o.identityFingerprint) });
+  return avatarSource("person", "", size, { option: await fallbackOptionFromBoxKey(o.boxKey) });
 }

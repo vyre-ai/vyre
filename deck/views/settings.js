@@ -16,6 +16,7 @@ import { h, put, link, head, empty } from "../js/dom.js";
 import { attempt, modules, canProve, on } from "../js/api.js";
 import { pushState, subscribePush, unsubscribePush, enrollPasskey, passkeyState, deviceName, deniedHelp } from "../js/phone-setup.js";
 import { icon, mark, wordmark } from "../js/icons.js";
+import { personAvatar, readSystem } from "../js/avatars.js";
 import { when, since, plural } from "../js/fmt.js";
 import { personStatus, signOutHere } from "../js/person.js";
 import { pathMark, statusMark } from "../js/status-mark.js";
@@ -118,7 +119,7 @@ export default async function settings(ctx) {
   /** @type {{ reveal: (key: string) => boolean } | null} */
   let keys = null;
   const loads = [
-    drawSetup(body.setup), drawYou(body.you), drawAssistant(body.assistant, ctx), drawClaude(body.claude),
+    drawSetup(body.setup), drawYou(body.you, ctx), drawAssistant(body.assistant, ctx), drawClaude(body.claude),
     // Imported on its own, so a problem in that file shows here and never blanks Settings.
     import("./connections.js").then(m => m.drawConnections(body.connections, ctx)).catch(e => put(body.connections, empty("Connections did not load.", e))),
     import("./settings-keys.js").then(m => m.drawKeys(keysBody, ctx, { taken: new Set(SECTIONS.map(([id]) => id)), skip: new Set(["notifications"]) })).then(k => {
@@ -192,13 +193,30 @@ function stepRow(s, st) {
 
 // ---- 2. You and your address ---------------------------------------------------------------
 
-async function drawYou(el) {
-  const r = await attempt("onboard.status");
+/**
+ * Your own avatar, large: the person's circle with its Vyre code ring (js/avatars.js). The ring's
+ * palette follows the theme, so a switch between Dark and Paper redraws it. Without a real
+ * fingerprint (a box from before owner.id) the face shows alone, never a ring made up from a name.
+ */
+function youAvatar(ctx, name) {
+  const box = h("div", { class: "set-you-av" });
+  const draw = () => put(box, personAvatar({ size: 160, ring: true, label: name ? `Your avatar, ${name}` : "Your avatar" }));
+  draw();
+  if (typeof MutationObserver === "function" && ctx?.cleanup) {
+    const mo = new MutationObserver(draw);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    ctx.cleanup(() => mo.disconnect());
+  }
+  return box;
+}
+
+async function drawYou(el, ctx) {
+  const [r] = await Promise.all([attempt("onboard.status"), readSystem(attempt)]);
   const here = row("This page", mono(location.host),
     h("div", { class: "small muted" }, onTailnet() ? "Served on your tailnet. Only your devices can open it." : "Served on this machine only, not on your tailnet."));
   if (r.error) { put(el, empty("Your name is kept by the box module.", r.error), h("div", { class: "rows" }, here)); return; }
   const name = r.data?.name || "";
-  put(el, h("div", { class: "rows" },
+  put(el, youAvatar(ctx, name), h("div", { class: "rows" },
     row("Name", name ? h("span", null, name) : h("span", { class: "muted" }, "Not chosen yet"), name ? null : toOnboard("you")),
     // The address it is served at: a ts.net name when there is no vyre.run name (ADR 0008).
     row("Address", r.data?.address ? mono(String(r.data.address).replace(/^https:\/\//, "")) : name ? mono(`${name}.vyre.run`) : h("span", { class: "muted" }, "None until you pick a name"),

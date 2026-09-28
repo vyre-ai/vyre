@@ -31,6 +31,9 @@ import { buildCodeword, bytesToBits } from "../vyrecode/payload.js";
 
 /** @typedef {"person" | "assistant" | "agent" | "teammate"} Family */
 
+/** How many looks the person's circle has (defaultAvatarOption's modulus). */
+export const PERSON_OPTIONS = USER_GRADIENTS.length;
+
 /** At or above this size the person's circle wears its Vyre code ring (ADR 0043 section 2). */
 export const RING_AT = 96;
 /** Characters drop their role badge below 32 (characters.js), so 24 and 32 are different drawings. */
@@ -88,17 +91,18 @@ export function readTeammates(attempt) {
 }
 
 /**
- * system.info and team.list, read once per page load, for a view that has not read system.info
- * itself (chat's readNames passes it to setIdentity). Either may be missing; the avatars then
- * use their fallbacks.
+ * system.info, read once per page load (a failure is asked again next time), for a view that
+ * has not read it itself (chat's readNames passes its own read to setIdentity).
  * @param {(tool: string, input?: any) => Promise<{ data?: any, error?: any }>} attempt
  */
-export function readIdentity(attempt) {
-  if (!reading) {
-    reading = Promise.all([attempt("system.info").then(s => { if (s.error) reading = null; else setIdentity(s.data || {}); }), readTeammates(attempt)]).then(() => {});
-  }
+export function readSystem(attempt) {
+  if (!reading) reading = attempt("system.info").then(s => { if (s.error) reading = null; else setIdentity(s.data || {}); });
   return reading;
 }
+
+/** system.info and team.list together. Either may be missing; the avatars then use their fallbacks. */
+export const readIdentity = (/** @type {(tool: string, input?: any) => Promise<{ data?: any, error?: any }>} */ attempt) =>
+  Promise.all([readSystem(attempt), readTeammates(attempt)]).then(() => {});
 
 // ---- drawing -------------------------------------------------------------------------------
 
@@ -115,11 +119,13 @@ const theme = () => (typeof document !== "undefined" && document.documentElement
 /**
  * The SVG source for one avatar. Pure; exported for tests and the cache below.
  * @param {Family} family @param {string} seed @param {number} size
- * @param {{ fp?: number[]|null, ring?: boolean, theme?: "dark"|"paper" }} [o]
+ * @param {{ fp?: number[]|null, ring?: boolean, theme?: "dark"|"paper", option?: number }} [o] `option`: a
+ *   person's look chosen by the caller (pair-avatar.js's stopgap), over the fingerprint's default
  */
 export function avatarSource(family, seed, size, o = {}) {
   if (family === "person") {
-    const option = o.fp ? defaultAvatarOption(o.fp, USER_GRADIENTS.length) : small(seed) % USER_GRADIENTS.length;
+    const option = Number.isInteger(o.option) ? /** @type {number} */ (o.option) % PERSON_OPTIONS
+      : o.fp ? defaultAvatarOption(o.fp, PERSON_OPTIONS) : small(seed) % PERSON_OPTIONS;
     if (o.ring && o.fp) return renderCode2(bitsToLevels(bytesToBits(buildCodeword(o.fp))), { userOption: option, style: "ticksSunburst", theme: o.theme || "dark", size });
     return userAvatar(option, size);
   }
@@ -154,13 +160,13 @@ function copy(/** @type {Element} */ t) {
   const ids = typeof n.querySelectorAll === "function" ? n.querySelectorAll("[id]") : [];
   if (ids.length) {
     const tag = `-a${++uid}`;
-    for (const el of ids) {
-      const old = el.getAttribute("id");
-      el.setAttribute("id", old + tag);
-      for (const u of n.querySelectorAll(`[fill="url(#${old})"], [stroke="url(#${old})"]`)) {
-        for (const attr of ["fill", "stroke"]) if (u.getAttribute(attr) === `url(#${old})`) u.setAttribute(attr, `url(#${old}${tag})`);
-      }
-    }
+    /** @type {Map<string, string>} */ const moved = new Map();
+    for (const el of ids) { const old = /** @type {string} */ (el.getAttribute("id")); moved.set(`url(#${old})`, `url(#${old}${tag})`); el.setAttribute("id", old + tag); }
+    const walk = (/** @type {any} */ el) => {
+      for (const attr of ["fill", "stroke"]) { const v = el.getAttribute(attr); if (v && moved.has(v)) el.setAttribute(attr, /** @type {string} */ (moved.get(v))); }
+      for (const c of el.childNodes || []) if (typeof c.getAttribute === "function") walk(c);
+    };
+    walk(n);
   }
   return n;
 }
