@@ -1002,6 +1002,12 @@ const SCREENS = {
     /** @typedef {{ id: string, user_code: string, verification_uri: string, verification_uri_complete?: string, minutes: number, over: boolean }} GhFlow */
     /** @type {GhFlow | null} */ let flow = null;
     /** @type {{ name: string, login: string }[]} */ let accounts = [];
+    let starting = false;
+
+    // Only https://github.com/... ever becomes a link's href (reviewer's LOW: verification_uri
+    // is GitHub's own reply, passed through unchecked otherwise); the plain device page always
+    // works with the code shown beside it.
+    const safeGithubUrl = (/** @type {string | undefined} */ u) => (/^https:\/\/github\.com\//.test(String(u || "")) ? /** @type {string} */ (u) : "https://github.com/login/device");
 
     const draw = () => {
       if (flow) { put(ghBox, waiting()); return; }
@@ -1009,7 +1015,7 @@ const SCREENS = {
         accounts.length
           ? h("div", { class: "dev-ok" }, icon("check", 14), h("span", null, "Connected: ", h("b", null, accounts.map(a => a.login || a.name).join(", "))))
           : [h("p", { class: "small muted" }, "Clone your repos and give an agent its own worktree and branch, one per session."),
-            h("button", { type: "button", class: "btn btn-sm", onclick: start }, "Connect GitHub")]);
+            h("button", { type: "button", class: "btn btn-sm", disabled: starting, onclick: start }, starting ? "Starting…" : "Connect GitHub")]);
     };
 
     /** The open device-code sign-in: the code, an Open GitHub link, how long it lasts, Cancel. */
@@ -1020,15 +1026,25 @@ const SCREENS = {
         h("p", { class: "small muted" }, "Enter this code at github.com/login/device:"),
         command(f.user_code),
         h("p", { style: { marginTop: "10px" } },
-          h("a", { class: "btn btn-sm", href: f.verification_uri_complete || f.verification_uri, target: "_blank", rel: "noopener noreferrer" }, "Open GitHub")),
+          h("a", { class: "btn btn-sm", href: safeGithubUrl(f.verification_uri_complete || f.verification_uri), target: "_blank", rel: "noopener noreferrer" }, "Open GitHub")),
         h("p", { class: "small muted" }, `Good for about ${plural(f.minutes, "minute")}.`),
         h("button", { type: "button", class: "btn btn-ghost btn-sm", style: { marginTop: "6px" }, onclick: cancel }, "Cancel"));
     };
 
     async function start() {
+      // A guard against a double tap: the button disables at once, before the await, and its
+      // busy label replaces the click handler until this call settles one way or the other.
+      if (starting || flow) return;
+      starting = true;
+      draw();
       const r = await attempt("github.connect", { name: "github" });
-      if (r.error) { put(ghBox, h("div", { class: "lbl" }, "GitHub"), h("p", { class: "small muted" }, r.error.message || "Could not start GitHub sign-in.")); return; }
+      starting = false;
+      if (!alive()) return;
       const d = r.data || {};
+      if (r.error || !d.id || !d.user_code || !d.verification_uri) {
+        put(ghBox, h("div", { class: "lbl" }, "GitHub"), h("p", { class: "small muted" }, r.error ? (r.error.message || "Could not start GitHub sign-in.") : "GitHub did not return a code. Try again."));
+        return;
+      }
       flow = { id: d.id, user_code: d.user_code, verification_uri: d.verification_uri, verification_uri_complete: d.verification_uri_complete,
         minutes: Math.max(1, Math.round((d.expires_in || 900) / 60)), over: false };
       draw();
@@ -1040,7 +1056,11 @@ const SCREENS = {
       flow = null;
       draw();
     }
-    // No timer: GitHub's own expiry ends an unfinished sign-in with github.connect-failed.
+    // No timer: GitHub's own expiry ends an unfinished sign-in with github.connect-failed. But
+    // leaving this step (Back, Skip, Continue, or another onboarding step entirely) cancels an
+    // open sign-in rather than letting the server keep polling for a code the person can no
+    // longer see or finish (reviewer's LOW).
+    cleanup.push(cancel);
     cleanup.push(on("github.connected", e => {
       if (!flow || flow.over || e.payload?.id !== flow.id) return;
       flow.over = true;
@@ -1056,9 +1076,14 @@ const SCREENS = {
 
     async function load() {
       const r = await attempt("github.accounts");
+      if (!alive()) return;
       accounts = Array.isArray(r.data) ? r.data : [];
       draw();
     }
+    /** True while this step's own render is still the one on screen (render() clears `cleanup`
+     * and rebuilds `col` on every navigation, so a stale async reply from a step already left
+     * must not touch a `ghBox`/`flow` that belong to whatever screen replaced it). */
+    const alive = () => col.isConnected;
     load();
   },
 

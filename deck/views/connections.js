@@ -66,6 +66,10 @@ const str = v => (typeof v === "string" ? v : "");
 const strs = v => (Array.isArray(v) ? v.filter(x => typeof x === "string") : []);
 const num = v => (typeof v === "number" && isFinite(v) ? v : null);
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+/** Only https://github.com/... ever becomes a link's href (reviewer's LOW: verification_uri is
+ * GitHub's own reply, passed through unchecked otherwise); anything else falls back to the plain
+ * device page, which always works with the code shown beside it. */
+const safeGithubUrl = u => (/^https:\/\/github\.com\//.test(String(u || "")) ? u : "https://github.com/login/device");
 
 /** @typedef {{ id: string, name: string, url: string, over: boolean, stt: HTMLElement, win?: Window | null }} Flow */
 /** @typedef {{ id: string, name: string, user_code: string, verification_uri: string, verification_uri_complete?: string, minutes: number, over: boolean, stt: HTMLElement }} GhFlow */
@@ -577,7 +581,8 @@ export async function drawConnections(el, ctx, deps = {}) {
         h("span", { class: "mono cn-name" }, a.name), h("span", { class: "muted" }, a.login)),
       st.confirming === `github:${a.name}`
         ? h("div", { class: "set-actions cn-confirm" },
-          h("span", { class: "small" }, `Disconnect ${a.name}? It's revoked at GitHub first, then removed here.`),
+          h("span", { class: "small" }, `Disconnect ${a.name}? This removes the account from Vyre. To also cancel access at GitHub, open `,
+            h("a", { href: "https://github.com/settings/applications", target: "_blank", rel: "noopener noreferrer" }, "github.com/settings/applications"), "."),
           h("button", { type: "button", class: "btn btn-sm", "data-act": "remove-yes", onclick: async () => {
             const r = await attempt("github.remove", { name: a.name });
             if (!ctx.alive()) return;
@@ -638,7 +643,7 @@ export async function drawConnections(el, ctx, deps = {}) {
     const copyBtn = h("button", { type: "button", class: "btn btn-sm", "data-act": "copy-code", onclick: async () => {
       try { await navigator.clipboard.writeText(flow.user_code); put(copyBtn, "Copied"); } catch { put(copyBtn, "Copy"); }
     } }, "Copy");
-    const openHref = flow.verification_uri_complete || flow.verification_uri;
+    const openHref = safeGithubUrl(flow.verification_uri_complete || flow.verification_uri);
     put(formBox, h("div", { class: "set-form cn-form cn-wait", "data-form": "github", "data-signin": "waiting" },
       h("h3", { class: "set-h3" }, "Add a GitHub account"),
       h("p", { class: "cn-wait-t" }, "Enter this code at github.com/login/device:"),

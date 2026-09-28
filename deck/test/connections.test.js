@@ -432,7 +432,9 @@ test("GitHub Disconnect asks first, then calls github.remove; a failed revoke st
   await $(githubAccount(el, "work"), "button[data-act=remove]").click();
   assert.equal(api.of("github.remove").length, 0);
   assert.match(text(githubAccount(el, "work")), /Disconnect work\?/);
-  assert.match(text(githubAccount(el, "work")), /revoked at GitHub first/);
+  assert.match(text(githubAccount(el, "work")), /This removes the account from Vyre\. To also cancel access at GitHub, open github\.com\/settings\/applications\./);
+  const settingsLink = [...$$(githubAccount(el, "work"), "a")].find(a => a.getAttribute("href") === "https://github.com/settings/applications");
+  assert.ok(settingsLink, "a real link, not just the words");
   await $(githubAccount(el, "work"), "button[data-act=remove-yes]").click();
   assert.deepEqual(api.of("github.remove").map(c => c.input), [{ name: "work" }]);
 
@@ -484,6 +486,13 @@ test("Sign in with GitHub: github.connect with the name, then the code and Open 
   assert.match(open.getAttribute("rel"), /noopener/);
   assert.match(text(wait()), /15 minutes/);
   noLeak(el);
+});
+
+test("Sign in with GitHub: a verification_uri that is not https://github.com/... never reaches the href", async () => {
+  const evil = "https://github.com.evil.example/login/device";
+  const { wait } = await startGithubSignIn({ over: { "github.connect": { ...GH_CONNECT, verification_uri: evil, verification_uri_complete: evil } } });
+  const open = $(wait(), "a[data-act=open-github]");
+  assert.equal(open.getAttribute("href"), "https://github.com/login/device", "falls back to the plain device page rather than an untrusted host");
 });
 
 test("Sign in with GitHub: Copy uses the clipboard", async () => {
