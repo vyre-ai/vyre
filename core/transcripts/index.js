@@ -284,6 +284,10 @@ function resultText(/** @type {any} */ c) {
 /** Only these decode reliably everywhere a picture might render (core/switchboard's own list, kept
  * in step by hand: transcripts never imports another module per docs/SPEC.md principle 1). */
 const IMAGE_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+/** Strict base64 (RFC 4648), no whitespace: a surface builds a `data:` URL straight from this
+ * (CSS url(), a string template), so anything that isn't clean base64 is dropped rather than
+ * risking a break-out of that context. */
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 /** One image's own ceiling. Base64 length stands in for bytes (data.length * 3/4 ~= decoded size)
  * so this never has to decode a picture just to measure it. */
 const IMAGE_BYTES_CAP = 2 * 1024 * 1024;
@@ -292,16 +296,22 @@ const IMAGES_PER_BLOCK = 4;
 /** A block's pictures together stay under this even when each is under IMAGE_BYTES_CAP (four just
  * under the per-image cap would otherwise be 8 MB of one block). */
 const IMAGES_BYTES_CAP = 6 * 1024 * 1024;
+/** The whole response's pictures together stay under this: a page of `limit` blocks could
+ * otherwise carry IMAGES_BYTES_CAP each, and a Mac read goes back over the link (askMacs) - one
+ * image-heavy page must not become hundreds of MB. Once spent, later blocks in the same read carry
+ * no images at all (same "[image]" text as always); a surface can still fetch one later by seq. */
+const RESPONSE_BYTES_CAP = 12 * 1024 * 1024;
 
 /**
  * The pictures in a content-parts array (`{type:"image", source:{type:"base64", media_type,
- * data}}`), within every cap above. Never removes or changes a block's existing text: a picture
+ * data}}`), within every cap above, including the read's own shared byte budget (`budget.left`,
+ * spent here and never refunded). Never removes or changes a block's existing text: a picture
  * dropped for being over a cap still reads "[image]" in the text, exactly as before this existed -
  * this only ever adds `images` alongside it (cohesion item 18).
- * @param {any[]} parts
+ * @param {any[]} parts @param {{ left: number }} budget the read's remaining RESPONSE_BYTES_CAP
  * @returns {{ media_type: string, data: string }[]}
  */
-function imagesFrom(parts) {
+function imagesFrom(parts, budget) {
   if (!Array.isArray(parts)) return [];
   const out = [];
   let bytes = 0;
@@ -310,11 +320,13 @@ function imagesFrom(parts) {
     if (!p || p.type !== "image") continue;
     const src = p.source;
     if (!src || src.type !== "base64" || typeof src.data !== "string" || !src.data) continue;
+    if (!BASE64_RE.test(src.data)) continue;
     const media_type = String(src.media_type || "");
     if (!IMAGE_MEDIA_TYPES.has(media_type)) continue;
     const size = Math.floor(src.data.length * 3 / 4);
-    if (size > IMAGE_BYTES_CAP || bytes + size > IMAGES_BYTES_CAP) continue;
+    if (size > IMAGE_BYTES_CAP || bytes + size > IMAGES_BYTES_CAP || size > budget.left) continue;
     bytes += size;
+    budget.left -= size;
     out.push({ media_type, data: src.data });
   }
   return out;
@@ -372,6 +384,8 @@ class Reader {
     this.counts = new Map();
     /** @type {((id: string) => number) | null} blocks a message had before the window, while none of its lines may be missed */
     this.before = null;
+    /** This read's own shared picture-byte budget (RESPONSE_BYTES_CAP), spent across every block. */
+    this.imageBudget = { left: RESPONSE_BYTES_CAP };
   }
 
   /** @param {number|null} seq the human line that starts it (null: it started before the window) @param {number} ts */
@@ -434,7 +448,7 @@ class Reader {
       /** @type {any} */
       const b = { seq, kind: "user", ts, text: clean(text, TEXT_CAP), steered: true, step: this.turn.steps };
       if (typeof o.uuid === "string" && o.uuid) b.uuid = o.uuid;
-      const imgs = imagesFrom(parts);
+      const imgs = imagesFrom(parts, this.imageBudget);
       if (imgs.length) b.images = imgs;
       this.before = null;
       this.blocks.push(b);
@@ -446,7 +460,7 @@ class Reader {
     const b = { seq, kind: "user", ts, text: clean(text, TEXT_CAP) };
     if (COMMAND.test(text)) b.command = true;
     if (typeof o.uuid === "string" && o.uuid) b.uuid = o.uuid;
-    const imgs = imagesFrom(parts);
+    const imgs = imagesFrom(parts, this.imageBudget);
     if (imgs.length) b.images = imgs;
     // A person spoke inside the window, so every message from here on starts inside it too.
     this.before = null;
@@ -481,7 +495,7 @@ class Reader {
     const patch = o.toolUseResult && typeof o.toolUseResult === "object" ? cleanPatch(o.toolUseResult.structuredPatch) : undefined;
     if (patch) b.patch = patch;
     // A tool's own picture (a screenshot, a Canva render): cohesion item 18's "agent-made image".
-    const imgs = imagesFrom(Array.isArray(p.content) ? p.content : []);
+    const imgs = imagesFrom(Array.isArray(p.content) ? p.content : [], this.imageBudget);
     if (imgs.length) b.images = imgs;
   }
 

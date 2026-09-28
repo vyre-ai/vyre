@@ -590,7 +590,9 @@ export function mountSession(container, opts) {
         done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it), ...(it.images ? { images: it.images } : {}) };
       // A turn the transcript has not closed is still going only while the session is busy and
       // nothing was said after it (a message sent now closes the one before, even unread yet).
-      case "turn": return { kind: "turn", ts: at, duration_ms: it.duration_ms, tokens: it.tokens, cost_usd: it.cost_usd, open: !!it.open && busy() && !saidAfter(it),
+      // auth: only an api-key turn is really billed by the number; a subscription runs on the
+      // person's plan, and a $ figure there reads as a charge that never happens (the user's rule).
+      case "turn": return { kind: "turn", ts: at, duration_ms: it.duration_ms, tokens: it.tokens, cost_usd: it.cost_usd, auth: S.auth || null, open: !!it.open && busy() && !saidAfter(it),
         canceled: it.canceled, byMe: byMe.has(it.key), error: it.error || (it.ok === false && !it.canceled ? (it.reason || "error") : null) };
       default: return null;
     }
