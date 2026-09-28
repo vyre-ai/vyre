@@ -405,6 +405,83 @@ a still) is the fastest way to hand it back — reply with what step, and what h
     (or wherever the app's own boot runs once it owns `/`) is the natural place for this, next to
     where it already does `navigator.serviceWorker.register(SW, { scope: SCOPE })`.
 
+## Doing (scan-avatar-to-pair, 2026-09-28)
+Built pwa's half of the lead's new brief: scan your avatar to pair your phone. No Tailscale on
+the phone, no typed codes — the Deck shows the person's avatar in a live code ring (a one-time
+pairing ticket), the phone's camera reads it, and the box confirms with Touch ID. The ticket
+mint/resolve and the ring's own visual belong to tailnet and app-design (see "Needs from
+others"); this is the camera + decoder + redeem-flow half.
+
+- **Ported and fixed the decoder for the FINAL Vyre code layout.** The lead's brief pointed at
+  round5's prototype (`scratchpad/avatars/round5/`, still there for anyone who wants the original
+  4-ring/1-bit-per-dot version): 14/17 of its own degradation-harness scenarios passed, all 3
+  failures perspective (camera tilt). That decoder (`decode-core.js`) was built for round5's
+  FIRST pass geometry, though — the lead's actual "beauty pass" direction the user liked
+  (`vyrecode2.js`) is a different physical layout: 2 rings x 36 marks x 2 bits (four tick
+  lengths) instead of 4 rings x 36 dots x 1 bit. Porting the decoder to that layout
+  (`deck/vyrecode/decode-core2.js`) needed real fixes, found only by testing against real
+  rendered pixels, not guessed at:
+  1. A tick-length read (not a disk luminance average) per mark, quantized to the nearest of the
+     renderer's own 4 lengths (8/15/22/29px).
+  2. The two rings sit only 35px apart, and the longest tick (29px + its own round line-cap)
+     reaches to within about 4px of the next ring's own anchor — which itself has a round cap
+     that bleeds a couple more pixels inward. Reading a mark's own trailing pixels as
+     "background" (round4/5's own trick) silently picks up the OTHER ring's ink there instead.
+     Fixed by reading two independent reference points per mark (the anchor, always ink; a
+     half-slot-rotated point at mid-radius, never ink from any mark) rather than the ends of one
+     profile.
+  3. A continuous camera-frame rotation isn't a multiple of the 10deg mark spacing, and each
+     mark's read patch is only ~2px wide, so the old 2deg rotation search step left real gaps —
+     confirmed directly: rot=37deg (an arbitrary test angle) decoded with 1 mark wrong; its
+     rotStep=2 neighbour rot=38 decoded with 65/72 wrong. Dropped to 0.5deg.
+  4. The confidence score used to rank candidates isn't trustworthy on its own (a wrong scale can
+     land its background probe on a real neighbouring mark by chance and read as a falsely clean
+     bimodal profile) — so `search()` no longer prunes to a top-K at all; the caller (the harness,
+     or `deck/js/scan.js`) tries candidates in confidence order and keeps the first one that
+     actually RS/CRC-validates, which is what decides real from spurious.
+- **Added the perspective (tilt) correction the prototype scoped out.** Detects the tint disc's
+  own outer edge along many rays (scanning inward from a known-background anchor near the frame
+  edge, not "biggest jump anywhere" — the tint fill is a deliberately soft, low-contrast wash, so
+  the strongest edge in a wide scan is usually a MARK's, not the disc's own), fits a general conic
+  to those boundary points, and CALIBRATES a tilt angle + assumed camera distance together by
+  grid-searching for whichever pair — applied via the closed-form inverse of CSS's own
+  rotateX(theta)+perspective(f) projection — makes the boundary points land back on a circle of
+  the code's own known radius with least variance. (A naive `theta = acos(axis ratio)` badly
+  overestimates: a real 15deg tilt fit an ellipse whose axis ratio implied 53deg — the
+  foreshortening from a finite, comparable-to-the-code-size focal length skews the shape well past
+  pure cosine.) Ran at multiple candidate corrections plus identity; the caller keeps whichever
+  actually decodes.
+- **Measured the pass rate with a like-for-like harness** (`deck/vyrecode/test/harness.js`,
+  ported from round5's own methodology: render → degrade with real CSS in real headless Chrome →
+  screenshot → reload into a fresh canvas → decode against real `getImageData` → RS/CRC-validate
+  in Node — nothing simulated), same 17-scenario matrix, against a plain test renderer
+  (`test/render-fixture.js` — decode doesn't care about the person's face or palette, only the
+  ring geometry, which must and does match `decode-core2.js`'s own constants exactly):
+  **11/17**, up from 0/17 on the naive port. Passes: pristine, blur 2/4px, all 4 rotation cases
+  (15/37/90/181deg — the fine rotation step's whole point), scale 80%, both noise levels, one
+  blur+rotate+scale combo. Fails: blur 6px (exceeds the tick-length read's own noise margin at
+  this ring geometry's tight tolerances); **scale 120% (not a decode bug — the tint disc's own
+  radius already sits only 15px inside the 600px render frame by design, so scaling the whole
+  code up clips real ink off-canvas before any decoder gets a look at it — round4's smaller max
+  radius had more headroom here)**; perspective 15/30deg (the calibration helps directionally but
+  that same 15px margin leaves very little genuine background to fit an ellipse to, especially
+  once a tilt compresses it further); the two hardest stacked-degradation combos. Full numbers in
+  `deck/vyrecode/test/harness.js`'s own run (not checked in as a snapshot — it's a live headless-
+  Chrome measurement, re-run it rather than trust a stale number).
+- **The camera side** (`deck/js/scan.js`): opens the back camera, grabs frames onto an offscreen
+  canvas on a timer (NOT every frame — a full decode attempt is roughly 1-2s of JS work, a
+  continuous 0-360deg x 9-scale search tried candidate-by-candidate; live 30fps would pin the main
+  thread solid), tries candidates in confidence order and stops at the first RS/CRC-valid one.
+  Flagged honestly as a follow-up, not solved here: this should move into a Worker, and a cheap
+  localization pre-pass (find the disc's rough centre/radius first, so the search only refines
+  near it) would cut the attempt cost by roughly the search space's own factor — round5's own
+  NOTES.md scoped this same gap out from the start ("a solved problem... just not built here").
+- **The redeem-flow UI**: `deck/views/pair-scan.js` (pure state machine: scanning → resolving →
+  confirm → pairing → done/error, with worded refusals for expired/used/unrecognised tickets and
+  a Mac-side denial — tested without any camera or DOM) and `deck/js/pair-scan.js` (the sheet:
+  camera preview in a ring frame, "Pair with `<box>` (`<fingerprint>`)?" before anything happens,
+  Touch ID happens on the box's own side while this shows "Confirm on `<box>`…").
+
 ## Next
 - Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
 - Step 6 Mac card: "Already on your tailnet" for an online Mac node.
@@ -415,6 +492,13 @@ a still) is the fastest way to hand it back — reply with what step, and what h
 - A phone turned sideways (over 760 wide) gets the desktop layout; decide whether the phone
   shell should follow the shorter side instead (`max-width: 760px` or `max-height: 500px`) — the
   keyboard check's step 6 asks the user to notice this too.
+- Scan to pair: wire `pairScanSheet()` into an actual route/entry (a `/pair/scan` route or a Now
+  card, once launch's Deck-side "Add your phone" screen exists to link from — right now this is
+  built and tested standalone, not yet reachable by a person). Move `scan.js`'s decode loop into
+  a Worker and add a localization pre-pass (see "Doing" above) — the current ~1-2s-per-attempt
+  cost is real but not yet a live-scan-speed problem. `relay.pair.ticket.resolve`'s exact
+  contract needs tailnet's sign-off (see "Needs from others") before this can be tried against a
+  real box.
 
 ## Design A gaps closed
 The Deck-wide components from Design A v1 (app-design's spec, docs/design/system/components on
@@ -469,6 +553,22 @@ chat/term.js (`term-dot`), chat/chat.css (`.cv-state-*`, `.rail-sub .count`), vi
 - lead or e2e: confirm the phone's first passkey code comes from `vyre presence code` on the Mac
   (the box refuses terminal codes, ADR 0004). The card says "on your Mac".
 - mobile: told the tool names, push payload and tab order so the native apps match.
+- tailnet: `deck/js/pair-scan.js` calls a PROPOSED `relay.pair.ticket.resolve({ ticket })` ->
+  `{ box, fingerprint }`, refusing with one of `ticket_expired`, `ticket_used`,
+  `ticket_not_found`/`bad_ticket`, `rate_limited` — this file's own guess at the shape the brief
+  described ("resolve the ticket... get back the box's name, relay host and public key"), not
+  confirmed against tailnet's actual mint/resolve. Also calls the existing `relay.join` with
+  `{ ticket }` and `presence: true` (for the box's own Touch ID confirm) — its real input/output
+  past what's documented elsewhere in this repo is assumed. Please correct both against the real
+  implementation once it lands on work/tailnet.
+- app-design: the FINAL ring geometry (2 rings x 36 marks x 2 bits, ticksSunburst tick lengths
+  8/15/22/29px, RING_R = FACE_R+30/FACE_R+65) is now baked into `deck/vyrecode/decode-core2.js`
+  as fixed constants (RINGS, PER_RING, RING_R, LEVELS) and mirrored in the test-only
+  `test/render-fixture.js`. If the beauty pass's own numbers move at all (ring radii, tick
+  lengths, the 35px ring gap that's already tight against the longest tick's own reach — see
+  "Doing" above), decode-core2.js's constants need to move with them, or this decoder silently
+  reads a different, wrong geometry. Worth a quick cross-check once your branch's vyrecode2.js is
+  final.
 
 ## Changed contracts
 - deck/onboard/index.html and deck/onboard/passkey/index.html link /css/buttons.css right after
@@ -524,8 +624,18 @@ chat/term.js (`term-dot`), chat/chat.css (`.cv-state-*`, `.rail-sub .count`), vi
   instead of `deck:reach` (which api.js still fires). pwa.test.js needed no wording change.
 - deck/js/api.js `snapshot.get/set(key)` (cacheStore per host), deck/js/needs.js `restore()`
   (app.js calls it at start); needs.load() keeps its list when both reads are offline.
+- New: `deck/vyrecode/{rs,payload,decode-core2}.js` (browser-safe: no Node-only imports — the
+  scanner needs to run these client-side), `deck/js/scan.js` (camera + decode loop), 
+  `deck/views/pair-scan.js` + `deck/js/pair-scan.js` (the redeem-flow state machine and its DOM
+  sheet). Calls the PROPOSED `relay.pair.ticket.resolve` and the existing `relay.join` — see
+  "Needs from others".
 
 ## Perf
 - No timers or polls added. The offline line rechecks only on `online`, on becoming visible while
   shown, and on Retry. Pull to find uses passive touch listeners. The SW install fetches about 45
   small files once per version.
+- Scan to pair: `deck/js/scan.js` throttles decode attempts to one in flight, spaced 350ms apart
+  (not per video frame) — a single full decode attempt costs roughly 1-2s of JS work (a
+  continuous 0-360deg x 9-scale rotation/perspective search). Flagged as a follow-up in "Next":
+  move it to a Worker and add a cheap localization pre-pass before this is a live-scan-speed
+  feature; it functions today, it just isn't fast.
