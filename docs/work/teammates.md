@@ -99,6 +99,25 @@ use a small fixed (~8), AA-tested ANSI 256 palette for a teammate's name, never 
 never a fill. Doc updated to match; nothing to build differently in core/team from this — section
 3 was always chat's and app-design's.
 
+**Reviewer LOW on sessions' e868f5e2 (relayed by sessions and the lead), fixed at (next sha):**
+`team.project-append` had no cap. A project with many teammates, or a long brief, would bloat
+every session's prompt. Now: at most 8 teammates listed (`APPEND_MAX_TEAMMATES`), each brief cut
+to 40 characters with an ellipsis, "and N more" past 8, and the whole string cut to 600
+characters (`APPEND_MAX`) as a last-resort backstop. Caught, while in there, that the
+empty-project line had an em dash of its own (`core/team/index.js`'s own `projectAppend`, never
+run through anything that would have flagged it, since it is data the function returns, not a
+tool description docs-check reads) — removed, and a regression test now asserts no em dash in
+either branch of `team.project-append`, since this text rides every project session's prompt and
+style's whole point is exactly this. 45/45 team tests, 5/5 boundaries, docs-check clean.
+
+**Request-id gap chat found (2bf8ceab) while wiring the handoff card's reply side, fixed at
+(next sha):** `finish()`'s `threads.post` call now passes `request: req.id` alongside the result
+tag. Forward-compatible only: `threads.post`'s schema has no field for it yet, and
+`checkInput` silently ignores an undeclared property, so nothing changes for chat until sessions
+extends `threads.post`/`sb.post`/`threads_inbox` to carry it through (asked, see "Needs from
+others"). `team.ask`'s own synchronous result already carries `request`; the gap was only the
+async delivery path.
+
 **Resume 8 brief: all 5 steps done, except step 4** (switch to sessions' lib/project-id.js slug
 regex), still blocked — work/projects (e87f63df) is still not on main as of this check. Nothing
 else queued; watching for it to land.
@@ -507,6 +526,19 @@ Read-only state to show: the plan's usage per auth from `thread.limit` (status, 
 utilization, resets_at), the slot chip (per project), the waiting queue, "Resume anyway".
 
 ## Needs from others
+- sessions: a `request` field on `threads.post`'s own input, carried through `sb.post`'s
+  signature into `thread.sent`/`thread.queued` and into `threads_inbox`'s row shape (a new
+  column, alongside `kind`), for a teammate's async reply (chat, 2bf8ceab; found while wiring the
+  handoff card's reply side): today `kind: "teammate-result"` carries no request id anywhere in
+  that payload, so chat matches a reply to its ask FIFO by role name, which is exact for one open
+  ask per teammate but ambiguous the moment a person fires off two quick asks to the same
+  teammate. `core/team`'s `finish()` (core/team/index.js, the `threads.post` call in the
+  `req.reply_to` branch) already passes `request: req.id` in that call, forward-compatible and a
+  no-op today since `threads.post`'s `checkInput` ignores an undeclared property; the id is also
+  inside the `<vyre-teammate-result-...>` tag's own text, but that is untrusted, nonce'd text a
+  UI should never parse to correlate, which is why it needs its own structured field. Not
+  urgent-urgent, but real: `@role` (section 2) makes "two open asks to the same teammate" a
+  common case, not an edge one.
 - sessions: the slot ledger (`sessions.slots`, events `slot.taken|released|queued`), the Task-tool
   hold in canUseTool, SubagentStop release, per-auth usage state and pause from `thread.limit`.
   TAKEN by sessions (2026-09-27): builds it after batch 3a, plus purposes `teammate` (opus) and
