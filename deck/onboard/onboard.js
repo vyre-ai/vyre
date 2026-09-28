@@ -981,16 +981,85 @@ const SCREENS = {
     s.foot({ label: "Continue", run: s.next });
   },
 
-  // Stub (docs/design/onboarding-v2.md step 6): connectors/vault own the engine; spec not sent
-  // yet. Existing connector flows (Settings > Connections) work today outside onboarding.
+  // Google/email/MCP (docs/design/onboarding-v2.md step 6): connectors/vault own the engine,
+  // spec not sent yet, so those stay a "coming soon" note; Settings > Connections works today
+  // outside onboarding. GitHub (ADR 0041, github.connect/.accounts/.connect.cancel) is real and
+  // built here: a card with its own state (connect, waiting on the device code, connected),
+  // matching Settings' own GitHub card (deck/views/connections.js) but simpler, since onboarding
+  // has no vault-item picker to skip. Optional: Continue or Skip both move on regardless of
+  // whether an account is connected.
   accounts(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Connect accounts."),
-      h("p", { class: "lead" }, "Google and email, and MCP servers: connect them once, and every agent can use them with your permission."));
+      h("p", { class: "lead" }, "GitHub now; Google, email and MCP servers connect from Settings for now. Connect once, and every agent can use it with your permission."));
+    const ghBox = h("div", { class: "ob-panel" });
+    col.append(ghBox);
     col.append(h("div", { class: "need" },
       h("div", { class: "lbl" }, "Coming soon"),
-      "This step isn't built yet. Skip it for now, and connect accounts later from Settings."));
+      "Google, email and MCP servers aren't wired into onboarding yet. Skip for now, and connect them later from Settings."));
     s.foot({ label: "Continue", run: s.next });
+
+    /** @typedef {{ id: string, user_code: string, verification_uri: string, verification_uri_complete?: string, minutes: number, over: boolean }} GhFlow */
+    /** @type {GhFlow | null} */ let flow = null;
+    /** @type {{ name: string, login: string }[]} */ let accounts = [];
+
+    const draw = () => {
+      if (flow) { put(ghBox, waiting()); return; }
+      put(ghBox, h("div", { class: "lbl" }, "GitHub"),
+        accounts.length
+          ? h("div", { class: "dev-ok" }, icon("check", 14), h("span", null, "Connected: ", h("b", null, accounts.map(a => a.login || a.name).join(", "))))
+          : [h("p", { class: "small muted" }, "Clone your repos and give an agent its own worktree and branch, one per session."),
+            h("button", { type: "button", class: "btn btn-sm", onclick: start }, "Connect GitHub")]);
+    };
+
+    /** The open device-code sign-in: the code, an Open GitHub link, how long it lasts, Cancel. */
+    const waiting = () => {
+      const f = /** @type {GhFlow} */ (flow);
+      return h("div", null,
+        h("div", { class: "lbl" }, "GitHub"),
+        h("p", { class: "small muted" }, "Enter this code at github.com/login/device:"),
+        command(f.user_code),
+        h("p", { style: { marginTop: "10px" } },
+          h("a", { class: "btn btn-sm", href: f.verification_uri_complete || f.verification_uri, target: "_blank", rel: "noopener noreferrer" }, "Open GitHub")),
+        h("p", { class: "small muted" }, `Good for about ${plural(f.minutes, "minute")}.`),
+        h("button", { type: "button", class: "btn btn-ghost btn-sm", style: { marginTop: "6px" }, onclick: cancel }, "Cancel"));
+    };
+
+    async function start() {
+      const r = await attempt("github.connect", { name: "github" });
+      if (r.error) { put(ghBox, h("div", { class: "lbl" }, "GitHub"), h("p", { class: "small muted" }, r.error.message || "Could not start GitHub sign-in.")); return; }
+      const d = r.data || {};
+      flow = { id: d.id, user_code: d.user_code, verification_uri: d.verification_uri, verification_uri_complete: d.verification_uri_complete,
+        minutes: Math.max(1, Math.round((d.expires_in || 900) / 60)), over: false };
+      draw();
+    }
+    function cancel() {
+      if (!flow || flow.over) return;
+      flow.over = true;
+      attempt("github.connect.cancel", { id: flow.id });
+      flow = null;
+      draw();
+    }
+    // No timer: GitHub's own expiry ends an unfinished sign-in with github.connect-failed.
+    cleanup.push(on("github.connected", e => {
+      if (!flow || flow.over || e.payload?.id !== flow.id) return;
+      flow.over = true;
+      flow = null;
+      load();
+    }));
+    cleanup.push(on("github.connect-failed", e => {
+      if (!flow || flow.over || e.payload?.id !== flow.id) return;
+      flow.over = true;
+      flow = null;
+      put(ghBox, h("div", { class: "lbl" }, "GitHub"), h("p", { class: "small muted" }, e.payload?.error || "The sign-in ended without an account."));
+    }));
+
+    async function load() {
+      const r = await attempt("github.accounts");
+      accounts = Array.isArray(r.data) ? r.data : [];
+      draw();
+    }
+    load();
   },
 
   // Full build (lead, 29 Sep): Off / Browser only / Browser + desktops. Glass owns the backend
