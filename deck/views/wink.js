@@ -30,12 +30,19 @@ const WSS_ONLY = /^wss:\/\/[^\s/]+$/;
  * the default. Even in dev, wss:// only (never plain ws://, which reviewer's threat model
  * doesn't cover - it would leak the ticket's own locator over an unencrypted connection, not
  * just the timing/whereabouts concern the LOW named).
+ *
+ * Checks `r.data.stamped === false` explicitly, not `!r.data.stamped` - reviewer's second LOW:
+ * a MISSING field would also read as falsy, and core/daemon/build.js only ever set `stamped:
+ * true`, never `stamped: false`, so an old or unusual box answering without one would have
+ * honoured this by accident. build.js now sets it explicitly in every branch; this still fails
+ * closed (treats it as production) on a failed call, a missing field, or anything that isn't the
+ * literal `false` a real dev checkout gives.
  */
 async function devRelayOverride(/** @type {URLSearchParams} */ query) {
   const override = query.get("relay");
   if (!override || !WSS_ONLY.test(override)) return null;
   const r = await attempt("system.info");
-  return r.data && !r.data.stamped ? override : null;
+  return r.data?.stamped === false ? override : null;
 }
 
 /** @param {any} ctx */
