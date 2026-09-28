@@ -108,6 +108,17 @@ export default {
       const h = ctx.config.name;
       return typeof h === "string" && /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/i.test(h) ? h.slice(0, 32) : null;
     };
+    // The avatar's own seed (the lead's ruling, 28 Sep): sha256("vyre:person:v1:" + owner.id),
+    // first 8 bytes, base64url. owner.id is a public, random 16-byte person id anywhere's
+    // core/onboard is meant to create once at onboarding (config `owner.id`, a hex string) and
+    // never derives from a device or box key, so it survives a new box or device. STUB until that
+    // lands: null here means no identity fingerprint travels in the record yet, not a fabricated
+    // one — a phone reading null simply shows no avatar rather than the wrong one.
+    const identityFingerprint = () => {
+      const id = ctx.config.owner && ctx.config.owner.id;
+      if (typeof id !== "string" || !/^[0-9a-f]{32}$/i.test(id)) return null;
+      return crypto.createHash("sha256").update(`vyre:person:v1:${id}`).digest().subarray(0, 8).toString("base64url");
+    };
 
     /** One live pairing at a time: its secret's hash, when it ends, and whether it is the first device's. */
     /** @type {{ hash: Buffer, exp: number, first: boolean } | null} */
@@ -340,7 +351,7 @@ export default {
       if (!settings().enabled) save({ enabled: true });
       startLink();
       const connected = link ? await link.ready() : false;
-      const record = JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp });
+      const record = JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp });
       const mac = ticketMac(rawTicket, record);
       if (link) link.registerTicket({ loc: ticketDerive("loc", rawTicket).toString("base64url"), record, mac: mac.toString("base64url"), exp });
       return { ticket: rawTicket.toString("base64url"), expiresAt: exp, connected };

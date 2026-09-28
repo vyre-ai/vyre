@@ -86,6 +86,18 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, latest of all: added the owner's identity fingerprint to the ticket record (the
+lead's ruling, 28 Sep): `sha256("vyre:person:v1:" + owner.id).slice(0,8)`, base64url, covered by
+the same MAC as name and handle. Stubbed against `ctx.config.owner.id` until anywhere's
+core/onboard lands it — a box with no `owner.id` yet returns `identity: null` in the record, never
+a fabricated value; `resolveTicket()`'s result carries the same field. Tests: relay.test.js +2 (the
+exact hash, and the stub-null case), 29/29 total, boundaries+hygiene 8/8. Sent to the reviewer and
+pwa. Also answered federation's updated openPeer contract (dropped selfIdentity, added an
+incoming-call requirement on the destination side: `module:move` caller plus `meta.peer.stableId`
+from the pinned channel) — not yet built, since it needs the tailnet listener's own caller
+classification extended for a peer-to-peer door that isn't the owner's own device; flagged as next
+work, not silently deferred.
+
 28 Sep 2026, latest of all: built the move engine's three seams (ADR 0042, federation's
 core/move/index.js). Answered their open question: `relay_devices` (ADR 0026's own Noise
 identity) is the authoritative "this node is the owner's own" table, never `link_peers` (a

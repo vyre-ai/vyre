@@ -613,7 +613,24 @@ test("relay: resolveTicket's handle is null when no vyre.run name is claimed, no
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
   const resolved = await resolveTicket(fromBase64url(minted.ticket), { relay: status.url, crypto: nodeCrypto() });
   assert.equal(resolved.handle, null);
+  assert.equal(resolved.identity, null, "no owner.id yet (anywhere's core/onboard), stubbed as null, never guessed");
   assert.equal(resolved.name, "Vyre box", "boxName()'s own fallback, unaffected by the missing handle");
+});
+
+test("relay: resolveTicket's identity fingerprint is sha256(\"vyre:person:v1:\" + owner.id).slice(0,8), covered by the MAC", async t => {
+  const relay = createRelay();
+  const url = await relay.listen();
+  t.after(() => relay.close());
+  const root = tempHome(t);
+  const ownerId = "0123456789abcdef0123456789abcdef";
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, owner: { id: ownerId }, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
+  const d = await start({ presence: lenient, root, log: () => {} });
+  t.after(() => d.stop());
+  const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const resolved = await resolveTicket(fromBase64url(minted.ticket), { relay: status.url, crypto: nodeCrypto() });
+  const want = crypto.createHash("sha256").update(`vyre:person:v1:${ownerId}`).digest().subarray(0, 8).toString("base64url");
+  assert.equal(resolved.identity, want);
 });
 
 test("relay: a device's own name at ticket pairing is sanitised and capped like the box's own name", async t => {
