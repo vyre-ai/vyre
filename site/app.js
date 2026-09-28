@@ -6,16 +6,17 @@
   document.querySelectorAll('[data-copy]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const label = btn.querySelector('[data-copy-label]');
+      const ariaLabel = btn.dataset.aria || (btn.dataset.aria = btn.getAttribute('aria-label') || '');
       try {
         await navigator.clipboard.writeText(btn.getAttribute('data-copy'));
         if (label) label.textContent = 'Copied';
-        btn.setAttribute('aria-label', 'Copied the install command');
+        btn.setAttribute('aria-label', 'Copied');
       } catch (e) {
         if (label) label.textContent = 'Select it';
       }
       setTimeout(() => {
         if (label) label.textContent = 'Copy';
-        btn.setAttribute('aria-label', 'Copy the install command');
+        if (ariaLabel) btn.setAttribute('aria-label', ariaLabel);
       }, 2000);
     });
   });
@@ -107,9 +108,9 @@
   const destNote = demo.querySelector('[data-dest-note]');
   const destHint = demo.querySelector('[data-dest-hint]');
   const AGENTS = {
-    juno: ['your assistant', 'default', 'juno can start or drive any session.'],
-    kit: ['Harlow Legal › Q3 report', 'thread · 4 days', 'kit keeps the Harlow deck in this thread.'],
-    pax: ['Northwind Bakery › new thread', 'new thread', 'pax only reads Northwind Bakery.'],
+    juno: ['your assistant', 'default', 'juno can start any session or type into it.'],
+    kit: ['Harlow Legal › Q3 report', 'thread · 4 days', 'kit works on the Harlow deck in this thread.'],
+    pax: ['Northwind Bakery › new thread', 'new thread', 'pax can read Northwind Bakery and nothing else.'],
   };
   let opener = null;
 
@@ -120,7 +121,7 @@
     destName.textContent = who;
     destWhere.textContent = where;
     destNote.textContent = note;
-    destHint.textContent = m && !AGENTS[m[1].toLowerCase()] ? 'No agent called @' + m[1] + '. This goes to juno.' : hint;
+    destHint.textContent = m && !AGENTS[m[1].toLowerCase()] ? 'You have no agent called @' + m[1] + ', so this goes to juno.' : hint;
   }
 
   function open() {
@@ -146,7 +147,7 @@
     if (e.key === 'Enter') {
       e.preventDefault();
       if (!field.value.trim()) return;
-      status.textContent = 'Demo: this would go to ' + destName.textContent + '. Nothing left this page.';
+      status.textContent = 'Demo only. On your Mac this would go to ' + destName.textContent + '. Nothing left this page.';
       field.value = '';
       route();
     } else if (e.key === 'ArrowUp' && !field.value) {
@@ -155,7 +156,7 @@
     }
   });
   demo.querySelectorAll('[data-demo-send]').forEach((b) => b.addEventListener('click', () => {
-    status.textContent = 'Demo: on your Mac this sends the final words you see. Nothing left this page.';
+    status.textContent = 'Demo only. On your Mac, Send sends the exact text you see. Nothing left this page.';
   }));
 
   // Option-Space toggles the Capsule, same as the real default. Control pressed twice, with no

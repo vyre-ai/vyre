@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### vyre.run: every word rewritten in plain English
+
+- New copy on the landing page, /start and the 404, and claims cut back to what ships. Details in
+  `site/CHANGELOG.md` and `docs/work/site-copy.md`. Copy buttons keep their own aria-label.
+
 #### Landing page: a tap hint on touch/narrow screens, and the Mac tab names what it does
 
 - The hero's "Press Option-Space to try the Capsule right here" hint made no sense without a

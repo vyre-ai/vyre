@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Hi. You read source. You're our kind of person.
+  Vyre is open source. You can read all of it.
   Vyre is open source: github.com/vyre-ai/vyre
   No build step, no framework, no trackers: one HTML file, one stylesheet, one small script.
 -->
@@ -8,8 +8,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Vyre: your work partner, on a machine you own</title>
-  <meta name="description" content="Vyre remembers every session, keeps every account in one place, and works beside you on a machine you own. Open source, Apache 2.0, built on Claude Code.">
+  <title>Run Claude Code on your own server · Vyre</title>
+  <meta name="description" content="Vyre runs Claude Code on a Linux server you own. Your sessions keep going when you close your laptop, and you can search all of them later. Free and open source.">
   <link rel="canonical" href="https://vyre.run/">
   <meta name="theme-color" content="#0E0D0C">
   <meta name="color-scheme" content="dark">
@@ -18,15 +18,15 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Vyre">
   <meta property="og:url" content="https://vyre.run/">
-  <meta property="og:title" content="Vyre: your work partner, on a machine you own">
-  <meta property="og:description" content="Your best work, with a partner that never drops the thread. Open source, Apache 2.0, built on Claude Code.">
+  <meta property="og:title" content="Run Claude Code on your own server · Vyre">
+  <meta property="og:description" content="Claude Code on a Linux server you own. Sessions keep going when your laptop is closed, and you can search every one. Open source.">
   <meta property="og:image" content="https://vyre.run/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="The Vyre mark, one wire bent into a v with a green dot leaving its end">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Vyre: your work partner, on a machine you own">
-  <meta name="twitter:description" content="Your best work, with a partner that never drops the thread. Open source, Apache 2.0, built on Claude Code.">
+  <meta name="twitter:title" content="Run Claude Code on your own server · Vyre">
+  <meta name="twitter:description" content="Claude Code on a Linux server you own. Sessions keep going when your laptop is closed, and you can search every one. Open source.">
   <meta name="twitter:image" content="https://vyre.run/og.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -63,12 +63,12 @@
   <!-- HERO -->
   <section class="hero" id="top" aria-labelledby="hero-h">
     <div class="wrap">
-      <p class="lbl eyebrow"><span>Open source</span><span aria-hidden="true">&#183;</span><span>Apache 2.0</span><span aria-hidden="true">&#183;</span><span>Built on Claude Code</span></p>
-      <h1 id="hero-h" class="h-display">Your best work, with a partner that never drops the thread.</h1>
+      <p class="lbl eyebrow"><span>Open source, Apache 2.0</span><span aria-hidden="true">&#183;</span><span>A plugin for Claude Code</span></p>
+      <h1 id="hero-h" class="h-display">Run Claude Code on your own server.</h1>
 
       <div class="hero-grid">
         <div class="hero-copy">
-          <p class="lead">Vyre remembers every session, keeps every account in one place, and works beside you on a machine you own. Ask anything with a keystroke. Watch it work. Step in whenever you like.</p>
+          <p class="lead">Sessions you start in Vyre run on the server, so they keep going after you close your laptop. Vyre also reads every Claude Code session you run. Next month, ask what you decided about the Harlow contract and you get the answer, with the session it came from.</p>
 
           <div class="install" id="install" data-install>
             <div class="install-cmd">
@@ -85,32 +85,32 @@
               <button class="itab" type="button" role="tab" id="h-tab-needs" aria-controls="h-pan-needs" aria-selected="false" tabindex="-1">What it needs</button>
             </div>
             <div class="ipanel" role="tabpanel" id="h-pan-linux" aria-labelledby="h-tab-linux" tabindex="0">
-              <p>Run the line above on your Linux server. It needs Docker (the installer asks before adding it), sets up in <code>/srv/vyre</code>, then hands you your onboarding link. The rest happens in your browser.</p>
+              <p>Run this on your Linux server. It needs Docker, and it asks before installing it. Vyre goes in <code>/srv/vyre</code>, and the installer prints a link. You finish setup in your browser.</p>
             </div>
             <div class="ipanel" role="tabpanel" id="h-pan-mac" aria-labelledby="h-tab-mac" tabindex="0" hidden>
               <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-hero-mac">npm install -g https://vyre.run/box/vyre.tgz</code><button class="btn btn-line btn-sm copy" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" data-copy-target="cmd-hero-mac" aria-label="Copy the Mac install command">Copy</button></div>
               <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-hero-up">vyre up</code><button class="btn btn-line btn-sm copy" type="button" data-copy="vyre up" data-copy-target="cmd-hero-up" aria-label="Copy vyre up">Copy</button></div>
-              <p>This puts Vyre on your Mac as a device that pairs with your server (Linux only) over your tailnet. Vyre is not on npm yet, so it installs from the same tarball the server uses.</p>
+              <p>This connects your Mac to your Vyre server over Tailscale, so set up the server first. A Mac-only setup is coming. Vyre isn&#39;t on npm yet, so you install it from the same file the server uses.</p>
             </div>
             <div class="ipanel" role="tabpanel" id="h-pan-needs" aria-labelledby="h-tab-needs" tabindex="0" hidden>
               <ul class="needs">
                 <li><span class="lbl">Mac</span><span>Node 22.5 or newer</span></li>
                 <li><span class="lbl">Linux server</span><span>Docker Compose 2.24 or newer</span></li>
-                <li><span class="lbl">Claude</span><span>A subscription or an API key</span></li>
-                <li><span class="lbl">Network</span><span>Tailscale (the free plan is enough)</span></li>
+                <li><span class="lbl">Claude</span><span>A Pro or Max plan, or an API key</span></li>
+                <li><span class="lbl">Network</span><span>Tailscale, on the free plan</span></li>
               </ul>
             </div>
             <div class="install-foot">
-              <a class="arrow" href="start/">The full steps, in order</a>
+              <a class="arrow" href="start/">Step-by-step install guide</a>
               <span class="copied" data-copied role="status" aria-live="polite"></span>
             </div>
           </div>
 
           <p class="hint">
             <span class="keys" aria-hidden="true"><span class="kc">&#8997;Space</span></span>
-            <span class="hk-key">Press &#8997;Space to try the Capsule right here.</span>
-            <span class="hk-touch">Tap to try the Capsule right here.</span>
-            <button class="linkbtn" type="button" data-open-demo>Or open it</button>
+            <span class="hk-key">Press &#8997;Space to try the Capsule on this page.</span>
+            <span class="hk-touch">Tap to try the Capsule on this page.</span>
+            <button class="linkbtn" type="button" data-open-demo>Open the demo</button>
           </p>
         </div>
 
@@ -193,7 +193,7 @@
   <div class="tailnet">
     <div class="gate gate-top" aria-hidden="true"><span class="g">
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="5.5" width="8" height="5" rx="1" stroke="#B3AEA4" stroke-width="1.2"/><path d="M4 5.5V4A2 2 0 0 1 8 4V5.5" stroke="#B3AEA4" stroke-width="1.2"/></svg>
-      <span data-host>alex.vyre.run</span><span class="ash"><span class="long">Everything inside this line runs on your own network.</span><span class="short">your network only</span></span>
+      <span data-host>alex.vyre.run</span><span class="ash"><span class="long">Everything between these lines runs on your server and your devices.</span><span class="short">your devices only</span></span>
     </span></div>
 
     <div class="wrap">
@@ -203,16 +203,16 @@
         <div class="split">
           <div class="t rv">
             <p class="lbl num"><span>01</span>Capsule &#183; on your Mac</p>
-            <h2 id="capsule-h" class="h1">Ask without leaving what you&#39;re doing.</h2>
-            <p class="body">Press &#8997;Space over any app, a call or a doc, and the Capsule opens. Say what you need. It&#39;s gone when you&#39;re done.</p>
+            <h2 id="capsule-h" class="h1">Press &#8997;Space in any app and type what you need.</h2>
+            <p class="body">The Capsule is a small bar that opens on top of whatever you have open, a call or a doc. Type a question and your assistant answers it. Start with @kit and the message goes to the agent named kit instead. Esc closes it.</p>
             <dl class="feats">
-              <div><dt>&#8997;Space</dt><dd>Opens over any app on your Mac. Esc closes it. Tap Control twice instead, if you turn that on.</dd></div>
-              <div><dt>@ anything</dt><dd>@ an agent or a project, and it goes there.</dd></div>
-              <div><dt>See where it goes</dt><dd>The destination shows before you send.</dd></div>
-              <div><dt>Answers from memory</dt><dd>If your memory already knows, you get the answer with its source.</dd></div>
-              <div><dt>Say it out loud</dt><dd>Talk instead of typing. Deepgram turns it into text.</dd></div>
-              <div><dt>do &#8230;</dt><dd>Start with &#8220;do&#8221; and it uses your Mac for you. It asks before anything goes out.</dd></div>
-              <div><dt>Auto-answer <span class="chip chip-coming" data-status="coming" data-feature="auto-answer">coming</span></dt><dd>Answers from memory as you type, before you press Enter.</dd></div>
+              <div><dt>&#8997;Space</dt><dd>Opens the Capsule in any app on your Mac. You can switch it to Control pressed twice.</dd></div>
+              <div><dt>@ a name</dt><dd>Type @ and an agent or project name to send it there instead of to your assistant.</dd></div>
+              <div><dt>Who gets it</dt><dd>The Capsule shows who will get your message before you press Enter.</dd></div>
+              <div><dt>Old answers</dt><dd>If you covered it in an earlier session, you get that answer and a link to the session.</dd></div>
+              <div><dt>Voice</dt><dd>Talk instead of typing. Deepgram turns your speech into text.</dd></div>
+              <div><dt>do &#8230;</dt><dd>Start a message with &#8220;do&#8221; and Vyre uses your Mac&#39;s mouse and keyboard for you. It asks before it sends anything.</dd></div>
+              <div><dt>Auto-answer <span class="chip chip-coming" data-status="coming" data-feature="auto-answer">coming</span></dt><dd>Shows an answer from your old sessions while you type.</dd></div>
             </dl>
           </div>
 
@@ -231,7 +231,7 @@
               </div>
               <div class="cap-foot"><span>&#9166; send</span><span>&#8595; other destination</span><span>esc close</span></div>
             </div>
-            <div class="mac-foot"><span class="dot beacon" aria-hidden="true"></span><span>The dot in the menu bar turns violet when something needs you.</span></div>
+            <div class="mac-foot"><span class="dot beacon" aria-hidden="true"></span><span>The menu bar dot turns violet when an agent needs your OK.</span></div>
           </div>
         </div>
       </section>
@@ -241,14 +241,14 @@
         <div class="split rev">
           <div class="t rv">
             <p class="lbl num"><span>02</span>Memory</p>
-            <h2 id="memory-h" class="h1">It remembers, and shows you where from.</h2>
-            <p class="body">Every session you run goes into your memory. When Vyre recalls something, it shows with its source: the call, the thread, the turn. No model is used to recall it. Everything else came from the model.</p>
-            <p class="body">Ask why, and it opens the source.</p>
+            <h2 id="memory-h" class="h1">Search every Claude Code session you&#39;ve run.</h2>
+            <p class="body">Vyre reads your sessions and keeps a record you can search. Ask when Harlow Legal wants the drafts, and you get &#8220;Friday before noon&#8221; with a link to the call where they said it.</p>
+            <p class="body">Answers from your sessions show up in their own color. Anything without a source, Claude wrote.</p>
             <div class="legend">
-              <div><span class="sw recall"></span>Recalled from your memory, with the source.</div>
-              <div><span class="sw"></span>Written by the model.</div>
+              <div><span class="sw recall"></span>From your sessions, with a link to the source.</div>
+              <div><span class="sw"></span>Written by Claude.</div>
             </div>
-            <p class="iq"><span class="bone">Vyre IQ</span> <span class="chip chip-coming" data-status="coming" data-feature="iq">coming</span><span class="stone">The new memory engine: better recall across every project.</span></p>
+            <p class="iq"><span class="bone">Vyre IQ</span> <span class="chip chip-coming" data-status="coming" data-feature="iq">coming</span><span class="stone">A rebuilt memory search, in progress.</span></p>
           </div>
           <div class="panel thread rv">
             <div class="panel-head"><span class="lbl">Harlow Legal &#8250; drafts</span><span class="mono ash xs">kit</span></div>
@@ -274,12 +274,12 @@
         <div class="split">
           <div class="t rv">
             <p class="lbl num"><span>03</span>Vault and connections</p>
-            <h2 id="vault-h" class="h1">Every account, one place.</h2>
-            <p class="body">Keep logins with their one-time codes, and your API keys, in one vault on your own server. Agents use a credential without ever seeing it.</p>
+            <h2 id="vault-h" class="h1">Keep your passwords and API keys on your own server.</h2>
+            <p class="body">The vault holds logins with their one-time codes, and your API keys. An agent can sign in to your billing portal with a password it never sees.</p>
             <dl class="feats">
-              <div><dt>Connect once</dt><dd>Connect Google and your other accounts once. Every agent can use them, with your permission.</dd></div>
-              <div><dt>Sealed values</dt><dd>No vault value shows on any screen, log or event.</dd></div>
-              <div><dt>Share and revoke</dt><dd>Share one item, then take it back in one step.</dd></div>
+              <div><dt>Connect once</dt><dd>Connect Google and your other accounts one time. Agents use them only if you allow it.</dd></div>
+              <div><dt>Hidden values</dt><dd>Agents, logs and notifications never see a password. You see one after you confirm it&#39;s you.</dd></div>
+              <div><dt>Share and revoke</dt><dd>Share one login with a colleague&#39;s Vyre. Revoke it later with one click.</dd></div>
             </dl>
           </div>
           <div class="panel vault rv">
@@ -288,7 +288,7 @@
             <div class="vault-row"><span class="nm">Northwind payments<span class="k">API key</span></span><span class="val">never shown</span><span class="use">used by kit</span></div>
             <div class="vault-row"><span class="nm">Google<span class="k">Connection &#183; mail, calendar, drive</span></span><span class="val sig-t">connected</span><span class="use">juno, kit</span></div>
             <div class="vault-row" data-share><span class="nm">harlow-site env<span class="k">Env set &#183; 9 keys</span></span><span class="val" data-share-state>shared with Harlow Legal</span><span class="use"><button class="btn btn-line btn-sm" type="button" data-revoke aria-label="Revoke the harlow-site env share">Revoke</button></span></div>
-            <div class="vault-foot" data-share-note>A shared item keeps its value on your server. Revoke ends access at once.</div>
+            <div class="vault-foot" data-share-note>A shared item keeps its value on your server. When you revoke it, they lose access right away.</div>
           </div>
         </div>
       </section>
@@ -298,9 +298,9 @@
         <div class="sec-head rv">
           <div class="t">
             <p class="lbl num"><span>04</span>Glass</p>
-            <h2 id="glass-h" class="h1">Watch it work. Take over any time.</h2>
+            <h2 id="glass-h" class="h1">Give an agent its own computer and watch the screen.</h2>
           </div>
-          <p class="body">Each agent gets its own computer: a desktop, Chrome and a terminal. Watch it live from the Deck or your phone. Take the wheel when you want to, and hand it back when you&#39;re done.</p>
+          <p class="body">An agent can get its own desktop on your server, with Chrome and a terminal. You watch it live in the Deck, from your laptop or your phone. Press Take over to use the keyboard yourself, then hand it back.</p>
         </div>
 
         <div class="window glass rv" data-glass>
@@ -332,7 +332,7 @@
             </div>
             <div class="cursor"><svg width="16" height="20" viewBox="0 0 16 20" fill="none" aria-hidden="true"><path d="M1.5 1.5V16L5.4 12.4L8.2 18.4L10.6 17.3L7.8 11.4H13L1.5 1.5Z" fill="#F1EEE6" stroke="#0E0D0C" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="tag" data-glass-tag>kit</span></div>
           </div>
-          <div class="glass-foot"><span data-glass-msg><span class="bone">Live.</span> You&#39;re watching kit work.</span><button class="btn btn-signal btn-sm" type="button" data-takeover aria-pressed="false">Take over</button></div>
+          <div class="glass-foot"><span data-glass-msg><span class="bone">Live.</span> kit is using its computer.</span><button class="btn btn-signal btn-sm" type="button" data-takeover aria-pressed="false">Take over</button></div>
         </div>
       </section>
 
@@ -341,14 +341,14 @@
         <div class="sec-head rv">
           <div class="t">
             <p class="lbl num"><span>05</span>Deck and phone</p>
-            <h2 id="deck-h" class="h1">Your desk, and your pocket.</h2>
+            <h2 id="deck-h" class="h1">Check on your agents from a browser or your phone.</h2>
           </div>
           <div class="t">
-            <p class="body">The Deck opens in your browser at your own address, private to your Tailscale network. The phone app brings approvals and Glass with you. Nothing goes out as you until you&#39;ve seen the final words.</p>
+            <p class="body">The Deck is a web page on your server. It lists what each agent is doing and what&#39;s waiting for you. Only devices on your Tailscale network can open it. On a phone, add the Deck to your home screen and you get a notification when a draft needs your OK.</p>
             <div class="address">
               <label class="lbl" for="yourname">Your address</label>
               <span class="address-line"><span class="scheme">https://</span><input id="yourname" class="name-in" type="text" value="alex" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="20" aria-describedby="yourname-hint"><span>.vyre.run</span></span>
-              <span id="yourname-hint" class="xs ash">Type your name. Only your devices can open it.</span>
+              <span id="yourname-hint" class="xs ash">Today your address is your Tailscale name, like vyre.tail1234.ts.net. Short names like this one are coming.</span>
             </div>
           </div>
         </div>
@@ -386,23 +386,23 @@
         <div class="split">
           <div class="t rv">
             <p class="lbl num"><span>06</span>Make it yours</p>
-            <h2 id="yours-h" class="h1">Open source, and built from pieces.</h2>
-            <p class="body">Vyre is a Claude Code plugin plus one small daemon, built as modules: Capsule, Glass, memory, the vault, each its own piece with its own switch. Turn off what you don't use, and every piece talks to the others only through the same open door you'd use yourself.</p>
+            <h2 id="yours-h" class="h1">Open source. Switch off the parts you don&#39;t use.</h2>
+            <p class="body">Vyre is a Claude Code plugin and a small daemon. The Capsule, Glass, memory and the vault are separate modules, each with its own switch in Settings. They talk to each other through the same API you can call from your own code.</p>
             <dl class="feats">
-              <div><dt>One settings page</dt><dd>Every setting in one place, on your Deck.</dd></div>
-              <div><dt>Modules</dt><dd>Switch the parts you use on, and the rest off.</dd></div>
-              <div><dt>Build your own</dt><dd><code>vyre module new</code> scaffolds one: a tool, a setting, a Now card, tested in minutes.</dd></div>
-              <div><dt>Stays current</dt><dd><code>vyre update</code> brings the latest release. <code>vyre update --rollback</code> takes you back.</dd></div>
-              <div><dt>Apache 2.0</dt><dd>Read every line, change what you like, send it back if you want.</dd></div>
+              <div><dt>One settings page</dt><dd>All the settings sit on one page in the Deck.</dd></div>
+              <div><dt>Modules</dt><dd>Turn a module off and the rest keep working.</dd></div>
+              <div><dt>Build your own</dt><dd><code>vyre module new</code> gives you a starter module to edit and test.</dd></div>
+              <div><dt>Updates</dt><dd><code>vyre update</code> installs the latest release. <code>vyre update --rollback</code> puts back the version you had.</dd></div>
+              <div><dt>Apache 2.0</dt><dd>You can change the code and run your own version.</dd></div>
             </dl>
           </div>
           <div class="yours-vis rv">
             <div class="panel modules">
-              <div class="panel-head"><span class="lbl">Settings &#8250; Modules</span><span class="mono ash xs">try them</span></div>
+              <div class="panel-head"><span class="lbl">Settings &#8250; Modules</span><span class="mono ash xs">click to switch</span></div>
               <div class="mod"><span><span class="bone">Capsule</span><span class="xs ash">&#8997;Space on your Mac</span></span><button class="sw-btn" type="button" role="switch" aria-checked="true" aria-label="Capsule"><span></span></button></div>
               <div class="mod"><span><span class="bone">Glass</span><span class="xs ash">A computer for each agent</span></span><button class="sw-btn" type="button" role="switch" aria-checked="true" aria-label="Glass"><span></span></button></div>
               <div class="mod"><span><span class="bone">Voice</span><span class="xs ash">Talk to the Capsule</span></span><button class="sw-btn" type="button" role="switch" aria-checked="false" aria-label="Voice"><span></span></button></div>
-              <div class="mod"><span><span class="bone">Computer use</span><span class="xs ash">&#8220;do &#8230;&#8221; uses your Mac</span></span><button class="sw-btn" type="button" role="switch" aria-checked="true" aria-label="Computer use"><span></span></button></div>
+              <div class="mod"><span><span class="bone">Computer use</span><span class="xs ash">Vyre uses your mouse and keyboard</span></span><button class="sw-btn" type="button" role="switch" aria-checked="true" aria-label="Computer use"><span></span></button></div>
             </div>
             <div class="panel tty">
               <div><span class="ash">$</span> <span class="bone">vyre update</span></div>
@@ -418,29 +418,29 @@
       <section class="sec" id="floor" aria-labelledby="floor-h">
         <div class="sec-head rv">
           <div class="t">
-            <p class="lbl num"><span>07</span>The floor</p>
-            <h2 id="floor-h" class="h1">Rules no setting can switch off.</h2>
+            <p class="lbl num"><span>07</span>Safety rules</p>
+            <h2 id="floor-h" class="h1">Rules Vyre keeps whatever your settings say.</h2>
           </div>
-          <p class="body">Vyre enforces these outside the model, in hooks and in the gate every request goes through. The model can&#39;t talk its way past them.</p>
+          <p class="body">Vyre checks these in code that runs outside Claude, so a prompt can&#39;t turn them off. Some still have gaps, and the <a href="https://github.com/vyre-ai/vyre/blob/main/docs/concepts/floor.md">security doc</a> lists them.</p>
         </div>
         <ol class="floor rv">
-          <li>Nothing goes out as you until you&#39;ve seen the final words.</li>
-          <li>You see where something is going before it goes.</li>
-          <li>Every file change shows, including ones a command made quietly.</li>
-          <li>Vyre can show the source of anything it tells you.</li>
-          <li>No vault value appears on any screen, log or event.</li>
-          <li>The Capsule works offline on your own Mac.</li>
+          <li>An email or post waits for you to approve the final text before Vyre sends it as you.</li>
+          <li>You see who a message goes to before it goes.</li>
+          <li>Every file Claude writes or edits goes on a list you can check.</li>
+          <li>An answer from your sessions links to the turn it came from.</li>
+          <li>Agents, logs and notifications never see a vault password.</li>
+          <li>The Capsule still finds apps and files on your Mac with no network.</li>
         </ol>
       </section>
     </div>
 
-    <div class="gate gate-bottom" aria-hidden="true"><span class="g lbl">End of your network</span></div>
+    <div class="gate gate-bottom" aria-hidden="true"><span class="g lbl">End of your devices</span></div>
   </div>
 
   <div class="wrap outside">
     <div class="outside-in">
       <span class="stem" aria-hidden="true"></span>
-      <div class="t"><span class="lbl">Outside the line &#183; vyre.run</span><span class="xs stone">Holds one DNS record for your name. None of your data.</span></div>
+      <div class="t"><span class="lbl">Outside the line &#183; vyre.run</span><span class="xs stone">Hosts this page and the installer. Your data never goes through it.</span></div>
     </div>
   </div>
 
@@ -449,37 +449,37 @@
     <div class="wrap">
       <div class="faq-grid">
         <div class="rv">
-          <p class="lbl">Questions</p>
-          <h2 id="faq-h" class="h1">Good questions, straight answers.</h2>
+          <p class="lbl">FAQ</p>
+          <h2 id="faq-h" class="h1">Common questions</h2>
         </div>
         <div class="faq rv">
           <details>
             <summary>Is it free?</summary>
-            <p>Yes. Vyre is open source under Apache 2.0. You bring your own Claude subscription or an Anthropic API key, and your agents run on it.</p>
+            <p>Yes. Vyre is open source under Apache 2.0. Your agents run on your own Claude plan or Anthropic API key, so you pay for that and for your server.</p>
           </details>
           <details>
             <summary>Where does my data live?</summary>
-            <p>On your server and your Mac. vyre.run only holds one DNS record for your name, so your address can find your server. None of your sessions, memory or vault pass through it.</p>
+            <p>On your server and your Mac. vyre.run hosts this page and the installer. Your sessions, memory and vault never go through it.</p>
           </details>
           <details>
             <summary>Do I need a server?</summary>
-            <p>A Linux server with Docker is the best home for Vyre, since your agents keep working when your Mac sleeps. You can also start on your Mac and add a server later.</p>
+            <p>Yes, for now. Vyre needs a Linux server with Docker, like a small cloud server or a spare PC at home. Your Mac connects to it. A setup that runs on one Mac, with no server, is coming.</p>
           </details>
           <details>
             <summary>Does it replace Claude Code?</summary>
-            <p>No. Vyre plugs into Claude Code as a plugin, with one small daemon beside it. You keep using Claude Code, with memory, a vault, agents and the Capsule around it.</p>
+            <p>No. Vyre is a Claude Code plugin with a small daemon next to it. You keep using Claude Code the way you do now, and Vyre adds memory, the vault, agents and the Capsule.</p>
           </details>
           <details>
             <summary>What is Tailscale for?</summary>
-            <p>Tailscale joins your server, your Mac and your phone into one private network. Your address only opens from devices on it, and Tailscale already knows it&#39;s you, so there is no separate login. The free plan is enough.</p>
+            <p>Tailscale puts your server, Mac and phone on one private network. Only devices on that network can open your Deck. Tailscale already knows it&#39;s you, so Vyre has no separate login. The free plan is enough.</p>
           </details>
           <details>
             <summary>Is it ready?</summary>
-            <p>It&#39;s 0.1.0, which means early. What this page shows works today, except what carries a <span class="chip chip-inline">coming</span> chip. Expect rough edges, and tell us about them on GitHub.</p>
+            <p>It&#39;s version 0.1, so expect bugs. Everything on this page works today except the items marked <span class="chip chip-inline">coming</span>. Please report problems on GitHub.</p>
           </details>
           <details>
             <summary>Does it run on Windows?</summary>
-            <p>Not yet. The server runs on Linux and the Capsule on macOS. The Deck opens in any browser on your network.</p>
+            <p>Not yet. The server runs on Linux and the Capsule runs on macOS. You can open the Deck in any browser on your Tailscale network, Windows included.</p>
           </details>
         </div>
       </div>
@@ -490,7 +490,7 @@
   <section class="closing" aria-labelledby="end-h">
     <div class="wrap">
       <div class="closing-in rv">
-        <h2 id="end-h" class="h-display small-d">Let&#39;s get to work.</h2>
+        <h2 id="end-h" class="h-display small-d">Install Vyre with one command.</h2>
         <div class="install install-end" data-install>
           <div class="install-cmd">
             <span class="prompt" aria-hidden="true">$</span>
@@ -506,27 +506,27 @@
             <button class="itab" type="button" role="tab" id="e-tab-needs" aria-controls="e-pan-needs" aria-selected="false" tabindex="-1">What it needs</button>
           </div>
           <div class="ipanel" role="tabpanel" id="e-pan-linux" aria-labelledby="e-tab-linux" tabindex="0">
-            <p>Run the line above on your Linux server. It needs Docker (the installer asks before adding it), sets up in <code>/srv/vyre</code>, then hands you your onboarding link.</p>
+            <p>Run this on your Linux server. It needs Docker, and it asks before installing it. Vyre goes in <code>/srv/vyre</code>, and the installer prints a link. You finish setup in your browser.</p>
           </div>
           <div class="ipanel" role="tabpanel" id="e-pan-mac" aria-labelledby="e-tab-mac" tabindex="0" hidden>
             <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-end-mac">npm install -g https://vyre.run/box/vyre.tgz</code><button class="btn btn-line btn-sm copy" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" data-copy-target="cmd-end-mac" aria-label="Copy the Mac install command">Copy</button></div>
             <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-end-up">vyre up</code><button class="btn btn-line btn-sm copy" type="button" data-copy="vyre up" data-copy-target="cmd-end-up" aria-label="Copy vyre up">Copy</button></div>
-            <p>This puts Vyre on your Mac as a device that pairs with your server (Linux only) over your tailnet. Vyre is not on npm yet, so it installs from the same tarball the server uses.</p>
+            <p>This connects your Mac to your Vyre server over Tailscale, so set up the server first. A Mac-only setup is coming. Vyre isn&#39;t on npm yet, so you install it from the same file the server uses.</p>
           </div>
           <div class="ipanel" role="tabpanel" id="e-pan-needs" aria-labelledby="e-tab-needs" tabindex="0" hidden>
             <ul class="needs">
               <li><span class="lbl">Mac</span><span>Node 22.5 or newer</span></li>
               <li><span class="lbl">Linux server</span><span>Docker Compose 2.24 or newer</span></li>
-              <li><span class="lbl">Claude</span><span>A subscription or an API key</span></li>
-              <li><span class="lbl">Network</span><span>Tailscale (the free plan is enough)</span></li>
+              <li><span class="lbl">Claude</span><span>A Pro or Max plan, or an API key</span></li>
+              <li><span class="lbl">Network</span><span>Tailscale, on the free plan</span></li>
             </ul>
           </div>
           <div class="install-foot">
-            <a class="arrow" href="start/">The full steps, in order</a>
+            <a class="arrow" href="start/">Step-by-step install guide</a>
             <span class="copied" data-copied role="status" aria-live="polite"></span>
           </div>
         </div>
-        <p class="gh"><a class="mono" href="https://github.com/vyre-ai/vyre">github.com/vyre-ai/vyre <svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.5 8.5L8.5 3.5M4.5 3.5H8.5V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></a><span class="stone">Star it, read it, fork it.</span></p>
+        <p class="gh"><a class="mono" href="https://github.com/vyre-ai/vyre">github.com/vyre-ai/vyre <svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.5 8.5L8.5 3.5M4.5 3.5H8.5V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></a><span class="stone">The code is on GitHub.</span></p>
       </div>
     </div>
   </section>
@@ -536,7 +536,7 @@
   <div class="wrap">
     <div class="foot-mark">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
-      <span class="stone">Made for people who like finishing things.</span>
+      <span class="stone">Open source under Apache 2.0.</span>
     </div>
     <nav class="foot-links" aria-label="Footer">
       <a href="https://github.com/vyre-ai/vyre">GitHub</a>
@@ -556,7 +556,7 @@
     <button class="demo-close" type="button" data-close-demo aria-label="Close the Capsule"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3L11 11M11 3L3 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
   </div>
   <div id="demo-mount"></div>
-  <p class="demo-foot">On your Mac the Capsule opens over any app and is gone when you&#39;re done. Here, nothing you type leaves this page.</p>
+  <p class="demo-foot">On your Mac, the Capsule opens on top of any app and Esc closes it. This demo runs in your browser, and nothing you type leaves this page.</p>
 </dialog>
 </body>
 </html>

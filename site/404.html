@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Not found · Vyre</title>
-  <meta name="description" content="This page does not exist on vyre.run.">
+  <meta name="description" content="There is no page at this address on vyre.run.">
   <meta name="robots" content="noindex">
   <meta name="theme-color" content="#0E0D0C">
   <meta name="color-scheme" content="dark">
@@ -105,7 +105,7 @@
       <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </a>
     <nav class="nav-links" aria-label="Main">
-      <a href="/start">Get started</a>
+      <a href="/start">Install guide</a>
       <a href="https://github.com/vyre-ai/vyre">GitHub</a>
     </nav>
   </div>
@@ -117,26 +117,26 @@
 
     <div class="copy">
       <p class="row">
-        <!-- The wire without its dot: the dot is out orbiting the 0. -->
+        <!-- The mark without its dot: the dot circles the 0. -->
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="lbl">404 &#183; Not found</span>
       </p>
-      <h1>This page wandered off.</h1>
-      <p class="lead">kit went looking for it and came back with a coffee instead.</p>
+      <h1>There&#39;s no page at this address.</h1>
+      <p class="lead">The link might be old, or the address has a typo. Type what you were looking for and press Enter.</p>
 
       <form class="capsule" id="go" action="/" autocomplete="off" role="search">
-        <label class="lbl" for="where">Where were you headed?</label>
+        <label class="lbl" for="where">Find a page</label>
         <div class="field">
           <span class="p" aria-hidden="true">&#8250;</span>
-          <input id="where" name="q" type="text" placeholder="memory, vault, start, docs..." aria-describedby="dest" enterkeyhint="go" spellcheck="false">
+          <input id="where" name="q" type="text" placeholder="memory, vault, install, docs" aria-describedby="dest" enterkeyhint="go" spellcheck="false">
           <kbd aria-hidden="true">Enter</kbd>
         </div>
-        <p class="dest" id="dest" aria-live="polite">Enter takes you <b>home</b>.</p>
+        <p class="dest" id="dest" aria-live="polite">Enter takes you to the <b>home page</b>.</p>
       </form>
 
       <div class="acts">
         <a class="btn btn-signal" href="/">Back to vyre.run</a>
-        <a class="btn btn-line" href="/start">Get started</a>
+        <a class="btn btn-line" href="/start">Install guide</a>
       </div>
     </div>
   </div>
@@ -147,7 +147,7 @@
     <span class="lbl">Vyre Platform &#183; Vyre Agent &#183; Vyre AI</span>
     <nav aria-label="Footer">
       <a href="https://github.com/vyre-ai/vyre">GitHub</a>
-      <a href="/start">Get started</a>
+      <a href="/start">Install guide</a>
       <a href="/">vyre.run</a>
     </nav>
   </div>
@@ -161,10 +161,10 @@
       { name: "Memory", href: "/#memory", words: ["memory", "memories", "remember", "recall", "notes"] },
       { name: "the Vault", href: "/#vault", words: ["vault", "secret", "secrets", "password", "passwords", "keys", "credentials"] },
       { name: "Glass", href: "/#glass", words: ["glass", "watch", "screen", "computer", "takeover"] },
-      { name: "Get started", href: "/start", words: ["start", "install", "setup", "set up", "get started", "download", "begin"] },
+      { name: "the install guide", href: "/start", words: ["start", "install", "setup", "set up", "get started", "download", "begin"] },
       { name: "the docs", href: "https://github.com/vyre-ai/vyre#readme", words: ["docs", "doc", "documentation", "readme", "help", "guide"] }
     ];
-    var HOME = { name: "home", href: "/" };
+    var HOME = { name: "the home page", href: "/" };
 
     function match(text) {
       var q = String(text || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();

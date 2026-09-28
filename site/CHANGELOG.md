@@ -5,6 +5,21 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
+### Every word rewritten in plain English (2026-09-28)
+
+- The user found the old copy odd and full of AI tells ("never drops the thread"). site-copy
+  rewrote the landing page, /start, the 404 and the demo strings in `app.js` to stop-slop rules:
+  concrete claims, short sentences, no metaphors, no em dashes, no triplets. New H1: "Run Claude
+  Code on your own server." Layout and CSS unchanged. Diagnosis, options and scores:
+  `docs/work/site-copy.md`.
+- Claims cut back to what the docs say ships: the phone runs the Deck from the home screen (no
+  native app yet); your address is your Tailscale name today (`<you>.vyre.run` is coming); Vyre
+  needs a Linux server today (Mac-only is coming); Bash file changes are not on the safety list;
+  vyre.run hosts the page and installer (the DNS name directory is not built). /start's pairing
+  note now matches `docs/known-gaps.md`: approve a Mac from the Deck on your phone.
+- `app.js`: a copy button now puts back its own aria-label after "Copied", where it used to
+  overwrite every one with "Copy the install command".
+
 ### The module story, "Make it yours" (2026-09-28)
 
 - The lead asked for the landing page's "Make it yours" section to tell the module/Lego story
