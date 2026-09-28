@@ -4,17 +4,26 @@
 // actual flow (scan, resolveTicket, confirm, pairOffer, the success dance) lives there.
 
 import { pairScanSheet } from "../js/pair-scan.js";
+import { attempt } from "../js/api.js";
 
-// The one relay every box registers through (core/relay/index.js's own DEFAULT_RELAY) - not
-// per-box, so nothing needs to hand this page a box-specific address. A `?relay=` override is
-// for a self-hosted relay only (relay/client/README.md's own note on this); anything other than
-// a real wss:// address is ignored, not trusted as-is.
+// tailnet: this page already knows which box it's talking to (it's the Deck's own box, served
+// from here, before the ring is even shown), so the real relay address is a normal tool read,
+// relay.status's own `url` field - not a fixed constant. Falls back to the one relay every box
+// registers through by default (core/relay/index.js's own DEFAULT_RELAY) if that call fails for
+// any reason (a stale cache, a box that hasn't enabled the relay) so the sheet still has
+// something to try. A `?relay=` override is for a self-hosted relay only (relay/client/
+// README.md's own note); anything other than a real wss:// address is ignored, not trusted as-is.
 const DEFAULT_RELAY = "wss://relay.vyre.run";
 
 /** @param {any} ctx */
 export default async function wink(ctx) {
   const override = ctx.query.get("relay");
-  const relay = override && /^wss?:\/\/[^\s/]+$/.test(override) ? override : DEFAULT_RELAY;
+  let relay = override && /^wss?:\/\/[^\s/]+$/.test(override) ? override : null;
+  if (!relay) {
+    const r = await attempt("relay.status");
+    relay = r.data?.url && /^wss?:\/\/[^\s/]+$/.test(r.data.url) ? r.data.url : DEFAULT_RELAY;
+  }
+  if (!ctx.alive()) return;
   const sheet = pairScanSheet({ relay });
   ctx.root.append(sheet.el);
   ctx.cleanup(() => sheet.close());

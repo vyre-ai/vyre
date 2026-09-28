@@ -30,15 +30,18 @@ test("pair-scan: 'not this one' drops back to scanning without pairing", () => {
   assert.deepEqual(after, { kind: "scanning" });
 });
 
-test("pair-scan: 404-shaped, rate-limited and MAC/shape failures get distinct, retryable words", () => {
+test("pair-scan: a refusal's code and message pass through as-is (classifyError does the wording, not this file)", () => {
   const resolving = { kind: /** @type {const} */ ("resolving") };
-  const notFound = step(resolving, { type: "resolveFailed", code: "not_found", message: "" });
-  assert.match(/** @type {any} */ (notFound).message, /expired or was already used/);
-  const rate = step(resolving, { type: "resolveFailed", code: "rate_limited", message: "" });
-  assert.match(/** @type {any} */ (rate).message, /Wait a moment/);
-  const bad = step(resolving, { type: "resolveFailed", code: "bad_ticket", message: "" });
-  assert.match(/** @type {any} */ (bad).message, /doesn't check out/);
-  for (const e of [notFound, rate, bad]) { assert.equal(e.kind, "error"); assert.equal(/** @type {any} */ (e).retryable, true); }
+  const e = step(resolving, { type: "resolveFailed", code: "ticket_gone", message: "That code expired or was already used. Open Add your phone again on your Mac." });
+  assert.deepEqual(e, { kind: "error", code: "ticket_gone", message: "That code expired or was already used. Open Add your phone again on your Mac.", retryable: true });
+});
+
+test("pair-scan: a refusal with no message falls back to a generic one, always retryable", () => {
+  const resolving = { kind: /** @type {const} */ ("resolving") };
+  const e = step(resolving, { type: "resolveFailed", code: "bad_record", message: "" });
+  assert.equal(e.kind, "error");
+  assert.match(/** @type {any} */ (e).message, /Something went wrong/);
+  assert.equal(/** @type {any} */ (e).retryable, true);
 });
 
 test("pair-scan: a stray late 'found' after the flow already moved on is ignored", () => {
@@ -58,9 +61,9 @@ test("pair-scan: retry always goes back to scanning, from any state", () => {
   for (const s of /** @type {any[]} */ (states)) assert.deepEqual(step(s, { type: "retry" }), { kind: "scanning" });
 });
 
-test("pair-scan: a pairing-time failure (after confirm) is worded too", () => {
+test("pair-scan: a pairing-time failure (after confirm) is handled too", () => {
   const pairing = { kind: /** @type {const} */ ("pairing"), name: "B", fingerprint: "F", handle: null };
-  const e = step(pairing, { type: "pairFailed", code: "bad_ticket", message: "" });
+  const e = step(pairing, { type: "pairFailed", code: "pair_failed", message: "the relay would not resolve this pairing code (500)" });
   assert.equal(e.kind, "error");
-  assert.match(/** @type {any} */ (e).message, /doesn't check out/);
+  assert.equal(/** @type {any} */ (e).code, "pair_failed");
 });

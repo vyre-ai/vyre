@@ -73,13 +73,11 @@ export function step(state, event) {
   }
 }
 
-/** Turns a refusal into words that say what to do. Per tailnet: the relay's 404 deliberately
- * covers expired, used and unknown alike (so a scanner can't fingerprint which reason applied),
- * so this can only ever say the generic version, not pick a more specific one. A MAC or shape
- * failure ("doesn't check out") must never be treated as anything but a refusal to pair. */
+/** Turns a refusal into a shown state. The wording itself comes from the caller (deck/js/
+ * pair-ticket.js's classifyError(), the one place that maps relay/client's stable `.code`
+ * values - ticket_gone, rate_limited, bad_record, bad_input, pair_failed - to words), so this
+ * doesn't re-derive it a second time; it only ever needs `retryable`, which is always true here
+ * (every refusal this flow can hit ends in "scan again", never a dead end). */
 function errorFor(/** @type {string | undefined} */ code, /** @type {string} */ message) {
-  if (code === "rate_limited") return { kind: "error", code, message: "Too many tries. Wait a moment and scan again.", retryable: true };
-  if (code === "not_found") return { kind: "error", code, message: "That code expired or was already used. Open Add your phone again on your Mac.", retryable: true };
-  if (code === "bad_ticket") return { kind: "error", code, message: "That code doesn't check out. Try scanning again.", retryable: true };
   return { kind: "error", code: code || "error", message: message || "Something went wrong. Try again.", retryable: true };
 }

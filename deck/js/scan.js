@@ -18,9 +18,14 @@
 // real position/scale instead of a blind sweep - is a separate, larger change, not built here;
 // see decode-core2.js's own perf note and docs/work/pwa.md's "Next".
 //
-//   startScan({ video, onFound, onError }) -> { stop() }
+//   startScan({ video, onFound, onError, onSlow }) -> { stop() }
 //     video: an existing <video> element this attaches the camera stream to (muted, playsinline,
 //     autoplay are set here; the caller lays it out).
+//     onSlow(): called once, ~2s after scanning starts, if nothing has decoded yet (team-lead,
+//     2026-09-28) - a plain hint ("Hold your phone straight on to the screen") for the common
+//     real cause, since the perspective-correction search is the weakest part of this decoder
+//     (docs/work/pwa.md's own numbers). Not itself a sign anything is wrong; scanning keeps
+//     going exactly as before, this only adds a hint on top.
 //     onFound(ticket, avatarDataUrl): called once, the first time a frame decodes. `ticket` is
 //     the raw 8-byte value AS BYTES, never as a string - deck/js/pair-ticket.js is the only
 //     thing that touches it past here, and it is the pairing SECRET in this flow (reviewer's
@@ -36,15 +41,16 @@
 const ATTEMPT_MS = 350; // gap between the END of one decode attempt and the start of the next
 const FRAME_SIZE = 640; // grabbed frame side, in CSS px equivalent - plenty for a code held at
                          // arm's length; bigger only costs decode time, not accuracy past this
+const SLOW_MS = 2000; // onSlow's own delay, from when the camera is actually ready
 
 const FACE_R = 180; // decode-core2.js's own FACE_R: half the face diameter, in the code's
                      // reference units - a captured frame's face radius is this * cand.scale
 
 /**
- * @param {{ video: HTMLVideoElement, onFound: (ticket: Uint8Array, avatarDataUrl: string | null) => void, onError: (err: Error) => void }} opts
+ * @param {{ video: HTMLVideoElement, onFound: (ticket: Uint8Array, avatarDataUrl: string | null) => void, onError: (err: Error) => void, onSlow?: () => void }} opts
  * @returns {{ stop: () => void }}
  */
-export function startScan({ video, onFound, onError }) {
+export function startScan({ video, onFound, onError, onSlow }) {
   let stopped = false;
   /** @type {MediaStream | null} */ let stream = null;
   const canvas = document.createElement("canvas");
@@ -54,6 +60,7 @@ export function startScan({ video, onFound, onError }) {
   let found = false;
   let busy = false; // an attempt is in flight at the worker; never send a second one
   let timer = /** @type {ReturnType<typeof setTimeout> | null} */ (null);
+  let slowTimer = /** @type {ReturnType<typeof setTimeout> | null} */ (null);
 
   (async () => {
     try {
@@ -64,6 +71,7 @@ export function startScan({ video, onFound, onError }) {
       video.muted = true; video.playsInline = true; video.autoplay = true;
       await video.play().catch(() => {}); // a user gesture usually already opened this sheet
       for (const track of stream.getVideoTracks()) track.addEventListener("ended", () => { if (!stopped) onError(Object.assign(new Error("The camera stopped."), { code: "camera_ended" })); });
+      if (onSlow) slowTimer = setTimeout(() => { if (!stopped && !found) onSlow(); }, SLOW_MS);
       scheduleAttempt();
     } catch (err) {
       onError(/** @type {Error} */ (err));
@@ -131,6 +139,7 @@ export function startScan({ video, onFound, onError }) {
     stop() {
       stopped = true;
       if (timer) clearTimeout(timer);
+      if (slowTimer) clearTimeout(slowTimer);
       if (stream) stopTracks(stream);
       video.srcObject = null;
       worker.terminate();

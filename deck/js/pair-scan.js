@@ -68,6 +68,7 @@ export function pairScanSheet(opts) {
   /** @type {{ stop: () => void } | null} */ let scan = null;
   /** @type {{ relay: string, route: string, box: Uint8Array, secret: string } | null} */ let pendingOffer = null;
   /** @type {string | null} */ let cameraAvatarUrl = null; // scan.js's crop, kept as a fallback only
+  let slow = false; // scan.js's onSlow fired: show the "hold straight on" hint under the status
   const video = /** @type {HTMLVideoElement} */ (h("video", { class: "scan-video", playsinline: true, muted: true, "aria-hidden": "true" }));
   const status = h("div", { class: "scan-status", role: "status" });
   const actions = h("div", { class: "scan-actions" });
@@ -120,10 +121,14 @@ export function pairScanSheet(opts) {
 
   function startCamera() {
     scan?.stop();
+    slow = false;
     scan = startScan({
       video,
       onFound,
       onError: (err) => dispatch({ type: "resolveFailed", code: /** @type {any} */ (err).code || "camera", message: err.message }),
+      // team-lead, 2026-09-28: a plain hint after ~2s with nothing decoded yet - not an error,
+      // scanning keeps going exactly as before; just adds a line under the usual status.
+      onSlow: () => { slow = true; if (state.kind === "scanning") render(); },
     });
   }
 
@@ -172,7 +177,8 @@ export function pairScanSheet(opts) {
 
   function render() {
     if (state.kind === "scanning") {
-      put(status, "Point your camera at the code on your Mac or your box.");
+      put(status, "Point your camera at the code on your Mac or your box.",
+        slow ? h("div", { class: "small faint" }, "Hold your phone straight on to the screen.") : null);
       put(actions);
     } else if (state.kind === "resolving") {
       put(status, "Reading the code…");
