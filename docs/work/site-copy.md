@@ -115,9 +115,17 @@ old copy, new for the rewrite. 35 is the floor.
   app.js (same sha1), so the Try buttons, the Typing/Recall/Held/Waiting tabs and the ⌥Space dialog
   do nothing, and `demoTabs.addEventListener` throws at load. Needs an owner (launch).
 
+## Screenshots
+
+CDP device-metrics screenshots on testbox (true 390 px, no `--window-size` clamp) of the committed
+site, served from a `git archive` export. Local only, not committed: landing, /start and 404 at
+1440 and 390 (full page), plus hero viewports. No horizontal scroll at 390 on any page
+(scrollWidth 390). Server and Chrome torn down after.
+
 ## Doing
 
-Nothing. Handed to the lead.
+Nothing. Handed to the lead. Lead review: eyebrow changed to "Built on Claude Code"; an
+unbacked "about 20 minutes" and "one click" removed.
 
 ## Next
 
