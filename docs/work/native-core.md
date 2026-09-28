@@ -163,6 +163,10 @@ and the new capability to team-lead.
   (agent-caller refusal), a81d1f03 (new voice.listen ticket tool). Pinged reviewer for status;
   nothing back yet.
 - Pushed work/native-core-composer to origin at 65296734 and told chat it's there.
+- **reviewer CLEARED the auth chain**: a53d0361, c5b2bd65, a81d1f03 - patch-identical to
+  capsule-pro's already-signed-off 06713585/c9573929/f967b3de (a81d1f03 differs only in
+  regenerated docs/index.json); no trailers. Integrator and reviewer-2 already have it.
+- **Chain a53d0361..476f920c is CLEAR TO LAND** (all 5 shas reviewed, both reviewers signed off).
 - Waiting on team-lead to lock avatar designs before starting the shared seeded avatar renderer.
 
 ## Resume 2026-09-28 (cont'd 8): voice rebuilt as tap-to-talk (e21c019d)
