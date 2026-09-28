@@ -50,6 +50,34 @@ does:
 Agent and assistant marks draw from separate palettes on purpose, so a colour coincidence never
 makes one read as the other. Full rationale and sources: ADR 0043.
 
+## Skin-tone legibility, locked (ADR 0043 section 5)
+
+The teammate family's rolled character (`round3b/original.js`'s `character()`) is the one family
+that draws a real skin tone - 8 tones, light to deep, `round4/identity.js`'s `SKIN_TONES`. Person
+and assistant use an abstract gradient and a luminous mark instead, never a skin representation,
+so neither needed a change here.
+
+User's decision (28 Sep): some avatars' skin tones were too dark to read clearly - fix the
+legibility, keep the full range. Measured as two separate failures (not one): the fixed near-black
+feature ink (eyes, mouth, glasses) disappeared into the three deepest tones (1.3-2.6:1), and the
+head itself washed into its backdrop at both ends of the range in the theme where that end sits
+closest - the four deepest tones against dark theme, the four lightest against paper theme
+(1.05-3.9:1 across both). Fixed at the source, in `identity.js`:
+
+- `featureInkFor(skinHex)` - dark ink wherever it clears 3:1 against the skin, a light cream ink
+  only where it doesn't. Deterministic per tone, never per-seed.
+- `rimFor(skinHex, theme)` - a thin ring just inside the head's edge, only on tones that fail 3:1
+  against that theme's backdrops, coloured from the theme's own contrasting ink.
+- `validatePalette()` - checks all 8 tones x 2 themes x 3 backdrops (24 combinations) plus each
+  tone's own feature ink, throws on any regression below the 3:1 floor. 48 checks, all passing,
+  worst case 3.68:1.
+
+`character()` takes a `theme` param (default `"dark"`) so a caller renders per the live theme -
+the real integration contract, same convention `vyrecode2.js` already uses. Verified visually with
+a headless-Chrome contact sheet across all 8 tones, both themes, both `--panel` and `--hover`
+backdrops (`round3b/contact-sheet-fix.png`) and in the full `avatar-showcase` in context. Locked:
+no further change to this without reopening ADR 0043 section 5.
+
 ## The Vyre code (ADR 0043)
 
 The person's circle above has a second, full-size form for pairing and identity-sharing: a ring

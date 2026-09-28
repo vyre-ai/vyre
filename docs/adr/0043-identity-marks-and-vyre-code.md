@@ -292,6 +292,78 @@ needs 3-4 detected reference points (the marker, the rim) and a solved homograph
 search parameter - the next real step for whoever wires this into `pwa`'s decoder, not a blocker
 on shipping the visual spec.
 
+### 5. Skin-tone legibility on the teammate family, locked (28 Sep, user's decision)
+
+User's decision, verbatim: "lock on avatars, but some of them were getting too dark skin colors
+and so they weren't clearly visible, so fix that and then lock it." Scoped first: only the
+teammate family (round3b/original.js's `character()`) draws a real skin tone - the person and
+assistant families (section 1) use an abstract warm gradient and a luminous mark, never a skin
+representation, so neither had this problem or needed a change. Agent blobs draw from a separate
+pastel palette, also unaffected.
+
+Measured, not guessed, using WCAG contrast ratio on the actual hex values already in the code
+(`round4/identity.js`'s `SKIN_TONES`, light to deep): two independent legibility failures, not
+one.
+
+1. **Feature ink on skin.** Eyes, mouth and glasses were a single fixed near-black
+   (`#141311`) regardless of skin tone. Against the three deepest tones that measured
+   1.30-2.60:1 - the features were disappearing into the head, not just reading "dark," on
+   every surface and every theme, independent of backdrop.
+2. **Skin against its backdrop.** A teammate's head sits directly on whatever the surface
+   supplies - an `--hover` tile in a list row, or bare on `--panel`/`--bg` in a chat avatar
+   (no wrapping box of its own). Checked against the real system backdrops
+   (`avatar-showcase/build.js`'s tokens): the four deepest tones measured 1.15-3.94:1 against
+   dark theme's backdrops, and, less obviously, **the four lightest tones measured 1.05-2.89:1
+   against paper theme's** - both ends wash out, in the theme where their end of the range sits
+   closest to the backdrop. Fixing only the dark end would have shipped a paper-theme version of
+   the same bug at the light end.
+
+**The range itself does not change.** All 8 tones (`#FBE0C6` through `#3E2417`) stay exactly as
+they were; nothing was removed, narrowed or lightened. Both fixes are additive, computed from the
+skin tone rather than hand-picked per tone, and live in `round4/identity.js` as the one shared
+identity module (not duplicated into `round3b/original.js`, which now imports them):
+
+- **`featureInkFor(skinHex)`** returns `DARK_INK` (`#141311`) wherever that clears a 3:1 floor
+  against the skin, and `LIGHT_INK` (`#F1EEE6`, the same cream `creature.js` already uses for its
+  eye sparkle) only on the tones dark enough that dark ink no longer would. A given skin tone
+  always gets the same ink; a reroll of everything else on a teammate never flips its own feature
+  colour on its own.
+- **`rimFor(skinHex, theme)`** returns a thin ring (stroke-width 3, drawn at r=28.5 just inside
+  the head's own r=30 edge, so it reads as the head's boundary rather than a floating halo) when,
+  and only when, that skin tone fails the 3:1 floor against any backdrop in that theme - `null`
+  otherwise, so a tone that already reads fine gets no added ring. The ring colour is the theme's
+  own contrasting ink, opposite of the theme's ordinary text colour on a light-vs-dark call: light
+  cream at 0.55 opacity in dark theme, dark ink at 0.6 opacity in paper theme. Both opacities carry
+  a real margin over their minimum (0.4 and 0.5 respectively, per the tuning pass in
+  `round4/identity.js`'s comments) - worst case lands at 5.2:1 and 4.6:1, not sitting on the floor.
+- **`validatePalette()`**, next to `validateGeometry()`'s existing contract, checks every one of
+  the 8 skin tones against every backdrop in both themes (24 combinations) plus its own derived
+  feature ink, and throws with the specific failing combination if a future edit to `SKIN_TONES`,
+  the inks, the rim or the backdrops regresses any of them below the 3:1 floor. Run after editing
+  any of those. Currently: 48 checks (8 tones x 2 themes x 3 backdrops), all pass, worst case
+  3.68:1.
+
+`character()` gained a third parameter, `theme` (default `"dark"`, matching `vyrecode2.js`'s own
+convention), so it can pick the right rim. **This is the real integration contract**: a caller
+renders per the live theme at draw time, the same way the person's circle and the Vyre code
+already do - the static SVGs `round4/export.js` writes to `round4/svg/` for the design canvas are
+a single-theme snapshot (baked at `"dark"`) for that canvas's own use, not a second product path,
+and were not re-baked per theme here since nothing in that canvas consumes them per-theme today.
+
+Verified visually, not just by the numbers: a contact sheet rendered with headless Chrome
+(`round3b/contact-sheet-fix.js` -> `.html` -> `.png`, temp Chrome profile, no visible window) shows
+all 8 tones, both themes, against both the `--panel` and `--hover` backdrop, with the ink and rim
+each tile actually used labelled underneath it. Every tile reads clearly: no head blends into its
+backdrop, no feature disappears into its skin, in either theme. The full `avatar-showcase`
+(`showcase.html`, rebuilt from the fixed `character()`) confirms the same in context - the
+teammates panel, the chat thread's handoff rows, and the side list all read cleanly across the
+whole range, and the Vyre code pair at the bottom is visually and numerically unchanged
+(`validateGeometry()` still passes at margin 51px/8.5%, gap clearance 7px, matching 2b's numbers
+exactly - this round touched no geometry).
+
+**Locked.** No further changes to the teammate family's skin-tone handling without reopening this
+section.
+
 ## Consequences
 
 - `avatar.md` gains the four-family table and the Vyre code section below; `pwa` ports
@@ -307,3 +379,10 @@ on shipping the visual spec.
   import it rather than restating its values. Its `validateGeometry()` is the enforcement point
   for the margin/gap invariant from 2a - run it (or let module load do so) after any edit to the
   file.
+- `round4/identity.js` now also carries `SKIN_TONES`, `featureInkFor()`, `rimFor()` and
+  `validatePalette()` (section 5) - the equivalent enforcement point for skin-tone legibility.
+  `round3b/original.js`'s `character()` imports these rather than restating them, and takes a
+  `theme` param so callers render per the live theme, same convention as `vyrecode2.js`. `native-core`
+  should import `character()`/`blob()` (and `identity.js`'s exports) from
+  `deck/vendor/avatars/round3b/original.js` and `deck/vendor/avatars/round4/identity.js` rather
+  than hand-copying values, for the same reason geometry.js is vendored, not restated.
