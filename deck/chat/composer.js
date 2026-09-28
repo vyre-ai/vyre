@@ -104,9 +104,10 @@ const COMMANDS_RETRY_MS = 15_000;
  * @param {{ thread: string, agents?: string[], threads?: { id: string, name: string|null }[], holder?: string|null, surface?: string,
  *   machine?: string|null, onOffline?: (machine: string|null) => void, onQueue?: (n: number, name: string) => void, onStop?: () => void,
  *   session?: import("./core/session-state.js").Session, patch?: (keys: string[]) => void, cwd?: () => string|null, name?: () => string,
- *   onRewind?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean }} opts
+ *   onRewind?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean, onFind?: (query: string) => void }} opts
  * session and patch: the view's session-state and how it redraws what changed (steers, queue rows and shell rows are drawn
  * here, on send). onOffline: called with the Mac's name when a send finds it offline, with null when a send goes through.
+ * onFind: "/find [words]" (a local command, nothing sent) - words is "" when none were typed.
  * @returns {{ el: HTMLElement, focus: () => void, stop: () => void, setMachine: (m: string|null) => void, setBusy: (on: boolean) => void,
  *   setText: (text: string, note?: string) => void, editQueued: (q: { uuid: string|null, queued?: any, text: string }) => void,
  *   key: (e: KeyboardEvent) => boolean, draw: () => void, value: () => string }}
@@ -338,9 +339,10 @@ export function mountComposer(opts) {
     setValue(r.text, r.caret);
     ta.focus();
   }
-  function runLocal(/** @type {string} */ what) {
+  function runLocal(/** @type {string} */ what, query = "") {
     if (what === "model") openModels();
     else if (what === "rewind") opts.onRewind?.();
+    else if (what === "find") opts.onFind?.(query);
   }
 
   function showFiles(/** @type {import("./core/composer-state.js").MentionRange} */ range) {
@@ -473,7 +475,10 @@ export function mountComposer(opts) {
     if (a.kind === "command" && !machine) {
       const name = ta.value.trim().slice(1).split(/\s/)[0];
       const local = (commands || normalizeCommands(null)).find(c => c.name === name && c.local);
-      if (local && local.local) { setValue(""); runLocal(local.local); return; }
+      if (local && local.local) {
+        const query = ta.value.trim().slice(1 + name.length).trim();
+        setValue(""); runLocal(local.local, query); return;
+      }
     }
     sendMessage(ta.value.trim(), a.mode);
   }

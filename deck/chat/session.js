@@ -200,6 +200,9 @@ export function mountSession(container, opts) {
     cwd: () => record.current?.cwd || recorded.session?.cwd || null,
     name: () => agentName(),
     onRewind: () => openRewind(),
+    // "/find [words]" (native-core/commands.js): the existing Find page already queries
+    // recall.search + memory.relevant and has its own scoping rules; the composer just gets there fast.
+    onFind: q => go("/find" + (q ? "?q=" + encodeURIComponent(q) : "")),
     onTasks: () => tray.toggle(),
     onThinkingView: () => setHideThinking(!hideThinking),
     onOverlayEscape: () => { if (!rewind) return false; closeRewind(); return true; } });
