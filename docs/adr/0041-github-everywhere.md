@@ -200,6 +200,20 @@ repo is a workspace, not the project's primary repo, so it changes nothing about
 session's worktree comes from (section 5), and never touches the project's other folders.
 A worktree for an added, non-primary repo is 0.1.2, same as before.
 
+**Tested live, once, on testbox** (`core/github/index.live.test.js`, off by default, opt in with
+`VYRE_LIVE_GITHUB=1`, never on the Mac): `github.project` and `.add-repo` really clone GitHub's
+own tiny public demo repo (`octocat/Hello-World`) end to end, with a made-up account and a
+placeholder token the whole way through, never a real credential. It drove one real fix: `getRepo`
+(the shared `GET /repos/{full_name}` helper) used to 401 outright on a broken or placeholder
+token, even for a repo anyone could read anonymously, since GitHub validates whatever credential
+is offered before ever falling back to public access; it now retries once with no credential at
+all when the first attempt 401s, so a bad token no longer wrongly reports a public repo as
+inaccessible. The clone itself needed no such fix: GitHub serves a public repo's git-http
+endpoints anonymously, so `gitWithAskpass` never even reaches its own askpass script for one, a
+placeholder token or not. The live test also checks the clone's own `.git/config` for a
+`credential.helper` afterward (there should be none) as a second, concrete proof next to
+`git-safe-askpass.test.js`'s existing ones.
+
 ### 4b. Detecting a project's repos, per workspace
 
 `github.project.detect {project}` is how a surface knows what's already there, since nothing is

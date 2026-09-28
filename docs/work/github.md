@@ -160,6 +160,36 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
     had an em dash. Fixed the em dash (colon instead); not otherwise this session's bug, but the
     right fix now it's visible. 85/85 clean on testbox, twice.
 
+## Done (2026-09-28, live clone test - lead's ask after review)
+- Lead: the actual clone had never been tested end to end (index.test.js's own github.project/
+  .add-repo tests only cover the validation before a clone, since git-safe correctly refuses a
+  local file:// stand-in). Added an opt-in live test.
+  - `core/github/index.live.test.js` (new): off by default, `VYRE_LIVE_GITHUB=1` to run, no
+    caller allowlist beyond the module's own (still `cli`/etc via the test's own `as()`), never
+    touches real credentials - a made-up account row, a placeholder token throughout. Clones
+    GitHub's own tiny public demo repo (`octocat/Hello-World`) for real, twice, through the real
+    `github.project` and `.add-repo` tool paths: makes a project, clones the repo, adds a second
+    clone as a workspace, checks `.project.of` still names the first as primary, checks
+    `.detect` sees both. Also asserts neither clone has a `credential.helper` configured
+    afterward - a second, concrete proof next to `git-safe-askpass.test.js`'s existing ones.
+  - Drove one real fix in `getRepo` (`core/github/index.js`): a broken/placeholder token used to
+    401 outright, even reading a repo anyone could see anonymously (GitHub validates whatever
+    credential is offered before ever falling back to public access) - now retries once with no
+    credential at all on a 401, so a bad token no longer wrongly reports a public repo as
+    inaccessible. Confirmed empirically first (curl, no git/credential machinery involved): no
+    Authorization header against a public repo's REST endpoint is 200; any garbage Bearer value
+    is 401.
+  - `core/github/index.test.js`'s `world()` fake `projects` made stateful (`projects.create`/
+    `.add-workspace` now actually update the rows a later `projects.list` sees) so a test can
+    create-then-add-repo-then-detect in one flow; no existing test relied on the old
+    always-static behavior, so this is additive.
+  - Ran on testbox only (temp `HOME`, never the Mac): default run shows it `SKIP`ped (25/26,
+    1 skipped, the rest green); with `VYRE_LIVE_GITHUB=1`, ran alone and passed for real (a real
+    clone happened); full suite rerun after, clean (85/85 + 1 skipped, after one confirmed-
+    transient flake in the same unrelated `git-safe-askpass.test.js` file as before). ADR 0041's
+    4a updated with what the live run proved and the fix it drove. Sending this sha to the
+    reviewer as part of the same packet.
+
 ## Doing
 - reviewer CLEARED work/github through acfcefd2 (both 3a72ea7f..84e76681 and the stdin fix).
   The credential.interactive LOW is WITHDRAWN (reviewer agreed the evidence was right); the lead

@@ -35,13 +35,19 @@ function makeRepo(t, origin) {
   return dir;
 }
 
-/** A minimal module context: real sqlite table, a fake `projects`, tokens in a plain map (never fetched over the wire in a test). */
-async function world(t, { projectsRows = [], tokens = {} } = {}) {
+/**
+ * A minimal module context: real sqlite table, a fake `projects` (stateful - `projects.create`
+ * and `.add-workspace` actually update the rows a later `projects.list` sees, since detect and
+ * add-repo both round-trip through it), tokens in a plain map (never fetched over the wire in a
+ * test; a name with no entry gets a fixed placeholder token, never used for real credentials).
+ */
+async function world(t, { projectsRows = [], tokens = {}, projectsDir } = {}) {
   const db = new DatabaseSync(":memory:");
   t.after(() => db.close());
   const tools = new Map(), events = [], calls = [];
+  const rows = projectsRows.map(r => ({ workspaces: [], ...r }));
   const ctx = {
-    config: { projectsDir: fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-projdir-")) },
+    config: { projectsDir: projectsDir || fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-projdir-")) },
     store: { db, migrate: steps => { for (const s of steps) db.exec(s); } },
     log: () => {},
     events: { emit: (type, payload) => events.push({ type, payload }) },
@@ -49,9 +55,17 @@ async function world(t, { projectsRows = [], tokens = {} } = {}) {
     tool: (name, def) => tools.set(name, def),
     call: async (toolName, input) => {
       calls.push({ tool: toolName, input });
-      if (toolName === "projects.list") return { data: { projects: projectsRows } };
-      if (toolName === "projects.add-workspace") return { data: { slug: input.project } };
-      if (toolName === "projects.create") return { data: { slug: input.name } };
+      if (toolName === "projects.list") return { data: { projects: rows } };
+      if (toolName === "projects.add-workspace") {
+        const p = rows.find(x => x.slug === input.project);
+        if (p) p.workspaces = [...p.workspaces, input.folder];
+        return { data: { slug: input.project } };
+      }
+      if (toolName === "projects.create") {
+        const slug = input.name;
+        rows.push({ slug, name: input.name, home: input.home, workspaces: [] });
+        return { data: { slug } };
+      }
       return { error: { code: "no_such_tool", message: `no fake for ${toolName}` } };
     },
   };

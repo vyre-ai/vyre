@@ -155,7 +155,14 @@ export default {
 
     /** GET /repos/{full_name}, mapped down to what detect/project/add-repo need, or null (not found, no access). */
     async function getRepo(token, full_name) {
-      const res = await fetch(`https://api.github.com/repos/${full_name}`, { headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(15_000) });
+      const url = `https://api.github.com/repos/${full_name}`;
+      const accept = "application/vnd.github+json";
+      let res = await fetch(url, { headers: { authorization: `Bearer ${token}`, accept }, signal: AbortSignal.timeout(15_000) });
+      // A broken or placeholder token 401s outright, even for a repo anyone could read
+      // anonymously (GitHub validates whatever credential is offered before falling back to
+      // public access); retry once with no credential at all rather than wrongly reporting a
+      // public repo as inaccessible over a bad token.
+      if (res.status === 401 && token) res = await fetch(url, { headers: { accept }, signal: AbortSignal.timeout(15_000) });
       if (!res.ok) return null;
       const r = await res.json();
       return { full_name: r.full_name, name: r.name, default_branch: r.default_branch, clone_url: r.clone_url, html_url: r.html_url, private: Boolean(r.private) };
