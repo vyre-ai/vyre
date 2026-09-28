@@ -49,6 +49,43 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 8. Offline. Turn on Airplane Mode and open Vyre: it still opens, shows what it last had, and one
    line says the phone is offline. Turn it off and tap Retry: the line goes and the screen fills.
 
+## The keyboard check (real iPhone only — a simulator or Chrome DevTools does not show this)
+
+Everything above has been checked in headless Chrome on testbox, but the keyboard behaviour it is
+built against (`visualViewport`, safe areas, `100dvh`) only shows its real shape on an actual
+iPhone in Safari, so this is the user's to run rather than something the team can verify in CI. Takes
+about five minutes. For each step, what should happen is next to what would mean it is broken.
+
+1. Open a session with some history in it (Chat, pick one with a few messages). Tap the composer
+   at the bottom. **Should**: the keyboard rises and the composer sits right on top of it, with no
+   gap and no part of the composer hidden underneath; the transcript above does not jump, flash,
+   or scroll to a different spot when the keyboard appears. **Broken** would look like: the
+   composer staying at the bottom of the screen behind the keyboard, a visible jump in the
+   transcript's scroll position at the moment the keyboard opens, or a blank gap between the last
+   message and the keyboard.
+2. With the keyboard still up, scroll the transcript up to read an earlier message, then scroll
+   back down and type a short reply. **Should**: scrolling works normally with the keyboard up,
+   and sending returns you to the bottom smoothly. **Broken** would be scrolling that fights the
+   keyboard, or the view snapping somewhere unexpected on send.
+3. Dismiss the keyboard (tap the transcript or swipe down) without sending anything, then tap the
+   composer again. **Should**: it opens and closes cleanly a few times in a row with the layout
+   settling in the same place each time. **Broken** would be the composer sitting too high or too
+   low after a second or third open, or a growing gap under it.
+4. Tap Send (or Approve) on the Gate to open its sheet, then tap into one of its text fields.
+   **Should**: the sheet's field also rises above the keyboard, same as the composer. **Broken**
+   would be the field ending up hidden behind the keyboard inside the sheet.
+5. Pull down for Find and tap its search box. **Should**: the same lift as the composer; typing
+   filters results live above the keyboard. **Broken** would be the results list being covered by
+   the keyboard, or the search box itself sitting under it.
+6. Turn the phone sideways (landscape) with the composer's keyboard up, then back to portrait.
+   **Should**: the layout does not break in either orientation — this is also where to notice
+   whether the phone should still use its narrow (five-tab) layout in landscape, or switch to the
+   wider desktop-style one now that the screen is over 760px wide sideways; either way of it
+   should look deliberate, not stretched or cut off.
+
+Whatever you see, a screenshot (or a screen recording if it's the jump, which is hard to catch in
+a still) is the fastest way to hand it back — reply with what step, and what happened instead.
+
 ## Done
 - /pair for `vyre phone add --tailscale-only` (views/pair.js, js/pair-steps.js pure parts,
   css/views/pair-phone.css via app.js CSS_NAME): code + enrollPasskey, subscribePush, Home Screen
@@ -338,11 +375,11 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - Step 6 Mac card: "Already on your tailnet" for an online Mac node.
 - theme.colors: match docs' final shape.
 - threads.unqueue once capsule-now ships it.
-- Real iPhone check by the user, against the DIRECTION.md bar. Especially the keyboard: open a
-  session, tap the composer, the transcript must not jump and the composer must sit on the keys;
-  the Send sheet's fields; Find's box.
+- Real iPhone check by the user, against the DIRECTION.md bar: steps written up in "The keyboard
+  check" above (2026-09-28), asked for a screenshot or recording of anything that doesn't match.
 - A phone turned sideways (over 760 wide) gets the desktop layout; decide whether the phone
-  shell should follow the shorter side instead (`max-width: 760px` or `max-height: 500px`).
+  shell should follow the shorter side instead (`max-width: 760px` or `max-height: 500px`) — the
+  keyboard check's step 6 asks the user to notice this too.
 
 ## Design A gaps closed
 The Deck-wide components from Design A v1 (app-design's spec, docs/design/system/components on
