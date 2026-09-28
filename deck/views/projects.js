@@ -349,8 +349,8 @@ function drawRepos(ctx, p, el) {
     const rows = Array.isArray(r.data?.workspaces) ? r.data.workspaces : [];
     const add = h("button", { type: "button", class: "btn btn-sm", onclick: () => openGithubRepoPicker({
       title: `Add a repo to ${p.name}`,
-      onPick: async repo => {
-        const r2 = await attempt("github.project.add-repo", { project: p.slug, repo: repo.full_name });
+      onPick: async (repo, account) => {
+        const r2 = await attempt("github.project.add-repo", { project: p.slug, repo: repo.full_name, account });
         if (r2.error) { showToast({ text: `Could not add ${repo.full_name}: ${r2.error.message || r2.error.code}` }); return; }
         showToast({ text: `Added ${repo.full_name}` });
         go(location.pathname + location.search); // a new workspace folder: refresh the whole board

@@ -14,6 +14,13 @@ import { icon } from "./icons.js";
 import { when } from "./fmt.js";
 import { openSheet } from "./sheet.js";
 
+let styled = false;
+function style() {
+  if (styled || typeof document === "undefined" || !document.head) return;
+  styled = true;
+  document.head.append(h("link", { rel: "stylesheet", href: "/css/github-repo-picker.css" }));
+}
+
 /** @typedef {{ full_name: string, name: string, owner: string, private: boolean, default_branch: string, description: string|null, updated_at: string|null, html_url: string }} Repo */
 
 /**
@@ -21,6 +28,7 @@ import { openSheet } from "./sheet.js";
  * @returns {{ close: () => void }}
  */
 export function openGithubRepoPicker(o) {
+  style();
   const call = o.attempt || attempt;
   return openSheet({
     title: o.title || "Choose a GitHub repo",
