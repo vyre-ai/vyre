@@ -352,7 +352,7 @@ test("dockerproxy: the only archive upload is a computer's .boot tar, to /var/li
 
 test("dockerproxy: a shared computer's .agent-tokens tar is let through the same archive route -- the tar's own name, not the query, tells it apart from .boot", async t => {
   const p = await proxy(t);
-  const goodAgents = agentTokensTar([{ name: "alice", token: "a".repeat(40) }, { name: "bob", token: "b".repeat(40) }]);
+  const goodAgents = agentTokensTar([{ id: "id1", name: "alice", token: "a".repeat(40) }, { id: "id2", name: "bob", token: "b".repeat(40) }]);
   const put = (path, body, h = { "content-type": "application/x-tar" }) => p.call("PUT", path, body, h);
   const ok = await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", goodAgents);
   assert.equal(ok.status, 200, ok.text);
@@ -367,7 +367,7 @@ test("dockerproxy: a shared computer's .agent-tokens tar is let through the same
 test("dockerproxy: a policy that has no allowAgentTokensTar (every policy before this feature existed) refuses .agent-tokens outright, .boot only", async t => {
   const { allowAgentTokensTar: _omit, ...noAgentTokens } = stub;
   const p = await proxy(t, noAgentTokens);
-  const goodAgents = agentTokensTar([{ name: "alice", token: "a".repeat(40) }]);
+  const goodAgents = agentTokensTar([{ id: "id1", name: "alice", token: "a".repeat(40) }]);
   const r = await p.call("PUT", "/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", goodAgents, { "content-type": "application/x-tar" });
   assert.equal(r.status, 403);
   // .boot itself still works on that same, older policy.

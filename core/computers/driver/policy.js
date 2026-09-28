@@ -352,32 +352,38 @@ export function allowBootTar(buf) {
 // ---- a shared computer's per-agent identity, as a second file next to .boot ------------------
 //
 // AGENT_TOKENS_FILE (computerd/index.js's own identifyClient, agent-browsers.md level 2): one
-// "name=token" pair per agent sharing a computer, so cdpmux's per-agent BrowserContext scoping is
-// only as strong as the credential that names it -- never a claim the connecting client makes.
-// Written through the same archive-API PUT as .boot, and checked the same way: an allowlist of
-// exactly what agentTokensTar() makes, refusing anything else the proxy is asked to write here.
+// "id:name=token" triple per agent sharing a computer, so cdpmux's per-agent BrowserContext
+// scoping is only as strong as the credential that identifies it -- never a claim the connecting
+// client makes. id is vyred's own unique agent id; name is display-only. Written through the same
+// archive-API PUT as .boot, and checked the same way: an allowlist of exactly what
+// agentTokensTar() makes, refusing anything else the proxy is asked to write here.
 
 export const AGENT_TOKENS = Object.freeze({ dir: "/var/lib/vyre", name: ".agent-tokens", uid: 1001, gid: 1001, mode: 0o400 });
-/** One agent, one line: the same name/token shape computerd's own identifyClient parses. */
-const AGENT_TOKENS_LINE = /^[a-z][a-z0-9-]{0,40}=[A-Za-z0-9_-]{32,128}$/;
+/** One agent, one line: the same id:name=token shape computerd's own identifyClient parses
+ * (index.js). id is vyred's own unique agent id, never reused; name is display-only (logs) and
+ * MAY repeat -- a reused display name must never reach a different agent's own browser context,
+ * which is why cdpmux keys everything by id, not name (reviewer + lead, 28 Sep). Keep this regex
+ * and computerd/index.js's own parseAgentTokens byte-for-byte the same shape: policy.test.js's
+ * own shared-fixture test (reviewer, 28 Sep) fails the build if the two ever drift apart again. */
+const AGENT_TOKENS_LINE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}:[a-z][a-z0-9-]{0,40}=[A-Za-z0-9_-]{32,128}$/;
 /** A small pool per shared computer (agent-browsers.md's own concurrency-cap note); bounds the
  * file's size and this check's own cost, not a load-bearing security limit on its own. */
 const MAX_AGENTS_PER_COMPUTER = 64;
 
 /**
- * @param {Array<{ name: string, token: string }>} agents
+ * @param {Array<{ id: string, name: string, token: string }>} agents
  * @returns {string} one line per agent, in the order given, each exactly AGENT_TOKENS_LINE-shaped
  */
 function agentTokensBody(agents) {
   if (!Array.isArray(agents) || agents.length === 0) throw new Error("agentTokensTar needs at least one agent");
   if (agents.length > MAX_AGENTS_PER_COMPUTER) throw new Error(`agentTokensTar refuses more than ${MAX_AGENTS_PER_COMPUTER} agents on one computer`);
-  const names = new Set(), tokens = new Set();
+  const ids = new Set(), tokens = new Set();
   const lines = agents.map(a => {
-    const line = `${a && a.name}=${a && a.token}`;
-    if (!AGENT_TOKENS_LINE.test(line)) throw new Error("an agent's name or token is not in the expected shape");
-    if (names.has(a.name)) throw new Error(`agent "${a.name}" is named more than once`);
+    const line = `${a && a.id}:${a && a.name}=${a && a.token}`;
+    if (!AGENT_TOKENS_LINE.test(line)) throw new Error("an agent's id, name or token is not in the expected shape");
+    if (ids.has(a.id)) throw new Error(`agent id "${a.id}" is named more than once`);
     if (tokens.has(a.token)) throw new Error("two agents share one token");
-    names.add(a.name); tokens.add(a.token);
+    ids.add(a.id); tokens.add(a.token);
     return line;
   });
   return `${lines.join("\n")}\n`;
@@ -386,7 +392,7 @@ function agentTokensBody(agents) {
 /**
  * The tar holding .agent-tokens, the same one-file shape bootTar() writes (see its own comment
  * for why: archive-API PUT, this file's owner and mode, nothing else in the tar).
- * @param {Array<{ name: string, token: string }>} agents
+ * @param {Array<{ id: string, name: string, token: string }>} agents
  * @returns {Buffer}
  */
 export function agentTokensTar(agents) {
@@ -409,16 +415,17 @@ export function agentTokensTar(agents) {
 }
 
 /** The largest body agentTokensTar() will ever write: MAX_AGENTS_PER_COMPUTER lines, each at most
- * a 40-character name, "=", and a 128-character token, plus its newline. Generous on purpose --
- * this bounds allowAgentTokensTar()'s own check, not a tight fit to today's numbers. */
-const MAX_AGENT_TOKENS_BODY = MAX_AGENTS_PER_COMPUTER * (40 + 1 + 128 + 1);
+ * a 64-character id, ":", a 40-character name, "=", and a 128-character token, plus its newline.
+ * Generous on purpose -- this bounds allowAgentTokensTar()'s own check, not a tight fit to today's
+ * numbers. */
+const MAX_AGENT_TOKENS_BODY = MAX_AGENTS_PER_COMPUTER * (64 + 1 + 40 + 1 + 128 + 1);
 
 /**
  * Is this exactly an .agent-tokens tar as agentTokensTar() makes it: one regular file, that name,
- * owner and mode, every line AGENT_TOKENS_LINE-shaped with no repeated name or token, nothing
- * after it but the end blocks? Unlike .boot's single fixed-shape body, this one can span more
- * than one 512-byte block (more than one agent), so the size bound is generous rather than a
- * single block.
+ * owner and mode, every line AGENT_TOKENS_LINE-shaped with no repeated id or token (a repeated
+ * display name is fine -- names are cosmetic, ids are the identity), nothing after it but the end
+ * blocks? Unlike .boot's single fixed-shape body, this one can span more than one 512-byte block
+ * (more than one agent), so the size bound is generous rather than a single block.
  * @param {Buffer} buf @returns {{ ok: true } | { ok: false, why: string }}
  */
 export function allowAgentTokensTar(buf) {
@@ -438,13 +445,13 @@ export function allowAgentTokensTar(buf) {
   const body = buf.subarray(512, 512 + size).toString("ascii");
   const lines = body.split("\n").slice(0, -1); // the trailing \n leaves one empty entry after split
   if (body.slice(-1) !== "\n" || lines.length === 0) return no("the contents are not agent-tokens lines");
-  const names = new Set(), tokens = new Set();
+  const ids = new Set(), tokens = new Set();
   for (const line of lines) {
-    if (!AGENT_TOKENS_LINE.test(line)) return no("a line is not \"name=token\"-shaped");
-    const [name, token] = line.split("=");
-    if (names.has(name)) return no(`agent "${name}" is named more than once`);
+    if (!AGENT_TOKENS_LINE.test(line)) return no("a line is not \"id:name=token\"-shaped");
+    const [id, token] = [line.slice(0, line.indexOf(":")), line.slice(line.indexOf("=") + 1)];
+    if (ids.has(id)) return no(`agent id "${id}" is named more than once`);
     if (tokens.has(token)) return no("two agents share one token");
-    names.add(name); tokens.add(token);
+    ids.add(id); tokens.add(token);
   }
   const padded = 512 * Math.ceil(size / 512);
   for (let i = 512 + size; i < buf.length; i++) if (buf[i] !== 0) return no("anything after .agent-tokens must be the end blocks");

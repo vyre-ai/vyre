@@ -254,13 +254,13 @@ test("docker: seedAgentTokens() writes .agent-tokens the same way seed() writes 
   const e = await engine(t);
   const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
   const { id } = await d.create(spec);
-  await d.seedAgentTokens(id, [{ name: "alice", token: "a".repeat(40) }, { name: "bob", token: "b".repeat(40) }]);
+  await d.seedAgentTokens(id, [{ id: "id1", name: "alice", token: "a".repeat(40) }, { id: "id2", name: "bob", token: "b".repeat(40) }]);
   const put = e.seen.at(-1);
   assert.equal(put.method, "PUT");
   assert.equal(put.path, `/v1.43/containers/${id}/archive?path=%2Fvar%2Flib%2Fvyre`);
   assert.equal(put.authorization, "Bearer test-bearer");
   assert.deepEqual(allowAgentTokensTar(put.body), { ok: true });
-  assert.match(put.body.toString("latin1"), /alice=a{40}\nbob=b{40}\n/);
-  await assert.rejects(d.seedAgentTokens("db1", [{ name: "alice", token: "a".repeat(40) }]));
+  assert.match(put.body.toString("latin1"), /id1:alice=a{40}\nid2:bob=b{40}\n/);
+  await assert.rejects(d.seedAgentTokens("db1", [{ id: "id1", name: "alice", token: "a".repeat(40) }]));
   assert.ok(!e.seen.some(s => s.method === "PUT" && s.path.includes("db1")));
 });
