@@ -320,6 +320,18 @@ test("relay: relay.device.presence names the key a device enrolled, for modules 
   assert.deepEqual((await d.registry.call("relay.device.presence", { id: "nobody" }, "module:presence")).data, { key: null });
 });
 
+test("relay: relay.devices.node answers a paired device's own Noise identity, for modules only, and its tailnet node once it has reported one", async t => {
+  const { d } = await world(t);
+  const p = await phone(await firstPairing(d));
+  const id = p.reply.device;
+  assert.equal((await d.registry.call("relay.devices.node", { id }, "cli")).error.code, "no_such_tool", "not a surface's tool");
+  const before = await d.registry.call("relay.devices.node", { id }, "module:link");
+  assert.equal(before.data.stableId, id);
+  assert.match(before.data.staticKey, /\S/);
+  assert.equal(before.data.node, null, "no tailnet node reported yet");
+  assert.deepEqual((await d.registry.call("relay.devices.node", { id: "nobody" }, "module:link")).data, { stableId: null, staticKey: null, node: null });
+});
+
 test("relay: the pairing offer names the box as configured, never the machine's hostname", async t => {
   const relay = createRelay();
   const url = await relay.listen();
