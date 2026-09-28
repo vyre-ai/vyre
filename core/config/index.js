@@ -9,7 +9,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { claudeHome, transcriptFolders } from "./dialogs.js";
 
 export { claudeHome, transcriptFolders };
@@ -51,17 +50,22 @@ export function paths(root = home()) {
  * be ours and closed to everyone else; otherwise another user could plant a socket there and
  * pose as vyred. `privateSocketDir` checks that before anything uses it.
  *
- * On `win32` the socket always lives under `%LOCALAPPDATA%\Vyre\sockets` (named by a hash of the
- * home, same idea as the `/tmp` case), never directly under an arbitrary `VYRE_HOME`: this code
- * does not control that folder's ACL, and `chmod` has no meaning on Windows to fall back on.
- * `ensureWindowsSocketDir` sets an explicit ACL on it (security review, ADR 0037's Windows LOW).
+ * On `win32` this is a literal named pipe name (`\\.\pipe\vyre-<hash>`), never a filesystem
+ * path, and deliberately not one: a bound socket *file* on Windows is implemented as an NTFS
+ * reparse point, which needs `SeCreateSymbolicLinkPrivilege` to create — a privilege most
+ * Windows accounts don't hold (proven in CI, ADR 0037's Windows LOW: a from-scratch bind attempt
+ * failed with EACCES on a brand-new folder with no ACL applied at all, `whoami /priv` showed the
+ * privilege Disabled, and a literal `\\.\pipe\` bind in the same process succeeded immediately).
+ * A named pipe needs no privilege and no folder to protect: Node gives it a current-user-only
+ * security descriptor by default (the same restriction `chmod 0600` gives the POSIX socket),
+ * unless `readableAll`/`writableAll` is passed to `listen()`, which nothing here does.
  * @param {string} root @param {{ platform?: string }} [opts] `platform` is for a test on any OS.
  */
 export function socketPath(root, { platform = process.platform } = {}) {
   // The real folder, so a home reached through a symlink has the same socket as its target.
   const real = realFolder(root);
   const hash = crypto.createHash("sha256").update(real).digest("hex").slice(0, 16);
-  if (platform === "win32") return path.join(windowsSocketDir(), `${hash}.sock`);
+  if (platform === "win32") return `\\\\.\\pipe\\vyre-${hash}`;
   const near = path.join(real, "vyred.sock");
   if (Buffer.byteLength(near) <= 100) return near;
   return path.join(sharedSocketDir(), `${hash}.sock`);
@@ -87,53 +91,6 @@ export function privateSocketDir() {
   const mine = typeof process.getuid !== "function" || st.uid === process.getuid();
   if (!st.isDirectory() || !mine || (st.mode & 0o077) !== 0) {
     throw new Error(`${dir} is not a private folder owned by this user; refusing to put vyred's socket there`);
-  }
-  return dir;
-}
-
-/** Windows: `%LOCALAPPDATA%\Vyre\sockets`, or its equivalent when the env var is missing. */
-const windowsSocketDir = (/** @type {NodeJS.ProcessEnv} */ env = process.env) =>
-  path.join(env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "Vyre", "sockets");
-
-/**
- * The running process's own SID, from `whoami /user`, rather than its account name: a name can
- * resolve to a different SID than the live token's in less common setups (a CI runner rejoining
- * a domain, a renamed account), and `icacls` accepts a SID directly with a `*` prefix. Falls back
- * to the account name if `whoami` is missing or its output does not parse, so a fresh, unusual
- * environment degrades to the old behavior instead of failing outright.
- * @param {{ env?: NodeJS.ProcessEnv, spawnSync?: typeof spawnSync }} [opts]
- */
-export function currentUserPrincipal({ env = process.env, spawnSync: spawnImpl = spawnSync } = {}) {
-  const fallback = env.USERNAME || os.userInfo().username;
-  const r = spawnImpl("whoami", ["/user", "/fo", "csv", "/nh"], { windowsHide: true, encoding: "utf8" });
-  if (r.error || r.status !== 0 || !r.stdout) return fallback;
-  // "COMPUTER\\name","S-1-5-21-...,....,1001" — a quoted CSV row, SID last.
-  const m = /"([^"]*)"\s*,\s*"([^"]*)"/.exec(r.stdout.trim());
-  return m && m[2].startsWith("S-1-") ? `*${m[2]}` : fallback;
-}
-
-/**
- * Windows: make (or re-set) the socket folder's ACL explicitly. `chmod`/`fs.mode` have no POSIX
- * meaning on Windows, so this is what stands in for `privateSocketDir`'s 0700: `icacls
- * /inheritance:r` drops whatever the folder inherited from its parent (a fresh
- * `%LOCALAPPDATA%\Vyre` could otherwise carry broader permissions than intended), then an
- * explicit grant adds back only the current user (by SID, see `currentUserPrincipal`) and
- * `SYSTEM` (which services and elevated helpers commonly need) with full control. Nothing else is
- * granted. Fails closed: an `icacls` that is missing or refuses throws, the same shape as
- * `privateSocketDir` refusing an unsafe `/tmp` folder, since a socket this code cannot prove is
- * private is not one it should bind to.
- * @param {string} [dir]
- * @param {{ env?: NodeJS.ProcessEnv, spawnSync?: typeof spawnSync }} [opts] `spawnSync` is for a
- *   test to fake `icacls` without a real Windows machine.
- */
-export function ensureWindowsSocketDir(dir = windowsSocketDir(), { env = process.env, spawnSync: spawnImpl = spawnSync } = {}) {
-  fs.mkdirSync(dir, { recursive: true });
-  const user = currentUserPrincipal({ env, spawnSync: spawnImpl });
-  const run = (/** @type {string[]} */ args) => spawnImpl("icacls", [dir, ...args], { windowsHide: true, encoding: "utf8" });
-  const steps = [run(["/inheritance:r"]), run(["/grant:r", `${user}:(OI)(CI)F`]), run(["/grant:r", "SYSTEM:(OI)(CI)F"])];
-  const failed = steps.find(s => s.error || s.status !== 0);
-  if (failed) {
-    throw new Error(`could not set an explicit ACL on ${dir} (icacls: ${failed.error?.message || failed.stderr || failed.stdout || "unknown error"}); refusing to put vyred's socket there`);
   }
   return dir;
 }
@@ -304,9 +261,9 @@ export function save(patch, root = home(), live) {
 export function ensure(root = home()) {
   const p = paths(root);
   for (const dir of [p.root, p.vault, p.modules, p.watchers, p.logs]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  // The socket's own folder is ACL'd (win32) or mode-checked (POSIX, when shared) before
-  // anything binds inside it, never after: vyred's listener runs later, in core/daemon/index.js.
-  if (process.platform === "win32") ensureWindowsSocketDir(path.dirname(p.socket));
-  else if (path.dirname(p.socket) !== p.root) privateSocketDir();
+  // POSIX: the socket's own shared folder is mode-checked before anything binds inside it, never
+  // after: vyred's listener runs later, in core/daemon/index.js. Nothing to do on win32: a named
+  // pipe (socketPath's win32 branch) has no filesystem folder to create or protect.
+  if (process.platform !== "win32" && path.dirname(p.socket) !== p.root) privateSocketDir();
   return p;
 }

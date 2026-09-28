@@ -51,13 +51,17 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm test
-  # Windows LOW (security review, ADR 0037): the local vyred socket's ACL, verified on a real
+  # Windows LOW (security review, ADR 0037): the local vyred socket's privacy, verified on a real
   # windows-latest runner rather than hardware. Not continue-on-error: the lead's call was that
   # Tier A ships marked "preview" with the gap written down if this cannot be made to pass, not
-  # that it ships unverified and green. Runs config.ensureWindowsSocketDir (core/config/index.js)
-  # through a real vyred, then proves with icacls that only this user, SYSTEM and Administrators
-  # are on the ACL, and that a second local user's connection to the socket is refused while the
-  # owner's succeeds.
+  # that it ships unverified and green. win32's socket is a named pipe (core/config/index.js's
+  # socketPath), which needs no folder or ACL - an earlier round of this job tried a filesystem-
+  # backed AF_UNIX socket with an explicit icacls grant, which failed with EACCES every time; a
+  # from-scratch bind with no ACL applied at all failed the same way, and whoami /priv showed
+  # SeCreateSymbolicLinkPrivilege (needed to create the reparse point a bound socket file is)
+  # Disabled for this token - not an ACL problem, a wrong choice of Windows primitive. This job
+  # proves the actual security property instead: a real vyred starts, its socket answers, the
+  # owner can connect, and a second local user's connection is refused.
   windows-socket-acl:
     runs-on: windows-latest
     timeout-minutes: 15
@@ -78,6 +82,9 @@ jobs:
           $proc = Start-Process -FilePath node -ArgumentList "core/daemon/main.js" -PassThru `
             -RedirectStandardOutput "$env:RUNNER_TEMP\vyred.out" -RedirectStandardError "$env:RUNNER_TEMP\vyred.err" -WindowStyle Hidden
           "pid=$($proc.Id)" >> $env:GITHUB_OUTPUT
+          # win32's socket is a named pipe (core/config/index.js's socketPath), not a filesystem
+          # path; NPFS still answers Test-Path against \\.\pipe\<name>, so the wait loop is
+          # unchanged from the filesystem-path version this replaced.
           $sockPath = (node -e "import('./core/config/index.js').then(c => console.log(c.paths(process.env.VYRE_HOME).socket))").Trim()
           "sock=$sockPath" >> $env:GITHUB_OUTPUT
           $found = $false
@@ -88,43 +95,8 @@ jobs:
           if (-not $found) {
             Write-Output "--- vyred.out ---"; Get-Content "$env:RUNNER_TEMP\vyred.out" -ErrorAction SilentlyContinue
             Write-Output "--- vyred.err ---"; Get-Content "$env:RUNNER_TEMP\vyred.err" -ErrorAction SilentlyContinue
-            # Diagnostic only (a failed bind still leaves the folder ensureWindowsSocketDir made
-            # and ACL'd): what ACL it actually ended up with, this token's own SID and groups
-            # (bindSocket in core/daemon/index.js grants by SID, not name, but a mismatch would
-            # still show here), and whether a plain file can be created in the same folder right
-            # now, since a bind EACCES here is an OS-level question icacls alone may not answer.
-            $dir = Split-Path $sockPath
-            Write-Output "--- icacls $dir ---"; icacls "$dir" 2>&1
-            Write-Output "--- icacls (parent) ---"; icacls (Split-Path $dir) 2>&1
-            Write-Output "--- whoami /user ---"; whoami /user 2>&1
-            Write-Output "--- whoami /groups ---"; whoami /groups 2>&1
-            $probe = Join-Path $dir "probe.tmp"
-            try { [IO.File]::WriteAllText($probe, "x"); Write-Output "--- plain file create in ${dir}: ok ---"; Remove-Item $probe -Force -ErrorAction SilentlyContinue }
-            catch { Write-Output "--- plain file create in ${dir}: FAILED: $_ ---" }
-            Write-Output "--- whoami /priv (does this token actually hold SeCreateSymbolicLinkPrivilege, since a bound AF_UNIX socket file is a reparse point) ---"; whoami /priv 2>&1
-            # Isolates whether ANY socket bind works on this runner at all, ACL untouched (default
-            # inherited ACL, no icacls), so a failure here means it's not about what we grant.
-            $vanilla = Join-Path $env:RUNNER_TEMP "vanilla-bind-test"
-            New-Item -ItemType Directory -Force -Path $vanilla | Out-Null
-            $vanillaSock = Join-Path $vanilla "v.sock"
-            Write-Output "--- vanilla bind test (no icacls) at $vanillaSock ---"
-            node -e "const s=require('net').createServer();s.once('error',e=>{console.log('VANILLA BIND FAILED:',e.code,e.message);process.exit(1)});s.listen(process.argv[1],()=>{console.log('VANILLA BIND OK');s.close();process.exit(0)})" "$vanillaSock" 2>&1
-            # A real AF_UNIX socket file is an NTFS reparse point (needs SeCreateSymbolicLinkPrivilege,
-            # which whoami /priv above may show Disabled). A literal \\.\pipe\ name skips that whole
-            # code path and asks libuv for a classic named pipe instead, no filesystem object, no
-            # privilege: if THIS succeeds where the filesystem-path binds above failed, the fix isn't
-            # about privilege or ACL at all, it's "stop asking Windows for an AF_UNIX socket."
-            Write-Output "--- named-pipe bind test (\\.\pipe\, not a filesystem path) ---"
-            node -e "const s=require('net').createServer();s.once('error',e=>{console.log('PIPE BIND FAILED:',e.code,e.message);process.exit(1)});s.listen('\\\\.\\pipe\\vyre-diag-test',()=>{console.log('PIPE BIND OK');s.close();process.exit(0)})" 2>&1
             throw "vyred did not create its socket at $sockPath"
           }
-      - name: The socket's folder and the socket file carry an explicit, narrow ACL
-        shell: pwsh
-        run: |
-          $sock = "${{ steps.start.outputs.sock }}"
-          $dir = Split-Path $sock
-          node scripts/win-socket-acl-check.mjs "$dir" "$sock"
-          if ($LASTEXITCODE -ne 0) { throw "the socket's ACL named a principal beyond this user, SYSTEM and Administrators" }
       - name: The owner can connect
         shell: pwsh
         run: |
@@ -142,7 +114,7 @@ jobs:
               -Credential $cred -NoNewWindow -PassThru -Wait -WorkingDirectory "$PWD" `
               -RedirectStandardOutput "$env:RUNNER_TEMP\probe.out" -RedirectStandardError "$env:RUNNER_TEMP\probe.err"
             Get-Content "$env:RUNNER_TEMP\probe.out","$env:RUNNER_TEMP\probe.err" -ErrorAction SilentlyContinue
-            if ($p.ExitCode -eq 0) { throw "a second local user connected to vyred's socket; the ACL is not private" }
+            if ($p.ExitCode -eq 0) { throw "a second local user connected to vyred's socket; it is not private" }
           } finally {
             net user vyreacltest /delete
           }

@@ -150,19 +150,27 @@ context, computer use), not before.
 
 ## 7. Risks and open questions
 
-- **RESOLVED without hardware, per the lead: the local `vyred` socket's Windows ACL is now proven
-  in CI, not left to a physical machine.** `config.socketPath()`'s `win32` branch puts the socket
-  under a per-user `%LOCALAPPDATA%\Vyre\sockets` folder; `config.ensureWindowsSocketDir` sets an
-  explicit `icacls` ACL on it (current user + `SYSTEM` only, inheritance stripped) before
-  `ensure()` returns and before `core/daemon/index.js` ever calls `listen()` (`fs.chmodSync` is
-  skipped there on `win32`, since it does nothing meaningful). `.github/workflows/node.yml`'s
-  `windows-socket-acl` job runs this for real on `windows-latest`: starts `vyred`, checks the
-  folder's and the socket file's ACL with `icacls` (parsed by `scripts/win-socket-acl-check.mjs`,
-  unit-tested in `test/win-socket-acl-check.test.js`), then proves an actual refusal, a second
-  local user's connection attempt fails while the owner's succeeds
-  (`scripts/win-connect-probe.mjs`). Not `continue-on-error`: if this job cannot be made to pass,
-  Tier A ships in 0.1.1 marked "preview" with the gap written down, per the lead's call, not
-  silently green.
+- **RESOLVED without hardware, per the lead: proven in CI, not left to a physical machine, and
+  the real fix turned out to be a different Windows primitive, not an ACL.** The first two rounds
+  chased an ACL problem that didn't exist: `config.socketPath()`'s `win32` branch put the socket
+  under a per-user `%LOCALAPPDATA%\Vyre\sockets` folder, and `ensureWindowsSocketDir` set an
+  explicit `icacls` grant on it (current user by SID + `SYSTEM`, inheritance stripped). Every
+  `windows-latest` run still failed `listen()` with `EACCES`, and a diagnostic round proved why: a
+  brand-new folder with zero `icacls` calls applied failed the identical way, and `whoami /priv`
+  showed `SeCreateSymbolicLinkPrivilege` **Disabled** for the runner's token. A bound socket
+  *file* on Windows is implemented as an NTFS reparse point, which needs that privilege to
+  create; most Windows accounts, this runner's included, don't hold it, and a real person's
+  account won't either unless Developer Mode is on. **The fix**: `socketPath()`'s `win32` branch
+  now returns a literal named pipe name (`\\.\pipe\vyre-<hash>`), never a filesystem path. A named
+  pipe needs no privilege and no folder: Node gives it a current-user-only security descriptor by
+  default (nothing here passes `readableAll`/`writableAll`), the same restriction `chmod 0600`
+  gives the POSIX socket. `ensureWindowsSocketDir`, `currentUserPrincipal` and
+  `scripts/win-socket-acl-check.mjs` are gone; there is no folder or ACL left to set or check.
+  `.github/workflows/node.yml`'s `windows-socket-acl` job now proves the actual security property
+  directly: starts a real `vyred`, waits for the pipe to answer, connects as the owner
+  (`scripts/win-connect-probe.mjs`), then proves a second local user's connection attempt is
+  refused. Not `continue-on-error`: if this job cannot be made to pass, Tier A ships in 0.1.1
+  marked "preview" with the gap written down, per the lead's call, not silently green.
 - Tier B WSL2 requires Docker Desktop (licensing cost at company scale) or bare WSL2 + Docker
   Engine, which does he want documented/supported?
 - Tier C native cost: Tauri vs WinUI 3 is a real fork in long-term maintenance burden (Rust+web vs
