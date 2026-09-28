@@ -75,7 +75,10 @@ export function startForwarder(ctx, link) {
     while (!stopped && typeof link.events === "function") {
       try {
         const r = await link.events(after);
-        after = Math.max(after, Number(r.last) || 0);
+        const last = Number(r.last) || 0;
+        // core restarted: its count began again at 0, so start from the beginning of the new one.
+        if (last < after) { after = 0; continue; }
+        after = last;
         for (const e of r.events || []) {
           if (stopped) break;
           try { ctx.events.emit(e.type, { ...(e.payload || {}), source: "vyre-core", informational: true }); } catch { /* an undeclared event: skipped */ }

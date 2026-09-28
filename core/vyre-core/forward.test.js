@@ -115,3 +115,23 @@ test("vyre-core forward: core's events reach vyred's log as core's and as inform
   assert.equal(ev.payload.informational, true);
   assert.ok(!JSON.stringify(seen).includes("imap-pass-1042"), "no value ever rides an event");
 });
+
+test("vyre-core forward: after core restarts (its count back at 0), vyred follows the new count", async t => {
+  const calls = [];
+  let n = 0;
+  const link = /** @type {any} */ ({ call: async () => ({}), events: async after => {
+    calls.push(after);
+    n++;
+    if (n === 1) return { events: [{ seq: 9, type: "vault.item-added", payload: { name: "a" } }], last: 9 };
+    if (n === 2) return { events: [], last: 1 };                       // core came back
+    if (n === 3) return { events: [{ seq: 1, type: "vault.item-added", payload: { name: "b" } }], last: 1 };
+    await new Promise(r => setTimeout(r, 5));
+    return { events: [], last: 1 };
+  } });
+  const seen = [];
+  const f = startForwarder({ tool: () => {}, log: () => {}, events: { emit: (type, p) => seen.push(p.name) } }, link);
+  for (let i = 0; i < 50 && !seen.includes("b"); i++) await new Promise(r => setTimeout(r, 10));
+  await f.stop();
+  assert.deepEqual(seen.slice(0, 2), ["a", "b"]);
+  assert.deepEqual(calls.slice(0, 3), [0, 9, 0]);
+});
