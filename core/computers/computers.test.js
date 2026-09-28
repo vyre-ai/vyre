@@ -349,6 +349,18 @@ test("computers: no password or token ever reaches a tool result, an event or a 
   }
 });
 
+test("computers: stats is internal (vitals reads it, never the socket), and null before checkout", async t => {
+  const s = await boot(t);
+  assert.equal((await s.cli("computers.stats", { agent: "kit" })).error.code, "no_such_tool", "an internal tool was reachable from the socket");
+  assert.deepEqual((await s.module("computers.stats", { agent: "kit" })).data, { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null });
+  await s.kit("computers.checkout", {});
+  const r = await s.module("computers.stats", { agent: "kit" });
+  assert.deepEqual(r.data, { cpu: 12.5, ram: 30, ramLimit: 2 * 1024 * 1024 * 1024, netRx: 1000, netTx: 500 });
+  await s.kit("computers.release", { agent: "kit" });
+  await s.cli("computers.stop", { agent: "kit" });
+  assert.deepEqual((await s.module("computers.stats", { agent: "pax" })).data, { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null }, "pax never had a computer made");
+});
+
 test("computers: limits are a person's or the assistant's to set, and restart applies them", async t => {
   const s = await boot(t);
   assert.match((await s.kit("computers.limits", { cpus: 8 })).error.message, /kit cannot change a computer's limits/);

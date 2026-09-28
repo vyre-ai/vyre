@@ -92,6 +92,17 @@ if grep -E '(\.test\.js$|(^|/)fixtures/|(^|/)testing(/|\.js$)|node_modules/|^doc
   fail "the tarball carries the files above, which it should not"
 fi
 ok "no tests, fixtures, test helpers, design docs, docs screenshots, build output or env files"
+# "files" takes whole folders, so a gitignored file left in the tree (a Mac build output in
+# local/capsule/bin, say) would ship. build.json and apps/app/dist are made for the pack on purpose.
+ignored=$(cd "$repo" && node --input-type=module -e '
+  const { ignoredShipped } = await import("./scripts/lib/pack-imports.mjs");
+  const fs = await import("node:fs");
+  const r = ignoredShipped(process.cwd(), fs.readFileSync(process.argv[1], "utf8").split("\n").filter(Boolean));
+  process.stdout.write(r === null ? "-" : r.join("\n"));
+' "$work/files") || fail "could not check the pack against .gitignore"
+if [ "$ignored" = "-" ]; then ok "not a git checkout: the .gitignore check is skipped"
+else [ -z "$ignored" ] || { echo "$ignored"; fail "the tarball carries the gitignored files above (clean the tree, or exclude them in package.json \"files\")"; }
+  ok "nothing gitignored in the tarball"; fi
 node -e '
   const p = require(process.argv[1]);
   if (Object.keys(p.dependencies || {}).length) throw new Error("regular dependencies: " + Object.keys(p.dependencies));

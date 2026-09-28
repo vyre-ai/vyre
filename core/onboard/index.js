@@ -14,7 +14,7 @@ import * as config from "../config/index.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { checkName } from "../names/service.js";
-import { run as tailscale, lockStatus } from "../names/tailscale.js";
+import { run as tailscale, lockStatus, up as tailscaleUp } from "../names/tailscale.js";
 
 export const STEPS = ["you", "claude", "tailscale", "name", "history", "devices"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
@@ -36,6 +36,20 @@ const CREDENTIAL_READERS = ["agents", "threads"];
 // Never a tailnet caller, which a model on the owner's Mac is too.
 const HANDS_CODE = new Set(["onboard", "cli", "local"]);
 const GREETING = "Vyre is set up. Say hello to me in two or three sentences: who you are, and one thing you can do for me now.";
+// onboard.join hands out a Tailscale sign-in link and a relay pairing secret: the owner's alone,
+// as relay's own owner() guard already treats them (core/relay/index.js). callerAllowed's kind
+// check does not catch a Vyre-owned thread, whose caller reduces to "local" or "cli" the same as
+// a person at the terminal (core/modules/index.js callerKind strips "thread:<id>" as well as
+// "agent:<name>"), so this checks meta.agent and the caller string directly, the same signals
+// relay checks, not just the tool's `callers` list.
+const AGENT_CLAIM = /(?:^|[\s:])agent:/;
+const joinFail = (code, message) => Object.assign(new Error(message), { code });
+const joinOwnerOnly = (caller, meta, what) => {
+  const c = String(caller || "");
+  if (c.startsWith("tailnet-guest:")) throw joinFail("denied", `${what} is the owner's; a guest never sees it`);
+  if ((meta && meta.agent) || AGENT_CLAIM.test(c)) throw joinFail("denied", `"${c}" is an agent; ${what} is the owner's`);
+  if (["anonymous", "hook"].includes(c)) throw joinFail("denied", `${what} is the owner's`);
+};
 /**
  * The commands the Tailnet Lock card shows. The person runs them on their Mac; Vyre never runs
  * `lock init` or `lock sign`. The init line names the Mac's key (which only the Mac can show) and
@@ -243,6 +257,51 @@ export default {
     /** Tailscale as the page reads it: state is off, needs-login, connected or blocked (with why and operator.fix); the step's own state is `step`. */
     const link = s => ({ ...s, step: s.state, state: s.state === "done" ? "connected" : s.state === "blocked" ? "blocked" : s.loginUrl ? "needs-login" : "off" });
 
+    /**
+     * One merged tailnet policy snippet instead of one per feature (see docs/design/tailscale-plan.md,
+     * "Simplest install"). Always covers SSH (vyre box add needs it) and Taildrive/Taildrop (on by
+     * default). Adds egress's tagOwners/grant only while computers.egress is turned on. Real names
+     * where this machine already knows them (its own tailnet node, the paired Mac, the owner's
+     * login); a bracketed placeholder where it does not, same as docs/adr/0014-tailnet.md's sample.
+     * Read-only: never touches the tailnet itself (ADR 0014 rule 1).
+     */
+    async function policy(caller) {
+      const s = await stepOf("tailscale", caller);
+      if (s.state !== "connected" && s.state !== "done") return { ready: false, why: "connect Tailscale first", policy: null, notes: [] };
+      const node = s.node || {};
+      const boxHost = node.dns ? node.dns.split(".")[0] : node.name || "[this server's name]";
+      const owner = net().owner || "[your Tailscale login]";
+      const peers = await tryCall("link.peers");
+      const mac = Array.isArray(peers) && peers[0] && (peers[0].name || peers[0].node) || "[your Mac's name]";
+      const drive = await tryCall("files.drive.status");
+      const shares = !drive.__error && Array.isArray(drive.shares) ? drive.shares.map(x => x.name) : ["projects", "glass-files"];
+
+      const policyOut = {
+        hosts: { [boxHost]: node.ip || "[this server's tailnet IP]" },
+        nodeAttrs: [
+          { target: [boxHost], attr: ["drive:share"] },
+          { target: [owner], attr: ["drive:access"] },
+        ],
+        grants: [
+          { src: [mac], dst: [boxHost], app: { "tailscale.com/cap/drive": [{ shares, access: "ro" }] } },
+          { src: ["autogroup:member"], dst: [boxHost], app: { "https://tailscale.com/cap/file-sharing-target": [{}] } },
+        ],
+        ssh: [{ action: "accept", src: [owner], dst: [boxHost], users: ["autogroup:nonroot"] }],
+      };
+      const notes = [
+        "Add hosts." + boxHost + " once (its tailnet IP may change less often than you'd think, but check `tailscale status` if this stops working).",
+        "The Taildrive grant's src names your Mac by its own node, not your whole account, so your phone does not also get the server's folders.",
+        "For read-write Taildrive, change that grant's \"access\" to \"rw\", then run files.drive.access to match.",
+      ];
+      const egress = await tryCall("computers.egress.status");
+      if (!egress.__error && egress.enabled) {
+        policyOut.tagOwners = { "tag:vyre-egress": [owner] };
+        policyOut.grants.push({ src: ["tag:vyre-egress"], dst: ["autogroup:internet"], ip: ["*"] });
+        notes.push("Egress is on: tag:vyre-egress needs its own OAuth client or reusable ephemeral pre-authorized key, made separately in the admin console (Keys).");
+      }
+      return { ready: true, why: null, policy: policyOut, notes };
+    }
+
     ctx.tool("onboard.status", {
       description: "Where the onboarding stands: every step's state and what it needs.",
       input: obj(),
@@ -321,8 +380,8 @@ export default {
     });
 
     ctx.tool("onboard.tailscale", {
-      description: "Tailscale on this machine; connect starts `tailscale up` and returns its sign-in link. lock reads Tailnet Lock (read-only): whether it is on, this box's lock key, how many keys are trusted, whether this box is signed, and the commands the person runs on their Mac to turn it on.",
-      input: obj({ action: { type: "string", enum: ["status", "detect", "poll", "connect", "lock"] } }),
+      description: "Tailscale on this machine; connect starts `tailscale up` and returns its sign-in link. lock reads Tailnet Lock (read-only): whether it is on, this box's lock key, how many keys are trusted, whether this box is signed, and the commands the person runs on their Mac to turn it on. policy merges the tailnet policy JSON for whatever is turned on today (Taildrive, Taildrop, SSH, and egress if it is on) into one snippet to paste, instead of one per feature.",
+      input: obj({ action: { type: "string", enum: ["status", "detect", "poll", "connect", "lock", "policy"] } }),
       run: async ({ action = "status" }, { caller }) => {
         if (action === "lock") {
           const l = await lockStatus();
@@ -335,7 +394,56 @@ export default {
           const after = await stepOf("tailscale", caller);
           return link({ ...after, loginUrl: after.loginUrl || r.loginUrl || null });
         }
+        if (action === "policy") return policy(caller);
         return link(await stepOf("tailscale", caller));
+      },
+    });
+
+    /**
+     * Adding a second device or a server, or pointing this device at one — the "Vyre anywhere"
+     * decision (28 Sep 2026): Tailscale and the relay never matter for Solo, only once something
+     * joins. One tool, an action per step, the same shape as onboard.tailscale/claude/name so
+     * launch's onboarding cards need one import and one error-shape for every screen. Reads the
+     * tailscale step's own status/connect/policy/lock through the functions above (no self-call);
+     * relay and reachability go through ctx.call, since those live in other modules.
+     */
+    ctx.tool("onboard.join", {
+      description: "Adding a second device or a server: status says whether Tailscale or the relay is ready to pair with; tailscale (step: status|connect|policy|lock) is onboard.tailscale's own logic, callable any time; relay mints a QR/link pairing code; verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to \"device\" once reachability is confirmed (per ADR 0039 section 5 — never on the Solo/server side accepting a join). The owner's alone: a guest, an agent (its own node, its thread, or an mcp/harness claim) and hook/anonymous callers are refused outright, whatever proof they carry, the same as relay.pair.start already refuses them.",
+      input: obj({ action: { type: "string", enum: ["status", "tailscale", "relay", "verify"] }, step: { type: "string", enum: ["status", "connect", "policy", "lock"] }, node: { type: "string" }, becomeDevice: { type: "boolean" } }),
+      callers: ["cli", "local", "deck", "capsule"],
+      presence: { when: i => i && (i.action === "relay" || (i.action === "tailscale" && i.step === "connect")),
+        summary: async i => i && i.action === "relay" ? "Pair a new device with this box, without Tailscale" : "Connect this box to your Tailscale network" },
+      run: async ({ action = "status", step = "status", node, becomeDevice = false }, meta) => {
+        const { caller } = meta;
+        joinOwnerOnly(caller, meta, "adding a device or a server");
+        if (action === "tailscale") {
+          if (step === "lock") { const l = await lockStatus(); return { ...l, key: l.nodeKey, commands: lockCommands(l.nodeKey) }; }
+          if (step === "connect") {
+            const s = await stepOf("tailscale", caller);
+            if (s.state === "done" || !s.installed || !s.operator.ok) return link(s);
+            // tailscaleUp() directly, not ctx.call("names.connect"): the names module (the box's
+            // own TLS listener/cert claiming) is box-role only, but starting Tailscale itself is
+            // not — a Solo Mac joining someone else's tailnet needs this same step. up() is the
+            // plain function names.connect already forwards to, so onboard.tailscale (the
+            // box-only tool) keeps calling names.connect unchanged.
+            const r = await tailscaleUp();
+            const after = await stepOf("tailscale", caller);
+            return link({ ...after, loginUrl: after.loginUrl || r.loginUrl || null });
+          }
+          if (step === "policy") return policy(caller);
+          return link(await stepOf("tailscale", caller));
+        }
+        if (action === "relay") return call("relay.pair.start");
+        if (action === "verify") {
+          const health = await call("link.health", node ? { node } : {});
+          if (becomeDevice && health.online) await tryCall("onboard.machine", { machine: "device" });
+          return health;
+        }
+        const relay = await tryCall("relay.status");
+        return {
+          tailscale: link(await stepOf("tailscale", caller)),
+          relay: relay.__error ? { available: false, why: relay.__error } : { available: true, enabled: relay.enabled, connected: relay.connected, pairing: relay.pairing },
+        };
       },
     });
 

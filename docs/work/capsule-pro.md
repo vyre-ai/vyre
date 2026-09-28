@@ -99,6 +99,8 @@ Then: push work/capsule-pro, capsule-mac CI green, hand the sha to the integrato
 memory.answer -> memory.ask when memory-iq's lands on main (not there at 19:30 UTC).
 
 The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, never paired):
+- 2026-09-27 19:5x UTC: updated to 0a7d7f53 (trial HEAD 75c8a86), relaunched with VYRE_NO_DIALOGS=1
+  (the lead: no OS dialogs), vyred with the fake tailscale.
 - runs from a separate local checkout ../vyre-capsule-pro-trial (detached; my branch plus
   sessions 51eaa964's Vyre IQ prompt; never pushed). Update it with
   `git -C ../vyre-capsule-pro-trial merge --no-edit <sha>`, rebuild there, relaunch.
@@ -114,7 +116,15 @@ The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, n
 1. app-design 305fc07b left: tip.md (tips.next, ⌘. dismisses), credential-sheet.md check
    against the row built, glass-mini.md step pill; "three recent items" on open (capsule.md).
 2. A held mail from "Write it" could open its card at once (today: words, then ↑).
-3. (0.1.1) memory-iq 6adfc4b6 spec (docs/design/iq-everywhere.md on work/memory-iq): memory.ask
+3a. (0.1.1) IQ corrections, memory-iq 95b2b891: answer_id on every memory.ask reply; a quiet
+   "Wrong?" line opens "That's wrong" (memory.correct {answer, action:"wrong"}), "Forget this"
+   (action:"forget"), and a field prefilled with the answer (Enter: action:"replace", object).
+   Not sure card: the field only, "Know it? Tell me". Reply {fix:{id}}: show the fix at once with
+   Undo (memory.uncorrect {fix}). via "corrected": the answer with "you corrected this", no chips (known is []; its one source
+   {session:"fix:<n>", name:"your correction"} is provenance, never a chip). Card look:
+   iq-everywhere.md "The card" (work/memory-iq).
+3. DONE for rc.2 without streaming (IQAsk.swift). Left for 0.1.1: stream:true with memory.thinking
+   stages, ⌘1..⌘3 on source chips. memory-iq 6adfc4b6 spec (docs/design/iq-everywhere.md on work/memory-iq): memory.ask
    {question, stream:true, id:"cap_<n>", context:{project}}; memory.thinking {id, stage} then
    memory.answered; reply {answer, confidence, abstained, known[], sources[], via, limited?, message?}.
    Draw answer, "confidence X · from N sessions", 3 sources (tap opens the turn); abstained: "Not
@@ -270,6 +280,10 @@ If a step fails, note its number and what the screen said. Screenshots of the Ca
 ## Changed contracts
 - core/daemon GET /v1/health: `cli` [node, <repo>/bin/vyre], additive, so the Capsule runs the same
   vyred's CLI for `vyre ...` typed in the box (by argv, with --view).
+- Kit: `SendAttaching.mayBeAbout(_:)` (default false): at once, could the chip be about these
+  words; false lets a question go to memory.ask without waiting for the chip.
+- Kit: `SendAttachment.aboutIt` (default false): the words are about the attachment, so a
+  question skips memory.ask for the fast model (sight sets it for screen words and selections).
 - Kit: `CapsuleHost.askCredential(_:saved:)` and `CredentialNeed` (default does nothing, so fakes conform).
 - Kit (Sources/Kit/Extension.swift), for extensions: `VyredLink.stream(_:onMessage:onClose:)`
   with `VyredStream` and `VyredStreamFailure` (default fails, so fakes conform);

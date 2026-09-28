@@ -52,6 +52,16 @@ async function engine(t) {
       return send(204);
     }
     if (req.method === "DELETE" && (m = /^\/v1\.43\/containers\/([^/]+)$/.exec(url.pathname))) { boxes.delete(m[1]); return send(204); }
+    if (req.method === "GET" && (m = /^\/v1\.43\/containers\/([^/]+)\/stats$/.exec(url.pathname))) {
+      if (!boxes.has(m[1])) return send(404, { message: "no such container" });
+      assert.equal(url.search, "", "stats must never carry a query string, whatever the caller asked for");
+      return send(200, {
+        cpu_stats: { cpu_usage: { total_usage: 2_000_000_000 }, system_cpu_usage: 100_000_000_000, online_cpus: 4 },
+        precpu_stats: { cpu_usage: { total_usage: 1_000_000_000 }, system_cpu_usage: 90_000_000_000 },
+        memory_stats: { usage: 512 * 1024 * 1024, limit: 2 * 1024 * 1024 * 1024 },
+        networks: { eth0: { rx_bytes: 100, tx_bytes: 200 } },
+      });
+    }
     send(404, { message: "page not found" });
   });
   await new Promise(r => server.listen(socket, () => r(undefined)));
@@ -129,6 +139,24 @@ test("docker: a computer is refused the host network, whatever config or a calle
   await assert.rejects(d.create({ ...spec, network: "host" }), /never runs on the host network/);
   const onHost = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "host" });
   await assert.rejects(onHost.create({ ...spec, network: undefined }), /never runs on the host network/);
+});
+
+test("docker: stats reduces one buffered sample to cpu/ram/network, and never for a stopped or unmanaged container", async t => {
+  const e = await engine(t);
+  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  const { id } = await d.create(spec);
+  const before = await d.stats(id);
+  assert.deepEqual(before, { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null }, "created but not started: no stats request at all");
+  assert.ok(!e.seen.some(r => /\/stats$/.test(r.path)), "a stopped container is never asked for stats");
+  await d.start(id);
+  const r = await d.stats(id);
+  assert.equal(r.cpu, 40);
+  assert.equal(r.ram, 25);
+  assert.equal(r.ramLimit, 2 * 1024 * 1024 * 1024);
+  assert.equal(r.netRx, 100);
+  assert.equal(r.netTx, 200);
+  await assert.rejects(d.stats("half"), /does not carry .*managed/, "an existing container without our labels is refused before any stats request");
+  await assert.rejects(d.stats("nope"), /no such container/);
 });
 
 test("docker: run.vyre=1 marks every container and its volume, alongside the prefix labels", async t => {

@@ -147,9 +147,14 @@ final class SightExtension: CapsuleExtension, SendAttaching {
 
     /// What an Ask from the Capsule's box carries about the screen, or nil. The host shows `chip`
     /// before sending, lets one key remove it, and appends `body` to the words only if it stayed.
-    func screenAttachment(for words: String) async -> (id: String, chip: String, bundle: String?, body: String)? {
+    func screenAttachment(for words: String) async -> (id: String, chip: String, bundle: String?, body: String, pointedAt: Bool)? {
         guard let c = await attacher.attachment(for: words) else { return nil }
-        return (ScreenChip.id, c.chip, c.bundle, c.body)
+        return (ScreenChip.id, c.chip, c.bundle, c.body, c.pointedAt)
+    }
+
+    /// SendAttaching, at once: the words point at the screen, or text may be selected.
+    func mayBeAbout(_ words: String) -> Bool {
+        attacher.available && (ScreenAttach.refersToScreen(words) || attacher.selectionPossible)
     }
 
     /// SendAttaching: the host asks as the words change. Waits for them to rest, then answers from
@@ -162,7 +167,7 @@ final class SightExtension: CapsuleExtension, SendAttaching {
             try? await Task.sleep(for: wait)
             guard let self, !Task.isCancelled, mine == self.attachSeq else { return nil }
             guard let a = await self.screenAttachment(for: words), mine == self.attachSeq else { return nil }
-            return SendAttachment(id: a.id, chip: a.chip, icon: a.bundle.map { IconSpec.bundle($0) }, body: a.body)
+            return SendAttachment(id: a.id, chip: a.chip, icon: a.bundle.map { IconSpec.bundle($0) }, body: a.body, aboutIt: a.pointedAt)
         }
         attachLatest = task
         var answer = await task.value

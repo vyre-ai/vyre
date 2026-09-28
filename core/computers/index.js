@@ -158,6 +158,12 @@ export default {
      * surface, but it cannot tell "deck:laptop" from an impersonator on the same trusted channel
      * (cli, local, a module, or the assistant) — that needs the caller-identity-matches-claimed-
      * surface check the Rules layer does for HUMAN_ONLY tools (asked of security 26 Sep, open).
+     *
+     * It also cannot see past a module that relabels the caller: sight.watch calls this tool as
+     * "module:sight" (core/modules/index.js's call wrapper), so an agent proxied through sight
+     * would clear this check no matter who it really is. core/sight/index.js's agentCaller runs
+     * the same test against sight.watch's own meta.caller before it ever forwards, so the floor
+     * holds end to end; a future proxy path needs the same guard on its own side.
      */
     const ownSurface = async (input, caller) => {
       const surface = surfaceOf(input);
@@ -214,6 +220,15 @@ export default {
         await pool.allowed(agent);
         return pool.limits(agent, { cpus: i.cpus, memory_gb: i.memory_gb });
       });
+
+    tool("computers.stats", "One CPU/RAM/network sample for an agent's computer (docker stats, one buffered request, never a streaming connection). Every field null when the computer is not running or this machine has no driver. Internal: vitals reads this, not the Deck.", obj({ agent: str }),
+      async (i, { caller }) => {
+        const agent = await resolve(i, caller);
+        if (!driver || typeof driver.stats !== "function") return { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null };
+        const row = pool.row(agent);
+        if (!row || !row.container || String(row.state) !== "running") return { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null };
+        return driver.stats(row.container);
+      }, { internal: true });
 
     tool("computers.pause", "Pause an agent's hands: its input actions are refused until resumed. The computer keeps running.", obj({ agent: str }),
       async (i, { caller }) => pool.pause(await resolve(i, caller), true));

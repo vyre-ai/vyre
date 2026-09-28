@@ -76,6 +76,11 @@ async function engine(t) {
       const v = volumes.get(m[1]);
       return v ? send(200, v) : send(404, { message: "no such volume" });
     }
+    if ((m = /^\/containers\/([^/]+)\/stats$/.exec(p))) {
+      assert.equal(u.search, "?stream=false", "stream=false is hard-coded; the caller's query never reaches here");
+      const b = boxes.get(m[1]);
+      return b ? send(200, { cpu_stats: {}, precpu_stats: {}, memory_stats: {}, networks: {} }) : send(404, { message: "no such container" });
+    }
     if ((m = /^\/exec\/([^/]+)\/json$/.exec(p))) {
       const e = execs.get(m[1]);
       return e ? send(200, e) : send(404, { message: "no such exec" });
@@ -241,6 +246,16 @@ test("dockerproxy: per-container ops on a computer pass, by the id the Engine ga
     "DELETE /v1.43/containers/kitfull0001?v=false&force=true",
   ]);
   assert.equal((await p.call("GET", "/v1.43/containers/gone/json")).status, 404);
+});
+
+test("dockerproxy: stats forwards for a computer, whatever query the caller tried, and is refused for someone else's container", async t => {
+  const p = await proxy(t);
+  const r = await p.call("GET", "/v1.43/containers/kitfull0001/stats");
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(Object.keys(r.json), ["cpu_stats", "precpu_stats", "memory_stats", "networks"]);
+  assert.equal((await p.call("GET", "/containers/kitfull0001/stats?stream=true")).status, 403, "stream is never the caller's to set");
+  assert.equal((await p.call("GET", "/containers/db1/stats")).status, 403, "someone else's container");
+  assert.equal((await p.call("GET", "/containers/gone/stats")).status, 404);
 });
 
 test("dockerproxy: a container without computer labels is refused, whatever the request claims", async t => {

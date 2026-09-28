@@ -8,7 +8,8 @@ import { open } from "../../store/index.js";
 import { seedRecall } from "../../../test/fixtures/corpus.js";
 import { tempHome } from "../../../test/helpers.js";
 import { Personal } from "./store.js";
-import { createReader, checkRead, ownOf, signal, turnHash, readerPrompt, parseReads, modelFor, SYSTEM, READER, VERIFY } from "./reader.js";
+import { createReader, checkRead, ownOf, signal, turnHash, readerPrompt, parseReads, modelFor, SYSTEM, READER, VERIFY, claudeOnce, modelEnv } from "./reader.js";
+import fs from "node:fs";
 
 const T0 = Date.parse("2026-09-01T09:00:00Z");
 const DAY = 86_400_000;
@@ -212,4 +213,22 @@ test("reader: kept reads move between stores (the evaluation's fixture)", async 
   b.reader.applyKept();
   assert.deepEqual(b.fact("kin:dog", "breed"), ["corgi"]);
   assert.equal(READER.maxConf, 0.8);
+});
+
+test("reader: model calls run on the Claude login, never API dollars, unless billing is api", async t => {
+  const env = { PATH: "/usr/bin", ANTHROPIC_API_KEY: "sk-fixture", ANTHROPIC_AUTH_TOKEN: "tok-fixture", HOME: "/tmp/x" };
+  const plan = modelEnv(env, undefined);
+  assert.equal(plan.ANTHROPIC_API_KEY, undefined);
+  assert.equal(plan.ANTHROPIC_AUTH_TOKEN, undefined);
+  assert.equal(plan.HOME, "/tmp/x");
+  assert.equal(plan.MAX_THINKING_TOKENS, "0");
+  assert.equal(modelEnv(env, "plan").ANTHROPIC_API_KEY, undefined);
+  assert.equal(modelEnv(env, "api").ANTHROPIC_API_KEY, "sk-fixture");
+  assert.equal(env.ANTHROPIC_API_KEY, "sk-fixture", "the caller's environment is not changed");
+  // Through claudeOnce: a fake claude reports whether it saw a key.
+  const dir = tempHome(t), bin = path.join(dir, "fake-claude");
+  fs.writeFileSync(bin, `#!/usr/bin/env node\nprocess.stdin.resume(); process.stdin.on("end", () => process.stdout.write(JSON.stringify({ result: process.env.ANTHROPIC_API_KEY ? "key" : "login", total_cost_usd: 0 })));\n`, { mode: 0o755 });
+  const ask = billing => claudeOnce({ bin, cwd: dir, env: { ...process.env, ANTHROPIC_API_KEY: "sk-fixture" }, billing: () => billing })({ system: "s", prompt: "p", model: "haiku", maxUsd: 0.01 });
+  assert.equal((await ask(undefined)).text, "login");
+  assert.equal((await ask("api")).text, "key");
 });

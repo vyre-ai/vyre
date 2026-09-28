@@ -14,16 +14,17 @@
 // expires after `relay.web_expiry_days` without use. Its build is checked against the releases
 // this box knows and shown with every pairing notice.
 
-import fs from "node:fs";
-import path from "node:path";
 import crypto from "node:crypto";
 import * as config from "../config/index.js";
-import { keyPair } from "./noise.js";
-import { newRouteKey, routeId, base32 } from "./wire.js";
+import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac } from "./wire.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
-import { pairUrl } from "./pairing.js";
+import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
+import { loadKeys } from "./keys.js";
+import { redeem } from "./redeem.js";
+
+export { loadKeys } from "./keys.js";
 
 export const DEFAULT_RELAY = "wss://relay.vyre.run";
 const PAIR_TTL = 10 * 60_000;
@@ -61,26 +62,24 @@ const str = { type: "string" };
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const fail = (code, message) => Object.assign(new Error(message), { code });
 
-/** The box's relay keys, made on first use. */
-export function loadKeys(root) {
-  const dir = path.join(root, "relay");
-  const file = path.join(dir, "keys.json");
-  try {
-    const k = JSON.parse(fs.readFileSync(file, "utf8"));
-    const box = keyPair(Buffer.from(k.box, "base64url"));
-    const routePriv = Buffer.from(k.route, "base64url");
-    const routePub = crypto.createPublicKey(crypto.createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), routePriv]), format: "der", type: "pkcs8" }))
-      .export({ format: "der", type: "spki" }).subarray(-32);
-    return { box, route: { priv: routePriv, pub: Buffer.from(routePub) } };
-  } catch (e) {
-    if (/** @type {any} */ (e).code !== "ENOENT") throw new Error(`relay keys unreadable (${file}): ${/** @type {Error} */ (e).message}`);
-  }
-  const box = keyPair(), route = newRouteKey();
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ v: 1, box: box.priv.toString("base64url"), route: route.priv.toString("base64url") }) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, file);
-  return { box, route };
+/**
+ * Shared by every relay tool that would create or persist a new key on this Mac before vyre-core
+ * (ADR 0040) exists to hold it instead: `relay.join` (this device's own identity key,
+ * relay-device/key.json, core/relay/redeem.js) and `relay.pair.ticket` (a pairing whose secret and
+ * MAC key derive from a ticket held only in this box's process, same as relay.pair.start's own
+ * secret in relay/keys.json). All of it sits at the person's own login uid today, readable and
+ * writable by any process at that uid — the same gap that already keeps relay hosting off by
+ * default on local role (core/relay/keys.js, docs/work/tailnet.md "Needs from others"). Refuse
+ * plainly rather than ship the gap on any of these paths.
+ *
+ * A pure function of an explicit platform, like installCommand/operator in core/names/tailscale.js,
+ * so a test can assert the darwin case without depending on the OS it happens to run on.
+ * @param {string} platform
+ */
+export function macCoreRefusal(platform) {
+  return platform === "darwin"
+    ? fail("not_available_here", "not available on a Mac yet: this needs vyre-core to hold a key that today would sit unprotected at your login; use a Linux box instead, or wait for vyre-core")
+    : null;
 }
 
 /**
@@ -105,6 +104,21 @@ export default {
     /** One live pairing at a time: its secret's hash, when it ends, and whether it is the first device's. */
     /** @type {{ hash: Buffer, exp: number, first: boolean } | null} */
     let pairing = null;
+    /** Live ticket-minted pairings (ADR 0037), any number at once, each single-use: the pairing
+     * secret's hash keyed by itself (hex), same check as `pairing` above but there can be several. */
+    /** @type {Map<string, { exp: number }>} */
+    const pendingTickets = new Map();
+    /** Does a presented secret match a live pairing (the classic single one, or a ticket's), and
+     * burn it either way? Null when nothing matches. */
+    const takeLiveSecret = provided => {
+      const h = sha(provided);
+      if (pairing && pairing.exp > now() && crypto.timingSafeEqual(h, pairing.hash)) { const m = { first: pairing.first, ticket: false }; pairing = null; return m; }
+      const hex = h.toString("hex");
+      const t = pendingTickets.get(hex);
+      if (t && t.exp > now()) { pendingTickets.delete(hex); return { first: false, ticket: true }; }
+      for (const [k, v] of pendingTickets) if (v.exp <= now()) pendingTickets.delete(k);
+      return null;
+    };
     /** Open channels per device id, so removing a device closes it at once. */
     /** @type {Map<string, Set<any>>} */
     const live = new Map();
@@ -112,6 +126,18 @@ export default {
     const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, node_id, node_name, last_path, path_at, rtt FROM relay_devices WHERE removed_at IS NULL ORDER BY paired_at").all());
     const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
+
+    // Text someone else chose (a device's own name at pairing, another box's name or relay host
+    // in a Touch ID prompt) lands somewhere the person reads and trusts: strip control
+    // characters, newlines and Unicode format/bidi characters (which can visually reorder or hide
+    // part of a quoted string) and cap the length, so it cannot write its own fake trailer, a
+    // right-to-left override, or anything else into that text (reviewer, 28 Sep). The set is
+    // C0/C1 controls, the Arabic letter mark (U+061C) and Mongolian vowel separator (U+180E),
+    // zero-width and word-joiner/invisible-operator characters, line/paragraph separators and the
+    // bidi override/embedding/isolate block, and the BOM.
+    const promptSafe = (s, fallback, max = 40) => String(s || fallback)
+      .replace(/[\u0000-\u001f\u007f-\u009f\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]+/g, " ")
+      .replace(/ {2,}/g, " ").trim().slice(0, max) || fallback;
 
     /** Reads and changes are the owner's: never a guest's, an agent's, a hook's or anonymous. */
     const owner = (caller, meta, what) => {
@@ -141,12 +167,10 @@ export default {
     async function admit(pub, hello) {
       const id = deviceId(pub);
       if (hello && typeof hello.pair === "string") {
-        const p = pairing;
-        const good = p && p.exp > now() && crypto.timingSafeEqual(sha(hello.pair), p.hash);
-        if (!good) throw new Error("this QR code has expired or was already used; make a new one on the box");
-        if (p.first && personExists()) throw new Error("this box already has a device; if that was not you, remove it from Settings, Devices");
-        pairing = null;
-        const name = typeof hello.name === "string" && NAME.test(hello.name.trim()) ? hello.name.trim() : "a device";
+        const match = takeLiveSecret(hello.pair);
+        if (!match) throw new Error("this pairing code has expired or was already used; make a new one on the box");
+        if (match.first && personExists()) throw new Error("this box already has a device; if that was not you, remove it from Settings, Devices");
+        const name = promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64);
         const kind = hello.kind === "web" ? "web" : "app";
         const release = typeof hello.release === "string" && BUILD.test(hello.release) ? hello.release : null;
         const manifest = typeof hello.manifest === "string" && /^[a-f0-9]{64}$/.test(hello.manifest) ? hello.manifest : null;
@@ -163,6 +187,10 @@ export default {
           .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest);
         // The pairing notice: every surface shows it with a one-tap removal (ADR 0026 section 6).
         ctx.events.emit("device.paired", { id, name, kind, ...(kind === "web" ? { release, build: knownBuild(release, manifest) ? "known" : "unknown" } : {}) });
+        // The scan-to-pair screen's own event (ADR 0037, the lead 28 Sep): only for a ticket
+        // pairing, so a Deck showing "Add your phone" reacts to its own flow and not to someone
+        // pairing a different device with the classic QR at the same time.
+        if (match.ticket) ctx.events.emit("relay.paired", { device: id, name });
         return { v: 1, box: { name: boxName() }, device: id, paired: true, presence };
       }
       const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
@@ -283,6 +311,76 @@ export default {
       run: async () => {
         if (personExists()) throw fail("denied", "this box already has a person on a device; pair more from Settings, Devices");
         return mint(true);
+      },
+    });
+
+    // Scan-to-pair, "Wink" in copy (ADR 0037): a Vyre code carries only a compact 64-bit ticket,
+    // not a full offer, so a phone that scans it resolves the offer from the relay instead of
+    // reading it straight off the code. Everything the relay ever sees is a one-way derivation of
+    // the ticket under its own tag (core/relay/wire.js): a locator to store the record under, and
+    // a MAC key that authenticates it, so the relay can neither redeem the pairing itself (it
+    // never learns the secret) nor substitute its own record (it never learns the MAC key). The
+    // pairing secret this mints is exactly relay.pair.start's own mechanism (`takeLiveSecret`
+    // above checks both), so redemption and admission are unchanged.
+    const mintTicket = async () => {
+      const rawTicket = crypto.randomBytes(TICKET_BYTES);
+      const exp = now() + TICKET_TTL;
+      const secret = ticketDerive("sec", rawTicket).toString("base64url");
+      pendingTickets.set(sha(secret).toString("hex"), { exp });
+      if (!settings().enabled) save({ enabled: true });
+      startLink();
+      const connected = link ? await link.ready() : false;
+      const record = JSON.stringify({ v: 1, name: boxName(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp });
+      const mac = ticketMac(rawTicket, record);
+      if (link) link.registerTicket({ loc: ticketDerive("loc", rawTicket).toString("base64url"), record, mac: mac.toString("base64url"), exp });
+      return { ticket: rawTicket.toString("base64url"), expiresAt: exp, connected };
+    };
+
+    ctx.tool("relay.pair.ticket", {
+      description: "Mint a one-time pairing ticket for the Vyre code (Wink): a phone that scans it resolves the box's identity from the relay, then pairs exactly as relay.pair.start's QR does. Works once, for 5 minutes; call again for a fresh one (an old, unused ticket is simply left to expire, unlike relay.pair.start's single live QR). Not available on a Mac yet: see vyre-core (ADR 0040).",
+      input: obj(),
+      presence: { when: () => !macCoreRefusal(platform), summary: async () => "Pair a new device with this box, by scanning its Vyre code" },
+      run: async (_, meta = {}) => {
+        const refusal = macCoreRefusal(platform);
+        if (refusal) throw refusal;
+        owner(meta.caller, meta, "pairing a device");
+        return mintTicket();
+      },
+    });
+
+    // A short fingerprint for the Touch ID prompt: the box's key, never the relay it happens to
+    // sit behind. Same shape as core/relay's own device ids (base32 of sha256), just short enough
+    // to read: 8 characters as two groups of 4.
+    const keyFingerprint = box => { const s = base32(crypto.createHash("sha256").update(box).digest()).slice(0, 8); return `${s.slice(0, 4)} ${s.slice(4)}`; };
+
+    ctx.tool("relay.join", {
+      description: "This Vyre becomes a device of another box, redeeming a one-time pairing code minted there (relay.pair.start or onboard.join{action:\"relay\"}). One redemption: the channel closes once paired, then this tool returns what the other box said (its name, this device's id, whether presence enrolled). becomeDevice, when true, flips this machine to \"device\" once paired (onboard.machine) — the shape onboard.join{action:\"verify\",becomeDevice} uses on the Tailscale path, so the onboarding card calls the same flag either way. Does not keep a connection open; that is not built yet. A pasted URL that is not a real Vyre pairing code is refused before any prompt. Not available on a Mac yet: see vyre-core (ADR 0040).",
+      input: obj({ url: { type: "string", pattern: "^https://vyre\\.run/pair#[A-Za-z0-9_-]+$" }, name: str, becomeDevice: { type: "boolean" } }, ["url"]),
+      callers: ["cli", "local", "deck", "capsule"],
+      // On darwin this always refuses (see macCoreRefusal above), so presence is not required
+      // there either: no Touch ID prompt for a call that can only ever fail.
+      presence: {
+        when: () => !macCoreRefusal(platform),
+        summary: async i => {
+          const offer = parsePairUrl(i && i.url);
+          if (!offer) return "This does not look like a real Vyre pairing code; refusing to pair.";
+          const host = promptSafe((offer.relay.match(/^wss?:\/\/([^/]+)/) || [])[1] || offer.relay, "a relay", 64);
+          // The name is the OTHER box's own text; the key shown after it is always this box's own
+          // computed fingerprint, never anything the other side sent.
+          const name = promptSafe(offer.name, "a Vyre box");
+          return `Pair this device with "${name}" on ${host} (key ${keyFingerprint(offer.box)})`;
+        },
+      },
+      run: async ({ url, name, becomeDevice = false }, meta = {}) => {
+        const refusal = macCoreRefusal(platform);
+        if (refusal) throw refusal;
+        owner(meta.caller, meta, "joining another box");
+        if (!parsePairUrl(url)) throw fail("bad_input", "that does not look like a real Vyre pairing code");
+        let paired;
+        try { paired = await redeem(url, { root: ctx.paths.root, name }); }
+        catch (e) { throw fail("bad_input", /** @type {Error} */ (e).message); }
+        if (becomeDevice) await ctx.call("onboard.machine", { machine: "device" }).catch(() => {});
+        return paired;
       },
     });
 

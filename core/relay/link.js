@@ -42,6 +42,11 @@ export function relayLink(o) {
   let connected = false;
   /** @type {Map<string, any>} */
   const data = new Map();
+  /** Ticket registrations (ADR 0037) waiting for a connected control socket to carry them; sent
+   * once, best effort, since each is single-use and short-lived on the relay anyway. */
+  /** @type {Array<{ loc: string, record: string, mac: string, exp: number }>} */
+  const pendingRegs = [];
+  const flushRegs = () => { if (!control) return; for (const r of pendingRegs.splice(0)) { try { control.send(JSON.stringify({ t: "ticket", ...r })); } catch {} } };
 
   /** @type {Array<(ok: boolean) => void>} */
   let waiters = [];
@@ -75,6 +80,7 @@ export function relayLink(o) {
         ticket = String(m.ticket || "");
         backoff = BACKOFF_MIN;
         state("connected");
+        flushRegs();
         clearInterval(pinger);
         pinger = setInterval(() => {
           if (++missed > 2) { log("relay: no answer to two pings; reconnecting"); try { ws.close(4000, "stale"); } catch {} return; }
@@ -138,6 +144,11 @@ export function relayLink(o) {
     },
     /** How many device connections are open through the relay. */
     get open() { return data.size; },
+    /** Register a pairing ticket's locator/record/mac with the relay (ADR 0037), best effort:
+     * queued if not connected yet, sent once the control socket is, never retried afterward
+     * since each ticket is short-lived and single-use on the relay regardless.
+     * @param {{ loc: string, record: string, mac: string, exp: number }} reg */
+    registerTicket(reg) { pendingRegs.push(reg); flushRegs(); },
     stop() {
       stopped = true;
       clearTimeout(retry);

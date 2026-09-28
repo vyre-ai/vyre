@@ -1,0 +1,182 @@
+// @ts-check
+// remind: Watchtower's findings become todos in the planner, once, so a person is told to change
+// a password without opening the vault to look (ADR 0028, decision 4).
+//
+// One run a day, the first after 09:00 local, and never on a faster timer (principle 8). A run
+// opens what it can: on a box, the personal vault is usually locked and those items wait for a
+// day it is open. Each (item, reason) raises one todo, remembered in vault_reminders so it is
+// never raised twice. More than five new at once become one todo that lists them, so the planner
+// stays usable. A reason that has gone away (the password was changed, the PAT renewed) marks its
+// todo done. A todo the person dismissed stays quiet until the reason changes. The planner is
+// reached through ctx.call; without it nothing happens and Watchtower still shows the list.
+
+import { judge } from "./health.js";
+
+export const REMIND_MIGRATION = `CREATE TABLE IF NOT EXISTS vault_reminders (
+   name TEXT NOT NULL, reason TEXT NOT NULL, planner TEXT, state TEXT NOT NULL DEFAULT 'open', at INTEGER NOT NULL,
+   PRIMARY KEY (name, reason));
+ CREATE TABLE IF NOT EXISTS vault_jobs (name TEXT PRIMARY KEY, at INTEGER NOT NULL);`;
+
+/** Reasons worth a todo, and how soon. `weak`, `2fa-available` and `unprotected` stay on the Watchtower list. */
+const REASONS = {
+  expired: { days: 0, priority: 1, verb: "Renew" },
+  breached: { days: 3, priority: 1, verb: "Change" },
+  expiring: { days: null, priority: 2, verb: "Renew" },
+  rotate: { days: 14, priority: 2, verb: "Change" },
+  reused: { days: 14, priority: 2, verb: "Change" },
+  old: { days: 14, priority: 3, verb: "Change" },
+};
+const WORD = { login: "password", pat: "token", "api-key": "key", oauth: "token", cloud: "key", "db-url": "database password",
+  cert: "certificate", license: "licence", wifi: "Wi-Fi password", secret: "secret", "env-set": ".env values", authenticator: "code" };
+const BATCH = 5;
+const DAY = 86400_000;
+
+const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
+const ymd = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+
+/**
+ * One run: judge what opens, raise new todos, close the ones whose reason went away.
+ * @param {import("./vault.js").Vault} vault
+ * @param {(tool: string, input: any) => Promise<{ data?: any, error?: { code: string, message: string } }>} call
+ * @param {{ now?: number, breached?: string[] }} [opts] breached: names from the last breach check
+ */
+export async function remindRun(vault, call, { now = Date.now(), breached = [] } = {}) {
+  const db = vault.db;
+  await vault.key();
+  const items = [];
+  for (const r of /** @type {any[]} */ (db.prepare("SELECT * FROM vault_items ORDER BY name").all())) {
+    if (!vault.rowOk("vault_items", r)) continue;
+    let fields;
+    // A locked personal vault is not an error here: its items wait for another day.
+    try { fields = await vault.fields(r); } catch { continue; }
+    items.push({ name: r.name, kind: r.kind, fields, url: r.url, hosts: json(r.hosts, []), updated: r.updated, rotate: r.rotate, details: json(r.details, {}) });
+  }
+  const judged = judge(items, { now, twofa: new Set() });
+  const kinds = new Map(items.map(i => [i.name, i]));
+  /** @type {Map<string, Set<string>>} */
+  const flagged = new Map();
+  for (const j of judged.items) flagged.set(j.name, new Set(j.reasons.filter(r => r in REASONS)));
+  for (const n of breached) if (kinds.has(n)) (flagged.get(n) ?? flagged.set(n, new Set()).get(n))?.add("breached");
+
+  const marks = /** @type {any[]} */ (db.prepare("SELECT * FROM vault_reminders").all());
+  const had = new Map(marks.map(m => [`${m.name}\n${m.reason}`, m]));
+  const closed = [];
+  // A reason gone away: its todo is done, and the mark goes, so it may be raised again later.
+  for (const m of marks) {
+    const opened = kinds.has(m.name);
+    if (opened && flagged.get(m.name)?.has(m.reason)) continue;
+    if (!opened && db.prepare("SELECT 1 FROM vault_items WHERE name = ?").get(m.name)) continue; // locked today, not fixed
+    if (m.planner && m.state === "open") {
+      const others = marks.filter(x => x.planner === m.planner && !(x.name === m.name && x.reason === m.reason));
+      if (!others.length) await call("planner.done", { item: m.planner });
+    }
+    db.prepare("DELETE FROM vault_reminders WHERE name = ? AND reason = ?").run(m.name, m.reason);
+    closed.push(`${m.name}:${m.reason}`);
+  }
+
+  // A dismissed todo keeps its mark, so it is not raised again for the same reason.
+  for (const m of marks) {
+    if (m.state !== "open" || !m.planner || !flagged.get(m.name)?.has(m.reason)) continue;
+    const g = await call("planner.get", { item: m.planner });
+    const st = g.data && g.data.item && g.data.item.state;
+    if (st === "cancelled") db.prepare("UPDATE vault_reminders SET state = 'dismissed' WHERE name = ? AND reason = ?").run(m.name, m.reason);
+    else if (st === "done") db.prepare("UPDATE vault_reminders SET state = 'done' WHERE name = ? AND reason = ?").run(m.name, m.reason);
+  }
+
+  /** @type {{ name: string, reason: string, kind: string, expires?: number }[]} */
+  const fresh = [];
+  for (const [name, reasons] of flagged) for (const reason of reasons) {
+    if (had.has(`${name}\n${reason}`)) continue;
+    const it = kinds.get(name);
+    fresh.push({ name, reason, kind: it?.kind ?? "item", expires: it?.details?.expires });
+  }
+  // Worst first, so a batch keeps the most urgent reason as its own todo.
+  fresh.sort((a, b) => REASONS[a.reason].priority - REASONS[b.reason].priority || a.name.localeCompare(b.name));
+  const added = [];
+  const mark = db.prepare("INSERT OR REPLACE INTO vault_reminders (name, reason, planner, state, at) VALUES (?,?,?,'open',?)");
+  /** @param {any} input @param {{ name: string, reason: string }[]} covers */
+  const add = async (input, covers) => {
+    const r = await call("planner.add", { kind: "todo", list: "Vault", ...input });
+    if (r.error) return r.error.code === "no_such_tool" ? "no-planner" : "failed";
+    const id = r.data && (r.data.id || (r.data.item && r.data.item.id));
+    for (const c of covers) mark.run(c.name, c.reason, id ? String(id) : null, now);
+    added.push(...covers.map(c => `${c.name}:${c.reason}`));
+    return "ok";
+  };
+  /** @type {Map<string, typeof fresh>} */
+  const byReason = new Map();
+  for (const f of fresh) (byReason.get(f.reason) ?? byReason.set(f.reason, []).get(f.reason))?.push(f);
+  for (const [reason, list] of byReason) {
+    const R = REASONS[/** @type {keyof typeof REASONS} */ (reason)];
+    const due = d => ymd(now + d * DAY);
+    if (list.length > BATCH) {
+      const s = await add({ title: `${R.verb} ${list.length} ${reason === "expired" || reason === "expiring" ? "credentials" : "passwords"}: ${reason}`,
+        body: list.map(f => f.name).join("\n"), tags: ["vault", "rotate", reason], priority: R.priority, due: due(R.days ?? 7) }, list);
+      if (s === "no-planner") return { added, closed, planner: false };
+      continue;
+    }
+    for (const f of list) {
+      const what = WORD[/** @type {keyof typeof WORD} */ (f.kind)] || "credential";
+      const when = f.expires ? ` (${reason === "expired" ? "ended" : "ends"} ${ymd(f.expires)})` : "";
+      const dueDay = reason === "expiring" && f.expires ? ymd(Math.max(now, f.expires - DAY)) : due(R.days ?? 14);
+      const s = await add({ title: `${R.verb} the ${what} for ${f.name}${when}`, tags: ["vault", "rotate", reason], priority: R.priority, due: dueDay }, [f]);
+      if (s === "no-planner") return { added, closed, planner: false };
+    }
+  }
+  db.prepare("INSERT OR REPLACE INTO vault_jobs (name, at) VALUES ('remind', ?)").run(now);
+  return { added, closed, planner: true };
+}
+
+/**
+ * When the next run is due: the first 09:00 local after the last run, or in a minute when that
+ * time has already passed (vyred was off at nine).
+ * @param {number|null} last @param {number} now
+ */
+export function nextRun(last, now) {
+  /** The first 09:00 local strictly after t. @param {number} t */
+  const after = t => { const x = new Date(t); x.setHours(9, 0, 0, 0); if (x.getTime() <= t) x.setDate(x.getDate() + 1); return x.getTime(); };
+  // Never run: today's 09:00, or soon when that has passed.
+  const due = last == null ? new Date(now).setHours(9, 0, 0, 0) : after(last);
+  return due <= now ? now + 60_000 : due;
+}
+
+/**
+ * The daily timer. One setTimeout at a time; it re-arms after each run. `stop` clears it.
+ * @param {import("./vault.js").Vault} vault
+ * @param {(tool: string, input: any) => Promise<any>} call
+ * @param {{ log?: (m: string) => void, clock?: () => number, local?: boolean }} [opts] local: a Mac, which
+ *   leaves reminders to its box when it is paired with one, so a person is not told twice
+ */
+export function scheduleReminders(vault, call, { log = () => {}, clock = Date.now, local = false } = {}) {
+  /** @type {NodeJS.Timeout | null} */
+  let timer = null;
+  let stopped = false;
+  const lastRun = () => { const r = /** @type {any} */ (vault.db.prepare("SELECT at FROM vault_jobs WHERE name = 'remind'").get()); return r ? Number(r.at) : null; };
+  const arm = () => {
+    if (stopped) return;
+    const wait = Math.max(60_000, nextRun(lastRun(), clock()) - clock());
+    timer = setTimeout(async () => {
+      try {
+        const paired = local && Boolean((await call("link.status", {}))?.data?.linked);
+        const r = paired ? { added: [], closed: [] } : await remindRun(vault, call); if (r.added.length || r.closed.length) log(`vault: ${r.added.length} reminders added, ${r.closed.length} closed`); }
+      catch (e) { log(`vault: reminders skipped today (${/** @type {Error} */ (e).message})`); }
+      arm();
+    }, Math.min(wait, 2 ** 31 - 1));
+    timer.unref?.();
+  };
+  arm();
+  return { stop() { stopped = true; if (timer) clearTimeout(timer); } };
+}
+
+/**
+ * An item was changed on purpose (rotated): its open reminders are done now, not tomorrow.
+ * @param {import("./vault.js").Vault} vault @param {(tool: string, input: any) => Promise<any>} call @param {string} name
+ */
+export async function settle(vault, call, name) {
+  const marks = /** @type {any[]} */ (vault.db.prepare("SELECT * FROM vault_reminders WHERE name = ?").all(name));
+  for (const m of marks) {
+    const shared = vault.db.prepare("SELECT COUNT(*) AS n FROM vault_reminders WHERE planner = ? AND name != ?").get(m.planner, name);
+    if (m.planner && m.state === "open" && !/** @type {any} */ (shared).n) await call("planner.done", { item: m.planner });
+  }
+  vault.db.prepare("DELETE FROM vault_reminders WHERE name = ? AND reason != 'reused'").run(name);
+}

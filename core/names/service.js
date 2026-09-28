@@ -196,6 +196,33 @@ export function names(deps) {
   let handle = null;
   /** Who a peer is to vyred's router. A guest and an agent's node never get the owner's caller. */
   const callerOf = who => who.kind === "guest" ? `tailnet-guest:${who.login}` : who.kind === "agent" ? `tailnet:agent:${who.agent}` : `tailnet:${who.login}`;
+
+  /**
+   * GET /v1/whoami: the join flow's reachability probe. A device adding itself as a second
+   * device, or a laptop moving to a server, hits this once it thinks Tailscale (or the relay) has
+   * it on the tailnet, to learn whether IT ALSO sees itself reaching the box, and as whom. Never
+   * for an agent's node (a computer has no join flow of its own) and rate-limited per node, since
+   * it needs no proof beyond whois and must not become a way to probe the box from a captured
+   * tailnet login. The answer stays minimal: kind, and the box's own name only for the owner —
+   * never a login, tag or capability, which callerOf/peer already carry to the router for tools
+   * that want them.
+   */
+  const whoamiHits = new Map(); // node or stableId -> recent call times, this minute
+  function whoamiAllowed(who) {
+    const key = who.stableId || who.node || who.login || "?";
+    const cut = now() - 60_000;
+    const hits = (whoamiHits.get(key) || []).filter(t => t > cut);
+    hits.push(now());
+    whoamiHits.set(key, hits);
+    if (whoamiHits.size > 1000) whoamiHits.delete(/** @type {string} */ (whoamiHits.keys().next().value));
+    return hits.length <= 10;
+  }
+  function whoami(res, who) {
+    const json = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+    if (who.kind === "agent") return json(403, { error: { code: "denied", message: "not for an agent node" } });
+    if (!whoamiAllowed(who)) return json(429, { error: { code: "rate_limited", message: "slow down and try again" } });
+    return json(200, { data: { kind: who.kind, name: who.kind === "owner" ? (ctx.config.name || null) : null } });
+  }
   async function onRequest(req, res) {
     res.setHeader("strict-transport-security", HSTS);
     const url = new URL(req.url || "/", "https://vyred");
@@ -225,6 +252,7 @@ export function names(deps) {
       res.writeHead(421, { "content-type": "application/json" });
       return res.end(JSON.stringify({ error: { code: "misdirected", message: "not this box's address" } }));
     }
+    if (req.method === "GET" && url.pathname === "/v1/whoami") return whoami(res, who);
     // Vyre's hosted app (app.vyre.run) is another site that may call in, with CORS, from the
     // owner's own browser. Whois must still say owner, and vyred's router wants a person session
     // for every call from it (core/presence/person.js).

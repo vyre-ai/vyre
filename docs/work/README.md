@@ -58,6 +58,7 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0025 | planner | The planner: time, alarms, reminders, todos, notes and a calendar on the box |
 | 0026 | relay | End-to-end encrypted relay with QR pairing |
 | 0027 | mobile | One app: the phone, the box's web app and app.vyre.run from one Expo codebase |
+| 0028 | vault-next | Vault: import, agent logins, rotation and autofill on every device |
 | 0029 | resilience | The resilience contract: every surface survives network outages |
 | 0030 | sessions | Vyre-owned sessions and the provider router |
 | 0031 | teammates | Project teammates |
@@ -66,3 +67,5 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0034 | memory-iq | Vyre IQ: cited answers from every session, fact and the graph |
 | 0035 | native-core | The settings hub: one file, four levels, read live by every surface |
 | 0036 | cohesion | One system |
+| 0037 | tailnet | Scan-to-pair: relay.pair.ticket, a signed pairing ticket the Vyre code can carry |
+| 0038 | tailnet | Relay-first everywhere (Wink): the box's only inbound path is the relay by default, Tailscale under Advanced |

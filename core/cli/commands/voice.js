@@ -1,5 +1,6 @@
 // @ts-check
-// `vyre voice`: push-to-talk from the terminal, the voice module's status, and saving its key.
+// `vyre voice`: push-to-talk from the terminal, the voice module's status, and saving its key
+// (a shortcut for `vyre vault connect voice <provider>`).
 // The talking itself lives in local/voice/talk.js; this file only parses arguments.
 //
 // --json: status prints voice.status's reply; key prints { stored, provider, grant }. Talking

@@ -89,3 +89,51 @@ gives the same `fetch`, `events` and `socket`, plus `current`. Direct is used on
 probe within 1.5 s; a transport error moves to the relay at once (the request keeps its key); on
 the relay, the better path is probed every 60 s while visible and the connection moves back.
 Event streams move with it and resume from their cursor.
+
+## Scan-to-pair with a compact ticket ("Wink", ADR 0037)
+
+A Vyre code (the avatar's scannable ring) has room for only 72 bits, nowhere near a full offer
+(a 256-bit box key, a route id, a secret, a name). So it carries only an 8-byte ticket, and the
+phone resolves the actual offer from the relay rather than reading it off the code.
+
+```js
+import { pairTicket, keyFingerprint } from "<repo>/relay/client/client.js";
+
+// ticket: the 8 raw bytes the Vyre code encoded. relay: the ws:// or wss:// base the app already
+// knows to ask (there is no room in the code to carry it; a self-hosted relay is out of scope for
+// this path — fall back to a full QR there).
+const box = await pairTicket(ticket, { relay, name: "alex's phone", keyStore, crypto });
+// -> exactly what pair() returns: { relay, route, box, name, device, presence }
+```
+
+`pairTicket` does every step itself — nothing else to build:
+
+1. Derives three values from the ticket, each a `sha256` of a distinct tag plus the ticket bytes,
+   matching `core/relay/wire.js`'s `ticketDerive` byte for byte: a locator (tag `vyre-pair-loc`),
+   the pairing secret (tag `vyre-pair-sec`) and a MAC key (tag `vyre-pair-mac`). **The raw ticket
+   itself never leaves the device** — only the locator goes to the relay.
+2. `POST {relay's http(s) origin}/v1/pair` with `{ "loc": "<base64url>" }` in the body, never in a
+   URL (so it is never in an access log). One request, and single-use either way:
+   - `200 { record, mac }` — `record` is the exact JSON string the box handed the relay (do not
+     re-serialize it; the MAC is over these exact bytes) and `mac` is `hmacSha256(macKey, record)`
+     as base64url.
+   - `404` — the ticket does not exist, already expired (5 minutes), or was already resolved once.
+     These three cases are deliberately indistinguishable: show one generic "this code expired or
+     was already used, scan again" message.
+   - `429` — too many attempts (per IP and globally); back off and let the person try again.
+   - `400` — a malformed request (this library only sends well-formed ones; a real 400 means a
+     version mismatch worth logging).
+3. Verifies `mac` against `hmacSha256(macKey, utf8(record))` itself, **before parsing or trusting
+   anything in `record`**. A mismatch means the relay (or someone controlling it) tried to answer
+   with a substituted identity; `pairTicket` throws and pairs with nothing.
+4. Parses `record` (`{ v: 1, name, relay, route, box, exp }`) and sanitises `name` the same way a
+   box's own name is sanitised in a Touch ID prompt (control characters, bidi overrides, capped at
+   64) before it ever reaches the UI.
+5. Runs the exact same handshake `pair()` runs from a QR offer (`pairOffer` underneath both), with
+   the ticket-derived secret as the pairing secret. Returns the same shape.
+
+`keyFingerprint(box, crypto)` gives the same short fingerprint (`base32(sha256(box)).slice(0, 8)`,
+shown as two groups of 4) the box's own Touch ID prompt already shows for `relay.join`, so a
+"pairing with alex's box (a1b2 c3d4)" screen on the phone reads identically to what the person
+sees on the box's own screens. This is a confirmation, not a security check: the MAC in step 3
+already refused a substituted box before this is ever worth computing.
