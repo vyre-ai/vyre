@@ -484,12 +484,36 @@ is in, replays the buffer onto it, then switches to live — pulled the merge lo
 producing the same result as applied live) so this DOM-adjacent flow has a real testable seam,
 same ask reviewer-2 made about the rest of this panel earlier.
 
+The lead: relay.join is reviewer-cleared (93754fa2) and no longer hypothetical. Wired
+`attempt("relay.join", {url, becomeDevice:true}, {presence:"asked"})` (was a bare `attempt`),
+since the real tool's own presence summary (core/relay/index.js, reviewer's MEDIUM on 93754fa2,
+fixed 6cd9c02d) is where the box name, relay host and key fingerprint actually show — a passkey
+confirmation the person sees, not something this screen renders itself. Confirmed safe against
+the fixture path (fixtures answer before the tool is even found "missing", so presence never
+enters the fixture flow; the request stayed the same shape in all 4 onboard-page tests, still
+40/40 on testbox).
+
+**Blocked**, asked directly: "keep the option hidden on a Mac until vyre-core, shown on Linux and
+Windows" has no client-side signal to build against. Checked `onboard.status`, `onboard.tailscale`
+detect, and tailnet's own `tailnetPeers()` parsing (`core/onboard/index.js`, which reads OS only
+for *other* peers via `tailscale status --json`'s `Peer` map, never `Self`, and needs Tailscale
+already running either way — this device may not be, since avoiding Tailscale is the whole point
+of the relay path). Nothing named "vyre-core" exists yet in the codebase (grepped). Not building a
+guess at this; asked the lead/anywhere what to check. The option shows unconditionally for now.
+
 ## Next
 
+- Get the vyre-core platform signal (see above) and gate the relay option on it once it exists.
 - Build "Move off this server" (Device -> Solo, the reverse direction anywhere.md names) in
   Settings > Server; only the forward direction is built.
 - Wire `service.warning` into the Server step once anywhere's launchd installer actually
   populates it (anywhere: "will ping you the moment that lands").
+- reviewer-2's non-blocking note (f7c311bf): `verifyDevice` (and the pre-existing "server"
+  branch) has no cancelled/alive guard around its in-flight `attempt()` calls the way Settings'
+  `drawServer` does (`ctx.alive()` after every await) — a Back click mid-verify that later
+  resolves successfully would still redirect to Claude sign-in. Systemic to onboard.js generally
+  (its `cleanup[]` covers timers/listeners, not in-flight async calls), not something to fix in
+  one screen alone; worth its own pass across the file.
 - Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
 - Step-shell's final summary, per the lead (build both, 29 Sep): showEnding()'s "What's next"
   ticks gained a fourth row for the Agent computers choice (9d4103f0); a per-step celebration

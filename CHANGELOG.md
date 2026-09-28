@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Onboarding: relay.join's confirmation shows the box name, relay and key fingerprint
+
+- The "pair with a code" path now calls relay.join through the presence flow
+  (`{presence:"asked"}`), so the real tool's own passkey confirmation — which names the box,
+  its relay host and a short key fingerprint — actually shows before pairing, instead of a bare
+  call that would skip it. Not gated by platform yet (asked: no client-side signal exists to
+  know whether this machine has vyre-core).
+
 #### fix(settings): a move event during the status round trip could be lost for good
 
 - The Server panel's live-progress listener attached only after the baseline `move.status` call

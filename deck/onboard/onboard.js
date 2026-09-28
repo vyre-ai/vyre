@@ -419,11 +419,15 @@ const SCREENS = {
         return;
       }
       if (via === "relay") {
-        // A single call, no verify step: relay.join proves reachability by pairing.
+        // A single call, no verify step: relay.join proves reachability by pairing. presence:
+        // "asked" so the box name, relay host and key fingerprint the real tool's own presence
+        // summary names (core/relay/index.js, reviewer's MEDIUM on 93754fa2, fixed 6cd9c02d) show
+        // in the confirmation before it pairs — this device is joining a box a phishing message
+        // could otherwise name convincingly, so the person needs to see which one for real.
         const v = codeIn.value.trim();
         if (!v) { put(st, "Paste the code first."); return; }
         put(st, "Pairing.");
-        const r = await attempt("relay.join", { url: v, becomeDevice: true });
+        const r = await attempt("relay.join", { url: v, becomeDevice: true }, { presence: "asked" });
         if (r.error && !r.error.missing) { put(st, String(r.error.message)); return; }
         put(st, "");
         await mark_("live", "done"); await mark_("tailscale", "skipped"); await mark_("name", "skipped"); toClaude();
