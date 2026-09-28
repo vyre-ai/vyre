@@ -53,7 +53,25 @@ already safe against that specific bug but gained owner-device recognition they 
 testbox: core/team 43/43, boundaries+hygiene 53/53 (hygiene green again). Combined re-run of
 everything this branch touches: 176/176.
 
+## Reviewer's verdict, and the hub.js fix (a065c545)
+
+Reviewer on f2df7888: goals and planner are not identical, but strictly TIGHTER (the point) -
+`isPerson` refuses an agent: or thread: claim first, so "cli agent:kit" and "cli:thread:x", which
+both used to read as the person there, no longer do. Accepted; documented in both files' own
+comments now instead of implying "identical".
+
+hub.js: NOT identical, and it LOOSENS - isPerson includes isOwnerDevice, so "tailnet:alex@..." and
+"device:<id>" went from person: false to person: true after the swap, and inScope() trusts
+person to skip every per-agent scope check. Per ADR 0032 a script on a paired phone or tailnet
+node is that owner device with no person session behind it. Lead's ruling: exclude owner devices
+explicitly to keep today's behaviour exactly (`person = (isPerson(c) && !isOwnerDevice(c)) || ...`
+the module branch) - admitting an owner device with a real passkey-backed person session is a
+separate design for later, not 0.1.1. Added tailnet:<owner> and device:<id> cases to
+hub.test.js's whoFrom tests.
+
+testbox: goals+planner+mcp+team+caller+boundaries+hygiene = 177/177. Sent back to the reviewer.
+
 ## Next
 
-Sent to the reviewer for one behaviour-identity check across all four swaps (goals, planner,
-mcp-hub, core/team), and the final sha to the integrator. Nothing else queued on this branch.
+Waiting on the reviewer's final clear on a065c545. Final sha sent to the integrator either way.
+Nothing else queued on this branch.
