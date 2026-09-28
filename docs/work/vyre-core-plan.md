@@ -90,8 +90,12 @@ tie it to vyred and need a decision:
      the Capsule's autofill; 2d devices, relay, members and emergency; 2e ssh, rotate,
      connections). Until a slice moves, its tools on a core Mac answer core_owned ("not on this
      Mac yet"). The alternative, leaving them on vyred's old store, would keep the hole open.
-   - Decision needed: is losing those features on a core Mac until their slice lands acceptable
-     for 0.1.2, or must 2a include some of them (fill is the likely one)?
+   - DECIDED (lead, 28 Sep): 2a first, then slices. But no release turns vyre-core on for
+     users until fill and import work there ("not on this Mac yet" for filling a password would
+     feel broken). Devices, sharing, ssh and rotate may follow later with a plain message.
+- DECIDED (lead) on 1 and 2 as recommended. The grant screen says: "this module runs as you, so
+  anything you grant it is readable by programs running as you." 2a starts once the reviewer
+  checks points 1 and 2.
 
 Also for 2a:
 - Sessions: core mints and checks presence sessions (core already has presence.session.open).
@@ -153,6 +157,8 @@ Also for 2a:
     1b makes the verdict load-bearing.
   - The installer runs `main.js code` as _vyre (sudo -u _vyre), or core.db ends up root-owned.
   - A live tty value from a real terminal on a Mac is still owed before /v1/peer gates anything.
+  - When this branch takes the P-256 batch: core's first enroll must refuse a non-P-256
+    Capsule key, and core's migrations must carry the alg -7 trigger (6579710a/457ef10c).
 - Mac check still needed: LOCAL_PEERCRED's uid read (xucred layout) and /bin/ps, by capsule-pro
   with a temp home and no sudo. Running as _vyre under launchd waits for phase 4 (a real system
   user on the user's Mac needs their explicit OK).
@@ -183,19 +189,28 @@ Also for 2a:
       6 characters, 2 minutes, single use. It is NOT printed on this path.
     - It launches the Capsule by exec'ing the binary inside the core-signed .app in the root-owned
       tree (not `open`: LaunchServices drops inherited descriptors), with the code on an
-      INHERITED file descriptor (a pipe or socketpair). Never argv, never env (`launchArgs
-      --env` is out: a same-uid process can read another's environment), never a file.
+      INHERITED file descriptor. Never argv, never env (`launchArgs --env` is out: a same-uid
+      process can read another's environment), never a file.
+    - The descriptor (agreed with capsule-pro): fd 3, exactly the 6 ASCII bytes, then the
+      installer closes its write end (EOF). No newline, no length prefix. The Capsule reads with
+      a short timeout; anything but exactly 6 valid characters, or fd 3 closed, is a failed
+      handoff.
+    - The launch step drops to the person's own uid before it execs the Capsule: the Capsule
+      never runs as root.
     - The Capsule sends POST /v1/tools/presence.enroll {kind:"capsule", name, public_key,
       alg:-7} with x-vyre-presence `code code=<code>`, then shows the enrolled key's
       fingerprint.
-    - Fallback only if the handoff fails: `main.js code --typed` (6 characters, 10 minutes,
-      single use), shown in the terminal, typed into the Capsule's "Type the 6-character code
-      shown in your terminal". A model that reads it from the terminal still can't use it (next
-      rule).
+    - Fallback only if the handoff actually failed: then, and only then, `main.js code --typed`
+      (6 characters, 10 minutes, single use) is shown in the terminal and typed into the
+      Capsule's "Type the 6-character code shown in your terminal". A model that reads it from
+      the terminal still can't use it (next rule). Not "the Capsule shows it and the terminal
+      confirms": a model can inject terminal input (osascript keystrokes, tmux send-keys).
     - core redeems a code only (built in 51679e47's successor):
-      - from a peer whose executable is the Capsule core itself signed (LOCAL_PEERPID's exe
-        against core's own signing identity, DR or cdhash, checked by core). Until phase 4
-        provides that identity, a Mac core refuses every code (`codeFrom` defaults to no);
+      - from a peer whose executable is the Capsule core itself signed, for BOTH paths: core
+        runs `/usr/bin/codesign -R <core's DR>` on LOCAL_PEERPID's executable, with env {}, and
+        then either uses the audit token or re-checks the pid's start time after the codesign
+        call (pid reuse). Until phase 4 provides that identity, a Mac core refuses every code
+        (`codeFrom` defaults to no);
       - while core has no key at all; after the first enroll, no code enrolls anything;
       - for kind capsule only;
       - through presence.enroll only (presence.verify refuses a code, so nothing else spends
