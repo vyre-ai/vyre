@@ -114,9 +114,15 @@ tested on Linux where it can be. "Mac check" marks what only a Mac run can confi
   challenges from core, and refuses enroll, remove and presence.code (core_owned). A key planted
   in vyred's own presence_keys proves nothing. A core that's down refuses; nothing falls back.
   Testbox: 99/99 (vyre-core, presence, boundaries, presence-bypass, daemon).
-- Still vyred's own, advisory on a Mac (ADR 0040 section 3): Touch ID, the terminal code, the
-  CLI window and presence sessions. Sessions become core's with the Deck rule, next to the vault
-  (phase 2), since that is what they serve.
+- **What 1b closes and what it doesn't.** 1b closes the KEY plant: a key a model inserts into
+  vyred's presence_keys proves nothing. It does NOT close the SESSION plant: presence_sessions
+  still lives in vyred's same-uid db, and method session serves SESSIONABLE tools (vault.reveal,
+  gate.approve). A model that inserts a session row with a secret whose hash it knows passes
+  those tools today. Nor does it close the Touch ID helper under ~/.vyre/helpers, which only
+  vyred's own JS hash-checks: a model can replace it with one that always says yes. Phase 2
+  moves sessions into core with the vault (and phase 3 with the gate); the touchid method on a
+  core-linked Mac goes with them, since core never takes it. Until then, on a Mac these are
+  advisory, like every vyred-side control (ADR 0040 section 3).
 - Next, phase 1c: the person's clients write to core directly. The contract (sent to capsule-pro):
   - The Capsule reads core.json itself (the same trust rule as readCoreConfig) and talks to
     core's socket only after the same socketProblem check. With no core.json it keeps talking

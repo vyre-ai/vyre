@@ -44,12 +44,15 @@ async function world(t) {
 test("vyre-core link: core.json is trusted only when root owns it and its folder, and nobody else can write them", () => {
   const f = "/Library/Application Support/Vyre/core.json";
   const st = (o) => /** @type {any} */ ({ isFile: () => !o.dir, isDirectory: () => Boolean(o.dir), uid: o.uid ?? 0, mode: o.mode ?? 0o644 });
-  const io = (file, dir, text = JSON.stringify({ socket: "/var/run/vyre/vyre-core.sock", uid: 280 })) => ({ lstat: p => (p === f ? st(file) : st({ dir: true, ...dir })), read: () => text });
+  const io = (file, dir, text = JSON.stringify({ socket: "/var/run/vyre/vyre-core.sock", uid: 280 }), up = {}) => ({
+    lstat: p => (p === f ? st(file) : p === path.dirname(f) ? st({ dir: true, ...dir }) : st({ dir: true, mode: 0o755, ...(up[p] || {}) })), read: () => text });
   assert.deepEqual(readCoreConfig(f, io({}, { mode: 0o755 })), { socket: "/var/run/vyre/vyre-core.sock", uid: 280 });
   assert.equal(readCoreConfig(f, io({ uid: 501 }, { mode: 0o755 })), null, "owned by the person");
   assert.equal(readCoreConfig(f, io({ mode: 0o666 }, { mode: 0o755 })), null, "writable by others");
   assert.equal(readCoreConfig(f, io({}, { mode: 0o777 })), null, "in a folder others can write");
   assert.equal(readCoreConfig(f, io({}, { uid: 501, mode: 0o755 })), null, "in the person's folder");
+  assert.equal(readCoreConfig(f, io({}, { mode: 0o755 }, undefined, { "/Library/Application Support": { uid: 501 } })), null, "under a folder the person owns");
+  assert.equal(readCoreConfig(f, io({}, { mode: 0o755 }, undefined, { "/Library": { mode: 0o777 } })), null, "under a folder others can write");
   assert.equal(readCoreConfig(f, io({}, { mode: 0o755 }, "{")), null, "not JSON");
   assert.equal(readCoreConfig(f, io({}, { mode: 0o755 }, JSON.stringify({ socket: "rel.sock", uid: 280 }))), null, "a relative socket");
   assert.equal(readCoreConfig(f, io({}, { mode: 0o755 }, JSON.stringify({ socket: "/x.sock", uid: 0 }))), null, "core as root");
