@@ -86,6 +86,21 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, latest of all: built the move engine's three seams (ADR 0042, federation's
+core/move/index.js). Answered their open question: `relay_devices` (ADR 0026's own Noise
+identity) is the authoritative "this node is the owner's own" table, never `link_peers` (a
+separate, older Mac-to-box pairing mechanism). New module-only tool `relay.devices.node`
+(stableId/staticKey plus, if reported, the tailnet node via the already-built
+`relay.devices.path`'s node_id/node_name — no dependency on ADR 0046 landing first). New
+`core/link/peers.js`: `ownedNode`, `openPeer`, `selfIdentity`, to federation's exact signatures.
+`core/link/transport.js` needed no change at all — `connector()` was already symmetric; the
+Mac-to-box shape lived only in how `core/link/mac.js` always called it, never in the function
+itself. `openPeer` refuses `not_reachable` honestly for a device with no reported tailnet node,
+rather than guessing at an address. Tests: peers.test.js 5/5 (pure wiring, fake ctx.call), +1 on
+relay.test.js, 77/77 total with boundaries+hygiene+docs. NOT run against two real daemons end to
+end — said so plainly rather than claiming coverage that isn't there. Sent to federation to wire
+into their own seams map.
+
 28 Sep 2026, latest of all: ported Wink's ticket lookup to the production Cloudflare relay (the
 reviewer's MEDIUM 2, the lead's priority — code and tests only, no deploy, that waits for the
 user). New `PairTicket` Durable Object in relay/worker/index.js, one object per locator
@@ -810,6 +825,11 @@ restart vyred, and check with `vyre call vault.grants.status`. `7301` is `vault.
 
 Listed by the area they touch, so the merge can go in order. Everything below is off by default.
 
+- **core/link** (28 Sep, ADR 0042, new file, own): `peers.js` exports `ownedNode(ctx)`,
+  `openPeer(ctx)`, `selfIdentity(ctx)`, for federation's move engine to wire into its own
+  `seams.set(ctx.paths.root, ...)`. No change to `transport.js` or `mac.js`/`box.js`.
+- **relay** (28 Sep, ADR 0042, own): new module-only tool `relay.devices.node` (`{ stableId,
+  staticKey, node: { stableId, name } | null }`), added to `does.tools`.
 - **relay/worker** (28 Sep, ADR 0045, own): new Durable Object `PairTicket`, bound `TICKETS` in
   wrangler.toml (new migration entry too); `RouteRelay`'s control socket handles `{ t: "ticket",
   loc, record, mac, exp }` post-auth (previously silent); the Worker's top-level `fetch` handles
