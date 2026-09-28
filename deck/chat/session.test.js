@@ -89,6 +89,9 @@ const MISSING = new Set(["threads.unqueue"]);
 /** sight.targets/sight.frame (cohesion item 1/18): set by the sight test only; every other test's
  * session sees no target (sight.targets carries no thread, so this can't be scoped like the rest). */
 let sightWorld = /** @type {{ targets: any[], frame: (input: any) => any } | null} */ (null);
+/** "@role" (teammates.md section 2): set by the teammate test only. hasTeammate answers team.ask
+ * for NEW's project (harlow-legal); defaultOn answers team.default.get; adds records team.add calls. */
+let teamWorld = /** @type {{ hasTeammate: boolean, defaultOn: boolean, adds: any[] } | null} */ (null);
 // The fourth session: one the stream drops and resumes (ADR 0029 R1). What the box holds is
 // changed by the test between reads.
 const RES = "5e6f7a8b-resume-thread";
@@ -141,6 +144,19 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
   // sight.targets/sight.frame carry no thread at all: answered here, ahead of every thread branch.
   if (tool === "sight.targets") return { status: 200, statusText: "", json: async () => ({ data: { targets: sightWorld?.targets || [] } }) };
   if (tool === "sight.frame") return { status: 200, statusText: "", json: async () => ({ data: sightWorld?.frame(input) || { target: input.target, image: null } }) };
+  // team.ask/team.default.get/team.add (teammates.md section 2) carry no thread either.
+  if (tool === "team.ask") {
+    if (teamWorld?.hasTeammate) return { status: 200, statusText: "", json: async () => ({ data: { request: "req_1", state: "queued", position: 0 } }) };
+    // core/team's own message, no word "tool" in it: never read as a missing-tool 404 (session.js's
+    // own recall.transcript not_found does the same distinction; caps.js's isMissing agrees).
+    return { status: 404, statusText: "", json: async () => ({ error: { code: "not_found", message: `harlow-legal has no teammate ${input.to}` } }) };
+  }
+  if (tool === "team.default.get") return { status: 200, statusText: "", json: async () => ({ data: { project: input.project, enabled: teamWorld?.defaultOn !== false } }) };
+  if (tool === "team.add") {
+    teamWorld?.adds?.push(input);
+    if (teamWorld) teamWorld.hasTeammate = true;
+    return { status: 200, statusText: "", json: async () => ({ data: { agent: `${input.role}-${input.project}`, project: input.project, role: input.role } }) };
+  }
   if (input.thread === RES || input.session === RES) {
     if (tool === "threads.get") data = { thread: { id: RES, name: "Northwind order form", cwd: "/home/alex/work/northwind", status: "idle", canonical_status: "waiting", holder: null, agent: null },
       events: res.events.filter(e => e.id > (input.since ?? 0)), asks: res.asks };
@@ -904,4 +920,67 @@ test("a teammate handoff (team_ask): its own card, the teammate's tile+name+Team
   await $(row, ".cv-handoff-head").click();
   assert.ok(row.hasAttribute("data-open"));
   assert.match(text($(row, ".cv-handoff-reply")), /Warmed up the copy in three places/);
+});
+
+test("@role: an existing teammate's own turn, never this session's; a typo offers to create one; team.default off just points at Setup (teammates.md section 2)", async (t) => {
+  const box12 = new El("div");
+  doc.body.append(box12);
+  const stop12 = mountSession(box12, { thread: NEW, project: null, onBack() {} });
+  t.after(stop12);
+  await wait(30);
+  const ta = /** @type {any} */ ($(box12, "textarea"));
+  const key = (k) => { const e = Object.assign(/** @type {any} */ (new Event("keydown")), { key: k, target: ta }); ta.dispatchEvent(e); return e; };
+
+  // An existing teammate: team.ask goes, never threads.send - this is not the session's own turn.
+  teamWorld = { hasTeammate: true, defaultOn: true, adds: [] };
+  const sendsBefore = calls.filter(c => c.tool === "threads.send").length;
+  ta.value = "@design make the intake form calmer";
+  key("Enter");
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "team.ask").at(-1).input, { to: "design", text: "make the intake form calmer", surface: "deck" });
+  assert.equal(calls.filter(c => c.tool === "threads.send").length, sendsBefore, "never this session's turn");
+  assert.equal(ta.value, "", "cleared on a plain success");
+
+  // A typo (no "research" teammate yet), team.default on: an inline confirm, not a silent no-op.
+  teamWorld = { hasTeammate: false, defaultOn: true, adds: [] };
+  ta.value = "@research find comparable filing fees";
+  key("Enter");
+  await wait();
+  assert.match(text($(box12, ".composer-note")), /There's no research teammate yet/);
+  const goBtn = /** @type {any} */ ($$(box12, ".composer-note button").find(b => /Create and send/.test(text(b))));
+  const hereBtn = /** @type {any} */ ($$(box12, ".composer-note button").find(b => /Don't create/.test(text(b))));
+  assert.ok(goBtn && hereBtn);
+  await goBtn.click();
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "team.add").at(-1).input,
+    { project: "harlow-legal", role: "research", brief: "Ask me about anything; I'll figure out the role from what you send me.", isolation: "folder", tools: ["files", "web"], model: "sonnet" });
+  assert.deepEqual(calls.filter(c => c.tool === "team.ask").at(-1).input, { to: "research", text: "find comparable filing fees", surface: "deck" });
+
+  // "Don't create, answer here": an ordinary message to this session instead, never team.add.
+  teamWorld = { hasTeammate: false, defaultOn: true, adds: [] };
+  ta.value = "@ghost is anyone there";
+  key("Enter");
+  await wait();
+  const hereBtn2 = /** @type {any} */ ($$(box12, ".composer-note button").find(b => /Don't create/.test(text(b))));
+  const sendsBefore2 = calls.filter(c => c.tool === "threads.send").length;
+  const addsBefore2 = calls.filter(c => c.tool === "team.add").length;
+  await hereBtn2.click();
+  await wait();
+  assert.equal(calls.filter(c => c.tool === "team.add").length, addsBefore2, "not created");
+  assert.deepEqual(calls.filter(c => c.tool === "threads.send").at(-1).input.text, "@ghost is anyone there", "the whole draft, not the stripped body - declining creation never silently edits what was typed");
+  assert.equal(calls.filter(c => c.tool === "threads.send").length, sendsBefore2 + 1);
+
+  // team.default off: no confirm, no create - straight to Setup, and nothing is sent anywhere.
+  teamWorld = { hasTeammate: false, defaultOn: false, adds: [] };
+  const teamAsksBefore = calls.filter(c => c.tool === "team.ask").length;
+  const sendsBefore3 = calls.filter(c => c.tool === "threads.send").length;
+  const addsBefore3 = calls.filter(c => c.tool === "team.add").length;
+  ta.value = "@legal check the filing deadline";
+  key("Enter");
+  await wait();
+  assert.match(text($(box12, ".composer-note")), /There's no legal teammate in this project\. Add one in Setup, or turn Teammates on for this project\./);
+  assert.equal(calls.filter(c => c.tool === "team.add").length, addsBefore3);
+  assert.equal(calls.filter(c => c.tool === "threads.send").length, sendsBefore3, "nothing sent");
+  assert.equal(calls.filter(c => c.tool === "team.ask").length, teamAsksBefore + 1, "still tried the ask itself - only creation is gated on team.default");
+  teamWorld = null;
 });

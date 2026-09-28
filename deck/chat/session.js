@@ -204,6 +204,7 @@ export function mountSession(container, opts) {
     session: S, patch: keys => { const sent = !!booted && keys.some(k => k.startsWith("u:")); patch(keys); if (sent) toBottom(); },
     cwd: () => record.current?.cwd || recorded.session?.cwd || null,
     name: () => agentName(),
+    project: () => record.current?.project || opts.project || null,
     onRewind: () => openRewind(),
     onTasks: () => tray.toggle(),
     onThinkingView: () => setHideThinking(!hideThinking),
