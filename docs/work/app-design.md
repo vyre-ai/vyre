@@ -520,3 +520,17 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   ring/chevron, which read as a spinner and a "next" button); worth seeing all four families
   together in real chat context before anyone commits, not just an isolated grid.
 - Design files only, no product code, no avatar.md changes yet (the round is still exploratory).
+
+## Now (28 Sep, round 4 fix: assistant avatar contrast on paper)
+
+- ui-ux found assistant-spark nearly invisible on paper (#F5F2EA), patched around it with a
+  caller-side box-shadow ring and flagged it as a source bug, not a mockup nitpick.
+- Checked properly rather than just fixing spark: computed real contrast ratios for all three
+  assistant options against the paper panel. All three's pale gradient stop measured ~1.0-1.1:1,
+  the same problem everywhere, ui-ux just happened to hit it on the one they picked. It's the
+  soft-gradient technique itself, not a single bad colour.
+  Fixed at the source in round4/identity.js: every assistant avatar now carries its own hairline
+  ink ring (stroke, 14% opacity) baked into the SVG, so it always has a defining edge regardless
+  of the ground, rather than deepening the gradients (which would have killed the soft/luminous
+  look) or leaving every caller to patch around it individually. Re-swept lime/violet clean,
+  re-exported all 3 assistant-*.svg to round4/svg/, told ui-ux to drop their workaround.
