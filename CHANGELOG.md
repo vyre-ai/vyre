@@ -7,7 +7,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### Vyre Drive step: the decided design, previewed honestly
 
 - deck/onboard/onboard.js's `drive` step is no longer a bare "Coming soon" line: it now shows the
-  decided plan (docs/design/drive-onboarding.md, federation) as an inert preview — a sample folder
+  decided plan (docs/design/drive-onboarding.md, federation) as an inert preview: a sample folder
   picker (Desktop, Documents, a project folder), "Files on demand" as the default with "Server
   only" as a disabled alternative, a note on per-folder agent access, and a disabled receive-files
   toggle. Nothing here is a working form yet (no onboard.* tool for any of it is allowlisted in

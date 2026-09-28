@@ -222,23 +222,27 @@ Resumed after the restart (28 Sep), reading RULES.md/HANDOFF.md fresh:
 - Merged `main` (docker-api hotfix 57dc12c3, safe-git gpg fix 4fd286d7) into work/launch;
   CHANGELOG.md's additive conflict resolved by keeping both sections (e5514e46).
 - Committed the memory-iq plan-share wording (no dollars) that was sitting dirty in
-  `deck/onboard/onboard.js`/`deck/fixtures/import.json` (5bd97360) — Fast/Gentle now read
+  `deck/onboard/onboard.js`/`deck/fixtures/import.json` (5bd97360): Fast/Gentle now read
   "uses more of your Claude plan" / "barely touches your plan", `import.json`'s `usd` field
   dropped.
   Confirmed the STEPS-array reconciliation noted above as still-open is actually done: the
   array now has 11 entries matching onboarding-v2.md's 10-step table exactly (two client
-  screens for step 2, `capsule` split out as step 10) — landed in an earlier commit
+  screens for step 2, `capsule` split out as step 10), landed in an earlier commit
   (8dc07268) before this restart, this doc just hadn't caught up.
 - Vyre Drive step (`drive`) rebuilt from the bare "Coming soon" line into an honest preview of
   federation's decided design (docs/design/drive-onboarding.md e69a544a): a sample folder
   picker, "Files on demand" default vs. a disabled "Server only" alternative, per-folder agent
   access noted, a disabled receive-files toggle, and the "watch it appear on your other device"
-  line named as the payoff once devices pair and phone/Capsule land (ac2407a1). Still inert —
-  no onboard.* tool for any of it is allowlisted in core/onboard/loopback.js yet.
-- CI: team-lead flagged onboard.test.js:265 (ts.net vs vyre.run reserve test) failing on the rc
-  build. That test is server-side (core/onboard/index.js, not launch's scope) and passes clean
-  locally (15/15) and on testbox (15 pass, 1 skipped, 0 fail) on this branch post-merge — asked
-  e2e for the actual rc-build failure output before assuming it's mine.
+  line named as the payoff once devices pair and phone/Capsule land (ac2407a1, later fixed for
+  reviewer-2's em-dash HOLD). Still inert: no onboard.* tool for any of it is allowlisted in
+  core/onboard/loopback.js yet.
+- rc.2 blocker (onboard.test.js:265, ts.net vs vyre.run): checked out work/integrator-rc into
+  ../vyre-launch-rc2fix as work/launch-rc2fix to look. Root cause was core/names/index.js's
+  hasToken() reading the mixed-case `CLOUDFLARE_vyre_token` instead of `CLOUDFLARE_VYRE_TOKEN`
+  (all caps, what the docs/example env/the test actually use), so a zone token was never read.
+  e2e had already found and fixed this on work/e2e-rcfix (a5eff01f), verified 120/120; dropped
+  work/launch-rc2fix rather than duplicate it with a second sha, per the lead. Not launch's bug
+  (core/onboard, core/names), and not the via() caching I first suspected.
 
 ## Next
 

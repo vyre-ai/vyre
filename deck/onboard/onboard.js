@@ -839,12 +839,12 @@ const SCREENS = {
   // receive-files switch, no quota (flagged, not decided, so never shown here). Federation's own
   // doc is candid about what that needs versus what exists: on-demand mounting is real
   // (files.drive.share/mount, ADR 0024's rename to "Vyre Drive"); the picker, per-folder access
-  // and files.receive as a UI toggle are not built (M/M/S) — no onboard.* tool for any of them
+  // and files.receive as a UI toggle are not built (M/M/S): no onboard.* tool for any of them
   // exists yet in core/onboard/loopback.js's allowlist, so this stays inert preview, not a working
   // form, exactly like the rest of this step group degrades. The "watch it appear on your other
   // device" celebration needs the phone app and a Capsule drop target (drive-onboarding.md item
   // 7), neither of which exist, so it's named here as the payoff to look forward to, once devices
-  // (this onboarding's own next step) are paired — not staged as a live demo.
+  // (this onboarding's own next step) are paired, not staged as a live demo.
   drive(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Vyre Drive."),
@@ -866,7 +866,7 @@ const SCREENS = {
       h("div", { class: "choice" }, h("label", null, h("input", { type: "checkbox", disabled: true }), h("span", { class: "t" }, h("b", null, "Let the server send files here"), h("span", null, "Off by default, per device."))))));
     col.append(h("div", { class: "need" },
       h("div", { class: "lbl" }, "Coming soon"),
-      "This is the plan, not a working form yet: the picker, per-folder access and the receive switch all need work that hasn't landed. Once your devices are paired, drop a file in and watch it show up wherever you look next — that moment needs this step's pieces plus your phone and Capsule, so it isn't real yet either. Skip for now, and share a folder from the CLI or the Deck in the meantime."));
+      "This is the plan, not a working form yet: the picker, per-folder access and the receive switch all need work that hasn't landed. Once your devices are paired, drop a file in and watch it show up wherever you look next: that moment needs this step's pieces plus your phone and Capsule, so it isn't real yet either. Skip for now, and share a folder from the CLI or the Deck in the meantime."));
     s.foot({ label: "Continue", run: s.next });
   },
 
