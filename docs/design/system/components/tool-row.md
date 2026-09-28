@@ -31,8 +31,9 @@ A flex row, gap 8, no border, no fill, `--text-2`:
    (`--text-2`), "9 s" or "moved to background" (`--label`), "you · 0.2 s" for a `!` line.
 
 **Folded run.** Consecutive calls fold: chev-r, "Read 6 files, searched 2 patterns", right meta the
-total time. Running: "Running npm run build · 0:42". A run of one stays a plain row. A plan and a
-todo list never fold.
+total time. Running: "Running npm run build · 0:42". A run of one stays a plain row. A plan, a
+todo list and a Handoff row (below) never fold, alone or into a run beside ordinary tool calls:
+each always renders as its own line, in the flow, never absorbed into a summary.
 
 **Expanded detail.** Opening a row shows, indented to the summary, a block on `--code-bg` with a
 1 px `--rule` top border: the full command and output (terminal type), or the diff (see diff), or
@@ -44,18 +45,22 @@ with "Show all".
 - **Plain** (one call), **folded run**, **running**, **failed**, **opened**.
 - **Shell line** you ran with `!`: verb "Shell", meta "you · 0.2 s", then one line under the block:
   "Ran in ~/work/harlow-legal. kit sees the output on its next turn."
-- **Handoff** (a session calling `team_ask` or `@role`, ADR 0031/teammates): the sub-agent icon
-  (already in the set above), verb "Asked" while it waits, "Replied" once it lands, summary is the
-  teammate's role name in `--text` (not mono, it's a name, not a path or command): "Asked design to
-  make the intake form calmer." Folded and collapsed by default, exactly like any other tool row;
-  opens to the reply. The one difference from every other row: the detail block is not code or a
-  diff, so it does not sit on `--code-bg` in mono. It renders as plain turn prose (turn.md's Prose
+- **Handoff** (a session calling `team_ask` or `@role`, ADR 0031/teammates): the teammate's own
+  avatar tile (avatar.md), never the generic sub-agent icon, since this row is naming a specific
+  teammate, not an anonymous sub-agent call. Summary line, left to right: verb "Asked" while it
+  waits, "Replied" once it lands, the teammate's role name in `--text` 600 (not mono, it's a name:
+  "design"), then a "Teammate" tag (chip.md, avatar.md's tile-is-never-bare rule), then the rest of
+  the line in `--text-2`: "Asked **design** `Teammate` to make the intake form calmer." Always its
+  own row (see Folded run, above: never absorbed into a run summary), always present in the flow;
+  "collapsed" here only ever means the reply detail is shut, the row itself is never hidden.
+  Opening it shows the reply. The one difference from every other row's detail: it's not code or a
+  diff, so it does not sit on `--code-bg` in mono, it renders as plain turn prose (turn.md's Prose
   spec, read size, `--text`), because a teammate's reply is words, not a tool's output. No colour
-  change to the row, the icon or the detail on account of which teammate answered: identity here is
-  the same author-line pattern (avatar tile plus name) any agent thread already uses, not a new
-  per-teammate hue (see avatar.md, "no colour per agent"). Right meta while waiting: nothing (no
-  elapsed timer; a teammate's own pace is its business, not a thing to watch tick up). Failed
-  (refused, timed out): crossed circle, meta "no answer", same as any other failed row.
+  change to the row, the tile or the detail on account of which teammate answered (avatar.md, "no
+  colour per agent"): distinct-without-colour is the tile, the name and the tag, together, every
+  time. Right meta while waiting: nothing (no elapsed timer; a teammate's own pace is its business,
+  not a thing to watch tick up). Failed (refused, timed out): crossed circle, meta "no answer",
+  same as any other failed row.
 
 ## Sizes
 

@@ -46,7 +46,25 @@ Design A: reads well on day one with three teammates, badly once a project has e
 next to the tile is already how kit and juno are told apart today; a teammate needs nothing more.
 Distinct-in-chat instead comes from the author line itself (turn.md) plus the handoff card
 (tool-row.md, "Handoff" variant): a session asking a teammate is its own visible row, named by the
-teammate's role, not a colour to memorize.
+teammate's role, not a colour to memorize. Made concrete (lead, 2026-09-28, distinct must still
+read without colour):
+
+- **The tile is never shown bare.** Wherever a teammate's tile appears (the handoff card, its row
+  in the Agents place, its thread header), the role name sits directly beside it in text, same
+  size and weight as any agent's name elsewhere (turn.md's author line, list-row.md's title): "design",
+  not an icon or initial standing alone that a person has to have memorized.
+- **A "Teammate" tag** (chip.md, a Tag: `--hover` fill, no border, 12/16 `--text-2`, no icon) sits
+  after the role name in exactly those three places: the handoff card's own line, the Agents place
+  row, and the top of the teammate's own thread pane (Now/Inbox/Results/Notes/Setup, ADR 0031
+  section 9). This is what separates "design, a persistent project teammate" from a one-off
+  sub-agent or the person's own assistant at a glance, in words, not a hue. It never appears twice
+  in the same row (the thread header shows it once at the top, not again per turn inside it).
+- **The handoff card is never hidden and never folds into a run.** Tool-row's "folded run" (a
+  sequence of ordinary tool calls collapsing into one summary line) never absorbs a Handoff row,
+  the same exemption tool-row.md already gives a plan or a todo list. It always renders as its own
+  line, collapsed (the reply detail closed) by default, exactly the "→ Asked design ..." shape
+  teammates.md proposed; "collapsed" only ever means the reply is folded shut, never that the row
+  itself is missing from the flow.
 
 **One narrow exception: the CLI.** `vyre team list` and `vyre team` output <!-- terms: ignore -->
 may colour a teammate's name with a role-hashed ANSI 256 colour, the way `git log --graph` colours
