@@ -150,7 +150,7 @@ export function mountComposer(opts) {
   let draftTimer = /** @type {any} */ (null);
   /** Write (or clear) the draft now; cancels a pending debounced one. */
   function flushDraft() { clearTimeout(draftTimer); draftTimer = null; const v = ta.value; if (v) setDraft(thread, v); else clearDraft(thread); }
-  const scheduleDraftSave = () => { clearTimeout(draftTimer); draftTimer = setTimeout(flushDraft, 200); };
+  const scheduleDraftSave = () => { clearTimeout(draftTimer); draftTimer = setTimeout(flushDraft, 200); draftTimer.unref?.(); };
 
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
     rows: 1, placeholder: "Message this session", "aria-label": "Message", enterkeyhint: "send",
@@ -469,12 +469,12 @@ export function mountComposer(opts) {
     voicePill.hidden = false;
     put(voicePill, h("span", { class: "composer-voice-dot" }), "Listening " + voiceElapsedText());
   }
-  function startVoiceElapsed() { voiceStartedAt = Date.now(); clearInterval(voiceElapsedTimer); voiceElapsedTimer = setInterval(drawVoicePill, 1000); }
+  function startVoiceElapsed() { voiceStartedAt = Date.now(); clearInterval(voiceElapsedTimer); voiceElapsedTimer = setInterval(drawVoicePill, 1000); voiceElapsedTimer.unref?.(); }
   function stopVoiceElapsed() { clearInterval(voiceElapsedTimer); voiceElapsedTimer = null; }
   function resetSilenceTimers() {
     clearTimeout(voiceSilenceWarn); clearTimeout(voiceSilenceStop);
-    voiceSilenceWarn = setTimeout(() => say("Still listening? Tap to stop."), VOICE_SILENCE_WARN_MS);
-    voiceSilenceStop = setTimeout(() => stopTalk(), VOICE_SILENCE_STOP_MS);
+    voiceSilenceWarn = setTimeout(() => say("Still listening? Tap to stop."), VOICE_SILENCE_WARN_MS); voiceSilenceWarn.unref?.();
+    voiceSilenceStop = setTimeout(() => stopTalk(), VOICE_SILENCE_STOP_MS); voiceSilenceStop.unref?.();
   }
   function clearSilenceTimers() { clearTimeout(voiceSilenceWarn); clearTimeout(voiceSilenceStop); voiceSilenceWarn = voiceSilenceStop = null; }
 
@@ -575,7 +575,7 @@ export function mountComposer(opts) {
     if (voicePressWasOpen) return; // already open: wait for the release to stop it (tap-to-stop)
     voiceHeld = false;
     clearTimeout(voicePressTimer);
-    voicePressTimer = setTimeout(() => { voiceHeld = true; micBtn.classList.add("held"); }, VOICE_HOLD_MS);
+    voicePressTimer = setTimeout(() => { voiceHeld = true; micBtn.classList.add("held"); }, VOICE_HOLD_MS); voicePressTimer.unref?.();
     openVoice();
   }
   function voicePressEnd() {
@@ -602,7 +602,7 @@ export function mountComposer(opts) {
   function scheduleHint() {
     clearTimeout(hintTimer);
     if (!wantHint()) { hideHints(); return; }
-    hintTimer = setTimeout(runHint, HINT_DEBOUNCE_MS);
+    hintTimer = setTimeout(runHint, HINT_DEBOUNCE_MS); hintTimer.unref?.();
   }
   /** Whether the box is in a state worth asking recall.related about at all. */
   function wantHint() {
