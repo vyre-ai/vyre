@@ -138,3 +138,26 @@ and `:empty` is `visibility: hidden` instead of `display: none` — the box is a
 invisible until it has words. Re-run confirms CLS 0 (0 shift entries, was 1 at 0.0088), no
 regression on 8/9/10, and deck/chat's 86/86 tests still green. sha: chat.css only, on
 native-core-composer (native-core).
+
+Budget 9's harness fixed the same day: chat's read (session-state.js's steer marker inserts a
+sibling above the user row when Enter steers a running turn - by design, and never mutates the
+turn-foot's own node) pointed at a real harness bug. The old check read
+`previousElementSibling.textContent` by position each frame, so any sibling landing there -
+steer marker or not - read as "the row above changed". Fixed: track the anchor (the row that was
+above the user row the moment it first painted) by node reference, and only count it as a
+re-order when that SAME node's own text changes; a new sibling arriving beside it isn't one.
+Along the way the harness also tracked the user row itself by reference and flagged it "swapped"
+on almost every frame (237 of 241) even though the matched text was always right - the window-view
+recycles row DOM nodes on its per-frame remeasure (budget 6's own open finding), so node identity
+on the user's own, already-content-matched row churns constantly and means nothing; dropped that
+check, kept the content match (already proves the right words are on screen). Re-run: budget 9
+passes (14.6 ms, 0 re-orders); 5/8/10 unchanged. sha: deck/test/native-bar/run.js only.
+
+Budget 8, re-run on pwa's be3f5554 (a fast reachability probe in follow()/down(): while a backoff
+wait is pending it polls paths[0] + /v1/health every 150 ms and cancels the wait the moment it
+answers, capped at 5 s): catch-up time is now 55-90 ms, down from 1,335-1,679 ms - the 1 s timing
+budget is comfortably clear. What's left is the jump: 108-134 px while the reader is scrolled up,
+same family as budget 5's now-fixed shift and the still-open chat TODO ("5 and 8: the scroll
+position jumps to the bottom when tool rows arrive while the reader is scrolled up; `following`
+races `grew()`/`toBottom()` (session.js) and the window anchor (window-view.js). Fix: detach only
+on user intent."). Not re-attempted here - it's session.js/window-view.js, chat's.
