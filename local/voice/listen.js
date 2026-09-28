@@ -38,8 +38,13 @@ export function listener({ vault, config, log }) {
 
   /** The upgrade handler: vyred calls it with the raw socket and the caller it established. */
   const handle = (req, socket, head, info = {}) => {
+    // The mic is the person's, physically: "cli agent:kit" is a model running under a CLI
+    // wrapper, not the person, whatever kindOf() would otherwise call it (reviewer, 28 Sep --
+    // LOW, pre-existing kindOf() strips the agent: part instead of refusing it; fixed here since
+    // the stream is exactly where it matters, no one talks into a mic on an agent's behalf).
+    const agentCaller = /[\s:]agent:/.test(String(info.caller || ""));
     const kind = kindOf(info.caller);
-    if (info.peer || !LOCAL.includes(kind)) {
+    if (info.peer || agentCaller || !LOCAL.includes(kind)) {
       refuse(socket, 403, "Forbidden", { error: { code: "denied", message: "voice listens only for this Mac's own Capsule, not for a peer" } });
       return;
     }
