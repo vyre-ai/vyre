@@ -92,83 +92,89 @@ this round; verification leans on windows-latest CI.
     silently accepted as fixed.
 
 ## Doing
-- windows-socket-acl's first real run (36356508140, 2026-09-27) failed: the folder's ACL was
-  exactly right (owner SID + SYSTEM, full control, inheritance stripped — confirmed by the
-  diagnostic icacls dump) but `listen()` still threw `EACCES` on the very first attempt. Root
-  cause: Windows implements a bound socket file as a reparse point, and a fresh one can be held
-  briefly by AV/indexing right after creation, surfacing as a transient EACCES/EPERM, not a real
-  permission refusal — this is a timing bug, not an ACL bug. Pushed 723f7b07: `bindSocket()`
-  (core/daemon/index.js) retries up to 10x with linear 150ms*i backoff on win32 only, only for
-  EACCES/EPERM; every other platform/error still throws on attempt 1, so the second-user refusal
-  is untouched. Also switched `ensureWindowsSocketDir`'s grant to the live token's SID
-  (`currentUserPrincipal`, via `whoami /user`) instead of the account name, and added `whoami
-  /user` + a plain-file-create probe to the workflow's diagnostic step for the next round if
-  needed. 20 local tests green (core/config/config.test.js, core/daemon/bindsocket.test.js) +
-  test/boundaries.test.js and test/docs-*.test.js (66) all green. Pushed 723f7b07, run 36368506105
-  came back still failing, but at a `ParserError`, not the runtime EACCES: the diagnostic probe I
-  pushed alongside the retry had its own bug (`"in $dir: ok"` parses in PowerShell as the scoped
-  variable `$dir:`, not "the value of `$dir` then a colon"), so the whole PowerShell step failed
-  to parse and `vyred` never even started. Fixed in b7f37f5c (`${dir}:`, delimited). Run
-  36369204175 in flight, watching it now; the retry fix itself is still unproven against a real
-  transient EACCES until this run comes back clean.
-- Also wrote docs/design/windows-plan.md sections 8 (Windows Solo build plan, ADR 0039's
-  config.machine seam filled in for win32: one-command install, a Windows Service + keep-awake
-  twin of anywhere.md's Mac server-setup flow, Deck-in-browser already covered by Tier A) and 9
-  (Tier C Capsule build plan, against app-design's capsule-windows.md spec, d044f0e1: Tauri
-  confirmed, hotkey/tray/toast/Windows Hello/sign-and-pin, capsule-win.yml on windows-latest),
-  per the lead's 2026-09-28 "Vyre anywhere" pace instruction. Pushed 87bcd02d. Messaged capsule-pro
-  to confirm the tools/events contract before wiring the Rust side, and app-design to confirm the
-  spec's received and the hotkey question is closed per the lead's call.
-- Run 36369204175 (parser bug fixed) came back **still failing**, not transient: the
-  MaxListenersExceededWarning ("11 listening listeners") confirms bindSocket's retry ran all 10
-  attempts, same EACCES every time. And the new plain-file-create probe **succeeded** in the exact
-  same folder the socket bind failed in, so the ACL was never the problem, icacls's grant was
-  always correct. Pushed fa13b1d8 (diagnostics only): `whoami /priv` (does this token actually
-  hold `SeCreateSymbolicLinkPrivilege`, since a bound AF_UNIX socket is an NTFS reparse point) and
-  a from-scratch bind attempt in a brand-new directory with zero icacls calls, to isolate whether
-  socket binding works on this runner image at all. Run 36369527141 in flight, watching it.
-- **Correction from the lead** on Windows Solo (docs/design/windows-plan.md section 8, updated):
-  no Windows Service, a Service runs as SYSTEM/a service account, which breaks both the one-person
-  trust model and the socket ACL (granted to the person's own SID). Use a per-user Task Scheduler
-  logon task via built-in `schtasks` instead, no `node-windows` dependency, no spike needed. Doc
-  updated, not yet committed with this note (will land together).
-- **Correction from the lead** on the Capsule: start scaffolding `local/capsule-win` and
-  `capsule-win.yml` now rather than waiting on capsule-pro's contract reply, since the shell hosts
-  Deck's web views and doesn't need it yet.
-- **Correction from the lead** on tests: "local tests" must mean testbox or Windows CI, never the
-  Mac. I ran `node --test` directly on this Mac for the earlier config/daemon/docs suites; that
-  was wrong per RULES.md's own testing section. Re-running verification on testbox from now on.
-- Asked e2e for a quick read of the role-default change (win32 now defaults to a device), per the
-  lead. Waiting on that before sending cac517d4 onward.
-- Sending cac517d4 (+ follow-ups) to the integrator for the first 0.1.1 batch, after rc.2, per the
-  lead.
-- Will send the reviewer the sha once the windows-socket-acl job is green (not yet, waiting on
-  36368506105).
+- **The socket ACL work (0817eaef, 8cd4722d) was solved for the wrong problem, and is now
+  superseded.** windows-socket-acl's first real run failed EACCES with the ACL exactly right
+  (confirmed by icacls dumps). Chased retries (723f7b07, wrong: not transient) before a proper
+  diagnostic round proved it: a from-scratch folder with zero icacls calls failed identically, a
+  plain file created fine in the same folder the socket bind couldn't, and `whoami /priv` showed
+  `SeCreateSymbolicLinkPrivilege` Disabled - a bound socket file is an NTFS reparse point, and
+  needs that privilege, which most Windows accounts don't hold. **Real fix (b5cfdf5f)**:
+  `socketPath`'s `win32` branch is now a literal named pipe (`\\.\pipe\vyre-<hash>`), which needs
+  no privilege and no folder. `ensureWindowsSocketDir`/`currentUserPrincipal`/the icacls-checking
+  script are all gone. Two CI-only bugs found and fixed along the way: a PowerShell parser error
+  in a diagnostic string (b7f37f5c), and windows-latest tearing down a step's background process
+  at a step boundary, which had nothing to do with the pipe itself (fd0e4dff: merged start/
+  connect/refuse into one step). A third, `net user`'s 14-character legacy-password-length warning
+  hanging headlessly (491eb1e2). All fixed and confirmed: the socket binds, the owner connects.
+- **The pipe is not ready to ship as-is.** The lead's follow-up (after the ACL fix looked done)
+  surfaced three real gaps a filesystem socket never had, reviewer answered all three and the
+  rules are now binding (docs/design/windows-plan.md section 7a, 491eb1e2): a hard CI gate on the
+  second-user-refused test, a three-part squatting fix (random per-home token, `vyred` must win
+  the pipe's first instance and refuse rather than fall back on conflict, a client-side owner-SID
+  check), and a standalone helper exe for the peer check (never "unknown peer" -> "allow"). Plus a
+  bigger one: process ancestry is spoofable on Windows (`PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`),
+  so `PERSON_ONLY` there has to rest on presence, not ancestry - the lead's final call is Windows
+  Hello, then the UAC consent prompt (secure desktop, unspoofable by a model), then phone approve,
+  no password (phishable/keyloggable). And ADR 0040's same-uid vault problem needs its own Windows
+  service-account split, not inherited from the Mac fix. **None of this is built yet.**
+  `socketPath` itself does not change again until the squatting fix (random name + refuse-on-
+  conflict) lands as one piece. Windows now ships 0.1.2 or later, not 0.1.1, per the lead.
+- Capsule (Tier C) scaffold started, per the lead's instruction to begin before capsule-pro's
+  contract reply: `local/capsule/native-win/src/hotkey.rs` (fdd392a6), the Alt+Space-default /
+  Ctrl+Alt+Space-fallback decision and the exact focused-panel-vs-system-menu logic app-design
+  flagged, host-independent, 9 unit tests, green on `capsule-win.yml`'s first run. Corrected my
+  own windows-plan.md module-shape assumption after reading the real Mac Capsule module:
+  `local/capsule` is already the one cross-platform module; the shape is a `native-win` sibling to
+  `native` (Swift), not a separate `local/capsule-win` that would collide with its tool names.
+  capsule-pro confirmed the tools/events contract is the same, no Mac-only server-side surface,
+  and flagged two genuinely Mac-specific pieces (`capsule.report`'s hotkey-permission shape,
+  Touch ID presence) that need Windows equivalents, not a straight port - tracked in section 7a
+  alongside the socket work's own presence gap, one `core/presence` conversation covers both.
+- Attribution: per the lead's relayed user rule, no `Co-Authored-By`/`Claude-Session` trailers from
+  fd0e4dff onward. Not amending earlier commits on this branch.
 
 ## Next
-- Watch the first real `windows-socket-acl` run once pushed; the icacls output parsing, the
-  `net user` elevation, and the PSCredential-based `Start-Process` are all first-draft, unverified
-  PowerShell/CI mechanics -- expect at least one iteration.
-- Fix whatever `test-windows` (the broader suite) surfaces once it runs on main.
-- Once both windows jobs are reliably green, drop `test-windows`'s `continue-on-error` and
-  consider folding node/os into one matrix if the two jobs' step lists converge.
+- Reviewer's binding rules (section 7a): build the squatting fix (random token + first-instance +
+  refuse-on-conflict) as one piece before touching `socketPath` again, then the standalone helper
+  exe for the peer check, then take the `winhello` presence method + ADR 0040's Windows
+  service-account split to whoever owns `core/presence` (one conversation, not piecemeal).
+- Once the squatting fix lands, re-run the second-user-refused CI check as the hard gate reviewer
+  requires, not just "present and green because nothing's tested yet."
+- Windows Solo (section 8): `schtasks` needs a CI proof (create the task, assert the "run whether
+  logged on or not" flag and the restart-on-failure action via `schtasks /query`) before the ADR
+  update commits to the exact flag set.
+- Capsule: once capsule-pro's contract reply and the presence conversation both land, wire
+  `local/capsule/index.js`'s `native()` to `win32`, scaffold the actual Tauri app (tray, WebView2
+  panel), Windows Hello spike, Authenticode sign/pin (reuse e2e's cdhash pin-storage shape, not a
+  second one).
 - Tier B: a real hands-on WSL2 pass is still owed; docs/using/windows.md says so.
-- Tier C/D (0.2): prototype Tauri vs WinUI 3 for the Capsule shell before committing further.
+- Tier C/D shell choice (Tauri vs WinUI 3) is now decided (Tauri, confirmed by the lead) - this
+  line in an earlier version of this doc is stale.
 
 ## Needs from others
-- e2e: a read of the role-default change (core/config/index.js, win32 -> local) before it ships.
-- integrator: land cac517d4 (and the follow-up commits) in the first 0.1.1 batch, after rc.2.
-- ci: the workflow slot for windows-socket-acl (asked, per the lead).
-- reviewer: will send the sha once the CI job's first run is back, as asked.
+- reviewer: sent the named-pipe design (5936e65f); answered, rules are binding (491eb1e2), no
+  open question back to them right now.
+- core/presence's owner: one conversation covering the `winhello` presence method, the peer-check
+  helper exe's trust story, and ADR 0040's Windows service-account split. Not yet sent; next.
+- e2e: a read of the role-default change (core/config/index.js, win32 -> local) before it ships;
+  and the cdhash pin-storage shape once Capsule sign/pin work starts. Still open.
+- integrator: land the windows batch in 0.1.2 (not 0.1.1, per the lead's timeline correction) once
+  section 7a's items are actually built, not just designed.
 
 ## Changed contracts
 - docs/work/README.md: claimed ADR 0037 (windows).
-- .github/workflows/node.yml: added `test-windows` and `windows-socket-acl` jobs (ci owns this
-  file; coordinated by message both times).
+- .github/workflows/node.yml: `test-windows` and `windows-socket-acl` jobs (ci owns this file;
+  coordinated by message each time). `windows-socket-acl` no longer sets or checks any ACL; it
+  starts a real vyred, connects as the owner, and proves a second local user is refused, all in
+  one step.
+- .github/workflows/capsule-win.yml: new, builds/tests `local/capsule/native-win` on
+  `windows-latest`.
 - scripts/lib/docs/check.js: added `windows` to OWNERS.
 - core/cli/kit.js: new export `openInBrowser`; core/cli/commands/{up,box,connect,vault}.js now
   call it instead of their own `open`/`xdg-open` spawns. Signature now takes `platform` and
   `spawn` overrides too, for `core/cli/kit.test.js`.
 - core/config/index.js: `defaults()` role guess now also treats `win32` as a device (`local`);
-  `socketPath` takes an optional `platform` override; new exports `ensureWindowsSocketDir`.
-- core/daemon/index.js: skips `fs.chmodSync` on `win32`.
+  `socketPath`'s `win32` branch returns a named pipe name, not a filesystem path (no `platform`-
+  aware ACL helpers left - `ensureWindowsSocketDir`/`currentUserPrincipal` are gone).
+- core/daemon/index.js: skips `fs.chmodSync` on `win32` (a named pipe has no file to chmod).
+- local/capsule/native-win/: new, `hotkey.rs` + tests, not yet wired into `local/capsule/index.js`.
