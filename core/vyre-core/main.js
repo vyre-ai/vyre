@@ -2,7 +2,7 @@
 // vyre-core's entry, run by launchd as _vyre on a Mac (ADR 0040; the installer is phase 4).
 //
 //   node main.js serve   start the daemon
-//   node main.js code    print a one-time code that enrolls the first key (the installer runs this)
+//   node main.js code [--typed]  print a one-time code that enrolls the first key (the installer runs this)
 //
 // Settings come from the environment launchd gives it, never from the person's files:
 //   VYRE_CORE_SOCKET  the socket (default /var/run/vyre/vyre-core.sock; /var/run/vyre is root-made, _vyre's, 0755)
@@ -13,7 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { startCore, openStore, INSTALL_CODE } from "./server.js";
+import { startCore, openStore, INSTALL_CODE, TYPED_CODE } from "./server.js";
 import { strictProblems } from "./strict.js";
 
 // Nothing from the environment but these four, and a PATH core sets itself: a VYRE_* override
@@ -41,7 +41,8 @@ if (strict) {
 const cmd = process.argv[2] || "serve";
 if (cmd === "code") {
   const { db, presence } = openStore(dataDir, { log });
-  const { code, expires } = presence.mintCode(INSTALL_CODE);
+  // `code` for the fd handoff to the Capsule (2 minutes), `code --typed` for the fallback (10).
+  const { code, expires } = presence.mintCode(process.argv[3] === "--typed" ? TYPED_CODE : INSTALL_CODE);
   db.close();
   process.stdout.write(`${code} ${expires}\n`);
 } else if (cmd === "serve") {

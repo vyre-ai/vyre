@@ -35,8 +35,10 @@ export const CORE_METHODS = new Set(["capsule", "device", "passkey", "code", "se
 const SESSION_OPENERS = new Set(["capsule", "device", "passkey"]);
 const MAX_BODY = 256 * 1024;
 const CODE_MISSES = 5;
-/** The installer's one-time code: typed or handed to the Capsule once, so short and short-lived. */
+/** The installer's one-time code, handed to the Capsule over an inherited fd: 2 minutes. */
 export const INSTALL_CODE = { ttl: 2 * 60_000, length: 6 };
+/** The same, when the handoff failed and the person types it into the Capsule: 10 minutes. */
+export const TYPED_CODE = { ttl: 10 * 60_000, length: 6 };
 
 /**
  * core's default verdict on a peer pid: the person's own surface, as vyred's socket judges it
@@ -82,6 +84,7 @@ export async function startCore(o) {
   const log = o.log || (() => {});
   const credOf = o.peerCred || readPeerCred;
   const judge = o.personOf || personOf;
+  const codeFrom = o.codeFrom || (async () => process.platform !== "darwin");
   const { db, presence } = openStore(o.dataDir, { log, now: o.now, webauthn: o.webauthn });
 
   /** @type {WeakMap<object, Promise<{ pid: number, uid: number } | null>>} */
@@ -98,16 +101,39 @@ export async function startCore(o) {
     const proof = parse(header);
     if (!proof) return { ok: false, code: "presence_required", message: `${tool} needs a proof vyre-core can check`, methods: [...CORE_METHODS] };
     if (!CORE_METHODS.has(proof.method)) return { ok: false, code: "presence_required", message: `vyre-core doesn't take a ${proof.method} proof`, methods: [...CORE_METHODS] };
+    // A code proves nothing here: it is redeemed only by the first enroll (redeem, below).
+    if (proof.method === "code") return { ok: false, code: "presence_required", message: "a code only enrolls the first key", methods: [...CORE_METHODS] };
     const r = await presence.verify({ tool, input, caller: "core", proof });
-    // The installer's code is short (6 characters, 2 minutes): five wrong ones void every open
-    // code, so nobody on the owner's uid can guess one in time.
-    if (!r.ok && proof.method === "code" && ++codeMisses >= CODE_MISSES) {
-      db.prepare("DELETE FROM presence_codes WHERE used IS NULL").run();
-      codeMisses = 0;
-      log("vyre-core: five wrong enrollment codes; every open code is void");
-    }
-    if (r.ok && proof.method === "code") codeMisses = 0;
     return r.ok ? { ok: true, method: r.method, keyId: r.keyId ?? null } : { ok: false, code: r.code, message: r.message, methods: [...CORE_METHODS] };
+  };
+
+  const miss = () => {
+    if (++codeMisses < CODE_MISSES) return;
+    db.prepare("DELETE FROM presence_codes WHERE used IS NULL").run();
+    codeMisses = 0;
+    log("vyre-core: five wrong enrollment codes; every open code is void");
+  };
+  /**
+   * The first key, from the installer's code (ADR 0040, 1c). The first key is the whole root, so:
+   * only while core has no key at all, only a Capsule key, only from the Capsule core signed, and
+   * the code is spent in the same transaction as the enroll, so two racing calls can't both win
+   * and a failed enroll doesn't burn it.
+   */
+  const redeem = async (input, code, pid) => {
+    const no = message => ({ error: { code: "presence_required", message, methods: [...CORE_METHODS] } });
+    if (presence.keys().length) return no("vyre-core already has a key: enroll with a proof from it, not a code");
+    if (input.kind !== "capsule") return no("the installer's code enrolls the Capsule's key and nothing else");
+    if (!(await codeFrom(pid))) return no("only the Capsule vyre-core signed can use the installer's code");
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      if (presence.keys().length) { db.exec("ROLLBACK"); return no("vyre-core already has a key: enroll with a proof from it, not a code"); }
+      if (!presence.useCode(code)) { db.exec("ROLLBACK"); miss(); return no("that code is wrong, used or expired"); }
+      const k = presence.enroll(input);
+      db.exec("COMMIT");
+      codeMisses = 0;
+      log(`vyre-core: the first key (${k.kind} ${k.id}) enrolled with the installer's code by pid ${pid}`);
+      return { data: k };
+    } catch (e) { try { db.exec("ROLLBACK"); } catch {} throw e; }
   };
 
   const READ = {
@@ -118,6 +144,9 @@ export async function startCore(o) {
       return r;
     },
     "presence.verify": async input => {
+      // A code is redeemed only by the enroll it was made for, never checked (and spent) here.
+      const parsed = parse(input.proof);
+      if (parsed && parsed.method === "code") return { ok: false, code: "presence_required", message: "a code is only redeemed by presence.enroll" };
       const r = await prove(String(input.tool || ""), input.input ?? {}, input.proof);
       return r.ok ? r : { ok: false, code: r.code, message: r.message };
     },
@@ -168,7 +197,13 @@ export async function startCore(o) {
       const input = await body(req);
       if (READ[tool]) return send(res, 200, { data: await READ[tool](input) });
       if (!WRITE[tool]) return send(res, 404, { error: { code: "unknown_tool", message: `vyre-core has no tool ${tool}` } });
-      const proved = await prove(tool, input, req.headers["x-vyre-presence"]);
+      const header = req.headers["x-vyre-presence"];
+      const asked = parse(header);
+      if (tool === "presence.enroll" && asked && asked.method === "code") {
+        const r = await redeem(input, asked.code, c.pid);
+        return r.error ? send(res, 401, { error: r.error }) : send(res, 200, { data: r.data });
+      }
+      const proved = await prove(tool, input, header);
       if (!proved.ok) return send(res, 401, { error: { code: proved.code, message: proved.message, methods: proved.methods } });
       log(`vyre-core: ${tool} by pid ${c.pid}, proved by ${proved.method}`);
       return send(res, 200, { data: await WRITE[tool](input, proved) });

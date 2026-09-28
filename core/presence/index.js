@@ -730,9 +730,7 @@ export class Presence {
         const owner = String((this.network() || {}).owner || "").toLowerCase();
         if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
       }
-      const r = this.db.prepare("UPDATE presence_codes SET used = ? WHERE hash = ? AND used IS NULL AND expires > ?")
-        .run(this.now(), sha(normal(proof.code)).toString("hex"), this.now());
-      if (Number(r.changes) !== 1) return refuse("that code is wrong, used or expired");
+      if (!this.useCode(proof.code)) return refuse("that code is wrong, used or expired");
       return proved();
     }
 
@@ -773,6 +771,17 @@ export class Presence {
     this.db.prepare("DELETE FROM presence_codes WHERE expires < ?").run(now - 24 * 3600_000);
     this.db.prepare("INSERT INTO presence_codes (hash, expires, used) VALUES (?,?,NULL)").run(sha(code).toString("hex"), expires);
     return { code, expires };
+  }
+
+  /**
+   * Spend a one-time code: true once for a right, unused, unexpired code, false otherwise.
+   * Synchronous, so a caller can spend it and enroll in one transaction (vyre-core does).
+   * @param {unknown} code
+   */
+  useCode(code) {
+    const r = this.db.prepare("UPDATE presence_codes SET used = ? WHERE hash = ? AND used IS NULL AND expires > ?")
+      .run(this.now(), sha(normal(code)).toString("hex"), this.now());
+    return Number(r.changes) === 1;
   }
 
   /** Enrolled keys, never their public keys: a list is for recognising and removing them. */
