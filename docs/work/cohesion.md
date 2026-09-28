@@ -287,3 +287,12 @@ independently off the same resume-9 prompt) -- it landed 48d70ed1 (harness onto 
 concurrently with my own work; no data lost, but from here on: `git log --oneline -3` before every
 commit, and no editing another team's own worktree even to test-and-revert (team-lead's
 correction) -- use my own tree or a `git archive` export instead.
+
+## reviewer-2 signed off 64b55255
+
+One non-blocking DRY nit: statusWord(t) recomputes threadStatus() from raw fields instead of
+reading threads.get/list's precomputed canonical_status. Checked before applying it: canonical_
+status isn't in this tree yet (6e2f8a71's switchboard change is still on sessions' own branch;
+only the standalone lib got cherry-picked in at 48d70ed1). Deferred on purpose -- swap
+statusWord(t) to `t.canonical_status` once that switchboard sha reaches this branch, same small-
+sha style. Not done yet.
