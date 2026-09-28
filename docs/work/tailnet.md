@@ -86,6 +86,17 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, later still: built `onboard.join` as `core/join` (the lead: "stop waiting, build it").
+join.status/join.tailscale/join.relay/join.verify, box role, all thin forwards through ctx.call
+to onboard/relay/link's own tested tools (see "Changed contracts"). Works today for pairing a
+second device to a box, and for a moved installation pointing back at its server. Does NOT yet
+cover the lead's other example, a phone joining a Solo Mac: role "local" has neither onboard nor
+relay loaded (both `roles: ["box"]`), so there is nothing for `join` to forward to there. That is
+not mine to fix alone — flagged below. Sent af604cf8 to reviewer. Answered launch: Solo needs
+nothing from this module (confirmed), names.discover is unaffected by anything here (it scans
+peers and hits the already-shipped GET /v1/whoami itself, a client-side tool still to build, not
+a change to /v1/whoami).
+
 28 Sep 2026, later: new top priority from the user's "Vyre anywhere" decision (see
 team/HANDOFF.md) — Tailscale is not needed for Solo; it comes in only when a second device or a
 server joins. My part: the "join" flow (guide Tailscale setup or offer the relay alternative,
@@ -338,6 +349,14 @@ only read-only checks on the test box.
 
 ## Needs from others
 
+- relay and anywhere/launch (the lead's "phone joins a Solo Mac" case): relay's module.json is
+  `roles: ["box"]`; onboard's is too. Neither loads on a Solo Mac (`role: "local"`). `join` can
+  forward to them the moment either grows a "local" role, but I don't own either module, and
+  onboard's other tools (you/claude/name/history/skip/finish/passkey/link) were built for a
+  box-owner's first-run wizard, so widening its roles list is a decision for whoever owns that
+  wizard's semantics on a Mac, not something I want to do unilaterally to someone else's module.
+- launch: names.discover (peer scan + GET /v1/whoami, already shipped a20e5eb6) is still to build,
+  on the client side that does the scanning; not blocked on anything of mine.
 - chat (via the lead): merge work/tailnet (owner-only streams) and work/federation-transcript
   6731af9 (rich Mac transcripts; then boot a Mac session from `recall.transcript { source: "mac" }`
   in deck/chat/session.js).
@@ -534,6 +553,8 @@ restart vyred, and check with `vyre call vault.grants.status`. `7301` is `vault.
 
 Listed by the area they touch, so the merge can go in order. Everything below is off by default.
 
+- **join** (own, new module, box role): tools `join.status`, `join.tailscale`, `join.relay`,
+  `join.verify`. Forwards only; reads nothing of its own, writes nothing.
 - **link** (own): tool `link.health`; `link.status` box gains `stableId`; `link.peers` rows gain
   `stable_id`; `parseWhois`/`capValues` in `core/link/transport.js` (whois carries `tags`, `caps`);
   link pairing refuses `tailnet-guest:*` and `tailnet:agent:*`.
