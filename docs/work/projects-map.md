@@ -2,7 +2,7 @@
 
 `core/store`'s `migrate()` numbers steps by array index in `core/projects/projects.js`'s
 `MIGRATIONS` export. Two teams touch this file (projects, federation), so the slot each step
-took is tracked here rather than only in commit messages — appending a step anywhere but this
+took is tracked here rather than only in commit messages: appending a step anywhere but this
 array (as federation's 63af8941 first did, in `core/projects/index.js`) silently collides with
 whatever the other team adds next, and the later CREATE then fails with "table exists".
 

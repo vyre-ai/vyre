@@ -831,3 +831,31 @@ survive it.
 
 - The move engine itself (move.plan/start/status/confirm/cancel), per the contract above: not
   started this round, time went to the two HOLDs and the dev/ino follow-up instead.
+
+## core/mcp/hub.js: whoFrom()'s backwards person check, cohesion's audit (28 Sep 2026)
+
+513f984d. cohesion's caller-check audit (core/ and local/, no edits made on their side) found
+whoFrom() stripped "agent:kit" off "cli:agent:kit" before checking PEOPLE, reading it as person
+AND agent at once; inScope() trusts who.person to skip every per-agent scope check, so this let
+such a caller reach every connected MCP server, not just its own scope. Fixed: the agent claim is
+checked first, person refuses immediately if one exists. Not a real ownership question (git log
+shows no recent federation touch on hub.js) but team-lead and cohesion both routed it here, and it
+is a live privilege-escalation bug, so fixed rather than passed back.
+
+Could not take lib/caller.js (cohesion's fix path, work/cohesion 87149563) as a real dependency:
+it imports agentClaim from core/modules and PERSON_SURFACES from core/presence, and neither is
+merged into work/federation's tree (main at this branch's base, a3a844e4, predates both; agentClaim
+itself is still unmerged into main too, per e2e-agentclaim's branch history). Wrote the equivalent
+fix locally instead, with a note in the code and this doc for whoever swaps it onto lib/caller.js
+once this branch takes a main merge that carries it.
+
+Tests, testbox nice -n 15, load under 3: 43/43 across core/mcp, hygiene, boundaries.
+
+## docs/design/projects-map.md: not on this branch (team-lead's docs-check report)
+
+Checked: docs/design/projects-map.md does not exist on work/federation. It is sessions' own doc
+(28408df8, d65353a8; front matter owner: sessions), on a branch not merged here. The file I do have at that similar name, docs/work/projects-map.md (the MIGRATIONS slot map), is
+not itself subject to docs-check's nav/front-matter rules (docs/work/ is in nav.json's own
+unpublished list), but it did carry one em dash (RULES bans them repo-wide, not just where
+docs-check enforces it); fixed that in passing. Flagged the real docs/design/projects-map.md back
+to team-lead rather than guessing at a file this branch cannot see.
