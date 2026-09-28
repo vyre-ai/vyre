@@ -105,6 +105,11 @@ case folded into the existing hostile-name prompt test), boundaries+hygiene 8/8,
 docs-index 37/37 (the description change moved docs/reference/tools.md; regenerated with
 npm run docs:ref and the committed-index test still passes). Sent to the reviewer.
 
+28 Sep 2026, right after: reviewer SIGNED OFF 7f9bc201, one nit — promptSafe's stripped set was
+missing two separator characters that are neither a C0/C1 control nor in the zero-width/bidi
+blocks: the Arabic letter mark (U+061C) and the Mongolian vowel separator (U+180E). Added both
+(86e491ba), extended the hostile-host test to cover them. Testbox: relay.test.js 18/18. Idle.
+
 28 Sep 2026, latest of all: reviewer signed off ad8f560c/98ddb0a8/0a77983c/6cd9c02d (relay.join,
 in full). Reviewed anywhere's onboard guard (work/anywhere 6300ecaf) properly, found a real bug of
 my own while doing it: onboard.machine's shipped input is `{machine}`, no "action" field, but their
