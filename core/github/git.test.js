@@ -133,6 +133,17 @@ test("worktreeRemove: the user's binding rule - never auto-delete. An uncommitte
   assert.equal(r3.dirty.length, 0, "the worktree itself is clean; it's the commit that's at risk");
   assert.ok(r3.commits.length === 1 && r3.commits[0].includes("wip"));
   assert.equal(gitSync(repoDir, ["rev-parse", "--verify", "--quiet", "vyre/unmerged1"]).ok, true, "the branch survives untouched");
+
+  // An IGNORED file (a .env, build output, a local dataset): plain `git status --porcelain`
+  // skips these entirely, and a plain `git worktree remove` deletes them without complaint - the
+  // reviewer's MEDIUM on 58d0dd87. Nothing here is committed or tracked at all.
+  const w4 = await worktreeAdd({ repoDir, session: "ignored1", defaultBranch: "main" });
+  fs.writeFileSync(path.join(w4.path, ".gitignore"), "secrets.env\n");
+  fs.writeFileSync(path.join(w4.path, "secrets.env"), "API_KEY=do-not-lose-me\n");
+  const r4 = await worktreeRemove({ repoDir, session: "ignored1", defaultBranch: "main" });
+  assert.equal(r4.removed, false);
+  assert.ok(r4.dirty.some(l => l.includes("secrets.env")), "the ignored file is counted as at-risk");
+  assert.ok(fs.existsSync(path.join(w4.path, "secrets.env")), "the ignored file survives - nothing was removed");
 });
 
 test("worktreeRemove: a commit already merged into the default branch, or already on a remote, is safe and gets cleaned up", async t => {

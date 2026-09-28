@@ -84,15 +84,27 @@ export async function worktreeAdd({ repoDir, session, defaultBranch }) {
 }
 
 /**
- * Whether a session's worktree is safe to remove with no loss: no uncommitted changes, no
- * untracked files, and no commit that isn't already on the default branch or some remote (the
- * user's binding rule: no auto-delete, ever, of anything that would actually be lost).
+ * Whether a session's worktree is safe to remove with no loss: no uncommitted change, no
+ * untracked OR ignored file (a plain `git status --porcelain` skips ignored files, but a `.env`,
+ * build output, a downloaded dataset or a local database in a session's worktree is exactly what
+ * matters — the reviewer's MEDIUM on 58d0dd87), and no commit that isn't already on the default
+ * branch or some remote (the user's binding rule: no auto-delete, ever, of anything that would
+ * actually be lost).
  * @param {{ repoDir: string, dest: string, branch: string, defaultBranch: string }} p
  */
 async function worktreeSafety({ repoDir, dest, branch, defaultBranch }) {
-  const status = await gitAsync(dest, ["status", "--porcelain"]);
+  const status = await gitAsync(dest, ["status", "--porcelain", "--ignored"]);
   const dirty = status.ok ? status.stdout.split("\n").map(l => l.trim()).filter(Boolean) : ["(could not read the worktree's status)"];
-  const rev = await gitAsync(repoDir, ["rev-list", branch, "--not", defaultBranch, "--remotes", "--pretty=oneline", "--abbrev-commit"]);
+  // refs/heads/<name>: safeSegment already rules out a leading dash on the session branch, and
+  // this is the belt-and-braces form regardless — a revision argument that cannot be read as an
+  // option however it was produced (also covers defaultBranch, which comes from GitHub's API,
+  // not safeSegment). `--end-of-options` was tried here too and reverted: once given, git treats
+  // every later argument as non-option, including `--not` and `--remotes` themselves, so it
+  // broke the very flags this call needs — the refs/heads/ prefix alone already makes the value
+  // unable to start with `-`, which is the actual protection; there is nothing left for
+  // --end-of-options to add once nothing here can be misread as an option in the first place.
+  const rev = await gitAsync(repoDir, ["rev-list", `refs/heads/${branch}`, "--not", `refs/heads/${defaultBranch}`,
+    "--remotes", "--pretty=oneline", "--abbrev-commit"]);
   const commits = rev.ok ? rev.stdout.split("\n").filter(Boolean) : ["(could not check which commits are only on this branch)"];
   return { dirty, commits, safe: dirty.length === 0 && commits.length === 0 };
 }
@@ -118,6 +130,9 @@ export async function worktreeRemove({ repoDir, session, defaultBranch }) {
   if (!safety.safe) return { removed: false, needsConfirm: true, path: dest, branch, dirty: safety.dirty, commits: safety.commits };
   const rm = await gitAsync(repoDir, ["worktree", "remove", dest]);
   if (!rm.ok) throw fail(`git worktree remove failed even though nothing would be lost: ${rm.stderr.trim().slice(0, 300) || "no output"}`, "cleanup_failed");
+  // `git branch -d` takes the short branch name, not a full ref (refs/heads/<branch> is not
+  // found under that spelling) - safeSegment already rules out a leading dash here, which is the
+  // actual protection this call needs.
   const del = await gitAsync(repoDir, ["branch", "-d", branch]);
   return { removed: true, pruned: del.ok };
 }
