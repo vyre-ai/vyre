@@ -247,10 +247,12 @@ Resumed after the restart (28 Sep), reading RULES.md/HANDOFF.md fresh:
 ## Next
 
 - Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
-- Start building the step-shell's new pieces (per-step celebration, the final summary) once more
-  steps exist to celebrate; premature to scaffold against only 5 of 9 steps today.
+- Started on the step-shell's final summary: showEnding()'s "What's next" ticks gained a fourth
+  row for the Agent computers choice (9d4103f0). No longer premature now that 11 of 11 steps
+  exist; still owed: a per-step celebration (none exists at all yet, just a bare transition), and
+  deciding whether secrets/accounts/drive deserve a "not built yet" note somewhere in the ending
+  summary once they're skipped, rather than silently vanishing from it.
 - Coordinate with tailnet once it replies about steps 1-2 and install-box.sh.
-- Follow up on the onboard.test.js:265 CI failure once e2e replies with the actual error.
 - Once vault/federation send real tool shapes for secrets/drive, replace the inert previews with
   working forms.
 
