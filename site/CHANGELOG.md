@@ -5,6 +5,21 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
+### New headline and social image, and the Mac-only setup is no longer "coming" (2026-09-28)
+
+- Hero H1/lead, `<title>`, meta description, og/twitter title+description now read "Claude Code,
+  running on your own machine." / "Agents that keep working when you close the laptop. Your
+  memory, your keys, your server." (the user's approved copy, also used on the new og.png).
+  `site/og.png` replaced with the approved 1280x640 image; `og:image:width/height/alt` updated to
+  match.
+- `vyre up --box` (Vyre on just this Mac, no server) ships today per
+  `docs/get-started/install.md`'s "Other ways to install", so the Mac install tab (hero and
+  closing), the FAQ "Do I need a server?", and `/start`'s intro + "What's coming" list no longer
+  say a Mac-only setup is coming — they say how to run one.
+- Did not add "pair your phone by scanning your avatar (Wink) at phone.vyre.run": not shipped yet
+  (`docs/work/launch-surfaces.md` on the unmerged work/launch branch marks the ticket tool "not
+  started"). Today's flow is still the QR code in onboarding.
+
 ### The Capsule demo and the page's panels work (2026-09-28)
 
 - `app.js` was never updated when the hero markup was rebuilt, so live vyre.run had a dead demo

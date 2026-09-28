@@ -130,16 +130,35 @@ site, served from a `git archive` export. Local only, not committed: landing, /s
 
 ## Doing
 
-Standing by. Deployed: the lead published vyre.run from 03c57cda (deploy 06c5df23, installer from
-main) on 2026-09-28. vyre.run, /start and /install.sh return 200.
+Standing by. Deployed: site-copy published vyre.run from caa157f7 (deploy 170fab6b) on 2026-09-28.
+vyre.run, /start and /install.sh return 200. Merged main into work/site-copy first (a6713e84, 186
+commits; only CHANGELOG.md/docs/index.json/docs/reference/index.md conflicted, resolved by keeping
+both changelog sections and regenerating the doc index via `npm run docs:ref`).
+
+New hero H1 "Claude Code, running on your own machine." and lead "Agents that keep working when
+you close the laptop. Your memory, your keys, your server. ..." (the user's approved copy for the
+GitHub social image), carried into title/meta description/og+twitter title+description. Replaced
+site/og.png with the approved 1280x640 image; og:image:width/height/alt updated to match.
+
+Also did the "Vyre anywhere" partial rewrite this doc's old Next section called for, now that
+`vyre up --box` (Mac, no server) ships per docs/get-started/install.md's "Other ways to install":
+Mac tab (hero + closing, both said "A Mac-only setup is coming"), the FAQ "Do I need a server?",
+and /start's intro + "What's coming" list all rewritten to say it's here, not coming. Left "What it
+needs" alone — it correctly describes the recommended (server) path, doesn't claim Mac-only is
+unavailable.
+
+Did NOT add the brief's "pair your phone by scanning your avatar (Wink) at phone.vyre.run":
+checked docs/work/launch-surfaces.md on work/launch (unmerged) and it's explicitly "Not started:
+no relay.pair.ticket tool exists yet" there. Today's real flow (docs/using/first-hour.md) is a QR
+code in onboarding; the page doesn't contradict that, so left it as-is. Flagged to team-lead in
+case they want it held for Wink instead.
 
 ## Next
 
-When "Vyre anywhere" ships (Solo, a Mac as the server), rewrite the hero headline and subhead, the
-install tabs (both groups), "What it needs", the FAQ "Do I need a server?", and /start's
-requirements and "What's coming". Today's copy says a Linux server is required and Mac-only is
-coming, in: the Mac tab, the FAQ, /start's intro and its "A Mac-only setup" item. Use the same
-rules: stop-slop, facts from docs only, and check in Chrome after.
+- If team-lead wants the Wink/phone.vyre.run pairing copy anyway (once it ships), update the hero
+  hint line and the Deck/phone section's "Only devices on your Tailscale network can open it."
+- Screenshots from this pass are local-server only (localhost:8934), not committed; re-run the
+  usual CDP check on testbox against the live site if a fuller record is wanted.
 
 ## Needs from others
 
