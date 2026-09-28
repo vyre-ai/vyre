@@ -91,23 +91,29 @@ if (!TOKEN) {
 // fences a client that HAS an agentName). TOKEN still authenticates /fs and POST /shield: those
 // are the computer's own control routes, called by vyred itself, never by an agent's own client,
 // in either mode.
-function readAgentTokens() {
-  const raw = (() => {
-    const file = process.env.AGENT_TOKENS_FILE;
-    if (file) {
-      // ENOENT is the ordinary case here, not an error: entrypoint.sh may pass this path
-      // unconditionally (the way it does not for COMPUTERD_TOKEN_FILE, which is mandatory) and
-      // most computers -- every desktop-kind one today -- simply have no such file. Anything
-      // else (denied, a directory, ...) is worth the same warning readToken()'s own file read
-      // gives, since it is not the ordinary "this computer is not shared" case.
-      try { return fs.readFileSync(file, "ascii"); }
-      catch (e) {
-        if (/** @type {any} */ (e).code !== "ENOENT") console.error(`computerd: could not read ${file}: ${/** @type {any} */ (e).code || e}`);
-        return "";
-      }
+/** @returns {{ raw: string, found: boolean }} found: the file (or, tests only, the raw env) was
+ *  actually there -- ENOENT is the ordinary case, not an error, but still "not found". */
+function readAgentTokensRaw() {
+  const file = process.env.AGENT_TOKENS_FILE;
+  if (file) {
+    // ENOENT is the ordinary case here, not an error: entrypoint.sh may pass this path
+    // unconditionally (the way it does not for COMPUTERD_TOKEN_FILE, which is mandatory) and
+    // most computers -- every desktop-kind one today -- simply have no such file. Anything
+    // else (denied, a directory, ...) is worth the same warning readToken()'s own file read
+    // gives, since it is not the ordinary "this computer is not shared" case.
+    try { return { raw: fs.readFileSync(file, "ascii"), found: true }; }
+    catch (e) {
+      if (/** @type {any} */ (e).code !== "ENOENT") console.error(`computerd: could not read ${file}: ${/** @type {any} */ (e).code || e}`);
+      return { raw: "", found: false };
     }
-    return process.env.AGENT_TOKENS || "";
-  })();
+  }
+  const env = process.env.AGENT_TOKENS || "";
+  return { raw: env, found: env.length > 0 };
+}
+
+/** @returns {Map<string, string>} token -> agentName, parsed from readAgentTokensRaw()'s raw text */
+function readAgentTokens() {
+  const { raw } = readAgentTokensRaw();
   /** @type {Map<string, string>} token -> agentName */
   const byToken = new Map();
   const seenNames = new Set();
@@ -124,11 +130,21 @@ function readAgentTokens() {
   }
   return byToken;
 }
-/** @type {Map<string, string>} */
-const AGENT_TOKENS = readAgentTokens();
+// Whether this is a shared/browser-kind computer at all -- decided once, at start, from whether
+// AGENT_TOKENS_FILE actually existed (readAgentTokensRaw().found), and never revisited after.
+// Deliberately NOT "the env var was set at all": entrypoint.sh passes AGENT_TOKENS_FILE
+// unconditionally to every computer (chrome-pipes-fix era, 28 Sep) precisely so a desktop-kind
+// one with no such file stays in legacy mode -- ENOENT there must mean "not shared", not "shared,
+// zero agents". And deliberately NOT "AGENT_TOKENS.size > 0" either: a shared computer that has
+// just had its last agent revoked still has zero agents in the map for a while, and must not fall
+// back to trusting the bare owner token as an unscoped agent identity just because the map is
+// briefly empty -- that would undo the very thing revocation is for. A file that existed but was
+// empty at start (0 agents from the first boot of a browser-kind computer, before anyone's added)
+// still counts as shared: it exists, so this computer is one, whatever its content says today.
+const AGENT_MODE = readAgentTokensRaw().found;
+/** @type {Map<string, string>} reassigned whole by reloadAgentTokens(), below. */
+let AGENT_TOKENS = readAgentTokens();
 delete process.env.AGENT_TOKENS;
-/** Whether this computer answers more than one agent (AGENT_TOKENS_FILE was non-empty). */
-const SHARED = AGENT_TOKENS.size > 0;
 
 /**
  * Who a bearer/query token identifies for CDP purposes: an agent (with the name computerd itself
@@ -138,7 +154,7 @@ const SHARED = AGENT_TOKENS.size > 0;
  * @returns {{ kind: "agent", agentName: string } | { kind: "fill" } | null}
  */
 function identifyClient(token) {
-  if (SHARED) {
+  if (AGENT_MODE) {
     for (const [tok, name] of AGENT_TOKENS) if (sameToken(token, tok)) return { kind: "agent", agentName: name };
     if (fillToken && sameToken(token, fillToken)) return { kind: "fill" };
     return null;
@@ -146,6 +162,28 @@ function identifyClient(token) {
   if (sameToken(token, TOKEN)) return { kind: "agent", agentName: /** @type {any} */ (null) };
   if (fillToken && sameToken(token, fillToken)) return { kind: "fill" };
   return null;
+}
+
+/**
+ * Revocation (the reviewer's gate item 3, 28 Sep): re-reads AGENT_TOKENS_FILE and, for every name
+ * that is no longer in it (removed outright, or now maps to a different token than any live
+ * client authenticated with), closes that agent's own live CDP clients too -- reloading the map
+ * alone would only stop a NEW connection; an already-open WebSocket does not re-authenticate.
+ * Only meaningful in AGENT_MODE; called from POST /agents/reload (owner-token only).
+ * @returns {{ agents: number, revoked: string[] }}
+ */
+function reloadAgentTokens() {
+  const before = new Map(AGENT_TOKENS); // token -> name, as it was before this reload
+  AGENT_TOKENS = readAgentTokens();
+  /** @type {string[]} */
+  const revoked = [];
+  // Per OLD (token, name) pair, not per name alone: a name re-added with a DIFFERENT token
+  // (rotation, not just removal) must still cut the old live session -- it authenticated with a
+  // credential that is no longer valid, even though its name still exists in the new map.
+  for (const [oldToken, name] of before) {
+    if (AGENT_TOKENS.get(oldToken) !== name) { mux.closeAgent(name); revoked.push(name); }
+  }
+  return { agents: AGENT_TOKENS.size, revoked };
 }
 
 const ATSPI = new URL("./atspi.py", import.meta.url).pathname;
@@ -619,6 +657,12 @@ const server = createServer(async (req, res) => {
         mux.closeKind("fill");
       }
       return send(200, { shielded, frozen });
+    }
+    // Revocation (reviewer gate item 3, 28 Sep): the computer's own owner token only -- the same
+    // control-plane class as /shield and /fs, never an agent's own. Re-reads AGENT_TOKENS_FILE and
+    // closes the live CDP clients of any agent that is no longer in it (removed or rotated).
+    if (req.method === "POST" && pathname === "/agents/reload") {
+      return send(200, reloadAgentTokens());
     }
     if (shielded && SHIELDED_ROUTES.has(`${req.method} ${pathname}`)) return send(423, { error: { code: "shielded", message: "a person is signing in on this computer" } });
 

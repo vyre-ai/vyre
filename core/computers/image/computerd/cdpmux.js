@@ -615,6 +615,21 @@ export class CdpMux {
     return n;
   }
 
+  /**
+   * Drop every "agent" client with this agentName, detaching its sessions -- revocation
+   * (index.js's own /agents/reload): an agent taken off a shared computer must lose its live CDP
+   * connections too, not just fail to open a new one. Its browser context (contextStore) is left
+   * alone on purpose: if the same name is ever re-added, its cookies and logins pick back up
+   * rather than starting over, the same way a stopped and restarted computer's profile does today.
+   * @param {string} agentName @returns {number} how many were dropped
+   */
+  closeAgent(agentName) {
+    let n = 0;
+    for (const c of [...this.clients]) if (c.kind === "agent" && c.agentName === agentName) { n++; this._drop(c); }
+    if (n) this.log(`cdp: closed ${n} client(s) for a revoked agent`);
+    return n;
+  }
+
   /** Drop every client. */
   closeAll() {
     for (const c of [...this.clients]) this._drop(c);

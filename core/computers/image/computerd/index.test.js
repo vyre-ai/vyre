@@ -314,6 +314,63 @@ test("computerd: two agents sharing one computer each get their own CDP identity
   assert.equal(cross.error && cross.error.code, -32000, "alice could close bob's target");
 });
 
+test("computerd: POST /agents/reload revokes a removed agent's live CDP clients, leaves the others untouched, and is owner-token only (reviewer gate item 3, 28 Sep)", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-revoke-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const tokensFile = path.join(dir, "agent-tokens");
+  fs.writeFileSync(tokensFile, `alice=${ALICE}\nbob=${BOB}\n`);
+  const c = await computerd(t, { AGENT_TOKENS_FILE: tokensFile });
+  const wsUrlFor = async token => {
+    const { json } = await req(c.base, "GET", "/cdp/json/version", { token });
+    return `${c.base}${new URL(json.webSocketDebuggerUrl).pathname}?token=${token}`;
+  };
+  const alice = await ws(await wsUrlFor(ALICE));
+  const bob = await ws(await wsUrlFor(BOB));
+  assert.ok((await bob.call("Test.echo", { n: 1 })).result, "bob's own connection is not live before revocation");
+
+  // Not the computer's own owner token: refused, and nothing changes.
+  assert.equal((await req(c.base, "POST", "/agents/reload", { token: ALICE })).status, 401, "an agent's own token could reload");
+  assert.equal(bob.closed, false, "bob was dropped by a call that was itself refused");
+
+  // Bob is taken off the computer: rewrite the file without him, then reload as the owner.
+  fs.writeFileSync(tokensFile, `alice=${ALICE}\n`);
+  const r = await req(c.base, "POST", "/agents/reload", { token: TOKEN });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.json, { agents: 1, revoked: ["bob"] });
+  await bob.closedP;
+  assert.equal(bob.closed, true, "bob's own live WebSocket was not closed by revocation");
+  // Alice is untouched: her own connection, made before the reload, still answers.
+  assert.ok((await alice.call("Test.echo", { n: 2 })).result, "alice was dropped even though she was not revoked");
+  // Neither can open a NEW session with bob's now-revoked token; alice's own still works.
+  const { json: stillAlice } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
+  const wsPath = new URL(stillAlice.webSocketDebuggerUrl).pathname;
+  assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${BOB}`), 401, "bob's revoked token could still open a new session");
+  assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${ALICE}`), 101, "alice, never revoked, could not open a new session");
+});
+
+test("computerd: reloading a rotated (not just removed) agent's token also cuts the old live session", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-rotate-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const tokensFile = path.join(dir, "agent-tokens");
+  fs.writeFileSync(tokensFile, `alice=${ALICE}\n`);
+  const c = await computerd(t, { AGENT_TOKENS_FILE: tokensFile });
+  const { json } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
+  const wsPath = new URL(json.webSocketDebuggerUrl).pathname;
+  const alice = await ws(`${c.base}${wsPath}?token=${ALICE}`);
+  assert.ok((await alice.call("Test.echo")).result);
+
+  const rotated = "a".repeat(40); // a fresh token for the same name
+  fs.writeFileSync(tokensFile, `alice=${rotated}\n`);
+  const r = await req(c.base, "POST", "/agents/reload", { token: TOKEN });
+  assert.deepEqual(r.json, { agents: 1, revoked: ["alice"] }, "a rotation is not a no-op just because the name survived");
+  await alice.closedP;
+  assert.equal(alice.closed, true, "the old session, on the now-rotated-away token, was not closed");
+
+  const alice2 = await ws(`${c.base}${wsPath}?token=${rotated}`);
+  assert.ok((await alice2.call("Test.echo")).result, "the new token could not open a session after rotation");
+  assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${ALICE}`), 401, "the old token still worked after rotation");
+});
+
 test("computerd: in shared mode the bare owner token is refused as a CDP identity, on the upgrade and on /cdp/json/version, though it still opens POST /shield", async t => {
   const c = await computerd(t, { AGENT_TOKENS: `alice=${ALICE}` });
   const { json } = await req(c.base, "GET", "/cdp/json/version", { token: ALICE });
