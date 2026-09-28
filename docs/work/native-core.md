@@ -125,6 +125,13 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## Resume 2026-09-28 (cont'd 5): reviewer-2 SIGNED OFF a6436f9e/5b602dd0/4711a784/6138a420
+Full review of 4711a784 confirmed correct: goal-mode's Enter-intercept ordering (null on the
+bootstrap Enter, truthy after, no double-dispatch), "later" correctly absent from commands.test.js's
+locking list (no `.local`, same as "vyre" - only local commands force-append), the empty-box
+Cmd+Enter-finishes edge case. Reran on testbox at 6138a420: 35/35, matches my numbers exactly.
+Only f2dcad85 (voice) is still open, pending capsule-pro's landed voice.listen ticket code.
+
 ## Resume 2026-09-28 (cont'd 4): push-to-talk voice built (f2dcad85)
 - Blocked briefly on how a browser WS authenticates as caller "deck" (local/voice/listen.js reads
   x-vyre-caller from the upgrade request's headers, which a browser WebSocket cannot set - only
