@@ -104,11 +104,15 @@ export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive 
     shown = true;
     put(body, ringEl, h("p", { class: "small muted" }, SCAN_LINE), meta);
     put(meta, h("span", { class: "busy" }));
+    // Reviewer's LOW: blank before the mint's own Touch ID/passkey prompt, not only after it
+    // resolves, so a re-attached ringEl (Add another device, right after showConnected) or any
+    // other stale content never shows for as long as the prompt is up.
+    blank();
     await mint();
     if (alive()) tick();
   };
   startBtn.addEventListener("click", start);
-  refreshBtn.addEventListener("click", async () => { put(meta, h("span", { class: "busy" })); await mint(); if (alive()) tick(); });
+  refreshBtn.addEventListener("click", async () => { put(meta, h("span", { class: "busy" })); blank(); await mint(); if (alive()) tick(); });
 
   // Reviewer's #2: hidden/blurred blanks the ring at once, not on the next 1s tick.
   const onVisChange = () => { if (shown) tick(); };
@@ -126,11 +130,12 @@ export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive 
   const showConnected = (/** @type {string} */ deviceId, /** @type {string} */ initialName, /** @type {string|null} */ fingerprint) => {
     shown = false;
     ticket = ""; // redeemed: gone from memory, not just off-screen
-    // Reviewer's MEDIUM: ringEl itself is reused (not recreated) by the next start(), still
-    // holding this just-redeemed ring's content. Without this, "Add another device" re-attaches
-    // ringEl showing the OLD, spent ring until the countdown's own next expiry, since ringDrawn
-    // being (wrongly) still true also skips the fresh draw mint() now forces above.
-    ringDrawn = false;
+    // Reviewer's LOW on the MEDIUM fix: ringDrawn=false alone left ringEl itself still holding
+    // the just-redeemed ring's markup (only the NEXT drawRing() call would replace it), so
+    // ringEl showed the spent ring the moment it was re-attached, for as long as the following
+    // mint()'s Touch ID/passkey prompt was up. blank() replaces the SVG node outright, matching
+    // "blank on use", not only "blank on the next draw".
+    blank();
     const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", value: initialName, "aria-label": "Device name" }));
     let saved = initialName;
     const save = async () => {
