@@ -20,7 +20,7 @@ import { Registry, discover, ownerDevice } from "../modules/index.js";
 import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
-import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, fingerprint, parse as parsePresence } from "../presence/index.js";
+import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence } from "../presence/index.js";
 import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, canReadPeers } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
@@ -472,7 +472,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const def = registry.tools.get(name);
     // link.call carries another tool to the box: what it carries is what counts.
     const inner = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
-    const personal = PERSON_ONLY.has(name) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"])
+    const personal = personOnly(name, def) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"])
       || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));
     if (socket && personal && (shell.model || !MODEL_LABEL.test(caller))) {
