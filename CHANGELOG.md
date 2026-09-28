@@ -806,6 +806,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   fake "agents"/"projects" modules), always installed now, not only when a test names an
   `agents:` fixture, since access.js's reach() asks projects.reach even to decide who the OWNER
   is.
+#### projects: github's own door (module:github) on projects.create/add-workspace
+
+- `github.project` (core/github, ADR 0041) clones a repo, then creates or attaches to a project
+  the same way sync's `attachMapped` already does, rather than writing `projects_projects`
+  directly. `MAPPING_ALLOWED` (renamed from `SYNC_ALLOWED`, same shape) now also admits
+  `module:github`; every other module is still refused. Test mirrors the existing sync one.
 
 #### projects: fix a HIGH regression 13e7b0e8 introduced (reviewer's third pass)
 

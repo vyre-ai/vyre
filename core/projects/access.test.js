@@ -325,3 +325,22 @@ test("projects.add-workspace: a module caller is refused unless it is sync's own
   fs.mkdirSync(other, { recursive: true });
   assert.ok(!(await w.call("projects.add-workspace", { project: "harlow-legal", folder: other }, { caller: "cli" })).error);
 });
+
+test("projects.create/add-workspace: github's own door (module:github) is allowed the same way sync's is (github team's ask, ADR 0041)", async t => {
+  const w = await started(t);
+  const created = await w.call("projects.create",
+    { name: "Northwind", home: path.join(w.root, "alex", "Work", "northwind") }, { caller: "module:github" });
+  assert.equal(created.slug, "northwind");
+  const another = path.join(w.root, "alex", "Work", "northwind-docs");
+  fs.mkdirSync(another, { recursive: true });
+  const attached = await w.call("projects.add-workspace", { project: "northwind", folder: another }, { caller: "module:github" });
+  assert.equal(attached.added, "../northwind-docs");
+  // Still not a door for any other module: adding one caller never widens it to "module" broadly.
+  for (const [tool, input] of [
+    ["projects.create", { name: "Bad", home: path.join(w.root, "alex", "Work", "bad") }],
+    ["projects.add-workspace", { project: "northwind", folder: another }],
+  ]) {
+    const r = await w.call(tool, input, { caller: "module:evil-plugin" }).catch(e => e);
+    assert.equal(r.code, "denied", tool);
+  }
+});

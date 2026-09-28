@@ -3112,7 +3112,7 @@ Pick threads (Claude Code session ids) into a project. A thread can be in severa
 
 ### `projects.add-workspace`
 
-Attach an existing folder to an existing project as one of its workspaces (Vyre Drive step 4): the folder starts counting as the project's own, the same as one listed at projects.create time. For confirming sync.consent's proposed folder-to-project mapping, or attaching any other folder by hand. Person-only, instant, no presence: a placement decision, same weight as a pick. Refuses a project that does not exist; a folder that resolves to the project's own home is a no-op (added: null), not an error. callers is the person's own surfaces plus sync's own door (module:sync), the same named exception as projects.create; every other module is refused.
+Attach an existing folder to an existing project as one of its workspaces (Vyre Drive step 4): the folder starts counting as the project's own, the same as one listed at projects.create time. For confirming sync.consent's proposed folder-to-project mapping, or attaching any other folder by hand. Person-only, instant, no presence: a placement decision, same weight as a pick. Refuses a project that does not exist; a folder that resolves to the project's own home is a no-op (added: null), not an error. callers is the person's own surfaces plus sync's and github's own doors (module:sync, module:github), the same named exception as projects.create; every other module is refused.
 
 - Input:
   - `folder` string, required
@@ -3142,7 +3142,7 @@ The brief for a thread starting in a project, as plain text for Claude: what the
 
 ### `projects.create`
 
-Make a project by hand: a name, a home folder (default: a new folder in the projects folder), other folders it owns, the threads picked into it, and its people. Every projects: "*" agent (never the assistant, whose "*" is a different rule) is granted projects.access on it at once too, option (a) (the lead's decision, so agents.projects and projects.access never drift apart): a wildcard agent reads a brand-new project the moment it exists, with no separate step. callers is the person's own surfaces plus sync's own door (module:sync), for its consent flow's proposed folder-to-project mapping; every other module is refused.
+Make a project by hand: a name, a home folder (default: a new folder in the projects folder), other folders it owns, the threads picked into it, and its people. Every projects: "*" agent (never the assistant, whose "*" is a different rule) is granted projects.access on it at once too, option (a) (the lead's decision, so agents.projects and projects.access never drift apart): a wildcard agent reads a brand-new project the moment it exists, with no separate step. callers is the person's own surfaces plus sync's and github's own doors (module:sync, module:github), for their own proposed folder-to-project mappings; every other module is refused.
 
 - Input:
   - `name` string, required
