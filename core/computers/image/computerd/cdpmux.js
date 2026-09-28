@@ -49,22 +49,31 @@
 // all dormant until it does -- see the reviewer's H1/H2/M1/M2 fixes below, closed before wiring,
 // and the wiring note at the very end of this comment.
 //
-// Any call a context-scoped agent client sends that names a browserContextId is fenced, not just
-// Target.createTarget: injected when the client left it out (createTarget only -- every other
-// method either has no legitimate reason to default to this agent's context, or applies mux-wide
-// by CDP's own default), refused (never silently rewritten) when the client named a DIFFERENT one
-// -- the same "refuse a wrong claim loudly" shape as everything else below. This alone closes
-// Storage.setCookies/clearCookies, Browser.grantPermissions/resetPermissions and
-// Browser.setDownloadBehavior/Page.setDownloadBehavior naming another agent's context (reviewer
-// H1, 28 Sep), and is not an enumerated list of methods, so a future CDP call that takes
-// browserContextId is covered for free. Target.getBrowserContexts is refused outright (REFUSED,
-// below): it lists every agent's context id in one answer, which no client ever needs.
+// Any call a context-scoped agent client sends that names a browserContextId DIFFERENT from its
+// own is refused outright, never silently rewritten (reviewer H1, 28 Sep) -- the same "refuse a
+// wrong claim loudly" shape as everything else below, and not an enumerated list of methods, so a
+// future CDP call that takes browserContextId is covered for free. Target.getBrowserContexts is
+// refused outright too (REFUSED, below): it lists every agent's context id in one answer, which
+// no client ever needs.
+//
+// Leaving browserContextId out is NOT neutral (reviewer M3, 28 Sep, closing a gap H1's own first
+// cut left open): Chrome's own default for a call that takes one is the browser's DEFAULT
+// context, exactly where a fill client's private sign-in and any unscoped client actually live --
+// so a scoped client omitting it on Storage.setCookies/clearCookies, Browser.grantPermissions/
+// setPermission/resetPermissions or Browser.setDownloadBehavior would reach INTO that context
+// rather than being fenced out of it. OPTIONAL_CONTEXT_METHODS is where the mux fills in the
+// client's own context instead of letting Chrome default it (Target.createTarget did this from
+// the start; M3 added the rest); every other Browser.*/Storage.* call with no browserContextId is
+// refused unless it is in CONTEXT_READONLY_METHODS (touches nothing context-specific, e.g.
+// Browser.getVersion) -- assumed unsafe, never assumed to apply mux-wide just because this file
+// has not vetted what it does with no context.
 //
 // A handful of calls name a TARGET, not a context, with no browserContextId param to check
-// (TARGET_ID_METHODS: attachToTarget, closeTarget, activateTarget, getTargetInfo) -- a scoped
-// client's own targetId on one of these is checked against targetContext instead (reviewer H2, 28
-// Sep): an id targetContext has never learned is refused, not assumed safe, the same
-// allowlist-not-denylist shape the rest of this file uses.
+// (TARGET_ID_METHODS: attachToTarget, closeTarget, activateTarget, getTargetInfo,
+// autoAttachRelated -- the last one added for M4, 28 Sep: an enumerated list is only as good as
+// the enumeration) -- a scoped client's own targetId on one of these is checked against
+// targetContext instead (reviewer H2, 28 Sep): an id targetContext has never learned is refused,
+// not assumed safe, the same allowlist-not-denylist shape the rest of this file uses.
 //
 // Target.setDiscoverTargets and auto-attach are native per session (above) but not per context:
 // Chrome fans a browser session's Target.targetCreated/attachedToTarget/targetInfoChanged/
@@ -73,12 +82,14 @@
 // events for a context-scoped agent client down to its own context, dropping the rest the same
 // way an event on a session nobody owns is dropped. The drop is on EQUALITY to the client's own
 // context, not on a known mismatch (reviewer M1, 28 Sep: an event whose target had no
-// browserContextId at all used to fall through undropped -- fail-open). setAutoAttach with
-// waitForDebuggerOnStart is refused outright for a scoped client (reviewer M2, 28 Sep): Chrome's
-// auto-attach fans out the same way discovery does, so turning it on would pause another agent's
-// brand-new target and never resume it (this client's own copy of that target's attachedToTarget
-// is the one thing that would normally resume it, and that event is exactly what gets dropped
-// above) -- a real DoS on the other agent, not just an information leak. Target.getTargets is
+// browserContextId at all used to fall through undropped -- fail-open). waitForDebuggerOnStart is
+// refused outright for a scoped client on ANY method that carries it, not just
+// Target.setAutoAttach (reviewer M2, then M4, 28 Sep, closing the same enumeration gap
+// Target.autoAttachRelated exposed above): Chrome's auto-attach fans out the same way discovery
+// does, so turning it on would pause another agent's brand-new target and never resume it (this
+// client's own copy of that target's attachedToTarget is the one thing that would normally resume
+// it, and that event is exactly what gets dropped above) -- a real DoS on the other agent, not
+// just an information leak. Target.getTargets is
 // fenced the same way as the four events, on its way back (_response): a client asking directly,
 // rather than waiting on discovery events, must not see another agent's targetInfos either.
 // Target.targetDestroyed carries no browserContextId at all in real CDP, and neither does a
@@ -221,7 +232,33 @@ const TARGET_CONTEXT_EVENTS = new Set([
  */
 const TARGET_ID_METHODS = new Set([
   "Target.attachToTarget", "Target.closeTarget", "Target.activateTarget", "Target.getTargetInfo",
+  // M4 (reviewer, 28 Sep): an enumerated list is only as good as the enumeration --
+  // Target.autoAttachRelated names ANOTHER target (not the caller's own session) to auto-attach
+  // its related targets to, the same shape as attachToTarget, and was missed the first time.
+  "Target.autoAttachRelated",
 ]);
+
+/**
+ * Calls whose browserContextId a scoped agent client may leave out, because the mux itself fills
+ * it in with the client's own context (H1/M3, reviewer 28 Sep) -- Target.createTarget already
+ * did; every other Browser and Storage call below did not, so a scoped client omitting
+ * browserContextId on one of THOSE reached Chrome's DEFAULT context instead, the one place a
+ * fill client's private sign-in and any unscoped client actually live. Any other Browser or
+ * Storage method not in this set (or in CONTEXT_READONLY_METHODS, just below) is refused outright
+ * when a scoped client leaves browserContextId out -- assumed unsafe by default, never assumed to
+ * apply mux-wide just because this file has not enumerated what it does with no context.
+ */
+const OPTIONAL_CONTEXT_METHODS = new Set([
+  "Target.createTarget", "Storage.setCookies", "Storage.clearCookies",
+  "Browser.grantPermissions", "Browser.setPermission", "Browser.resetPermissions",
+  "Browser.setDownloadBehavior",
+]);
+
+/** Browser and Storage calls a scoped client may still send with no browserContextId at all,
+ * because they touch nothing context-specific (read the browser's own version, never a page's or
+ * a context's data). Kept deliberately small; a call this file has not vetted is refused, not
+ * assumed harmless. */
+const CONTEXT_READONLY_METHODS = new Set(["Browser.getVersion"]);
 
 /**
  * @typedef {{ send(text: string): void, close(): void }} Transport
@@ -677,23 +714,30 @@ export class CdpMux {
       if (why) { this.log(`cdp: refused ${method} from an agent client (${why})`); return fail(-32000, `${method} ${why}`); }
     }
     // A context-scoped agent's own call always stays inside its own browser context (reviewer H1,
-    // 28 Sep): Target.createTarget gets its own browserContextId injected when the client left it
-    // out (the one exception -- every other method here is refused rather than defaulted, since a
-    // missing browserContextId on those either applies mux-wide by CDP's own default or is not a
-    // context-scoped call at all). ANY method naming a browserContextId that is not the client's
-    // own is refused outright, never rewritten -- that is another agent's context, and a wrong
-    // claim is refused loudly, the same shape as everywhere else in this file. This alone is what
-    // closes Storage.setCookies/clearCookies, Browser.grantPermissions/resetPermissions and
-    // Browser.setDownloadBehavior/Page.setDownloadBehavior naming another agent's context; it is
-    // not an enumerated list of methods, so a future CDP method that takes browserContextId is
-    // covered for free. An agent client with no agentName (browserContextId null) and every "fill"
-    // client are untouched.
-    if (c.kind === "agent" && c.browserContextId) {
-      if (params.browserContextId === undefined) {
-        if (method === "Target.createTarget") params.browserContextId = c.browserContextId;
-      } else if (params.browserContextId !== c.browserContextId) {
-        this.log(`cdp: refused ${method} from an agent client naming another browser context`);
-        return fail(-32000, `${method} may name only this agent's own browser context`);
+    // 28 Sep). ANY method naming a browserContextId that is not the client's own is refused
+    // outright, never rewritten -- that is another agent's context, and a wrong claim is refused
+    // loudly, the same shape as everywhere else in this file; it is not an enumerated list of
+    // methods, so a future CDP method that takes browserContextId is covered for free.
+    if (c.kind === "agent" && c.browserContextId && params.browserContextId !== undefined && params.browserContextId !== c.browserContextId) {
+      this.log(`cdp: refused ${method} from an agent client naming another browser context`);
+      return fail(-32000, `${method} may name only this agent's own browser context`);
+    }
+    // M3 (reviewer, 28 Sep): the check above only ever fired when browserContextId was PRESENT.
+    // Leaving it out is not neutral -- Chrome's own default for a browserContextId-taking call is
+    // the browser's DEFAULT context, exactly where a fill client's private sign-in and any
+    // unscoped client actually live, so a scoped client omitting it on Storage.setCookies/
+    // clearCookies, Browser.grantPermissions/setPermission/resetPermissions or
+    // Browser.setDownloadBehavior would reach into that context rather than being fenced out of
+    // it. OPTIONAL_CONTEXT_METHODS is where the mux fills in the client's own context instead of
+    // letting Chrome default it (Target.createTarget already did; the rest are new here); every
+    // OTHER Browser.*/Storage.* call with no browserContextId is refused outright unless it is in
+    // CONTEXT_READONLY_METHODS (touches nothing context-specific) -- assumed unsafe, never assumed
+    // to apply mux-wide just because this file has not vetted what it does with no context.
+    if (c.kind === "agent" && c.browserContextId && params.browserContextId === undefined) {
+      if (OPTIONAL_CONTEXT_METHODS.has(method)) params.browserContextId = c.browserContextId;
+      else if (/^(Browser|Storage)\./.test(method) && !CONTEXT_READONLY_METHODS.has(method)) {
+        this.log(`cdp: refused ${method} from an agent client with no browserContextId (would reach the default context)`);
+        return fail(-32000, `${method} needs this agent's own browserContextId`);
       }
     }
     // H2 (reviewer, 28 Sep): a scoped client's own targetId, on any of these, must map through
@@ -714,15 +758,16 @@ export class CdpMux {
     if ((method === "Target.attachToTarget" || (method === "Target.setAutoAttach" && params.autoAttach)) && params.flatten !== true) {
       return fail(-32602, "only flattened sessions are supported here: pass flatten: true");
     }
-    // M2 (reviewer, 28 Sep): waitForDebuggerOnStart pauses a new target until something calls
-    // Runtime.runIfWaitingForDebugger on it. Chrome's own auto-attach fans a browser session's
-    // setAutoAttach out across every context, not just the caller's (the same fan-out the target
-    // events above are fenced against) -- so a scoped client turning this on would pause another
-    // agent's brand-new target and never resume it (the mux drops that target's own attachedToTarget
-    // event for this client, per the event fence below), a real DoS on the other agent. Refused
-    // outright for a scoped client rather than resuming on its behalf: simpler, and this client
-    // never had any legitimate target to pause in the first place.
-    if (c.kind === "agent" && c.browserContextId && method === "Target.setAutoAttach" && params.waitForDebuggerOnStart) {
+    // M2/M4 (reviewer, 28 Sep): waitForDebuggerOnStart pauses a new target until something calls
+    // Runtime.runIfWaitingForDebugger on it. Chrome's own auto-attach fans out across every
+    // context, not just the caller's (the same fan-out the target events above are fenced
+    // against) -- Target.setAutoAttach AND Target.autoAttachRelated (M4: the first cut only
+    // checked the former) both take it, and a scoped client turning it on would pause another
+    // agent's brand-new target and never resume it (the mux drops that target's own
+    // attachedToTarget event for this client, per the event fence below), a real DoS on the other
+    // agent. Refused on ANY method that carries this param, not an enumerated list of two -- this
+    // client never had any legitimate target to pause in the first place, whatever the method.
+    if (c.kind === "agent" && c.browserContextId && params.waitForDebuggerOnStart) {
       return fail(-32602, "waitForDebuggerOnStart is not allowed for a context-scoped agent client");
     }
     if (method === "Target.detachFromTarget" && !this._ownsChild(c, params.sessionId)) return fail(-32001, "No session with given id");

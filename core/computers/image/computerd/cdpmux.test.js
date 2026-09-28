@@ -620,6 +620,51 @@ test("cdpmux: Target.setAutoAttach with waitForDebuggerOnStart is refused for a 
   assert.ok(!r3.error, "a fill client (no browser context) was wrongly refused");
 });
 
+test("cdpmux: an agent client omitting browserContextId on Storage.setCookies gets her own pinned in, not left to reach Chrome's default context (reviewer M3, 28 Sep)", async () => {
+  const { mux, fake } = world();
+  const a = client(mux, "agent", "alice");
+  await a.call("Test.echo"); // settle alice's own context first
+  const aliceCtx = mux.contextStore.get("alice");
+  const r = await a.call("Storage.setCookies", { cookies: [] });
+  assert.notEqual(r.error && r.error.code, -32000, "leaving browserContextId out was wrongly refused for an OPTIONAL_CONTEXT_METHODS entry");
+  const seen = fake.seen.find(s => s.method === "Storage.setCookies");
+  assert.ok(seen, "Storage.setCookies never reached Chrome");
+  assert.equal(seen.params.browserContextId, aliceCtx, "alice's own context was not pinned in when she left it out -- it would have hit Chrome's default context");
+});
+
+test("cdpmux: an agent client omitting browserContextId on a Browser/Storage call NOT in OPTIONAL_CONTEXT_METHODS is refused outright, not left to reach Chrome's default context (reviewer M3, 28 Sep)", async () => {
+  const { mux, fake } = world();
+  const a = client(mux, "agent", "alice");
+  const fill = client(mux, "fill"); // no context -- untouched by this check
+  const before = fake.seen.filter(s => s.method === "Browser.setWindowBounds").length;
+  const r = await a.call("Browser.setWindowBounds", { windowId: 1, bounds: {} });
+  assert.equal(r.error && r.error.code, -32000, "a Browser call with no browserContextId, not in the optional set, was not refused");
+  assert.equal(fake.seen.filter(s => s.method === "Browser.setWindowBounds").length, before, "reached Chrome despite being refused");
+  const r2 = await fill.call("Browser.setWindowBounds", { windowId: 1, bounds: {} });
+  assert.notEqual(r2.error && r2.error.code, -32000, "a fill client (no browser context) was wrongly refused by the M3 check");
+  // Browser.getVersion, CONTEXT_READONLY_METHODS' own example, is untouched.
+  const r3 = await a.call("Browser.getVersion");
+  assert.ok(!r3.error, "Browser.getVersion was wrongly refused");
+});
+
+test("cdpmux: Target.autoAttachRelated targeting another agent's target is refused, and waitForDebuggerOnStart on it is refused too, even on her own target (reviewer M4, 28 Sep)", async () => {
+  const { mux } = world();
+  const a = client(mux, "agent", "alice");
+  const b = client(mux, "agent", "bob");
+  const { result: { targetId: bTargetId } } = await b.call("Target.createTarget", { url: "about:blank#bob" });
+  const cross = await a.call("Target.autoAttachRelated", { targetId: bTargetId, waitForDebuggerOnStart: false });
+  assert.equal(cross.error && cross.error.code, -32000, "alice's autoAttachRelated naming bob's target was not refused (H2/M4)");
+
+  const { result: { targetId: aTargetId } } = await a.call("Target.createTarget", { url: "about:blank#alice" });
+  const paused = await a.call("Target.autoAttachRelated", { targetId: aTargetId, waitForDebuggerOnStart: true });
+  assert.equal(paused.error && paused.error.code, -32602, "waitForDebuggerOnStart on autoAttachRelated, even on alice's own target, was not refused");
+  // fake-chrome does not implement autoAttachRelated (-32601, "not found"); what matters here is
+  // that the mux itself let it through rather than refusing it (-32000/-32602) before Chrome ever saw it.
+  const fine = await a.call("Target.autoAttachRelated", { targetId: aTargetId, waitForDebuggerOnStart: false });
+  assert.notEqual(fine.error && fine.error.code, -32602, "autoAttachRelated with no waitForDebuggerOnStart was wrongly refused as if it carried one");
+  assert.notEqual(fine.error && fine.error.code, -32000, "autoAttachRelated on alice's own target was wrongly refused as a foreign-target claim");
+});
+
 test("cdpmux: the target-event fence drops an event with no browserContextId at all, not only a known mismatch (reviewer M1, 28 Sep)", async () => {
   const { mux, fake } = world();
   const a = client(mux, "agent", "alice");
