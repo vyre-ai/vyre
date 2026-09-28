@@ -36,9 +36,10 @@ export async function helper(pool, agent) {
  * @param {import("./pool.js").Pool} pool
  * @param {string} agent
  * @param {boolean} on
+ * @param {{ reason?: string, fill_token?: string }} [o]
  * @returns {Promise<boolean>} whether computerd was told
  */
-export async function tellComputerd(pool, agent, on) {
+export async function tellComputerd(pool, agent, on, o = {}) {
   let h = null;
   if (on) h = await helper(pool, agent);
   else {
@@ -49,7 +50,8 @@ export async function tellComputerd(pool, agent, on) {
   const res = await fetch(new URL("/shield", h.url), {
     method: "POST",
     headers: { authorization: `Bearer ${h.token}`, "content-type": "application/json" },
-    body: JSON.stringify({ on }),
+    // The fill token goes to computerd and nowhere else: never logged, emitted or put in an error.
+    body: JSON.stringify({ on, ...(o.reason ? { reason: o.reason } : {}), ...(on && o.fill_token ? { fill_token: o.fill_token } : {}) }),
     signal: AbortSignal.timeout(3_000),
   });
   if (res.body) await res.body.cancel().catch(() => {});

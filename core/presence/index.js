@@ -86,6 +86,13 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // decision, the same weight a pick carries, but instant, no presence, so confirming
   // sync.consent's proposed mapping is never held up behind a Touch ID prompt.
   "projects.add-workspace",
+  // A shared computer's own membership (agent-browsers.md level 2): who is on it, rotating a
+  // member's token, and deleting one's browser context (its cookies and logins) -- the reviewer
+  // and the lead's own call (28 Sep), the same floor computers.takeover already stands behind.
+  // dispose is called only after the person has previewed what it removes -- a Deck-level
+  // guarantee this floor does not itself prove, the same way computers.takeover asks no proof
+  // beyond being the person.
+  "computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
   "learn.accept", "learn.retire", "learn.relax",
   // What every session is told and runs on (ADR 0030): a model never edits a system prompt, a

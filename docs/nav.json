@@ -114,7 +114,9 @@
       "design/onboarding-v2.md",
       "design/drive-onboarding.md",
       "design/projects-map.md",
-      "design/anywhere.md"
+      "design/anywhere.md",
+      "design/glass-plan.md",
+      "design/agent-browsers.md"
     ]},
     { "title": "Design system", "pages": [
       "design/system/README.md",

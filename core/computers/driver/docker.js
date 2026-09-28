@@ -13,6 +13,7 @@
 
 import http from "node:http";
 import { PORTS, SIZE } from "./index.js";
+import { REQUIRED_CAPS, BOOT, bootTar, AGENT_TOKENS, agentTokensTar } from "./policy.js";
 
 const API = "/v1.43";
 
@@ -25,9 +26,10 @@ export class DockerDriver {
     this.name = "docker";
     this.prefix = opts.labelPrefix || "vyre";
     this.network = opts.network || null;
-    // The image runs as an unprivileged user and needs no capability; a box that finds otherwise
-    // adds exactly the one it needs through computers.capAdd rather than this file growing a list.
-    this.capAdd = Array.isArray(opts.capAdd) ? opts.capAdd.map(String) : [];
+    // The image starts as root only to put the agent and Chrome under different users, which
+    // needs SETUID and SETGID (REQUIRED_CAPS) and nothing more; a box that finds it needs another
+    // adds exactly that one through computers.capAdd rather than this file growing a list.
+    this.capAdd = [...new Set([...REQUIRED_CAPS, ...(Array.isArray(opts.capAdd) ? opts.capAdd.map(String) : [])])];
     this.timeoutMs = opts.timeoutMs || 30_000;
     const u = String(opts.url);
     if (u.startsWith("unix://")) this.target = { socketPath: u.slice("unix://".length) };
@@ -50,10 +52,12 @@ export class DockerDriver {
    */
   request(method, path, body) {
     return new Promise((resolve, reject) => {
-      const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
+      // A Buffer goes as it is (the .boot tar); anything else as JSON.
+      const tar = Buffer.isBuffer(body);
+      const data = body === undefined ? null : tar ? body : Buffer.from(JSON.stringify(body));
       const req = http.request({ ...this.target, method, path: API + path, timeout: this.timeoutMs,
         headers: { host: "docker", authorization: `Bearer ${this.bearer}`,
-          ...(data ? { "content-type": "application/json", "content-length": data.length } : {}) } }, res => {
+          ...(data ? { "content-type": tar ? "application/x-tar" : "application/json", "content-length": data.length } : {}) } }, res => {
         const chunks = [];
         res.on("data", c => chunks.push(c));
         res.on("end", () => {
@@ -115,6 +119,10 @@ export class DockerDriver {
    * hard-coded off here, the one place a create body is built.
    */
   async create(spec) {
+    // The secrets go by seed(), never in Env: Docker hands Env to every exec in the container.
+    for (const k of Object.keys(spec.env || {})) {
+      if (k === "COMPUTERD_TOKEN" || k === "VNC_PASSWORD") throw new Error(`${k} must not be in a computer's Env; seed() puts it in /var/lib/vyre/.boot`);
+    }
     const agent = String(spec.agent);
     if (!/^[a-z][a-z0-9-]{0,40}$/.test(agent)) throw new Error(`"${agent}" is not an agent name`);
     if (String(spec.network || this.network || "") === "host") throw new Error("a computer never runs on the host network");
@@ -142,14 +150,13 @@ export class DockerDriver {
         Memory: Math.round((spec.memoryMb || 3072) * 1024 * 1024),
         PortBindings: {},
         PublishAllPorts: false,
-        // Never privileged, never a capability beyond the default runtime set. The image runs
-        // Xvnc, Chrome (--no-sandbox, already unprivileged), AT-SPI and xdotool as a normal user
-        // and needs no capability at all; a box that finds otherwise adds exactly the one it
-        // needs through computers.capAdd rather than this file growing a list. Privileged is not
+        // Never privileged. Every capability is dropped but SETUID and SETGID, which entrypoint.sh
+        // uses once to start Xvnc, computerd and Chrome as one user and the agent's desktop as
+        // another; setpriv leaves each of those processes no capability at all. Privileged is not
         // a field CreateSpec has, and never will be: there is no parameter that can turn it on.
         Privileged: false,
         CapDrop: ["ALL"],
-        ...(this.capAdd.length ? { CapAdd: this.capAdd } : {}),
+        CapAdd: this.capAdd,
         // No host devices: an agent's computer has no business touching /dev on the box.
         Devices: [],
         SecurityOpt: ["no-new-privileges"],
@@ -168,8 +175,14 @@ export class DockerDriver {
         Tmpfs: { "/tmp": "mode=1777,exec", "/run": "mode=0755", "/var/run": "mode=0755" },
         // Chrome keeps its renderers' shared memory in /dev/shm; Docker's 64 MB default crashes tabs.
         ShmSize: 1024 * 1024 * 1024,
-        Mounts: [{ Type: "volume", Source: spec.volume, Target: "/home/agent",
-          VolumeOptions: { Labels: { [this.managedLabel]: "true", [this.computerLabel]: agent, "run.vyre": "1" } } }],
+        // Two named volumes: the agent's home, and computerd's and Chrome's own (the Chrome profile,
+        // the VNC password), which the agent's uid cannot open.
+        Mounts: [
+          { Type: "volume", Source: spec.volume, Target: "/home/agent",
+            VolumeOptions: { Labels: { [this.managedLabel]: "true", [this.computerLabel]: agent, "run.vyre": "1" } } },
+          { Type: "volume", Source: spec.browserVolume || `${this.prefix}-browser-${agent}`, Target: "/var/lib/vyre",
+            VolumeOptions: { Labels: { [this.managedLabel]: "true", [this.computerLabel]: agent, "run.vyre": "1" } } },
+        ],
         RestartPolicy: { Name: "no" },
       },
     };
@@ -177,6 +190,28 @@ export class DockerDriver {
     const name = `${this.prefix}-computer-${agent}`;
     const r = await this.must("POST", `/containers/create?name=${encodeURIComponent(name)}`, body);
     return { id: String(r.Id) };
+  }
+
+  /**
+   * The computer's secrets, as /var/lib/vyre/.boot in its own volume (0400, vyre), never in Env.
+   * @param {string} id @param {{ computerd_token: string, vnc_password: string }} secrets
+   */
+  async seed(id, secrets) {
+    await this.own(id);
+    await this.must("PUT", `/containers/${encodeURIComponent(id)}/archive?path=${encodeURIComponent(BOOT.dir)}`, bootTar(secrets));
+  }
+
+  /**
+   * A shared (browser-kind) computer's per-agent identity, as /var/lib/vyre/.agent-tokens (0400,
+   * vyre), the same archive-API write .boot gets and the same directory. computerd's own
+   * identifyClient (index.js) reads this once at start; it is not live-reloaded by this call
+   * alone -- a caller that changes who is on a running computer must also make computerd notice
+   * (docs/work/glass.md's own note on revocation).
+   * @param {string} id @param {Array<{ name: string, token: string }>} agents
+   */
+  async seedAgentTokens(id, agents) {
+    await this.own(id);
+    await this.must("PUT", `/containers/${encodeURIComponent(id)}/archive?path=${encodeURIComponent(AGENT_TOKENS.dir)}`, agentTokensTar(agents));
   }
 
   async start(id) { await this.own(id); await this.must("POST", `/containers/${encodeURIComponent(id)}/start`, undefined, [304]); }

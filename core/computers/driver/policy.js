@@ -112,12 +112,26 @@ const isEmptyObj = v => v && typeof v === "object" && !Array.isArray(v) && Objec
 const FORBIDDEN_CAPS = new Set(["SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "NET_ADMIN", "DAC_READ_SEARCH", "SYS_RAWIO"]);
 
 /**
+ * What every computer gets, whatever computers.capAdd says: the image starts as root only to
+ * start Xvnc, computerd and Chrome as one user and the agent's desktop as another (entrypoint.sh,
+ * setpriv). Neither lets a process read or trace another's memory, and with no-new-privileges and
+ * a read-only root there is no setuid file to turn them into more.
+ */
+export const REQUIRED_CAPS = Object.freeze(["SETUID", "SETGID"]);
+
+/** The volumes a computer mounts, where, and the name each must have for its agent. */
+const VOLUMES = Object.freeze([
+  { target: "/home/agent", name: (prefix, agent) => `${prefix}-home-${agent}` },
+  { target: "/var/lib/vyre", name: (prefix, agent) => `${prefix}-browser-${agent}` },
+]);
+
+/**
  * @param {{ network: string, image: string, labelPrefix: string, capAdd?: string[] }} config the
  *   box's own computers.network / computers.image / computers.labelPrefix / computers.capAdd,
  *   never taken from the request
  */
 function hostConfigShape(config, expectAgent) {
-  const capAdd = new Set((config.capAdd || []).map(String));
+  const capAdd = new Set([...REQUIRED_CAPS, ...(config.capAdd || []).map(String)]);
   return {
     NetworkMode: { required: true, is: eq(config.network) },
     PidMode: { required: true, is: eq("") },
@@ -127,7 +141,7 @@ function hostConfigShape(config, expectAgent) {
     PublishAllPorts: { required: true, is: eq(false) },
     Privileged: { required: true, is: eq(false) },
     CapDrop: { required: true, is: eq(["ALL"]) },
-    // Exactly the box's own configured set (default none), and never one of FORBIDDEN_CAPS -
+    // REQUIRED_CAPS plus the box's own configured set (default none), and never one of FORBIDDEN_CAPS -
     // config cannot turn this file into a rubber stamp for root-equivalent capabilities.
     CapAdd: { is: v => Array.isArray(v) && v.every(c => isStr(c) && capAdd.has(c) && !FORBIDDEN_CAPS.has(c)) },
     Devices: { required: true, is: eq([]) },
@@ -136,13 +150,14 @@ function hostConfigShape(config, expectAgent) {
     Tmpfs: { required: true, is: v => v && typeof v === "object" && !Array.isArray(v)
       && Object.keys(v).every(p => ["/tmp", "/run", "/var/run"].includes(p)) && Object.values(v).every(isStr) },
     ShmSize: { required: true, is: isPosInt },
-    Mounts: { required: true, is: v => Array.isArray(v) && v.length === 1 && isVolumeMount(v[0], config, expectAgent) },
+    Mounts: { required: true, is: v => Array.isArray(v) && v.length === VOLUMES.length && VOLUMES.every((vol, i) => isVolumeMount(v[i], config, expectAgent, vol)) },
     RestartPolicy: { required: true, is: eq({ Name: "no" }) },
   };
 }
 
 /**
- * The one mount a computer ever gets: its own named volume at /home/agent, never a bind, never
+ * The two mounts a computer ever gets, in order: its home volume at /home/agent and its browser
+ * volume at /var/lib/vyre (VOLUMES). Each is its own named volume, never a bind, never
  * an existing volume that happens to carry the right name by coincidence or by an attacker's
  * own choosing of both the label and the source together. `Source` must be exactly the name
  * docker.js derives for this agent (`<prefix>-home-<agent>`), so a caller cannot mount vyred's
@@ -157,11 +172,11 @@ function hostConfigShape(config, expectAgent) {
  * @param {any} m @param {{ network: string, image: string, labelPrefix: string, capAdd?: string[] }} config
  * @param {{ prefix: string, agent: string }} expectAgent from the body's own top-level Labels, pinned to config.labelPrefix
  */
-function isVolumeMount(m, config, expectAgent) {
+function isVolumeMount(m, config, expectAgent, vol = VOLUMES[0]) {
   if (!m || typeof m !== "object") return false;
   if (m.Type !== "volume") return false;
-  if (m.Target !== "/home/agent") return false;
-  if (m.Source !== `${expectAgent.prefix}-home-${expectAgent.agent}`) return false;
+  if (m.Target !== vol.target) return false;
+  if (m.Source !== vol.name(expectAgent.prefix, expectAgent.agent)) return false;
   const opts = m.VolumeOptions;
   if (!opts || typeof opts !== "object") return false;
   const got = claimedComputerLabels(opts.Labels, config.labelPrefix);
@@ -179,7 +194,8 @@ function bodyShape(config) {
     // `name@sha256:...` reference, which an exact string match here already accepts as-is.
     Image: { required: true, is: eq(config.image) },
     Hostname: { required: true, is: v => isStr(v) && /^[a-z][a-z0-9-]{0,40}$/.test(v) },
-    Env: { required: true, is: v => Array.isArray(v) && v.every(e => isStr(e) && /^[A-Z_][A-Z0-9_]*=/.test(e)) },
+    // Never the computer's secrets: every docker exec inherits Env (see bootTar below).
+    Env: { required: true, is: v => Array.isArray(v) && v.every(e => isStr(e) && /^[A-Z_][A-Z0-9_]*=/.test(e) && !/^(COMPUTERD_TOKEN|VNC_PASSWORD)=/.test(e)) },
     // Pinned to config.labelPrefix, not just any *.managed/*.computer pair the body picks: a
     // caller choosing its own prefix would also choose the volume Source isVolumeMount derives
     // from it (security, 26 Sep).
@@ -264,3 +280,181 @@ export function allowExec(labels, cmd) {
  * @param {Record<string, any>} labels
  */
 export const allowContainerOp = labels => allowExec(labels);
+
+// ---- the computer's secrets, as a file, never as Env -----------------------------------------
+//
+// COMPUTERD_TOKEN and VNC_PASSWORD never go in a container's Env: Docker hands a container's Env
+// to every `docker exec` in it, and the agent's uid can read an exec'd process's environment.
+// Before each start, vyred copies one file into the computer's own volume instead, through the
+// Engine's archive API: /var/lib/vyre/.boot, mode 0400, owned by vyre (1001). The entrypoint
+// (root, but with no DAC_OVERRIDE) cannot read it; vyre's processes do (vncpasswd, computerd).
+// The proxy lets that one upload through and nothing else: allowBootTar() checks every byte.
+
+/** Where the file goes, what it is called, and who owns it. */
+export const BOOT = Object.freeze({ dir: "/var/lib/vyre", name: ".boot", uid: 1001, gid: 1001, mode: 0o400 });
+const BOOT_BODY = /^COMPUTERD_TOKEN=[A-Za-z0-9_-]{32,128}\nVNC_PASSWORD=[A-Za-z0-9_-]{6,8}\n$/;
+
+/** @param {Buffer} h one 512-byte header @param {number} off @param {number} len @param {number} n */
+const octal = (h, off, len, n) => h.write(n.toString(8).padStart(len - 1, "0") + "\0", off, len, "ascii");
+
+/**
+ * The tar holding .boot. VNC passwords are 8 characters at most (RFB DES), which pool.js's are.
+ * @param {{ computerd_token: string, vnc_password: string }} s
+ * @returns {Buffer}
+ */
+export function bootTar(s) {
+  const body = Buffer.from(`COMPUTERD_TOKEN=${s.computerd_token}\nVNC_PASSWORD=${s.vnc_password}\n`, "ascii");
+  if (!BOOT_BODY.test(body.toString("ascii"))) throw new Error("the computer's secrets are not in the expected shape");
+  const h = Buffer.alloc(512);
+  h.write(BOOT.name, 0, 100, "ascii");
+  octal(h, 100, 8, BOOT.mode);
+  octal(h, 108, 8, BOOT.uid);
+  octal(h, 116, 8, BOOT.gid);
+  octal(h, 124, 12, body.length);
+  octal(h, 136, 12, 0);
+  h.fill(0x20, 148, 156);
+  h.write("0", 156, 1, "ascii");
+  h.write("ustar\u000000", 257, 8, "ascii");
+  let sum = 0;
+  for (const b of h) sum += b;
+  h.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii");
+  const pad = Buffer.alloc((512 - (body.length % 512)) % 512);
+  return Buffer.concat([h, body, pad, Buffer.alloc(1024)]);
+}
+
+/**
+ * Is this exactly a .boot tar as bootTar() makes it: one regular file, that name, owner and mode,
+ * the expected contents, nothing after it but the end blocks? The archive PUT is the one way into a
+ * computer's volume, so anything else is refused.
+ * @param {Buffer} buf @returns {{ ok: true } | { ok: false, why: string }}
+ */
+export function allowBootTar(buf) {
+  const no = why => ({ ok: /** @type {false} */ (false), why });
+  if (!Buffer.isBuffer(buf) || buf.length < 1536 || buf.length > 4096 || buf.length % 512) return no("not a one-file tar of the expected size");
+  const h = buf.subarray(0, 512);
+  const str = (off, len) => h.subarray(off, off + len).toString("ascii").replace(/\0.*$/s, "");
+  const num = (off, len) => parseInt(str(off, len).trim() || "x", 8);
+  if (str(0, 100) !== BOOT.name || str(345, 155) !== "") return no(`the file must be ${BOOT.name}`);
+  if (str(156, 1) !== "0") return no("the entry must be a regular file");
+  if (num(100, 8) !== BOOT.mode || num(108, 8) !== BOOT.uid || num(116, 8) !== BOOT.gid) return no("wrong owner or mode");
+  let sum = 0;
+  for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 0x20 : h[i];
+  if (num(148, 8) !== sum) return no("bad header checksum");
+  const size = num(124, 12);
+  if (!(size > 0 && size < 512)) return no("wrong size");
+  const body = buf.subarray(512, 512 + size).toString("ascii");
+  if (!BOOT_BODY.test(body)) return no("the contents are not a computer's secrets");
+  for (let i = 512 + size; i < buf.length; i++) if (buf[i] !== 0) return no("anything after .boot must be the end blocks");
+  if (buf.length !== 512 + 512 + 1024) return no("not a one-file tar");
+  return { ok: true };
+}
+
+// ---- a shared computer's per-agent identity, as a second file next to .boot ------------------
+//
+// AGENT_TOKENS_FILE (computerd/index.js's own identifyClient, agent-browsers.md level 2): one
+// "id:name=token" triple per agent sharing a computer, so cdpmux's per-agent BrowserContext
+// scoping is only as strong as the credential that identifies it -- never a claim the connecting
+// client makes. id is vyred's own unique agent id; name is display-only. Written through the same
+// archive-API PUT as .boot, and checked the same way: an allowlist of exactly what
+// agentTokensTar() makes, refusing anything else the proxy is asked to write here.
+
+export const AGENT_TOKENS = Object.freeze({ dir: "/var/lib/vyre", name: ".agent-tokens", uid: 1001, gid: 1001, mode: 0o400 });
+/** One agent, one line: the same id:name=token shape computerd's own identifyClient parses
+ * (index.js). id is vyred's own unique agent id, never reused; name is display-only (logs) and
+ * MAY repeat -- a reused display name must never reach a different agent's own browser context,
+ * which is why cdpmux keys everything by id, not name (reviewer + lead, 28 Sep). Keep this regex
+ * and computerd/index.js's own parseAgentTokens byte-for-byte the same shape: policy.test.js's
+ * own shared-fixture test (reviewer, 28 Sep) fails the build if the two ever drift apart again. */
+const AGENT_TOKENS_LINE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}:[a-z][a-z0-9-]{0,40}=[A-Za-z0-9_-]{32,128}$/;
+/** A small pool per shared computer (agent-browsers.md's own concurrency-cap note); bounds the
+ * file's size and this check's own cost, not a load-bearing security limit on its own. */
+const MAX_AGENTS_PER_COMPUTER = 64;
+
+/**
+ * @param {Array<{ id: string, name: string, token: string }>} agents
+ * @returns {string} one line per agent, in the order given, each exactly AGENT_TOKENS_LINE-shaped
+ */
+function agentTokensBody(agents) {
+  if (!Array.isArray(agents) || agents.length === 0) throw new Error("agentTokensTar needs at least one agent");
+  if (agents.length > MAX_AGENTS_PER_COMPUTER) throw new Error(`agentTokensTar refuses more than ${MAX_AGENTS_PER_COMPUTER} agents on one computer`);
+  const ids = new Set(), tokens = new Set();
+  const lines = agents.map(a => {
+    const line = `${a && a.id}:${a && a.name}=${a && a.token}`;
+    if (!AGENT_TOKENS_LINE.test(line)) throw new Error("an agent's id, name or token is not in the expected shape");
+    if (ids.has(a.id)) throw new Error(`agent id "${a.id}" is named more than once`);
+    if (tokens.has(a.token)) throw new Error("two agents share one token");
+    ids.add(a.id); tokens.add(a.token);
+    return line;
+  });
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The tar holding .agent-tokens, the same one-file shape bootTar() writes (see its own comment
+ * for why: archive-API PUT, this file's owner and mode, nothing else in the tar).
+ * @param {Array<{ id: string, name: string, token: string }>} agents
+ * @returns {Buffer}
+ */
+export function agentTokensTar(agents) {
+  const body = Buffer.from(agentTokensBody(agents), "ascii");
+  const h = Buffer.alloc(512);
+  h.write(AGENT_TOKENS.name, 0, 100, "ascii");
+  octal(h, 100, 8, AGENT_TOKENS.mode);
+  octal(h, 108, 8, AGENT_TOKENS.uid);
+  octal(h, 116, 8, AGENT_TOKENS.gid);
+  octal(h, 124, 12, body.length);
+  octal(h, 136, 12, 0);
+  h.fill(0x20, 148, 156);
+  h.write("0", 156, 1, "ascii");
+  h.write("ustar\u000000", 257, 8, "ascii");
+  let sum = 0;
+  for (const b of h) sum += b;
+  h.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii");
+  const pad = Buffer.alloc((512 - (body.length % 512)) % 512);
+  return Buffer.concat([h, body, pad, Buffer.alloc(1024)]);
+}
+
+/** The largest body agentTokensTar() will ever write: MAX_AGENTS_PER_COMPUTER lines, each at most
+ * a 64-character id, ":", a 40-character name, "=", and a 128-character token, plus its newline.
+ * Generous on purpose -- this bounds allowAgentTokensTar()'s own check, not a tight fit to today's
+ * numbers. */
+const MAX_AGENT_TOKENS_BODY = MAX_AGENTS_PER_COMPUTER * (64 + 1 + 40 + 1 + 128 + 1);
+
+/**
+ * Is this exactly an .agent-tokens tar as agentTokensTar() makes it: one regular file, that name,
+ * owner and mode, every line AGENT_TOKENS_LINE-shaped with no repeated id or token (a repeated
+ * display name is fine -- names are cosmetic, ids are the identity), nothing after it but the end
+ * blocks? Unlike .boot's single fixed-shape body, this one can span more than one 512-byte block
+ * (more than one agent), so the size bound is generous rather than a single block.
+ * @param {Buffer} buf @returns {{ ok: true } | { ok: false, why: string }}
+ */
+export function allowAgentTokensTar(buf) {
+  const no = why => ({ ok: /** @type {false} */ (false), why });
+  if (!Buffer.isBuffer(buf) || buf.length < 1536 || buf.length % 512) return no("not a one-file tar of the expected size");
+  const h = buf.subarray(0, 512);
+  const str = (off, len) => h.subarray(off, off + len).toString("ascii").replace(/\0.*$/s, "");
+  const num = (off, len) => parseInt(str(off, len).trim() || "x", 8);
+  if (str(0, 100) !== AGENT_TOKENS.name || str(345, 155) !== "") return no(`the file must be ${AGENT_TOKENS.name}`);
+  if (str(156, 1) !== "0") return no("the entry must be a regular file");
+  if (num(100, 8) !== AGENT_TOKENS.mode || num(108, 8) !== AGENT_TOKENS.uid || num(116, 8) !== AGENT_TOKENS.gid) return no("wrong owner or mode");
+  let sum = 0;
+  for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 0x20 : h[i];
+  if (num(148, 8) !== sum) return no("bad header checksum");
+  const size = num(124, 12);
+  if (!(size > 0 && size <= MAX_AGENT_TOKENS_BODY)) return no("wrong size");
+  const body = buf.subarray(512, 512 + size).toString("ascii");
+  const lines = body.split("\n").slice(0, -1); // the trailing \n leaves one empty entry after split
+  if (body.slice(-1) !== "\n" || lines.length === 0) return no("the contents are not agent-tokens lines");
+  const ids = new Set(), tokens = new Set();
+  for (const line of lines) {
+    if (!AGENT_TOKENS_LINE.test(line)) return no("a line is not \"id:name=token\"-shaped");
+    const [id, token] = [line.slice(0, line.indexOf(":")), line.slice(line.indexOf("=") + 1)];
+    if (ids.has(id)) return no(`agent id "${id}" is named more than once`);
+    if (tokens.has(token)) return no("two agents share one token");
+    ids.add(id); tokens.add(token);
+  }
+  const padded = 512 * Math.ceil(size / 512);
+  for (let i = 512 + size; i < buf.length; i++) if (buf[i] !== 0) return no("anything after .agent-tokens must be the end blocks");
+  if (buf.length !== 512 + padded + 1024) return no("not a one-file tar");
+  return { ok: true };
+}

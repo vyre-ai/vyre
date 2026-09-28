@@ -56,6 +56,21 @@ export class FakeDriver {
     return { id };
   }
 
+  /** @param {string} id @param {{ computerd_token: string, vnc_password: string }} secrets */
+  async seed(id, secrets) {
+    const c = this.must(id);
+    c.boot = { ...secrets };
+    this.calls.push({ op: "seed", id });
+  }
+
+  /** @param {string} id @param {Array<{ name: string, token: string }>} agents */
+  async seedAgentTokens(id, agents) {
+    const c = this.must(id);
+    if (!Array.isArray(agents) || agents.length === 0) throw new Error("seedAgentTokens needs at least one agent");
+    c.agentTokens = agents.map(a => ({ ...a }));
+    this.calls.push({ op: "seedAgentTokens", id });
+  }
+
   async start(id) {
     const c = this.must(id);
     if (c.state === "paused") throw new Error(`container ${id} is paused; unpause it first`);
