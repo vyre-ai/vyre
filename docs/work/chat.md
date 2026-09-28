@@ -217,6 +217,27 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
 - Open for later: sight.frame stills at a running step (needs a target-per-thread lookup, not yet
   built); rate-limiting sight.frame across chat and Glass's own caller (cohesion's item).
 
+## Done (28 Sep, sight.frame stills - cohesion item 1/18)
+- A small "cv-sight" strip in session.js's header area, drawn once per mount when this thread's
+  own agent (record.current.agent) has a live target in sight.targets (the registry - never a
+  guessed "agent:<name>"; a plain session or an agent with no computer running draws nothing).
+  Calls sight.frame for the first still, refreshes on sight.stepped scoped to this thread AND this
+  exact target (never another agent's, even a live one). Reuses blocks.js's pictureThumb (now
+  exported, takes an optional size) and core/images.js's frameToPicture (built ahead of time, with
+  the pasted-image work). New CSS .cv-sight in chat.css.
+  Tests: two new session.test.js cases (kit's own target draws and refreshes correctly and only
+  for its own thread/target; no agent or no live target draws nothing). testbox: deck/chat+deck/test
+  494/495 (1 pre-existing skip), 0 fail.
+- Not done: no historical replay (sight.frame only ever answers the LATEST still - there is no way
+  to ask for what a past step looked like, so this is a live-only "what's happening now" strip, not
+  part of the transcript's history). Rate-limiting sight.frame across chat's own caller and Glass's
+  (cohesion's open item) is still open - not addressed here.
+
+## Next (from native-core, budget 8)
+- A 108-134px scroll jump when thread.finished lands while scrolled up (following races
+  grow()/toBottom() in session.js + window-view.js) - same family as the budget-5/8 jump already
+  partly fixed. Queued behind sight.frame stills.
+
 ## Doing (28 Sep, restart after cohesion's hand-over)
 
 - Merged origin/main clean (4032bf03; no conflicts). ADR 0038 (server, not box): renamed the
