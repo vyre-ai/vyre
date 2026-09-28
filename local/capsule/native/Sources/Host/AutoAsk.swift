@@ -230,19 +230,33 @@ extension CapsuleModel {
 
 extension CapsuleModel {
     /// Words spoken into the box (sight's talk chord). Partial words show as they come and ask
-    /// nothing; the final words are submitted as ⏎ would.
+    /// nothing. `final: true` ends the dictation with the words left in the box to edit -- tap
+    /// or hold-release to stop never asks anything on its own (the user's spec, 28 Sep, matching
+    /// chat's tap-to-talk); only submitDictated() (an ordinary ⏎ while listening, or the "send
+    /// it" command word) actually asks.
     func dictate(_ words: String, final: Bool) {
-        if !final {
-            dictating = true
-            autoTask?.cancel()
-            text = words
-            return
-        }
-        dictating = false
-        guard !words.isEmpty else { return }
+        dictating = !final
+        autoTask?.cancel()
         text = words
+        if final && words.isEmpty { search() } // nothing heard: back to plain search, not a submit
+    }
+
+    /// ⏎ while still listening, or the "send it" command word: submit the box's current words
+    /// right now, as ⏎ would. The caller (sight) has already stopped the mic.
+    func submitDictated() {
+        dictating = false
+        guard !text.isEmpty else { return }
         voiceTurn = true
         if !handleReturn(command: false) { voiceTurn = false; search() }
+    }
+
+    /// Esc while listening: back to exactly what the box held before this utterance (never a
+    /// general clear -- text typed before or after the dictated span is untouched, since the
+    /// dictated span is the box's whole content in this single-line box).
+    func cancelDictation(_ restore: String) {
+        dictating = false
+        autoTask?.cancel()
+        text = restore
     }
 
     /// An answer is being read aloud (Esc stops it, with the answer).
