@@ -49,7 +49,11 @@ test("peer: under a claude, or under a thread vyred runs, is inside; a terminal,
   assert.deepEqual(insideClaude(912, o), { inside: true, by: 911 }, "claude in a tmux pane");
   assert.deepEqual(insideClaude(940, o), { inside: true, by: 600 }, "an orphan in a thread's process group");
   assert.deepEqual(insideClaude(951, o), { inside: false, unknown: true }, "an orphan of a shell that is gone: refused as unknown");
-  assert.deepEqual(insideClaude(960, o), { inside: false }, "the Capsule, its own group under launchd");
+  // Leads its own group under launchd, same shape a `setsid`'d escape has (see the dedicated
+  // test below): unknown by ancestry alone without a controlling terminal. The Capsule is this
+  // shape too, and must prove itself another way, not by ancestry (the setsid HIGH, 28 Sep).
+  assert.deepEqual(insideClaude(960, o), { inside: false, unknown: true }, "its own group under launchd, no tty: unknown, not trusted by ancestry");
+  assert.deepEqual(insideClaude(960, { ...o, tty: () => "ttys040" }), { inside: false }, "the same shape, but with a controlling terminal: a real login can lead its own group too");
   assert.deepEqual(insideClaude(921, o), { inside: true, by: 300 }, "a tmux a model started");
   assert.deepEqual(insideClaude(500, o), { inside: false }, "vyred itself");
   assert.deepEqual(insideClaude(990, o), { inside: false, unknown: true }, "an unreadable chain is unknown, and vyred refuses it");
@@ -163,6 +167,82 @@ test("peer: a detached process has no controlling terminal, whatever it says", a
   await new Promise(r => setTimeout(r, 200));
   try { assert.equal(controllingTty(/** @type {number} */ (child.pid)), null); }
   finally { child.kill(); }
+});
+
+// The setsid HIGH (e2e review, 28 Sep): `setsid -f vyre call <tool>`, or anything that detaches the
+// same way (a python double fork, or `nohup .. &` once its shell exits), gets ppid 1 and its own
+// session, so it used to read as a real terminal by ancestry alone and was taken as the person for
+// every person-only tool. This proves the escape is closed against a REAL vyred, over a REAL socket,
+// with the actual OS-level process shapes each technique produces -- not just the synthetic tree
+// above. Needs the real `setsid` binary (util-linux; not on macOS, hence testbox-only).
+test("peer: setsid, nohup and a double fork are all refused as the person; a real terminal still gets in", { skip: process.platform !== "linux" ? "needs util-linux setsid" : false }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const dir = fs.mkdtempSync(path.join(root, "peer-escape-"));
+  const socket = d.paths.socket;
+
+  /** Runs curl detached by `wrap`, writes its own response to a result file, and returns the parsed body once it lands. */
+  async function detachedCall(wrap) {
+    const out = path.join(dir, `out-${Math.random().toString(36).slice(2)}.json`);
+    const url = "http://x/v1/tools/agents.create";
+    const curl = ["curl", "-s", "-o", out, "--unix-socket", socket, "-X", "POST", url,
+      "-H", "content-type: application/json", "-H", "x-vyre-caller: cli", "-d", JSON.stringify({ name: "kit" })];
+    await wrap(curl);
+    for (let n = 0; n < 50 && !fs.existsSync(out); n++) await new Promise(r => setTimeout(r, 100));
+    assert.ok(fs.existsSync(out), "the detached call never answered");
+    return JSON.parse(fs.readFileSync(out, "utf8"));
+  }
+
+  // `setsid -f`: one fork, `setsid()` in the child. No process above to blame, and no tty.
+  const bySetsid = await detachedCall(([cmd, ...args]) => new Promise((resolve, reject) => {
+    const p = spawn("setsid", ["-f", cmd, ...args], { stdio: "ignore" });
+    p.on("exit", code => (code === 0 ? resolve(undefined) : reject(new Error(`setsid exit ${code}`))));
+    p.on("error", reject);
+  }));
+  assert.equal(bySetsid.error?.code, "denied", JSON.stringify(bySetsid));
+  assert.match(bySetsid.error.message, /this comes from inside a Claude session|vyred cannot read/);
+
+  // A python double fork: fork, setsid() in the child, fork again -- the classic daemonize(), which
+  // also lands at ppid 1, its own session, no tty.
+  const byDoubleFork = await detachedCall(([cmd, ...args]) => new Promise((resolve, reject) => {
+    const py = `import os, sys, subprocess
+if os.fork() > 0: sys.exit(0)
+os.setsid()
+if os.fork() > 0: sys.exit(0)
+subprocess.run(${JSON.stringify([cmd, ...args])})
+`;
+    const p = spawn("python3", ["-c", py], { stdio: "ignore" });
+    p.on("exit", code => (code === 0 ? resolve(undefined) : reject(new Error(`python3 exit ${code}`))));
+    p.on("error", reject);
+  }));
+  assert.equal(byDoubleFork.error?.code, "denied", JSON.stringify(byDoubleFork));
+
+  // `nohup .. &` whose shell then exits: the orphan keeps its old process group (not its own), so
+  // this is the pre-existing "gone shell" protection (peer.js's other unknown branch) -- confirms
+  // it still holds after this fix.
+  const byNohup = await detachedCall(([cmd, ...args]) => new Promise((resolve, reject) => {
+    const p = spawn("sh", ["-c", `nohup ${[cmd, ...args].map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ")} >/dev/null 2>&1 &`], { stdio: "ignore" });
+    p.on("exit", code => (code === 0 ? resolve(undefined) : reject(new Error(`sh exit ${code}`))));
+    p.on("error", reject);
+  }));
+  assert.equal(byNohup.error?.code, "denied", JSON.stringify(byNohup));
+  assert.ok(!(await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "kit"), "none of the three made anything");
+
+  // The real terminal CLI: `script` gives curl an actual controlling tty, same shape (ppid 1, own
+  // session, once its own shell wrapper exits) as the escapes above -- except for the tty, which is
+  // exactly what should let it through.
+  const out = path.join(dir, "out-tty.json");
+  await new Promise((resolve, reject) => {
+    const cmd = `curl -s -o ${out} --unix-socket ${socket} -X POST http://x/v1/tools/agents.create -H 'content-type: application/json' -H 'x-vyre-caller: cli' -d '${JSON.stringify({ name: "harlow" })}'`;
+    const p = spawn("script", ["-qfec", cmd, "/dev/null"], { stdio: "ignore" });
+    p.on("exit", code => (code === 0 ? resolve(undefined) : reject(new Error(`script exit ${code}`))));
+    p.on("error", reject);
+  });
+  for (let n = 0; n < 50 && !fs.existsSync(out); n++) await new Promise(r => setTimeout(r, 100));
+  const viaTerminal = JSON.parse(fs.readFileSync(out, "utf8"));
+  assert.equal(viaTerminal.error, undefined, JSON.stringify(viaTerminal));
+  assert.ok((await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "harlow"), "the real terminal's call went through");
 });
 
 // A Mac's processes with their terminals: Terminal.app (100, no tty) runs login (110) on ttys003,

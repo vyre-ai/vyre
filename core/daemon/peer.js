@@ -120,7 +120,7 @@ export function ancestry(pid, look, stop = () => false) {
  * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string, pgid?: number, sid?: number } | null, self?: number }} [o]
  * @returns {{ inside: boolean, by?: number, unknown?: boolean }}
  */
-export function insideClaude(pid, { threads = [], look = processTable(), self = process.pid } = {}) {
+export function insideClaude(pid, { threads = [], look = processTable(), tty = controllingTty, self = process.pid } = {}) {
   // A thread vyred spawned as its own process group (or session) keeps whatever it leaves behind:
   // an orphan's parent becomes init, but its group and session stay the thread's.
   const own = look(pid);
@@ -135,6 +135,15 @@ export function insideClaude(pid, { threads = [], look = processTable(), self = 
   const top = chain.length ? chain[chain.length - 1] : null;
   const row = top ? look(top.pid) : null;
   if (row && row.ppid <= 1 && row.pgid && row.pgid !== top.pid) return { inside: false, unknown: true };
+  // `setsid -f <cmd>` (util-linux), or a plain fork that calls setsid() itself, produces exactly
+  // this shape too: ppid 1, its own session and group, nothing above it to blame -- and it is
+  // indistinguishable BY ANCESTRY ALONE from a real terminal, sshd or tmux server that launchd or
+  // init started directly. The one thing a detach can never fake is a controlling terminal: a real
+  // login (or its tmux pane, which gets its own pty) always has one; a `setsid`'d or double-forked
+  // process never does (it exists precisely to shed it). A headless app has the same shape by
+  // design and is caught here too -- it must prove itself another way, not by ancestry (the setsid
+  // HIGH, e2e review 28 Sep).
+  if (row && row.ppid <= 1 && row.pgid === top.pid && !tty(pid)) return { inside: false, unknown: true };
   return { inside: false };
 }
 
