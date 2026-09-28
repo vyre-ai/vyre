@@ -86,6 +86,29 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, still later: reviewer signed off bac69fa8 (owner-only onboard.join, confirmed by
+merging in e2e-personguard c3a69611 via origin/main and running test/person-only-guard.test.js —
+onboard.join's callers list derives PERSON_ONLY automatically). Root-caused (not just flagged)
+the testbox onboard.test.js failure I'd been calling "pre-existing": bundled this branch, checked
+out ecd89c0c (the commit that introduced the failing test, well before anything in today's
+session) on testbox, ran it alone — failed there too, proving it was never caused by join work.
+Cause: operator() (core/names/tailscale.js) skips its check entirely on darwin, so a missing
+OperatorUser field in the test's fake tailscale script passed by accident on every Mac and failed
+for real on testbox's Linux, the only place the check runs. Fixed (dd1c3765); test/onboard.test.js
+is 23/23 on testbox now. All testing from here on is testbox only, per the lead.
+
+Answered launch's shape question: "I already have a server" splits into two paths that don't
+share a mechanism — Tailscale (no code: `onboard.join{tailscale,connect}` then
+`{verify,node,becomeDevice:true}`, needs nothing new) and relay (the code IS a pairing secret, but
+minted server-side by `onboard.join{action:"relay"}` and redeemed by the relay CLIENT protocol,
+`relay/client/*` — not a join.* action, and not mine to build).
+
+Sent e2e a question on the Solo-join design before continuing: the lead flagged that pairing/relay
+keys move into vyre-core (a new `_vyre` service user, ADR 0040, e2e + anywhere) on a Mac, and
+wants the join design to go through that boundary. Waiting on ADR 0040's shape (or e2e's direct
+answer) before writing the relay/onboard "local" role code my design note (sent to reviewer and
+anywhere, still unanswered) proposed.
+
 28 Sep 2026, later still: built `onboard.join` as `core/join` (the lead: "stop waiting, build it").
 join.status/join.tailscale/join.relay/join.verify, box role, all thin forwards through ctx.call
 to onboard/relay/link's own tested tools (see "Changed contracts"). Works today for pairing a
