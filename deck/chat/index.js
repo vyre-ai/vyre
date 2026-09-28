@@ -27,6 +27,7 @@
 import { h, put, empty, link, go, back } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
+import { whoAvatar, readIdentity } from "../js/avatars.js";
 import { when, plural } from "../js/fmt.js";
 import { renderNav } from "./nav.js";
 import { mountSession } from "./session.js";
@@ -90,7 +91,7 @@ export default async function chat(ctx) {
   /** Fetch and fold the result into state, live or offline. Shared by boot and refresh. */
   async function load() {
     const [p, c, t, macs] = await Promise.all([attempt("projects.list"), attempt("projects.catalog", { limit: CATALOG_LIMIT }), attempt("threads.list", { all: true }),
-      readMacs(attempt, state.macs)]);
+      readMacs(attempt, state.macs), readIdentity(attempt)]);
     if (!ctx.alive()) return;
     state.macs = macs;
     const offline = [p, c, t].some(r => r.error?.code === "offline");
@@ -270,7 +271,7 @@ export default async function chat(ctx) {
     const where = inProject ? null : state.projects.find(p => p.slug === row.project)?.name;
     return link(threadHref(row, inProject), { class: "thread-row" },
       h("div", { class: "r1" },
-        h("span", { class: "av-agent", "aria-hidden": "true" }, row.agent ? row.agent.slice(0, 2) : icon("terminal", 14)),
+        row.agent ? whoAvatar(row.agent, { size: 24, cls: "av-agent" }) : h("span", { class: "av-agent", "aria-hidden": "true" }, icon("terminal", 14)),
         h("span", { class: "title ellipsis" }, title(row)),
         machineChip(row),
         row.status === "running" ? h("span", { class: "dot signal", title: "running" }) : null),

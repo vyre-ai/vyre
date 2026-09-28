@@ -11,7 +11,8 @@
 // Nothing here uses innerHTML: every string is a text node.
 
 import { h, add, put } from "../js/dom.js";
-import { icon, mark } from "../js/icons.js";
+import { icon } from "../js/icons.js";
+import { personAvatar, assistantAvatar, agentAvatar, teammateAvatar, teammateId } from "../js/avatars.js";
 import { clock } from "../js/fmt.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { renderUnified, renderRows, patchRows } from "./lib/diff.js";
@@ -38,16 +39,16 @@ function opensByDefault(b) {
   return false;
 }
 
-/** The chip beside "you" (the owner's initial when the Deck knows the name, else a plain dot) or another surface (its initial). */
+/** The person's avatar beside "you" (or another of their surfaces): the person family (js/avatars.js). */
 export function personAv(who, me) {
-  const letter = who === "you" ? (me ? String(me).trim().charAt(0).toUpperCase() : "") : String(who || "").trim().charAt(0).toUpperCase();
-  return h("span", { class: "av-person msg-av cv-av" + (letter ? "" : " cv-av-dot"), title: who === "you" && me ? me : who }, letter || h("span", { class: "cv-dot" }));
+  return personAvatar({ size: 24, title: who === "you" && me ? me : who, cls: "av-person msg-av cv-av" });
 }
 
-/** The chip beside a reply: the Vyre mark for the assistant (whatever it is called), an agent's two letters. */
+/** The avatar beside a reply: the assistant's creature (whatever it is called), else the agent's
+ * blob, or a teammate's character when team.list knows its id (js/avatars.js). */
 export function agentAv(who, assistant = who === "Vyre") {
-  if (assistant) return h("span", { class: "av-agent msg-av cv-av cv-av-vyre", title: who }, mark(16));
-  return h("span", { class: "av-agent msg-av cv-av", title: who }, String(who).slice(0, 2).toLowerCase());
+  if (assistant) return assistantAvatar({ size: 24, title: who, cls: "av-agent msg-av cv-av cv-av-vyre" });
+  return agentAvatar(String(who), { size: 24, title: who, cls: "av-agent msg-av cv-av" });
 }
 
 /** A row's kind, for the header rule (lib/blocks.js plan): user, assistant, turn, or card. */
@@ -294,15 +295,17 @@ function toolIcon(tool) {
 /**
  * A teammate handoff (teammates.md section 3, tool-row.md's "Handoff" variant): a session calling
  * team_ask/team.ask. Distinct from toolCard - not colour, per avatar.md's "no per-teammate hue"
- * ruling - the teammate's own tile (agentAv, same as kit or juno), its role name, a plain
+ * ruling - the teammate's own character (js/avatars.js, seeded from its teammate id, "<role>-<project>"
+ * from `b.project`, the session's project), its role name, a plain
  * "Teammate" tag, verb "Asked" while no reply has landed yet (b.reply), "Replied" once it has.
  * Never folded into a run (core/grouping.js's BY_NAME/foldable), always its own line; "collapsed"
  * (the default) only ever means the reply detail is shut. The reply renders as turn prose
  * (markdown), never a code block - it is words, not a tool's output.
- * @param {any} b { tool: "team_ask"|"team.ask", input: { to, text, ... }, reply?: string, error?: boolean }
+ * @param {any} b { tool: "team_ask"|"team.ask", input: { to, text, ... }, reply?: string, error?: boolean, project?: string }
  * @returns {HTMLElement & { update: (b: any) => void, tick: (now?: number) => void }}
  */
 export function handoffCard(b) {
+  const project = b.project || b.input?.project || null;
   const el = /** @type {any} */ (tag(h("div", { class: "cv-row cv-tool cv-handoff" }), "assistant", b.ts));
   let open = false;
   el.tick = () => {}; // no elapsed timer while waiting (tool-row.md: "a teammate's own pace is its business")
@@ -327,7 +330,7 @@ export function handoffCard(b) {
       disabled: !replied && !failed, "aria-label": `${verb} ${role}, Teammate, ${ask}`,
       onclick: () => { if (!replied && !failed) return; open = !open; show(); } },
       h("span", { class: "cv-chev", "aria-hidden": "true" }, icon("right", 12)),
-      agentAv(role),
+      teammateAvatar(teammateId(role, project), { size: 24, cls: "av-agent" }),
       h("span", { class: "cv-handoff-line" },
         h("span", { class: "cv-tool-name" }, verb + " "),
         h("span", { class: "cv-handoff-name" }, role),

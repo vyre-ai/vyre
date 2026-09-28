@@ -71,6 +71,7 @@ import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
+import { whoAvatar, readTeammates } from "../js/avatars.js";
 import { threadHref } from "./lib/routes.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, handoffCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
@@ -282,6 +283,7 @@ export function mountSession(container, opts) {
       opts.recorded || isMac(where) ? { error: { message: "not a Switchboard session" } } : attempt("threads.get", { thread, since: 0, limit: 500 }),
       readTail(),
       readNames(attempt),
+      readTeammates(attempt),
     ]);
     names = nm; me = nm.owner;
     if (!r.error) {
@@ -393,6 +395,12 @@ export function mountSession(container, opts) {
     return (opts.projects || []).find(p => p.slug === slug)?.name || slug;
   }
 
+  /** Who this session is with, as the header's avatar: the assistant's creature, an agent's blob or a teammate's character. */
+  function headAvatar(rec) {
+    const agent = rec?.agent || null;
+    return whoAvatar(agent, { size: 32, title: labelFor({ role: "assistant", agent }, names), cls: "cv-head-av" });
+  }
+
   function drawHead() {
     const rec = record.current;
     const ses = recorded.session;
@@ -403,6 +411,7 @@ export function mountSession(container, opts) {
     checkSight();
     put(head,
       h("button", { class: "ibtn session-back", "aria-label": "Back", onclick: opts.onBack }, icon("left", 16)),
+      headAvatar(rec),
       h("div", { class: "cv-head-text" },
         h("div", { class: "title ellipsis" }, rec?.name || ses?.name || ses?.title || thread.slice(0, 12)),
         h("div", { class: "sub ellipsis", title: rec?.cwd || ses?.cwd || null }, [rec?.agent, shortDir(rec?.cwd || ses?.cwd)].filter(Boolean).join(" · ") || "Terminal session"),
@@ -749,7 +758,7 @@ export function mountSession(container, opts) {
       case "text": { const el = textItemRow(it.at, { visible, onGrow: stick.observing ? undefined : () => stick.poke() }); el.sync(it); return el; }
       case "reasoning": return thinkingRow(it.text, it.at, thinkLabel(it));
       // A teammate handoff (team_ask): its own card (teammates.md section 3), not the generic tool one.
-      case "tool": return (it.name === "team_ask" || it.name === "team.ask") ? handoffCard(asBlock(it)) : toolCard(asBlock(it));
+      case "tool": return (it.name === "team_ask" || it.name === "team.ask") ? handoffCard({ ...asBlock(it), project: record.current?.project || opts.project || null }) : toolCard(asBlock(it));
       case "turn": return turnRow(asBlock(it));
       case "notice": return noticeMsg(it.text, it.at);
       case "ask": return askEl(it);
