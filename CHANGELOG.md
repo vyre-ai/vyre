@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### projects: fix a HIGH regression 13e7b0e8 introduced (reviewer's third pass)
+
+- `refuseSensitiveRoot`'s ancestor fix (MEDIUM 3, previous entry) applied its single
+  "inside-or-ancestor" check to root and home themselves too, so every real project nested under
+  the actual home directory (`~/Work`, `~/Projects`, and so on - where almost every real project
+  actually lives) was refused the same as `/Users` or the home directory itself. root and home
+  are now refused only as an exact match or an ancestor of them (which would enclose them, and so
+  every credential folder they hold, as a project's own subfolder); each named SENSITIVE folder
+  keeps all three checks (itself, inside it, or an ancestor of it) unchanged. New test against a
+  fake `$HOME` (a temp dir; `os.homedir()` reads it on POSIX) proves an ordinary nested project
+  still works, while the fake home's own ancestor and a sensitive folder under it are still
+  refused. Also added the ancestor/Library tests the previous entry's fix should have shipped
+  with the first time (`/Users`-style ancestor of the real home, `~/.config`, `~/Library`).
+
+Tests, testbox nice -n 15, load under 6: 51/51 core/projects, 305/305 across core/mcp +
+core/memory + core/files + hygiene + boundaries.
+
 #### memory,projects: reviewer's second-pass HOLD on db2d94fd, three MEDIUMs
 
 - MEDIUM 1: `graph.view`/`scoped` read an empty cwds array as "no scope at all" (the main graph,

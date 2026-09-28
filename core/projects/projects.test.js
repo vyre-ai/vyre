@@ -369,6 +369,36 @@ test("projects: create() and addWorkspace() refuse the whole disk, the real home
   assert.equal(w.P.addWorkspace(harlow.slug, ok).added, "../harlow-intake");
 });
 
+test("projects: create() refuses an ancestor of the real home or a sensitive folder too, not just the folder itself (reviewer's MEDIUM 3, second pass)", async t => {
+  const w = world(t);
+  const home = os.homedir();
+  const bad = [
+    path.dirname(home),               // "/Users" (or whatever holds the real home): contains it
+    path.join(home, ".config"),       // the parent of ~/.config/gcloud specifically
+    path.join(home, "Library"),       // Keychains, Mail, Cookies and more all live under it
+  ];
+  for (const p of bad) assert.throws(() => w.P.create({ name: "Bad", home: p }), /cannot be a project's folder/, p);
+});
+
+test("projects: refuseSensitiveRoot never refuses an ordinary project merely for sitting under the real home (reviewer's HIGH regression on 13e7b0e8)", async t => {
+  // The bug: the first ancestor fix's single "abs is inside OR an ancestor of" check applied to
+  // home itself too, so /Users/alex/Projects/harlow (an entirely ordinary project, exactly
+  // where almost every real one lives) was refused the same as /Users or ~/alex itself. Proven
+  // here against a FAKE $HOME (os.homedir() reads it on POSIX), since this worktree's own real
+  // home is not guaranteed to hold any of these folders either way.
+  const realHome = os.homedir();
+  const fakeHome = fs.realpathSync(tempHome(t));
+  process.env.HOME = fakeHome;
+  t.after(() => { process.env.HOME = realHome; });
+  const w = world(t);
+  const nested = path.join(fakeHome, "Projects", "harlow-legal");
+  const p = w.P.create({ name: "Harlow Legal", home: nested });
+  assert.equal(p.home, fs.realpathSync(nested));
+  // The fake home's own ancestor, and a sensitive folder under it, are still refused.
+  assert.throws(() => w.P.create({ name: "Bad", home: path.dirname(fakeHome) }), /cannot be a project's folder/);
+  assert.throws(() => w.P.create({ name: "Bad2", home: path.join(fakeHome, ".ssh") }), /cannot be a project's folder/);
+});
+
 test("projects: the catalogue says live for a session a terminal has open now, and false without the Switchboard", async () => {
   const { withLive } = await import("./index.js");
   const cat = { total: 2, sessions: [{ id: "a1" }, { id: "b2" }] };

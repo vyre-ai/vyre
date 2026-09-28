@@ -44,9 +44,20 @@ const SENSITIVE = [".vyre", ".claude", ".ssh", ".gnupg", ".aws", path.join(".con
 function refuseSensitiveRoot(p) {
   const abs = M.real(String(p));
   const home = M.real(os.homedir());
-  const bad = [path.parse(abs).root, home, ...SENSITIVE.map(d => path.join(home, d))];
-  for (const b of bad) {
-    if (abs === b || abs.startsWith(b + path.sep) || b.startsWith(abs + path.sep)) {
+  const root = path.parse(abs).root;
+  // Reviewer's HIGH on 13e7b0e8: root and home themselves are refused only as an exact match or
+  // an ANCESTOR of them (which would enclose them, and so every credential folder they hold, as
+  // one of the project's own subfolders) - never merely for sitting INSIDE them, which is where
+  // almost every real project actually lives (~/Work, ~/Projects, ...). The earlier version's
+  // single "inside-or-ancestor" check applied to home too, refusing every real project under it.
+  for (const b of [root, home]) {
+    if (abs === b || b.startsWith(abs + path.sep)) throw new Error(`${p} cannot be a project's folder`);
+  }
+  // Each named SENSITIVE folder, unlike root/home above, IS refused for sitting inside it too
+  // (a project must never be nested inside ~/.ssh, say), on top of being it or an ancestor of it.
+  for (const d of SENSITIVE) {
+    const full = path.join(home, d);
+    if (abs === full || abs.startsWith(full + path.sep) || full.startsWith(abs + path.sep)) {
       throw new Error(`${p} cannot be a project's folder`);
     }
   }
