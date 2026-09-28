@@ -99,6 +99,14 @@ use a small fixed (~8), AA-tested ANSI 256 palette for a teammate's name, never 
 never a fill. Doc updated to match; nothing to build differently in core/team from this — section
 3 was always chat's and app-design's.
 
+**chat built section 2 (@role composer routing) at af29a073 on work/chat**: typing `@role` sends
+`team.ask` instead of spending the session's own turn, create-on-first-use gated on
+`team.default.get` with the inline confirm card, `team.add` with the Sonnet, not Opus, default
+per this doc. Built and tested against mocks plus the real tool schemas read from this worktree
+(`team.ask`/`team.default.get`/`team.add`'s input shapes), inert until `core/team` merges
+anywhere. Still FIFO-by-role for the handoff card's reply side until sessions' `threads.post`
+request-id field lands (see "Needs from others").
+
 **Reviewer LOW on sessions' e868f5e2 (relayed by sessions and the lead), fixed at (next sha):**
 `team.project-append` had no cap. A project with many teammates, or a long brief, would bloat
 every session's prompt. Now: at most 8 teammates listed (`APPEND_MAX_TEAMMATES`), each brief cut
