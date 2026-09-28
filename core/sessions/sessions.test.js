@@ -52,7 +52,13 @@ const until = async (fn, what, ms = 15_000) => {
  * are put and granted to module threads (the box's own credential) unless `grant` is false.
  */
 async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box", modules = [] } = {}) {
-  const root = tempHome(t);
+  // tempHome's own cleanup always runs first (after-hooks run in the order they were added), so
+  // it needs a way to stop this in-process vyred before it removes the directory - otherwise the
+  // directory comes out from under a daemon (and any live child) still writing to it. `daemon` is
+  // set below once start() resolves; stop() closing over it (rather than passing d.stop directly,
+  // which does not exist yet at this point) is what makes the ordering work.
+  let daemon = null;
+  const root = tempHome(t, { stop: () => daemon && daemon.stop() });
   const log = path.join(root, "claude.log");
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG,
     VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, VYRE_SESSIONS_SDK_DIR: process.env.VYRE_SESSIONS_SDK_DIR, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
@@ -74,7 +80,7 @@ async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box"
     } };`);
   for (const m of modules) writeModule(path.join(root, "modules"), m.name, m.manifest, m.source);
   const d = await start({ root, presence: present, log: () => {} });
-  t.after(() => d.stop());
+  daemon = d;
   // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
   // Vyre's own state, as it does on a real machine.
   const work = fs.mkdtempSync(path.join(SCRATCH, "vyre-work-"));

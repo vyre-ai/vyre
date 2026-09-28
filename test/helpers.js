@@ -13,7 +13,21 @@ import { SCRATCH, HOMES } from "./scratch.mjs";
 // that needs Tailscale sets its own fake, which replaces this.
 if (!process.env.VYRE_TAILSCALE_BIN) process.env.VYRE_TAILSCALE_BIN = path.join(os.tmpdir(), "vyre-no-tailscale", "tailscale");
 
-export function tempHome(t) {
+/**
+ * @param {any} t
+ * @param {{ stop?: () => (Promise<any>|any) }} [opts] `stop`: for a test that runs vyred
+ *   in-process (`start()` from core/daemon/index.js, not a spawned `vyre up`), a callback that
+ *   stops it. stopDaemon() below only knows how to stop a *spawned* vyred (it reads vyred.pid and
+ *   signals it; an in-process one has no pid of its own to signal). Without `stop`, an in-process
+ *   daemon a test registers its own later `t.after(() => d.stop())` for is stopped too late:
+ *   after-hooks run in the order they were added (this one, tempHome's own, always runs first,
+ *   for the same reason stopDaemon exists at all), so the directory below is removed while that
+ *   daemon - and any live child it started - is still writing into it. ENOTEMPTY on rmSync,
+ *   found under the full suite at concurrency 4 (2026-09-28): ostensibly a leftover-file race,
+ *   actually a daemon that was never given the chance to stop first. Pass `stop` and it runs
+ *   before stopDaemon and the rmSync below, in the one place guaranteed to run first.
+ */
+export function tempHome(t, { stop } = {}) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-test-"));
   // A leaked home can come back holding only what a late write put there, so the name of the
   // test that made it is kept outside it.
@@ -35,6 +49,7 @@ export function tempHome(t) {
     // run in the order they were added, so this cleanup runs before the test's own `vyre down`.
     // Deleting the home under a live vyred orphaned it (fourteen of them, found running). So stop
     // any daemon this home started, unless it is this process (an in-process start()).
+    if (stop) await Promise.resolve(stop()).catch(e => console.error(`test helpers: tempHome's stop() failed (${dir}): ${e.message}`));
     await stopDaemon(dir);
     fs.rmSync(dir, { recursive: true, force: true });
   });
