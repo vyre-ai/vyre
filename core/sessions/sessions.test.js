@@ -601,6 +601,9 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(!w.launches().some(l => l.argv && l.argv.includes(busy.id)), "no second writer was started");
     const f = (await w.tool("threads.fork", { thread: busy.id, prompt: "from here", surface: "deck" })).data;
     assert.notEqual(f.id, busy.id);
+    // .id is canonical; .thread is kept as an alias for one release (native-core's naming
+    // footgun: threads.rewind's answer already echoed .thread, fork/launch silently did not).
+    assert.equal(f.thread, f.id);
     await w.finished(f.id);
     const argv = w.launches().at(-1).argv;
     assert.equal(argv[argv.indexOf("--resume") + 1], busy.id);
@@ -789,7 +792,9 @@ for (const driver of ["cli", "sdk"]) {
     const two = lines().find(l => l.type === "user" && l.uuid === turns[1].uuid);
     assert.ok(two, "a user message's transcript uuid is the one thread.turn gave");
     const r = (await w.tool("threads.rewind", { thread: th.id, uuid: turns[1].uuid })).data;
-    assert.deepEqual(r, { rewound: true, thread: th.id, uuid: turns[1].uuid, text: "two" });
+    // .thread and .id name the same session (native-core's naming footgun): every thread-
+    // returning answer carries both now, .id canonical.
+    assert.deepEqual(r, { rewound: true, id: th.id, thread: th.id, uuid: turns[1].uuid, text: "two" });
     const argv = (await until(() => w.launches().find(l => l.argv && l.argv.includes("--resume-session-at")), "the rewound launch")).argv;
     assert.equal(argv[argv.indexOf("--resume-session-at") + 1], two.parentUuid, "it goes on from just before the message");
     assert.ok((await w.events(th.id)).some(e => e.type === "thread.rewound" && e.payload.at === two.parentUuid));

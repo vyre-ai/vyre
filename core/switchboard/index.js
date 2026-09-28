@@ -418,7 +418,7 @@ export class Switchboard {
     if (o.resume) {
       rec = this.must(o.resume);
       id = rec.id;
-      if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.record(id); }
+      if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.launched(id); }
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
     } else {
@@ -488,8 +488,18 @@ export class Switchboard {
       if (o.surface) await this.send(id, o.prompt, o.surface);
       else { this.write(id, o.prompt); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
-    return this.record(id);
+    return this.launched(id);
   }
+
+  /**
+   * launch()'s own answer (threads.start, threads.fork, threads.launch): the record, plus
+   * `thread` as an alias of `id` (a naming footgun native-core hit: threads.rewind's answer
+   * echoes the new/resumed session id as `.thread`, so a client that copied that pattern reading
+   * `.thread` off a launch answer silently got undefined). `id` is canonical; drop `thread` here
+   * once every surface is confirmed off it (2026-09-28).
+   * @param {string} id
+   */
+  launched(id) { return { ...this.record(id), thread: id }; }
 
   /**
    * The system prompt for a launch: the levels a person edited (assistant, agent, project;
@@ -1409,15 +1419,15 @@ export class Switchboard {
       files = { restored: true, ...(r && Array.isArray(r.filesChanged) ? { files_changed: r.filesChanged } : {}), ...(r && r.canRewind === false ? { restored: false, why: r.error || "no checkpoint" } : {}) };
       if (restore === "code") {
         this.emit("thread.rewound", { uuid, restore, files }, id, rec.project);
-        return { rewound: true, thread: id, uuid, restore, files };
+        return { rewound: true, id, thread: id, uuid, restore, files };
       }
     }
-    if (!line.parentUuid) return { rewound: false, thread: id, text, note: "That is the first message: start a new session with it instead.", ...(files ? { files } : {}) };
+    if (!line.parentUuid) return { rewound: false, id, thread: id, text, note: "That is the first message: start a new session with it instead.", ...(files ? { files } : {}) };
     const st = this.live.get(id);
     if (st) await this.close(id, st, "rewind");
     await this.launch({ resume: id, resumeAt: String(line.parentUuid) });
     this.emit("thread.rewound", { uuid, at: String(line.parentUuid), restore, ...(files ? { files } : {}) }, id, rec.project);
-    return { rewound: true, thread: id, uuid, text, ...(restore !== "conversation" ? { restore, files } : {}) };
+    return { rewound: true, id, thread: id, uuid, text, ...(restore !== "conversation" ? { restore, files } : {}) };
   }
 
   /**

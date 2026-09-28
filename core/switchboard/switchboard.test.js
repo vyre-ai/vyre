@@ -284,6 +284,7 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   assert.equal(started.error, undefined, JSON.stringify(started.error));
   const id = started.data.id;
   assert.match(id, /^[0-9a-f-]{36}$/, "the thread id is the Claude Code session id");
+  assert.equal(started.data.thread, id, ".thread is kept as an alias of the canonical .id for one release");
   assert.equal(started.data.holder, "deck:1", "the surface that starts a thread has its keyboard");
   await until(() => of(a.got, id, "thread.finished").length && of(b.got, id, "thread.finished").length, "both clients to see the turn end");
 
@@ -745,6 +746,7 @@ test("lean and one-shot threads: no plugin, tools or settings, kept on resume; a
   // A job: Learning's shape. Internal, so only a module may launch one.
   assert.equal((await tool("threads.launch", { cwd: work, prompt: "x" })).error.code, "no_such_tool");
   const job = (await d.registry.call("threads.launch", { cwd: work, prompt: "distil this", plugin: false, tools: "none", once: true, model: "haiku" }, "module:learn")).data;
+  assert.equal(job.thread, job.id, ".thread is kept as an alias of the canonical .id for one release");
   const stopped = await until(async () => (await tool("threads.get", { thread: job.id })).data.events.find(e => e.type === "thread.stopped"), "the job to stop");
   assert.equal(stopped.payload.reason, "done");
   const events = (await tool("threads.get", { thread: job.id })).data.events;
