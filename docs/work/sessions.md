@@ -43,6 +43,67 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
+- Reviewer SIGNED OFF the whole planner-task range as one: b786a799 + db916908 + dfc402e9 +
+  7483788d. Open LOW for later (not blocking, not done): a missed firing after downtime runs its
+  task immediately on catch-up; reviewer's suggestion is to hold a stale one for the person instead
+  of just running it. Noted here for whoever picks up planner next (could be me).
+- Resume 10 continued: the escalation MEDIUM reviewer held dfc402e9 on (team-lead: a task must
+  never ring/escalate like an alarm) fixed at 7483788d - fireItem gives a task's firing next_ring:
+  null unconditionally, and fired() only ever runs a task on ring 1 as a second guard. New test:
+  default settings, advance past escalate_after x escalate_max, run_count stays 1 (was 4 before
+  the fix). 26/26 planner.test.js, 31/31 with boundaries, testbox. This closes b786a799 + db916908
+  + dfc402e9 as one range, per the reviewer.
+- Resume 10 continued further: cb387d88's LOW + nit fixed (ac37089b) - safeRequest() checks
+  request against /^[\w-]{1,64}$/ before it is ever stored or emitted (threads.post's tool
+  boundary); fixed a comment overclaiming word-boundary truncation on APPEND_TOTAL_MAX (it's a
+  plain slice(), a safety bound not a rendered cut). docs/design/projects-map.md (mine, owner:
+  sessions) failed docs-check - added to nav.json under Contributing, dropped every em dash, and
+  de-backticked memory.today/vault.uses (neither is a real tool in this tree - grepped memory-iq
+  and vault to confirm; didn't touch the Built/Gap claims themselves, that's their call) (40379d4a).
+  test/docs-*.test.js 61/61 on testbox.
+- Resume 10 continued: reviewer verdicts on both sent shas, addressed.
+  - Reviewer HELD b786a799 (planner task kind) on 2 HIGHs: a task from a bare mcp/module/thread-
+    scoped caller launched AMBIENT with the person's own scope at fire (no real agent claim
+    matched); a task could post into ANY thread the creator named, as module:planner, a confused
+    deputy. Fixed at dfc402e9: taskScope requires a genuinely claimed agent identity (or the
+    person) to add or redirect a task at all; a non-person's task may only target its own calling
+    thread (meta.thread now threaded through the tool() wrapper AND the paired-Mac `as` forward
+    path); a project-only task needs that project inside the creator agent's own agents.list
+    scope, checked again at add, at update, and right before it fires (MEDIUM). 25/25
+    planner.test.js (5 new), 106/106 with goals+harness+switchboard+boundaries, testbox.
+  - Reviewer's LOW 2 on goals ccf2e0f1 (SIGNED OFF, not blocking): naming both a thread and a
+    project on inScope checked only the thread. Fixed at 9c6ec941: both must hold when both are
+    named. 8/8 goals.test.js (1 new).
+  - Reviewer's LOW 1 (swap goals' isPerson for cohesion's lib/caller.js, 87149563) NOT done: that
+    lib needs core/presence's PERSON_SURFACES/personOnly, which this branch does not have yet (it
+    predates the personguard hotfix b3b7b1dc/002e6577 cohesion's tree already carries). Cherry-
+    picking someone else's in-flight security work to close a LOW is the integrator's job at the
+    stage/0.1.1 fold, not mine to force now - told cohesion and the reviewer directly.
+- Resume 10 (2026-09-28), the four-item queue, all four done:
+  1. Reviewer's HOLD on goals bb3b9b4e was already fixed locally, uncommitted, as ccf2e0f1
+     (person = owner surfaces + owner devices, not "no agent name"; callers declared on all five
+     tools; goals.get/list scoped like milestone-done; goals.set checks the TARGET scope too).
+     Sent to the reviewer for a fresh look (it predates this resume; the reviewer's notes still
+     show it HELD).
+  2. The three harness.brief patches, one sha (cb387d88): APPEND_TOTAL_MAX 2000 on the joined
+     style+team nudge (ellipsis, not an em dash, truncated at the one join point); a `request` id
+     threaded through threads.post -> Switchboard#post/queue -> thread.sent/thread.queued ->
+     threads_inbox (new column) -> threads.queue's read-back; style.append gets {project} only
+     when harness.brief's own inScope() says this agent is in scope (else {}, the account-level
+     voice only) - closes the reviewer's LOW on 36caa4ad.
+  3. The waits_on re-fire bug (db916908): a chained task's own state never changes when it runs
+     (by design, for a recurring chain), so matching "dependency done AND task still open" fired
+     again on a reopen-and-redo of the same dependency. Fixed with `waits_on_fired`, the
+     dependency's own done_at at the last run - done_at is fresh per completion and never reused
+     across a reopen, so it distinguishes "the same one, already handled" from "a genuinely later
+     one" without touching the task's state.
+  4. b786a799 (planner task kind + waits_on) sent to the reviewer per the lead's queue (it went to
+     reviewer-2 originally as a mechanical extension; the lead wants the security read too).
+  docs/reference regenerated (ea30b29a) for both the goals callers and the harness/threads
+  description changes. All tests run on testbox (not the Mac): planner 22/22, goals+harness+
+  switchboard+boundaries 102/102, both sessions-turns files 43/43 (39 sdk skipped, no SDK
+  installed there), test/docs-*.test.js 60/61 (the one fail, docs/design/projects-map.md missing
+  from nav + em dashes, predates this session and isn't sessions' file - not fixed here).
 - Resume 9 check (2026-09-28): confirmed a session started with no project can be attached to
   one later. `projects.add-threads` (CLI `vyre pick <project> <thread>...`) already does this;
   `test/projects-cli.test.js` test 22 ("vyre start opens a new named thread ... pick and unpick
@@ -163,6 +224,47 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   my side - already true. e868f5e2. Tests: harness.test.js's projects+memory test extended with a
   fake team module (checks ordering), plus a new test for both null-safe paths. 13/13 on
   core/harness, 20/20 with test/harness.test.js + boundaries.
+- rc.2 follow-up (lead's call, not raising the timeout): split `core/sessions/sessions.test.js`
+  into two files - `sessions.test.js` (pure/config tests + the first 17 driver-parametrized
+  ones) and the new `sessions-turns.test.js` (the other 18) - sharing `boot()`/`until()`/
+  `terminalSession()` from a new non-test module, `core/sessions/testing/boot.js` (excluded from
+  the boundaries scan like every other `testing/` folder; unchanged logic, moved verbatim).
+  `d2a0207c`. Verified at rc.2's exact conditions on testbox: both new files together with
+  switchboard.test.js, boundaries, chat-sessions-contract, thread-status and harness - 175/177
+  pass, 2 skip, 0 fail, 54-55s twice in a row, versus 87.5s for the one file alone before.
+- teammates' second small pickup, bundled with the first: `style.append` (ADR 0037, core/style's
+  side already built) alongside `team.project-append` in `harness.brief`. Unlike team's, it's not
+  project-scoped ("the house voice for every session") - applies even outside a project and to an
+  agent out of scope. Order: house voice, then team nudge, then project brief, then lessons.
+  `36caa4ad`. 28/28 on core/harness + test/harness.test.js.
+- Goals+/later, approved design (team-lead): core/goals own module, planner kind "task" +
+  waits_on, 4 rules (creator-scope, recurring visibility+pause, milestone-done scoped, person
+  accepts a goal). Built so far:
+  - `7e88b74e`: core/push's side first (purely declarative - NOTES's event-type map wires up any
+    listener with no new registration code). New `goal` kind (kinds.goal, default on), routes
+    `goal.milestone`/`goal.done`. 8/8 on core/push.
+  - `bb3b9b4e`: new module `core/goals` (roles box, local) - `goals.set` (a person's own call is
+    active at once; an agent's is a proposal, state `pending`, rule 4), `goals.accept`
+    (PERSON_ONLY, added to core/presence), `goals.milestone-done` (rule 3: scoped to the goal's
+    own thread or project, checked via `threads.get` for an agent's calling thread; a person may
+    always tick one; re-ticking an already-done one is a no-op not a second event; the last one
+    marks the goal done and emits `goal.done`), `goals.get`/`goals.list`. Self-contained, no
+    cross-feature imports. 4/4 new tests, 30/30 with push + harness + boundaries.
+  - `b786a799`: planner kind `task` + `waits_on` (rules 1 and 2 - /later's actual firing
+    mechanism). Reuses every existing time path unchanged (resolveTime, the scheduler) for
+    one-off/relative/recurring; a task with a `thread` fires via `threads.post` (the thread's own
+    scope governs it); with none, `threads.launch` with `agent: <name>` parsed from the item's
+    own `source` column (`"agent:<name>"`, already how core/planner tags an agent's item) - rule
+    1, never more than that agent's own scope; a person's own task passes no agent, ambient.
+    `waits_on` chains a task after another item's `done`, via a `planner.changed` listener,
+    entirely outside the scheduler. `run_count`/`last_result` on every fire (rule 2, a runaway
+    loop must be visible); `paused` stops one task without losing its history. Caught and fixed
+    two real bugs before shipping: `waits_on`/`paused` were accepted by the schema but silently
+    dropped at insert (missing from the row literal), and `planner.update` had no handling for
+    either despite `EDITABLE` listing them (`EDITABLE` itself turns out unused elsewhere - dead).
+    21/21 on planner.test.js, 55/55 with the rest of core/planner + boundaries.
+  Sent core/goals to the reviewer (real scoping/security logic); push routing and the planner
+  task kind to reviewer-2 (mechanical extensions of existing, already-reviewed patterns).
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
@@ -183,6 +285,20 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
 Then the compile phase: tests for every piece, docs, polish.
 Testing the SDK driver on testbox: VYRE_SESSIONS_SDK_DIR=~/vyre-ci/sessions-sdk (0.3.283, with
 optional deps; without them the tests silently run on the CLI).
+
+## Doing (github, ADR 0041)
+- github asked for gitWithAskpass in lib/git-safe.js and a session start/cleanup hook for their
+  worktree feature. lib/git-safe.js does not exist on this branch (merge-base a3a844e4, 196 commits
+  behind main; git-safe.js landed after that) and a clean isolated cherry-pick isn't possible either
+  (e5944433 depends on vault's later kinds.js/defaultField refactor, also not here). Told them: add
+  it fresh as a new file, self-contained, and the integrator reconciles at the stage/0.1.1 fold; a
+  full main merge is too large to do safely mid-session (196 commits, real overlap in switchboard/
+  harness/planner - files I've been actively editing for reviewer holds this session).
+  Also corrected their hook design against real names: `thread.started` exists; there is no
+  "archived" thread event or a project-change event at all (projects.add-threads/remove-threads
+  emit nothing today) - waiting to hear which real status (finished/stopped/paused) they actually
+  want cleanup on, and whether the missing project-change event is a real blocker for them (I'd add
+  it if so). Sent, not blocking either side.
 
 ## Needs from others
 - integrator: one full-suite run with `VYRE_SESSIONS_DRIVER=sdk VYRE_SESSIONS_SDK_DIR=<dir with SDK 0.3.283>`.

@@ -108,7 +108,11 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   "voice.speak", "capsule.report",
   // Ends this Mac's own person session; cheap to protect, and a model signing the person out
   // mid-task is a real annoyance (reviewer, 28 Sep).
-  "link.signout"]);
+  "link.signout",
+  // core/goals: an agent may propose a goal (goals.set, state pending), but only a person's tap
+  // turns it into a real one - the same shape as team_propose needing a person's team.add.
+  "goals.accept"]);
+
 
 /**
  * The person's own surfaces: a real terminal, the Deck, Capsule. Never `module`, `mcp`, `tailnet`,

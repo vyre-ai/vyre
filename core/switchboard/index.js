@@ -37,6 +37,13 @@ import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
+// Reviewer's LOW on cb387d88, 2026-09-28: a teammate's own request id (threads.post -> thread.sent/
+// thread.queued -> threads_inbox) is a matching hint, not an auth fact, but it is still stored and
+// broadcast on every device watching the thread - checked for shape before either, same as any
+// other id this codebase stores untrusted.
+const REQUEST_ID = /^[\w-]{1,64}$/;
+const safeRequest = v => (typeof v === "string" && REQUEST_ID.test(v) ? v : undefined);
+
 /** Usage per turn (for agents.usage), and the last rate-limit report Claude Code gave a thread. */
 const USAGE_MIGRATION = `CREATE TABLE threads_turns (thread TEXT NOT NULL, agent TEXT, auth TEXT NOT NULL, at INTEGER NOT NULL, ok INTEGER NOT NULL,
      cost_usd REAL NOT NULL, duration_ms INTEGER NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL, cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL);
@@ -103,6 +110,10 @@ export const MIGRATIONS = [
   `ALTER TABLE threads_inbox ADD COLUMN images TEXT;
    CREATE TABLE threads_steers (uuid TEXT PRIMARY KEY, thread TEXT NOT NULL, text TEXT NOT NULL, images TEXT, at INTEGER NOT NULL);
    CREATE INDEX threads_steers_thread ON threads_steers (thread);`,
+  // A teammate's async reply (ADR 0031, core/team's finish()) carries its own request id, so a
+  // surface with two open asks to the same teammate can match a reply to the ask it answers
+  // instead of by role, FIFO (ambiguous once @role makes that a common case, not an edge one).
+  `ALTER TABLE threads_inbox ADD COLUMN request TEXT;`,
 ];
 
 /** Images kept as JSON (a queued or steered message's), or null. @param {any} v */
@@ -1012,13 +1023,13 @@ export class Switchboard {
       this.emit("thread.turn", { turn: st.turn, uuid, text: cut([text, ...rest.map(r => r[1])].join("\n\n"), 2000), steered: true }, id, project);
       return;
     }
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return;
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     const taken = rows.filter(r => mark.run(now, r.id).changes);
     if (!taken.length) return;
-    for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", ...(r.kind ? { kind: r.kind } : {}) }, id, project);
+    for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project);
     const images = taken.flatMap(r => imagesFrom(r.images) || []);
     this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), images: images.length ? images : null });
   }
@@ -1142,10 +1153,10 @@ export class Switchboard {
    * when the thread is idle here, queued for the turn's end when one runs, and for a session open
    * in a terminal, queued as a person's words are.
    */
-  async post(id, text, from, kind) {
+  async post(id, text, from, kind, request) {
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
-      if (this.elsewhere(id)) return this.queue(id, text, from, undefined, { kind });
+      if (this.elsewhere(id)) return this.queue(id, text, from, undefined, { kind, request });
       const rec = this.must(id);
       if (rec.agent) {
         const r = await this.deps.call("agents.resume", { agent: rec.agent, thread: id });
@@ -1154,9 +1165,9 @@ export class Switchboard {
     }
     const st = this.live.get(id);
     const rec = this.must(id);
-    if (st.turn && ["working", "waiting"].includes(String(rec.status))) return this.queue(id, text, from, null, { owned: true, kind });
+    if (st.turn && ["working", "waiting"].includes(String(rec.status))) return this.queue(id, text, from, null, { owned: true, kind, request });
     const w = this.write(id, text);
-    this.emit("thread.sent", { text: cut(text, 2000), surface: from, uuid: w.uuid, via: "post", kind }, id, rec.project);
+    this.emit("thread.sent", { text: cut(text, 2000), surface: from, uuid: w.uuid, via: "post", kind, ...(request ? { request } : {}) }, id, rec.project);
     return { sent: true, thread: id, uuid: w.uuid, turn: w.turn };
   }
 
@@ -1167,13 +1178,13 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
-  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, images = /** @type {any} */ (null) } = {}) {
+  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null) } = {}) {
     const rec = this.must(id);
     // A session open elsewhere takes queued words through its hooks, which carry text only.
     if (images && images.length && !owned) throw Object.assign(new Error("images cannot wait for a session open in a terminal; send them when it is free here"), { code: "bad_input" });
-    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images) VALUES (?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images));
+    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request) VALUES (?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null);
     const queued = Number(r.lastInsertRowid);
-    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, ...(kind ? { kind } : {}), ...(images && images.length ? { images: images.length } : {}) }, id, rec.project);
+    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, ...(kind ? { kind } : {}), ...(request ? { request } : {}), ...(images && images.length ? { images: images.length } : {}) }, id, rec.project);
     const name = rec.name || id.slice(0, 8);
     // A session Vyre runs is never called a terminal (it is working, and the words go in after).
     if (owned) return { sent: false, queued: true, queued_id: queued, uuid, thread: id, name, busy: "working",
@@ -1224,13 +1235,13 @@ export class Switchboard {
     const rec = this.must(id);
     const st = this.live.get(id);
     if (!st) return { sent: false, note: "This session is not running here; its words are handed over when its terminal's turn ends." };
-    const row = /** @type {any} */ (this.db.prepare("SELECT id, text, surface, uuid, images FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));
+    const row = /** @type {any} */ (this.db.prepare("SELECT id, text, surface, uuid, images, request FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));
     if (!row || !this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'now' WHERE id = ? AND delivered_at IS NULL").run(Date.now(), row.id).changes) {
       return { sent: false, note: "That message was already handed over, or was never queued here." };
     }
     const uuid = row.uuid || crypto.randomUUID();
     const w = this.write(id, row.text, { uuid, steer: Boolean(st.turn), images: imagesFrom(row.images) });
-    this.emit("thread.sent", { text: cut(row.text, 2000), surface: row.surface, queued: Number(row.id), uuid, via: "now" }, id, rec.project);
+    this.emit("thread.sent", { text: cut(row.text, 2000), surface: row.surface, queued: Number(row.id), uuid, via: "now", ...(row.request ? { request: row.request } : {}) }, id, rec.project);
     return { sent: true, thread: id, queued: Number(row.id), uuid, turn: w.turn };
   }
 
@@ -1240,14 +1251,14 @@ export class Switchboard {
    * @param {string} id @param {"stop"|"prompt"} via
    */
   deliver(id, via) {
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, at FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, at, request FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return { messages: [] };
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = ? WHERE id = ?");
     const rec = this.record(id);
     for (const m of rows) {
       mark.run(now, via, m.id);
-      this.emit("thread.sent", { text: cut(m.text, 2000), surface: m.surface, queued: m.id, via }, id, rec ? rec.project : null);
+      this.emit("thread.sent", { text: cut(m.text, 2000), surface: m.surface, queued: m.id, via, ...(m.request ? { request: m.request } : {}) }, id, rec ? rec.project : null);
     }
     return { messages: rows.map(m => ({ id: m.id, text: m.text, surface: m.surface, at: m.at })) };
   }
@@ -2090,13 +2101,13 @@ export default {
         return sb.unqueue(i.thread, i.queued, surfaceOf(i, caller));
       });
 
-    tool("threads.queue", "The words queued for a thread and not handed over yet, oldest first: queued (the row id), uuid, text, surface, at.",
+    tool("threads.queue", "The words queued for a thread and not handed over yet, oldest first: queued (the row id), uuid, text, surface, at, request (a teammate's own request id, when its reply carries one).",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => {
         guard(caller, "read queued words");
         sb.must(i.thread);
-        return { queued: /** @type {any[]} */ (sb.db.prepare("SELECT id, uuid, text, surface, at FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(i.thread))
-          .map(r => ({ queued: Number(r.id), uuid: r.uuid || null, text: String(r.text), surface: r.surface, at: r.at })) };
+        return { queued: /** @type {any[]} */ (sb.db.prepare("SELECT id, uuid, text, surface, at, request FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(i.thread))
+          .map(r => ({ queued: Number(r.id), uuid: r.uuid || null, text: String(r.text), surface: r.surface, at: r.at, request: r.request || null })) };
       });
 
     tool("threads.edit", "Change queued words before they are handed over (re-emits thread.queued with the same ids). Only a person's surface can.",
@@ -2200,9 +2211,9 @@ export default {
     // For other modules (teammates, ADR 0031): put words in a thread that never steer: a new turn
     // when the thread is idle, else handed over when its running turn ends.
     ctx.tool("threads.post", {
-      description: "Give a thread words from a module (a teammate's result): a turn of their own now if it is idle, else after its running turn. Never steers.", internal: true,
-      input: { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, kind: str, from: str } },
-      run: async (i, { caller }) => sb.post(i.thread, i.text, String(i.from || caller || "module"), i.kind || "post"),
+      description: "Give a thread words from a module (a teammate's result): a turn of their own now if it is idle, else after its running turn. Never steers. request: the request this reply answers (core/team's own id), so a surface with two open asks to the same teammate can match it by id instead of by role, FIFO.", internal: true,
+      input: { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, kind: str, from: str, request: str } },
+      run: async (i, { caller }) => sb.post(i.thread, i.text, String(i.from || caller || "module"), i.kind || "post", safeRequest(i.request)),
     });
     // For other modules only (agents): start or resume with an agent's credentials, scope and
     // instructions. Internal, so no surface or model can hand a thread an environment.

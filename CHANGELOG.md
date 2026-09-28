@@ -880,6 +880,32 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - core/link/box.js: `link.macs` gains `stableId` (the Mac's tailnet peer id), additive; `node`
   keeps meaning the paired name shown to surfaces.
 - core/files/module.json: files.deliver in "does", two teaching tips (files.deliver, files.receive).
+#### Goals + milestones: new module core/goals, push routing
+
+- New module `core/goals`: `goals.set` (a person's own call is active at once; an agent's is a
+  proposal until a person's `goals.accept`), `goals.milestone-done` (scoped to the goal's own
+  session or project - an agent elsewhere is refused), `goals.get`/`goals.list`. The last
+  milestone landing marks the goal done and emits `goal.done`.
+- `core/push` routes `goal.milestone`/`goal.done` through a new `goal` kind (`kinds.goal`,
+  default on), the same way it already routes `planner.fired`.
+
+#### /later: planner kind "task" and waits_on
+
+- New planner kind `task`: fires by running an instruction (`threads.post` into a named thread,
+  or `threads.launch` a fresh one under the creator's own agent - never more scope than that
+  agent already has) instead of ringing a notification. Reuses every existing time path
+  (one-off, relative, recurring) unchanged. `waits_on` chains a task after another item's own
+  `done` ("when X finishes, do Y"), resolved outside the scheduler entirely. `run_count`/
+  `last_result` on every fire; `paused` stops one task without losing its history.
+
+#### sessions.test.js split into two files (rc.2, capacity)
+
+- `core/sessions/sessions.test.js`'s ~80 real subprocess-spawning tests (both drivers) sat right
+  at the edge of the full suite's 90s file timeout under concurrency-4 contention. Split into
+  `sessions.test.js` and a new `sessions-turns.test.js`, sharing `boot()`/`until()`/
+  `terminalSession()` from a new `core/sessions/testing/boot.js` - lets the two run as separate
+  workers instead of one long serial file. 54-55s together with several other files at the
+  rc.2 conditions, versus 87.5s for the one file alone before.
 
 #### Teammates section 1: team.project-append in harness.brief
 
