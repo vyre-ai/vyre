@@ -84,25 +84,51 @@ the **Vyre code**:
   derivation, same ring geometry - "same hand," never a separately invented ring for the second
   family that needs one.
 
+### 2a. Revision: wider outer margin, after a real decode finding (28 Sep)
+
+`pwa`'s port (`deck/vyrecode/decode-core2.js`, work/pwa) found the first frozen geometry's outer
+quiet margin too thin in practice: the code clipped at 120% scale and it limited how much room
+perspective correction has to work with. The actual cause wasn't the ticks - it was the
+**orientation marker** (section 2's disguised 3-dot cue), which reached further from centre than
+any tick did (`r0 + 14 + 2*9 + its own radius` = `RING_R[1] + 37.1`, against the longest tick's
+`RING_R[1] + 29 + a 2.25px round-cap` = `RING_R[1] + 31.25`) - the marker, not the payload marks,
+was setting the real outer edge, and the first pass's margin arithmetic never accounted for it.
+
+Fixed in `round5/vyrecode2.js` by pulling the rings in tight against the face and tightening the
+marker's own footprint to match, rather than shrinking the face or enlarging the canvas:
+
+- `RING_R = [FACE_R + 8, FACE_R + 8 + 34]` = `[188, 222]` (was `[210, 245]`) - the face-to-ring
+  gap drops from 30 to 8, the ring gap itself goes from 35 to 34 (materially unchanged).
+- `ticksSunburst` tick lengths: `6 + level*6` for level 0-3 = `6, 12, 18, 24` (was `8 + level*7`
+  = `8, 15, 22, 29`).
+- The marker's own offsets tighten from `r0 + 14 + k*9`, radius `2.5 + k*1.3` to `r0 + 8 + k*6`,
+  radius `2 + k*1` (k = 0, 1, 2) - it no longer reaches past the ticks.
+
+Result, computed directly (not eyeballed): outer quiet margin (canvas edge at radius 300 minus
+the farthest of tick-reach 248.25 and marker-reach 246) is now **51.75 units, 8.6% of the 600
+canvas** - inside the asked 8-10%. Ring-gap clearance (34 minus the longest tick's 26.25px
+reach) is **7.75px**, comfortably positive and wider than before in relative terms even though
+the raw gap number barely moved, because the ticks themselves got shorter.
+
 **Frozen constants** (`round5/vyrecode2.js`, at a 600x600 canvas; `pwa` has ported these as
 fixed values into `deck/vyrecode/decode-core2.js`, not by importing the source, so a change here
 does not propagate automatically - see the note below): `FACE_D = 360` (`FACE_R = 180`),
-`RINGS = 2`, `PER_RING = 36`, `RING_R = [FACE_R+30, FACE_R+65]` = `[210, 245]`, `ticksSunburst`
-tick lengths `8 + level*7` for `level` 0-3 = `8, 15, 22, 29`.
+`RINGS = 2`, `PER_RING = 36`, `RING_R = [188, 222]`, `ticksSunburst` tick lengths
+`6, 12, 18, 24`, marker offsets `r0 + 8 + k*6` with radius `2 + k*1`.
 
-**A tight invariant, load-bearing for decode, not just visual:** the two rings sit only 35px
-apart (`RING_R[1] - RING_R[0]`), and a ring-0 tick draws outward from its base, so the longest
-mark (29px) reaches to `210 + 29 = 239` - only 6px short of ring 1's own base at 245. Any future
-change to `RING_R`'s gap, the tick-length formula, or `LEVELS` must keep the longest ring-0 mark
-clear of ring 1's base with margin, or ring-0 and ring-1 marks become visually and
-sample-wise ambiguous at the decoder. Treat 6px as the current, already-thin margin, not a target
-to shrink further.
+**The invariant, restated correctly this time:** the outer edge is set by
+`max(RING_R[1] + longest-tick-reach, RING_R[1] + marker-reach)`, not by the ticks alone - the
+first pass's mistake. Any future change to `RING_R`, the tick-length formula, `LEVELS`, or the
+marker's own offsets must recompute both reaches and keep the outer margin at 8-10% of the
+canvas and the ring-gap clearance clearly positive (treat today's 7.75px as thin, not a target to
+shrink further), not just check the ticks.
 
 Because `pwa`'s decoder hardcodes a second copy of these numbers rather than importing
-`vyrecode2.js` directly, the two files can silently drift if either changes alone. Whoever next
-touches either file should either keep both in lockstep by hand (cross-check before merging, as
-`pwa` flagged) or - the safer fix - have the decoder import the constants from a single vendored
-copy of `vyrecode2.js` instead of restating them.
+`vyrecode2.js` directly, the two files can silently drift if either changes alone (as just
+happened here - this revision required a direct message to `pwa` and `launch` with the new
+values, not an automatic update). Whoever next touches either file should either keep both in
+lockstep by hand (cross-check before merging) or - the safer fix - have the decoder import the
+constants from a single vendored copy of `vyrecode2.js` instead of restating them.
 
 ### 3. What the code carries, and what it doesn't
 
