@@ -117,7 +117,7 @@ on main). `--only 5,8,9,10`.
 |---|---|---|---|---|
 | 5 | CLS above the live row | 0.01 | no (was 3,467 px jump) | one 0.0088 shift while streaming; wheel-up anchor held at 360 px over 419 frames, 0 px scrollTop drift. The user-visible jump chat fixed in 553017a1 is gone; what's left is a near-zero CLS entry, not a jump. |
 | 8 | reconnect catch-up | 1,679 ms | no (was 1,529-3,240 ms) | pwa's backoff (250/500/1,000 ms doubling) reopens the stream at 1,646 ms after restore, thread.finished at 1,679 ms, inside a 2.5 s outage recovered via backoff, not `online`. No duplicate rows/events, no blank frames. Anchor moved 106 px (scrollTop 78 px) 1,717 ms after the network came back, far below the old 673-3,254 px jumps, but still a jump, and still over the 1 s budget by ~680 ms. |
-| 9 | send to user row | 7.8 ms | no (numeric pass, flagged on reorder) | row paints well under budget, but the row above it changed text once after Enter ("9.0k tokens" -> "you steered here - after 6 ste"), which the harness counts as a re-order/flicker. Looks like a steer-marker label updating on the previous turn's footer, not the user row itself: worth chat confirming intended vs a real flicker. |
+| 9 | send to user row | 7.8 ms | no (numeric pass, flagged on reorder) | row paints well under budget, but the row above it changed text once after Enter ("9.0k tokens" -> "you steered here - after 6 ste"), which the harness counts as a re-order/flicker. Looks like a steer-marker label updating on the previous turn's footer, not the user row itself; worth chat confirming intended vs a real flicker. |
 | 10 | Esc to stopped | 71.4 ms | yes | first clean pass on this budget. |
 
 Net: budgets 5 and 10 are effectively fixed (5 has a negligible residual CLS entry, not a jump);
@@ -134,7 +134,7 @@ empty `<div class="cv-turn">`, `display: none` while `:empty`, gets its footer t
 there was none and pushing every row below it (the next headRow, tool cards) down by exactly that
 much. No DOM mutation or font-load event lined up with the shift; the CSS collapse/expand did.
 Fixed in chat.css: `.cv-turn` keeps `min-height: 26px` (its own padding + one line) at all times,
-and `:empty` is `visibility: hidden` instead of `display: none`: the box is always there,
+and `:empty` is `visibility: hidden` instead of `display: none`; the box is always there,
 invisible until it has words. Re-run confirms CLS 0 (0 shift entries, was 1 at 0.0088), no
 regression on 8/9/10, and deck/chat's 86/86 tests still green. sha: chat.css only, on
 native-core-composer (native-core).

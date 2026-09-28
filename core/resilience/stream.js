@@ -124,12 +124,14 @@ export function follow({ paths, open, onEvent, onReset, onState, cursor = null, 
       probing = true;
       const pa = new AbortController();
       const t = setTimeout(() => pa.abort(), Math.min(2_000, fastProbeMs * 4));
+      t.unref?.();
       try {
         const r = await open({ base: paths[0], path: "/v1/health", headers, signal: pa.signal });
         for await (const _ of r.chunks) break;
         if (r.status === 200 && wait) { clearTimeout(wait); wait = null; clearInterval(fastTimer); fastTimer = null; at = 0; connect(); }
       } catch {} finally { clearTimeout(t); probing = false; }
     }, fastProbeMs);
+    fastTimer.unref?.();
   }
 
   // On a worse path, look for a better one now and then, and move when it answers.

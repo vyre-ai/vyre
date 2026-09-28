@@ -40,7 +40,7 @@ const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/app
   "/chat/live-text.js", "/chat/core/session-state.js", "/chat/core/tool-detail.js", "/chat/core/grouping.js", "/chat/core/pace.js",
   "/chat/window-view.js", "/chat/core/window.js", "/chat/pickers.js", "/chat/tray.js", "/chat/core/composer-state.js", "/chat/core/suggest.js",
   "/chat/core/caps.js", "/chat/core/commands.js", "/chat/core/match.js", "/chat/plan-card.js", "/chat/core/plan.js", "/chat/tip-line.js",
-  "/chat/core/images.js", "/chat/lightbox.js",
+  "/chat/core/images.js", "/chat/lightbox.js", "/chat/core/voice.js",
   "/core/resilience/stream.js", "/core/resilience/sse.js", "/core/resilience/backoff.js", "/core/resilience/outbox.js", "/core/resilience/web.js"];
 
 self.addEventListener("install", e => e.waitUntil((async () => {

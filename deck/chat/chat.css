@@ -221,6 +221,17 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .lease-bar .lease-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .composer-note { font-size: 12px; line-height: 16px; color: var(--beacon-ink); padding: 0 2px; }
 .composer-note:empty { display: none; }
+/* "From your past sessions" (recall.related): quiet, dismissible, never focused on its own. */
+.composer-hints { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px;
+  border-radius: var(--radius-field, 8px); border: 1px solid var(--rule); padding: 6px 8px; }
+.composer-hints[hidden] { display: none; }
+.composer-hints-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.composer-hints-close { width: 20px; height: 20px; color: var(--label); }
+.composer-hint-row { display: flex; align-items: baseline; gap: 8px; width: 100%; min-width: 0; padding: 3px 2px;
+  border: none; border-radius: 6px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.composer-hint-row:hover, .composer-hint-row:focus-visible { background: var(--hover); }
+.composer-hint-snip { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 18px; }
+.composer-hint-meta { flex-shrink: 0; font-size: 12px; line-height: 16px; white-space: nowrap; }
 /* {sent: false, note}: the session is busy elsewhere, not broken. Quiet, with a way to retry. */
 .composer-note.soft { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; color: var(--text-2); }
 .composer-retry { margin-left: -4px; }
@@ -839,6 +850,21 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 @media (pointer: coarse) { .composer-chip .kbd, .cv-rewind-acts .btn .kbd { display: none; } }
 .composer-attach { width: 36px; height: 44px; flex-shrink: 0; }
 .composer-attach[hidden] { display: none; }
+/* Tap-to-talk / push-to-talk (voice): a placeholder look, app-design to refine the ring and pill
+   in Design A. --voice-level (0-1, set live from the real mic level) drives the ring's spread. */
+.composer-mic { width: 36px; height: 44px; flex-shrink: 0; position: relative; --voice-level: 0; }
+.composer-mic.on { color: var(--beacon-ink); box-shadow: 0 0 0 calc(2px + 6px * var(--voice-level)) var(--beacon-ink, currentColor); opacity: 1; }
+.composer-mic.held { color: var(--primary-ink, var(--beacon-ink)); }
+/* Stopping (a stop tap sent, waiting on done/error - "session-view voice states"): the ring
+   freezes instead of tracking --voice-level, since no more audio is being heard. */
+.composer-mic.stopping { color: var(--text-2); box-shadow: 0 0 0 4px var(--text-2); opacity: 0.7; }
+@media (prefers-reduced-motion: no-preference) { .composer-mic { transition: box-shadow 80ms linear; } }
+.composer-voice-pill { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; padding: 4px 10px;
+  border-radius: var(--radius-chip, 4px); background: var(--hover); color: var(--text-2); font-size: 12px; line-height: 16px; width: fit-content; }
+.composer-voice-pill[hidden] { display: none; }
+.composer-voice-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--beacon-dot, var(--beacon-ink)); flex-shrink: 0; }
+@media (prefers-reduced-motion: no-preference) { .composer-voice-dot { animation: composer-voice-pulse 1.6s ease-in-out infinite; } }
+@keyframes composer-voice-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* Plan card (plan-card.md, plan-card.js): the ask card's frame and header; the body a short
    document (title, numbered steps, what it will not touch, the files it expects), the mode it

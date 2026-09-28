@@ -71,6 +71,7 @@ import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
+import { threadHref } from "./lib/routes.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, handoffCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
 import { frameToPicture } from "./core/images.js";
@@ -203,13 +204,16 @@ export function mountSession(container, opts) {
     session: S, patch: keys => { const sent = !!booted && keys.some(k => k.startsWith("u:")); patch(keys); if (sent) toBottom(); },
     cwd: () => record.current?.cwd || recorded.session?.cwd || null,
     name: () => agentName(),
+    project: () => record.current?.project || opts.project || null,
     onRewind: () => openRewind(),
     // "/find [words]" (native-core/commands.js): the existing Find page already queries
     // recall.search + memory.relevant and has its own scoping rules; the composer just gets there fast.
     onFind: q => go("/find" + (q ? "?q=" + encodeURIComponent(q) : "")),
     onTasks: () => tray.toggle(),
     onThinkingView: () => setHideThinking(!hideThinking),
-    onOverlayEscape: () => { if (!rewind) return false; closeRewind(); return true; } });
+    onOverlayEscape: () => { if (!rewind) return false; closeRewind(); return true; },
+    onRecall,
+  });
   /** The live todo list and the background tasks, above the composer. */
   const pin = todoPin();
   const tray = tasksTray({
@@ -223,6 +227,21 @@ export function mountSession(container, opts) {
       return d.killed === false ? String(d.note || "Could not stop it") : null;
     },
   });
+
+  /**
+   * "From your past sessions" (native-core's composer.js, memory-iq's recall.related): a hint row
+   * was tapped. Opens that session (its own thread, almost always a different one - a session
+   * rarely surfaces its own past turns as "past") at the point it was said, the way any other
+   * cross-session link does (threadHref + go), never a special reveal-in-place: this session's
+   * own view has no reason to change. The moment is a real timestamp (hit.ts), so it rides the
+   * existing ?at= deep link (line ~1351 below, want.at) rather than a new one keyed by seq.
+   * @param {{ session: string, seq?: number, role?: string, ts?: number, name?: string|null, title?: string|null, cwd?: string|null, snippet?: string }} hit
+   */
+  function onRecall(hit) {
+    if (!hit?.session) return;
+    const href = threadHref({ id: hit.session }, record.current?.project || opts.project || null) + (hit.ts ? `?at=${hit.ts}` : "");
+    go(href);
+  }
   /** The rewind sheet (Esc Esc), while it is open: a real overlay (sheet.css's --scrim/--float
    * tokens), not drawn in the transcript's own flow above the composer - on a phone, that stack
    * (lease bar, todos, queued row, this) pushed the composer's mode row off the bottom of the
@@ -1341,6 +1360,15 @@ export function mountSession(container, opts) {
     if (composer.key(e)) e.preventDefault();
   };
   document.addEventListener("keydown", onKey);
+  // Ctrl+M's release (native-core's voice.js): the textarea's own keyup handles the focused
+  // case; this is the same key everywhere else in the session view, same guard as onKey above.
+  const onKeyUp = (/** @type {KeyboardEvent} */ e) => {
+    if (e.defaultPrevented || !container.isConnected || container.closest?.(".away")) return;
+    if (opts.shown && !opts.shown()) return;
+    if (editable(/** @type {any} */ (e.target))) return;
+    if (composer.keyUp?.(e)) e.preventDefault();
+  };
+  document.addEventListener("keyup", onKeyUp);
   /** Back on screen: streaming replies catch up at the display rate. */
   const onVisible = () => { if (visible()) for (const el of els.values()) el.kick?.(); };
   document.addEventListener("visibilitychange", onVisible);
@@ -1563,6 +1591,7 @@ export function mountSession(container, opts) {
   return () => {
     health.stop(); for (const off of offs) off(); composer.stop(); stick.stop(); win.stop(); tip?.stop();
     document.removeEventListener("keydown", onKey);
+    document.removeEventListener("keyup", onKeyUp);
     document.removeEventListener("visibilitychange", onVisible);
     if (rawTimer) clearTimeout(rawTimer);
     if (tickTimer) clearTimeout(tickTimer);

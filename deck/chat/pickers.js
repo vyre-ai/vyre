@@ -107,7 +107,7 @@ export function rewindSheet(o) {
   let picked = /** @type {Choice|null} */ (null);
   const codeOk = () => (o.codeOk ? o.codeOk() === true : false);
   const forkOk = () => (o.canFork ? o.canFork() : o.can());
-  const allowed = () => [...RESTORES.filter(r => !r.code || codeOk()), ...(o.onFork ? [FORK] : [])];
+  const allowed = () => [...RESTORES.filter(r => !r.code || codeOk()), ...(o.onFork && forkOk() === true ? [FORK] : [])];
   const restore = () => /** @type {Choice} */ (picked && allowed().some(r => r.id === picked) ? picked : allowed()[0].id);
   const note = h("div", { class: "cv-rewind-note", role: "status" });
   const list = h("div", { class: "cv-rewind-list", role: "listbox", "aria-label": "Earlier messages" });

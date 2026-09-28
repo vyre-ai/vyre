@@ -240,16 +240,44 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   so this is safe as written, but if sight.targets ever grows a separate id/name field, match on
   that instead since two agents could in theory share a display label.
 
-## RESTART (28 Sep, post canonical-status/app-design session, head 74017fb8)
-Status for whoever resumes: budget 8's scroll jump FIXED (130f7e8d); the sight strip's LOW and nit
-FIXED (cfc98f23); session.js's side of "Fork from here" wired to native-core's contract (ffc22ef8);
-the local STATUS map dropped for sessions' canonical thread.status (f8ce247a, lead's ask after
-6e2f8a71/28a8b4f8); four of app-design's review items fixed (74017fb8: kbd chips, the rewind sheet
-as a real overlay, the lightbox focus trap - "No one is typing" on solo sessions is folded into
-f8ce247a since it touched the same lease-bar code nearby). All sent to reviewer-2 (non-security).
-Nothing uncommitted; no testbox processes running (checked and cleared several stray/stuck ones
-from earlier in the session - other teams' load spiked testbox past the load-12 rule twice; waited
-both times). Next: reviewer-2's sign-off, then whatever the lead assigns.
+## RESTART (28 Sep, checkpointed on a usage-limit warning, head bc222f1d)
+Status for whoever resumes: everything through @role routing is built and pushed; reviewer-2
+signed off through the teammate handoff card (572/573 on 2bf8ceab); the hardening/onRecall/@role
+batch (41ed798b/b61a506e/af29a073) is sent to reviewer-2, not yet answered - check for a reply
+first. Nothing uncommitted; no testbox processes running.
+
+**EXACT NEXT STEP:** the hang native-core re-hit does not reproduce on this tree (ran their exact
+command, `node --test --test-timeout=15000 "deck/chat/session.test.js"` on work/chat HEAD: 21/21
+pass, clean, ~2s). Their repro needs code that is NOT pushed to origin yet: work/native-core-composer
+is still at d5b0ed18 on origin, but their repro was at sha d52205e1 plus an uncommitted keyup line,
+plus e21c019d (voice rebuilt as tap-to-talk) and the fake-dom.js fixes team-lead mentioned - none
+of that is fetchable yet. Asked native-core (msg sent) to push their latest so the already-approved
+whole-branch merge (`git merge work/native-core-composer` into work/chat - team-lead OK'd this
+explicitly, integrator is folding cleared shas into a stage branch separately) can actually pull
+in what's needed to see the hang for real. Also answered their session-state question (no change
+needed to busy/queued/steering - dictation is orthogonal, lands in ta.value like typed text; flagged
+one thing to verify on their end: Esc should cancel dictation before the turn's own interrupt,
+matching the rewind-overlay/hint-dismiss precedence pattern already in onEscape()).
+**On resume: check the inbox for native-core's push, then run `git fetch origin
+work/native-core-composer && git log --oneline -1 origin/work/native-core-composer` - if it moved
+past d5b0ed18, do the whole-branch merge, resolve conflicts, run the full suite, and THEN try to
+reproduce the hang on the merged tree before building anything else.** Once the hang is
+resolved (or confirmed not chat's to fix), build the voice session-view states against e21c019d
+(the voice ticket already landed elsewhere - capsule-pro f967b3de - so this is unblocked once the
+merge lands). Also queued, not started: teammates' core/style em-dash normaliser + style.patterns
+lint (tool shape ready, schemas confirmed stable), and the request-id fix for the handoff card's
+correlation gap (teammates + sessions own it; they'll ping when threads.post's payload carries one
+- still FIFO-by-role until then).
+
+LESSON for whoever runs tests on testbox this session: a `node --test` run of session.test.js
+(now ~900 lines, many `await wait()` calls) can look STUCK from `ps`'s %CPU column (0.2-0.5%
+sampled at any instant, because most of its wall-clock time really is inside those waits, not
+computing) even when it is genuinely still working and will complete in well under two minutes.
+Don't kill it on a low-CPU snapshot alone - watch the SAME PID for a few samples across a couple
+of MINUTES, or just let the foreground command exceed 120s and background itself; only kill it if
+elapsed time keeps growing with the OUTPUT FILE staying byte-for-byte empty for several minutes,
+not just a low %CPU reading. Killed it prematurely three times this session chasing what turned
+out to be a plain `$` vs `$$` typo in a new test, not a hang.
 
 ## Done (28 Sep, budget 8: reconnect scroll jump - FIXED, 130f7e8d)
 - Added temporary diagnostic logging (window.__WV_DEBUG, removed after) to measure() and the
@@ -338,6 +366,99 @@ both times). Next: reviewer-2's sign-off, then whatever the lead assigns.
 - Still open from that review: the item 2 fix (deck.css's base `.lbl` mono/uppercase is the retired
   label style, ~146 callers across the whole Deck) is cross-team, not chat's alone to land.
   testbox: deck/chat + deck/test 563/564 (1 pre-existing skip), 0 fail; boundaries + docs-check 66/66.
+  SIGNED OFF by reviewer-2 (621/622 on their rerun of deck/chat+deck/test+boundaries+docs-check+
+  core/switchboard, covering this plus 130f7e8d/cfc98f23/ffc22ef8 together).
+
+## Done (28 Sep, the teammate handoff card - teammates.md section 3, 2bf8ceab)
+- blocks.js's handoffCard(): a session calling team_ask/team.ask gets its own card (tool-row.md's
+  Handoff variant, app-design 83434944) - the teammate's avatar tile (agentAv, never coloured, per
+  avatar.md's ruling), role name, a plain "Teammate" tag, verb Asked -> Replied. The reply is turn
+  prose (markdown), not a code block. Dispatched from session.js's itemEl on tool name team_ask/
+  team.ask instead of the generic toolCard.
+- core/grouping.js: a handoff is exempt from the "folded run" collapse (BY_NAME/foldable), the
+  same exemption a plan or a todo list gets - always its own visible line, new test in
+  grouping.test.js.
+- core/session-state.js: onTool now captures a live thread.tool event's `input` when present (most
+  tools build it up as the call streams; a handoff's whole input is one small object, present from
+  the start, and the row needs the role right away, not after a reopen). New attachHandoffReply():
+  a teammate's result (threads.post -> thread.sent {kind: "teammate-result"}) attaches to the open
+  handoff that asked, never an ordinary user message; the busy-session path (thread.queued {kind:
+  "teammate-result"}) is suppressed the same way.
+- KNOWN GAP, flagged to teammates/sessions (not fixable from chat's side): threads.post's
+  teammate-result payload carries no request id, only the role - correlation is FIFO-by-role
+  (oldest open handoff for that role), exact for the common one-open-ask-per-teammate case,
+  ambiguous with more than one open at once for the same teammate.
+- Not done: this session's own live team_ask events (Chat as the composer that TYPES @role, per
+  section 2) don't exist yet - this renders whatever a MODEL's team_ask tool call produces, once
+  section 1 and 2 land. Nothing to verify end-to-end against yet on this tree.
+  testbox: deck/chat + deck/test 566/567 (1 pre-existing skip), 0 fail; boundaries + docs-check 66/66.
+  SIGNED OFF by reviewer-2 (572/573 on their rerun).
+
+## Done (28 Sep, the hang hardening + onRecall + @role routing, 41ed798b/b61a506e/af29a073)
+- 41ed798b: composer.js's holdTimer/leaseTimer/fileTimer now .unref?.() right after setTimeout (a
+  no-op in the browser; stops one dangling Node-test timer from keeping a whole glob's process
+  alive). t.after(stop) on this session's two newest session.test.js tests, replacing a trailing
+  stopN() a thrown assertion would skip. Team-lead's cheap hardening after the hang could not be
+  reproduced on this tree; not chased further per their steer.
+- b61a506e: session.js's onRecall - opens a "From your past sessions" hit via threadHref+go(),
+  landing at hit.ts on the existing ?at= deep link rather than a new seq-keyed one. Inert
+  (native-core's composer.js side, fae441ff, is still unmerged anywhere) until that lands.
+- af29a073: "@role" (teammates.md section 2) - a new "teammate" draft kind in composer-state.js
+  (matches "!"/shell and "#"/memory's pattern exactly: teammateRole() finds the slug, draftBody()
+  strips "@role "). composer.js's askTeammate() calls team.ask first always (works whether
+  team.default is on or off - only creation is gated), and on not_found offers to create (gated on
+  team.default.get) with an inline confirm ("Create and send" / "Don't create, answer here" - the
+  latter sends the WHOLE original draft, never silently edited). Real gotcha found and fixed while
+  building it: team.ask's not_found must be checked directly (r.error.code, matching
+  session.js's own recall.transcript not_found pattern), never routed through CAPS.use - a role
+  simply not existing yet answers the same generic 404 an absent tool would, and CAPS's own
+  isMissing() can't tell those apart from the status code alone, so it would have marked team.ask
+  missing FOR GOOD the first time any one role came up empty.
+  Fully built and tested against mocks even though core/team doesn't exist on any branch that's
+  reached me yet - same as any tool a box might not have.
+  testbox: deck/chat + deck/test 568/569 (1 pre-existing skip), 0 fail; boundaries + docs-check
+  66/66; deck/chat/*.test.js (native-core's original hang-report glob) 97/97, clean, re-run after
+  every commit in this batch.
+
+## Done (28 Sep, native-core-composer merge, hang found and killed, e9d68c84)
+- Merged origin/work/native-core-composer (65296734) into work/chat: clean, no conflicts (voice.js,
+  the composer's voice UI, native-bar.md, stream.js's fast-reconnect probe).
+- Reproduced the hang native-core kept re-hitting: session.test.js's test 12 (typing steers/queues/
+  rewind) threw partway through - native-core's pickers.js now always offers "Fork from here" in
+  the rewind sheet's keyboard cycling (allowed()), even while canFork() was still null, so
+  ArrowLeft landed on Fork instead of "Restore code". The thrown assertion skipped that test's own
+  stop4(), leaving a mounted session still listening, which crossed thread ids into test 13's
+  assertions and doubled test 17's sight-refresh count - three failures, one cause, and the still-
+  live session's stream kept the whole file from exiting (a 15s file-level timeout on top).
+  Fixed pickers.js's allowed() to gate Fork on forkOk() === true, the same pattern RESTORES already
+  uses for codeOk() (still rendered, disabled, in the visible list either way - only cycling order
+  changed). Updated session.test.js's rewind-sheet assertion for the now-real fourth option.
+  Separately found and fixed (pwa's file per be3f5554, not native-core's as I first told them - a
+  one-line contract-safe change either way, corrected the attribution after reviewer-2 caught it):
+  core/resilience/stream.js's fastReach() interval and its abort setTimeout were never unref'd, so
+  two real, never-closing sockets survived every test that ever went "reconnecting" - this is what
+  actually kept the process alive for the file-level timeout once the crossed-session symptom above
+  was ruled out as the sole cause.
+  Also added /chat/core/voice.js to deck/sw.js's SHELL list (pwa's file per fa2e43e's precedent,
+  told pwa) so the new voice module installs offline.
+  testbox: deck/chat + deck/test + core/switchboard + core/resilience + local/voice 589/589 (2 skip,
+  0 fail); boundaries 66/66. docs-check: 2 pre-existing failures, both in native-core's own newly-
+  merged docs (docs/work/pwa.md fails to render, em dashes in docs/design/native-bar.md) - flagged
+  to native-core, not chat's files.
+
+## Done (28 Sep, session-view voice states: recording/transcribing/no-key, 5bb97447)
+- composer.js already had recording (the Listening pill) and no-key (the Settings note) from
+  native-core's merge; added the missing third state: a stop tap now sets voiceStopping, shows
+  "Transcribing…" in the pill and a "stopping" mic class/aria-label, held until onDone/onError
+  answers (matches local/voice/listen.js's TAIL_MS wait) - Esc/cancel still clears everything at
+  once, no transcribing flash on a cancel. New composer-voice.test.js cases cover all three states.
+- Found and fixed a real bug in deck/test/fake-dom.js (a shared test helper, not chat's alone, but
+  a one-line variadic fix matching the real DOM API): classList.add/remove only ever took their
+  first argument, silently dropping the rest - finishTalk()'s existing classList.remove("on",
+  "held") never actually removed "held" under test. No passing assertion changed; this only fixes
+  removals that were silently no-ops before.
+  testbox: deck/chat + deck/test + core/switchboard + core/resilience + local/voice 588/588 (2
+  skip, 1 pre-existing cancelled), 0 fail; boundaries 5/5.
 
 ## Doing (28 Sep, restart after cohesion's hand-over)
 
@@ -462,9 +583,24 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
   /chat/core/caps.js, /chat/core/commands.js, /chat/core/match.js (the last two were missing already).
 
 ## Next
-- FIRST (whoever resumes): reviewer-2's sign-off on 130f7e8d (budget 8), cfc98f23 (sight strip),
-  ffc22ef8 (fork wiring), f8ce247a (canonical status) and 74017fb8 (app-design's review) - check
-  for a reply before starting new work.
+- FIRST (whoever resumes): send 2bf8ceab (the handoff card) to reviewer-2 - the other five already
+  signed off (621/622).
+- The lead's three remaining chat items (user's picks, 28 Sep), each real work, not started:
+  1. @role routing in the composer (teammates.md section 2): typing @name at the start of a
+     message sends team.ask instead of spending this session's turn; auto-create via team.add on
+     first use (team.default check, generic brief, model Sonnet); an inline confirm card
+     ("There's no research teammate yet...") with a "Don't create, answer here" fallback. Lives in
+     composer.js/composer-state.js, chat's own files - no native-core split needed for this part
+     (they're doing #5, /find, and the composer half of #3).
+  2. Session-view states for voice: recording, transcribing, no-key prompt (team-lead: capsule-pro
+     owns the setting/tool, native-core owns the composer mic - chat's part is these three states
+     in the session view once native-core's composer piece exists to hang them off of).
+  3. "From your past sessions" inline IQ card: memory-iq's recall.related shape is agreed
+     (recall.related({project_cwds, text, limit?}) -> {hits: [{session, seq, ts, name, title, cwd,
+     snippet, score}]}, msg to chat's inbox) - build the card (name/ts/snippet, a link per hit via
+     recall.thread({session})) and the composer-side trigger (as the person types, debounced).
+  None of these three are started - flagging honestly rather than shipping a rushed thin slice of
+  all three. Pick one, build it whole, then the next.
 - Budget 8's residual 4-13 px jump (down from 106 px; 6-13 px on a tree with pwa's reconnect fix
   merged): a different, smaller category than the fix above - a row above the anchor measured for
   real for the first time, replacing its ESTIMATES default. Not chased further this session (the
