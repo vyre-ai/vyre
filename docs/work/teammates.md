@@ -26,6 +26,17 @@ reading the result should be told an agent vouched for it. Fixed at ba6afea2: te
 now leads with "Tests passed (checked by the integrator; <command>, thread <id>)" rather than the
 more technical "attested exit 0 by thread <id>". 48/48 green.
 
+**Reviewer round on work/teammates-a 5dfa6b41 (the git-safe move): signed off, new LOW** (also
+true of b720a002, same underlying git.js): dropping the old OFF list dropped
+commit.gpgSign=false/tag.gpgSign=false/merge.verifySignatures=false too. lib/git-safe.js's own
+gpg.program=false already stops a planted gpg.program from running, but a teammate setting
+commit.gpgSign=true or merge.verifySignatures=true in the shared config turns that into a cheap
+denial of service instead — every vyred merge fails outright rather than merely running nothing.
+Fixed on work/teammates only (team-lead's call) at 266723db: folded into VYRE_IDENTITY, next to
+the identity keys, on both merge calls. New test forces both settings on and checks vyred's two
+merge paths (mergeBaseIn, mergeBranchIn) still complete; reverted the fix first and confirmed the
+test catches it. 49/49 green, stable over 2 repeats. Sent to reviewer and integrator.
+
 **Resume 8 brief: all 5 steps done, except step 4** (switch to sessions' lib/project-id.js slug
 regex), still blocked — work/projects (e87f63df) is still not on main as of this check. Nothing
 else queued; watching for it to land.
