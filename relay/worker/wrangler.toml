@@ -7,8 +7,10 @@ name = "vyre-relay"
 main = "index.js"
 compatibility_date = "2026-09-01"
 
-# Set at deploy, lead approval required.
-# routes = [{ pattern = "relay.vyre.run/*", zone_name = "vyre.run" }]
+# The relay's one hostname, as a Worker custom domain (it makes the DNS record and the
+# certificate). Approved by the lead, 28 Sep 2026. No workers.dev address.
+workers_dev = false
+routes = [{ pattern = "relay.vyre.run", custom_domain = true }]
 
 [[durable_objects.bindings]]
 name = "ROUTES"
