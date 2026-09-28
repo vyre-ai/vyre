@@ -31,6 +31,7 @@ const SECTIONS = [
   ["connections", "Connections"],
   ["network", "Network"],
   ["devices", "Your devices"],
+  ["server", "Server"],
   ["history", "History and memory"],
   ["lessons", "Lessons"],
   ["notifications", "Notifications"],
@@ -127,7 +128,7 @@ export default async function settings(ctx) {
       const after = jumpSel.querySelector(`option[value="claude"]`);
       if (after && after.nextSibling) jumpSel.insertBefore(og, after.nextSibling); else jumpSel.append(og);
     }).catch(e => put(keysBody, empty("Sessions and Claude settings did not load.", e))),
-    drawNetwork(body.network, ctx), drawDevices(body.devices), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
+    drawNetwork(body.network, ctx), drawDevices(body.devices), drawServer(body.server, ctx), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
   ];
@@ -590,6 +591,145 @@ async function drawDevices(el) {
     rows.length ? h("div", { class: "rows" }, rows)
       : note("No other devices on your tailnet yet. The setup's last step adds your phone and pairs your Mac."),
     foot(toOnboard("devices", "Add a device")));
+}
+
+// ---- 5c. Server ------------------------------------------------------------------------------
+
+/** Bytes, short form, matching deck/onboard/onboard.js's fmtBytes, extended for whole-project sizes. */
+const fmtBytes = n => n < 1e6 ? Math.round(n / 1e3) + " KB" : n < 1e9 ? (n / 1e6).toFixed(1) + " MB" : (n / 1e9).toFixed(1) + " GB";
+const FORGET_WAIT_MS = 24 * 3600 * 1000;
+const PIECE_LABEL = { projects: "Projects", memory: "Memory", vault: "Vault", sessions: "Sessions" };
+
+/** Settings > Server: the role, and "Move to a server" (docs/design/anywhere.md, work/anywhere
+ * 11328815, ADR 0039). Client-only against deck/fixtures/federation.json until federation's
+ * move.* tools and anywhere's role.status land (asked, docs/work/launch-surfaces.md): the tool
+ * names and shapes here are launch's proposal, not yet confirmed. Only the Solo/Server -> Device
+ * direction is built; "Move off this server" (the reverse move, back to Solo) is not, see the
+ * work doc's Next. No auto-delete anywhere in this flow: the pre-move copy is only ever removed
+ * by the person's own "Free up space" click, gated 24 hours per anywhere.md's forget guard. */
+async function drawServer(el, ctx) {
+  const r = await attempt("federation.role.status");
+  if (r.error) {
+    put(el, empty("The server role is read by the federation module.", r.error),
+      note("Once it's running, this is where you move your work to a server, or back."));
+    return;
+  }
+  const role = r.data?.role || "solo";
+  if (role !== "solo" && role !== "server") { drawAlreadyMoved(el, r.data || {}); return; }
+
+  const panel = h("div", { class: "rows" });
+  const st = status();
+  put(el,
+    row("This computer", h("span", null, role === "server" ? "Is your server." : "Runs everything, on its own."),
+      h("div", { class: "small muted" }, role === "server"
+        ? "Other devices can pair with it once you add one."
+        : "No Tailscale, nothing else running, until you move to a server.")),
+    panel, st);
+
+  let poll = null;
+  ctx.cleanup(() => clearTimeout(poll));
+
+  const point = () => {
+    const code = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Paste the setup code your server showed", "aria-label": "Server setup code" }));
+    const go = async () => {
+      const v = code.value.trim();
+      if (!v) { put(st, "Paste the code first."); return; }
+      put(st, "Looking for that server.");
+      const p = await attempt("federation.move.plan", { code: v });
+      if (!ctx.alive()) return;
+      if (p.error) { put(st, errText(p.error)); return; }
+      put(st);
+      plan(p.data, v);
+    };
+    put(panel,
+      h("div", { class: "rows" },
+        row(h("label", { for: "move-code" }, "Point at a server"), Object.assign(code, { id: "move-code" }),
+          h("div", { class: "small faint" }, "From the new computer's own setup, or Settings > Your devices > Add a device."))),
+      foot(h("button", { type: "button", class: "btn btn-primary", onclick: go }, "Continue")));
+  };
+
+  const plan = (p, code) => {
+    const pieces = Object.entries(p.pieces || {});
+    const totalBytes = pieces.reduce((n, [, v]) => n + (v.bytes || 0), 0);
+    put(panel,
+      row("Moving to", mono(p.destination?.name || "your server"), h("span", { class: "small muted" }, p.destination?.address || "")),
+      h("div", { class: "rows" }, pieces.map(([k, v]) => row(v.label || PIECE_LABEL[k] || k,
+        h("span", null, `${plural(v.count || 0, "item")} · ${fmtBytes(v.bytes || 0)}`)))),
+      note(`${fmtBytes(totalBytes)} total. This computer keeps working, unchanged, until the move finishes and you confirm it.`),
+      foot(h("button", { type: "button", class: "btn btn-primary", onclick: () => start(code) }, "Start moving"),
+        h("button", { type: "button", class: "btn btn-ghost", onclick: point }, "Back")));
+  };
+
+  const start = async code => {
+    put(panel, h("div", { class: "empty" }, "Starting."));
+    const s = await attempt("federation.move.start", { code });
+    if (!ctx.alive()) return;
+    if (s.error) { put(panel, empty("Could not start the move.", s.error), foot(h("button", { type: "button", class: "btn", onclick: point }, "Try again"))); return; }
+    watch();
+  };
+
+  const watch = async () => {
+    const s = await attempt("federation.move.status");
+    if (!ctx.alive()) return;
+    if (s.error) { put(panel, empty("Lost track of the move.", s.error)); return; }
+    const d = s.data;
+    put(panel, h("div", { class: "rows" }, Object.entries(d.pieces || {}).map(([k, v]) => h("div", { class: "set-move-row" },
+      h("div", null, h("div", null, PIECE_LABEL[k] || k), h("div", { class: "set-meter" }, h("span", { style: { width: (v.pct || 0) + "%" } }))),
+      h("span", { class: "small faint" }, v.state === "done" ? "Done" : v.state === "doing" ? `${v.pct || 0}%` : "Waiting")))));
+    if (d.state === "ready_to_confirm") { ready(); return; }
+    poll = setTimeout(watch, 5000);
+  };
+
+  const ready = () => {
+    panel.append(note("The copy is verified and ready. This computer stays as it is until you confirm."),
+      foot(h("button", { type: "button", class: "btn btn-primary", onclick: confirmFlip }, "Confirm: make this a device"),
+        h("button", { type: "button", class: "btn btn-ghost", onclick: undo }, "Undo")));
+  };
+
+  const undo = async () => {
+    put(panel, h("div", { class: "empty" }, "Undoing."));
+    await attempt("federation.move.undo");
+    if (!ctx.alive()) return;
+    point();
+  };
+
+  const confirmFlip = async () => {
+    put(panel, h("div", { class: "empty" }, "Finishing up."));
+    const c = await attempt("federation.move.confirm");
+    if (!ctx.alive()) return;
+    if (c.error) { put(panel, empty("Could not finish the move.", c.error)); return; }
+    drawAlreadyMoved(el, { role: "device", movedAt: Date.now(), ...c.data }, true);
+  };
+
+  point();
+}
+
+/** After the flip: the celebration line once, the steady state after, and "Free up space" —
+ * never automatic, gated 24 hours (anywhere.md's forget guard), the person's own click. */
+function drawAlreadyMoved(el, d, justMoved = false) {
+  const dest = d.destination?.name || d.name || "your server";
+  const freeAt = (d.movedAt || Date.now()) + FORGET_WAIT_MS;
+  const panel = h("div");
+  put(el,
+    justMoved ? note(`This computer is now a device. Your server is ${dest}.`) : null,
+    row("This computer", h("span", null, "Is a device."), h("div", { class: "small muted" }, `Your server is ${dest}.`)),
+    panel);
+  const left = freeAt - Date.now();
+  if (left > 0) {
+    put(panel, note(`The copy this computer kept during the move stays for ${Math.max(1, Math.ceil(left / 3600000))} more hours, in case anything looks off. After that, free it up any time.`));
+    return;
+  }
+  const idle = () => put(panel, row("Old local copy", h("span", { class: "small muted" }, "Still here, from the move.")),
+    foot(h("button", { type: "button", class: "btn", onclick: confirm_ }, "Free up space on this laptop")));
+  const confirm_ = () => put(panel, note("This deletes the local copy the move kept. Your server already has everything."),
+    foot(h("button", { type: "button", class: "btn btn-primary", onclick: run }, "Delete it"),
+      h("button", { type: "button", class: "btn btn-ghost", onclick: idle }, "Cancel")));
+  const run = async () => {
+    put(panel, h("div", { class: "empty" }, "Freeing up space."));
+    const r = await attempt("federation.move.forget");
+    put(panel, r.error ? empty("Could not free up space.", r.error) : note(`Freed up ${fmtBytes(r.data?.freedBytes || 0)}.`));
+  };
+  idle();
 }
 
 // ---- 6. History and memory -----------------------------------------------------------------

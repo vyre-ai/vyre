@@ -4,12 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### Onboarding: "Where should Vyre live?", ahead of pairing
+#### Settings > Server: "Move to a server", fixture-backed
 
-- New step (`live`) between "You" and "Tailscale": Solo (this computer, no Tailscale), Another
-  computer I have, or A cloud server. Solo skips straight to Claude sign-in; the other two fall
-  through to today's pairing screens unchanged, which is still where Tailscale first appears.
-  Client-only choice for now, pending anywhere's role-choice contract and ADR 0039.
+- New "Server" section (`deck/views/settings.js`): point at a server with a setup code, a
+  dry-run plan (projects, memory, vault, sessions, each with a count and size), start the move
+  while the source stays live, live per-piece progress, undo, a separate confirm before this
+  computer becomes a device, and a "Free up space on this laptop" button gated 24 hours, never
+  automatic. Follows `docs/design/anywhere.md` (ADR 0039). Tool shapes are launch's proposal
+  against `deck/fixtures/federation.json`, not yet confirmed by federation.
+
+#### Onboarding: "How will Vyre run?", ahead of pairing
+
+- New step (`live`) between "You" and "Tailscale": Just on this computer (Solo, no Tailscale),
+  this computer stays on for me (Server), or I already have a Vyre server (Device). Solo skips
+  straight to Claude sign-in; the other two fall through to today's pairing screens unchanged,
+  which is still where Tailscale first appears. Copy matches `docs/design/anywhere.md`, which
+  owns it. Client-only choice for now, pending anywhere's role-choice contract.
 
 #### Landing page: a tap hint on touch/narrow screens, and the Mac tab names what it does
 

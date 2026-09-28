@@ -55,10 +55,10 @@ const state = {
   /** The Agent computers step's choice ("off"|"browser"|"desktop"), so the ending screen can
    * show what was picked. Client-only until glass owns a real onboard.* tool for it. */
   /** @type {"off"|"browser"|"desktop"|null} */ computers: null,
-  /** The "Where should Vyre live?" step's choice ("solo"|"device"|"cloud"), client-only
-   * until anywhere's onboard.* tool lands (asked, docs/work/launch-surfaces.md "Where should
-   * Vyre live?"). */
-  /** @type {"solo"|"device"|"cloud"|null} */ live: null,
+  /** The "How will Vyre run?" step's choice, config.role's three real values ("solo"|"server"|
+   * "device", docs/design/anywhere.md), client-only until anywhere's onboard.* tool lands
+   * (asked, docs/work/launch-surfaces.md "Where should Vyre live?"). */
+  /** @type {"solo"|"server"|"device"|null} */ live: null,
 };
 /** Timers and listeners of the current screen, cleared when the screen changes. */
 let cleanup = [];
@@ -345,16 +345,21 @@ const SCREENS = {
     later(() => nameIn.focus(), 0);
   },
 
-  // New (28 Sep, user decision "Vyre anywhere", docs/work/launch-surfaces.md "Where should Vyre
-  // live?"): a role choice ahead of the pairing screens. Solo skips Tailscale and the address
-  // step entirely; the other two flow into today's tailscale/name screens unchanged, which is
-  // where Tailscale first appears. Client-only choice for now: waiting on anywhere's role-choice
-  // tool shape and ADR 0039 before wiring a real onboard.* call, same degrade-gracefully shape
-  // as the computers step below.
+  // New (28 Sep, user decision "Vyre anywhere"): a role choice ahead of the pairing screens.
+  // Copy and the three choices are anywhere's (docs/design/anywhere.md, work/anywhere 11328815,
+  // ADR 0039), which owns them; this screen is launch's build of that spec. Values are
+  // config.role's real three ("solo"|"server"|"device"), not this file's earlier guess
+  // ("solo"|"device"|"cloud"). Solo skips Tailscale and the address step entirely and lands on
+  // Claude sign-in (rung 0 of anywhere's capability ladder: no Tailscale until a second device
+  // or server actually joins). Server and Device both still fall through to today's
+  // tailscale/name screens unchanged for 0.1.1; anywhere.md's own "point at a server" (pasting a
+  // setup code) for Device is not wired here yet, see docs/work/launch-surfaces.md Next. Client-
+  // only choice for now: waiting on anywhere's role-choice tool shape before wiring a real
+  // onboard.* call, same degrade-gracefully shape as the computers step below.
   live(col, s) {
     col.append(
-      h("h1", { class: "h1" }, "Where should Vyre live?"),
-      h("p", { class: "lead" }, "Pick where your work lives. You can move it to a server later without losing anything."));
+      h("h1", { class: "h1" }, "How will Vyre run?"),
+      h("p", { class: "lead" }, "You can change this later without losing anything."));
     const body = h("div", { class: "ob-panel" });
     col.append(body);
     let choice = state.live;
@@ -369,13 +374,13 @@ const SCREENS = {
       }
       s.next();
     } });
-    const opt = (value, title, desc) => h("label", { class: value === choice ? "on" : "" },
+    const opt = (value, title) => h("label", { class: value === choice ? "on" : "" },
       h("input", { type: "radio", name: "live", value, checked: value === choice, onchange: () => { choice = state.live = value; put(body, choiceEl()); syncFoot(); } }),
-      h("span", { class: "t" }, h("b", null, title), h("span", null, desc)));
-    const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "Where Vyre lives" },
-      opt("solo", "Just this computer", "Set up in about two minutes. No Tailscale, nothing else to install."),
-      opt("device", "Another computer I have", "A Mac mini or a Linux box, always on, that this computer pairs with over your tailnet."),
-      opt("cloud", "A cloud server", "A server you rent, always on, reachable from anywhere over your tailnet."));
+      h("span", { class: "t" }, h("b", null, title)));
+    const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "How Vyre runs" },
+      opt("solo", "Just on this computer"),
+      opt("server", "This computer stays on for me, and I'll use other devices too"),
+      opt("device", "I already have a Vyre server"));
     put(body, choiceEl());
     syncFoot();
   },

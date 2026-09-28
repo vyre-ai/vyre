@@ -1,0 +1,35 @@
+{
+  "federation.role.status": { "role": "solo" },
+  "federation.move.plan": {
+    "destination": { "name": "kit", "address": "kit.tail-example.ts.net" },
+    "pieces": {
+      "projects": { "label": "Projects", "count": 14, "bytes": 2100000000 },
+      "memory": { "label": "Memory", "count": 812, "bytes": 41000000 },
+      "vault": { "label": "Vault", "count": 23, "bytes": 40000 },
+      "sessions": { "label": "Sessions", "count": 3, "bytes": 900000 }
+    }
+  },
+  "federation.move.start": { "ok": true },
+  "federation.move.status": {
+    "$seq": [
+      { "state": "copying", "pieces": {
+        "projects": { "state": "doing", "pct": 15 }, "memory": { "state": "todo", "pct": 0 },
+        "vault": { "state": "todo", "pct": 0 }, "sessions": { "state": "todo", "pct": 0 } } },
+      { "state": "copying", "pieces": {
+        "projects": { "state": "done", "pct": 100 }, "memory": { "state": "doing", "pct": 45 },
+        "vault": { "state": "todo", "pct": 0 }, "sessions": { "state": "todo", "pct": 0 } } },
+      { "state": "copying", "pieces": {
+        "projects": { "state": "done", "pct": 100 }, "memory": { "state": "done", "pct": 100 },
+        "vault": { "state": "doing", "pct": 70 }, "sessions": { "state": "todo", "pct": 0 } } },
+      { "state": "verifying", "pieces": {
+        "projects": { "state": "done", "pct": 100 }, "memory": { "state": "done", "pct": 100 },
+        "vault": { "state": "done", "pct": 100 }, "sessions": { "state": "doing", "pct": 80 } } },
+      { "state": "ready_to_confirm", "pieces": {
+        "projects": { "state": "done", "pct": 100 }, "memory": { "state": "done", "pct": 100 },
+        "vault": { "state": "done", "pct": 100 }, "sessions": { "state": "done", "pct": 100 } } }
+    ]
+  },
+  "federation.move.confirm": { "role": "device", "destination": { "name": "kit" }, "confirmedAt": "$ago:1s" },
+  "federation.move.undo": { "ok": true },
+  "federation.move.forget": { "ok": true, "freedBytes": 2141900000 }
+}

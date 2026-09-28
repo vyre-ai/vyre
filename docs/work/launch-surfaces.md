@@ -338,8 +338,41 @@ Resumed after the restart (28 Sep), reading RULES.md/HANDOFF.md fresh:
   main. Verified: https://vyre.run 200 with the new headline and the tap hint live,
   https://vyre.run/install.sh 200.
 
+Built (Settings > Server, fixture-backed against `deck/fixtures/federation.json`): a new "Server"
+section in `deck/views/settings.js` (`drawServer`, `drawAlreadyMoved`), reading
+`docs/design/anywhere.md` (work/anywhere, 11328815) for the exact flow: point at a server (paste
+a code), a dry-run plan (the four pieces from anywhere's table — projects, memory, vault,
+sessions — each with a count and size), "Start moving" while the source stays live, live
+per-piece progress (polled every 5 s while the panel is open, same cadence as onboard's history
+step), Undo, a confirm step before the flip ("Confirm: make this a device", separate from
+starting the copy, per anywhere.md step 3), the "this computer is now a device" line, and "Free
+up space on this laptop" gated 24 hours (anywhere.md's forget guard) with counts, never automatic.
+Tool names (`federation.role.status`, `federation.move.plan/start/status/confirm/undo/forget`)
+are launch's proposal, not yet confirmed by federation (asked). Only Solo/Server -> Device is
+built; "Move off this server" (the reverse direction anywhere.md also names) is not, see Next.
+Smoke-tested for real on testbox (a throwaway CDP script against `deck/test/native-bar/world.js`,
+not committed): point-at-a-server -> plan showing all four pieces -> start -> live progress rows,
+zero console/runtime errors, then torn down. No screenshot pass yet (app-design hasn't seen this
+panel), and the plan/start/confirm/undo/forget tools all still answer from fixtures only.
+
+Also reconciled the `live` onboarding step's copy with anywhere.md, which explicitly claims
+ownership of "the three choices and their copy": h1 is now "How will Vyre run?", options are
+"Just on this computer" / "This computer stays on for me, and I'll use other devices too" / "I
+already have a Vyre server", and the internal values are config.role's real three
+(`"solo"|"server"|"device"`), not this file's earlier guess (`"solo"|"device"|"cloud"`). Behavior
+unchanged: Solo skips Tailscale/name; Server and Device both still fall through to today's
+pairing screens, since anywhere.md's own "point at a server" entry for Device isn't wired into
+onboarding yet (it exists now only in the new Settings panel above) — a candidate to unify later,
+noted below rather than built twice under time pressure.
+
 ## Next
 
+- Wire onboarding's Device choice to the same "point at a server" step Settings > Server now has,
+  instead of falling through to tailscale/name, once that's agreed with anywhere/federation.
+- Build "Move off this server" (Device -> Solo, the reverse direction anywhere.md names) in
+  Settings > Server; only the forward direction is built.
+- Get app-design's eyes on the new Server panel (no board exists for it yet; asked implicitly by
+  building ahead of the tools, per the lead's "don't block" instruction).
 - Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
 - Step-shell's final summary, per the lead (build both, 29 Sep): showEnding()'s "What's next"
   ticks gained a fourth row for the Agent computers choice (9d4103f0); a per-step celebration
