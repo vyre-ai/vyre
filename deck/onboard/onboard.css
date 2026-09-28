@@ -187,50 +187,8 @@
 .dev-card .pair-list:not(:empty) + .dev-state { display: none; }
 @media (prefers-reduced-motion: reduce) { .dev-wait .busy { animation: none; border-color: var(--text); } }
 
-/* "Add your phone": the Vyre code ring (ADR 0033, deck/js/phone-code.js). Three states only —
-   live (a slow shimmer says "this is current"), expiring (the last 30s: shimmer stops, the
-   countdown alone carries the urgency, never a colour change that would fight the ring's own
-   palette), expired (dimmed, inert, Refresh is the only action). */
-.phone-code-ring { width: 200px; max-width: 100%; align-self: center; border-radius: 50%; position: relative; overflow: hidden; }
-.phone-code-ring svg { display: block; width: 100%; height: 100%; }
-.phone-code-ring .busy { display: block; margin: 76px auto; width: 12px; height: 12px; border-radius: 6px; border: 1.5px solid var(--rule-strong); border-top-color: var(--text); animation: spin 900ms linear infinite; }
-.phone-code-ring.shimmer::after { content: ""; position: absolute; inset: 0; border-radius: 50%;
-  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.10) 48%, transparent 66%);
-  background-size: 220% 220%; animation: phone-code-shimmer 3.2s ease-in-out infinite; }
-.phone-code-ring.expired { opacity: 0.4; }
-.phone-code-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-@keyframes phone-code-shimmer { 0% { background-position: 130% 130%; } 100% { background-position: -30% -30%; } }
-@media (prefers-reduced-motion: reduce) {
-  .phone-code-ring .busy { animation: none; border-color: var(--text); }
-  .phone-code-ring.shimmer::after { animation: none; display: none; }
-}
-.phone-code-body { display: flex; flex-direction: column; gap: 12px; align-items: center; text-align: center; }
-/* The avatar's dance on device.paired (the user, 28 Sep): a hop, a squish, a sparkle, under
-   1.2s, before "Your phone is connected." Reuses .ob-burst/ob-pop's exact dot technique (the
-   assistant easter egg above) rather than inventing a second sparkle language, positioned around
-   the stage instead of a 24px mark. The stage (not .phone-code-ring itself, which clips for the
-   shimmer) is what hops/squishes and hosts the burst, so the sparkle isn't cut off at the ring's
-   edge. */
-.phone-code-stage { position: relative; }
-.phone-code-stage.dance { animation: phone-code-dance 1100ms ease; }
-@keyframes phone-code-dance {
-  0% { transform: translateY(0) scale(1, 1); }
-  18% { transform: translateY(-14px) scale(0.94, 1.08); }
-  38% { transform: translateY(2px) scale(1.08, 0.9); }
-  58% { transform: translateY(-6px) scale(0.97, 1.04); }
-  78% { transform: translateY(0) scale(1.02, 0.98); }
-  100% { transform: translateY(0) scale(1, 1); }
-}
-.phone-code-burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
-.phone-code-burst i { position: absolute; left: 0; top: 0; width: var(--size, 5px); height: var(--size, 5px); margin: calc(var(--size, 5px) / -2) 0 0 calc(var(--size, 5px) / -2);
-  border-radius: 50%; background: var(--beacon-ink); opacity: 0;
-  animation: ob-pop 1100ms cubic-bezier(.15, .7, .3, 1) var(--delay, 0ms) 1 forwards; }
-@media (prefers-reduced-motion: reduce) { .phone-code-stage.dance { animation: none; } }
-.phone-code-connected { display: flex; align-items: flex-start; gap: 10px; text-align: left; width: 100%; }
-.phone-code-connected svg { flex-shrink: 0; margin-top: 3px; color: var(--beacon-ink); }
-.phone-code-connected .field { margin-top: 4px; }
-.phone-code-actions { display: flex; gap: 8px; width: 100%; }
-.phone-code-actions .btn { flex: 1 1 0; }
+/* Wink's .phone-code-* rules moved to deck/css/phone-code.css (28 Sep): Settings > Devices needs
+   the same card, and the main Deck bundle never loads this file. */
 
 .notice { font-size: 13px; line-height: 18px; color: var(--text-2); display: flex; gap: 8px; align-items: flex-start; }
 .notice svg { flex-shrink: 0; margin-top: 1px; color: var(--label); }

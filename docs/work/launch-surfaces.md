@@ -317,8 +317,18 @@ Filled in as each lands.
   the avatar's dance the lead asked to confirm: hop/squish/sparkle under 1.2s on `device.paired`,
   before the connected state, reduced-motion-gated, reusing the assistant easter egg's exact dot
   technique on a new `.phone-code-stage` wrapper. `test/onboard-page.test.js` 4/4, `deck/js/*
-  .test.js` 26/26, testbox. Next: the same Wink-primary rework in Settings' Server panel (the
-  lead's next item); "a paired phone adds a new computer" stays parked as a follow-up.
+  .test.js` 26/26, testbox.
+- Settings > Devices rework (the lead's next item, since "Add your phone" was always onboarding
+  + Settings > Devices, per the Surfaces table): `drawDevices` gained the identical Wink card
+  (ring/shimmer/countdown/dance/rename), so a phone can be added after onboarding without
+  re-running it. Moved `.phone-code-*` CSS out of onboard.css (never loaded by the main Deck)
+  into new `deck/css/phone-code.css`, linked from both html shells. "Connect another device"
+  collapses to a single "Add another device" (no wizard "Next step" in Settings). The old "Add a
+  device" link relabels "Use my own Tailscale setup" once Wink shows, matching onboarding's
+  Advanced label. 68/68 combined `node --test` (pwa/settings-server/settings-drive/phone-code/
+  join-caps/onboard) + 4/4 `onboard-page.test.js`, testbox. No settings-page browser test exists
+  for any section of this file, so `winkCard`'s DOM wiring is code-review-verified only, same as
+  every other section here. "A paired phone adds a new computer" stays parked as a follow-up.
 
 ## Doing
 

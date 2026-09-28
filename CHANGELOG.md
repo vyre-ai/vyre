@@ -4,6 +4,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Settings > Devices: the same Wink ring, so a phone can be added after onboarding too
+
+- `deck/css/phone-code.css`: the `.phone-code-*` rules (ring, shimmer, dance, burst, connected
+  state) moved out of `deck/onboard/onboard.css` into their own shared stylesheet, linked from
+  both `deck/index.html` and `deck/onboard/index.html` — the main Deck bundle never loaded
+  onboard.css, and Settings needed the same card. `spin`/`ob-pop` duplicated in rather than
+  moved out of onboard.css under time pressure (a third user would be the point to actually
+  share them).
+- `deck/views/settings.js`'s `drawDevices` (now `(el, ctx)`, was `(el)`) gained `winkCard()`: the
+  identical ring/shimmer/countdown/dance/rename mechanics as onboarding's card, using `ctx.on`/
+  `ctx.cleanup`/`ctx.alive` instead of onboard.js's own `on`/`cleanup`/`every` (the main Deck's
+  lifecycle API, not onboarding's loopback one). "Connect another device" replaces onboarding's
+  "Next step"/"Connect another device" pair with a single "Add another device" action — Settings
+  isn't a wizard, so there's no next step to go to. The old "Add a device" link now reads "Use my
+  own Tailscale setup" once Wink is showing (it's the Advanced fallback now), unchanged when
+  Wink is hidden (still the only add-a-device path on a Mac today).
+- `deck/test/pwa.test.js`, `deck/test/settings-server.test.js`, `deck/test/settings-drive.test.js`,
+  `deck/js/phone-code.test.js`, `deck/js/join-caps.test.js`, `test/onboard.test.js` (68/68
+  combined) and `test/onboard-page.test.js` (4/4) re-run clean on testbox. No settings-page
+  browser test exists for any section in this file (drawServer, drawDrive, etc. are the same),
+  so `winkCard`'s DOM wiring is verified by code review only, consistent with that precedent.
+
 #### Wink pivot: Tailscale stays (auto-managed), relabeled Advanced disclosure, the avatar's dance
 
 - PIVOT from the user (28 Sep, same day as "Tailscale off by default"): Tailscale itself stays —

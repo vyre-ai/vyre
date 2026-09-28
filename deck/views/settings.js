@@ -24,6 +24,8 @@ import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
 import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, mergeEvent, destinationName, forgetGate } from "../js/server-rows.js";
+import { canRelayJoin } from "../js/join-caps.js";
+import { ticketRingSvg, ticketPhase, countdown } from "../js/phone-code.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -130,7 +132,7 @@ export default async function settings(ctx) {
       const after = jumpSel.querySelector(`option[value="claude"]`);
       if (after && after.nextSibling) jumpSel.insertBefore(og, after.nextSibling); else jumpSel.append(og);
     }).catch(e => put(keysBody, empty("Sessions and Claude settings did not load.", e))),
-    drawNetwork(body.network, ctx), drawDevices(body.devices), drawServer(body.server, ctx), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
+    drawNetwork(body.network, ctx), drawDevices(body.devices, ctx), drawServer(body.server, ctx), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
   ];
@@ -161,6 +163,7 @@ const note = (...s) => h("p", { class: "set-note small muted" }, s);
 const status = () => h("div", { class: "small muted set-status", role: "status" });
 const foot = (...kids) => h("div", { class: "set-actions" }, kids);
 const stateLbl = (text, cls = "") => h("span", { class: "set-state " + cls }, text);
+const calm = () => { try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
 /** The onboarding is its own page, not a Deck route, so its links load it. */
 const toOnboard = (step, label = "Finish") => h("a", { class: "btn btn-sm", href: "/onboard#" + step }, label);
 const errText = e => (e?.missing ? `The ${e.module} module is not running, so this cannot be changed here yet.` : String(e?.message || e));
@@ -576,10 +579,94 @@ function deviceKind(os, name = "") {
   return { kind: k || os || "Device", handheld: false };
 }
 
+/** Wink (ADR 0033, deck/js/phone-code.js): the same live Vyre code ring onboarding's devices
+ * step uses, added here so a phone can be added later without re-running onboarding. Gated on
+ * onboard.status.can.relayJoin, same as onboarding's — hidden on a Mac until vyre-core. No
+ * relay.pair.ticket tool exists yet; mints a placeholder ticket id client-side, same as onboarding,
+ * until it lands. `ctx.on`/`ctx.cleanup`/`ctx.alive` (not onboard.js's own `on`/`cleanup`/`every`)
+ * since this runs in the main Deck, not the onboarding loopback page. */
+function winkCard(status, ctx) {
+  const relay = canRelayJoin(status);
+  if (!relay.allowed) return null;
+  const ttlMs = 5 * 60_000;
+  let mintedAt = Date.now();
+  let ticketId = `placeholder-ticket-${mintedAt}`;
+  const mint = () => { mintedAt = Date.now(); ticketId = `placeholder-ticket-${mintedAt}`; };
+  const ringEl = h("div", { class: "phone-code-ring", "aria-live": "polite" }, h("span", { class: "busy" }));
+  const stageEl = h("div", { class: "phone-code-stage" }, ringEl);
+  const meta = h("div", { class: "phone-code-meta" });
+  const body = h("div", { class: "phone-code-body" }, stageEl,
+    h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta);
+  const refreshBtn = h("button", { class: "btn", type: "button" }, "Refresh");
+  refreshBtn.addEventListener("click", () => { mint(); drawRing(); tick(); });
+  const drawRing = async () => {
+    const forId = ticketId;
+    const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+    const svg = await ticketRingSvg(forId, { theme });
+    if (!ctx.alive() || forId !== ticketId) return;
+    ringEl.innerHTML = svg;
+  };
+  const tick = () => {
+    if (!ctx.alive()) return;
+    const { phase, msLeft } = ticketPhase(mintedAt, ttlMs);
+    ringEl.classList.toggle("shimmer", phase === "live" && !calm());
+    ringEl.classList.toggle("expiring", phase === "expiring");
+    ringEl.classList.toggle("expired", phase === "expired");
+    put(meta, phase === "expired"
+      ? [h("p", { class: "small muted" }, "This code expired."), refreshBtn]
+      : h("p", { class: "small muted" }, `Expires in ${countdown(msLeft)}`));
+  };
+  const dance = () => new Promise(resolve => {
+    if (calm()) { resolve(undefined); return; }
+    stageEl.classList.add("dance");
+    const burst = h("span", { class: "phone-code-burst", "aria-hidden": "true" });
+    const N = 12;
+    for (let k = 0; k < N; k++) {
+      const a = (k / N) * Math.PI * 2;
+      const r = 90 + (k % 3) * 14;
+      burst.append(h("i", { style: `--dx:${Math.round(Math.cos(a) * r)}px;--dy:${Math.round(Math.sin(a) * r)}px;--delay:${(k % 4) * 40}ms;--size:${4 + (k % 3)}px` }));
+    }
+    stageEl.append(burst);
+    setTimeout(() => { stageEl.classList.remove("dance"); burst.remove(); resolve(undefined); }, 1150);
+  });
+  const showConnected = (/** @type {string} */ deviceId, /** @type {string} */ initialName) => {
+    if (!ctx.alive()) return;
+    const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", value: initialName, "aria-label": "Device name" }));
+    let saved = initialName;
+    const save = async () => {
+      const v = nameIn.value.trim();
+      if (!v || v === saved) return;
+      const r = await attempt("relay.devices.rename", { id: deviceId, name: v });
+      if (!r.error) saved = v;
+    };
+    nameIn.addEventListener("blur", save);
+    nameIn.addEventListener("keydown", e => { if (e.key === "Enter") nameIn.blur(); });
+    const anotherBtn = h("button", { class: "btn btn-primary", type: "button", onclick: () => { mint(); drawRing(); tick(); put(body, stageEl, h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta); } }, "Add another device");
+    put(body,
+      h("div", { class: "phone-code-connected", role: "status" },
+        icon("check", 20),
+        h("div", null,
+          h("p", { class: "h3", style: { margin: "0 0 4px" } }, "Your phone is connected."),
+          h("div", { class: "field" }, nameIn))),
+      h("div", { class: "phone-code-actions" }, anotherBtn));
+  };
+  ctx.on("device.paired", async (/** @type {any} */ e) => { await dance(); showConnected(e.payload?.id, e.payload?.name || "A device"); });
+  drawRing();
+  tick();
+  const t = setInterval(tick, 1000);
+  ctx.cleanup(() => clearInterval(t));
+  return h("section", { class: "dev-card", "aria-labelledby": "wink-h" },
+    h("div", { class: "lbl" }, "Wink"),
+    h("h2", { class: "h3", id: "wink-h" }, "Wink to connect"),
+    body);
+}
+
 /** The owner's devices on the tailnet (onboard.status detail.devices.peers) and the paired Macs (link.peers). */
-async function drawDevices(el) {
+async function drawDevices(el, ctx) {
   const [st, macs] = await Promise.all([attempt("onboard.status"), attempt("link.peers")]);
+  if (!ctx.alive()) return;
   if (st.error) { put(el, empty("Your devices are read by the box module.", st.error), foot(toOnboard("devices", "Open"))); return; }
+  const wink = winkCard(st.data, ctx);
   const peers = st.data?.detail?.devices?.peers || [];
   const paired = Array.isArray(macs.data) ? macs.data : [];
   const same = (m, p) => (m.node && (m.node === p.dns || String(m.node).split(".")[0] === p.name)) || m.name === p.name;
@@ -599,9 +686,13 @@ async function drawDevices(el) {
     rows.push(row("Mac", h("span", { class: "set-inline" }, mono(m.name || m.node || "A Mac"), stateLbl("Paired", "faint"))));
   }
   put(el,
+    wink,
     rows.length ? h("div", { class: "rows" }, rows)
       : note("No other devices on your tailnet yet. The setup's last step adds your phone and pairs your Mac."),
-    foot(toOnboard("devices", "Add a device")));
+    // Wink is the primary path now (relay.allowed); this link is the Advanced fallback the
+    // onboarding side calls "Use my own Tailscale setup," and the only add-a-device path left
+    // when Wink is hidden (a Mac, no vyre-core yet).
+    foot(toOnboard("devices", wink ? "Use my own Tailscale setup" : "Add a device")));
 }
 
 // ---- 5c. Server ------------------------------------------------------------------------------
