@@ -125,6 +125,31 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## Resume 2026-09-28 (cont'd 3): confirmed, sent to reviewer-2, voice next
+- **6138a420** fixed reviewer-2's two findings (diff review, testbox was frozen): .lbl's
+  var(--size-meta)/var(--line-meta) had no fallback (deck/onboard/device, deck/person/signin don't
+  load tokens.css - device.js draws 4 "Sign in" .lbl's, live not theoretical); /find's local-command
+  dispatch checked c.name only, so its "search" alias typed directly ("/search words", not via the
+  menu) fell through and got sent as a literal chat message. Both fixed, new test for the alias
+  case. reviewer-2 verified by diff, correct on both.
+- **Confirmed on testbox once the freeze lifted** (load ~4.5, targeted files, not the full glob -
+  see the hang below): composer-drafts/find/goal + commands.test.js + design-components +
+  boundaries, 35/35. Sent reviewer-2 all four shas together: a6436f9e, 5b602dd0, 4711a784,
+  6138a420.
+- **Pre-existing test hang, not mine:** "deck/chat/*.test.js" (the full glob) hangs after
+  cards.test.js's plan-card subtests, at ~0% CPU, going nowhere - happened twice today, identically,
+  once BEFORE composer-goal.test.js existed. Killed both times (mine, idle). Whoever owns
+  cards.test.js/session.test.js/plan-card.test.js should look at it separately from today's freeze.
+- **Voice (#2) contract from capsule-pro:** voice.status (key/key_state/provider/mode - key===false
+  means show "Add a voice key in Settings"); WS /v1/streams/voice/listen (deck now allowed locally
+  only, not over the tailnet - fine, push-to-talk needs the local mic anyway), send 16kHz mono
+  PCM16 raw frames + a {"type":"end"} text frame on release, receive listening/partial/final/done/
+  error JSON frames. Going with Web Audio (AudioWorklet downsample to 16kHz PCM16) over
+  MediaRecorder's webm/opus default, to match their format with no server-side transcoding - told
+  capsule-pro, they're open to adjusting chunking once I have something real.
+- Next: build the mic button + WS client in composer.js (voice.status check first, partial/final
+  text into the composer for editing, never auto-send, Esc cancels).
+
 ## Resume 2026-09-28 (cont'd 2): /later + /goal, scope from team-lead
 User's final order: 3 and 4 first (the server's superpowers), then 1, 5, 2. team-lead's split:
 engine for 3/4 goes to sessions; mine is the palette entries + composer piece.
