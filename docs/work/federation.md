@@ -870,6 +870,18 @@ home, or any SENSITIVE entry too (not just the folder itself or something inside
 "Library" joined the list. Tests: 354/354 on testbox across core/mcp, core/memory, core/projects,
 core/files, hygiene, boundaries.
 
+## Reviewer's HIGH on 13e7b0e8: fixed, b2e64518 (28 Sep 2026)
+
+The ancestor fix for MEDIUM 3 (previous entry) put root and home into the SAME "inside-or-ancestor"
+check as the SENSITIVE folders, which refused every real project nested anywhere under the actual
+home directory - exactly where almost every real project lives (checked with home /Users/alex:
+/Users/alex/Projects/harlow was refused). Fixed: root/home refused only as themselves or an
+ancestor; SENSITIVE folders keep all three checks. New test against a fake $HOME proves the fix
+without depending on this worktree's own real home holding anything in particular. Also backfilled
+the ancestor/Library tests MEDIUM 3's fix should have shipped with the first time (I'd changed the
+code but not added the test the reviewer specifically asked for - won't skip that again). Tests:
+51/51 core/projects, 305/305 across core/mcp, core/memory, core/files, hygiene, boundaries.
+
 ## docs/design/projects-map.md: not on this branch (team-lead's docs-check report)
 
 Checked: docs/design/projects-map.md does not exist on work/federation. It is sessions' own doc
