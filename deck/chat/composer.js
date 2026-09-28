@@ -39,7 +39,7 @@
 // answers {queued: true, queued_id: <row id>, uuid, name, note} (an older box: no queued_id), and
 // opts.onQueue hears how many wait and for whom (the Mac's lease line).
 
-import { h, put } from "../js/dom.js";
+import { h, put, link } from "../js/dom.js";
 import { attempt, queued as viaOutbox, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import {
@@ -53,6 +53,7 @@ import { queryInput, suggestRows, applySuggestion, pickedInput, tokenBefore } fr
 import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
 import { listMenu, keysLine } from "./pickers.js";
+import { voiceStatus, listen as listenVoice } from "./core/voice.js";
 
 const touch = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 const isMacOS = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(String(navigator.platform || navigator.userAgent || ""));
@@ -161,9 +162,11 @@ export function mountComposer(opts) {
     onchange: () => { const fs = [...(picker.files || [])]; picker.value = ""; takeFiles(fs); } }));
   const attachBtn = h("button", { class: "ibtn composer-attach", type: "button", "aria-label": "Attach images", title: "Attach images (PNG, JPEG, GIF, WebP)",
     onclick: () => picker.click() }, icon("plus", 16));
+  const micBtn = h("button", { class: "ibtn composer-mic", type: "button", disabled: !!machine, "aria-label": "Push to talk", title: "Hold to talk",
+    onpointerdown: /** @type {any} */ (startTalk), onpointerup: stopTalk, onpointerleave: stopTalk, onpointercancel: stopTalk }, icon("mic", 16));
   const wrap = h("div", { class: "composer-wrap", ondragover: (/** @type {DragEvent} */ e) => { if (!machine) e.preventDefault(); },
     ondrop: (/** @type {DragEvent} */ e) => { const fs = [...(e.dataTransfer?.files || [])]; if (!fs.length || machine) return; e.preventDefault(); takeFiles(fs); } }, menu.el,
-    h("div", { class: "composer-row" }, attachBtn, picker, ta, stopBtn, send),
+    h("div", { class: "composer-row" }, attachBtn, micBtn, picker, ta, stopBtn, send),
   );
   /** Messages waiting in the inbox queue of a session busy in the terminal (the Mac's), by the id thread.queued gives. */
   const waiting = new Map();
@@ -385,6 +388,50 @@ export function mountComposer(opts) {
     sendMessage(text, busy && !machine ? "queue" : null);
   }
   function cancelGoal() { goal = null; setValue(""); }
+
+  // ---- push-to-talk (voice) ----------------------------------------------------------------
+
+  /** null: not checked yet; true/false: whether the box has a voice key. Checked once per mount. */
+  let voiceKnown = /** @type {boolean|null} */ (null);
+  /** @type {{ stop: () => void }|null} */
+  let voiceSession = null;
+  /** True between the hold starting and listenVoice() answering - stopTalk() during this window
+   *  sets voiceWantStop instead of calling a session that does not exist yet. */
+  let voiceOpening = false, voiceWantStop = false;
+  /** What was in the box when the key went down; partial/final text replaces what came after it. */
+  let voiceBaseline = "";
+
+  const voiceKeyNote = () => ["Add a voice key in ", link("/settings", {}, "Settings"), " to use push-to-talk."];
+  const joinVoice = (/** @type {string} */ base, /** @type {string} */ text) => (base ? base + (/\s$/.test(base) ? "" : " ") : "") + text;
+  function finishTalk() { voiceSession = null; micBtn.classList.remove("on"); }
+
+  async function startTalk(/** @type {PointerEvent} */ e) {
+    if (e.button !== undefined && e.button !== 0) return;
+    if (voiceSession || voiceOpening || machine) return;
+    voiceOpening = true; voiceWantStop = false;
+    if (voiceKnown === null) { const s = await voiceStatus(); voiceKnown = s ? s.ready : null; }
+    if (voiceKnown !== true) {
+      voiceOpening = false;
+      say(voiceKnown === false ? voiceKeyNote() : "Could not reach voice.");
+      return;
+    }
+    voiceBaseline = ta.value;
+    say("Listening…");
+    micBtn.classList.add("on");
+    const session = await listenVoice({
+      onPartial: text => setValue(joinVoice(voiceBaseline, text)),
+      onFinal: text => setValue(joinVoice(voiceBaseline, text)),
+      onDone: text => { finishTalk(); if (text) setValue(joinVoice(voiceBaseline, text)); put(note); ta.focus(); },
+      onError: message => { finishTalk(); say(message); },
+    });
+    voiceOpening = false;
+    if (voiceWantStop) { voiceWantStop = false; session.stop(); return; }
+    voiceSession = session;
+  }
+  function stopTalk() {
+    if (voiceSession) { voiceSession.stop(); return; }
+    if (voiceOpening) voiceWantStop = true;
+  }
 
   function showFiles(/** @type {import("./core/composer-state.js").MentionRange} */ range) {
     clearTimeout(fileTimer);
@@ -673,6 +720,9 @@ export function mountComposer(opts) {
 
   /** Esc, from the box or from anywhere on the page. @returns {boolean} whether it did something */
   function onEscape() {
+    // Listening (like goal mode and the rewind picker) closes first: Esc cancels the recording,
+    // not a general clear - the words heard so far stay in the box to edit.
+    if (voiceSession || voiceOpening) { stopTalk(); return true; }
     // Goal mode (like the rewind picker) closes first: Esc cancels it, not a general clear.
     if (goal) { cancelGoal(); return true; }
     // A sheet over the composer (the rewind picker) closes first.
@@ -782,7 +832,7 @@ export function mountComposer(opts) {
       drawChips();
     },
     setText: (t, why) => { setValue(String(t ?? "")); if (why) say(why); ta.focus(); },
-    stop: () => { flushDraft(); for (const off of offs) off(); clearTimeout(leaseTimer); clearTimeout(fileTimer); clearTimeout(holdTimer); menu.close(); },
+    stop: () => { flushDraft(); voiceSession?.stop(); for (const off of offs) off(); clearTimeout(leaseTimer); clearTimeout(fileTimer); clearTimeout(holdTimer); menu.close(); },
   };
 }
 
