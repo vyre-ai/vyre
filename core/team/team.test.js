@@ -22,7 +22,7 @@ import { neutralize, rotationContext } from "./index.js";
 import { open as openStore } from "../store/index.js";
 import { paths } from "../config/index.js";
 import { execFileSync } from "node:child_process";
-import { worktreePath, branchOf, repoRoot } from "./git.js";
+import { worktreePath, branchOf, repoRoot, ensureWorktree, currentBranch } from "./git.js";
 
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
@@ -458,6 +458,23 @@ test("a tag named like the base branch never hijacks a worktree's fork point (re
   const dir = worktreePath(repo, "design");
   assert.ok(fs.existsSync(path.join(dir, "CHANGES.md")),
     "the worktree should fork from refs/heads/main's real tip, not a same-named tag");
+});
+
+test("re-adding a worktree whose branch already exists (its folder gone) checks the branch out, not a detached HEAD, even beside a same-named tag (reviewer, slice A, MEDIUM)", async t => {
+  const { project, repo } = await bootGit(t);
+  const role = "design", branch = branchOf(role);
+  const first = await ensureWorktree(repo, role, "main");
+  assert.ok(first.ok, first.stderr);
+  // The folder is gone (a person cleaning up, or the integrator's own worktree being recreated),
+  // but the branch it made lives on — the case that hits `worktree add <dir> <branch>` again.
+  git(repo, ["worktree", "remove", "--force", first.dir]);
+  // A tag sharing the branch's exact name: worktree add's own branch dwim must still win, since
+  // a fully qualified refs/heads/<branch> (the tag-hijack fix's own qualifying) would instead
+  // hand git a bare commit to check out, always detached, tag or no tag.
+  git(repo, ["tag", branch]);
+  const second = await ensureWorktree(repo, role, "main");
+  assert.ok(second.ok, second.stderr);
+  assert.equal(await currentBranch(second.dir), branch, "re-adding the worktree should check the branch out, not leave it detached");
 });
 
 test("a second worktree teammate does not get a second integrator", async t => {

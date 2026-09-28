@@ -26,16 +26,23 @@ import { gitAsync } from "../../lib/git-safe.js";
 
 const GIT_MS = 15_000;
 
-/** Whoever made a merge vyred ran: vyred, not whoever last committed. Global config is off, so git would otherwise refuse to guess. */
-const VYRED = { GIT_AUTHOR_NAME: "Vyre", GIT_AUTHOR_EMAIL: "vyre@localhost", GIT_COMMITTER_NAME: "Vyre", GIT_COMMITTER_EMAIL: "vyre@localhost" };
+/**
+ * Whoever made a merge vyred ran: vyred, not whoever last committed. Global config is off, so git
+ * would otherwise refuse to guess. `-c` options, not env: lib/git-safe.js's own environment is
+ * deliberately narrow (it strips every GIT_* key before rebuilding it from scratch), and that is
+ * a line worth keeping bright rather than punching a caller-supplied hole in for one identity —
+ * these two config keys cover both GIT_AUTHOR_* and GIT_COMMITTER_* at once anyway. Must come
+ * before the subcommand name in `args` (global git options, not merge/reset/commit options).
+ */
+const VYRE_IDENTITY = ["-c", "user.name=Vyre", "-c", "user.email=vyre@localhost"];
 
 /**
  * Run git in `dir` through lib/git-safe.js. Never rejects.
- * @param {string} dir @param {string[]} args @param {{ ms?: number, env?: Record<string, string> }} [o]
+ * @param {string} dir @param {string[]} args @param {{ ms?: number }} [o]
  * @returns {Promise<{ ok: boolean, stdout: string, stderr: string }>}
  */
-export function git(dir, args, { ms = GIT_MS, env } = {}) {
-  return gitAsync(dir, args, { timeout: ms, env });
+export function git(dir, args, { ms = GIT_MS } = {}) {
+  return gitAsync(dir, args, { timeout: ms });
 }
 
 /** Repo config keys that name a program git would run on the repo's content, or pull in config from elsewhere. */
@@ -135,8 +142,15 @@ export async function ensureWorktree(repo, role, base) {
   }
   const bad = await unsafeConfig(repo);
   if (bad.length) return { dir, branch, ...refuse(bad, "check out a worktree") };
+  // The re-add case (an existing branch) takes the bare `branch`, not `B(branch)`: unlike merge,
+  // rev-parse and the rest of this file, `worktree add <dir> <name>` resolves a bare name through
+  // its own branch dwim (refs/heads/<name> first, to check the branch out) before it is ever
+  // treated as a generic revision, so a same-named tag can't hijack it here either way — but a
+  // fully qualified refs/heads/<name> defeats that dwim outright and checks out a detached HEAD
+  // instead (reviewer, slice A, MEDIUM, reproduced): isOwnWorktree then finds no branch at all,
+  // and every request to a re-added teammate fails as "not its own worktree any more".
   const args = (await hasBranch(repo, branch))
-    ? ["worktree", "add", "--end-of-options", dir, B(branch)]
+    ? ["worktree", "add", "--end-of-options", dir, branch]
     : ["worktree", "add", "-b", branch, "--end-of-options", dir, B(base)];
   const r = await git(repo, args);
   return { ok: r.ok, dir, branch, stderr: r.stderr };
@@ -150,7 +164,7 @@ export async function ensureWorktree(repo, role, base) {
 export async function mergeBaseIn(worktreeDir, base) {
   const bad = await unsafeConfig(worktreeDir);
   if (bad.length) return refuse(bad, "merge");
-  const r = await git(worktreeDir, ["merge", "--no-verify", "--no-edit", "-m", `merge ${base} for the next request`, "--end-of-options", B(base)], { env: VYRED });
+  const r = await git(worktreeDir, [...VYRE_IDENTITY, "merge", "--no-verify", "--no-edit", "-m", `merge ${base} for the next request`, "--end-of-options", B(base)]);
   if (!r.ok) await git(worktreeDir, ["merge", "--abort"]);
   return r;
 }
@@ -205,7 +219,7 @@ export function mergeBranchIn(worktreeDir, branch) {
   // all, so the result vyred reports ("Merged <branch> into <base>, a..b") and what team.merge
   // actually checks in (a real commit whose message names the merge) would both be a fiction.
   return unsafeConfig(worktreeDir).then(bad => bad.length ? refuse(bad, "merge")
-    : git(worktreeDir, ["merge", "--no-verify", "--no-edit", "--no-ff", "-m", `merge ${branch}`, "--end-of-options", B(branch)], { env: VYRED }));
+    : git(worktreeDir, [...VYRE_IDENTITY, "merge", "--no-verify", "--no-edit", "--no-ff", "-m", `merge ${branch}`, "--end-of-options", B(branch)]));
 }
 
 /** True once every conflict marker from a failed merge is gone (the integrator's own edits resolved it, and it was `git add`ed). */
