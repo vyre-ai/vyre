@@ -86,6 +86,15 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep ~14:55 UTC: relay.vyre.run is LIVE. Worker vyre-relay version ac4f2172-a06a-4258-8845-aa423ef26b16,
+migration v2, custom domain attached, cert valid (Let's Encrypt, to Dec 25 2026), workers.dev
+subdomain "vyre-run" created (not served, workers_dev=false), Free plan. Smoke from the testbox
+passed: mint and resolve, single use, full pairing, unknown ticket 404, expiry. The PAIR_LIMITER
+rate limit never returned 429 (40, 90 and 80 request bursts), so I asked the lead about a zone
+rule versus leaving it. ba8045cf fixes the reviewer's ADR 0046 hold (canJoin fails closed;
+forget unbinds and orphan_node retries the delete), 228/228 targeted, with the reviewer. Next:
+the reviewer's verdict on ba8045cf, then the lead's call on the rate limit and ADR 0046 section 4.
+
 28 Sep ~14:35 UTC: the reviewer CLEARED d65ad771, and the lead approved the relay.vyre.run custom
 domain (46900338: workers_dev=false, custom_domain route). Account checked read-only: Workers
 Free, zone Free, migrations are new_sqlite_classes. The deploy FAILED at upload with Cloudflare
