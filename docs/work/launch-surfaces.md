@@ -365,14 +365,36 @@ pairing screens, since anywhere.md's own "point at a server" entry for Device is
 onboarding yet (it exists now only in the new Settings panel above) — a candidate to unify later,
 noted below rather than built twice under time pressure.
 
+Fixed (the lead, after anywhere's answer): the field is `config.machine` (additive, ADR 0039),
+not `config.role` (unchanged, stays box/local). Unified per the lead's explicit instruction — Move
+to server is the SAME flow in onboarding and later: the `live` step no longer falls through to
+the old tailscale/name screens for any choice. Solo and Server both call `onboard.machine{action:
+"set", machine}` (Server surfaces `service.warning`, doesn't block on it) and skip tailscale/name
+outright; Device shows an inline "Setup code or address" field and calls `onboard.join{action:
+"verify"}` (tailnet's tool, also not shipped) instead of the old screens. Both tools are fixture-
+backed in `deck/fixtures/onboard.json`, not shipped yet (anywhere: within the day; tailnet: not
+started). Settings > Server's `drawServer` now reads `onboard.status`'s `machine` field (same
+tool the onboarding step already calls) instead of an invented `federation.role.status`; only the
+move-engine (`federation.move.*`, unrelated to config.machine) is still federation's own proposal.
+Added the solo-path page test reviewer-2 and the lead flagged as missing (asserts Tailscale and
+the address step are skipped, and the page lands on Claude sign-in), and fixed the existing
+device-path test for the new behavior (lands on `#claude` now, not `#tailscale`; asserts both old
+steps are skipped there too). Testbox verification pending the integrator's rc.2 freeze (20 min,
+the lead, 29 Sep) — no Chrome runs from launch until it lifts; syntax-checked locally in the
+meantime (`node --check` on every touched file, fixture JSON validated).
+
+Found while doing this, not mine to fix: the landing page's Mac install tab still says "pairs
+with your server (Linux only)" (ADR 0038 wording), which ADR 0039 supersedes now that a Mac can
+be Solo or Server too. Flagged to site-copy and the lead rather than touched, since that page is
+mid-rewrite by site-copy right now.
+
 ## Next
 
-- Wire onboarding's Device choice to the same "point at a server" step Settings > Server now has,
-  instead of falling through to tailscale/name, once that's agreed with anywhere/federation.
-- Build "Move off this server" (Device -> Solo, the reverse direction anywhere.md names) in
-  Settings > Server; only the forward direction is built.
 - Get app-design's eyes on the new Server panel (no board exists for it yet; asked implicitly by
   building ahead of the tools, per the lead's "don't block" instruction).
+- Build "Move off this server" (Device -> Solo, the reverse direction anywhere.md names) in
+  Settings > Server; only the forward direction is built.
+- Swap fixtures for the real `onboard.machine` tool once anywhere ships it (today, per anywhere).
 - Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
 - Step-shell's final summary, per the lead (build both, 29 Sep): showEnding()'s "What's next"
   ticks gained a fourth row for the Agent computers choice (9d4103f0); a per-step celebration
@@ -388,14 +410,22 @@ noted below rather than built twice under time pressure.
 
 ## Needs from others
 
-- anywhere: the role-choice tool shape (Solo/another computer/cloud server), ADR 0039 once
-  written, and the local one-command install for Solo. Asked 28 Sep.
+- ~~anywhere: the role-choice tool shape~~ answered (sha 35393327, work/anywhere): `onboard.
+  machine{action:"set", machine:"solo"|"server"}`, config.machine, ADR 0039/anywhere.md now
+  written. Built against it as a fixture; anywhere says the real tool should land within the day,
+  will swap then. ~~Solo one-command install~~ answered: `npm install -g https://vyre.run/box/
+  vyre.tgz` + `vyre up`, no new script; pointed at it in the onboarding comments, not yet in any
+  shipped copy.
+- tailnet: `onboard.join{action:"status"|"tailscale"|"relay"|"verify"}` — asked for and got the
+  shape, not built yet on their side. Fixture-backed on mine (`deck/fixtures/onboard.json`), used
+  by the `live` step's Device choice. Still need: confirm the join flow never renders on the Solo
+  path (asked, no answer yet), and step 2's existing-server detection (names.discover, see below)
+  — though that may now be superseded by onboard.join's own `status` action; worth confirming
+  with tailnet rather than assuming.
 - federation: move-engine tool shapes for "Move to server" (plan/what's-moving with sizes,
   start, live status per category, undo). Proposed names: `federation.move.plan`,
   `federation.move.start`, `federation.move.status`, `federation.move.undo` — open to
-  federation's own naming. Asked 28 Sep.
-- tailnet: confirm the join flow never renders on the Solo path, and still answer for step 2's
-  existing-server detection (names.discover, see below).
+  federation's own naming. Asked 28 Sep, no answer yet.
 - lead: which of Vyre IQ, Capsule auto-answer, voice, "do" computer use and the settings hub are in the RC. Until answered, anything not on main shows "coming".
 - sessions: pending onboard changes, if any.
 - app-design: a second pass on the memory-section redesign and the hotkey copy, since both

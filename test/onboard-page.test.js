@@ -106,16 +106,58 @@ test("onboard page: step 1 takes a name on a box with no vyre.run token, and say
     assert.doesNotMatch(note, /not free|could not check/);
 
     await page.run(`document.querySelector("#primary").click()`);
-    // "Where should Vyre live?" (28 Sep, docs/work/launch-surfaces.md) now sits between step 1
-    // and pairing: pick "Another computer I have" to reach the existing tailscale/name flow this
-    // test verifies. Solo would skip straight to Claude sign-in instead (covered elsewhere).
-    await page.until(`location.hash === "#live"`, "the where-should-Vyre-live step");
+    // "How will Vyre run?" (28 Sep, docs/design/anywhere.md, ADR 0039) now sits between step 1
+    // and Claude sign-in. Unified per the lead: every choice here (Solo, Server, or Device, this
+    // test picks Device) skips the old tailscale/name screens outright — they only run later,
+    // when a second device actually joins (Settings > Your devices > Add a device), not during
+    // this step. onboard.join isn't a real server tool yet, so typing any code and continuing
+    // degrades gracefully straight through to Claude sign-in, same as a stub step.
+    await page.until(`location.hash === "#live"`, "the how-will-vyre-run step");
     await page.run(`document.querySelector('input[name="live"][value="device"]').click()`);
+    await page.run(`document.querySelector("#join-code").value = "test-code"; document.querySelector("#join-code").dispatchEvent(new Event("input", { bubbles: true }))`);
     await page.run(`document.querySelector("#primary").click()`);
-    // Reconciled with docs/design/onboarding-v2.md (the lead, 29 Sep): step 2 is now pairing
-    // (tailscale, then name), with Claude sign-in moved after it as step 3.
-    await page.until(`location.hash === "#tailscale"`, "step 2");
+    await page.until(`location.hash === "#claude"`, "Claude sign-in, straight through");
     const saved = config.load(root);
     assert.equal(saved.name, "alex");
     assert.equal(saved.onboard.person, "alex");
+    assert.deepEqual([...(saved.onboard.skipped || [])].sort(), ["name", "tailscale"],
+      "the old pairing screens are skipped, not shown, for the Device choice too");
+  });
+
+test("onboard page: \"How will Vyre run?\" Solo skips Tailscale and the address, landing on Claude sign-in",
+  { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
+    const root = tempHome(t);
+    const bins = fs.mkdtempSync(path.join(root, "bin-"));
+    const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
+    process.env.VYRE_TAILSCALE_BIN = fakeBin(bins, "tailscale", JSON.stringify({ BackendState: "NeedsLogin", AuthURL: "https://login.tailscale.com/a/fake", TUN: true,
+      OperatorUser: os.userInfo().username }));
+    process.env.VYRE_CLAUDE_BIN = fakeBin(bins, "claude", "2.1.0 (Claude Code)");
+    delete process.env.CLOUDFLARE_VYRE_TOKEN;
+    fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], network: { onboardPort: 0 } }));
+    const d = await start({ root, log: () => {} });
+    t.after(async () => {
+      await d.stop();
+      for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    });
+
+    const link = await call("onboard.link", {}, { root });
+    assert.ok(link.data, JSON.stringify(link.error));
+    const page = await chrome(t, root);
+    t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
+    await page.send("Page.enable");
+    await page.send("Page.navigate", { url: link.data.url });
+    await page.until(`document.querySelector("#name")`, "the name field");
+    await page.run(`document.querySelector("#name").focus()`);
+    await page.send("Input.insertText", { text: "kit" });
+    await page.until(`!document.querySelector("#primary").disabled`, "Continue turn on");
+
+    await page.run(`document.querySelector("#primary").click()`);
+    await page.until(`location.hash === "#live"`, "the how-will-vyre-run step");
+    await page.run(`document.querySelector('input[name="live"][value="solo"]').click()`);
+    await page.run(`document.querySelector("#primary").click()`);
+    await page.until(`location.hash === "#claude"`, "Claude sign-in, straight through, no pairing at all");
+
+    const st = await call("onboard.status", {}, { root });
+    assert.equal(st.data.steps.tailscale, "skipped", "Solo never shows Tailscale");
+    assert.equal(st.data.steps.name, "skipped", "Solo never shows the address step");
   });

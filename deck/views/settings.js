@@ -600,28 +600,31 @@ const fmtBytes = n => n < 1e6 ? Math.round(n / 1e3) + " KB" : n < 1e9 ? (n / 1e6
 const FORGET_WAIT_MS = 24 * 3600 * 1000;
 const PIECE_LABEL = { projects: "Projects", memory: "Memory", vault: "Vault", sessions: "Sessions" };
 
-/** Settings > Server: the role, and "Move to a server" (docs/design/anywhere.md, work/anywhere
- * 11328815, ADR 0039). Client-only against deck/fixtures/federation.json until federation's
- * move.* tools and anywhere's role.status land (asked, docs/work/launch-surfaces.md): the tool
- * names and shapes here are launch's proposal, not yet confirmed. Only the Solo/Server -> Device
- * direction is built; "Move off this server" (the reverse move, back to Solo) is not, see the
- * work doc's Next. No auto-delete anywhere in this flow: the pre-move copy is only ever removed
- * by the person's own "Free up space" click, gated 24 hours per anywhere.md's forget guard. */
+/** Settings > Server: config.machine ("solo"|"server"|"device", additive, ADR 0039 — NOT
+ * config.role, which drawMachine below reads and is unrelated), and "Move to a server"
+ * (docs/design/anywhere.md, work/anywhere 11328815). Reads onboard.status for machine, same
+ * tool the "live" onboarding step already uses. Client-only against deck/fixtures/onboard.json
+ * (machine) and deck/fixtures/federation.json (the move.* engine) until anywhere's onboard.
+ * machine and federation's move.* tools land (asked, docs/work/launch-surfaces.md): the move.*
+ * shapes here are launch's proposal, not yet confirmed. Only the Solo/Server -> Device direction
+ * is built; "Move off this server" (the reverse move, back to Solo) is not, see the work doc's
+ * Next. No auto-delete anywhere in this flow: the pre-move copy is only ever removed by the
+ * person's own "Free up space" click, gated 24 hours per anywhere.md's forget guard. */
 async function drawServer(el, ctx) {
-  const r = await attempt("federation.role.status");
+  const r = await attempt("onboard.status");
   if (r.error) {
-    put(el, empty("The server role is read by the federation module.", r.error),
+    put(el, empty("The server role is read by the box module.", r.error),
       note("Once it's running, this is where you move your work to a server, or back."));
     return;
   }
-  const role = r.data?.role || "solo";
-  if (role !== "solo" && role !== "server") { drawAlreadyMoved(el, r.data || {}); return; }
+  const machine = r.data?.machine || "solo";
+  if (machine !== "solo" && machine !== "server") { drawAlreadyMoved(el, r.data || {}); return; }
 
   const panel = h("div", { class: "rows" });
   const st = status();
   put(el,
-    row("This computer", h("span", null, role === "server" ? "Is your server." : "Runs everything, on its own."),
-      h("div", { class: "small muted" }, role === "server"
+    row("This computer", h("span", null, machine === "server" ? "Is your server." : "Runs everything, on its own."),
+      h("div", { class: "small muted" }, machine === "server"
         ? "Other devices can pair with it once you add one."
         : "No Tailscale, nothing else running, until you move to a server.")),
     panel, st);
@@ -707,7 +710,9 @@ async function drawServer(el, ctx) {
 /** After the flip: the celebration line once, the steady state after, and "Free up space" —
  * never automatic, gated 24 hours (anywhere.md's forget guard), the person's own click. */
 function drawAlreadyMoved(el, d, justMoved = false) {
-  const dest = d.destination?.name || d.name || "your server";
+  // d is either onboard.status (machine: "device", a real server's identity not shaped yet by
+  // anywhere) or federation.move.confirm's own data (destination.name) right after the flip.
+  const dest = d.destination?.name || d.server?.name || d.host || "your server";
   const freeAt = (d.movedAt || Date.now()) + FORGET_WAIT_MS;
   const panel = h("div");
   put(el,

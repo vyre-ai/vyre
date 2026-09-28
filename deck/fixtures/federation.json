@@ -1,5 +1,4 @@
 {
-  "federation.role.status": { "role": "solo" },
   "federation.move.plan": {
     "destination": { "name": "kit", "address": "kit.tail-example.ts.net" },
     "pieces": {

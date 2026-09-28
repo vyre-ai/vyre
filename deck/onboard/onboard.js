@@ -55,8 +55,9 @@ const state = {
   /** The Agent computers step's choice ("off"|"browser"|"desktop"), so the ending screen can
    * show what was picked. Client-only until glass owns a real onboard.* tool for it. */
   /** @type {"off"|"browser"|"desktop"|null} */ computers: null,
-  /** The "How will Vyre run?" step's choice, config.role's three real values ("solo"|"server"|
-   * "device", docs/design/anywhere.md), client-only until anywhere's onboard.* tool lands
+  /** The "How will Vyre run?" step's choice, config.machine's three values ("solo"|"server"|
+   * "device", docs/design/anywhere.md, ADR 0039 — not config.role, which is unrelated and
+   * unchanged), fixture-backed until anywhere's and tailnet's onboard.* tools ship for real
    * (asked, docs/work/launch-surfaces.md "Where should Vyre live?"). */
   /** @type {"solo"|"server"|"device"|null} */ live: null,
 };
@@ -347,40 +348,70 @@ const SCREENS = {
 
   // New (28 Sep, user decision "Vyre anywhere"): a role choice ahead of the pairing screens.
   // Copy and the three choices are anywhere's (docs/design/anywhere.md, work/anywhere 11328815,
-  // ADR 0039), which owns them; this screen is launch's build of that spec. Values are
-  // config.role's real three ("solo"|"server"|"device"), not this file's earlier guess
-  // ("solo"|"device"|"cloud"). Solo skips Tailscale and the address step entirely and lands on
-  // Claude sign-in (rung 0 of anywhere's capability ladder: no Tailscale until a second device
-  // or server actually joins). Server and Device both still fall through to today's
-  // tailscale/name screens unchanged for 0.1.1; anywhere.md's own "point at a server" (pasting a
-  // setup code) for Device is not wired here yet, see docs/work/launch-surfaces.md Next. Client-
-  // only choice for now: waiting on anywhere's role-choice tool shape before wiring a real
-  // onboard.* call, same degrade-gracefully shape as the computers step below.
+  // ADR 0039), which owns them; this screen is launch's build of that spec. The field is
+  // config.machine ("solo"|"server"|"device", additive, ADR 0039) — NOT config.role, which
+  // stays "box"|"local" and is untouched by this screen.
+  //
+  // Unified per the lead (the user was explicit: Move to server is the SAME flow in onboarding
+  // and later): the old tailscale/name screens are no longer part of this step for any choice.
+  // They only run later, when a second device actually joins (anywhere's capability ladder,
+  // rung 2) — via Settings > Your devices > Add a device, not here.
+  //   - Solo: onboard.machine{machine:"solo"} (a safe no-op per anywhere, called anyway so the
+  //     server has it on record), then straight to Claude sign-in.
+  //   - Server: onboard.machine{machine:"server"} sets this computer up as the always-on one
+  //     inline (launchd/keep-awake on darwin) and may hand back a `service.warning` (e.g. sleep
+  //     settings that would fight it) to show, not block on.
+  //   - Device: pairs with a server the person already has. Nothing to move yet (a fresh
+  //     device, anywhere.md's Entry A) — `onboard.join{action:"verify"}` (tailnet, ADR 0021)
+  //     does the pairing itself and calls onboard.machine{machine:"device"} internally; this
+  //     screen just takes the setup code and shows the result.
+  // Fixture-backed (deck/fixtures/onboard.json): onboard.machine and onboard.join are anywhere's
+  // and tailnet's proposals, not shipped yet (asked both, docs/work/launch-surfaces.md).
   live(col, s) {
     col.append(
       h("h1", { class: "h1" }, "How will Vyre run?"),
       h("p", { class: "lead" }, "You can change this later without losing anything."));
     const body = h("div", { class: "ob-panel" });
-    col.append(body);
+    const st = h("div", { class: "check-line", "aria-live": "polite" });
+    col.append(body, st);
     let choice = state.live;
-    const syncFoot = () => s.foot({ label: "Continue", disabled: !choice, run: async () => {
+    const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "join-code", placeholder: "Setup code or address", autocomplete: "off" }));
+
+    const skipPairing = async () => { await mark_("tailscale", "skipped"); await mark_("name", "skipped"); };
+    const toClaude = () => goto(STEPS.findIndex(x => x.id === "claude"));
+
+    const syncFoot = () => s.foot({ label: choice === "device" ? "Connect" : "Continue", disabled: !choice, run: async () => {
       if (choice === "solo") {
-        // No Tailscale, no address to reserve: skip both and land straight on Claude sign-in.
-        await mark_("live", "done");
-        await mark_("tailscale", "skipped");
-        await mark_("name", "skipped");
-        goto(STEPS.findIndex(x => x.id === "claude"));
+        await attempt("onboard.machine", { action: "set", machine: "solo" });
+        await mark_("live", "done"); await skipPairing(); toClaude();
         return;
       }
-      s.next();
+      if (choice === "server") {
+        put(st, "Setting this computer up as your server.");
+        const r = await attempt("onboard.machine", { action: "set", machine: "server" });
+        if (r.error && !r.error.missing) { put(st, String(r.error.message)); return; }
+        put(st, r.data?.service?.warning || "");
+        await mark_("live", "done"); await skipPairing(); toClaude();
+        return;
+      }
+      // device: point at a server the person already has, per anywhere.md's Entry A.
+      const v = codeIn.value.trim();
+      if (!v) { put(st, "Paste the code first."); return; }
+      put(st, "Looking for your server.");
+      const j = await attempt("onboard.join", { action: "verify", code: v });
+      if (j.error && !j.error.missing) { put(st, String(j.error.message)); return; }
+      put(st, "");
+      await mark_("live", "done"); await skipPairing(); toClaude();
     } });
-    const opt = (value, title) => h("label", { class: value === choice ? "on" : "" },
+    const opt = (value, title, more) => h("label", { class: value === choice ? "on" : "" },
       h("input", { type: "radio", name: "live", value, checked: value === choice, onchange: () => { choice = state.live = value; put(body, choiceEl()); syncFoot(); } }),
-      h("span", { class: "t" }, h("b", null, title)));
+      h("span", { class: "t" }, h("b", null, title)),
+      value === choice && more ? h("div", { class: "more" }, more) : null);
     const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "How Vyre runs" },
       opt("solo", "Just on this computer"),
       opt("server", "This computer stays on for me, and I'll use other devices too"),
-      opt("device", "I already have a Vyre server"));
+      opt("device", "I already have a Vyre server",
+        h("div", { class: "field" }, h("label", { for: "join-code" }, "Setup code or address"), codeIn)));
     put(body, choiceEl());
     syncFoot();
   },
