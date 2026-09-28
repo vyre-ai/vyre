@@ -34,7 +34,7 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
    will offer it with Face ID. Below, what needs you, then what is running.
 3. Chat. Your Mac's projects and sessions are listed (Recent shows the latest). Open one: the
    conversation reads like the terminal, newest at the bottom. Type a line and send. If the
-   session is busy in your Mac's terminal, a line says "Queued for <name>" and the message goes in
+   session is busy in your Mac's terminal, a line says "Queued for `<name>`" and the message goes in
    when that turn ends.
 4. Find. Pull down from the top of any screen, or tap Find. Type part of a session name, a file
    name or a person: sessions, box files, agents and memory show up as you type. Try
@@ -134,7 +134,7 @@ a still) is the fastest way to hand it back — reply with what step, and what h
   KEEP 8), the tabs warmed at idle on a phone, Chat opens sessions from known rows with the last 60
   turns, Back is history.back, fonts self-hosted, SW stale-while-revalidate. deck/test/pwa-perf.js
   (tab first tap, revisit, Chat open/back/open) and pwa-perf.test.js. Numbers in CHANGELOG.
-- Queue: threads.send queues for tailnet:<login> (was already true on main after capsule-now;
+- Queue: threads.send queues for tailnet:`<login>` (was already true on main after capsule-now;
   queuesFor now also refuses an agent's tailnet node). If the user's phone still refused, his box
   runs code from before capsule-now's merge.
 
@@ -260,7 +260,7 @@ a still) is the fastest way to hand it back — reply with what step, and what h
   names graphite/carbon/raised/ash/stone/bone/signal*/beacon for roles, remove --recall* and
   --beacon-wash/--beacon-rule, --r-1..4 -> --radius-*, --signal-ink-text -> --primary-ink);
   chat 977198f/b27aa6f SHELL entries (reviewed); tailnet a7365a99 network.origins (Hosted row
-  drawn, feature-detected); federation v2 (batch 4): /needs/<ask> falls back to the relayed
+  drawn, feature-detected); federation v2 (batch 4): `/needs/<ask>` falls back to the relayed
   ask.raised for a Mac-owned ask; platform ADR 0033 P4 slot seam (proposed deck/js/slots.js,
   /m/ network-only in the SW).
 - api.js (lead, tonight): chat's reconnect fix 30a9f81 ships on main tonight; when merging main
@@ -487,16 +487,16 @@ chat/term.js (`term-dot`), chat/chat.css (`.cv-state-*`, `.rail-sub .count`), vi
   from dist/precache.json (core/daemon/app.js, app-sw.js). /app is a 301 to /app/; a missing dist
   is 404 `no_app`; /app/_expo/static/* is immutable, the rest no-cache; a missing /app/_expo/ file
   is a 404, not the shell. The build must write dist/precache.json =
-  {"build": "<id>", "files": ["/app/index.html", ...every hashed asset]}.
+  `{"build": "<id>", "files": ["/app/index.html", ...every hashed asset]}`.
 - deck/js/needs.js: a Mac session's ask or question (`source: "mac"`, `machine`, `node`, from
   threads.asks or threads.list) has the usual options and is answered with threads.answer
   `{ ..., machine }` (federation v2). Pre-v2 fallback: a refusal no_such_tool, unsupported,
   bad_input naming machine, or not_found on an item without node sets `macAnswers()` false for
   the page (need-rows.js holds it; window event "deck:mac-answers") and answer rejects with
-  "Answer it on <mac>." (`elsewhere` set); need-rows.js elsewhere(n) is then the machine, else
+  "Answer it on `<mac>`." (`elsewhere` set); need-rows.js elsewhere(n) is then the machine, else
   null. mac_offline and timeout reject with the box's error and the item stays. `needs.hear(e)`
   (app.js passes ask.raised/answered/cancelled) and `needs.find(id)` open a pushed ask by id.
-- memory.relevant: tailnet:<login> callers may read without a room (was refused).
+- memory.relevant: tailnet:`<login>` callers may read without a room (was refused).
 - system.info: adds owner { name } (onboard.person).
 - GET /theme.css served by vyred from config theme.colors.
 - onboard.status: detail.devices.peers [{name, dns, os, online, lastSeen}] (additive), parsePeers export.
