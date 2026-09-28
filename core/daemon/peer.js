@@ -262,20 +262,23 @@ export function insideClaude(pid, { threads = [], look = processTable(), exe = e
     // SAME uid or ptrace access, which vyred does not have onto a more privileged process --
     // found running for real over ssh (28 Sep): the box's own sshd LISTENER (root) is exactly
     // this ambiguous shape, and vyred (its own, non-root uid on the box) cannot read root's
-    // /proc/<pid>/exe. A process genuinely owned by uid 0 could not have been created by
-    // anything running at vyred's own uid -- the same uid a model's shell shares -- so this is
-    // trusted on that basis alone, without needing to know which exact root binary it is. Only
-    // uid 0: vyred's own uid proves nothing here (exePath would already have worked for it).
-    if (p === null && uid(top.pid) === 0) return { inside: false };
+    // /proc/<pid>/exe. The reviewer's HOLD, 28 Sep: uid 0 alone is not enough to trust it outright
+    // -- root daemons that run USER-SCHEDULED jobs have this exact same shape (cron: ppid 1, its
+    // own session/group, uid 0, unreadable exe from vyred's own uid; a model runs `crontab -`
+    // with a job that calls vyre, and its chain tops out at cron). So an unreadable exe, even at
+    // uid 0, is never trusted outright -- it is named as a server (below) like anything else the
+    // allowlist does not know, keyed generically ("uid0", since there is no real exe path to
+    // name) so the person proves it once per server, the same as tmux, screen or ssh.
+    const at = p ? started(top.pid) : (uid(top.pid) === 0 ? started(top.pid) : null);
     // Everything else with this shape (tmux, screen, ssh's sshd, Ghostty, iTerm2's server, the
-    // VS Code or Cursor terminal, Warp, or a setsid'd model) is named as a server rather than
-    // folded into a flat refusal, per the lead's decision, 28 Sep: nobody with a real terminal the
-    // allowlist does not happen to know about gets locked out. The caller can offer the person one
-    // presence proof for THIS specific leader (its exe, pid and start time -- never a bare pid,
-    // which can be recycled, and never a different process: a model-started one always has its
-    // own pid and start time, so it can never inherit trust proved for the person's real one).
-    const at = p && started(top.pid);
-    if (p && at) return { inside: false, unknown: true, server: { exe: p, pid: top.pid, started: at } };
+    // VS Code or Cursor terminal, Warp, an unreadable root daemon, or a setsid'd model) is named
+    // as a server rather than folded into a flat refusal, per the lead's decision, 28 Sep: nobody
+    // with a real terminal the allowlist does not happen to know about gets locked out. The
+    // caller can offer the person one presence proof for THIS specific leader (its exe, pid and
+    // start time -- never a bare pid, which can be recycled, and never a different process: a
+    // model-started one always has its own pid and start time, so it can never inherit trust
+    // proved for the person's real one).
+    if (at) return { inside: false, unknown: true, server: { exe: p || "uid0", pid: top.pid, started: at } };
     return { inside: false, unknown: true };
   }
   return { inside: false };

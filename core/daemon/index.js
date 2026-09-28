@@ -313,6 +313,12 @@ const SERVER_TRUST_METHODS = new Set(["touchid", "capsule", "device", "passkey"]
  * it about this leader. */
 const sessionInput = server => ({ exe: server.exe, pid: server.pid, started: server.started });
 
+/** How the person is told what is asking. peer.js keys an unreadable root leader "uid0" (sshd,
+ * cron, a login manager: vyred cannot read which binary), so that one is described, not named. */
+const serverName = server => server.exe === "uid0"
+  ? `a system service running as root that Vyre cannot identify (pid ${server.pid}, started ${server.started}; for example sshd, cron or a login manager)`
+  : `${server.exe} (pid ${server.pid}, started ${server.started})`;
+
 async function serverTrusted(server, proofHeader, caller, registry) {
   const key = `${server.exe}:${server.pid}:${server.started}`;
   if (serverTrust.has(key)) return true;
@@ -322,7 +328,7 @@ async function serverTrusted(server, proofHeader, caller, registry) {
   // Plain wording, naming exactly what is asking -- the lead's decision, 28 Sep: a model can name
   // its own process anything, so the reason must be specific enough that a real person can tell
   // their own Warp window from a model-caused prompt apart, not just "an app wants to act as you".
-  const summary = `A program Vyre doesn't recognise wants to act as you: ${server.exe} (pid ${server.pid}, started ${server.started}). Did you just open this?`;
+  const summary = `A program Vyre doesn't recognise wants to act as you: ${serverName(server)}. Did you just open this?`;
   const r = await presence.verify({ tool: "session.trust", input: sessionInput(server), caller, proof, def: { presence: { summary: async () => summary } } });
   if (r.ok) { serverTrust.set(key, true); return true; }
   return false;
@@ -559,7 +565,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
           // client signs its proof over exactly this (sessionInput), so it needs it verbatim, not
           // parsed back out of a sentence.
           return send(res, who.server ? 401 : 403, who.server
-            ? { error: { code: "presence_required", message: `this runs inside ${who.server.exe} (pid ${who.server.pid}, started ${who.server.started}): prove you're here once for this session`, methods: all.filter(m => SERVER_TRUST_METHODS.has(m)), server: sessionInput(who.server) } }
+            ? { error: { code: "presence_required", message: `this runs inside ${serverName(who.server)}: prove you're here once for this session`, methods: all.filter(m => SERVER_TRUST_METHODS.has(m)), server: sessionInput(who.server) } }
             : { error: { code: "denied", message: "vyred cannot read which processes this call runs under, so this is refused" } });
         }
       }

@@ -382,7 +382,7 @@ test("peer: exePath reads the kernel's own record of the binary, not the process
   finally { child.kill(); }
 });
 
-test("peer: a real root-owned system daemon (sshd, the box's own ssh listener) is trusted even though vyred cannot read its exe", { skip: process.platform !== "linux" ? "needs /proc" : false }, () => {
+test("peer: a real root-owned system daemon (sshd, the box's own ssh listener) with an unreadable exe is named as a server, never trusted outright", { skip: process.platform !== "linux" ? "needs /proc" : false }, () => {
   // Found running the actual CLI suite over a real ssh connection (28 Sep): the box's own sshd
   // LISTENER (root, ppid 1, its own session -- exactly the ambiguous shape a real login's top of
   // chain has) makes exePath() fail with EACCES, not "nothing to read" -- readlink on another
@@ -391,12 +391,80 @@ test("peer: a real root-owned system daemon (sshd, the box's own ssh listener) i
   // "vyre <verb>" call made over ssh hit it. sshd itself (pid 1) proves the fix at the unit level
   // with the real functions, no fixture: it exists on every Linux box, is root-owned, and is
   // exactly this shape.
+  //
+  // The reviewer's HOLD, 28 Sep: uid 0 alone is not enough to trust outright. cron/atd run
+  // user-scheduled jobs with this identical shape (ppid 1, own session, uid 0, unreadable exe),
+  // so trusting any uid-0 leader would let a model's `crontab -` job (a one-line job calling
+  // `vyre call ...`) pass as the person, no prompt, ever. So this reads unknown with a `server`
+  // (the presence-once fallback everything else unrecognised gets), keyed "uid0" since there is
+  // no real exe path to name -- never `{inside:false}` outright.
   const sshd = Number(execFileSync("pgrep", ["-o", "-x", "sshd"], { encoding: "utf8" }).trim());
   assert.ok(sshd > 0, "this Linux testbox has no sshd to test against");
   assert.equal(exePath(sshd), null, "vyred's own uid cannot read root's /proc/<pid>/exe -- confirms the wall this fix is for");
   assert.equal(processUid(sshd), 0, "but its uid, permission-safe, says root");
-  assert.deepEqual(insideClaude(sshd, { look: () => ({ ppid: 1, pgid: sshd, args: "sshd" }), self: 999999 }), { inside: false },
-    "trusted on uid 0 alone, since nothing at vyred's own (non-root) uid could have created it");
+  const r = insideClaude(sshd, { look: () => ({ ppid: 1, pgid: sshd, args: "sshd" }), self: 999999 });
+  assert.equal(r.inside, false);
+  assert.equal(r.unknown, true, "never trusted outright on uid 0 alone");
+  assert.equal(r.server?.exe, "uid0");
+  assert.equal(r.server?.pid, sshd);
+});
+
+test("peer: a leader whose exe cannot be read is a server keyed uid0 only when root owns it; any other uid is refused flat", () => {
+  // The reviewer's final ruling on 11037859: uid 0 is never trusted outright (cron and atd run a
+  // model's scheduled jobs with this exact shape), but it is not refused either, or every ssh
+  // login to the box would be locked out. It gets the one-time presence prompt, keyed by pid and
+  // start time. An unreadable leader at any other uid has nothing to name, so it stays refused.
+  const leader = { 30: { ppid: 1, pgid: 30, args: "sshd: /usr/sbin/sshd -D" }, 31: { ppid: 30, args: "-bash" }, 32: { ppid: 31, args: "vyre gate approve g1" } };
+  const lk = pid => leader[pid] || null;
+  const common = { look: lk, exe: () => null, started: () => "Mon Sep 28 08:00:00 2026", self: 999999 };
+  assert.deepEqual(insideClaude(32, { ...common, uid: () => 0 }),
+    { inside: false, unknown: true, server: { exe: "uid0", pid: 30, started: "Mon Sep 28 08:00:00 2026" } });
+  assert.deepEqual(insideClaude(32, { ...common, uid: () => 1000 }), { inside: false, unknown: true });
+  assert.deepEqual(insideClaude(32, { ...common, uid: () => null }), { inside: false, unknown: true });
+  // No readable start time, no key: refused flat rather than trusting a pid that could be reused.
+  assert.deepEqual(insideClaude(32, { ...common, uid: () => 0, started: () => null }), { inside: false, unknown: true });
+  // A readable exe keeps its own path as the key, whatever its uid.
+  assert.equal(insideClaude(32, { ...common, exe: () => "/usr/bin/tmux", uid: () => 0 }).server?.exe, "/usr/bin/tmux");
+});
+
+test("peer: under a root leader vyred cannot read (a real ssh login), the first call asks once for presence, then that leader is trusted", async t => {
+  // Runs only where this test process itself sits under such a leader: the testbox over ssh,
+  // whose sshd listener is root-owned and unreadable from this uid. Elsewhere there is nothing
+  // real to test against.
+  const self = insideClaude(process.pid);
+  if (self.server?.exe !== "uid0") { t.skip("not under an unreadable root leader (run over ssh on testbox)"); return; }
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const presence = d.registry.deps.presence;
+  const { generateKeyPairSync, sign, randomBytes } = await import("node:crypto");
+  const { inputHash } = await import("../core/presence/index.js");
+  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const key = presence.enroll({ kind: "device", name: "test key", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
+  const proof = server => {
+    const ts = Date.now(), nonce = randomBytes(12).toString("base64url");
+    const sig = sign("sha256", Buffer.from(`vyre-presence-v1\nsession.trust\n${inputHash(server)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
+    return `device key=${key.id} ts=${ts} nonce=${nonce} sig=${sig}`;
+  };
+  const call = (name, presenceProof) => JSON.parse(execFileSync("curl", ["-s", "--unix-socket", d.paths.socket, "-X", "POST", "http://x/v1/tools/agents.create",
+    "-H", "content-type: application/json", "-H", "x-vyre-caller: cli", ...(presenceProof ? ["-H", `x-vyre-presence: ${presenceProof}`] : []),
+    "-d", JSON.stringify({ name })], { encoding: "utf8" }));
+  const names = async () => (await d.registry.call("agents.list", {}, "cli")).data.map(a => a.name);
+
+  const bare = call("kit");
+  assert.equal(bare.error?.code, "presence_required", JSON.stringify(bare));
+  assert.equal(bare.error.server.exe, "uid0");
+  assert.match(bare.error.message, /system service running as root/, "the reason says what it is in plain words");
+  assert.ok(!(await names()).includes("kit"));
+
+  // A tty code is no proof here: a model under the same leader could read it.
+  assert.ok(!bare.error.methods.includes("tty"));
+
+  const proved = call("juno", proof(bare.error.server));
+  assert.equal(proved.error, undefined, JSON.stringify(proved));
+  const again = call("kit");
+  assert.equal(again.error, undefined, JSON.stringify(again));
+  assert.ok((await names()).includes("juno") && (await names()).includes("kit"));
 });
 
 test("peer: the Capsule's own proof is a pinned cdhash, checked and cached once per connection, bound to the pid's start time", async () => {
