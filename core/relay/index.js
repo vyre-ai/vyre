@@ -22,6 +22,7 @@ import { bridge } from "./bridge.js";
 import { pairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { loadKeys } from "./keys.js";
+import { redeem } from "./redeem.js";
 
 export { loadKeys } from "./keys.js";
 
@@ -261,6 +262,18 @@ export default {
       run: async () => {
         if (personExists()) throw fail("denied", "this box already has a person on a device; pair more from Settings, Devices");
         return mint(true);
+      },
+    });
+
+    ctx.tool("relay.join", {
+      description: "This Vyre becomes a device of another box, redeeming a one-time pairing code minted there (relay.pair.start or onboard.join{action:\"relay\"}). One redemption: the channel closes once paired, then this tool returns what the other box said (its name, this device's id, whether presence enrolled). Does not keep a connection open; that is not built yet.",
+      input: obj({ url: str, name: str }, ["url"]),
+      callers: ["cli", "local", "deck", "capsule"],
+      presence: { summary: async () => "Pair this device with another Vyre, without Tailscale" },
+      run: async ({ url, name }, meta = {}) => {
+        owner(meta.caller, meta, "joining another box");
+        try { return await redeem(url, { root: ctx.paths.root, name }); }
+        catch (e) { throw fail("bad_input", /** @type {Error} */ (e).message); }
       },
     });
 

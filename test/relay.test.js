@@ -352,3 +352,61 @@ test("relay: loads on a Solo Mac (role local) but opens no connection until the 
   await new Promise(r => setTimeout(r, 300));
   assert.deepEqual(events, [], "no connection attempt just from loading, disabled by default");
 });
+
+test("relay: relay.join redeems a code minted on another box, and this device shows up there", async t => {
+  // Two real vyred instances, one real local relay/node/server between them (the same fixture
+  // relay every other test in this file uses) -- the box mints a code (relay.pair.first, as
+  // onboarding does for the very first device), the device (role local, relay's own module
+  // widened there) redeems it with relay.join. No phone, no Expo app: this is the CLI/Node path,
+  // Node's own crypto provider (relay/client/nodecrypto.js), a real Noise handshake over a real
+  // WebSocket, same protocol a phone would run.
+  const relay = createRelay();
+  const url = await relay.listen();
+  t.after(() => relay.close());
+  const boxRoot = tempHome(t);
+  fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
+    network: { name: "alex" }, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
+  const box = await start({ presence: lenient, root: boxRoot, log: () => {} });
+  t.after(() => box.stop());
+  const pairUrl = (await box.registry.call("relay.pair.first", {}, "onboard", PROOF)).data.url;
+
+  const deviceRoot = tempHome(t);
+  fs.writeFileSync(path.join(deviceRoot, "config.json"), JSON.stringify({ role: "local", transcripts: [],
+    modules: { disable: ["names", "onboard"] } }));
+  const device = await start({ presence: lenient, root: deviceRoot, log: () => {} });
+  t.after(() => device.stop());
+  const r = await device.registry.call("relay.join", { url: pairUrl, name: "kit's laptop" }, "cli", PROOF);
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(r.data.name, "alex", "the box's own name, as configured");
+  assert.match(r.data.device, /^[a-z2-7]{16}$/);
+
+  const devices = (await box.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices;
+  assert.deepEqual(devices.map(x => x.name), ["kit's laptop"]);
+  assert.equal(devices[0].id, r.data.device);
+
+  // Redeeming a second code from the same device root reuses the same persisted key, so the box
+  // sees the same device id again rather than minting a fresh identity every time.
+  const secondUrl = (await box.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
+  const again = await device.registry.call("relay.join", { url: secondUrl, name: "kit's laptop" }, "cli", PROOF);
+  assert.equal(again.data.device, r.data.device, "the same file-backed key, the same device id");
+});
+
+test("relay: relay.join refuses a guest, an agent's own claim, and a bad code, before any handshake", async t => {
+  const relay = createRelay();
+  const url = await relay.listen();
+  t.after(() => relay.close());
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [], modules: { disable: ["names", "onboard"] } }));
+  const d = await start({ presence: lenient, root, log: () => {} });
+  t.after(() => d.stop());
+  const bogus = `https://vyre.run/pair#${Buffer.from(JSON.stringify({ v: 1, r: url, i: "a".repeat(26), k: Buffer.alloc(32).toString("base64url"), s: "x", n: "test" })).toString("base64url")}`;
+  const bad = await d.registry.call("relay.join", { url: bogus }, "cli", PROOF);
+  assert.equal(bad.error.code, "bad_input");
+  for (const caller of ["tailnet-guest:sam@example.com", "mcp:agent:kit", "anonymous"]) {
+    const r = await d.registry.call("relay.join", { url: bogus }, caller, PROOF);
+    assert.equal(r.error.code, "denied", caller);
+  }
+  // "hook" is refused even earlier, before caller-kind matching reaches relay.join at all: hooks
+  // reach only tools declared hook: true, and relay.join is not one.
+  assert.equal((await d.registry.call("relay.join", { url: bogus }, "hook", PROOF)).error.code, "no_such_tool");
+});
