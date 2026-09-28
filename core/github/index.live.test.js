@@ -35,8 +35,8 @@ const RUN = process.env.VYRE_LIVE_GITHUB === "1";
 const REPO = "octocat/Hello-World";
 const DUMMY_TOKEN = "not-a-real-github-token-just-a-placeholder-000111";
 
-/** Same shape as index.test.js's world(), inlined to keep this file's dependency on real network self-contained and easy to skip-compile-away. */
-async function world(t) {
+/** Same shape as index.test.js's world(), inlined to keep this file's dependency on real network self-contained and easy to skip-compile-away. `failCreate`/`failAddWorkspace` inject a failure AFTER a real clone has already happened, to prove the orphan-clone cleanup. */
+async function world(t, { failCreate = false, failAddWorkspace = false } = {}) {
   const db = new DatabaseSync(":memory:");
   t.after(() => db.close());
   const tools = new Map(), events = [], calls = [];
@@ -54,11 +54,13 @@ async function world(t) {
       calls.push({ tool: toolName, input });
       if (toolName === "projects.list") return { data: { projects: rows } };
       if (toolName === "projects.add-workspace") {
+        if (failAddWorkspace) return { error: { code: "boom", message: "injected failure, after a real clone" } };
         const p = rows.find(x => x.slug === input.project);
         if (p) p.workspaces = [...p.workspaces, input.folder];
         return { data: { slug: input.project } };
       }
       if (toolName === "projects.create") {
+        if (failCreate) return { error: { code: "boom", message: "injected failure, after a real clone" } };
         rows.push({ slug: input.name, name: input.name, home: input.home, workspaces: [] });
         return { data: { slug: input.name } };
       }
@@ -140,4 +142,25 @@ test(`LIVE (real network, testbox only): github.project and .add-repo really clo
   // detect's own token-invalid emissions (one per remote checked) land on top of github.project's
   // one from earlier - at least one is enough to prove the flag, not an exact count.
   assert.ok(w.events.filter(e => e.type === "github.token-invalid").length >= 1);
+});
+
+test(`LIVE (real network, testbox only): a projects.create/.add-workspace failure after a real clone removes the orphan folder, never leaves it behind (reviewer's LOW on 9cf93817)`, { skip: RUN ? false : "set VYRE_LIVE_GITHUB=1 to run this on testbox (real network, no real token)" }, async t => {
+  const wCreate = await world(t, { failCreate: true });
+  accountStore(wCreate.db).put({ name: "dummy", login: "dummy", avatar_url: null, item: "github-dummy" }, Date.now());
+  const projectsDirBefore = fs.readdirSync(wCreate.ctx.config.projectsDir);
+  const failed = await wCreate.as("cli")("github.project", { repo: REPO });
+  assert.equal(failed.error && failed.error.code, "boom", "the injected failure is what actually surfaced, proving the clone really ran first");
+  const projectsDirAfter = fs.readdirSync(wCreate.ctx.config.projectsDir);
+  assert.deepEqual(projectsDirAfter, projectsDirBefore, "no orphan folder left behind after projects.create failed");
+
+  // Same proof for add-repo/.add-workspace, against a project that already exists.
+  const wAdd = await world(t, { failAddWorkspace: true });
+  accountStore(wAdd.db).put({ name: "dummy", login: "dummy", avatar_url: null, item: "github-dummy" }, Date.now());
+  const created = await wAdd.as("cli")("github.project", { repo: REPO });
+  assert.equal(created.error, undefined, `setup clone failed: ${JSON.stringify(created)}`);
+  const projectsDirBefore2 = fs.readdirSync(wAdd.ctx.config.projectsDir);
+  const failedAdd = await wAdd.as("cli")("github.project.add-repo", { project: created.data.project, repo: REPO, folder: "second-clone" });
+  assert.equal(failedAdd.error && failedAdd.error.code, "boom");
+  const projectsDirAfter2 = fs.readdirSync(wAdd.ctx.config.projectsDir);
+  assert.deepEqual(projectsDirAfter2, projectsDirBefore2, "no orphan folder left behind after projects.add-workspace failed");
 });

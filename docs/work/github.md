@@ -335,6 +335,25 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   - Tested on testbox (temp `HOME`, never locally): see the commit for the numbers. Sending to
     reviewer, integrator and launch, then pausing.
 
+## Done (2026-09-28, reviewer CLEARED 9cf93817; orphan-clone LOW)
+- reviewer CLEARED 9cf93817 (from_thread passes straight through, projects.create validates it,
+  stays people-only). One LOW: a bad `from_thread` used to fail only after the clone, leaving an
+  orphan folder under `projectsDir` - true of any `projects.create` failure today, `from_thread`
+  just made it easy to trigger with a plain typo.
+  - New `checkedThreadId(from_thread)`: shape-checks it as a UUID before ever cloning (never
+    whether the chat exists, that's still `projects.create`'s job). A malformed value now fails
+    immediately, no repo resolution, no clone, no GitHub API call at all.
+  - New `removeOrphanClone(path)`: best-effort `fs.rmSync`, called from both `github.project`
+    (on a `projects.create` error) and `github.project.add-repo` (on a `projects.add-workspace`
+    error) after the clone already happened. Swallows its own failure - the original error is
+    what the caller actually needs to see.
+  - Tests: a malformed `from_thread` fails before any tool call (`index.test.js`, no network
+    needed). The actual orphan-cleanup proof needs a real clone to exist first, so that's in
+    `index.live.test.js`: a new live test injects a `projects.create`/`.add-workspace` failure
+    after a real clone and asserts `projectsDir`'s listing is unchanged after - proving the
+    failure really did happen post-clone (not a shortcut) and that nothing was left behind.
+  - ADR 0041 decision 4 step 3 updated with both the shape check and the cleanup.
+
 ## Doing
 - reviewer CLEARED work/github through acfcefd2 (both 3a72ea7f..84e76681 and the stdin fix).
   The credential.interactive LOW is WITHDRAWN (reviewer agreed the evidence was right); the lead

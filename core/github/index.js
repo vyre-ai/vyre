@@ -9,6 +9,7 @@
 // two named modules (sessions, threads); the worktree tools are sessions-only and internal. No
 // Gate sender is registered, because nothing here sends anything outward yet (no issues, no PRs).
 
+import fs from "node:fs";
 import { connector, revoke } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
 import { cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl } from "./git.js";
@@ -262,10 +263,11 @@ export default {
     });
 
     ctx.tool("github.project", {
-      description: "Make a BRAND-NEW project from a repo: clones it and creates the project, recording the repo as the project's primary GitHub repo (what a session's worktree is made from, ADR 0041 section 5). `repo` is owner/name or a full GitHub URL. `from_thread?` is an existing chat's id, passed straight through to `projects.create` (which validates and normalises it): the new project's avatar_seed becomes that chat's id and the chat is filed into it, so starting a GitHub project from a loose chat keeps its tile instead of getting a fresh one. To add a repo to a project that already exists instead, use github.project.add-repo.",
+      description: "Make a BRAND-NEW project from a repo: clones it and creates the project, recording the repo as the project's primary GitHub repo (what a session's worktree is made from, ADR 0041 section 5). `repo` is owner/name or a full GitHub URL. `from_thread?` is an existing chat's id (a UUID), passed straight through to `projects.create` (which validates and normalises it): the new project's avatar_seed becomes that chat's id and the chat is filed into it, so starting a GitHub project from a loose chat keeps its tile instead of getting a fresh one. To add a repo to a project that already exists instead, use github.project.add-repo.",
       input: obj({ name: str, repo: str, account: str, from_thread: str }, ["repo"]),
       callers: PEOPLE,
       run: async ({ name, repo, account: a, from_thread }) => {
+        const fromThread = checkedThreadId(from_thread);
         const acct = forOne(accounts.all(), named(a));
         const token = await ctx.vault.fetch(acct.item, { field: "token" });
         const full_name = repoName(repo);
@@ -273,8 +275,8 @@ export default {
         const projectsDir = ctx.config && ctx.config.projectsDir;
         if (!projectsDir) throw fail("this device has no projects folder configured", "config");
         const cloned = await cloneRepo({ projectsDir, name: info.name, url: info.clone_url, token });
-        const out = await ctx.call("projects.create", { name: name || info.name, home: cloned.path, ...(named(from_thread) ? { from_thread } : {}) });
-        if (out.error) throw fail(out.error.message, out.error.code || "failed");
+        const out = await ctx.call("projects.create", { name: name || info.name, home: cloned.path, ...(fromThread ? { from_thread: fromThread } : {}) });
+        if (out.error) { removeOrphanClone(cloned.path); throw fail(out.error.message, out.error.code || "failed"); }
         const slug = out.data && out.data.slug;
         projects.put({ project: slug, account: acct.name, full_name, default_branch: info.default_branch, home: cloned.path }, now());
         return { project: slug, home: cloned.path, full_name, default_branch: info.default_branch };
@@ -296,7 +298,7 @@ export default {
         if (!projectsDir) throw fail("this device has no projects folder configured", "config");
         const cloned = await cloneRepo({ projectsDir, name: named(folder) || info.name, url: info.clone_url, token });
         const out = await ctx.call("projects.add-workspace", { project, folder: cloned.path });
-        if (out.error) throw fail(out.error.message, out.error.code || "failed");
+        if (out.error) { removeOrphanClone(cloned.path); throw fail(out.error.message, out.error.code || "failed"); }
         return { project, folder: cloned.path, full_name, default_branch: info.default_branch };
       },
     });
@@ -373,4 +375,31 @@ function repoName(repo) {
   const m = REPO_RE.exec(s);
   if (!m || m[2] === "." || m[2] === "..") throw fail(`repo must be owner/name or a github.com URL, not "${s.slice(0, 60)}"`);
   return `${m[1]}/${m[2]}`;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * `from_thread`'s shape only (a UUID) - `github` never checks whether the chat actually exists,
+ * that's `projects.create`'s own job (it owns the real validation, `native-core`). This is here
+ * purely so a bad value fails BEFORE the clone, not after it (reviewer, 9cf93817 review, LOW): a
+ * malformed `from_thread` used to reach `projects.create` only after a full clone had already
+ * happened, leaving an orphan folder under `projectsDir` for nothing.
+ */
+function checkedThreadId(from_thread) {
+  const s = named(from_thread);
+  if (!s) return undefined;
+  if (!UUID_RE.test(s)) throw fail(`from_thread must be a chat's id (a UUID), not "${s.slice(0, 60)}"`);
+  return s;
+}
+
+/**
+ * Remove a clone that a later step failed to register anywhere (`projects.create`/
+ * `.add-workspace` erroring after the clone already succeeded, reviewer, 9cf93817 review, LOW -
+ * a failure there used to leave an orphan folder under `projectsDir` forever). Best-effort: a
+ * failure removing it is swallowed, since the original error is what the caller actually needs
+ * to see, and this is cleanup, not the operation itself.
+ */
+function removeOrphanClone(path) {
+  try { fs.rmSync(path, { recursive: true, force: true }); } catch {}
 }

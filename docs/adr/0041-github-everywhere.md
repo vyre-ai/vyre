@@ -168,8 +168,15 @@ account?}`:
    owns) validates and normalises on its own side. When given, the new project's `avatar_seed`
    becomes that chat's id and the chat is filed into the project, so starting a GitHub project
    from a loose chat ("New project from a GitHub repo...") keeps its tile instead of getting a
-   fresh one. `github` does no validation of its own on it, by design, the same as every other
-   value it only relays.
+   fresh one. `github` checks only its shape (a UUID, `checkedThreadId`) before ever cloning,
+   never whether the chat actually exists, that stays `projects.create`'s own job; the shape
+   check alone is enough to catch a typo before spending a real clone on it. Whether the chat
+   exists or the clone succeeds, if `projects.create` (or `.add-workspace`, `github.project.add-
+   repo`'s own equivalent step) errors for any reason after the clone already happened, the
+   clone is removed (`removeOrphanClone`, best-effort, swallows its own failure since the
+   original error is what matters) rather than left behind under `projectsDir` forever, the
+   reviewer's catch (9cf93817 review, LOW: this failure mode already existed for any
+   `projects.create` error, `from_thread` just made it easier to trigger with a plain typo).
 4. The project row remembers the repo (`github_projects (project, account, full_name,
    default_branch)`, keyed by the project's slug), so later steps (worktree-per-session, and
    0.1.2's PRs and git settings) know which project is a GitHub project without asking again. This

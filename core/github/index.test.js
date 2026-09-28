@@ -317,6 +317,17 @@ test("github.project: repoName refuses a path-traversal owner or a bare '.'/'..'
   assert.equal(w.calls.length, 0, "repoName's own validation runs before any tool call at all");
 });
 
+test("github.project: a malformed from_thread is refused BEFORE any clone or GitHub API call - not just late, when projects.create would also refuse it (reviewer's LOW on 9cf93817)", async t => {
+  const w = await world(t);
+  seedAccount(w.db);
+  withFetch(t, fakeFetch({ repos: [{ full_name: "alex/harlow-legal", default_branch: "main" }] })); // any real fetch call here would be the bug
+
+  const notAUuid = await w.as("cli")("github.project", { repo: "alex/harlow-legal", from_thread: "not-a-uuid" });
+  assert.equal(notAUuid.error.code, "bad_input");
+  assert.match(notAUuid.error.message, /from_thread/);
+  assert.equal(w.calls.length, 0, "checkedThreadId's own validation runs before repo resolution, let alone a clone");
+});
+
 test("github.session.worktree/.cleanup: the switchboard (module:threads) can call these internal, sessions-only tools, same as module:sessions - and only when first-party (reviewer's merge heads-up: the stage branch already expects both names here)", async t => {
   const home = makeRepo(t);
   const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home }] });
