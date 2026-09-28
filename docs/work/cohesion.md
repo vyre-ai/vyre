@@ -63,6 +63,49 @@ belong to another team. Map: docs/design/cohesion.md (19 ranked items, approved 
   ccb8b410; native-core work/native-core-composer c012c13c; docs work/docs 393b7c97; app-design specs
   work/app-design b756d128, e00280ad.
 
+## One-system audit refresh (2026-09-28, resume 9)
+
+Re-audited against today's changes: projects.access (federation, 63af8941), chat's sight.frame
+stills (18980d2d), personguard (cleared 002e6577, not yet landed), Drive (files/drive.js), the
+assistant's linked-projects rule (design-only), the chat/native-core/pwa split. Research-only pass
+(fork), no code read as broken enough to warrant a glue sha yet — each finding needs an owner
+answer first. Top 5, sent to owners:
+
+1. **projects.access may be a 5th project-identity shape.** core/projects/projects.js's grant/
+   check/revoke don't visibly import lib/project-id.js's isProjectId/SLUG_RE (the canonical shape
+   landed the same day, different worktree). Sent to federation; offered to take the import+
+   validate as pure glue if they'd rather not.
+2. **Drive predates today's per-folder-via-projects.access decision.** core/files/drive.js (Taildrive/
+   WebDAV Mac shares) gates by Tailscale node attributes only, no projects.access reference at all.
+   Sent to federation: confirm whether drive.js is the target of that decision or a separate
+   not-yet-built picker is.
+3. **personguard vs vault's own presence() — RESOLVED, not a seam.** Reviewer confirmed (checked
+   at 002e6577): vault's presence() only builds the tool's declaration/summary text, never checks
+   anything itself. The single verifier is core/presence via the registry; the ancestry check
+   (daemon/index.js fromClaude) runs whenever `personal` is true (personOnly OR presence.required),
+   independent of PERSON_ONLY/OPT_OUT membership. So OPT_OUT can't remove a presence-gated tool's
+   proof — the two layers can't drift. Reviewer is adding a line to the landing commit or
+   personOnly()'s doc comment saying so.
+4. **Three separate state mechanisms stand in for the "queued/asking/waiting/stopped" a person
+   sees**, and thread.status (meant to collapse them) isn't shipped: slots.js's slot.queued,
+   switchboard's own STATE (which relabels working -> "running" externally while core/harness
+   reads the RAW "working" value directly — a mismatch inside switchboard's own blast radius, not
+   just across surfaces), and asks.js's ask.raised. Sent to sessions with the harness detail so
+   thread.status's shape accounts for it before chat/Capsule/CLI converge on it.
+5. **The assistant's "sees all linked projects" rule bypasses projects.access** (reads memory's own
+   graph project set, `{all:true}`, not the grants table) — probably correct by design (the
+   assistant is privileged, always-there) but not yet stated as intentional anywhere. Sent to
+   memory-iq: one doc line once they touch that code, no build change asked.
+
+Chat-cohesion pass (item 3, same session): Deck chat and pwa share the same deck/chat/session.js
+(monorepo — pwa's own work/pwa branch (waiting/context/sight-pills) hasn't merged to main yet, so
+main's chat/pwa are currently IN SYNC by virtue of being unbuilt-ahead, not by design). Capsule
+(core/harness/index.js) reads switchboard's raw thread.status field directly today. CLI reads
+switchboard's STATE-mapped values through the normal tool path. Once thread.status ships, Capsule's
+direct raw-field read needs to move onto it too or it'll show "working" where chat shows "running"
+for the same thread — flagged to sessions above, not yet its own separate message since it's the
+same root cause.
+
 ## Next
 2. Owner replies: record below. Send owners the built contracts and their exact asks.
 3. Drift test: models + policy rules done (test/cohesion-drift.test.js); add tokens once the hub generates them.
