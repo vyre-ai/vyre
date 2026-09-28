@@ -65,7 +65,9 @@ export const REFUSED = new Set([
  */
 export const AGENT_REFUSED = new Set([
   "Runtime.addBinding", "Page.addScriptToEvaluateOnNewDocument",
-  "Storage.getCookies", "Network.getAllCookies", "Network.getCookies",
+  // Page.getCookies is deprecated in favour of Network.getCookies, but some Chrome builds still
+  // answer it (reviewer, 28 Sep): the same dump, refused the same way.
+  "Storage.getCookies", "Network.getAllCookies", "Network.getCookies", "Page.getCookies",
   // Reads a URL directly and hands back its bytes over IO.read, file:// included -- the same
   // class of leak DOM.setFileInputFiles is refused for below, by a different route (reviewer,
   // 28 Sep). Never checked against real Chrome (no docker host this pass).
