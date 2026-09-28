@@ -19,6 +19,12 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
   lead). docs/design/settings-inventory.md and docs/design/native-bar.md written.
 
 ## Doing (after LOGOUT 4 resume, 2026-09-27)
+LATEST: work/native-core-composer c012c13c (pushed) = work/native-core (6ccad201 + 917f693a ADR
+LOW + 26ef7da4 harness fetch stream) + cohesion 0f4d1105 + composer suggest.query/Tab + model
+aliases from sessions.models.get (choicesFrom on model keys). Budget 8 on pwa 15d02055: 3,240 ms,
+3,254 px jump (sent to pwa). Waiting: vault 5d7cbd07 green for the Connections entry; pwa's
+backoff fix for a budget 8 rerun; chat for fling/cold open/send.
+
 NOW: tip 6ccad201 (fa349d31 + test-only commits), e2e SIGNED OFF fa349d31 (with platform d62792d0). fa349d31 PUSHED + TESTED (targeted 146/146, daemon.test.js 21/21 alone). Hub steps 1-3, theme
 routes, secrets out of hub.json, Dark/Paper switch on appearance.scheme. Sent to integrator, e2e
 (review steps 2-3), platform (settings.write rebases), app-design (work/app-design-hub).
@@ -67,6 +73,87 @@ Also: platform settings.write (e4515fb6) is approved by e2e; lands after the HIG
 Answer mobile: meter location (proposed lib/perf/meter.js) and server `t` on thread.text is
 NOT stamped yet (ask sessions for field `t`, ms epoch).
 Answer app-design: check docs/design/system specs (work/app-design c4f9bb23) paths.
+
+## Resume 2026-09-28 (post rc.2, testbox back at 8 CPUs)
+Merged main 57dc12c3 (rc.2: docker-api bearer hotfix, safe-git, module-sdk pack fix) into
+work/native-core-composer clean, no conflicts, at f84366f2. Targeted run on testbox (npm ci +
+node --test composer-state, agents/effort, core/settings/*, boundaries): 60/60 pass. Already
+fixed by others since last session: threads.interrupt exists (switchboard) and chat's Stop uses
+it with "Stopping"/"Stopped by you" (budget 10 should now pass); Agent Effort save/list/validate
+is implemented and tested (core/agents/effort.test.js). Pinged chat (composer.js/pickers.js/caps.js
+overlap) and pwa (budget 8 rerun on their backoff-fix sha) for current heads before editing shared
+files; waiting on replies. Next once confirmed: re-run the native-bar budgets (5, 8, 9, 10) on the
+merged tree and update docs/design/native-bar.md's results table; then continue down the Doing
+list (Vault Connections entry waits on vault's 5d7cbd07 green).
+
+## 2026-09-28 (cont'd): budget 5 to true CLS 0, sent to reviewer-2
+Fixed the residual 0.0088 CLS entry (215bed2d, chat.css only): turnRow's open placeholder was
+`display:none` while `:empty`, so its footer text landing flipped it to `display:block` and
+inserted a fresh 26px box, shifting everything below down. `.cv-turn` now keeps `min-height: 26px`
+always and `:empty` is `visibility: hidden`. Budget 5: CLS 0, 8/9/10 unchanged, deck/chat 86/86
+green on testbox. Sent to reviewer-2 (non-security) and team-lead. Full root-cause trail (rect
+sampler evidence) in docs/design/native-bar.md. pwa owns budget 8 (reconnect on online/visibility);
+chat is looking at budget 9's footer-text-change flag. Next: continue composer/streaming-path work
+now that file ownership with chat (session.js/newsession.js) and pwa (phone views) is settled —
+composer.js's behaviour and the streaming path are mine.
+
+## 2026-09-28: Claude Code parity audit (team-lead's 4 items)
+Before building, audited what's already there:
+1. Queue while busy, delivered on Stop, visible chip you can edit/cancel: ALREADY BUILT, both
+   sides. Server: turnEnded (switchboard) hands queued words over on any thread.finished,
+   cancelled or not (st.stopping only blocks a hard threads.stop, not the Deck's soft
+   threads.interrupt). Client: session.js's cv-queued box (rows, Edit/Take back/Send now) already
+   listens for thread.sent regardless of `via`. New test locks the untested combination in
+   (core/sessions/sessions.test.js, 48de0bd3's ancestor fa4a3b07): queue mid-turn, press Stop,
+   the queued words are handed over and answered as the next turn.
+2. Slash-command palette, SDK's + Vyre's, fuzzy: ALREADY BUILT. core/commands.js
+   (findCommand/rankCommands) + core/match.js (a real tiered fuzzy matcher, ported from Paseo:
+   exact/whole-word/prefix/word-start/substring/subsequence), threads.commands for the session's
+   own list. Nothing missing found.
+4. Permission mode + model/effort mid-session: ALREADY BUILT. threads.mode/model/effort all say
+   "a running thread switches at once" and do (control_request to the live SDK process);
+   composer.js already has the chips (Shift+Tab cycles mode, model chip, thinking/effort).
+3. Edit/resend + rewind or fork from any turn: PARTIALLY missing, now built (48de0bd3).
+   threads.fork forked only from the live end; threads.rewind resumed at a message's parentUuid
+   but in place (mutating the original). The Agent SDK already supports forkFrom + resumeAt
+   together (core/sessions/claude.js), just never wired to the same call. threads.fork now takes
+   an optional `at` (turn uuid): forks from just before that turn, original untouched past it.
+   Tested (fork from turn 2 of 3, original's transcript byte-identical after, still usable past
+   turn 3). Edit-and-resend of a past message already works via rewind (words come back to the
+   composer to edit and send) - the net-new part was the fork option specifically.
+Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the rewind sheet,
+pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
+and the new capability to team-lead.
+
+## RESUME HERE (saved before a restart, usage 84%)
+- **Head: 7a586676** on work/native-core-composer (this team's own worktree). Clean working tree,
+  nothing uncommitted, no test-box runs left running.
+- **Budget-9 harness blind spot: FIXED and sent.** reviewer-2 found that when window-view recycles
+  the anchor row itself (not just the user's own row), the old in-place-only check went silent on
+  a real replace-at-slot re-order. Fixed (8c0b36ca): when the anchor disconnects, look up whatever
+  now sits at that position (fresh previousElementSibling off the content-matched user row) and
+  compare ITS text to the baseline. Verified with all four scenarios as CDP-injected controls on
+  testbox (A benign insert: pass 0x; B in-place mutation: fail, caught; C replace-at-slot,
+  different text: fail, now caught - the fix; D replace-at-slot, same text/benign recycle: pass
+  0x). Clean run unaffected. Results table in docs/design/native-bar.md. Sent to reviewer-2
+  (7479cc33 msg) - **awaiting their sign-off**, not yet confirmed clear to land.
+- **48de0bd3 (fork-from-turn) also just sent to reviewer-2** (97fbe95a msg) per team-lead's ask -
+  **awaiting their sign-off** too.
+- **Fork-from-turn client wiring: NOT STARTED, next up.** chat said go ahead and build it in
+  pickers.js/composer.js (my files, natural extension of the RESTORES-style rewind-sheet list) and
+  hand chat the exact contract for session.js's side. chat is mid a fix in session.js (the
+  budget-8 reconnect scroll jump, testing on testbox) - **wait for chat to say it's landed before
+  touching session.js at all**; pickers.js/composer.js are free to start now. Plan: add "Fork from
+  here" as a fourth item in pickers.js's RESTORES-style list (docs/design system's rewind sheet,
+  currently conversation/code/both), composer.js wires it to `threads.fork({thread, at: uuid,
+  prompt?, name?, surface})` (matching threads.rewind's own {thread, uuid} pattern) - contract for
+  chat: session.js should treat the answer like a normal new-session open (the forked thread's id
+  comes back in `.thread` per threads.fork's existing shape - check its actual answer shape in
+  core/switchboard/index.js's threads.fork tool before wiring) and open it the way a new session
+  from openHref does, since the original thread stays exactly where it was.
+- **On resume:** check reviewer-2's replies on 8c0b36ca and 48de0bd3 first (SendMessage to
+  reviewer-2 if no reply yet has landed); check chat's session.js status before touching that
+  file; then build the pickers.js/composer.js side of "Fork from here".
 
 ## Known follow-ups
 - DONE: e2e's three MEDIUMs (firstParty, drops/env/plugins confirm, asPerson).

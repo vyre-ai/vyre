@@ -260,7 +260,7 @@ export default {
     /** A shell the box lost while vyred was down: say so once, on the log every screen replays. */
     const lost = row => {
       gone.set(row.id, { key: String(row.key), at: now() });
-      emit("term.closed", { term: row.id, reason: "box updated" });
+      emit("term.closed", { term: row.id, reason: "server updated" });
     };
     for (const row of Array.isArray(table) ? table : []) {
       if (!row || typeof row.id !== "string" || typeof row.sock !== "string") continue;
@@ -310,7 +310,7 @@ export default {
         const key = keyOf(caller, peer, surface);
         const t = terms.get(String(i.term));
         const g = !t && gone.get(String(i.term));
-        if (g && g.key === key) throw fail("terminal_closed", "the box was updated and this terminal was closed; open a new one");
+        if (g && g.key === key) throw fail("terminal_closed", "the server was updated and this terminal was closed; open a new one");
         if (!t || t.key !== key) throw fail("not_found", "no such terminal on this screen");
         if (!t.sockets.size) idleSoon(t, keepMs + ticketMs);
         return { ...issue(t, offsetOf(i.from)), cwd: t.cwd, cols: t.pty.cols, rows: t.pty.rows, durable: t.durable, offset: t.ring.end, oldest: t.ring.start };

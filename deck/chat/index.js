@@ -71,7 +71,7 @@ export async function openTerminalAt(cwd) {
   let mod;
   try { mod = await import("./term.js"); } catch { return "The terminal is not part of this Deck yet."; }
   const r = await mod.openTerminal(cwd);
-  if (!r || r.error) return "Could not open a terminal: " + (r?.error?.message || r?.error || "the box did not say why") + ".";
+  if (!r || r.error) return "Could not open a terminal: " + (r?.error?.message || r?.error || "the server did not say why") + ".";
   go("/chat?term=" + encodeURIComponent(r.term));
 }
 
@@ -207,7 +207,7 @@ export default async function chat(ctx) {
   /** The two ways in from Chat's own pages: New session and Folders. */
   function actions(from) {
     return h("div", { class: "chat-actions" },
-      link("/chat?folders", { class: "btn btn-ghost btn-sm", title: "Folders on the box" }, icon("projects", 14), "Folders"),
+      link("/chat?folders", { class: "btn btn-ghost btn-sm", title: "Folders on the server" }, icon("projects", 14), "Folders"),
       h("button", { class: "btn btn-primary btn-sm chat-new", type: "button", title: "New session (n)", onclick: () => go(newHref({ project: from })) }, icon("plus", 14), "New session"));
   }
 
