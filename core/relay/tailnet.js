@@ -32,11 +32,12 @@ const NODE_ID = /^[A-Za-z0-9]{1,64}$/;
 
 const fail = (code, message) => Object.assign(new Error(message), { code });
 
-/** @type {{ fetch?: typeof fetch, base?: string } | null} */
+/** @type {{ fetch?: typeof fetch, base?: string, credential?: () => Promise<any> } | null} */
 let testApi = null;
 /**
- * Tests only: point the box's Tailscale API calls at a fake. Returns the undo.
- * @param {{ fetch?: typeof fetch, base?: string }} o
+ * Tests only: point the box's Tailscale API calls at a fake (and, for a daemon test with no vault
+ * grant, its credential too). Returns the undo.
+ * @param {{ fetch?: typeof fetch, base?: string, credential?: () => Promise<any> }} o
  */
 export function useTailscaleApi(o) {
   const was = testApi;
@@ -65,7 +66,7 @@ export function tailscaleApi({ credential }) {
   const f = () => (testApi && testApi.fetch) || globalThis.fetch;
   const base = () => (testApi && testApi.base) || API;
   async function token() {
-    const { id, secret } = parseCredential(await credential());
+    const { id, secret } = parseCredential(await ((testApi && testApi.credential) || credential)());
     const res = await f()(`${base()}/api/v2/oauth/token`, {
       method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ client_id: id, client_secret: secret, grant_type: "client_credentials" }).toString(),

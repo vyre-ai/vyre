@@ -213,7 +213,7 @@ export function names(deps) {
    * it on the tailnet, to learn whether IT ALSO sees itself reaching the box, and as whom. Never
    * for an agent's node (a computer has no join flow of its own) and rate-limited per node, since
    * it needs no proof beyond whois and must not become a way to probe the box from a captured
-   * tailnet login. The answer stays minimal: kind, and the box's own name only for the owner —
+   * tailnet login. The answer stays minimal: kind, and the box's own name only for the owner , 
    * never a login, tag or capability, which callerOf/peer already carry to the router for tools
    * that want them.
    */

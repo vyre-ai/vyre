@@ -1,5 +1,5 @@
 // @ts-check
-// onboard — the six steps of spec section 1, as tools the Deck's first screen calls.
+// onboard: the six steps of spec section 1, as tools the Deck's first screen calls.
 //
 // Each step is worked out fresh from what is true on the machine (is claude installed, is
 // Tailscale running, is the name serving), plus the few choices the person made, which live in
@@ -341,7 +341,7 @@ export default {
           { src: [owner], dst: [boxHost], app: { "https://tailscale.com/cap/file-sharing-target": [{}] } },
         ],
         // check, not accept (reviewer HOLD, 28 Sep): accept would let any of the owner's own
-        // devices — a phone included — SSH straight in with no fresh sign-in, as whatever unix
+        // devices, a phone included, SSH straight in with no fresh sign-in, as whatever unix
         // account "users" names. users names the account `vyre box add` actually uses (their own
         // admin login on that server, with sudo), never the vyre daemon account or an agent's.
         ssh: [{ action: "check", src: [owner], dst: [boxHost], users: ["[the admin account you set up this server with]"] }],
@@ -518,7 +518,7 @@ export default {
     });
 
     /**
-     * Adding a second device or a server, or pointing this device at one — the "Vyre anywhere"
+     * Adding a second device or a server, or pointing this device at one, the "Vyre anywhere"
      * decision (28 Sep 2026): Tailscale and the relay never matter for Solo, only once something
      * joins. One tool, an action per step, the same shape as onboard.tailscale/claude/name so
      * launch's onboarding cards need one import and one error-shape for every screen. Reads the
@@ -541,7 +541,7 @@ export default {
             if (s.state === "done" || !s.installed || !s.operator.ok) return link(s);
             // tailscaleUp() directly, not ctx.call("names.connect"): the names module (the box's
             // own TLS listener/cert claiming) is box-role only, but starting Tailscale itself is
-            // not — a Solo Mac joining someone else's tailnet needs this same step. up() is the
+            // not, a Solo Mac joining someone else's tailnet needs this same step. up() is the
             // plain function names.connect already forwards to, so onboard.tailscale (the
             // box-only tool) keeps calling names.connect unchanged.
             const r = await tailscaleUp();

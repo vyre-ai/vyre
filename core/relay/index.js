@@ -173,8 +173,8 @@ export default {
       const refusal = macCoreRefusal(platform);
       if (refusal) return answer(res, 403, { error: { code: refusal.code, message: refusal.message } });
       const row = /** @type {any} */ (db.prepare("SELECT kind, join_grant, join_mints, join_last, node_id, node_tagged FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+      if (row && row.node_tagged && row.node_id) return answer(res, 409, { error: { code: "already_joined", message: "this device is already on the tailnet" } });
       if (!row || row.kind !== "app" || !row.join_grant) return answer(res, 403, { error: { code: "denied", message: "this device's pairing did not ask to join the tailnet" } });
-      if (row.node_tagged && row.node_id) return answer(res, 409, { error: { code: "already_joined", message: "this device is already on the tailnet" } });
       if (row.join_mints >= JOIN_MAX) return answer(res, 403, { error: { code: "denied", message: "too many tailnet keys for one pairing; pair this device again" } });
       if (row.join_last && now() - row.join_last < JOIN_GAP) return answer(res, 429, { error: { code: "rate_limited", message: "a tailnet key was made for this device a moment ago; try again in a few minutes" } });
       // The box's own tailnet address, as the names module saved it (network.address).
@@ -323,7 +323,7 @@ export default {
     const joinTailnet = () => {
       if (joining || macCoreRefusal(platform) || !pairedBox(ctx.paths.root)) return;
       joining = desktopJoin({ root: ctx.paths.root, hostname: String(ctx.config.name || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 63) || undefined, log: m => ctx.log(m) })
-        .then(r => { if (r.state !== "unpaired") ctx.events.emit("relay.tailnet.state", { state: r.state, ...(r.why ? { why: r.why } : {}) }); return r; })
+        .then(r => { if (r.state !== "unpaired") ctx.events.emit("tailnet.tried", { state: r.state, ...(r.why ? { why: r.why } : {}) }); return r; })
         .catch(e => ctx.log(`relay: tailnet join: ${e.message}`))
         .finally(() => { joining = null; });
     };
@@ -351,7 +351,7 @@ export default {
       if (row.node_tagged && row.node_id) {
         ts.deleteNode(row.node_id)
           .then(() => ctx.log(`relay: deleted tailnet node ${row.node_id} with device ${id}`))
-          .catch(e => { ctx.log(`relay: could not delete tailnet node ${row.node_id}: ${e.message}`); ctx.events.emit("relay.tailnet.revoke_failed", { id, node: row.node_id, why: String(e.message).slice(0, 200) }); });
+          .catch(e => { ctx.log(`relay: could not delete tailnet node ${row.node_id}: ${e.message}`); ctx.events.emit("tailnet.revoke-failed", { id, node: row.node_id, why: String(e.message).slice(0, 200) }); });
       }
       for (const ch of live.get(id) || []) ch.close(4401, "device removed");
       live.delete(id);
@@ -677,7 +677,7 @@ export default {
         db.prepare("UPDATE relay_devices SET node_id = NULL, node_name = NULL, node_tagged = 0 WHERE node_id = ? AND id != ?").run(node, id);
         const r = db.prepare("UPDATE relay_devices SET node_id = ?, node_name = ?, node_tagged = 1, join_grant = 0 WHERE id = ? AND kind = 'app' AND removed_at IS NULL").run(node, promptSafe(input.node, "", 64), id);
         if (!r.changes) throw fail("not_found", `no paired desktop ${id}`);
-        ctx.events.emit("relay.tailnet.joined", { id, node });
+        ctx.events.emit("device.joined", { id, node });
         return { device: id, node };
       },
     });

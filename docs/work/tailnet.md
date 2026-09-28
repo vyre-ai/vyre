@@ -100,7 +100,18 @@ Step 2 prep done (ce15437b): dry run clean, namespace ids 26001-26003. Found rel
 no DNS, no route and the account has no Workers at all; asked the lead to approve a Worker custom
 domain for relay.vyre.run before deploying. Nothing deployed.
 
-Step 3 plan (ADR 0046), building now:
+Step 3 built (ADR 0046), see the ADR's "As built" section: core/relay/tailnet.js (API mint,
+delete, list; desktop canJoin/joinWithKey/desktopJoin), the channel-only key path and the
+internal relay.devices.bind/relay.devices.tailnet in core/relay/index.js, the tag:vyre-device
+branch in core/names/identity.js plus POST /v1/tailnet/bind in core/names/service.js, the policy
+grant in core/onboard/index.js, relay.join asking to join and retrying at start. Testbox: 146/146
+on core/relay/tailnet.test.js (12, a real vyred plus the Node relay plus relay/client, fake API,
+fake tailscale), test/relay.test.js, core/names/service+identity, core/relay/*, relay/client,
+test/onboard.test.js, boundaries, hygiene, module-sdk. Not built: ADR 0046 section 4 (phones'
+"Faster connection") and a desktop that stays connected and prefers the tailnet path. Never ran
+a real `tailscale up` or touched a real tailnet.
+
+Step 3 plan (ADR 0046), as it was before building:
 - core/relay/tailnet.js: mintKey/deleteNode/listNodes against the Tailscale API through an
   injected fetch (seam.tailscaleApi), vault item `tailscale-mint-oauth` ({client_id,
   client_secret}); joinWithKey on the desktop (0600 file in a 0700 mkdtemp, --auth-key=file:,
@@ -866,7 +877,32 @@ restart vyred, and check with `vyre call vault.grants.status`. `7301` is `vault.
    `tailscale funnel --https=8443 --set-path=/hooks/northwind-orders off`; after the last route,
    `tailscale funnel --https=8443 off`.
 
+### Desktops that join the tailnet on their own (ADR 0046)
+
+1. In the admin console, Access controls: add `"tag:vyre-device": ["<your login>"]` under
+   `tagOwners`, and one grant from `tag:vyre-device` to this box on its port
+   (`onboard.tailscale {action:"policy"}` writes both out). Check that no broader rule
+   (`autogroup:member` to `*`) also covers `tag:vyre-device`.
+2. Settings, OAuth clients: make one client with the `auth_keys` and `devices:core` scopes, both
+   limited to `tag:vyre-device`, nothing else.
+3. Store it in the box's vault as `tailscale-mint-oauth`:
+   `{"client_id": "...", "client_secret": "..."}`.
+4. Pair a Linux or Windows desktop as usual; it joins by itself. A Mac box waits for vyre-core.
+
 ## Changed contracts
+
+- **names** (28 Sep, ADR 0046, own): `classify()` takes `deviceOf`; a `tag:vyre-device` node is
+  `device:<id>` once bound, `bindable` otherwise. New route `POST /v1/tailnet/bind` on the
+  tailnet listener, open only to an unbound `tag:vyre-device` node. Streams admit a bound device.
+- **relay** (28 Sep, ADR 0046, own): internal tools `relay.devices.tailnet` and
+  `relay.devices.bind` (module:names only), owner tool `relay.tailnet.status`, events
+  `device.joined`, `tailnet.tried`, `tailnet.revoke-failed`, `needs.vault: tailscale-mint-oauth`,
+  channel-only path `POST /v1/relay/tailnet/key`, pairing hello field `tailnet: "join"`,
+  `relay.status.tailnet` for this machine as another box's desktop.
+- **onboard** (28 Sep, ADR 0046): the policy snippet gains `tagOwners["tag:vyre-device"]` and
+  one grant to the box's port while `relay.tailnet.status.available`.
+- **relay/client** (28 Sep): `pairOffer`/`pair` take `tailnet: true`; the ticket record is sealed
+  (`vyre-pair-enc`), opened inside `resolveTicket()`.
 
 Listed by the area they touch, so the merge can go in order. Everything below is off by default.
 

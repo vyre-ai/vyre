@@ -646,7 +646,12 @@ test("onboard: tailscale policy merges Taildrive, Taildrop and SSH into one snip
   assert.deepEqual(drive, { src: ["[your Mac's name]"], dst: ["alex-box"], app: { "tailscale.com/cap/drive": [{ shares: ["projects"], access: "ro" }] } });
   assert.deepEqual(taildrop, { src: ["alex@example.com"], dst: ["alex-box"], app: { "https://tailscale.com/cap/file-sharing-target": [{}] } });
   assert.deepEqual(r.data.policy.ssh, [{ action: "check", src: ["alex@example.com"], dst: ["alex-box"], users: ["[the admin account you set up this server with]"] }]);
-  assert.equal(r.data.policy.tagOwners, undefined, "egress is off by default, so no tag:vyre-egress block");
+  assert.equal(r.data.policy.tagOwners["tag:vyre-egress"], undefined, "egress is off by default, so no tag:vyre-egress block");
+  // ADR 0046: a Linux box hands paired desktops tag:vyre-device keys, which reach its port and nothing else.
+  assert.deepEqual(r.data.policy.tagOwners, { "tag:vyre-device": ["alex@example.com"] });
+  assert.deepEqual(r.data.policy.grants.filter(g => g.src.includes("tag:vyre-device")), [{ src: ["tag:vyre-device"], dst: ["alex-box"], ip: ["tcp:443"] }]);
+  assert.ok(!r.data.policy.grants.some(g => g.dst.includes("tag:vyre-device")), "no grant ever lets anything reach a paired desktop's node");
+  assert.ok(r.data.notes.some(n => /tailscale-mint-oauth/.test(n)));
 });
 
 test("onboard: tailscale policy refuses before Tailscale is connected", async t => {

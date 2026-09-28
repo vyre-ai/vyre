@@ -1,5 +1,5 @@
 // @ts-check
-// identity — who is on the other end of a tailnet connection (ADR 0002).
+// identity: who is on the other end of a tailnet connection (ADR 0002).
 //
 // The TCP peer address of a packet that arrived over WireGuard is the one thing a local,
 // unprivileged process cannot forge, so it is the only thing trusted. No header is read. The

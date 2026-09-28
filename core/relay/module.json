@@ -5,7 +5,7 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": ["relay.status", "relay.enable", "relay.disable", "relay.pair.start", "relay.pair.first", "relay.pair.ticket", "relay.join", "relay.devices.list", "relay.devices.rename", "relay.devices.remove", "relay.devices.trust", "relay.devices.path", "relay.devices.node", "relay.device.presence", "relay.web.release", "relay.web.pin", "relay.devices.tailnet", "relay.devices.bind", "relay.tailnet.status"] },
-  "watches": { "emits": ["relay.connected", "relay.disconnected", "device.paired", "device.removed", "device.moved", "relay.paired", "relay.tailnet.joined", "relay.tailnet.state", "relay.tailnet.revoke_failed"] },
+  "watches": { "emits": ["relay.connected", "relay.disconnected", "device.paired", "device.removed", "device.moved", "relay.paired", "device.joined", "tailnet.tried", "tailnet.revoke-failed"] },
   "shows": { "deck": [], "capsule": [], "cli": [] },
   "needs": { "vault": ["tailscale-mint-oauth"] },
   "teaches": {

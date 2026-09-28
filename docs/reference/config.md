@@ -127,7 +127,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SSE_HEARTBEAT_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |
 | `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `bin/vyre`, `core/cli/commands/module.js`, `core/cli/commands/up.js`, `core/cli/commands/update.js`, `core/cli/daemonctl.js`, `core/daemon/index.js` |
-| `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/cli/tailnet.js`, `core/link/mac.js`, `core/link/transport.js` |
+| `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/cli/tailnet.js`, `core/link/mac.js`, `core/link/transport.js`, `core/relay/tailnet.js` |
 | `VYRE_TAILSCALE_UP_FLAGS` | Extra flags for `tailscale up`, space separated. | `core/names/tailscale.js` |
 | `VYRE_TEXT_PRUNE_MS` | How long a thread's streamed text events are kept before they are pruned. | `core/switchboard/index.js` |
 | `VYRE_THREAD_SOCKETS` | Not described yet. | `core/daemon/threadsock.js` |
@@ -167,4 +167,4 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | Variable | What it does | Read in |
 | --- | --- | --- |
 | `VYRE_TEST_DIALOGS` | `1`: allow dialogs under tests, for a person at the machine running one test on purpose. | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
-| `VYRE_TEST_REAL_TAILSCALE` | `1`: let a test use the real tailscale binary. | `core/link/transport.js` |
+| `VYRE_TEST_REAL_TAILSCALE` | `1`: let a test use the real tailscale binary. | `core/link/transport.js`, `core/relay/tailnet.js` |

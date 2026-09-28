@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Desktops paired over the relay join the tailnet on their own (ADR 0046)
+
+- A desktop's pairing asks to join; the box mints a single-use, pre-approved, 5-minute auth key
+  tagged `tag:vyre-device` with the `tailscale-mint-oauth` OAuth client and hands it over the
+  paired Noise channel, never as a tool. The desktop runs `tailscale up --auth-key=file:` from a
+  0600 file it deletes at once, then binds its new node by presenting a one-time bind code to the
+  box over the tailnet; the box takes the node id from whois. A bound node is `device:<id>`, never
+  `tailnet:<owner>`.
+- Revoke deletes the node from the tailnet as well. No Tailscale on the desktop: it stays on the
+  relay, with the install line in `relay.status`. Refused on a Mac box until vyre-core.
+- `onboard.tailscale {action:"policy"}` adds `tag:vyre-device` and its one grant to the box's port.
+
 #### Wink: the relay holds the ticket record as ciphertext only (ADR 0045)
 
 - The box seals the whole ticket record (box name, handle, identity fingerprint, route, box key)

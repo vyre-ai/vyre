@@ -237,6 +237,48 @@ agent-node join). The box's outbound call to `api.tailscale.com` is injected exa
 other outbound dependency in this codebase (a `seam`), never the real endpoint, in any test file,
 on the Mac or on the test box.
 
+## As built (28 Sep 2026, for 0.1.1)
+
+Where each decision lives, and the few concrete choices the text above left open:
+
+- **The mint** is `tailscaleApi().mintKey()` in `core/relay/tailnet.js`, called only from the
+  relay channel's own handler for `POST /v1/relay/tailnet/key` (`core/relay/index.js`,
+  `tailnetKey`). That path is answered before vyred's router sees the request, so it exists only
+  inside a paired device's Noise channel, and no registry tool, script or agent can reach it.
+- **Only a pairing grants a key.** A desktop's pairing hello carries `tailnet: "join"`
+  (`relay.join` sets it; a phone does not), which sets `join_grant` on its `relay_devices` row. A
+  key needs that grant, an `app` (never `web`) device, no node already bound, at most one key per 5
+  minutes and 5 per pairing. A retry after a restart ("Tailscale has since appeared") spends the
+  same grant; pairing again resets it.
+- **The proven Noise identity** (section 3, step 4) is a 16-byte bind code minted with the key and
+  handed over in the same channel answer, kept only as a hash on the box, single use, 15 minutes.
+  The new node presents it over the tailnet to `POST /v1/tailnet/bind`, the one route the names
+  listener opens to an unbound `tag:vyre-device` node. The listener passes whois's own stable id
+  (never anything in the body) to the internal `relay.devices.bind`, which binds it only if the
+  code matches that device. A racer that spent the key would still need the code, which never
+  left the paired channel.
+- **Admission** is `classify()` in `core/names/identity.js`: a `tag:vyre-device` node is the
+  device its stable id is bound to (`relay.devices.tailnet`, internal), caller `device:<id>`,
+  peer `{ via: "tailnet" }`, the same as over the relay; unbound, it is refused except for the
+  bind. No tag produces a caller by itself.
+- **The desktop's join** is `desktopJoin()`/`joinWithKey()`: the key goes to `tailscale up
+  --auth-key=file:<path> --advertise-tags=tag:vyre-device` from a 0600 file in a 0700 `mkdtemp`
+  directory, removed in a `finally`. A machine whose Tailscale is already signed in to any tailnet
+  is left alone (joining would switch the person's own account). No Tailscale: the device stays on
+  the relay and `relay.status` shows the install line.
+- **Revoke:** `relay.devices.remove` deletes a bound node through the API; admission already fails
+  closed on the removed row, so a failed delete is logged and emitted (`tailnet.revoke-failed`),
+  never a half-trusted device. `relay.devices.list` clears nodes the API no longer lists (asked at
+  most every 10 minutes, off the list's own path).
+- **Mac server:** the key path answers `not_available_here` on darwin until vyre-core.
+- **The OAuth client** needs `auth_keys` and `devices:core` (delete and list), both limited to
+  `tag:vyre-device`, stored in the vault as `tailscale-mint-oauth`,
+  `{"client_id": "...", "client_secret": "..."}`. `onboard.tailscale {action: "policy"}` adds the
+  `tagOwners` entry and one grant from `tag:vyre-device` to the box's own port.
+- **Not built yet:** section 4 (a phone's optional "Faster connection") and a desktop Vyre that
+  stays connected and prefers the tailnet path through `relay/client/paths.js`; the join, bind and
+  admission it would ride on are in place.
+
 ## Consequences
 
 - No paid Tailscale plan is required: the Personal plan already supports OAuth clients, tags and

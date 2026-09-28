@@ -29,7 +29,7 @@ function selfSigned(cn, days = 90) {
 }
 
 /** A world of fakes, and the service built on it. */
-function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.1"], taken = false, agentOf = undefined } = {}) {
+function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.1"], taken = false, agentOf = undefined, deviceOf = undefined, call = undefined } = {}) {
   const root = tempHome(t);
   const cfg = config.load(root);
   cfg.network.port = 0;
@@ -40,13 +40,16 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
     handler: () => async (req, res, caller, peer) => { calls.push(caller); if (peer && peer.origin) calls.push(`from ${peer.origin}`); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data: { caller } })); },
     // A stream router that answers every upgrade it is handed, saying who the caller was.
     upgrader: () => (req, socket, head, caller) => { calls.push(`stream ${caller}`); socket.end(`HTTP/1.1 101 Switching Protocols\r\nx-caller: ${caller}\r\n\r\n`); },
+    ...(call ? { call } : {}),
   };
   fs.mkdirSync(ctx.paths.certs, { recursive: true });
   const ts = {
     status: async () => ({ installed: true, running: true, backend: "Running", loginUrl: null, tun: true, why: null,
       node: { name: "box", dnsName: "box.example.ts.net", ips, stableId: "n1", tagged }, owner: tagged ? null : owner, certDomains: ["box.example.ts.net"] }),
     whois: async ip => ({ "100.101.1.2": { login: "alex@example.com", tagged: false, node: "phone" }, "100.101.1.3": { login: "sam@example.com", tagged: false, node: "laptop" },
-      "100.101.3.1": { login: null, tagged: true, node: "kit", stableId: "nKIT", tags: ["tag:vyre-agent"], caps: {} } })[ip] || null,
+      "100.101.3.1": { login: null, tagged: true, node: "kit", stableId: "nKIT", tags: ["tag:vyre-agent"], caps: {} },
+      "100.101.4.1": { login: null, tagged: true, node: "alex-desktop", stableId: "nDESK1", tags: ["tag:vyre-device"], caps: {} },
+      "100.101.4.2": { login: null, tagged: true, node: "new-desktop", stableId: "nDESK2", tags: ["tag:vyre-device"], caps: {} } })[ip] || null,
     up: async () => ({ loginUrl: "https://login.tailscale.com/a/x" }),
     cert: async (host, crt, key) => { const c = selfSigned(host); fs.writeFileSync(crt, c.cert); fs.writeFileSync(key, c.key); },
     operator: async () => ({ ok: true, fix: null }),
@@ -60,7 +63,7 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
     set: async () => "txt", clear: async () => {},
   };
   let issued = 0;
-  const deps = { ctx, ts, certs, ...(agentOf ? { agentOf } : {}), save: p => config.save(p, root, cfg), dns: async () => dns,
+  const deps = { ctx, ts, certs, ...(agentOf ? { agentOf } : {}), ...(deviceOf ? { deviceOf } : {}), save: p => config.save(p, root, cfg), dns: async () => dns,
     issue: async ({ names: list }) => { issued++; return selfSigned(list[0]); } };
   const svc = names(deps);
   t.after(() => svc.close());
@@ -368,4 +371,47 @@ test("names: a WebSocket from the hosted app is the owner's, like any other", as
   assert.equal(await up("100.101.1.3", { origin: "https://app.vyre.run" }), "HTTP/1.1 403 Forbidden", "not the owner");
   w.cfg.network.origins = [];
   assert.equal(await up("100.101.1.2", { origin: "https://app.vyre.run" }), "HTTP/1.1 403 Forbidden", "the list emptied");
+});
+
+test("names: a tag:vyre-device node is its bound paired desktop, device:<id>; unbound, it may only present a bind code (ADR 0046)", async t => {
+  /** @type {any[]} */
+  const binds = [];
+  const w = world(t, {
+    deviceOf: async id => (id === "nDESK1" ? "abcdefghijklmnop" : null),
+    call: async (tool, input) => { binds.push({ tool, input }); return input.code === "good" ? { data: { device: input.device, node: input.stableId } } : { error: { code: "denied", message: "that bind code has expired or was already used" } }; },
+  });
+  w.cfg.name = "alex";
+  await w.svc.tailscale();
+
+  const bound = fakeRes();
+  await w.svc.onRequest(fakeReq("100.101.4.1", "/v1/health"), bound);
+  assert.equal(bound.status, 200);
+  assert.equal(JSON.parse(bound.body).data.caller, "device:abcdefghijklmnop", "never tailnet:<owner>, and never a caller made from the tag");
+
+  const unbound = fakeRes();
+  await w.svc.onRequest(fakeReq("100.101.4.2", "/v1/health"), unbound);
+  assert.equal(unbound.status, 403, "an unbound device node reaches nothing but the bind");
+
+  /** A POST with a JSON body the listener reads as a stream. */
+  const post = (ip, body, headers = { "content-type": "application/json" }) => Object.assign(fakeReq(ip, "/v1/tailnet/bind", "POST", headers), {
+    async *[Symbol.asyncIterator]() { yield Buffer.from(JSON.stringify(body)); },
+  });
+  const ok = fakeRes();
+  await w.svc.onRequest(post("100.101.4.2", { device: "qrstuvwxyzabcdef", code: "good", stableId: "nDESK1" }), ok);
+  assert.equal(ok.status, 200);
+  assert.deepEqual(binds.at(-1), { tool: "relay.devices.bind", input: { stableId: "nDESK2", node: "new-desktop", device: "qrstuvwxyzabcdef", code: "good" } },
+    "the node id is whois's own, never the one in the body");
+
+  const bad = fakeRes();
+  await w.svc.onRequest(post("100.101.4.2", { device: "qrstuvwxyzabcdef", code: "bad" }), bad);
+  assert.equal(bad.status, 403);
+
+  const plain = fakeRes();
+  await w.svc.onRequest(post("100.101.4.2", { device: "qrstuvwxyzabcdef", code: "good" }, { "content-type": "text/plain" }), plain);
+  assert.equal(plain.status, 403, "a bind must be JSON, like every other POST");
+
+  const agent = fakeRes();
+  await w.svc.onRequest(post("100.101.3.1", { device: "qrstuvwxyzabcdef", code: "good" }), agent);
+  assert.equal(agent.status, 403, "only a tag:vyre-device node may present a bind code");
+  assert.equal(binds.length, 2, "neither refused request reached the relay");
 });
