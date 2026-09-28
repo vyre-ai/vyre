@@ -882,6 +882,21 @@ the ancestor/Library tests MEDIUM 3's fix should have shipped with the first tim
 code but not added the test the reviewer specifically asked for - won't skip that again). Tests:
 51/51 core/projects, 305/305 across core/mcp, core/memory, core/files, hygiene, boundaries.
 
+## Reviewer signed off the whole range: 342d3a15..b2e64518 (28 Sep 2026)
+
+f8330ccc and 7021d4e1 are CLOSED; 2fb4258c's old "release blocked" note is lifted. Range: 450c34b6,
+c6b4856c, f8330ccc, 7021d4e1, e8560b79, 35188a38, 59d6833c, db2d94fd, c6cda1aa, 513f984d, 13e7b0e8,
+a262b9ed, cb85c3eb, b2e64518, plus docs. Reviewer ran core/projects + core/memory + core/files +
+core/mcp + boundaries + hygiene on testbox themselves at b2e64518: 263/263.
+
+New LOW, on projects.reach (35188a38/59d6833c, previously unreviewed): `callers: ["module"]`
+trusts the forwarded `caller` from any module, third-party included; consistent with third-party
+modules already running in-process today, so not a hold, but narrow to firstParty at the same time
+as the hub.js and projects.access module-caller LOWs, once lib/caller.js/the firstParty stamp is a
+real dependency here.
+
+Sent to integrator: work/federation ready to land.
+
 ## docs/design/projects-map.md: not on this branch (team-lead's docs-check report)
 
 Checked: docs/design/projects-map.md does not exist on work/federation. It is sessions' own doc
