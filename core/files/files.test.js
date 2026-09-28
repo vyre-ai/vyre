@@ -602,3 +602,30 @@ test("files: openChecked refuses a parent-directory swap between describe()'s st
   const freshFd = openChecked({ real, dev: after.dev, ino: after.ino });
   fs.closeSync(freshFd);
 });
+
+test("files: chunk()'s inline dev/ino check closes the fd on a mismatch too, not just openChecked (reviewer's LOW on c6cda1aa)", async t => {
+  const base = tmp(t);
+  const work = path.join(base, "work");
+  const real = path.join(work, "notes.txt");
+  put(real, "hello\n");
+  const reg = await registry(t, { role: "box", files: { roots: [work] } });
+  // The actual race (an ancestor directory swapped out from under a still-open path between
+  // describe()'s stat and chunk()'s own fstat) cannot be forced from outside a single-threaded
+  // synchronous function with no await between the two calls, so this fakes the fstat chunk()
+  // takes to look like the file changed underneath it instead, and watches whether the fd it
+  // opened gets closed either way. chunk() folds this compare into the SAME fstat it already
+  // took for size/mtime (not a second one through openChecked, reviewer's own note on c6cda1aa),
+  // so faking that one call's return is the exact seam the real mismatch would hit.
+  const realFstat = fs.fstatSync, realClose = fs.closeSync;
+  let closedFd = null;
+  t.mock.method(fs, "fstatSync", fd => {
+    const st = realFstat(fd);
+    return Object.create(st, { dev: { value: st.dev + 1 }, ino: { value: st.ino } });
+  });
+  t.mock.method(fs, "closeSync", fd => { closedFd = fd; return realClose(fd); });
+  await refused(reg, "files.fetch", { path: real });
+  assert.ok(closedFd !== null, "chunk() must close the fd on its own dev/ino mismatch, the same as openChecked does on its");
+  t.mock.restoreAll();
+  // No fd leaked from the refusal above: the same file reads fine right after, unmocked.
+  assert.equal(Buffer.from((await call(reg, "files.fetch", { path: real })).base64, "base64").toString(), "hello\n");
+});
