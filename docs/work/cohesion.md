@@ -63,6 +63,54 @@ belong to another team. Map: docs/design/cohesion.md (19 ranked items, approved 
   ccb8b410; native-core work/native-core-composer c012c13c; docs work/docs 393b7c97; app-design specs
   work/app-design b756d128, e00280ad.
 
+## One-system audit refresh (2026-09-28, resume 9)
+
+Re-audited against today's changes: projects.access (federation, 63af8941), chat's sight.frame
+stills (18980d2d), personguard (cleared 002e6577, not yet landed), Drive (files/drive.js), the
+assistant's linked-projects rule (design-only), the chat/native-core/pwa split. Research-only pass
+(fork), no code read as broken enough to warrant a glue sha yet — each finding needs an owner
+answer first. Top 5, sent to owners:
+
+1. **projects.access may be a 5th project-identity shape.** core/projects/projects.js's grant/
+   check/revoke don't visibly import lib/project-id.js's isProjectId/SLUG_RE (the canonical shape
+   landed the same day, different worktree). Sent to federation; offered to take the import+
+   validate as pure glue if they'd rather not.
+2. **Drive predates today's per-folder-via-projects.access decision.** core/files/drive.js (Taildrive/
+   WebDAV Mac shares) gates by Tailscale node attributes only, no projects.access reference at all.
+   Sent to federation: confirm whether drive.js is the target of that decision or a separate
+   not-yet-built picker is.
+3. **personguard vs vault's own presence() — RESOLVED, not a seam.** Reviewer confirmed (checked
+   at 002e6577): vault's presence() only builds the tool's declaration/summary text, never checks
+   anything itself. The single verifier is core/presence via the registry; the ancestry check
+   (daemon/index.js fromClaude) runs whenever `personal` is true (personOnly OR presence.required),
+   independent of PERSON_ONLY/OPT_OUT membership. So OPT_OUT can't remove a presence-gated tool's
+   proof — the two layers can't drift. Reviewer is adding a line to the landing commit or
+   personOnly()'s doc comment saying so.
+4. **Three separate state mechanisms — SHIPPED by sessions at 6e2f8a71 (work/sessions).** Turned
+   out worse than a naming mismatch: internal "waiting" only ever means an ask is open (a person
+   would call that "asking"), internal "idle" is what a person calls "waiting" — a real swap bug,
+   duplicated in switchboard's STATE map, the CLI, and chat's own client-side STATUS map. Fixed at
+   the source: new pure `lib/thread-status.js`, canonical set starting/working/asking/waiting/
+   stopped/finished/failed; switchboard emits `thread.status {status}` alongside the unchanged
+   legacy `thread.state`; threads.get/list gain `canonical_status` next to raw `status`. Nothing
+   existing changes shape. core/harness's raw-string LIVE check is correct as-is (checks "is the
+   process alive," not a person-facing label) but duplicates the array as a literal — sessions
+   will add `LIVE_STATUSES` to the lib; cohesion takes the one-line harness import as pure glue
+   once it lands (routes to reviewer-2). Relayed chat's own STATUS-map cleanup directly to chat.
+5. **The assistant's "sees all linked projects" rule bypasses projects.access — RESOLVED.** memory-iq
+   added a one-line comment at core/memory/index.js's {all:true} branch (b4377004, work/memory-iq):
+   deliberately independent of projects.access; a future restriction is a rule change there, not a
+   projects.access row. Comment-only, no behavior change.
+
+Chat-cohesion pass (item 3, same session): Deck chat and pwa share the same deck/chat/session.js
+(monorepo — pwa's own work/pwa branch (waiting/context/sight-pills) hasn't merged to main yet, so
+main's chat/pwa are currently IN SYNC by virtue of being unbuilt-ahead, not by design). Capsule
+(core/harness/index.js) reads switchboard's raw thread.status field directly today. CLI reads
+switchboard's STATE-mapped values through the normal tool path. Once thread.status ships, Capsule's
+direct raw-field read needs to move onto it too or it'll show "working" where chat shows "running"
+for the same thread — flagged to sessions above, not yet its own separate message since it's the
+same root cause.
+
 ## Next
 2. Owner replies: record below. Send owners the built contracts and their exact asks.
 3. Drift test: models + policy rules done (test/cohesion-drift.test.js); add tokens once the hub generates them.
@@ -117,7 +165,16 @@ The lead approved and assigned owners. Tracking each:
   hands-desktop.resolveAgent only matched the narrower "mcp:agent:" shape). testbox: 340/340. Left
   core/daemon/index.js's own copy alone - e2e's work/e2e-agentclaim (1ff45c03) touches that same
   file and I didn't want to risk a conflict with work still landing; flagged for e2e/integrator to
-  fold in after. Sent to e2e for review.
+  fold in after. e2e review found a MEDIUM: agentClaim returned "" for an empty/odd name ("cli
+  agent:"), which every caller's `if (claim)` read as no claim at all - trusted fully instead of
+  refused, since the daemon's socket vouch (which does catch this) never runs for an in-process
+  caller. Lead: this makes it an rc.2 candidate (real holes closed), not 0.1.1; fix now, base on
+  pre/rc if clean. Fixed in 1a8bf671: returns "(unnamed)" instead, fails closed everywhere. New
+  tests for "cli agent:kit"/"mcp agent:kit" (space form) and the empty-name case in both
+  modules.test.js and guests.test.js. testbox 340/340 again. pre/rc (60fdcd07) doesn't have my
+  agentClaim work yet, only a tracking note in integrator.md - handing the sha to e2e and the
+  integrator to fold in, not rebasing myself since pre/rc has independently diverged on some of
+  the same files (core/modules' credential validation). Sent to e2e and the integrator.
 - **6 (chat's project-picker UI, first end-to-end check on restart):** added to the paused-teams
   hand-over note below.
 
@@ -183,3 +240,194 @@ the lead delivers this when each restarts after rc.2, so it's collected here rat
 - New tools: sight.targets/now/watch/steps, context.report/now, suggest.query/offer/picked,
   waiting.list/count. New events: sight.stepped, context.changed, waiting.changed.
 - scripts/lib/docs/check.js OWNERS: + "cohesion".
+
+## Resume 9, second pass: the two glue jobs the lead assigned
+
+- **State-mapping glue (Capsule/CLI/harness):** blocked — `thread.status` is still on sessions'
+  Next list, not shipped. Confirmed the real drift while there: `core/switchboard/index.js:207`'s
+  STATE map relabels `working` as `running`, but `core/harness/index.js` reads the raw
+  pre-mapped value directly (line ~142) — two readers already disagree before Capsule/CLI even
+  enter it. Sent to sessions asking for the shape/ETA; will build the shared lib the moment it's
+  settled.
+- **projects.access vs lib/project-id.js:** validated. `projects.access.check` already uses
+  `isProjectId` correctly. Found one real duplicate: `core/projects/markers.js`'s `slugify` is a
+  byte-identical copy of `lib/project-id.js`'s, not an import — exactly the drift the lib's own
+  comment warns about (it claims markers.js already re-exports it; it doesn't). Verified the fix
+  (import + re-export) in federation's own worktree: 37/37 + 15/15 local, 42/42 on testbox. Did
+  NOT commit it — that's federation's branch/file and they're actively on it (per RULES, I don't
+  commit outside my own worktree). Sent them the exact diff and test evidence to land themselves.
+
+## State-mapping glue, built in my own tree (ee19e955)
+
+Wrote `lib/session-state.js` (+ test) against switchboard's current STATE map rather than waiting
+idle on sessions: `canonicalOf({status, hasOpenAsk, hasQueued})` folds the raw status plus the two
+facts no single status field carries into the four words `queued/asking/waiting/stopped`. Ready to
+switch its caller's input to `thread.status` the moment sessions ships it — the fold itself
+shouldn't need to change. testbox: 12/12 (session-state + boundaries), docs:ref clean, docs-*
+61/61. NOT yet wired into Capsule/CLI/harness — that's the next step, and needs each of those
+three's own read of a thread's status/ask/queued state identified first (their side, once I have
+their go-ahead to touch capsule-pro's Swift and the CLI). Sent to reviewer-2.
+
+## CLI glue, built (64b55255)
+
+sessions confirmed lib/thread-status.js's final shape (28a8b4f8: an 8th state, "paused" -- an
+idle timeout/restart/rewind, resumable, not an error; plain "stopped" is now specifically the
+person pressing Stop; "failed" now also covers a real crash). Pulled the lib + its test up to that
+shape. core/cli/commands/threads.js: added statusWord(t) (threadStatus() + stopped_reason) and
+swapped every place it printed switchboard's raw status word to a person (threadTable, threadCard,
+both live-view header lines, row()'s status column) onto it. stateOf (the --view card state) now
+keys off the canonical word via a CARD_STATE map instead of the raw one; row()'s beacon now also
+flags a failed thread. Every raw-status comparison used for logic/styling stayed untouched -- those
+already meant the right thing internally, only the printed word was wrong. Capsule's Swift side
+doesn't read raw thread status this way at all (its own gate/ask/lesson model) -- no fix needed
+there. testbox: 56/56 targeted, docs:ref clean, full core/cli 340/340. Sent to reviewer-2.
+
+Collision note: this worktree briefly had two live cohesion sessions (a fork of mine, relaunched
+independently off the same resume-9 prompt) -- it landed 48d70ed1 (harness onto LIVE_STATUSES)
+concurrently with my own work; no data lost, but from here on: `git log --oneline -3` before every
+commit, and no editing another team's own worktree even to test-and-revert (team-lead's
+correction) -- use my own tree or a `git archive` export instead.
+
+## reviewer-2 signed off 64b55255
+
+One non-blocking DRY nit: statusWord(t) recomputes threadStatus() from raw fields instead of
+reading threads.get/list's precomputed canonical_status. Checked before applying it: canonical_
+status isn't in this tree yet (6e2f8a71's switchboard change is still on sessions' own branch;
+only the standalone lib got cherry-picked in at 48d70ed1). Deferred on purpose -- swap
+statusWord(t) to `t.canonical_status` once that switchboard sha reaches this branch, same small-
+sha style. Not done yet.
+
+## New job from the lead: one shared reach() for memory/recall/files
+
+Read all three existing copies before writing anything:
+- core/recall/index.js's reach() (memory-iq) is the most correct and closest to the lead's spec
+  already: unnamed callers refused by default (not admitted), assistant unchecked against
+  projects.access (being the assistant is the exemption) but SCOPED to mapped projects for raw
+  content, a named/wildcard agent intersected with projects.access per project, ownerDevice
+  (core/modules, the kernel's own relay-paired/tailnet-verified-owner check) used correctly.
+- core/memory/index.js's reach() is the stale copy: never intersects agents.projects with
+  projects.access at all (a named agent's own agents.list grant is trusted outright, the exact
+  "guests let in" class of bug), uses a local viaTailnet regex instead of the kernel's ownerDevice,
+  and gives the assistant unconditional all:true (no mapped-projects distinction) -- arguably by
+  design for facts, but not distinguished from project content at all today.
+- core/files/access.js (federation) is a plain-function port of memory's OLD logic: an unnamed
+  caller gets {all:true} unconditionally, with no owner/module check at all -- the worst copy,
+  exactly the "unnamed callers unrestricted" bug the lead named.
+
+Proposed the single door as `projects.reach` (core/projects, federation's module, since it owns
+projects.access and the ctx.call fan-out — agents.list, projects.list, projects.access.check per
+project — belongs in one place, not three). Takes {agent?, kind: "facts"|"content"}; kind only
+matters once an agent is named (the assistant skips projects.access under "facts", is scoped to
+every mapped project under "content" per the lead's 2026-09-28 ruling); an unnamed caller's
+admission never depends on kind — owner/module/ownerDevice/a model's own session is {all:true},
+everything else refused, full stop. Sent the complete tool code to federation, and the specific
+bugs plus the migration path (their reach()/personalOnly() call sites) to memory-iq.
+
+NOT landed anywhere: this needs core/projects' own projects.access (not on main yet, so not in
+this tree either — same gap markers.js hit) and touches core/memory/core/recall (memory-iq) and
+core/files (federation), none of which are my worktrees to commit in. Design + exact code handed
+off; waiting on federation to land the tool, then memory-iq and federation to move their own
+callers onto it with tests, per the lead's ask.
+
+## Loud manifest-validation failures, built (962f6160)
+
+teammates' bug: a camelCase tool/event name failed validate() and dropped the whole module with
+no log line -- found only by inspecting discover()'s problems by hand. Registry.start()
+(core/modules/index.js) now logs `warn: module <name> invalid: <reason>` for all three silent
+cases (a bad manifest, a duplicate module name, an order() cycle/missing dependency). Checked
+before building #2: status() (vyre modules, GET /v1/modules) already lists invalid/failed modules
+with their error text -- that surface already existed, nothing new needed there, just confirmed
+with a test. New test feeds a camelCase-tool manifest and asserts the log line + status() entry;
+new hygiene test runs discover() over the real core/local/modules trees so a bad shipped manifest
+fails CI, not only a by-hand check. testbox: 43/43 (modules, hygiene, boundaries), daemon 19/19.
+Sent to reviewer-2 and the integrator.
+
+## Temp-home leaks from vyred-present.js, built (23d1fa1b)
+
+teammates found 16 leaked temp-home dirs after rc.2's canonical run. Found two real, separate
+gaps rather than one:
+- test/vault-cli-totp.test.js's own vyred() helper had a weaker copy of tempHome's kill logic:
+  SIGTERM, a bounded wait, then rmSync regardless of whether the process had actually died -- the
+  same "deleted a home out from under a still-running vyred" bug tempHome's own stopDaemon was
+  already hardened against, just not reused here. Exported stopDaemon and moved this caller onto
+  it.
+- stopDaemon itself didn't confirm death after its own SIGKILL escalation before returning; added
+  one more bounded poll, now throws (does not remove the home) on the edge case where even SIGKILL
+  hasn't taken effect yet, rather than silently deleting into a still-live process.
+- The class of leak an outside kill of the whole test process causes has no in-process fix by
+  definition (no hook runs when the process itself is killed). test/tmp-guard.mjs is the one
+  mechanism that survives that -- it used to only report + fail the run; it now also reaps what
+  it finds (kills any live vyred.pid, removes the dir) so leaks self-heal run over run while still
+  failing the run that made them.
+New test/tmp-guard.test.js exercises the guard directly with its own nested before/after cycle.
+testbox: tmp-guard 2/2, vault-cli-totp 15/15, login-keychain+modules+cli+hygiene 49/49, docs:ref
+clean. Sent to reviewer-2 and the integrator.
+
+## journey.test.js:221 CI failure, built (31cf7b38)
+
+Pulled the CI log myself (gh run view 36369891756 --repo vyre-ai/vyre --log-failed) rather than
+wait, per the lead's correction: this fails EVERY push on main's CI (c3a69611), both node 22 and
+24 jobs, and passes every time on testbox -- deterministic and environment-specific, not a flake.
+Compared the exact failure symbol-for-symbol across three runs (CI node22, CI node24, testbox
+node22): the JSON the subtest checks (box:null, no peer named) is byte-identical in all three --
+not a race, nothing about mock ordering or DNS differs. What differs is whether Node's own test
+runner honors `{todo}` for a doubly-nested subtest (test -> t.test -> t.test) whose assertion
+fails: CI's node22 doesn't honor it at all (plain failure); CI's node24 marks it todo but still
+counts it in the fail total; testbox's node22 build honors it fully. Three behaviors, same input,
+none of them a real product bug.
+
+Fix: replaced the throwing assert.match with a manual check reported via t.diagnostic(), which
+cannot fail a test on any Node version regardless of how todo is implemented there. Kept the todo
+option/description so a person still sees the gap, and the diagnostic line names which way it
+went, so the day up.js's mac() actually names the peer, that line says so and is the one to turn
+back into a real assertion. testbox: journey.test.js 7/9 pass, 1 pre-existing unrelated skip, 1
+todo clean with its diagnostic, 0 fail; boundaries 5/5. Sent to reviewer-2 and the integrator.
+
+## settings.test.js hang, built (fcce3d4a)
+
+teammates found core/settings/settings.test.js hanging (0% CPU) on work/teammates 38c64017.
+Confirmed it does not reproduce on main (settings.js/settings.test.js are byte-identical there --
+diffed via git archive of their commit into a scratch dir, never touched their worktree). Root
+cause was at the kernel level, not settings: core/modules/index.js's Registry.stop() awaited each
+module's own stop() with no bound at all, so any one module's stuck stop() (an open handle, an
+unresolved promise) hangs every caller of stop() forever -- settings.test.js just happens to start
+a full in-process vyred in 16 of its own tests, exposing it to any such bug anywhere in a default
+box role's module set.
+
+Fix: races each module's stop() against MODULE_STOP_MS (5s, matching daemon's own DRAIN_MS),
+logs loudly and moves on. New regression test uses node:test's mock timers (t.mock.timers.tick) to
+prove it deterministically and fast -- a real multi-second wait would either leave a dangling
+promise past the test (node:test's own pending-promise-at-exit check flags this, learned the hard
+way) or genuinely cost the real MODULE_STOP_MS every run. Also added { timeout: 30_000 } to all 16
+settings.test.js tests that start a real daemon, so a hang anywhere else in this path fails loudly
+under a minute rather than tying up CI forever. testbox: modules+settings+boundaries+hygiene
+70/70, docs:ref clean. Sent to reviewer-2 and the integrator.
+
+## lib/caller.js — the one isPerson/isAgent/agentName/isOwnerDevice
+
+Built to stop the recurring bug the reviewer keeps catching (latest: sessions' goals, bb3b9b4e):
+"no agent name means the person" admits a bare model session, the harness, a guest and a hook.
+Composes core/modules (agentClaim, ownerDevice, callerKind) and core/presence (PERSON_SURFACES),
+both kernel, rather than re-deriving their regexes. isPerson checks the agent claim FIRST -- a
+caller shaped "cli:agent:kit" reads its own callerKind as "cli" (PERSON_SURFACES would otherwise
+wrongly admit it), the same transport-spoofing shape e2e already fixed for agentClaim's other
+callers.
+
+Needed personguard in this tree first: cherry-picked b3b7b1dc + 002e6577 from origin/main
+(already landed, reviewer-cleared) rather than a full 185-commit main merge -- one CHANGELOG.md
+conflict resolved by hand.
+
+Full audit (a forked agent, core/ and local/ only, no edits): two REAL backwards bugs found --
+core/mcp/hub.js's whoFrom() strips the agent: suffix before checking PEOPLE.includes(kind), so
+"cli:agent:kit" reads as person AND agent at once; core/link/mac.js's kindOf() does the same
+split-and-check shape. Everything else found is either a different concept (tool-level personOnly
+declarations, labeling) or correct-but-duplicated (core/projects/glass/hooks/files-drive's own
+isAgent(), core/harness/rules.js's/core/modules/federate.js's/core/memory/index.js's own
+OWNER-equivalent sets -- federate.js's TAILNET_PERSON is narrower than isOwnerDevice, missing the
+relay-paired device: case). Sent the two real bugs and every correct-duplicate's exact line to
+the lead and to federation/memory-iq. Did not touch any other team's file.
+
+New hygiene test freezes today's known hand-rolled PERSON_SURFACES copies (allowlist only
+shrinks, boundaries.test.js's convention) -- a Set of exactly cli/local/deck/capsule outside
+lib/caller.js or core/presence/index.js. testbox: caller 8/8, hygiene 5/5, boundaries 5/5,
+docs:ref clean. Sent the helper to the reviewer.

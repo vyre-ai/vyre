@@ -10,6 +10,7 @@
 import os from "node:os";
 import path from "node:path";
 import { rules } from "./rules.js";
+import { LIVE_STATUSES } from "../../lib/thread-status.js";
 
 const MIGRATIONS = [
   `CREATE TABLE harness_files (
@@ -148,7 +149,7 @@ export default {
     /** Take a subagent slot for a session's Agent call: null when it may run, else why not. */
     const subagentSlot = async (session, cwd, key) => {
       const t = await ask("threads.get", { thread: session, limit: 1 });
-      if (t && t.thread && t.thread.driver === "sdk" && ["starting", "working", "waiting", "idle"].includes(t.thread.status)) return null;   // held in-process
+      if (t && t.thread && t.thread.driver === "sdk" && LIVE_STATUSES.includes(t.thread.status)) return null;   // held in-process
       const of = cwd ? await ask("projects.of", { cwd }) : null;
       const r = await ask("sessions.slots", { action: "take", kind: "subagent", project: (of && of.slug) || "_none", owner: `session:${session}`, key: String(key || Date.now()), wait: false });
       if (!r || !r.queued) return null;

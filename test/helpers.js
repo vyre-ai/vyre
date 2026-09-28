@@ -56,8 +56,13 @@ export function tempHome(t, { stop } = {}) {
   return dir;
 }
 
-/** Stop a vyred child process started in this home, and wait for it to exit. */
-async function stopDaemon(dir) {
+/**
+ * Stop a vyred child process started in this home, and wait for it to actually be gone before
+ * returning: a caller that removes the home right after this resolves (as every one does) must
+ * never do it out from under a process still holding it open, the same class of bug that once
+ * orphaned fourteen running vyreds when their homes were deleted out from under them.
+ */
+export async function stopDaemon(dir) {
   let pid = 0;
   try { pid = Number(fs.readFileSync(path.join(dir, "vyred.pid"), "utf8")); } catch { return; }
   if (!pid || pid === process.pid) return;
@@ -70,7 +75,13 @@ async function stopDaemon(dir) {
   // handler can do this). Force it, but say so loudly: a silent SIGKILL here would paper over a
   // real hang instead of surfacing it, the same class of bug that used to hang this whole suite.
   console.error(`test helpers: vyred pid ${pid} did not exit on SIGTERM within 2.5s, sending SIGKILL`);
-  try { process.kill(pid, "SIGKILL"); } catch {}
+  try { process.kill(pid, "SIGKILL"); } catch { return; }
+  for (let i = 0; i < 20; i++) {
+    try { process.kill(pid, 0); } catch { return; }
+    await new Promise(r => setTimeout(r, 50));
+  }
+  console.error(`test helpers: vyred pid ${pid} still alive 1s after SIGKILL; the home will not be removed`);
+  throw new Error(`vyred pid ${pid} would not die; not removing its home`);
 }
 
 /** Write a module folder under root with the given manifest and entry source. */

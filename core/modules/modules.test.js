@@ -240,6 +240,24 @@ test("modules: a second module with a name already loaded is reported, and the f
   assert.equal((await reg.call("notes.other", {})).error.code, "no_such_tool");
 });
 
+test("modules: a bad manifest is logged at warn level, not silently dropped, and status() still carries it", async t => {
+  // A camelCase tool name once failed validate() and took the whole module with it, with no line
+  // in the log to say so - found only by calling discover() by hand (teammates, 2026-09-28).
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  writeModule(root, "notes", { ...good, does: { tools: ["notes.addNote"] } }, echo);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const logs = [];
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: (m) => logs.push(m) });
+  await reg.start(discover([root]), { role: "local" });
+  assert.ok(logs.some(l => /^warn: module notes invalid: .*must look like module\.verb/.test(l)), logs.join("\n"));
+  const st = reg.status();
+  const m = st.find(x => x.name === "notes");
+  assert.equal(m.state, "invalid");
+  assert.match(m.error, /must look like module\.verb/);
+});
+
 test("modules: a per-<thing> declaration lets a module fetch items named at run time", async t => {
   const vault = `export default { async start(ctx) {
     ctx.tool("vault.release", { internal: true, run: async ({ name }, { caller }) => ({ value: "value-of-" + name + "-for-" + caller }) });
@@ -517,4 +535,32 @@ test("modules: first-party means shipped in the repo's core/, local/ or modules/
   assert.equal(firstParty(path.join(repo, ".dev", "modules", "bakery")), false, "a dev home's module");
   assert.equal(firstParty(path.join(repo, "test", "fixtures", "oven")), false, "anywhere else in the checkout");
   assert.equal(firstParty(path.join(repo, "core", "settings", "nested")), false, "only a folder directly in core/");
+});
+
+test("modules: Registry.stop() does not hang forever on a module whose own stop() never settles", async t => {
+  // core/settings/settings.test.js (and anything else that starts a real vyred in-process and
+  // stops it in t.after) hung indefinitely, at 0% CPU, whenever any one loaded module's stop()
+  // never resolved: Registry.stop() awaited each module in turn with no bound at all. Races it
+  // against MODULE_STOP_MS now, the same way the daemon already bounds its own drain. Mocked
+  // timers, not a real multi-second wait: a module whose stop() truly never resolves is exactly
+  // the case a real wait can't safely reach without either leaving that promise dangling past
+  // the test (node:test's own pending-promise-at-exit check) or waiting the real MODULE_STOP_MS.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  const stuck = `export default { async start(ctx) {
+    ctx.tool("stuck.ping", { run: async () => "pong" });
+    return { stop: () => new Promise(() => {}) }; // never settles
+  } };`;
+  writeModule(root, "stuck", { version: "0.1.0", does: { tools: ["stuck.ping"] } }, stuck);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const logs = [];
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: m => logs.push(m) });
+  await reg.start(discover([root]), { role: "local" });
+  assert.deepEqual(await reg.call("stuck.ping", {}, "cli"), { data: "pong" });
+  const done = reg.stop();
+  t.mock.timers.tick(5_000); // MODULE_STOP_MS, mocked: instant, nothing left dangling
+  await done;
+  assert.ok(logs.some(l => /^warn: module stuck did not stop within \d+ms/.test(l)), logs.join("\n"));
 });

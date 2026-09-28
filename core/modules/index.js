@@ -52,6 +52,10 @@ const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
 /** Use counts reach vyre.db at most this often; nothing is written while nothing was used. */
 const USE_FLUSH = 60_000;
+/** How long one module's own stop() may take before Registry.stop() gives up on it and moves on
+ * to the next (matches core/daemon/index.js's DRAIN_MS for the same reason: a hang in one place
+ * must never become a hang everywhere). */
+const MODULE_STOP_MS = 5_000;
 
 /**
  * Check a manifest. Returns a list of problems; empty means valid. `firstParty` is true for a
@@ -335,13 +339,24 @@ export class Registry {
   async start(found, { role, enable = [], disable = [] }) {
     for (const f of found) {
       const name = f.manifest && f.manifest.name;
-      if (f.problems.length) { this.modules.set(name || f.dir, { manifest: f.manifest, dir: f.dir, state: "invalid", error: f.problems.join("; ") }); continue; }
+      // A module with a problem never starts, but it never disappears without a word either: it
+      // used to (a camelCase tool or event name failed validate() and the whole module just
+      // was not there, with no line in the log to say why - found only by calling discover() by
+      // hand). Every problem, and the two below, are logged at warn level as they happen, and
+      // status() (vyre modules, /v1/modules) already carries the same reason for later.
+      if (f.problems.length) {
+        const error = f.problems.join("; ");
+        this.modules.set(name || f.dir, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
+        this.deps.log(`warn: module ${name || f.dir} invalid: ${error}`);
+        continue;
+      }
       // Two modules with one name: the first found wins (Vyre's own folders come before the
       // user's), and the other is reported, never silently dropped. A user's module named like a
       // core one once vanished without a word, and so did every tool it offered.
       if (this.modules.has(name)) {
-        this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid",
-          error: `a module named ${name} is already loaded from ${this.modules.get(name).dir}; this one is ignored` });
+        const error = `a module named ${name} is already loaded from ${this.modules.get(name).dir}; this one is ignored`;
+        this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
+        this.deps.log(`warn: module ${name}@${f.dir} invalid: ${error}`);
         continue;
       }
       const roles = f.manifest.roles || ["box", "local"];
@@ -350,7 +365,7 @@ export class Registry {
     }
     const candidates = found.filter(f => { const r = this.modules.get(f.manifest && f.manifest.name); return r?.state === "pending" && r.dir === f.dir; });
     const { ordered, problems } = order(candidates);
-    for (const [n, why] of problems) Object.assign(this.modules.get(n), { state: "failed", error: why });
+    for (const [n, why] of problems) { Object.assign(this.modules.get(n), { state: "failed", error: why }); this.deps.log(`warn: module ${n} invalid: ${why}`); }
     for (const f of ordered) await this.startOne(f);
     return this.status();
   }
@@ -679,9 +694,21 @@ export class Registry {
   }
 
   async stop() {
-    for (const [, r] of [...this.modules.entries()].reverse()) {
+    for (const [name, r] of [...this.modules.entries()].reverse()) {
       if (r.state === "running" && r.handle && typeof r.handle.stop === "function") {
-        try { await r.handle.stop(); } catch {}
+        try {
+          // A module whose own stop() never settles (an open handle, an awaited promise nothing
+          // ever resolves) used to hang every caller of this method forever, with nothing to say
+          // why: a real vyred shutdown, and any test that starts one in-process (core/settings/
+          // settings.test.js, among others) and stops it in t.after. Race it against the same
+          // bound the daemon already gives its own drain (DRAIN_MS), and say so loudly rather
+          // than hang silently at 0% CPU.
+          const timedOut = await Promise.race([
+            r.handle.stop().then(() => false),
+            new Promise(resolve => { const t = setTimeout(() => resolve(true), MODULE_STOP_MS); t.unref && t.unref(); }),
+          ]);
+          if (timedOut) this.deps.log(`warn: module ${name} did not stop within ${MODULE_STOP_MS}ms; moving on`);
+        } catch {}
       }
     }
     // Last, so a call a module made while stopping is counted too. vyred closes the database after.
