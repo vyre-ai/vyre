@@ -307,7 +307,7 @@ a still) is the fastest way to hand it back — reply with what step, and what h
 - Merged main 57dc12c3 into work/pwa (751 commits: server-side terminology rename to "server",
   native-core, the Agent SDK session default, teammates, vault-next, resilience, the glass-hotfix
   docker-api fix, etc.) -> c84dd17a. Clean, no conflicts. Targeted suite after the merge (407
-  tests: deck/chat/**, deck/js/*, core/context/*) is 407/407 green.
+  tests: `deck/chat`, `deck/js` and `core/context`) is 407/407 green.
 - Verified cohesion's finding 6 (docs/work/cohesion.md, hand-over fdd3a2ac) for the phone: "the
   project picker (context.now-started sessions) is data-ready but the UI is unconfirmed shipped
   ... make this the first thing verified end-to-end." Read the whole path (not just pwa's own
