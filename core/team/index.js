@@ -17,6 +17,13 @@
 // worktrees and the integrator (step 4); sharing across projects (step 5); the Agents place and
 // Needs rows (step 6); team.propose and templates (step 7); converting today's single-project
 // agents (step 8). Until sharing lands, a teammate serves one project and `shared` is unused.
+//
+// docs/design/teammates.md section 1 (the user's "make teammates the default" ask, 2026-09-28):
+// team.default.get/set, team.project-has-any and team.project-append are the pieces core/team owns
+// so sessions can wire every project session's tool set and append at session start without
+// core/team ever touching a session directly (the module boundary). Not wired into a real
+// session yet — that part is sessions' (core/sessions/switchboard), queued behind their rc.2
+// work per the lead.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -56,6 +63,13 @@ export const MIGRATIONS = [
   // Bash can move any ref, so a worktree is not a security boundary), and the test command a
   // merge runs before it may move main.
   `ALTER TABLE team_teammates ADD COLUMN main_sha TEXT; ALTER TABLE team_teammates ADD COLUMN test_command TEXT`,
+  // docs/design/teammates.md section 1 (the default-policy append and its per-project off
+  // switch): one row per project that has ever touched the setting; a project with no row is
+  // on, the default. sessions reads this (via team.default.get / team.project-append) at session
+  // start; core/team never writes to a session directly, per the module boundary.
+  `CREATE TABLE team_project_settings (
+     project TEXT PRIMARY KEY, teammate_default INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL
+   )`,
 ];
 
 const NAME = /^[a-z][a-z0-9-]{0,30}$/;
@@ -153,6 +167,34 @@ export default {
     const serving = project => db.prepare("SELECT * FROM team_teammates").all().map(shapeT)
       .filter(tm => tm.project === project || tm.shared === "*" || (Array.isArray(tm.shared) && tm.shared.includes(project)));
     const mustT = agent => { const tm = byAgent(agent); if (!tm) throw Object.assign(new Error(`no teammate ${agent}`), { code: "not_found" }); return tm; };
+    /** docs/design/teammates.md section 1: on unless a person has turned it off for this project. */
+    const defaultEnabled = project => {
+      const r = db.prepare("SELECT teammate_default FROM team_project_settings WHERE project = ?").get(project);
+      return r == null ? true : Boolean(/** @type {any} */ (r).teammate_default);
+    };
+    const setDefaultEnabled = (project, enabled) => {
+      db.prepare(`INSERT INTO team_project_settings (project, teammate_default, updated_at) VALUES (?,?,?)
+        ON CONFLICT(project) DO UPDATE SET teammate_default = excluded.teammate_default, updated_at = excluded.updated_at`)
+        .run(project, enabled ? 1 : 0, Date.now());
+    };
+    /**
+     * The one or two sentences sessions injects into an ordinary project session's append,
+     * ahead of any teammate's own thread (docs/design/teammates.md section 1). Null means say
+     * nothing: the person turned the default off for this project. With existing teammates, the
+     * list is always shown (it is information, not steering toward making more); the "propose a
+     * new one" line only appears when the default is still on.
+     */
+    const projectAppend = project => {
+      const on = defaultEnabled(project);
+      const here = serving(project);
+      if (!here.length) {
+        if (!on) return null;
+        return "This project has no teammates yet. For an ongoing role (design, review, research, QA) prefer team_ask with a new role name — it creates one on first use — over a subagent. Use a subagent only for a one-off lookup or a burst that needs no memory.";
+      }
+      if (!on) return null;
+      const list = here.map(tm => `${tm.role} (${tm.brief || "no brief set"})`).join(", ");
+      return `This project has teammates: ${list}. Send work in their area to them with team_ask and carry on; their results come back to you. Use a subagent only for a one-off lookup or a burst that needs no memory. If the same kind of work keeps coming up and no teammate fits, call team_propose.`;
+    };
     const reqById = id => shapeR(db.prepare("SELECT * FROM team_requests WHERE id = ?").get(id));
     const mustR = id => { const r = reqById(id); if (!r) throw Object.assign(new Error(`no request ${id}`), { code: "not_found" }); return r; };
 
@@ -669,6 +711,59 @@ export default {
           return { agent: tm.agent, project: tm.project, role: tm.role, shared: tm.shared, brief: tm.brief, state: tm.state, queued,
             current_request: tm.current_request, last_result: last ? { request: last.id, state: last.state, result: last.result } : null };
         });
+      },
+    });
+
+    ctx.tool("team.default.get", {
+      description: "Whether new-work steers to teammates by default in this project (docs/design/teammates.md section 1): the append line and @role's create-on-first-use. On unless a person has turned it off. {project} -> {project, enabled}.",
+      input: { type: "object", required: ["project"], properties: { project: { type: "string" } } },
+      // reviewer LOW: takes any project slug as input with no ownership check, so it must never
+      // be reachable by a session or teammate's own call (an agent scoped to project A reading
+      // project B's setting) - only a person's own surface, or sessions calling it as itself
+      // (caller kind "module", ADR 0030's settings plumbing) at session start.
+      callers: ["module", "cli", "local", "deck", "capsule"],
+      run: async i => {
+        if (!SLUG.test(String(i.project || ""))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
+        return { project: i.project, enabled: defaultEnabled(i.project) };
+      },
+    });
+
+    ctx.tool("team.default.set", {
+      description: "Turn the default-to-teammates policy on or off for a project: no append line and no @role create-on-first-use while off. Existing teammates keep working either way; this is about steering new work, not removing what is already there. {project, enabled}.",
+      input: { type: "object", required: ["project", "enabled"], properties: { project: { type: "string" }, enabled: { type: "boolean" } } },
+      // PERSON_ONLY, same reasoning as team.add: this changes what every session in the project
+      // is told to do, so only a person's own surface sets it.
+      callers: ["cli", "local", "deck", "capsule"],
+      run: async (i, meta) => {
+        if (!SLUG.test(String(i.project || ""))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
+        if (!PERSON.has(String(meta.caller))) throw Object.assign(new Error("only a person changes this"), { code: "denied" });
+        setDefaultEnabled(i.project, Boolean(i.enabled));
+        ctx.events.emit("teammate.default-changed", { project: i.project, enabled: Boolean(i.enabled) });
+        return { project: i.project, enabled: Boolean(i.enabled) };
+      },
+    });
+
+    ctx.tool("team.project-has-any", {
+      description: "Cheap check for sessions' own append plumbing: does this project have any teammate (own or shared in)? {project} -> {any}.",
+      input: { type: "object", required: ["project"], properties: { project: { type: "string" } } },
+      // reviewer LOW, same reasoning as team.default.get: no ownership check on the project
+      // input, so only a person or sessions calling as itself ("module") may reach it.
+      callers: ["module", "cli", "local", "deck", "capsule"],
+      run: async i => {
+        if (!SLUG.test(String(i.project || ""))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
+        return { any: serving(i.project).length > 0 };
+      },
+    });
+
+    ctx.tool("team.project-append", {
+      description: "The sentence or two sessions should inject into an ordinary project session's append, ahead of any teammate's own thread (docs/design/teammates.md section 1): points new work at team_ask, or nothing when the person has turned the default off for this project. {project} -> {text} (text is null when there is nothing to say).",
+      input: { type: "object", required: ["project"], properties: { project: { type: "string" } } },
+      // reviewer LOW, same reasoning: this returns another project's teammates' roles and briefs,
+      // so it needs the same callers gate as team.default.get and team.project-has-any.
+      callers: ["module", "cli", "local", "deck", "capsule"],
+      run: async i => {
+        if (!SLUG.test(String(i.project || ""))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
+        return { project: i.project, text: projectAppend(i.project) };
       },
     });
 

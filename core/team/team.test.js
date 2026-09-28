@@ -757,3 +757,48 @@ test("a real merge conflict is left for the integrator, not cleaned up, and team
   assert.equal(conflicted, "README.md", "the conflict must still be there for the integrator to work on, not aborted");
   assert.equal(git(repo, ["log", "--format=%s", "-1", "main"]).trim(), "main's own change"); // never moved
 });
+
+// docs/design/teammates.md section 1: the default-policy append and its per-project off switch.
+
+test("team.default: on by default, no teammates yet -> the create-a-teammate line; off -> null", async t => {
+  const { tool, project } = await boot(t);
+  const before = await tool("team.default.get", { project: project.slug });
+  assert.equal(before.enabled, true);
+  const on = await tool("team.project-append", { project: project.slug });
+  assert.match(on.text, /no teammates yet/);
+  assert.match(on.text, /team_ask/);
+  const set = await tool("team.default.set", { project: project.slug, enabled: false });
+  assert.equal(set.enabled, false);
+  assert.equal((await tool("team.default.get", { project: project.slug })).enabled, false);
+  const off = await tool("team.project-append", { project: project.slug });
+  assert.equal(off.text, null);
+});
+
+test("team.default.set is a person's own act: a bare mcp caller is refused", async t => {
+  const { root, project } = await boot(t);
+  const r = await call("team.default.set", { project: project.slug, enabled: false }, { root, caller: "mcp", timeout: 20_000 });
+  assert.ok(r.error);
+  assert.equal(r.error.code, "denied");
+});
+
+test("team.project-has-any and team.project-append once a teammate exists: the append lists it, and turns off with the setting", async t => {
+  const { tool, project } = await boot(t);
+  assert.equal((await tool("team.project-has-any", { project: project.slug })).any, false);
+  await tool("team.add", { project: project.slug, role: "design", brief: "visual design and UI copy" });
+  assert.equal((await tool("team.project-has-any", { project: project.slug })).any, true);
+  const on = await tool("team.project-append", { project: project.slug });
+  assert.match(on.text, /design \(visual design and UI copy\)/);
+  assert.match(on.text, /team_propose/);
+  await tool("team.default.set", { project: project.slug, enabled: false });
+  const off = await tool("team.project-append", { project: project.slug });
+  assert.equal(off.text, null, "existing teammates still work; the setting only turns off the steering line");
+});
+
+test("reviewer LOW: team.default.get, team.project-has-any and team.project-append refuse a bare mcp caller (no ownership check on the project input)", async t => {
+  const { root, project } = await boot(t);
+  for (const name of ["team.default.get", "team.project-has-any", "team.project-append"]) {
+    const r = await call(name, { project: project.slug }, { root, caller: "mcp", timeout: 20_000 });
+    assert.ok(r.error, `${name} should refuse a bare mcp caller`);
+    assert.equal(r.error.code, "denied");
+  }
+});

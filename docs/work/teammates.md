@@ -37,6 +37,63 @@ the identity keys, on both merge calls. New test forces both settings on and che
 merge paths (mergeBaseIn, mergeBranchIn) still complete; reverted the fix first and confirmed the
 test catches it. 49/49 green, stable over 2 repeats. Sent to reviewer and integrator.
 
+**Reviewer SIGNED OFF work/teammates 4d2defee (2026-09-28): nothing open on teammates.** The
+integrator takes this head into the 0.1.1 stage (it was tracking 4d2defee already, waiting on
+exactly this clearance).
+
+**Resume 9 (2026-09-28): relaunched for "make teammates the default, and distinct in chat"**
+(the user's ask, HANDOFF.md 02:10). Wrote `docs/design/teammates.md`: (1) default — every
+project session gets `team.*` tools and a policy append whether or not the project has
+teammates yet, a new per-project `team.default` on/off, owned by **sessions** (session start,
+tool set, append plumbing — core/team only supplies the two append strings and the setting,
+per the module boundary); (2) `@role` in chat creates a teammate on first use via a plain
+`team.add` (Sonnet purpose, `isolation: folder`, minimal tools — deliberately NOT the ADR's
+Opus/worktree defaults, since this one is created on a guess) with a one-tap confirmation
+card, person-surface-only, same PERSON_ONLY check `team.add` already has; (3) distinct in
+chat — avatar + accent per teammate (hashed from role@project, never hand-picked), a handoff
+card ("→ asked design", "← design replied") over the same `threads_inbox` item rather than a
+plain chat message, one tap to that teammate's own thread. Sent to team-lead. Sequencing:
+sessions can start section 1 now (no dependency on 2/3); chat can build `@role` routing against
+today's `team.ask`/`team.add` and wire the setting check once sessions ships it; chat+app-design
+agree the visual system in parallel. Sent build asks to sessions, chat and app-design.
+
+**Team-lead approved (2026-09-28)**: Sonnet+folder for an `@role`-made teammate and the hashed
+accent are both right. sessions is overloaded (rc.2 fixes, then this, then goals/`/later`), so
+to keep chat from waiting on them, I built section 1's pieces myself, at head **686e08e7**:
+`team.default.get`/`team.default.set` (a per-project on/off, person-only, new table
+`team_project_settings`), `team.project-has-any` and `team.project-append` (the actual append
+string sessions injects: the empty-project "no teammates yet" line, or the existing-teammates
+list, or `null` when the person turned the setting off). Declared as a `settings` entry
+(`team.default`, project level) in module.json so it shows in Settings without any Deck work.
+sessions' own remaining piece is small: call `team.project-append` at session start and put its
+`text` (when not null) into the session's append, ahead of the project brief. **Gotcha that cost
+real time**: tool/event names must be dash-case after the module prefix (the validator's regex),
+and a manifest that fails `validate()` is marked "invalid" with NO log line anywhere (only
+`startOne()` failures log) — `team.projectHasAny`/`team.projectAppend`/`teammate.default.changed`
+silently dropped the WHOLE `team` module out of the daemon (every existing tool, `team.add`
+included, started answering "no such tool"), and `node --check` says nothing about it since it is
+a runtime manifest-validation rule, not a syntax error. Found by booting a real daemon with
+logging on and diffing `discover()`'s `problems` directly. Renamed to `team.project-has-any` /
+`team.project-append` / `teammate.default-changed`; fixed. 42/42 team tests green (3 new), 5/5
+boundaries, `npm run docs:ref` regenerated. `test/docs-check.test.js`'s em-dash/section-sign check
+on `reference/tools.md` fails on **main already** (confirmed with `git stash`), pre-existing and
+not touched here, flagged to the lead rather than fixed on this branch.
+
+**app-design ruling (2026-09-28), lead confirmed it stands: rewrote section 3.** Turned down the
+role-hashed accent colour I'd proposed (disc/border/dot/ANSI square) — the product's colour
+economy is closed (lime for action/running/selection, violet for Needs you, no other hue, devices
+never get one, `docs/design/one-app/README.md`), and a teammate is that kind of entity, not a
+person. Settled instead (app-design 73e35ce2 then final 83434944 on work/app-design,
+`docs/design/system/components/avatar.md` + `tool-row.md`): the existing neutral agent tile,
+always paired with the role name in text; a plain "Teammate" tag after the name, once per
+surface; and the handoff is a `Handoff` variant of the existing tool-row (not a new component),
+exempt from the folded-run collapse (always its own line), reply rendered as turn prose inside
+the row's expanded detail — so there's no separate teammate-coloured message bubble at all, which
+also answers my own earlier open question about bubble styling. One kept exception: the CLI may
+use a small fixed (~8), AA-tested ANSI 256 palette for a teammate's name, never an arbitrary hash,
+never a fill. Doc updated to match; nothing to build differently in core/team from this — section
+3 was always chat's and app-design's.
+
 **Resume 8 brief: all 5 steps done, except step 4** (switch to sessions' lib/project-id.js slug
 regex), still blocked — work/projects (e87f63df) is still not on main as of this check. Nothing
 else queued; watching for it to land.
