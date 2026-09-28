@@ -240,36 +240,32 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   so this is safe as written, but if sight.targets ever grows a separate id/name field, match on
   that instead since two agents could in theory share a display label.
 
-## RESTART (28 Sep, blocked on two replies, head 95ffd807)
-Status for whoever resumes: budget 8, the sight strip, fork wiring, canonical status, app-design's
-first review batch and the teammate handoff card (2bf8ceab, sent to reviewer-2, not yet answered)
-are all built; the first five are SIGNED OFF (621/622 on reviewer-2's rerun). Nothing uncommitted;
-no testbox processes running.
+## RESTART (28 Sep, head af29a073)
+Status for whoever resumes: everything through the teammate handoff card is SIGNED OFF by
+reviewer-2 (572/573 on their rerun of 2bf8ceab). Since then, in order (team-lead's priority):
 
-Two things blocking new work, waiting on replies (check the inbox first):
-1. Team-lead flagged a hang running `node --test "deck/chat/*.test.js"` on native-core's tree,
-   "before their changes" (so in a chat-owned file). Could NOT reproduce it on work/chat HEAD:
-   ran it twice, 96/96 pass, ~11s, clean exit both times - but that glob doesn't include
-   native-core's still-unmerged composer.js recall-hint change (fae441ff), which is the only
-   plausible candidate found so far (a new setTimeout, hintTimer, correctly cleared in
-   composer.stop() and in every one of composer-recall.test.js's own tests - looks clean in
-   isolation, but ANY other composer-mounting test elsewhere that fails before reaching its own
-   stop() call would leak it, same as the pre-existing leaseTimer/fileTimer/holdTimer would).
-   Asked team-lead for the exact repro (branch/sha/command) - do that fix FIRST once it lands,
-   before new feature work, per the lead's ask.
-2. Asked native-core for merge timing: their work/native-core-composer branch has fae441ff
-   (composer.js's side of "From your past sessions") 20+ commits deep in a branch full of other
-   work (voice, /later, /goal, /find, budget-9, threads.fork) - a plain cherry-pick of just
-   fae441ff conflicts (5 regions in composer.js). Not worth resolving repeatedly against a moving
-   branch; asked whether to wait for main or build against their branch directly. Session.js's
-   onRecall handler (same pattern as onFind/onFork - ask native-core if unclear) is the only piece
-   left once that's settled.
+1. The hang team-lead flagged (`node --test "deck/chat/*.test.js"` on native-core's tree) - could
+   not reproduce on work/chat HEAD (96/96, clean, twice); team-lead said not to chase it further
+   without an exact repro, and to do the cheap hardening instead. Done (41ed798b): composer.js's
+   holdTimer/leaseTimer/fileTimer call .unref?.() now, and this session's two newest
+   session.test.js tests use t.after(stop) instead of a trailing stopN() call that a thrown
+   assertion would skip. `deck/chat/*.test.js` re-confirmed clean (97/97) after every commit since.
+2. onRecall wired in session.js (b61a506e) - opens a "From your past sessions" hit's session via
+   threadHref+go(), landing at hit.ts on the existing ?at= deep link. Inert (native-core's
+   composer.js side, fae441ff, still isn't merged anywhere) but activates on its own once it is.
+3. "@role" composer routing (af29a073, teammates.md section 2) - a new "teammate" draft kind
+   (composer-state.js), team.ask first always, the inline create-on-first-use confirm gated on
+   team.default.get, team.add with the ADR-overriding Sonnet default for a guessed-at teammate.
+   Fully testable against mocks even though core/team doesn't exist on any merged branch yet - see
+   the commit message for a real gotcha found while building it (team.ask's not_found must be
+   checked directly, never through CAPS.use, or a role simply not existing yet would mark the
+   whole tool missing for good).
 
-Lead's fuller ask, still open: @role routing in the composer (teammates.md section 2,
-create-on-first-use) is fully chat's own files, no blocker - pick this up first if nothing's
-answered yet. Voice session-view states wait on native-core's composer mic piece (their branch,
-not merged). The past-sessions IQ card is (1) above. Also queued: teammates' core/style em-dash
-normaliser + style.patterns lint (message in the inbox, tool shape ready, not started).
+Nothing uncommitted; no testbox processes running. Next: voice session-view states, once
+capsule-pro's voice ticket lands (team-lead's ordering). Also queued, not started: teammates'
+core/style em-dash normaliser + style.patterns lint (message in the inbox, tool shape ready), and
+the request-id fix for the handoff card's correlation gap (teammates + sessions are handling it;
+wire by id once threads.post's payload actually carries one - still FIFO-by-role until then).
 
 LESSON for whoever runs tests on testbox this session: a `node --test` run of session.test.js
 (now ~900 lines, many `await wait()` calls) can look STUCK from `ps`'s %CPU column (0.2-0.5%
@@ -394,6 +390,33 @@ out to be a plain `$` vs `$$` typo in a new test, not a hang.
   section 2) don't exist yet - this renders whatever a MODEL's team_ask tool call produces, once
   section 1 and 2 land. Nothing to verify end-to-end against yet on this tree.
   testbox: deck/chat + deck/test 566/567 (1 pre-existing skip), 0 fail; boundaries + docs-check 66/66.
+  SIGNED OFF by reviewer-2 (572/573 on their rerun).
+
+## Done (28 Sep, the hang hardening + onRecall + @role routing, 41ed798b/b61a506e/af29a073)
+- 41ed798b: composer.js's holdTimer/leaseTimer/fileTimer now .unref?.() right after setTimeout (a
+  no-op in the browser; stops one dangling Node-test timer from keeping a whole glob's process
+  alive). t.after(stop) on this session's two newest session.test.js tests, replacing a trailing
+  stopN() a thrown assertion would skip. Team-lead's cheap hardening after the hang could not be
+  reproduced on this tree; not chased further per their steer.
+- b61a506e: session.js's onRecall - opens a "From your past sessions" hit via threadHref+go(),
+  landing at hit.ts on the existing ?at= deep link rather than a new seq-keyed one. Inert
+  (native-core's composer.js side, fae441ff, is still unmerged anywhere) until that lands.
+- af29a073: "@role" (teammates.md section 2) - a new "teammate" draft kind in composer-state.js
+  (matches "!"/shell and "#"/memory's pattern exactly: teammateRole() finds the slug, draftBody()
+  strips "@role "). composer.js's askTeammate() calls team.ask first always (works whether
+  team.default is on or off - only creation is gated), and on not_found offers to create (gated on
+  team.default.get) with an inline confirm ("Create and send" / "Don't create, answer here" - the
+  latter sends the WHOLE original draft, never silently edited). Real gotcha found and fixed while
+  building it: team.ask's not_found must be checked directly (r.error.code, matching
+  session.js's own recall.transcript not_found pattern), never routed through CAPS.use - a role
+  simply not existing yet answers the same generic 404 an absent tool would, and CAPS's own
+  isMissing() can't tell those apart from the status code alone, so it would have marked team.ask
+  missing FOR GOOD the first time any one role came up empty.
+  Fully built and tested against mocks even though core/team doesn't exist on any branch that's
+  reached me yet - same as any tool a box might not have.
+  testbox: deck/chat + deck/test 568/569 (1 pre-existing skip), 0 fail; boundaries + docs-check
+  66/66; deck/chat/*.test.js (native-core's original hang-report glob) 97/97, clean, re-run after
+  every commit in this batch.
 
 ## Doing (28 Sep, restart after cohesion's hand-over)
 
