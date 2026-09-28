@@ -58,7 +58,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 27 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 28 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
@@ -524,7 +524,7 @@ Predictive text for every surface: names after @, commands after /, entities, ac
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [42](tools.md#threads), 14 of them only for other modules
-- Emits: [27 events](events.md#threads)
+- Emits: [28 events](events.md#threads)
 - Shows on: cli
 - Needs vault: `claude-setup-token`, `anthropic-api-key`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

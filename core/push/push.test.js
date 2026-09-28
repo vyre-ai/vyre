@@ -254,6 +254,18 @@ test("push: a planner firing reaches the phone as kind planner with a fixed titl
   const labelled = JSON.parse((await decrypt(phone, svc.got[7].body)).toString());
   assert.deepEqual([labelled.title, labelled.body], ["Reminder", "Call kit"]);
   assert.equal((await deck("push.settings", { kinds: { planner: false } })).data.kinds.planner, false);
+
+  // core/goals: a milestone, then the goal itself done, each its own kind and tag.
+  d.events.emit("goals", "goal.milestone", { goal: "g_1", index: 0, text: "Draft the intake form" }, {});
+  await until(() => svc.got.length === 9, "the milestone push");
+  const milestone = JSON.parse((await decrypt(phone, svc.got[8].body)).toString());
+  assert.deepEqual([milestone.kind, milestone.title, milestone.path, milestone.tag, milestone.body],
+    ["goal", "A milestone is done", "/goals/g_1", "goal-milestone-g_1-0", "Draft the intake form"]);
+  d.events.emit("goals", "goal.done", { goal: "g_1" }, {});
+  await until(() => svc.got.length === 10, "the goal-done push");
+  const done = JSON.parse((await decrypt(phone, svc.got[9].body)).toString());
+  assert.deepEqual([done.kind, done.title, done.tag], ["goal", "A goal is done", "goal-done-g_1"]);
+  assert.equal((await deck("push.settings", { kinds: { goal: false } })).data.kinds.goal, false);
 });
 
 /** A vyred with one subscribed phone, for the "needs you" hold. The hold is cut to `hold` ms of real time. */
