@@ -673,7 +673,7 @@ test("team.merge finishes the merge once the integrator's own session attests a 
   const ask = await tool("team.ask", { to: "integrator", project: project.slug, wait: true,
     text: `merge team/design ${range}, from request r_test\nvyre team.merge {"tests":{"exit_code":0}}` });
   assert.equal(ask.state, "done");
-  assert.match(ask.result, /attested exit 0/);
+  assert.match(ask.result, /Tests passed \(checked by the integrator/);
   assert.equal(git(repo, ["log", "--format=%s", "-1", "main"]).trim(), "merge team/design"); // main really moved
 });
 

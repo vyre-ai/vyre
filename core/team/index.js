@@ -795,7 +795,10 @@ export default {
         if (!tm || tm.role !== INTEGRATOR_ROLE) throw Object.assign(new Error("team.merge is the integrator's own tool"), { code: "denied" });
         const result = await finalizeMerge(tm, r, i.tests);
         if (!result.done) throw Object.assign(new Error(result.fatal || result.detail || "the merge is not ready yet"), { code: result.fatal ? "bad_input" : "denied" });
-        return finish(r, "done", { result: `Merged ${result.branch} into ${result.base}, ${result.from}..${result.to}${result.attested ? ` (${result.testCommand} attested exit 0 by thread ${result.attested.thread})` : ""}.` });
+        // "checked by the integrator", plainly, wherever a person reads this (reviewer, slice B):
+        // the exit code is that teammate's own word, not vyred's — vyred only checked it was
+        // reported and was 0 before moving the person's own base branch by compare-and-swap.
+        return finish(r, "done", { result: `Merged ${result.branch} into ${result.base}, ${result.from}..${result.to}.${result.attested ? ` Tests passed (checked by the integrator; ${result.testCommand}, thread ${result.attested.thread}).` : ""}` });
       },
     });
 
