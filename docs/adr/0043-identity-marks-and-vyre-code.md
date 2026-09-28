@@ -251,6 +251,21 @@ perspective (15deg, 30deg, the worst-case combo) - the same scoped, known limita
 homography correction already named as the next real step there, not further palette or geometry
 tuning on this side.
 
+### 2f. The identity seed, defined (28 Sep, lead's ruling, docs only)
+
+2a-2e assumed an 8-byte fingerprint existed without specifying where it comes from; this defines
+it, as the product input to `payload.js`'s `fingerprint8(publicSeed)`:
+
+- **Person:** `sha256("vyre:person:v1:" + hex(owner.id))[0:8]`
+- **Assistant:** `sha256("vyre:assistant:v1:" + hex(owner.id))[0:8]` - same `owner.id`, a
+  different prefix, so the two fingerprints (and so the two `defaultAvatarOption` results, per
+  2d) never collide even though they share one owner.
+
+`owner.id` is a random 16-byte public id created once at onboarding - never a device key, never a
+box key, and never a secret (the same status the fingerprint itself already has, per section 3).
+The `"v1:"` segment versions the derivation itself, so a future change to how the fingerprint is
+computed can't silently collide with today's ids.
+
 ### 3. What the code carries, and what it doesn't
 
 The Vyre code's payload is a public identifier plus, for pairing, a one-time ticket: 64 bits of
