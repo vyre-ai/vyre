@@ -205,6 +205,15 @@ project-change event today; `thread.started` is real, emitted by the Switchboard
 This is additive to `sessions`' own contract (ADR 0030): a "project has a repo" fact `sessions`
 reads through `ctx.call("github.project.of", { project })`, never a direct table read.
 
+**Built by sessions (79bd2bf1): cleanup fires only on canonical status `finished`**, never
+`stopped` or `paused` (`lib/thread-status.js`), since both of those are resumable on their
+existing cwd and `threads.send` on resume never re-resolves it — cleaning up on them would strand
+the resume. This is the right, conservative default for 0.1.1, decided jointly: an ordinary
+interactive session, which typically ends `stopped` rather than `finished`, keeps its worktree
+indefinitely under today's hook. Nothing breaks (disk isn't reclaimed, not correctness), but it is
+a real gap. **Deferred to 0.1.2**: a periodic sweep for worktrees whose session has neither a live
+thread nor a resumable `stopped`/`paused` status. Owner (sessions or github) not yet decided.
+
 ### 6. Manifest, tools and callers (0.1.1)
 
 `module.json`: `requires: ["vault"]`, `does.tools`: `github.connect`, `github.connect.cancel`,

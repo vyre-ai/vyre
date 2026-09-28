@@ -44,8 +44,13 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   confirmed item 1 is done with no new sha. github range fully clear, no open reviewer asks.
 - Sent launch the full tool contract for Settings/onboarding (sign-in flow, event names, account
   list, disconnect, error codes). Waiting on their questions/build.
-- Pinged sessions: does acfcefd2 clear their HIGH, and status on the start/end hook (offered to
-  draft it as a diff against their file, their call). Waiting on their reply.
+- sessions built the start/end hook (79bd2bf1, their worktree): Switchboard#where() substitutes
+  the worktree path for a GitHub project's thread, cleanup fires only on canonical status
+  `finished` (not `stopped`/`paused`, both resumable - cleaning those up would strand a resume).
+  Agreed this is the right conservative default for 0.1.1; noted the real gap (long-lived
+  interactive sessions rarely reach `finished`, so their worktrees pile up) as a deferred 0.1.2
+  GC item in the ADR. Confirmed acfcefd2 already answers their ECONNRESET question (sent before,
+  may have crossed in flight).
 
 ## Next
 1. Send `sessions` the actual gitWithAskpass diff (lib/git-safe.js + lib/git-safe-askpass.test.js)
