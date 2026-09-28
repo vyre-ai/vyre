@@ -463,7 +463,10 @@ test("onboard: tailscale policy merges Taildrive, Taildrop and SSH into one snip
   const dir = fs.mkdtempSync(path.join(root, "ts-"));
   const bin = path.join(dir, "tailscale");
   const self = { HostName: "alex-box", DNSName: "alex-box.tail0000.ts.net.", TailscaleIPs: ["100.64.0.5", "fd7a::5"], ID: "n1", Tags: [] };
-  fs.writeFileSync(bin, `#!/bin/sh\necho '${JSON.stringify({ BackendState: "Running", TUN: true, Self: self, User: {} })}'\n`, { mode: 0o755 });
+  // OperatorUser: on Linux, operator() (core/names/tailscale.js) actually checks `debug prefs`'s
+  // answer against the real OS user; darwin skips the check entirely, which is why this fixture's
+  // missing field went unnoticed until it ran on testbox (Linux) and ready came back false.
+  fs.writeFileSync(bin, `#!/bin/sh\necho '${JSON.stringify({ BackendState: "Running", TUN: true, Self: self, User: {}, OperatorUser: os.userInfo().username })}'\n`, { mode: 0o755 });
   process.env.VYRE_TAILSCALE_BIN = bin;
   const r = await call("onboard.tailscale", { action: "policy" }, { root });
   assert.ok(r.data, JSON.stringify(r.error));
