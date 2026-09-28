@@ -42,6 +42,7 @@ const deps = (o = {}) => ({
   role: "local", health: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e", dirty: false }),
   tool: tools(), tailscale: async () => tailnet(), resolve: async () => ({ address: "100.64.0.2" }),
   probe: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e" }), capsuleApps: [], size: () => ({ bytes: 5_900_000, files: 450 }), path: () => ({ ours: true, others: [] }),
+  modules: async () => ({ data: [{ name: "settings", state: "running" }, { name: "recall", state: "running" }] }),
   ...o,
 });
 const byId = r => Object.fromEntries(r.checks.map(c => [c.id, c]));
@@ -49,11 +50,12 @@ const byId = r => Object.fromEntries(r.checks.map(c => [c.id, c]));
 test("doctor: a Mac where everything works is all ticks, with what it found", async () => {
   const r = await diagnose(deps());
   const c = byId(r);
-  for (const id of ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "install"]) assert.equal(c[id].ok, true, `${id}: ${JSON.stringify(c[id])}`);
+  for (const id of ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "modules", "install"]) assert.equal(c[id].ok, true, `${id}: ${JSON.stringify(c[id])}`);
   assert.equal(c.vyred.detail, "0.0.1 · 1a2b3c4");
   assert.equal(c.tailscale.detail, `signed in as ${me}`);
   assert.equal(c.phone.detail, "alex-phone");
   assert.equal(c.passkey.detail, "vyre.tail0000.ts.net");
+  assert.equal(c.modules.detail, "2 running");
   assert.equal(c.install.detail, "5.9 MB");
   assert.equal(c.recall.detail, "indexing 1,234 of 5,678 sessions, low priority");
   assert.ok(r.ms < BUDGET_MS);
@@ -86,10 +88,33 @@ test("doctor: each thing the user tripped on is a cross with the one thing to do
   assert.match(text[1], /^      on the box: vyre up/);
 });
 
+test("doctor: a module whose manifest under-declares a tool or event is a named cross, not a silent gap", async () => {
+  // The exact gotcha tailnet lost time to (docs/work/tailnet.md, 28 Sep 2026): a module that
+  // registers a tool or emits an event its own module.json does not declare fails to start, every
+  // other module still loads, and vyred's log is the only place that says which one and why.
+  // vyre doctor is the other place now.
+  const c = byId(await diagnose(deps({ modules: async () => ({ data: [
+    { name: "settings", state: "running" },
+    { name: "relay", state: "failed", error: "relay registered tool relay.pair.ticket, which its manifest does not declare under does.tools" },
+  ] }) })));
+  assert.equal(c.modules.ok, false);
+  assert.equal(c.modules.detail, "relay: relay registered tool relay.pair.ticket, which its manifest does not declare under does.tools");
+  assert.match(c.modules.fix, /vyred's log/);
+});
+
+test("doctor: more than one failed module names all of them, not just the first", async () => {
+  const c = byId(await diagnose(deps({ modules: async () => ({ data: [
+    { name: "relay", state: "failed", error: "relay emitted relay.paired, which its manifest does not declare under watches.emits" },
+    { name: "old-thing", state: "invalid", error: "module.json unreadable: Unexpected token" },
+  ] }) })));
+  assert.equal(c.modules.ok, false);
+  assert.match(c.modules.detail, /^2 modules \(relay, old-thing\):/);
+});
+
 test("doctor: with vyred down, it says start it, and what it cannot check is a question, not a cross", async () => {
   const c = byId(await diagnose(deps({ health: async () => null, tool: async () => ({ error: { code: "unreachable", message: "down" } }) })));
   assert.deepEqual([c.vyred.ok, c.vyred.fix], [false, "vyre up"]);
-  for (const id of ["passkey", "claude"]) assert.equal(c[id].ok, null, id);
+  for (const id of ["passkey", "claude", "modules"]) assert.equal(c[id].ok, null, id);
   assert.equal(c.paired.ok, null);
 });
 
