@@ -700,6 +700,21 @@ relay/client/client.test.js, test/relay.test.js, relay/node/server.test.js,
 relay/worker/worker.test.js - 105/105 pass. Nothing in pwa's own files needed a change; the
 Wink phone-side contract above is unaffected. Reported to team-lead.
 
+## Doing (tailnet's nonce + lib/identity fingerprint, 2026-09-28)
+Cherry-picked tailnet's 7588fdd6 (d7ec3564 here): a random nonce inside each sealed Wink record
+(reviewer's LOW 2, base64url(nonce12||ct||tag) so a repeated nonce can never mint the same
+ciphertext twice), the ADR's LOW 1 note that the relay holds `loc` and could search the 64-bit
+ticket space offline, and the identity fingerprint moved to `lib/identity.js`'s
+`fingerprint8(owner.id, "person")` + `toBase64url` (unchanged from work/anywhere-ownerid
+f3a25653) so a malformed owner id is refused by one shared check rather than a local one.
+Checked 46900338 (relay.vyre.run as a Worker custom domain) first - only touches
+relay/worker/wrangler.toml, no client path, so left it for the integrator/relay deploy rather
+than cherry-picking it here. Only conflicts were the generated docs again
+(docs/index.json, docs/reference/index.md - regenerated via npm run docs:ref); core/relay/index.js,
+relay/client/client.js and README.md merged clean. No new em dashes. Reran on testbox:
+docs-check, pair-scan, relay/client, test/relay, relay/node/server, relay/worker,
+lib/identity.test.js - 111/111 pass. Sent head d7ec3564 to the integrator.
+
 ## Next
 - No test coverage of scan.js/scan-worker.js's own lifecycle (the busy flag, the transferred
   buffer, worker.terminate() on stop) - reviewer-2 hand-verified fa619b4a and confirmed it's
