@@ -9,66 +9,63 @@ work/polish-surfaces (phone Chat, five tabs, title truncation), with main merged
 ## Phone-side contract: scan your avatar to pair your phone (for launch, 2026-09-28)
 
 launch can't message pwa directly, so this section is the handoff: what the Deck's "Add your
-phone" screen needs to know about what happens after it shows the code. Written after reviewer's
-verdict on work/pwa bdca618b redesigned the ticket handling (see "Doing" below for why); sha
-9408fb66 has the doc fix, the redesign itself lands in this session's next commit.
+phone" screen needs to know about what happens after it shows the code. Rewritten 2026-09-28
+after tailnet posted the REAL contract (relay/client's `pairTicket()`/`keyFingerprint()`, merged
+in from work/tailnet); an earlier version of this section (hand-rolled locator/secret/MAC
+derivation) was reviewer-held twice and is history - see "Doing" below for the full story if it
+matters to you, otherwise everything below is current.
 
-**No Tailscale in this flow, relay only** (team-lead, 2026-09-28) — the phone never touches the
-tailnet; everything below goes over the relay (`relay/client/client.js`'s `pair()`, the same
-library the Expo app uses) or a plain HTTPS fetch to a directory host.
+**No Tailscale in this flow, relay only** (team-lead, 2026-09-28) - the phone never touches the
+tailnet; everything below goes over the relay via `relay/client/client.js`'s `pairTicket()`.
 
 1. **The Deck mints a ticket and shows it as a code ring** around the person's avatar (tailnet +
    app-design's side, not pwa's). The ticket is 8 random bytes; the ring encodes it plus a CRC-8
    and Reed-Solomon parity (`deck/vyrecode/payload.js`), 144 bits total, in app-design's 2-ring/
-   36-mark/2-bit-per-mark layout. Per reviewer: **Touch ID happens here, at mint** (option A) —
-   not later, at redeem.
+   36-mark/2-bit-per-mark layout (`deck/vendor/vyrecode/geometry.js`: RING_R=[188,222], tick
+   lengths 6/12/18/24). Per reviewer: **Touch ID happens here, at mint** (option A) - not later,
+   at redeem.
 2. **The phone scans it** (`deck/js/scan.js`): camera → decode-core2.js's search → an 8-byte
    ticket, recovered but never turned into a string, logged, or put in a URL (it is this flow's
-   pairing secret — see point 3).
-3. **The phone resolves the ticket to a box identity WITHOUT sending the ticket itself**
-   (`deck/js/pair-ticket.js`, reviewer's HIGH 1 and HIGH 2 on bdca618b). It derives three values
-   locally with domain-separated SHA-256:
-   - `locator = sha256("vyre-pair-loc" || ticket)` — sent to the relay/directory; on its own it
-     only names a row, it doesn't let anyone pair.
-   - `secret = sha256("vyre-pair-sec" || ticket)` — used as the Noise handshake's pairing secret
-     in step 5; never transmitted.
-   - `macKey = sha256("vyre-pair-mac" || ticket)` — verifies the resolved record before trusting
-     anything in it.
-
-   **ASSUMED, not confirmed with tailnet:** `GET <PAIR_BASE's origin>/api/pair/ticket/<locator>`
-   (`PAIR_BASE` is `relay/client/client.js`'s own `https://vyre.run/pair`), returning JSON
-   `{ relay, route, box (base64url, 32 bytes), mac (base64url), name, handle }` — `handle` is
-   this file's own addition for the redirect in step 6, also unconfirmed. Refusals: 404 →
-   `ticket_not_found`, 410 → `ticket_expired`, 409 → `ticket_used`, 429 → `rate_limited`. The
-   phone computes `expectedMac = hmacSha256(macKey, utf8(route) || box)` and refuses
-   (`bad_ticket`) if it doesn't match `mac` — this is what stops a compromised relay from
-   substituting a different box. The fingerprint shown to the person is computed locally from
-   the verified `box` public key (`sha256(box).slice(0,4)`, hex, grouped) — never the server's
-   own word for it. **TODO**: swap for the shared `keyFingerprint()` once it exists somewhere in
-   this tree, so both sides format it identically; not found yet.
-4. **The person confirms**: "Pair with `<box>` (`<fingerprint>`)?" with an editable "Name this
-   device" field, pre-filled from User-Agent Client Hints' `model` (Android: often the real model,
-   e.g. "Pixel 8"; iOS Safari has no UA-CH at all) prefixed with the person's first name (from
-   `system.info`'s `owner.name`) — "Alex's iPhone" (team-lead's decision, 2026-09-28). Tapping
-   "Not this one" goes back to scanning without contacting anything past step 3.
-5. **The handshake**: `deck/js/pair-ticket.js`'s `completePairing()` builds the same offer-URL
-   shape `relay/client/client.js`'s `parsePairUrl` expects from the verified `relay`/`route`/`box`
-   and the LOCALLY-DERIVED `secret` (never the response's own fields past `relay`/`route`/`box`),
-   and calls that same file's `pair(offerUrl, { name, about: { kind: "web" } })` — no separate
-   presence/Touch-ID call from the phone (dropped per reviewer's MEDIUM: that gate is step 1's
-   job, and `relay.join`/`presence:true` was the wrong tool anyway — `relay.join` refuses on
-   darwin and is for a Vyre joining another box, not this). The box, other devices and the Deck
-   learn about the new device the normal way, via relay's own `device.paired` notice ("Alex's
-   iPhone was added, just now. Not you? Remove it") — not something this flow raises itself.
-6. **Success**: the phone shows the SAME avatar it just scanned (a small crop of the decoded
-   camera frame, upright-rotated — not a redrawn copy; this scanner has no access to app-design's
-   avatar renderer/seed) doing a short celebratory hop-plus-confetti (under 1.2s, skipped under
-   `prefers-reduced-motion`, `deck/css/pair.css`'s `.ms-done`/`.confetti-bit`, ui-ux's motion
-   prototype's "goal done" moment), then redirects to the person's own `https://<handle>.vyre.run`
-   (ASSUMED to come back from step 3's resolve; confirm with tailnet).
-7. **Errors**: worded per refusal code (see step 3's list, plus a pairing-side `denied`), always
-   with a "Scan again" that returns to step 2 without re-deriving anything from a ticket the
-   person no longer holds on screen.
+   pairing secret).
+3. **The phone pairs in one call**: `deck/js/pair-ticket.js`'s `pairNow(ticket, { relay, name })`
+   calls `relay/client/client.js`'s `pairTicket()` directly - no code of pwa's own touches the
+   ticket, derives a key, or talks to a resolve endpoint; that entire library call does the
+   derivation (domain-separated SHA-256 under tailnet's own tags), the locator-only POST to the
+   relay's `/v1/pair`, the MAC verification against the full record, and the Noise handshake.
+   `keyFingerprint(box, crypto)` then gives the same 8-character fingerprint the box's own Touch
+   ID prompt shows.
+   **STILL PENDING from launch:** `relay`, the box's `ws://`/`wss://` address - nothing in the
+   72-bit code carries it (no room), so the Deck's "Add your phone" screen needs to hand it to
+   the sheet some other way (`pairScanSheet({ relay })`'s own second argument). Not yet wired to
+   a real value.
+   **INTERIM, not final** (team-lead + reviewer, 2026-09-28): `pairTicket()` is atomic, so there
+   is no confirm-before-pairing step - pairing starts the instant a ticket decodes. Team-lead and
+   reviewer have asked tailnet for a resolve/pair split so the sheet can show "Pair with `<box>`
+   (`<fingerprint>`)?" BEFORE the handshake; once that sha lands, swap `pairNow()` for it (see
+   `pair-ticket.js`'s own header) - this is the one thing in this contract expected to change.
+4. **Success**: the box name and fingerprint are shown as a confirmation ("Paired with `<box>`
+   as `<name>`. Code `<fingerprint>`. Not you? Remove it in Settings, Devices."), the device name
+   sent with the pairing is the person's first name (`system.info`'s `owner.name`) plus the model
+   (User-Agent Client Hints on Android; iOS Safari has none and falls back to a plain "iPhone")
+   - "Alex's iPhone" (team-lead's decision, not editable yet: no pre-pairing screen exists to
+   edit it on until the split above lands). The phone shows the SAME avatar the person saw on
+   the Deck (`deck/js/pair-avatar.js`, rendered fresh via app-design's vendored `identity.js`,
+   not a photo - the camera-frame crop in `scan.js` is kept only as a fallback if rendering
+   throws), doing a short celebratory hop-plus-confetti (under 1.2s, skipped under
+   `prefers-reduced-motion`, `deck/css/pair.css`'s `.ms-done`/`.confetti-bit`).
+   **ASSUMED, flagged to app-design, not confirmed:** the avatar option shown is derived from
+   `sha256(box key)[0] % USER_GRADIENTS.length` - matching "the same avatar" ONLY if the box
+   picks its own avatar the same deterministic way, from its own key. If it's a stored/user
+   choice instead, this renders a different (but plausible-looking) avatar, not literally the
+   same one.
+   **STILL PENDING from tailnet:** the redirect to `https://<handle>.vyre.run` (team-lead,
+   2026-09-28) has nowhere to read `handle` from - `pairTicket()`'s result has no such field.
+   Not built until tailnet says where it comes from; team-lead is asking them to add it to the
+   (still-atomic, or future split) response.
+5. **Errors**: `pairTicket()`'s own refusals surface as a generic "That code expired or was
+   already used" for a 404 (tailnet: expired/used/unknown are deliberately indistinguishable, so
+   a scanner can't tell which applied) plus `rate_limited` for a 429 - always with "Scan again"
+   returning to step 2.
 
 ## Install it on an iPhone
 
@@ -547,6 +544,54 @@ others"); this is the camera + decoder + redeem-flow half.
   name, before anything happens). Superseded once by reviewer's verdict on bdca618b (below) — the
   first version sent the raw ticket to a server tool and trusted a server-supplied fingerprint,
   both wrong; the current version is described in full in "Phone-side contract".
+
+## Doing (real relay/client + vendored geometry, 2026-09-28)
+Reviewer held the redeem flow a SECOND time on d49335e4: the hand-rolled protocol used different
+domain tags than tailnet's real ones, put the locator in a GET URL instead of a POST body (access
+logs), MAC'd only `route||box` instead of the full record (a relay could still swap the box's own
+NAME, defeating the confirm step's purpose), and formatted the fingerprint differently from the
+box's own. Fix: delete all of it. Merged work/tailnet (3cfd01c7, includes 8b693dab and 2990a810)
+into work/pwa and rewrote `deck/js/pair-ticket.js` to call `relay/client/client.js`'s real
+`pairTicket()`/`keyFingerprint()` only - no derivation, lookup or MAC code left in pwa's own
+files. See "Phone-side contract" above for the current (interim, atomic-call) shape.
+
+Also, separately, app-design fixed the ring-gap/margin finding from this file's earlier "Doing"
+entry (the true cause was the orientation marker, not the ticks) and consolidated the geometry
+into one shared, vendored module rather than a second hand-copy drifting out of sync again:
+- Vendored `deck/vendor/vyrecode/geometry.js` (RING_R=[188,222], tick lengths 6/12/18/24,
+  `validateGeometry()`'s own margin/gap invariant), `vyrecode2.js` (the real renderer),
+  `identity.js` and `creature.js` (the avatar sources) from app-design's round5 scratchpad.
+  `deck/vyrecode/decode-core2.js` now imports `RING_R`/`tickLength` from `geometry.js` instead
+  of restating the numbers (`defaultGeometry()`); the toString()-injection harness technique
+  needed a small adjustment for this - `decodeCore2()` now takes geometry as a plain-data
+  argument (JSON-safe, no live functions) rather than closing over an ES import, since a
+  toString()'d function can't carry the import with it into the injected page. See
+  decode-core2.js's own header for the mechanics.
+- `test/harness.js` now renders through the REAL `vyrecode2.js` + a real identity face instead of
+  a synthetic flat-colour test disc (`render-fixture.js`, deleted) - more faithful to what a
+  phone camera actually sees.
+- **Pass rate with the real geometry + real renderer: 8/17**, down from the 11/17 measured
+  against the old geometry and a synthetic (higher-contrast) test fixture. Two real, distinct
+  effects, not one regression: (1) the real renderer's palette-derived mark colours
+  (`paletteFor()`'s soft, theme-blended tones) have meaningfully lower contrast than the flat
+  test colours the earlier number was measured against - blur and scale-80 both newly fail,
+  which fits a contrast story; (2) tried scaling the ray-walk's sample offsets and patch size
+  down to match the shorter ticks (6/12/18/24 vs the old 8/15/22/29) - made things WORSE (down to
+  8/17 either way tested), reverted to the original absolute offsets/patch since there's no need
+  to shrink them (the shorter ticks still fit comfortably under the unscaled sample range). Not
+  chased further this session - team-lead's ask was to rerun and report, not to re-tune blind;
+  the honest number is 8/17, and the contrast hypothesis is the lead worth pulling on next
+  (either app-design widens the mark/tint contrast, or the decoder needs a contrast-adaptive
+  threshold rather than the current fixed `abs(ink-bg)<3` cutoff).
+- **Not done this session**: the Web Worker move and the localization pre-pass (team-lead's other
+  ask, targeting under 200ms/attempt) - the geometry/protocol rework took the full session.
+  Still ~1-2s/attempt on the main thread; see `scan.js`'s own perf note.
+- Built `deck/js/pair-avatar.js`: renders the same avatar on the success screen from the vendored
+  `identity.js`, camera crop kept only as a fallback. The avatar-option derivation is an
+  unconfirmed assumption (see "Phone-side contract" point 4) - flagged to app-design.
+- Fixed two pre-existing em dashes in tool descriptions that came in with the work/tailnet merge
+  (`core/onboard/index.js`, `core/relay/index.js`) - broke `test/docs-check.test.js`'s
+  reference-generation check.
 
 ## Next
 - Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
