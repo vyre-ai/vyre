@@ -125,6 +125,23 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## Resume 2026-09-28 (cont'd 7): voice.listen ticket cherry-picked, verified against the real server
+capsule-pro landed the ticket at f967b3de - confirmed my guessed shape exactly, no client code
+changes needed (voice.js already called voice.listen and opened `new WebSocket(wsUrl(path))` with
+no headers, matching listen.js's issue() -> {path: "/v1/streams/voice/listen?ticket=..."}).
+- Cherry-picked their 3-commit chain in order (06713585 open the stream to "deck" -> c9573929
+  refuse an agent caller outright -> f967b3de the ticket itself), onto work/native-core-composer:
+  1fdccb81, baad35a8, f47bde95. Gotcha: cherry-picking f967b3de alone first (skipping its two
+  prerequisites) applied "clean" via `--theirs` conflict resolution but left local/voice/voice.test.js
+  failing 1/14 (idle test: "streams: 1" not 0, a leaked stream) - the missing prerequisites, not a
+  real bug. Reset and redid the three in dependency order; local/voice/voice.test.js +
+  talk.test.js: 22/22 clean.
+  docs:ref regenerated twice (28eabbe9) after each cherry-pick's docs/index.json + docs/reference/*
+  conflicts (resolved --theirs then regenerated properly, rather than hand-merging generated JSON).
+- Full run on testbox: local/voice (22), composer-* + commands + boundaries (30): 51/51 pass (1
+  skip, vyre-mic's Swift build, macOS only). Voice is now verified end to end against the real
+  server code, not just fakes - ready for reviewer-2.
+
 ## Resume 2026-09-28 (cont'd 6): "From your past sessions" hint (fae441ff)
 Item 1's composer side, against memory-iq's recall.related (200112a0, signed off by their
 reviewer): {session, seq, role, ts, name, title, cwd, snippet, score} per hit, owner surfaces
