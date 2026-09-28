@@ -86,6 +86,21 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026, later still: binding user decision, relay-first everywhere ("Wink" in copy — same
+mechanism as the scan-to-pair note below, renamed). Servers skip Tailscale too by default.
+Claimed ADR 0038 (docs/work/README.md), amends ADR 0002 and ADR 0014. Design note sent to the
+reviewer (copy to the lead), not building: the caller-classification layer needs nothing new
+(`ownerDevice()` in core/modules/index.js already treats `device:<id>` and `tailnet:<owner>` as
+equal, built for ADR 0026); the tailnet listener (core/names/service.js, `tailscale whois`)
+simply doesn't start when there's no tailnet. Proposed `<handle>.vyre.run` become an alias to
+`app.vyre.run` rather than building a new TLS-tunnel/TCP-proxy component — reuses ADR 0026 sec
+10's already-shipped static-shell-plus-Noise-channel design, no new infra. Listed what has no
+relay equivalent today (Taildrive, Taildrop — checked, `core/files/drop.js` calls the real
+`tailscale file cp`, not transport-agnostic — agent-node egress/computers.tailnet, guests from
+another tailnet, Tailscale SSH for box admin) and flagged the relay's own uptime becoming the
+box's uptime for a no-tailnet box, which ADR 0026 sized as an optional secondary path, not
+required infra. Waiting on the reviewer and the lead before writing anything. Idle otherwise.
+
 28 Sep 2026, new from the lead: scan-to-pair (phone.vyre.run scans the owner's avatar / Vyre
 code, no Tailscale on the phone). My part is the relay side: `relay.pair.ticket` mints a short
 ticket, registered with the relay so a phone can resolve it to the box's signed identity, then
