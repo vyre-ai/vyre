@@ -98,7 +98,12 @@ export default {
         const lessonText = lessons && lessons.text ? lessons.text : "";
         // An agent outside its projects gets no brief, only the lessons.
         if (!inScope(projects, slug)) return { text: withWarning(lessonText), project: null };
-        return { text: withWarning([text, lessonText].filter(Boolean).join("\n\n")), project: slug };
+        // Teammates section 1 (docs/design/teammates.md): every ordinary project session gets a
+        // nudge toward team_ask, ahead of the project's own brief - null when the person turned
+        // team.default off for this project, or core/team is not running.
+        const teamAppend = slug ? await ask("team.project-append", { project: slug }) : null;
+        const teamText = teamAppend && typeof teamAppend.text === "string" ? teamAppend.text : "";
+        return { text: withWarning([teamText, text, lessonText].filter(Boolean).join("\n\n")), project: slug };
       },
     });
 
