@@ -27,19 +27,24 @@ const presence = new Presence({ db, role: "box", touchid: null, writeTty: () => 
 const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
 const { id } = presence.enroll({ kind: "device", name: "rc-smoke person", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
 
-const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
-const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
-const body = JSON.stringify(input);
-const out = await new Promise(resolve => {
-  const req = http.request({ socketPath: path.join(home, "vyred.sock"), method: "POST", path: `/v1/tools/${tool}`,
-    headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "x-vyre-caller": "cli", "x-vyre-presence": `device key=${id} ts=${ts} nonce=${nonce} sig=${sig}` } }, r => {
-    let b = "";
-    r.setEncoding("utf8");
-    r.on("data", d => (b += d)).on("end", () => resolve(b));
+let out;
+try {
+  const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
+  const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
+  const body = JSON.stringify(input);
+  out = await new Promise(resolve => {
+    const req = http.request({ socketPath: path.join(home, "vyred.sock"), method: "POST", path: `/v1/tools/${tool}`,
+      headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "x-vyre-caller": "cli", "x-vyre-presence": `device key=${id} ts=${ts} nonce=${nonce} sig=${sig}` } }, r => {
+      let b = "";
+      r.setEncoding("utf8");
+      r.on("data", d => (b += d)).on("end", () => resolve(b));
+    });
+    req.on("error", e => resolve(JSON.stringify({ error: { code: "unreachable", message: e.message } })));
+    req.end(body);
   });
-  req.on("error", e => resolve(JSON.stringify({ error: { code: "unreachable", message: e.message } })));
-  req.end(body);
-});
-presence.remove(id);
-db.close();
+} finally {
+  // Always: a thrown request must not leave the smoke's key enrolled.
+  presence.remove(id);
+  db.close();
+}
 process.stdout.write(out + "\n");
