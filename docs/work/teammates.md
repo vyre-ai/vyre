@@ -7,6 +7,10 @@ git.js/isolation hardening), split off work/teammates at the last reviewed slice
 (8806df79, team-lead's call, 2026-09-28) so the reviewer can clear it without slice B's WIP riding
 along. Once cleared it merges back into work/teammates (or straight to main, the lead's call);
 work/teammates keeps building on top of both slice A and slice B.
+Reviewer signed off work/teammates-a at 60b42d3d with one LOW (this file's own OFF list vs
+lib/git-safe.js's already-reviewed defaults); team-lead asked for the git-safe move (without the
+env param) on top, as its own commit. Merged main in (29ca7d65, brings in lib/git-safe.js itself)
+then applied the move at 5dfa6b41 — pushed, sent to reviewer and integrator.
 
 Scope: persistent project teammates (a named agent per role per project, durable notes, a serial
 inbox, a summon tool in every session of the project), designed on ADR 0030's session model. The
