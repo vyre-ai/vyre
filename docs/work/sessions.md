@@ -43,6 +43,14 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
+- Resume 9 check (2026-09-28): confirmed a session started with no project can be attached to
+  one later. `projects.add-threads` (CLI `vyre pick <project> <thread>...`) already does this;
+  `test/projects-cli.test.js` test 22 ("vyre start opens a new named thread ... pick and unpick
+  change the marker") exercises exactly this against a real `vyre`/vyred with a fake `claude`.
+  Reran on testbox: 23/23 (`test/projects-cli.test.js` + `core/projects/projects.test.js`).
+  No gap found; no code change needed. Residual, not chased today: a session picked seconds
+  after it starts may not appear in `projects.catalog`/`findThread` until Recall/the catalogue
+  indexes it (indexing latency, not a projects bug) — worth a note to recall if this ever bites.
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
