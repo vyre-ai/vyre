@@ -3521,7 +3521,7 @@ Whether new-work steers to teammates by default in this project (docs/design/tea
 
 - Input:
   - `project` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `team.default.set`
 
@@ -3588,7 +3588,7 @@ The sentence or two sessions should inject into an ordinary project session's ap
 
 - Input:
   - `project` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `team.project-has-any`
 
@@ -3596,7 +3596,7 @@ Cheap check for sessions' own append plumbing: does this project have any teamma
 
 - Input:
   - `project` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `team.status`
 

@@ -717,6 +717,11 @@ export default {
     ctx.tool("team.default.get", {
       description: "Whether new-work steers to teammates by default in this project (docs/design/teammates.md section 1): the append line and @role's create-on-first-use. On unless a person has turned it off. {project} -> {project, enabled}.",
       input: { type: "object", required: ["project"], properties: { project: { type: "string" } } },
+      // reviewer LOW: takes any project slug as input with no ownership check, so it must never
+      // be reachable by a session or teammate's own call (an agent scoped to project A reading
+      // project B's setting) - only a person's own surface, or sessions calling it as itself
+      // (caller kind "module", ADR 0030's settings plumbing) at session start.
+      callers: ["module", "cli", "local", "deck", "capsule"],
       run: async i => {
         if (!SLUG.test(String(i.project || ""))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
         return { project: i.project, enabled: defaultEnabled(i.project) };
@@ -741,6 +746,9 @@ export default {
     ctx.tool("team.project-has-any", {
       description: "Cheap check for sessions' own append plumbing: does this project have any teammate (own or shared in)? {project} -> {any}.",
       input: { type: "object", required: ["project"], properties: { project: { type: "string" } } },
+      // reviewer LOW, same reasoning as team.default.get: no ownership check on the project
+      // input, so only a person or sessions calling as itself ("module") may reach it.
+      callers: ["module", "cli", "local", "deck", "capsule"],
       run: async i => {
         if (!SLUG.test(String(i.project || ""))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
         return { any: serving(i.project).length > 0 };
@@ -750,6 +758,9 @@ export default {
     ctx.tool("team.project-append", {
       description: "The sentence or two sessions should inject into an ordinary project session's append, ahead of any teammate's own thread (docs/design/teammates.md section 1): points new work at team_ask, or nothing when the person has turned the default off for this project. {project} -> {text} (text is null when there is nothing to say).",
       input: { type: "object", required: ["project"], properties: { project: { type: "string" } } },
+      // reviewer LOW, same reasoning: this returns another project's teammates' roles and briefs,
+      // so it needs the same callers gate as team.default.get and team.project-has-any.
+      callers: ["module", "cli", "local", "deck", "capsule"],
       run: async i => {
         if (!SLUG.test(String(i.project || ""))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
         return { project: i.project, text: projectAppend(i.project) };
