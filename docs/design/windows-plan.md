@@ -298,9 +298,17 @@ stays server-side, in `core/`/`local/capsule-win`, never duplicated into Rust):
   rather than inventing a second one; needs a short sync with e2e before landing, flagged under
   Needs from others.
 
-**Module shape**: ships as `local/capsule-win`, same manifest contract as `local/hands-mac`
-(`module.json`, `does.tools`, `watches.emits`, no cross-feature imports, `test/boundaries.test.js`
-enforced), no fork of `core`, per section 4 above.
+**Module shape, corrected after reading the actual Mac Capsule module**: `local/capsule` is
+*already* the one cross-platform module (`capsule.status`/`show`/`report`, no OS in its tool
+names), with the native app living in a platform subfolder (`local/capsule/native`, Swift) that
+`index.js`'s `native()` check gates on `process.platform === "darwin"`. A separate `local/capsule-
+win` module declaring the *same* tool names would collide in the registry, and duplicate the tool
+definitions for no reason: `local/hands-mac` is a different shape (there is no cross-platform
+`hands` module today, only the Mac one) and isn't the right template here. The actual plan: a new
+sibling `local/capsule/native-win` (the Tauri project) and `native()`/the autostart spawn logic in
+`local/capsule/index.js` extended to recognize `win32` alongside `darwin`. No fork of `core`, no
+new manifest entity, per section 4 above; `docs/design/windows-plan.md`'s own text above (module
+shape bullets under Native bits) should be read with this correction in mind.
 
 **CI, no Windows hardware**: a `capsule-win.yml` workflow on `windows-latest`, same shape as
 `capsule-mac.yml`: build the Tauri shell (`cargo tauri build` or `build.rs`-driven, TBD once the
@@ -310,10 +318,18 @@ Authenticode-pin check in isolation; a real focused-window Alt+Space race may no
 at all, in which case that specific case is flagged "unverified without hardware" rather than
 silently assumed to pass, same discipline as section 7).
 
-**Sequencing**: doc (this section) → agree the look with app-design (done, `d044f0e1`) → agree
-the tools/events contract with capsule-pro (below, in progress) → scaffold `local/capsule-win` +
-`capsule-win.yml` → wire hotkey/tray/toast → Windows Hello spike → sign/pin. Each milestone
-reported to the lead as it lands, per instruction.
+**Sequencing**: doc (this section, done) → agree the look with app-design (done, `d044f0e1`) →
+scaffold started per the lead's instruction to begin before capsule-pro's contract reply, since
+the shell hosts Deck's web views and doesn't need it yet: `local/capsule/native-win` (corrected
+module shape, above) now holds `hotkey.rs`, the Alt+Space-default / Ctrl+Alt+Space-fallback
+decision and the system-menu-preemption logic, host-independent, unit-tested (9 tests), and
+`capsule-win.yml` runs them on `windows-latest`. **Not yet built**: the actual Tauri app (tray,
+WebView2 panel, Windows Hello, sign/pin), `local/capsule/index.js`'s `native()`/autostart gate
+extended to `win32`, or `core/cli/commands/capsule.js`'s Windows equivalent of
+`capsule-native.js`'s build-and-launch flow (deliberately not wired yet: claiming `native: true`
+for Windows in `capsule.status` before there's a real binary to build would be worse than saying
+nothing). Once capsule-pro's contract reply lands: wire the app shell to it → tray/toast → Windows
+Hello spike → sign/pin. Each milestone reported to the lead as it lands, per instruction.
 
 **Needs from others**:
 - capsule-pro: confirm the Windows Capsule calls the *same* tools/events the Mac Capsule does

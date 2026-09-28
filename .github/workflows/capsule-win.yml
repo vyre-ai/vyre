@@ -1,0 +1,30 @@
+# The Windows Capsule shell (Tier C, docs/design/windows-plan.md section 9). Only
+# local/capsule/native-win exists so far: the global-hotkey decision logic (which binding to ask
+# for, the Alt+Space-vs-system-menu conflict), host-independent and unit-tested. The Tauri panel
+# itself (tray, WebView2, Windows Hello, Authenticode sign/pin) is not scaffolded yet; this
+# workflow will grow with it. Runs on windows-latest per the plan, even though the crate today
+# builds anywhere, so a future win32-only dependency doesn't silently break here first.
+name: capsule-win
+on:
+  push:
+    paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml"]
+  pull_request:
+    paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: capsule-win-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: local/capsule/native-win
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo test
+        run: cargo test --verbose

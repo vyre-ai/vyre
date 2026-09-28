@@ -101,7 +101,21 @@ jobs:
         shell: pwsh
         run: |
           node scripts/win-connect-probe.mjs "${{ steps.start.outputs.sock }}"
-          if ($LASTEXITCODE -ne 0) { throw "the owner could not connect to their own socket" }
+          if ($LASTEXITCODE -ne 0) {
+            # The socket answered in the previous step (Test-Path found it); if the process is
+            # gone by now, something crashed vyred moments after listen() returned, and the named
+            # pipe went with it - a real bug, not a race in this probe. If it's still running,
+            # the pipe itself is the mystery, worth vyred's own log for whichever module logged
+            # last before this point.
+            $vyredPid = "${{ steps.start.outputs.pid }}"
+            $alive = Get-Process -Id $vyredPid -ErrorAction SilentlyContinue
+            Write-Output "--- vyred process ($vyredPid) still running: $([bool]$alive) ---"
+            Write-Output "--- vyred.out ---"; Get-Content "$env:RUNNER_TEMP\vyred.out" -ErrorAction SilentlyContinue
+            Write-Output "--- vyred.err ---"; Get-Content "$env:RUNNER_TEMP\vyred.err" -ErrorAction SilentlyContinue
+            $log = Get-ChildItem "$env:RUNNER_TEMP\vyre-home\logs" -Filter *.log -ErrorAction SilentlyContinue | Select-Object -Last 1
+            if ($log) { Write-Output "--- $($log.FullName) ---"; Get-Content $log.FullName -ErrorAction SilentlyContinue }
+            throw "the owner could not connect to their own socket"
+          }
       - name: A second local user cannot connect
         shell: pwsh
         run: |
