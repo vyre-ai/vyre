@@ -845,13 +845,32 @@ export class Pool {
     const r = this.row(computerId);
     if (!r || r.state !== "running" || !this.hosts.has(computerId)) return;
     const h = this.endpoint(computerId).helper;
-    const res = await fetch(new URL("/agents/reload", h.url), {
-      method: "POST", headers: { authorization: `Bearer ${h.token}` }, signal: AbortSignal.timeout(3_000),
-    });
+    const res = await this._helperFetch(new URL("/agents/reload", h.url), { method: "POST", headers: { authorization: `Bearer ${h.token}` } });
     let body; try { body = await res.json(); } catch { body = null; }
     if (!res.ok) throw new Error(`computerd refused to reload ${computerId}'s agents: ${(body && body.error && body.error.message) || res.status}`);
     if (why) this.log(`${computerId} reloaded after removing ${why}${body && body.revoked && body.revoked.length ? `; revoked ${body.revoked.join(", ")}` : ""}`);
     return body;
+  }
+
+  /**
+   * fetch(), tolerating computerd's own startup lag: ensure()'s boot() only waits for the VNC
+   * port (5900) to answer, since that is what a desktop-kind checkout actually needs -- computerd
+   * itself (7000) can still be a moment behind it, real on the box (found live, 28 Sep: the very
+   * first reload right after a fresh browser-kind computer's own first start hit ECONNREFUSED).
+   * Retries a connection failure only (never a real HTTP error, which is computerd's own answer,
+   * not its absence) for up to 10s, the same order of magnitude as a VNC probe's own patience.
+   * @param {URL} url @param {RequestInit} init
+   */
+  async _helperFetch(url, init) {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      try {
+        return await fetch(url, { ...init, signal: AbortSignal.timeout(3_000) });
+      } catch (e) {
+        if (Date.now() >= deadline) throw e;
+        await new Promise(r => setTimeout(r, 250));
+      }
+    }
   }
 
   /**
@@ -866,9 +885,9 @@ export class Pool {
     if (!r || r.kind !== "browser") throw new Error(`${computerId} is not a shared computer`);
     if (r.state !== "running" || !this.hosts.has(computerId)) throw new Error(`${computerId} is not running; nothing to tell computerd`);
     const h = this.endpoint(computerId).helper;
-    const res = await fetch(new URL("/agents/dispose", h.url), {
+    const res = await this._helperFetch(new URL("/agents/dispose", h.url), {
       method: "POST", headers: { authorization: `Bearer ${h.token}`, "content-type": "application/json" },
-      body: JSON.stringify({ id: agentId }), signal: AbortSignal.timeout(3_000),
+      body: JSON.stringify({ id: agentId }),
     });
     let body; try { body = await res.json(); } catch { body = null; }
     if (!res.ok) throw new Error(`computerd refused to dispose ${agentId}'s context: ${(body && body.error && body.error.message) || res.status}`);
