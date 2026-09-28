@@ -16,8 +16,10 @@
 import { accept, connect, refuse } from "./ws.js";
 import { DEFAULTS, VoiceError, deepgramListen, offline, origin, settings, statusError, transcribe } from "./providers.js";
 
-/** Callers on this Mac that may talk to it. A tailnet peer never may: the mic is this machine's. */
-export const LOCAL = ["capsule", "local", "cli"];
+/** Callers on this Mac that may talk to it. A tailnet peer never may: the mic is this machine's.
+ *  "deck" (chat's push-to-talk, native-core, 28 Sep) is the Deck served locally on this same Mac,
+ *  never a remote one: `info.peer` below refuses those regardless of what they claim as caller. */
+export const LOCAL = ["capsule", "local", "cli", "deck"];
 /** Five minutes of 16 kHz linear16. One held key is one utterance, not a recording session. */
 export const MAX_BYTES = 5 * 60 * 32_000;
 /** How long a stream may sit with no frame at all before it is closed. Only while one is open. */
