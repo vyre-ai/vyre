@@ -385,6 +385,46 @@ export default {
       },
     });
 
+    /**
+     * Adding a second device or a server, or pointing this device at one — the "Vyre anywhere"
+     * decision (28 Sep 2026): Tailscale and the relay never matter for Solo, only once something
+     * joins. One tool, an action per step, the same shape as onboard.tailscale/claude/name so
+     * launch's onboarding cards need one import and one error-shape for every screen. Reads the
+     * tailscale step's own status/connect/policy/lock through the functions above (no self-call);
+     * relay and reachability go through ctx.call, since those live in other modules.
+     */
+    ctx.tool("onboard.join", {
+      description: "Adding a second device or a server: status says whether Tailscale or the relay is ready to pair with; tailscale (step: status|connect|policy|lock) is onboard.tailscale's own logic, callable any time; relay mints a QR/link pairing code; verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to \"device\" once reachability is confirmed (per ADR 0039 section 5 — never on the Solo/server side accepting a join).",
+      input: obj({ action: { type: "string", enum: ["status", "tailscale", "relay", "verify"] }, step: { type: "string", enum: ["status", "connect", "policy", "lock"] }, node: { type: "string" }, becomeDevice: { type: "boolean" } }),
+      presence: { when: i => i && (i.action === "relay" || (i.action === "tailscale" && i.step === "connect")),
+        summary: async i => i && i.action === "relay" ? "Pair a new device with this box, without Tailscale" : "Connect this box to your Tailscale network" },
+      run: async ({ action = "status", step = "status", node, becomeDevice = false }, { caller }) => {
+        if (action === "tailscale") {
+          if (step === "lock") { const l = await lockStatus(); return { ...l, key: l.nodeKey, commands: lockCommands(l.nodeKey) }; }
+          if (step === "connect") {
+            const s = await stepOf("tailscale", caller);
+            if (s.state === "done" || !s.installed || !s.operator.ok) return link(s);
+            const r = await call("names.connect");
+            const after = await stepOf("tailscale", caller);
+            return link({ ...after, loginUrl: after.loginUrl || r.loginUrl || null });
+          }
+          if (step === "policy") return policy(caller);
+          return link(await stepOf("tailscale", caller));
+        }
+        if (action === "relay") return call("relay.pair.start");
+        if (action === "verify") {
+          const health = await call("link.health", node ? { node } : {});
+          if (becomeDevice && health.online) await tryCall("onboard.machine", { action: "set", machine: "device" });
+          return health;
+        }
+        const relay = await tryCall("relay.status");
+        return {
+          tailscale: link(await stepOf("tailscale", caller)),
+          relay: relay.__error ? { available: false, why: relay.__error } : { available: true, enabled: relay.enabled, connected: relay.connected, pairing: relay.pairing },
+        };
+      },
+    });
+
     ctx.tool("onboard.history", {
       description: "Find and index this machine's Claude Code sessions, in the background.",
       input: obj({ action: { type: "string", enum: ["status", "start"] } }),

@@ -12,6 +12,7 @@
       "onboard.name",
       "onboard.claude",
       "onboard.tailscale",
+      "onboard.join",
       "onboard.history",
       "onboard.skip",
       "onboard.finish",

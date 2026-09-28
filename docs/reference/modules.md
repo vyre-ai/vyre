@@ -35,14 +35,13 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
-| [`join`](#join) | `core/join` | `box` | 4 | 0 | capsule, cli, deck |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 21 | 14 | capsule, cli, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 23 | 6 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
-| [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
+| [`onboard`](#onboard) | `core/onboard` | `box` | 11 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 6 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 11 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 9 | 5 | cli |
@@ -267,18 +266,6 @@ Inbound webhooks from the public internet through Tailscale Funnel: one route at
 - Needs vault: `per-route`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
-## join
-
-Adding a second device to this box, or pointing it here after a move to a server: Tailscale (with the merged one-paste policy snippet) or the relay as the alternative, then whether the new device is actually reachable. Never runs `tailscale up` or edits the tailnet's ACLs itself.
-
-- Folder: `core/join`, version 0.1.0
-- Runs on: `box`
-- Requires: none
-- Tools: [4](tools.md#join)
-- Emits: no events
-- Shows on: capsule, cli, deck
-- Teaches tips: `[object Object]`, `[object Object]`
-
 ## learn
 
 - Folder: `core/learn`, version 0.2.0
@@ -351,7 +338,7 @@ Who besides the owner the box's tailnet listener serves: guests from other tailn
 - Folder: `core/onboard`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [10](tools.md#onboard)
+- Tools: [11](tools.md#onboard)
 - Emits: [2 events](events.md#onboard)
 - Shows on: no surface
 
