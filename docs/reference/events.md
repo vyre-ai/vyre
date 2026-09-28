@@ -72,7 +72,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | Event | Fields |
 | --- | --- |
 | `drive.exposed` | `findings`, `unsafe` |
-| `files.received` | `bytes`, `name`, `path` |
+| `files.received` | `bytes`, `name`, `path`; sometimes `conflict`, `note` |
 | `files.sent` | `bytes`, `name`, `to`; sometimes `mac` |
 
 ## gate

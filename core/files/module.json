@@ -4,7 +4,7 @@
   "description": "Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["files.search", "files.stat", "files.dirs", "files.recent", "files.preview", "files.fetch", "files.send", "files.deliver",
+  "does": { "tools": ["files.search", "files.stat", "files.dirs", "files.recent", "files.preview", "files.fetch", "files.send", "files.deliver", "files.receive",
     "files.drive.status", "files.drive.share", "files.drive.unshare", "files.drive.access", "files.drive.audit",
     "files.drive.url", "files.drive.mount", "files.drive.unmount", "files.drive.open", "files.drive.local"] },
   "watches": { "emits": ["files.sent", "files.received", "drive.exposed"] },
@@ -14,7 +14,7 @@
     "tips": [
       {"id": "send-taildrop", "text": "Run `vyre send report.pdf` on your Mac to Taildrop it to the box. It lands in the box's inbox, `/work/inbox`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre send <file>", "docs": "reference/cli.md#vyre-send"},
       {"id": "deliver-taildrop", "text": "On the box, `files.deliver` sends a file to a paired Mac with Taildrop; it lands in that Mac's inbox, `~/Vyre/inbox`, once that Mac turns files.receive on.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call files.deliver", "docs": "reference/tools.md#files"},
-      {"id": "receive-config", "text": "A Mac takes in files the box delivers only once you set `files.receive: true` in config.json; off by default, so pairing a Mac never changes what Taildrop does on it.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "files.receive", "docs": "reference/tools.md#files"},
+      {"id": "receive-config", "text": "A Mac takes in files the box delivers only once you turn `files.receive` on; off by default, so pairing a Mac never changes what Taildrop does on it. Takes effect right away, no restart.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.1", "command": "vyre call files.receive", "key": "files.receive", "docs": "reference/tools.md#files"},
       {"id": "capsule-search", "text": "Press Control twice and type a file's name. The Capsule searches your Mac with Spotlight, plus up to three files from your box.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "Control Control", "docs": "using/capsule.md"},
       {"id": "never-secrets", "text": "Files never shows secrets: `.env` files, key-like names, dot folders and `~/.ssh` stay out of every search and send.", "surfaces": ["capsule", "deck", "phone", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#files"},
       {"id": "send-many", "text": "`vyre send` takes several files at once. One refused file does not stop the rest, and the exit code says if any failed.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre send <file> [more files]", "docs": "reference/cli.md#vyre-send"},

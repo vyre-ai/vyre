@@ -113,9 +113,9 @@ test("drop: unavailable() names why Taildrop cannot reach a peer, and says so fo
   assert.match(unavailable(peer({ TaildropTarget: 0, NoFileSharingReason: "file sharing not enabled by Tailscale admin" })) || "", /not enabled by Tailscale admin/);
 });
 
-test("drop: parseWrote finds the final path even when the name has ' as ' in it", () => {
-  assert.deepEqual(parseWrote("wrote a as b.txt as /work/inbox/a as b (1).txt (12 bytes)", "/work/inbox"), { file: "/work/inbox/a as b (1).txt", bytes: 12 });
-  assert.deepEqual(parseWrote("2026/09/27 10:00:00 wrote x.pdf as /work/inbox/x.pdf (3 bytes)", "/work/inbox"), { file: "/work/inbox/x.pdf", bytes: 3 });
+test("drop: parseWrote finds the final path even when the name has ' as ' in it, and the original name it was handed", () => {
+  assert.deepEqual(parseWrote("wrote a as b.txt as /work/inbox/a as b (1).txt (12 bytes)", "/work/inbox"), { file: "/work/inbox/a as b (1).txt", bytes: 12, orig: "a as b.txt" });
+  assert.deepEqual(parseWrote("2026/09/27 10:00:00 wrote x.pdf as /work/inbox/x.pdf (3 bytes)", "/work/inbox"), { file: "/work/inbox/x.pdf", bytes: 3, orig: "x.pdf" });
   assert.equal(parseWrote("waiting for file...", "/work/inbox"), null);
   assert.equal(parseWrote("wrote x as /etc/x (3 bytes)", "/work/inbox"), null);
 });
@@ -186,7 +186,9 @@ test("drop: the box runs one tailscale file get into a 0700 inbox, announces wha
   assert.ok(await until(() => got.length > 0), "files.received was emitted");
   const pid = f.pid();
   assert.ok(pid > 0 && alive(pid), "the receiver is running");
-  assert.deepEqual(got, [{ name: "report (1).pdf", path: "report (1).pdf", bytes: 5 }]);
+  // The fake writes "report.pdf" as "report (1).pdf": --conflict=rename kept both copies.
+  assert.deepEqual(got, [{ name: "report (1).pdf", path: "report (1).pdf", bytes: 5, conflict: true,
+    note: 'kept both copies: a file already named "report.pdf" was here, so this one landed as "report (1).pdf" instead' }]);
   assert.equal(fs.statSync(inbox).mode & 0o777, 0o700);
   const get = f.calls().filter(a => a[0] === "file");
   assert.deepEqual(get, [["file", "get", "--wait", "--loop", "--conflict=rename", "--verbose", fs.realpathSync(inbox)]]);
@@ -286,11 +288,72 @@ test("drop: a Mac runs its own tailscale file get into its ~/Vyre/inbox default,
   assert.ok(await until(() => got.length > 0), "files.received was emitted");
   const pid = f.pid();
   assert.ok(pid > 0 && alive(pid), "the receiver is running");
-  assert.deepEqual(got, [{ name: "report (1).pdf", path: "report (1).pdf", bytes: 5 }]);
+  assert.deepEqual(got, [{ name: "report (1).pdf", path: "report (1).pdf", bytes: 5, conflict: true,
+    note: 'kept both copies: a file already named "report.pdf" was here, so this one landed as "report (1).pdf" instead' }]);
   const get = f.calls().filter(a => a[0] === "file" && a[1] === "get");
   assert.deepEqual(get, [["file", "get", "--wait", "--loop", "--conflict=rename", "--verbose", fs.realpathSync(inbox)]]);
   await stop();
   assert.ok(!alive(pid), "the child is gone after stop");
+});
+
+test("drop: a file that lands under the name it was sent as carries no conflict note", async t => {
+  const f = fake(t, running([]));
+  const w = path.join(f.home, "work");
+  fs.mkdirSync(w);
+  const inbox = path.join(w, "inbox");
+  // A fake that writes the file under its own original name: no rename, so no conflict.
+  const plainFake = `#!/usr/bin/env node
+const fs = require("node:fs"), path = require("node:path");
+const dir = __dirname;
+const args = process.argv.slice(2);
+fs.appendFileSync(path.join(dir, "calls.log"), JSON.stringify(args) + "\\n");
+if (args[0] === "status") { process.stdout.write(fs.readFileSync(path.join(dir, "status.json"), "utf8")); process.exit(0); }
+if (args[0] === "file" && args[1] === "get") {
+  const inbox = args[args.length - 1];
+  fs.writeFileSync(path.join(dir, "get.pid"), String(process.pid));
+  fs.writeFileSync(path.join(inbox, "plain.txt"), "hi");
+  process.stderr.write("wrote plain.txt as " + path.join(inbox, "plain.txt") + " (2 bytes)\\n");
+  setInterval(() => {}, 1 << 30);
+} else process.exit(1);
+`;
+  fs.writeFileSync(path.join(f.home, "ts", "tailscale"), plainFake, { mode: 0o755 });
+  fs.chmodSync(path.join(f.home, "ts", "tailscale"), 0o755);
+  const { events, stop } = await registry(t, f.home, { role: "box", files: { roots: [w], inbox } });
+  const got = [];
+  events.on("files.received", e => got.push(e.payload));
+  assert.ok(await until(() => got.length > 0), "files.received was emitted");
+  assert.deepEqual(got, [{ name: "plain.txt", path: "plain.txt", bytes: 2 }]);
+  await stop();
+});
+
+test("drop: files.receive turns the Mac's receiver on and off live, no restart, and remembers the choice in config.json", async t => {
+  const f = fake(t, running([]));
+  const w = path.join(f.home, "work");
+  fs.mkdirSync(w);
+  const inbox = path.join(w, "inbox");
+  const { reg, stop } = await registry(t, f.home, { role: "local", files: { roots: [w], inbox }, link: LINKED });
+  // Off by default: no tailscale call yet.
+  await new Promise(r => setTimeout(r, 100));
+  assert.deepEqual(f.calls(), []);
+
+  const on = await reg.call("files.receive", { on: true }, "cli");
+  assert.deepEqual(on.data, { on: true, changed: true });
+  assert.ok(await until(() => f.pid() > 0), "the receiver started without a restart");
+  const pid1 = f.pid();
+  assert.ok(alive(pid1));
+  // Config remembers it.
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.home, "vh", "config.json"), "utf8")).files.receive, true);
+  // Calling it again with the same value is a no-op.
+  assert.deepEqual((await reg.call("files.receive", { on: true }, "cli")).data, { on: true, changed: false });
+
+  const off = await reg.call("files.receive", { on: false }, "cli");
+  assert.deepEqual(off.data, { on: false, changed: true });
+  assert.ok(!alive(pid1), "the receiver stopped without a restart");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.home, "vh", "config.json"), "utf8")).files.receive, false);
+
+  // A person's own surfaces only, not MCP or a module.
+  for (const caller of ["mcp", "module:test"]) assert.equal((await reg.call("files.receive", { on: true }, caller)).error?.code, "denied", caller);
+  await stop();
 });
 
 test("drop: the box starts no receiver while Tailscale is not Running, or when the inbox is outside the roots", async t => {

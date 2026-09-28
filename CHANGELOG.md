@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Vyre Drive, step 1: the files.receive toggle, and a conflict note when Taildrop keeps both copies
+
+- New `files.receive { on }` (core/files/drop.js): turns a Mac's inbox receiver for what the box
+  delivers with `files.deliver` on or off live, no restart. Person-only callers (cli, local, deck,
+  capsule), same as `files.deliver`. Persists to config.json (`config.save`, the same pattern
+  `computers.egress.set` already uses) so the choice survives a restart too. Previously
+  `files.receive` was a config.json key read once at startup; a Mac never had a live way to turn it
+  on beside hand-editing the file.
+- `files.received`'s payload gains `conflict: true` and a plain-language `note` when Tailscale's
+  `--conflict=rename` kept both copies rather than overwriting an existing file — its own
+  `--verbose` line names both the file it was handed and the file it wrote, so this is read off
+  that line, not guessed from the final name's shape. `parseWrote` gains `orig` (the name before
+  any rename) to carry it.
+- module.json: `files.receive` added to `does.tools`; the `receive-config` tip now says "turn on"
+  with a `command`, not "set in config.json".
+- Tests: core/files/drop.test.js — the toggle starting and stopping the receiver live and writing
+  config.json, person-only callers, a conflict-note case and a no-conflict case, parseWrote's new
+  `orig` field.
+
 #### Reviewer's second pass on the session-import fixes: full-file scrub, a firstParty flag, two LOWs
 
 - MEDIUM (reviewer): `sync.upload.finish` scrubbed only a bounded prefix of the file (the old

@@ -23,6 +23,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { run as tailscale } from "../names/tailscale.js";
 import { tailscaleBin } from "../link/transport.js";
+import * as config from "../config/index.js";
 
 /** The box's inbox when config files.inbox is not set: inside /work, the box's default root. */
 export const INBOX = "/work/inbox";
@@ -69,18 +70,25 @@ export function unavailable(peer) {
 /**
  * The file a --verbose `tailscale file get` line reports, or null. It prints
  * `wrote <name> as <path> (<n> bytes)`, where path is inside the directory it was given. The
- * directory is looked for, so a name with " as " in it still parses.
+ * directory is looked for, so a name with " as " in it still parses. `orig` is the name Tailscale
+ * was originally handed, before `--conflict=rename` (Drive: it renames rather than overwriting a
+ * same-named file already there) may have changed it — the one signal that tells the two apart
+ * without guessing from the name's shape.
  * @param {string} line @param {string} dir the inbox as it was passed to the child
- * @returns {{ file: string, bytes: number } | null}
+ * @returns {{ file: string, bytes: number, orig: string | null } | null}
  */
 export function parseWrote(line, dir) {
   const m = /\((\d+) bytes\)\s*$/.exec(line);
   if (!m || !/\bwrote /.test(line)) return null;
   const head = line.slice(0, m.index).trimEnd();
   const at = head.lastIndexOf(" as " + dir + path.sep);
-  const file = at >= 0 ? head.slice(at + 4) : null;
+  if (at < 0) return null;
+  const file = head.slice(at + 4);
   if (!file) return null;
-  return { file, bytes: Number(m[1]) };
+  const before = head.slice(0, at);
+  const wroteAt = before.indexOf("wrote ");
+  const orig = wroteAt >= 0 ? before.slice(wroteAt + 6) : null;
+  return { file, bytes: Number(m[1]), orig };
 }
 
 const inside = (p, dir) => p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
@@ -100,8 +108,28 @@ export function drop(ctx, { role, g, cfg }) {
     sender(ctx, g);
     // Exactly true, not merely truthy: a config value read back as the string "false" (a shell
     // export, a stray env override) must not switch the receiver on (e2e review of aa9cb40c).
-    if (cfg.receive !== true) return { async stop() {} };
-    return receiver(ctx, g, cfg, macInbox());
+    // `running` holds the receiver currently in effect, or null; files.receive (Vyre Drive's
+    // switch) starts or stops it live, no restart needed, and remembers the choice.
+    let running = cfg.receive === true ? receiver(ctx, g, cfg, macInbox()) : null;
+
+    ctx.tool("files.receive", {
+      description: "Turn on or off whether this Mac takes in files the box delivers with files.deliver (Vyre Drive's receive switch). Off by default: pairing a Mac never changes what Tailscale's own file flow does on it. Takes effect immediately and is remembered across restarts.",
+      input: { type: "object", required: ["on"], properties: { on: { type: "boolean" } } },
+      callers: ["cli", "local", "deck", "capsule"],
+      run: async ({ on }) => {
+        const next = on === true;
+        if (next === Boolean(running)) return { on: next, changed: false };
+        if (next) running = receiver(ctx, g, cfg, macInbox());
+        else { const r = running; running = null; await r.stop(); }
+        if (!ctx.paths) throw new Error("this vyred has no home to save config in");
+        config.save({ files: { receive: next } }, ctx.paths.root, ctx.config);
+        cfg.receive = next; // this closure's own cfg, mutated in place: config.save's live mirror replaces ctx.config.files' object, not this one
+        ctx.log(`files.receive ${next ? "on" : "off"}`);
+        return { on: next, changed: true };
+      },
+    });
+
+    return { async stop() { if (running) { const r = running; running = null; await r.stop(); } } };
   }
   boxSender(ctx, g);
   return receiver(ctx, g, cfg, INBOX);
@@ -285,10 +313,17 @@ function receiver(ctx, g, cfg, defaultInbox) {
     if (!inside(full, dir) || full === dir) return;
     let bytes = w.bytes;
     try { bytes = fs.lstatSync(full).size; } catch {}
+    const name = path.basename(full);
+    // Tailscale's own line says both the name it was handed and the name it wrote: when
+    // --conflict=rename changed the latter, a same-named file was already here, and both are now
+    // kept (Drive's "kept both copies" note), not one silently overwriting the other.
+    const conflict = w.orig != null && path.basename(String(w.orig)) !== name;
     // The name is the sender's choice. One the event log turns away (it looks like a secret) must
     // not take vyred down from inside a stream handler; the file is in the inbox all the same.
-    try { ctx.events.emit("files.received", { name: path.basename(full), path: path.relative(dir, full), bytes }); }
-    catch (e) { log(`a received file was not announced: ${/** @type {Error} */ (e).message}`); }
+    try {
+      ctx.events.emit("files.received", { name, path: path.relative(dir, full), bytes,
+        ...(conflict ? { conflict: true, note: `kept both copies: a file already named "${w.orig}" was here, so this one landed as "${name}" instead` } : {}) });
+    } catch (e) { log(`a received file was not announced: ${/** @type {Error} */ (e).message}`); }
   }
 
   begin().catch(e => log(`the Taildrop inbox did not start: ${/** @type {Error} */ (e).message}`));

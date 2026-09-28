@@ -647,3 +647,24 @@ real merge of that commit is a no-op here. Confirmed with `diff` against
 
 139/139 green on testbox again after the swap (core/sync, core/link, core/modules, test/link*,
 test/federation-*, core/planner/link.test.js, hygiene, docs-index).
+
+## Vyre Drive step 1: files.receive toggle + conflict note (28 Sep 2026)
+
+team-lead's order for Vyre Drive (user decision, HANDOFF.md): 1) files.receive toggle + conflict
+note (this), 2) what-to-sync picker, 3) per-folder agent/project access (vault grant pattern +
+sessions' lib/project-id.js), 4) launch's Drive API step + windows coordination. Each its own sha.
+
+- `files.receive { on }` (core/files/drop.js): starts/stops a Mac's Taildrop inbox receiver live,
+  person-only, persists via `config.save` (same pattern as `computers.egress.set`). No restart
+  needed; previously this was a config.json-only key read once at startup.
+- `files.received` gains `conflict`/`note` when Tailscale's `--conflict=rename` kept both copies:
+  read off its own `--verbose` line (which names both the original and final filename), not
+  guessed from the final name's shape. `parseWrote` gains `orig`.
+- Did not claim a new ADR number for this step: it is a small, additive change to an existing tool
+  and event, not a new architectural decision — the Drive-wide design is already the HANDOFF.md
+  entry. A dedicated ADR may be worth claiming at step 3 (per-folder access) if that turns out to
+  need one; will check docs/work/README.md's ADR table before that step.
+- Tests: core/files/drop.test.js. 81/81 (core/files, hygiene, docs-index, boundaries) on testbox.
+
+## Next
+- Step 2: the what-to-sync picker (sizes, exclusions) — not started.
