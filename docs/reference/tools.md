@@ -3509,11 +3509,12 @@ What the user may be typing, at the cursor: names after @ (agents, projects, thr
 
 ### `sync.consent`
 
-Turn a paired peer's session import on or off, on the box's own record — never the device's say-so. Off only stops new uploads: nothing already sent is touched. sync.delete removes what a device sent, as its own action. planHash, when the surface computed one for the plan the person just reviewed, is stamped onto every file this consent lets land, so sync.delete.import can later remove just that import.
+Turn a paired peer's session import on or off, on the box's own record — never the device's say-so. Off only stops new uploads: nothing already sent is touched. sync.delete removes what a device sent, as its own action. planHash and included, when the surface reviewed a sync.scan plan with the person, are stored with the consent: sync.delete.import can later remove just that import by its planHash, and every project folder not in included is refused by sync.upload.plan and sync.upload.start, not merely left untagged — the picker's exclusions are enforced, not advisory.
 
 - Input:
   - `machine` string, required
   - `on` boolean, required
+  - `included` list of string: Project folder names (sync.scan's own names) this plan lets in. Omitted or on: false: no restriction.
   - `planHash` string
 - Callers: `capsule`, `cli`, `deck`, `local`
 - Registered only on the box.
@@ -3594,7 +3595,7 @@ Verify and land a finished upload: checks its hash, scrubs it for secrets, and r
 
 ### `sync.upload.plan`
 
-For a paired peer's own connection: which of its files are new, changed, or already here, and its quota. Internal to the device's sender.
+For a paired peer's own connection: which of its files are new, changed, already here, or outside the approved plan's included folders (excluded, sync.upload.start refuses these too — not merely reported), and its quota. Internal to the device's sender.
 
 - Input:
   - `files` list of object, required

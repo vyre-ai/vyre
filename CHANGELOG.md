@@ -4,6 +4,48 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Both Vyre Drive HOLDs fixed, one sha: files.receive genuinely person-only, sync.scan's exclusions enforced, the real ~/.claude gated by the kernel's own rule
+
+- Step 1 MEDIUM: `files.receive`'s callers list said person-only, but it was never in
+  `core/presence`'s `PERSON_ONLY` (or `HUMAN_ONLY`), so the daemon's model-shell check
+  (`core/daemon/index.js`'s `personal`) and the harness floor's `MODEL_NEVER` set never
+  refused it — a Claude session's own Bash could call it as "cli" and turn a Mac's receiver
+  on, the exact boundary the switch exists to guard. Added `files.receive` to `PERSON_ONLY`
+  (`core/presence/index.js`), next to `files.drive.access`, its closest precedent (a switch on
+  an existing capability, not a secret reveal, so `PERSON_ONLY` rather than `HUMAN_ONLY`'s
+  presence-proof tools).
+- Step 1 LOW: turning the switch on started or stopped the receiver before the `ctx.paths`
+  check and `config.save`; a failure there left it running (or stopped) with config.json
+  disagreeing. Reordered: the check and the save happen first, and only a successful save
+  starts or stops anything.
+- Step 2 MEDIUM: `sync.scan`'s exclusions were advisory only — `planHash` tagged what landed,
+  but nothing refused a file outside the reviewed set. `sync.consent` now takes `included`
+  (the approved plan's project folder names) alongside `planHash`, stored on `sync_peers`
+  (`plan_included`, additive migration). `sync.upload.plan` reports an excluded file
+  separately from new/changed/done, and `sync.upload.start` refuses it outright (`excluded`),
+  whatever a device sends and whatever `sync.upload.plan` said before it — enforced at the one
+  place no device can route around, not merely reported. `sync.send` never even attempts a
+  file `sync.upload.plan` already called excluded, and reports its own `excluded` count
+  alongside `sent`/`failed`/`quarantined`/`skipped`.
+- Step 2 LOW: if `CLAUDE_CONFIG_DIR` resolved to the same real path as `~/.claude`,
+  `sessionRoots()` returned it twice, double-counting `sync.scan`'s sizes. Moot now:
+  `sessionRoots()` resolves through `claudeHome(root)` (below), which answers exactly one
+  folder.
+- Replaced the `NODE_TEST_CONTEXT` gate on the real `~/.claude` with `core/config`'s own
+  `claudeHome(root)` rule (`sessionRoots(root)`, threaded from `ctx.paths.root`): the real
+  folder only for the real `~/.vyre`, `<root>/claude` for any dev world, demo, trial or test
+  home, whatever env var happens to be set — the same rule `core/config/dialogs.js`'s
+  `claudeHome` already gives every other module, connectors' `claudeJson` included. A
+  `NODE_TEST_CONTEXT`-only check is too easy to get wrong (team-lead); this is the kernel's
+  one rule instead of a second one sync invented.
+- Tests: `core/harness/floor.test.js` (`vyre call files.receive` denied for a model's shell),
+  `core/sync/sync.test.js` and `sync-send.test.js` (an excluded file refused by both
+  `sync.upload.plan` and `sync.upload.start`, end to end through `sync.send` too, even passed
+  in explicitly; a later consent with no `included` lifts the restriction). 270/270, 1 skipped
+  pre-existing (core/sync, core/link, core/files, core/presence, core/harness, core/config,
+  core/modules, mcp-server-tools, hygiene, docs-index, boundaries, cohesion-drift) green on
+  testbox.
+
 #### Vyre Drive, step 2: sync.scan, the what-to-sync picker
 
 - New `sync.scan { exclude? }` (core/sync/index.js, device role): lists every project folder under

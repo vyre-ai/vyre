@@ -119,11 +119,13 @@ export function drop(ctx, { role, g, cfg }) {
       run: async ({ on }) => {
         const next = on === true;
         if (next === Boolean(running)) return { on: next, changed: false };
-        if (next) running = receiver(ctx, g, cfg, macInbox());
-        else { const r = running; running = null; await r.stop(); }
+        // Saved before anything starts or stops (reviewer's LOW): if this throws, nothing has
+        // changed yet, rather than a receiver running (or stopped) that config.json disagrees with.
         if (!ctx.paths) throw new Error("this vyred has no home to save config in");
         config.save({ files: { receive: next } }, ctx.paths.root, ctx.config);
         cfg.receive = next; // this closure's own cfg, mutated in place: config.save's live mirror replaces ctx.config.files' object, not this one
+        if (next) running = receiver(ctx, g, cfg, macInbox());
+        else { const r = running; running = null; await r.stop(); }
         ctx.log(`files.receive ${next ? "on" : "off"}`);
         return { on: next, changed: true };
       },

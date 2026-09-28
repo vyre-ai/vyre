@@ -7,26 +7,27 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { pair } from "../../test/link-harness.js";
-import { tempHome } from "../../test/helpers.js";
 
 const hash = s => crypto.createHash("sha256").update(s).digest("hex");
 
-/** sync.send reads only from the person's own Claude Code folder: a fake one, never the real ~/.claude. */
-function fakeSessions(t) {
-  const dir = tempHome(t); // its own temp folder is enough; we only need it off the real home
-  const prev = process.env.CLAUDE_CONFIG_DIR;
-  process.env.CLAUDE_CONFIG_DIR = dir;
-  t.after(() => { if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = prev; });
+/**
+ * Where sync.send and sync.scan read this device's own Claude Code folder from: core/config's
+ * claudeHome(root) rule (real only for the real ~/.vyre), so for the Mac's temp VYRE_HOME in
+ * these tests it is always `<macRoot>/claude` — never the real ~/.claude, whatever env var is
+ * set. No env var needed to fake it: just make that folder.
+ */
+function fakeSessions(macRoot) {
+  const dir = path.join(macRoot, "claude");
+  fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
 test("sync.send: a device's own file reaches the box over the real link, chunked route included", async t => {
   const s = await pair(t, { router: true });
   await s.boxCall("sync.consent", { machine: "test-mac", on: true }, "cli");
-  const sessions = fakeSessions(t);
+  const sessions = fakeSessions(s.macRoot);
 
   const text = "line one\nline two\n".repeat(200); // a few chunks' worth, at a small SEND_CHUNK in tests would help, but 1 MB default covers this in one
   const file = path.join(sessions, "session1.jsonl");
@@ -38,14 +39,14 @@ test("sync.send: a device's own file reaches the box over the real link, chunked
   // this — see core/sync/sync.test.js for the "label alone is not enough" spoof case).
   const r = await s.macCall("sync.send", { files: [{ path: file, rel: "session1.jsonl", bytes: text.length, hash: h }], mode: "once" }, "module:import", { firstParty: true });
   assert.ok(!r.error, JSON.stringify(r.error));
-  assert.deepEqual(r.data, { sent: 1, failed: 0, quarantined: 0, of: 1, skipped: 0 });
+  assert.deepEqual(r.data, { sent: 1, failed: 0, quarantined: 0, of: 1, skipped: 0, excluded: 0 });
 
   const landed = path.join(s.boxRoot, "synced", "test-mac", "session1.jsonl");
   assert.equal(fs.readFileSync(landed, "utf8"), text);
 
   // Sending the same file again finds it already done: nothing re-sent.
   const again = await s.macCall("sync.send", { files: [{ path: file, rel: "session1.jsonl", bytes: text.length, hash: h }], mode: "once" }, "module:import", { firstParty: true });
-  assert.deepEqual(again.data, { sent: 0, failed: 0, quarantined: 0, of: 0, skipped: 1 });
+  assert.deepEqual(again.data, { sent: 0, failed: 0, quarantined: 0, of: 0, skipped: 1, excluded: 0 });
 
   // A person's own surface can never call it directly, and neither can an unrelated home module:
   // only core/sync itself or core/import (e2e's review — "module" alone was too wide).
@@ -61,7 +62,7 @@ test("sync.send: a device's own file reaches the box over the real link, chunked
 
 test("sync.send: with the switch off, nothing is sent", async t => {
   const s = await pair(t, { router: true });
-  const sessions = fakeSessions(t);
+  const sessions = fakeSessions(s.macRoot);
   const file = path.join(sessions, "session2.jsonl");
   fs.writeFileSync(file, "hi");
   const r = await s.macCall("sync.send", { files: [{ path: file, rel: "session2.jsonl", bytes: 2, hash: hash("hi") }], mode: "once" }, "module:import", { firstParty: true });
@@ -73,18 +74,18 @@ test("sync.send: with the switch off, nothing is sent", async t => {
 test("sync.send: a file outside the device's own Claude Code folder is refused, even for an allowed caller (e2e review, arbitrary file read)", async t => {
   const s = await pair(t, { router: true });
   await s.boxCall("sync.consent", { machine: "test-mac", on: true }, "cli");
-  fakeSessions(t);
+  fakeSessions(s.macRoot);
   // Anywhere else on the Mac, even a file that exists and is readable, is refused.
   const outside = path.join(s.macWork, "not-a-session.jsonl");
   fs.writeFileSync(outside, "hi");
   const r = await s.macCall("sync.send", { files: [{ path: outside, rel: "not-a-session.jsonl", bytes: 2, hash: hash("hi") }], mode: "once" }, "module:import", { firstParty: true });
-  assert.deepEqual(r.data, { sent: 0, failed: 1, quarantined: 0, of: 1, skipped: 0 });
+  assert.deepEqual(r.data, { sent: 0, failed: 1, quarantined: 0, of: 1, skipped: 0, excluded: 0 });
   assert.ok(!fs.existsSync(path.join(s.boxRoot, "synced", "test-mac", "not-a-session.jsonl")));
 });
 
 test("sync.scan: sizes and file counts per project folder, exclusions honored, a stable planHash for what is included (Vyre Drive's what-to-sync picker)", async t => {
   const s = await pair(t, { router: true });
-  const sessions = fakeSessions(t);
+  const sessions = fakeSessions(s.macRoot);
   const projects = path.join(sessions, "projects");
   fs.mkdirSync(path.join(projects, "-home-alex-Work-northwind-bakery"), { recursive: true });
   fs.writeFileSync(path.join(projects, "-home-alex-Work-northwind-bakery", "s1.jsonl"), "x".repeat(100));
@@ -122,4 +123,36 @@ test("sync.scan: sizes and file counts per project folder, exclusions honored, a
   const none = await s.macCall("sync.scan", {}, "cli");
   assert.deepEqual(none.data.projects, []);
   assert.equal(none.data.total, 0);
+});
+
+test("sync.send: a file from a project the approved plan left out is refused, end to end, even passed in explicitly (reviewer's MEDIUM: exclusions enforced, not merely tagged)", async t => {
+  const s = await pair(t, { router: true });
+  const sessions = fakeSessions(s.macRoot);
+  // Approved: only "kept" is included.
+  await s.boxCall("sync.consent", { machine: "test-mac", on: true, planHash: "planX", included: ["kept"] }, "cli");
+
+  const keptDir = path.join(sessions, "projects", "kept");
+  const leftOutDir = path.join(sessions, "projects", "left-out");
+  fs.mkdirSync(keptDir, { recursive: true });
+  fs.mkdirSync(leftOutDir, { recursive: true });
+  const keptFile = path.join(keptDir, "s1.jsonl");
+  const leftOutFile = path.join(leftOutDir, "s1.jsonl");
+  fs.writeFileSync(keptFile, "kept text");
+  fs.writeFileSync(leftOutFile, "left out text");
+
+  const r = await s.macCall("sync.send", { files: [
+    { path: keptFile, rel: "projects/kept/s1.jsonl", bytes: 9, hash: hash("kept text") },
+    { path: leftOutFile, rel: "projects/left-out/s1.jsonl", bytes: 14, hash: hash("left out text") },
+  ], mode: "once" }, "module:import", { firstParty: true });
+  assert.ok(!r.error, JSON.stringify(r.error));
+  // The excluded file is never attempted at all (sync.upload.plan already said so): sent counts
+  // the kept file only, and excluded counts the other — not failed, and not silently dropped.
+  assert.deepEqual(r.data, { sent: 1, failed: 0, quarantined: 0, of: 1, skipped: 0, excluded: 1 });
+  assert.ok(fs.existsSync(path.join(s.boxRoot, "synced", "test-mac", "projects", "kept", "s1.jsonl")));
+  assert.ok(!fs.existsSync(path.join(s.boxRoot, "synced", "test-mac", "projects", "left-out", "s1.jsonl")));
+
+  // Even if a caller skips sync.upload.plan and asks sync.upload.start for the excluded file
+  // directly, the box refuses it: enforcement is not merely advisory reporting.
+  const direct = await s.boxCall("sync.upload.start", { path: "projects/left-out/s1.jsonl", bytes: 14, hash: hash("left out text") }, "tailnet:owner", { peer: { stableId: "nMAC" } });
+  assert.equal(direct.error?.code, "excluded");
 });

@@ -447,3 +447,35 @@ test("sync.delete.import: removes only the files one approved plan sent, leaving
     assert.equal((await call("sync.delete.import", { machine: name, planHash: "planB" }, caller)).error?.code, "denied", caller);
   }
 });
+
+test("sync: an approved plan's exclusions are enforced, not merely tagged — a file outside included is refused by both sync.upload.plan and sync.upload.start (reviewer's MEDIUM)", async t => {
+  const { call } = await boxRegistry(t);
+  const { name } = await paired(call, { kind: "device" });
+  const peer = { stableId: "nPEER0001" };
+  // Approved: only "kept-project" is included; "left-out" is not, whatever the device sends.
+  await call("sync.consent", { machine: name, on: true, planHash: "planX", included: ["kept-project"] }, "cli");
+
+  const inFile = { path: "projects/kept-project/s1.jsonl", bytes: 5, hash: hash("hello") };
+  const outFile = { path: "projects/left-out/s1.jsonl", bytes: 5, hash: hash("world") };
+
+  // sync.upload.plan reports the excluded file separately, not folded into new/changed/done.
+  const plan = await call("sync.upload.plan", { files: [inFile, outFile] }, "tailnet:owner", { peer });
+  assert.deepEqual(plan.data.new, [inFile.path]);
+  assert.deepEqual(plan.data.excluded, [outFile.path]);
+
+  // And sync.upload.start refuses it outright too, even called directly (a device could try
+  // this without ever calling sync.upload.plan first, or ignore what it said).
+  const started = await call("sync.upload.start", { path: outFile.path, bytes: outFile.bytes, hash: outFile.hash }, "tailnet:owner", { peer });
+  assert.equal(started.error?.code, "excluded");
+  assert.match(started.error?.message || "", /outside the approved plan/);
+
+  // The included file is unaffected.
+  const ok = await call("sync.upload.start", { path: inFile.path, bytes: inFile.bytes, hash: inFile.hash }, "tailnet:owner", { peer });
+  assert.ok(!ok.error, JSON.stringify(ok.error));
+
+  // A later approval with no included list at all lifts the restriction (no picker used, or
+  // everything approved) — same as clearing a stale planHash.
+  await call("sync.consent", { machine: name, on: true, planHash: "planY" }, "cli");
+  const now = await call("sync.upload.start", { path: outFile.path, bytes: outFile.bytes, hash: outFile.hash }, "tailnet:owner", { peer });
+  assert.ok(!now.error, JSON.stringify(now.error));
+});

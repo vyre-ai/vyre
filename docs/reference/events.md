@@ -322,7 +322,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | `sync.progress` | `machine`, `path`; sometimes `bytes`, `done`, `quarantined`, `total` |
 | `sync.revoked` | `machine` |
 | `sync.sending` | `ok`, `path`; sometimes `error`, `quarantined` |
-| `sync.sent` | `failed`, `of`, `quarantined`, `sent`, `skipped` |
+| `sync.sent` | `excluded`, `failed`, `of`, `quarantined`, `sent`, `skipped` |
 
 ## system
 

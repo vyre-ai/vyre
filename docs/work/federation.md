@@ -686,3 +686,39 @@ green on testbox.
 ## Next
 - Step 3: per-folder agent/project access (vault's grant pattern + sessions' lib/project-id.js) —
   not started; will need to read those two before designing it.
+
+## Both Vyre Drive HOLDs fixed, one sha (28 Sep 2026)
+
+**Step 1 (files.receive):** it was person-only by its callers list alone, never in
+core/presence's PERSON_ONLY (or HUMAN_ONLY), so neither the daemon's model-shell check nor the
+harness floor's MODEL_NEVER set actually refused a model's own "cli" call to it. Added to
+PERSON_ONLY next to files.drive.access (a switch on an existing capability, not a secret reveal —
+HUMAN_ONLY is for presence-proof tools like computers.egress.set). Reordered files.receive's
+run(): ctx.paths check and config.save happen before the receiver starts or stops, so a save
+failure never leaves the running state and config.json disagreeing (reviewer's LOW).
+
+**Step 2 (sync.scan's exclusions):** they were advisory — planHash tagged what landed, nothing
+refused a file outside the reviewed set. sync.consent now takes `included` (project folder
+names) alongside planHash, stored on sync_peers as plan_included (additive migration).
+sync.upload.plan reports an excluded file separately; sync.upload.start refuses it outright
+(code "excluded") regardless of what a device sends or what upload.plan said before — enforced
+where a device cannot route around it. sync.send never attempts a file upload.plan already
+called excluded, and reports its own excluded count.
+
+**Step 2 LOW (double-counted real-vs-CLAUDE_CONFIG_DIR root):** moot now — see below, claudeHome
+resolves to exactly one folder.
+
+**team-lead's real-home rule:** replaced the NODE_TEST_CONTEXT gate with core/config's own
+claudeHome(root) rule (sessionRoots(root), threaded from ctx.paths.root down through
+allowedSessionPath and sync.scan): the real folder only for the real ~/.vyre, `<root>/claude`
+for any dev world, demo, trial or test home — the same rule every other module gets (connectors'
+claudeJson included), not a second one sync invented. Test fixtures (core/sync/sync-send.test.js)
+now write straight to `<macRoot>/claude` instead of setting CLAUDE_CONFIG_DIR, since that env var
+no longer has any effect outside the real home.
+
+Tests: core/harness/floor.test.js (files.receive denied for a model's shell), core/sync/
+sync.test.js and sync-send.test.js (excluded-folder refusal at both upload.plan and
+upload.start, end to end through sync.send, a later consent with no included lifting the
+restriction). 270/270 (1 skipped, pre-existing) across core/sync, core/link, core/files,
+core/presence, core/harness, core/config, core/modules, mcp-server-tools, hygiene, docs-index,
+boundaries, cohesion-drift — testbox.

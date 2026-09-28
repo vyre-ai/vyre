@@ -16,8 +16,8 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { claudeHome } from "../config/index.js";
 import { scanText } from "./scrub.js";
 
 const SAFE_NAME = /[^A-Za-z0-9._-]/g;
@@ -35,6 +35,14 @@ const MAX_FILE = 100 * 1024 * 1024;
 const SCRUB_OVERLAP = 4096;
 const SCRUB_MAX_FOUND = 5;
 const insideDir = (p, dir) => p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
+
+/** The project folder name a relative sync path names, or null when it is not shaped like one
+ * (sync.scan's own layout: "projects/<name>/<file>"). Used to check a file against an approved
+ * plan's included set (reviewer's MEDIUM: enforced, not merely tagged). */
+const projectOf = rel => { const p = String(rel).split("/"); return p.length > 2 && p[0] === "projects" ? p[1] : null; };
+
+/** The peer's approved plan's included project names, or null for no restriction (plan_included unset, or unparsable). */
+const includedSet = row => { if (!row.plan_included) return null; try { const a = JSON.parse(row.plan_included); return Array.isArray(a) ? new Set(a.map(String)) : null; } catch { return null; } };
 
 /** How many chunk bytes go in one request (link.upload's carrier: link.reply's own body sizing). */
 const SEND_CHUNK = 1024 * 1024;
@@ -55,6 +63,12 @@ export default {
       // remove just one import's files without touching what a later, separately-approved plan sent.
       `ALTER TABLE sync_peers ADD COLUMN plan_hash TEXT`,
       `ALTER TABLE sync_files ADD COLUMN plan_hash TEXT`,
+      // plan_included: the project folder names the approved plan lets in, as a JSON array — null
+      // means no restriction (the person never used sync.scan's picker, or approved everything).
+      // The picker's exclusions are enforced here, not merely tagged (reviewer's MEDIUM): a file
+      // outside this set is refused by sync.upload.plan and sync.upload.start both, whatever a
+      // device sends.
+      `ALTER TABLE sync_peers ADD COLUMN plan_included TEXT`,
     ]);
     const now = () => Date.now();
 
@@ -124,24 +138,27 @@ export default {
     });
 
     ctx.tool("sync.consent", {
-      description: "Turn a paired peer's session import on or off, on the box's own record — never the device's say-so. Off only stops new uploads: nothing already sent is touched. sync.delete removes what a device sent, as its own action. planHash, when the surface computed one for the plan the person just reviewed, is stamped onto every file this consent lets land, so sync.delete.import can later remove just that import.",
-      input: { type: "object", required: ["machine", "on"], properties: { machine: { type: "string" }, on: { type: "boolean" }, planHash: { type: "string" } } },
+      description: "Turn a paired peer's session import on or off, on the box's own record — never the device's say-so. Off only stops new uploads: nothing already sent is touched. sync.delete removes what a device sent, as its own action. planHash and included, when the surface reviewed a sync.scan plan with the person, are stored with the consent: sync.delete.import can later remove just that import by its planHash, and every project folder not in included is refused by sync.upload.plan and sync.upload.start, not merely left untagged — the picker's exclusions are enforced, not advisory.",
+      input: { type: "object", required: ["machine", "on"], properties: { machine: { type: "string" }, on: { type: "boolean" }, planHash: { type: "string" }, included: { type: "array", items: { type: "string" }, description: "Project folder names (sync.scan's own names) this plan lets in. Omitted or on: false: no restriction." } } },
       // The person's own surfaces only, never a module (e2e's review: "module" let any home
       // module turn a device's import on). No presence needed to turn it off (ADR 0024); import
       // itself is not a secret action either, so this stays plain person-only, not presence-gated.
       callers: ["cli", "local", "deck", "capsule"],
-      run: async ({ machine, on, planHash }) => {
+      run: async ({ machine, on, planHash, included }) => {
         const peers = await ctx.call("link.peers", {});
         const row = (peers.data || []).find(p => p.id === machine || p.name === machine);
         if (!row) throw Object.assign(new Error(`no paired device named "${machine}"`), { code: "no_link" });
         syncRow(row.id, row.name);
-        // Turning it on always sets plan_hash to whatever this call gave (or clears it, giving
-        // none): a later approval without a planHash must not leave an earlier one in place for
-        // new files to be silently tagged with (reviewer's LOW). Turning it off leaves plan_hash
-        // alone — it stops new uploads either way, so it is nothing new files could be tagged with.
-        if (on) db.prepare("UPDATE sync_peers SET sync_on = 1, plan_hash = ? WHERE peer = ?").run(planHash ? String(planHash) : null, row.id);
+        // Turning it on always sets plan_hash and plan_included to whatever this call gave (or
+        // clears them, giving neither): a later approval without them must not leave an earlier
+        // plan's tag or restriction in place for new files to inherit silently (reviewer's LOW,
+        // and the same reasoning extended to included). Turning it off leaves both alone — it
+        // stops new uploads either way, so neither is anything a new file could be tagged or
+        // checked against.
+        const includedJson = Array.isArray(included) ? JSON.stringify([...new Set(included.map(String))]) : null;
+        if (on) db.prepare("UPDATE sync_peers SET sync_on = 1, plan_hash = ?, plan_included = ? WHERE peer = ?").run(planHash ? String(planHash) : null, includedJson, row.id);
         else { db.prepare("UPDATE sync_peers SET sync_on = 0 WHERE peer = ?").run(row.id); ctx.events.emit("sync.revoked", { machine: row.name }); }
-        return planHash ? { machine: row.name, on: Boolean(on), planHash: String(planHash) } : { machine: row.name, on: Boolean(on) };
+        return { machine: row.name, on: Boolean(on), ...(planHash ? { planHash: String(planHash) } : {}), ...(includedJson ? { included: JSON.parse(includedJson) } : {}) };
       },
     });
 
@@ -188,7 +205,7 @@ export default {
     });
 
     ctx.tool("sync.upload.plan", {
-      description: "For a paired peer's own connection: which of its files are new, changed, or already here, and its quota. Internal to the device's sender.",
+      description: "For a paired peer's own connection: which of its files are new, changed, already here, or outside the approved plan's included folders (excluded, sync.upload.start refuses these too — not merely reported), and its quota. Internal to the device's sender.",
       input: { type: "object", required: ["files"], properties: { files: { type: "array", items: { type: "object", required: ["path", "bytes", "hash"], properties: { path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } } } } },
       callers: ["tailnet"],
       run: async ({ files }, meta) => {
@@ -197,15 +214,17 @@ export default {
         const row = syncRow(peer.id, peer.name);
         if (!row.sync_on) throw Object.assign(new Error(`"${peer.name}"'s session import is off; turn it on for this device first`), { code: "sync_disabled" });
         const known = new Map(/** @type {any[]} */ (db.prepare("SELECT path, hash FROM sync_files WHERE peer = ?").all(peer.id)).map(r => [r.path, r.hash]));
-        const news = [], changed = [], done = [];
+        const restrict = includedSet(row);
+        const news = [], changed = [], done = [], excluded = [];
         for (const f of files) {
+          if (restrict && !restrict.has(projectOf(f.path))) { excluded.push(f.path); continue; }
           const have = known.get(f.path);
           if (have === undefined) news.push(f.path);
           else if (have !== f.hash) changed.push(f.path);
           else done.push(f.path);
         }
         const limit = Number.isFinite(row.quota_bytes) && row.quota_bytes > 0 ? row.quota_bytes : DEFAULT_QUOTA;
-        return { new: news, changed, done, quota: { used: row.used_bytes, limit } };
+        return { new: news, changed, done, excluded, quota: { used: row.used_bytes, limit } };
       },
     });
 
@@ -220,6 +239,11 @@ export default {
         const row = syncRow(peer.id, peer.name);
         if (!row.sync_on) throw Object.assign(new Error(`"${peer.name}"'s session import is off; turn it on for this device first`), { code: "sync_disabled" });
         if (Number(bytes) > MAX_FILE) throw Object.assign(new Error(`a session file is at most ${MAX_FILE} bytes`), { code: "bad_input" });
+        // The approved plan's included folders are enforced here too, not only reported by
+        // sync.upload.plan (reviewer's MEDIUM): a file outside them is refused whatever the
+        // device sends, and whatever sync.upload.plan said before this call.
+        const restrict = includedSet(row);
+        if (restrict && !restrict.has(projectOf(rel))) throw Object.assign(new Error(`"${rel}" is outside the approved plan's included folders`), { code: "excluded" });
         // A retry of the exact same upload resumes from what the temp file already holds; anything
         // else (a different hash, or none in flight) starts over from a fresh UUID temp name.
         const open = [...uploads.values()].filter(u => u.peer === peer.id);
@@ -364,23 +388,26 @@ export default {
 /** Only core/sync itself and memory-iq's import module may trigger a send (e2e's review: "module" alone let any home module read and upload an arbitrary file). The label alone is not enough — a home module can name itself "import" too — so this is checked together with meta.firstParty (reviewer's LOW): the loader stamps that from the calling module's own directory, never from anything a manifest declares. */
 const SEND_CALLERS = new Set(["module:sync", "module:import"]);
 
-/** The person's own Claude Code folders: the only place sync.send may read a file from. */
-function sessionRoots() {
-  const roots = [];
-  // Under a test run, the real ~/.claude is never a root: sync.scan reads a project folder's
-  // contents (not just compares a path), and RULES forbids that ever touching the person's real
-  // Claude Code folder. A test's own fake home reaches here only through CLAUDE_CONFIG_DIR,
-  // exactly as core/config/dialogs.js's transcriptFolders already gates the real home in tests.
-  if (!process.env.NODE_TEST_CONTEXT) roots.push(path.join(os.homedir(), ".claude"));
-  if (process.env.CLAUDE_CONFIG_DIR) roots.push(process.env.CLAUDE_CONFIG_DIR);
-  return roots.map(r => { try { return fs.realpathSync(r); } catch { return path.resolve(r); } });
+/**
+ * The person's own Claude Code folder for this device's Vyre home: the only place sync.send may
+ * read a file from, and what sync.scan lists. One value, not a list of guesses — core/config's own
+ * claudeHome(root) rule decides it (VYRE_CLAUDE_HOME first, else the real folder only for the real
+ * ~/.vyre, else `<root>/claude`), so a dev world, a demo, a trial or a test home never reaches the
+ * person's real folder, whatever env var happens to be set — a NODE_TEST_CONTEXT check alone is
+ * too easy to get wrong (reviewer). claudeHome already picks CLAUDE_CONFIG_DIR over ~/.claude
+ * rather than adding it, so there is nothing here to double-count either.
+ * @param {string} root
+ */
+function sessionRoots(root) {
+  const dir = claudeHome(root);
+  try { return [fs.realpathSync(dir)]; } catch { return [path.resolve(dir)]; }
 }
 
-/** Resolve `p` for real (following symlinks) and refuse it unless it lands inside one of the person's own Claude folders. */
-function allowedSessionPath(p) {
+/** Resolve `p` for real (following symlinks) and refuse it unless it lands inside this device's own Claude folder. */
+function allowedSessionPath(p, root) {
   let real;
   try { real = fs.realpathSync(String(p)); } catch (e) { throw Object.assign(new Error(/** @type {Error} */ (e).message), { code: "bad_input" }); }
-  if (!sessionRoots().some(r => insideDir(real, r))) throw Object.assign(new Error(`${p} is not in this device's own Claude Code folder`), { code: "denied" });
+  if (!sessionRoots(root).some(r => insideDir(real, r))) throw Object.assign(new Error(`${p} is not in this device's own Claude Code folder`), { code: "denied" });
   return real;
 }
 
@@ -419,7 +446,7 @@ async function deviceSide(ctx) {
       const excluded = new Set((exclude || []).map(String));
       const projects = [];
       const budget = { left: SCAN_LIMIT };
-      for (const root of sessionRoots()) {
+      for (const root of sessionRoots(ctx.paths.root)) {
         const projDir = path.join(root, "projects");
         /** @type {import("node:fs").Dirent[]} */
         let entries;
@@ -454,6 +481,9 @@ async function deviceSide(ctx) {
       const plan = await ctx.remote("sync.upload.plan", { files: files.map(f => ({ path: f.rel, bytes: f.bytes, hash: f.hash })) });
       if (plan.error) return { sent: 0, failed: files.length, quarantined: 0, error: plan.error };
       const todo = [...plan.data.new, ...plan.data.changed].map(rel => byRel.get(rel)).filter(Boolean);
+      // A file the box's plan calls excluded is never attempted (the picker's exclusions
+      // enforced here too, reviewer's MEDIUM), so it never reaches sync.upload.start at all.
+      const excluded = (plan.data.excluded || []).length;
       let sent = 0, failed = 0, quarantined = 0;
       for (const f of todo) {
         const r = await sendOne(ctx, f);
@@ -464,8 +494,8 @@ async function deviceSide(ctx) {
       }
       // The status line every other live-fact module in Vyre has (cohesion, 28 Sep): a "went
       // quiet" signal so a surface can say "synced from <machine>, just now" rather than nothing.
-      ctx.events.emit("sync.sent", { sent, failed, quarantined, of: todo.length, skipped: plan.data.done.length });
-      return { sent, failed, quarantined, of: todo.length, skipped: plan.data.done.length };
+      ctx.events.emit("sync.sent", { sent, failed, quarantined, of: todo.length, skipped: plan.data.done.length, excluded });
+      return { sent, failed, quarantined, of: todo.length, skipped: plan.data.done.length, excluded };
     },
   });
   return { async stop() {} };
@@ -475,7 +505,7 @@ async function deviceSide(ctx) {
 async function sendOne(ctx, f) {
   if (Number(f.bytes) > MAX_FILE) return { error: { code: "bad_input", message: `${f.path} is over the ${MAX_FILE} byte cap` } };
   let real;
-  try { real = allowedSessionPath(f.path); } catch (e) { return { error: { code: /** @type {any} */ (e).code || "bad_input", message: /** @type {Error} */ (e).message } }; }
+  try { real = allowedSessionPath(f.path, ctx.paths.root); } catch (e) { return { error: { code: /** @type {any} */ (e).code || "bad_input", message: /** @type {Error} */ (e).message } }; }
   const start = await ctx.remote("sync.upload.start", { path: f.rel, bytes: f.bytes, hash: f.hash });
   if (start.error) return start;
   let buf;
