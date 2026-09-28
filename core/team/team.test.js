@@ -802,3 +802,19 @@ test("reviewer LOW: team.default.get, team.project-has-any and team.project-appe
     assert.equal(r.error.code, "denied");
   }
 });
+
+test("team.project-append: caps at 8 teammates with an \"and N more\", and the whole line stays under 600 characters (reviewer LOW on e868f5e2)", async t => {
+  const { tool, project } = await boot(t);
+  for (let i = 0; i < 10; i++) await tool("team.add", { project: project.slug, role: `role${i}`, brief: "a fairly long brief that describes this role's work in some detail so it would otherwise bloat the append" });
+  const { text } = await tool("team.project-append", { project: project.slug });
+  assert.ok(text.length <= 600, `${text.length} characters`);
+  assert.match(text, /and 2 more/);
+  assert.equal((text.match(/role\d \(/g) || []).length, 8);
+});
+
+test("team.project-append: no em dash, ever (style's own rule, and this text rides every session's prompt)", async t => {
+  const { tool, project } = await boot(t);
+  assert.ok(!(await tool("team.project-append", { project: project.slug })).text.includes("—"));
+  await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  assert.ok(!(await tool("team.project-append", { project: project.slug })).text.includes("—"));
+});
