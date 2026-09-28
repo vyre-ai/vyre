@@ -131,10 +131,21 @@ in the agent's home and a box folder; secret paths are refused; everything is to
   real agents connected, .agent-tokens rewritten via docker cp (mirroring vyred's own archive-API
   write) while bob's own live WebSocket stayed open, then /agents/reload as the owner closed
   exactly bob's session, left alice's untouched and working, and refused bob's now-revoked token a
-  new connection while alice's still worked. All 4 reviewer gate items on the browser kind are now
-  closed (H1-M4 in cdpmux, .agent-tokens permissions, revocation, the shield decision) -- pool.js/
-  driver's own "browser" computer kind (the piece that actually calls all of this for real) is
-  next.
+  new connection while alice's still worked.
+- Reviewer's re-review of 9d2d20e8/f03f13b0 (M3/M4) cleared them, and found one more: M5 -- the
+  browser-level session (no sessionId) carries browser-WIDE domains (Tracing.start/end, IO.read,
+  Extensions.loadUnpacked) neither fence touched. Fixed at f0b6b852: flipped to an allowlist for a
+  scoped client's session-less calls (Target.*, Browser.getVersion, OPTIONAL_CONTEXT_METHODS;
+  everything else refused). Same commit also closes 3 of the reviewer's 6 revocation points not
+  yet done: an empty/missing reload is refused, not applied (shared mode + the previous map both
+  kept); reloadAgentTokens() never process.exit()s, only readAgentTokens() (startup) does;
+  closeAgent() now disposes the revoked agent's BrowserContext and deletes its contextStore entry,
+  so a reused name never inherits a fired agent's cookies. Tests: cdpmux.test.js 38/38 (3 new),
+  index.test.js 16/16 (2 new). All green locally; testbox was frozen for the integrator's rc.2
+  suite this pass, so no throwaway-stack or full-suite run there yet -- owed once the freeze lifts.
+  All 4 gate items plus M5 and the revocation checklist are now closed. The shared-computer schema
+  shape (team-lead steer: add a kind column to computers_computers, a separate members table,
+  existing rows untouched) is next, sent to the lead and reviewer together before any pool.js code.
 - Presence enforced once security merges; a passkey step in the Deck.
 - Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
   and xvp, clipboard to the holder only while shielded (computers).
