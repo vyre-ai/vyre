@@ -153,6 +153,18 @@ and the new capability to team-lead.
   local/voice + talk).
 - Still open: app-design (ring/pill look), capsule-pro/chat replies not yet in.
 
+## Resume 2026-09-28 (cont'd 10): reviewer-2 sign-off, routed auth chain to reviewer
+- **reviewer-2 SIGNED OFF** on 476f920c (WS-leak fix, traced against their exact original
+  finding) and c20a0141 (tap-to-talk rebuild, hand-traced "scratch that" undo against 3
+  scenarios; confirmed onEscape() puts voice-cancel before the interrupt check). Their testbox:
+  88/89 (1 pre-existing skip), 0 fail - matches our 110/110 (narrower glob on their side).
+- The other 3 in the chain touch the caller/auth/socket-upgrade boundary, so reviewer-2 routed
+  them to "reviewer" per the routing rule, not to me: a53d0361 (caller-allowlist widen), c5b2bd65
+  (agent-caller refusal), a81d1f03 (new voice.listen ticket tool). Pinged reviewer for status;
+  nothing back yet.
+- Pushed work/native-core-composer to origin at 65296734 and told chat it's there.
+- Waiting on team-lead to lock avatar designs before starting the shared seeded avatar renderer.
+
 ## Resume 2026-09-28 (cont'd 8): voice rebuilt as tap-to-talk (e21c019d)
 User's cutting-edge voice spec, replacing hold-to-talk entirely. Full state machine in
 composer.js's "tap-to-talk / push-to-talk" section: voicePressBegin/voicePressEnd (350 ms
