@@ -27,31 +27,44 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   test/boundaries all green (config 21/21, modules 40/40, presence 134/135 (1 skip), onboard+
   daemon 20/20, boundaries 5/5).
 
-## Doing
-- Updating ADR 0039 section 1 / docs/design/anywhere.md to describe `machine` as the new,
-  additive field (not a replacement of `config.role`) before flagging this to reviewer --
-  the committed ADR text currently says "config.role becomes one of three values", which is
-  what I originally tried and rolled back after finding the ~15-file blast radius above.
+## Done (cont. 2) — 28 Sep, team-lead review round
+- Design approved with two tweaks, applied to ADR 0039 and docs/design/anywhere.md:
+  1. No auto-delete, ever. Section 4's "vyre server forget" / 24-hour guard is gone; replaced
+     with "Free up space on this laptop" in Settings, always previewed (counts, by piece), only
+     ever run on the person's explicit confirm.
+  2. Solo plus a phone is its own case (new ADR section 5): pairing a second device to a Solo
+     machine flips that machine's `machine` from `"solo"` to `"server"` in place — no move, no
+     federation involvement, Tailscale/relay turn on only then. This is exactly tailnet's
+     `onboard.join.verify` trigger.
+- Fixed several leftover `config.role` mentions in sections 3/4/6 that should have said
+  `config.machine` (missed in the first pass).
+- Added a concrete tool contract for launch and tailnet: `onboard.machine` (new tool,
+  core/onboard, HUMAN_ONLY) — `{action:"set", machine:"solo"|"server"}` -> `{machine, service?}`;
+  Solo needs no call; Device is set by `onboard.join`'s verify step calling back into it. Not
+  yet implemented — next.
+- Answered launch's "one-command Solo install" question: no new script, `npm install -g
+  https://vyre.run/box/vyre.tgz` + `vyre up` (docs/get-started/without-docker.md) already does
+  it; flagged that bare `vyre up` needs to stop assuming role=local-looking-for-a-box and ask/
+  default the same three-way choice (core/cli/commands/up.js, my own follow-up).
+- OK'd tailnet's `onboard.join` proposal; confirmed Solo never touches Tailscale/relay until a
+  device actually joins.
 
 ## Next
-1. Fix the ADR/design doc wording (see Doing), then send the two commits (docs + config.machine)
-   to reviewer per RULES (role/trust change).
+1. Implement `onboard.machine` (core/onboard) + the launchd/keep-awake install it calls into on
+   darwin+server. Tests: migrating a real existing box config.json (role:"box", no machine) and
+   a Mac local config.json (role:"local", no machine), per team-lead's ask.
 2. Audit the eight modules (releases=core/apps, computers, glass, hooks, names, network,
    onboard, relay) for Linux-only assumptions beyond the manifest gate (paths, container
    networking) before claiming they run on macOS.
-3. `vyre server here` / `--undo`: launchd plist, keep-awake, login item offer.
-4. Coordinate the move engine contract (section 4 of the ADR) with federation; Tailscale/relay
-   join wiring with tailnet; onboarding + Settings copy with launch; the Windows seam with
-   windows.
+3. `vyre server here` / `--undo` CLI (shares code with onboard.machine's server-side install).
+4. `core/cli/commands/up.js`: stop assuming role=local means "find a box"; ask/default Solo.
+5. Coordinate the move engine contract (section 4) with federation.
 
 ## Needs from others
 - federation: confirm the move engine can implement ADR 0039 section 4's four-piece contract
-  (projects, memory, vault, sessions) and the source-stays-live-until-destination-confirms
-  ordering.
-- tailnet: does `solo` ever turn on `network.tailscale` (a Solo person's phone reaching the same
-  Mac without a full move)? Open question in the ADR.
-- launch: onboarding's new "How will Vyre run?" step and the Settings > Server panel, once the
-  ADR is agreed.
+  (projects, memory, vault, sessions), the source-stays-live-until-destination-confirms
+  ordering, and the no-auto-delete rule (tweak 1 above — "Free up space" is explicit-confirm
+  only, federation's engine should not itself schedule any cleanup).
 - windows: Windows Solo needs the seam this ADR names (role mapping is OS-agnostic; `local/*`
   macOS-only modules need Windows equivalents, out of scope here).
 

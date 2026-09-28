@@ -1,6 +1,6 @@
 ---
 title: "ADR 0039: Vyre anywhere"
-summary: The server is a role the person chooses, not the OS. Solo, a Mac or Linux box as an always-on server, and a cloud server are one install with the same move-to-server flow; config.role replaces the darwin-means-local guess.
+summary: The server is a role the person chooses, not the OS. Solo, a Mac or Linux box as an always-on server, and a cloud server are one install with the same move-to-server flow; config.machine replaces the darwin-means-local guess.
 audience: builders, agents
 owner: anywhere
 status: draft
@@ -124,7 +124,7 @@ A Mac chosen as `"server"` or `"solo"` needs vyred to survive logout, sleep and 
 the box's container does. `vyre server here` (new CLI, `core/onboard` or a small new
 `core/anywhere` — see Build plan) does on a Mac what the install script does on Linux:
 
-1. Sets `config.role` to `"server"` (or `"solo"` if no device will ever join — the person is
+1. Sets `config.machine` to `"server"` (or `"solo"` if no device will ever join — the person is
    asked, matching the capability ladder in `docs/design/anywhere.md`).
 2. Installs a `launchd` `LaunchAgent` (`com.vyre.vyred.plist`, `RunAtLoad` + `KeepAlive`) so
    vyred restarts after a crash and after every login, and a caffeinate-backed keep-awake
@@ -155,42 +155,61 @@ Solo setup to a server":
    transit unencrypted), and sessions (the Claude Code sign-in and any in-flight Vyre-owned
    session state) from the source to the destination. The source stays untouched and running
    until the destination confirms every piece landed and re-decrypts.
-3. **The source becomes a device.** Once confirmed, the source's `config.role` flips to
+3. **The source becomes a device.** Once confirmed, the source's `config.machine` flips to
    `"device"` (or is left `"solo"` a moment longer if the person is only testing — nothing
    forces the flip until they confirm in the UI). Box-only modules on the source stop on the
    next `vyred` restart; local-only ones keep running.
-4. **Nothing is deleted on the source until the person says so.** The moved copy on the source
-   sits under `~/.vyre/moved-<date>/` (mirroring `core/projects/move.js`'s `MOVED_RECORD`
-   pattern) until an explicit `vyre server forget` or the next full move.
+4. **Nothing is ever deleted on the source automatically** (user rule, 28 Sep: nothing that came
+   from a device is deleted without the person's explicit, previewed confirmation). The moved
+   copy on the source sits under `~/.vyre/moved-<date>/` (mirroring `core/projects/move.js`'s
+   `MOVED_RECORD` pattern) indefinitely. Settings > Server offers "Free up space on this
+   laptop", previewing exactly what would go (counts, by piece — projects, memory, vault,
+   sessions) before the person confirms; there is no automatic or timed cleanup.
 
 Failure and undo:
 
 - A move that fails partway (network drop, destination out of disk) leaves the source as
   `"server"` still, fully working — the flip in step 3 only happens after the destination
   confirms, so a failed move is a no-op from the person's side, just a retry.
-- `vyre server forget` cannot run until the destination has been reachable and current for at
-  least 24 hours (avoids the person orphaning their only copy right after a shaky first move).
+- "Free up space on this laptop" is available as soon as the destination is confirmed current,
+  but never runs itself — the person previews and confirms every time, no matter how long it's
+  been.
 - The Deck's Settings > Server panel (launch owns the UI, this ADR owns what it calls) shows the
   move's live progress, and a red state if the source and destination ever disagree on which one
   is authoritative — never silently.
 
-### 5. Where this plugs in
+### 5. Solo plus a phone needs no move
 
-- **Onboarding** (launch): the "how will Vyre run" step becomes the role choice from section 1,
-  not a Tailscale prompt. "I have a server, connect it" reuses the move flow, pointed at step 1.
-- **Settings** (launch, native-core): a Server panel — today's role, a "Move to server" or
-  "Move off this server" action, and (on a Mac server) the `launchd`/keep-awake status from
+Pairing a second device to a Solo machine (Tailscale, or the relay's QR pairing) is the capability
+ladder's rung 2, not a move: nothing relocates, because the Solo machine's own data is already
+where it should end up. On the first device to successfully pair, `config.machine` on that
+one machine flips from `"solo"` to `"server"` (still the same files, same vault, same
+`vyred`); the new device is simply `"device"`. Tailscale or the relay turns on right then, not
+before — a Solo person who never pairs anything never sees either. tailnet's `onboard.join` tool
+(agreed 28 Sep, see docs/work/anywhere.md) is exactly this trigger: its `verify` step, once a
+device is confirmed reachable, is what flips the source's `machine`. `federation`'s move engine
+(section 4) is not called — there is nothing to copy.
+
+### 6. Where this plugs in
+
+- **Onboarding** (launch): the "how will Vyre run" step becomes the role choice from section 1
+  (three cards: Solo, another computer, a cloud server), not a Tailscale prompt. "I have a
+  server, connect it" reuses the move flow, pointed at step 1. Solo needs no call at all until a
+  device later joins (section 5).
+- **Settings** (launch, native-core): a Server panel — today's role, "Move to server"/"Move off
+  this server" (section 4), "Free up space on this laptop" (section 4's cleanup, always
+  previewed, never automatic), and (on a Mac server) the `launchd`/keep-awake status from
   section 3.
 - **Windows** (windows team): Solo on Windows needs an equivalent to section 3 (a Windows
   service instead of `launchd`) and its own module-loading story where `"local"`-only modules
   assume macOS today (`local/screen-mac`, `local/hands-mac`) — out of scope for this ADR beyond
-  naming the seam: `core/modules/index.js`'s role mapping doesn't care what OS `"device"` or
+  naming the seam: `core/modules/index.js`'s `roleBuckets()` doesn't care what OS `"device"` or
   `"solo"` runs on, only the `local/*` modules do.
 
 ## Build plan
 
-1. `core/config`: the three-value role, the migration in `load()`, `core/modules/index.js`'s
-   mapping table, tests. (anywhere)
+1. `core/config`: `config.machine`, the migration in `load()`, `core/modules/index.js`'s
+   `roleBuckets()` mapping, tests -- shipped, sha 80fd866e. (anywhere)
 2. The eight modules' manifests stay `"roles": ["box"]` unchanged; verify each one actually
    starts clean on macOS (some assume a Linux path or a container network today — audit before
    claiming "runs on macOS"). (anywhere)
@@ -202,8 +221,8 @@ Failure and undo:
 
 ## Open questions
 
-- Does `"solo"` ever need `network.tailscale` on (a Solo person who later wants their phone to
-  reach the same Mac without a full move)? Leaning yes, tailnet's call.
+- Resolved 28 Sep (team-lead): Solo plus a phone is section 5, not a move — Tailscale/relay turn
+  on only once a device actually joins, never before.
 - `releases` (Android APK signing) needs the owner's signing key in the vault; on a Mac server
   with no Docker, does APK CI still reach it over the tailnet the same way? Needs a check against
   `core/apps/releases.js`'s assumptions, not just the manifest gate.

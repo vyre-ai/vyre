@@ -10,7 +10,7 @@ shape and grows one rung at a time as the person's setup earns it:
 
 | Rung | What's true | What turns on |
 |---|---|---|
-| 0. Base | One computer, `role: "solo"` | Everything except Tailscale, relay pairing, guests |
+| 0. Base | One computer, `machine: "solo"` | Everything except Tailscale, relay pairing, guests |
 | 1. Always-on | That computer stays on and reachable (a Mac mini, a box, `vyre server here`) | The `launchd`/service keep-alive, nothing else yet — still `"solo"` until a second device joins |
 | 2. A second device | A phone or another Mac is paired | Tailscale or the relay turns on for real (ADR 0002, 0026); role splits into `"server"` + `"device"` |
 | 3. Docker | The server has Docker | `computers` (agent computers), `glass` (screen + files for them) |
@@ -44,6 +44,25 @@ Nothing here mentions Linux, macOS, containers, or Tailscale — those are conse
 inputs. If the person picks the middle option on a laptop that sleeps when the lid closes, the
 Server flow says so plainly ("Vyre needs this Mac to stay reachable — plug it in and turn off
 sleep, or pick a Mac mini or a box instead") rather than silently degrading.
+
+## The role-choice tool
+
+Agreed 28 Sep, for launch's onboarding cards and tailnet's `onboard.join`:
+
+- **`onboard.machine`** (new tool, `core/onboard`, HUMAN_ONLY): `{ action: "set", machine: "solo"|"server" }`
+  -> `{ machine, service?: { installed: bool, warning?: string } }`. The Deck calls this when
+  alex picks "Just on this computer" or "This computer stays on for me" — nothing else, no
+  polling, purely local. `machine: "server"` on darwin also installs the `launchd`/keep-awake
+  service inline (the same code `vyre server here` runs) so the card click is enough; no
+  terminal needed. Calling it again with the current value is a no-op on the service side.
+  `machine: "device"` is a valid input but never sent by a card directly — it's set by
+  `onboard.join`'s `verify` step once a connection to an existing/new server is confirmed
+  (`ctx.call("onboard.machine", { action: "set", machine: "device" })`), per ADR 0039 section 5.
+- **Solo needs no call at all** until a device later joins (rung 2) — matches the capability
+  ladder: nothing about the choice exists until it does something.
+- **"I already have a server" / "a cloud server"** hand off to tailnet's `onboard.join` (see
+  ADR 0039 section 5): `status` to offer Tailscale vs. relay, `tailscale`/`relay` to run the
+  connect step, `verify` to confirm reachability and flip `machine` as above.
 
 ## The move-to-server flow
 
@@ -79,11 +98,13 @@ all live only there. alex buys a Mac mini and wants it to take over.
    confirm, not automatic). The eight box-only modules stop on the source's next `vyred`
    restart. Everything else — Capsule, voice, the local Chat — keeps working on the source,
    now talking to the destination as its server.
-4. **Nothing is deleted until asked.** The source's pre-move copy sits at
+4. **Nothing is ever deleted automatically.** The source's pre-move copy sits at
    `~/.vyre/moved-<date>/`, same pattern as `core/projects/move.js`'s existing box-homes
-   migration. `vyre server forget` clears it — but not for at least 24 hours after the
-   destination first reported itself current, so a shaky first day can't be undone into thin
-   air.
+   migration, indefinitely. Settings > Server offers "Free up space on this laptop" — it
+   previews exactly what would go, by piece (projects, memory, vault, sessions) and with
+   counts, and only clears it once alex confirms. There's no timer and no auto-cleanup; a
+   device's own data is never removed without the person looking at what's leaving and saying
+   yes.
 
 ## Failure and undo
 
@@ -94,13 +115,27 @@ all live only there. alex buys a Mac mini and wants it to take over.
   current when a vault write is still mid-flight, say): the flow refuses to flip and surfaces a
   red state rather than silently pick one side.
 - **alex changes their mind after flipping:** the same flow run in reverse (destination is now
-  the source) moves everything back; the 24-hour `forget` guard means the pre-move copy is
-  usually still there to skip the network copy entirely and just point back at it.
+  the source) moves everything back; since nothing was ever auto-deleted, the pre-move copy is
+  usually still sitting there to skip the network copy entirely and just point back at it.
 - **The Mac mini playing server dies:** every device stays a device (ADR 0032 keeps them
   separable from "the person"), so nothing about identity breaks. The person's next move is
   Entry A on a new machine, restoring from whichever device still has the most recent vault/
   memory copy — this ADR does not build automatic failover; it builds a move that's cheap and
   safe enough to redo by hand.
+
+## Solo's one-command install
+
+No new script. `docs/get-started/without-docker.md` already covers a Mac running Vyre with no
+container: `npm install -g https://vyre.run/box/vyre.tgz` (or `npm install -g vyre` once
+published), then `vyre up`. `scripts/install-box.sh` stays exactly what it is — Docker Compose
+on Linux — and was never the right script for a laptop.
+
+The gap: `vyre up` bare today assumes `role: local` and goes looking for an existing box before
+doing anything else ("finds your box on the tailnet, or asks where Vyre should run"). For a
+genuine one-command Solo install with no box anywhere, `vyre up` needs to ask the same
+three-choice question as onboarding (or default straight to Solo when nothing answers) instead
+of stalling on "where should Vyre run" — tracked as anywhere's own follow-up against
+`core/cli/commands/up.js`, not a new install path.
 
 ## Onboarding and Settings
 
