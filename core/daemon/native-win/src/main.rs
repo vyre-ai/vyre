@@ -35,7 +35,8 @@ fn main() {
 mod win {
     use vyre_pipe_verify::{verdict, Verdict};
     use windows::core::PCWSTR;
-    use windows::Win32::Foundation::{CloseHandle, HANDLE, LocalFree};
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::Memory::LocalFree;
     use windows::Win32::Security::{
         GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER,
     };
