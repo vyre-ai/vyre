@@ -109,6 +109,11 @@ test/boundaries.test.js, test/hygiene.test.js, test/guests.test.js, test/link-fe
 24/24 (no regressions). Next: wire `onboard.join.verify` (once agreed) to call it for the joining
 device's own reachability check, not just the box's.
 
+Also built: `vyre vitals` (status/explain/advice), vitals' first CLI surface (module.json
+`shows.cli` was empty). core/cli/commands/vitals.js on the standard pattern; tips now point at it
+instead of `vyre call`. Tests: core/cli/commands/vitals.test.js 2/2, consistency 9/9. Testbox
+83/83 across vitals, the new test, consistency, docs-build, hygiene, boundaries (a3f73860).
+
 28 Sep 2026 (resumed; merged origin/main a3a844e4 into work/tailnet, clean). Wrote
 docs/design/tailscale-plan.md for the lead's max-benefit/simplest-install ask: verified all ten
 ADR 0014 parts by content against origin/main (nine are ancestors of main; part 9, agent nodes,
