@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Wink pivot: Tailscale stays (auto-managed), relabeled Advanced disclosure, the avatar's dance
+
+- PIVOT from the user (28 Sep, same day as "Tailscale off by default"): Tailscale itself stays —
+  Vyre sets it up automatically once relay is allowed, so the normal flow never asks the person
+  to touch it. The device-join screen's structure from the prior commit was already right
+  (relay/code default, manual Tailscale entry as a secondary path); only the label changes:
+  "Advanced setup" -> "Use my own Tailscale setup," for someone who runs their own Tailscale
+  account, not a normal step.
+- The avatar's dance on `device.paired`, before "Your phone is connected": a hop, a squish and a
+  sparkle, under 1.2s, `prefers-reduced-motion` skips it outright (same rule as the existing
+  assistant easter egg). Reuses `.ob-burst`/`ob-pop`'s exact dot technique, positioned around a
+  new `.phone-code-stage` wrapper (not `.phone-code-ring` itself, which clips for the shimmer,
+  so the sparkle isn't cut off at the ring's edge).
+- `test/onboard-page.test.js` 4/4, `deck/js/*.test.js` 26/26, re-run clean on testbox.
+
 #### "Wink": Tailscale off by default everywhere; phone-connected celebration, rename, next-step
 
 - User decisions (28 Sep): Tailscale is off by default everywhere; the relay (a pairing code, or

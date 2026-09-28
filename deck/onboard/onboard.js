@@ -68,8 +68,10 @@ const state = {
   serverNode: "",
   /** Which of Device's two real join mechanisms is selected: same Tailscale network (no code,
    * onboard.join{verify}) or pair with a code (one call, relay.join). */
-  // Default "relay" (the user, 28 Sep: Tailscale off by default everywhere, under Advanced
-  // only); the live() screen falls back to "tailscale" itself while relay isn't allowed yet.
+  // Default "relay" (the user, 28 Sep, pivoted same day: Tailscale stays but auto-manages
+  // itself once relay is allowed, so manually pointing at a tailnet name is now "Use my own
+  // Tailscale setup," an Advanced fallback, not the default); the live() screen falls back to
+  // "tailscale" itself while relay isn't allowed yet.
   /** @type {"tailscale"|"relay"} */ deviceVia: "relay",
 };
 /** Timers and listeners of the current screen, cleared when the screen changes. */
@@ -409,11 +411,14 @@ const SCREENS = {
     // anywhere yet, so this reads false today on every machine — the option stays hidden until
     // it lands, not a guess at what platform this is.
     const relay = canRelayJoin(state.status);
-    // Tailscale off by default everywhere (the user, 28 Sep): "Pair with a code" is the default
-    // (state.deviceVia's own default, below) once relay is allowed; Tailscale moves under
-    // "Advanced setup" and is reached only by opening it. Before relay is allowed, Tailscale is
-    // still the only path that actually works, so it's shown plainly, not hidden behind a toggle
-    // with nothing on the other side of it.
+    // PIVOT (the user, 28 Sep, same day as the first decision below): Tailscale itself stays —
+    // Vyre sets it up automatically once relay is allowed, so there is no manual Tailscale step
+    // in the normal flow at all. "Pair with a code" is the default (state.deviceVia's own
+    // default, below); manually pointing this device at a tailnet name is now "Use my own
+    // Tailscale setup," an Advanced fallback for someone who already runs their own Tailscale
+    // account, not the default path. Before relay is allowed, that manual field is still the
+    // only path that actually works, so it's shown plainly, not hidden behind a toggle with
+    // nothing on the other side of it.
     let via = !relay.allowed ? "tailscale" : state.deviceVia;
     const nodeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "server-node", placeholder: "kit", autocomplete: "off",
       value: state.serverNode, oninput: () => { state.serverNode = nodeIn.value; } }));
@@ -477,7 +482,7 @@ const SCREENS = {
               viaOpt("relay", "Pair with a code",
                 h("div", { class: "field" }, h("label", { for: "pair-code" }, "Pairing code"), codeIn)),
               h("details", { class: "ob-collapse" },
-                h("summary", null, "Advanced setup"),
+                h("summary", null, "Use my own Tailscale setup"),
                 viaOpt("tailscale", "Same Tailscale network",
                   h("div", { class: "field" }, h("label", { for: "server-node" }, "Your server's tailnet name"), nodeIn))))
           : [
@@ -1233,8 +1238,10 @@ const SCREENS = {
 
     // "Wink" (the user's decision, 28 Sep, ADR 0033): a live Vyre code ring the person's phone
     // scans to connect, instead of the Tailscale-QR path above (superseded by it once relay is
-    // allowed; Tailscale-first is retired everywhere per the user's later "Tailscale off by
-    // default" decision — this card is now the primary phone path, not an alternative to it).
+    // allowed — this card is the primary phone path, not an alternative to it). PIVOT, same day:
+    // Tailscale itself stays, but only as the relay's own auto-managed transport and an optional
+    // later "Faster connection" upgrade (Settings > Devices, not built here yet) — the phone
+    // path here never asks the person to touch Tailscale at all, pivot or not.
     // Same gate as "Pair with a code" (deck/js/join-caps.js) — hidden on a Mac until vyre-core.
     // No relay.pair.ticket tool exists yet: tailnet's proposed shape (28 Sep, pending reviewer
     // sign-off) mints Touch ID at the mint, not the scan, so there is no separate "Pair <phone>?"
@@ -1249,9 +1256,27 @@ const SCREENS = {
       let ticketId = `placeholder-ticket-${mintedAt}`;
       const mint = () => { mintedAt = Date.now(); ticketId = `placeholder-ticket-${mintedAt}`; };
       const ringEl = h("div", { class: "phone-code-ring", "aria-live": "polite" }, h("span", { class: "busy" }));
+      const stageEl = h("div", { class: "phone-code-stage" }, ringEl);
       const meta = h("div", { class: "phone-code-meta" });
-      const body = h("div", { class: "phone-code-body" }, ringEl,
+      const body = h("div", { class: "phone-code-body" }, stageEl,
         h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta);
+      // The avatar's dance (the user, 28 Sep): a hop, a squish and a sparkle, under 1.2s, before
+      // "Your phone is connected." — reuses .ob-burst/ob-pop's dot technique (the assistant
+      // easter egg below), positioned around the stage instead of a 24px mark. Skipped outright
+      // under reduced motion, same as that egg, rather than a shorter version of the same thing.
+      const dance = () => new Promise(resolve => {
+        if (calm()) { resolve(undefined); return; }
+        stageEl.classList.add("dance");
+        const burst = h("span", { class: "phone-code-burst", "aria-hidden": "true" });
+        const N = 12;
+        for (let k = 0; k < N; k++) {
+          const a = (k / N) * Math.PI * 2;
+          const r = 90 + (k % 3) * 14;
+          burst.append(h("i", { style: `--dx:${Math.round(Math.cos(a) * r)}px;--dy:${Math.round(Math.sin(a) * r)}px;--delay:${(k % 4) * 40}ms;--size:${4 + (k % 3)}px` }));
+        }
+        stageEl.append(burst);
+        later(() => { stageEl.classList.remove("dance"); burst.remove(); resolve(undefined); }, 1150);
+      });
       const refreshBtn = h("button", { class: "btn", type: "button" }, "Refresh");
       refreshBtn.addEventListener("click", () => { mint(); drawRing(); tick(); });
       const drawRing = async () => {
@@ -1271,10 +1296,7 @@ const SCREENS = {
           : h("p", { class: "small muted" }, `Expires in ${countdown(msLeft)}`));
       };
       // The computer knows the instant a phone connects (device.paired, no refresh, per the
-      // user): swap the ring for a connected state with the same celebration pop the step
-      // checklist uses (onboard.css's .pop/obPop) — app-design's actual "little dance" for the
-      // avatar itself doesn't exist yet (asked; nothing to vendor for it today), so this reuses
-      // the one shipped celebration rather than inventing a second animation language.
+      // user): the dance plays first, then this swaps the ring for a connected state.
       const showConnected = (/** @type {string} */ deviceId, /** @type {string} */ initialName) => {
         const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", value: initialName, "aria-label": "Device name" }));
         let saved = initialName;
@@ -1290,16 +1312,16 @@ const SCREENS = {
         const anotherBtn = h("button", { class: "btn", type: "button", onclick: () => { mint(); drawRing(); tick(); put(body, ringConnectedReset()); } }, "Connect another device");
         // A fresh card for the next ticket, once "Connect another device" is chosen: same body
         // shape as the initial ring, so a second phone goes through the identical experience.
-        function ringConnectedReset() { return [ringEl, h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta]; }
+        function ringConnectedReset() { return [stageEl, h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta]; }
         put(body,
-          h("div", { class: "phone-code-connected pop", role: "status" },
+          h("div", { class: "phone-code-connected", role: "status" },
             icon("check", 20),
             h("div", null,
               h("p", { class: "h3", style: { margin: "0 0 4px" } }, "Your phone is connected."),
               h("div", { class: "field" }, nameIn))),
           h("div", { class: "phone-code-actions" }, nextBtn, anotherBtn));
       };
-      cleanup.push(on("device.paired", e => showConnected(e.payload?.id, e.payload?.name || "A device")));
+      cleanup.push(on("device.paired", async e => { await dance(); showConnected(e.payload?.id, e.payload?.name || "A device"); }));
       drawRing();
       tick();
       every(tick, 1000);

@@ -205,6 +205,27 @@
   .phone-code-ring.shimmer::after { animation: none; display: none; }
 }
 .phone-code-body { display: flex; flex-direction: column; gap: 12px; align-items: center; text-align: center; }
+/* The avatar's dance on device.paired (the user, 28 Sep): a hop, a squish, a sparkle, under
+   1.2s, before "Your phone is connected." Reuses .ob-burst/ob-pop's exact dot technique (the
+   assistant easter egg above) rather than inventing a second sparkle language, positioned around
+   the stage instead of a 24px mark. The stage (not .phone-code-ring itself, which clips for the
+   shimmer) is what hops/squishes and hosts the burst, so the sparkle isn't cut off at the ring's
+   edge. */
+.phone-code-stage { position: relative; }
+.phone-code-stage.dance { animation: phone-code-dance 1100ms ease; }
+@keyframes phone-code-dance {
+  0% { transform: translateY(0) scale(1, 1); }
+  18% { transform: translateY(-14px) scale(0.94, 1.08); }
+  38% { transform: translateY(2px) scale(1.08, 0.9); }
+  58% { transform: translateY(-6px) scale(0.97, 1.04); }
+  78% { transform: translateY(0) scale(1.02, 0.98); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+.phone-code-burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+.phone-code-burst i { position: absolute; left: 0; top: 0; width: var(--size, 5px); height: var(--size, 5px); margin: calc(var(--size, 5px) / -2) 0 0 calc(var(--size, 5px) / -2);
+  border-radius: 50%; background: var(--beacon-ink); opacity: 0;
+  animation: ob-pop 1100ms cubic-bezier(.15, .7, .3, 1) var(--delay, 0ms) 1 forwards; }
+@media (prefers-reduced-motion: reduce) { .phone-code-stage.dance { animation: none; } }
 .phone-code-connected { display: flex; align-items: flex-start; gap: 10px; text-align: left; width: 100%; }
 .phone-code-connected svg { flex-shrink: 0; margin-top: 3px; color: var(--beacon-ink); }
 .phone-code-connected .field { margin-top: 4px; }

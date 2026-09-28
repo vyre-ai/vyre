@@ -310,6 +310,15 @@ Filled in as each lands.
   testbox; the `relay.allowed === true` branch (Advanced disclosure, Wink primary) still has no
   live-browser test, the same real-`onboard.status`-has-no-`can`-field limit as everywhere else
   in this doc — verified by code review only.
+- PIVOT (the lead, 28 Sep, same day): Tailscale stays, auto-managed by Vyre once relay is
+  allowed, rather than off-by-default — the device-join screen's structure from the commit above
+  didn't need to change (relay/code was already default, manual Tailscale entry was already the
+  secondary path), just its label: "Advanced setup" -> "Use my own Tailscale setup." Also built
+  the avatar's dance the lead asked to confirm: hop/squish/sparkle under 1.2s on `device.paired`,
+  before the connected state, reduced-motion-gated, reusing the assistant easter egg's exact dot
+  technique on a new `.phone-code-stage` wrapper. `test/onboard-page.test.js` 4/4, `deck/js/*
+  .test.js` 26/26, testbox. Next: the same Wink-primary rework in Settings' Server panel (the
+  lead's next item); "a paired phone adds a new computer" stays parked as a follow-up.
 
 ## Doing
 
