@@ -1,17 +1,22 @@
 // @ts-check
 // Scan your avatar to pair your phone: the camera side. Opens the back camera (getUserMedia),
-// grabs frames onto an offscreen canvas at a fixed interval (not every frame - decode-core2's
-// full rotation/scale search is heavy, see the perf note below), and runs the Vyre code decoder
-// against each grab until one resolves to a real (RS/CRC-valid) id, or the caller stops it.
+// grabs frames onto an offscreen canvas at a fixed interval (not every frame - a full decode
+// attempt is real work, see the perf note below), and hands each grab to a decode Worker
+// (scan-worker.js) until one resolves to a real (RS/CRC-valid) ticket, or the caller stops it.
 //
 // Deliberately NOT a live 30fps scan loop: docs/work/pwa.md's harness measurement puts a single
 // full decode attempt at roughly 1-2s of JS work (a continuous 0-360deg x 9-scale search, tried
-// candidate-by-candidate until one RS-validates). Attempting on every frame would pin the main
-// thread solid, so this throttles to one attempt in flight at a time, spaced by ATTEMPT_MS, and
-// yields between attempts. A follow-up (not built here): move the search into a Worker so the
-// preview never stutters, and add a cheap localization pre-pass (find the tint disc's
-// approximate centre/radius first) so the search only has to refine near it instead of a blind
-// full sweep - see decode-core2.js's own NOTES on this.
+// candidate-by-candidate until one RS-validates). This throttles to one attempt in flight at a
+// time, spaced by ATTEMPT_MS.
+//
+// The search itself runs in scan-worker.js, not here: that ~1-2s of work would otherwise freeze
+// the camera preview (a canvas redraw) and the whole page for its duration, every attempt. A
+// Worker moves it off the main thread - the preview keeps redrawing and the rest of the Deck
+// stays responsive while a scan is in flight. This does NOT itself hit the lead's under-200ms/
+// attempt target: it moves the same cost off the main thread, it doesn't make it smaller. The
+// actual speed lever - a cheap localization pre-pass so the search only refines near the code's
+// real position/scale instead of a blind sweep - is a separate, larger change, not built here;
+// see decode-core2.js's own perf note and docs/work/pwa.md's "Next".
 //
 //   startScan({ video, onFound, onError }) -> { stop() }
 //     video: an existing <video> element this attaches the camera stream to (muted, playsinline,
@@ -22,14 +27,11 @@
 //     HIGH 1 on work/pwa bdca618b), so it is never hex-encoded, logged or put anywhere a string
 //     would be (a URL, localStorage) on the way there. `avatarDataUrl` is a small crop of the
 //     decoded frame's own centre (the face the ring was drawn around, upright-rotated using the
-//     winning candidate's own rot/scale) for the success screen's dance - not a re-derived
-//     vector avatar (this scanner has no access to app-design's renderer/seed), a photo of the
-//     real one that was just on screen. The caller stops the scan itself (or calls stop() again
-//     defensively).
+//     winning candidate's own rot/scale) for the success screen's dance - a fallback only; the
+//     success screen prefers a freshly rendered avatar (see pair-avatar.js) and only falls back
+//     to this photo if that rendering throws. The caller stops the scan itself (or calls stop()
+//     again defensively).
 //     onError(err): camera permission refused, no camera, or the stream ending unexpectedly.
-
-import { decodeCore2 } from "../vyrecode/decode-core2.js";
-import * as payload from "../vyrecode/payload.js";
 
 const ATTEMPT_MS = 350; // gap between the END of one decode attempt and the start of the next
 const FRAME_SIZE = 640; // grabbed frame side, in CSS px equivalent - plenty for a code held at
@@ -48,8 +50,9 @@ export function startScan({ video, onFound, onError }) {
   const canvas = document.createElement("canvas");
   canvas.width = FRAME_SIZE; canvas.height = FRAME_SIZE;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  const core = decodeCore2();
+  const worker = new Worker(new URL("./scan-worker.js", import.meta.url), { type: "module" });
   let found = false;
+  let busy = false; // an attempt is in flight at the worker; never send a second one
   let timer = /** @type {ReturnType<typeof setTimeout> | null} */ (null);
 
   (async () => {
@@ -67,13 +70,26 @@ export function startScan({ video, onFound, onError }) {
     }
   })();
 
+  worker.onmessage = (/** @type {MessageEvent} */ e) => {
+    busy = false;
+    if (stopped || found) return;
+    const { ticket, rot, scale, correction } = e.data;
+    if (ticket) {
+      found = true;
+      onFound(new Uint8Array(ticket), cropAvatar(canvas, { rot, scale, correction }));
+      return;
+    }
+    scheduleAttempt();
+  };
+  worker.onerror = (e) => { busy = false; if (!stopped && !found) { onError(Object.assign(new Error(e.message || "The scanner failed."), { code: "scan_worker" })); } };
+
   function scheduleAttempt() {
     if (stopped || found) return;
     timer = setTimeout(runAttempt, ATTEMPT_MS);
   }
 
   function runAttempt() {
-    if (stopped || found || !ctx || video.readyState < video.HAVE_CURRENT_DATA) { scheduleAttempt(); return; }
+    if (stopped || found || busy || !ctx || video.readyState < video.HAVE_CURRENT_DATA) { scheduleAttempt(); return; }
     // Centre-crop the video frame to a square (a code is round; a square frame wastes no pixels
     // on letterboxing either side of a portrait camera feed) before scaling to FRAME_SIZE.
     const vw = video.videoWidth, vh = video.videoHeight;
@@ -83,34 +99,17 @@ export function startScan({ video, onFound, onError }) {
     ctx.drawImage(video, sx, sy, side, side, 0, 0, FRAME_SIZE, FRAME_SIZE);
     let data;
     try { data = ctx.getImageData(0, 0, FRAME_SIZE, FRAME_SIZE); } catch { scheduleAttempt(); return; } // a transient decode error on some frames, not fatal
-    const getLum = (/** @type {number} */ x, /** @type {number} */ y) => {
-      x = Math.round(x); y = Math.round(y);
-      if (x < 0 || y < 0 || x >= FRAME_SIZE || y >= FRAME_SIZE) return null;
-      const i = (y * FRAME_SIZE + x) * 4;
-      return 0.2126 * data.data[i] + 0.7152 * data.data[i + 1] + 0.0722 * data.data[i + 2];
-    };
-    // Try candidates in confidence order (searchWithPerspective already sorts them) and stop at
-    // the first one that RS/CRC-validates - almost always well before the tail of the list.
-    const candidates = core.searchWithPerspective(getLum, FRAME_SIZE / 2, FRAME_SIZE / 2, {});
-    for (const cand of candidates) {
-      const bits = levelsToBits(cand.levels);
-      const bytes = payload.bitsToBytes(bits);
-      const recovered = payload.recoverId(bytes);
-      if (recovered) {
-        found = true;
-        onFound(new Uint8Array(recovered.id8), cropAvatar(canvas, cand));
-        return;
-      }
-    }
-    scheduleAttempt();
+    busy = true;
+    // The pixel buffer transfers (no copy) to the worker; getImageData already gave us our own
+    // copy, so handing its backing buffer away costs nothing here.
+    worker.postMessage({ data: data.data, width: FRAME_SIZE, height: FRAME_SIZE }, [data.data.buffer]);
   }
 
   /** A small, upright crop of the decoded frame's own centre (the face the ring was drawn
-   * around), using the winning candidate's own rotation and scale - this scanner has no avatar
-   * renderer of its own (that's app-design's), so the success screen's "same avatar" is a photo
-   * of the real one, not a redrawn copy. Skipped (returns null) when a perspective correction was
-   * used: cropping straight from the raw (still-tilted) frame would look wrong, and a slightly
-   * plainer success screen beats a warped one. */
+   * around), using the winning candidate's own rotation and scale - kept only as a fallback for
+   * pair-avatar.js's freshly rendered avatar (see that file). Skipped (returns null) when a
+   * perspective correction was used: cropping straight from the raw (still-tilted) frame would
+   * look wrong, and a slightly plainer fallback beats a warped one. */
   function cropAvatar(/** @type {HTMLCanvasElement} */ src, /** @type {any} */ cand) {
     if (cand.correction && cand.correction !== "none") return null;
     try {
@@ -134,16 +133,9 @@ export function startScan({ video, onFound, onError }) {
       if (timer) clearTimeout(timer);
       if (stream) stopTracks(stream);
       video.srcObject = null;
+      worker.terminate();
     },
   };
 }
 
 function stopTracks(/** @type {MediaStream} */ stream) { for (const t of stream.getTracks()) t.stop(); }
-
-/** Mirrors vyrecode2.js's levelsToBits (2 bits per mark) without importing the renderer (which
- * pulls in avatar assets this scanner never needs - see decode-core2.js's own header). */
-function levelsToBits(/** @type {number[]} */ levels) {
-  const bits = [];
-  for (const lv of levels) { bits.push((lv >> 1) & 1, lv & 1); }
-  return bits;
-}
