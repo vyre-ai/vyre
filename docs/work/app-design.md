@@ -452,3 +452,21 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   bigSmile and micah palettes (occasional violet-adjacent purple, not something to fix in their
   code, flagged as a pre-ship per-seed check); one hit in my own original palette (a blue too
   close to violet), fixed before the final render, so what shipped is clean.
+
+## Now (28 Sep, generated avatars round 3: real teammate variety + role props)
+
+- Lead's note on round 2: teammate characters were too alike (bald, smiling, only colour varied).
+  Rebuilt the character generator with independent per-seed variety: 7 hair shapes, optional
+  headwear (cap/beanie/headband/bow), optional glasses (round/square), optional earrings
+  (stud/hoop), 5 expressions, two independent pastel colours (head + body). Role props exactly as
+  asked: design gets a beret or a pencil badge (per-seed), reviewer's prop is glasses forced on
+  (no separate badge), docs a book badge, research a magnifier badge, qa a checkmark badge.
+  Agent blobs unchanged (already liked).
+- Real legibility check, not assumed: rendered actual 24x24 rasters (a true downscale, not a
+  scaled-up vector) and looked at them pixel by pixel. Hair, head colour, glasses and expression
+  hold up at 24px; badge icon detail (a pencil, a book spine, a checkmark) does not, it blurs to
+  "a small dot." Fixed: badges only render at 32px and up; at 24px a teammate is still distinct
+  from hair/colour/glasses/expression alone.
+- Sent (msg_id bb2f3ce4): sheet-combined.png (12 teammates + 8 blobs, both themes, both sizes),
+  mock-combined.png (an in-chat scene showing design/reviewer/qa together so the variety reads in
+  context). All in the same local scratch folder as rounds 1-2, not this repo.
