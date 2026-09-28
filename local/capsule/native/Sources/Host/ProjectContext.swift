@@ -39,7 +39,8 @@ public enum ProjectContext {
     }
 
     /// Apps whose windows are never read, even for a path.
-    static let privateApps: [String] = ["com.apple.keychainaccess", "com.1password.", "com.agilebits.", "com.bitwarden.", "com.lastpass.", "com.dashlane."]
+    static let privateApps: [String] = ["com.apple.keychainaccess", "com.1password.", "com.agilebits.", "com.bitwarden.", "com.lastpass.", "com.dashlane.",
+                                          "com.apple.Passwords", "org.keepassxc.keepassxc", "me.proton.pass"]
 
     static func isPrivate(_ bundle: String) -> Bool { privateApps.contains { bundle == $0 || ($0.hasSuffix(".") && bundle.hasPrefix($0)) } }
 

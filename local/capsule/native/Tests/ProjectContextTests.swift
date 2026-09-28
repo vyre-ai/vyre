@@ -39,6 +39,7 @@ let projectContextSuite = Suite("project context") { t in
         t.eq(ProjectContext.fileURLPath("/Users/alex/x"), "/Users/alex/x")
         t.eq(ProjectContext.fileURLPath("https://harlow.example/doc"), nil)
         t.ok(ProjectContext.isPrivate("com.1password.1password") && ProjectContext.isPrivate("com.apple.keychainaccess"))
+        t.ok(ProjectContext.isPrivate("com.apple.Passwords") && ProjectContext.isPrivate("org.keepassxc.keepassxc") && ProjectContext.isPrivate("me.proton.pass"))
         t.ok(!ProjectContext.isPrivate("com.apple.Terminal") && !ProjectContext.isPrivate("com.apple.keychainaccessory"))
         MainActor.assumeIsolated {
             t.eq(ProjectContext.frontPath(nil), nil)
