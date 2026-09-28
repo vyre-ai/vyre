@@ -596,6 +596,21 @@ Done this session:
 
 Next: task 3 (federation re-review) is done. Idle; watch for a new assignment from the lead.
 
+- New task: rc.2 CI blocker on work/integrator-rc. Reproduced on testbox against pre/rc
+  77641c5b/98f2a155. Correction on scope: only test/onboard.test.js:265 ("with a token it is
+  vyre.run") is a real failure; test/journey.test.js:221 is `{ todo: ... }`-marked and node's test
+  runner counts that separately from "fail" (the actual GH Actions run had "fail 1" total). The
+  journey gap (link.find/vyre up --json can't say "seen but unreachable") is real but pre-existing
+  and not a regression; flagged to the lead rather than scope-creeping this fix.
+  Root cause: core/names/index.js's hasToken() read process.env.CLOUDFLARE_vyre_token (mixed
+  case, a typo) instead of CLOUDFLARE_VYRE_TOKEN (all caps — what box/vyre.env.example, the docs
+  and the test's freeZone() helper all actually use). A real user following the example env file
+  would never have their token read; the onboarding would never offer vyre.run even with a valid
+  token in place. Fixed on work/e2e-rcfix a5eff01f (new worktree vyre-e2e-rcfix, off pre/rc
+  98f2a155): corrected the casing plus the 7 docs files that quoted the old one. Verified on
+  testbox: onboard.test.js + onboard-page.test.js 120/120, core/names/**/*.test.js 105/106 (1
+  pre-existing skip), docs-check + docs-index + hygiene 22/22. Sent to reviewer and integrator.
+
 ## Next
 
 - The standing rule itself: Touch ID only for pairing a new device, revealing or granting vault
