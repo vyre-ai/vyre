@@ -4,6 +4,435 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### install-box.sh: shellcheck actually clean, and a quiet line for Docker's own wait
+
+- Fixed a real, previously undetected bug: `pick_look()`'s escape-code assignments
+  (`BONE="$e[38;2;..."` etc.) and `step()`'s `"$ASH[$STEP/$STEPS]$RESET"` shellcheck as SC1087
+  (a bare `$var[` reads as an attempted array index). `core/names/system.test.js`'s "shellcheck is
+  clean when available" test only skips when the binary is missing, so it had silently never run
+  anywhere shellcheck was actually installed; installing it on testbox to check this branch's own
+  work surfaced the pre-existing failure. Fixed by bracing every one of the 7 flagged expansions
+  (`"${e}[...`, `"${ASH}[...`); confirmed clean with `shellcheck -s sh`, and
+  `core/names/system.test.js` + `test/install-box*.test.js` green (38/38).
+- Added one quiet line (`wait_line()`, picked by pid from a short WAITS list) right before the one
+  real silent gap in the installer: Docker's own `curl | sh` script, which can run a minute or two
+  before it says anything. Never shown under `--dry-run` (nothing runs that long there); `--yes`
+  is unaffected, still silent for prompts. No new shellcheck findings from the addition.
+
+#### A Cloudflare zone token for vyre.run was never read: the env var name had a typo
+
+- core/names/index.js's `hasToken()` checked `process.env.CLOUDFLARE_vyre_token` (mixed case);
+  every other place that names it (`box/vyre.env.example`, the docs, `test/onboard.test.js`) uses
+  `CLOUDFLARE_VYRE_TOKEN`. A box owner who set the token exactly as the example env file and the
+  docs say to would never have it read: `zone` stayed false, `onboard.name` never offered a
+  vyre.run name, and there was nothing to say why. Fixed: the code now reads
+  `CLOUDFLARE_VYRE_TOKEN`; the docs that quoted the old casing (ADR 0002, ADR 0008,
+  concepts/box-and-mac, concepts/tailnet, get-started/onboarding, get-started/troubleshooting,
+  work/box) are corrected to match. The vault item name (`cloudflare-vyre-token`) is unrelated and
+  unchanged.
+- test/onboard.test.js:265 ("with a token it is vyre.run") failed in CI on this: after
+  `freeZone()` sets `CLOUDFLARE_VYRE_TOKEN`, `onboard.status`'s `detail.name.via` stayed "ts.net"
+  because the token was never actually read.
+
+#### vyred's git never runs a folder's own commands
+
+- A repo's config and hooks belong to whoever can write the folder. `git ls-files` and `git
+  check-ignore` run a planted core.fsmonitor, and the vault ran both, without guards, in the folder
+  of an .env it imported or a file it rendered: on the box, an agent could run code as vyred's own
+  user. lib/git-safe.js is the one way vyred runs git now (gitSync, gitAsync) (no fsmonitor, no hooks, no pager, no
+  external diff, no network, no global or system config, and every filter driver the repo names
+  overridden to cat, since `status` runs clean filters), used by the vault's checks, the build
+  stamp and the switchboard's push summary. A repo's own `log.showSignature=true` plus
+  `gpg.program`/`gpg.ssh.program`/`gpg.x509.program` ran that command as vyred on `log` and `show`
+  (an explicit `--format=%G?` asked for it too, signed or not); all three are forced to `false`.
+  test/safe-git.test.js plants an fsmonitor, textconv, filter drivers, hooks and a gpg.program, and
+  fails if any file but lib/git-safe.js starts git (core/cli, the person's own terminal, aside).
+
+#### On a Mac, the caller check no longer leaves vyred's socket blocking
+
+- vyred reads who is on a socket with a small perl child that gets the connection as fd 3. On
+  macOS libuv clears O_NONBLOCK for the child, and that flag is shared with vyred's own copy, so
+  after the check vyred's socket blocked: the next large answer (the tool list) stalled vyred's
+  whole event loop behind a slow reader, and deadlocked with an in-process client (switchboard's
+  tests hung on the Mac). The child now sets O_NONBLOCK back first. A peer vyred should be able to
+  read but cannot (perl failed or timed out) no longer keeps a surface's label: it counts as a
+  model's, so a stall never reopens the forged label. test/peer.test.js has the large answer.
+- The peer is read by /usr/bin/perl with an empty environment, never a perl from vyred's PATH or one
+  PERL5OPT/PERL5LIB could load code into (a model's shell shares that user's PATH and env). vyred
+  also sets its socket non-blocking again itself when the check ends, so a check that never ran its
+  first line (a failed exec, a kill) cannot leave vyred blocking either.
+
+#### main's node job green again: install-box.sh passes shellcheck; the side view test has no read race
+
+- scripts/install-box.sh: the colour escapes and the step counter brace their variables
+  (`${e}[`, `${ASH}[`), which shellcheck read as array expansions (SC1087).
+- local/sideview: the test's fake window list and the fake tile write windows.json whole and
+  rename it into place, so the fake never reads half a file and exits 1 (a CI-only flake).
+
+#### rc.2 freezes: six helper imports and two Capsule model names, owed for 0.1.1
+
+- test/boundaries.test.js freezes the edges vault and connectors added (the lead's OK): core/cli to
+  core/vault/kinds.js and ssh/setup.js (vault), and core/google, core/mcp and core/mail to
+  core/connectors/behalf.js, message.js and auth.js (connectors). Debt: move them to a shared lib/
+  in 0.1.1 (lib/vault-kinds, lib/connectors).
+- test/cohesion-drift.test.js: CapsuleModel.swift may hold 2 model names and IQAsk.swift 1, for
+  the Capsule's IQ fast path (debt: capsule-pro, after 0.1.0).
+
+#### rc.2: Capsule questions are Vyre IQ (memory.ask)
+
+- A quick question (after the pause, or ⏎) goes to memory.ask, not a lean model session with the
+  Capsule's own prompt: memory-iq's grounded answer with a chip "confidence 0.82 · from 2
+  sessions" that unfolds up to three sources; "Not sure yet." with what memory does know and
+  "Ask Claude instead: ⌘⏎"; at the day's cap, memory's message exactly. No streaming yet (0.1.1).
+- A question about the screen ("what is this error", "what am I looking at", "the selected
+  text") or with text selected goes to the fast model with the screen context, not memory.ask,
+  which cannot see it. Sight marks its chip `aboutIt` (Kit `SendAttachment.aboutIt`, additive);
+  only words that may be about the screen (a local word check, or text may be selected: Kit
+  `SendAttaching.mayBeAbout`, default false) wait for the chip; any other question goes to
+  memory.ask at once (a test holds the chip 600 ms and memory.ask is still called under 300 ms).
+- A follow-up or ⌘⏎ after an IQ answer starts a session told the conversation. The old path
+  (threads.start, lean) runs only when vyred has no memory.ask (no_such_tool).
+- `Sources/Host/IQAsk.swift` (new), `Sources/Host/CapsuleModel.swift`, `Sources/Host/AutoAsk.swift`,
+  `Sources/Vyred/MemoryBox.swift`, `Sources/UI/CapsuleView.swift`; `Tests/IQAskTests.swift`. The
+  frecency file test waits for the write (a CI flake). Swift 331/331.
+
+#### rc.2: no gold, no epoch ages, one placeholder
+
+- Design A retired the gold: memory's colour (`Theme.recall`, the icon tint) is neutral text, and
+  "from 2 of your sessions" under an answer is a source chip (28 tall, radius 14, 1 px
+  `ruleStrong`, 13/18 `text2`).
+- A missing, zero or pre-2001 time shows no age ("691 months" came from a test's `at: 1000`); a
+  row under a minute old says "just now" (copy.md). The test fixtures use real times.
+- The placeholder is capsule.md's "Ask Vyre, find, or run" in every state; the other line was in
+  stale pictures, and capsule-mac.md's checklist still says the old words (app-design's file).
+- `Sources/UI/Theme.swift`, `Sources/UI/CapsuleView.swift`, `Sources/Providers/IconCache.swift`,
+  `Sources/Vyred/Route.swift`, `Sources/Vyred/State.swift`; `Tests/DesignATests.swift`,
+  `Tests/RouteTests.swift`. Swift 326/326.
+
+#### Mail: send an email from any connected account (ADR 0016 decision 8)
+
+- New module `mail` (core/mail): `mail.accounts`, `mail.send`, `mail.search`, `mail.read`,
+  `mail.test`, `mail.map`, and the Capsule's `mail.find` and `mail.compose`. `account` is a vault
+  connection id; the vault's list decides which accounts each surface sees.
+- Adapters: Google (through google.mail.*), an MCP server (through mcp.call and a guessed tool
+  map), Google Apps Script web apps (core/mail/apps-script.js and the script to paste,
+  apps-script.gs) and IMAP with SMTP (core/mail/imap.js, TLS required, no dependencies).
+- Every send is held at the Gate. Native accounts hold as `mail:<connection>` and send only
+  from `mail.release`. A missing credential answers `needs_credential`.
+- `mcp.call` hears `hold: true` and `on_behalf {thread, agent}` from module callers only;
+  `google.mail.send` hears `on_behalf`. Both are ignored from anyone else.
+- Shared pure mail helpers moved to core/connectors/message.js; google/mail.js uses them.
+- Tests: fake IMAP and SMTP servers, a fake Apps Script web app (it runs the real script), two
+  instances of one MCP server with their own credentials.
+
+#### Vault, Connections: every account and key, granted per surface (ADR 0028, decision 9b)
+
+- A new table, `vault_connections`, MACed like the grant rows: the vault's own items with a
+  catalog provider (resynced on `vault.connected`, put and delete), the rows of `google.accounts`
+  and `mcp.servers` (read through those tools on their events and on first read), and rows modules register with
+  `vault.connections.register` (source = the calling module, id `cn_...` stable across upserts;
+  capabilities given, or read from tool names by a small pattern table). `unregister` removes a
+  module's own row. A row whose items are missing or not granted has state `needs_credential`.
+- `vault.connections.list {capability?, surface?, caller?}` shows only what the caller's surface
+  (capsule, chat, agents, phone) may use, each with `uses` (capability to `{tool, input}`);
+  `get`, `grant` (presence), `revoke` (no presence), `update` (presence; label and capabilities
+  survive resyncs), `sync`, and `allowed` for modules. New rows are granted to capsule and chat.
+  A tampered row is granted to nothing. Events `vault.connection-added`, `-removed`, `-changed`.
+- The account picker: `default` (one per capability, set with `update {default_for}` from a
+  person's surface, no presence) and `last_used` (on each yes from `allowed`, at most once a
+  minute). Outside the MAC; with a capability, `list` adds `is_default` and sorts by them.
+- core/modules/needs-credential.js: the one missing-key shape, `{code: "needs_credential",
+  message, detail: {module, need, account?}}`.
+- `needs.credentials` takes `multiple: true`: `vault.connect` then needs a `label`, and the item
+  is `<module>-<label>`. The Apps Script provider can send and read mail, and takes the
+  `/a/macros/<domain>/s/<id>/exec` URL too.
+- `vyre vault connections [--can c] [--surface s]`, `connections grant|revoke <id> <surface>`,
+  `connections sync`.
+
+#### Connecting a key: needs.credentials, vault.need and vault.connect (ADR 0028, decision 9a)
+
+- A manifest may declare `needs.credentials`: `{id, kind, provider, purpose, item?, optional?,
+  group?}`. The module validator checks the shape, and `ctx.vault.fetch` accepts those items
+  (`item`, or `<module>-<id>`). The registry's status and `ctx.modules.list()` carry each module's
+  declared credentials.
+- core/vault/providers.js is the provider catalog: Deepgram, OpenAI, ElevenLabs, Anthropic, the
+  Claude setup token, GitHub, Cloudflare, Tailscale, Telegram, Google sign-in, Google service
+  accounts, Apps Script web apps, IMAP and SMTP, and MCP bearer tokens. Each lists its kinds, how
+  it is given (field, file or sign-in), its fields, capabilities and where to get the key.
+- `vault.need` (people's surfaces, no presence) lists every need with its state and the form to
+  fill it, never a value. `vault.connect` (people's surfaces, presence, never Claude) checks the
+  fields or a service-account file, saves the item with `details.provider`, grants it and emits
+  `vault.connected {module, need, item, provider}`. A sign-in returns `next: {tool, input}`.
+- `vyre vault needs [module]` and `vyre vault connect <module> [need] [--file f]`. `vyre voice
+  key` now goes through `vault.connect`. Voice declares its three keys as one `speech` group, and
+  `voice.status` carries a `need` pointer while the key is not ready.
+
+- modules/vault-android is also a Credential Manager provider on Android 14 and later: passwords and
+  passkeys from `identities`, an "Unlock Vyre" action without a fill window, `passkey.assert` and
+  `passkey.register` over the platform's clientDataHash or Vyre's own clientDataJSON
+  (`android:apk-key-hash:` for apps, with an assetlinks.json check), and `save` for passwords. New
+  dependency androidx.credentials 1.3.0, for the provider API. Type-checked, not run on a device.
+
+#### iOS and macOS AutoFill provider, and passkeys for platforms that hash their own client data
+
+- modules/vault-apple/ holds the iOS and macOS credential provider: passwords, passkeys and
+  one-time codes behind a Secure Enclave device key. It has a SwiftUI host and an XcodeGen project
+  that builds unsigned for the simulator. It is type-checked only: nothing is signed, built or run
+  without an Apple Developer team.
+- The fill listener adds `identities` for the OS credential stores, which carries usernames by
+  default and item names with `vault.autofill.identities: "names"`, a `totp` flag, and passkey
+  user handles. It also adds `passkey.assert` and `passkey.register` over the platform's
+  clientDataHash (webauthn.js assertHash). The same routes serve Android's Credential Manager.
+
+#### Android autofill: a module for the Vyre app, phone pairing codes, native-app matching
+
+- modules/vault-android/ is an Expo local module (Kotlin): an AutofillService whose suggestions
+  hold no value and unlock through a BiometricPrompt-signed device key, plus save, cards,
+  addresses and one-time codes. mobile includes it by copying or linking it into
+  apps/app/modules/. Uncompiled by gradle here; its pure core has 17 JUnit tests.
+- `vyre vault pair --phone` (presence) makes a code that alone accepts a device key; such a pair
+  may come without an extension Origin. match, fill and otp take `android://<package>@<sha256>`
+  and fill a login only when its `apps` list that exact package and certificate.
+
+#### A phone opens a fill window with its device key
+
+- The fill listener pairs a device with an optional P-256 public key (`pair {code, key}`), kept
+  in a new MACed table vault_device_keys. `POST challenge` gives a one-time, 60-second challenge;
+  `POST unlock {signature}` checks the key's signature over `vyre:fill-unlock:v1:<challenge>` and
+  opens the usual 30-minute window. The phone signs after its own biometric prompt (StrongBox or
+  the Secure Enclave), so the signature is the person's presence. Failures count toward the
+  unlock lockout. Test: core/vault/fill-devicekey.test.js.
+
+#### Every vault feature has a CLI verb
+
+- `vyre vault health [--breach]`, `remind`, `history <name>`, `revert <name> <version>`,
+  `agent grant|grants|revoke`, `uses [item] [--agent] [--since 7d]` and `rotate <name> --how`,
+  alongside `import <folder> --rewrite`, `codes`, `sweep`, `rotate`, `emergency` and `vyre run`.
+  Test: core/cli/commands/vault-next.test.js runs the real bin/vyre against a temp-home vyred.
+
+#### Emergency access: a verified contact can open your items after a wait you can stop
+
+- New `core/vault/emergency.js` and tools `vault.emergency.add`, `.refresh`, `.deny`, `.remove`,
+  `.list`, `.request` and `.status`; `vyre vault emergency ...` in the CLI. The owner names a
+  verified contact; the vault builds the sealed-pass ticket for them and escrows it (AES-256-GCM
+  file in `<vault>/emergency/`, its key sealed in the agent vault). The contact asks over the
+  owner's relay listener at the new `POST /v1/emergency`; the owner gets an event, an audit row
+  and a planner todo; after the wait (1d to 30d, 7d default) and without a deny, status releases
+  the ticket and the contact's vault accepts it like a sealed pass.
+- New table `vault_emergency`, MACed. The escrow refreshes on account unlock at most once a day.
+  `vault.offboard` also removes emergency access.
+- relay.js: `emergencyEnvelope`/`checkEmergency` (tag `vyre:emergency:v1`), `serve({ onEmergency })`.
+  vault.js: `ticketFor()` factored out of `issue()`, shared by passes and emergency access.
+- ADR 0028 decision 8; docs/using/vault.md "Emergency access". Tests:
+  core/vault/emergency.test.js.
+
+#### Card and address autofill: `/v1/fill/cards`, `card.fill` and `address.fill`, and the extension fills checkout and address forms
+
+- New `core/vault/fill-cards.js` routes and `modules/vault-extension/cards.js` field detection (autocomplete tokens, then English name/label heuristics, split expiry and country selects); popup "Cards and addresses", inline "Fill card: ..." on trusted clicks; a card (reprompt by default) fills only within 60 seconds of a proof, and no value reaches an audit row.
+
+#### Passkeys in the browser extension: Vyre answers a site's passkey request, on the person's click
+
+- "Use Vyre for passkeys" (popup, on by default once paired and allowed on pages) registers two
+  scripts for every page and frame at document start: `passkey-page.js` in the page's own world
+  stands in for `navigator.credentials.create`/`.get` (publicKey only; conditional, silent and
+  anything unreadable go to the browser's own), and `passkey-bridge.js` draws the prompt in a
+  closed shadow root: "Save a passkey for harlow.test in Vyre?", "Sign in to harlow.test as
+  alex@harlow.test with Vyre?" or a picker, with Continue, Use another device (the browser's own
+  authenticator, original options) and Cancel (NotAllowedError). It acts only on trusted clicks.
+- background.js: `passkey-list`/`passkey-create`/`passkey-get` from content scripts only (the popup
+  is refused), for the frame's origin from the sender; a frame of another site sends crossOrigin
+  and the tab's topOrigin. Not paired or vyred unreachable answers `{ fallback: true }`. The
+  scripts follow pairing, page access and the toggle; Firefox needs 128 or later.
+- The page script's answer is a PublicKeyCredential on the page's own prototypes with
+  ArrayBuffer fields and toJSON(); vyred's errors become the DOMExceptions a browser throws.
+- build.mjs refuses a package that lacks a script the worker injects. Manifest 0.3.0.
+- Tests: modules/vault-extension/passkey.test.js (page script, bridge, worker against a real fill
+  listener, and one create and sign-in end to end, verified as a relying party would).
+
+#### Leaks and rotation: a sweep, rotation at the provider, and daily reminders in the planner
+
+- `vault.sweep {path, history?, shell?}` (CLI `vyre vault sweep [path] --history --shell`) compares
+  every vault value with a folder's files, the lines each git commit added, and the shell's
+  history, and spots credentials the vault lacks by shape (detect.js) and private key blocks. It
+  returns file, line, commit and the item name or credential type, never a value or context.
+  Dependencies, build output, binaries and files over 2 MB are skipped. core/vault/sweep.js.
+- `vault.rotate {name}` (CLI `vyre vault rotate <name>`) makes the new credential with the current
+  one, stores it as a new version, THEN revokes the old one. It is automatic for AWS IAM keys
+  (SigV4 implemented here), GitLab PATs (self/rotate), Cloudflare user API tokens (roll) and
+  Google Cloud service-account keys (a self-signed JWT). Every other provider detect.js knows,
+  Twilio included (Standard API keys may not manage keys), gets its key page and hand steps.
+  `vault.rotation {name}` says which way an item rotates. Errors name the provider and never carry
+  a value, a header or a body. core/vault/rotate.js, core/vault/tools/rotate.js.
+- Rotation reminders (ADR 0028, decision 4): once a day, the first run after 09:00 local, on the
+  box (or a Mac with no box). Watchtower's expired, expiring, rotate, reused and old findings
+  become planner todos in the Vault list, once each; more than five at once become one todo that
+  lists them. A fixed item's todo is marked done, and a dismissed one stays quiet. A rotation
+  closes its item's todos at once. `vault.remind.run` runs the pass now; `vault.reminders: false`
+  turns it off. core/vault/remind.js, migration vault_reminders + vault_jobs.
+- Tests: sweep.test.js, rotate.test.js (fake servers on 127.0.0.1 only), rotate-tool.test.js,
+  remind.test.js.
+
+#### SSH: move ~/.ssh keys in, and sign git commits through the vault's agent
+
+- `vyre vault ssh import [--dir]` moves private keys from ~/.ssh into the vault; the files stay
+  until you delete them. `vyre vault ssh setup [name] [--git]` prints the IdentityAgent and
+  SSH_AUTH_SOCK lines (Vyre never edits ~/.ssh/config or a profile). With `--git` it sets
+  gpg.format ssh, user.signingkey key::<public key>, commit and tag signing, and an
+  allowed_signers line. Every signature asks, as before. core/vault/ssh/setup.js.
+
+#### The authenticator: current and next codes, and Google Authenticator's export
+
+- `vault.codes` lists every one-time code with the next one and the seconds left; `vault.totp`
+  now returns `next` too. `vault.codes.import` reads Google Authenticator's transfer export
+  (otpauth-migration://, split across several QR codes, gathered in any order) and otpauth://totp/
+  links into `authenticator` items; a seed already in the vault is skipped; HOTP and MD5 are
+  refused by name. CLI: `vyre vault codes`, `vyre vault codes import`. Neither tool is offered
+  to Claude. Tests: core/vault/codes.test.js.
+
+#### Vault import reads LastPass, Dashlane, Keeper, NordPass, Proton Pass, Enpass, KeePass and Firefox
+
+- New formats in core/vault/import-more.js, detected without a hint: lastpass-csv, dashlane-csv
+  and dashlane-zip, keeper-csv (headerless) and keeper-json, nordpass-csv, protonpass-csv,
+  protonpass-json and protonpass-zip, enpass-json, keepass-xml, keepassxc-csv, firefox-csv. Edge,
+  Brave, Arc, Opera and Vivaldi write Chrome's CSV: edge-csv, brave-csv, arc-csv, opera-csv and
+  vivaldi-csv parse like chrome-csv, and detection still says chrome-csv.
+- Records land as the kind they fit: login, authenticator (a TOTP seed alone), card, address,
+  identity (Dashlane IDs), wifi (Proton Pass) or note. vault.import.preview counts the new kinds.
+- KeePass XML goes through a small dependency-free reader that refuses a DOCTYPE, so no entity or
+  external entity is ever expanded. A .kdbx file, an encrypted Proton Pass export and a PGP-armoured
+  file are refused with the way to export again. Names, descriptions, skip reasons and errors
+  still never carry a value. Tests: core/vault/import-more.test.js.
+
+#### Typed credentials: PATs with scopes and expiry, cloud keys, certificates, Wi-Fi and more
+
+- New kinds: authenticator, passkey, address, identity, pat, oauth, cloud, db-url, cert,
+  recovery-codes, wifi, license, file (core/vault/kinds.js, now the one list; the four copies of
+  the default-field table are gone). Each kind names the fields it needs and the one it hands over.
+- `details` on vault.put and vault.update (listable, never a value, neither sealed nor MACed):
+  expires ("90d" or a date), scope, provider, issuer, ssid, product, filename, count, rp. A
+  certificate's end date, an authenticator's issuer, a recovery-code count and a network name are
+  read from the fields. Details are kept across puts and carried in backups.
+- A passkey, like an ssh key, is never released, injected, revealed or copied. The Deck and
+  Capsule reveal now also refuses an ssh key's private half.
+- Watchtower: `expired` and `expiring` (within 14 days); tokens of typed kinds count toward reuse.
+- CLI: `vyre vault put --kind pat --scope repo --expires 90d --provider github`, `--from` for a
+  file, a certificate or a service-account JSON, `--key-from`, `--ssid`. The list shows details.
+  Tests: core/vault/kinds.test.js.
+
+#### `vyre run -- <command>` reads a project's .env references
+
+- A top-level `vyre run` is `vyre vault run` with two differences. It adds the `--` when it is
+  missing. With no items and no `--env-file`, it reads ./.env when that file holds at least one
+  `vault://` reference, which is what `vyre vault import --rewrite` leaves behind. A plain .env
+  is left to the program. Test: core/cli/commands/run.test.js.
+
+#### Vault imports a project's .env files, typed, and can rewrite them to vault references
+
+- `vault.import.preview` and `vault.import` take a folder: every `.env`, `.env.*` and `*.env` under
+  it, skipping node_modules, .git and build folders, listing `.env.example` and other templates
+  without importing them, following no symlinks, at most 200 files of 1 MB. The token covers every
+  file's path and bytes, so a file changing, appearing or going away refuses the import.
+- A .env file is now one `env-set` item named after its path (`harlow-intake.env`), not one secret
+  per variable. Only secrets go in; core/vault/detect.js types each variable (api-key, pat, oauth,
+  cloud, db-url, private-key, cert, jwt, webhook, password, secret, config) and names about 40
+  providers, from the value's shape first and the name second, returning only fixed words and a JWT
+  expiry. The preview lists `files` with each variable's type, what stays, and git state.
+- `vault.import {rewrite: true}` (CLI `--rewrite`) swaps each stored line for
+  `KEY=vault://item/KEY`, keeping comments, config, `export` and line endings, only when every value
+  in that file is stored, atomically and with no backup. `vyre vault run --env-file .env` runs the
+  program with the same environment. Tests: core/vault/detect.test.js, core/vault/env-import.test.js.
+
+#### Vault import previews first, finds duplicates by content, and reads Apple Passwords
+
+- `vault.import.preview {file, format?}` (cli, local, mcp; same presence as import) returns the
+  format, counts per kind, and the names to add, already here (`same`), in conflict and renamed,
+  never a value. Its `token` is an HMAC, under a per-process key, of the file's SHA-256 and size.
+  `vault.import` takes `token` and refuses a file that changed since, and `conflicts: "update"`
+  puts the file's password into the existing login as a new version, so history keeps the old one.
+  Duplicates are keyed on a login's origin plus its username (lowercased); a taken name becomes
+  `-2`, `-3`. The Apple Passwords export (the Safari header) is reported as `apple-csv`, with
+  `safari-csv` kept as an alias. `vyre vault import <file>` previews, then imports with the token;
+  `--preview` stops after the preview and `--update-conflicts` takes the file's passwords. The
+  import result adds `updated`, `same`, `conflicts` and `renamed`, and keeps `duplicate`. Audit rows
+  carry counts only (ADR 0028, decision 1).
+
+#### A box container replaced by an update no longer finds its own old lock held
+
+- vyred.lock named the old container's vyred pid, and in the new container (the same boot) that pid
+  can belong to the spawner or the loop, both under /opt/vyre, so vyred refused to start "already
+  running" and the loop kept retrying (rc-smoke on 0.1.0-rc.1, now and then after `vyre update`).
+  The lock now records when its process started; a live pid that started at another time does not
+  hold it (core/daemon/lock.test.js).
+
+#### In the box's container, `vyre` waits for vyred instead of starting a second one
+
+- A `vyre` command run with docker exec while the box's vyred was restarting (the loop's 2 s gap,
+  or right after the container started) started a vyred of its own, without the spawner. The
+  loop's vyred then exited "already running" until the loop gave up, and the stray one died with
+  the exec: later calls said "vyred is not running" and vault writes made meanwhile were lost
+  (rc-smoke on 0.1.0-rc.1, now and then). With VYRE_SUPERVISOR=docker, ensureUp waits up to 20 s
+  for the supervisor's vyred and never starts one (test/client-socket.test.js).
+
+#### The package leaves Mac build outputs and gitignored files out
+
+- package.json "files" leaves out local/capsule/bin, every .build folder, *.app bundles and
+  DerivedData, so a dirty tree no longer packs the old helper binaries.
+- scripts/lib/pack-imports.mjs `ignoredShipped()`: the files in a pack that git ignores, except
+  build.json and apps/app/dist, which the pack makes on purpose. test/pack-imports.test.js and
+  scripts/release-check.sh fail on any (skipped outside a git checkout).
+
+#### Two cohesion audit fixes: a real caller check and a real pairing timestamp
+
+- `sight.watch` and `sight.frame` now check their own caller before forwarding to `computers.watch`
+  and `hands-desktop.screenshot`: those calls cross as `module:sight` (core/modules/index.js's call
+  wrapper), so neither `computers.js`'s ownSurface floor nor `hands-desktop`'s resolveAgent (which
+  restricts only the exact shape "mcp:agent:name", not a surface-prefixed claim like
+  "cli:agent:name") ever sees who really asked. `core/sight/index.js`'s `agentCaller` runs the same
+  claim check against `meta.caller` first, fails closed if it cannot reach `agents.list`, and still
+  exempts the assistant (found in e2e review).
+- `link.pending` rows carry `created`, the pairing request's real timestamp, alongside `expires`.
+  `waiting`'s `fromPending` uses it directly; it only falls back to the old expiry-minus-TTL guess
+  for a box that has not shipped the field yet.
+
+#### An agent is named only as mcp:agent or harness:agent
+
+- vyred vouched any label naming an agent ("cli:agent:kit", "deck agent:kit") with that agent's key,
+  and the label then passed every callers list as the surface in front of it (hands-desktop took it
+  for the person). On the socket an agent is now named only as mcp:agent:<name> (its MCP server) or
+  harness:agent:<name> (its hooks), the only forms Vyre sends; any other label naming an agent is
+  refused before its key is checked. An agent's tailnet node (tailnet:agent:<name>) is unchanged.
+
+#### PERSON_ONLY is derived from the manifests, default-deny (security hotfix)
+
+- A tool whose callers name only the person's own surfaces (cli, local, deck, capsule) read as
+  person-only, but core/daemon's floor block (the own-process check that refuses a `claude` or
+  thread process even when it spoofs "cli") only ever fired for a tool core/presence's hand-kept
+  PERSON_ONLY named, or one that asked for presence itself. Anything else had nothing beyond the
+  ordinary caller-kind check, which a model's own shell can pass exactly as a real terminal would.
+  files.receive was the latest instance found this way; a sweep of every module's real tool
+  definitions (the same sandboxed load docs:ref uses) found dozens more: link.pair, link.unpair,
+  vault.device.join, vault.device.revoke, vault.vaults.create, files.drive.mount/unmount/open,
+  files.send, agents.delete, memory.correct/uncorrect/merge/split/read, and more.
+- Fixed: core/presence's new `personOnly(name, def)` treats a tool as person-only whenever its own
+  declared callers are person-surfaces alone, default-deny, unless the tool is named in the new
+  `OPT_OUT` set (harmless even under a spoofed "cli", one line of reason each: tips.*, a suggested
+  skill-install dismissal, local voice output, a local diagnostic bundle, a read-only tailnet probe,
+  ending this Mac's own person session). OPT_OUT may only shrink; a new entry needs the reviewer's
+  own sign-off (test/person-only-guard.test.js freezes it, same shape as boundaries.test.js's
+  ALLOW). Nothing that sends, pairs, joins, or changes what is remembered may ever be opted out.
+- core/daemon/index.js's floor check now calls `personOnly(name, def)` in place of a bare
+  `PERSON_ONLY.has(name)`; `link.call`'s carried `inner` tool (no local def available for it) is
+  unchanged, checked by name against PERSON_ONLY/HUMAN_ONLY only, as before.
+- Tests: test/person-only-guard.test.js (every real tool's callers agree with personOnly(); OPT_OUT
+  only shrinks; OPT_OUT never names anything on the reviewer's protect list), and a new case in
+  test/peer.test.js proving a previously-unprotected tool (link.pair, not on PERSON_ONLY's own list)
+  is now refused under a claude exactly as agents.create (which is) already was, while an opted-out
+  one (link.find) is correctly left alone by the derivation. One pre-existing test's expectation
+  updated to match (probe.mine now takes the explicit "inside a Claude session" path instead of
+  falling through to a caller-kind mismatch: same refusal, clearer reason).
+- Verified nothing legitimate breaks: core/harness, core/daemon, core/cli, deck, core/presence,
+  test/presence-bypass.test.js, test/presence-cli.test.js, all green on testbox (1445+ tests).
+
 #### The docker-api bearer's folder exists in the image
 
 - box/Dockerfile makes /var/lib/vyre-secrets owned by vyre (1000), mode 700. Without it the new
@@ -35,6 +464,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - scripts/lib/pack-imports.mjs: every relative import in a package names a file it ships.
   test/pack-imports.test.js runs it on `npm pack --dry-run`'s list; scripts/release-check.sh runs
   it on the installed folder, loads every CLI command from there and asks `vyre --version`.
+
+#### Any surface's label from a model's shell is the model's; one list of surfaces
+
+- core/modules exports SURFACE_LABELS (cli, local, deck, capsule, mobile): the one list of the
+  surfaces' own labels, for modules to import. vyred now takes any label but a model's own (mcp,
+  harness) from under a `claude` or a thread as the session's own, so "mobile" and any surface
+  name added later are covered without a list to keep up. "anonymous" stays as it is.
 
 ## 0.1.0
 
@@ -79,7 +515,9 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   "Sentence case everywhere: titles, buttons, labels, menus. No caps labels and no letter-spaced
   mono captions"; TOKENS.md's older role is being retired). Changed to the meta step in Sans
   (12/16, no tracking), matching the rest of the file's `.progress .x span + span`. The text it
-  shows ("failed", or a timing string) was already sentence case.
+  shows ("failed", or a timing string) was already sentence case. Weight 600, not 400: the first
+  pass at this fix got the weight wrong; app-design's re-review caught it against the canon,
+  `docs/design/one-app/project/vyre.css`'s `.lbl`.
 
 #### Mail rows in the Capsule (connectors 8be461a9)
 
@@ -578,6 +1016,23 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   way, and CI replays them. Questions have their own daily cap (config.memory.model.askDailyUsd, $0.50, about 150 questions).
   At the cap memory.ask returns limited: true and the message "Vyre IQ's daily limit is reached,
   change it in Settings", for the surface to show.
+- Vyre IQ reads the answer, not only the question: a user turn it finds carries the assistant turn
+  that followed, and its check counts what the model was shown for a passage (its date, project
+  folder and session name) and names of several words. Sealed world (recorded blind): accuracy
+  0.62 to 0.80, confident-wrong 6 to 5; open 0.778 to 0.878. `eval-iq --explain` lists each miss
+  and why, and refuses a sealed world.
+- Source trust holds in Vyre IQ's answers: a question about the user's own life is answered only
+  from their own words in sessions trust keeps, never from Claude's turns, a reply, an injected
+  block or dev talk; an answer that says who someone is to the user ("your wife Jordan") must stand
+  on those words too, or IQ abstains. A session's name or folder never grounds a personal answer, a
+  session counts only once recall says a person started it, and each source says whose words it is
+  (role: user or assistant). The trust world through memory.ask (`eval-iq --world trust`):
+  accuracy 1, confident-wrong 0.
+- Memory's model calls (the reader and Vyre IQ) run on the person's Claude login and never bill API
+  dollars: ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are left out of their environment unless
+  config.memory.model.billing is "api".
+- A fact a module teaches about the user (`subject: {kind: "me"}`, a learned preference) lands on
+  the user's own node, not on a stray "the user", and reads "you prefer pnpm".
 - `memory.retrieve {question}`: Recall's searches for the question and for the names memory and
   the graph know in it, fused by rank, with time words and a small recency prior. The Capsule's
   ask threads are never read. scripts/eval-iq.js measures it (recall@8 and ablations) and

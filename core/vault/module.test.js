@@ -229,13 +229,14 @@ test("vault: no value appears in events, logs, listings, the MCP server, the HTT
   await cli("vault.put", { name: "site-login", kind: "login", fields: { username: v("user"), password: v("pw"), totp: "JBSWY3DPEHPK3PXP" }, url: "https://mail.example.com" });
   await cli("vault.put", { name: "team-card", kind: "card", fields: { holder: "A Person", number: v("card"), expiry: "01/30", cvv: v("cvv") } });
   const envFile = path.join(root, "fixture.env");
-  fs.writeFileSync(envFile, `FIXTURE_KEY=${v("env")}\n`);
-  await cli("vault.import", { file: envFile });
+  fs.writeFileSync(envFile, `FIXTURE_API_KEY=${v("env")}\n`);
+  const envItem = (await cli("vault.import", { file: envFile })).data.added[0];
+  assert.ok(envItem, "the .env file became an env-set");
   fs.rmSync(envFile);
 
   await cli("vault.grant", { name: "api-token", module: "probe" });
   await cli("probe.use", { name: "api-token" });
-  await cli("vault.inject", { items: [{ name: "FIXTURE_KEY" }] });
+  await cli("vault.inject", { items: [{ name: envItem }] });
   await cli("vault.totp", { name: "site-login" });
   await cli("sneak.try", { name: "site-login" });
   await mcp("vault.put", { name: "x", fields: { value: "not stored" } });

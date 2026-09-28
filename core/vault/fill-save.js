@@ -11,6 +11,7 @@
 // ever sends a password back, and nothing here writes one into an audit row, event or error.
 
 import { totp } from "./totp.js";
+import { appOf } from "./fill.js";
 
 const MAX_VALUE = 64 * 1024;
 const HISTORY = 5;
@@ -27,7 +28,7 @@ function origin(u) {
  * The device and session a request carries, or a refusal (already audited).
  * @param {import("./fill.js").Fill} fill @param {Record<string, string>} h @param {string} action @param {string|null} name
  */
-function gate(fill, h, action, name) {
+export function gate(fill, h, action, name) {
   const d = fill.device(h);
   if ("status" in d) return { reply: d };
   const who = fill.who(d);
@@ -39,7 +40,7 @@ function gate(fill, h, action, name) {
 }
 
 /** The error a locked or unreadable item gives. A locked message is the vault's own words; any other is dropped. */
-function openFailed(e, name) {
+export function openFailed(e, name) {
   const locked = /** @type {any} */ (e).code === "locked";
   return locked ? [423, "vault_locked", String(/** @type {any} */ (e).message)] : [500, "internal", `could not open ${name}`];
 }
@@ -54,11 +55,13 @@ export async function otpRoute(fill, b, h) {
   if (g.reply) return g.reply;
   const { d, who, refuse } = /** @type {any} */ (g);
   if (!name) return refuse(400, "bad_input", "give the login's name");
-  const o = origin(b.url);
+  // A native app on the phone is named by package and certificate (fill.js appOf).
+  const app = appOf(b.url);
+  const o = app || origin(b.url);
   if (!o) return refuse(400, "bad_input", "the page is not an http or https page");
   const r = fill.vault.row(name);
   if (!r || r.kind !== "login") return refuse(404, "not_found", `no login named ${name}`);
-  if (!fill.hostsOf(r).includes(o)) return refuse(403, "wrong_origin", `${name} is not for ${o}`);
+  if (app ? !fill.appLogins(app).some(x => x.name === r.name) : !fill.hostsOf(r).includes(o)) return refuse(403, "wrong_origin", `${name} is not for ${o}`);
   let f;
   try { f = await fill.vault.fields(r); } catch (e) { const [st, c, m] = openFailed(e, name); return refuse(st, c, m); }
   if (!f.totp) return refuse(404, "no_totp", `${name} has no one-time code`);

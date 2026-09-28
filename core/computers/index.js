@@ -168,6 +168,12 @@ export default {
      * surface, but it cannot tell "deck:laptop" from an impersonator on the same trusted channel
      * (cli, local, a module, or the assistant) — that needs the caller-identity-matches-claimed-
      * surface check the Rules layer does for HUMAN_ONLY tools (asked of security 26 Sep, open).
+     *
+     * It also cannot see past a module that relabels the caller: sight.watch calls this tool as
+     * "module:sight" (core/modules/index.js's call wrapper), so an agent proxied through sight
+     * would clear this check no matter who it really is. core/sight/index.js's agentCaller runs
+     * the same test against sight.watch's own meta.caller before it ever forwards, so the floor
+     * holds end to end; a future proxy path needs the same guard on its own side.
      */
     const ownSurface = async (input, caller) => {
       const surface = surfaceOf(input);

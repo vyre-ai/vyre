@@ -6,9 +6,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { missingImports } from "../scripts/lib/pack-imports.mjs";
+import { missingImports, ignoredShipped } from "../scripts/lib/pack-imports.mjs";
 
 const REPO = path.resolve(import.meta.dirname, "..");
+
+const packed = () => JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], { cwd: REPO, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }))[0].files.map((/** @type {{ path: string }} */ f) => f.path);
+
+test("pack: no file git ignores, such as a Mac build output left in the tree", t => {
+  const ignored = ignoredShipped(REPO, packed());
+  if (ignored === null) return t.skip("not a git checkout");
+  assert.deepEqual(ignored, []);
+});
 
 test("pack: every relative import in the shipped files names a shipped file", () => {
   const out = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], { cwd: REPO, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
