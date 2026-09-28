@@ -105,7 +105,14 @@ export function sanitizeRemoteUrl(url) {
     u.search = "";
     u.hash = "";
     return u.toString();
-  } catch { return s; }
+  } catch {
+    // Fails CLOSED, never the raw input (reviewer, 5b1c69f1 review, LOW): WHATWG URL can throw on
+    // a value that still has a real userinfo prefix to leak, an out-of-range port being the
+    // reviewer's own repro (`http://u:p@github.com:99999/o/r`). A userinfo prefix has a fixed
+    // shape even when the rest of the URL doesn't parse, so strip it with a regex instead, and
+    // cut anything from a `?` or `#` too, the same two things the happy path also strips.
+    return s.replace(/\/\/[^/@]*@/, "//").split(/[?#]/)[0];
+  }
 }
 
 /** The URL a named remote points at, or null when the repo has no remote by that name. */

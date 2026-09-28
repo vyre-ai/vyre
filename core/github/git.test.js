@@ -212,6 +212,18 @@ test("sanitizeRemoteUrl: strips userinfo, query and fragment from a scheme:// UR
   assert.equal(sanitizeRemoteUrl("not a url at all"), "not a url at all");
 });
 
+test("sanitizeRemoteUrl: fails CLOSED when WHATWG URL itself throws - the userinfo is still stripped by a regex, never the raw input (reviewer's LOW on 5b1c69f1)", () => {
+  const withCreds = "http://u:p@github.com:99999/o/r"; // an out-of-range port makes new URL() throw
+  assert.throws(() => new URL(withCreds), "confirms this value really does throw, so the fallback path is what's under test");
+  const out = sanitizeRemoteUrl(withCreds);
+  assert.ok(!out.includes("u:p@"), `userinfo survived the fallback: ${out}`);
+  assert.ok(!out.includes(":p@"), `the password half alone survived: ${out}`);
+  assert.equal(out, "http://github.com:99999/o/r");
+
+  // the fallback also cuts a query string or fragment, the same two things the happy path strips
+  assert.equal(sanitizeRemoteUrl("http://secret:tok@github.com:99999/o/r?x=1#y"), "http://github.com:99999/o/r");
+});
+
 test("remoteUrl: the URL a named remote points at, or null when there is no remote by that name", async t => {
   const repoDir = makeClonedRepo(t);
   assert.equal(await remoteUrl(repoDir, "origin"), (await listRemotes(repoDir))[0].url);

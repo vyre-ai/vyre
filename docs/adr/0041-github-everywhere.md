@@ -87,7 +87,7 @@ search can never fetch without bound) collecting matches, then paginates the mat
 by `page`/`limit`; `more` says whether another page of matches exists either way. `account` picks
 the connected account when there is more than one (the same `forRead`/`forWait` shape as
 Google's). `callers`: people (`cli`, `local`, `deck`, `capsule`) plus `module:sessions` and
-`module:launch` only, this lists every private repo the account can reach, so it is never
+`module:threads` only, this lists every private repo the account can reach, so it is never
 model-reachable, the same as `github.connect`/`.remove`/`.project`. No tool in this module that a
 model can call ever touches the token: reads (`repos`) are person/module-only, and there is no
 model-reachable write in 0.1.1 (clone and worktree creation run only from `github.project`, itself
@@ -174,7 +174,7 @@ account?}`:
 a different tool (4a), not a `project` input here: an earlier draft let `github.project` do both
 (`project?` param, `projects.add-workspace` when given), but that let a second, non-primary repo
 silently overwrite the `github_projects` row meant for the session-worktree repo, so it was split
-before either path shipped. `callers` for `github.project`: people plus `module:launch` (the
+before either path shipped. `callers` for `github.project`: people plus `module:threads` (the
 onboarding "connect a repo" step). Never a model.
 
 ### 4a. Adding a repo to an EXISTING project
@@ -244,7 +244,7 @@ per distinct repo found across every remote in every workspace (cached by `full_
 same repo behind two remotes, or the same repo in two workspaces, is only ever checked once). It
 costs nothing to call speculatively the moment a project opens.
 
-`callers`: people plus `module:launch` (onboarding, or a project view, can offer "add this repo?"
+`callers`: people plus `module:threads` (onboarding, or a project view, can offer "add this repo?"
 per workspace without the person typing anything). Returns `{ project, workspaces: [{ folder,
 isRepo, remotes: [{ name, url, full_name, match }] }] }`. `remotes` is `[]` for a folder that
 isn't a git repo at all. `full_name` is `owner/name` when a remote's URL parses as github.com
@@ -338,13 +338,24 @@ you what you'd need... without a new tool from me"). Not started; 0.1.2.
 | Tool | Callers | Model-reachable |
 |---|---|---|
 | `github.connect`, `.connect.cancel`, `.remove`, `.accounts` | people | never |
-| `github.repos`, `github.project`, `github.project.of` | people, `module:sessions`, `module:launch` | never |
-| `github.project.detect` | people, `module:launch` | never |
+| `github.repos`, `github.project`, `github.project.of` | people, `module:sessions`, `module:threads` | never |
+| `github.project.detect` | people, `module:threads` | never |
 | `github.project.add-repo` | people only | never |
 | `github.session.worktree`, `.session.cleanup` | `module:sessions` only, `internal: true` | never |
 
 No tool a model can call in 0.1.1 touches the token, clones, or writes a worktree. Everything
 that does is a person surface or one of the two named modules.
+
+`module:threads` names `core/switchboard/`'s own registered module name (`threads`); an earlier
+draft named `module:launch` after the team building the screens that would call these tools, but
+no module in this repo is actually named that, so it named nothing real. Either way, a name alone
+was never enough: a module's name is self-declared in its own manifest, and on a Mac a model can
+write into the home modules folder, so a rogue local module could name itself `sessions` or
+`threads` too and present the same caller string. `checkModuleCaller` (`core/github/index.js`)
+requires both: the caller's name is one a tool actually listed, AND `meta.firstParty === true`,
+the registry's own signal (`core/modules/index.js`'s `firstParty()`, set from where the calling
+module's code actually lives on disk, never something a caller can claim for itself). Reviewer
+and lead finding, 5b1c69f1 review's follow-up.
 
 ## Consequences
 

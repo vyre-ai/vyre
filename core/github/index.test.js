@@ -71,12 +71,12 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir } = {}) {
   };
   const mod = await github.start(ctx);
   t.after(() => mod.stop());
-  const as = (caller) => async (name, input = {}) => {
+  const as = (caller, { firstParty = false } = {}) => async (name, input = {}) => {
     const def = tools.get(name);
     if (!def) return { error: { code: "no_such_tool" } };
     if (def.callers && !def.callers.some(c => caller === c || caller.startsWith(c + ":"))) return { error: { code: "denied" } };
     if (def.internal && !caller.startsWith("module:")) return { error: { code: "no_such_tool" } };
-    try { return { data: await def.run(input, { caller }) }; } catch (e) { return { error: { code: /** @type {any} */ (e).code, message: /** @type {any} */ (e).message } }; }
+    try { return { data: await def.run(input, { caller, firstParty }) }; } catch (e) { return { error: { code: /** @type {any} */ (e).code, message: /** @type {any} */ (e).message } }; }
   };
   return { db, events, calls, as, ctx };
 }
@@ -145,6 +145,15 @@ test("github.repos: pages without q using GitHub's own paging, and paginates in-
 
   const denied = await w.as("module:someone-else")("github.repos", {});
   assert.equal(denied.error.code, "denied");
+
+  // github.repos names module:threads - but a module claiming that name isn't enough on its own
+  // (reviewer's LOW: a module's name is self-declared in its own manifest, never proof of where
+  // its code actually lives). Without the registry's own firstParty flag, it's refused exactly
+  // like an unnamed module; with it, it's let through.
+  const notFirstParty = await w.as("module:threads")("github.repos", {});
+  assert.equal(notFirstParty.error.code, "denied", "a module named threads that the registry didn't mark first-party is still refused");
+  const firstParty = await w.as("module:threads", { firstParty: true })("github.repos", {});
+  assert.equal(firstParty.error, undefined, JSON.stringify(firstParty));
 });
 
 test("github.project.detect: per workspace - a bare folder, a folder with no matching account, and a folder whose remote matches one", async t => {

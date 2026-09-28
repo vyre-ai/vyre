@@ -6,7 +6,7 @@
 // hand.
 //
 // Nothing here is model-reachable in 0.1.1: connect, remove, repos and project are people plus
-// two named modules (sessions, launch); the worktree tools are sessions-only and internal. No
+// two named modules (sessions, threads); the worktree tools are sessions-only and internal. No
 // Gate sender is registered, because nothing here sends anything outward yet (no issues, no PRs).
 
 import { connector, revoke } from "./connect.js";
@@ -18,23 +18,37 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 /** Coarse gate: any person, or any module (narrowed per-tool below by exact caller name). */
 const PEOPLE_AND_MODULES = [...PEOPLE, "module"];
+// "launch" is a team, not a module - no module.json in this repo is named that (core/switchboard's
+// is "threads"). Named an allowlist entry that way once, on a guess; the reviewer caught that a
+// third-party module could just name itself "sessions" or "threads" too, since a module's *name*
+// is self-declared in its own manifest, never proof of where its code actually lives - only the
+// registry's own firstParty flag (derived from that, lib/caller.js) is (reviewer, 5b1c69f1
+// review's follow-up, and the lead independently). checkModuleCaller below requires both: the
+// name is one of the ones a tool actually named, AND meta.firstParty === true.
 /** Which module callers each tool actually accepts, checked against the raw meta.caller. */
 const MODULE_CALLERS = {
-  "github.repos": new Set(["module:sessions", "module:launch"]),
-  "github.project": new Set(["module:launch"]),
-  // module:threads is core/switchboard, where a new thread's worktree is made and cleaned up (79bd2bf1).
-  "github.project.of": new Set(["module:sessions", "module:threads", "module:launch"]),
-  "github.project.detect": new Set(["module:launch"]),
+  "github.repos": new Set(["module:sessions", "module:threads"]),
+  "github.project": new Set(["module:threads"]),
+  "github.project.of": new Set(["module:sessions", "module:threads"]),
+  "github.project.detect": new Set(["module:threads"]),
 };
-const SESSION_ONLY = new Set(["module:sessions", "module:threads"]);
+const SESSION_ONLY = new Set(["module:sessions"]);
 
 const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
 const named = v => (typeof v === "string" && v ? v : undefined);
 
-/** Refuse a module caller this tool did not name. People are never refused here. */
+/**
+ * Refuse a module caller this tool did not name, or one the registry didn't mark first-party.
+ * A module's name is whatever its own manifest claims - on a Mac, a model can write into the
+ * home modules folder, so a name match alone (`module:sessions`, say) is not proof of who is
+ * actually calling; `meta.firstParty` is the registry's own signal, set from where the module's
+ * code lives on disk, never something a caller can claim for itself. People are never refused
+ * here (a person's own caller string, `cli`/`deck`/etc., never starts with `module:`).
+ */
 function checkModuleCaller(tool, meta, allowed) {
   const caller = String((meta && meta.caller) || "");
-  if (caller.startsWith("module:") && !allowed.has(caller)) {
+  if (!caller.startsWith("module:")) return;
+  if (!allowed.has(caller) || meta.firstParty !== true) {
     throw fail(`${tool} is the person's own door plus ${[...allowed].join(", ")}, not ${caller}'s`, "denied");
   }
 }

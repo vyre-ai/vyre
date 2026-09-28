@@ -264,6 +264,32 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
     still cloned both repos, `github.token-invalid` fired, and `detect`'s `match` came back
     `null` for both (the exact behavior this fix was for). Sent to reviewer and launch.
 
+## Done (2026-09-28, reviewer CLEARED 4e9c6d7d..5b1c69f1 and 771dab0a; 2 small follow-ups)
+- reviewer CLEARED both ranges (the URL-scrub MEDIUM, the charset LOW, and the 401 LOW/live-test
+  nit all confirmed closed). Two small LOWs left open, non-blocking, folded into one sha per the
+  lead:
+  - **`sanitizeRemoteUrl` fails CLOSED now.** The reviewer found a real repro where WHATWG `URL()`
+    itself throws on a value that still has userinfo to leak (`http://u:p@github.com:99999/o/r`,
+    an out-of-range port) - the old code returned the raw input on that throw, silently
+    undoing the whole point of the function. Now: on a throw, strip a userinfo prefix with a
+    regex instead (`//[^/@]*@` -> `//`), plus cut anything from a `?` or `#`, the same two things
+    the happy path also strips. New test proves the exact repro is now safe.
+  - **firstParty required on every module-caller check.** Lead's separate finding: `core/github`
+    admitted `module:launch`, but no module in this repo is actually named `launch` (that's a
+    team, not a module - `core/switchboard`'s real name is `threads`). A module's name is
+    self-declared in its own manifest, and on a Mac a model can write into the home modules
+    folder, so a rogue local module could just name itself `sessions` or `threads` too and
+    present the same caller string - the allowlist checking the *name* alone was never actually
+    proof of who was calling. `checkModuleCaller` now also requires `meta.firstParty === true`
+    (the registry's own signal, `core/modules/index.js`'s `firstParty()`, set from where the
+    calling module's code lives on disk). `module:launch` dropped everywhere in `MODULE_CALLERS`
+    (`github.repos`, `.project`, `.project.of`, `.project.detect`), replaced with `module:threads`
+    per the lead. New test: `module:threads` without `meta.firstParty: true` is refused even
+    though the name matches; with it, it's let through. `index.test.js`'s `as()` test harness
+    gained a `firstParty` option to exercise both.
+  - ADR 0041 updated (the rename, and a short explanation of why the name-only check wasn't
+    enough) throughout.
+
 ## Doing
 - reviewer CLEARED work/github through acfcefd2 (both 3a72ea7f..84e76681 and the stdin fix).
   The credential.interactive LOW is WITHDRAWN (reviewer agreed the evidence was right); the lead
