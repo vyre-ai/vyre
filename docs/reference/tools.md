@@ -2958,7 +2958,7 @@ Index new and changed transcripts now. Returns what the pass did.
 
 ### `recall.related`
 
-1 to 3 of a project's own past sessions relevant to what the person is about to say, for chat's "From your past sessions" hint while they type. Each hit is one turn (its own session, seq, ts, name, cwd and a short snippet); chat/native-core render the reason sentence and the link. Owner surfaces only, and only inside a real, mapped project: project_cwds must name at least one folder that is actually a project's; an ad-hoc or unmapped folder gets no hint rather than the whole corpus.
+1 to 3 of a project's own past sessions relevant to what the person is about to say, for chat's "From your past sessions" hint while they type. Each hit is one turn (its own session, seq, role, ts, name, cwd and a short snippet), the person's own or the assistant's; chat/native-core render the reason sentence and the link. Owner surfaces only, and only inside a real, mapped project: project_cwds must name at least one folder that is actually a project's; an ad-hoc or unmapped folder gets no hint rather than the whole corpus.
 
 - Input:
   - `project_cwds` list of string, required

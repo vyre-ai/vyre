@@ -45,6 +45,7 @@ test("recall.related: a project's own relevant turns, one per session, capped at
     assert.ok(!seen.has(h.session), "one per session");
     seen.add(h.session);
     assert.ok(h.snippet, "a snippet to show in the hint");
+    assert.ok(h.role === "user" || h.role === "assistant", "capsule-pro needs role to tell \"you said\" from \"you were told\"");
     assert.equal(typeof h.ts, "number");
   }
   // A term that only exists in Harlow's sessions finds nothing here: it stays inside the project.
