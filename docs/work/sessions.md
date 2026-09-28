@@ -43,6 +43,31 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
+- Resume 10 (2026-09-28), the four-item queue, all four done:
+  1. Reviewer's HOLD on goals bb3b9b4e was already fixed locally, uncommitted, as ccf2e0f1
+     (person = owner surfaces + owner devices, not "no agent name"; callers declared on all five
+     tools; goals.get/list scoped like milestone-done; goals.set checks the TARGET scope too).
+     Sent to the reviewer for a fresh look (it predates this resume; the reviewer's notes still
+     show it HELD).
+  2. The three harness.brief patches, one sha (cb387d88): APPEND_TOTAL_MAX 2000 on the joined
+     style+team nudge (ellipsis, not an em dash, truncated at the one join point); a `request` id
+     threaded through threads.post -> Switchboard#post/queue -> thread.sent/thread.queued ->
+     threads_inbox (new column) -> threads.queue's read-back; style.append gets {project} only
+     when harness.brief's own inScope() says this agent is in scope (else {}, the account-level
+     voice only) - closes the reviewer's LOW on 36caa4ad.
+  3. The waits_on re-fire bug (db916908): a chained task's own state never changes when it runs
+     (by design, for a recurring chain), so matching "dependency done AND task still open" fired
+     again on a reopen-and-redo of the same dependency. Fixed with `waits_on_fired`, the
+     dependency's own done_at at the last run - done_at is fresh per completion and never reused
+     across a reopen, so it distinguishes "the same one, already handled" from "a genuinely later
+     one" without touching the task's state.
+  4. b786a799 (planner task kind + waits_on) sent to the reviewer per the lead's queue (it went to
+     reviewer-2 originally as a mechanical extension; the lead wants the security read too).
+  docs/reference regenerated (ea30b29a) for both the goals callers and the harness/threads
+  description changes. All tests run on testbox (not the Mac): planner 22/22, goals+harness+
+  switchboard+boundaries 102/102, both sessions-turns files 43/43 (39 sdk skipped, no SDK
+  installed there), test/docs-*.test.js 60/61 (the one fail, docs/design/projects-map.md missing
+  from nav + em dashes, predates this session and isn't sessions' file - not fixed here).
 - Resume 9 check (2026-09-28): confirmed a session started with no project can be attached to
   one later. `projects.add-threads` (CLI `vyre pick <project> <thread>...`) already does this;
   `test/projects-cli.test.js` test 22 ("vyre start opens a new named thread ... pick and unpick
