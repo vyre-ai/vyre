@@ -2,6 +2,20 @@
 // moved to clothes/accessories only, and friendly-only expressions (no open-mouth or startled
 // faces). Everything else (hair, headwear, glasses, earrings, role props) is round 3 unchanged.
 // Agents' blobs are untouched. Still fully original, still off-limits for lime and violet.
+//
+// Visibility fix (28 Sep, lead's ruling, ADR 0043): the darkest tones were reading as "not clearly
+// visible" - measured as two separate contrast failures (round4/identity.js has the numbers and
+// the fix's rationale), never a reason to narrow the range. `SKIN_TONES` and the ink/rim helpers
+// now live in identity.js, the one shared identity module, so `character()` here just calls them:
+// `featureInkFor(headColor)` instead of a fixed ink, and `rimFor(headColor, theme)` for an edge
+// treatment when a tone would otherwise wash into its backdrop. `character()` gained a third
+// `theme` param (default "dark", matching vyrecode2.js's own convention) to pick the right rim.
+import { SKIN_TONES, featureInkFor, rimFor } from "./identity.js";
+// The project-colour badge (the user's 5th-family addition, 28 Sep): a teammate carries its
+// project's colour as a small ring or badge, never a hue of its own (avatar.md already turned
+// that down for teammates directly - this is the project's identity showing through, not the
+// teammate's). Kept in project.js since it's that family's own contrast logic, not restated here.
+import { teammateProjectBadge } from "./project.js";
 
 function hashSeed(seed) {
   let h = 2166136261;
@@ -12,9 +26,8 @@ function hashSeed(seed) {
 // per-seed in round 2's check, no hue here landed within a safe distance of either.
 const PASTELS = ["#F4B8A0", "#F6D186", "#9FD8C8", "#D98E52", "#E8A6C7", "#D9C9A8", "#F0A8A8", "#A8D9C0"];
 const HAIR_COLORS = ["#5A4632", "#8A5A3B", "#2B2320", "#C79A5B", "#7A4A2E", "#3A3733"];
-// Warm, realistic skin tones, light to deep (round 3b, the lead's note): the head only, never a
-// pastel. Swept against lime/violet same as everything else here; none land close.
-const SKIN_TONES = ["#FBE0C6", "#F1C79B", "#E0AC7C", "#C98A57", "#A8683D", "#7D4C2C", "#5C3620", "#3E2417"];
+// SKIN_TONES itself (light to deep, swept against lime/violet, none land close) now lives in
+// identity.js as the canonical copy - imported above, not restated here.
 const pick = (rnd, arr) => arr[Math.floor(rnd() * arr.length)];
 const chance = (rnd, p) => rnd() < p;
 
@@ -134,13 +147,22 @@ function roleBadge(role, color) {
  * A small rounded character, now with real per-seed variety: hair, optional headwear, optional
  * glasses, optional earrings, a friendly expression (smile, closed-eye smile or gentle neutral), plus a role prop when the seed's role
  * (before the first "-") matches a known one (design/reviewer/docs/research/qa).
+ * `theme` ("dark" default, matching vyrecode2.js's own convention, or "paper") picks the rim
+ * colour when this skin tone needs one to clear the backdrop floor - see identity.js's rimFor().
+ * `projectColor` (optional, a PROJECT_COLORS hex): draws this teammate's project-colour badge,
+ * top-left, out of the role badge's way - see project.js's teammateProjectBadge().
  */
-function character(seed, size = 120) {
+function character(seed, size = 120, theme = "dark", projectColor = null) {
   const rnd = hashSeed("char:" + seed);
   const bodyColor = pick(rnd, PASTELS);       // clothes only, round 3b
   const headColor = pick(rnd, SKIN_TONES);    // the head: a realistic skin tone, never a pastel
   const hairColor = pick(rnd, HAIR_COLORS);
-  const ink = "#141311";                      // facial-feature ink (eyes, mouth, glasses), not skin
+  const ink = featureInkFor(headColor);       // facial-feature ink (eyes, mouth, glasses): dark
+                                               // ink everywhere it clears the floor against this
+                                               // skin tone, a light ink only on the tones dark
+                                               // enough that dark ink no longer would (identity.js)
+  const rim = rimFor(headColor, theme);       // an edge treatment, only when this tone would
+                                               // otherwise wash into this theme's backdrop
   const role = roleOf(seed);
 
   // design: a beret (headwear, replaces loose hair on top) or a pencil badge, chosen once per
@@ -158,15 +180,24 @@ function character(seed, size = 120) {
   const showBadge = size >= 32;
   const badge = !showBadge ? "" : role === "design" ? (wearsBeret ? "" : roleBadge("design", bodyColor)) : role ? roleBadge(role, bodyColor) : "";
 
+  // The rim sits just inside the head's edge (r=28.5 against the head's own r=30, stroke-width 3)
+  // so it reads as the head's own defined boundary rather than a halo floating outside it -
+  // present only when this tone needs it, per rimFor()'s own floor check.
+  const rimRing = rim
+    ? `<circle cx="60" cy="50" r="28.5" fill="none" stroke="${rim.color}" stroke-opacity="${rim.opacity}" stroke-width="3"/>`
+    : "";
+
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="${size}" height="${size}">
     <rect x="30" y="58" width="60" height="46" rx="20" fill="${bodyColor}"/>
     ${earrings(rnd, hairColor)}
     <circle cx="60" cy="50" r="30" fill="${headColor}"/>
+    ${rimRing}
     ${hairEl}
     ${face(rnd, ink)}
     ${gl}
     ${hw}
     ${badge}
+    ${showBadge ? teammateProjectBadge(projectColor, theme) : ""}
   </svg>`;
 }
 
