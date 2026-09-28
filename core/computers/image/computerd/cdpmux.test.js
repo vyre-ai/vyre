@@ -358,7 +358,7 @@ test("cdpmux: the agent may not dump cookies, open file:// or chrome:// pages, o
   const { mux, fake } = world();
   const agent = client(mux, "agent"), fill = client(mux, "fill");
   const sid = (await agent.call("Target.attachToTarget", { targetId: "T1", flatten: true })).result.sessionId;
-  for (const method of ["Storage.getCookies", "Network.getAllCookies"]) assert.equal((await agent.call(method)).error.code, -32000, method);
+  for (const method of ["Storage.getCookies", "Network.getAllCookies", "Page.getCookies"]) assert.equal((await agent.call(method)).error.code, -32000, method);
   assert.equal((await agent.call("Network.getCookies", {}, sid)).error.code, -32000, "Network.getCookies on a page");
   for (const url of ["file:///var/lib/vyre/.vnc/passwd", "chrome://settings", "devtools://devtools/bundled/inspector.html",
     "chrome-extension://abc/x.html", "view-source:https://a.test", "FILE:///etc/passwd", " https://a.test", undefined]) {
