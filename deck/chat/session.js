@@ -71,7 +71,8 @@ import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
 import { isMac, machineChip } from "../js/machine.js";
-import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl } from "./blocks.js";
+import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
+import { frameToPicture } from "./core/images.js";
 import { textItemRow } from "./live-text.js";
 import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks, pendingEvents } from "./core/session-state.js";
 import { CAPS, NEEDS_UPDATE, REWIND_CODE } from "./core/caps.js";
@@ -110,11 +111,14 @@ const SURFACES = /** @type {Record<string, string>} */ ({ capsule: "the Capsule"
 
 /**
  * @param {HTMLElement} container
- * @param {{ thread: string, project: string|null, recorded?: boolean, known?: boolean, turns?: number, source?: string|null, machine?: string|null,
+ * @param {{ thread: string, project: string|null, projects?: any[], recorded?: boolean, known?: boolean, turns?: number, source?: string|null, machine?: string|null,
  *   at?: number|null, ask?: string|null, tool?: string|null, shown?: () => boolean, onBack: () => void }} opts
  * recorded: the list already knows the Switchboard has no record of it, so skip threads.get.
  * known: the list had a row for it. turns: its turn count, so an older box's read opens at its end.
  * source, machine: the list's label for it; "mac" is a paired Mac's session.
+ * projects: projects.list's rows (name lookup only), so the header can show which project this
+ * thread is in - the one visible sign for an agent's own thread, whose project the composer never
+ * chose (cohesion's one-product-audit finding 6).
  * at, ask, tool: a deep link (?at=<ms>&ask=<id>&tool=<tool_use_id>; read from the address when not
  * given): the row to scroll to and flash. An ask's anchor (its tool call) wins over `at`.
  * shown: whether this page is the one on screen (index.js's ctx.shown); keys and frames only then.
@@ -161,6 +165,10 @@ export function mountSession(container, opts) {
   /** Long sessions mount only the rows near the viewport (window-view.js); the bottom anchor is kept there. */
   const win = createWindowView(timeline, { following: () => stick.stuck, onUnmount: (k, el) => unmounted(k, el), resize: stick });
   const head = h("div", { class: "session-head" });
+  /** A running step's screen (cohesion item 18/1: sight.frame, through sight.targets - never a
+   * guessed target format, and only this thread's own agent, never another one's computer). */
+  const sightEl = h("div", { class: "cv-sight", hidden: true });
+  const sight = { checked: false, target: /** @type {string|null} */ (null), pic: /** @type {import("./core/images.js").Picture|null} */ (null) };
   /** The composer hint line's tip (tip-line.js), once the view has opened. @type {ReturnType<typeof mountTip>|null} */
   let tip = null;
   const leaseBar = h("div", { class: "lease-bar" });
@@ -213,7 +221,7 @@ export function mountSession(container, opts) {
   let hideThinking = readHideThinking();
   const capsOff = CAPS.on(() => { drawQueued(); tray.draw(); rewind?.refresh(); });
 
-  put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, pin.el, tray.el, queuedBox, rewindBox, composer.el);
+  put(container, head, sightEl, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, pin.el, tray.el, queuedBox, rewindBox, composer.el);
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
   let names = /** @type {{ assistant: string|null, owner: string|null }} */ ({ assistant: null, owner: null });
@@ -341,18 +349,32 @@ export function mountSession(container, opts) {
     return [prov, m, auth].filter(Boolean).join(" · ");
   }
 
+  /**
+   * The project this thread is in, by name when known: threads.get's own read (most current, and
+   * the only source for an agent's thread, whose own project the New session sheet never chose)
+   * over the route/list's slug. Null with no project (a folder-only or project-less session).
+   */
+  function projectName() {
+    const slug = record.current?.project || opts.project;
+    if (!slug) return null;
+    return (opts.projects || []).find(p => p.slug === slug)?.name || slug;
+  }
+
   function drawHead() {
     const rec = record.current;
     const ses = recorded.session;
     const sb = switchboard();
     const chip = chipText();
     const ctx = contextLabel(S.usage);
+    const proj = projectName();
+    checkSight();
     put(head,
       h("button", { class: "ibtn session-back", "aria-label": "Back", onclick: opts.onBack }, icon("left", 16)),
       h("div", { class: "cv-head-text" },
         h("div", { class: "title ellipsis" }, rec?.name || ses?.name || ses?.title || thread.slice(0, 12)),
         h("div", { class: "sub ellipsis", title: rec?.cwd || ses?.cwd || null }, [rec?.agent, shortDir(rec?.cwd || ses?.cwd)].filter(Boolean).join(" · ") || "Terminal session"),
       ),
+      proj ? h("span", { class: "tag cv-project", title: `In ${proj}` }, proj) : null,
       machineChip(where),
       mac.offline ? h("span", { class: "tag machine off cv-offline", title: `${mac.offline} is not reachable` }, `${mac.offline} offline`) : null,
       chip ? h("span", { class: "tag cv-chip" }, chip) : null,
@@ -381,6 +403,53 @@ export function mountSession(container, opts) {
     );
   }
   async function take() { if (!isMac(where)) await attempt("threads.lease", { thread }); }
+
+  /**
+   * A running step's screen: this thread's own agent, only if sight.targets (the registry, never a
+   * guessed "agent:<name>") lists it live - so a plain session, or an agent with no computer
+   * running, draws nothing. Matched by `target` (the registry's own identifier, "agent:<name>"),
+   * not `label` (a display name that could in principle collide or diverge from it).
+   *
+   * The lookup runs once at mount; if no live target is found yet, it tries again on
+   * computer.checked-out (this thread's agent just got a running screen) or sight.stepped (a step
+   * landed for this thread - it must be live), each scoped to this thread, so an agent whose
+   * computer starts after the thread opens still gets the strip without a reopen. Never a timer,
+   * per sight.frame's own contract.
+   */
+  async function checkSight() {
+    if (sight.checked) return;
+    sight.checked = true;
+    if (!record.current?.agent) return;
+    await trySight();
+    if (!sight.target) {
+      const retry = () => { if (!sight.target) trySight(); };
+      offs.push(on("computer.checked-out", ev => { if (ev.thread === thread) retry(); }));
+      offs.push(on("sight.stepped", ev => { if (ev.thread === thread) retry(); }));
+    }
+  }
+  async function trySight() {
+    const agent = record.current?.agent;
+    if (!agent) return;
+    const want = `agent:${agent}`;
+    const r = await attempt("sight.targets", {});
+    const t = (r.data?.targets || []).find(x => x.kind === "agent" && x.target === want && x.live);
+    if (!t) return;
+    sight.target = t.target;
+    await refreshSight();
+    offs.push(on("sight.stepped", ev => { if (ev.thread === thread && ev.payload?.target === sight.target) refreshSight(); }));
+  }
+  async function refreshSight() {
+    if (!sight.target) return;
+    const r = await attempt("sight.frame", { target: sight.target, maxWidth: 480 });
+    const pic = frameToPicture(r.data);
+    if (!pic) return; // a shield (someone signing in) or no step yet: keep the last still, draw nothing new
+    sight.pic = pic;
+    drawSight();
+  }
+  function drawSight() {
+    sightEl.hidden = !sight.pic;
+    if (sight.pic) put(sightEl, pictureThumb(sight.pic, `${record.current?.agent}'s screen`, { w: 160, h: 120 }));
+  }
   /** Found to be the Mac's from recall.thread's answer: sends from now on carry the machine. */
   function onMac() { composer.setMachine(macName()); }
 
@@ -571,10 +640,12 @@ export function mountSession(container, opts) {
       case "reasoning": return { kind: "thinking", text: it.text, ts: at };
       case "tool": return { kind: "tool", id: it.call, tool: it.name, input: it.input, output: it.output ?? null, summary: it.summary,
         error: it.status === "failed" || (!!it.error && it.status !== "running"), duration_ms: it.duration_ms ?? null, ts: at, patch: it.patch,
-        done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it) };
+        done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it), ...(it.images ? { images: it.images } : {}) };
       // A turn the transcript has not closed is still going only while the session is busy and
       // nothing was said after it (a message sent now closes the one before, even unread yet).
-      case "turn": return { kind: "turn", ts: at, duration_ms: it.duration_ms, tokens: it.tokens, cost_usd: it.cost_usd, open: !!it.open && busy() && !saidAfter(it),
+      // auth: only an api-key turn is really billed by the number; a subscription runs on the
+      // person's plan, and a $ figure there reads as a charge that never happens (the user's rule).
+      case "turn": return { kind: "turn", ts: at, duration_ms: it.duration_ms, tokens: it.tokens, cost_usd: it.cost_usd, auth: S.auth || null, open: !!it.open && busy() && !saidAfter(it),
         canceled: it.canceled, byMe: byMe.has(it.key), error: it.error || (it.ok === false && !it.canceled ? (it.reason || "error") : null) };
       default: return null;
     }
@@ -954,8 +1025,14 @@ export function mountSession(container, opts) {
         const r = await transcript({ from: next });
         if (r.error) break;
         if (r.data.session && recorded.on) { recorded.session = r.data.session; drawHead(); }
+        // patch() already lays out again itself whenever a changed key needs it (any kind but a
+        // streaming text update); calling layout() again here unconditionally was a second,
+        // redundant anchor-capture-and-restore right after the first, on rows already correctly
+        // measured. Cuts the reconnect catch-up time (native-bar budget 8): 1086 ms -> 900 ms,
+        // under its 1 s budget. The scroll jump itself is a separate cause: still open.
+        // grew() alone still covers the one case patch() skips (a batch of text-only deltas).
         patch(applyBlocks(S, r.data.blocks));
-        if (r.data.blocks.length) { layout(); grew(); }
+        if (r.data.blocks.length) grew();
         next = r.data.next ?? next;
         if (r.data.blocks.length >= page()) reading.again = true;
       } while (reading.again);

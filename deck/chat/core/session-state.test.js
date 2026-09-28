@@ -46,6 +46,23 @@ test("text, tool, text in one message (old shapes): two text items, then the tra
   assert.deepEqual(tool.detail, { type: "read", filePath: "invoices/northwind.js", offset: 1 });
 });
 
+test("a picture on a user or a tool block (cohesion item 18) rides through applyBlocks and marks the item changed", () => {
+  const s = createSession(T);
+  const PIC = { media_type: "image/png", data: "iVBOR" };
+  const changed = applyBlocks(s, [
+    { seq: 1, kind: "user", ts: 0, text: "What's wrong with this invoice?", images: [PIC] },
+    { seq: 2, kind: "tool", ts: 0, id: "tu_9", tool: "Read", input: { file_path: "invoice.png" }, output: "[image]", error: false, images: [PIC] },
+  ]);
+  assert.deepEqual(changed.sort(), ["t:tu_9", "u:@1"]);
+  assert.deepEqual(s.byKey.get("u:@1").images, [PIC]);
+  assert.deepEqual(s.byKey.get("t:tu_9").images, [PIC]);
+  // A second read with the same picture changes nothing (holds() sees the same value both times).
+  assert.deepEqual(applyBlocks(s, [
+    { seq: 1, kind: "user", ts: 0, text: "What's wrong with this invoice?", images: [PIC] },
+    { seq: 2, kind: "tool", ts: 0, id: "tu_9", tool: "Read", input: { file_path: "invoice.png" }, output: "[image]", error: false, images: [PIC] },
+  ]), []);
+});
+
 test("text, tool, text with ADR 0030 block indexes keeps block keys", () => {
   const s = createSession(T);
   ev(s, "thread.text", { message: "msg_2", block: 0, delta: "One" });

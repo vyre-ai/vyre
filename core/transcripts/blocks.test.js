@@ -47,6 +47,7 @@ test("blocks: a real-shaped session reads as user, thinking, text, tools and tur
   assert.equal(read.input.file_path, "/home/alex/Work/northwind-bakery/src/OrderForm.js");
   assert.match(read.output, /export function OrderForm/);
   assert.match(read.output, /\[image\]$/, "an image in a tool_result array is named");
+  assert.deepEqual(read.images, [{ media_type: "image/png", data: "iVBOR" }], "and, within the caps, the picture itself comes along (cohesion item 18)");
   assert.equal(read.error, false);
   assert.equal(read.done_ts, at("2026-09-02T10:01:05.250Z"));
   assert.equal(read.duration_ms, 250);
@@ -152,6 +153,79 @@ test("blocks: caps and redaction on tool input, output, thinking and Write conte
   assert.ok(!JSON.stringify(bs).includes(tok), "a token in tool traffic left the read");
   assert.match(w.input.content, /GitHub token redacted/);
   assert.equal(td.input.todos[2].content.length, BLOCK_CAP + 11, "todos are kept whole");
+});
+
+test("blocks: images (cohesion item 18) - a person's own pasted picture, a tool's own, and every cap", t => {
+  /** A base64 string long enough to decode to about `n` bytes (the caps measure length, never decode). */
+  const b64 = n => "A".repeat(Math.ceil(n / 3) * 4);
+  const pic = (media_type, bytes) => ({ type: "image", source: { type: "base64", media_type, data: b64(bytes) } });
+  const f = write(t, [
+    // The person's own pasted picture, alongside their words.
+    { type: "user", timestamp: "2026-09-03T10:00:00Z", message: { role: "user", content: [{ type: "text", text: "What's wrong with this invoice?" }, pic("image/png", 1000)] } },
+    A("m1", { type: "tool_use", id: "t1", name: "Read", input: { file_path: "invoice.pdf" } }, "2026-09-03T10:00:01Z"),
+    // A tool's own picture (a screenshot), too big to inline: kept as [image] text only, no bytes.
+    R("t1", [{ type: "text", text: "read" }, pic("image/jpeg", 3 * 1024 * 1024)], "2026-09-03T10:00:02Z"),
+    A("m2", { type: "tool_use", id: "t2", name: "Read", input: { file_path: "a.svg" } }, "2026-09-03T10:00:03Z"),
+    // Not an allowed type, and a malformed one (no base64 source): both dropped, never a throw.
+    R("t2", [pic("image/svg+xml", 1000), { type: "image", source: { type: "url", url: "https://x" } }, { type: "image" }], "2026-09-03T10:00:04Z"),
+    A("m3", { type: "tool_use", id: "t3", name: "Bash", input: { command: "ls" } }, "2026-09-03T10:00:05Z"),
+    // Five pictures, each on its own well under the per-image cap: only the count cap (4) applies.
+    R("t3", Array.from({ length: 5 }, () => pic("image/png", 10)), "2026-09-03T10:00:06Z"),
+    A("m4", { type: "tool_use", id: "t4", name: "Bash", input: { command: "ls -la" } }, "2026-09-03T10:00:07Z"),
+    // Four pictures each just under the per-image cap: the third pushes the block over the total
+    // cap (6 MB), so the fourth is dropped even though the count cap (4) would still allow it.
+    R("t4", Array.from({ length: 4 }, () => pic("image/png", 1_900_000)), "2026-09-03T10:00:08Z"),
+  ]);
+  const bs = /** @type {any[]} */ (blocks(f, { from: 0 }).blocks);
+  const user = bs.find(b => b.kind === "user");
+  assert.deepEqual(user.images, [{ media_type: "image/png", data: b64(1000) }]);
+  const tooBig = bs.find(b => b.id === "t1");
+  assert.equal(tooBig.images, undefined, "over IMAGE_BYTES_CAP: dropped, the text placeholder is unaffected");
+  assert.match(tooBig.output, /\[image\]$/);
+  const badTypes = bs.find(b => b.id === "t2");
+  assert.equal(badTypes.images, undefined, "an unlisted media type and a non-base64 source: both dropped, never a throw");
+  const fiveSmall = bs.find(b => b.id === "t3");
+  assert.equal(fiveSmall.images.length, 4, "the count cap: at most 4, however many came with it");
+  const fourNearCap = bs.find(b => b.id === "t4");
+  assert.equal(fourNearCap.images.length, 3, "the byte-total cap can bind before the count cap");
+});
+
+test("blocks: images - data that isn't clean base64 is dropped (a surface builds a data: URL straight from it)", t => {
+  const b64 = n => "A".repeat(Math.ceil(n / 3) * 4);
+  const bad = (data) => ({ type: "image", source: { type: "base64", media_type: "image/png", data } });
+  const good = { type: "image", source: { type: "base64", media_type: "image/png", data: b64(1000) } };
+  const f = write(t, [
+    A("m1", { type: "tool_use", id: "t1", name: "Read", input: { file_path: "a.png" } }, "2026-09-03T11:00:00Z"),
+    R("t1", [
+      bad(`data:text/html,<script>1</script>`), // a break-out attempt, not base64 at all
+      bad(b64(100) + " " + b64(100)), // whitespace
+      bad("../../etc/passwd"),
+      bad(""), // empty (already filtered as falsy, kept here for belt-and-braces)
+      good,
+    ], "2026-09-03T11:00:01Z"),
+  ]);
+  const bs = /** @type {any[]} */ (blocks(f, { from: 0 }).blocks);
+  const tool = bs.find(b => b.id === "t1");
+  assert.deepEqual(tool.images, [{ media_type: "image/png", data: b64(1000) }], "only the one clean base64 picture came through");
+});
+
+test("blocks: images - a whole read's pictures share one budget (RESPONSE_BYTES_CAP), across every block", t => {
+  const b64 = n => "A".repeat(Math.ceil(n / 3) * 4);
+  const SIZE = 1_900_000; // under IMAGE_BYTES_CAP (2 MB) and IMAGES_BYTES_CAP (6 MB) on its own
+  const pic = () => ({ type: "image", source: { type: "base64", media_type: "image/png", data: b64(SIZE) } });
+  // Seven tool results, one picture each: the first six total 11.4 MB (under the 12 MB response
+  // budget), the seventh would push it to 13.3 MB - dropped, though it is small on its own.
+  const lines = [];
+  for (let i = 1; i <= 7; i++) {
+    lines.push(A(`m${i}`, { type: "tool_use", id: `t${i}`, name: "Read", input: { file_path: `p${i}.png` } }, `2026-09-03T12:00:0${i}Z`));
+    lines.push(R(`t${i}`, [pic()], `2026-09-03T12:00:0${i}Z`));
+  }
+  const f = write(t, lines);
+  const bs = /** @type {any[]} */ (blocks(f, { from: 0 }).blocks);
+  const by = id => /** @type {any} */ (bs.find(b => b.id === id));
+  for (let i = 1; i <= 6; i++) assert.equal(by(`t${i}`).images.length, 1, `picture ${i}: ${i * SIZE} bytes so far, within the 12 MB budget`);
+  assert.equal(by("t7").images, undefined, "the 7th would be 13.3 MB total: over budget, dropped - the text placeholder is unaffected");
+  assert.match(by("t7").output, /\[image\]$/);
 });
 
 test("blocks: a big file reads its tail and from far in without trouble", t => {

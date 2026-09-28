@@ -220,7 +220,8 @@ export default async function chat(ctx) {
       put(ctx.root, container);
       // A session the list knows the Switchboard never ran opens straight from its transcript.
       const known = /** @type {any} */ (state.rows.find(r => r.id === thread));
-      ctx.cleanup(mountSession(container, /** @type {any} */ ({ thread, project, recorded: !!known && !known.live, known: !!known, turns: known?.turns || 0,
+      ctx.cleanup(mountSession(container, /** @type {any} */ ({ thread, project: project || known?.project || null, projects: state.projects,
+        recorded: !!known && !known.live, known: !!known, turns: known?.turns || 0,
         source: known?.source || null, machine: known?.machine || null, shown, onBack: () => back(project ? projectHref(project) : "/chat") })));
       return;
     }
