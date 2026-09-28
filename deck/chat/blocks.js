@@ -54,15 +54,18 @@ export function agentAv(who, assistant = who === "Vyre") {
 const tag = (el, kind, ts) => { /** @type {any} */ (el)._kind = kind; /** @type {any} */ (el)._ts = ts ?? null; return el; };
 
 /**
- * A thumbnail, fixed to THUMB so it never shifts the rows around it while the picture decodes
- * (interaction.md section 1: never a layout jump). A tap opens the full picture (lightbox.js).
- * `context`: who sent it, or which tool - joined with the picture's own name when it has one.
- * @param {import("./core/images.js").Picture} p @param {string} [context]
+ * A thumbnail, fixed to `size` (THUMB by default) so it never shifts the rows around it while the
+ * picture decodes (interaction.md section 1: never a layout jump). A tap opens the full picture
+ * (lightbox.js). `context`: who sent it, or which tool - joined with the picture's own name when
+ * it has one. Exported for session.js's sight strip (a step's screen), the same shape as any other
+ * picture, at its own smaller size (chat.css sets a caller's size by class, never by overriding
+ * this inline style, which always wins on the same element).
+ * @param {import("./core/images.js").Picture} p @param {string} [context] @param {{ w: number, h: number }} [size]
  */
-function pictureThumb(p, context) {
+export function pictureThumb(p, context, size = THUMB) {
   const src = dataUrl(p);
   const caption = p.name && context ? `${p.name} - ${context}` : p.name || context || "";
-  return h("button", { class: "cv-pic", type: "button", style: `--pic-w:${THUMB.w}px;--pic-h:${THUMB.h}px`,
+  return h("button", { class: "cv-pic", type: "button", style: `--pic-w:${size.w}px;--pic-h:${size.h}px`,
     "aria-label": p.name ? `Open ${p.name}` : "Open picture", onclick: () => openLightbox(src, { alt: p.name || "", caption }) },
     h("img", { class: "cv-pic-img", src, alt: "", loading: "lazy" }));
 }

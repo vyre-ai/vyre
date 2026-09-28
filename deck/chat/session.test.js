@@ -86,6 +86,9 @@ let newTasks = /** @type {any[]} */ ([]);
 let interruptMissing = false;
 /** Tools this box answers "no such tool" for (a box before the sessions update has none of them; this one has some). */
 const MISSING = new Set(["threads.unqueue"]);
+/** sight.targets/sight.frame (cohesion item 1/18): set by the sight test only; every other test's
+ * session sees no target (sight.targets carries no thread, so this can't be scoped like the rest). */
+let sightWorld = /** @type {{ targets: any[], frame: (input: any) => any } | null} */ (null);
 // The fourth session: one the stream drops and resumes (ADR 0029 R1). What the box holds is
 // changed by the test between reads.
 const RES = "5e6f7a8b-resume-thread";
@@ -135,6 +138,9 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
   // sessions.models.get names no thread: the per-purpose map.
   if (tool === "sessions.models.get") return { status: 200, statusText: "", json: async () => ({ data: {
     purposes: { chat: { model: "opus", from: "config:chat" }, job: { model: "claude-haiku-4-5", from: "config:job" } }, projects: {} } }) };
+  // sight.targets/sight.frame carry no thread at all: answered here, ahead of every thread branch.
+  if (tool === "sight.targets") return { status: 200, statusText: "", json: async () => ({ data: { targets: sightWorld?.targets || [] } }) };
+  if (tool === "sight.frame") return { status: 200, statusText: "", json: async () => ({ data: sightWorld?.frame(input) || { target: input.target, image: null } }) };
   if (input.thread === RES || input.session === RES) {
     if (tool === "threads.get") data = { thread: { id: RES, name: "Northwind order form", cwd: "/home/alex/work/northwind", status: "idle", holder: null, agent: null },
       events: res.events.filter(e => e.id > (input.since ?? 0)), asks: res.asks };
@@ -789,4 +795,43 @@ test("reopened while an Edit waits on Allow: the pending steer and the queued ro
   assert.equal($$(box5, ".cv-user").filter(u => /use the rye price too/.test(text(u))).length, 1);
   assert.equal($$(box5, ".cv-user").filter(u => /then check the hours/.test(text(u))).length, 1);
   stop5();
+});
+
+test("sight.frame stills (cohesion item 1/18): kit's own live target draws a still, refreshed on sight.stepped, and only its own agent", async () => {
+  const frames = [];
+  sightWorld = {
+    targets: [{ target: "agent:kit", kind: "agent", label: "kit", live: true }, { target: "agent:juno", kind: "agent", label: "juno", live: true }],
+    frame: input => { frames.push(input); return { target: input.target, image: `frame${frames.length}`, mime: "image/png", maxWidth: input.maxWidth, at: Date.now(), step: frames.length }; },
+  };
+  const box8 = new El("div");
+  doc.body.append(box8);
+  const stop8 = mountSession(box8, { thread: NEW, project: null, onBack() {} });
+  await wait(30);
+  assert.deepEqual(frames.map(f => f.target), ["agent:kit"], "kit's own target, never juno's - the registry says who is live, not a guess");
+  assert.equal($(box8, ".cv-sight").hidden, false);
+  assert.equal($(box8, ".cv-sight .cv-pic-img").getAttribute("src"), "data:image/png;base64,frame1");
+  // sight.stepped for a DIFFERENT target or thread: no refresh (still frame1).
+  emit("sight.stepped", { target: "agent:juno", thread: NEW }, NEW);
+  hear(/** @type {any} */ ({ id: ++evId, type: "sight.stepped", thread: "some-other-thread", at: Date.now(), payload: { target: "agent:kit" } }));
+  await wait();
+  assert.equal(frames.length, 1, "neither one refreshed it");
+  // sight.stepped for this thread and this target: a fresh still.
+  emit("sight.stepped", { target: "agent:kit" }, NEW);
+  await wait();
+  assert.equal(frames.length, 2);
+  assert.equal($(box8, ".cv-sight .cv-pic-img").getAttribute("src"), "data:image/png;base64,frame2");
+  stop8();
+  sightWorld = null;
+});
+
+test("sight.frame stills: no agent, or the agent has no live computer, draws nothing", async () => {
+  sightWorld = { targets: [], frame: () => { throw new Error("must not be called"); } };
+  const box9 = new El("div");
+  doc.body.append(box9);
+  // RES has no agent at all.
+  const stop9 = mountSession(box9, { thread: RES, project: null, onBack() {} });
+  await wait(30);
+  assert.equal($(box9, ".cv-sight").hidden, true);
+  stop9();
+  sightWorld = null;
 });

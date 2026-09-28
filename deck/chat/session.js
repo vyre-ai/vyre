@@ -71,7 +71,8 @@ import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
 import { isMac, machineChip } from "../js/machine.js";
-import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl } from "./blocks.js";
+import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
+import { frameToPicture } from "./core/images.js";
 import { textItemRow } from "./live-text.js";
 import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks, pendingEvents } from "./core/session-state.js";
 import { CAPS, NEEDS_UPDATE, REWIND_CODE } from "./core/caps.js";
@@ -164,6 +165,10 @@ export function mountSession(container, opts) {
   /** Long sessions mount only the rows near the viewport (window-view.js); the bottom anchor is kept there. */
   const win = createWindowView(timeline, { following: () => stick.stuck, onUnmount: (k, el) => unmounted(k, el), resize: stick });
   const head = h("div", { class: "session-head" });
+  /** A running step's screen (cohesion item 18/1: sight.frame, through sight.targets - never a
+   * guessed target format, and only this thread's own agent, never another one's computer). */
+  const sightEl = h("div", { class: "cv-sight", hidden: true });
+  const sight = { checked: false, target: /** @type {string|null} */ (null), pic: /** @type {import("./core/images.js").Picture|null} */ (null) };
   /** The composer hint line's tip (tip-line.js), once the view has opened. @type {ReturnType<typeof mountTip>|null} */
   let tip = null;
   const leaseBar = h("div", { class: "lease-bar" });
@@ -216,7 +221,7 @@ export function mountSession(container, opts) {
   let hideThinking = readHideThinking();
   const capsOff = CAPS.on(() => { drawQueued(); tray.draw(); rewind?.refresh(); });
 
-  put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, pin.el, tray.el, queuedBox, rewindBox, composer.el);
+  put(container, head, sightEl, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, pin.el, tray.el, queuedBox, rewindBox, composer.el);
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
   let names = /** @type {{ assistant: string|null, owner: string|null }} */ ({ assistant: null, owner: null });
@@ -362,6 +367,7 @@ export function mountSession(container, opts) {
     const chip = chipText();
     const ctx = contextLabel(S.usage);
     const proj = projectName();
+    checkSight();
     put(head,
       h("button", { class: "ibtn session-back", "aria-label": "Back", onclick: opts.onBack }, icon("left", 16)),
       h("div", { class: "cv-head-text" },
@@ -397,6 +403,36 @@ export function mountSession(container, opts) {
     );
   }
   async function take() { if (!isMac(where)) await attempt("threads.lease", { thread }); }
+
+  /**
+   * A running step's screen, once (per mount): this thread's own agent, only if sight.targets (the
+   * registry, never a guessed "agent:<name>") lists it live - so a plain session, or an agent with
+   * no computer running, draws nothing. Refreshed on sight.stepped (never a timer, per sight.frame's
+   * own contract), scoped to this thread and this exact target.
+   */
+  async function checkSight() {
+    const agent = record.current?.agent;
+    if (sight.checked || !agent) return;
+    sight.checked = true;
+    const r = await attempt("sight.targets", {});
+    const t = (r.data?.targets || []).find(x => x.kind === "agent" && x.label === agent && x.live);
+    if (!t) return;
+    sight.target = t.target;
+    await refreshSight();
+    offs.push(on("sight.stepped", ev => { if (ev.thread === thread && ev.payload?.target === sight.target) refreshSight(); }));
+  }
+  async function refreshSight() {
+    if (!sight.target) return;
+    const r = await attempt("sight.frame", { target: sight.target, maxWidth: 480 });
+    const pic = frameToPicture(r.data);
+    if (!pic) return; // a shield (someone signing in) or no step yet: keep the last still, draw nothing new
+    sight.pic = pic;
+    drawSight();
+  }
+  function drawSight() {
+    sightEl.hidden = !sight.pic;
+    if (sight.pic) put(sightEl, pictureThumb(sight.pic, `${record.current?.agent}'s screen`, { w: 160, h: 120 }));
+  }
   /** Found to be the Mac's from recall.thread's answer: sends from now on carry the machine. */
   function onMac() { composer.setMachine(macName()); }
 
