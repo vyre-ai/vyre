@@ -138,10 +138,13 @@ try {
     const reply = f(".th-msg.assistant .vy-av");
     return { you: f(".th-msg.user .vy-av")?.dataset.family, reply: reply?.dataset.family, draft: reply?.hasAttribute("data-draft"),
       colour: reply?.querySelector("rect[stroke-dasharray]")?.getAttribute("stroke") || reply?.querySelector("rect")?.getAttribute("fill") || null,
-      letters: [...document.querySelectorAll(".th-msg .initial")].length };`);
+      letters: [...document.querySelectorAll(".th-msg .initial")].length,
+      claude: [...document.querySelectorAll(".th-msg .th-name")].filter(e => /claude/i.test(e.textContent)).length,
+      name: f(".th-msg.assistant .th-name")?.textContent || null };`);
   await tab.go(`${world.url}/threads/${encodeURIComponent(world.s40)}`, 3000);
   const loose = await pane();
   say("project pane, a chat in no project: you, and its draft tile on replies", loose.you === "person" && loose.reply === "project" && loose.draft && loose.letters === 0, JSON.stringify(loose));
+  say("project pane: replies are named the way chat names them, never Claude", loose.claude === 0 && !!loose.name, JSON.stringify({ name: loose.name, claude: loose.claude }));
   await shot("project-pane-draft");
   const made = await tool("projects.create", { name: "Northwind Bakery", from_thread: world.s40 });
   if (made.error) say("made a project from the chat", false, JSON.stringify(made.error));
