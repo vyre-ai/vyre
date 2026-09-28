@@ -14,6 +14,14 @@ const keys = new Set();
 doc.addEventListener = (type, fn) => { if (type === "keydown") keys.add(fn); };
 doc.removeEventListener = (type, fn) => { if (type === "keydown") keys.delete(fn); };
 const esc = () => { const e = /** @type {any} */ (new Event("keydown")); e.key = "Escape"; e.preventDefault = () => {}; for (const f of keys) f(e); };
+// Not overriding preventDefault here (unlike esc() above): this helper's own tests read
+// defaultPrevented, which only the base Event class's real preventDefault() sets.
+const tab = (shiftKey = false) => {
+  const e = /** @type {any} */ (new Event("keydown"));
+  e.key = "Tab"; e.shiftKey = shiftKey;
+  for (const f of keys) f(e);
+  return e;
+};
 Object.assign(globalThis, {
   DOMParser: class { parseFromString() { const E = /** @type {any} */ (globalThis).Element; return { documentElement: new E("svg") }; } },
 });
@@ -56,6 +64,22 @@ test("Esc closes it; a second Esc (already closed) does nothing", () => {
   assert.equal(root.hidden, true);
   esc();
   assert.equal(root.hidden, true);
+});
+
+test("aria-modal's promise: Tab never leaves the dialog (app-design's review) - it stays on the one control", () => {
+  openLightbox("data:image/png;base64,QUJD");
+  const root = $(doc.body, ".lightbox");
+  const closeBtn = $(root, ".lightbox-close");
+  let focused = false;
+  /** @type {any} */ (closeBtn).focus = () => { focused = true; doc.activeElement = closeBtn; };
+  doc.activeElement = closeBtn; // the one control, focused on open per openLightbox
+  const e1 = tab();
+  assert.equal(e1.defaultPrevented, true, "with one control, Tab is always caught");
+  assert.equal(focused, true);
+  focused = false;
+  const e2 = tab(true); // Shift+Tab: same, still the only control
+  assert.equal(e2.defaultPrevented, true);
+  assert.equal(focused, true);
 });
 
 test("a tap on the backdrop closes it; a tap that bubbled from the picture itself does not", () => {

@@ -148,6 +148,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 
 .lease-bar { display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 20px; font-size: 12px; color: var(--label);
   border-top: 1px solid var(--rule); flex-shrink: 0; }
+/* Nobody holds the keyboard, nothing to resume, no error (the common solo-session case): hidden
+   rather than a chat-presence "No one is typing" with nothing to report (session.js drawHead). */
+.lease-bar[hidden] { display: none; }
 .lease-bar .who { color: var(--text); }
 .lease-bar button { margin-left: auto; }
 
@@ -412,6 +415,22 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-tool-inner > .cv-diff { margin-left: 0; margin-right: 0; }
 @media (prefers-reduced-motion: reduce) { .cv-tool-body, .cv-chev { transition: none; } .cv-spin { animation: none; } }
 
+/* A teammate handoff (teammates.md section 3, tool-row.md's Handoff variant): the teammate's own
+   avatar tile (never the generic sub-agent icon), never coloured (avatar.md's "no per-teammate
+   hue" ruling - distinct comes from the tile+name+tag, not a hue). Always its own line
+   (core/grouping.js exempts it from folding into a run), collapsed by default; the reply is turn
+   prose, not a code block, so it drops cv-tool-inner's mono/--code-bg open styling. */
+.cv-handoff-head { gap: 8px; }
+.cv-handoff-head .av-agent { margin: 0; }
+.cv-handoff-head:disabled { cursor: default; }
+.cv-handoff-head:disabled .cv-chev { opacity: 0.35; }
+.cv-handoff-line { flex-grow: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 13px; line-height: 18px; }
+.cv-handoff-name { font-weight: 600; color: var(--text); }
+.cv-handoff-tag { font-family: var(--sans); font-size: 12px; line-height: 16px; font-weight: 400; color: var(--text-2); background: var(--hover); border: 0; height: auto; padding: 1px 6px; }
+.cv-handoff-sum { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cv-tool[data-open] .cv-handoff-reply { background: none; font-family: var(--sans); font-size: 15px; line-height: 22px; }
+.cv-tool[data-open] .cv-handoff-reply > * { margin-left: 0; margin-right: 0; }
+
 .cv-cmd, .cv-out, .cv-raw { margin: 0; padding: 10px 12px; border-radius: 6px; background: var(--code-bg); overflow-x: auto; }
 .cv-tool-inner .cv-cmd, .cv-tool-inner .cv-out { padding: 0; background: transparent; border-radius: 0; }
 .cv-cmd code, .cv-out code { font-family: var(--mono); font-size: 12.5px; line-height: 20px; white-space: pre; }
@@ -566,10 +585,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-ask-what > .cv-cmd, .cv-ask-what > .cv-out, .cv-ask-what .cv-out-wrap > .cv-out { background: var(--code-bg); border: 0; border-radius: 8px; padding: 8px 12px; }
 .cv-ask-what .cv-cmd code { font-size: 13px; line-height: 18px; color: var(--text); }
 .cv-ask-why { font-size: 13px; line-height: 18px; color: var(--text-2); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-/* Footer buttons in both cards: the key as plain text inside (button.md), disabled as label ink on
-   no fill (never opacity alone), and the pressed one busy with its spinner and verb. */
-.cv-ask-key { font-family: var(--sans); font-size: 12px; line-height: 16px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--label); }
-.btn-primary .cv-ask-key { color: var(--primary-ink); }
+/* Footer buttons in both cards: the key as the shared kbd chip (key-hint.md), disabled as label
+   ink on no fill (never opacity alone), and the pressed one busy with its spinner and verb. */
+.btn-primary .cv-ask-key { color: var(--primary-ink); border-color: var(--primary-hover); }
 .ask-card .btn:disabled { opacity: 1; background: transparent; color: var(--label); }
 .ask-card .btn.cv-always:disabled { border-color: var(--rule); }
 .ask-card .btn-primary:disabled { background: var(--hover); border-color: var(--hover); color: var(--label); }
@@ -667,12 +685,14 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-context { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
 .cv-context.high { color: var(--beacon-ink); }
 .cv-state { font-family: var(--mono); font-size: 11px; color: var(--label); white-space: nowrap; }
-/* Session state words beside their status mark (status-mark.md): the word in --text-2, the mark
-   drawn before it and hidden from readers (the word is printed). Running: the 10 ring in --focus.
-   Waiting on you: the 8 needs-you dot. Failed: the 12 crossed circle, never the attention colour. */
-.cv-state-running, .cv-state-starting, .cv-state-waiting, .cv-state-failed { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
-.cv-state-running::before, .cv-state-starting::before { content: ""; flex: none; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid var(--focus); }
-.cv-state-waiting::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--beacon-dot); }
+/* Session state words beside their status mark (status-mark.md), sessions' canonical vocabulary
+   (lib/thread-status.js): the word in --text-2, the mark drawn before it and hidden from readers
+   (the word is printed). Working: the 10 ring in --focus. Asking (a permission or question is
+   open): the 8 needs-you dot. Failed: the 12 crossed circle, never the attention colour. Waiting
+   (idle, ready for you), paused, stopped and finished get no mark: plain text via .cv-state alone. */
+.cv-state-working, .cv-state-starting, .cv-state-asking, .cv-state-failed { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+.cv-state-working::before, .cv-state-starting::before { content: ""; flex: none; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid var(--focus); }
+.cv-state-asking::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--beacon-dot); }
 .cv-state-failed::before { content: ""; flex: none; width: 12px; height: 12px; background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='6' cy='6' r='5.25'/%3E%3Cpath d='M4.25 4.25l3.5 3.5M7.75 4.25l-3.5 3.5'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='6' cy='6' r='5.25'/%3E%3Cpath d='M4.25 4.25l3.5 3.5M7.75 4.25l-3.5 3.5'/%3E%3C/svg%3E") center / 12px 12px no-repeat; }
@@ -788,10 +808,18 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 
 .cv-queued-local { border-style: dotted; }
 
-.cv-rewind-box { padding: 6px 20px 0; flex-shrink: 0; }
+/* A real overlay (sheet.css's tokens, loaded transitively via gate-item.js -> need-sheet.js ->
+   js/sheet.js's import-time style(); the fallbacks below hold even if that chain ever changes),
+   not drawn in the transcript's own flow above the composer - a phone stacked the lease bar,
+   todos, queued row and this above the composer, pushing its mode row off the bottom of the
+   viewport (app-design's review). A tap on the scrim closes it (session.js), matching the
+   tap-on-backdrop convention elsewhere (lightbox.js). */
+.cv-rewind-scrim { position: fixed; inset: 0; z-index: 40; background: var(--scrim, rgba(0,0,0,0.5)); }
+.cv-rewind-scrim[hidden] { display: none; }
+.cv-rewind-box { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; padding: 0 20px max(20px, env(safe-area-inset-bottom, 0px)); }
 .cv-rewind-box[hidden] { display: none; }
-.cv-rewind { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--rule-strong); border-radius: 10px;
-  background: var(--panel); outline: none; }
+.cv-rewind { display: flex; flex-direction: column; gap: 4px; padding: 6px; max-height: 70vh; border: 1px solid var(--rule-strong);
+  border-radius: 14px 14px 0 0; background: var(--panel); box-shadow: var(--float, 0 24px 48px -24px rgba(0,0,0,0.6)); outline: none; }
 .cv-rewind-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; font-size: 12px; color: var(--text-2); }
 .cv-rewind-list { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; }
 .cv-rewind-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px;
@@ -807,6 +835,12 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-rw-opt[disabled] { opacity: 0.5; cursor: not-allowed; }
 .cv-rewind-note { padding: 0 6px 4px; font-size: 12px; color: var(--beacon-ink); }
 .cv-rewind-note:empty { display: none; }
+/* Desktop: a centred floating dialog (sheet.css's own convention for the same width/pointer
+   combination), not a full-width bottom banner. */
+@media (min-width: 720px) and (min-height: 501px), (min-width: 720px) and (pointer: fine), (min-width: 720px) and (pointer: none) {
+  .cv-rewind-box { left: 50%; right: auto; bottom: 24px; width: 420px; margin-left: -210px; padding: 0; }
+  .cv-rewind { border-radius: 14px; }
+}
 
 @media (max-width: 720px) {
   .cv-pin, .cv-tasks { margin-left: 16px; margin-right: 16px; }

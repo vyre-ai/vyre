@@ -71,8 +71,9 @@ import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
+import { threadHref } from "./lib/routes.js";
 import { isMac, machineChip } from "../js/machine.js";
-import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
+import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, handoffCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
 import { frameToPicture } from "./core/images.js";
 import { textItemRow } from "./live-text.js";
 import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks, pendingEvents } from "./core/session-state.js";
@@ -99,13 +100,17 @@ const readHideThinking = () => { try { return localStorage.getItem(THINK_KEY) ==
  * Event names the view reads beyond the ones api.js always listens for: naming them makes the
  * shared stream listen (thread.* only hears the names it knows).
  */
-const MORE_EVENTS = ["thread.state", "thread.turn", "thread.queued", "thread.unqueued", "thread.steered", "thread.rewound",
+const MORE_EVENTS = ["thread.state", "thread.status", "thread.turn", "thread.queued", "thread.unqueued", "thread.steered", "thread.rewound",
   "thread.model", "thread.thinking", "thread.task", "thread.shell", "thread.remembered", "thread.usage", "thread.limit"];
 const editable = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT" || t.isContentEditable);
 const PROVIDERS = /** @type {Record<string, string>} */ ({ claude: "Claude", codex: "Codex", acp: "ACP" });
-const BUSY = new Set(["starting", "running", "waiting"]);
-/** The Switchboard's raw status, for a record read before any thread.state. */
-const STATUS = /** @type {Record<string, string>} */ ({ working: "running", running: "running", stopped: "stopped", idle: "idle", starting: "starting", waiting: "waiting" });
+// Sessions' canonical, person-facing vocabulary (lib/thread-status.js, thread.status /
+// canonical_status): starting, working, asking (an ask is open), waiting (idle, ready for you),
+// paused (an idle close/restart/rewind - resumable, not an error), stopped (you pressed Stop),
+// finished, failed. Read directly, never relabeled here - a local map that did that (STATUS,
+// "working"->"running" etc.) reimplemented the server's own old-vocabulary relabeling and shared
+// its bug (asking/waiting swapped for a person); dropped per sessions' 6e2f8a71/28a8b4f8.
+const BUSY = new Set(["starting", "working", "asking"]);
 /** Where an answer came from, as the card says it. */
 const SURFACES = /** @type {Record<string, string>} */ ({ capsule: "the Capsule", cli: "the terminal", local: "the terminal", phone: "your phone",
   mobile: "your phone", pwa: "your phone", needs: "Needs", deck: "the Deck", chat: "the Deck", glass: "Glass" });
@@ -199,13 +204,16 @@ export function mountSession(container, opts) {
     session: S, patch: keys => { const sent = !!booted && keys.some(k => k.startsWith("u:")); patch(keys); if (sent) toBottom(); },
     cwd: () => record.current?.cwd || recorded.session?.cwd || null,
     name: () => agentName(),
+    project: () => record.current?.project || opts.project || null,
     onRewind: () => openRewind(),
     // "/find [words]" (native-core/commands.js): the existing Find page already queries
     // recall.search + memory.relevant and has its own scoping rules; the composer just gets there fast.
     onFind: q => go("/find" + (q ? "?q=" + encodeURIComponent(q) : "")),
     onTasks: () => tray.toggle(),
     onThinkingView: () => setHideThinking(!hideThinking),
-    onOverlayEscape: () => { if (!rewind) return false; closeRewind(); return true; } });
+    onOverlayEscape: () => { if (!rewind) return false; closeRewind(); return true; },
+    onRecall,
+  });
   /** The live todo list and the background tasks, above the composer. */
   const pin = todoPin();
   const tray = tasksTray({
@@ -219,13 +227,34 @@ export function mountSession(container, opts) {
       return d.killed === false ? String(d.note || "Could not stop it") : null;
     },
   });
-  /** The rewind sheet (Esc Esc), while it is open. */
+
+  /**
+   * "From your past sessions" (native-core's composer.js, memory-iq's recall.related): a hint row
+   * was tapped. Opens that session (its own thread, almost always a different one - a session
+   * rarely surfaces its own past turns as "past") at the point it was said, the way any other
+   * cross-session link does (threadHref + go), never a special reveal-in-place: this session's
+   * own view has no reason to change. The moment is a real timestamp (hit.ts), so it rides the
+   * existing ?at= deep link (line ~1351 below, want.at) rather than a new one keyed by seq.
+   * @param {{ session: string, seq?: number, role?: string, ts?: number, name?: string|null, title?: string|null, cwd?: string|null, snippet?: string }} hit
+   */
+  function onRecall(hit) {
+    if (!hit?.session) return;
+    const href = threadHref({ id: hit.session }, record.current?.project || opts.project || null) + (hit.ts ? `?at=${hit.ts}` : "");
+    go(href);
+  }
+  /** The rewind sheet (Esc Esc), while it is open: a real overlay (sheet.css's --scrim/--float
+   * tokens), not drawn in the transcript's own flow above the composer - on a phone, that stack
+   * (lease bar, todos, queued row, this) pushed the composer's mode row off the bottom of the
+   * viewport (app-design's review). Keyboard routing is unchanged (rewind.key(e) in onKey below;
+   * this only moves where it's drawn, not how Esc/Enter/arrows reach it). A tap on the scrim
+   * closes it, matching the tap-on-backdrop convention elsewhere (lightbox.js). */
+  const rewindScrim = h("div", { class: "cv-rewind-scrim", hidden: true, onclick: () => closeRewind() });
   const rewindBox = h("div", { class: "cv-rewind-box", hidden: true });
   let rewind = /** @type {ReturnType<typeof rewindSheet>|null} */ (null);
   let hideThinking = readHideThinking();
   const capsOff = CAPS.on(() => { drawQueued(); tray.draw(); rewind?.refresh(); });
 
-  put(container, head, sightEl, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, pin.el, tray.el, queuedBox, rewindBox, composer.el);
+  put(container, head, sightEl, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, pin.el, tray.el, queuedBox, rewindScrim, rewindBox, composer.el);
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
   let names = /** @type {{ assistant: string|null, owner: string|null }} */ ({ assistant: null, owner: null });
@@ -258,7 +287,7 @@ export function mountSession(container, opts) {
     if (!r.error) {
       record.current = /** @type {any} */ (r).data.thread;
       const rec = record.current || {};
-      const st = rec.state || STATUS[rec.status];
+      const st = rec.canonical_status || rec.state;
       if (st) S.state = st;
       for (const k of /** @type {const} */ (["provider", "model", "auth", "purpose"])) if (rec[k]) S[k] = String(rec[k]);
       if (typeof rec.mode === "string") S.mode = rec.mode;
@@ -394,14 +423,23 @@ export function mountSession(container, opts) {
     tip?.sync();
     // A Mac session: the keyboard is the Mac's own (the lease is not forwarded), so no Take.
     if (isMac(where)) { put(leaseBar, icon("laptop", 12), h("span", { class: "lease-note" }, `On ${macName()}` + (mac.queued ? ` · Queued for ${mac.name || "this session"}` : ""))); return; }
-    const idleClosed = sb && S.state === "idle" && S.stopped === "idle";
+    // "paused" (lib/thread-status.js) already means exactly an idle timeout/restart/rewind - a
+    // closed-but-resumable session, not an error; session-state.js's own guess (thread.stopped,
+    // before any real thread.status arrives) already speaks this word too.
+    const idleClosed = sb && S.state === "paused";
+    // Nobody holds the keyboard, nothing to resume, no error: on a solo session (the common case)
+    // this is every draw, forever - "No one is typing" then reads as a chat-presence indicator with
+    // nothing to report, not a keyboard-lease one. Hide the row rather than say that (app-design).
+    const nothing = !rec?.holder && !recorded.on && !idleClosed && !stop.error;
+    leaseBar.hidden = nothing;
+    if (nothing) return;
     put(leaseBar,
       icon("lock", 12),
       rec?.holder && OURS.has(rec.holder) ? h("span", null, "You have the keyboard here")
         : rec?.holder ? h("span", null, h("span", { class: "who" }, rec.holder), " has the keyboard")
         : recorded.on ? h("span", { class: "lease-note" }, "Sending resumes this session here.")
         : idleClosed ? h("span", { class: "lease-note cv-resumes" }, "Resumes on your next message")
-        : h("span", null, "No one is typing"),
+        : null, // only stop.error is true here (the `nothing` check above returned otherwise)
       rec?.holder && !OURS.has(rec.holder) ? h("button", { class: "btn btn-ghost btn-sm", onclick: take }, "Take") : null,
       stop.error ? h("span", { class: "err cv-stop-err" }, stop.error) : null,
     );
@@ -559,6 +597,7 @@ export function mountSession(container, opts) {
     });
     // Whether this box can put files back: learnt with threads.commands (a read, the same ship).
     if (CAPS.has(REWIND_CODE) === null) CAPS.use("threads.commands", () => attempt("threads.commands", { thread })).catch(() => {});
+    rewindScrim.hidden = false;
     rewindBox.hidden = false;
     put(rewindBox, rewind.el);
     rewind.el.setAttribute("tabindex", "-1");
@@ -566,6 +605,7 @@ export function mountSession(container, opts) {
   }
   function closeRewind() {
     rewind = null;
+    rewindScrim.hidden = true;
     rewindBox.hidden = true;
     rewindBox.replaceChildren();
     composer.focus();
@@ -649,7 +689,7 @@ export function mountSession(container, opts) {
   /** The session's folder, so paths inside it read relative ("menu.md", not the whole path). */
   const sessionCwd = () => record.current?.cwd || recorded.session?.cwd || null;
   /** A running call while the session waits on the person: its ask is open, so it is not working. */
-  const waitingOn = it => it.status === "running" && S.state === "waiting";
+  const waitingOn = it => it.status === "running" && S.state === "asking";
 
   /** Is there a message of the person's after this item (from the tail, so a last turn costs little)? */
   const saidAfter = it => { for (let i = S.items.length - 1; i >= 0; i--) { const x = S.items[i]; if (x === it) return false; if (x.kind === "user") return true; } return false; };
@@ -663,7 +703,8 @@ export function mountSession(container, opts) {
       case "reasoning": return { kind: "thinking", text: it.text, ts: at };
       case "tool": return { kind: "tool", id: it.call, tool: it.name, input: it.input, output: it.output ?? null, summary: it.summary,
         error: it.status === "failed" || (!!it.error && it.status !== "running"), duration_ms: it.duration_ms ?? null, ts: at, patch: it.patch,
-        done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it), ...(it.images ? { images: it.images } : {}) };
+        done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it),
+        ...(it.reply !== undefined ? { reply: it.reply } : {}), ...(it.images ? { images: it.images } : {}) };
       // A turn the transcript has not closed is still going only while the session is busy and
       // nothing was said after it (a message sent now closes the one before, even unread yet).
       // auth: only an api-key turn is really billed by the number; a subscription runs on the
@@ -674,7 +715,7 @@ export function mountSession(container, opts) {
     }
   }
   /** What a row shows, so a patch that changed nothing visible does nothing. */
-  const sig = it => JSON.stringify(it.kind === "tool" ? [it.status, it.summary, it.output, it.input, it.duration_ms, it.error, it.patch]
+  const sig = it => JSON.stringify(it.kind === "tool" ? [it.status, it.summary, it.output, it.input, it.duration_ms, it.error, it.patch, it.reply]
     : it.kind === "ask" ? [it.state, it.decision, it.answers] : asBlock(it) || it);
 
   /** "Thinking · 8 s": until the next row began, when that is known. `i`: where it is in the items, when the caller knows. */
@@ -707,7 +748,8 @@ export function mountSession(container, opts) {
       // A growing reply is heard by the resize observer; without one, a frame is asked for (coalesced).
       case "text": { const el = textItemRow(it.at, { visible, onGrow: stick.observing ? undefined : () => stick.poke() }); el.sync(it); return el; }
       case "reasoning": return thinkingRow(it.text, it.at, thinkLabel(it));
-      case "tool": return toolCard(asBlock(it));
+      // A teammate handoff (team_ask): its own card (teammates.md section 3), not the generic tool one.
+      case "tool": return (it.name === "team_ask" || it.name === "team.ask") ? handoffCard(asBlock(it)) : toolCard(asBlock(it));
       case "turn": return turnRow(asBlock(it));
       case "notice": return noticeMsg(it.text, it.at);
       case "ask": return askEl(it);
@@ -1492,9 +1534,9 @@ export function mountSession(container, opts) {
         const data = /** @type {any} */ (r.data);
         if (data.thread) {
           record.current = data.thread;
-          const st = data.thread.state || STATUS[data.thread.status];
+          const st = data.thread.canonical_status || data.thread.state;
           // A state word the events will not repeat: the record's, unless an event said it since.
-          if (st && !(data.events || []).some(e => e.type === "thread.state")) S.state = st;
+          if (st && !(data.events || []).some(e => e.type === "thread.status" || e.type === "thread.state")) S.state = st;
         }
         replaying = true;
         try { for (const e of data.events || []) if (!e.thread || e.thread === thread) onEvent(e, false); } finally { replaying = false; }
