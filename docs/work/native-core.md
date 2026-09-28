@@ -97,6 +97,34 @@ chat is looking at budget 9's footer-text-change flag. Next: continue composer/s
 now that file ownership with chat (session.js/newsession.js) and pwa (phone views) is settled —
 composer.js's behaviour and the streaming path are mine.
 
+## 2026-09-28: Claude Code parity audit (team-lead's 4 items)
+Before building, audited what's already there:
+1. Queue while busy, delivered on Stop, visible chip you can edit/cancel: ALREADY BUILT, both
+   sides. Server: turnEnded (switchboard) hands queued words over on any thread.finished,
+   cancelled or not (st.stopping only blocks a hard threads.stop, not the Deck's soft
+   threads.interrupt). Client: session.js's cv-queued box (rows, Edit/Take back/Send now) already
+   listens for thread.sent regardless of `via`. New test locks the untested combination in
+   (core/sessions/sessions.test.js, 48de0bd3's ancestor fa4a3b07): queue mid-turn, press Stop,
+   the queued words are handed over and answered as the next turn.
+2. Slash-command palette, SDK's + Vyre's, fuzzy: ALREADY BUILT. core/commands.js
+   (findCommand/rankCommands) + core/match.js (a real tiered fuzzy matcher, ported from Paseo:
+   exact/whole-word/prefix/word-start/substring/subsequence), threads.commands for the session's
+   own list. Nothing missing found.
+4. Permission mode + model/effort mid-session: ALREADY BUILT. threads.mode/model/effort all say
+   "a running thread switches at once" and do (control_request to the live SDK process);
+   composer.js already has the chips (Shift+Tab cycles mode, model chip, thinking/effort).
+3. Edit/resend + rewind or fork from any turn: PARTIALLY missing, now built (48de0bd3).
+   threads.fork forked only from the live end; threads.rewind resumed at a message's parentUuid
+   but in place (mutating the original). The Agent SDK already supports forkFrom + resumeAt
+   together (core/sessions/claude.js), just never wired to the same call. threads.fork now takes
+   an optional `at` (turn uuid): forks from just before that turn, original untouched past it.
+   Tested (fork from turn 2 of 3, original's transcript byte-identical after, still usable past
+   turn 3). Edit-and-resend of a past message already works via rewind (words come back to the
+   composer to edit and send) - the net-new part was the fork option specifically.
+Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the rewind sheet,
+pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
+and the new capability to team-lead.
+
 ## Known follow-ups
 - DONE: e2e's three MEDIUMs (firstParty, drops/env/plugins confirm, asPerson).
 - Merge e2e's claudeHome switch (work/e2e-noclaude 32dc0956) once it is on main: settings'
