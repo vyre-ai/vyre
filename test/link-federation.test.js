@@ -170,6 +170,29 @@ test("link federation: a Mac's machine-to-machine unpair reaches the box (the rc
   s.box.registry.deps.db.prepare("DELETE FROM link_peers WHERE id = ?").run("other-mac-id");
 });
 
+test("link federation: link.unpair is the person's; only a paired Mac unpairing itself by its own key passes without a person session", async t => {
+  const { PERSON_ONLY, machineSelf } = await import("../core/presence/index.js");
+  assert.ok(PERSON_ONLY.has("link.unpair"), "a model's shell on the box cannot forget a Mac by id");
+  assert.equal(machineSelf("link.unpair", { key: "k" }), true);
+  for (const input of [{ id: "m1" }, { key: "k", id: "m1" }, { key: "" }, {}, null]) assert.equal(machineSelf("link.unpair", input), false, JSON.stringify(input));
+  assert.equal(machineSelf("link.pair", { key: "k" }), false);
+
+  const s = await pair(t);
+  const [m] = await polling(s);
+  // Another of the owner's devices (the phone, no person session): by id is refused, since that
+  // is the person forgetting a Mac, not a Mac forgetting itself.
+  const phone = { login: OWNER, node: "test-phone", stableId: "nPHONE" };
+  const byId = await s.boxCall("link.unpair", { id: m.mac }, `tailnet:${OWNER}`, { peer: phone });
+  assert.equal(byId.error?.code, "person_session_required", JSON.stringify(byId));
+  const mixed = await s.boxCall("link.unpair", { id: m.mac, key: "x" }, `tailnet:${OWNER}`, { peer: phone });
+  assert.equal(mixed.error?.code, "person_session_required", JSON.stringify(mixed));
+  assert.equal((await s.boxCall("link.macs")).data.length, 1, "still paired");
+  // The Mac itself, by its own key: allowed (the next tests run it end to end through mac.js).
+  const u = await s.macCall("link.unpair");
+  assert.equal(u.data.unpaired, true, JSON.stringify(u));
+  assert.deepEqual((await s.boxCall("link.macs")).data, []);
+});
+
 test("link federation: unpairing from the Mac stops its loop, and pairing again starts it", async t => {
   const s = await pair(t);
   await polling(s);

@@ -96,15 +96,10 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // are the tools personOnly() would derive on the box itself but this Mac-side pre-check cannot,
   // named explicitly so a model's shell forwarding through link.call is refused just as early as a
   // direct call would be (reviewer's LOW, 28 Sep). voice.speak and capsule.report join them too.
-  // link.unpair is NOT here (the lead's decision, 28 Sep, an rc.2 blocker this caused): the box's
-  // own registration (core/link/box.js) declares no callers at all, because the Mac itself is a
-  // legitimate caller unpairing itself, machine to machine (byKey already checks the calling
-  // Mac's stableId matches the row's own, so it can never unpair a DIFFERENT Mac); forcing
-  // personOnly here made the box refuse that real, non-person call outright. The Mac's own
-  // exposure of the same tool name (core/link/mac.js) keeps its callers: ["cli","local","capsule"]
-  // -- all person surfaces -- so personOnly still derives true there on its own, unaffected by
-  // this list.
-  "link.pair", "vault.device.join", "vault.device.revoke", "vault.vaults.create",
+  // link.unpair is here, so a model's shell on the box cannot forget a Mac by id; the one
+  // machine-to-machine call it must still take, a paired Mac unpairing itself, is MACHINE_SELF
+  // below (the reviewer's LOW for 0.1.1).
+  "link.pair", "link.unpair", "vault.device.join", "vault.device.revoke", "vault.vaults.create",
   "files.drive.mount", "files.drive.unmount", "files.drive.open", "files.send", "agents.delete",
   "memory.correct", "memory.merge", "memory.split",
   // A model's shell making Vyre speak out loud is a social-engineering channel ("approve the
@@ -149,6 +144,19 @@ export const OPT_OUT = new Set([
   // (link.pair) is not opted out.
   "link.find",
 ]);
+
+/**
+ * The only person-only calls an owner's device may make with no person session: a paired Mac
+ * unpairing ITSELF, by its own link key and nothing else (core/link/mac.js sends exactly
+ * `{ key }`). The box's link.unpair then finds the row by that key AND the calling node's
+ * stableId (core/link/box.js byKey), so this can never forget a different Mac. By id stays the
+ * person's. Adding to this needs the same review as PERSON_ONLY.
+ * @param {string} tool @param {any} input
+ */
+export function machineSelf(tool, input) {
+  return tool === "link.unpair" && Boolean(input) && typeof input.key === "string" && input.key.length > 0
+    && Object.keys(input).every(k => k === "key");
+}
 
 /**
  * Is `name` a person-only tool: PERSON_ONLY's own list, or (unless explicitly opted out) a tool
