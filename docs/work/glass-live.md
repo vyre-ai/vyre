@@ -75,10 +75,20 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
   isolation.test.js: a static check neither setpriv call regains an ambient capability, plus a
   live CapEff/CapAmb/CapPrm=0 check for computerd and Chrome (needs a container). Tests: 256 pass,
   0 fail, 8 skipped on testbox, plus a new FIFO-connect/reconnect test in index.test.js.
-- Next: reviewer clearance on 47bce9d8; e2e's real-stack run on /srv/vyre-e2e (the uid change and
-  now the FIFO launcher both need a real Docker check); the throwaway-stack validation still
-  pending for slice 1 overall (no docker host in this session) -- see agent-browsers.md's own
-  "Next" list.
+- Throwaway-stack run, done (1ae6fe9e): built vyre/computer:glass-browser and ran isolation.test.js
+  live against a real container on testbox (docker create/start by hand, .boot seeded via a
+  throwaway helper container's docker cp, since vyred's own seed() needs the whole daemon stood
+  up). All 11 tests pass, CapEff/CapAmb/CapPrm=0 confirmed for both computerd and Chrome -- the
+  reviewer's own condition. Found and fixed two real design assumptions (dbus-launch's socket is
+  a plain file in /tmp on this box, not a private dir; root creating /run/vyre-chrome can't then
+  chgrp it to vyre-bus, no CAP_CHOWN) and one implementation bug (chrome_once's redirects were
+  evaluated by root, before setpriv's own uid switch). Two things flagged to the reviewer rather
+  than fixed unilaterally: Chrome's own AT-SPI registration still intermittently times out even
+  though both D-Bus buses are reachable (looks like activation timing, not a permission gap), and
+  --bounding-set=-all silently no-ops without CAP_SETPCAP, which REQUIRED_CAPS doesn't grant
+  (CapEff/CapAmb/CapPrm are correctly zero regardless). Torn down after; full detail in
+  agent-browsers.md.
+- Next: reviewer clearance on 1ae6fe9e; e2e's real-stack run on /srv/vyre-e2e.
 
 ## Rollout (must ship together)
 - The new computer image and the new vyred go out in the same deploy: the image starts as root and
