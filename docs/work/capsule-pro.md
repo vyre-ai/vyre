@@ -88,6 +88,26 @@ without editing Capsule files:
 - Planner banners (d608b8a), Touch ID in the panel, menu-bar popover, Taildrop send, the typing
   fix, the extension seam, `@` targets: see CHANGELOG.
 
+## Doing (session 7, 2026-09-28, 0.1.1 on work/capsule-011)
+Branch work/capsule-011 off stage/0.1.1 d9b916d4, with the P-256 batch cherry-picked (e6257989,
+c8ad58e5, 4fadf7fa, 832396d6). The user's five decisions for 0.1.1:
+1. DONE 0c62b597: offline, the Capsule starts Vyre itself. `vyre capsule` records
+   <home>/capsule/cli.json; VyreCLI.locate (VYRE_CLI, the record, PATH plus the usual folders;
+   under tests the scratch record only). The Offline line is "Start Vyre" (Return on an empty box,
+   or a click; the popover has it too); `vyre up` typed offline is that; other `vyre ...` say
+   "Start Vyre first". Runs `up --no-capsule --view` by argv, draws its frames, follower.lookNow()
+   on exit 0. Tests: StartVyreTests (FakeVyred + fake CLI).
+2. Avatars: ported by a subagent (d09dce84, 7cc26bda; Sources/Core/Avatars, UI/Avatars,
+   AvatarTests with JS vectors). Wiring into reply rows, source chips, popover and session
+   windows: in progress (subagent).
+3. Project awareness: the rule is in Host/ProjectContext.swift (76adb508, tested). Still to do:
+   the session window reports its thread/project to the host, the panel chip (project tile), and
+   memory.ask {question, context:{project}} in IQAsk.
+4. DONE e97342b7, 8d8f2ea5, 1e6bd776: models from sessions.models via CapsuleModel.models; the
+   names live once in ModelFallback (Route.swift); drift allowlist shrank to Route.swift: 2.
+5. Option-Space stays the hot key (no change).
+Stage's own cohesion-drift fails on deck/chat/composer.js (not ours; told the integrator).
+
 ## Doing (session 6, 2026-09-27/28, Design A for the RC)
 Handed earlier: work/capsule-pro-said a127335d (capsule-mac green).
 On work/capsule-pro since, for the RC cut (Design A; deadline 03:00 UTC, go/no-go 01:30 UTC):
