@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Goals + milestones: new module core/goals, push routing
+
+- New module `core/goals`: `goals.set` (a person's own call is active at once; an agent's is a
+  proposal until a person's `goals.accept`), `goals.milestone-done` (scoped to the goal's own
+  session or project - an agent elsewhere is refused), `goals.get`/`goals.list`. The last
+  milestone landing marks the goal done and emits `goal.done`.
+- `core/push` routes `goal.milestone`/`goal.done` through a new `goal` kind (`kinds.goal`,
+  default on), the same way it already routes `planner.fired`.
+
 #### sessions.test.js split into two files (rc.2, capacity)
 
 - `core/sessions/sessions.test.js`'s ~80 real subprocess-spawning tests (both drivers) sat right

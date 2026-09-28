@@ -176,6 +176,22 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   project-scoped ("the house voice for every session") - applies even outside a project and to an
   agent out of scope. Order: house voice, then team nudge, then project brief, then lessons.
   `36caa4ad`. 28/28 on core/harness + test/harness.test.js.
+- Goals+/later, approved design (team-lead): core/goals own module, planner kind "task" +
+  waits_on, 4 rules (creator-scope, recurring visibility+pause, milestone-done scoped, person
+  accepts a goal). Built so far:
+  - `7e88b74e`: core/push's side first (purely declarative - NOTES's event-type map wires up any
+    listener with no new registration code). New `goal` kind (kinds.goal, default on), routes
+    `goal.milestone`/`goal.done`. 8/8 on core/push.
+  - `bb3b9b4e`: new module `core/goals` (roles box, local) - `goals.set` (a person's own call is
+    active at once; an agent's is a proposal, state `pending`, rule 4), `goals.accept`
+    (PERSON_ONLY, added to core/presence), `goals.milestone-done` (rule 3: scoped to the goal's
+    own thread or project, checked via `threads.get` for an agent's calling thread; a person may
+    always tick one; re-ticking an already-done one is a no-op not a second event; the last one
+    marks the goal done and emits `goal.done`), `goals.get`/`goals.list`. Self-contained, no
+    cross-feature imports. 4/4 new tests, 30/30 with push + harness + boundaries.
+  Not yet built: the planner "task" kind + `waits_on` (rules 1 and 2, /later's actual firing
+  mechanism - `threads.post`/`threads.launch`, creator-scope, recurring run-count/pause). Sent
+  core/goals to the reviewer (real scoping/security logic); push routing to reviewer-2.
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
