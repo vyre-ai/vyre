@@ -786,6 +786,7 @@ test("lean and one-shot threads: no plugin, tools or settings, kept on resume; a
 
 test("ADR 0041 (github, worked with sessions): a new thread in a GitHub project starts in its own worktree; github.session.cleanup runs once it is truly finished, never merely stopped", async t => {
   const worktree = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-worktree-")));
+  t.after(() => fs.rmSync(worktree, { recursive: true, force: true }));
   // The real core/github is loaded on a box now, and a module name loads once, so the stand-in
   // answers through github's own registered tools instead of a second "github" module.
   const { d, tool, work } = await boot(t);
@@ -797,6 +798,7 @@ test("ADR 0041 (github, worked with sessions): a new thread in a GitHub project 
   stub("github.session.worktree", async i => { ghCalls.push(["worktree", i]); return { path: worktree }; });
   stub("github.session.cleanup", async i => { ghCalls.push(["cleanup", i]); return { ok: true }; });
   const nwHome = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-nw-")));
+  t.after(() => fs.rmSync(nwHome, { recursive: true, force: true }));
   assert.ok(!(await tool("projects.create", { name: "Harlow Legal", home: work })).error);
   assert.ok(!(await tool("projects.create", { name: "Northwind Bakery", home: nwHome })).error);
 
