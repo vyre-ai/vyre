@@ -353,3 +353,23 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   stays the one accent, Mica's tint is where "feels like this desktop" belongs.
 - Sent to windows (msg_id 30a3d494). Nothing built yet (Tier C hasn't started); this spec exists so
   it starts from Design A and the Mac Capsule's content model.
+
+## Now (28 Sep, teammates section 3: avatar, accent, handoff card)
+
+- teammates asked chat and app-design to agree teammates.md section 3 ("Distinct in chat"):
+  proposal was a role-hashed accent colour per teammate (disc, 3px bubble border, a dot in rows,
+  ANSI square), a handoff card, one-tap to the teammate's thread.
+- Turned down the per-teammate colour. `docs/design/one-app/README.md`'s System section already
+  settles this for the whole product: "lime for action... violet for needs you (teal the one
+  alternative). No other hue. Devices and hosts never get a colour." A teammate is that kind of
+  entity, not a person; hashed hues is the first crack in a rule Design A has held since day one,
+  fine at 3 teammates, bad at 8. avatar.md now says so explicitly (73e35ce2), with the one CLI
+  exception: `vyre team` output may colour a name from a small fixed, AA-tested set (never an
+  arbitrary hash-to-hue), degrading under NO_COLOR, same convention as `git log --graph`.
+- Kept and homed the handoff card as a new "Handoff" variant of the existing tool-row (tool-row.md,
+  73e35ce2), not a new component: sub-agent icon, "Asked" -> "Replied," folds like any tool row,
+  detail renders as turn prose (not a code block, since it's words, not output). This also answers
+  their open "indented bubble" question by construction: a teammate's reply lives inside the card's
+  detail, never a freestanding message, so there's nothing left to mistake for the assistant's own
+  words.
+- Ruling sent to teammates (msg_id 059cc442) and chat (msg_id a1f36f57).
