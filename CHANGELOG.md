@@ -27,6 +27,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `recover()` (vyred startup: marks every thread that looked live before the restart as stopped)
   now also emits `thread.status {status: "paused"}`, not just the legacy `thread.stopped` - a
   live listener saw nothing until its next poll of `threads.get` otherwise.
+- `threadStatus()` now fails safe to "stopped" on an unknown raw status instead of passing it
+  through unchanged (reviewer-2's finding).
+- `threads.start`/`threads.fork`/`threads.launch` answers gain `.thread` (native-core's naming
+  footgun: only `threads.rewind`'s answer had it before, so code copying that pattern silently
+  got `undefined` off the others). `.id` stays canonical; `.thread` is a deliberate one-release
+  alias. `threads.rewind`'s answer gains `.id` too, for the same symmetry.
 
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 

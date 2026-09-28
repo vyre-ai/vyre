@@ -101,6 +101,20 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   restart test ("switchboard: vyred restarting marks its threads stopped") with both the live
   event and the at-rest `canonical_status`. Testbox: 109/109 (switchboard + sessions + boundaries
   + chat-sessions-contract).
+- reviewer-2's finding on 6e2f8a71 fixed at 854a7752: `threadStatus()`'s fallback
+  `THREAD_STATUSES.includes(raw) ? raw : raw` returned `raw` either way - dead code, and a
+  latent trap for a future raw status added without updating this mapping. Now fails safe to
+  "stopped". New test.
+- Task 1 fix #3 (native-core's measured/concrete finding #2, not a number but a real correctness
+  trap): threads.fork/threads.start/threads.launch all resolved through `launch()`, which
+  returned bare `record(id)` - `.id` only. threads.rewind separately built its own answer and
+  happened to echo the id as `.thread` too. Fixed at d16a345f: `launch()`'s two return points go
+  through a new `launched(id)` helper (`{...record(id), thread: id}`); rewind's three return
+  points gain `.id` alongside its existing `.thread`. `.id` canonical, `.thread` a deliberate
+  alias kept for one release. Real e2e assertions added on threads.start, threads.fork,
+  threads.launch (the job/agent path) and threads.rewind, not just a unit test; the one exact-
+  shape regex this touched (chat-sessions-contract's literal-source check on rewind's answer)
+  updated to match. Testbox: 110/110.
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
@@ -139,8 +153,11 @@ optional deps; without them the tests silently run on the CLI).
   unchanged legacy `thread.state` at every status change (module.json's watches.emits gains it).
   `threads.get`/`threads.list` records gain `canonical_status`; the existing raw `status` field
   is unchanged. New pure lib `lib/thread-status.js` (`THREAD_STATUSES` - starting, working,
-  asking, waiting, paused, stopped, finished, failed; `threadStatus`; `LIVE_STATUSES`, the raw
-  internal liveness set).
+  asking, waiting, paused, stopped, finished, failed; `threadStatus`, fails safe to "stopped" on
+  an unknown raw status; `LIVE_STATUSES`, the raw internal liveness set).
+- `threads.start`, `threads.fork`, `threads.launch` answers gain `.thread` (an alias of `.id`,
+  kept for one release); `threads.rewind`'s answer gains `.id` (an alias of its existing
+  `.thread`). New `Switchboard.launched(id)` helper backs the first three.
 - CLI `vyre pick <project> <thread>` (and `unpick`): a `<thread>` shaped like a Claude Code
   session id (UUID, optional `/agent-...` suffix) is now accepted even when Recall's catalogue
   has no row for it yet, instead of erroring "no thread matches". `projects.add-threads` itself
