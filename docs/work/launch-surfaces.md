@@ -2,6 +2,38 @@
 
 (Named launch-surfaces.md because launch.md and LAUNCH.md are the same file on a case-insensitive disk.)
 
+## GitHub sign-in screens (0.1.1, the user's direct ask, 28 Sep)
+
+Built on `work/launch-github` (`../vyre-launch`, branch off `stage/0.1.1` with `work/github`
+merged in at 4e9c6d7d, sha dc6e605d) so github's real tools exist: `github.connect(name)`,
+`.accounts`, `.remove`, `.connect.cancel` (github team's docs/work/github.md, ADR 0041). Two
+places, both real, not look-only:
+
+- Settings > Connections: a "GitHub accounts" group (`deck/views/connections.js`, sha c454b24d),
+  same shape as the MCP/Google groups it sits beside. Add a GitHub account names it, then shows
+  the device code, Copy, an "Open GitHub" link, and how long the code lasts; `github.connected`/
+  `github.connect-failed` end the flow, no polling or ticking on this side (GitHub's own device
+  flow already polls; a client-side countdown would have needed setInterval, which
+  `connections.test.js`'s own lightness test already forbids in this file, so the panel says a
+  static "Good for about N minutes" instead). Disconnect asks first, calls `github.remove`, and
+  shows its warning when a revoke could not run (no client secret configured is the default).
+- Onboarding's "Connect accounts" step (sha e5062524): a real GitHub card, same shape, no vault
+  item to pick (GitHub's sign-in makes its own). Google/email/MCP in that step stay "coming soon"
+  until their own spec lands (unchanged from before).
+
+Test harness gained `--fake-github` on `deck/test/native-bar/world.js` (preloads
+`deck/test/native-bar/fake-github.mjs` with `--import`: a global `fetch()` intercept over
+connect.js's three real GitHub URLs, so a spawned vyred can run `github.connect` for real without
+ever reaching the network, the same fake shape as `core/github/connect.test.js`'s own). New
+`deck/test/connections-github-browser.js` drives the whole flow in headless Chrome on testbox.
+All green on testbox: `connections.test.js` 45/45, `connections-github-browser.js` 6/6,
+`test/onboard.test.js` 27/27 (unaffected), and the existing `settings-browser.js` 9/9 (unaffected,
+reran after this work to confirm).
+
+Not done: repos (`github.repos`) and "Start a project from a repo" (`github.project`) are not
+wired into either screen yet (the lead's ask named them optional, "if they fit simply"; they
+don't fit this pass without their own picker UI, left for a follow-up rather than rushed in).
+
 ## Scope
 
 - `site/` (vyre.run): index.html, styles.css, app.js, 404.html, og.png, favicon, `site/start/`.

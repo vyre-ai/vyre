@@ -4,6 +4,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### settings, onboard: GitHub sign-in screens (ADR 0041)
+
+- Settings > Connections gets a "GitHub accounts" group, matching the existing MCP/Google groups:
+  Add a GitHub account names the account, then shows the device code large with Copy, an "Open
+  GitHub" link (verification_uri_complete when GitHub sends one), and how long the code lasts.
+  Nothing here ticks or polls: `github.connect` polls GitHub on its own, and `github.connected` /
+  `github.connect-failed` end the flow. Disconnect asks first, then calls `github.remove`, which
+  can come back removed with a warning when the revoke itself could not run (no client secret
+  configured) rather than pretending the account is cleanly gone.
+- Onboarding's "Connect accounts" step gets a real GitHub card (same shape, no vault-item picker
+  to skip since GitHub's sign-in makes its own vault item); Google/email/MCP stay a "coming soon"
+  note there until their own onboarding spec lands.
+- Test harness: `deck/test/native-bar/world.js` gained `--fake-github` (preloads
+  `deck/test/native-bar/fake-github.mjs`, a global `fetch()` intercept over connect.js's real
+  device-flow URLs, into the spawned vyred with `--import`, never a real GitHub request), and
+  `deck/test/connections-github-browser.js` drives the whole flow in headless Chrome on testbox:
+  code shown, Open GitHub's href, the real (not sped-up) poll landing the account, then Disconnect.
+  `deck/test/connections.test.js` covers the picker, the render, Disconnect's confirm/warning and
+  the sign-in flow's every branch in a fake DOM. 45/45 + 6/6 + 9/9 (existing settings-browser.js,
+  unaffected) green on testbox.
+
 #### lib/avatar-seed: the project tile's bytes, one shared file
 
 - `lib/avatar-seed/index.js` is the one rule for a project tile's 8 bytes (two FNV-1a 32 words over
