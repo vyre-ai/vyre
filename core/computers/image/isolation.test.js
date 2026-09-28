@@ -15,9 +15,30 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const C = process.env.VYRE_COMPUTER_CONTAINER || "";
 const skip = C ? false : "set VYRE_COMPUTER_CONTAINER to a running computer to check its isolation";
+
+// Static checks (no container needed): the two MEDIUMs the reviewer found on b001e641 (before
+// browser had its own uid) stay fixed even without a throwaway stack to check them live on.
+const DOCKERFILE = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "Dockerfile"), "utf8");
+
+test("isolation (static): Chrome's managed download policy points at browser's own folder, not the agent's home", () => {
+  assert.match(DOCKERFILE, /"DownloadDirectory": "\/var\/lib\/vyre\/browser\/downloads"/,
+    "the managed policy still sends downloads to the agent's home (MEDIUM 2, reviewer 28 Sep)");
+  assert.doesNotMatch(DOCKERFILE, /"DownloadDirectory": "\/home\/agent/, "downloads point back at the agent's home");
+});
+
+test("isolation (static): the agent can reach browser's downloads folder despite /var/lib/vyre being locked down", () => {
+  assert.match(DOCKERFILE, /chmod 0711 \/var\/lib\/vyre\b/, "/var/lib/vyre is not traversable (MEDIUM 3, reviewer 28 Sep)");
+  assert.match(DOCKERFILE, /chown browser:agent \/var\/lib\/vyre\/browser && chmod 0750 \/var\/lib\/vyre\/browser/,
+    "browser's own folder does not grant the agent group read+execute");
+  assert.match(DOCKERFILE, /chown browser:agent \/var\/lib\/vyre\/browser\/downloads && chmod 2750/,
+    "the downloads folder itself does not grant the agent group read");
+});
 
 /** Run python3 code in the computer as the agent; returns stdout. */
 function asAgent(code) {
