@@ -366,8 +366,12 @@ const SEND_CALLERS = new Set(["module:sync", "module:import"]);
 
 /** The person's own Claude Code folders: the only place sync.send may read a file from. */
 function sessionRoots() {
-  const home = os.homedir();
-  const roots = [path.join(home, ".claude")];
+  const roots = [];
+  // Under a test run, the real ~/.claude is never a root: sync.scan reads a project folder's
+  // contents (not just compares a path), and RULES forbids that ever touching the person's real
+  // Claude Code folder. A test's own fake home reaches here only through CLAUDE_CONFIG_DIR,
+  // exactly as core/config/dialogs.js's transcriptFolders already gates the real home in tests.
+  if (!process.env.NODE_TEST_CONTEXT) roots.push(path.join(os.homedir(), ".claude"));
   if (process.env.CLAUDE_CONFIG_DIR) roots.push(process.env.CLAUDE_CONFIG_DIR);
   return roots.map(r => { try { return fs.realpathSync(r); } catch { return path.resolve(r); } });
 }
@@ -380,7 +384,63 @@ function allowedSessionPath(p) {
   return real;
 }
 
+/** A bound on how many filesystem entries one scan looks at, so a huge folder cannot make sync.scan slow (files/drive.js's SCAN_LIMIT convention). */
+const SCAN_LIMIT = 50_000;
+
+/**
+ * Total bytes and file count under `dir`. Symlinks are never followed (a linked-in folder is not
+ * this device's own data to size or offer), so a cycle cannot loop. Bounded by `budget`, a shared
+ * counter across the whole scan.
+ * @param {string} dir @param {{ left: number }} budget @returns {{ bytes: number, files: number }}
+ */
+function walkSize(dir, budget) {
+  let bytes = 0, files = 0;
+  /** @type {import("node:fs").Dirent[]} */
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return { bytes, files }; }
+  for (const e of entries) {
+    if (budget.left-- <= 0) break;
+    if (e.isDirectory()) {
+      const sub = walkSize(path.join(dir, e.name), budget);
+      bytes += sub.bytes; files += sub.files;
+    } else if (e.isFile()) {
+      try { bytes += fs.statSync(path.join(dir, e.name)).size; files++; } catch {}
+    }
+  }
+  return { bytes, files };
+}
+
 async function deviceSide(ctx) {
+  ctx.tool("sync.scan", {
+    description: "What this device would offer to sync to the box (Vyre Drive's what-to-sync picker): every project folder under this device's own Claude Code folder (~/.claude/projects or CLAUDE_CONFIG_DIR/projects), each with its session-file count and total size, so the person sees what is there and can leave folders out before turning sync.consent on. Read-only: nothing is sent, nothing is opened, only sizes are read. planHash stands for the choice made here — pass it straight to sync.consent's own planHash — so an approved import is tied to what was actually reviewed, not a plan that silently drifted.",
+    input: { type: "object", properties: { exclude: { type: "array", items: { type: "string" } } } },
+    callers: ["cli", "local", "deck", "capsule"],
+    run: async ({ exclude }) => {
+      const excluded = new Set((exclude || []).map(String));
+      const projects = [];
+      const budget = { left: SCAN_LIMIT };
+      for (const root of sessionRoots()) {
+        const projDir = path.join(root, "projects");
+        /** @type {import("node:fs").Dirent[]} */
+        let entries;
+        try { entries = fs.readdirSync(projDir, { withFileTypes: true }); } catch { continue; }
+        for (const e of entries) {
+          if (!e.isDirectory()) continue;
+          const { bytes, files } = walkSize(path.join(projDir, e.name), budget);
+          projects.push({ name: e.name, bytes, files, included: !excluded.has(e.name) });
+        }
+      }
+      projects.sort((a, b) => b.bytes - a.bytes);
+      const total = projects.reduce((sum, p) => sum + (p.included ? p.bytes : 0), 0);
+      // Only the included names, sorted: excluding a folder and excluding it again in a different
+      // order both land on the same plan; a different set of exclusions never does.
+      const planHash = crypto.createHash("sha256")
+        .update(JSON.stringify(projects.filter(p => p.included).map(p => p.name).sort()))
+        .digest("hex");
+      return { projects, total, excluded: [...excluded], planHash };
+    },
+  });
+
   ctx.tool("sync.send", {
     description: "Send this device's own files to the box: sync.upload.plan/start/chunk/finish per file, a per-file ack, and a completion summary (sync.sent, sent/failed/quarantined). mode: \"once\" sends this list and stops; \"sync\" is the same send, and the idle-batched watch for new and changed files after it is not yet built (see docs/work/federation.md). Only a file inside this device's own Claude Code folder (~/.claude or CLAUDE_CONFIG_DIR), no symlink escape, under the size cap, is ever read.",
     input: { type: "object", required: ["files", "mode"], properties: {

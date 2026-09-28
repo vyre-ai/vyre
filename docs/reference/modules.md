@@ -56,7 +56,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 0 | cli |
-| [`sync`](#sync) | `core/sync` | `box`, `local` | 9 | 5 | capsule, cli, deck |
+| [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 27 | cli |
@@ -506,10 +506,10 @@ A paired device (a Mac or a Windows PC) sends its own Claude Code session files 
 - Folder: `core/sync`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `link`
-- Tools: [9](tools.md#sync)
+- Tools: [10](tools.md#sync)
 - Emits: [5 events](events.md#sync)
 - Shows on: capsule, cli, deck
-- Teaches tips: `[object Object]`, `[object Object]`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
 
 ## system
 

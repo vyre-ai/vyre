@@ -666,5 +666,23 @@ sessions' lib/project-id.js), 4) launch's Drive API step + windows coordination.
   need one; will check docs/work/README.md's ADR table before that step.
 - Tests: core/files/drop.test.js. 81/81 (core/files, hygiene, docs-index, boundaries) on testbox.
 
+## Vyre Drive step 2: sync.scan (28 Sep 2026)
+
+New `sync.scan { exclude? }`, device role: lists project folders under ~/.claude/projects or
+CLAUDE_CONFIG_DIR/projects with size and file count, honors an exclude list, returns a planHash
+(sha256 of the sorted included names) meant to be passed straight to sync.consent's own planHash.
+Read-only. Bounded scan (50,000 entries, symlinks never followed), matching files/drive.js's
+share-scan posture.
+
+Caught and fixed in the same commit: sessionRoots() (shared with sync.send) pulled in the real
+~/.claude unconditionally, even under tests. sync.send only ever compared a path against it, so
+this was latent and harmless there, but sync.scan actually lists a folder's contents — under a
+test run that would have read the real machine's real Claude Code folder. Gated behind
+NODE_TEST_CONTEXT now, matching core/config/dialogs.js's transcriptFolders.
+
+Tests: core/sync/sync-send.test.js. 57/57 (core/sync, core/link, hygiene, docs-index, boundaries)
+green on testbox.
+
 ## Next
-- Step 2: the what-to-sync picker (sizes, exclusions) — not started.
+- Step 3: per-folder agent/project access (vault's grant pattern + sessions' lib/project-id.js) —
+  not started; will need to read those two before designing it.

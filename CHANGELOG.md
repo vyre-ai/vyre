@@ -4,6 +4,31 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Vyre Drive, step 2: sync.scan, the what-to-sync picker
+
+- New `sync.scan { exclude? }` (core/sync/index.js, device role): lists every project folder under
+  this device's own Claude Code folder (`~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects`), each
+  with its session-file count and total size, so the person can see what is there and leave
+  folders out before turning `sync.consent` on. Read-only — nothing is opened or sent, only sizes.
+  Answers `{ projects: [{ name, bytes, files, included }], total, excluded, planHash }`; `planHash`
+  is a sha256 of the sorted included names, meant to be passed straight to `sync.consent`'s own
+  `planHash` so an approved import is tied to what was actually reviewed here.
+- Bounded like `files/drive.js`'s share scan: `SCAN_LIMIT` (50,000 entries) across the whole scan,
+  symlinks never followed (skipped, not resolved-and-descended, so a cycle cannot loop and a linked-
+  in folder is never sized as if it were this device's own data).
+- Fixed in the same commit: `sessionRoots()` (shared by `sync.send` and now `sync.scan`) included
+  the real `~/.claude` unconditionally, even under a test run. `sync.send` only ever compared a
+  given path against it (harmless), but `sync.scan` lists a folder's actual contents — under tests
+  that would have read the real machine's real Claude Code folder, which RULES forbids outright.
+  Now gated by `NODE_TEST_CONTEXT`, the same way `core/config/dialogs.js`'s `transcriptFolders`
+  already gates it; a test reaches its own fake home only through `CLAUDE_CONFIG_DIR`.
+- module.json: `sync.scan` added to `does.tools`, plus its tip.
+- Tests: core/sync/sync-send.test.js — sizes and file counts per project, an excluded folder
+  dropping out of `total` and flipping `included` without touching disk, the same exclusions
+  landing on the same `planHash` and a different set landing on a different one, and an empty
+  answer (not an error) when there is no `projects` folder yet. 57/57 (core/sync, core/link,
+  hygiene, docs-index, boundaries) green on testbox.
+
 #### Vyre Drive, step 1: the files.receive toggle, and a conflict note when Taildrop keeps both copies
 
 - New `files.receive { on }` (core/files/drop.js): turns a Mac's inbox receiver for what the box

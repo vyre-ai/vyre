@@ -81,3 +81,45 @@ test("sync.send: a file outside the device's own Claude Code folder is refused, 
   assert.deepEqual(r.data, { sent: 0, failed: 1, quarantined: 0, of: 1, skipped: 0 });
   assert.ok(!fs.existsSync(path.join(s.boxRoot, "synced", "test-mac", "not-a-session.jsonl")));
 });
+
+test("sync.scan: sizes and file counts per project folder, exclusions honored, a stable planHash for what is included (Vyre Drive's what-to-sync picker)", async t => {
+  const s = await pair(t, { router: true });
+  const sessions = fakeSessions(t);
+  const projects = path.join(sessions, "projects");
+  fs.mkdirSync(path.join(projects, "-home-alex-Work-northwind-bakery"), { recursive: true });
+  fs.writeFileSync(path.join(projects, "-home-alex-Work-northwind-bakery", "s1.jsonl"), "x".repeat(100));
+  fs.writeFileSync(path.join(projects, "-home-alex-Work-northwind-bakery", "s2.jsonl"), "x".repeat(50));
+  fs.mkdirSync(path.join(projects, "-tmp-scratch"), { recursive: true });
+  fs.writeFileSync(path.join(projects, "-tmp-scratch", "s1.jsonl"), "x".repeat(10));
+
+  const r = await s.macCall("sync.scan", {}, "cli");
+  assert.ok(!r.error, JSON.stringify(r.error));
+  assert.deepEqual(r.data.projects.sort((a, b) => a.name.localeCompare(b.name)), [
+    { name: "-home-alex-Work-northwind-bakery", bytes: 150, files: 2, included: true },
+    { name: "-tmp-scratch", bytes: 10, files: 1, included: true },
+  ]);
+  assert.equal(r.data.total, 160);
+  assert.deepEqual(r.data.excluded, []);
+  const planAll = r.data.planHash;
+  assert.match(planAll, /^[0-9a-f]{64}$/);
+
+  // Leaving a folder out drops it from the total and flips its included flag, without touching
+  // what is actually on disk (read-only: nothing is sent, nothing is deleted).
+  const ex = await s.macCall("sync.scan", { exclude: ["-tmp-scratch"] }, "cli");
+  assert.deepEqual(ex.data.excluded, ["-tmp-scratch"]);
+  assert.equal(ex.data.total, 150);
+  const scratch = ex.data.projects.find(p => p.name === "-tmp-scratch");
+  assert.deepEqual(scratch, { name: "-tmp-scratch", bytes: 10, files: 1, included: false });
+  assert.notEqual(ex.data.planHash, planAll, "a different set of exclusions is a different plan");
+  assert.ok(fs.existsSync(path.join(projects, "-tmp-scratch", "s1.jsonl")), "sync.scan never touches a file");
+
+  // The same exclusions again land on the same plan hash — it names a choice, not a moment in time.
+  const again = await s.macCall("sync.scan", { exclude: ["-tmp-scratch"] }, "cli");
+  assert.equal(again.data.planHash, ex.data.planHash);
+
+  // A device with no projects folder yet answers empty, not an error.
+  fs.rmSync(projects, { recursive: true, force: true });
+  const none = await s.macCall("sync.scan", {}, "cli");
+  assert.deepEqual(none.data.projects, []);
+  assert.equal(none.data.total, 0);
+});
