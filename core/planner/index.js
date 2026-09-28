@@ -23,7 +23,7 @@ export const seams = new Map();
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const AGENTS = ["mcp", "module", "harness"];
 /** What an agent may add with no permission (the user's rule): everything but an event, which is an invite. */
-const AGENT_KINDS = ["alarm", "timer", "reminder", "todo", "note"];
+const AGENT_KINDS = ["alarm", "timer", "reminder", "todo", "note", "task"];
 /** A runaway guard, not a limit anyone should meet: adds an hour from one agent. */
 const AGENT_CAP = 200;
 /** A caller that names an agent: "mcp:agent:kit", "harness:agent:kit". vyred has checked the name. */
@@ -78,9 +78,53 @@ export default {
       catch (e) { ctx.log(`planner: ${type} not emitted (${/** @type {Error} */ (e).message})`); }
     };
 
+    // /later's own name for its creator: "agent:<name>" is the shape core/planner already gives
+    // an agent's own items (who(), above); a person's or a module's source runs with no agent
+    // scope at all (ambient), same as any session a person starts themselves.
+    const AGENT_SOURCE = /^agent:(.+)$/;
+
+    /**
+     * Run a task item: rule 1, it runs with its creator's own scope, never more. An existing
+     * thread already carries its own scope (threads.post is just a turn in it); a fresh one
+     * (threads.launch) is given the creator's agent name, so it gets that agent's credentials
+     * and projects.access, exactly as if that agent had started it itself - never the planner's.
+     * Records run_count and last_result either way, so a recurring task's history is visible
+     * (rule 2) even when nobody is watching it fire.
+     */
+    const runTask = async item => {
+      if (item.paused) return;
+      const text = item.body || item.title;
+      const agent = AGENT_SOURCE.exec(item.source || "")?.[1] || null;
+      let ok = true, note = "";
+      try {
+        const r = item.thread
+          ? await ctx.call("threads.post", { thread: item.thread, text, kind: "scheduled", from: "planner" })
+          : await ctx.call("threads.launch", { project: item.project || undefined, prompt: text, purpose: "job", once: true, ...(agent ? { agent } : {}) });
+        if (r.error) { ok = false; note = r.error.message; }
+      } catch (e) { ok = false; note = /** @type {Error} */ (e).message; }
+      const last_result = (ok ? "ok" : `error: ${note}`).slice(0, 300);
+      st.patch(item.id, { run_count: (item.run_count || 0) + 1, last_result });
+      emit("planner.task-run", { item: item.id, ok, result: last_result }, item);
+    };
+
     const scheduler = new Scheduler({ db, st, settings, now, setTimer: seam.setTimer, clearTimer: seam.clearTimer, log: ctx.log,
-      fired: (f, item) => emit("planner.fired", { firing: f.id, key: ringKey(item.id, f.due), item: item.id, kind: item.kind, title: item.title, due: f.due, ring: f.ring,
-        missed: Boolean(f.missed), actions: ["done", "snooze"], ...(item.source_name ? { added_by: item.source_name } : {}) }, item) });
+      fired: (f, item) => {
+        emit("planner.fired", { firing: f.id, key: ringKey(item.id, f.due), item: item.id, kind: item.kind, title: item.title, due: f.due, ring: f.ring,
+          missed: Boolean(f.missed), actions: ["done", "snooze"], ...(item.source_name ? { added_by: item.source_name } : {}) }, item);
+        if (item.kind === "task") runTask(item).catch(e => ctx.log(`planner: task ${item.id} did not run (${e.message})`));
+      } });
+
+    // Chained tasks ("when X finishes, do Y"): X's own done is the trigger, not a time, so this
+    // runs outside the scheduler entirely. A task fires once per its own dependency's done - it
+    // is not rearmed unless a person or an agent points waits_on at a new item.
+    ctx.events.on("planner.changed", async e => {
+      if (!e.payload || !Array.isArray(e.payload.fields) || !e.payload.fields.includes("state")) return;
+      const done = st.item(e.payload.item);
+      if (!done || done.state !== "done") return;
+      for (const row of /** @type {any[]} */ (db.prepare("SELECT * FROM planner_items WHERE kind = 'task' AND waits_on = ? AND state = 'open' AND deleted_at IS NULL").all(e.payload.item))) {
+        await runTask(shape(row)).catch(err => ctx.log(`planner: chained task ${row.id} did not run (${err.message})`));
+      }
+    });
 
     // ---- The Mac's side: paired means the box keeps the planner. -----------------------------
     let linked = false;
@@ -229,7 +273,7 @@ export default {
 
     const agentKind = (kind, w) => {
       if (w.person) return;
-      if (!AGENT_KINDS.includes(kind)) throw fail(`an agent may add alarms, timers, reminders, todos and notes, not ${kind}s`, "denied");
+      if (!AGENT_KINDS.includes(kind)) throw fail(`an agent may add alarms, timers, reminders, todos, notes and tasks, not ${kind}s`, "denied");
     };
     /** An agent may change, finish, snooze or delete only what it added. */
     const owns = (item, w) => {
@@ -289,9 +333,11 @@ export default {
       if (!title) title = kind === "alarm" ? "Alarm" : kind === "timer" ? "Timer" : "";
       if (!title) throw fail(`a ${kind} needs a title`);
       if (input.parent && !st.item(input.parent)) throw fail("no such parent item", "not_found");
+      if (input.waits_on && !st.item(input.waits_on)) throw fail("no such item to wait on", "not_found");
       const row = { id: newId("i"), kind, title, body: clip(input.body, 100_000), list: clip(input.list, 80), priority: priorityOf(input.priority),
         parent: input.parent ? String(input.parent) : null, project: clip(input.project, 120), thread: clip(input.thread, 120),
-        tags: tagsOf(input.tags), pinned: Boolean(input.pinned), state: "open", ...time, created: t, updated: t, source: w.source, source_name: w.name };
+        tags: tagsOf(input.tags), pinned: Boolean(input.pinned), state: "open", ...time, created: t, updated: t, source: w.source, source_name: w.name,
+        waits_on: input.waits_on ? String(input.waits_on) : null, paused: Boolean(input.paused) };
       const n = schedule(row, t);
       if (row.repeat) row.at = n.at;
       st.insert({ ...row, next_fire: n.next_fire });
@@ -301,7 +347,7 @@ export default {
       return shape(st.item(row.id));
     };
 
-    const EDITABLE = ["title", "body", "list", "priority", "pinned", "tags", "project", "thread", "parent", "state"];
+    const EDITABLE = ["title", "body", "list", "priority", "pinned", "tags", "project", "thread", "parent", "state", "waits_on", "paused"];
     const TIME_FIELDS = ["at", "in_ms", "wall", "date", "repeat", "tz", "floating", "due"];
 
     const update = (i, w) => {
@@ -320,6 +366,8 @@ export default {
       if (i.project !== undefined) patch.project = clip(i.project, 120);
       if (i.thread !== undefined) patch.thread = clip(i.thread, 120);
       if (i.parent !== undefined) { if (i.parent && !st.item(i.parent)) throw fail("no such parent item", "not_found"); patch.parent = i.parent || null; }
+      if (i.waits_on !== undefined) { if (i.waits_on && !st.item(i.waits_on)) throw fail("no such item to wait on", "not_found"); patch.waits_on = i.waits_on || null; }
+      if (i.paused !== undefined) patch.paused = Boolean(i.paused);
       if (i.state !== undefined) {
         if (!STATES.includes(i.state)) throw fail(`state is one of ${STATES.join(", ")}`);
         patch.state = i.state;
@@ -736,7 +784,10 @@ export default {
     const repeatSchema = { type: "object", properties: { every: { type: "string", enum: ["day", "weekday", "week", "month", "year"] },
       days: { type: "array", items: int }, interval: int, until: str } };
     const itemFields = { title: str, body: str, list: str, priority: int, parent: str, project: str, thread: str, tags: { type: "array", items: str },
-      pinned: bool, at: when, in_ms: { type: "number" }, wall: str, date: str, due: when, repeat: repeatSchema, tz: str, floating: bool };
+      pinned: bool, at: when, in_ms: { type: "number" }, wall: str, date: str, due: when, repeat: repeatSchema, tz: str, floating: bool,
+      // /later: waits_on chains a task after another item's own done, instead of a time; paused
+      // stops just this one item (rule 2) without deleting it or losing its run history.
+      waits_on: str, paused: bool };
     const ref = { type: "object", properties: { firing: str, item: str, key: { type: "string", description: "planner-<item>-<due in seconds>, as planner.upcoming and the push give it" } } };
 
     /**

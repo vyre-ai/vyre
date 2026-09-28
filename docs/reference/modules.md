@@ -43,7 +43,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
-| [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 6 | capsule, cli, deck |
+| [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 11 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 9 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
@@ -361,7 +361,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [15](tools.md#planner)
-- Emits: [6 events](events.md#planner)
+- Emits: [7 events](events.md#planner)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 

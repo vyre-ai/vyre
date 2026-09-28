@@ -6,7 +6,7 @@
   "requires": [],
   "does": { "tools": ["planner.add", "planner.list", "planner.get", "planner.ringing", "planner.update", "planner.done", "planner.snooze", "planner.dismiss",
     "planner.delete", "planner.agenda", "planner.upcoming", "planner.parse", "planner.settings", "planner.calendar.sync", "planner.calendar.create"] },
-  "watches": { "emits": ["planner.added", "planner.changed", "planner.removed", "planner.fired", "planner.acked", "planner.schedule"] },
+  "watches": { "emits": ["planner.added", "planner.changed", "planner.removed", "planner.fired", "planner.acked", "planner.schedule", "planner.task-run"] },
   "shows": { "deck": ["panel:planner"], "capsule": [], "cli": ["alarm", "remind", "todo", "notes", "agenda"] },
   "needs": {},
   "teaches": {

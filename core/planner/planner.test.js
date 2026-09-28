@@ -33,11 +33,13 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
   let seq = 0;
   seams.set(root, { now: () => clock.t, setTimer: (fn, ms) => { timers.set(++seq, { at: clock.t + ms, ms, fn }); return seq; }, clearTimer: id => timers.delete(id) });
   t.after(() => seams.delete(root));
-  const logs = [], fired = [], acked = [];
+  const logs = [], fired = [], acked = [], taskRuns = [], calls = [];
   events.on("planner.fired", e => fired.push({ at: clock.t, ...e.payload }));
   events.on("planner.acked", e => acked.push(e.payload));
+  events.on("planner.task-run", e => taskRuns.push(e.payload));
   const w = {
-    db, events, clock, timers, logs, fired, acked, linked, remote, handle: /** @type {any} */ (null),
+    db, events, clock, timers, logs, fired, acked, taskRuns, calls, linked, remote, handle: /** @type {any} */ (null),
+    /** @type {(tool: string, input: any) => Promise<any>|any} */ onCall: null,
     /** @type {Map<string, any>} */ tools: new Map(),
     async boot() {
       w.tools = new Map();
@@ -48,10 +50,18 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
         events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
         tool: (name, def) => w.tools.set(name, def),
         // No Google account connected: the calendar slice stays asleep (core/planner/calendar.test.js covers it).
-        call: async tool => tool === "link.status" ? { data: { linked: w.linked } } : tool === "google.accounts" ? { data: [] }
+        call: async (tool, input) => {
+          calls.push({ tool, input });
+          if (tool === "link.status") return { data: { linked: w.linked } };
+          if (tool === "google.accounts") return { data: [] };
           // juno is the user's assistant; kit is an agent they made.
-          : tool === "agents.list" ? { data: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }] }
-          : { error: { code: "no_such_tool", message: "no" } },
+          if (tool === "agents.list") return { data: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }] };
+          // /later's own firing (runTask): a test sets w.onCall to answer threads.post/launch
+          // its own way; the default is a plain success, so tests that never touch this still see
+          // nothing different.
+          if (tool === "threads.post" || tool === "threads.launch") return w.onCall ? await w.onCall(tool, input) : { data: { ok: true } };
+          return { error: { code: "no_such_tool", message: "no" } };
+        },
         remote: async (tool, input) => w.remote ? w.remote(tool, input) : { error: { code: "no_link", message: "no link" } },
       };
       w.handle = await planner.start(ctx);
@@ -497,4 +507,66 @@ test("planner: a Vyre-owned session's thread is the assistant, whichever thread 
   const b = await run("planner.update", { item: a.id, title: "Call kit back" }, "mcp:thread:t_two");
   assert.equal(b.title, "Call kit back");
   await assert.rejects(run("planner.update", { item: a.id, title: "x" }, "mcp:agent:kit"), /only the items it added/);
+});
+
+test("planner: a task fires by posting into its own thread, or launching a fresh one under its creator's own agent", async t => {
+  const w = await world(t);
+  const kit = "mcp:agent:kit";
+  // With a thread: an existing conversation gets a turn, never a new one.
+  const withThread = await w.ok("planner.add", { kind: "task", title: "Chase the Northwind invoice", thread: "s1", at: T0 + HOUR }, kit);
+  w.advanceTo(T0 + HOUR);
+  await new Promise(r => setImmediate(r)); // runTask() is async; the scheduler fires it, does not await it
+  assert.equal(w.taskRuns.length, 1);
+  assert.deepEqual([w.taskRuns[0].item, w.taskRuns[0].ok, w.taskRuns[0].result], [withThread.id, true, "ok"]);
+  assert.deepEqual(w.calls.at(-1), { tool: "threads.post", input: { thread: "s1", text: "Chase the Northwind invoice", kind: "scheduled", from: "planner" } });
+  assert.equal((await w.ok("planner.get", { item: withThread.id })).item.run_count, 1);
+
+  // No thread: a fresh one, under the creator's own agent - rule 1, never more than that agent's own scope.
+  const launched = await w.ok("planner.add", { kind: "task", title: "Draft the weekly digest", project: "harlow-legal", at: T0 + 2 * HOUR }, kit);
+  w.advanceTo(T0 + 2 * HOUR);
+  await new Promise(r => setImmediate(r));
+  assert.deepEqual(w.calls.at(-1), { tool: "threads.launch", input: { project: "harlow-legal", prompt: "Draft the weekly digest", purpose: "job", once: true, agent: "kit" } });
+
+  // The person's own task: no agent at all, ambient, same as any session they start themselves.
+  const own = await w.ok("planner.add", { kind: "task", title: "Renew the domain", project: "harlow-legal", at: T0 + 3 * HOUR });
+  w.advanceTo(T0 + 3 * HOUR);
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.calls.at(-1).input.agent, undefined);
+  assert.equal(own.source, "cli");
+});
+
+test("planner: a paused task never runs; a failed run is recorded, not thrown away", async t => {
+  const w = await world(t);
+  const paused = await w.ok("planner.add", { kind: "task", title: "Ping the standup channel", thread: "s1", at: T0 + HOUR, paused: true });
+  w.advanceTo(T0 + HOUR);
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 0);
+  assert.equal((await w.ok("planner.update", { item: paused.id, paused: false })).paused, false);
+
+  const w2 = await world(t);
+  w2.onCall = async () => ({ error: { code: "not_found", message: "no such thread" } });
+  const failing = await w2.ok("planner.add", { kind: "task", title: "Post to a thread that is gone", thread: "s9", at: T0 + HOUR });
+  w2.advanceTo(T0 + HOUR);
+  await new Promise(r => setImmediate(r));
+  assert.equal(w2.taskRuns[0].ok, false);
+  assert.match(w2.taskRuns[0].result, /no such thread/);
+  assert.equal((await w2.ok("planner.get", { item: failing.id })).item.last_result, "error: no such thread");
+});
+
+test("planner: a chained task (waits_on) runs when its dependency is marked done, never on a timer of its own", async t => {
+  const w = await world(t);
+  const first = await w.ok("planner.add", { kind: "todo", title: "Sign the contract", project: "harlow-legal" });
+  const then = await w.ok("planner.add", { kind: "task", title: "Kick off onboarding", thread: "s1", waits_on: first.id });
+  assert.equal(then.at, null, "nothing to schedule: it waits on first, not a time");
+  await new Promise(r => setImmediate(r)); // planner.changed's listener is async
+  assert.equal(w.taskRuns.length, 0, "not yet - first is still open");
+  await w.ok("planner.done", { item: first.id });
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 1);
+  assert.deepEqual(w.calls.at(-1), { tool: "threads.post", input: { thread: "s1", text: "Kick off onboarding", kind: "scheduled", from: "planner" } });
+  // Finishing something unrelated never fires it a second time.
+  const other = await w.ok("planner.add", { kind: "todo", title: "Unrelated", project: "harlow-legal" });
+  await w.ok("planner.done", { item: other.id });
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 1);
 });

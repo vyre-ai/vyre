@@ -2404,9 +2404,10 @@ Add an alarm, timer, reminder, todo, note or event. Times: at (ISO or ms), in_ms
   - `due` any: an ISO time (with an offset, or read in the item's zone without one), YYYY-MM-DD, or ms since 1970
   - `floating` boolean
   - `in_ms` number
-  - `kind` one of "alarm", "timer", "reminder", "todo", "note", "event"
+  - `kind` one of "alarm", "timer", "reminder", "todo", "note", "event", "task"
   - `list` string
   - `parent` string
+  - `paused` boolean
   - `pinned` boolean
   - `priority` integer
   - `project` string
@@ -2420,6 +2421,7 @@ Add an alarm, timer, reminder, todo, note or event. Times: at (ISO or ms), in_ms
   - `thread` string
   - `title` string
   - `tz` string
+  - `waits_on` string
   - `wall` string
 - Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
 
@@ -2503,7 +2505,7 @@ Items, newest time first: filter by kind, state (open by default; all), list, pr
 
 - Input:
   - `cursor` boolean
-  - `kind` one of "alarm", "timer", "reminder", "todo", "note", "event"
+  - `kind` one of "alarm", "timer", "reminder", "todo", "note", "event", "task"
   - `limit` integer
   - `list` string
   - `pinned` boolean
@@ -2518,7 +2520,7 @@ Read words like "alarm 7am", "timer 10 min" or "remind me to call the printer at
 
 - Input:
   - `text` string, required
-  - `kind` one of "alarm", "timer", "reminder", "todo", "note", "event"
+  - `kind` one of "alarm", "timer", "reminder", "todo", "note", "event", "task"
 - Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
 
 ### `planner.ringing`
@@ -2574,6 +2576,7 @@ Change an item: title, body, list, priority, pinned, tags, project, thread, pare
   - `kind` string
   - `list` string
   - `parent` string
+  - `paused` boolean
   - `pinned` boolean
   - `priority` integer
   - `project` string
@@ -2587,6 +2590,7 @@ Change an item: title, body, list, priority, pinned, tags, project, thread, pare
   - `thread` string
   - `title` string
   - `tz` string
+  - `waits_on` string
   - `wall` string
 - Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
 

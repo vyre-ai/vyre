@@ -38,9 +38,18 @@ export const MIGRATIONS = [
    ALTER TABLE planner_items ADD COLUMN where_ TEXT;`,
   // Who added an item, as the person sees it: an agent's name, or null for the person and their assistant.
   `ALTER TABLE planner_items ADD COLUMN source_name TEXT;`,
+  // /later (the user's decision, 2026-09-28): a "task" item runs an instruction instead of
+  // ringing one. waits_on chains it after another item's own done (rule: "when X finishes, do
+  // Y"), resolved by a listener on planner.changed, not by the scheduler's time-based nextFire.
+  // run_count and last_result make a recurring task's history visible (rule 2: a runaway loop
+  // must be visible), and paused lets a person stop just this one without deleting it.
+  `ALTER TABLE planner_items ADD COLUMN waits_on TEXT;
+   ALTER TABLE planner_items ADD COLUMN run_count INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE planner_items ADD COLUMN last_result TEXT;
+   ALTER TABLE planner_items ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;`,
 ];
 
-export const KINDS = ["alarm", "timer", "reminder", "todo", "note", "event"];
+export const KINDS = ["alarm", "timer", "reminder", "todo", "note", "event", "task"];
 export const STATES = ["open", "done", "cancelled"];
 
 /**
@@ -68,6 +77,7 @@ export function shape(r) {
     repeat: safeJSON(r.repeat, null), due: r.due ?? null, duration_ms: r.duration_ms ?? null, snooze_until: r.snooze_until ?? null,
     next_fire: r.next_fire ?? null, created: r.created, updated: r.updated, done_at: r.done_at ?? null, deleted_at: r.deleted_at ?? null,
     source: r.source ?? null, added_by: r.source_name ?? null, where: r.where_ ?? null,
+    waits_on: r.waits_on ?? null, run_count: r.run_count ?? 0, last_result: r.last_result ?? null, paused: Boolean(r.paused),
   };
 }
 export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, key: ringKey(f.item, f.due), due: f.due, ring: f.ring, missed: Boolean(f.missed), state: f.state,
@@ -76,7 +86,8 @@ export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, ke
 function safeJSON(s, fallback) { try { return s == null ? fallback : JSON.parse(String(s)); } catch { return fallback; } }
 
 const COLUMNS = ["kind", "title", "body", "list", "priority", "parent", "project", "thread", "tags", "pinned", "state", "at", "tz", "floating",
-  "wall", "date", "repeat", "due", "duration_ms", "snooze_until", "next_fire", "created", "updated", "done_at", "deleted_at", "source", "source_name", "where_"];
+  "wall", "date", "repeat", "due", "duration_ms", "snooze_until", "next_fire", "created", "updated", "done_at", "deleted_at", "source", "source_name", "where_",
+  "waits_on", "run_count", "last_result", "paused"];
 
 /** Plain values for SQLite: objects as JSON, booleans as 0/1. */
 const cell = (k, v) => v === undefined ? null : (k === "tags" || k === "repeat") ? (v == null ? (k === "tags" ? "[]" : null) : JSON.stringify(v))
