@@ -5,8 +5,8 @@
 //!
 //! Real testing happens on `windows-latest` CI (.github/workflows/windows-pipe-verify.yml), the
 //! same discipline as every other Windows-only piece in this plan: nothing here runs for real
-//! off Windows. `lib.rs`'s comparison/verdict logic is unit-tested on any platform; this file is
-//! only the Win32 plumbing around it.
+//! off Windows. `lib.rs`'s verdict logic is unit-tested on any platform; this file is only the
+//! Win32 plumbing around it.
 
 #[cfg(windows)]
 fn main() {
@@ -36,11 +36,7 @@ mod win {
     use vyre_pipe_verify::{verdict, Verdict};
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows::Win32::System::Memory::LocalFree;
-    use windows::Win32::Security::{
-        GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER,
-    };
-    use windows::Win32::Security::Authorization::ConvertSidToStringSidW;
+    use windows::Win32::Security::{EqualSid, GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
     use windows::Win32::Storage::FileSystem::{
         CreateFileW, FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
     };
@@ -50,9 +46,9 @@ mod win {
     };
 
     /// Opens `pipe_path` (a client connection, same as Node's `net.connect` would establish),
-    /// asks Windows who owns the *server* end, then compares that process's token SID against
-    /// this process's own. Never trusts a partial read: any Win32 call failing returns an error,
-    /// which `main` turns into `Verdict::Unreadable`, never `Ok`.
+    /// asks Windows who owns the *server* end, then asks `EqualSid` whether that process's token
+    /// SID is the same as this process's own. Never trusts a partial read: any Win32 call failing
+    /// returns an error, which `main` turns into `Verdict::Unreadable`, never `Ok`.
     pub fn check(pipe_path: &str) -> windows::core::Result<Verdict> {
         let wide: Vec<u16> = pipe_path.encode_utf16().chain(std::iter::once(0)).collect();
         let handle = unsafe {
@@ -69,61 +65,54 @@ mod win {
         let result = (|| -> windows::core::Result<Verdict> {
             let mut server_pid: u32 = 0;
             unsafe { GetNamedPipeServerProcessId(handle, &mut server_pid)? };
-            let server_sid = sid_of_process(server_pid)?;
-            let mine_sid = sid_of_process(unsafe { GetCurrentProcess() })?;
-            Ok(verdict(Some(&mine_sid), Some(&server_sid)))
+            let server_token = token_of(ProcessRef::Pid(server_pid))?;
+            let mine_token = token_of(ProcessRef::Handle(unsafe { GetCurrentProcess() }))?;
+            let server_user = user_sid(server_token.1)?;
+            let mine_user = user_sid(mine_token.1)?;
+            let equal = unsafe { EqualSid(server_user, mine_user) };
+            let (server_owned, server_h) = server_token;
+            let (mine_owned, mine_h) = mine_token;
+            unsafe { let _ = CloseHandle(server_h); }
+            unsafe { let _ = CloseHandle(mine_h); }
+            if let Some(h) = server_owned { unsafe { let _ = CloseHandle(h); } }
+            if let Some(h) = mine_owned { unsafe { let _ = CloseHandle(h); } }
+            Ok(verdict(Some(equal.as_bool())))
         })();
         unsafe { let _ = CloseHandle(handle); }
         result
     }
 
-    /// The string SID of a process's token owner, given either a pid (opens it, limited-query
-    /// only, never anything that could act on it) or an already-open handle (`GetCurrentProcess`
-    /// never needs closing, so this path skips that step).
-    fn sid_of_process(process: impl Into<ProcessRef>) -> windows::core::Result<String> {
-        let owned;
-        let handle = match process.into() {
+    enum ProcessRef { Pid(u32), Handle(HANDLE) }
+
+    /// Opens (query-only) the given process's token, keeping the buffer that owns its
+    /// `TOKEN_USER` alive for the caller (returned as the second element, read by `user_sid`).
+    /// The first element of the outer pair is the process handle to close afterward, only when
+    /// this function opened it itself (a pid, not an already-open handle like
+    /// `GetCurrentProcess()`'s pseudo-handle, which needs no closing).
+    fn token_of(process: ProcessRef) -> windows::core::Result<(Option<HANDLE>, HANDLE)> {
+        let (owned, handle) = match process {
             ProcessRef::Pid(pid) => {
-                owned = Some(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)? });
-                owned.unwrap()
+                let h = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)? };
+                (Some(h), h)
             }
-            ProcessRef::Handle(h) => h,
+            ProcessRef::Handle(h) => (None, h),
         };
         let mut token = HANDLE::default();
         unsafe { OpenProcessToken(handle, TOKEN_QUERY, &mut token)? };
-        let result = (|| -> windows::core::Result<String> {
-            let mut len = 0u32;
-            unsafe { let _ = GetTokenInformation(token, TokenUser, None, 0, &mut len); }
-            let mut buf = vec![0u8; len as usize];
-            unsafe {
-                GetTokenInformation(
-                    token,
-                    TokenUser,
-                    Some(buf.as_mut_ptr() as *mut _),
-                    len,
-                    &mut len,
-                )?;
-            }
-            let user = unsafe { &*(buf.as_ptr() as *const TOKEN_USER) };
-            let mut sid_str = PCWSTR::null().as_ptr() as *mut u16;
-            unsafe { ConvertSidToStringSidW(user.User.Sid, &mut sid_str)? };
-            let s = unsafe { sid_str.as_ref().map(|_| widestring(sid_str)) }.unwrap_or_default();
-            unsafe { let _ = LocalFree(Some(std::mem::transmute(sid_str))); }
-            Ok(s)
-        })();
-        unsafe { let _ = CloseHandle(token); }
-        if let Some(h) = owned { unsafe { let _ = CloseHandle(h); } }
-        result
+        Ok((owned, token))
     }
 
-    enum ProcessRef { Pid(u32), Handle(HANDLE) }
-    impl From<u32> for ProcessRef { fn from(p: u32) -> Self { ProcessRef::Pid(p) } }
-    impl From<HANDLE> for ProcessRef { fn from(h: HANDLE) -> Self { ProcessRef::Handle(h) } }
-
-    /// Read a null-terminated wide string Windows handed back (`ConvertSidToStringSidW`'s output).
-    unsafe fn widestring(p: *const u16) -> String {
-        let mut len = 0usize;
-        while *p.add(len) != 0 { len += 1; }
-        String::from_utf16_lossy(std::slice::from_raw_parts(p, len))
+    /// The `PSID` from a token's `TOKEN_USER`, as a leaked (deliberately: it points inside a
+    /// buffer sized exactly for this one call and this process exits right after using it)
+    /// pointer good for the process's remaining lifetime.
+    fn user_sid(token: HANDLE) -> windows::core::Result<windows::Win32::Security::PSID> {
+        let mut len = 0u32;
+        unsafe { let _ = GetTokenInformation(token, TokenUser, None, 0, &mut len); }
+        let buf: &'static mut [u8] = vec![0u8; len as usize].leak();
+        unsafe {
+            GetTokenInformation(token, TokenUser, Some(buf.as_mut_ptr() as *mut _), len, &mut len)?;
+        }
+        let user = unsafe { &*(buf.as_ptr() as *const TOKEN_USER) };
+        Ok(user.User.Sid)
     }
 }
