@@ -1,15 +1,10 @@
-/* Wink: the Vyre code ring (ADR 0033, deck/js/phone-code.js), shared between onboarding's
+/* Wink: the Vyre code ring (ADR 0043, deck/js/phone-code.js), shared between onboarding's
    devices step and Settings > Devices (deck/views/settings.js) — the one card, two homes, so it
    needs its own shared stylesheet rather than living in deck/onboard/onboard.css, which the main
-   Deck bundle never loads. `spin` and `ob-pop` are duplicated from onboard.css's own busy
-   spinner and assistant easter egg rather than moving either into deck.css under time pressure;
-   if a third place ever wants them, that's the point to actually share the keyframes. */
+   Deck bundle never loads. `spin` is duplicated from onboard.css's own busy spinner rather than
+   moved out of it under time pressure; if a third place ever wants it, that's the point to
+   actually share the keyframe. */
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes ob-pop {
-  0% { opacity: 0; transform: translate(0, 0) scale(.4); }
-  15% { opacity: 1; }
-  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); }
-}
 
 /* Three ring states only — live (a slow shimmer says "this is current"), expiring (the last
    30s: shimmer stops, the countdown alone carries the urgency, never a colour change that would
@@ -29,26 +24,35 @@
 }
 .phone-code-body { display: flex; flex-direction: column; gap: 12px; align-items: center; text-align: center; }
 
-/* The avatar's dance on device.paired (the user, 28 Sep): a hop, a squish, a sparkle, under
-   1.2s, before "Your phone is connected." Reuses ob-pop's exact dot technique, positioned around
-   the stage instead of a 24px mark. The stage (not .phone-code-ring itself, which clips for the
-   shimmer) is what hops/squishes and hosts the burst, so the sparkle isn't cut off at the ring's
-   edge. */
-.phone-code-stage { position: relative; }
-.phone-code-stage.dance { animation: phone-code-dance 1100ms ease; }
-@keyframes phone-code-dance {
-  0% { transform: translateY(0) scale(1, 1); }
-  18% { transform: translateY(-14px) scale(0.94, 1.08); }
-  38% { transform: translateY(2px) scale(1.08, 0.9); }
-  58% { transform: translateY(-6px) scale(0.97, 1.04); }
-  78% { transform: translateY(0) scale(1.02, 0.98); }
-  100% { transform: translateY(0) scale(1, 1); }
+/* The avatar's dance on device.paired (the user, 28 Sep), before "Your phone is connected": NOT
+   launch's own animation — ui-ux's motion prototype (scratchpad/avatar-motion/avatar-motion.html,
+   the "goal done" moment), played on `.vyrecode-face` (the ring's own face group, see
+   deck/vendor/vyrecode/vyrecode2.js) instead of the prototype's small avatar tile, plus the same
+   confetti burst. `deck/js/phone-code.js`'s `playDance()` adds/removes these classes and the
+   confetti elements; nothing here plays on a loop or without that call. transform-box: fill-box
+   so the hop scales/translates around the face's own centre regardless of the outer group's
+   already-applied position/scale (a CSS transform on the SAME element would override that
+   attribute-based one outright; a separate inner group sidesteps it, so this one composes). */
+.vyrecode-face { transform-box: fill-box; transform-origin: center; }
+.vyrecode-face.phone-code-ms-done { animation: phone-code-ms-done 600ms ease-out 1; }
+@keyframes phone-code-ms-done {
+  0% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-10px) scale(1.08); }
+  55% { transform: translateY(2px) scale(0.97); }
+  100% { transform: translateY(0) scale(1); }
 }
-.phone-code-burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
-.phone-code-burst i { position: absolute; left: 0; top: 0; width: var(--size, 5px); height: var(--size, 5px); margin: calc(var(--size, 5px) / -2) 0 0 calc(var(--size, 5px) / -2);
-  border-radius: 50%; background: var(--beacon-ink); opacity: 0;
-  animation: ob-pop 1100ms cubic-bezier(.15, .7, .3, 1) var(--delay, 0ms) 1 forwards; }
-@media (prefers-reduced-motion: reduce) { .phone-code-stage.dance { animation: none; } }
+.phone-code-confetti-bit { position: absolute; left: 50%; top: 38%; width: 5px; height: 5px; border-radius: 1px; pointer-events: none;
+  animation: phone-code-confetti-bit 650ms ease-out forwards; }
+@keyframes phone-code-confetti-bit {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate(var(--cx), var(--cy)) rotate(var(--cr)); opacity: 0; }
+}
+/* Reduced motion (the user, 28 Sep): the prototype's own rule for "done" — a state that would
+   otherwise live only in motion gets a still flag instead, never a silent cut with no
+   acknowledgement at all. */
+.phone-code-done-flag { position: absolute; top: 10px; right: 10px; width: 10px; height: 10px; border-radius: 50%; background: var(--focus); }
+@media (prefers-reduced-motion: reduce) { .vyrecode-face.phone-code-ms-done { animation: none; } }
+
 .phone-code-connected { display: flex; align-items: flex-start; gap: 10px; text-align: left; width: 100%; }
 .phone-code-connected svg { flex-shrink: 0; margin-top: 3px; color: var(--beacon-ink); }
 .phone-code-connected .field { margin-top: 4px; }

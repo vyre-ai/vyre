@@ -285,7 +285,7 @@ Filled in as each lands.
   file on testbox with `CHROME_BIN=/usr/local/bin/vyre-chrome` (headless, testbox's Playwright
   Chromium; the RULES `CHROME_BIN` default is a Mac path and testbox has no Chrome install).
 
-- "Add your phone": app-design sent the geometry/palette handoff (ADR 0033, round5/vyrecode2.js
+- "Add your phone": app-design sent the geometry/palette handoff (ADR 0043, round5/vyrecode2.js
   `renderCode2`, `ticksSunburst` picked). Vendored their code (CommonJS -> ESM, `fingerprint8`
   ported onto `crypto.subtle` for the browser) into `deck/vendor/vyrecode/`. Built the piece
   they flagged as still launch's own: `deck/js/phone-code.js`'s live/expiring/expired state

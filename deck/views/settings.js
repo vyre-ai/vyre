@@ -25,7 +25,7 @@ import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
 import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, mergeEvent, destinationName, forgetGate } from "../js/server-rows.js";
 import { canRelayJoin } from "../js/join-caps.js";
-import { ticketRingSvg, ticketPhase, countdown } from "../js/phone-code.js";
+import { ticketRingSvg, ticketPhase, countdown, playDance } from "../js/phone-code.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -579,26 +579,32 @@ function deviceKind(os, name = "") {
   return { kind: k || os || "Device", handheld: false };
 }
 
-/** Wink (ADR 0033, deck/js/phone-code.js): the same live Vyre code ring onboarding's devices
+/** Wink (ADR 0043, deck/js/phone-code.js): the same live Vyre code ring onboarding's devices
  * step uses, added here so a phone can be added later without re-running onboarding. Gated on
- * onboard.status.can.relayJoin, same as onboarding's — hidden on a Mac until vyre-core. No
- * relay.pair.ticket tool exists yet; mints a placeholder ticket id client-side, same as onboarding,
- * until it lands. `ctx.on`/`ctx.cleanup`/`ctx.alive` (not onboard.js's own `on`/`cleanup`/`every`)
- * since this runs in the main Deck, not the onboarding loopback page. */
+ * onboard.status.can.relayJoin, same as onboarding's — hidden on a Mac until vyre-core.
+ * relay.pair.ticket (tailnet, work/tailnet 2990a810, sent to their reviewer) mints a real ticket
+ * with a Touch ID prompt; not merged to main yet, so `attempt` answers from
+ * deck/fixtures/relay.json until it is. relay.paired {device, name} is the connect signal.
+ * `ctx.on`/`ctx.cleanup`/`ctx.alive` (not onboard.js's own `on`/`cleanup`/`every`) since this runs
+ * in the main Deck, not the onboarding loopback page. */
 function winkCard(status, ctx) {
   const relay = canRelayJoin(status);
   if (!relay.allowed) return null;
-  const ttlMs = 5 * 60_000;
   let mintedAt = Date.now();
+  let ttlMs = 5 * 60_000;
   let ticketId = `placeholder-ticket-${mintedAt}`;
-  const mint = () => { mintedAt = Date.now(); ticketId = `placeholder-ticket-${mintedAt}`; };
+  const mint = async () => {
+    const r = await attempt("relay.pair.ticket", {}, { presence: "asked" });
+    mintedAt = Date.now();
+    if (r.data?.ticket) { ticketId = r.data.ticket; ttlMs = Math.max(0, (r.data.expiresAt ?? mintedAt + ttlMs) - mintedAt); }
+    else ticketId = `placeholder-ticket-${mintedAt}`; // a declined passkey, or any other real error: still shows a ring, never a dead card
+  };
   const ringEl = h("div", { class: "phone-code-ring", "aria-live": "polite" }, h("span", { class: "busy" }));
-  const stageEl = h("div", { class: "phone-code-stage" }, ringEl);
   const meta = h("div", { class: "phone-code-meta" });
-  const body = h("div", { class: "phone-code-body" }, stageEl,
+  const body = h("div", { class: "phone-code-body" }, ringEl,
     h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta);
   const refreshBtn = h("button", { class: "btn", type: "button" }, "Refresh");
-  refreshBtn.addEventListener("click", () => { mint(); drawRing(); tick(); });
+  refreshBtn.addEventListener("click", async () => { await mint(); await drawRing(); tick(); });
   const drawRing = async () => {
     const forId = ticketId;
     const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
@@ -616,19 +622,6 @@ function winkCard(status, ctx) {
       ? [h("p", { class: "small muted" }, "This code expired."), refreshBtn]
       : h("p", { class: "small muted" }, `Expires in ${countdown(msLeft)}`));
   };
-  const dance = () => new Promise(resolve => {
-    if (calm()) { resolve(undefined); return; }
-    stageEl.classList.add("dance");
-    const burst = h("span", { class: "phone-code-burst", "aria-hidden": "true" });
-    const N = 12;
-    for (let k = 0; k < N; k++) {
-      const a = (k / N) * Math.PI * 2;
-      const r = 90 + (k % 3) * 14;
-      burst.append(h("i", { style: `--dx:${Math.round(Math.cos(a) * r)}px;--dy:${Math.round(Math.sin(a) * r)}px;--delay:${(k % 4) * 40}ms;--size:${4 + (k % 3)}px` }));
-    }
-    stageEl.append(burst);
-    setTimeout(() => { stageEl.classList.remove("dance"); burst.remove(); resolve(undefined); }, 1150);
-  });
   const showConnected = (/** @type {string} */ deviceId, /** @type {string} */ initialName) => {
     if (!ctx.alive()) return;
     const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", value: initialName, "aria-label": "Device name" }));
@@ -641,7 +634,7 @@ function winkCard(status, ctx) {
     };
     nameIn.addEventListener("blur", save);
     nameIn.addEventListener("keydown", e => { if (e.key === "Enter") nameIn.blur(); });
-    const anotherBtn = h("button", { class: "btn btn-primary", type: "button", onclick: () => { mint(); drawRing(); tick(); put(body, stageEl, h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta); } }, "Add another device");
+    const anotherBtn = h("button", { class: "btn btn-primary", type: "button", onclick: async () => { await mint(); await drawRing(); tick(); put(body, ringEl, h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta); } }, "Add another device");
     put(body,
       h("div", { class: "phone-code-connected", role: "status" },
         icon("check", 20),
@@ -650,9 +643,8 @@ function winkCard(status, ctx) {
           h("div", { class: "field" }, nameIn))),
       h("div", { class: "phone-code-actions" }, anotherBtn));
   };
-  ctx.on("device.paired", async (/** @type {any} */ e) => { await dance(); showConnected(e.payload?.id, e.payload?.name || "A device"); });
-  drawRing();
-  tick();
+  ctx.on("relay.paired", async (/** @type {any} */ e) => { await playDance(ringEl, calm()); showConnected(e.payload?.device, e.payload?.name || "A device"); });
+  (async () => { await mint(); await drawRing(); tick(); })();
   const t = setInterval(tick, 1000);
   ctx.cleanup(() => clearInterval(t));
   return h("section", { class: "dev-card", "aria-labelledby": "wink-h" },

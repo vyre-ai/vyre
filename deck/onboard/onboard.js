@@ -11,7 +11,7 @@ import { pairRequests } from "../js/pair.js";
 import qrcode from "../vendor/qrcode.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { canRelayJoin } from "../js/join-caps.js";
-import { ticketRingSvg, ticketPhase, countdown } from "../js/phone-code.js";
+import { ticketRingSvg, ticketPhase, countdown, playDance } from "../js/phone-code.js";
 
 // Reconciled with docs/design/onboarding-v2.md's 10-step table (the lead, 29 Sep): this array's
 // order now matches it exactly, with two client screens standing in for the doc's single step 2
@@ -1236,49 +1236,43 @@ const SCREENS = {
     };
     drawNet();
 
-    // "Wink" (the user's decision, 28 Sep, ADR 0033): a live Vyre code ring the person's phone
+    // "Wink" (the user's decision, 28 Sep, ADR 0043): a live Vyre code ring the person's phone
     // scans to connect, instead of the Tailscale-QR path above (superseded by it once relay is
     // allowed — this card is the primary phone path, not an alternative to it). PIVOT, same day:
     // Tailscale itself stays, but only as the relay's own auto-managed transport and an optional
     // later "Faster connection" upgrade (Settings > Devices, not built here yet) — the phone
     // path here never asks the person to touch Tailscale at all, pivot or not.
     // Same gate as "Pair with a code" (deck/js/join-caps.js) — hidden on a Mac until vyre-core.
-    // No relay.pair.ticket tool exists yet: tailnet's proposed shape (28 Sep, pending reviewer
-    // sign-off) mints Touch ID at the mint, not the scan, so there is no separate "Pair <phone>?"
-    // confirm screen here — the ring alone is the offer, and `device.paired` (core/relay/index.js,
-    // real and shipped today) is the only signal this waits for. Mints a placeholder ticket id
-    // client-side until the real call lands; swap `mint()`, nothing else here changes.
+    // relay.pair.ticket is built (tailnet, work/tailnet 2990a810, sent to their reviewer, "safe
+    // to build against"): mint {} -> {ticket, expiresAt, connected}, HUMAN_ONLY (Touch ID at the
+    // mint, matching relay.pair.start), single-use, refuses on darwin same as relay.join. Not
+    // merged to main yet, so `attempt` answers from deck/fixtures/relay.json's fallback until it
+    // is — same "missing tool" pattern every other real-but-unmerged tool in this file uses.
+    // relay.paired {device, name} fires the instant a ticket pairing completes: no separate
+    // pending/confirm step, so this reacts to the event directly rather than polling, and never
+    // shows a "Pair <phone>?" screen of its own (Touch ID already happened, at the mint).
+    // The ring's own bits: still `fingerprint8(ticket)` (deck/js/phone-code.js), a one-way hash,
+    // as a stand-in until tailnet/app-design confirm whether phone.vyre.run's decoder needs the
+    // raw ticket bytes recoverable (to redeem it) rather than a hash of them — asked, not yet
+    // answered; flagged so this isn't mistaken for real end-to-end pairing yet.
     const relay = canRelayJoin(state.status);
     let phoneCodeCard = null;
     if (relay.allowed) {
-      const ttlMs = 5 * 60_000;
       let mintedAt = Date.now();
+      let ttlMs = 5 * 60_000;
       let ticketId = `placeholder-ticket-${mintedAt}`;
-      const mint = () => { mintedAt = Date.now(); ticketId = `placeholder-ticket-${mintedAt}`; };
+      const mint = async () => {
+        const r = await attempt("relay.pair.ticket", {}, { presence: "asked" });
+        mintedAt = Date.now();
+        if (r.data?.ticket) { ticketId = r.data.ticket; ttlMs = Math.max(0, (r.data.expiresAt ?? mintedAt + ttlMs) - mintedAt); }
+        else ticketId = `placeholder-ticket-${mintedAt}`; // a declined passkey, or any other real error: still shows a ring, never a dead card
+      };
       const ringEl = h("div", { class: "phone-code-ring", "aria-live": "polite" }, h("span", { class: "busy" }));
-      const stageEl = h("div", { class: "phone-code-stage" }, ringEl);
       const meta = h("div", { class: "phone-code-meta" });
-      const body = h("div", { class: "phone-code-body" }, stageEl,
+      const body = h("div", { class: "phone-code-body" }, ringEl,
         h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta);
-      // The avatar's dance (the user, 28 Sep): a hop, a squish and a sparkle, under 1.2s, before
-      // "Your phone is connected." — reuses .ob-burst/ob-pop's dot technique (the assistant
-      // easter egg below), positioned around the stage instead of a 24px mark. Skipped outright
-      // under reduced motion, same as that egg, rather than a shorter version of the same thing.
-      const dance = () => new Promise(resolve => {
-        if (calm()) { resolve(undefined); return; }
-        stageEl.classList.add("dance");
-        const burst = h("span", { class: "phone-code-burst", "aria-hidden": "true" });
-        const N = 12;
-        for (let k = 0; k < N; k++) {
-          const a = (k / N) * Math.PI * 2;
-          const r = 90 + (k % 3) * 14;
-          burst.append(h("i", { style: `--dx:${Math.round(Math.cos(a) * r)}px;--dy:${Math.round(Math.sin(a) * r)}px;--delay:${(k % 4) * 40}ms;--size:${4 + (k % 3)}px` }));
-        }
-        stageEl.append(burst);
-        later(() => { stageEl.classList.remove("dance"); burst.remove(); resolve(undefined); }, 1150);
-      });
       const refreshBtn = h("button", { class: "btn", type: "button" }, "Refresh");
-      refreshBtn.addEventListener("click", () => { mint(); drawRing(); tick(); });
+      refreshBtn.addEventListener("click", async () => { await mint(); await drawRing(); tick(); });
       const drawRing = async () => {
         const forId = ticketId;
         const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
@@ -1295,7 +1289,7 @@ const SCREENS = {
           ? [h("p", { class: "small muted" }, "This code expired."), refreshBtn]
           : h("p", { class: "small muted" }, `Expires in ${countdown(msLeft)}`));
       };
-      // The computer knows the instant a phone connects (device.paired, no refresh, per the
+      // The computer knows the instant a phone connects (relay.paired, no refresh, per the
       // user): the dance plays first, then this swaps the ring for a connected state.
       const showConnected = (/** @type {string} */ deviceId, /** @type {string} */ initialName) => {
         const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", value: initialName, "aria-label": "Device name" }));
@@ -1309,10 +1303,10 @@ const SCREENS = {
         nameIn.addEventListener("blur", save);
         nameIn.addEventListener("keydown", e => { if (e.key === "Enter") nameIn.blur(); });
         const nextBtn = h("button", { class: "btn btn-primary", type: "button", onclick: s.next }, "Next step");
-        const anotherBtn = h("button", { class: "btn", type: "button", onclick: () => { mint(); drawRing(); tick(); put(body, ringConnectedReset()); } }, "Connect another device");
+        const anotherBtn = h("button", { class: "btn", type: "button", onclick: async () => { await mint(); await drawRing(); tick(); put(body, ringConnectedReset()); } }, "Connect another device");
         // A fresh card for the next ticket, once "Connect another device" is chosen: same body
         // shape as the initial ring, so a second phone goes through the identical experience.
-        function ringConnectedReset() { return [stageEl, h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta]; }
+        function ringConnectedReset() { return [ringEl, h("p", { class: "small muted" }, "Open phone.vyre.run on your phone and Wink to connect."), meta]; }
         put(body,
           h("div", { class: "phone-code-connected", role: "status" },
             icon("check", 20),
@@ -1321,9 +1315,8 @@ const SCREENS = {
               h("div", { class: "field" }, nameIn))),
           h("div", { class: "phone-code-actions" }, nextBtn, anotherBtn));
       };
-      cleanup.push(on("device.paired", async e => { await dance(); showConnected(e.payload?.id, e.payload?.name || "A device"); }));
-      drawRing();
-      tick();
+      cleanup.push(on("relay.paired", async e => { await playDance(ringEl, calm()); showConnected(e.payload?.device, e.payload?.name || "A device"); }));
+      (async () => { await mint(); await drawRing(); tick(); })();
       every(tick, 1000);
       phoneCodeCard = h("section", { class: "dev-card", "aria-labelledby": "dev-phone-code-h" },
         h("div", { class: "lbl" }, "Wink"),

@@ -65,7 +65,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### "Add your phone": the Vyre code ring, shimmer/countdown/expiry, in onboarding's devices step
 
-- `deck/vendor/vyrecode/` (rs.js, payload.js, identity.js, vyrecode2.js): app-design's ADR 0033
+- `deck/vendor/vyrecode/` (rs.js, payload.js, identity.js, vyrecode2.js): app-design's ADR 0043
   code, vendored CommonJS -> ESM with no logic changes except `payload.js`'s `fingerprint8`,
   ported off Node's `crypto` onto Web Crypto's `crypto.subtle.digest` (browser + Node `--test`
   both have it; no build-time swap needed).
@@ -2117,7 +2117,7 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   X-Vyre-Call-Id, so a tool's steps link to the chat row that caused them (meta.call, platform
   382a8574).
 
-#### `vyre module new`, `check` and `add` (ADR 0033)
+#### `vyre module new`, `check` and `add` (ADR 0043)
 
 - `vyre module new <name>` scaffolds a home module in <home>/modules: module.json, index.js,
   package.json, a node:test file and a README. The scaffold passes `vyre module check` and its own
@@ -2228,10 +2228,10 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   prompt, error), in polish-cli's field shapes: table columns with labels and an empty line, card
   fields, text lines, check states with ids (ok, wait, failed, unknown), error next steps, and a
   prompt answered either on the command line or by a tool; any kind may carry actions; "statusline" is a tip surface.
-- ADR 0033 section 3 points to ADR 0035 for the theme keys: `appearance.theme` is only the preset,
+- ADR 0043 section 3 points to ADR 0035 for the theme keys: `appearance.theme` is only the preset,
   and `appearance.scheme` is system, dark or paper.
 
-#### Module API phase 1, the part that needs no settings (ADR 0033, cohesion's ADR 0036)
+#### Module API phase 1, the part that needs no settings (ADR 0043, cohesion's ADR 0036)
 
 - vyred passes a chat's tool call id to the tool as `meta.call`, from the X-Vyre-Call-Id header,
   only on a session's own paths (its thread socket, or a call bound to a thread by its agent or
@@ -2376,7 +2376,7 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
 - `vyre update` asks tips.whatsnew {since} after a healthy update and prints up to five
   "New in <version>" lines. With the tips module off it prints none and still succeeds.
 
-#### `vyre update` on the Mac and the box, with backup and rollback (ADR 0033, phase 2)
+#### `vyre update` on the Mac and the box, with backup and rollback (ADR 0043, phase 2)
 
 - `vyre update` (new, in Box care): reads GitHub Releases for the channel (`update.channel` or
   `--channel`, stable or beta), shows the changelog from the running version, backs up into
@@ -2400,7 +2400,7 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
 - docs/build/first-module.md (draft): a step-by-step "Build your first module" in the sample world,
   run end to end in a throwaway home; what arrives in phases 1 and 3 is marked as coming.
 
-#### ADR 0033: Hackable Vyre (accepted), and the module SDK's first piece
+#### ADR 0043: Hackable Vyre (accepted), and the module SDK's first piece
 
 - docs/adr/0033-hackable-vyre.md: a versioned module API (apiVersion, a manifest schema, the v1
   ctx surface, deprecation rules, published types), an extension point for every part, user
@@ -2684,7 +2684,7 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   symlink was committed on a branch; on a fresh checkout it dangles and every npx step in the app
   workflow exited 216.
 
-#### CI: the release workflow (ADR 0033)
+#### CI: the release workflow (ADR 0043)
 
 - .github/workflows/release.yml: a tag vX.Y.Z publishes a GitHub Release (stable), vX.Y.Z-beta.N a
   prerelease (beta). Assets: build-site.sh's box files and vyre.tgz and VERSION, the unsigned
@@ -3169,7 +3169,7 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   meter row that turns it on or off from inside the installed app.
 #### A module writes its own settings (settings.write)
 
-- core/settings: settings.write, internal and for modules only (ADR 0033, approved by the lead). A
+- core/settings: settings.write, internal and for modules only (ADR 0043, approved by the lead). A
   module may set or clear only its own "<module>." keys, only keys kept in Vyre's settings table,
   and never a key that asks for a confirm or loosens security. It has its own write path, so it
   never calls a tool store (which runs as the person) or touches config.json or Claude Code's
@@ -3297,7 +3297,7 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   its name, and Claude Code's files are refused; the module is invalid otherwise. A person's change
   to a setting carries the person's authority, so a store that reached further let a harmless
   label drive another tool as the person, write any config path, or widen Claude Code's
-  permissions (found in ADR 0033 work, confirmed by e2e).
+  permissions (found in ADR 0043 work, confirmed by e2e).
 - read and write call a home module's tool store as the settings module, never as the person.
   declaredSettings tags each declaration with firstParty from the loader, after the manifest's own
   fields, so a manifest can't claim it.
@@ -4924,7 +4924,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   modules, presence, daemon) is open to all. Today's 26 other edges are frozen in an allowlist,
   down to the files imported; a new edge or a new file behind one fails, and so does an entry
   nothing uses any more (the list only shrinks). Tests, testing/ and fixtures are out of scope.
-- lib/<name> (ADR 0033) is shared pure code: any part may import it; a lib may import only the
+- lib/<name> (ADR 0043) is shared pure code: any part may import it; a lib may import only the
   kernel and other libs, and no lib edge can be frozen.
 - docs/architecture/boundaries.md: the rule, and each frozen edge with why it exists and what it
   becomes (17 lib, 8 ctx.call, 1 surface). In the nav; reference regenerated.
@@ -5593,7 +5593,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   --control-*, --motion-* and --ease, next to the colour roles, --radius-*, --float and --popover.
   Regenerated after merging main (the committed file predated the popover and radius tokens).
 
-- Theme overrides (ADR 0033 section 3): scripts/lib/theme.js deep-merges a partial tokens.json
+- Theme overrides (ADR 0043 section 3): scripts/lib/theme.js deep-merges a partial tokens.json
   (the person's overrides/theme.json or a module's themes/<name>.json) over the shipped one, and
   refuses the whole file, naming each failure, when it touches status, layout, icon or a key the
   tokens lack, or when the result breaks a rule: AA for every text and ground pair the surfaces

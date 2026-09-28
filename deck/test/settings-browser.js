@@ -104,6 +104,66 @@ try {
     say("with no proof it is not saved, and the row says why in plain words", (lock?.source !== "account" || lock?.value !== "8h") && /Add one in Settings/.test(note) && !/presence\./.test(note), `value ${lock?.value} (${lock?.source}); row: "${note}"`);
     await shot("lock-after", row(lockKey));
   }
+  // 4. Wink (Settings > Devices, deck/js/phone-code.js): the ring, the countdown, and the
+  // relay.paired reaction (dance, rename, "Add another device"). Real onboard.status carries no
+  // `can` field yet (asked anywhere), so this patches window.fetch, injected before any page
+  // script runs, splicing `can.relayJoin: true` onto that one real response — no fake tool, no
+  // faked module, everything else on the page stays real. relay.pair.ticket itself isn't merged
+  // yet either, so it answers from deck/fixtures/relay.json's fallback (a fixed, far-future
+  // expiresAt — a real mint's TTL is ~5 min, but this fixture's isn't meant to be read literally,
+  // just to prove the ring/countdown/dance mechanics without a real network call). Date.now is
+  // patched the same way so the forced-expiry check can jump straight past that fixed date
+  // instead of waiting on it for real. relay.paired itself is delivered with api.js's own
+  // `hear()` test seam (pwa's contract, used the same way by chat/session.test.js) rather than a
+  // genuine relay handshake, which this box was never asked to run.
+  await tab.send("Page.addScriptToEvaluateOnNewDocument", { source: `
+    window.__fakeNow = null;
+    const _now = Date.now.bind(Date);
+    Date.now = () => window.__fakeNow ?? _now();
+    const _fetch = window.fetch.bind(window);
+    window.fetch = async (url, init) => {
+      const res = await _fetch(url, init);
+      if (typeof url === "string" && url.includes("/v1/tools/onboard.status")) {
+        const body = await res.clone().json();
+        if (body && body.data) body.data.can = { relayJoin: true };
+        return new Response(JSON.stringify(body), { status: res.status, headers: res.headers });
+      }
+      return res;
+    };
+  ` });
+  await tab.go(`${world.url}/settings#devices`, 2500);
+  await tab.run(`await waitFor(".phone-code-ring svg", 8000); return true;`);
+  const ringOk = await tab.run(`const svg = document.querySelector(".phone-code-ring svg"); return !!svg && svg.querySelectorAll("line").length === 72;`);
+  say("Wink: the ring renders (72 ticksSunburst marks)", ringOk);
+  await shot("wink-ring", ".phone-code-ring");
+  const before5 = await tab.run(`return document.querySelector(".phone-code-meta").textContent;`);
+  say("Wink: the countdown shows a live m:ss", /Expires in \d+:\d\d/.test(String(before5)), String(before5));
+  // The fixture's expiresAt is a fixed epoch (deck/fixtures/relay.json, 1893456000000): jump the
+  // fake clock just past it, rather than a real mint's ~5 min, since this fixture's TTL was never
+  // meant to be read literally (see the note above).
+  await tab.run(`window.__fakeNow = 1893456000000 + 2000; await wait(1200); return true;`);
+  const expired = await tab.run(`return document.querySelector(".phone-code-meta").textContent;`);
+  say("Wink: the ticket actually expires (a forced clock, not a real wait)", /expired/i.test(String(expired)), String(expired));
+  await tab.run(`window.__fakeNow = null; return true;`);
+  await tab.run(`const api = await import("/js/api.js");
+    api.hear({ id: 999999, at: Date.now(), type: "relay.paired", source: "relay", project: null, thread: null,
+      payload: { device: "dev_test_wink", name: "Wink Test Phone" } });
+    return true;`);
+  await tab.run(`await waitFor(".phone-code-connected", 4000); return true;`);
+  const connected = await tab.run(`return {
+    text: document.querySelector(".phone-code-connected .h3")?.textContent || "",
+    name: document.querySelector(".phone-code-connected input")?.value || "",
+    hasAnother: !!document.querySelector(".phone-code-actions .btn"),
+    leftoverDance: document.querySelectorAll(".phone-code-ms-done, .phone-code-confetti-bit").length,
+  };`);
+  say("Wink: relay.paired shows the connected state with the device's own name", /connected/i.test(connected.text) && connected.name === "Wink Test Phone", JSON.stringify(connected));
+  say("Wink: the dance's classes/confetti clean up after themselves", connected.leftoverDance === 0, `left ${connected.leftoverDance}`);
+  say("Wink: \"Add another device\" is offered", connected.hasAnother, "");
+  await tab.run(`document.querySelector(".phone-code-actions .btn").click(); await wait(300); return true;`);
+  const another = await tab.run(`return !!document.querySelector(".phone-code-ring svg") && !document.querySelector(".phone-code-connected");`);
+  say("Wink: \"Add another device\" mints a fresh ring", another);
+  await shot("wink-connected", ".phone-code-body");
+
   say("no page errors", tab.errors.length === 0, tab.errors.slice(0, 3).join(" | "));
   process.stdout.write(JSON.stringify({ shots: OUT }) + "\n");
 } catch (e) {

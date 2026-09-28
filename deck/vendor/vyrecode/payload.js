@@ -1,5 +1,5 @@
 // @ts-check
-// Vendored from app-design's round5/payload.js (ADR 0033), CommonJS -> ESM, and fingerprint8
+// Vendored from app-design's round5/payload.js (ADR 0043), CommonJS -> ESM, and fingerprint8
 // ported off Node's `crypto` module (not available in the browser) onto Web Crypto's
 // `crypto.subtle.digest`, which both a real browser and Node's own `--test` runner provide, so
 // this needs no build-time swap between the two. Everything else is unchanged: an 8-byte public

@@ -1,16 +1,20 @@
 // @ts-check
 // "Add your phone" (the user's decision, 28 Sep): the person's avatar grows a live Vyre code
-// ring (ADR 0033) encoding a one-time pairing ticket. This module is the piece launch owns per
+// ring (ADR 0043) encoding a one-time pairing ticket. This module is the piece launch owns per
 // that ADR's Consequences ("launch renders vyrecode2.js's output on the Deck's pairing screen")
 // plus the live/pairing variant app-design flagged as still needed from launch: a shimmer while
 // the ticket is valid, and a visible countdown/expiry state once it's stale. Geometry, palette
 // and the encode/decode math are app-design's vendored code (deck/vendor/vyrecode/), unchanged;
 // everything in this file is launch's own.
 //
-// Not yet wired to a real ticket: tailnet's relay.pair.ticket mint call doesn't exist yet (asked,
-// see docs/work/launch-surfaces.md "Add your phone"). Callers pass whatever string the real call
-// eventually returns as `ticketId` — this module only needs a stable string to fingerprint, the
-// same as any other seed elsewhere in the Deck (deck/js/pair.js, etc).
+// tailnet's relay.pair.ticket is built (work/tailnet 2990a810, sent to their reviewer): mint {}
+// -> {ticket, expiresAt, connected}. Callers (deck/onboard/onboard.js, deck/views/settings.js)
+// pass its `ticket` string straight through as `ticketId` here. Open question, asked, not yet
+// answered: `ticketLevels` still runs `ticket` through `fingerprint8` (a one-way hash) rather
+// than encoding its raw bytes directly — fine for a permanent public identifier (this module's
+// original use), but if phone.vyre.run's decoder needs to recover the literal ticket to redeem
+// it, a hash can't be reversed back into one. Flagged so this isn't mistaken for a finished,
+// redeemable pairing until that's confirmed either way.
 import { fingerprint8, buildCodeword, bytesToBits } from "../vendor/vyrecode/payload.js";
 import { renderCode2, bitsToLevels } from "../vendor/vyrecode/vyrecode2.js";
 
@@ -52,4 +56,53 @@ export function countdown(msLeft) {
   const s = Math.max(0, Math.ceil(msLeft / 1000));
   const m = Math.floor(s / 60), r = s % 60;
   return `${m}:${String(r).padStart(2, "0")}`;
+}
+
+const CONFETTI_COLORS = ["#C6F36B", "#F6D186", "#E8A6C7", "#9FD8C8"];
+const DANCE_MS = 600, CONFETTI_MS = 650;
+
+/**
+ * The avatar's dance on relay.paired, before the connected state (the user, 28 Sep; the shapes
+ * are ui-ux's motion prototype, scratchpad/avatar-motion/avatar-motion.html, "goal done": the
+ * msDone hop plus a confetti burst, played on the person's own avatar SVG, once, under 700ms —
+ * not launch's own invention). `calm` (prefers-reduced-motion) skips all of it for a single
+ * still lime dot instead, the prototype's own rule for "done": never a state that survives only
+ * in motion. Targets `.vyrecode-face` (the inner group vyrecode2.js wraps the face in
+ * specifically so this composes with its outer position/scale rather than overriding it) inside
+ * `ringEl`, the already-drawn `.phone-code-ring` element; a caller with no matching face (an
+ * unusual ring render, or none yet) still resolves — the dance is decorative, never load-bearing
+ * for the connected state that follows it.
+ * @param {Element} ringEl @param {boolean} calm
+ * @returns {Promise<void>}
+ */
+export function playDance(ringEl, calm) {
+  return new Promise(resolve => {
+    if (calm) {
+      const dot = document.createElement("span");
+      dot.setAttribute("class", "phone-code-done-flag");
+      dot.setAttribute("aria-hidden", "true");
+      ringEl.append(dot);
+      resolve();
+      return;
+    }
+    const face = ringEl.querySelector(".vyrecode-face");
+    face?.classList.add("phone-code-ms-done");
+    const bits = [];
+    for (let i = 0; i < 7; i++) {
+      const bit = document.createElement("span");
+      bit.setAttribute("class", "phone-code-confetti-bit");
+      bit.setAttribute("aria-hidden", "true");
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 22 + Math.random() * 26;
+      const cx = `${(Math.cos(angle) * dist).toFixed(1)}px`, cy = `${(Math.sin(angle) * dist - 10).toFixed(1)}px`, cr = `${(Math.random() * 240 - 120).toFixed(0)}deg`;
+      bit.setAttribute("style", `--cx:${cx};--cy:${cy};--cr:${cr};background:${CONFETTI_COLORS[i % CONFETTI_COLORS.length]}`);
+      ringEl.append(bit);
+      bits.push(bit);
+    }
+    setTimeout(() => {
+      face?.classList.remove("phone-code-ms-done");
+      for (const b of bits) b.remove();
+      resolve();
+    }, Math.max(DANCE_MS, CONFETTI_MS));
+  });
 }

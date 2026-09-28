@@ -6,5 +6,11 @@
     "name": "alex-mac",
     "device": { "id": "dev_1" },
     "presence": { "enrolled": false }
+  },
+  "relay.pair.ticket": {
+    "_comment": "expiresAt is a fixed far-future epoch ms, not $ago (which only goes backward): a fixture ticket never needs to look freshly minted, only never-expired.",
+    "ticket": "fixture-ticket-do-not-scan",
+    "expiresAt": 1893456000000,
+    "connected": false
   }
 }

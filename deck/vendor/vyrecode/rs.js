@@ -1,5 +1,5 @@
 // @ts-check
-// Vendored from app-design's round5/rs.js (ADR 0033, "Identity marks: four families, and the
+// Vendored from app-design's round5/rs.js (ADR 0043, "Identity marks: four families, and the
 // Vyre code"), CommonJS -> ESM only, no logic changed. Reed-Solomon over GF(256), the same field
 // QR codes and CDs use (primitive polynomial x^8 + x^4 + x^3 + x^2 + 1, 0x11D). Byte-oriented:
 // encode(dataBytes, parityCount) appends parity bytes; decode(receivedBytes, parityCount)
