@@ -150,6 +150,11 @@ Also for 2a:
 - The signed release manifest (version + tarball hash), the version floor, the root apply step
   with hardened extraction, and signing the new Capsule.app (LOW b).
 - Coordinate with anywhere (ADR 0039 install paths, machine roles). Mac check throughout.
+- anywhere's answers (28 Sep): machine "solo" and "server" on darwin get vyre-core; "device"
+  never does. There is no Mac sudo step today (`vyre up --system` is Linux-only), so phase 4
+  adds the first one. The plist and the _vyre account are e2e2's; anywhere's config.machine flow
+  and onboard.* call whatever trigger phase 4 exposes. The Solo Deck loopback (onboard.link)
+  verifies its writes in vyred's presence today; it moves to core with the Deck write rule.
 
 ## Phase 5: pairing and relay keys
 
