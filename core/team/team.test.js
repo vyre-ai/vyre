@@ -793,3 +793,12 @@ test("team.project-has-any and team.project-append once a teammate exists: the a
   const off = await tool("team.project-append", { project: project.slug });
   assert.equal(off.text, null, "existing teammates still work; the setting only turns off the steering line");
 });
+
+test("reviewer LOW: team.default.get, team.project-has-any and team.project-append refuse a bare mcp caller (no ownership check on the project input)", async t => {
+  const { root, project } = await boot(t);
+  for (const name of ["team.default.get", "team.project-has-any", "team.project-append"]) {
+    const r = await call(name, { project: project.slug }, { root, caller: "mcp", timeout: 20_000 });
+    assert.ok(r.error, `${name} should refuse a bare mcp caller`);
+    assert.equal(r.error.code, "denied");
+  }
+});
