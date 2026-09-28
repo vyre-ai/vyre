@@ -458,11 +458,11 @@ test("relay: relay.join's presence prompt names the box, its relay host and a ke
   // The relay host is the OTHER box's own text too (parsePairUrl only bars whitespace and a
   // slash, so control characters, a right-to-left override and a long junk run all pass its own
   // check): the prompt must strip and cap it exactly like the name.
-  const hostileHost = `wss://relay.example.com\u0007‮${"y".repeat(120)}`;
+  const hostileHost = `wss://relay.example.com\u0007\u061c\u180e\u202e${"y".repeat(120)}`;
   const hostileHostUrl = pairUrl({ relay: hostileHost, route: "d".repeat(26), box: box9, secret: "s", name: "Real Bakery" });
   const hostileHostPrompt = await def.presence.summary({ url: hostileHostUrl });
   assert.ok(hostileHostPrompt.length < 200, hostileHostPrompt);
-  assert.doesNotMatch(hostileHostPrompt, /[\u0007‮]/, "the control character and the RTL override are gone from the host too");
+  assert.doesNotMatch(hostileHostPrompt, /[\u0007\u061c\u180e\u202e]/, "the control character, the Arabic letter mark, the Mongolian vowel separator and the RTL override are gone from the host too");
   assert.ok(hostileHostPrompt.endsWith(trueFingerprint), "the fingerprint is still this box's own, unaffected by the host");
   const hostPart = hostileHostPrompt.match(/ on (.+) \(key /)[1];
   assert.ok(hostPart.length <= 64, hostPart);

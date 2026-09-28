@@ -292,9 +292,12 @@ export default {
     // prompt: strip control characters, newlines and Unicode format/bidi characters (which can
     // visually reorder or hide part of a quoted string) and cap the length, so a hostile box
     // cannot write its own fake "(key ...)" text, a right-to-left override, or anything else into
-    // the prompt after its own text (reviewer, 28 Sep, extended to the host the same way).
+    // the prompt after its own text (reviewer, 28 Sep, extended to the host the same way). The set
+    // is C0/C1 controls, the Arabic letter mark (U+061C) and Mongolian vowel separator (U+180E),
+    // zero-width and word-joiner/invisible-operator characters, line/paragraph separators and the
+    // bidi override/embedding/isolate block, and the BOM (reviewer's nit, 28 Sep).
     const promptSafe = (s, fallback, max = 40) => String(s || fallback)
-      .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]+/g, " ")
+      .replace(/[\u0000-\u001f\u007f-\u009f\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]+/g, " ")
       .replace(/ {2,}/g, " ").trim().slice(0, max) || fallback;
 
     ctx.tool("relay.join", {
