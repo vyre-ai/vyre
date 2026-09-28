@@ -418,11 +418,17 @@ async function sendBudget(/** @type {string} */ thread) {
       // A swapped userRow node with the same matched text (m.length still 1) is the window-view
       // recycling DOM nodes on its per-frame remeasure (budget 6's own open finding), never a
       // visible change: matching by content already proves the right words are on screen, so
-      // node-identity churn on the user's own row isn't counted. The anchor (the row above,
-      // by reference) is: a real re-order/flicker is that row's own text changing, not a new
-      // sibling (a steer marker) landing beside it.
+      // node-identity churn on the user's own row isn't counted. The anchor (the row above) is
+      // watched two ways (reviewer-2, 2026-09-28): while it's still the node we first saw, a real
+      // re-order/flicker is THAT node's own text changing, not a new sibling (a steer marker)
+      // landing beside it (still connected, untouched). If window-view recycles the anchor away
+      // (disconnects it, same as the user row above), a benign recycle puts an equal-text node
+      // back in the same slot; only different text there is a real, visible re-order.
       let anchorMutated = false, anchorNow = null;
-      if (W.anchor) { anchorNow = W.anchor.textContent; anchorMutated = W.anchor.isConnected && anchorNow !== W.anchorText; }
+      if (W.anchor) {
+        if (W.anchor.isConnected) { anchorNow = W.anchor.textContent; anchorMutated = anchorNow !== W.anchorText; }
+        else if (m.length) { const cur = m[0].previousElementSibling; anchorNow = cur ? cur.textContent : null; anchorMutated = anchorNow !== W.anchorText; }
+      }
       if (W.t0 != null) W.frames.push({ n: m.length, anchorMutated, anchorNow });
       requestAnimationFrame(tick); };
     requestAnimationFrame(tick); return true;`);
@@ -430,16 +436,16 @@ async function sendBudget(/** @type {string} */ thread) {
   await sleep(4000);
   const r = await B(`const W = B.send; W.stop = true; return { t0: W.t0, first: W.first, frames: W.frames, anchorFrom: W.anchorText, anchorTo: W.anchor ? W.anchor.textContent : null };`);
   if (r.first == null) return report("9", "send, Enter to user row painted (ms)", "timeout", "< 50 ms, no flicker or re-order", false, "no user row with the sent words within 4 s");
-  let seen = false, flicker = 0, dup = 0, reorder = 0;
+  let seen = false, flicker = 0, dup = 0, reorder = 0, lastMutated = /** @type {any} */ (null);
   for (const f of r.frames) {
     if (f.n > 0) seen = true;
     if (seen && f.n === 0) flicker++;
     if (f.n > 1) dup++;
-    if (seen && f.anchorMutated) reorder++;
+    if (seen && f.anchorMutated) { reorder++; lastMutated = f; }
   }
   const ms = r.first - r.t0;
   report("9", "send, Enter to user row painted (ms)", ms, "< 50 ms, no flicker or re-order", ms < 50 && !flicker && !dup && !reorder,
-    `over ${r.frames.length} frames after Enter: ${flicker} frames without the row, ${dup} frames with two, the row above it (by node identity, not position) changed ${reorder}x${reorder ? ` (from ${JSON.stringify(r.anchorFrom)} to ${JSON.stringify(r.anchorTo)})` : ""}`);
+    `over ${r.frames.length} frames after Enter: ${flicker} frames without the row, ${dup} frames with two, the row above it (by node identity, not position, and past a recycle) changed ${reorder}x${reorder ? ` (from ${JSON.stringify(r.anchorFrom)} to ${JSON.stringify(lastMutated.anchorNow)})` : ""}`);
   await waitEvent(thread, "thread.finished", 0, 10_000);
   await sleep(1500);
 }
