@@ -341,3 +341,24 @@ with a test. New test feeds a camelCase-tool manifest and asserts the log line +
 new hygiene test runs discover() over the real core/local/modules trees so a bad shipped manifest
 fails CI, not only a by-hand check. testbox: 43/43 (modules, hygiene, boundaries), daemon 19/19.
 Sent to reviewer-2 and the integrator.
+
+## Temp-home leaks from vyred-present.js, built (23d1fa1b)
+
+teammates found 16 leaked temp-home dirs after rc.2's canonical run. Found two real, separate
+gaps rather than one:
+- test/vault-cli-totp.test.js's own vyred() helper had a weaker copy of tempHome's kill logic:
+  SIGTERM, a bounded wait, then rmSync regardless of whether the process had actually died -- the
+  same "deleted a home out from under a still-running vyred" bug tempHome's own stopDaemon was
+  already hardened against, just not reused here. Exported stopDaemon and moved this caller onto
+  it.
+- stopDaemon itself didn't confirm death after its own SIGKILL escalation before returning; added
+  one more bounded poll, now throws (does not remove the home) on the edge case where even SIGKILL
+  hasn't taken effect yet, rather than silently deleting into a still-live process.
+- The class of leak an outside kill of the whole test process causes has no in-process fix by
+  definition (no hook runs when the process itself is killed). test/tmp-guard.mjs is the one
+  mechanism that survives that -- it used to only report + fail the run; it now also reaps what
+  it finds (kills any live vyred.pid, removes the dir) so leaks self-heal run over run while still
+  failing the run that made them.
+New test/tmp-guard.test.js exercises the guard directly with its own nested before/after cycle.
+testbox: tmp-guard 2/2, vault-cli-totp 15/15, login-keychain+modules+cli+hygiene 49/49, docs:ref
+clean. Sent to reviewer-2 and the integrator.
