@@ -275,7 +275,8 @@ test("permission card: a neutral header with the dot, Permission and who; A allo
   assert.equal(text($(card, ".cv-ask-kind")), "Permission");
   assert.match(text($(card, ".cv-ask-meta")), /^kit · \d\d:\d\d$/);
   assert.equal(text($(card, ".ask-title")), "kit wants to run a command");
-  // Allow once A (primary), Always (outline, not ghost), Deny D (ghost); the keys as plain text, hidden from readers.
+  // Allow once A (primary), Always (outline, not ghost), Deny D (ghost); the keys as the shared
+  // kbd chip (key-hint.md, app-design's review - was plain text), hidden from readers.
   const allow = act(card, "allow"), always = act(card, "always"), deny = act(card, "deny");
   assert.match(allow.className, /btn-primary/);
   assert.doesNotMatch(always.className, /btn-ghost|btn-primary/, "Always is an outline button");
@@ -285,7 +286,7 @@ test("permission card: a neutral header with the dot, Permission and who; A allo
   assert.equal(text($(allow, ".cv-ask-key")), "A");
   assert.equal(text($(deny, ".cv-ask-key")), "D");
   assert.equal($(allow, ".cv-ask-key").getAttribute("aria-hidden"), "true");
-  assert.equal($(card, ".gate-actions .kbd"), null, "no boxed chip inside a button");
+  assert.ok($(card, ".gate-actions .kbd"), "the real key-hint chip, not plain text");
   assert.equal(card.onKey(key("a")), true);
   await settle();
   assert.deepEqual(api.of("threads.answer")[0].input, { ask: "ask_k1", decision: "allow", surface: "deck" });
