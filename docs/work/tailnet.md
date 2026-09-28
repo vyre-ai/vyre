@@ -97,6 +97,20 @@ nothing from this module (confirmed), names.discover is unaffected by anything h
 peers and hits the already-shipped GET /v1/whoami itself, a client-side tool still to build, not
 a change to /v1/whoami).
 
+Same day, right after: launch asked for one tool with an action/step param instead of four (to
+match onboard.name/claude/tailscale's own shape), and anywhere OK'd the design and asked verify to
+call their new `onboard.machine` once reachability is confirmed (ADR 0039 section 5, contract in
+their docs/design/anywhere.md; not yet on this branch). Dropped `core/join` entirely (5807096d);
+`onboard.join` now lives in core/onboard/index.js, one tool, reusing onboard.tailscale's own
+functions directly (no self-ctx.call) for the tailscale action. `becomeDevice` is an explicit
+opt-in flag on verify, defaulting false — my call, not yet confirmed by anywhere/launch: verify
+runs on both the connecting device and (potentially) the solo/server side checking a peer, and
+only the connecting side should ever demote itself to "device". Tests: test/onboard.test.js
+22/22 (6 new). No regressions: boundaries/hygiene/module-sdk/modules 48/48 (this Mac only —
+testbox is frozen for the integrator's rc.2 canonical suite; will sync and run there once it
+lifts). The box-role-only gap (a phone joining a Solo Mac) is unchanged by this refactor; still
+flagged below and to relay/anywhere/launch.
+
 28 Sep 2026, later: new top priority from the user's "Vyre anywhere" decision (see
 team/HANDOFF.md) — Tailscale is not needed for Solo; it comes in only when a second device or a
 server joins. My part: the "join" flow (guide Tailscale setup or offer the relay alternative,
@@ -350,11 +364,12 @@ only read-only checks on the test box.
 ## Needs from others
 
 - relay and anywhere/launch (the lead's "phone joins a Solo Mac" case): relay's module.json is
-  `roles: ["box"]`; onboard's is too. Neither loads on a Solo Mac (`role: "local"`). `join` can
-  forward to them the moment either grows a "local" role, but I don't own either module, and
-  onboard's other tools (you/claude/name/history/skip/finish/passkey/link) were built for a
-  box-owner's first-run wizard, so widening its roles list is a decision for whoever owns that
-  wizard's semantics on a Mac, not something I want to do unilaterally to someone else's module.
+  `roles: ["box"]`; onboard's (and so `onboard.join`'s) is too. Neither loads on a Solo Mac
+  (`role: "local"`). `onboard.join` can forward to relay the moment either grows a "local" role,
+  but I don't own relay, and onboard's other tools (you/claude/name/history/skip/finish/passkey/
+  link) were built for a box-owner's first-run wizard, so widening onboard's roles list is a
+  decision for whoever owns that wizard's semantics on a Mac (anywhere, going by their message),
+  not something I want to do unilaterally to a module most of which isn't mine.
 - launch: names.discover (peer scan + GET /v1/whoami, already shipped a20e5eb6) is still to build,
   on the client side that does the scanning; not blocked on anything of mine.
 - chat (via the lead): merge work/tailnet (owner-only streams) and work/federation-transcript
@@ -553,8 +568,10 @@ restart vyred, and check with `vyre call vault.grants.status`. `7301` is `vault.
 
 Listed by the area they touch, so the merge can go in order. Everything below is off by default.
 
-- **join** (own, new module, box role): tools `join.status`, `join.tailscale`, `join.relay`,
-  `join.verify`. Forwards only; reads nothing of its own, writes nothing.
+- **onboard**: tool `onboard.join` (`{ action: "status"|"tailscale"|"relay"|"verify", step?,
+  node?, becomeDevice? }`), box role (matches onboard's own). Forwards only, through onboard's own
+  functions for tailscale and ctx.call for relay/link/onboard.machine; reads and writes nothing of
+  its own.
 - **link** (own): tool `link.health`; `link.status` box gains `stableId`; `link.peers` rows gain
   `stable_id`; `parseWhois`/`capValues` in `core/link/transport.js` (whois carries `tags`, `caps`);
   link pairing refuses `tailnet-guest:*` and `tailnet:agent:*`.
