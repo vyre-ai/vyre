@@ -313,11 +313,38 @@ for (const driver of ["cli", "sdk"]) {
     // thread.status: paused, not stopped or failed - nothing wrong happened, threads.send resumes it.
     const paused = (await w.events(th.id)).filter(e => e.type === "thread.status").at(-1);
     assert.equal(paused.payload.status, "paused", JSON.stringify(paused));
+    const before = Date.now();
     await w.tool("threads.send", { thread: th.id, text: "back", surface: "deck" });
     await w.finished(th.id, 2);
+    // Resume reliability (task 1, measured on testbox): time to first token after an idle close
+    // is Vyre's own spawn/resume overhead against the fake claude, typically 200-300ms; 5s is a
+    // generous ceiling that only trips on a real regression, not testbox load noise.
+    assert.ok(Date.now() - before < 5000, `resuming after an idle close took ${Date.now() - before}ms`);
     assert.ok((await w.said(th.id)).includes("echo: back"));
     const resumed = w.launches().at(-1).argv;
     assert.equal(resumed[resumed.indexOf("--resume") + 1], th.id, "resumed, same session");
+  });
+
+  test(`${driver}: a real crash (killed, not stopped) is said as failed, and the next message still resumes it`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const pids = (await w.tool("probe.pids", {})).data;
+    const pid = Array.isArray(pids && pids.pids) ? pids.pids[0] : null;
+    assert.ok(pid, "a pid to kill");
+    process.kill(pid, "SIGKILL");
+    const stopped = await until(async () => (await w.events(th.id)).find(e => e.type === "thread.stopped"), "the crash");
+    assert.match(stopped.payload.reason, /SIGKILL|exited/, JSON.stringify(stopped.payload));
+    // Canonically "failed", never "paused" - a real crash must not read as an ordinary idle close.
+    const status = (await w.events(th.id)).filter(e => e.type === "thread.status").at(-1);
+    assert.equal(status.payload.status, "failed", JSON.stringify(status));
+    // Resume reliability: the next message still resumes it, and does so quickly (Vyre's own
+    // spawn overhead against the fake claude; 5s is a generous ceiling, not a tight budget).
+    const before = Date.now();
+    await w.tool("threads.send", { thread: th.id, text: "back after the crash", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.ok(Date.now() - before < 5000, `resuming after a crash took ${Date.now() - before}ms`);
+    assert.ok((await w.said(th.id)).includes("echo: back after the crash"));
   });
 
   test(`${driver}: the cap closes the longest-idle session to make room, and refuses when all are busy`, { skip }, async t => {
