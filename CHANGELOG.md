@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### sync: module.json's watches.hears was never a real schema key (it's watches.on)
+
+- Found while adding core/move's own manifest: `core/sync/module.json` declared its
+  `link.unpaired` subscription under `watches.hears`, which `packages/module-sdk/manifest.schema.json`
+  has never recognized (the real key is `watches.on`; `test/module-sdk.test.js`'s whole-repo
+  manifest scan silently allowed it since nothing else in the loader reads this field at runtime,
+  a purely declarative/metadata mismatch with no functional regression). Fixed the key. New test
+  (`core/sync/sync.test.js`) proves the underlying watch actually turns sync off on `link.unpair`
+  alone, not only reachable through `sync.consent { on: false }` as the existing coverage showed.
+
 #### link: link.unpair is person-only again, with one machine exception
 
 - `link.unpair` is back on PERSON_ONLY, so a model's shell on the box cannot forget a Mac by id.

@@ -5,7 +5,7 @@
   "roles": ["box", "local"],
   "requires": ["link"],
   "does": { "tools": ["sync.consent", "sync.delete", "sync.delete.import", "sync.scan", "sync.upload.plan", "sync.upload.start", "sync.upload.chunk", "sync.upload.cancel", "sync.upload.finish", "sync.send"] },
-  "watches": { "emits": ["sync.progress", "sync.revoked", "sync.deleted", "sync.sending", "sync.sent"], "hears": ["link.unpaired"] },
+  "watches": { "emits": ["sync.progress", "sync.revoked", "sync.deleted", "sync.sending", "sync.sent"], "on": ["link.unpaired"] },
   "shows": { "deck": [], "capsule": [], "cli": ["sync"] },
   "needs": {},
   "teaches": {

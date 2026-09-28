@@ -516,3 +516,21 @@ test("sync: Vyre Drive step 4 — a synced folder's confirmed mapping attaches i
   await call("sync.upload.finish", { upload: start3.data.upload, hash: h3 }, "tailnet:owner", { peer });
   assert.equal((await call("projects.list", {}, "cli")).data.projects.length, 1, "no project made for the unmapped folder");
 });
+
+test("sync: link.unpair really turns sync off on its own, through the watch module.json declares (not only reachable via sync.consent)", async t => {
+  const { call, db, events } = await boxRegistry(t);
+  const { name, peer: id } = await paired(call, { kind: "device" });
+  await call("sync.consent", { machine: name, on: true }, "cli");
+  const syncOn = () => /** @type {any} */ (db.prepare("SELECT sync_on FROM sync_peers WHERE peer = ?").get(id)).sync_on;
+  assert.equal(syncOn(), 1);
+  const revoked = [];
+  events.on("sync.revoked", e => revoked.push(e.payload));
+  // Straight to link.unpair, never through sync.consent { on: false } first: this is sync's own
+  // "link.unpaired" listener (core/sync/index.js's `off`) doing its job on its own, the exact
+  // behavior module.json's watches declaration (fixed from the invalid "hears" key to the real
+  // "on" one, this same commit) says this module does.
+  const unpaired = await call("link.unpair", { id }, "cli");
+  assert.ok(!unpaired.error, JSON.stringify(unpaired.error));
+  assert.equal(syncOn(), 0, "core/sync's own link.unpaired listener turned sync off");
+  assert.deepEqual(revoked, [{ machine: name }]);
+});
