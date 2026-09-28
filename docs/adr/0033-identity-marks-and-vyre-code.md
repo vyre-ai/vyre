@@ -84,6 +84,26 @@ the **Vyre code**:
   derivation, same ring geometry - "same hand," never a separately invented ring for the second
   family that needs one.
 
+**Frozen constants** (`round5/vyrecode2.js`, at a 600x600 canvas; `pwa` has ported these as
+fixed values into `deck/vyrecode/decode-core2.js`, not by importing the source, so a change here
+does not propagate automatically - see the note below): `FACE_D = 360` (`FACE_R = 180`),
+`RINGS = 2`, `PER_RING = 36`, `RING_R = [FACE_R+30, FACE_R+65]` = `[210, 245]`, `ticksSunburst`
+tick lengths `8 + level*7` for `level` 0-3 = `8, 15, 22, 29`.
+
+**A tight invariant, load-bearing for decode, not just visual:** the two rings sit only 35px
+apart (`RING_R[1] - RING_R[0]`), and a ring-0 tick draws outward from its base, so the longest
+mark (29px) reaches to `210 + 29 = 239` - only 6px short of ring 1's own base at 245. Any future
+change to `RING_R`'s gap, the tick-length formula, or `LEVELS` must keep the longest ring-0 mark
+clear of ring 1's base with margin, or ring-0 and ring-1 marks become visually and
+sample-wise ambiguous at the decoder. Treat 6px as the current, already-thin margin, not a target
+to shrink further.
+
+Because `pwa`'s decoder hardcodes a second copy of these numbers rather than importing
+`vyrecode2.js` directly, the two files can silently drift if either changes alone. Whoever next
+touches either file should either keep both in lockstep by hand (cross-check before merging, as
+`pwa` flagged) or - the safer fix - have the decoder import the constants from a single vendored
+copy of `vyrecode2.js` instead of restating them.
+
 ### 3. What the code carries, and what it doesn't
 
 The Vyre code's payload is a public identifier plus, for pairing, a one-time ticket: 64 bits of
