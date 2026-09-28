@@ -91,17 +91,23 @@ export function privateSocketDir() {
 
 /**
  * Whether a machine plays the server's part: the eight box-only modules, an always-on presence,
- * the owner's Deck served from here. True for `config.machine` "server" and "solo" (ADR 0039),
- * and for the legacy `config.role` value "box", so a caller not yet updated to read `machine`
- * still gets the right answer.
+ * the owner's Deck served from here, a real address other devices reach. True only for
+ * `config.machine` "server", and for the legacy `config.role` value "box".
+ *
+ * NOT true for "solo" (fixed 28 Sep after reviewer's HOLD on 80fd866e): a first pass made solo
+ * both a server and a device, which put the eight box-only modules -- the tailnet listener,
+ * public webhooks, the relay, the owner-claim flow -- on every existing Mac by default, with no
+ * choice made. Solo is the full local core and nothing that exposes this machine to anyone else;
+ * a person turns individual server parts on by choosing them (pairing a device, `vyre server
+ * here`), never by installing Vyre on a Mac.
  * @param {string} [machine]
  */
-export function isServer(machine) { return machine === "server" || machine === "solo" || machine === "box"; }
+export function isServer(machine) { return machine === "server" || machine === "box"; }
 
 /**
- * Whether a machine is a device of a server (which may be itself, under "solo"): the local-only
- * modules, Capsule, voice. True for `config.machine` "device" and "solo", and for the legacy
- * `config.role` value "local".
+ * Whether a machine is a device, of a server elsewhere or (under "solo") of no one: the
+ * local-only modules, Capsule, voice, presence's Mac rules. True for `config.machine` "device"
+ * and "solo", and for the legacy `config.role` value "local".
  * @param {string} [machine]
  */
 export function isDevice(machine) { return machine === "device" || machine === "solo" || machine === "local"; }
@@ -161,16 +167,23 @@ export function boxProjectsDir() {
   return path.join(workDir(), "projects");
 }
 
-/** Defaults: one person on one machine, nothing enabled that needs setting up. */
-/** @param {string} root */
-function defaults(root) {
+/**
+ * Defaults: one person on one machine, nothing enabled that needs setting up. `platform` is
+ * injectable (default `process.platform`) so a test can cover the darwin branch on any CI
+ * machine, the way `core/names/tailscale.js`'s `installCommand` already does.
+ * @param {string} root @param {string} [platform]
+ */
+function defaults(root, platform = process.platform) {
   const claude = claudeHome(root);
   return {
-    role: process.platform === "darwin" ? "local" : "box",
+    role: platform === "darwin" ? "local" : "box",
     // The person's explicit choice (ADR 0039), defaulted the same way `role` always was until
-    // they say otherwise: alone on a Mac is Solo; a provisioned box is already a server. Pairing
-    // a second device, or `vyre server here`, is what actually turns this into "server"/"device".
-    machine: process.platform === "darwin" ? "solo" : "server",
+    // they say otherwise: alone on a Mac is Solo, and stays exactly today's local role (no
+    // box-only module, no server-side presence) until they choose "server" themselves; a
+    // provisioned box is already a server, since there was never a solo mode for one. Reviewer's
+    // HOLD on 80fd866e: a first pass made solo BOTH a server and a device, which put the eight
+    // box-only modules on every existing Mac with no choice made -- fixed in isServer(), above.
+    machine: platform === "darwin" ? "solo" : "server",
     projectsDir: path.join(os.homedir(), "Vyre", "projects"),
     roots: [],
     me: { domains: [], emails: [] },
@@ -194,15 +207,16 @@ function defaults(root) {
  * The user's settings, merged over the defaults. A missing or unreadable file is not an error:
  * a fresh install has none, and a broken one should not stop vyred from starting, so it is
  * reported through `problems` and the defaults are used.
+ * @param {string} [root] @param {string} [platform] injectable for tests; see defaults().
  * @returns {Config & { problems: string[] }}
  */
-export function load(root = home()) {
+export function load(root = home(), platform = process.platform) {
   const p = paths(root);
   const problems = [];
   let user = {};
   try { user = JSON.parse(fs.readFileSync(p.config, "utf8")); }
   catch (e) { if (/** @type {any} */ (e).code !== "ENOENT") problems.push("config.json unreadable: " + /** @type {Error} */ (e).message); }
-  const d = defaults(root);
+  const d = defaults(root, platform);
   const c = {
     ...d, ...user,
     me: { ...d.me, ...(user.me || {}) },

@@ -57,8 +57,13 @@ Instead: `config.role` keeps its old two values and its old OS-guessed default, 
 - `"device"`: this machine is a device of a server elsewhere (another Mac, a Linux box, or a
   cloud VM). The box-only modules stay off; local-only modules (Capsule, voice, screen-mac,
   hands-mac) run here as before.
-- `"solo"`: this one machine is both. Every module that needs `"server"` or `"device"` runs;
-  nothing needs Tailscale because there is only one machine to reach.
+- `"solo"`: this one machine is both, but is a server to no one until the person says so. It
+  runs the full local core and none of the eight box-only modules; nothing needs Tailscale
+  because there is no second machine yet. **Fixed 28 Sep after reviewer's HOLD on 80fd866e:** a
+  first pass made solo both `isServer` and `isDevice`, which put the tailnet listener, public
+  webhooks, the relay and the owner-claim flow on every existing Mac by default, with no choice
+  made. `isServer("solo")` is now `false`; only `"server"` is a server. Solo becomes one only by
+  running `vyre server here` or pairing a second device (section 5).
 
 `defaults()` computes `machine` the same way `role` always was (`darwin` → `"solo"`, else →
 `"server"`), so a fresh install's behavior doesn't change until the person actually chooses
@@ -75,7 +80,7 @@ are active (`roleBuckets()`):
 |---|---|---|
 | `server` | yes | no |
 | `device` | no | yes |
-| `solo` | yes | yes |
+| `solo` | no | yes |
 
 Two new kernel helpers, `config.isServer(machine)` and `config.isDevice(machine)`, also accept
 the legacy `role` strings `"box"`/`"local"` as aliases, so a caller that hasn't moved to
@@ -137,8 +142,8 @@ the box's container does. `vyre server here` (new CLI, `core/onboard` or a small
    Energy Saver / Battery settings will let the Mac sleep regardless (best-effort detection
    only; this ADR does not open System Settings for the person).
 
-Undo: `vyre server here --undo` removes the LaunchAgent and login item and leaves `config.role`
-alone (a person moving off Mac-as-server chooses the new role through the move flow, not this
+Undo: `vyre server here --undo` removes the LaunchAgent and login item and leaves `config.machine`
+alone (a person moving off Mac-as-server chooses the new machine through the move flow, not this
 command).
 
 ### 4. Move-to-server is one flow, used twice

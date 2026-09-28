@@ -18,7 +18,9 @@ test("modules: a good manifest has no problems", () => {
 test("modules: roleBuckets maps config.machine onto the manifests' box/local vocabulary", () => {
   assert.deepEqual(roleBuckets("server"), ["box"]);
   assert.deepEqual(roleBuckets("device"), ["local"]);
-  assert.deepEqual(roleBuckets("solo").sort(), ["box", "local"]);
+  // Reviewer's HOLD on 80fd866e, 28 Sep: solo is the full local core and none of the eight
+  // box-only modules -- it is a device, never a server, until the person chooses otherwise.
+  assert.deepEqual(roleBuckets("solo"), ["local"]);
   // A raw legacy value (existing tests, or a caller not yet updated) passes straight through.
   assert.deepEqual(roleBuckets("box"), ["box"]);
   assert.deepEqual(roleBuckets("local"), ["local"]);

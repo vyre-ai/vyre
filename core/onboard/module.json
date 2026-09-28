@@ -2,7 +2,8 @@
   "name": "onboard",
   "version": "0.1.0",
   "roles": [
-    "box"
+    "box",
+    "local"
   ],
   "requires": [],
   "does": {

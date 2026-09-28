@@ -68,15 +68,48 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   inventing STALE_ALLOWED entries for things not yet built. docs/reference/* regenerated.
   test/docs-*.test.js 61/61 green.
 
+## Done (cont. 4): reviewer's HOLD on 80fd866e, fixed
+- HIGH, fixed: `isServer("solo")` was `true` (a first pass made solo both a server and a device),
+  which put the eight box-only modules -- the tailnet listener, public webhooks, the relay, the
+  owner-claim flow -- on every existing/fresh Mac by default. Now `isServer` is true only for
+  `"server"` and legacy `"box"`; `roleBuckets("solo")` is `["local"]` only, matching today's
+  local role exactly, per team-lead's binding semantics (Solo = full local core, zero
+  network-exposing parts, until the person chooses). `defaults()`/`load()` take an injectable
+  `platform` param (matching `core/names/tailscale.js`'s own pattern) so the darwin branch is
+  covered by tests on any CI machine -- reviewer asked for exactly this test.
+- Widened `core/onboard/module.json`'s `roles` to `["box","local"]` myself (it's mine, and
+  onboard.machine needs to actually load on a Solo Mac to be reachable at all) -- tailnet is
+  doing the same for `relay` separately; told them I'd already done onboard's so they don't
+  duplicate it.
+- Answered e2e/team-lead's "how does the Deck reach a Solo Mac day to day" in
+  docs/design/anywhere.md new section: Capsule keeps using the unix socket unchanged; the Deck
+  in a browser needs onboarding's loopback listener (core/onboard/loopback.js) generalized from
+  onboarding-only into an always-available `127.0.0.1` server on Solo/Server machines with no
+  tailnet address yet, with a new `"loopback"` caller label distinct from tailnet devices. Design
+  only -- not built, next item 1.
+- Fixed one stale `config.role` mention in ADR section 3 (Undo) that should have said
+  `config.machine`; rewrote section 1's solo bullet and bucket table to match the fix.
+- Verified on testbox (targeted files, respecting the freeze): core/config/config.test.js 19/19,
+  core/modules/modules.test.js 33/33, core/presence/presence.test.js 30/30,
+  test/onboard.test.js 16/16, test/boundaries.test.js 5/5, all green.
+- Sent to reviewer.
+
 ## Next
-1. The launchd plist + keep-awake installer (`vyre server here` CLI and `onboard.machine`'s
+1. Generalize the loopback listener for Solo/Server's day-to-day Deck access (see the new design
+   section) -- needs its own small sha; coordinating with tailnet since it's a fourth listener
+   type under ADR 0002's identity model.
+2. The launchd plist + keep-awake installer (`vyre server here` CLI and `onboard.machine`'s
    darwin+server path both call into it) -- once it lands, tell launch/tailnet `service` is real
    and update `onboard.machine`'s doc comment.
-2. Audit the eight modules (releases=core/apps, computers, glass, hooks, names, network,
-   onboard, relay) for Linux-only assumptions beyond the manifest gate (paths, container
-   networking) before claiming they run on macOS.
-3. `core/cli/commands/up.js`: stop assuming role=local means "find a box"; ask/default Solo.
-4. Coordinate the move engine contract (section 4) with federation.
+3. Audit the remaining six box-only modules (releases=core/apps, computers, glass, hooks,
+   network) for Linux-only assumptions beyond the manifest gate; decide (with tailnet, who's
+   already doing relay) whether any besides onboard/relay need widening to `"local"` too, and
+   whether `roleBuckets("server")` should also include `"local"` (a Mac-as-server keeping
+   Capsule/voice) -- open question, not yet decided.
+4. `core/cli/commands/up.js`: stop assuming role=local means "find a box"; ask/default Solo.
+5. Coordinate the move engine contract (section 4) with federation.
+6. Send launch the full contract they asked for: config.machine values and how they're set, the
+   "point at a server" connect call, and the vyre server here flow.
 
 ## Needs from others
 - federation: confirm the move engine can implement ADR 0039 section 4's four-piece contract
@@ -85,6 +118,8 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   only, federation's engine should not itself schedule any cleanup).
 - windows: Windows Solo needs the seam this ADR names (role mapping is OS-agnostic; `local/*`
   macOS-only modules need Windows equivalents, out of scope here).
+- tailnet: sign-off exchanged on widening onboard (done, mine) and relay (theirs) to `"local"`;
+  still open whether hooks/network/apps/computers/glass/names ever need the same treatment.
 
 ## Changed contracts
 - New, additive: `config.machine` (`"solo"|"server"|"device"`), alongside the unchanged

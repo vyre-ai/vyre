@@ -74,6 +74,34 @@ test("config: with no config.json, machine defaults the same way role's OS guess
   assert.equal(c.machine, process.platform === "darwin" ? "solo" : "server");
 });
 
+// Reviewer's HOLD on 80fd866e, 28 Sep: a fresh (or existing, unconfigured) Mac must behave
+// exactly like today's local role -- no box-only module loads, no server-side presence rules --
+// until the person makes an explicit choice. `platform` is injectable so this runs on any CI box.
+test("config: a fresh darwin install defaults to solo, which is NOT a server (today's Mac behavior, unchanged)", t => {
+  const root = tempHome(t);
+  const c = config.load(root, "darwin");
+  assert.equal(c.role, "local");
+  assert.equal(c.machine, "solo");
+  assert.equal(config.isServer(c.machine), false, "solo alone must never turn on the eight box-only modules");
+  assert.equal(config.isDevice(c.machine), true, "solo still gets the full local core");
+});
+
+test("config: an existing Mac's config.json (role local, no machine) migrates to solo, still not a server", t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local" }));
+  const c = config.load(root, "darwin");
+  assert.equal(c.machine, "solo");
+  assert.equal(config.isServer(c.machine), false);
+});
+
+test("config: a fresh non-darwin install (a real box) defaults to server, which IS a server", t => {
+  const root = tempHome(t);
+  const c = config.load(root, "linux");
+  assert.equal(c.role, "box");
+  assert.equal(c.machine, "server");
+  assert.equal(config.isServer(c.machine), true, "a provisioned box keeps running the eight box-only modules");
+});
+
 test("config: an unknown machine falls back and says so, independently of role", t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", machine: "container" }));
@@ -85,7 +113,7 @@ test("config: an unknown machine falls back and says so, independently of role",
 
 test("config: isServer and isDevice read machine, and alias the legacy role strings", () => {
   assert.equal(config.isServer("server"), true);
-  assert.equal(config.isServer("solo"), true);
+  assert.equal(config.isServer("solo"), false, "solo is not a server: fixed after reviewer's HOLD on 80fd866e");
   assert.equal(config.isServer("device"), false);
   assert.equal(config.isServer("box"), true, "legacy alias");
   assert.equal(config.isServer("local"), false, "legacy alias");

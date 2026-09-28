@@ -33,7 +33,9 @@ rung 2 directly (a cloud server is never `"solo"`; there's no local presence to 
 
 Three values, one config key (`config.machine`, ADR 0039 section 1):
 
-- **Solo**: "this computer does everything." Default for a fresh single-machine install.
+- **Solo**: "this computer does everything." Default for a fresh single-machine install. Solo is
+  never a server (`isServer("solo")` is `false`): no tailnet listener, no public webhooks, no
+  owner-claim flow, run on this machine until the person chooses one of the other two.
 - **Server**: "this computer is always on for the others." Chosen by running *vyre server here* or by finishing onboarding's "make this the server" path.
 - **Device**: "the server is elsewhere; this is one of my devices." Chosen automatically when
   a device successfully connects to an existing server (onboarding's "I have a server, connect
@@ -70,6 +72,40 @@ Agreed 28 Sep, for launch's onboarding cards and tailnet's *onboard.join*:
 - **"I already have a server" / "a cloud server"** hand off to tailnet's *onboard.join* (see
   ADR 0039 section 5): `status` to offer Tailscale vs. relay, `tailscale`/`relay` to run the
   connect step, `verify` to confirm reachability and flip `machine` as above.
+
+## How the Deck reaches a Solo Mac, day to day
+
+Raised by e2e, 28 Sep: this is core to "Solo works on day one." vyred today has three listeners
+(ADR 0002): the unix socket (same-machine callers: cli, capsule, local), the tailnet listener
+(the owner's own devices, once Tailscale is on), and onboarding's loopback HTTP server on
+`127.0.0.1:7300`, which closes once onboarding finishes. Solo never turns Tailscale on, so
+without a fourth answer, nothing would serve a browser Deck to alex once onboarding closes.
+
+Two surfaces, two different answers:
+
+- **The Capsule** (a native Mac app) already talks to vyred over the unix socket directly, the
+  same as `cli`. Nothing changes for Solo: this keeps working exactly as it does today, with or
+  without a browser involved at all.
+- **The Deck, in a browser**, needs an HTTP surface, because a browser cannot open a unix socket.
+  The fix: generalize onboarding's own loopback listener (`core/onboard/loopback.js`) from an
+  onboarding-only, close-when-finished server into an always-available one on Solo and Server
+  machines with no tailnet address yet: `127.0.0.1:<port>` (same port, same one-time-link and
+  session-cookie mechanism `onboard.link` already uses to hand a browser a session). A new small
+  CLI, *vyre open*, mints a fresh one-time link and opens the browser straight to it, the same
+  way `vyre up --box` already opens onboarding's link on a Mac. The session it grants carries a
+  new caller label (not `"onboard"`, which is onboarding-specific) -- call it `"loopback"` -- so
+  the registry's existing PERSON_ONLY/HUMAN_ONLY rules (ADR 0032) can tell it apart from a real
+  tailnet device: it is trusted the way `local` is (only a process on this same machine can ever
+  reach `127.0.0.1`'s listening socket -- no different a guarantee than the unix socket already
+  gives), never treated as `tailnet:<login>`.
+- Once a Solo machine becomes a **Server** (pairs a device, or runs *vyre server here*), the
+  tailnet listener takes over serving the Deck at the owner's real address, and the loopback
+  listener becomes exactly what it is today: an onboarding-only fallback, open just for the
+  window before the owner's own device first reaches the tailnet address.
+
+Not yet built: this needs its own small, reviewed sha (generalizing loopback.js, *vyre open*,
+the `"loopback"` caller label and its registry rule) -- next on my list, coordinating with
+tailnet since it extends ADR 0002's identity model with a fourth listener type.
 
 ## The move-to-server flow
 
