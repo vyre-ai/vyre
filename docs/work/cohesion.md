@@ -362,3 +362,23 @@ gaps rather than one:
 New test/tmp-guard.test.js exercises the guard directly with its own nested before/after cycle.
 testbox: tmp-guard 2/2, vault-cli-totp 15/15, login-keychain+modules+cli+hygiene 49/49, docs:ref
 clean. Sent to reviewer-2 and the integrator.
+
+## journey.test.js:221 CI failure, built (31cf7b38)
+
+Pulled the CI log myself (gh run view 36369891756 --repo vyre-ai/vyre --log-failed) rather than
+wait, per the lead's correction: this fails EVERY push on main's CI (c3a69611), both node 22 and
+24 jobs, and passes every time on testbox -- deterministic and environment-specific, not a flake.
+Compared the exact failure symbol-for-symbol across three runs (CI node22, CI node24, testbox
+node22): the JSON the subtest checks (box:null, no peer named) is byte-identical in all three --
+not a race, nothing about mock ordering or DNS differs. What differs is whether Node's own test
+runner honors `{todo}` for a doubly-nested subtest (test -> t.test -> t.test) whose assertion
+fails: CI's node22 doesn't honor it at all (plain failure); CI's node24 marks it todo but still
+counts it in the fail total; testbox's node22 build honors it fully. Three behaviors, same input,
+none of them a real product bug.
+
+Fix: replaced the throwing assert.match with a manual check reported via t.diagnostic(), which
+cannot fail a test on any Node version regardless of how todo is implemented there. Kept the todo
+option/description so a person still sees the gap, and the diagnostic line names which way it
+went, so the day up.js's mac() actually names the peer, that line says so and is the one to turn
+back into a real assertion. testbox: journey.test.js 7/9 pass, 1 pre-existing unrelated skip, 1
+todo clean with its diagnostic, 0 fail; boundaries 5/5. Sent to reviewer-2 and the integrator.
