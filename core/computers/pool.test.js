@@ -50,7 +50,12 @@ async function fakeComputerd({ bearer, reload = { agents: 1, revoked: [] }, disp
     let body = null; try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch {}
     calls.push({ method: req.method, path: req.url, authorization: String(req.headers.authorization || ""), body });
     if (req.headers.authorization !== `Bearer ${bearer()}`) { res.writeHead(401).end(); return; }
-    if (req.method === "POST" && req.url === "/agents/reload") { res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(reload)); return; }
+    if (req.method === "POST" && req.url === "/agents/reload") {
+      const r = typeof reload === "function" ? reload() : reload;
+      if (r && r.fail) { res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ error: { message: r.fail } })); return; }
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(r));
+      return;
+    }
     if (req.method === "POST" && req.url === "/agents/dispose") { res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(dispose)); return; }
     res.writeHead(404).end();
   });
@@ -526,11 +531,26 @@ test("pool: disposeContext posts to /agents/dispose with the agent id, and never
   const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
   ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
   const r1 = await pool.addAgent("browser-abc123", "kit-1", "alice");
+  await pool.addAgent("browser-abc123", "kit-2", "bob"); // stays a member, so removing kit-1 leaves the computer running
+  await pool.removeAgent("browser-abc123", "kit-1"); // dispose refuses a still-member agent (below)
 
   const disposed = await pool.disposeContext("browser-abc123", "kit-1");
   assert.equal(disposed, true);
   const call = server.calls.find(c => c.path === "/agents/dispose");
   assert.deepEqual(call.body, { id: "kit-1" });
+});
+
+test("pool: disposeContext refuses an agent still on the computer -- remove first, so a live client is never handed a fresh context out from under it (reviewer LOW 1, 29 Sep)", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token, dispose: { disposed: true } });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
+  await pool.addAgent("browser-abc123", "kit-1", "alice");
+
+  await assert.rejects(pool.disposeContext("browser-abc123", "kit-1"), /is still a member/);
+  assert.ok(!server.calls.some(c => c.path === "/agents/dispose"), "computerd was never asked");
 });
 
 test("pool: with no memberTokenKey configured, addAgent refuses cleanly rather than seeding with no derivation key", async t => {
@@ -609,4 +629,33 @@ test("pool: addAgent called again for an agent already on THIS SAME computer is 
   const r = await pool.addAgent("browser-abc123", "kit-1", "alice-renamed");
   assert.equal(r.generation, 1);
   assert.equal(pool.members("browser-abc123")[0].agent_name, "alice-renamed");
+});
+
+test("pool: a failed addAgent for a brand-new member leaves no member row and no freshly-made computer row behind (reviewer LOW 2, 29 Sep)", async t => {
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: 1 } } });
+  driver.crashing.add("browser-abc123"); // ensure()'s boot() throws, after the insert
+  const { pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") });
+
+  await assert.rejects(pool.addAgent("browser-abc123", "kit-1", "alice"), /stopped as soon as it started/);
+  assert.equal(pool.members("browser-abc123").length, 0, "the fresh member row was left behind");
+  assert.equal(pool.row("browser-abc123"), null, "the freshly-made computer row was left behind");
+});
+
+test("pool: a failed addAgent for an ALREADY-existing member restores its previous name and generation, rather than deleting it (reviewer LOW 2, 29 Sep)", async t => {
+  let pool;
+  const computer = { id: "browser-abc123" };
+  let calls = 0;
+  const server = await fakeComputerd({ bearer: () => pool.row(computer.id).helper_token, reload: () => (++calls > 1 ? { fail: "computerd is down" } : { agents: 1, revoked: [] }) });
+  t.after(server.close);
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: server.port } } });
+  ({ pool } = setup(t, { driver, memberTokenKey: () => Promise.resolve("k") }));
+  await pool.addAgent("browser-abc123", "kit-1", "alice");
+  const before = pool.members("browser-abc123")[0];
+
+  // The second call's own reload is the one that fails (calls > 1): the row IS a pre-existing
+  // member this time, not a fresh one, so the rollback must restore it, never delete it.
+  await assert.rejects(pool.addAgent("browser-abc123", "kit-1", "alice-renamed"), /computerd is down/);
+  const after = pool.members("browser-abc123")[0];
+  assert.equal(after.agent_name, before.agent_name, "the rename from the failed call stuck anyway");
+  assert.equal(after.generation, before.generation, "the failed call's generation bump stuck anyway");
 });

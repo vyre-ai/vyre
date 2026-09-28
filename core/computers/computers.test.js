@@ -555,8 +555,9 @@ test("computers: computers.member.add reaches pool.js and the vault (there is no
   assert.ok(r.error, "add succeeded with no vault running to derive a token from");
   assert.match(r.error.message, /vault/i);
   // ensure() itself (seedMembersBeforeStart, before the container ever starts) is what hits the
-  // vault -- so the row and container exist, created but never started, the same partial-
-  // construction shape any other seed failure here already leaves for the next attempt to retry.
-  const row = s.h.pool.row("browser-abc123");
-  assert.ok(row && row.kind === "browser" && row.state !== "running", "the row is in an unexpected shape after a failed add");
+  // vault. Since 29 Sep (reviewer LOW 2) a failed add for a brand-new member leaves no trace: the
+  // row it made for this call is rolled back, not left half-built for the next attempt to trip
+  // over -- a retry after fixing the vault starts from nothing, same as the very first try.
+  assert.equal(s.h.pool.row("browser-abc123"), null, "a failed add left a row behind");
+  assert.equal(s.h.pool.members("browser-abc123").length, 0, "a failed add left a member behind");
 });

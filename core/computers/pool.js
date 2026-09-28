@@ -753,6 +753,7 @@ export class Pool {
       if (elsewhere && elsewhere.computer_id !== computerId) {
         throw new Error(`${agentId} is already a member of ${elsewhere.computer_id}; remove it there first`);
       }
+      const madeComputer = !this.row(computerId);
       let r = this.row(computerId);
       if (!r) {
         const at = this.now();
@@ -762,15 +763,31 @@ export class Pool {
       } else if (r.kind !== "browser") {
         throw new Error(`${computerId} already exists and is not a shared computer`);
       }
-      // LOW 1 (reviewer, 28 Sep): every add gets a fresh generation from the ledger (bumpGeneration,
-      // which survives removal), never reusing one -- re-adding a removed agent, or an agent
-      // leaked from a past membership, must never re-derive the same token it had before.
+      // reviewer's LOW 2 (29 Sep): failure below (ensure() or the reseed can fail, e.g. no
+      // memberTokenKey or computerd unreachable) must not leave a member row nobody asked for
+      // behind. Remembered here, before the insert, so a genuinely new member is deleted outright
+      // on failure, and an already-existing one (this same call, retried, or any other reason
+      // addAgent runs again for a member already here) is put back exactly as it was rather than
+      // removed. The ledger's own bump is never rolled back -- it is meant to only ever go up, and
+      // a generation skipped by a failed attempt is not a bug, just one never handed out.
+      const before = /** @type {any} */ (this.db.prepare("SELECT agent_name, generation FROM computers_members WHERE computer_id = ? AND agent_id = ?").get(computerId, agentId));
       const generation = this.bumpGeneration(agentId);
       this.db.prepare(`INSERT INTO computers_members (computer_id, agent_id, agent_name, generation, added_at) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(agent_id) DO UPDATE SET agent_name = excluded.agent_name, generation = excluded.generation`)
         .run(computerId, agentId, agentName, generation, this.now());
-      await this.ensure(computerId);
-      await this.reseedMembers(computerId);
+      try {
+        await this.ensure(computerId);
+        await this.reseedMembers(computerId);
+      } catch (e) {
+        if (before) {
+          this.db.prepare("UPDATE computers_members SET agent_name = ?, generation = ? WHERE computer_id = ? AND agent_id = ?")
+            .run(before.agent_name, before.generation, computerId, agentId);
+        } else {
+          this.db.prepare("DELETE FROM computers_members WHERE computer_id = ? AND agent_id = ?").run(computerId, agentId);
+          if (madeComputer) this.db.prepare("DELETE FROM computers_computers WHERE agent = ?").run(computerId);
+        }
+        throw e;
+      }
       this.emit("computer.member-added", { computer: computerId, agent: agentId, generation });
       this.log(`${agentId} added to shared computer ${computerId} (generation ${generation})`);
       return { computer: computerId, generation };
@@ -942,6 +959,12 @@ export class Pool {
   async disposeContext(computerId, agentId) {
     const r = this.row(computerId);
     if (!r || r.kind !== "browser") throw new Error(`${computerId} is not a shared computer`);
+    // reviewer's LOW 1 (29 Sep): dispose wipes the context computerd hands out on the agent's
+    // NEXT connection, not the one it may be mid-session on right now -- disposing a still-member
+    // agent would hand its live client a fresh context out from under it without warning. Refuse
+    // while the agent is still on the computer; removeAgent first (which itself never disposes).
+    const stillMember = this.db.prepare("SELECT 1 FROM computers_members WHERE computer_id = ? AND agent_id = ?").get(computerId, agentId);
+    if (stillMember) throw new Error(`${agentId} is still a member of ${computerId}; remove it first, then dispose`);
     if (r.state !== "running" || !this.hosts.has(computerId)) throw new Error(`${computerId} is not running; nothing to tell computerd`);
     const h = this.endpoint(computerId).helper;
     const res = await this._helperFetch(new URL("/agents/dispose", h.url), {

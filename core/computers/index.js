@@ -314,7 +314,7 @@ export default {
       obj({ computer: str, agent: str }, ["computer", "agent"]),
       async i => pool.rotateAgent(String(i.computer), String(i.agent)));
 
-    tool("computers.member.dispose", "Delete one member's own browser context on a shared computer -- its cookies and logins. Call this only after showing the person what it removes; it is never a side effect of computers.member.remove. Does not itself close a live client.",
+    tool("computers.member.dispose", "Delete one member's own browser context on a shared computer -- its cookies and logins. Refuses while the agent is still a member; computers.member.remove it first. Call this only after showing the person what it removes; it is never a side effect of computers.member.remove. Does not itself close a live client.",
       obj({ computer: str, agent: str }, ["computer", "agent"]),
       async i => ({ disposed: await pool.disposeContext(String(i.computer), String(i.agent)) }));
 
