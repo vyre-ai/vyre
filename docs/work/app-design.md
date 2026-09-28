@@ -737,3 +737,22 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   (0612f4c2), told pwa plainly this is a hypothesis to test against their real harness, not a
   claimed fix - if it doesn't move the blur numbers, palette contrast or a scoped blur-tolerance
   gap (the same treatment perspective already gets) is next.
+
+## Now (28 Sep, confirmed: stroke-width fix worked, 14/17, only perspective left)
+
+- pwa's first rerun against the wider stroke was 0/17 - even pristine broke. Real cause was on
+  their side, not mine: a round line-cap always overshoots a tick's nominal length by its own cap
+  radius, and widening the stroke grew that overshoot 2.25px -> 3px, which against LEVELS' 6px
+  spacing was enough to misquantize several marks with zero degradation applied. pwa fixed it in
+  decode-core2.js (subtract TICK_CAP_RADIUS before quantizing, sha 5e5e2d86) - geometry.js already
+  exported that constant for exactly this, it just wasn't consumed on the decode side yet.
+- Result: **14/17**, matching round 5's original synthetic-fixture ceiling almost exactly, now on
+  the real palette and geometry. Remaining 3 failures are all perspective (15/30deg, worst combo)
+  - the same already-scoped homography gap from round 5's first pass, not a new one. Documented
+  the full close-out in ADR 0043 2e (08e9af7d).
+- pwa also wired renderPersonAvatar() to defaultAvatarOption() per 2d's ruling, falling back to
+  their old box-key guess until tailnet's identity fingerprint lands in the resolve record - as
+  expected, nothing further needed from app-design there.
+- Net: 0.1.1's Vyre-code work is design-complete on my side. What's left (15/17 needing
+  perspective/homography correction) is a decoder algorithm task, not render tuning - flagged to
+  the lead as such rather than continuing to iterate blindly on geometry/palette.
