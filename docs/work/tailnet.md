@@ -96,7 +96,30 @@ existed, only notes) and marked ADR 0026's Wink threat row mitigated. Swept em d
 relay code comments. Testbox: 187/187 (test/relay, relay/node, relay/worker, relay/client,
 core/relay, boundaries, hygiene, docs-check/build/index).
 
-Next: step 2, deploy the worker once team-lead says the review cleared (dry run, migration tag
+Step 2 prep done (ce15437b): dry run clean, namespace ids 26001-26003. Found relay.vyre.run has
+no DNS, no route and the account has no Workers at all; asked the lead to approve a Worker custom
+domain for relay.vyre.run before deploying. Nothing deployed.
+
+Step 3 plan (ADR 0046), building now:
+- core/relay/tailnet.js: mintKey/deleteNode/listNodes against the Tailscale API through an
+  injected fetch (seam.tailscaleApi), vault item `tailscale-mint-oauth` ({client_id,
+  client_secret}); joinWithKey on the desktop (0600 file in a 0700 mkdtemp, --auth-key=file:,
+  removed in finally; never joins if this machine's Tailscale is already signed in).
+- Box: a pairing hello with `tailnet: "join"` (kind app only) records a join grant on the
+  relay_devices row. The key comes only from an intercepted channel path, POST
+  /v1/relay/tailnet/key, handled before the router (no tool), device:<id> over the relay only,
+  grant required, refused on darwin, rate-capped. Answers { authKey, bindCode, address }.
+- Bind: identity.js classify gains a tag:vyre-device branch. A bound node (node_id + node_tagged)
+  is `device:<id>`; an unbound one reaches only POST /v1/tailnet/bind on the names listener,
+  which calls module-only relay.devices.bind with whois's stableId plus the device's bind code
+  (handed out only inside its Noise channel).
+- Revoke: forget() deletes a tagged node through the API (best effort; admission already fails
+  closed on the removed row); relay.devices.list clears a node the API no longer has (10 min cache).
+- Desktop: relay.join passes tailnet:"join", persists relay-device/box.json, then fetches the key
+  over a connect() channel, joins, binds; retried once at module start if not yet joined.
+- onboard policy: tagOwners tag:vyre-device and one grant to the box's port, when minting is set up.
+
+Old next line: step 2, deploy the worker once team-lead says the review cleared (dry run, migration tag
 v2 for PairTicket, check the worker name relay.vyre.run routes to, numeric rate-limit
 namespace_ids, smoke from the testbox only). Step 3, build ADR 0046.
 
