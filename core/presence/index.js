@@ -381,14 +381,20 @@ const spki = b64 => crypto.createPublicKey({ key: Buffer.from(String(b64), "base
 /** A signing key's id is its fingerprint, so one key cannot be enrolled twice. */
 export const fingerprint = b64 => crypto.createHash("sha256").update(Buffer.from(String(b64), "base64url")).digest("base64url").slice(0, 22);
 /**
- * The keys that sign a call themselves, the same message and rules for each: the Capsule's
- * Ed25519 key, and a phone's P-256 key held in its Secure Enclave or StrongBox (ADR 0018).
- * `check` is crypto.verify's algorithm and key for that kind.
+ * The keys that sign a call themselves, the same message and rules for each, both ES256 (P-256,
+ * DER signatures): the Capsule's key in the Mac's Secure Enclave, which asks for a live Touch ID
+ * on every signature (biometryCurrentSet), and a phone's key in its Secure Enclave or StrongBox
+ * (ADR 0018). Each is checked only against the public key enrolled for its id, never a key the
+ * proof carries. `check` is crypto.verify's algorithm and key for that kind.
  */
+const ES256 = pub => ["sha256", { key: spki(pub), dsaEncoding: /** @type {const} */ ("der") }];
 const SIGNERS = {
-  capsule: { label: "Capsule", check: pub => [null, spki(pub)] },
-  device: { label: "device", check: pub => ["sha256", { key: spki(pub), dsaEncoding: /** @type {const} */ ("der") }] },
+  capsule: { label: "Capsule", check: ES256 },
+  device: { label: "device", check: ES256 },
 };
+
+/** EC P-256 and nothing else: what a Secure Enclave or StrongBox holds. @param {crypto.KeyObject} key */
+const isP256 = key => key.asymmetricKeyType === "ec" && /** @type {any} */ (key.asymmetricKeyDetails || {}).namedCurve === "prime256v1";
 
 /** Load one of the helper modules lazily. Another file may not exist yet; a failed import is "unavailable". */
 async function lazy(spec, name) {
@@ -680,8 +686,11 @@ export class Presence {
     if (method === "capsule" || method === "device") {
       const { label, check } = SIGNERS[method];
       const { key, ts, nonce, sig } = proof;
-      const row = /** @type {any} */ (this.db.prepare("SELECT id, public_key FROM presence_keys WHERE id = ? AND kind = ?").get(String(key || ""), method));
+      const row = /** @type {any} */ (this.db.prepare("SELECT id, public_key, alg FROM presence_keys WHERE id = ? AND kind = ?").get(String(key || ""), method));
       if (!row) return refuse(`that ${label} key is not enrolled`);
+      // A Capsule key from before the Secure Enclave (Ed25519 in the login keychain, which any
+      // program running as the same user could use): never a proof again, whatever it signed.
+      if (Number(row.alg) !== -7) return refuse(`that ${label} key is an old kind Vyre no longer accepts; re-enroll the Capsule's key`);
       if (!/^\d{1,16}$/.test(String(ts || "")) || Math.abs(this.now() - Number(ts)) > CAPSULE_SKEW) return refuse(`the ${label} signature is too old or from the future`);
       if (!/^[A-Za-z0-9_-]{8,128}$/.test(String(nonce || ""))) return refuse(`the ${label} nonce is missing or malformed`);
       // One set for both kinds: a nonce is spent whichever key signed with it.
@@ -815,7 +824,7 @@ export class Presence {
   }
 
   /**
-   * Enroll a Capsule key (Ed25519), a phone's device key (P-256) or a passkey. Public keys only, as base64url SPKI DER.
+   * Enroll a Capsule key or a phone's device key (both P-256), or a passkey. Public keys only, as base64url SPKI DER.
    * @param {{ kind: string, name?: string, public_key: string, alg?: number, rp_id?: string, credential_id?: string }} k
    */
   enroll({ kind, name, public_key, alg, rp_id, credential_id, device = null, origin = null }) {
@@ -824,12 +833,14 @@ export class Presence {
     try { key = spki(public_key); } catch { throw new Error("public_key must be a base64url SPKI DER public key"); }
     let id;
     if (kind === "capsule") {
-      if (key.asymmetricKeyType !== "ed25519") throw new Error("a Capsule key must be Ed25519");
-      alg = -8; rp_id = undefined;
+      // The Capsule's Secure Enclave key: ES256 on P-256, nothing else (ADR 0040).
+      if (!isP256(key)) throw new Error("a Capsule key must be an EC P-256 key from the Secure Enclave");
+      if (alg !== undefined && alg !== -7) throw new Error("a Capsule key's alg must be -7 (ES256)");
+      alg = -7; rp_id = undefined;
       id = fingerprint(public_key);
     } else if (kind === "device") {
       // What a phone's hardware can hold: ES256 on P-256, nothing else (ADR 0018).
-      if (key.asymmetricKeyType !== "ec" || /** @type {any} */ (key.asymmetricKeyDetails || {}).namedCurve !== "prime256v1") throw new Error("a device key must be an EC P-256 key");
+      if (!isP256(key)) throw new Error("a device key must be an EC P-256 key");
       if (alg !== -7) throw new Error("a device key's alg must be -7 (ES256)");
       rp_id = undefined;
       id = fingerprint(public_key);

@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### presence: the Capsule's key is P-256 from the Secure Enclave; Ed25519 Capsule keys are refused
+
+- `presence.enroll` kind `capsule` takes only an EC P-256 key (alg -7), the kind the Mac's Secure
+  Enclave makes with a live Touch ID per signature. A `capsule` proof is an ES256 DER signature
+  over the same message as before, checked only against the key enrolled for its id. A Capsule
+  key enrolled as Ed25519 (kept in the login keychain, usable by any program running as the same
+  user) is refused with "re-enroll the Capsule's key". Lands with capsule-pro's Swift change.
+
 #### sync: module.json's watches.hears was never a real schema key (it's watches.on)
 
 - Found while adding core/move's own manifest: `core/sync/module.json` declared its

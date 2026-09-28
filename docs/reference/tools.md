@@ -2970,7 +2970,7 @@ Whether the device a call came from (its tailnet peer; none for this machine) ha
 
 ### `presence.enroll`
 
-Enroll a Capsule key (Ed25519), a phone's device key (P-256, alg -7) or a passkey, by its public key as base64url SPKI DER. Needs presence.
+Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a phone's device key (P-256, alg -7) or a passkey, by its public key as base64url SPKI DER. Needs presence.
 
 - Input:
   - `kind` one of "capsule", "passkey", "device", required

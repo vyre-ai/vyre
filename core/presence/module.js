@@ -27,7 +27,7 @@ export default {
     });
 
     ctx.tool("presence.enroll", {
-      description: "Enroll a Capsule key (Ed25519), a phone's device key (P-256, alg -7) or a passkey, by its public key as base64url SPKI DER. Needs presence.",
+      description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a phone's device key (P-256, alg -7) or a passkey, by its public key as base64url SPKI DER. Needs presence.",
       presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Capsule key"} named "${String(input.name || input.kind)}"` },
       input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str,
         device: str },

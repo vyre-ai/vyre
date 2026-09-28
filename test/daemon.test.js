@@ -324,12 +324,12 @@ test("daemon: vyred checks presence, so a forged caller cannot run a human-only 
   const tools = (await request("GET", "/v1/tools", undefined, { root })).data;
   assert.equal(tools.find(x => x.name === "held.release").presence, true);
 
-  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   d.registry.deps.db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, sign_count, created) VALUES (?,?,?,?,?,0,?)")
-    .run("capsule-test", "capsule", "Capsule", publicKey.export({ format: "der", type: "spki" }).toString("base64url"), -8, Date.now());
+    .run("capsule-test", "capsule", "Capsule", publicKey.export({ format: "der", type: "spki" }).toString("base64url"), -7, Date.now());
   const sign = (tool, inp) => {
     const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
-    const sig = crypto.sign(null, Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(inp)}\n${ts}\n${nonce}`), privateKey).toString("base64url");
+    const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(inp)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
     return `capsule key=capsule-test ts=${ts} nonce=${nonce} sig=${sig}`;
   };
   const header = sign("held.release", input);
