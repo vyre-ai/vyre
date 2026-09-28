@@ -620,6 +620,23 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 - Sent the new constants to pwa and launch directly. Not verified end-to-end against pwa's real
   decode harness on my side - that's theirs to re-run against the new numbers.
 
+## Now (28 Sep, geometry consolidated into one shared module)
+
+- Lead: the numbers drifted once already (the widen above), consolidate - one shared constants
+  module both the renderer and the decoder import, instead of a second hand-copied set.
+- Built `round5/geometry.js`: every constant and reach formula from ADR 0033 2a (`RING_R`,
+  `tickLength(level)`/`tickReach(level)`, `markerOffset(k)`/`markerRadius(k)`/`markerReach()`,
+  `outerReach()`) plus `validateGeometry()`, which recomputes the margin-percent and gap-clearance
+  invariants and throws a specific message if either regresses.
+- `vyrecode2.js` now imports from `geometry.js` (dropped its own copies of `RING_R`, the tick
+  length formula and the marker math) and calls `validateGeometry()` at load. Verified, not
+  assumed: re-rendered and got the identical 51.75px margin / 7.75px clearance as before the
+  refactor, and separately proved the guard actually fires by passing an impossible threshold and
+  confirming it throws the expected message (not just that the happy path still works).
+- Documented as ADR 0033 2b (be7fce03) and told pwa and launch to vendor `geometry.js` itself
+  (same pattern as their existing `rs.js`/`payload.js`/`identity.js`/`vyrecode2.js` vendoring) and
+  import from it rather than hand-copying values into `decode-core2.js` or a render-side copy.
+
 ## Now (28 Sep, launch built the pairing screen off ADR 0033)
 
 - `launch` vendored `rs.js`/`payload.js`/`identity.js`/`vyrecode2.js` into
