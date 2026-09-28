@@ -95,8 +95,19 @@ tests), 6a52ad23. Proposed the join interface to anywhere, launch and federation
 awaiting their OK): a new box tool `onboard.join` (HUMAN_ONLY), separate from the first-run
 wizard — `status` (tailscale + relay availability), `tailscale` with `step: policy|connect|lock`
 (delegates to today's onboard.tailscale logic), `relay` (delegates to relay.pair.start),
-`verify` (link.health, answers reachability + which path). Next: build once they answer; resume
-vitals' `/v1/whoami` probe and vitals surfacing meanwhile.
+`verify` (link.health, answers reachability + which path). Waiting on their answers before
+building `onboard.join` itself.
+
+Built meanwhile, the join flow's lowest primitive: `GET /v1/whoami` on the tailnet listener
+(core/names/service.js), for a device that thinks it just reached the box over Tailscale (or,
+later, the relay) to confirm it as owner or guest before the join UI goes further. Minimal by
+design: `{ kind, name }`, name only for the owner, never a login/tag/cap (those already reach the
+router via callerOf/peer for tools that need them). Refuses an agent's node outright (`403`, a
+computer has no join flow of its own) and rate-limits at 10/minute per node/stableId (`429`), since
+it needs no proof beyond whois. Tests: core/names/service.test.js 18/18 (4 new), plus
+test/boundaries.test.js, test/hygiene.test.js, test/guests.test.js, test/link-federation.test.js
+24/24 (no regressions). Next: wire `onboard.join.verify` (once agreed) to call it for the joining
+device's own reachability check, not just the box's.
 
 28 Sep 2026 (resumed; merged origin/main a3a844e4 into work/tailnet, clean). Wrote
 docs/design/tailscale-plan.md for the lead's max-benefit/simplest-install ask: verified all ten
@@ -586,6 +597,9 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 - **names** (27 Sep): config `network.origins` (default `["https://app.vyre.run"]`); `names()`
   takes `webSession`; the router's peer may carry `origin` and `webSession`; cross-origin
   `GET /v1/health` answers `{ reachable: true }` in the listener; `401 web_session_required`.
+- **names** (28 Sep): `GET /v1/whoami` on the direct tailnet path (not the hosted app's CORS
+  path): owner or guest only (an agent's node gets `403`), rate-limited 10/minute per
+  node/stableId (`429`), answers `{ kind, name }` (name only for the owner).
 - **deck** (27 Sep, pwa's file): deck/views/settings.js, the Network share row is titled
   "VyreDrive" and its line reads "VyreDrive (built on Tailscale's Taildrive) opens your box's
   folders in Finder on your Mac." (was "...open in Finder on your Mac through Taildrive."), in

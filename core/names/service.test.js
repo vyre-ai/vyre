@@ -228,6 +228,32 @@ test("names: the owner's browser cannot be made to call a tool from another site
   assert.equal(wrongHost.status, 421);
 });
 
+test("names: whoami answers the owner and a guest minimally, refuses an agent node, and rate-limits", async t => {
+  const w = world(t, { agentOf: async id => (id === "nKIT" ? "kit" : null) });
+  w.cfg.name = "alex";
+  w.ctx.config.computers = { tailnet: { enabled: true, tag: "tag:vyre-agent" } };
+  w.ctx.config.network.guests = { enabled: true, people: { "sam@example.com": { tools: [] } } };
+  await w.svc.tailscale();
+
+  const owner = fakeRes();
+  await w.svc.onRequest(fakeReq("100.101.1.2", "/v1/whoami"), owner);
+  assert.equal(owner.status, 200);
+  assert.deepEqual(JSON.parse(owner.body).data, { kind: "owner", name: "alex" });
+
+  const guest = fakeRes();
+  await w.svc.onRequest(fakeReq("100.101.1.3", "/v1/whoami", "GET", { "tailscale-user-login": "sam@example.com" }), guest);
+  assert.equal(guest.status, 200);
+  assert.deepEqual(JSON.parse(guest.body).data, { kind: "guest", name: null }, "a guest learns it is a guest, never the box's own name");
+
+  const agent = fakeRes();
+  await w.svc.onRequest(fakeReq("100.101.3.1", "/v1/whoami"), agent);
+  assert.equal(agent.status, 403, "an agent's node has no join flow of its own");
+
+  let last;
+  for (let i = 0; i < 11; i++) { last = fakeRes(); await w.svc.onRequest(fakeReq("100.101.1.2", "/v1/whoami"), last); }
+  assert.equal(last.status, 429, "an 11th call in the same minute is rate-limited");
+});
+
 test("names: whois naming this very node is refused even when the address list is stale", async () => {
   const { identifier } = await import("./identity.js");
   const id = identifier({ whois: async () => ({ login: "alex@example.com", tagged: false, node: "box", stableId: "nSELF" }),
