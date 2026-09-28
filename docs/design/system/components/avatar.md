@@ -118,6 +118,17 @@ None.
 The initial is derived, never typed. Names stay in their written case in text beside it ("kit ·
 Harlow Legal"). Never a nickname or emoji in the tile.
 
+## No AI-brand lookalikes
+
+Any generated mark drawn for an identity here (the assistant's, or anything else abstract rather
+than a face or a character) must not resemble a major AI brand's own mark: Gemini's four-point
+sparkle, Claude's starburst, OpenAI's knot, Copilot's shape, Perplexity's compass-like glyph.
+Checked before each round of generated-avatar work ships, not just once: a direction that reads
+fine alone can still land on a lookalike once it's redrawn or recoloured. (User, 2026-09-28: the
+first assistant mark round read as Gemini's sparkle; dropped for that reason, not a licence one,
+since it was original artwork.) This is a design review step, not a licence check, and applies
+whether or not the artwork itself is original.
+
 ## Accessibility
 
 - Decorative next to the printed name: `aria-hidden="true"`.
