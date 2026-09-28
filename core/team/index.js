@@ -882,7 +882,7 @@ export default {
     });
 
     ctx.tool("team.merge", {
-      description: "The integrator's own tool, once it believes it has resolved a merge conflict in its own worktree, or has run this project's own test command itself (vyred never runs it) and has its exit code: checks that directly (no conflict markers left, and — when a test command is set — that tests.exit_code was reported and is 0), then fast-forwards the project's own branch with a compare-and-swap. Refused, saying which, while a conflict remains, the test command was not actually run and reported, or it failed; call it again after fixing more. request may be left out; defaults to the integrator's one running request.",
+      description: "The integrator's own tool, once it believes it has resolved a merge conflict in its own worktree, or has run this project's own test command itself (vyred never runs it) and has its exit code: checks that directly (no conflict markers left, and, when a test command is set, that tests.exit_code was reported and is 0), then fast-forwards the project's own branch with a compare-and-swap. Refused, saying which, while a conflict remains, the test command was not actually run and reported, or it failed; call it again after fixing more. request may be left out; defaults to the integrator's one running request.",
       input: { type: "object", properties: { request: { type: "string" }, tests: { type: "object", properties: { exit_code: { type: "number" } } } } },
       run: async (i, meta) => {
         const r = ownRunning(meta, i.request);
