@@ -136,14 +136,14 @@ test("the old event shapes: no provider, no block, no uuid, no thread.state", ()
   assert.equal(s.state, "starting");
   assert.equal(s.provider, null);
   ev(s, "thread.sent", { text: "hi", surface: "deck" });
-  assert.equal(s.state, "running");
+  assert.equal(s.state, "working");
   ev(s, "ask.raised", { ask: "ask-1", tool: "Bash", summary: "rm -rf build" });
-  assert.equal(s.state, "waiting");
+  assert.equal(s.state, "asking");
   assert.equal(s.asks.get("ask-1").kind, "permission");
   assert.equal(s.byKey.get("a:ask-1").state, "open");
   ev(s, "ask.answered", { ask: "ask-1", decision: "allow", by: "deck" });
   assert.equal(s.asks.get("ask-1").state, "answered");
-  assert.equal(s.state, "running");
+  assert.equal(s.state, "working");
   ev(s, "ask.raised", { ask: "ask-2", tool: "Edit" });
   ev(s, "ask.answered", { ask: "ask-2", decision: "cancelled", by: "thread stopped" });
   assert.equal(s.asks.get("ask-2").state, "cancelled");
@@ -155,10 +155,10 @@ test("the old event shapes: no provider, no block, no uuid, no thread.state", ()
   const turn = s.byKey.get("turn:1");
   assert.equal(turn.cost_usd, 0.02);
   assert.equal(turn.reason, "end_turn");
-  assert.equal(s.state, "idle");
+  assert.equal(s.state, "waiting", "the turn ended: ready for you, canonical 'waiting'");
   ev(s, "thread.stopped", { code: 0, reason: "done" });
   assert.equal(s.stopped, "done");
-  assert.equal(s.state, "stopped");
+  assert.equal(s.state, "finished", "a one-shot's own done, mirrored from lib/thread-status.js");
 });
 
 test("the ADR 0030 shapes: started fields, thread.state wins over guesses, usage, reasoning", () => {
@@ -185,6 +185,24 @@ test("the ADR 0030 shapes: started fields, thread.state wins over guesses, usage
   applyBlocks(s, [{ seq: 7, kind: "thinking", ts: 0, text: "Thinking about it (transcript)." }]);
   assert.equal(s.byKey.get("r:msg_r:0").text, "Thinking about it (transcript).");
   assert.equal(s.byKey.get("r:msg_r:0").message, "msg_r");
+});
+
+test("thread.status is canonical (sessions' lib/thread-status.js): read as-is, and once seen, a legacy thread.state's word is ignored for good", () => {
+  const s = createSession(T);
+  ev(s, "thread.started", { provider: "claude", model: "opus", auth: "ambient" });
+  // A box that sends both (sessions' 6e2f8a71: "at the same point"): thread.status wins.
+  ev(s, "thread.state", { state: "waiting" }); // legacy word: an ask is open
+  ev(s, "thread.status", { status: "asking" }); // canonical word for the same thing
+  assert.equal(s.state, "asking");
+  // A later legacy thread.state (its own next transition) no longer overrides: canonical governs
+  // from here on, since a box that ever sent thread.status sends it for every future change too.
+  ev(s, "thread.state", { state: "idle" });
+  assert.equal(s.state, "asking", "the legacy word is ignored once thread.status has been seen");
+  ev(s, "thread.status", { status: "waiting" });
+  assert.equal(s.state, "waiting");
+  // The 8th state (28a8b4f8): paused, distinct from stopped and failed.
+  ev(s, "thread.status", { status: "paused" });
+  assert.equal(s.state, "paused");
 });
 
 test("re-reading the same blocks changes nothing; a tool's result arriving updates it in place", () => {
@@ -277,15 +295,17 @@ test("events for another thread, and events already applied, are skipped", () =>
   assert.deepEqual(applyEvent(s, /** @type {any} */ (null)), []);
 });
 
-test("a stop: a crash reads stopped (there is no failed state), streaming ends", () => {
+test("a stop: a real crash reads failed (28a8b4f8's reason shape, 'exited <code>'), an unrecognized reason reads plain stopped, streaming ends", () => {
   const s = createSession(T);
   ev(s, "thread.text", { message: "m", delta: "partial" });
-  ev(s, "thread.stopped", { reason: "crash" });
-  assert.equal(s.state, "stopped");
-  assert.equal(s.stopped, "crash");
+  ev(s, "thread.stopped", { reason: "exited 1" });
+  assert.equal(s.state, "failed", "a nonzero exit code, mirrored from lib/thread-status.js");
+  assert.equal(s.stopped, "exited 1");
   assert.equal(s.byKey.get("m:m:0").streaming, false);
   ev(s, "thread.started", {});
   assert.equal(s.stopped, null);
+  ev(s, "thread.stopped", { reason: "crash" });
+  assert.equal(s.state, "stopped", "an unrecognized reason (not the exit-code shape): the plain word, not a guess at failed");
 });
 
 test("a closed turn and a new open turn in one read each find their own item; a live call learns its length", () => {
@@ -313,11 +333,11 @@ test("a closed turn and a new open turn in one read each find their own item; a 
   assert.equal(turns[1].cost_usd, 0.02);
 });
 
-test("a session closed for idleness is idle, not stopped", () => {
+test("a session closed for idleness is paused, not stopped or failed", () => {
   const s = createSession(T);
   ev(s, "thread.started", { provider: "claude", model: "opus", auth: "subscription" });
   ev(s, "thread.stopped", { reason: "idle" });
-  assert.equal(s.state, "idle");
+  assert.equal(s.state, "paused", "mirrors lib/thread-status.js: resumable, not wrong");
   assert.equal(s.stopped, "idle");
 });
 
