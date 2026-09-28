@@ -373,3 +373,11 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   detail, never a freestanding message, so there's nothing left to mistake for the assistant's own
   words.
 - Ruling sent to teammates (msg_id 059cc442) and chat (msg_id a1f36f57).
+- Lead accepted the no-colour call but pushed back: distinct still has to read without colour.
+  Added, in the same two files (83434944): the tile is never shown bare, the role name always sits
+  beside it in text (handoff card, Agents place row, thread header); a "Teammate" tag (a plain Tag,
+  chip.md) follows the name in those same three places, once per surface, not per turn; the
+  handoff row is now an explicit exemption from tool-row's "folded run" (same as a plan or todo
+  list), always its own visible line, "collapsed" only ever meaning the reply detail is shut. The
+  Handoff row's icon is now the teammate's own avatar tile, not the generic sub-agent icon. Final
+  versions sent to teammates (msg_id bbfec377) and chat (msg_id ecd9d16b).
