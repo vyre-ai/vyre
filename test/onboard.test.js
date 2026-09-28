@@ -530,6 +530,20 @@ test("onboard: join relay mints a pairing code without needing to reach the rela
   assert.ok(r.data.expiresAt > Date.now());
 });
 
+test("onboard: join is the owner's alone — an agent with a valid presence proof is still refused, not just ungated", async t => {
+  const { root } = await box(t, { relay: { url: "ws://127.0.0.1:1" } }, present);
+  // `present` satisfies presence for anyone; onboard.join must refuse the agent itself, the same
+  // way relay.pair.start already does, whatever proof rides along (reviewer's HOLD on af604cf8).
+  for (const caller of ["mcp:agent:kit", "harness:agent:kit", "tailnet-guest:sam@example.com", "hook", "anonymous"]) {
+    const relay = await call("onboard.join", { action: "relay" }, { root, caller });
+    assert.equal(relay.error?.code, "denied", `relay via ${caller}`);
+    const connect = await call("onboard.join", { action: "tailscale", step: "connect" }, { root, caller });
+    assert.equal(connect.error?.code, "denied", `tailscale connect via ${caller}`);
+  }
+  // The owner's own surfaces still work.
+  assert.equal((await call("onboard.join", { action: "relay" }, { root, caller: "deck" })).error, undefined);
+});
+
 test("onboard: join status and verify never need presence; tailscale connect and relay always do", async t => {
   // The registry's own decision (core/presence's `required(tool, def, input)`), pure — no daemon,
   // dialog or fake tailscale needed.

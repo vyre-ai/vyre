@@ -36,6 +36,20 @@ const CREDENTIAL_READERS = ["agents", "threads"];
 // Never a tailnet caller, which a model on the owner's Mac is too.
 const HANDS_CODE = new Set(["onboard", "cli", "local"]);
 const GREETING = "Vyre is set up. Say hello to me in two or three sentences: who you are, and one thing you can do for me now.";
+// onboard.join hands out a Tailscale sign-in link and a relay pairing secret: the owner's alone,
+// as relay's own owner() guard already treats them (core/relay/index.js). callerAllowed's kind
+// check does not catch a Vyre-owned thread, whose caller reduces to "local" or "cli" the same as
+// a person at the terminal (core/modules/index.js callerKind strips "thread:<id>" as well as
+// "agent:<name>"), so this checks meta.agent and the caller string directly, the same signals
+// relay checks, not just the tool's `callers` list.
+const AGENT_CLAIM = /(?:^|[\s:])agent:/;
+const joinFail = (code, message) => Object.assign(new Error(message), { code });
+const joinOwnerOnly = (caller, meta, what) => {
+  const c = String(caller || "");
+  if (c.startsWith("tailnet-guest:")) throw joinFail("denied", `${what} is the owner's; a guest never sees it`);
+  if ((meta && meta.agent) || AGENT_CLAIM.test(c)) throw joinFail("denied", `"${c}" is an agent; ${what} is the owner's`);
+  if (["anonymous", "hook"].includes(c)) throw joinFail("denied", `${what} is the owner's`);
+};
 /**
  * The commands the Tailnet Lock card shows. The person runs them on their Mac; Vyre never runs
  * `lock init` or `lock sign`. The init line names the Mac's key (which only the Mac can show) and
@@ -394,11 +408,14 @@ export default {
      * relay and reachability go through ctx.call, since those live in other modules.
      */
     ctx.tool("onboard.join", {
-      description: "Adding a second device or a server: status says whether Tailscale or the relay is ready to pair with; tailscale (step: status|connect|policy|lock) is onboard.tailscale's own logic, callable any time; relay mints a QR/link pairing code; verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to \"device\" once reachability is confirmed (per ADR 0039 section 5 — never on the Solo/server side accepting a join).",
+      description: "Adding a second device or a server: status says whether Tailscale or the relay is ready to pair with; tailscale (step: status|connect|policy|lock) is onboard.tailscale's own logic, callable any time; relay mints a QR/link pairing code; verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to \"device\" once reachability is confirmed (per ADR 0039 section 5 — never on the Solo/server side accepting a join). The owner's alone: a guest, an agent (its own node, its thread, or an mcp/harness claim) and hook/anonymous callers are refused outright, whatever proof they carry, the same as relay.pair.start already refuses them.",
       input: obj({ action: { type: "string", enum: ["status", "tailscale", "relay", "verify"] }, step: { type: "string", enum: ["status", "connect", "policy", "lock"] }, node: { type: "string" }, becomeDevice: { type: "boolean" } }),
+      callers: ["cli", "local", "deck", "capsule"],
       presence: { when: i => i && (i.action === "relay" || (i.action === "tailscale" && i.step === "connect")),
         summary: async i => i && i.action === "relay" ? "Pair a new device with this box, without Tailscale" : "Connect this box to your Tailscale network" },
-      run: async ({ action = "status", step = "status", node, becomeDevice = false }, { caller }) => {
+      run: async ({ action = "status", step = "status", node, becomeDevice = false }, meta) => {
+        const { caller } = meta;
+        joinOwnerOnly(caller, meta, "adding a device or a server");
         if (action === "tailscale") {
           if (step === "lock") { const l = await lockStatus(); return { ...l, key: l.nodeKey, commands: lockCommands(l.nodeKey) }; }
           if (step === "connect") {
