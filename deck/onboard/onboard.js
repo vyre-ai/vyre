@@ -1054,7 +1054,11 @@ const SCREENS = {
       draw();
       const r = await attempt("github.connect", { name: "github" });
       starting = false;
-      if (!alive()) return;
+      // The step was left while this was in flight. A successful connect still opened a real
+      // sign-in at GitHub; cancel it the same way leaving the step does once it's already shown
+      // (cleanup.push(cancel) below), rather than leaving it to poll until it expires on its own
+      // (reviewer's nit on c3c830eb).
+      if (!alive()) { if (r.data?.id) attempt("github.connect.cancel", { id: r.data.id }); return; }
       const d = r.data || {};
       if (r.error || !d.id || !d.user_code || !d.verification_uri) {
         put(ghBox, h("div", { class: "lbl" }, "GitHub"), h("p", { class: "small muted" }, r.error ? (r.error.message || "Could not start GitHub sign-in.") : "GitHub did not return a code. Try again."));
