@@ -41,6 +41,22 @@ test catches it. 49/49 green, stable over 2 repeats. Sent to reviewer and integr
 integrator takes this head into the 0.1.1 stage (it was tracking 4d2defee already, waiting on
 exactly this clearance).
 
+**Resume 9 (2026-09-28): relaunched for "make teammates the default, and distinct in chat"**
+(the user's ask, HANDOFF.md 02:10). Wrote `docs/design/teammates.md`: (1) default — every
+project session gets `team.*` tools and a policy append whether or not the project has
+teammates yet, a new per-project `team.default` on/off, owned by **sessions** (session start,
+tool set, append plumbing — core/team only supplies the two append strings and the setting,
+per the module boundary); (2) `@role` in chat creates a teammate on first use via a plain
+`team.add` (Sonnet purpose, `isolation: folder`, minimal tools — deliberately NOT the ADR's
+Opus/worktree defaults, since this one is created on a guess) with a one-tap confirmation
+card, person-surface-only, same PERSON_ONLY check `team.add` already has; (3) distinct in
+chat — avatar + accent per teammate (hashed from role@project, never hand-picked), a handoff
+card ("→ asked design", "← design replied") over the same `threads_inbox` item rather than a
+plain chat message, one tap to that teammate's own thread. Sent to team-lead. Sequencing:
+sessions can start section 1 now (no dependency on 2/3); chat can build `@role` routing against
+today's `team.ask`/`team.add` and wire the setting check once sessions ships it; chat+app-design
+agree the visual system in parallel. Sent build asks to sessions, chat and app-design.
+
 **Resume 8 brief: all 5 steps done, except step 4** (switch to sessions' lib/project-id.js slug
 regex), still blocked — work/projects (e87f63df) is still not on main as of this check. Nothing
 else queued; watching for it to land.
