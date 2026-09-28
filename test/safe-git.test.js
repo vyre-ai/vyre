@@ -45,6 +45,8 @@ test("safe git: the vault's tracked and ignored checks never run a planted fsmon
   try { execFileSync("git", ["-C", dir, "ls-files", "--error-unmatch", "--", ".env"], { stdio: "ignore" }); } catch {}
   assert.ok(runs(ran).length > 0, "the planted fsmonitor runs under plain git");
   fs.rmSync(ran, { force: true });
+  assert.equal(gitSync(dir, ["ls-files", "--error-unmatch", "--", ".env"]).ok, true);
+  assert.equal(gitSync(dir, ["check-ignore", "-q", "--", ".env"]).ok, false);
   assert.deepEqual(gitState(path.join(dir, ".env")), { tracked: true, ignored: false });
   assert.deepEqual(runs(ran), [], "nothing planted ran");
 });
