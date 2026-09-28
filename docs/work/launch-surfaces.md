@@ -230,6 +230,15 @@ Filled in as each lands.
     review rather than a scripted browser test (no harness exists for `site/app.js`).
   - `site/robots.txt`, `site/sitemap.xml`: added, neither existed.
   - `theme-color`: already present on all three pages, turned out to need nothing.
+- "Pair with a code" gated on `onboard.status.can.relayJoin` (the lead's ask, 28 Sep): new
+  `deck/js/join-caps.js` (`canRelayJoin`, pure, false or missing both read false, never a platform
+  guess). The live step now shows the tailnet-name field alone with the reason as one muted line
+  when it's false, and only offers the code-pairing choice when it's true.
+  `deck/fixtures/onboard.json`'s `onboard.status` gained the real `can` block (false, today's
+  Mac case); `deck/fixtures/onboard-relay-true.json` added for the unit test's true case (not
+  wired into the live fixture loader, which is one file per module). Tests:
+  `deck/js/join-caps.test.js` (5/5, both fixture cases plus missing/null/non-bool), run on
+  testbox; `test/onboard.test.js` re-run clean after (15/15). Sent to reviewer-2 with 68c2333f.
 
 ## Doing
 

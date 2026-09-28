@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Onboarding: "Pair with a code" hides until anywhere says the machine can use it
+
+- New `deck/js/join-caps.js` (`canRelayJoin`): reads `onboard.status.can.relayJoin`, false or
+  missing both read as false, never a guess from platform. The "How will Vyre run?" screen now
+  shows the tailnet-name field alone, with the reason as one muted line, whenever it's false;
+  the code-pairing choice only appears once it's true.
+- `deck/fixtures/onboard.json`'s `onboard.status` gained `can: {relayJoin, relayJoinReason}`
+  (false, today's real Mac case). `deck/fixtures/onboard-relay-true.json` added as the
+  join-caps unit test's fixture for the true case (not wired into the live fixture loader, which
+  is one file per module).
+- `deck/js/join-caps.test.js`: both cases, plus missing/null status and a non-bool truthy value.
+
 #### Onboarding: relay.join's confirmation shows the box name, relay and key fingerprint
 
 - The "pair with a code" path now calls relay.join through the presence flow

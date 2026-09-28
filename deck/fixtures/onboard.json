@@ -3,6 +3,7 @@
     "mode": "loopback",
     "role": "box",
     "machine": "solo",
+    "can": { "relayJoin": false, "relayJoinReason": "Not available on a Mac yet. Needs vyre-core." },
     "owner": null,
     "address": null,
     "host": "alex-box",

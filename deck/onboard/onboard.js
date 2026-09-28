@@ -10,6 +10,7 @@ import { base, when, plural } from "../js/fmt.js";
 import { pairRequests } from "../js/pair.js";
 import qrcode from "../vendor/qrcode.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
+import { canRelayJoin } from "../js/join-caps.js";
 
 // Reconciled with docs/design/onboarding-v2.md's 10-step table (the lead, 29 Sep): this array's
 // order now matches it exactly, with two client screens standing in for the doc's single step 2
@@ -382,7 +383,11 @@ const SCREENS = {
   //       - Pair with a code: one call, `relay.join{url, becomeDevice:true}`, straight from this
   //         screen — no separate verify step, since a successful pairing already proves
   //         reachability. `url` is the pairing code/link (relay.pair.start or
-  //         onboard.join{action:"relay"}, minted on the server side, pasted here).
+  //         onboard.join{action:"relay"}, minted on the server side, pasted here). Shown only
+  //         when `onboard.status.can.relayJoin` is true (see js/join-caps.js): false on a Mac
+  //         until vyre-core (relay.join itself also refuses there, as a backstop), a missing
+  //         field treated as false. Not shipped by anywhere yet, so this hides unconditionally
+  //         today — no guessed platform check stands in for the real signal.
   //     Both paths pass `becomeDevice:true` and land the same way. Neither existed as real
   //     tools when this screen was first built (28 Sep); onboard.join is real-shaped but not on
   //     main yet, relay.join is real-shaped and not on main yet either.
@@ -396,7 +401,12 @@ const SCREENS = {
     const st = h("div", { class: "check-line", "aria-live": "polite" });
     col.append(body, st);
     let choice = state.live;
-    let via = state.deviceVia;
+    // Server-decided (the lead, 28 Sep): can.relayJoin, false on a Mac until vyre-core, a
+    // missing field treated the same as false (see deck/js/join-caps.js). Not shipped by
+    // anywhere yet, so this reads false today on every machine — the option stays hidden until
+    // it lands, not a guess at what platform this is.
+    const relay = canRelayJoin(state.status);
+    let via = state.deviceVia === "relay" && !relay.allowed ? "tailscale" : state.deviceVia;
     const nodeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "server-node", placeholder: "kit", autocomplete: "off",
       value: state.serverNode, oninput: () => { state.serverNode = nodeIn.value; } }));
     const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "pair-code", placeholder: "Paste the code your server showed", autocomplete: "off" }));
@@ -454,11 +464,16 @@ const SCREENS = {
       opt("solo", "Just on this computer"),
       opt("server", "This computer stays on for me, and I'll use other devices too"),
       opt("device", "I already have a Vyre server",
-        h("div", { class: "choice", role: "radiogroup", "aria-label": "How to join it" },
-          viaOpt("tailscale", "Same Tailscale network",
-            h("div", { class: "field" }, h("label", { for: "server-node" }, "Your server's tailnet name"), nodeIn)),
-          viaOpt("relay", "Pair with a code",
-            h("div", { class: "field" }, h("label", { for: "pair-code" }, "Pairing code"), codeIn)))));
+        relay.allowed
+          ? h("div", { class: "choice", role: "radiogroup", "aria-label": "How to join it" },
+              viaOpt("tailscale", "Same Tailscale network",
+                h("div", { class: "field" }, h("label", { for: "server-node" }, "Your server's tailnet name"), nodeIn)),
+              viaOpt("relay", "Pair with a code",
+                h("div", { class: "field" }, h("label", { for: "pair-code" }, "Pairing code"), codeIn)))
+          : [
+              h("div", { class: "field" }, h("label", { for: "server-node" }, "Your server's tailnet name"), nodeIn),
+              relay.reason ? h("p", { class: "small muted" }, relay.reason) : null,
+            ]));
     put(body, choiceEl());
     syncFoot();
   },
