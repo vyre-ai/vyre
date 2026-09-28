@@ -209,6 +209,17 @@ Plan (to the lead before building):
   cookie store is keychain-encrypted, Safari's is TCC-protected; IndexedDB keys are not). The
   session raises the bar from one curl to stealing a browser's store.
 
+## Doing (28 Sep, e2e2, after the RESUME 10 restart)
+
+- ADR 0040 revised on 91c02d81 against the settled decisions: presence keys and the Capsule pin
+  re-enrolled not copied, vault imported after a shown summary plus a post-install proof; the
+  Capsule signing key held by vyre-core; install through `vyre up` also checks the Ed25519
+  signature; a root-only updater daemon (code stays root-owned); Deck writes carry a proof; the
+  computers/spawner/dockerproxy rule; the phone-join and relay sequencing. docs:ref regenerated
+  (the stale #6-vault-migration and #open-questions anchors). Sent to the reviewer.
+- Next: the 9bfc452e LOW (key type on paired-phone presence rows, refusal wording per device),
+  then the P-256 message format with capsule-pro.
+
 ## Doing (27 Sep, after logout 4)
 
 Done this session:

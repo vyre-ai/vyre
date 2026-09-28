@@ -39,8 +39,10 @@ the person's login but never as `vyre`) cannot write vyred's db or code either w
 
 A new LaunchDaemon, `vyre-core`, runs as its own system account (`_vyre`), started at boot,
 independent of any login session. Its code and data live under
-`/Library/Application Support/Vyre` (root:wheel, 0700), including a Node runtime it bundles
-itself (never the person's own `node`, which they can replace). Nothing under this path is
+`/Library/Application Support/Vyre`: the code, including a Node runtime it bundles itself
+(never the person's own `node`, which they can replace), is root:wheel and not writable by
+`_vyre` either, so a bug in core can't rewrite core; the data directory is `_vyre:_vyre` 0700,
+readable by nobody else. Nothing under this path is
 writable by the person's uid, by a model's shell running as that uid, or by `vyre-agent`.
 
 vyre-core holds no business logic and loads no third-party modules, ever -- it is the smallest
@@ -83,10 +85,15 @@ link.call's caller-labeling on the receiving end can't be forged to claim a trus
 local) it didn't earn -- the same ancestry concern this whole ADR exists to fix for the local
 socket, checked once more at the relay boundary.
 
-**Not covered by this pass at all** (found while inventorying, not investigated): `core/computers`
-(agent sandbox tokens -- COMPUTERD_TOKEN and VNC_PASSWORD were a live HIGH earlier this cycle,
-glass-hotfix 57dc12c3; may belong in vyre-core too), `core/spawner` (the privileged spawn socket),
-`core/dockerproxy` (the bearer file). A second pass should check these before GA.
+**Stays out, decided for now:** `recall`, `memory`, `files`, `sessions` and `projects`. They need
+the person's own 0700 home, and a model that can already read that home gains nothing from them.
+
+**`computers`, `spawner` and `dockerproxy`: the rule.** These hold agent sandbox tokens
+(COMPUTERD_TOKEN, VNC_PASSWORD), the privileged spawn socket and the Docker bearer file. On a Mac
+today none of them runs: agent computers live on the box, where they're already outside the
+person's uid. So they stay out of vyre-core for now. The day any of them runs on a Mac
+("server on the Mac"), its token or socket moves into vyre-core in the same release, by this
+section's module rule. Until then, a Mac build refuses to start them.
 
 ### 3. The protocol between vyred and vyre-core
 
@@ -115,6 +122,14 @@ verdicts.**
 - **vyred may proxy READS only, never a privileged write.** A read has nothing to forge (it
   returns data, not permission), so vyred relaying `vault.list` costs nothing; vyred relaying
   `vault.reveal` would let it hand out a secret core never itself verified the request for.
+  One limit: vyred may only proxy a read that ANY process running as the owner's uid could ask
+  core for directly anyway. A read whose caller rule today is tighter than that (person-only,
+  presence) is a privileged call for this section's purposes, and goes to core directly or with
+  a proof.
+- **A Deck write carries a proof.** The Deck's browser can't open a unix socket, so its writes
+  pass through vyred's loopback. vyred is then only a pipe: the write must carry a presence
+  proof (passkey or phone Approve) over the exact request, and core verifies it against its own
+  keys. A Deck write with no proof is refused by core, whatever vyred says about it.
 
 **Stated plainly, since it is easy to miss**: on a Mac, every vyred-side control (the harness
 floor, settings, caller labels, the ancestry check inside vyred itself) is **advisory** against a
@@ -147,40 +162,47 @@ same-uid ad-hoc binary can read, so ownership of the key alone protects nothing;
 finger, required on every signature, does. This applies to both keys this project has today: the
 Capsule's own presence key and `core/link/se`'s CLI key.
 
-**Until a Capsule build has a real, stable signing identity, `presence.capsule.pin` refuses it
-outright**, with a plain message ("This Capsule build can't prove who it is yet"), rather than
-accepting a pin from an ad-hoc-signed build at all. The stable identity itself is owned by
-vyre-core, not the person's login keychain, per this ADR's own direction -- it is not solved by
-this section, only required by it; the ad-hoc-vs-real check reads the connecting Capsule's own
-code signature (`codesign -dvvv` reports `Signature=adhoc` vs a certificate chain), and which
-side of the connection carries that check (core, since it is the one enforcing) is an
-implementation detail for whoever builds section 3's protocol, not decided here.
+**The Capsule's signing identity belongs to vyre-core** (decided 28 Sep). There is no Apple
+Developer ID, and a "Vyre Local" certificate in the login keychain is readable by the same uid as
+a model, so self-signing with it proves nothing. Instead vyre-core generates and holds its own
+code-signing key under its root-owned tree, and signs the Capsule at install and at every update.
+The keychain ACL of the Capsule's presence key then binds to that designated requirement, which
+no same-uid binary can meet.
 
-The Capsule's own build identity (this cycle's Capsule pin) is a case of the signing pattern
-already: the Capsule signs with its enrolled `capsule`-kind key (Touch ID, one prompt, at
-`vyre capsule install`); vyre-core verifies the signature and the Capsule's OWN read of its
-current cdhash (SecCodeCopySelf, the reviewer's condition on 595f1f4c) before trusting the pin,
-never a bare claim in the request. Developer ID signing is optional, for later; a live-biometry
-Secure Enclave key is the anchor now.
+**Until then, `presence.capsule.pin` refuses an ad-hoc or unsigned Capsule outright**, with a
+plain message ("This Capsule build can't prove who it is yet"). vyred does this today (8cf64fe9);
+once vyre-core exists, core does it, since core is the side enforcing. The check reads the
+connecting Capsule's own code signature (`codesign -dvvv` reports `Signature=adhoc` or a
+certificate chain) and refuses a cdhash that isn't the connecting binary's.
+
+The Capsule pin itself follows the signing pattern: the Capsule signs with its enrolled
+`capsule`-kind key, a P-256 Secure Enclave key (ES256) that asks for Touch ID on every use, not
+once at `vyre capsule install`. vyre-core verifies the signature and the Capsule's OWN read of
+its current cdhash (SecCodeCopySelf, the reviewer's condition on 595f1f4c) before trusting the
+pin, never a bare claim in the request. Developer ID signing is optional, for later.
 
 ### 5. Install and update, with no Apple Developer ID
 
 No pkg, signed or otherwise. An unsigned .pkg gets the same Gatekeeper block an unsigned .app
-does; notarization is exactly the thing we don't have. Install is a plain script (the same shape
-as scripts/install-box.sh already uses on Linux, which asks for sudo to touch Docker and
-root-owned paths there): sudo once, interactively, for one admin-password prompt. That prompt is
-the trust moment -- there is no weaker version of it that still means anything. The script:
+does; notarization is exactly the thing we don't have. Install runs from `vyre up` on the Mac (the
+same shape as scripts/install-box.sh on Linux, which asks for sudo to touch Docker and
+root-owned paths there): sudo once, interactively, for one admin-password prompt. Updates never
+ask for it again. `vyre up`:
 
-1. Downloads the vyre-core release tarball, checked against SHA256SUMS the same way
-   install-box.sh already checks every downloaded file.
+1. Downloads the vyre-core release tarball, checks it against SHA256SUMS the same way
+   install-box.sh already checks every downloaded file, AND verifies its detached Ed25519
+   signature against the release public key the CLI itself ships with. SHA256SUMS comes from the
+   same release page as the tarball, so on its own it only catches a broken download.
 2. Under the one sudo: creates the `_vyre` system account (`sysadminctl -addUser` or
    `dscl . -create`, no login shell, no home directory outside its own tree), writes
-   `/Library/Application Support/Vyre` (root:wheel or `_vyre:_vyre`, 0700), places vyre-core's
+   `/Library/Application Support/Vyre` (code root:wheel, data `_vyre:_vyre` 0700, per section 1), places vyre-core's
    code, its bundled Node (never the person's own `node` on `$PATH`, which their own uid can
    replace), and `/Library/LaunchDaemons/com.vyre.core.plist` (RunAtLoad,
-   `KeepAlive: {SuccessfulExit: false}`, running as `_vyre`).
+   `KeepAlive: {SuccessfulExit: false}`, running as `_vyre`), plus the root updater's
+   `/Library/LaunchDaemons/com.vyre.core.update.plist` (section 5's update flow).
 3. `launchctl bootstrap system /Library/LaunchDaemons/com.vyre.core.plist` starts it
    immediately; no reboot needed, and it now survives one on its own.
+4. vyre-core creates its Capsule signing key (section 4) and re-signs the installed Capsule.
 
 `SMAppService` is out, not because it requires a Developer ID outright, but because its approval
 UI (System Settings > Login Items, needing the person's explicit "allow") is built around
@@ -205,11 +227,15 @@ anything that can't be rotated blind.
    assumptions that path doesn't have anyway since it already handles an unsigned tarball).
 2. Verify the signature against the baked-in public key. Fail closed: a bad or missing signature
    is a refusal, no partial apply, and it says why in its own log, never silently.
-3. Only after that: extract to a fresh versioned directory under vyre-core's own tree (never
+3. Only after that, the apply step runs. vyre-core can't write its own code (section 1), so a
+   second LaunchDaemon, `com.vyre.core.update`, runs as root and does only this: it re-verifies
+   the signature on the staged tarball itself (it never trusts core's verdict), then extracts it
+   to a fresh versioned directory under the root-owned code tree (never
    overwrite files in place -- the same tmp-then-rename atomicity core/config/index.js's `save()`
    already uses for one file, extended to a whole directory: write the new version beside the
-   old, then one atomic rename/symlink flip to make it current), then `launchctl kickstart`
-   itself to restart on the new version. A crash between "extracted" and "flipped" leaves the OLD
+   old, then one atomic rename/symlink flip to make it current), then `launchctl kickstart`s
+   vyre-core on the new version. The updater has no network access and no socket of its own; it
+   starts when a file lands in the staging directory `_vyre` owns (a launchd WatchPaths job). A crash between "extracted" and "flipped" leaves the OLD
    version current -- KeepAlive restarts exactly what was running before, never a half-written one.
 4. The person-side LaunchAgent (vyred itself) updates through the ordinary npm/tarball path it
    already has, unaffected by any of this -- it holds no secrets vyre-core doesn't already own,
@@ -226,39 +252,47 @@ update mechanism.
 
 ### 6. Vault migration sequence and its failure modes
 
-**When it runs**: inside the same sudo moment as install (section 5, step 2), while the
-installer already has root and the person has already proven presence by typing their admin
-password -- there is no weaker moment to reuse, so this doesn't need ITS OWN presence proof; the
-one that already happened covers it, the same reasoning ADR 0032 already uses for onboarding's
-one-time code (a different, but equally load-bearing, one-time trust moment).
+**The rule (reviewer, 28 Sep): nothing that is a trust anchor is copied.** The old
+`~/.vyre/vyre.db` was writable by a model, so any row in it may be one a model put there. The
+admin password doesn't settle that: it proves someone could run sudo, not which rows are real.
 
-**The sequence**:
+- **Presence keys and the Capsule pin are re-enrolled, never copied.** After install, the person
+  enrolls again (Touch ID in the Capsule, the CLI's Secure Enclave key, passkeys, phones), and
+  core writes fresh rows. Old `presence_*` rows are ignored.
+- **Sessions, pairing codes and relay nonces are dropped.** The person signs in again.
+- **Vault items, grants and devices are imported only after a shown summary and a proof.**
 
-1. Before touching anything, the installer copies the person-uid's whole `~/.vyre/vyre.db` file
-   (not just the vault tables) to a timestamped path under vyre-core's own tree, root-owned,
-   unreadable by the person's uid from that moment on -- a safety copy, not the migration itself.
-2. It opens that copy and vyre-core's fresh db side by side, and upserts every `vault_*` row (by
+**The sequence**, after install and re-enrollment:
+
+1. The installer copies the person-uid's whole `~/.vyre/vyre.db` file (not just the vault
+   tables) to a timestamped path under vyre-core's own tree, root-owned, unreadable by the
+   person's uid from that moment on. This is a safety copy, not the migration itself.
+2. core reads the copy and shows the person a summary: how many items, each grant (who, which
+   item, until when) and each device. The person approves it with a presence proof from a key
+   enrolled AFTER install (Touch ID on the new Capsule key, or Approve on a re-paired phone). A
+   grant or device they don't recognise is left out.
+3. It opens that copy and vyre-core's fresh db side by side, and upserts every approved `vault_*` row (by
    its own id/primary key, never a blind INSERT) from the copy into vyre-core's store, verifying
    each row's encrypted blob still parses as one (catches a half-written row from an earlier
    crash without trusting its contents). Row-by-row, idempotent: re-running this step after a
    crash mid-copy just re-upserts what's already there and adds what's missing, never doubles
    anything.
-3. Only once every row the copy has is confirmed present in vyre-core's store does the installer
+4. Only once every approved row is confirmed present in vyre-core's store does the installer
    write a marker (`vault-migrated: "<timestamp>"` in vyred's own config, mirroring
    core/projects/move.js's `MOVED_RECORD` pattern this project already uses for exactly this kind
    of one-time, must-not-repeat migration) and restart vyred so it starts routing `vault.*` calls
    to vyre-core's socket instead of running the module itself.
-4. The original `~/.vyre/vyre.db`'s vault tables are left in place, not deleted -- same
+5. The original `~/.vyre/vyre.db`'s vault tables are left in place, not deleted -- same
    no-auto-delete rule this project's move-to-server flows already follow. A person who wants
    them gone gets an explicit, previewed "remove the old vault copy" action later, never an
    automatic one.
 
 **Failure modes**:
 
-- Crash mid-copy (between steps 1 and 3). No marker was written, so vyred on next start still
+- Crash mid-copy (between steps 1 and 4). No marker was written, so vyred on next start still
   routes `vault.*` locally, exactly as before the upgrade attempted -- the person's vault keeps
   working from the OLD location. The next install/update run detects the marker's absence and
-  re-runs step 2, which is safe to repeat per its idempotency.
+  re-runs steps 2 and 3 (the summary is shown again), which are safe to repeat per its idempotency.
 - A call arrives while migration is mid-flight. In practice nothing is asking `vault.*` through
   the new path yet in this window; local routing continues to answer against the OLD, still-intact
   db until the marker flips vyred over, and the copy loop reads from a static COPY (step 1), never
@@ -268,11 +302,20 @@ one-time code (a different, but equally load-bearing, one-time trust moment).
   vault calls aren't reaching vyre-core" and offer to redo the switch-over step alone, without
   re-copying data that's already there.
 - Rollback / a bad update leaves vyre-core unreachable entirely. The untouched original
-  `~/.vyre/vyre.db` (step 4) is what a manual "point vyred back at its own vault" recovery path
+  `~/.vyre/vyre.db` (step 5) is what a manual "point vyred back at its own vault" recovery path
   reads from -- this needs a real command, not just the data sitting there; flagged as a
   follow-up rather than designed here, since it's a break-glass path, not the common one.
 
-### 7. Linux is unchanged
+### 7. What waits for vyre-core
+
+vyre-core blocks Mac general availability. Two things wait with it (reviewer, 28 Sep):
+
+- A phone joining a Solo Mac. Pairing and relay keys are exactly what a same-uid model could
+  forge today, so a Solo Mac doesn't take new phones until core holds those keys.
+- Relay on a Mac. It ships off by default, can be switched on only with a presence proof, and
+  no release turns it on until vyre-core holds the relay keys.
+
+### 8. Linux is unchanged
 
 The box already runs vyred as its own `vyre` uid (ADR 0032's `vyre-agent` split runs agent
 sessions as yet another uid, `vyre-agent`, neither of which is the person's). There is no
@@ -293,8 +336,8 @@ presence and gate state exactly as it does today.
 4. **Deck's local path, once vyre-core exists**: composes with the loopback design directly, no
    new mechanism needed. Person-side vyred still terminates the loopback HTTP connection and
    proxies READS locally (Deck's static assets, listing sessions); any write reaching a
-   presence-gated tool goes through vyred to vyre-core exactly like a CLI or Capsule call would
-   (section 3's protocol). The loopback design doesn't need to know vyre-core exists; it just
+   vyre-core tool passes through vyred as a pipe only and carries a presence proof core verifies
+   (section 3's Deck rule). The loopback design doesn't need to know vyre-core exists; it just
    asks "the presence module," and which process answers that is section 3's problem, not the
    Deck's.
 
@@ -302,9 +345,6 @@ presence and gate state exactly as it does today.
 
 - The relay-boundary caller-label audit named in section 2's resolution above (a verification
   task, not a design question).
-- Exactly which side of the connection (the Capsule's own code, or core) carries the
-  ad-hoc-vs-real signing-identity check named in section 4 -- an implementation detail for
-  whoever builds section 3, not decided here.
 - A real `vyre doctor`-style command for the vault-migration failure modes named in section 6
   (a doctor check that can detect and safely redo a stuck migration marker, and a break-glass
   "point vyred back at its own vault" recovery path) -- named, not built.
