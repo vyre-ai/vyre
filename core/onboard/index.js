@@ -298,7 +298,7 @@ export default {
         "Add hosts." + boxHost + " once (its tailnet IP may change less often than you'd think, but check `tailscale status` if this stops working).",
         "The Taildrive grant's src names your Mac by its own node, not your whole account, so your phone does not also get the server's folders.",
         "For read-write Taildrive, change that grant's \"access\" to \"rw\", then run files.drive.access to match.",
-        "The SSH rule's \"users\" is the unix account on the server itself, not a Tailscale login — put the admin account you set it up with (never a service account like vyre or vyre-agent), and \"check\" asks for a fresh sign-in each time rather than trusting the device forever.",
+        "The SSH rule's \"users\" is the unix account on the server itself, not a Tailscale login. Put the admin account you set it up with (never a service account like vyre or vyre-agent); \"check\" asks for a fresh sign-in each time rather than trusting the device forever.",
       ];
       const egress = await tryCall("computers.egress.status");
       if (!egress.__error && egress.enabled) {
@@ -415,7 +415,7 @@ export default {
      * relay and reachability go through ctx.call, since those live in other modules.
      */
     ctx.tool("onboard.join", {
-      description: "Adding a second device or a server: status says whether Tailscale or the relay is ready to pair with; tailscale (step: status|connect|policy|lock) is onboard.tailscale's own logic, callable any time; relay mints a QR/link pairing code; verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to \"device\" once reachability is confirmed (per ADR 0039 section 5 — never on the Solo/server side accepting a join). The owner's alone: a guest, an agent (its own node, its thread, or an mcp/harness claim) and hook/anonymous callers are refused outright, whatever proof they carry, the same as relay.pair.start already refuses them.",
+      description: "Adding a second device or a server: status says whether Tailscale or the relay is ready to pair with; tailscale (step: status|connect|policy|lock) is onboard.tailscale's own logic, callable any time; relay mints a QR/link pairing code; verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to \"device\" once reachability is confirmed (per ADR 0039 section 5; never on the Solo/server side accepting a join). The owner's alone: a guest, an agent (its own node, its thread, or an mcp/harness claim) and hook/anonymous callers are refused outright, whatever proof they carry, the same as relay.pair.start already refuses them.",
       input: obj({ action: { type: "string", enum: ["status", "tailscale", "relay", "verify"] }, step: { type: "string", enum: ["status", "connect", "policy", "lock"] }, node: { type: "string" }, becomeDevice: { type: "boolean" } }),
       callers: ["cli", "local", "deck", "capsule"],
       presence: { when: i => i && (i.action === "relay" || (i.action === "tailscale" && i.step === "connect")),

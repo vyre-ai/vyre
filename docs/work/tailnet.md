@@ -89,12 +89,12 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 28 Sep 2026, latest of all: added the owner's identity fingerprint to the ticket record (the
 lead's ruling, 28 Sep): `sha256("vyre:person:v1:" + owner.id).slice(0,8)`, base64url, covered by
 the same MAC as name and handle. Stubbed against `ctx.config.owner.id` until anywhere's
-core/onboard lands it — a box with no `owner.id` yet returns `identity: null` in the record, never
+core/onboard lands it, a box with no `owner.id` yet returns `identity: null` in the record, never
 a fabricated value; `resolveTicket()`'s result carries the same field. Tests: relay.test.js +2 (the
 exact hash, and the stub-null case), 29/29 total, boundaries+hygiene 8/8. Sent to the reviewer and
 pwa. Also answered federation's updated openPeer contract (dropped selfIdentity, added an
 incoming-call requirement on the destination side: `module:move` caller plus `meta.peer.stableId`
-from the pinned channel) — not yet built, since it needs the tailnet listener's own caller
+from the pinned channel), not yet built, since it needs the tailnet listener's own caller
 classification extended for a peer-to-peer door that isn't the owner's own device; flagged as next
 work, not silently deferred.
 
@@ -103,26 +103,25 @@ core/move/index.js). Answered their open question: `relay_devices` (ADR 0026's o
 identity) is the authoritative "this node is the owner's own" table, never `link_peers` (a
 separate, older Mac-to-box pairing mechanism). New module-only tool `relay.devices.node`
 (stableId/staticKey plus, if reported, the tailnet node via the already-built
-`relay.devices.path`'s node_id/node_name — no dependency on ADR 0046 landing first). New
+`relay.devices.path`'s node_id/node_name, no dependency on ADR 0046 landing first). New
 `core/link/peers.js`: `ownedNode`, `openPeer`, `selfIdentity`, to federation's exact signatures.
-`core/link/transport.js` needed no change at all — `connector()` was already symmetric; the
+`core/link/transport.js` needed no change at all, `connector()` was already symmetric; the
 Mac-to-box shape lived only in how `core/link/mac.js` always called it, never in the function
 itself. `openPeer` refuses `not_reachable` honestly for a device with no reported tailnet node,
 rather than guessing at an address. Tests: peers.test.js 5/5 (pure wiring, fake ctx.call), +1 on
 relay.test.js, 77/77 total with boundaries+hygiene+docs. NOT run against two real daemons end to
-end — said so plainly rather than claiming coverage that isn't there. Sent to federation to wire
+end, said so plainly rather than claiming coverage that isn't there. Sent to federation to wire
 into their own seams map.
 
 28 Sep 2026, latest of all: ported Wink's ticket lookup to the production Cloudflare relay (the
-reviewer's MEDIUM 2, the lead's priority — code and tests only, no deploy, that waits for the
+reviewer's MEDIUM 2, the lead's priority, code and tests only, no deploy, that waits for the
 user). New `PairTicket` Durable Object in relay/worker/index.js, one object per locator
 (`env.TICKETS.idFromName(loc)`, not per route: a resolve request carries no route id to look one
 up by). `RouteRelay`'s control socket, previously silent after auth like relay/node's, now handles
 `{t:"ticket",...}` and writes to it; the Worker's top-level `fetch()` handles `POST /v1/pair`
 before the WebSocket-upgrade gate, same locator-in-body/never-a-URL shape as relay/node, with
 optional `PAIR_LIMITER`/`PAIR_LIMITER_GLOBAL` rate-limiting bindings (same optional pattern as
-`DEVICE_LIMITER`) and an in-memory per-route registration cap (60/minute, resets on hibernation —
-only weakens the cap, never the pairing security it sits in front of, which is the MAC, not this).
+`DEVICE_LIMITER`) and an in-memory per-route registration cap (60/minute, resets on hibernation, only weakens the cap, never the pairing security it sits in front of, which is the MAC, not this).
 wrangler.toml gains the `TICKETS` binding and migration entry.
 
 Had to extend the shared test harness, relay/worker/fake-cf.js, since it only ever bound one
@@ -133,7 +132,7 @@ gaps found and fixed while wiring it: a DO stub's `.fetch()` needs to accept `(u
 as a `Request`, matching the real runtime, not just the latter; `ctx.storage.deleteAll()` did not
 exist at all (added, `FakeStorage`). Also one bug in my own new test, not the code under test: a
 locator built as `` `f${i}`.padEnd(43,"0") `` collides between i=6 and i=60 (padding with the same
-digit the index ends in is indistinguishable from more of the index) — fixed with a fixed-width,
+digit the index ends in is indistinguishable from more of the index), fixed with a fixed-width,
 non-digit-padded index.
 
 Tests (testbox): worker.test.js 34/34 (10 new, every one against a real Durable Object object
@@ -143,7 +142,7 @@ graph, not a stub), boundaries+hygiene 8/8. Sent to the reviewer.
 relay.join) that doesn't exist and breaks the reviewer's two fixes; the reviewer held it and asked
 for the phone-side steps published explicitly, the lead made it top priority. Published to pwa and
 the reviewer: call `pairTicket()` from relay/client/client.js directly (it already does every
-step — derive, resolve, verify, pair — there is no separate box tool for an unpaired phone to
+step, derive, resolve, verify, pair, there is no separate box tool for an unpaired phone to
 call). Added `keyFingerprint(box, crypto)` to relay/client/client.js (same fingerprint format
 core/relay/index.js's own Touch ID prompt shows) and a pure-JS `base32` to relay/client/bytes.js
 (matched byte for byte against core/relay/wire.js's own by a new test), so a phone's own confirm
@@ -180,7 +179,7 @@ react to someone pairing a different device with the classic QR. `relay.devices.
 covers the person-only rename ask (its `owner()` check is exactly that; no new tool). Gotcha that
 cost the most time: a module that emits an event or registers a tool not listed in its own
 module.json manifest fails to start AT ALL, silently, everywhere in the daemon (every other
-module's tools still loaded; only relay showed zero tools) — `does.tools` needed
+module's tools still loaded; only relay showed zero tools), `does.tools` needed
 `relay.pair.ticket` and `watches.emits` needed `relay.paired`, both easy to miss since nothing
 about the tool/event definition itself hints at the manifest requirement. Tests (testbox): 23/23
 relay.test.js (6 new: mint+resolve+redeem end to end with the real relay/client/client.js code
@@ -190,17 +189,17 @@ rate-limit check), 78/78 boundaries+hygiene+docs-build+docs-index+modules, 38/38
 relay/worker/worker.test.js (untouched, still green), 24/24 relay/client's own unit tests, 7/7
 relay/node/server.test.js. Regenerated docs/reference/*. Sent to the reviewer.
 
-28 Sep 2026, later still: binding user decision, relay-first everywhere ("Wink" in copy — same
+28 Sep 2026, later still: binding user decision, relay-first everywhere ("Wink" in copy, same
 mechanism as the scan-to-pair note below, renamed). Servers skip Tailscale too by default.
 Claimed ADR 0046 (renumbered from "ADR 0038"; docs/work/README.md is stale, <team-dir>/ADR-NUMBERS.md is the live registry), amends ADR 0002 and ADR 0014. Design note sent to the
 reviewer (copy to the lead), not building: the caller-classification layer needs nothing new
 (`ownerDevice()` in core/modules/index.js already treats `device:<id>` and `tailnet:<owner>` as
 equal, built for ADR 0026); the tailnet listener (core/names/service.js, `tailscale whois`)
 simply doesn't start when there's no tailnet. Proposed `<handle>.vyre.run` become an alias to
-`app.vyre.run` rather than building a new TLS-tunnel/TCP-proxy component — reuses ADR 0026 sec
+`app.vyre.run` rather than building a new TLS-tunnel/TCP-proxy component, reuses ADR 0026 sec
 10's already-shipped static-shell-plus-Noise-channel design, no new infra. Listed what has no
-relay equivalent today (Taildrive, Taildrop — checked, `core/files/drop.js` calls the real
-`tailscale file cp`, not transport-agnostic — agent-node egress/computers.tailnet, guests from
+relay equivalent today (Taildrive, Taildrop, checked, `core/files/drop.js` calls the real
+`tailscale file cp`, not transport-agnostic, agent-node egress/computers.tailnet, guests from
 another tailnet, Tailscale SSH for box admin) and flagged the relay's own uptime becoming the
 box's uptime for a no-tailnet box, which ADR 0026 sized as an optional secondary path, not
 required infra. Waiting on the reviewer and the lead before writing anything. Idle otherwise.
@@ -216,7 +215,7 @@ answers a record signed with the box's existing route.key (self-certifying, so t
 word is never trusted for identity); the one real amendment flagged for sign-off is that box.key's
 *public* half now reaches the relay, which ADR 0026 currently says never happens; and an open
 question on whether Touch ID gates only the mint (today's relay.pair.start shape) or also the
-redeem (new pending-confirm machinery, not built anywhere in this repo yet) — recommended the
+redeem (new pending-confirm machinery, not built anywhere in this repo yet), recommended the
 former, deferred to the reviewer and the lead. Not building until that lands. Idle otherwise.
 
 28 Sep 2026, still later, two items from the lead: relay.join refuses on darwin, and the host
@@ -228,17 +227,17 @@ keeps relay hosting off by default on local role until vyre-core (ADR 0040) hold
 relay key instead. Wired into relay.join's run() (refuses first, before owner()) and into
 presence.when (no Touch ID prompt on darwin: the call can only fail). Host sanitisation: pulled
 the name's existing strip-and-cap into a shared `promptSafe` helper, widened the stripped set to
-Unicode format and bidi characters (zero-width, RTL/LTR override and embedding, BOM — none of
+Unicode format and bidi characters (zero-width, RTL/LTR override and embedding, BOM, none of
 which parsePairUrl's own check on `relay` bars, since it only refuses whitespace and a slash) and
 applied it to the relay host too, capped at 64 (hosts run longer than names). Tests (testbox):
 relay.test.js 18/18 (2 new: relayJoinRefusal direct plus an end-to-end darwin run via
-Object.defineProperty(process, "platform", ...) before starting a fresh daemon — the module reads
+Object.defineProperty(process, "platform", ...) before starting a fresh daemon, the module reads
 platform once at its own start(), so the flip has to happen first, not after; and the hostile-host
 case folded into the existing hostile-name prompt test), boundaries+hygiene 8/8, docs-build+
 docs-index 37/37 (the description change moved docs/reference/tools.md; regenerated with
 npm run docs:ref and the committed-index test still passes). Sent to the reviewer.
 
-28 Sep 2026, right after: reviewer SIGNED OFF 7f9bc201, one nit — promptSafe's stripped set was
+28 Sep 2026, right after: reviewer SIGNED OFF 7f9bc201, one nit, promptSafe's stripped set was
 missing two separator characters that are neither a C0/C1 control nor in the zero-width/bidi
 blocks: the Arabic letter mark (U+061C) and the Mongolian vowel separator (U+180E). Added both
 (86e491ba), extended the hostile-host test to cover them. Testbox: relay.test.js 18/18. Idle.
@@ -246,11 +245,11 @@ blocks: the Arabic letter mark (U+061C) and the Mongolian vowel separator (U+180
 28 Sep 2026, latest of all: reviewer signed off ad8f560c/98ddb0a8/0a77983c/6cd9c02d (relay.join,
 in full). Reviewed anywhere's onboard guard (work/anywhere 6300ecaf) properly, found a real bug of
 my own while doing it: onboard.machine's shipped input is `{machine}`, no "action" field, but their
-own design doc still says `{action:"set", machine}` — both my becomeDevice call sites were built
+own design doc still says `{action:"set", machine}`, both my becomeDevice call sites were built
 against the doc, fixed to match the code (b23036af), flagged the doc drift to anywhere. Fixed
 reviewer's LOW on relay.join's prompt too (97a17392): offer.name (the OTHER box's own chosen text)
 is stripped of control characters/newlines and capped at 40 characters before it's quoted, and the
-trailing key fingerprint is always computed here from the real key, never from the name — a
+trailing key fingerprint is always computed here from the real key, never from the name, a
 hostile box can no longer write a fake "(key ...)" trailer into its own pairing offer. Sent
 anywhere a coordination note: if they narrow onboard.machine's callers off bare "module", they
 need to include module:relay specifically, or relay.join's becomeDevice breaks silently (my
@@ -268,14 +267,14 @@ summary instead of a silent generic fallback. Refuses before any prompt at the s
 in run() via parsePairUrl for a well-formed-looking but corrupt fragment. Testbox: 54/54.
 
 Standing by per the lead: review anywhere's shared onboarding-on-Mac check (setup tools refused on
-a Mac unless Solo genuinely needs one, 127.0.0.1:7300 only on a server) when it lands — that's
+a Mac unless Solo genuinely needs one, 127.0.0.1:7300 only on a server) when it lands, that's
 reviewer's condition 2, still open, and not mine to build a second version of. Idle otherwise.
 
 28 Sep 2026, latest: two more items from the lead. First, extracted relay's key access into
-`core/relay/keys.js` (3ab44de2) — loadKeys(root) unchanged in behavior, just its own file, so
+`core/relay/keys.js` (3ab44de2), loadKeys(root) unchanged in behavior, just its own file, so
 moving where the box's Noise/route keys live (vyre-core's `_vyre` service user, ADR 0040) is a
 swap of this one file, never a rewrite of relay's pairing logic. Second, and bigger: built
-`relay.join` (93754fa2), the redemption side reviewer wanted to see — a fresh Vyre install
+`relay.join` (93754fa2), the redemption side reviewer wanted to see, a fresh Vyre install
 becoming a device of another box, over the relay, with a one-time pairing code. New
 `relay/client/nodecrypto.js`: a Node-native CryptoProvider for `relay/client/*` (the SAME
 cross-platform library the Expo app uses, so this is not a second protocol implementation), since
@@ -283,7 +282,7 @@ Node's own `globalThis.crypto.subtle` makes non-extractable keys that cannot sur
 process, and `@noble` is the Expo app's own dependency, never this repo's. New `core/relay/redeem.js`
 (a plain function) and the tool `relay.join`: takes a pairing URL, runs the handshake, persists this
 device's key so its identity survives a restart, refuses guest/agent/hook/anonymous the same as
-relay's own owner(). Does not keep a connection open afterward — that is `connect()`'s job, not
+relay's own owner(). Does not keep a connection open afterward, that is `connect()`'s job, not
 built yet. Tested end to end: two real daemons, a real local relay server, the box mints a code
 with `relay.pair.first`, the device redeems it with `relay.join`, the box's own device list shows
 it, a second redemption from the same root reuses the same device id. Testbox: 59/59.
@@ -292,7 +291,7 @@ it, a second redemption from the same root reuses the same device id. Testbox: 5
 widening relay's roles (theirs is landing onboard's own roles change separately). Built (2a02f4d8):
 relay/module.json roles -> `["box","local"]`, no code change (audited start(): startLink() only
 fires when settings().enabled, default false; no timers anywhere in the module); new
-test/relay.test.js proving it — boots role local with default config, zero relay.connected/
+test/relay.test.js proving it, boots role local with default config, zero relay.connected/
 disconnected events, no injected WebSocket seam (so it is the real globalThis.WebSocket path
 proven untouched). onboard.join's tailscale-connect step now calls `tailscaleUp()` directly
 instead of `ctx.call("names.connect")`, dropping the box-only `names` module as a dependency for
@@ -300,13 +299,13 @@ that path; onboard.tailscale itself unchanged.
 
 **Not shipping**: relay-on-a-Mac stays built-but-disabled until vyre-core (ADR 0040, e2e +
 anywhere) holds relay's pairing secret and trusted-device rows. Today those sit in
-`~/.vyre/vyre.db`, readable and writable by any process at the person's uid — a prompt-injected
+`~/.vyre/vyre.db`, readable and writable by any process at the person's uid, a prompt-injected
 model could read a live pairing secret or insert its own device row for lasting access. Reviewer's
 condition 3, and already on vyre-core's list. Do not enable relay by default on local role in any
 release before that lands.
 
 **Open**: reviewer's condition 2 (audit onboard's start() for local-role side effects beyond the
-9 wizard tools) is on hold — asked anywhere whether their own onboard roles change keeps my
+9 wizard tools) is on hold, asked anywhere whether their own onboard roles change keeps my
 "guard the 9 wizard tools" idea, since their Solo-onboarding design might legitimately want those
 tools live on local by intent, which would make my assumption wrong. Waiting before writing a test
 that could assert the wrong thing. Settled with launch (not yet confirmed back by them): "I already
@@ -315,21 +314,20 @@ have a server" splits into a no-code Tailscale path (`onboard.join{tailscale,con
 but redeemed by `relay/client/*`, not by any join.* action.
 
 28 Sep 2026, still later: reviewer signed off bac69fa8 (owner-only onboard.join, confirmed by
-merging in e2e-personguard c3a69611 via origin/main and running test/person-only-guard.test.js —
-onboard.join's callers list derives PERSON_ONLY automatically). Root-caused (not just flagged)
+merging in e2e-personguard c3a69611 via origin/main and running test/person-only-guard.test.js, onboard.join's callers list derives PERSON_ONLY automatically). Root-caused (not just flagged)
 the testbox onboard.test.js failure I'd been calling "pre-existing": bundled this branch, checked
 out ecd89c0c (the commit that introduced the failing test, well before anything in today's
-session) on testbox, ran it alone — failed there too, proving it was never caused by join work.
+session) on testbox, ran it alone, failed there too, proving it was never caused by join work.
 Cause: operator() (core/names/tailscale.js) skips its check entirely on darwin, so a missing
 OperatorUser field in the test's fake tailscale script passed by accident on every Mac and failed
 for real on testbox's Linux, the only place the check runs. Fixed (dd1c3765); test/onboard.test.js
 is 23/23 on testbox now. All testing from here on is testbox only, per the lead.
 
 Answered launch's shape question: "I already have a server" splits into two paths that don't
-share a mechanism — Tailscale (no code: `onboard.join{tailscale,connect}` then
+share a mechanism, Tailscale (no code: `onboard.join{tailscale,connect}` then
 `{verify,node,becomeDevice:true}`, needs nothing new) and relay (the code IS a pairing secret, but
 minted server-side by `onboard.join{action:"relay"}` and redeemed by the relay CLIENT protocol,
-`relay/client/*` — not a join.* action, and not mine to build).
+`relay/client/*`, not a join.* action, and not mine to build).
 
 Sent e2e a question on the Solo-join design before continuing: the lead flagged that pairing/relay
 keys move into vyre-core (a new `_vyre` service user, ADR 0040, e2e + anywhere) on a Mac, and
@@ -343,7 +341,7 @@ to onboard/relay/link's own tested tools (see "Changed contracts"). Works today 
 second device to a box, and for a moved installation pointing back at its server. Does NOT yet
 cover the lead's other example, a phone joining a Solo Mac: role "local" has neither onboard nor
 relay loaded (both `roles: ["box"]`), so there is nothing for `join` to forward to there. That is
-not mine to fix alone — flagged below. Sent af604cf8 to reviewer. Answered launch: Solo needs
+not mine to fix alone, flagged below. Sent af604cf8 to reviewer. Answered launch: Solo needs
 nothing from this module (confirmed), names.discover is unaffected by anything here (it scans
 peers and hits the already-shipped GET /v1/whoami itself, a client-side tool still to build, not
 a change to /v1/whoami).
@@ -354,22 +352,21 @@ call their new `onboard.machine` once reachability is confirmed (ADR 0039 sectio
 their docs/design/anywhere.md; not yet on this branch). Dropped `core/join` entirely (5807096d);
 `onboard.join` now lives in core/onboard/index.js, one tool, reusing onboard.tailscale's own
 functions directly (no self-ctx.call) for the tailscale action. `becomeDevice` is an explicit
-opt-in flag on verify, defaulting false — my call, not yet confirmed by anywhere/launch: verify
+opt-in flag on verify, defaulting false, my call, not yet confirmed by anywhere/launch: verify
 runs on both the connecting device and (potentially) the solo/server side checking a peer, and
 only the connecting side should ever demote itself to "device". Tests: test/onboard.test.js
-22/22 (6 new). No regressions: boundaries/hygiene/module-sdk/modules 48/48 (this Mac only —
-testbox is frozen for the integrator's rc.2 canonical suite; will sync and run there once it
+22/22 (6 new). No regressions: boundaries/hygiene/module-sdk/modules 48/48 (this Mac only, testbox is frozen for the integrator's rc.2 canonical suite; will sync and run there once it
 lifts). The box-role-only gap (a phone joining a Solo Mac) is unchanged by this refactor; still
 flagged below and to relay/anywhere/launch.
 
 28 Sep 2026, later: new top priority from the user's "Vyre anywhere" decision (see
-team/HANDOFF.md) — Tailscale is not needed for Solo; it comes in only when a second device or a
+team/HANDOFF.md), Tailscale is not needed for Solo; it comes in only when a second device or a
 server joins. My part: the "join" flow (guide Tailscale setup or offer the relay alternative,
 pair, verify reachability), simple, one-paste policy tool, never `tailscale up` or an ACL edit
 myself. Committed prior WIP first: core/vitals module (0.1.0, five tools, person-only, 33/33
 tests), 6a52ad23. Proposed the join interface to anywhere, launch and federation (not yet built,
 awaiting their OK): a new box tool `onboard.join` (HUMAN_ONLY), separate from the first-run
-wizard — `status` (tailscale + relay availability), `tailscale` with `step: policy|connect|lock`
+wizard, `status` (tailscale + relay availability), `tailscale` with `step: policy|connect|lock`
 (delegates to today's onboard.tailscale logic), `relay` (delegates to relay.pair.start),
 `verify` (link.health, answers reachability + which path). Waiting on their answers before
 building `onboard.join` itself.
@@ -393,23 +390,22 @@ instead of `vyre call`. Tests: core/cli/commands/vitals.test.js 2/2, consistency
 28 Sep 2026 (resumed; merged origin/main a3a844e4 into work/tailnet, clean). Wrote
 docs/design/tailscale-plan.md for the lead's max-benefit/simplest-install ask: verified all ten
 ADR 0014 parts by content against origin/main (nine are ancestors of main; part 9, agent nodes,
-is not wired — core/computers/image/Dockerfile still runs everything as `USER agent`, no
+is not wired, core/computers/image/Dockerfile still runs everything as `USER agent`, no
 root-then-setpriv step). Lead's decisions back: part 9 ships in 0.1.1 on top of glass-live's
 root-then-setpriv image change once that merges (messaged glass to coordinate: my side, join()
 in core/computers/tailnet.js, already degrades safely on a 404 and needs only the real port
 number/how the root process starts once their image lands); the merged-policy-snippet tool ships
 0.1.1 (with launch, in onboarding); device posture is skipped. Built: `onboard.tailscale
-{ action: "policy" }` in core/onboard/index.js — merges Taildrive's nodeAttrs/grant, Taildrop's
+{ action: "policy" }` in core/onboard/index.js, merges Taildrive's nodeAttrs/grant, Taildrop's
 grant and the SSH rule into one paste using real names this machine already knows (its own
 tailnet node, the paired Mac from `link.peers`, the owner's login, the shares from
 `files.drive.status`), adding egress's tagOwners/grant only while `computers.egress.status` says
 it is on. Read-only, no tailnet write (ADR 0014 rule 1). Tests (targeted, this session):
 test/onboard.test.js 17/17 (2 new), test/boundaries.test.js 5/5 (no new import: uses ctx.call,
 not a direct import of files/drive.js or computers/index.js), test/hygiene.test.js +
-test/docs-build.test.js 39/39. MagicDNS surfacing (the other 0.1.1 item) is already done —
-`t.node.dns` is the primary line in both deck/onboard/onboard.js:430 and
+test/docs-build.test.js 39/39. MagicDNS surfacing (the other 0.1.1 item) is already done, `t.node.dns` is the primary line in both deck/onboard/onboard.js:430 and
 deck/views/settings.js:277, and `vyre box add` already prefers a peer's dnsName
-(core/cli/commands/box.js:273) — nothing to build there. Next: message launch about wiring
+(core/cli/commands/box.js:273), nothing to build there. Next: message launch about wiring
 `onboard.tailscale{action:"policy"}` into the onboarding UI (a "copy policy" panel, likely near
 the tailscale step or in Settings, Network); wait on glass for part 9's port number.
 
@@ -627,9 +623,9 @@ only read-only checks on the test box.
   and secrets. Reviewer's condition, already on vyre-core's list.
 - anywhere: waiting on whether onboard's own roles:["box","local"] change (landing separately)
   keeps the 9 wizard tools (you/claude/name/history/skip/finish/passkey/link/tailscale) guarded to
-  refuse on local, or intentionally leaves them live for Solo's own onboarding — settles whether
+  refuse on local, or intentionally leaves them live for Solo's own onboarding, settles whether
   reviewer's condition 2 (audit onboard's start() for local-role side effects) is mine to close.
-- launch: RESOLVED, now that relay.join exists — sent the final shape: the Device card's setup
+- launch: RESOLVED, now that relay.join exists, sent the final shape: the Device card's setup
   code is `relay.join{url, name, becomeDevice:true}` (one call, no separate verify: pairing itself
   proves reachability); the Tailscale route is unchanged, `onboard.join{tailscale,connect}` then
   `{verify,node,becomeDevice:true}`. Waiting on launch to confirm they've wired one or both.
@@ -720,7 +716,7 @@ Then on the box: `vyre call --tty files.drive.share '{"name":"projects"}'`, and
 ### Taildrop (files to the box)
 
 Admin console, Settings: Send Files on. The box stays a tagged server, so grant file sharing to
-its tag, owner only — not `autogroup:member`, which would let anyone sharing or family-sharing
+its tag, owner only, not `autogroup:member`, which would let anyone sharing or family-sharing
 into this tailnet drop a file onto the box too, where an agent may read it. The grant's exact
 form is checked on the first real run:
 
@@ -734,7 +730,7 @@ form is checked on the first real run:
 On the server, `tailscale up --ssh` (or `tailscale set --ssh`), with a policy SSH rule. `action`
 is `check` (a fresh sign-in each time), not `accept` (which would let any of the owner's own
 devices, a phone included, SSH straight in with no fresh sign-in). `users` is the unix account on
-the server itself — the admin account this server was set up with — never a service account like
+the server itself, the admin account this server was set up with, never a service account like
 `vyre` or `vyre-agent`:
 
 ```json
@@ -845,8 +841,7 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 - **relay/worker** (28 Sep, ADR 0045, own): new Durable Object `PairTicket`, bound `TICKETS` in
   wrangler.toml (new migration entry too); `RouteRelay`'s control socket handles `{ t: "ticket",
   loc, record, mac, exp }` post-auth (previously silent); the Worker's top-level `fetch` handles
-  `POST /v1/pair`, optional `PAIR_LIMITER`/`PAIR_LIMITER_GLOBAL` rate-limit bindings. Not deployed
-  — code and tests only, per the lead; deploying needs the user's yes.
+  `POST /v1/pair`, optional `PAIR_LIMITER`/`PAIR_LIMITER_GLOBAL` rate-limit bindings. Not deployed, code and tests only, per the lead; deploying needs the user's yes.
 - **relay/worker/fake-cf.js** (28 Sep, shared test harness, own): `createRuntime` takes an
   optional `classes` map for Durable Object bindings beyond `ROUTES`; a namespace's `.fetch()`
   accepts `(url, init)` as well as a `Request`; `FakeStorage` gains `deleteAll()`. `object(name)`
@@ -867,7 +862,7 @@ Listed by the area they touch, so the merge can go in order. Everything below is
   `registerTicket({ loc, record, mac, exp })` (queued until the control socket is connected, sent
   once, best effort); module.json `does.tools` and `watches.emits` updated (a tool or event a
   module's own manifest doesn't list fails that module's start silently, with every other module
-  unaffected — the gotcha of this session).
+  unaffected, the gotcha of this session).
 - **relay/node** (own): `POST /v1/pair` (body `{ loc }`, answers `{ record, mac }` or 404,
   rate-limited per IP and globally); the control socket, previously silent after auth, now handles
   `{ t: "ticket", loc, record, mac, exp }`.

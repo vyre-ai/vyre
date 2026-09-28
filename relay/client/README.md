@@ -97,10 +97,10 @@ A Vyre code (the avatar's scannable ring) has room for only 72 bits, nowhere nea
 phone resolves the actual offer from the relay rather than reading it off the code.
 
 **Confirm before you pair.** `resolveTicket()` looks the ticket up and verifies it, but does not
-pair — it hands back who the box says it is, so a screen can show "Pair with alex's box
+pair, it hands back who the box says it is, so a screen can show "Pair with alex's box
 (a1b2 c3d4)?" and let the person confirm before anything happens. The MAC proves the relay's
 answer is unmodified from whatever the box minted; it does **not** prove it is the person's own
-box — someone hands you a code for THEIR box, you scan it, the MAC still checks out. Reading the
+box, someone hands you a code for THEIR box, you scan it, the MAC still checks out. Reading the
 name and fingerprint first, and only then calling `pairOffer()`, is the only thing that catches
 that (reviewer, 28 Sep). `pairTicket()` chains both calls for a caller that genuinely does not
 confirm.
@@ -110,12 +110,12 @@ import { resolveTicket, pairOffer, keyFingerprint } from "<repo>/relay/client/cl
 
 // ticket: the 8 raw bytes the Vyre code encoded. relay: the ws:// or wss:// base the app already
 // knows to ask (there is no room in the code to carry it; a self-hosted relay is out of scope for
-// this path — fall back to a full QR there).
+// this path, fall back to a full QR there).
 const { offer, name, fingerprint, handle } = await resolveTicket(ticket, { relay, crypto });
 // Show "Pair with {name} ({fingerprint})?" and wait for the person, THEN:
 const paired = await pairOffer(offer, { name: "alex's phone", keyStore, crypto });
 // -> exactly what pair() returns: { relay, route, box, name, device, presence }
-// handle: the box's claimed <handle>.vyre.run, or null if it hasn't claimed one — redirect there
+// handle: the box's claimed <handle>.vyre.run, or null if it hasn't claimed one, redirect there
 // after pairing if you want a friendlier address than the relay/route.
 
 // The one-call form, for a caller that skips the confirm step:
@@ -127,17 +127,17 @@ const paired = await pairOffer(offer, { name: "alex's phone", keyStore, crypto }
 1. Derives three values from the ticket, each a `sha256` of a distinct tag plus the ticket bytes,
    matching `core/relay/wire.js`'s `ticketDerive` byte for byte: a locator (tag `vyre-pair-loc`),
    the pairing secret (tag `vyre-pair-sec`) and a MAC key (tag `vyre-pair-mac`). **The raw ticket
-   itself never leaves the device** — only the locator goes to the relay.
+   itself never leaves the device**, only the locator goes to the relay.
 2. `POST {relay's http(s) origin}/v1/pair` with `{ "loc": "<base64url>" }` in the body, never in a
    URL (so it is never in an access log). One request, and single-use either way:
-   - `200 { record, mac }` — `record` is the exact JSON string the box handed the relay (do not
+   - `200 { record, mac }`, `record` is the exact JSON string the box handed the relay (do not
      re-serialize it; the MAC is over these exact bytes) and `mac` is `hmacSha256(macKey, record)`
      as base64url.
-   - `404` — the ticket does not exist, already expired (5 minutes), or was already resolved once.
+   - `404`, the ticket does not exist, already expired (5 minutes), or was already resolved once.
      These three cases are deliberately indistinguishable: show one generic "this code expired or
      was already used, scan again" message.
-   - `429` — too many attempts (per IP and globally); back off and let the person try again.
-   - `400` — a malformed request (this library only sends well-formed ones; a real 400 means a
+   - `429`, too many attempts (per IP and globally); back off and let the person try again.
+   - `400`, a malformed request (this library only sends well-formed ones; a real 400 means a
      version mismatch worth logging).
 3. Verifies `mac` against `hmacSha256(macKey, utf8(record))` itself, **before parsing or trusting
    anything in `record`**. A mismatch means the relay (or someone controlling it) tried to answer
