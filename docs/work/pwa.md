@@ -797,6 +797,38 @@ relay/client/client.test.js, test/relay.test.js - 135/135 pass. Sent to reviewer
 change) and the integrator. Cleaned up testbox: no leftover processes/files; the one-off harness
 scripts were not committed.
 
+## Doing (the full live Wink check - resolve, confirm, pair, avatar, redirect - all pass, 2026-09-28)
+tailnet redeployed the relay's CORS fix (worker 8897b7f4, work/tailnet 128171be:
+Access-Control-Allow-Origin on both the OPTIONS preflight and every POST answer to /v1/pair) and
+asked for a rerun. Confirmed via `curl -i OPTIONS https://relay.vyre.run/v1/pair` (204 +
+`access-control-allow-origin: *`) before touching Chrome again.
+
+Reran the full live check team-lead asked for, adding the one piece the last run (30077044's
+entry above) didn't exercise - the redirect. Same shape as before (real vyred, presence
+auto-approved, real ticket minted against the real relay, real unmodified CSP, no bypass, no
+test-proxy workaround, only the camera module stubbed with the real ticket bytes), plus:
+**this throwaway box's config carried a local handle** (`name: "kit"`, a sample-world name) the
+same way a box that already finished real name-claiming carries one - `core/relay/index.js`'s
+`boxHandle()` only ever reads `ctx.config.name`, no live DNS check at pairing time, so this is
+an honest exercise of the client's own redirect logic (`celebrate()`'s `if (state.kind ===
+"done" && state.handle) location.href = ...`) from a real, MAC-covered `resolveTicket()` answer -
+not a fabricated client-side value. The actual outbound navigation to `kit.vyre.run` was caught
+and aborted via CDP Fetch interception before any real request left the sandbox (no real
+subdomain traffic), and confirmed the intercepted target was exactly `https://kit.vyre.run/`.
+
+**All five checked out, against the real relay, loaded exactly as a real phone would:**
+1. resolveTicket - real POST to `https://relay.vyre.run/v1/pair`, no CORS error now.
+2. Confirm - "Pair with kit? Code mw5p gcla" (fingerprint deterministic per real box key).
+3. Pair - a real `pairOffer()` handshake; the box's own `relay.devices.list` showed the new
+   device afterward.
+4. Avatar - `.scan-avatar` element present after the done screen.
+5. Redirect - `location.href` set to `https://kit.vyre.run/`, intercepted before it left the
+   sandbox.
+
+Cleaned up testbox: no leftover processes or files; the one-off harness (three iterations across
+this session, `wink-live.mjs` through `wink-live3.mjs`) was never committed. Sent to team-lead
+and integrator: Wink is genuinely reachable end to end from a real browser now.
+
 ## Next
 - No test coverage of scan.js/scan-worker.js's own lifecycle (the busy flag, the transferred
   buffer, worker.terminate() on stop) - reviewer-2 hand-verified fa619b4a and confirmed it's
