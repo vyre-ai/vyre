@@ -77,6 +77,10 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   touched here, not caused by it). Sent to reviewer-2 (no auth/spawn/permissions surface
   touched). queued (core/sessions/slots.js, pre-thread) deliberately not folded in; documented in
   the lib.
+- Follow-up at 86d3e1a2: added `LIVE_STATUSES` to lib/thread-status.js (the raw internal
+  liveness set switchboard's own `LIVE` const now derives from too), for cohesion/native-core's
+  harness glue sha (core/harness's subagent-slot gate currently repeats the four raw strings as
+  a literal). 57/57 on testbox (switchboard + boundaries + lib).
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
