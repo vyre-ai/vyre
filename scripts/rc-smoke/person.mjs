@@ -5,6 +5,11 @@
 // signs that one call with it (ADR 0018's device proof), sends it to vyred's socket, and removes
 // the key again. vyred's checks are the real ones, unchanged: nothing here is a seam in vyred.
 //
+// A `docker exec` process has parent 0, so vyred's leader check (core/daemon's above()) names
+// this node process itself as an unknown server and answers presence_required with its
+// { exe, pid, started }. A person proves that server once (session.trust, signed over exactly
+// that object, the same key); then the call goes again with its own proof.
+//
 //   node /opt/rc/person.mjs <tool> '<json input>'   prints vyred's JSON answer
 //
 // The box's own uid can write its db, which is why this works and why it is only ever the
@@ -27,14 +32,16 @@ const presence = new Presence({ db, role: "box", touchid: null, writeTty: () => 
 const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
 const { id } = presence.enroll({ kind: "device", name: "rc-smoke person", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
 
-let out;
-try {
+const sign = (t, over) => {
   const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
-  const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
-  const body = JSON.stringify(input);
-  out = await new Promise(resolve => {
-    const req = http.request({ socketPath: path.join(home, "vyred.sock"), method: "POST", path: `/v1/tools/${tool}`,
-      headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "x-vyre-caller": "cli", "x-vyre-presence": `device key=${id} ts=${ts} nonce=${nonce} sig=${sig}` } }, r => {
+  const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${t}\n${inputHash(over)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
+  return `device key=${id} ts=${ts} nonce=${nonce} sig=${sig}`;
+};
+const post = (t, over, proof) => {
+  const body = JSON.stringify(over);
+  return new Promise(resolve => {
+    const req = http.request({ socketPath: path.join(home, "vyred.sock"), method: "POST", path: `/v1/tools/${t}`,
+      headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "x-vyre-caller": "cli", "x-vyre-presence": proof } }, r => {
       let b = "";
       r.setEncoding("utf8");
       r.on("data", d => (b += d)).on("end", () => resolve(b));
@@ -42,6 +49,20 @@ try {
     req.on("error", e => resolve(JSON.stringify({ error: { code: "unreachable", message: e.message } })));
     req.end(body);
   });
+};
+const serverOf = raw => { try { const e = JSON.parse(raw).error; return e && e.code === "presence_required" && e.server ? e.server : null; } catch { return null; } };
+
+let out;
+try {
+  out = await post(tool, input, sign(tool, input));
+  const server = serverOf(out);
+  if (server) {
+    // Trust this server once, on the same call: a tool that needs no proof of its own goes
+    // through here; one that does (vault.connect) is refused for the mismatched proof, so it goes
+    // once more with its own.
+    out = await post(tool, input, sign("session.trust", server));
+    if (/"presence_required"/.test(out)) out = await post(tool, input, sign(tool, input));
+  }
 } finally {
   // Always: a thrown request must not leave the smoke's key enrolled.
   presence.remove(id);
