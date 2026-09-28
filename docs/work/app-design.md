@@ -756,3 +756,40 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 - Net: 0.1.1's Vyre-code work is design-complete on my side. What's left (15/17 needing
   perspective/homography correction) is a decoder algorithm task, not render tuning - flagged to
   the lead as such rather than continuing to iterate blindly on geometry/palette.
+
+## Now (28 Sep, skin-tone legibility fix, avatars locked)
+
+- User's decision: "lock on avatars, but some of them were getting too dark skin colors and so
+  they weren't clearly visible, so fix that and then lock it." Scoped: only the teammate family
+  (round3b/original.js's character()) draws a real skin tone; person and assistant use an abstract
+  gradient/mark, never a skin representation, so neither needed a change.
+- Measured two failures with WCAG contrast on the actual hex values, not by eye: feature ink
+  (fixed near-black) was 1.3-2.6:1 on the three deepest skin tones, and the head washed into its
+  backdrop at both ends of the range - the four deepest tones against dark theme (1.15-3.94:1),
+  the four lightest against paper theme (1.05-2.89:1), each in the theme where that end sits
+  closest to the backdrop. The range itself stays exactly as it was; nothing removed or lightened.
+- Fixed at the source in identity.js: featureInkFor(skinHex) picks dark or light ink per tone,
+  rimFor(skinHex, theme) adds a thin edge ring only on tones that fail the floor in that theme,
+  validatePalette() checks all 8 tones x 2 themes x 3 backdrops (24 combos) plus each tone's own
+  ink, next to the existing validateGeometry(). 48/48 pass, worst case 3.68:1 (floor is 3:1).
+  character() gained a theme param (default "dark", matching vyrecode2.js's own convention).
+- Verified visually with a headless-Chrome contact sheet (temp Chrome profile, no visible window)
+  across all 8 tones, both themes, both --panel and --hover backdrops, and in the full
+  avatar-showcase in context - every tile reads clearly. Vyre-code ring untouched:
+  validateGeometry() still passes at 8.5% margin / 7px gap clearance, matching 2b exactly.
+- Locked: ADR 0043 gained section 5 with the full rationale and numbers; avatar.md gained a
+  matching "Skin-tone legibility, locked" section. Committed 949d9e78.
+- Found (git log, not yet coordinated when I started): native-core had already vendored the OLD,
+  unfixed characters.js/identity.js at deck/vendor/vyrecode/ and built deck/js/avatars.js +
+  avatars.test.js (13/13) against it, on their own branch (commits cdc3f257, 8820d6ce) - avatars.js
+  itself says "THIS FILE IS THE ONLY IMPORTER... when app-design sends the locked files, swapping
+  them is a change here and in the vendor folder only." Vendored the fixed files at that exact
+  path (deck/vendor/vyrecode/{identity,characters,geometry,creature,vyrecode2}.js), converted from
+  the scratchpad's CJS to ESM to match the repo's module type - verified all five load and run
+  correctly under `node --input-type=module`. One integration note sent to native-core along with
+  the sha: avatars.js:133 calls `character(seed, size)` without a theme, so it's currently getting
+  the "dark" default always - should become `character(seed, size, theme())` (theme() already
+  exists in that file, used for the Vyre-code ring) so the rim renders correctly in paper theme too.
+- Next: none on this from my side unless native-core's re-run of avatars.test.js surfaces
+  something. Contact sheet lives at (scratchpad, not committed - same convention every other
+  round's preview/verify PNG used) round3b/contact-sheet-fix.png.
