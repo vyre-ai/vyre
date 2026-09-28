@@ -492,7 +492,9 @@ export function mountComposer(opts) {
     // Drawn at once (a steer, a queued row, or a plain send's words), except a / command, which the
     // transcript shows its own way.
     const drawn = !machine && !!S && (!!mode || !text.startsWith("/"));
-    if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode: mode || "send", at: Date.now(), ...(imgs.length ? { images: imgs.length } : {}) }));
+    // The pictures themselves, not just a count: this device drew them once already (the thumbs
+    // under the composer), so the sent row can show the same pictures inline (cohesion item 18).
+    if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode: mode || "send", at: Date.now(), ...(imgs.length ? { images: imgs } : {}) }));
     /** @type {Record<string, any>} */
     const input = machine ? { thread, text, surface: "deck", machine }
       : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };

@@ -46,6 +46,11 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .session-back { display: none; }
 @media (max-width: 719px), (max-height: 500px) and (pointer: coarse) { .session-back { display: inline-flex; } }
 
+/* A running step's screen (cohesion item 1/18: sight.frame, through sight.targets), quiet and
+   small, never a live video - it refreshes on sight.stepped, never a timer. */
+.cv-sight { display: flex; padding: 8px 20px; border-bottom: 1px solid var(--rule); }
+.cv-sight[hidden] { display: none; }
+
 .thread-view { flex-grow: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 16px 20px 24px;
   /* The scrollbar's room is kept from the start: a session that grows past one screen does not
      narrow every row (and shift them) when the bar appears. */
@@ -178,7 +183,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .session-head { flex-wrap: wrap; height: auto; min-height: 56px; padding-top: 4px; padding-bottom: 8px; column-gap: 10px; row-gap: 2px; }
   .session-head > .cv-head-text { flex: 1 1 calc(100% - 64px); }
   .session-head > :not(.session-back):not(.cv-head-text) { flex-shrink: 0; }
-  .session-head .cv-chip, .session-head .cv-context, .session-head .cv-state { font-size: 12px; }
+  .session-head .cv-chip, .session-head .cv-context, .session-head .cv-state, .session-head .cv-project { font-size: 12px; }
   .composer-menu { left: 16px; right: 16px; }
   /* The header keeps the title: the phone's 44 buttons stay 44 tall but read at base size, and the
      model chip (the composer names the model too) and the state word give way. */
@@ -644,6 +649,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .cv-run-body { padding-left: 8px; margin-left: 7px; }
 }
 
+/* The project a thread is in (cv-project): the one visible sign for an agent's own thread, whose
+   project the composer never chose (cohesion's one-product-audit finding 6). Quiet, not a status. */
+.cv-project { flex-shrink: 0; max-width: 20ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
 .cv-chip { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
 .cv-context { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
 .cv-context.high { color: var(--beacon-ink); }
@@ -751,7 +759,21 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-task[data-status="running"] .cv-task-meta { color: var(--focus); }
 .cv-task-err { font-size: 11px; }
 .cv-task-summary { font-size: 11px; max-width: 40%; }
-.cv-user-images { font-size: 11px; margin-top: 4px; }
+.cv-user-images { font-size: 11px; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; }
+/* A picture inline in a message (cohesion item 18): the box is fixed before the picture decodes,
+   so a slow load never shifts the rows around it (interaction.md section 1, never a layout jump). */
+.cv-pic { width: var(--pic-w); height: var(--pic-h); max-width: 100%; padding: 0; border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-chip, 4px); overflow: hidden; background: var(--panel); cursor: pointer; }
+.cv-pic-img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.cv-pic-file { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-chip, 4px); font-size: 12px; color: var(--text-2); }
+.lightbox { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 32px; background: var(--scrim); }
+.lightbox[hidden] { display: none; }
+.lightbox-img { max-width: min(92vw, 1100px); max-height: 80vh; object-fit: contain; border-radius: 6px; box-shadow: 0 12px 40px var(--scrim); }
+.lightbox-cap { font-size: 13px; color: var(--text); background: var(--panel); padding: 4px 10px; border-radius: var(--radius-chip, 4px); }
+.lightbox-cap[hidden] { display: none; }
+.lightbox-close { position: absolute; top: 16px; right: 16px; background: var(--panel); }
 
 .cv-queued-local { border-style: dotted; }
 
