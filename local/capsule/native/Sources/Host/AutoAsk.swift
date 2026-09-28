@@ -96,6 +96,7 @@ extension CapsuleModel {
         }
         replySub?.cancel(); replySub = nil
         reply = nil; asked = nil; askedMemory = nil; autoKey = nil
+        iqStage = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
     }
 
     /// A finished answer: kept for the conversation and the cache.
