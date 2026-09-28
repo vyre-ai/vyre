@@ -22,7 +22,7 @@ import { assistantCard } from "../js/assistant-setup.js";
 import { createProjectInline, action } from "../js/empty-actions.js";
 import { createAgent } from "../js/agent-create.js";
 import { since, count, plural, clock } from "../js/fmt.js";
-import { assistantAvatar, agentAvatar, teammateAvatar, readSystem, setTeammates } from "../js/avatars.js";
+import { assistantAvatar, agentAvatar, teammateAvatar, readSystem, setTeammates, setProjects } from "../js/avatars.js";
 
 // Making and changing an agent is the person's own business: no passkey (the no-nag rule).
 
@@ -58,6 +58,7 @@ async function world() {
   const names = new Map();
   for (const th of t.data || []) if (th.project && th.projectName) names.set(th.project, th.projectName);
   for (const pr of p.data?.projects || []) names.set(pr.slug, pr.name);
+  setProjects(p.data?.projects || []); // each project's tile seed, for its teammates' colour
   const threads = new Map((t.data || []).map(th => [th.id, th]));
   return { names, threads, projects: p.data?.projects || [], threadsErr: t.error || null };
 }
@@ -151,7 +152,7 @@ async function list(ctx) {
 
   const load = async () => {
     const [r, tm] = await Promise.all([attempt("agents.list"), attempt("team.list", {}), readSystem(attempt)]);
-    if (!tm.error) { team = Array.isArray(tm.data) ? tm.data : tm.data?.teammates || []; setTeammates(team.map(t => t.agent)); }
+    if (!tm.error) { team = Array.isArray(tm.data) ? tm.data : tm.data?.teammates || []; setTeammates(team); }
     if (!ctx.alive()) return;
     // Out of reach with a list on screen: keep it (R3) rather than trade it for an error.
     if (r.error?.code === "offline" && all.length) return;
@@ -422,7 +423,7 @@ function phonePage(ctx, getWorld, getAll, openNew, form) {
 function teammateRow(t, w) {
   const state = t.state === "working" ? "Working" : t.queued ? `${t.queued} queued` : "Asleep";
   return h("div", { class: "ag-team-row", "aria-label": `${t.role}, Teammate in ${nameOf(w.names, t.project)}. ${state}.` },
-    teammateAvatar(String(t.agent || ""), { size: 40, cls: "ag-av" }),
+    teammateAvatar(String(t.agent || ""), { size: 40, cls: "ag-av", project: t.project }),
     h("span", { class: "ag-team-main" },
       h("span", { class: "ag-team-name" }, h("span", { class: "ag-name" }, t.role), h("span", { class: "tag" }, "Teammate")),
       h("span", { class: "small faint ellipsis" }, `${nameOf(w.names, t.project)} · ${state}`)));

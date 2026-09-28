@@ -228,14 +228,28 @@ doc.body.append(container);
 const stop = mountSession(container, { thread: SID, project: null, onBack() {} });
 await wait();
 
-test("avatars (ADR 0043): the person's circle for you, named for the owner; the assistant's creature for replies", () => {
+test("avatars (ADR 0043): the person's circle for you; a chat in no project wears its draft tile on its replies and header", () => {
   const you = $(container, ".cv-user .msg-av");
   assert.equal(you.getAttribute("data-family"), "person");
   assert.ok($(you, "svg"), "drawn, not a letter");
   assert.equal(you.getAttribute("title"), "alex");
-  assert.equal($(container, ".cv-head .cv-av-vyre").getAttribute("data-family"), "assistant");
-  assert.ok($(container, ".cv-head .cv-av-vyre svg"));
-  assert.equal($(container, ".cv-head-av").getAttribute("data-family"), "assistant", "the session header: who the session is with");
+  const reply = $(container, ".cv-head .msg-av");
+  assert.equal(reply.getAttribute("data-family"), "project");
+  assert.ok(reply.hasAttribute("data-draft"), "no project yet: the dashed draft tile");
+  assert.ok($(reply, "svg"));
+  const head = $(container, ".cv-head-av");
+  assert.equal(head.getAttribute("data-family"), "project", "the session header wears the same tile");
+  assert.match(text($(container, ".cv-num")), /^#[0-9a-z-]{6}$/, "and the session's short id beside its title");
+});
+
+test("filed into a project (thread.picked): the replies and header take that project's tile, in place", async () => {
+  emit("thread.picked", { project: "harlow-legal", thread: SID });
+  await wait(30);
+  const reply = $(container, ".cv-head .msg-av");
+  assert.equal(reply.getAttribute("data-family"), "project");
+  assert.ok(!reply.hasAttribute("data-draft"), "solid now");
+  assert.ok(!$(container, ".cv-head-av").hasAttribute("data-draft"));
+  assert.ok(calls.some(c => c.tool === "projects.list"), "the project's stored seed is read afresh");
 });
 
 test("open: blocks as rows, one Vyre header per run, tool runs folded, the turn footer, never claude", async () => {

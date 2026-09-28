@@ -186,7 +186,7 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
 .rail-place:focus-visible, .rail-home:focus-visible, .rail-avatar:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .rail-avatar { width: 32px; height: 32px; flex-shrink: 0; margin-top: 8px; border-radius: 16px; display: inline-flex; align-items: center; justify-content: center;
   background: var(--hover); color: var(--text); text-decoration: none; }
-.rail-initial { font-size: 13px; line-height: 16px; font-weight: 600; }
+.rail-initial { display: inline-flex; font-size: 13px; line-height: 16px; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .rail-home, .rail-place { transition: none; } }
 
 /* The list column right of the rail: a view's own list (ctx.rail: Chat's sessions; deck:rail:

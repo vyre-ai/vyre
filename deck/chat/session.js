@@ -71,7 +71,7 @@ import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
-import { whoAvatar, readTeammates } from "../js/avatars.js";
+import { threadAvatar, readTeammates, readProjects } from "../js/avatars.js";
 import { threadHref } from "./lib/routes.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, handoffCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
@@ -102,7 +102,7 @@ const readHideThinking = () => { try { return localStorage.getItem(THINK_KEY) ==
  * shared stream listen (thread.* only hears the names it knows).
  */
 const MORE_EVENTS = ["thread.state", "thread.status", "thread.turn", "thread.queued", "thread.unqueued", "thread.steered", "thread.rewound",
-  "thread.model", "thread.thinking", "thread.task", "thread.shell", "thread.remembered", "thread.usage", "thread.limit"];
+  "thread.model", "thread.thinking", "thread.task", "thread.shell", "thread.remembered", "thread.usage", "thread.limit", "thread.picked"];
 const editable = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT" || t.isContentEditable);
 const PROVIDERS = /** @type {Record<string, string>} */ ({ claude: "Claude", codex: "Codex", acp: "ACP" });
 // Sessions' canonical, person-facing vocabulary (lib/thread-status.js, thread.status /
@@ -263,7 +263,10 @@ export function mountSession(container, opts) {
   let replaying = false, booted = false;
   const early = /** @type {any[]} */ ([]);
   const agentName = () => labelFor({ role: "assistant", agent: record.current?.agent }, names);
-  const headFor = ts => headRow(agentName(), ts, isAssistant({ agent: record.current?.agent }, names));
+  /** Who the replies are from, as an avatar (js/avatars.js threadAvatar): the project's tile, a chat's draft tile, an agent, a teammate or the assistant. */
+  const whoAv = (size = 24, cls = "av-agent msg-av cv-av") => threadAvatar({ agent: record.current?.agent, project: record.current?.project || opts.project || null, thread },
+    { size, cls, title: agentName() });
+  const headFor = ts => headRow(agentName(), ts, isAssistant({ agent: record.current?.agent }, names), whoAv());
   /** This page is the one on screen, and the tab is visible. */
   const visible = () => {
     try { if (typeof document !== "undefined" && document.visibilityState === "hidden") return false; } catch {}
@@ -284,6 +287,7 @@ export function mountSession(container, opts) {
       readTail(),
       readNames(attempt),
       readTeammates(attempt),
+      readProjects(attempt),
     ]);
     names = nm; me = nm.owner;
     if (!r.error) {
@@ -395,10 +399,17 @@ export function mountSession(container, opts) {
     return (opts.projects || []).find(p => p.slug === slug)?.name || slug;
   }
 
-  /** Who this session is with, as the header's avatar: the assistant's creature, an agent's blob or a teammate's character. */
-  function headAvatar(rec) {
-    const agent = rec?.agent || null;
-    return whoAvatar(agent, { size: 32, title: labelFor({ role: "assistant", agent }, names), cls: "cv-head-av" });
+  /**
+   * A chat filed into a project (thread.picked), or made into one: its replies and header take
+   * that project's tile (its history re-renders in place, the rows themselves stay).
+   */
+  async function refile(project) {
+    if (!project || !record.current || record.current.project === project) return;
+    record.current = { ...record.current, project };
+    await readProjects(attempt, { again: true });
+    const rows = new Set([...headEls.values(), ...timeline.querySelectorAll(".cv-head")]);
+    for (const row of rows) row.querySelector(".msg-av")?.replaceWith(whoAv());
+    drawHead();
   }
 
   function drawHead() {
@@ -411,9 +422,11 @@ export function mountSession(container, opts) {
     checkSight();
     put(head,
       h("button", { class: "ibtn session-back", "aria-label": "Back", onclick: opts.onBack }, icon("left", 16)),
-      headAvatar(rec),
+      whoAv(32, "cv-head-av"),
       h("div", { class: "cv-head-text" },
-        h("div", { class: "title ellipsis" }, rec?.name || ses?.name || ses?.title || thread.slice(0, 12)),
+        // The title and a short id: sessions in one project share its tile, so these tell them apart.
+        h("div", { class: "cv-head-line" }, h("div", { class: "title ellipsis" }, rec?.name || ses?.name || ses?.title || thread.slice(0, 12)),
+          h("span", { class: "cv-num code faint", title: `Session ${thread}` }, "#" + thread.slice(0, 6))),
         h("div", { class: "sub ellipsis", title: rec?.cwd || ses?.cwd || null }, [rec?.agent, shortDir(rec?.cwd || ses?.cwd)].filter(Boolean).join(" · ") || "Terminal session"),
       ),
       proj ? h("span", { class: "tag cv-project", title: `In ${proj}` }, proj) : null,
@@ -1577,6 +1590,8 @@ export function mountSession(container, opts) {
     on("lease.changed", onLive),
     // memory.curated carries no thread: refetch this open thread and let the id dedup filter it.
     on("memory.curated", () => fetchMemory()),
+    // Filed into a project (projects.add-threads, or made into one): the project's tile from now on.
+    on("thread.picked", e => { if ((e.payload?.thread || e.thread) === thread) void refile(e.payload?.project); }),
     on("session.indexed", e => { if ((e.thread || e.payload?.session) !== thread) return; if (mode === "blocks") refresh(); else readMoreLegacy(); }),
     // Heard through "thread.*" above; named here so the stream listens for them at all.
     ...MORE_EVENTS.map(name => on(name, () => {})),

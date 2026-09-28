@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: project tiles (the fifth avatar family), locked renderers, base64url fingerprints
+
+- A session's replies and header wear its project's tile (seeded from the stored avatar_seed); a
+  chat in no project wears a dashed draft tile seeded from its id, which carries over when it is
+  made into a project ("New project from this", projects.create from_thread) and switches in place
+  when it is filed into one (thread.picked). The assistant's creature shows only in its own
+  thread; agents keep blobs; teammates wear their project's colour as a badge.
+- Project tiles in the project list and the chat sidebar; a short session id beside the header
+  title and in thread rows. The rail's account button and the phone header show the person's avatar.
+- app-design's locked renderer files (dark and light skin tones legible in both themes); a theme
+  switch redraws the avatars in place. system.info's fingerprints are read as base64url.
+
 #### projects: a stored avatar_seed, and a chat made into a project keeps its tile
 
 - A project's marker stores `avatar_seed` at `projects.create`: the new slug, or with

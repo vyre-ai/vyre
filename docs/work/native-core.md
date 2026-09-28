@@ -18,7 +18,7 @@ Done:
   agentAvatar(id), teammateAvatar(id), whoAvatar(agent), teammateId(role, project),
   avatarSource (pure), installAvatarMotion. Seeds: person = owner.fingerprint8, assistant =
   assistant.fingerprint8 (both 16 hex from system.info), agent = its name (agents_agents PK),
-  teammate = "<role>-<project>" (core/team agentName). Fallbacks: face/creature from the name, no ring.
+  teammate = `<role>-<project>` (core/team agentName). Fallbacks: face/creature from the name, no ring.
 - Wired: chat user rows, assistant/agent head rows, session header (.cv-head-av, 32), handoff card
   (teammate from the session's project), chat thread list, Agents page rows and board head, a new
   Teammates section on /agents (team.list), Settings > You (160 with the Vyre code ring, redraws
@@ -42,6 +42,27 @@ Next: swap in app-design's locked files; rerun avatars.test.js, avatars-browser.
 Changed contracts: deck/chat/blocks.js personAv/agentAv now draw avatars (same classes kept);
 handoffCard reads b.project; deck/chat/lib/names.js readNames feeds setIdentity; deck/sw.js SHELL;
 deck/css/deck.css span.vy-av rules; deck/css/views/agents.css, settings.css.
+
+## 2026-09-28 (cont'd): locked files, base64url fingerprints, project tiles, rail avatar
+- Cherry-picked anywhere's owner.id (386e2049, e798ca50, 57d658d0, f3a25653; lead cleared through
+  f3a25653). system.info sends owner.fingerprint8 and assistant.fingerprint8 as base64url (11
+  chars). lib/identity.js is Node-only, so avatars.js decodes with atob; avatars.test.js checks the
+  decode against lib/identity's own toBase64url(fingerprint8()).
+- Vendored app-design's locked files (949d9e78 skin-tone floors, e84bb767 project tiles):
+  identity.js, characters.js, new project.js. theme() now reaches character() and projectTile();
+  a theme switch redraws every avatar on the page in place (installAvatars' MutationObserver).
+- Core (own commit, for the reviewer): core/projects stores `avatar_seed` in the marker at create
+  (the slug, or with `from_thread` the chat's id, which is also picked in). projects.list returns
+  it; an older marker defaults to its slug and is never rewritten on read.
+- Fifth family: threadAvatar() draws a session's replies and header: project tile in a project,
+  dashed draft tile (the chat's id) in none, the assistant's creature only in its own thread,
+  agents' blobs, teammates' characters with their project's colour badge. thread.picked re-renders
+  a session's reply avatars and header in place. The header and thread rows show a short session
+  id (#abc123) so sessions in one project are told apart. Project tiles in the project list and
+  the chat sidebar. "New project from this" on a loose thread page (projects.create from_thread).
+- Project tile bytes: projectBytes(seed) = two FNV-1a words over "vyre:project:v1:" + seed. Every
+  surface drawing a project tile (the App, the Capsule) needs this same function.
+- Rail account button and the phone header show the person's avatar.
 
 ## Done
 - 2026-09-27 77faf1e3: core/settings (registry of ~70 keys, stores: settings_values, config.json,

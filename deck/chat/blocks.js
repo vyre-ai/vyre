@@ -99,10 +99,12 @@ export function userRow(who, text, ts, me = null, images = 0) {
   ), "user", ts);
 }
 
-/** The header an assistant run starts with: the assistant's name (or the agent's) and the time. */
-export function headRow(who, ts, assistant = who === "Vyre") {
+/** The header an assistant run starts with: the assistant's name (or the agent's) and the time.
+ * `av`: the avatar to wear (session.js passes js/avatars.js threadAvatar: the project's tile, a
+ * chat's draft tile, an agent or teammate, or the assistant); without it, agentAv's. */
+export function headRow(who, ts, assistant = who === "Vyre", av = null) {
   return tag(h("div", { class: "cv-row cv-head" },
-    agentAv(who, assistant),
+    av || agentAv(who, assistant),
     h("span", { class: "msg-who" }, who),
     ts ? h("span", { class: "msg-when" }, clock(ts)) : null,
   ), "assistant", ts);
@@ -330,7 +332,7 @@ export function handoffCard(b) {
       disabled: !replied && !failed, "aria-label": `${verb} ${role}, Teammate, ${ask}`,
       onclick: () => { if (!replied && !failed) return; open = !open; show(); } },
       h("span", { class: "cv-chev", "aria-hidden": "true" }, icon("right", 12)),
-      teammateAvatar(teammateId(role, project), { size: 24, cls: "av-agent" }),
+      teammateAvatar(teammateId(role, project), { size: 24, cls: "av-agent", project }),
       h("span", { class: "cv-handoff-line" },
         h("span", { class: "cv-tool-name" }, verb + " "),
         h("span", { class: "cv-handoff-name" }, role),

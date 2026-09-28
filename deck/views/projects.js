@@ -19,6 +19,7 @@
 import { h, put, link, go, head, empty } from "../js/dom.js";
 import { attempt, queue, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
+import { projectAvatar, draftAvatar, setProjects } from "../js/avatars.js";
 import * as needs from "../js/needs.js";
 import { when, clock, since, base, initial, initials, plural } from "../js/fmt.js";
 import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
@@ -105,6 +106,7 @@ async function list(ctx) {
     if (!ctx.alive()) return;
     if (r.error) { put(count_, ""); put(rows, empty("Projects are not available.", r.error)); return; }
     const all = [...(r.data?.projects || [])].sort((a, b) => (b.last || 0) - (a.last || 0));
+    setProjects(all); // each project's tile seed (js/avatars.js)
     const pinned = new Set(pins());
     put(count_, all.length ? `${plural(all.length, "project")}, most recent first.` : "No projects yet.");
     put(rows,
@@ -132,6 +134,7 @@ function projectRow(p, pinned, redraw) {
   const ppl = peopleText(p.people);
   return h("div", { class: "pl-row" },
     pin,
+    projectAvatar(p.slug, { size: 32, cls: "pl-av" }),
     h("div", { class: "pl-main" },
       h("div", { class: "pl-name" }, link(`/projects/${enc(p.slug)}`, { class: "link quiet pl-open" }, p.name), p.org ? h("span", { class: "tag" }, p.org) : null),
       h("div", { class: "small muted ellipsis" }, ppl.length ? ppl.join(", ") : h("span", { class: "faint" }, "No people yet"))),
@@ -144,6 +147,7 @@ function projectRow(p, pinned, redraw) {
 function macProjectRow(p) {
   return h("div", { class: "pl-row" },
     h("span", { class: "ibtn pl-pin", "aria-hidden": "true" }),
+    projectAvatar(p.slug, { size: 32, cls: "pl-av" }),
     h("div", { class: "pl-main" },
       h("div", { class: "pl-name" }, h("span", null, p.name), machineChip(p)),
       h("div", { class: "readonly-note ellipsis" }, readOnlyNote(p))),
@@ -384,9 +388,27 @@ async function loose(ctx) {
   const drawAdd = () => {
     if (owner) { put(add, h("span", { class: "small muted" }, "In ", link(`/projects/${enc(owner.slug)}/${enc(id)}`, { class: "link" }, owner.name))); return; }
     if (inProject) { put(add, h("span", { class: "small muted" }, "In ", inProject)); return; }
-    if (!projectsAll.length) { put(add, h("span", { class: "small faint" }, pl.error ? "Projects are not available." : "Not in a project.")); return; }
-    const btn = h("button", { type: "button", class: "btn btn-sm", "aria-expanded": "false", onclick: () => form() }, icon("plus", 14), "Add to a project");
-    put(add, h("span", { class: "small faint lt-none" }, "Not in a project."), btn);
+    if (pl.error) { put(add, h("span", { class: "small faint" }, "Projects are not available.")); return; }
+    // Made into a new project, this chat's draft tile carries over and turns solid (projects.create
+    // from_thread keeps its seed); filed into an existing one, it takes that project's tile.
+    const make = h("button", { type: "button", class: "btn btn-sm", onclick: () => newProject() }, icon("plus", 14), "New project from this");
+    const btn = projectsAll.length ? h("button", { type: "button", class: "btn btn-sm", "aria-expanded": "false", onclick: () => form() }, "Add to a project") : null;
+    put(add, draftAvatar(id, { size: 24, title: "Not in a project yet" }), h("span", { class: "small faint lt-none" }, "Not in a project."), make, btn);
+  };
+  const newProject = () => {
+    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input lt-sel", "aria-label": "Project name", placeholder: "Project name" }));
+    const status = h("span", { class: "small muted", role: "status" });
+    const ok = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-sm" }, "Make it"));
+    put(add, h("form", { class: "lt-form", onsubmit: async (/** @type {Event} */ e) => {
+      e.preventDefault();
+      if (!name.value.trim()) { put(status, "Give it a name."); return; }
+      ok.disabled = true;
+      const r = await createProject({ name: name.value.trim(), from_thread: id });
+      ok.disabled = false;
+      if (r.error || !r.slug) { put(status, r.error || "The project was not made."); return; }
+      go(`/projects/${enc(r.slug)}/${enc(id)}`);
+    } }, name, ok, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: drawAdd }, "Cancel"), status));
+    name.focus();
   };
   const form = () => {
     const sel = /** @type {HTMLSelectElement} */ (h("select", { class: "input lt-sel", "aria-label": "Project" }, projectsAll.map(x => h("option", { value: x.slug }, x.name))));

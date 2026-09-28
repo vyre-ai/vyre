@@ -32,7 +32,7 @@ import { rail, placeForKey, macKeys } from "./rail.js";
 import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
-import { installAvatarMotion, setIdentity } from "./avatars.js";
+import { installAvatars, setIdentity, personAvatar } from "./avatars.js";
 import { reportContext } from "./context-report.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
@@ -209,9 +209,10 @@ async function drawFoot() {
   // The owner's initial when onboarding saved a name, else the machine's; the rail's avatar is
   // named for the person ("Account" until there is a name).
   const letter = initials(r.data?.owner?.name || host).slice(0, 1) || "V";
-  railEl.setOwner(r.data?.owner?.name || null, letter);
+  // The person's own avatar on the rail's account button and the phone header (ADR 0043).
+  railEl.setOwner(r.data?.owner?.name || null, letter, r.error ? null : personAvatar({ size: 32 }));
   owner = { name: r.data?.owner?.name || null, letter };
-  put(phInitial, letter);
+  put(phInitial, r.error ? letter : personAvatar({ size: 34 }));
   fixtureNote.hidden = !fromFixtures.size;
   if (fromFixtures.size) fixtureNote.setAttribute("title", [...fromFixtures].join(", "));
 }
@@ -777,7 +778,7 @@ window.addEventListener("deck:navigate", route);
   // The theme and scheme from the settings hub, live (ADR 0035); a box without the hub keeps /theme.css.
   followTheme({ attempt, on, onResume });
   // A tap on anyone's avatar plays its small hop (js/avatars.js), one listener for the page.
-  installAvatarMotion();
+  installAvatars();
   // Where the person is, for cohesion's context (ADR 0036): on each page and on coming back.
   reportContext({ attempt, surface: () => (phone() ? "phone" : "deck"), device: deviceId });
   // What needed the user last time, from this device, while the box is asked (ADR 0029 R3).

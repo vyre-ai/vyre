@@ -57,6 +57,10 @@ const GALLERY = `
   line("assistant", sizes.map(s => av.assistantAvatar({ size: s })));
   for (const a of ["kit", "scout", "glass", "planner", "relay"]) line("agent " + a, sizes.map(s => av.agentAvatar(a, { size: s })));
   for (const t of ["design-harlow-legal", "docs-harlow-legal", "reviewer-northwind", "qa-northwind", "memory-northwind", "chat-harlow-legal", "sessions-alex", "research-alex"]) line(t, sizes.map(s => av.teammateAvatar(t, { size: s })));
+  av.setProjects([{ slug: "harlow-legal", avatar_seed: "harlow-legal" }, { slug: "northwind", avatar_seed: "chat-7f3a" }]);
+  for (const p of ["harlow-legal", "northwind", "q3-report", "estate-intake", "launch-site", "bakery-menu"]) line("project " + p, sizes.map(s => av.projectAvatar(p, { size: s })));
+  line("draft chat-7f3a", sizes.map(s => av.draftAvatar("chat-7f3a", { size: s })));
+  line("teammate+colour", sizes.map(s => av.teammateAvatar("design-harlow-legal", { size: s, project: "harlow-legal" })));
   line("you, ring", [av.personAvatar({ size: 160, ring: true, label: "Your avatar, alex" })]);
   document.body.append(g);
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -100,7 +104,7 @@ try {
   for (const theme of ["dark", "paper"]) {
     await tab.run(`if (${JSON.stringify(theme)} === "paper") document.documentElement.dataset.theme = "paper"; else delete document.documentElement.dataset.theme; return true;`);
     const g = await tab.run(GALLERY);
-    say(`${theme}: every avatar draws real SVG`, g.svgs >= 60 && g.empty === 0, `${g.svgs} drawn, ${g.empty} empty; ${JSON.stringify(g.families)}`);
+    say(`${theme}: every avatar draws real SVG, five families`, g.svgs >= 90 && g.empty === 0 && Object.keys(g.families).length === 5, `${g.svgs} drawn, ${g.empty} empty; ${JSON.stringify(g.families)}`);
     say(`${theme}: gradient ids unique, every reference resolves once`, g.dupes === 0 && g.broken.length === 0, `${g.refs} references, ${g.dupes} duplicate ids, broken: ${g.broken.slice(0, 3).join(",")}`);
     say(`${theme}: the person's Vyre code ring at Settings size`, g.ring);
     say(`${theme}: shapes (person a circle, teammate a tile)`, /9999|50%/.test(g.shapes.person) && g.shapes.teammate !== "0px", JSON.stringify(g.shapes));
@@ -119,7 +123,10 @@ try {
   const chat = await tab.run(`await waitFor(".cv-user .vy-av", 15000); return {
     user: document.querySelector(".cv-user .vy-av")?.dataset.family, head: document.querySelector(".cv-head .vy-av")?.dataset.family,
     header: document.querySelector(".cv-head-av")?.dataset.family, drawn: [...document.querySelectorAll(".cv-row .vy-av svg")].length };`);
-  say("chat rows and header draw the families", chat.user === "person" && chat.head === "assistant" && chat.header === "assistant" && chat.drawn > 0, JSON.stringify(chat));
+  // The world's session is in no project: its replies and header wear its dashed draft tile.
+  say("chat rows and header draw the families", chat.user === "person" && chat.head === "project" && chat.header === "project" && chat.drawn > 0, JSON.stringify(chat));
+  const rail = await tab.run(`return document.querySelector(".rail-avatar .vy-av")?.dataset.family || null;`);
+  say("the rail's account button is the person's avatar", rail === "person", String(rail));
   await shot("chat-session");
 
   // 4. A tap hops; Reduce Motion keeps it still.
