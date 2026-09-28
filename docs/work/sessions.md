@@ -43,6 +43,24 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
+- Resume 10 continued: reviewer verdicts on both sent shas, addressed.
+  - Reviewer HELD b786a799 (planner task kind) on 2 HIGHs: a task from a bare mcp/module/thread-
+    scoped caller launched AMBIENT with the person's own scope at fire (no real agent claim
+    matched); a task could post into ANY thread the creator named, as module:planner, a confused
+    deputy. Fixed at dfc402e9: taskScope requires a genuinely claimed agent identity (or the
+    person) to add or redirect a task at all; a non-person's task may only target its own calling
+    thread (meta.thread now threaded through the tool() wrapper AND the paired-Mac `as` forward
+    path); a project-only task needs that project inside the creator agent's own agents.list
+    scope, checked again at add, at update, and right before it fires (MEDIUM). 25/25
+    planner.test.js (5 new), 106/106 with goals+harness+switchboard+boundaries, testbox.
+  - Reviewer's LOW 2 on goals ccf2e0f1 (SIGNED OFF, not blocking): naming both a thread and a
+    project on inScope checked only the thread. Fixed at 9c6ec941: both must hold when both are
+    named. 8/8 goals.test.js (1 new).
+  - Reviewer's LOW 1 (swap goals' isPerson for cohesion's lib/caller.js, 87149563) NOT done: that
+    lib needs core/presence's PERSON_SURFACES/personOnly, which this branch does not have yet (it
+    predates the personguard hotfix b3b7b1dc/002e6577 cohesion's tree already carries). Cherry-
+    picking someone else's in-flight security work to close a LOW is the integrator's job at the
+    stage/0.1.1 fold, not mine to force now - told cohesion and the reviewer directly.
 - Resume 10 (2026-09-28), the four-item queue, all four done:
   1. Reviewer's HOLD on goals bb3b9b4e was already fixed locally, uncommitted, as ccf2e0f1
      (person = owner surfaces + owner devices, not "no agent name"; callers declared on all five
