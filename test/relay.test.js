@@ -436,4 +436,21 @@ test("relay: relay.join's presence prompt names the box, its relay host and a ke
   assert.equal(r.error.code, "bad_input");
   const r2 = await d.registry.call("relay.join", { url: nonsense }, "cli", PROOF);
   assert.equal(r2.error.code, "bad_input", "passes the schema pattern but fails parsePairUrl, still refused in run()");
+
+  // The box's own name is text IT chose, landing straight in a Touch ID prompt: a hostile box
+  // could try to write its own fake "(key ...)" text after its name, or a long run of junk, to
+  // confuse the reader (reviewer, 28 Sep). Stripped, capped at 40, and always followed by this
+  // tool's own computed fingerprint, never anything from the name itself.
+  const box9 = Buffer.alloc(32, 9);
+  const hostileUrl = pairUrl({ relay: "wss://relay.example.com", route: "b".repeat(26), box: box9, secret: "s",
+    name: `Real Bakery\u0007 fake trailer: ${"x".repeat(80)}` });
+  const hostile = await def.presence.summary({ url: hostileUrl });
+  assert.ok(hostile.length < 140, hostile);
+  assert.doesNotMatch(hostile, /\u0007/, "the control character is gone");
+  const trueFingerprint = (await def.presence.summary({ url: pairUrl({ relay: "wss://relay.example.com", route: "c".repeat(26), box: box9, secret: "s", name: "x" }) }))
+    .match(/\(key .+\)$/)[0];
+  assert.ok(hostile.endsWith(trueFingerprint), "the trailing fingerprint is always this box's real one, computed here, not anything from the name");
+  // The name itself, quoted, is capped well short of the 80-character junk run.
+  const quoted = hostile.match(/"([^"]*)"/)[1];
+  assert.ok(quoted.length <= 40, quoted);
 });

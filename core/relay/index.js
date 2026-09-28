@@ -282,7 +282,12 @@ export default {
           const offer = parsePairUrl(i && i.url);
           if (!offer) return "This does not look like a real Vyre pairing code; refusing to pair.";
           const host = (offer.relay.match(/^wss?:\/\/([^/]+)/) || [])[1] || offer.relay;
-          return `Pair this device with "${offer.name || "a Vyre box"}" on ${host} (key ${keyFingerprint(offer.box)})`;
+          // offer.name is text the OTHER box chose, landing straight in a Touch ID prompt: strip
+          // control characters and newlines and cap it, so a hostile box cannot write its own fake
+          // "(key ...)" text (or anything else) into the prompt after its name (reviewer, 28 Sep).
+          // The key shown after it is always this box's own computed fingerprint, never the name.
+          const name = String(offer.name || "a Vyre box").replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 40) || "a Vyre box";
+          return `Pair this device with "${name}" on ${host} (key ${keyFingerprint(offer.box)})`;
         },
       },
       run: async ({ url, name, becomeDevice = false }, meta = {}) => {
