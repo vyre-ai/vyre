@@ -72,7 +72,10 @@ const ATSPI = new URL("./atspi.py", import.meta.url).pathname;
 const HOME = process.env.HOME || "/home/agent";
 const CHROME_BIN = process.env.CHROME_BIN || "chromium";
 // The image sets both (the browser's own folder, outside the agent's home); the defaults are
-// for running computerd by hand.
+// for running computerd by hand. CHROME_LOG stays under computerd's own uid's home (vyre's, on
+// the image), not browser's: this process opens it (fs.openSync below, then hands the fd to
+// Chrome's spawn), and browser's own folder only grants computerd read+execute through the
+// agent group, not write -- opening a fresh log file there would fail.
 const CHROME_PROFILE = process.env.CHROME_PROFILE || path.join(HOME, ".chromium");
 const CHROME_LOG = process.env.CHROME_LOG || path.join(HOME, ".chromium.log");
 // Chrome's own uid, a different one from computerd's own (this process's, whatever it is --
