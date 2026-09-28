@@ -86,12 +86,17 @@ answer first. Top 5, sent to owners:
    independent of PERSON_ONLY/OPT_OUT membership. So OPT_OUT can't remove a presence-gated tool's
    proof — the two layers can't drift. Reviewer is adding a line to the landing commit or
    personOnly()'s doc comment saying so.
-4. **Three separate state mechanisms stand in for the "queued/asking/waiting/stopped" a person
-   sees**, and thread.status (meant to collapse them) isn't shipped: slots.js's slot.queued,
-   switchboard's own STATE (which relabels working -> "running" externally while core/harness
-   reads the RAW "working" value directly — a mismatch inside switchboard's own blast radius, not
-   just across surfaces), and asks.js's ask.raised. Sent to sessions with the harness detail so
-   thread.status's shape accounts for it before chat/Capsule/CLI converge on it.
+4. **Three separate state mechanisms — SHIPPED by sessions at 6e2f8a71 (work/sessions).** Turned
+   out worse than a naming mismatch: internal "waiting" only ever means an ask is open (a person
+   would call that "asking"), internal "idle" is what a person calls "waiting" — a real swap bug,
+   duplicated in switchboard's STATE map, the CLI, and chat's own client-side STATUS map. Fixed at
+   the source: new pure `lib/thread-status.js`, canonical set starting/working/asking/waiting/
+   stopped/finished/failed; switchboard emits `thread.status {status}` alongside the unchanged
+   legacy `thread.state`; threads.get/list gain `canonical_status` next to raw `status`. Nothing
+   existing changes shape. core/harness's raw-string LIVE check is correct as-is (checks "is the
+   process alive," not a person-facing label) but duplicates the array as a literal — sessions
+   will add `LIVE_STATUSES` to the lib; cohesion takes the one-line harness import as pure glue
+   once it lands (routes to reviewer-2). Relayed chat's own STATUS-map cleanup directly to chat.
 5. **The assistant's "sees all linked projects" rule bypasses projects.access — RESOLVED.** memory-iq
    added a one-line comment at core/memory/index.js's {all:true} branch (b4377004, work/memory-iq):
    deliberately independent of projects.access; a future restriction is a rule change there, not a
