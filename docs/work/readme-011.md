@@ -182,6 +182,26 @@ removed after; confirmed no process or port left with `ps`/`lsof`) and the same
 headless Chrome defaults to light, which is why round 4's shot came out "paper" despite no
 `data-theme` override - not a bug, just an unset media emulation on my part).
 
+## Round 6: host, bezel margin, and the ring question (team-lead, after CLEARED 760f1a11)
+Two small fixes, both re-rendered on testbox, throwaway world torn down after (confirmed no
+leftover process/port both times):
+- deck-chat.png/.dark.png: re-rendered with `--host-resolver-rules=MAP alex-box.tail0000.ts.net
+  127.0.0.1:<port>` (the same trick `scripts/docs-shots` itself uses for its own HOST constant),
+  so the address bar now reads `alex-box.tail0000.ts.net` like the other docs shots, not
+  `127.0.0.1:8935`. Same thread, same avatars, same project tiles.
+- wink-confirm.png: the bezel's right edge was flush against the canvas (flexbox centered the
+  360px box correctly, but its box-shadow rings don't count toward centering math, so they
+  clipped on whichever side had less rounding slack). Fixed with an explicit border+outline
+  (real box-model width, not shadow) plus a fixed margin on every side and a wider canvas, so the
+  full frame shows with even space around it regardless of centering.
+- The ring question: checked `deck/js/pair-avatar.js`'s own doc comment before changing anything
+  - it says explicitly "just the face art, not the Vyre-code ring - the ring's job ended at
+  pairing", and its `renderPersonAvatar()` never takes a `ring` option (only `js/avatars.js`'s
+  lower-level `personAvatar({ring:true})` can draw one, for a different caller). So the bare face
+  in the done state is the real, current, deliberately-designed markup, not a gap in my render.
+  Left it as shipped rather than fabricating a ring that isn't actually part of this screen;
+  told team-lead so they can decide if that's still the right call.
+
 ## Next
 - Waiting on reviewer's second privacy/accuracy pass and team-lead's read before deploying
   vyre.run (their instruction: don't deploy until both).
