@@ -72,7 +72,7 @@ import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
 import { isMac, machineChip } from "../js/machine.js";
-import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
+import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, handoffCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
 import { frameToPicture } from "./core/images.js";
 import { textItemRow } from "./live-text.js";
 import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks, pendingEvents } from "./core/session-state.js";
@@ -681,7 +681,8 @@ export function mountSession(container, opts) {
       case "reasoning": return { kind: "thinking", text: it.text, ts: at };
       case "tool": return { kind: "tool", id: it.call, tool: it.name, input: it.input, output: it.output ?? null, summary: it.summary,
         error: it.status === "failed" || (!!it.error && it.status !== "running"), duration_ms: it.duration_ms ?? null, ts: at, patch: it.patch,
-        done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it), ...(it.images ? { images: it.images } : {}) };
+        done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it),
+        ...(it.reply !== undefined ? { reply: it.reply } : {}), ...(it.images ? { images: it.images } : {}) };
       // A turn the transcript has not closed is still going only while the session is busy and
       // nothing was said after it (a message sent now closes the one before, even unread yet).
       // auth: only an api-key turn is really billed by the number; a subscription runs on the
@@ -692,7 +693,7 @@ export function mountSession(container, opts) {
     }
   }
   /** What a row shows, so a patch that changed nothing visible does nothing. */
-  const sig = it => JSON.stringify(it.kind === "tool" ? [it.status, it.summary, it.output, it.input, it.duration_ms, it.error, it.patch]
+  const sig = it => JSON.stringify(it.kind === "tool" ? [it.status, it.summary, it.output, it.input, it.duration_ms, it.error, it.patch, it.reply]
     : it.kind === "ask" ? [it.state, it.decision, it.answers] : asBlock(it) || it);
 
   /** "Thinking · 8 s": until the next row began, when that is known. `i`: where it is in the items, when the caller knows. */
@@ -725,7 +726,8 @@ export function mountSession(container, opts) {
       // A growing reply is heard by the resize observer; without one, a frame is asked for (coalesced).
       case "text": { const el = textItemRow(it.at, { visible, onGrow: stick.observing ? undefined : () => stick.poke() }); el.sync(it); return el; }
       case "reasoning": return thinkingRow(it.text, it.at, thinkLabel(it));
-      case "tool": return toolCard(asBlock(it));
+      // A teammate handoff (team_ask): its own card (teammates.md section 3), not the generic tool one.
+      case "tool": return (it.name === "team_ask" || it.name === "team.ask") ? handoffCard(asBlock(it)) : toolCard(asBlock(it));
       case "turn": return turnRow(asBlock(it));
       case "notice": return noticeMsg(it.text, it.at);
       case "ask": return askEl(it);

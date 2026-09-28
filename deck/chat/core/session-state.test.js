@@ -205,6 +205,25 @@ test("thread.status is canonical (sessions' lib/thread-status.js): read as-is, a
   assert.equal(s.state, "paused");
 });
 
+test("a teammate's result (core/team's threads.post, kind teammate-result) attaches to the handoff that asked, never a message of its own (teammates.md section 3)", () => {
+  const s = createSession(T);
+  ev(s, "thread.tool", { call: "tu_1", id: "tu_1", name: "team_ask", tool: "team_ask", input: { to: "design", text: "make the intake form calmer" } });
+  const handoff = s.byKey.get("t:tu_1");
+  assert.equal(handoff.name, "team_ask");
+  assert.equal(handoff.reply, undefined, "nothing yet");
+  // Idle: threads.post delivers it as an ordinary thread.sent.
+  const changed = ev(s, "thread.sent", { text: "Done - the copy is warmer now.", surface: "design", kind: "teammate-result", uuid: "post-1" });
+  assert.deepEqual(changed, ["t:tu_1"], "the handoff's own key, not a new user row");
+  assert.equal(handoff.reply, "Done - the copy is warmer now.");
+  assert.equal(s.byKey.has("u:post-1"), false, "never an ordinary user message");
+  assert.equal(s.items.filter(it => it.kind === "user").length, 0);
+  // Busy: threads.post's queue() path - never a "queued for after" row for it either.
+  ev(s, "thread.tool", { call: "tu_2", id: "tu_2", name: "team_ask", tool: "team_ask", input: { to: "backend", text: "add the webhook" } });
+  const changed2 = ev(s, "thread.queued", { queued: 9, uuid: "q-1", text: "on it", surface: "backend", kind: "teammate-result" });
+  assert.deepEqual(changed2, []);
+  assert.equal(s.queued.length, 0);
+});
+
 test("re-reading the same blocks changes nothing; a tool's result arriving updates it in place", () => {
   const s = createSession(T);
   const first = [

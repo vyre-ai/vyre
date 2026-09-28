@@ -292,6 +292,58 @@ function toolIcon(tool) {
 }
 
 /**
+ * A teammate handoff (teammates.md section 3, tool-row.md's "Handoff" variant): a session calling
+ * team_ask/team.ask. Distinct from toolCard - not colour, per avatar.md's "no per-teammate hue"
+ * ruling - the teammate's own tile (agentAv, same as kit or juno), its role name, a plain
+ * "Teammate" tag, verb "Asked" while no reply has landed yet (b.reply), "Replied" once it has.
+ * Never folded into a run (core/grouping.js's BY_NAME/foldable), always its own line; "collapsed"
+ * (the default) only ever means the reply detail is shut. The reply renders as turn prose
+ * (markdown), never a code block - it is words, not a tool's output.
+ * @param {any} b { tool: "team_ask"|"team.ask", input: { to, text, ... }, reply?: string, error?: boolean }
+ * @returns {HTMLElement & { update: (b: any) => void, tick: (now?: number) => void }}
+ */
+export function handoffCard(b) {
+  const el = /** @type {any} */ (tag(h("div", { class: "cv-row cv-tool cv-handoff" }), "assistant", b.ts));
+  let open = false;
+  el.tick = () => {}; // no elapsed timer while waiting (tool-row.md: "a teammate's own pace is its business")
+  el.update = nb => {
+    b = nb;
+    const role = String(b.input?.to || "");
+    const ask = String(b.input?.text || b.summary || "");
+    const replied = typeof b.reply === "string";
+    const failed = !!b.error;
+    const verb = failed ? "Asked" : replied ? "Replied" : "Asked";
+    const inner = h("div", { class: "cv-tool-inner cv-handoff-reply msg-text" });
+    const body = h("div", { class: "cv-tool-body", "aria-hidden": String(!open) }, inner);
+    let built = false;
+    const fill = () => { if (!built && replied) { built = true; add(inner, renderMarkdown(b.reply || "")); } };
+    const show = () => {
+      if (open) { fill(); el.setAttribute("data-open", ""); } else el.removeAttribute("data-open");
+      body.setAttribute("aria-hidden", String(!open));
+      head.setAttribute("aria-expanded", String(!!open));
+    };
+    el.setAttribute("data-state", failed ? "failed" : replied ? "done" : "running");
+    const head = h("button", { class: "cv-tool-head cv-handoff-head", type: "button",
+      disabled: !replied && !failed, "aria-label": `${verb} ${role}, Teammate, ${ask}`,
+      onclick: () => { if (!replied && !failed) return; open = !open; show(); } },
+      h("span", { class: "cv-chev", "aria-hidden": "true" }, icon("right", 12)),
+      agentAv(role),
+      h("span", { class: "cv-handoff-line" },
+        h("span", { class: "cv-tool-name" }, verb + " "),
+        h("span", { class: "cv-handoff-name" }, role),
+        h("span", { class: "tag cv-handoff-tag" }, "Teammate"),
+        ask ? h("span", { class: "cv-handoff-sum" }, " to " + ask) : null,
+      ),
+      failed ? h("span", { class: "cv-tool-state cv-failed" }, "no answer") : null,
+    );
+    put(el, head, body);
+    show();
+  };
+  el.update(b);
+  return el;
+}
+
+/**
  * A tool call as a card. `b` is a transcript tool block, or a live one built from thread.tool
  * ({ tool, summary, destination } with no input yet). The card's .update(b) redraws it in place,
  * keeping whether it is open.
