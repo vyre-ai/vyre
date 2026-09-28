@@ -125,6 +125,36 @@ Next: client wiring for item 3 (a "Fork from here" item beside "Restore" in the 
 pickers.js + session.js) - coordinating with chat since session.js is theirs. Reported findings
 and the new capability to team-lead.
 
+## Top 5 chat-feel gaps left vs Paseo (2026-09-28, for team-lead)
+Read against reference/paseo and this file's own Paseo mapping table + native-bar.md's results.
+1. **No draft persistence.** Paseo's input/state.ts saves the unsent composer text every 200 ms;
+   ours only remembers SENT messages (up-arrow recall). Switch threads or reload mid-sentence and
+   the words are gone. BUILT this session (below).
+2. **Full markdown re-parse per frame.** lib/markdown.js's `renderMarkdown` rebuilds a message's
+   whole DOM from scratch on every call; Paseo's split-markdown-blocks.ts re-parses only the tail
+   block and freezes the rest, so a long streaming reply's already-highlighted code blocks are
+   never rebuilt mid-stream. Caller is blocks.js (chat's) - needs coordinating with chat.
+3. **Budget 6, fling: 67 ms p95 (2,000 rows), need under 16.7 ms.** window-view remeasures and
+   remounts rows every frame instead of only when scrolling settles. chat's file (window-view.js).
+4. **Budget 7, cold open: 2,420 ms, need under 1,000 ms.** Well over 2x budget; not yet
+   root-caused (no trace breakdown taken yet - first thing to look at if this is picked up next).
+5. **Budget 8's residual jump: 106-134 px while reconnecting, scrolled up** (timing itself now
+   passes, well under 1 s, since pwa's fast-reachability fix). Same family as budget 5's now-fixed
+   CLS entry (a placeholder box's display flip) - likely another collapse/expand or windowing
+   remeasure in session.js/window-view.js, chat's.
+
+Built #1 first (composer.js, no chat-file conflict, quick and testable): a draft store
+(`DRAFTS`, module-level, capped at 50 threads like HISTORY's rings) keyed by thread, restored into
+a fresh mountComposer() when one exists, saved debounced (200 ms) on every keystroke via
+`scheduleDraftSave`, and flushed (immediately, not debounced) by `setValue()` and by `stop()` -
+so a fast thread-switch right after typing never loses the last few keystrokes, and any
+programmatic setValue (send, prefill, rewind, clear) keeps the store in sync at once rather than
+on a delay. Sending clears the thread's draft (setValue("") -> flushDraft() -> clearDraft).
+New test file deck/chat/composer-drafts.test.js (3/3): restore across a fresh mount, the
+no-debounce-fired-yet case (stop() must flush), and two threads keeping separate drafts. Full
+deck/chat suite + boundaries: 95/95 on testbox. Not yet done: #2 needs blocks.js coordination with
+chat; #3/#4/#5 are chat's files (window-view.js/session.js) - flagging rather than touching them.
+
 ## Resume 2026-09-28 (post-restart, cont'd)
 - **6fb2e02a: pickers.js/composer.js side of "Fork from here" done and tested.** rewindSheet
   takes optional `onFork`/`canFork`; without them (an older caller, or chat before it wires
