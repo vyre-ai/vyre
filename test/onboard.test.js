@@ -15,6 +15,7 @@ import { tempHome } from "./helpers.js";
 import { bindAddress } from "../core/onboard/loopback.js";
 import { execFileSync } from "node:child_process";
 import { ptyCommand } from "../core/onboard/setup-token.js";
+import { canRelayJoin } from "../core/onboard/index.js";
 
 /** A fake executable that prints `out` for any arguments. */
 function fakeBin(dir, name, out) {
@@ -285,6 +286,17 @@ test("onboard: onboard.machine records solo or server, rejects a bad value, and 
   const s = (await (await tool(base, session, "onboard.status")).json()).data;
   assert.equal(s.machine, "server");
   assert.equal(s.role, "box", "role is untouched by this tool");
+  assert.equal(s.platform, process.platform, "status reports the real os.platform()");
+  assert.deepEqual(s.can, canRelayJoin(process.platform), "status.can matches the pure helper");
+});
+
+// relay.join is not shippable on a Mac until vyre-core exists (reviewer/team-lead, 28 Sep); launch
+// reads onboard.status.can.relayJoin to hide the code-pairing card rather than offer a dead path.
+test("onboard: canRelayJoin is false with a reason on darwin, true elsewhere", () => {
+  assert.deepEqual(canRelayJoin("darwin"), { relayJoin: false, reason: canRelayJoin("darwin").reason });
+  assert.match(canRelayJoin("darwin").reason, /vyre-core/);
+  assert.deepEqual(canRelayJoin("linux"), { relayJoin: true, reason: null });
+  assert.deepEqual(canRelayJoin("win32"), { relayJoin: true, reason: null });
 });
 
 // Reviewer, 28 Sep: onboard.machine changes which modules load, so it must be the person's own

@@ -75,15 +75,16 @@ it running:
 
 Agreed 28 Sep, for launch's onboarding cards and tailnet's *onboard.join*:
 
-- **`onboard.machine`** (new tool, `core/onboard`, HUMAN_ONLY): `{ action: "set", machine: "solo"|"server" }`
+- **`onboard.machine`** (new tool, `core/onboard`, HUMAN_ONLY): `{ machine: "solo"|"server"|"device" }`
   -> `{ machine, service?: { installed: bool, warning?: string } }`. The Deck calls this when
   alex picks "Just on this computer" or "This computer stays on for me": nothing else, no
   polling, purely local. `machine: "server"` on darwin also installs the `launchd`/keep-awake
   service inline (the same code *vyre server here* runs) so the card click is enough; no
   terminal needed. Calling it again with the current value is a no-op on the service side.
-  `machine: "device"` is a valid input but never sent by a card directly: it's set by
-  *onboard.join*'s `verify` step once a connection to an existing/new server is confirmed
-  (`ctx.call("onboard.machine", { action: "set", machine: "device" })`), per ADR 0039 section 5.
+  `machine: "device"` stays in the input schema (a person or an agent may never choose it
+  directly; run() refuses anyone but module:onboard/module:relay) because it's how
+  *onboard.join*'s `verify` step sets it once a connection to an existing/new server is
+  confirmed (`ctx.call("onboard.machine", { machine: "device" })`), per ADR 0039 section 5.
 - **Solo needs no call at all** until a device later joins (rung 2): matches the capability
   ladder: nothing about the choice exists until it does something.
 - **"I already have a server" / "a cloud server"** hand off to tailnet's *onboard.join* (see

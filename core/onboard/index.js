@@ -35,6 +35,15 @@ const CREDENTIAL_READERS = ["agents", "threads"];
 // Who may be handed a passkey code: the loopback onboarding session and the box's own terminal.
 // Never a tailnet caller, which a model on the owner's Mac is too.
 const HANDS_CODE = new Set(["onboard", "cli", "local"]);
+// relay.join is not shippable on a Mac yet: vyre.db is a same-uid store, so a Mac chosen as
+// Solo/Server has nowhere safe to hold a paired device's keys until vyre-core (ADR 0040) owns
+// its own root-only store -- reviewer/team-lead, 28 Sep ("gated on vyre-core, same as Mac GA").
+// launch reads this to hide the code-pairing card rather than offer a path that would fail.
+const RELAY_JOIN_DARWIN_REASON = "relay pairing needs vyre-core to hold its keys, which is not built on a Mac yet";
+/** Pure, for tests: what onboard.status reports under `can`, for a given `os.platform()` value. */
+export function canRelayJoin(platform) {
+  return platform === "darwin" ? { relayJoin: false, reason: RELAY_JOIN_DARWIN_REASON } : { relayJoin: true, reason: null };
+}
 const GREETING = "Vyre is set up. Say hello to me in two or three sentences: who you are, and one thing you can do for me now.";
 /**
  * The commands the Tailnet Lock card shows. The person runs them on their Mac; Vyre never runs
@@ -230,7 +239,12 @@ export default {
       const steps = Object.fromEntries(STEPS.map(k => [k, ["done", "skipped"].includes(detail[k].state) ? detail[k].state : "todo"]));
       const current = STEPS.find(k => steps[k] === "todo") || null;
       const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
-      return { mode, role: ctx.config.role, machine: ctx.config.machine, owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
+      // can: what this machine is actually able to do, for launch's cards to gate on rather than
+      // guess from role/machine. relayJoin is false on darwin until vyre-core exists (see
+      // RELAY_JOIN_DARWIN_REASON above); every other platform can already join a relay today.
+      const can = canRelayJoin(process.platform);
+      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can,
+        owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
         host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
         // loopback page is done with and `vyre box add` may close its tunnel.
