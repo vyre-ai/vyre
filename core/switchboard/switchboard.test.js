@@ -218,7 +218,14 @@ async function until(fn, what, ms = 8000) {
  * granted to module agents the way a person does it from the CLI, except those in `ungranted`.
  */
 async function boot(t, { vault, ungranted = [], probe } = {}) {
-  const root = tempHome(t);
+  // tempHome's own cleanup always runs first (after-hooks run in the order they were added), so
+  // it needs a way to stop this in-process vyred before it removes the directory - otherwise a
+  // real ENOTEMPTY race (found under the full suite at concurrency 4, 2026-09-28, in the sibling
+  // sessions.test.js which has the same shape): the directory is removed while the daemon, or a
+  // live child it started, is still writing into it. `daemon` is reassigned below, including by
+  // the restart test's second start() - `stop()` always targets whichever is current.
+  let daemon = null;
+  const root = tempHome(t, { stop: () => daemon && daemon.stop() });
   const log = path.join(root, "claude.log");
   // This file speaks the CLI runner's own protocol to the fake (control_request/control_response
   // JSON lines) and has no driver-loop or skip logic, unlike core/sessions/sessions.test.js.
@@ -251,7 +258,7 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
       } };`);
   }
   const d = await start({ root, presence: present, log: () => {} });
-  t.after(() => d.stop());
+  daemon = d;
   // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
   // Vyre's own state, as it does on a real machine. realpath: on the Mac the temp dir sits under
   // /var, which vyred and fake claude see as /private/var.
@@ -265,7 +272,10 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
     if (ungranted.includes(name)) continue;
     assert.equal((await tool("vault.grant", { name, module: "agents" })).data.grant.status, "active");
   }
-  return { root, d, work, launches, tool, transcripts };
+  // A test that replaces d (the restart test starts `again` in its place) calls this so
+  // tempHome's stop() - which always runs first at teardown - targets the current one, not the
+  // one it already stopped by hand.
+  return { root, d, work, launches, tool, transcripts, setDaemon: nd => { daemon = nd; } };
 }
 
 /** A terminal session's transcript, as Claude Code leaves one: in a project folder, cwd on its lines. */
@@ -441,11 +451,11 @@ test("switchboard: a terminal resume of a live headless thread is warned about, 
 });
 
 test("switchboard: vyred restarting marks its threads stopped", async t => {
-  const { root, work, tool, d } = await boot(t);
+  const { root, work, tool, d, setDaemon } = await boot(t);
   const id = (await tool("threads.start", { cwd: work })).data.id;
   await d.stop();
   const again = await start({ root, presence: present, log: () => {} });
-  t.after(() => again.stop());
+  setDaemon(again); // tempHome's teardown must stop THIS one now, not the d it already stopped
   const r = await call("threads.get", { thread: id }, { root });
   assert.equal(r.data.thread.status, "stopped");
   // ADR 0029 R7: the stop said why, so a surface shows "the box restarted", not a spinner.
