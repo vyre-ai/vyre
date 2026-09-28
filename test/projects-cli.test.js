@@ -173,6 +173,22 @@ test("cli: vyre start opens a new named thread in the project's home; pick and u
   assert.deepEqual(marker().threads, [INTAKE]);
 });
 
+test("cli: vyre pick takes a live thread id straight away, before Recall has indexed it", async t => {
+  const w = world(t);
+  const harlow = path.join(w.work, "harlow-live");
+  await w.run(["new", "Harlow Legal", "--home", harlow, "--no-pick"]);
+  // A session id that exists nowhere in the seeded corpus: exactly the shape of a chat someone
+  // just started, before the next index run has ever seen it.
+  const LIVE = "22222222-bbbb-4000-8000-000000000099";
+  const p = await w.run(["pick", "harlow-legal", LIVE]);
+  assert.match(p.out, /1 picked into harlow-legal/, p.out);
+  const marker = JSON.parse(fs.readFileSync(path.join(harlow, ".vyre", "project.json"), "utf8"));
+  assert.deepEqual(marker.threads, [LIVE]);
+  // A ref that merely looks close to an id but isn't one is still refused, not swallowed.
+  const bad = await w.run(["pick", "harlow-legal", "not-a-real-id"]);
+  assert.match(bad.out, /no thread matches/);
+});
+
 test("cli: vyre projects move --dry-run on a box says what would move and changes nothing; names and a real move are refused", async t => {
   const w = world(t);
   // A box whose homes still sit in the old folder, with a work folder to move them to.
