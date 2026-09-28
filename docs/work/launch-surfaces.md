@@ -79,6 +79,43 @@ don't fit this pass without their own picker UI, left for a follow-up rather tha
 | Phone first run | mobile | spec to hand over |
 | Capsule first run | capsule-pro | spec to hand over |
 
+## Add your phone (new, the user's decision, 28 Sep)
+
+The Deck shows the person's avatar with a live Vyre code ring encoding a one-time pairing ticket
+(tailnet's new `relay.pair.ticket`), "Open phone.vyre.run on your phone and scan this", a 5-minute
+countdown, and a refresh. Phone scans -> "Pair <phone>? (<fingerprint>)" + Touch ID confirm ->
+"Your phone is connected." In onboarding (a Device or phone step — the existing `devices` step's
+phone card is the likely home, alongside/replacing its current Tailscale-QR path) and in
+Settings > Devices (`drawDevices`, `deck/views/settings.js:569`). Gated on
+`onboard.status.can.relayJoin` (deck/js/join-caps.js, already built for the live step — same
+helper, same false-or-missing-reads-false rule) until vyre-core, same as "Pair with a code".
+
+Owners: launch (placement, look, the gate), app-design (ring geometry), tailnet (ticket mint +
+pair-confirm calls), pwa (the phone side, phone.vyre.run scanning and its own confirm screen).
+
+Not started: no `relay.pair.ticket` tool exists yet (today's real pairing tools are
+`relay.pair.start`/`relay.pair.first`, ADR 0026 — a different shape, QR-to-URL not a live avatar
+ring), no ring geometry board exists, no phone-side contract exists. Asked all three (see Needed
+from others) before writing any real UI, per the same research-first pattern as "Where should
+Vyre live?" and Vyre Drive above. `canRelayJoin` is reusable as-is; nothing else to build yet
+without their answers.
+
+**Built and verified, sha e4c303e4 (28 Sep):** the shared `deck/js/wink-card.js` card, one home
+in onboarding's devices step and one in Settings > Devices, built to the reviewer's five
+pre-review points (relayed by the lead). `deck/test/settings-browser.js` covers all five for real
+on testbox, 26/26: no mint on load or in a loop, blanks (DOM removal, not CSS hidden) on blur,
+hidden, expiry and after pairing, one live ticket per tap (including after Remove and via "Add
+another device"), the ticket never reaches a URL, localStorage/sessionStorage or a console line,
+and after pairing the device's name, fingerprint and a real one-tap Remove (calls
+`relay.devices.remove`, drops back to idle, no second confirm) all show. **Gap found and fixed**:
+this file's earlier Wink checks were written and committed (210a1c32) but never actually run - the
+comment claimed `relay.pair.ticket`'s missing-tool fallback would answer from
+`deck/fixtures/relay.json`, but that fallback needs `?fixtures=1` on the URL (deck/js/api.js), which
+nothing here ever set, so `mint()` silently got no ticket while the countdown still showed a live
+"Expires in 5:00" over a blank ring the whole time. Fixed by navigating with `?fixtures=1`; every
+other tool this section calls (`relay.devices.remove`/`.rename`, `onboard.status`) still answers
+for real, since fixtures only stand in for a tool that's genuinely missing.
+
 ## Where should Vyre live? (0.1.1, new priority)
 
 Researched before proposing anything:
