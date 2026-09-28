@@ -124,11 +124,12 @@ Deck (work/chat)
       a chat-presence indicator, not a keyboard-lease one, and shows on every solo, single-device
       session (the common case), not just a real handoff. Either hide the row entirely with
       nothing to say, or give the idle-solo state its own quiet copy, not the multi-device word.
-- [ ] Esc Esc's rewind sheet (`deck/chat/pickers.js` `rewindSheet`) has no "Fork from here" beside
-      "Rewind here"/"Cancel", though `threads.fork {at}` shipped on native-core's branch
-      (`48de0bd3`) with exactly that framing ("the other item in the rewind menu"). Until it lands,
-      a person can only overwrite the live thread from an earlier point, never branch off it
-      without losing the original: the one explicit ask this review was sent to check.
+- [x] CLOSED same day: Esc Esc's rewind sheet's missing "Fork from here" (flagged in this review)
+      landed on native-core (`6fb2e02a`, merged `912216cc`): `rewindSheet` takes `onFork`/`canFork`,
+      a fourth item beside Restore, `Choice = Restore | "fork"`, gated the same way `codeOk` gates
+      the code restores. Still open: chat's session.js side (the `onFork` handler itself, calling
+      `threads.fork {at}` and opening the result - the answer's new session id is `.id`, not
+      `.thread`, per native-core's correction). Not a design gap once that lands.
 - [ ] On the phone, the rewind sheet draws in the transcript's own flow (pushed down by the lease
       bar and the queued/todos rows already stacked above the composer), not as an overlay sheet:
       sheet.md's own pattern (a raised card over the page, not inline). At a typical phone height
