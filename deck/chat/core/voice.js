@@ -55,6 +55,7 @@ export async function listen(handlers) {
   /** @type {MediaStreamAudioSourceNode|undefined} */ let source;
   /** @type {ScriptProcessorNode|undefined} */ let proc;
   /** @type {GainNode|undefined} */ let mute;
+  /** @type {WebSocket|undefined} */ let ws;
   /** @type {ReturnType<typeof setTimeout>|null} */ let fallback = null;
   const cleanup = () => {
     if (fallback) { clearTimeout(fallback); fallback = null; }
@@ -63,6 +64,10 @@ export async function listen(handlers) {
     try { source?.disconnect(); } catch {}
     try { ctx?.close(); } catch {}
     try { stream?.getTracks().forEach(x => x.stop()); } catch {}
+    // A tap that stops before the socket ever opens (WebSocket starts CONNECTING; onopen is at
+    // least a microtask away, a real round trip in production) must not just walk away from it -
+    // .close() on any readyState (including CONNECTING) is a harmless no-op if already shut.
+    try { ws?.close(); } catch {}
     handlers.onLevel?.(0);
   };
 
@@ -76,7 +81,6 @@ export async function listen(handlers) {
   }
   if (stopped) { cleanup(); return { stop() {} }; }
 
-  /** @type {WebSocket} */ let ws;
   try { ws = new WebSocket(wsUrl(path)); } catch { cleanup(); handlers.onError("Could not start listening."); return { stop() {} }; }
   ws.binaryType = "arraybuffer";
   /** @type {ArrayBuffer[]} */ let early = [];
@@ -131,11 +135,15 @@ export async function listen(handlers) {
     stop() {
       if (stopped) return;
       stopped = true;
-      if (ws.readyState === WebSocket.OPEN) { try { ws.send(JSON.stringify({ type: "end" })); } catch { cleanup(); } }
-      else cleanup();
-      // done/error/close usually follow within TAIL_MS (local/voice/listen.js: 5 s); clean up
-      // regardless so a dropped connection never leaves the mic open.
-      fallback = setTimeout(() => { if (ctx && ctx.state !== "closed") cleanup(); }, 6000);
+      if (ws.readyState === WebSocket.OPEN) {
+        // Waiting on the server now: done/error/close usually follow within TAIL_MS
+        // (local/voice/listen.js: 5 s) - clean up regardless so a dropped connection never
+        // leaves the mic open. Not scheduled below: cleanup() (this closes the socket itself
+        // too) already ran synchronously in every other case, so a second real timer here would
+        // just dangle for up to 6 s doing nothing.
+        try { ws.send(JSON.stringify({ type: "end" })); fallback = setTimeout(() => { if (ctx && ctx.state !== "closed") cleanup(); }, 6000); }
+        catch { cleanup(); }
+      } else cleanup(); // not yet open (or already closed): nothing to wait on, clean up now
     },
   };
 }

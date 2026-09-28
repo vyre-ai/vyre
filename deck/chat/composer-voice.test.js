@@ -32,15 +32,20 @@ class FakeAudioContext {
 class FakeWebSocket {
   /** @param {string} url */
   constructor(url) {
-    this.url = url; this.readyState = 0; /** @type {any[]} */ this.sent = [];
+    this.url = url; this.readyState = 0; this.closed = false; /** @type {any[]} */ this.sent = [];
     this.onopen = null; this.onmessage = null; this.onclose = null;
     FakeWebSocket.last = this;
-    queueMicrotask(() => { this.readyState = 1; this.onopen?.(); });
+    // A real WebSocket's onopen is at least a microtask away (a real round trip in production);
+    // FakeWebSocket.autoOpen = false holds it CONNECTING until the test opens it itself, to
+    // reproduce a stop() that lands before the socket ever opens.
+    if (FakeWebSocket.autoOpen) queueMicrotask(() => this.open());
   }
+  open() { if (this.closed) return; this.readyState = 1; this.opened = true; this.onopen?.(); }
   send(/** @type {any} */ data) { this.sent.push(data); }
-  close() { this.readyState = 3; this.onclose?.(); }
+  close() { this.closed = true; this.readyState = 3; this.onclose?.(); }
 }
 FakeWebSocket.CONNECTING = 0; FakeWebSocket.OPEN = 1; FakeWebSocket.CLOSED = 3;
+FakeWebSocket.autoOpen = true;
 /** @type {any} */ (FakeWebSocket).last = null;
 Object.assign(globalThis, { AudioContext: FakeAudioContext, WebSocket: FakeWebSocket });
 Object.defineProperty(globalThis, "navigator", { configurable: true, writable: true,
@@ -112,6 +117,21 @@ test("a tap starts and stays open after release; a second tap stops and keeps th
   assert.equal(mic(c).classList.contains("on"), false);
   assert.equal(c.value(), "hello there", "the words stay");
   c.stop();
+});
+
+test("two quick taps (open, then stop) before the socket ever opens still closes it (reviewer-2's WS-leak finding)", async () => {
+  listenAnswer = { path: "/v1/streams/voice/listen?ticket=lateopen1" };
+  FakeWebSocket.autoOpen = false; // held CONNECTING: onOpen (voiceListening=true) fires on its
+  // own, well before a real socket handshake ever would - the exact gap that leaked before the fix
+  try {
+    const c = mountComposer({ thread: thread() });
+    await tap(c); // opens; voiceListening is already true (onOpen fires independent of ws.onopen)
+    await tap(c); // a second tap while listening: stop() - readyState is still CONNECTING here
+    const ws = /** @type {any} */ (FakeWebSocket).last;
+    assert.equal(ws.opened, undefined, "never opened in this world - onopen was never called");
+    assert.equal(ws.closed, true, "cleanup() must close the socket itself; sending 'end' only works once OPEN");
+    c.stop();
+  } finally { FakeWebSocket.autoOpen = true; }
 });
 
 test("a hold past the threshold: release stops (push-to-talk), never sends", async () => {
