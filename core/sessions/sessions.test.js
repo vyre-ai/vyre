@@ -310,6 +310,9 @@ for (const driver of ["cli", "sdk"]) {
     await w.tool("threads.release", { thread: th.id, surface: "deck" });
     const stopped = await until(async () => (await w.events(th.id)).find(e => e.type === "thread.stopped"), "the idle close");
     assert.equal(stopped.payload.reason, "idle");
+    // thread.status: paused, not stopped or failed - nothing wrong happened, threads.send resumes it.
+    const paused = (await w.events(th.id)).filter(e => e.type === "thread.status").at(-1);
+    assert.equal(paused.payload.status, "paused", JSON.stringify(paused));
     await w.tool("threads.send", { thread: th.id, text: "back", surface: "deck" });
     await w.finished(th.id, 2);
     assert.ok((await w.said(th.id)).includes("echo: back"));
@@ -821,6 +824,8 @@ for (const driver of ["cli", "sdk"]) {
     await until(async () => (await w.events(th.id)).some(e => e.type === "thread.stopped"), "the stop");
     const tools = (await w.events(th.id)).filter(e => e.type === "thread.tool").map(e => e.payload.status);
     assert.deepEqual(tools, ["running", "canceled"]);
+    // thread.status: plain "stopped", not "paused" - the person asked for this one, unlike an idle close.
+    assert.equal((await w.events(th.id)).filter(e => e.type === "thread.status").at(-1).payload.status, "stopped");
   });
 
   test(`${driver}: a retried send with the same Idempotency-Key is the same message, never a second turn; the queue can be read`, { skip }, async t => {

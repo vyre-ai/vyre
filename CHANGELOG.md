@@ -20,6 +20,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - queued (core/sessions/slots.js) is not folded in: it happens before a thread exists, keyed by
   owner/kind, not by thread id. A surface combines slot.queued with thread.status once the
   thread starts.
+- 8th state, "paused": an idle timeout, a box restart or a rewind end the process but are not
+  wrong (threads.send resumes them, no drama). Split from plain "stopped" (the person pressed
+  Stop, they asked for it) and from "failed" (a nonzero exit code or a signal - a real crash). A
+  person must never see an idle close read back as an error, or a crash read back as routine.
 
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 

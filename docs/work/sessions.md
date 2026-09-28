@@ -81,6 +81,14 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   liveness set switchboard's own `LIVE` const now derives from too), for cohesion/native-core's
   harness glue sha (core/harness's subagent-slot gate currently repeats the four raw strings as
   a literal). 57/57 on testbox (switchboard + boundaries + lib).
+- 8th canonical state, "paused" (lead's call): stopped_reason idle/restart/rewind end the
+  process but nothing is wrong (threads.send resumes them) - split out from plain "stopped"
+  (the person pressed Stop) and from "failed" (a nonzero exit code or a signal, a real crash).
+  A person must never see the idle-close-shown-as-an-error need (Needs from others, below) as
+  the same bucket as a crash, or vice versa. lib/thread-status.js updated + its tests split into
+  one per bucket; sessions.test.js gained real e2e assertions on the idle-close test ("paused")
+  and the threads.stop test ("stopped", not "paused"). Testbox: 109/109 (switchboard + sessions +
+  boundaries + chat-sessions-contract). Told chat and cohesion the 8th state; sent to reviewer-2.
 - SAVED for restart (2026-09-27). Handed off: e8fd0e42 to the integrator (release candidate; 501ca3fc e2e-passed on db4af9c3); e9d734c7 (work/sessions-sdkfix) = sdk-driver test fix alone for batch 4. Waiting on: native-core settings.resolve sha, cohesion context.now, vault f4272358 on main (threads needs.credentials) and vault's Connect Claude relay to review, native-core c012c13c aliases.
 - X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
@@ -109,14 +117,18 @@ optional deps; without them the tests silently run on the CLI).
   `sessions.dir`), so the first session on a fresh box does not wait on a 255 MB download.
 - existing boxes: the vault's claude-setup-token and anthropic-api-key must be granted to module
   `threads` (`vyre vault grant claude-setup-token threads`); new onboarding does it.
-- chat, capsule-pro, mobile: `thread.stopped` reason `idle` is resumable (show "idle", not an
-  error); `threads.interrupt`; `busy` refusal on start; sessions.prompt.* for a settings screen.
+- chat, capsule-pro, mobile: the idle-close-shown-as-an-error need is met server-side now -
+  `thread.status`/`canonical_status` say "paused" for an idle close, a restart or a rewind, never
+  "stopped" or "failed" - read that instead of `stopped_reason` by hand; `threads.interrupt`;
+  `busy` refusal on start; sessions.prompt.* for a settings screen.
 
 ## Changed contracts
 - New event `thread.status` {status: one of THREAD_STATUSES, ...turn}, emitted alongside the
   unchanged legacy `thread.state` at every status change (module.json's watches.emits gains it).
   `threads.get`/`threads.list` records gain `canonical_status`; the existing raw `status` field
-  is unchanged. New pure lib `lib/thread-status.js` (`THREAD_STATUSES`, `threadStatus`).
+  is unchanged. New pure lib `lib/thread-status.js` (`THREAD_STATUSES` - starting, working,
+  asking, waiting, paused, stopped, finished, failed; `threadStatus`; `LIVE_STATUSES`, the raw
+  internal liveness set).
 - CLI `vyre pick <project> <thread>` (and `unpick`): a `<thread>` shaped like a Claude Code
   session id (UUID, optional `/agent-...` suffix) is now accepted even when Recall's catalogue
   has no row for it yet, instead of erroring "no thread matches". `projects.add-threads` itself
