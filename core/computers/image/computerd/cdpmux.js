@@ -66,6 +66,10 @@ export const REFUSED = new Set([
 export const AGENT_REFUSED = new Set([
   "Runtime.addBinding", "Page.addScriptToEvaluateOnNewDocument",
   "Storage.getCookies", "Network.getAllCookies", "Network.getCookies",
+  // Reads a URL directly and hands back its bytes over IO.read, file:// included -- the same
+  // class of leak DOM.setFileInputFiles is refused for below, by a different route (reviewer,
+  // 28 Sep). Never checked against real Chrome (no docker host this pass).
+  "Network.loadNetworkResource",
 ]);
 
 /**
@@ -78,8 +82,6 @@ export const agentUrlAllowed = url => typeof url === "string" && (/^https?:\/\//
 
 /** cookie and set-cookie, whatever case Chrome sent them in. */
 const COOKIE_HEADER = /^(cookie|set-cookie)$/i;
-/** Events worth reconstructing for an agent client rather than passing Chrome's text through. */
-const COOKIE_EVENTS = new Set(["Network.requestWillBeSentExtraInfo", "Network.responseReceivedExtraInfo", "Fetch.requestPaused"]);
 /** @param {any} headers a CDP headers object ({name: value}), or anything else (left alone) */
 const dropCookieHeaders = headers => {
   if (!headers || typeof headers !== "object") return headers;
@@ -88,27 +90,54 @@ const dropCookieHeaders = headers => {
   for (const [k, v] of Object.entries(headers)) if (!COOKIE_HEADER.test(k)) out[k] = v;
   return out;
 };
+/** A "headers"-shaped key, whatever case: the map form ({name: value}) and the array form (CDP's own {name, value} list, Fetch.requestPaused's responseHeaders) both carry cookies the same way. */
+const HEADER_KEY = /^(request|response)?headers$/i;
+/**
+ * Keys CDP uses to carry a cookie's actual value, or raw header text, nowhere a headers map or
+ * array would catch (reviewer, 28 Sep): Network.requestWillBeSentExtraInfo's associatedCookies
+ * (full Cookie objects, value included), responseReceivedExtraInfo's blockedCookies/
+ * exemptedCookies (each carries its own cookieLine) and headersText/requestHeadersText (the raw
+ * header block, Set-Cookie/Cookie included, that no per-header split ever sees), and Audits
+ * CookieIssueDetails' rawCookieLine. Dropped whole rather than picked apart: none of these has a
+ * non-cookie use an agent needs.
+ */
+const DROP_KEY = /^(associatedcookies|blockedcookies|exemptedcookies|rawcookieline|cookieline|headerstext|requestheaderstext)$/i;
 
 /**
- * Events that carry request/response headers straight from the network stack, which is where
- * HttpOnly cookies live -- CDP's own Network.getCookies-family refusal (AGENT_REFUSED, above)
- * never sees these, since they are events Chrome sends unasked once Network or Fetch is enabled.
- * The agent may still see every OTHER header (e2e review MEDIUM 4: "no bulk dumps", not "no
- * headers at all" -- a page telling the agent its own Content-Type is normal automation).
- * @param {string} method @param {any} params
+ * Removes anything a Network, Fetch or Audits event could carry a cookie's actual value in, at
+ * any depth -- recursion rather than a per-event, per-field enumeration, since CDP keeps adding
+ * new places headers and cookie values show up (a WebSocket handshake's own request/response, an
+ * Audits issue's nested detail object) and an enumerated list only ever catches the ones already
+ * found (e2e review MEDIUM 4 covered three events; the reviewer's 28 Sep pass found the rest were
+ * still open: associatedCookies, headersText, the WebSocket handshake events, Audits
+ * rawCookieLine). Every OTHER header still reaches the agent (a page telling it its own
+ * Content-Type is normal automation) -- only cookie-shaped keys are touched.
+ * @param {any} v
  */
-const scrubAgentEventParams = (method, params) => {
-  if (method === "Network.requestWillBeSentExtraInfo" || method === "Network.responseReceivedExtraInfo") {
-    return { ...params, headers: dropCookieHeaders(params.headers) };
-  }
-  if (method === "Fetch.requestPaused") {
-    const out = { ...params };
-    if (out.request && typeof out.request === "object") out.request = { ...out.request, headers: dropCookieHeaders(out.request.headers) };
-    if (out.responseHeaders) out.responseHeaders = out.responseHeaders.filter((/** @type {any} */ h) => !COOKIE_HEADER.test(h.name));
+/**
+ * A "headers" field's value, either shape CDP uses: the map form ({name: value}, an object) or
+ * the array form ({name, value} pairs, e.g. Fetch.requestPaused's responseHeaders) -- both carry
+ * cookies the same way, so both are scrubbed the same way.
+ * @param {any} val
+ */
+function scrubHeaderValue(val) {
+  if (Array.isArray(val)) return val.filter(e => !(e && typeof e === "object" && COOKIE_HEADER.test(e.name)));
+  return dropCookieHeaders(val);
+}
+
+function scrubAgentEvent(v) {
+  if (Array.isArray(v)) return v.map(scrubAgentEvent);
+  if (v && typeof v === "object") {
+    /** @type {Record<string, any>} */
+    const out = {};
+    for (const [k, val] of Object.entries(v)) {
+      if (DROP_KEY.test(k)) continue;
+      out[k] = HEADER_KEY.test(k) ? scrubHeaderValue(val) : scrubAgentEvent(val);
+    }
     return out;
   }
-  return params;
-};
+  return v;
+}
 
 /** A Chrome message larger than this is dropped whole rather than buffered. */
 const MAX_MESSAGE = 256 * 1024 * 1024;
@@ -298,17 +327,19 @@ export class CdpMux {
       const child = this.sessions.get(params.sessionId);
       if (child && child.client === s.client && !child.browser) this._forget(params.sessionId);
     }
-    // An agent client never sees a Cookie or Set-Cookie header, on any session: those live in
-    // events Chrome sends unasked (Network/Fetch domains), which CDP's cookie-API refusal above
-    // does not touch (e2e review MEDIUM 4). COOKIE_EVENTS is the only case worth reconstructing
-    // the message for; everything else keeps the fast, unparsed passthrough.
-    const scrub = s.client.kind === "agent" && COOKIE_EVENTS.has(m.method);
+    // An agent client never sees a Cookie or Set-Cookie header, or a cookie's actual value under
+    // any other name CDP uses for one: those live in events Chrome sends unasked (Network/Fetch/
+    // Audits domains), which CDP's cookie-API refusal above does not touch (e2e review MEDIUM 4;
+    // widened past three enumerated events to every event in those three domains, reviewer 28
+    // Sep, since CDP kept adding new cookie-carrying fields an enumerated list did not cover).
+    // Every other domain's events keep the fast, unparsed passthrough.
+    const scrub = s.client.kind === "agent" && /^(Network|Fetch|Audits)\./.test(m.method);
     if (s.browser) {
-      const out = { ...m, params: scrub ? scrubAgentEventParams(m.method, params) : m.params };
+      const out = { ...m, params: scrub ? scrubAgentEvent(params) : m.params };
       delete out.sessionId;
       s.client.transport.send(JSON.stringify(out));
     } else if (scrub) {
-      s.client.transport.send(JSON.stringify({ ...m, params: scrubAgentEventParams(m.method, params) }));
+      s.client.transport.send(JSON.stringify({ ...m, params: scrubAgentEvent(params) }));
     } else s.client.transport.send(text);
   }
 
