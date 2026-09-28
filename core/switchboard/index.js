@@ -25,7 +25,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
-import { threadStatus } from "../../lib/thread-status.js";
+import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
@@ -203,7 +203,7 @@ export const TEXT_EVERY_MS = 50;
  * is still catching up on the SSE backlog see the deltas first. VYRE_TEXT_PRUNE_MS overrides it.
  */
 export const TEXT_PRUNE_MS = 60_000;
-const LIVE = ["starting", "working", "waiting", "idle"];
+const LIVE = LIVE_STATUSES;
 /** thread.state's words for a record's status (ADR 0030 section 1). */
 const STATE = { starting: "starting", working: "running", waiting: "waiting", idle: "idle", stopped: "stopped" };
 
