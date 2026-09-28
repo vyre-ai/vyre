@@ -240,4 +240,11 @@ export const MIGRATIONS = [
   -- The person's turns an agent's correction was applied from: one each, and a cap per thread.
   CREATE TABLE memory_iq_heard (thread TEXT NOT NULL, seq INTEGER NOT NULL, at INTEGER NOT NULL, caller TEXT NOT NULL, kind TEXT NOT NULL, ref INTEGER NOT NULL, summary TEXT NOT NULL,
     PRIMARY KEY (thread, seq)) WITHOUT ROWID;`,
+  // Index tweaks (cheap win, no new tables): three hot lookups were full table scans.
+  //   - reader.once() runs "SELECT MAX(started) FROM memory_me_model" on every pump.
+  //   - "waiting on you" (heard.js / suggest) filters memory_iq_suggested by state, and by thread.
+  //   - stats.iq's "since" query scans memory_iq_fixes WHERE at >= ?.
+  `CREATE INDEX memory_me_model_started ON memory_me_model (started);
+  CREATE INDEX memory_iq_suggested_state ON memory_iq_suggested (state, thread);
+  CREATE INDEX memory_iq_fixes_at ON memory_iq_fixes (at);`,
 ];

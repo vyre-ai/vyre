@@ -187,6 +187,29 @@ test("reader: a failed run or a bad answer charges what was spent and keeps the 
   assert.equal(x.reader.status().last?.status, "failed");
 });
 
+test("reader: repeated failures back off, so a broken model isn't paid for on every turn", async t => {
+  let calls = 0;
+  const w = await world(t, { turns: ["my dog is a corgi"], config: { memory: { model: { batch: 1 } } },
+    runner: async () => { calls++; throw new Error("offline"); } });
+  assert.equal((await w.reader.pump()).waiting, "the model failed");
+  w.clock.t += 61_000;
+  assert.equal((await w.reader.pump()).waiting, "the model failed");
+  w.clock.t += 61_000;
+  assert.equal((await w.reader.pump()).waiting, "the model failed");
+  assert.equal(calls, 3, "three tries, each its own charge-eligible run");
+  // A fourth attempt, even after the usual minute apart, backs off instead of paying to fail again.
+  w.clock.t += 61_000;
+  assert.equal((await w.reader.pump()).waiting, "backing off after repeated failures");
+  assert.equal(calls, 3, "no model call while backing off");
+  w.clock.t += 2 * 60_000;
+  assert.equal((await w.reader.pump()).waiting, "backing off after repeated failures", "still inside the 5-minute wait");
+  assert.equal(calls, 3);
+  // Once the wait since the last failure has passed, it tries again (and a success resets the streak).
+  w.clock.t += 2 * 60_000;
+  assert.equal((await w.reader.pump()).waiting, "the model failed");
+  assert.equal(calls, 4);
+});
+
 test("reader: two readings of a batch keep the union of what they found", async t => {
   let n = 0;
   const runner = async r => {

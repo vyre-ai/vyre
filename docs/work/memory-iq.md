@@ -199,6 +199,48 @@ facts are not a project's.
   confident (sealed place-history).
 - The full backfill cost (about $1.50 to $2.60) waits for the user's yes, via the lead.
 
+## Cheap-wins audit (28 Sep, the lead's ask)
+
+Read the whole pipeline (extraction/reader, curator/derive, graph, memory.ask, retrieve) looking
+for hours-not-days wins. Most of the obvious ones (dedup by hash, incremental curation, batching,
+a cheap model by default, caching the model's exact reply) are already built — this workstream has
+been through a few optimization passes already. Ranked what was left:
+
+1. **Three missing indexes (built, 7c1a9f2e in this doc's head).** `memory_me_model(started)` (the
+   reader's `MAX(started)` gap check, on every pump), `memory_iq_suggested(state, thread)`
+   ("waiting on you"), `memory_iq_fixes(at)` (`memory.stats`'s `since`). All three were full table
+   scans; a person's tables are small today but these are hit on every pump/suggest/stats call, so
+   the scan grows with them. No eval-score change (nothing here touches quality) — 230/230 memory
+   tests green on testbox, gold/heldout/fresh/sealed worlds unchanged (gold 1/0/0, heldout 1/0/0,
+   sealed 0.551, fresh 0.76 — same as before the change).
+2. **A circuit breaker on the reader (built).** `once()` schedules itself again only on success or
+   a benign wait (busy thread, gap); a real failure (bad JSON, the model call throwing) does not
+   reschedule itself, but a NEW personal-signal turn arriving re-triggers `pump()` on the same
+   still-queued batch, and each attempt was charged again with no backoff. `drain()` (the
+   evaluation, backfill) already retries a bad batch 3 times by design and stays untouched (it
+   forces past this, same as the gap and a busy thread). Now: after 3 consecutive failed runs,
+   `once()` backs off 5, then 15, then 60 minutes before spending again. New test:
+   `reader: repeated failures back off, so a broken model isn't paid for on every turn` (passes).
+   This is a tail-risk cost fix (a bad key or a wrong model name left on for a chatty day), not a
+   normal-path saving — no eval-score change either.
+3. **Checked and rejected: dropping dense/hybrid retrieval for bm25-alone.** eval-iq's ablation
+   table looked like a free win on the open world (bm25 alone beats "full" on every metric AND is
+   faster: recall 0.931 vs 0.917, mrr 0.763 vs 0.715, p95 0.866 vs 0.848ms). Checked the sealed
+   world before touching anything: there hybrid clearly beats bm25 alone (recall 0.763 vs 0.738,
+   session 0.888 vs 0.863, answer 0.838 vs 0.813). The open world's win is noise from its own
+   distribtion of questions, not a general property. Not building this; recording it here so
+   nobody re-discovers the open-world number and ships it.
+
+Other candidates looked at and set aside, cheap in isolation but each needs an eval run to justify
+before landing (not "straight away"):
+- **The reader's second look (VERIFY) call** runs once per batch unconditionally when there is at
+  least one candidate fact. Skipping it for facts already at rule-level confidence (method other
+  than "model") would cut a call, but the second look is what catches a wrong "who is who," so this
+  needs an accuracy check first, not just a cost one.
+- **`passes: 2` by default** doubles every reader batch's cost by design (docs above, "two readings
+  keep the union"); halving it would roughly halve reader spend but was already tuned against the
+  eval once. Re-cutting it needs an accuracy number, not a guess.
+
 ## Needs from others
 - main: OK a fast-model (haiku) extraction pass over every personal-signal user turn (a one-time
   backfill of about $2, then about $0.25/day, configurable), and recording eval fixtures with `claude -p`.

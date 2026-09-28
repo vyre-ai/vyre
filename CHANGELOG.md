@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Graph cheap wins: three hot-path indexes, and a circuit breaker on a broken model
+
+- Three hot lookups were full table scans as the tables grow: the reader's `SELECT MAX(started)
+  FROM memory_me_model` (run on every pump), "waiting on you"'s filter of `memory_iq_suggested` by
+  state and thread, and `memory.stats`'s `since` query over `memory_iq_fixes`. Each now has an
+  index.
+- The reader's `once()` is a circuit breaker now: after 3 consecutive failed model runs (a bad key,
+  a wrong model name, a quota error), it backs off for 5, then 15, then 60 minutes before spending
+  again, so a broken model isn't paid for on every new personal-signal turn until someone notices.
+  `force` (drain, the evaluation) always ignores it, same as the gap and a working thread.
+
 #### Vyre IQ: correct it where it appears, streaming, names in predictive text
 
 - Memory's model calls (the reader and Vyre IQ) run on the person's Claude login and never bill API
