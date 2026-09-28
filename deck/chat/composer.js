@@ -43,7 +43,7 @@ import { h, put } from "../js/dom.js";
 import { attempt, queued as viaOutbox, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import {
-  draftKind, draftBody, kindLabel, findMention, applyMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
+  draftKind, draftBody, teammateRole, kindLabel, findMention, applyMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
   upAction, enterAction, createEsc, escape, nextMode, modeLabel, actionFor, addImage, removeImage, sendImages, newUuid, IMAGE_TYPES,
   modelChoices, shortModel,
 } from "./core/composer-state.js";
@@ -87,9 +87,10 @@ const COMMANDS_RETRY_MS = 15_000;
  * @param {{ thread: string, agents?: string[], threads?: { id: string, name: string|null }[], holder?: string|null, surface?: string,
  *   machine?: string|null, onOffline?: (machine: string|null) => void, onQueue?: (n: number, name: string) => void, onStop?: () => void,
  *   session?: import("./core/session-state.js").Session, patch?: (keys: string[]) => void, cwd?: () => string|null, name?: () => string,
- *   onRewind?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean }} opts
+ *   project?: () => string|null, onRewind?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean }} opts
  * session and patch: the view's session-state and how it redraws what changed (steers, queue rows and shell rows are drawn
  * here, on send). onOffline: called with the Mac's name when a send finds it offline, with null when a send goes through.
+ * project: this thread's project slug, for "@role" (team.default.get/team.add both require one) - null with no project.
  * @returns {{ el: HTMLElement, focus: () => void, stop: () => void, setMachine: (m: string|null) => void, setBusy: (on: boolean) => void,
  *   setText: (text: string, note?: string) => void, editQueued: (q: { uuid: string|null, queued?: any, text: string }) => void,
  *   key: (e: KeyboardEvent) => boolean, draw: () => void, value: () => string }}
@@ -450,6 +451,7 @@ export function mountComposer(opts) {
     if (editing) { saveEdit(); return; }
     if (a.kind === "shell") { runShell(draftBody(ta.value)); return; }
     if (a.kind === "memory") { saveMemory(draftBody(ta.value)); return; }
+    if (a.kind === "teammate" && !machine) { askTeammate(teammateRole(ta.value), draftBody(ta.value), ta.value); return; }
     if (a.kind === "command" && !machine) {
       const name = ta.value.trim().slice(1).split(/\s/)[0];
       const local = (commands || normalizeCommands(null)).find(c => c.name === name && c.local);
@@ -576,6 +578,61 @@ export function mountComposer(opts) {
     say([h("span", { class: "lbl" }, "Saved to memory"), " · ", where.label, " ", h("span", { class: "faint" }, file ? file.split(/[\\/]/).pop() + ": " + text : text)]);
   }
 
+  // ---- "@role": a project teammate's own turn (teammates.md section 2) ----------------------
+
+  /** @param {string|null} role @param {string} text @param {string} raw the whole draft, "@role" and all - "answer here" (below) sends this, not just the stripped body, so declining creation never silently edits what was typed */
+  async function askTeammate(role, text, raw) {
+    if (!role || !text || sending) return;
+    sending = true; send.disabled = true;
+    // Not CAPS.use: a role simply not existing yet answers not_found the same way an absent tool
+    // does (vyred's generic 404), and CAPS's own isMissing() cannot tell the two apart from the
+    // status code alone - it would mark team.ask missing FOR GOOD the first time any one role
+    // came up empty, breaking every later @role even to a teammate that exists. Checked directly,
+    // same distinction session.js's own recall.transcript not_found already makes.
+    const r = await attempt("team.ask", { to: role, text, surface: "deck" });
+    sending = false; send.disabled = false;
+    if (!r.error) { setValue(""); put(note); note.classList.remove("soft"); return; }
+    if (r.error.missing && r.error.code !== "not_found") { say(NEEDS_UPDATE); return; }
+    // Any project's teammates match on the role slug only (never fuzzy): a typo or a role that
+    // does not exist yet both read as not_found - the offer to create is exactly where that gets
+    // caught, per teammates.md section 2.
+    if (r.error.code !== "not_found") { say(`Could not reach ${role}: ${r.error.message || r.error.code}`); return; }
+    const project = opts.project?.();
+    if (!project) { say(`There's no ${role} teammate here.`); return; }
+    const d = await attempt("team.default.get", { project });
+    if (d.error || !/** @type {any} */ (d.data)?.enabled) {
+      say(`There's no ${role} teammate in this project. Add one in Setup, or turn Teammates on for this project.`);
+      return;
+    }
+    confirmCreate(role, text, project, raw);
+  }
+
+  /** The inline confirm before team.add on @role's first use: one tap creates and sends, the
+   * other answers here instead - never a form, per teammates.md section 2. */
+  function confirmCreate(/** @type {string} */ role, /** @type {string} */ text, /** @type {string} */ project, /** @type {string} */ raw) {
+    put(note); note.classList.remove("soft");
+    say([
+      h("span", null, `There's no ${role} teammate yet. I'll create one and send it your message.`), " ",
+      h("button", { class: "btn btn-primary btn-sm", type: "button", onclick: () => createAndAsk(role, text, project) }, "Create and send"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { put(note); note.classList.remove("soft"); sendMessage(raw, null); } }, "Don't create, answer here"),
+    ]);
+  }
+
+  /** @param {string} role @param {string} text @param {string} project */
+  async function createAndAsk(role, text, project) {
+    sending = true; send.disabled = true;
+    // A generic template on a guess (teammates.md section 2): no role-specific brief guessed from
+    // the name (guessing wrong is worse than asking), never worktree isolation (a deliberate,
+    // person-made choice, not a side effect of typing a word with an @ in front of it), Sonnet
+    // (not the ADR's Opus default for a person-made teammate) since it exists on a guess and
+    // should not spend Opus turns proving out a role nobody has scoped yet.
+    const r = await attempt("team.add", { project, role, brief: "Ask me about anything; I'll figure out the role from what you send me.",
+      isolation: "folder", tools: ["files", "web"], model: "sonnet" });
+    if (r.error) { sending = false; send.disabled = false; say(`Could not add ${role}: ${r.error.message || r.error.code}`); return; }
+    sending = false; send.disabled = false;
+    askTeammate(role, text);
+  }
+
   /** A queued message back in the box: Enter saves the new words (threads.edit), Esc lets it be. */
   function editQueued(/** @type {{ uuid: string|null, queued?: any, text: string }} */ q) {
     if (!q) return;
@@ -611,7 +668,7 @@ export function mountComposer(opts) {
     if (act === "interrupt") { opts.onStop?.(); return true; }
     if (act === "rewind") { if (opts.onRewind && !machine) { opts.onRewind(); return true; } return false; }
     if (act === "clear") { stopRecall(hist); editing = null; setValue(""); put(note); return true; }
-    if (act === "leave-mode") { setValue(ta.value.slice(1)); return true; }
+    if (act === "leave-mode") { setValue(draftKind(ta.value) === "teammate" ? draftBody(ta.value) : ta.value.slice(1)); return true; }
     return false;
   }
 
