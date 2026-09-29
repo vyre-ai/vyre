@@ -1,0 +1,130 @@
+# e2e2's 0.2 matrix spike: what GitHub's hosted runners can carry of the real-device matrix.
+# Report only: it installs nothing of Vyre, signs in nowhere and publishes nothing.
+name: matrix-spike
+on:
+  push:
+    branches: ["work/ci-e2e2-matrix"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Host facts
+        run: |
+          nproc; free -g; df -h / /mnt; uname -a
+          ls -l /dev/kvm || echo "no /dev/kvm"
+          sudo apt-get -qq install -y cpu-checker >/dev/null && sudo kvm-ok || true
+          docker version --format '{{.Server.Version}}'
+      - name: Fresh servers in Docker (Ubuntu 24.04, Debian 12) with their own dockerd
+        run: |
+          for img in ubuntu:24.04 debian:12; do
+            t0=$(date +%s)
+            docker run -d --privileged --name srv --tmpfs /run --tmpfs /tmp "$img" sleep infinity >/dev/null
+            docker exec srv sh -c 'apt-get -qq update >/dev/null && apt-get -qq install -y curl ca-certificates >/dev/null && curl -fsSL https://get.docker.com | sh >/dev/null 2>&1; (dockerd >/var/log/dockerd.log 2>&1 &); for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done; docker run --rm hello-world | head -2'
+            echo "$img: fresh server with docker in $(( $(date +%s) - t0 )) s"
+            docker rm -f srv >/dev/null
+          done
+      - name: Windows 11 in Docker (dockur/windows, KVM)
+        run: |
+          sudo mkdir -p /mnt/win && sudo chmod 777 /mnt/win
+          t0=$(date +%s)
+          docker run -d --name win -e VERSION=11 -e DISK_SIZE=48G -e RAM_SIZE=8G -e CPU_CORES=3 \
+            --device /dev/kvm --device /dev/net/tun --cap-add NET_ADMIN -p 8006:8006 -p 3389:3389 \
+            -v /mnt/win:/storage --stop-timeout 60 dockurr/windows
+          ok=0
+          for i in $(seq 1 330); do
+            if docker logs win 2>&1 | grep -qi "started successfully"; then ok=1; break; fi
+            sleep 10
+          done
+          echo "windows ready=$ok after $(( $(date +%s) - t0 )) s"
+          docker logs win 2>&1 | tail -40
+          du -sh /mnt/win || true
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Boot an Android 15 emulator with Chrome, open a page, screenshot
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis_playstore
+          arch: x86_64
+          disable-animations: true
+          script: |
+            adb shell getprop ro.build.version.release
+            adb shell pm list packages | grep -c . ; adb shell pm list packages | grep -i chrome || echo "no chrome"
+            adb shell am start -a android.intent.action.VIEW -d https://example.com com.android.chrome || true
+            sleep 20
+            adb exec-out screencap -p > android.png
+            ls -l android.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: android-shot, path: android.png, retention-days: 7 }
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - name: Host facts and a fresh arm64 server in Docker
+        run: |
+          nproc; free -g; uname -m; ls -l /dev/kvm || echo "no /dev/kvm"
+          t0=$(date +%s)
+          docker run -d --privileged --name srv debian:12 sleep infinity >/dev/null
+          docker exec srv sh -c 'apt-get -qq update >/dev/null && apt-get -qq install -y curl ca-certificates >/dev/null && curl -fsSL https://get.docker.com | sh >/dev/null 2>&1; (dockerd >/var/log/dockerd.log 2>&1 &); for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done; docker info --format "{{.Architecture}}"; docker run --rm hello-world | head -2'
+          echo "arm64 fresh server with docker in $(( $(date +%s) - t0 )) s"
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Host facts
+        run: |
+          sw_vers; sysctl -n hw.model hw.ncpu hw.memsize machdep.cpu.brand_string; df -h /
+          bioutil -r -s 2>&1 | head -5 || true
+          xcrun simctl list runtimes | tail -5
+      - name: A throwaway macOS user
+        run: |
+          sudo sysadminctl -addUser alex -fullName "Alex" -password "rc-spike-$RANDOM" 2>&1 | tail -2
+          id alex && dscl . -read /Users/alex NFSHomeDirectory
+          sudo sysadminctl -deleteUser alex 2>&1 | tail -1; id alex 2>&1 | tail -1
+      - name: Secure Enclave key (what the Capsule's presence key needs)
+        run: |
+          cat > se.swift <<'EOF'
+          import Foundation
+          import Security
+          var err: Unmanaged<CFError>?
+          let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage], &err)!
+          let attrs: [String: Any] = [kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom, kSecAttrKeySizeInBits as String: 256,
+            kSecAttrTokenID as String: kSecAttrTokenIDSecureEnclave,
+            kSecPrivateKeyAttrs as String: [kSecAttrIsPermanent as String: false, kSecAttrAccessControl as String: access]]
+          if SecKeyCreateRandomKey(attrs as CFDictionary, &err) != nil { print("secure enclave: key made") }
+          else { print("secure enclave: refused: \(err!.takeRetainedValue())") }
+          EOF
+          swiftc -O se.swift -o se 2>&1 | tail -3 && ./se || true
+      - name: iPhone simulator, Safari, screenshot
+        run: |
+          dev=$(xcrun simctl list devices available | grep -m1 -E "iPhone 1[5-7]( Pro)? \(" | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
+          echo "device $dev"; t0=$(date +%s)
+          xcrun simctl boot "$dev" && xcrun simctl bootstatus "$dev" -b >/dev/null
+          echo "booted in $(( $(date +%s) - t0 )) s"
+          xcrun simctl openurl "$dev" https://example.com; sleep 15
+          xcrun simctl io "$dev" screenshot ios.png; ls -l ios.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: ios-shot, path: ios.png, retention-days: 7 }
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Host facts
+        shell: pwsh
+        run: |
+          (Get-CimInstance Win32_OperatingSystem) | Select-Object Caption, Version, BuildNumber | Format-List
+          node --version; winget --version
+          Get-Command wsl -ErrorAction SilentlyContinue | Select-Object Source
+          systeminfo | Select-String "Hyper-V"
