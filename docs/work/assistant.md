@@ -9,15 +9,14 @@ Branch: work/assistant · Worktree: ../vyre-assistant · Owner session: assistan
   6 open decisions with recommendations for the user.
 
 ## Doing
-- Nothing in flight. Report sent to lead; waiting for direction (build the digest/triage
-  opportunities, or hold for the user's decisions).
+- 0.2 Phase 1 (planning, no product code): plan written at <team-dir>/0.2/plans/assistant.md;
+  interface asks posted to <team-dir>/0.2/CHAT.md for sessions, teammates, iq, vault,
+  capsule-pro, capsule-sight and tailnet. Waiting on replies and reviewer-2's review.
 
 ## Next
-- If the user green-lights: build opportunity 1 (assistant.brief digest) and 3 (device-local
-  time/day on context.now) first — both S-cost, no dependency on other teams shipping first.
-- Opportunity 9 (delegated authority itself) waits on vault-next's session-credentials design
-  landing (docs/design/assistant.md section 3.5) and on the digest/triage track record the user
-  asked to see first (open decision 1).
+- Answer CHAT replies and fold them into the plan. Build starts only after the lead brings
+  PLAN.md to the user. First build step: rebase this branch on main (1036 commits behind; the
+  pre-0.2 digest and context work is saved as wip 9e6780c4).
 
 ## Needs from others
 - vault (work/vault-next): the real session-credentials contract once designed, to cite by name
