@@ -38,13 +38,14 @@ jobs:
           # installed Windows answers RDP; a screen every 5 minutes shows where it is.
           mkdir -p shots; ok=0
           for i in $(seq 1 200); do
-            if timeout 3 bash -c '</dev/tcp/127.0.0.1/3389' 2>/dev/null; then ok=1; break; fi
+            # Docker's port proxy accepts on the host at once, so ask the guest itself.
+            if docker exec win timeout 3 bash -c '</dev/tcp/172.30.0.2/3389' 2>/dev/null; then ok=1; break; fi
             if [ $((i % 15)) = 0 ]; then docker exec win sh -c 'echo "screendump /storage/s.ppm" | nc -q1 127.0.0.1 7100' >/dev/null 2>&1 && sudo cp /mnt/win/s.ppm "shots/win-$((i/3))min.ppm"; fi
             sleep 20
           done
           echo "windows desktop (RDP) ready=$ok after $(( $(date +%s) - t0 )) s"
           docker exec win sh -c 'echo "screendump /storage/s.ppm" | nc -q1 127.0.0.1 7100' >/dev/null 2>&1 && sudo cp /mnt/win/s.ppm shots/win-final.ppm
-          sudo apt-get -qq install -y netpbm >/dev/null 2>&1; for f in shots/*.ppm; do pnmtopng "$f" > "${f%.ppm}.png" 2>/dev/null && rm "$f"; done; ls -l shots
+          sudo apt-get -qq update >/dev/null 2>&1; sudo apt-get -qq install -y netpbm >/dev/null 2>&1; for f in shots/*.ppm; do pnmtopng "$f" > "${f%.ppm}.png" 2>/dev/null && rm "$f"; done; ls -l shots
           docker logs win 2>&1 | tail -15
           du -sh /mnt/win || true
       - uses: actions/upload-artifact@v4
