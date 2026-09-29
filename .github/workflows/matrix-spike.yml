@@ -71,7 +71,7 @@ jobs:
     steps:
       - name: MB3 first question - can this runner run Colima's VM
         run: |
-          sysctl kern.hv_support 2>&1; sysctl -n machdep.cpu.brand_string
+          sysctl -n machdep.cpu.brand_string kern.hv_vmm_present 2>&1 || true
           brew install colima docker >/dev/null 2>&1
           t0=$(date +%s)
           if timeout 600 colima start --vm-type vz --cpu 2 --memory 2 2>&1 | tail -8 && docker info >/dev/null 2>&1; then
