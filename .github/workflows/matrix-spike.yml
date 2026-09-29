@@ -22,7 +22,7 @@ jobs:
         run: |
           for img in ubuntu:24.04 debian:12; do
             t0=$(date +%s)
-            docker run -d --privileged --name srv --tmpfs /run --tmpfs /tmp "$img" sleep infinity >/dev/null
+            docker run -d --privileged --name srv --tmpfs /run --tmpfs /tmp -v /var/lib/docker "$img" sleep infinity >/dev/null
             docker exec srv sh -c 'apt-get -qq update >/dev/null && apt-get -qq install -y curl ca-certificates >/dev/null && curl -fsSL https://get.docker.com | sh >/dev/null 2>&1; (dockerd >/var/log/dockerd.log 2>&1 &); for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done; docker run --rm hello-world | head -2'
             echo "$img: fresh server with docker in $(( $(date +%s) - t0 )) s"
             docker rm -f srv >/dev/null
@@ -34,14 +34,23 @@ jobs:
           docker run -d --name win -e VERSION=11 -e DISK_SIZE=48G -e RAM_SIZE=8G -e CPU_CORES=3 \
             --device /dev/kvm --device /dev/net/tun --cap-add NET_ADMIN -p 8006:8006 -p 3389:3389 \
             -v /mnt/win:/storage --stop-timeout 60 dockurr/windows
-          ok=0
-          for i in $(seq 1 330); do
-            if docker logs win 2>&1 | grep -qi "started successfully"; then ok=1; break; fi
-            sleep 10
+          # "started successfully" only means QEMU booted the installer. Ready means the
+          # installed Windows answers RDP; a screen every 5 minutes shows where it is.
+          docker logs win 2>&1 | grep -m1 -i "started successfully" >/dev/null
+          mkdir -p shots; ok=0
+          for i in $(seq 1 200); do
+            if timeout 3 bash -c '</dev/tcp/127.0.0.1/3389' 2>/dev/null; then ok=1; break; fi
+            if [ $((i % 15)) = 0 ]; then docker exec win sh -c 'echo "screendump /storage/s.ppm" | nc -q1 127.0.0.1 7100' >/dev/null 2>&1 && sudo cp /mnt/win/s.ppm "shots/win-$((i/3))min.ppm"; fi
+            sleep 20
           done
-          echo "windows ready=$ok after $(( $(date +%s) - t0 )) s"
-          docker logs win 2>&1 | tail -40
+          echo "windows desktop (RDP) ready=$ok after $(( $(date +%s) - t0 )) s"
+          docker exec win sh -c 'echo "screendump /storage/s.ppm" | nc -q1 127.0.0.1 7100' >/dev/null 2>&1 && sudo cp /mnt/win/s.ppm shots/win-final.ppm
+          sudo apt-get -qq install -y netpbm >/dev/null 2>&1; for f in shots/*.ppm; do pnmtopng "$f" > "${f%.ppm}.png" 2>/dev/null && rm "$f"; done; ls -l shots
+          docker logs win 2>&1 | tail -15
           du -sh /mnt/win || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: windows-shots, path: shots, retention-days: 7 }
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -75,7 +84,7 @@ jobs:
         run: |
           nproc; free -g; uname -m; ls -l /dev/kvm || echo "no /dev/kvm"
           t0=$(date +%s)
-          docker run -d --privileged --name srv debian:12 sleep infinity >/dev/null
+          docker run -d --privileged --name srv -v /var/lib/docker debian:12 sleep infinity >/dev/null
           docker exec srv sh -c 'apt-get -qq update >/dev/null && apt-get -qq install -y curl ca-certificates >/dev/null && curl -fsSL https://get.docker.com | sh >/dev/null 2>&1; (dockerd >/var/log/dockerd.log 2>&1 &); for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done; docker info --format "{{.Architecture}}"; docker run --rm hello-world | head -2'
           echo "arm64 fresh server with docker in $(( $(date +%s) - t0 )) s"
   macos:
