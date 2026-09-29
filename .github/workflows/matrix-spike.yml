@@ -12,6 +12,7 @@ permissions:
   actions: read
 jobs:
   e2-control:
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -64,7 +65,20 @@ jobs:
           tailscale ping -c 3 mac-box || true
           tailscale status
           sleep 120
+  mb3-colima:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: MB3 first question - can this runner run Colima's VM
+        run: |
+          sysctl kern.hv_support 2>&1; sysctl -n machdep.cpu.brand_string
+          brew install colima docker >/dev/null 2>&1
+          t0=$(date +%s)
+          if timeout 600 colima start --vm-type vz --cpu 2 --memory 2 2>&1 | tail -8 && docker info >/dev/null 2>&1; then
+            echo "colima up in $(( $(date +%s) - t0 )) s"; docker run --rm hello-world | head -2
+          else echo "colima did not start after $(( $(date +%s) - t0 )) s"; colima status 2>&1 | tail -3; fi
   e2-mac-box:
+    if: false
     runs-on: macos-15
     timeout-minutes: 30
     steps:
