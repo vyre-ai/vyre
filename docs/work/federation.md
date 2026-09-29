@@ -935,3 +935,35 @@ not itself subject to docs-check's nav/front-matter rules (docs/work/ is in nav.
 unpublished list), but it did carry one em dash (RULES bans them repo-wide, not just where
 docs-check enforces it); fixed that in passing. Flagged the real docs/design/projects-map.md back
 to team-lead rather than guessing at a file this branch cannot see.
+
+## work/federation-011: two 0.1.1 test failures fixed, reviewer CLEARED through d36d1911 (29-30 Sep 2026)
+
+Branch off stage/0.1.1 (73293a6e), not work/federation: the 0.1.1 release-blocking task (team-lead)
+was to fix two failing tests, core/files/drop.test.js and core/sync/sync-send.test.js, also failing
+on the older 029756bc.
+
+- bf13d8fc: drop.test.js's own registry() helper never installed the shared fake projects.reach
+  fixture (test/fixtures/fake-reach.js) that files.test.js/drive.test.js already use, so a plain
+  "cli" caller's files.search/stat/preview/fetch calls threw denied-by-default. Fixed the test
+  helper. Separately: sync-send.test.js's "spoofed module:import" assertion predates af11226d
+  (meta.firstParty moved into the kernel itself); verified nothing but ctx.call or vyred's own
+  hardcoded calls can ever produce a "module:" caller, so the old assertion tested an unreachable
+  path, not a live gap in who may send. Neither fix touched sync.send's own SEND_CALLERS/firstParty
+  check. 116/116 (core/files + core/sync + test/federation-reads.test.js).
+- dba1bf5b: reviewer's LOW on the integrator's federation-reads.test.js fix - "denied" had been
+  accepted for every caller, deck and cli included, which would let a real regression against the
+  person's own surfaces pass silently. Tightened: only an agent-named caller this world never
+  created, a tailnet guest, or "unknown" may come back denied (recall's own local reach()/OWNER,
+  not projects.reach - recall keeps its own copy so it never waits on projects being installed).
+  Verified by sabotage: dropping "deck" from recall's OWNER set fails the test loudly; restored,
+  116/116.
+- d36d1911: reviewer's nit on bf13d8fc - replaced the deleted spoof assertion with the real threat
+  it stood in for: a module physically installed in a temp home folder (never core/local/modules in
+  the repo) calling sync.send through its own genuine ctx.call, naming itself "import". Denied,
+  because firstParty(dir) resolves the claimed name to the rogue module's own directory. Verified
+  by sabotaging core/modules's firstParty() to always return true and confirming the new test
+  fails; reverted. 163/163 (+ core/modules).
+
+Reviewer CLEARED bf13d8fc, dba1bf5b and d36d1911 in turn. Sent to integrator each time; nothing
+else queued on this branch. Paused for 0.2 (team-lead, 30 Sep 2026) - team/0.2/CHARTER.md narrows
+scope, this branch is done and idle, no "Next" pending here.
