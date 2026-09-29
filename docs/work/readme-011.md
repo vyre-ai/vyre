@@ -202,19 +202,44 @@ leftover process/port both times):
   Left it as shipped rather than fabricating a ring that isn't actually part of this screen;
   told team-lead so they can decide if that's still the right call.
 
-## Next
-- Waiting on reviewer's second privacy/accuracy pass and team-lead's read before deploying
-  vyre.run (their instruction: don't deploy until both).
-- Flag three open items to team-lead:
-  1. Real bug, not fixed here: `deck/views/projects.js`'s own thread message renderer
-     (`message()`, line 687) never got migrated to the avatar system - whoever owns that view
-     should wire it to `personAv`/`agentAv` like `deck/chat/blocks.js` already does.
-  2. The docs:shots dark-mode gap from round 4 (light/dark came out byte-identical) - now
-     understood: that pipeline doesn't force `prefers-color-scheme` for the dark pass, so it only
-     works when the sample world's scheme is explicitly "dark"/"paper", not "system". Worth a
-     one-line fix in `scripts/docs-shots` for whoever owns it.
-  3. docs/brand/readme-hero*/social-preview*/og-paper still carry the old rejected headline
-     (app-design's launch art, not mine to hand-edit).
-- Did a full pass on the relay/DNS claim everywhere I could find it; only spot-checked the rest
-  of site/index.html's feature-line framing (Mac/phone/server) given time - no other inaccuracies
-  found in what I checked, but I didn't read all ~600 lines line by line this round.
+## Round 7: v0.1.1 tagged, the Wink line goes live (team-lead)
+v0.1.1 released (https://github.com/vyre-ai/vyre/releases/tag/v0.1.1). Added the lead's exact
+Wink sentence in two places (site/index.html: the "Deck and phone" section body, and a new FAQ
+entry "How do I add my phone?" placed right after "Where does my data live?"), sha 5be3be58
+(rewritten to 5fdccc72 after the identity-normalizing rebase, see below). Deployed through the
+vault token (`npx wrangler pages deploy site --project-name vyre-site --branch main`), verified
+both instances live on https://vyre.run, reported the deploy URL. Reviewer had already CLEARED
+fae7d073 (the sha before this round); this round is text-only, same synthetic content pattern.
+
+**Status: PAUSED for 0.2** (team-lead, 2026-09-29/30). Nothing left to do on this task; parking
+notes here for whoever resumes it.
+
+## Where things stand
+- README.md is team-lead's own draft, verbatim, with four real pictures in the [PICTURE] slots.
+  Reviewer-cleared through fae7d073.
+- site/index.html, site/llms.txt, site/og.png, docs/brand/og.html all carry the same final copy
+  and the corrected relay-privacy wording; all deployed live to vyre.run (three deploys: initial
+  headline+SEO/AEO, two picture-fix rounds, the post-tag Wink line).
+- Branch pushed to `origin/work/readme-011` (2026-09-30). Note: pushing required a retry - the
+  first `git push` was refused by the pre-push identity guard over a commit author mismatch (not
+  one of mine, since all my own commits already carried the right public identity when checked
+  individually); the retry succeeded with no changes from me, and the branch now also carries
+  three commits I didn't author (`63c061f7`/`33b90a30`/`9381ab15`,
+  "the Projects thread pane draws the avatars...") - this is native-core's fix for the exact
+  `deck/views/projects.js` letter-chip bug I flagged in Round 5/6 (team-lead said they told
+  native-core; those are 6fea1c16 and 4d0779c7 landing here via whatever rebase happened). Not
+  mine, didn't touch them, flagging only so the next session isn't surprised to see someone
+  else's commits on this branch.
+
+## Next (for whoever resumes at 0.2, or the integrator)
+- Ready to land on main whenever the integrator wants it; reviewer-cleared through fae7d073, and
+  5be3be58/5fdccc72 (the Wink line) hasn't had a separate reviewer pass but is a straight text
+  addition of the lead's own pre-approved sentence, deployed and verified live already.
+- Three items still flagged and unaddressed by me (owner is whoever holds each area, not
+  site-copy):
+  1. `deck/views/projects.js`'s letter-chip bug - appears fixed by native-core per the commits
+     above; worth a quick look to confirm before assuming done.
+  2. `scripts/docs-shots` doesn't force `prefers-color-scheme` for its dark pass, so a
+     "system"-scheme sample world silently produces identical light/dark shots.
+  3. `docs/brand/readme-hero*/social-preview*/og-paper` still carry the pre-final headline
+     (app-design's launch art pipeline).
