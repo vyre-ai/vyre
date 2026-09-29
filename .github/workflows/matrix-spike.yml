@@ -74,7 +74,7 @@ jobs:
           sysctl -n machdep.cpu.brand_string kern.hv_vmm_present 2>&1 || true
           brew install colima docker >/dev/null 2>&1
           t0=$(date +%s)
-          if timeout 600 colima start --vm-type vz --cpu 2 --memory 2 2>&1 | tail -8 && docker info >/dev/null 2>&1; then
+          if colima start --vm-type vz --cpu 2 --memory 2 2>&1 | tail -8 && docker info >/dev/null 2>&1; then
             echo "colima up in $(( $(date +%s) - t0 )) s"; docker run --rm hello-world | head -2
           else echo "colima did not start after $(( $(date +%s) - t0 )) s"; colima status 2>&1 | tail -3; fi
   e2-mac-box:
@@ -111,6 +111,6 @@ jobs:
           sysctl kern.hv_support 2>&1; sysctl -n machdep.cpu.brand_string
           brew install colima docker >/dev/null 2>&1
           t0=$(date +%s)
-          if timeout 600 colima start --vm-type vz --cpu 2 --memory 2 2>&1 | tail -5; then
+          if colima start --vm-type vz --cpu 2 --memory 2 2>&1 | tail -5; then
             echo "colima up in $(( $(date +%s) - t0 )) s"; docker run --rm --platform linux/arm64 hello-world | head -2
           else echo "colima did not start"; fi
