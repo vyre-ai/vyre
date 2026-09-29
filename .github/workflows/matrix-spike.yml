@@ -1,5 +1,7 @@
-# e2e2's 0.2 matrix spike: what GitHub's hosted runners can carry of the real-device matrix.
-# Report only: it installs nothing of Vyre, signs in nowhere and publishes nothing.
+# e2e2's 0.2 matrix spike, round 2: E2 (a private tailnet across hosted runners, the macOS runner
+# as the box) and MB3's first question (can a hosted macOS runner run Colima's VM).
+# Report only: it installs nothing of Vyre, signs in nowhere and publishes nothing. The headscale
+# here lives for the run; each node's key is single use and expires in 20 minutes.
 name: matrix-spike
 on:
   push:
@@ -7,137 +9,94 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
-  linux-x64:
+  e2-control:
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 30
     steps:
-      - name: Host facts
+      - name: headscale behind a throwaway Cloudflare quick tunnel
         run: |
-          nproc; free -g; df -h / /mnt; uname -a
-          ls -l /dev/kvm || echo "no /dev/kvm"
-          sudo apt-get -qq install -y cpu-checker >/dev/null && sudo kvm-ok || true
-          docker version --format '{{.Server.Version}}'
-      - name: Fresh servers in Docker (Ubuntu 24.04, Debian 12) with their own dockerd
-        run: |
-          for img in ubuntu:24.04 debian:12; do
-            t0=$(date +%s)
-            docker run -d --privileged --name srv --tmpfs /run --tmpfs /tmp -v /var/lib/docker "$img" sleep infinity >/dev/null
-            docker exec srv sh -c 'apt-get -qq update >/dev/null && apt-get -qq install -y curl ca-certificates >/dev/null && curl -fsSL https://get.docker.com | sh >/dev/null 2>&1; (dockerd >/var/log/dockerd.log 2>&1 &); for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done; docker run --rm hello-world | head -2'
-            echo "$img: fresh server with docker in $(( $(date +%s) - t0 )) s"
-            docker rm -f srv >/dev/null
-          done
-      - name: Windows 11 in Docker (dockur/windows, KVM)
-        run: |
-          sudo mkdir -p /mnt/win && sudo chmod 777 /mnt/win
-          t0=$(date +%s)
-          docker run -d --name win -e VERSION=11 -e DISK_SIZE=48G -e RAM_SIZE=8G -e CPU_CORES=3 \
-            --device /dev/kvm --device /dev/net/tun --cap-add NET_ADMIN -p 8006:8006 -p 3389:3389 \
-            -v /mnt/win:/storage --stop-timeout 60 dockurr/windows
-          # "started successfully" only means QEMU booted the installer. Ready means the
-          # installed Windows answers RDP; a screen every 5 minutes shows where it is.
-          mkdir -p shots; ok=0
-          for i in $(seq 1 200); do
-            # Docker's port proxy accepts on the host at once, so ask the guest itself.
-            if docker exec win timeout 3 bash -c '</dev/tcp/172.30.0.2/3389' 2>/dev/null; then ok=1; break; fi
-            if [ $((i % 15)) = 0 ]; then docker exec win sh -c 'echo "screendump /storage/s.ppm" | nc -q1 127.0.0.1 7100' >/dev/null 2>&1 && sudo cp /mnt/win/s.ppm "shots/win-$((i/3))min.ppm"; fi
-            sleep 20
-          done
-          echo "windows desktop (RDP) ready=$ok after $(( $(date +%s) - t0 )) s"
-          docker exec win sh -c 'echo "screendump /storage/s.ppm" | nc -q1 127.0.0.1 7100' >/dev/null 2>&1 && sudo cp /mnt/win/s.ppm shots/win-final.ppm
-          sudo apt-get -qq update >/dev/null 2>&1; sudo apt-get -qq install -y netpbm >/dev/null 2>&1; for f in shots/*.ppm; do pnmtopng "$f" > "${f%.ppm}.png" 2>/dev/null && rm "$f"; done; ls -l shots
-          docker logs win 2>&1 | tail -15
-          du -sh /mnt/win || true
+          set -eu
+          curl -fsSLo hs.deb https://github.com/juanfont/headscale/releases/download/v0.26.1/headscale_0.26.1_linux_amd64.deb
+          sudo apt-get -qq install -y ./hs.deb >/dev/null
+          curl -fsSLo cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x cloudflared
+          (./cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8080 > cf.log 2>&1 &)
+          for i in $(seq 1 60); do URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf.log | head -1); [ -n "$URL" ] && break; sleep 1; done
+          echo "control $URL"
+          sudo mkdir -p /etc/headscale /var/lib/headscale
+          sudo tee /etc/headscale/config.yaml >/dev/null <<EOF
+          server_url: $URL
+          listen_addr: 127.0.0.1:8080
+          metrics_listen_addr: 127.0.0.1:9090
+          noise: { private_key_path: /var/lib/headscale/noise_private.key }
+          prefixes: { v4: 100.64.0.0/10, v6: fd7a:115c:a1e0::/48, allocation: sequential }
+          derp: { server: { enabled: false }, urls: [https://controlplane.tailscale.com/derpmap/default], auto_update_enabled: true, update_frequency: 24h }
+          database: { type: sqlite, sqlite: { path: /var/lib/headscale/db.sqlite } }
+          dns: { magic_dns: false, override_local_dns: false, base_domain: matrix.internal }
+          unix_socket: /var/run/headscale/headscale.sock
+          EOF
+          sudo mkdir -p /var/run/headscale
+          (sudo headscale serve > hs.log 2>&1 &)
+          for i in $(seq 1 30); do curl -fs "$URL/health" >/dev/null 2>&1 && break; sleep 2; done
+          curl -fsS "$URL/health"; echo
+          sudo headscale users create matrix >/dev/null
+          uid=$(sudo headscale users list -o json | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["id"])')
+          K1=$(sudo headscale preauthkeys create -u "$uid" -e 20m -o json | python3 -c 'import json,sys; print(json.load(sys.stdin)["key"])')
+          K2=$(sudo headscale preauthkeys create -u "$uid" -e 20m -o json | python3 -c 'import json,sys; print(json.load(sys.stdin)["key"])')
+          mkdir rv && printf '%s\n%s\n' "$URL" "$K2" > rv/rv.txt
+          echo "K1=$K1" >> "$GITHUB_ENV"; echo "URL=$URL" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: windows-shots, path: shots, retention-days: 7 }
-  android:
-    if: false
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    steps:
-      - name: KVM for the emulator
+        with: { name: rv, path: rv, retention-days: 1 }
+      - name: This runner joins and serves a page on the tailnet; wait for the Mac
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
-      - name: Boot an Android 15 emulator with Chrome, open a page, screenshot
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis_playstore
-          arch: x86_64
-          disable-animations: true
-          script: |
-            adb shell getprop ro.build.version.release
-            adb shell pm list packages | grep -c . ; adb shell pm list packages | grep -i chrome || echo "no chrome"
-            adb shell am start -a android.intent.action.VIEW -d https://example.com com.android.chrome || true
-            sleep 20
-            adb exec-out screencap -p > android.png
-            ls -l android.png
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: android-shot, path: android.png, retention-days: 7 }
-  linux-arm64:
-    if: false
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    steps:
-      - name: Host facts and a fresh arm64 server in Docker
-        run: |
-          nproc; free -g; uname -m; ls -l /dev/kvm || echo "no /dev/kvm"
+          set -u
+          curl -fsSL https://tailscale.com/install.sh | sh >/dev/null 2>&1
           t0=$(date +%s)
-          docker run -d --privileged --name srv -v /var/lib/docker debian:12 sleep infinity >/dev/null
-          docker exec srv sh -c 'apt-get -qq update >/dev/null && apt-get -qq install -y curl ca-certificates >/dev/null && curl -fsSL https://get.docker.com | sh >/dev/null 2>&1; (dockerd >/var/log/dockerd.log 2>&1 &); for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done; docker info --format "{{.Architecture}}"; docker run --rm hello-world | head -2'
-          echo "arm64 fresh server with docker in $(( $(date +%s) - t0 )) s"
-  macos:
-    if: false
+          sudo tailscale up --login-server "$URL" --authkey "$K1" --hostname linux-device --accept-dns=false
+          echo "linux joined in $(( $(date +%s) - t0 )) s: $(tailscale ip -4)"
+          echo "hello from the linux device" > index.html; (python3 -m http.server 8000 --bind "$(tailscale ip -4)" >/dev/null 2>&1 &)
+          for i in $(seq 1 90); do
+            if sudo headscale nodes list | grep -q mac-box; then echo "mac-box is on the tailnet after $(( $(date +%s) - t0 )) s"; break; fi; sleep 10
+          done
+          sudo headscale nodes list
+          for i in $(seq 1 60); do tailscale ping -c 1 mac-box 2>&1 | tail -1 | grep -q pong && break; sleep 5; done
+          tailscale ping -c 3 mac-box || true
+          tailscale status
+          sleep 120
+  e2-mac-box:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - name: Host facts
+      - name: Find the control URL and key (the artifact rendezvous)
+        env: { GH_TOKEN: "${{ github.token }}" }
         run: |
-          sw_vers; sysctl -n hw.model hw.ncpu hw.memsize machdep.cpu.brand_string; df -h /
-          bioutil -r -s 2>&1 | head -5 || true
-          xcrun simctl list runtimes | tail -5
-      - name: A throwaway macOS user
+          set -u
+          for i in $(seq 1 90); do
+            id=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" --jq '.artifacts[] | select(.name=="rv") | .id' 2>/dev/null)
+            [ -n "$id" ] && break; sleep 10
+          done
+          echo "artifact $id after $((i * 10)) s"
+          gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > rv.zip && unzip -o -q rv.zip
+          echo "URL=$(sed -n 1p rv.txt)" >> "$GITHUB_ENV"; echo "K2=$(sed -n 2p rv.txt)" >> "$GITHUB_ENV"; rm rv.txt rv.zip
+      - name: The macOS runner joins as the box (open source tailscaled, no app, no system extension)
         run: |
-          sudo sysadminctl -addUser alex -fullName "Alex" -password "rc-spike-$RANDOM" 2>&1 | tail -2
-          id alex && dscl . -read /Users/alex NFSHomeDirectory
-          sudo sysadminctl -deleteUser alex 2>&1 | tail -1; id alex 2>&1 | tail -1
-      - name: Secure Enclave key (what the Capsule's presence key needs)
+          set -u
+          brew install tailscale >/dev/null 2>&1
+          (sudo tailscaled --state=/tmp/ts.state --socket=/tmp/ts.sock > ts.log 2>&1 &)
+          sleep 3; t0=$(date +%s)
+          sudo tailscale --socket=/tmp/ts.sock up --login-server "$URL" --authkey "$K2" --hostname mac-box --accept-dns=false
+          echo "mac joined in $(( $(date +%s) - t0 )) s: $(tailscale --socket=/tmp/ts.sock ip -4)"
+          for i in $(seq 1 30); do tailscale --socket=/tmp/ts.sock ping -c 1 linux-device 2>&1 | grep -q pong && break; sleep 5; done
+          tailscale --socket=/tmp/ts.sock ping -c 3 linux-device || true
+          ip=$(tailscale --socket=/tmp/ts.sock status --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print([p["TailscaleIPs"][0] for p in d["Peer"].values() if p["HostName"]=="linux-device"][0])')
+          curl -s -m 10 "http://$ip:8000/" || echo "no page over the tailnet"
+          tailscale --socket=/tmp/ts.sock status
+      - name: MB3 first question - can this runner run Colima's VM
         run: |
-          cat > se.swift <<'EOF'
-          import Foundation
-          import Security
-          var err: Unmanaged<CFError>?
-          let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage], &err)!
-          let attrs: [String: Any] = [kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom, kSecAttrKeySizeInBits as String: 256,
-            kSecAttrTokenID as String: kSecAttrTokenIDSecureEnclave,
-            kSecPrivateKeyAttrs as String: [kSecAttrIsPermanent as String: false, kSecAttrAccessControl as String: access]]
-          if SecKeyCreateRandomKey(attrs as CFDictionary, &err) != nil { print("secure enclave: key made") }
-          else { print("secure enclave: refused: \(err!.takeRetainedValue())") }
-          EOF
-          swiftc -O se.swift -o se 2>&1 | tail -3 && ./se || true
-      - name: iPhone simulator, Safari, screenshot
-        run: |
-          dev=$(xcrun simctl list devices available | grep -m1 -E "iPhone 1[5-7]( Pro)? \(" | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
-          echo "device $dev"; t0=$(date +%s)
-          xcrun simctl boot "$dev" && xcrun simctl bootstatus "$dev" -b >/dev/null
-          echo "booted in $(( $(date +%s) - t0 )) s"
-          xcrun simctl openurl "$dev" https://example.com; sleep 15
-          xcrun simctl io "$dev" screenshot ios.png; ls -l ios.png
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: ios-shot, path: ios.png, retention-days: 7 }
-  windows:
-    if: false
-    runs-on: windows-2025
-    timeout-minutes: 15
-    steps:
-      - name: Host facts
-        shell: pwsh
-        run: |
-          (Get-CimInstance Win32_OperatingSystem) | Select-Object Caption, Version, BuildNumber | Format-List
-          node --version; winget --version
-          Get-Command wsl -ErrorAction SilentlyContinue | Select-Object Source
-          systeminfo | Select-String "Hyper-V"
+          sysctl kern.hv_support 2>&1; sysctl -n machdep.cpu.brand_string
+          brew install colima docker >/dev/null 2>&1
+          t0=$(date +%s)
+          if timeout 600 colima start --vm-type vz --cpu 2 --memory 2 2>&1 | tail -5; then
+            echo "colima up in $(( $(date +%s) - t0 )) s"; docker run --rm --platform linux/arm64 hello-world | head -2
+          else echo "colima did not start"; fi
