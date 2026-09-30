@@ -1490,6 +1490,29 @@ export class Switchboard {
     return { unqueued: out, ...(note ? { note } : {}) };
   }
 
+  /** The message uuid of each still-queued row (one row, or all of the thread's). @param {string} id @param {number|undefined} [queued] @returns {string[]} */
+  queuedUuids(id, queued) {
+    const rows = /** @type {any[]} */ (queued == null
+      ? this.db.prepare("SELECT uuid FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL").all(id)
+      : this.db.prepare("SELECT uuid FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").all(id, Number(queued)));
+    return rows.map(r => r.uuid).filter(Boolean).map(String);
+  }
+
+  /**
+   * What the person said in a message is withdrawn with it: every intent vault recorded for that message (an act_out
+   * from "merge it", a use grant from a # tag; each was recorded against the message's uuid as `said`) is revoked, so an
+   * edit or a take-back cannot leave the agent covered by words the person no longer stands behind. Vault absent or
+   * failing revokes nothing. A grant a tag's provider made on its own (a Drive file's read access) is that provider's.
+   * @param {string} id @param {string[]} uuids
+   */
+  async revokeHeard(id, uuids) {
+    if (!uuids.length) return;
+    const l = await this.deps.call("vault.said.list", { thread: id }).catch(() => null);
+    const rows = l && !l.error && l.data && Array.isArray(l.data.intents) ? l.data.intents : [];
+    // An edit's hearing is recorded as "<uuid>:e<time>", so a later edit or take-back finds it too.
+    for (const it of rows.filter(x => x && uuids.some(u => String(x.said) === u || String(x.said).startsWith(`${u}:e`)))) await this.deps.call("vault.said.revoke", { id: it.id }).catch(() => null);
+  }
+
   /** Whether words are still queued (not handed over) under this row id. @param {string} id @param {number} queued */
   hasQueued(id, queued) { return Boolean(this.db.prepare("SELECT 1 FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued))); }
 
@@ -2590,7 +2613,11 @@ export default {
       async (i, { caller }) => {
         guard(caller, "take back queued words");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can take back queued words"), { code: "denied" });
-        return sb.unqueue(i.thread, i.queued, surfaceOf(i, caller));
+        const uuids = sb.queuedUuids(i.thread, i.queued);
+        const r = sb.unqueue(i.thread, i.queued, surfaceOf(i, caller));
+        // Words taken back are not the person's words any more: what they recorded is withdrawn too.
+        if (r.unqueued && r.unqueued.length) await sb.revokeHeard(i.thread, uuids);
+        return r;
       });
 
     tool("threads.queue", "The words queued for a thread and not handed over yet, oldest first: queued (the row id), uuid, text, surface, at, request (a teammate's own request id, when its reply carries one).",
@@ -2612,8 +2639,11 @@ export default {
         // The edited words are the person's new words: heard like a send (a said row, tags, asks), but only when the composer
         // said which spans were pasted. Without `pasted` the whole text counts as not typed: nothing is heard, no note is kept.
         let note = "";
+        // The original words are withdrawn first, whatever the edit says: if the person edits "merge it" out, nothing it
+        // recorded survives, and what they now type is heard afresh under the usual rules.
+        if (sb.hasQueued(i.thread, i.queued)) await sb.revokeHeard(i.thread, sb.queuedUuids(i.thread, i.queued));
         if (personTurn(caller) && Array.isArray(i.pasted) && sb.hasQueued(i.thread, i.queued)) {
-          const heard = await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), crypto.randomUUID(), Array.isArray(i.mentions) ? i.mentions : [], i.pasted.filter(x => typeof x === "string").slice(0, 20));
+          const heard = await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), `${sb.queuedUuids(i.thread, i.queued)[0] || crypto.randomUUID()}:e${Date.now()}`, Array.isArray(i.mentions) ? i.mentions : [], i.pasted.filter(x => typeof x === "string").slice(0, 20));
           if (heard.length) note = tagNote(heard);
         }
         return sb.edit(i.thread, i.queued, i.text, surfaceOf(i, caller), { note });

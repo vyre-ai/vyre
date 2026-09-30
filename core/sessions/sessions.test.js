@@ -807,6 +807,47 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(resolved.length, 2);
   });
 
+  test(`${driver}: editing or taking back queued words revokes what the original words recorded, so an agent is not covered by words the person no longer stands behind`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    // Vault stood in: a use intent per tag heard, listable and revocable, recorded against the message's said id.
+    const intents = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "mentions.search") return { error: { code: "no_such_tool" } };
+      if (tool === "vault.mention.resolve") { const id = `i${intents.length + 1}`; intents.push({ id, said: input.said, thread: input.thread, revoked: false }); return { data: { name: input.id, hosts: ["api.example.test"], note: "use it through vault.request" } }; }
+      if (tool === "vault.said.list") return { data: { intents: intents.filter(x => !x.revoked && x.thread === input.thread).map(({ id, said }) => ({ id, said })) } };
+      if (tool === "vault.said.revoke") { intents.find(x => x.id === input.id).revoked = true; return { data: { id: input.id } }; }
+      return realCall(tool, input, caller, meta);
+    };
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const live = () => intents.filter(x => !x.revoked).map(x => x.id);
+    // Queue "use #GHLapikey", then edit it to "wait": the grant is withdrawn, and "wait" records nothing.
+    const q = (await w.tool("threads.send", { thread: th.id, text: "Use #GHLapikey for this", mode: "queue", surface: "deck" })).data;
+    assert.deepEqual(live(), ["i1"]);
+    const e1 = await w.tool("threads.edit", { thread: th.id, queued: q.queued_id, text: "wait", pasted: [], surface: "deck" });
+    assert.equal(e1.data.edited, true, JSON.stringify(e1));
+    assert.deepEqual(live(), [], "the original words' grant is revoked");
+    // Edited to words that tag again: heard afresh, recorded against the same message, so the next edit finds it.
+    await w.tool("threads.edit", { thread: th.id, queued: q.queued_id, text: "Actually use #GHLapikey", pasted: [], surface: "deck" });
+    assert.deepEqual(live(), ["i2"]);
+    await w.tool("threads.edit", { thread: th.id, queued: q.queued_id, text: "no, hold on", surface: "deck" });
+    assert.deepEqual(live(), [], "an edit without pasted still withdraws the old hearing, and hears nothing");
+    // Taking a queued message back withdraws it too.
+    const q2 = (await w.tool("threads.send", { thread: th.id, text: "Use #GHLapikey again", mode: "queue", surface: "deck" })).data;
+    assert.deepEqual(live(), ["i3"]);
+    assert.equal((await w.tool("threads.unqueue", { thread: th.id, queued: q2.queued_id, surface: "deck" })).data.unqueued.length, 1);
+    assert.deepEqual(live(), []);
+    // A message already handed over is the person's word: nothing revokes it.
+    const q3 = (await w.tool("threads.send", { thread: th.id, text: "Use #GHLapikey finally", mode: "queue", surface: "deck" })).data;
+    assert.deepEqual(live(), ["i4"]);
+    const ask = (await w.tool("threads.asks", { thread: th.id })).data[0];
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal((await w.tool("threads.edit", { thread: th.id, queued: q3.queued_id, text: "x", pasted: [], surface: "deck" })).data.edited, false);
+    assert.deepEqual(live(), ["i4"], "delivered words stand");
+  });
+
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
     const w = await boot(t, { driver });
     const root = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
