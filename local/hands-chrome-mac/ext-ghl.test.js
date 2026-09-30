@@ -14,7 +14,7 @@ import { start } from "./extension/background.js";
 import { err } from "./extension/lib/err.js";
 import { matchControl, classifyBlocker, redactDom, scrub, wordsWithin } from "./extension/lib/ui.js";
 import { resolve } from "./extension/caps/page.js";
-import { createFakeChrome, createFakePage } from "./test-support/fake-chrome.js";
+import { createFakeChrome, createFakePage, createFakeFrames } from "./test-support/fake-chrome.js";
 import { allSelectors, GHL_ROBUST } from "./bench/scenarios.mjs";
 
 const LOC = "MRKcUjapWpnOvQslF3Pc";
@@ -615,4 +615,107 @@ test("popups: a dialog that asks for agreement is never closed with OK, Got it, 
   const tour = classifyBlocker({ i: 0, title: "Welcome tour", text: "Take a tour of the new builder" }, snap);
   assert.equal(tour.kind, "safe");
   assert.equal(classifyBlocker({ i: 0, title: "Consent", text: "consent to marketing" }, snap).kind, "unknown", "bare consent is no longer a safe popup");
+});
+
+// ---------------------------------------------------------------- the builder in a cross-origin iframe (real-use finding)
+
+const SHELL = "https://crm.harlow.example";
+const BUILDER = "https://client-app-automation-workflows.leadconnectorhq.com";
+let fn = 0;
+/** A control with a box inside a 600 x 400 iframe. */
+const fctl = (/** @type {string} */ role, /** @type {string} */ name, /** @type {any} */ extra = {}) => { fn++; return { path: `${role}[${fn}]`, role, name, enabled: true, box: { x: 10, y: 10 + (fn % 9) * 30, w: 120, h: 24 }, ...extra }; };
+
+/**
+ * A white-label shell (its host is the person's own) whose Workflows UI is the builder iframe, as on a real account: the shell holds
+ * the left nav, the iframe holds every control of the builder.
+ * @param {{ url?: string, builder?: any[], builderState?: any }} [o]
+ */
+async function iframeWorld(o = {}) {
+  const url = o.url || `${SHELL}/v2/location/${LOC}/contacts`;
+  const chrome = createFakeChrome([{ url, title: "Harlow CRM", active: true }]);
+  chrome._.store.local["ghl.hosts"] = ["crm.harlow.example"];
+  const nav = fctl("link", "Automation", { identifier: "nav-automation" });
+  const top = { url, title: "Harlow CRM", text: "Harlow Legal", controls: [nav], state: quietState() };
+  const builder = { url: `${BUILDER}/builder?token=abc`, title: "Workflows", text: "Workflows", controls: o.builder || [], state: o.builderState || quietState() };
+  const fx = createFakeFrames(chrome, { top, frames: [{ id: "APP", origin: BUILDER, url: builder.url, box: { x: 300, y: 60, w: 600, h: 400 }, model: builder }] });
+  const ctx = createCtx({ chrome });
+  await fx.attach(ctx);
+  const topPage = fx.page("TOP");
+  topPage.onSnapshot = () => { top.url = chrome._.tabs[0].url; };
+  return { chrome, ctx, fx, top, builder, nav, topPage, app: fx.page("APP") };
+}
+
+test("ghl.section in a white-label shell: the nav is clicked in the top frame, the landmark is waited for in the iframe, and the result says which frame", async () => {
+  const create = fctl("button", "Create Workflow", { identifier: "create-workflow" });
+  const w = await iframeWorld({ builderState: quietState({ netPending: 3, netQuietMs: 0 }) });
+  w.topPage.onClick = () => setTimeout(() => { w.chrome._.tabs[0].url = `${SHELL}/v2/location/${LOC}/automation/workflows`; w.builder.controls.push(create); }, 30);
+  const t0 = Date.now();
+  const r = await dispatch("ghl.section", { section: "workflows" }, w.ctx);
+  const took = Date.now() - t0;
+  assert.deepEqual([r.ok, r.via, r.landmark], [true, "nav", true]);
+  assert.deepEqual(r.landmarkFrame, { frame: 1, frameOrigin: BUILDER });
+  assert.deepEqual([r.trace.frame, r.trace.frameOrigin], [1, BUILDER]);
+  assert.equal(w.fx.raw.clicks[0].frame, "TOP", "the shell's nav is in the top frame");
+  assert.ok(took < 1500, `with the landmark in hand a busy network is not waited for (took ${took} ms; the old settle step alone soft-waited 2500 ms)`);
+  assert.equal(r.trace.netIgnored, true, "and it says the network was not quiet");
+});
+
+test("ghl.section still waits for the iframe's own spinner to clear before it says loaded", async () => {
+  const create = fctl("button", "Create Workflow", { identifier: "create-workflow" });
+  const w = await iframeWorld({ url: `${SHELL}/v2/location/${LOC}/automation/workflows`, builder: [create], builderState: quietState({ busy: 2 }) });
+  const t0 = Date.now();
+  w.app.onSnapshot = () => { if (Date.now() - t0 > 350) w.builder.state.busy = 0; };
+  const r = await dispatch("ghl.section", { section: "workflows", timeoutMs: 8000 }, w.ctx);
+  assert.equal(r.loaded, true);
+  assert.ok(Date.now() - t0 >= 340);
+  assert.equal(r.trace.busyIgnored, undefined);
+});
+
+test("ghl.section with a landmark that never shows in any frame: a default one is a warning after a short grace", async () => {
+  const w = await iframeWorld({ url: `${SHELL}/v2/location/${LOC}/automation/workflows`, builder: [fctl("button", "Something else")] });
+  const t0 = Date.now();
+  const r = await dispatch("ghl.section", { section: "workflows", timeoutMs: 6000 }, w.ctx);
+  assert.equal(r.landmark, false);
+  assert.match(r.warning, /landmark/);
+  assert.ok(Date.now() - t0 < 2500);
+});
+
+test("create-workflow runs when the builder controls live in the iframe: every step in frame 1, and the result lists them", async () => {
+  const name = fctl("textbox", "Workflow Name", { identifier: "workflow-name" });
+  const create = fctl("button", "Create Workflow", { identifier: "create-workflow" });
+  const scratch = fctl("button", "Start from Scratch");
+  const w = await iframeWorld({ url: `${SHELL}/v2/location/${LOC}/automation/workflows`, builder: [create, scratch, name] });
+  const r = await dispatch("ghl.run", { flow: "create-workflow", params: { name: "Welcome flow", save: false } }, w.ctx);
+  assert.equal(r.ok, true, JSON.stringify(r.detail || r.why));
+  assert.equal(name.value, "Welcome flow");
+  assert.deepEqual(r.stepFrames.map((/** @type {any} */ x) => [x.frame, x.frameOrigin]), [[1, BUILDER], [1, BUILDER], [1, BUILDER]]);
+  assert.equal(w.fx.raw.clicks.every((/** @type {any} */ c) => c.frame === "APP"), true);
+  assert.equal(r.failed, undefined);
+});
+
+test("a builder tile in the iframe runs without a hold inside a white-label shell, and a real Send in it is still held", async () => {
+  const tile = fctl("button", "Send Email", { container: "Add Action drawer" });
+  const send = fctl("button", "Send", { container: "Add Action drawer" });
+  const w = await iframeWorld({ url: `${SHELL}/v2/location/${LOC}/automation/workflows`, builder: [tile, send] });
+  const ok = await act(w.ctx, { selector: { name: "Send Email" }, kind: "click" });
+  assert.equal(ok.ok, true);
+  const held = await act(w.ctx, { selector: { name: "Send" }, kind: "click" });
+  assert.equal(held.held, true);
+  const r = await dispatch("ghl.context", { tabId: 1 }, w.ctx);
+  assert.deepEqual([r.builderFrame.index, r.builderFrame.origin, r.builderFrame.readable], [1, BUILDER, true]);
+  assert.equal(r.isGhl, true);
+});
+
+test("ghl.save: a toast inside the iframe is the evidence, and the builder navigating inside its frame counts as a URL change", async () => {
+  const save = fctl("button", "Save", { identifier: "save-workflow" });
+  const w = await iframeWorld({ url: `${SHELL}/v2/location/${LOC}/automation/workflows`, builder: [save] });
+  w.app.onClick = () => setTimeout(() => { w.builder.state.toasts = [{ ageMs: 5, text: "Workflow saved successfully" }]; }, 40);
+  const r = await dispatch("ghl.save", { tabId: 1 }, w.ctx);
+  assert.deepEqual([r.ok, r.evidence.kind, r.trace.frame], [true, "toast", 1]);
+  // the same, but the iframe moves to the saved workflow's own address
+  const save2 = fctl("button", "Save", { identifier: "save-workflow" });
+  const w2 = await iframeWorld({ url: `${SHELL}/v2/location/${LOC}/automation/workflows`, builder: [save2] });
+  w2.app.onClick = () => setTimeout(() => w2.fx.navigate("APP", { id: "APP2", url: `${BUILDER}/builder/wf_123` }), 40);
+  const u = await dispatch("ghl.save", { tabId: 1 }, w2.ctx);
+  assert.equal(u.evidence.kind, "url");
 });

@@ -20,6 +20,13 @@
 // NOTE the held result names its signature `sig`, not `signature`: redact.value() masks every key
 // called "signature" (correctly, for a JSON body), which would blank the one value the module needs.
 // release accepts either spelling.
+//
+// Frames: a tab is not one document (GoHighLevel's whole Workflows UI is a cross-origin iframe, in its own process). Every op here
+// looks in ALL readable frames of the tab (lib/frames.js lists them; a frame that cannot be read is said, never left out). A snapshot
+// runs the snapshot script in each frame and merges the controls: each carries `frame` (its index in that list) and `path` (its path
+// INSIDE that frame), so a control is (frame, path). A selector may carry `frame` (index, id or a piece of the origin or URL) to pin
+// one frame. Scripts that find, fill or focus a control run in the control's own frame; a click is found in the frame, moved by the
+// frame's offset and dispatched on the top page's session, which is where Chrome routes input into an iframe.
 
 import { redact } from "../lib/shared.js";
 import { passwordFieldScript } from "../shared/guards.js";
@@ -27,7 +34,7 @@ import { guardInstall, guardCollect, held as heldRequest } from "../shared/outbo
 import { egressGuard } from "./net.js";
 import { isGhlHost } from "../shared/ghlhosts.js";
 import { err } from "../lib/err.js";
-import { matchControl, nearMisses, topBlocker, classifyBlocker, describeBlocker, redactDom, whereOf, traceOf, nap } from "../lib/ui.js";
+import { matchControl, norm, nearMisses, topBlocker, classifyBlocker, describeBlocker, redactDom, whereOf, traceOf, nap } from "../lib/ui.js";
 
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 
@@ -35,7 +42,7 @@ const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 
 export const WEIGHT = { identifier: 100, name: 40, container: 10, path: 1 };
 
-/** @typedef {{ role?: string, identifier?: string, name?: string, container?: string, path?: string }} Selector */
+/** @typedef {{ role?: string, identifier?: string, name?: string, container?: string, path?: string, frame?: number|string }} Selector */
 
 /** @param {Selector} sel @param {any} ctl */
 export function score(sel, ctl) {
@@ -62,14 +69,14 @@ export function resolve(sel, candidates, { min = WEIGHT.name } = {}) {
 }
 
 /** @param {any} ctl @returns {Selector} */
-export const selectorOf = ctl => ({ role: ctl.role, identifier: ctl.identifier || undefined, name: ctl.name || undefined, container: ctl.container || undefined, path: ctl.path });
+export const selectorOf = ctl => ({ role: ctl.role, identifier: ctl.identifier || undefined, name: ctl.name || undefined, container: ctl.container || undefined, path: ctl.path, ...(typeof ctl.frame === "number" ? { frame: ctl.frame } : {}) });
 
 /** @param {any} raw @returns {Selector} */
 function selectorArg(raw) {
   if (typeof raw === "string" && raw.trim()) return { name: raw.trim() };
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    const { role, identifier, name, container, path } = raw;
-    const s = { role, identifier, name, container, path };
+    const { role, identifier, name, container, path, frame } = raw;
+    const s = { role, identifier, name, container, path, ...(frame !== undefined && frame !== null && frame !== "" ? { frame } : {}) };
     if (s.identifier || s.name) return s;
   }
   throw err("bad_request", "a selector needs a name or an identifier (and optionally a role)");
@@ -283,6 +290,9 @@ export const EXPRESSION = script("snapshot", {}, `
     blockers.push({ el, i: blockers.length, path: pathOf(el), role: role || undefined, title: txt(el.getAttribute("aria-label") || (head && head.textContent)).slice(0, 80), text: txt(el.innerText || el.textContent).slice(0, 300), modal: ariaModal || cover || (backdrop && (role === "dialog" || layer)) });
   }
   state.blockers = blockers.map(({ el, ...b }) => b);
+  // The iframes this frame holds and how much of its viewport each covers: a frame Vyre cannot read is then said to cover most of the page.
+  state.vw = vw; state.vh = vh;
+  state.iframes = [...document.querySelectorAll("iframe,frame")].slice(0, 16).map(f => { const r = f.getBoundingClientRect(); return { src: String(f.getAttribute("src") || "").slice(0, 300), x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) }; }).filter(f => f.w > 0 && f.h > 0);
   // A white-label GoHighLevel account runs on its own domain but talks to GoHighLevel's API hosts.
   try { state.ghlApi = performance.getEntriesByType("resource").some(e => e.name.indexOf("https://services.leadconnectorhq.com/") === 0 || e.name.indexOf("https://backend.leadconnectorhq.com/") === 0); } catch (e) { state.ghlApi = false; }
   const toasts = (window.__vyreToasts || []).filter(x => Date.now() - x.t < 15000).map(x => ({ ageMs: Date.now() - x.t, text: x.text }));
@@ -299,7 +309,10 @@ export const EXPRESSION = script("snapshot", {}, `
     const disabled = el.disabled === true || el.getAttribute("aria-disabled") === "true";
     const name = nameOf(el);
     const identifier = el.id || el.getAttribute("data-testid") || el.getAttribute("data-test-id") || undefined;
-    const c = { path: pathOf(el), role, enabled: !disabled, frame: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) } };
+    const c = { path: pathOf(el), role, enabled: !disabled, box: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) } };
+    // Which part of the page it is in, for a budgeted snapshot: 0 the main content or a dialog or drawer, 2 navigation or header chrome, 1 the rest (only sent when not 1).
+    const pri = el.closest('dialog,[role="dialog"],[role="alertdialog"],[aria-modal="true"],[class*="drawer"],[class*="Drawer"],[class*="modal"],[class*="Modal"],main,[role="main"]') ? 0 : el.closest('nav,header,[role="navigation"],[role="banner"]') ? 2 : 1;
+    if (pri !== 1) c.pri = pri;
     if (name) c.name = name; else c.nameless = true;
     if (identifier) c.identifier = identifier;
     if (FILL.includes(role)) {
@@ -431,13 +444,44 @@ const domOutline = (/** @type {string|undefined} */ path) => script("dom", { pat
   return { html: parts.join("") };
 `);
 
-// ---------------------------------------------------------------- CDP plumbing
+// ---------------------------------------------------------------- frames and CDP plumbing
+
+/** What a tab with no frame tree to ask (a test double, or a page that just navigated) is: the top page alone. */
+const TOP_ONLY = Object.freeze({ index: 0, frameId: "", parentId: null, depth: 0, url: "", origin: "", name: "", session: null, how: /** @type {"top"} */ ("top"), readable: true });
+
+const noQuery = (/** @type {any} */ u) => String(u || "").split(/[?#]/)[0];
+
+/** Every frame of the tab, top first, in tree order. Never empty: the top page is always there. @param {any} ctx @param {number} tabId @returns {Promise<any[]>} */
+async function framesOf(ctx, tabId) {
+  if (!ctx.frames || typeof ctx.frames.list !== "function") return [TOP_ONLY];
+  try { const l = await ctx.frames.list(tabId); if (Array.isArray(l) && l.length) return l; } catch { /* no frame tree to read: the top page is what there is */ }
+  return [TOP_ONLY];
+}
 
 /**
- * @param {any} ctx @param {number} tabId @param {string} expression @param {any} [extra]
+ * The frame indexes a `frame` reference pins: an index, "top", a frame id, an origin, or a piece of an origin or URL. Null when nothing is
+ * pinned; an empty list when the reference matches no frame. Works on lib/frames.js frames (frameId) and on snapshot.frames entries (id).
+ * @param {any[]} frames @param {unknown} ref @returns {number[]|null}
  */
-async function evaluate(ctx, tabId, expression, extra = {}) {
-  const r = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression, returnByValue: true, timeout: 10_000, ...extra });
+export function pinIndexes(frames, ref) {
+  if (ref === undefined || ref === null || ref === "") return null;
+  if (ref === "top" || ref === "main") return [0];
+  if (typeof ref === "number" || /^\d+$/.test(String(ref))) return frames.some(f => f.index === Number(ref)) ? [Number(ref)] : [];
+  const r = String(ref);
+  const idOf = (/** @type {any} */ f) => (f.id !== undefined ? f.id : f.frameId);
+  let hit = frames.filter(f => idOf(f) === r);
+  if (!hit.length) hit = frames.filter(f => f.origin === r);
+  if (!hit.length) hit = frames.filter(f => String(f.url || "").includes(r) || String(f.origin || "").includes(r));
+  return hit.map(f => f.index);
+}
+
+/**
+ * Run a script inside one frame (the top page when frame is absent), returning its value. A script that throws is an error.
+ * @param {any} ctx @param {number} tabId @param {string} expression @param {any} [extra] @param {any} [frame]
+ */
+async function evaluate(ctx, tabId, expression, extra = {}, frame) {
+  const params = { returnByValue: true, timeout: 10_000, ...extra };
+  const r = frame && frame.how !== "top" && ctx.frames ? await ctx.frames.evalIn(tabId, frame, expression, params) : await ctx.cdp.send(tabId, "Runtime.evaluate", { expression, ...params });
   if (r && r.exceptionDetails) {
     const d = r.exceptionDetails;
     throw err("error", String((d.exception && d.exception.description) || d.text || "the page threw"));
@@ -445,18 +489,195 @@ async function evaluate(ctx, tabId, expression, extra = {}) {
   return r && r.result ? r.result.value : undefined;
 }
 
-/** @param {any} raw */
-export function toSnapshot(raw) {
-  const controls = Array.isArray(raw && raw.controls) ? raw.controls : [];
+/**
+ * The live frame a control was found in. Frame ids change when a frame navigates, and an index can shift when one appears, so it is
+ * found again by its index AND origin, else by origin and depth: a control whose frame is really gone is "gone" (stale, so retried).
+ * @param {any[]} list frames now @param {any} ctl @param {any} [snap]
+ */
+export function refindFrame(list, ctl, snap) {
+  const idx = typeof ctl.frame === "number" ? ctl.frame : 0;
+  const want = ctl.frameOrigin || "";
+  const at = list[idx];
+  if (at && at.readable && (!want || at.origin === want)) return at;
+  const depth = snap && snap.frames ? (snap.frames.find((/** @type {any} */ f) => f.index === idx) || {}).depth : at && at.depth;
+  const same = list.filter(f => f.readable && want && f.origin === want);
+  const pick = same.find(f => f.depth === depth) || same[0];
+  if (pick) return pick;
+  throw err("not_found", `the frame the control was in (${want || "frame " + idx}) is gone`);
+}
+
+const GHL_FRAME_HOST = /(^|\.)leadconnectorhq\.com$/i;
+/**
+ * A frame that is GoHighLevel's own workflow builder: a child frame on a leadconnectorhq.com host whose host or path is the automation /
+ * workflows app (client-app-automation-workflows.leadconnectorhq.com). Decided from the frame's own origin, which Chrome reports and a
+ * page cannot forge; a white-label shell around it changes nothing.
+ * @param {any} f
+ */
+export function isGhlBuilderFrame(f) {
+  if (!f || !(f.depth > 0)) return false;
+  let u;
+  try { u = new URL(String(f.url || f.origin)); } catch { return false; }
+  if (!GHL_FRAME_HOST.test(u.hostname)) return false;
+  return /automation|workflow/i.test(u.hostname) || /\/(automation|workflows?)(\/|$)/i.test(u.pathname);
+}
+
+const FRAME_FLOOR = 12;
+/**
+ * Split a snapshot's control budget across frames: each frame keeps at least a floor (so a huge frame cannot starve a small one), and
+ * what is left is shared out evenly among the frames that have more.
+ * @param {number[]} counts controls per frame @param {number} [limit] @returns {number[]}
+ */
+export function allocate(counts, limit) {
+  if (!(Number(limit) > 0)) return counts.slice();
+  const lim = Math.floor(Number(limit));
+  const n = counts.filter(c => c > 0).length || 1;
+  const floor = Math.min(FRAME_FLOOR, Math.ceil(lim / n));
+  const alloc = counts.map(c => Math.min(c, floor));
+  let left = lim - alloc.reduce((a, b) => a + b, 0);
+  while (left > 0) {
+    const open = counts.map((c, i) => i).filter(i => alloc[i] < counts[i]);
+    if (!open.length) break;
+    const share = Math.max(1, Math.floor(left / open.length));
+    for (const i of open) { const give = Math.min(share, counts[i] - alloc[i], left); alloc[i] += give; left -= give; if (left <= 0) break; }
+  }
+  return alloc;
+}
+
+const sumOf = (/** @type {number[]} */ a) => a.reduce((x, y) => x + y, 0);
+const minOf = (/** @type {number[]} */ a) => a.reduce((x, y) => (y < x ? y : x), a[0]);
+
+/**
+ * Merge what the snapshot script returned in each frame into one snapshot. `results[i]` is {raw} for frame i, or {why} when its
+ * script could not run there. A tab with only its top page gives the same snapshot as always (plus `frames`); with more, every control
+ * carries `frame` and `frameOrigin`, `state` covers all readable frames, and a frame that could not be read is listed in `notReadable`
+ * and named in the text: a snapshot never passes for the whole page when it is only the shell.
+ * @param {any[]} list frames from lib/frames.js @param {Array<{ raw?: any, why?: string }>} results @param {{ limit?: number }} [o]
+ */
+export function mergeSnapshot(list, results, o = {}) {
+  const multi = list.length > 1;
+  const top = (results[0] && results[0].raw) || {};
+  /** @type {any[]} */
+  const parts = list.map((f, i) => {
+    const r = results[i] || {};
+    const raw = r.raw && typeof r.raw === "object" ? r.raw : null;
+    const controls = (raw && Array.isArray(raw.controls) ? raw.controls : []).map((/** @type {any} */ c) => {
+      // The page's own box of a control was called `frame` before frames were first-class: it is `box` now.
+      const { frame: legacyBox, pri, ...rest } = c;
+      return { c: legacyBox && typeof legacyBox === "object" ? { ...rest, box: legacyBox } : rest, pri: typeof pri === "number" ? pri : 1 };
+    });
+    return { f, raw, why: raw ? undefined : r.why || f.why || "no way into this frame", controls, blkBase: 0 };
+  });
+
+  // Blockers are numbered across frames so a control's `blk` still names one.
+  let base = 0;
+  /** @type {any[]} */ const blockers = [];
+  for (const p of parts) {
+    const bl = (p.raw && p.raw.state && p.raw.state.blockers) || [];
+    for (const b of bl) blockers.push(multi ? { ...b, i: b.i + base, frame: p.f.index } : b);
+    p.blkBase = base; base += bl.length;
+  }
+
+  // The control budget, per frame, preferring the main content and dialogs over navigation chrome.
+  const keep = allocate(parts.map(p => p.controls.length), o.limit);
+  const total = sumOf(parts.map(p => p.controls.length));
+  /** @type {any[]} */ const controls = [];
+  const counts = parts.map((p, i) => {
+    let pick = p.controls.map((/** @type {any} */ x, /** @type {number} */ k) => k);
+    if (keep[i] < pick.length) pick = pick.sort((/** @type {number} */ a, /** @type {number} */ b) => p.controls[a].pri - p.controls[b].pri || a - b).slice(0, keep[i]).sort((/** @type {number} */ a, /** @type {number} */ b) => a - b);
+    for (const k of pick) {
+      const { c } = p.controls[k];
+      controls.push(multi ? { ...c, frame: p.f.index, ...(p.f.origin ? { frameOrigin: p.f.origin } : {}), ...(c.blk !== undefined ? { blk: c.blk + p.blkBase } : {}) } : c);
+    }
+    return pick.length;
+  });
+
+  // State: quiet only when every readable frame is quiet.
+  const states = parts.filter(p => p.raw && p.raw.state).map(p => p.raw.state);
+  /** @type {any} */ let state;
+  if (states.length) {
+    const { iframes: _i, vw: _w, vh: _h, ghlFrame: _g, ...first } = states[0];
+    if (!multi) state = first;
+    else {
+      const nums = (/** @type {string} */ k) => states.map(s => s[k]).filter(v => typeof v === "number");
+      state = { ...first };
+      if (nums("domQuietMs").length) state.domQuietMs = minOf(nums("domQuietMs"));
+      if (nums("netPending").length) state.netPending = sumOf(nums("netPending"));
+      if (nums("netQuietMs").length) state.netQuietMs = state.netPending ? 0 : minOf(nums("netQuietMs"));
+      if (nums("busy").length) state.busy = sumOf(nums("busy"));
+      const sample = states.find(s => s.busySample);
+      if (sample) state.busySample = sample.busySample; else delete state.busySample;
+      state.blockers = blockers;
+      state.toasts = states.flatMap(s => s.toasts || []).slice(-8);
+      if (states.some(s => s.ghlApi === true)) state.ghlApi = true;
+    }
+  }
+  const ghlFrames = list.filter(isGhlBuilderFrame).map(f => f.index);
+  if (state && ghlFrames.length) state.ghlFrame = true;
+
+  // Frames, said plainly.
+  /** @type {any[]} */ const notReadable = [];
+  const framesOut = parts.map((p, i) => {
+    const parent = p.f.parentId ? list.findIndex(x => x.frameId === p.f.parentId) : -1;
+    const busy = p.raw && p.raw.state && typeof p.raw.state.busy === "number" ? p.raw.state.busy : 0;
+    if (!p.raw) notReadable.push({ index: p.f.index, origin: p.f.origin, why: p.why });
+    return { index: p.f.index, ...(p.f.frameId ? { id: p.f.frameId } : {}), ...(parent >= 0 ? { parent } : {}), depth: p.f.depth, origin: p.f.origin, url: noQuery(p.f.url), readable: !!p.raw, controls: counts[i], ...(keep[i] < p.controls.length ? { total: p.controls.length } : {}), ...(busy ? { busy } : {}) };
+  });
+
+  // A frame Vyre cannot read that fills the page: the real controls are probably in it.
+  /** @type {string[]} */ const sentences = [];
+  if (notReadable.length) sentences.push(`${notReadable.length} frame${notReadable.length === 1 ? "" : "s"} not readable: ${notReadable.map(n => n.origin || `frame ${n.index}`).join(", ")}.`);
+  for (const n of notReadable) {
+    const pi = framesOut[n.index] && framesOut[n.index].parent;
+    const parent = typeof pi === "number" ? parts[pi] : null;
+    const st = parent && parent.raw && parent.raw.state;
+    if (!st || !Array.isArray(st.iframes) || !st.vw || !st.vh) continue;
+    let biggest = 0;
+    for (const ifr of st.iframes) {
+      let org = "";
+      try { org = new URL(ifr.src, (parent && parent.f.url) || undefined).origin; } catch { org = ""; }
+      if (org && org === n.origin) biggest = Math.max(biggest, (ifr.w * ifr.h) / (st.vw * st.vh));
+    }
+    if (biggest >= 0.25) { n.coversViewport = Math.min(100, Math.round(biggest * 100)); sentences.push(`Frame ${n.index} (${n.origin || "unknown origin"}) covers about ${n.coversViewport}% of the viewport and is not readable, so the page's real controls are probably inside it.`); }
+  }
+
+  // The text on screen: the top page's, then each readable child frame's, so a list inside an iframe is not invisible.
+  let text = String(top.text || "");
+  if (multi) {
+    for (const p of parts.slice(1)) { const t = p.raw && String(p.raw.text || "").trim(); if (t) text += `\n\n[frame ${p.f.index}${p.f.origin ? " " + p.f.origin : ""}]\n${t.slice(0, 6000)}`; }
+    text = text.slice(0, 20000);
+  }
+  if (sentences.length) text = `${sentences.join(" ")}\n${text}`;
+
   return {
-    title: (raw && raw.title) || "", url: (raw && raw.url) || "", text: (raw && raw.text) || "",
-    ...(raw && raw.state ? { state: raw.state } : {}),
-    controls, named: controls.filter((/** @type {any} */ c) => !c.nameless).length, nameless: controls.filter((/** @type {any} */ c) => c.nameless).length,
+    title: top.title || "", url: top.url || "", text,
+    ...(state ? { state } : {}),
+    ...(ghlFrames.length ? { ghlFrames } : {}),
+    frames: framesOut,
+    ...(notReadable.length ? { notReadable } : {}),
+    controls, named: controls.filter(c => !c.nameless).length, nameless: controls.filter(c => c.nameless).length,
+    ...(controls.length < total ? { truncated: { total, returned: controls.length } } : {}),
   };
 }
 
-/** @param {any} ctx @param {number} tabId */
-const snapshot = async (ctx, tabId) => toSnapshot(await evaluate(ctx, tabId, EXPRESSION));
+/** A snapshot of one page's raw script result: the merge with only the top page. @param {any} raw */
+export const toSnapshot = raw => mergeSnapshot([TOP_ONLY], [{ raw }]);
+
+/**
+ * Every readable frame, top first, read in parallel and merged. The top page failing is an error (as ever); a child frame failing is
+ * that frame being not readable.
+ * @param {any} ctx @param {number} tabId @param {{ limit?: number }} [o]
+ */
+async function snapshot(ctx, tabId, o = {}) {
+  const list = await framesOf(ctx, tabId);
+  const results = await Promise.all(list.map(async (f, i) => {
+    if (!f.readable) return { why: f.why };
+    try { return { raw: (await evaluate(ctx, tabId, EXPRESSION, {}, f)) || {} }; } catch (e) {
+      if (i === 0) throw e;
+      return { why: String(/** @type {any} */ (e)?.message || e).slice(0, 160) };
+    }
+  }));
+  return mergeSnapshot(list, results, o);
+}
 
 /** The tab an op means: the one named, else the one in front (floor-checked here, since dispatch only sees args.tabId). */
 async function tabOf(/** @type {any} */ args, /** @type {any} */ ctx, /** @type {string} */ op) {
@@ -479,6 +700,9 @@ function digest(s) {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, "0");
 }
 
+/** Two controls in the same frame (a control with no frame is in the top page). @param {any} a @param {any} b */
+const sameFrame = (a, b) => (typeof a.frame === "number" ? a.frame : 0) === (typeof b.frame === "number" ? b.frame : 0);
+
 const stripHash = (/** @type {string} */ u) => String(u || "").split("#")[0];
 
 /**
@@ -491,7 +715,7 @@ export function fieldsOf(snap, ctl) {
   if (ctl.fields) return ctl.fields;
   /** @type {Record<string, string>} */
   const out = {};
-  const near = snap.controls.filter((/** @type {any} */ c) => ["textbox", "searchbox", "combobox", "checkbox", "radio", "switch"].includes(c.role) && (!ctl.container || c.container === ctl.container));
+  const near = snap.controls.filter((/** @type {any} */ c) => ["textbox", "searchbox", "combobox", "checkbox", "radio", "switch"].includes(c.role) && sameFrame(c, ctl) && (!ctl.container || c.container === ctl.container));
   for (const c of near.slice(0, 40)) {
     const name = c.name || c.identifier;
     if (!name) continue;
@@ -511,7 +735,7 @@ export function fieldsOf(snap, ctl) {
 export function signatureOf(snap, ctl) {
   const f = fieldsOf(snap, ctl);
   const parts = Object.keys(f).sort().map(k => `${k}=${f[k]}`);
-  const secrets = snap.controls.filter((/** @type {any} */ c) => c.length != null && (!ctl.container || c.container === ctl.container)).map((/** @type {any} */ c) => `${c.name || c.identifier}#${c.length}`).sort();
+  const secrets = snap.controls.filter((/** @type {any} */ c) => c.length != null && sameFrame(c, ctl) && (!ctl.container || c.container === ctl.container)).map((/** @type {any} */ c) => `${c.name || c.identifier}#${c.length}`).sort();
   return digest([stripHash(snap.url), ctl.role, ctl.name || "", digest(parts.concat(secrets).join("\n"))].join("\n"));
 }
 
@@ -523,16 +747,22 @@ export function signatureOf(snap, ctl) {
  */
 export function builderTile(snap, ctl) {
   if (!ctl || ctl.submit || !ctl.container || !["button", "option", "menuitem"].includes(String(ctl.role))) return false;
-  let path = "", host = "";
-  try { const u = new URL(String(snap && snap.url)); path = u.pathname; host = u.hostname; } catch { return false; }
-  // Only GoHighLevel (a workflow page on some other site is not one), and the local fixture's /ghl.
-  // GoHighLevel's own domains, one the person listed as their white-label host, or the local fixture.
-  // A white-label domain counts automatically only with BOTH the page's own traffic reaching GoHighLevel's API hosts AND
-  // GoHighLevel's real workflow URL shape; a host the person listed (`config ghl-host`) counts on its own.
-  const whiteLabel = Boolean(snap && snap.state && snap.state.ghlApi === true) && /^\/(v2\/)?location\/[A-Za-z0-9]{10,40}\/automation\/workflows(\/|$)/.test(path);
-  if (!isGhlHost(host) && !whiteLabel && !(/^(127\.0\.0\.1|localhost)$/.test(host) && /^\/ghl(\/|$)/.test(path))) return false;
-  if (!/\/automation\/workflows|\/workflows?(\/|$)|^\/ghl(\/|$)/i.test(path)) return false;
   const name = String(ctl.name || "").trim();
+  // A tile inside GoHighLevel's own workflow-builder frame (a child frame on a leadconnectorhq.com automation host, decided by the page
+  // module from the frame's origin, which the page cannot forge) is on a workflow page whatever the shell around it is: a white-label
+  // shell needs no configuring.
+  const inBuilderFrame = Boolean(snap && snap.state && snap.state.ghlFrame === true && Array.isArray(snap.ghlFrames) && snap.ghlFrames.includes(ctl.frame));
+  if (!inBuilderFrame) {
+    let path = "", host = "";
+    try { const u = new URL(String(snap && snap.url)); path = u.pathname; host = u.hostname; } catch { return false; }
+    // Only GoHighLevel (a workflow page on some other site is not one), and the local fixture's /ghl.
+    // GoHighLevel's own domains, one the person listed as their white-label host, or the local fixture.
+    // A white-label domain counts automatically only with BOTH the page's own traffic reaching GoHighLevel's API hosts AND
+    // GoHighLevel's real workflow URL shape; a host the person listed (`config ghl-host`) counts on its own.
+    const whiteLabel = Boolean(snap && snap.state && snap.state.ghlApi === true) && /^\/(v2\/)?location\/[A-Za-z0-9]{10,40}\/automation\/workflows(\/|$)/.test(path);
+    if (!isGhlHost(host) && !whiteLabel && !(/^(127\.0\.0\.1|localhost)$/.test(host) && /^\/ghl(\/|$)/.test(path))) return false;
+    if (!/\/automation\/workflows|\/workflows?(\/|$)|^\/ghl(\/|$)/i.test(path)) return false;
+  }
   // The Confirm or Apply of an action or trigger editor keeps a step in the draft; it is not the Confirm of a delete or a publish.
   if (/^(confirm|apply|done|ok)$/i.test(name)) return /(action|trigger|configur|setting|edit|filter|condition|step)/i.test(String(ctl.container)) && !/(delete|remove|discard|publish|unsaved|leave|cancel|send|pay|charge)/i.test(String(ctl.container));
   return /^send [a-z][a-z .&/-]{1,30}$/i.test(name) || /^remove (tag|contact tag|from [a-z ]{2,30}|contact from [a-z ]{2,30})$/i.test(name);
@@ -547,7 +777,7 @@ export function builderTile(snap, ctl) {
 export function holdFor(snap, ctl, kind, value) {
   let target = ctl;
   if (kind === "press" && String(value) === "Enter" && ctl.inForm && !ctl.submit) {
-    const sub = snap.controls.find((/** @type {any} */ c) => c.submit && c.form === ctl.form);
+    const sub = snap.controls.find((/** @type {any} */ c) => c.submit && c.form === ctl.form && sameFrame(c, ctl));
     if (sub) target = sub;
     else return { target: ctl, held: false, why: "" };
   } else if (kind !== "click" && kind !== "press") return { target: ctl, held: false, why: "" };
@@ -568,11 +798,42 @@ const KEYS = /** @type {Record<string, { code: string, vk: number, text?: string
   Home: { code: "Home", vk: 36 }, End: { code: "End", vk: 35 }, PageUp: { code: "PageUp", vk: 33 }, PageDown: { code: "PageDown", vk: 34 },
 });
 
-/** @param {any} ctx @param {number} tabId @param {string} path */
-async function mouseClick(ctx, tabId, path) {
-  const loc = await evaluate(ctx, tabId, locate(path));
+/**
+ * A script in a control's frame. A child frame that navigated or went away between the look and the act (its execution context or
+ * session is gone) means the control is stale: that is "disappeared", which the callers retry after looking again.
+ * @param {any} ctx @param {number} tabId @param {any} frame @param {string} expression
+ */
+async function inFrame_(ctx, tabId, frame, expression) {
+  try { return await evaluate(ctx, tabId, expression, {}, frame); } catch (e) {
+    const m = String(/** @type {any} */ (e)?.message || e);
+    if (frame.index > 0 && /context|frame|target|session|not readable|gone|detached/i.test(m)) throw err("not_found", `the control disappeared: its frame changed (${m.slice(0, 100)})`);
+    throw e;
+  }
+}
+
+/**
+ * Where a control is, in the top page's viewport, found by a script that runs in ITS frame: the point inside the frame plus the frame's
+ * offset in the top viewport. The hit test (is the target the element at that point?) stays inside the frame. `list` is every frame now.
+ * @param {any} ctx @param {number} tabId @param {any} ctl @param {any} snap @param {boolean} focus
+ */
+async function locateIn(ctx, tabId, ctl, snap, focus) {
+  const list = await framesOf(ctx, tabId);
+  const frame = refindFrame(list, ctl, snap);
+  const loc = await inFrame_(ctx, tabId, frame, locate(ctl.path, focus));
+  if (!loc || !loc.found) return { loc, frame };
+  if (frame.index > 0 && ctx.frames && ctx.frames.offset) {
+    const { dx, dy } = await ctx.frames.offset(tabId, frame, list);
+    return { loc: { ...loc, x: loc.x + dx, y: loc.y + dy, inFrameX: loc.x, inFrameY: loc.y }, frame };
+  }
+  return { loc, frame };
+}
+
+/** @param {any} ctx @param {number} tabId @param {any} ctl @param {any} [snap] */
+async function mouseClick(ctx, tabId, ctl, snap) {
+  const { loc } = await locateIn(ctx, tabId, ctl, snap, false);
   if (!loc || !loc.found) throw err("not_found", "the control disappeared before it could be clicked");
   if (!loc.hit) throw err("covered", "another element covers the control, so nothing was clicked");
+  // Input goes to the top page's session: Chrome routes it into the iframe under that point.
   const p = { x: loc.x, y: loc.y, button: "left", clickCount: 1 };
   await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x: loc.x, y: loc.y });
   await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mousePressed", ...p });
@@ -580,11 +841,13 @@ async function mouseClick(ctx, tabId, path) {
   return loc;
 }
 
-/** @param {any} ctx @param {number} tabId @param {string} path @param {string} key */
-async function pressKey(ctx, tabId, path, key) {
+/** @param {any} ctx @param {number} tabId @param {any} ctl @param {string} key @param {any} [snap] */
+async function pressKey(ctx, tabId, ctl, key, snap) {
   const k = KEYS[key] || (key.length === 1 ? { code: /[a-z]/i.test(key) ? "Key" + key.toUpperCase() : "", vk: key.toUpperCase().charCodeAt(0), text: key } : null);
   if (!k) throw err("bad_request", `unknown key ${JSON.stringify(key)}`);
-  const loc = await evaluate(ctx, tabId, locate(path, true));
+  // Focus the element inside its own frame; the key then goes to the top page's session, which reaches whatever has focus.
+  const list = await framesOf(ctx, tabId);
+  const loc = await inFrame_(ctx, tabId, refindFrame(list, ctl, snap), locate(ctl.path, true));
   if (!loc || !loc.found) throw err("not_found", "the control disappeared before the key was pressed");
   const base = { key, code: k.code, windowsVirtualKeyCode: k.vk, nativeVirtualKeyCode: k.vk };
   await ctx.cdp.send(tabId, "Input.dispatchKeyEvent", { type: k.text ? "keyDown" : "rawKeyDown", ...base, ...(k.text ? { text: k.text } : {}) });
@@ -592,11 +855,39 @@ async function pressKey(ctx, tabId, path, key) {
 }
 
 /** @param {any} ctl */
-const brief = ctl => ({ role: ctl.role, name: ctl.name || "", ...(ctl.identifier ? { identifier: ctl.identifier } : {}) });
+const brief = ctl => ({ role: ctl.role, name: ctl.name || "", ...(ctl.identifier ? { identifier: ctl.identifier } : {}), ...(typeof ctl.frame === "number" ? { frame: ctl.frame } : {}) });
 
 /** @param {any} snap @param {any} target @param {string} why */
 function heldResult(snap, target, why) {
   return { ok: false, held: true, why, control: brief(target), selector: selectorOf(target), fields: fieldsOf(snap, target), sig: signatureOf(snap, target) };
+}
+
+/**
+ * Set fields, one script per frame: the items are grouped by the frame their control is in. Results line up with `items`.
+ * A frame that has gone answers "the control is gone", which the callers retry.
+ * @param {any} ctx @param {number} tabId @param {any} snap @param {{ ctl: any, kind: string, value: any }[]} items
+ */
+async function applyIn(ctx, tabId, snap, items) {
+  const list = await framesOf(ctx, tabId);
+  /** @type {any[]} */ const out = new Array(items.length);
+  /** @type {Map<number, { frame: any, idx: number[] }>} */ const groups = new Map();
+  const gone = { ok: false, why: "the control is gone (its frame is gone)" };
+  items.forEach((it, i) => {
+    let frame;
+    try { frame = refindFrame(list, it.ctl, snap); } catch { out[i] = gone; return; }
+    const g = groups.get(frame.index) || { frame, idx: [] };
+    g.idx.push(i); groups.set(frame.index, g);
+  });
+  for (const g of groups.values()) {
+    try {
+      const res = await evaluate(ctx, tabId, apply(g.idx.map(i => ({ path: items[i].ctl.path, kind: items[i].kind, value: items[i].value }))), {}, g.frame);
+      g.idx.forEach((i, k) => { out[i] = res && res[k] ? res[k] : { ok: false, why: "the page gave no answer" }; });
+    } catch (e) {
+      if (g.frame.index === 0 || !(e && /** @type {any} */ (e).code === "not_found")) throw e;
+      for (const i of g.idx) out[i] = gone;
+    }
+  }
+  return out;
 }
 
 /**
@@ -613,15 +904,15 @@ async function doAct(ctx, tabId, snap, ctl, kind, value, release, asked = false)
     // The person approved a page state, not a control name. If the page is not that state any more, do nothing.
     if (signatureOf(snap, h.target) !== String(want)) throw err("changed", "the page changed since it was held, so nothing was done; look again and ask again");
   }
-  if (kind === "click") await mouseClick(ctx, tabId, ctl.path);
-  else if (kind === "press") await pressKey(ctx, tabId, ctl.path, String(value));
+  if (kind === "click") await mouseClick(ctx, tabId, ctl, snap);
+  else if (kind === "press") await pressKey(ctx, tabId, ctl, String(value), snap);
   else if (kind === "check") {
-    const loc = await evaluate(ctx, tabId, locate(ctl.path));
+    const { loc } = await locateIn(ctx, tabId, ctl, snap, false);
     if (!loc || !loc.found) throw err("not_found", "the control disappeared");
     const wantOn = !(value === false || value === "false" || value === "off" || value === "no");
-    if (loc.checked !== wantOn) await mouseClick(ctx, tabId, ctl.path);
+    if (loc.checked !== wantOn) await mouseClick(ctx, tabId, ctl, snap);
   } else {
-    const r = await evaluate(ctx, tabId, apply([{ path: ctl.path, kind, value }]));
+    const r = await applyIn(ctx, tabId, snap, [{ ctl, kind, value }]);
     if (!r || !r[0] || !r[0].ok) return { ok: false, why: (r && r[0] && r[0].why) || "could not set the value", control: brief(ctl) };
   }
   return { ok: true, did: kind, control: brief(ctl) };
@@ -648,14 +939,41 @@ export function waitOpts(raw) {
 
 /**
  * @typedef {{ sel: Selector, fillable?: boolean, optional?: boolean, label?: string }} Spec
- * @typedef {{ control: any|null, strategy?: string, fallback?: boolean, why?: string, candidates?: string[] }} Bound
+ * @typedef {{ control: any|null, strategy?: string, fallback?: boolean, why?: string, candidates?: string[], tiedFrames?: number[] }} Bound
  */
+
+/** Frames as one candidate line: "Save [frame 1 https://app.harlow.example]". @param {any} c */
+const inFrame = c => `${c.name || c.identifier || c.role} [frame ${typeof c.frame === "number" ? c.frame : 0}${c.frameOrigin ? " " + c.frameOrigin : ""}]`;
+
+/**
+ * Bind a selector to one control of a snapshot, in any frame. A selector with `frame` looks only in the frames it pins; without it every
+ * frame is searched and the usual rule holds: two matches are tied, unless exactly one of them sits inside an open dialog or drawer, which
+ * wins. A tie between frames names them.
+ * @param {Selector} sel @param {any} snap @param {{ fillable?: boolean, within?: (c: any) => boolean }} [o] @returns {Bound}
+ */
+export function bindSelector(sel, snap, o = {}) {
+  let controls = snap.controls;
+  if (sel.frame !== undefined && snap.frames) {
+    const pins = pinIndexes(snap.frames, sel.frame) || [];
+    if (!pins.length) return { control: null, why: "unbound", candidates: [`no frame matches ${JSON.stringify(sel.frame)}; the frames are ${snap.frames.map((/** @type {any} */ f) => `${f.index} ${f.origin || "top"}`).join(", ")}`] };
+    controls = controls.filter((/** @type {any} */ c) => pins.includes(typeof c.frame === "number" ? c.frame : 0));
+  }
+  const r = /** @type {Bound} */ (matchControl(sel, controls, resolve, o));
+  if (r.why !== "tied" || !snap.frames || snap.frames.length < 2) return r;
+  // Tied: is it the same control in two frames? The one inside an open dialog or drawer is the one the person means.
+  const same = controls.filter((/** @type {any} */ c) => (!sel.role || c.role === sel.role) && ((sel.identifier && c.identifier === sel.identifier) || (sel.name && norm(c.name) === norm(sel.name))));
+  const spans = [...new Set(same.map((/** @type {any} */ c) => (typeof c.frame === "number" ? c.frame : 0)))];
+  if (spans.length < 2) return r;
+  const inDialog = matchControl(sel, controls, resolve, { ...o, within: (/** @type {any} */ c) => c.blk !== undefined });
+  if (inDialog.control) return inDialog;
+  return { ...r, candidates: same.slice(0, 6).map(inFrame), tiedFrames: spans };
+}
 
 /** @param {Spec} spec @param {any} snap @returns {Bound} */
 function bindOne(spec, snap) {
   const blockers = (snap.state && snap.state.blockers) || [];
   const within = spec.fillable && blockers.length ? (/** @type {any} */ c) => c.blk !== undefined : undefined;
-  return matchControl(spec.sel, snap.controls, resolve, { fillable: spec.fillable, within });
+  return bindSelector(spec.sel, snap, { fillable: spec.fillable, within });
 }
 
 /** The weakest strategy among matches, and whether any was a fallback. @param {Bound[]} bound */
@@ -665,25 +983,57 @@ function summarizeStrategy(bound) {
   return { strategy: worst, fallback: used.some(b => b.fallback) };
 }
 
+/** Which frame(s) a trace is about: the first bound control's, and every frame when the controls are in more than one. @param {Bound[]} bound */
+function frameTrace(bound) {
+  const cs = bound.map(b => b.control).filter(Boolean);
+  if (!cs.length) return {};
+  const idx = (/** @type {any} */ c) => (typeof c.frame === "number" ? c.frame : 0);
+  const all = [...new Set(cs.map(idx))];
+  return { frame: idx(cs[0]), ...(cs[0].frameOrigin ? { frameOrigin: cs[0].frameOrigin } : {}), ...(all.length > 1 ? { frames: all } : {}) };
+}
+
+/** The spinners that matter to these controls: those in their frames (all of them on a one-frame page). @param {any} snap @param {any[]} ctls */
+function busyFor(snap, ctls) {
+  const st = snap.state || {};
+  if (!snap.frames || snap.frames.length < 2) return st.busy;
+  const want = new Set(ctls.map(c => (typeof c.frame === "number" ? c.frame : 0)));
+  return snap.frames.filter((/** @type {any} */ f) => want.has(f.index)).reduce((/** @type {number} */ a, /** @type {any} */ f) => a + (f.busy || 0), 0);
+}
+
 /**
- * Where the page is and what it looks like, small and masked: the detail every failure carries.
- * @param {any} ctx @param {number} tabId @param {{ path?: string, trace?: any, extra?: any }} [o]
+ * Where the page is and what it looks like, small and masked: the detail every failure carries, and which frame it looked in. The page
+ * snippet comes from the frame the target was expected in: `frame` (a control's own), `pin` (a selector's `frame`), else the frame holding
+ * the dialog in the way or the workflow builder, else the top page.
+ * @param {any} ctx @param {number} tabId @param {{ path?: string, frame?: number, frameOrigin?: string, pin?: unknown, snap?: any, trace?: any, extra?: any }} [o]
  */
 export async function failDetail(ctx, tabId, o = {}) {
   /** @type {any} */ let tab = null;
   try { tab = await ctx.tabs.get(tabId); } catch { /* the tab may be gone */ }
+  const list = await framesOf(ctx, tabId);
+  /** @type {any} */ let at = null;
+  if (typeof o.frame === "number") { try { at = refindFrame(list, { frame: o.frame, frameOrigin: o.frameOrigin }, o.snap); } catch { at = null; } }
+  if (!at && o.pin !== undefined && o.pin !== null) { const pins = pinIndexes(list, o.pin) || []; at = list.find(f => pins.includes(f.index) && f.readable) || null; }
+  if (!at && o.snap && list.length > 1) {
+    const bl = ((o.snap.state && o.snap.state.blockers) || []).filter((/** @type {any} */ b) => b.modal && typeof b.frame === "number").pop();
+    const gi = Array.isArray(o.snap.ghlFrames) ? o.snap.ghlFrames[0] : undefined;
+    const want = bl ? bl.frame : gi;
+    at = typeof want === "number" ? list.find(f => f.index === want && f.readable) || null : null;
+  }
+  if (!at) at = list[0];
   /** @type {string|undefined} */ let dom;
-  try { const r = await evaluate(ctx, tabId, domOutline(o.path)); dom = redactDom(r && r.html, 2048); } catch { /* the page may be gone or blind */ }
-  return { ...(tab ? { tab: whereOf(tab.pendingUrl || tab.url) } : {}), ...(o.trace ? { trace: traceOf(o.trace) } : {}), ...(dom ? { dom } : {}), ...(o.extra || {}) };
+  try { const r = await evaluate(ctx, tabId, domOutline(typeof o.frame === "number" || !o.pin ? o.path : undefined), {}, at); dom = redactDom(r && r.html, 2048); } catch { /* the page may be gone or blind */ }
+  const looked = { frame: at.index, ...(at.origin ? { frameOrigin: at.origin } : {}), ...(list.length > 1 ? { searched: typeof o.frame === "number" ? `frame ${at.index}` : o.pin !== undefined && o.pin !== null ? `frame ${at.index} (pinned)` : "all readable frames", frames: list.map(f => ({ index: f.index, origin: f.origin, readable: f.readable })) } : {}) };
+  return { ...(tab ? { tab: whereOf(tab.pendingUrl || tab.url) } : {}), ...looked, ...(o.trace ? { trace: traceOf(o.trace) } : {}), ...(dom ? { dom } : {}), ...(o.extra || {}) };
 }
 
 /** @param {any} ctx @param {number} tabId @param {any} snap @param {any} blocker @param {any} trace */
 async function modalError(ctx, tabId, snap, blocker, trace) {
   const d = describeBlocker(blocker, snap);
-  const detail = await failDetail(ctx, tabId, { path: blocker.path, trace, extra: { blockers: [d] } });
+  const detail = await failDetail(ctx, tabId, { path: blocker.path, ...(typeof blocker.frame === "number" ? { frame: blocker.frame, frameOrigin: (snap.frames.find((/** @type {any} */ f) => f.index === blocker.frame) || {}).origin } : {}), snap, trace, extra: { blockers: [{ ...d, ...(typeof blocker.frame === "number" ? { frame: blocker.frame } : {}) }] } });
   const shown = (d.title || d.text || "a dialog").slice(0, 80);
   const how = d.kind === "unsafe" ? "It asks about changes or a confirmation, so it was not dismissed." : "It is not one of the popups Vyre dismisses on its own.";
-  return err("modal", `a dialog is blocking the page: ${JSON.stringify(shown)}. ${how} Read it, then act on one of its own controls (${d.controls.map(c => JSON.stringify(c)).join(", ") || "none listed"}).`, detail);
+  const where = typeof blocker.frame === "number" && blocker.frame > 0 ? ` (in frame ${blocker.frame})` : "";
+  return err("modal", `a dialog is blocking the page${where}: ${JSON.stringify(shown)}. ${how} Read it, then act on one of its own controls (${d.controls.map(c => JSON.stringify(c)).join(", ") || "none listed"}).`, detail);
 }
 
 /**
@@ -692,7 +1042,8 @@ async function modalError(ctx, tabId, snap, blocker, trace) {
  * A safe popup in the way (what's new, tour, cookies) is dismissed and reported; any other dialog
  * in front of a control is an error that describes it. Loading spinners are soft: after a grace
  * period the wait gives up on them and says so in the trace, so one endlessly animated element
- * cannot stall a flow. timeoutMs 0 is one look.
+ * cannot stall a flow. timeoutMs 0 is one look. Every look re-lists the frames and reads all of them, so a frame that
+ * appears late or navigates while waiting is picked up, and a control is looked for in every frame (or the one its selector pins).
  * @param {any} ctx @param {number} tabId @param {Spec[]} specs @param {ReturnType<typeof waitOpts>} wait @param {number} [t0]
  */
 async function acquire(ctx, tabId, specs, wait, t0 = Date.now()) {
@@ -705,16 +1056,16 @@ async function acquire(ctx, tabId, specs, wait, t0 = Date.now()) {
     const snap = await snapshot(ctx, tabId);
     const elapsed = Date.now() - t0;
     const bound = specs.map(sp => bindOne(sp, snap));
-    const done = (/** @type {any} */ extra) => ({ snap, bound, trace: { ...summarizeStrategy(bound), waitedMs: Date.now() - t0, retries: 0, newTab: false, ...(dismissed.length ? { dismissed } : {}), ...flags, ...(extra || {}) } });
+    const done = (/** @type {any} */ extra) => ({ snap, bound, trace: { ...summarizeStrategy(bound), waitedMs: Date.now() - t0, retries: 0, newTab: false, ...frameTrace(bound), ...(dismissed.length ? { dismissed } : {}), ...flags, ...(extra || {}) } });
     // A modal dialog in front of the page. A missing control might live behind it, so it counts too.
     /** @type {any} */ let blocker = null;
     for (const b of bound) { blocker = topBlocker(snap, b.control); if (blocker) break; }
     if (blocker) {
       const c = classifyBlocker(blocker, snap);
       if (c.kind === "safe" && dismissals < 3) {
-        await mouseClick(ctx, tabId, c.closer.path);
+        await mouseClick(ctx, tabId, c.closer, snap);
         dismissals++;
-        dismissed.push({ what: (blocker.title || blocker.text || "").slice(0, 60), control: String(c.closer.name).slice(0, 30) });
+        dismissed.push({ what: (blocker.title || blocker.text || "").slice(0, 60), control: String(c.closer.name).slice(0, 30), ...(typeof blocker.frame === "number" ? { frame: blocker.frame } : {}) });
         await nap(ctx, 180); // the dialog's own closing animation
         continue;
       }
@@ -727,13 +1078,13 @@ async function acquire(ctx, tabId, specs, wait, t0 = Date.now()) {
     }
     if (!bound.some(b => !b.control)) {
       const ctls = bound.map(b => b.control);
-      const st = snap.state || {};
       let ready = true;
-      if (st.busy > 0 && elapsed < busyGrace) ready = false;
-      else if (st.busy > 0) flags = { ...flags, busyIgnored: true };
+      const busy = busyFor(snap, ctls);
+      if (busy > 0 && elapsed < busyGrace) ready = false;
+      else if (busy > 0) flags = { ...flags, busyIgnored: true };
       if (ctls.some(c => c.enabled === false) && elapsed < wait.timeoutMs) ready = false;
       if (wait.stable) {
-        const key = ctls.map(c => c.path + JSON.stringify(c.frame)).join("|");
+        const key = ctls.map(c => c.path + "@" + (c.frame ?? "") + JSON.stringify(c.box)).join("|");
         if (key !== prevKey) { prevKey = key; sameSince = Date.now(); ready = false; } else if (Date.now() - sameSince < STABLE_MS) ready = false;
       }
       if (ready) return done();
@@ -743,19 +1094,21 @@ async function acquire(ctx, tabId, specs, wait, t0 = Date.now()) {
   }
 }
 
-/** A control that vanished or was covered between the look and the click. */
+/** A control that vanished or was covered between the look and the click (its frame going away counts). */
 const isStale = (/** @type {any} */ e) => e && ((e.code === "not_found" && /disappeared|gone/.test(String(e.message))) || e.code === "covered");
 
 /** The error for a selector that bound nothing. @param {any} ctx @param {number} tabId @param {Selector} sel @param {Bound} b @param {any} got @param {any} trace */
 async function notFoundError(ctx, tabId, sel, b, got, trace) {
   const tied = b.why === "tied";
-  const detail = await failDetail(ctx, tabId, { trace, extra: { candidates: b.candidates && b.candidates.length ? b.candidates : nearMisses(String(sel.name || sel.identifier || ""), got.snap.controls) } });
-  return err(tied ? "tied" : "not_found", `${tied ? "more than one control matches" : "nothing matches"} ${JSON.stringify({ role: sel.role, name: sel.name, identifier: sel.identifier })}`, detail);
+  const detail = await failDetail(ctx, tabId, { trace, pin: sel.frame, snap: got.snap, extra: { candidates: b.candidates && b.candidates.length ? b.candidates : nearMisses(String(sel.name || sel.identifier || ""), got.snap.controls), ...(b.tiedFrames ? { tiedFrames: b.tiedFrames } : {}) } });
+  const inWhich = tied && b.tiedFrames ? ` in frames ${b.tiedFrames.join(" and ")}` : "";
+  return err(tied ? "tied" : "not_found", `${tied ? "more than one control matches" : "nothing matches"} ${JSON.stringify({ role: sel.role, name: sel.name, identifier: sel.identifier, ...(sel.frame !== undefined ? { frame: sel.frame } : {}) })}${inWhich}`, detail);
 }
 
 /**
  * The settle step of page.wait: no spinners, the DOM quiet for quietMs and the network quiet for
- * netQuietMs. Spinners, a page that never goes quiet and requests that never end are soft after a
+ * netQuietMs, in EVERY readable frame (the snapshot merges them, and re-lists them each look, so a frame that appears or navigates
+ * mid-wait counts). Spinners, a page that never goes quiet and requests that never end are soft after a
  * grace period (reported, not fatal). A page with no state (a test double) has nothing to wait on.
  * @param {any} ctx @param {number} tabId @param {{ quietMs?: number, netQuietMs?: number }} o @param {number} t0 @param {number} timeoutMs
  */
@@ -768,6 +1121,7 @@ export async function settleLoop(ctx, tabId, o, t0, timeoutMs) {
     const snap = await snapshot(ctx, tabId);
     const st = snap.state;
     if (!st) return flags;
+    if (snap.notReadable && snap.notReadable.length) flags.framesNotReadable = snap.notReadable.length;
     const el = Date.now() - t0;
     const soft = el >= softAt;
     const netQuiet = st.netPending === 0 && st.netQuietMs >= netNeed;
@@ -777,9 +1131,23 @@ export async function settleLoop(ctx, tabId, o, t0, timeoutMs) {
       if (!netQuiet) flags.netIgnored = true;
       return flags;
     }
-    if (el >= timeoutMs) throw err("timeout", `the page did not settle in ${timeoutMs} ms`, await failDetail(ctx, tabId, { trace: { strategy: "settled", waitedMs: el }, extra: { state: { busy: st.busy, domQuietMs: st.domQuietMs, netPending: st.netPending } } }));
+    if (el >= timeoutMs) throw err("timeout", `the page did not settle in ${timeoutMs} ms`, await failDetail(ctx, tabId, { snap, trace: { strategy: "settled", waitedMs: el }, extra: { state: { busy: st.busy, domQuietMs: st.domQuietMs, netPending: st.netPending } } }));
     await nap(ctx, POLL_MS);
   }
+}
+
+/**
+ * The first readable frame (of those `pin` names, or all) where a CSS selector matches, or null.
+ * @param {any} ctx @param {number} tabId @param {string} css @param {unknown} pin
+ */
+async function existsAnywhere(ctx, tabId, css, pin) {
+  const list = await framesOf(ctx, tabId);
+  const pins = pinIndexes(list, pin);
+  for (const f of list) {
+    if (!f.readable || (pins && !pins.includes(f.index))) continue;
+    try { if (await evaluate(ctx, tabId, exists(css), {}, f)) return f; } catch (e) { if (f.index === 0) throw e; /* a child frame that went away just is not there */ }
+  }
+  return null;
 }
 
 /** @param {any} ctx @param {number} tabId @param {any} args */
@@ -792,26 +1160,28 @@ async function waitFor(ctx, tabId, args) {
   if (kinds !== 1) throw err("bad_request", "page.wait needs exactly one of selector, url, idleMs or settled");
   /** @param {string} strategy @param {any} [extra] */
   const trace = (strategy, extra) => traceOf({ strategy, fallback: false, waitedMs: Date.now() - t0, retries: 0, newTab: false, ...(extra || {}) });
-  const timeout = async (/** @type {any} */ tr) => err("timeout", `still waiting after ${timeoutMs} ms`, await failDetail(ctx, tabId, { trace: tr }));
+  const timeout = async (/** @type {any} */ tr) => err("timeout", `still waiting after ${timeoutMs} ms${args.frame !== undefined ? ` (looking in frame ${JSON.stringify(args.frame)})` : " (looking in every readable frame)"}`, await failDetail(ctx, tabId, { trace: tr, pin: args.frame }));
   const ok = (/** @type {any} */ tr) => ({ ok: true, waitedMs: Date.now() - t0, trace: tr });
+  const where = (/** @type {any} */ f) => (f ? { frame: f.index, ...(f.origin ? { frameOrigin: f.origin } : {}) } : {});
 
   if (args.settled === true) return ok(trace("settled", await settleLoop(ctx, tabId, args, t0, timeoutMs)));
   if (typeof args.selector === "string" && /[.#\[:>]/.test(args.selector)) {
-    // A CSS selector: existence only (or absence, with gone).
+    // A CSS selector: existence only (or absence, with gone), in any readable frame (or the one `frame` names).
     while (true) {
       if (ctx.stopped()) throw err("stopped");
-      const here = !!(await evaluate(ctx, tabId, exists(args.selector)));
-      if (here !== (args.gone === true)) return ok(trace("css"));
+      const hit = await existsAnywhere(ctx, tabId, args.selector, args.frame);
+      if (!!hit !== (args.gone === true)) return ok(trace("css", where(hit)));
       if (Date.now() >= deadline) throw await timeout(trace("css"));
       await nap(ctx, 100);
     }
   }
   if (args.selector != null) {
     const sel = selectorArg(args.selector);
+    if (sel.frame === undefined && args.frame !== undefined && args.frame !== null && args.frame !== "") sel.frame = args.frame;
     if (args.gone === true) {
       while (true) {
         if (ctx.stopped()) throw err("stopped");
-        if (!matchControl(sel, (await snapshot(ctx, tabId)).controls, resolve).control) return ok(trace("absent"));
+        if (!bindSelector(sel, await snapshot(ctx, tabId)).control) return ok(trace("absent"));
         if (Date.now() >= deadline) throw await timeout(trace("absent"));
         await nap(ctx, 100);
       }
@@ -825,8 +1195,25 @@ async function waitFor(ctx, tabId, args) {
   const byUrl = typeof args.url === "string";
   while (true) {
     if (ctx.stopped()) throw err("stopped");
-    const done = byUrl ? String(await evaluate(ctx, tabId, href())).includes(args.url) : Number(await evaluate(ctx, tabId, quiet())) >= idleMs;
-    if (done) return ok(trace(byUrl ? "url" : "idle"));
+    /** @type {any} */ let hitFrame = null;
+    let done;
+    if (byUrl) {
+      const list = await framesOf(ctx, tabId);
+      const pins = pinIndexes(list, args.frame);
+      const topHref = pins && !pins.includes(0) ? "" : String(await evaluate(ctx, tabId, href()));
+      if (topHref.includes(args.url)) { done = true; hitFrame = list[0]; }
+      else { hitFrame = list.find(f => f.index > 0 && (!pins || pins.includes(f.index)) && String(f.url || "").includes(args.url)) || null; done = !!hitFrame; }
+    } else {
+      const list = await framesOf(ctx, tabId);
+      const pins = pinIndexes(list, args.frame);
+      let least = Infinity;
+      for (const f of list) {
+        if (!f.readable || (pins && !pins.includes(f.index))) continue;
+        try { least = Math.min(least, Number(await evaluate(ctx, tabId, quiet(), {}, f))); } catch (e) { if (f.index === 0) throw e; }
+      }
+      done = least >= idleMs;
+    }
+    if (done) return ok(trace(byUrl ? "url" : "idle", byUrl ? where(hitFrame) : {}));
     if (Date.now() >= deadline) throw await timeout(trace(byUrl ? "url" : "idle"));
     await nap(ctx, 100);
   }
@@ -837,7 +1224,7 @@ async function waitFor(ctx, tabId, args) {
 /** A page.fill field as a spec: a selector, or a plain label matched the way a person reads a form. @param {any} f @param {number} i @returns {Spec} */
 function fieldSpec(f, i) {
   if (f && f.selector != null) return { sel: selectorArg(f.selector), optional: f.optional === true };
-  if (f && typeof f.label === "string" && f.label.trim()) return { sel: { name: f.label.trim() }, fillable: true, optional: f.optional === true, label: f.label.trim() };
+  if (f && typeof f.label === "string" && f.label.trim()) return { sel: { name: f.label.trim(), ...(f.frame !== undefined && f.frame !== null && f.frame !== "" ? { frame: f.frame } : {}) }, fillable: true, optional: f.optional === true, label: f.label.trim() };
   throw err("bad_request", `field ${i}: a field needs a selector or a label`);
 }
 
@@ -847,7 +1234,8 @@ export default {
   ops: {
     "page.snapshot": async (args, ctx) => {
       const tabId = await tabOf(args, ctx, "page.snapshot");
-      const s = await snapshot(ctx, tabId);
+      const limit = Number(args.limit) > 0 ? Math.floor(Number(args.limit)) : undefined;
+      const s = await snapshot(ctx, tabId, { limit });
       return { ...s, controls: s.controls.map((/** @type {any} */ { fields, form, ...c }) => c) };
     },
 
@@ -871,12 +1259,12 @@ export default {
         try {
           const r = await doAct(ctx, tabId, got.snap, b.control, kind, args.value, args.release, args.asked === true);
           if (r.ok === false && /gone|disappeared/.test(String(r.why))) throw err("not_found", "the control disappeared");
-          if (r.ok === false && !r.held) return { ...r, trace: traceOf(trace), ...(await failDetail(ctx, tabId, { path: b.control.path })) };
+          if (r.ok === false && !r.held) return { ...r, trace: traceOf(trace), ...(await failDetail(ctx, tabId, { path: b.control.path, frame: b.control.frame ?? 0, frameOrigin: b.control.frameOrigin, snap: got.snap })) };
           return { ...r, trace: traceOf(trace) };
         } catch (e) {
           if (isStale(e) && retries < BACKOFF_MS.length) { await nap(ctx, BACKOFF_MS[retries++]); continue; }
           if (e && /** @type {any} */ (e).detail !== undefined) throw e;
-          throw err(/** @type {any} */ (e)?.code || "error", String(/** @type {any} */ (e)?.message || e), await failDetail(ctx, tabId, { path: b.control.path, trace }));
+          throw err(/** @type {any} */ (e)?.code || "error", String(/** @type {any} */ (e)?.message || e), await failDetail(ctx, tabId, { path: b.control.path, frame: b.control.frame ?? 0, frameOrigin: b.control.frameOrigin, snap: got.snap, trace }));
         }
       }
     },
@@ -903,12 +1291,12 @@ export default {
         const hard = [...lost.keys()].filter(i => !specs[i].optional);
         if (hard.length && !partial) {
           const i = hard[0], l = /** @type {any} */ (lost.get(i));
-          throw err(l.why.startsWith("more") ? "tied" : "not_found", `field ${i}: ${l.why} ${JSON.stringify({ role: specs[i].sel.role, name: specs[i].sel.name, identifier: specs[i].sel.identifier })}`, await failDetail(ctx, tabId, { trace, extra: { candidates: l.candidates } }));
+          throw err(l.why.startsWith("more") ? "tied" : "not_found", `field ${i}: ${l.why} ${JSON.stringify({ role: specs[i].sel.role, name: specs[i].sel.name, identifier: specs[i].sel.identifier, ...(specs[i].sel.frame !== undefined ? { frame: specs[i].sel.frame } : {}) })}`, await failDetail(ctx, tabId, { trace, pin: specs[i].sel.frame, snap: got.snap, extra: { candidates: l.candidates } }));
         }
         const off = got.bound.findIndex((/** @type {Bound} */ b) => b.control && b.control.enabled === false);
-        if (off >= 0 && !partial) throw err("bad_request", `field ${off} is disabled`, await failDetail(ctx, tabId, { path: got.bound[off].control.path, trace }));
+        if (off >= 0 && !partial) throw err("bad_request", `field ${off} is disabled`, await failDetail(ctx, tabId, { path: got.bound[off].control.path, frame: got.bound[off].control.frame ?? 0, frameOrigin: got.bound[off].control.frameOrigin, snap: got.snap, trace }));
         const use = got.bound.map((/** @type {Bound} */ b, /** @type {number} */ i) => ({ b, i })).filter(x => x.b.control && x.b.control.enabled !== false);
-        const results = use.length ? await evaluate(ctx, tabId, apply(use.map(x => ({ path: x.b.control.path, kind: "auto", value: args.fields[x.i].value })))) : [];
+        const results = use.length ? await applyIn(ctx, tabId, got.snap, use.map(x => ({ ctl: x.b.control, kind: "auto", value: args.fields[x.i].value }))) : [];
         if (retries < BACKOFF_MS.length && results.some((/** @type {any} */ r) => r && r.ok === false && /gone/.test(String(r.why)))) { await nap(ctx, BACKOFF_MS[retries++]); continue; }
         const byField = new Map(use.map((x, k) => [x.i, results[k]]));
         const summary = got.bound.map((/** @type {Bound} */ b, /** @type {number} */ i) => {
@@ -924,12 +1312,13 @@ export default {
         const failed = summary.filter((/** @type {any} */ s) => !s.ok && !s.optional);
         if (failed.length) {
           const lostHard = hard.map(asked);
-          return { ok: false, why: lostHard.length ? `could not find: ${lostHard.join(", ")}` : "some fields could not be set", filled, fields: summary, ...(notFound.length ? { notFound } : {}), trace: traceOf(trace), ...(await failDetail(ctx, tabId, { extra: { candidates: [...lost.values()][0]?.candidates } })) };
+          return { ok: false, why: lostHard.length ? `could not find: ${lostHard.join(", ")}` : "some fields could not be set", filled, fields: summary, ...(notFound.length ? { notFound } : {}), trace: traceOf(trace), ...(await failDetail(ctx, tabId, { snap: got.snap, ...(got.bound.find((/** @type {Bound} */ b) => b.control) ? { frame: got.bound.find((/** @type {Bound} */ b) => b.control)?.control.frame ?? 0, frameOrigin: got.bound.find((/** @type {Bound} */ b) => b.control)?.control.frameOrigin } : {}), extra: { candidates: [...lost.values()][0]?.candidates } })) };
         }
         if (args.submit !== true) return { ok: true, filled, fields: summary, ...(notFound.length ? { notFound, skipped: notFound } : {}), trace: traceOf(trace) };
         const after = await snapshot(ctx, tabId);
         const form = got.bound.find((/** @type {Bound} */ b) => b.control)?.control.form;
-        const btn = after.controls.find((/** @type {any} */ c) => c.submit && c.form === form) || after.controls.find((/** @type {any} */ c) => c.submit);
+        const formFrame = got.bound.find((/** @type {Bound} */ b) => b.control)?.control.frame;
+        const btn = after.controls.find((/** @type {any} */ c) => c.submit && c.form === form && sameFrame(c, { frame: formFrame })) || after.controls.find((/** @type {any} */ c) => c.submit && sameFrame(c, { frame: formFrame })) || after.controls.find((/** @type {any} */ c) => c.submit);
         if (!btn) return { ok: true, filled, fields: summary, submitted: false, why: "no submit control found", trace: traceOf(trace) };
         const r = await doAct(ctx, tabId, after, btn, "click", undefined, args.release, args.asked === true);
         return { ...r, filled, trace: traceOf(trace), ...(r.ok ? { submitted: true } : {}) };
@@ -939,32 +1328,47 @@ export default {
     "page.eval": async (args, ctx) => {
       if (typeof args.expression !== "string" || !args.expression.trim()) throw err("bad_request", "page.eval needs an expression");
       const tabId = await tabOf(args, ctx, "page.eval");
+      // The frame the script runs in: the top page unless `frame` names one (an index, a frame id, or a piece of its origin or URL).
+      const list = await framesOf(ctx, tabId);
+      const pins = pinIndexes(list, args.frame);
+      const frame = pins ? list.find(f => pins.includes(f.index)) : list[0];
+      if (!frame) throw err("not_found", `no frame matches ${JSON.stringify(args.frame)}; the frames are ${list.map(f => `${f.index} ${f.origin || "top"}`).join(", ")}`, { frames: list.map(f => ({ index: f.index, origin: f.origin, readable: f.readable })) });
+      if (!frame.readable) throw err("not_found", `frame ${frame.index} (${frame.origin || "?"}) is not readable: ${frame.why || "it has gone"}`);
+      const run = (/** @type {any} */ f, /** @type {string} */ expression, /** @type {any} */ extra) => (f.how !== "top" && ctx.frames ? ctx.frames.evalIn(tabId, f, expression, { returnByValue: true, ...extra }) : ctx.cdp.send(tabId, "Runtime.evaluate", { expression, returnByValue: true, ...extra }));
       // A script can read what redaction cannot recognise (a typed password is just text), so a page
-      // with a visible password field is not one it runs on at all.
-      const pw = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: passwordFieldScript, returnByValue: true });
-      if (pw && pw.result && pw.result.value === true) throw err("blocked", "this page has a password field, so a script is not run on it");
+      // with a visible password field is not one it runs on at all. That means EVERY frame of the tab we can read: a login form in an
+      // iframe makes the script refuse just as one in the top page does. (A frame Vyre cannot read is blind here, as a closed shadow root always was.)
+      for (const f of list) {
+        if (!f.readable) continue;
+        /** @type {any} */ let pw;
+        try { pw = await run(f, passwordFieldScript, {}); } catch (e) { throw err("blocked", `could not check frame ${f.index} (${f.origin || "top"}) for a password field, so a script is not run on this page: ${String(/** @type {any} */ (e)?.message || e).slice(0, 100)}`); }
+        if (pw && pw.result && pw.result.value === true) throw err("blocked", f.index === 0 ? "this page has a password field, so a script is not run on it" : `frame ${f.index} (${f.origin || "?"}) has a password field, so a script is not run on this page`);
+      }
       // Hands-free, except that a script's own network SENDS (a message, a post, a payment) are held
-      // back and reported unless the person asked: the script runs, the send waits at the Gate.
+      // back and reported unless the person asked: the script runs, the send waits at the Gate. The shim goes into the frame the
+      // script runs in, and is read back from there.
       const guarded = args.asked !== true;
       const egress = guarded ? await egressGuard(ctx, tabId) : null;
-      if (guarded) await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: guardInstall, returnByValue: true });
+      if (guarded) await run(frame, guardInstall, {});
       /** @type {any} */ let r;
       /** @type {any[]} */ let blocked = [];
       /** @type {any[]} */ let outside = [];
-      try { r = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: args.expression, returnByValue: true, awaitPromise: true, timeout: 10_000 }); }
+      try { r = await run(frame, args.expression, { awaitPromise: true, timeout: 10_000 }); }
       finally {
-        if (guarded) { const c = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: guardCollect, returnByValue: true }).catch(() => null); blocked = (c && c.result && c.result.value) || []; }
+        if (guarded) { const c = await run(frame, guardCollect, {}).catch(() => null); blocked = (c && c.result && c.result.value) || []; }
         if (egress) outside = await egress.stop().catch(() => []);
       }
       if (outside.length) { const b = outside[0]; return heldRequest(b.method, b.origin, `the script tried to reach ${b.origin}, which is not this page or anything it already talks to`, `${args.expression}\n${b.method} ${b.origin}`); }
       if (blocked.length) { const b = blocked[0]; return heldRequest(b.method, b.url, b.why, `${args.expression}\n${b.method} ${b.url}`); }
+      const where = { frame: frame.index, ...(frame.origin ? { frameOrigin: frame.origin } : {}) };
       if (r && r.exceptionDetails) {
         const d = r.exceptionDetails;
-        return { ok: false, error: redact.text(String((d.exception && d.exception.description) || d.text || "the page threw")) };
+        return { ok: false, error: redact.text(String((d.exception && d.exception.description) || d.text || "the page threw")), ...(list.length > 1 ? where : {}) };
       }
       const res = (r && r.result) || {};
       const value = res.value !== undefined ? res.value : res.description;
-      return { ok: true, type: res.type, value: redact.value(value), ...(egress && egress.contained === "partial" ? { contained: "partial", containedWhy: egress.why || "no browser-level guard" } : {}) };
+      const unread = list.filter(f => !f.readable).map(f => ({ index: f.index, origin: f.origin }));
+      return { ok: true, type: res.type, value: redact.value(value), ...(list.length > 1 ? where : {}), ...(unread.length ? { notScanned: unread } : {}), ...(egress && egress.contained === "partial" ? { contained: "partial", containedWhy: egress.why || "no browser-level guard" } : {}) };
     },
 
     "page.wait": async (args, ctx) => waitFor(ctx, await tabOf(args, ctx, "page.wait"), args),

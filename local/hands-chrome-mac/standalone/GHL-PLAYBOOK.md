@@ -10,6 +10,7 @@ Read this before you build or edit a workflow in the person's own Chrome. It is 
 2. One `chrome.ghl run` per whole job. A flow runs as one batch inside the browser: no model turn between steps, so it is fast and it does not lose its place. Use single `chrome.act` and `chrome.fill` calls only to look around, to recover from a failure, or for a step no flow covers.
 3. Every step waits for the page. You do not add sleeps. If you need to wait for something yourself, use `chrome.wait`.
 4. Outward acts are held. Publishing, sending and deleting come back as `held: true` with an id. Tell the person what is waiting, then call `chrome_send` with the id; Claude Code asks them to approve it. That is by design. Do not try to click around it.
+5. The workflow builder lives in an iframe, in its own process, so the page around it is only the shell (the left nav). Read `frames` and `notReadable` in every `chrome.snapshot`: a control belongs to the frame named in its `frame` field, and a frame listed in `notReadable` (or the sentence "N frames not readable" at the top of `text`) means you are not seeing the whole page. Call `chrome_frames` (`list`, then `probe`) first on a page you do not know; copy a control's selector from the snapshot as it is, because it carries its `frame`.
 
 ## Sequence for a workflow build
 

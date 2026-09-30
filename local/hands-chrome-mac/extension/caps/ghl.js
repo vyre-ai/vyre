@@ -26,8 +26,8 @@
 
 import { err } from "../lib/err.js";
 import { getGhlHosts } from "../shared/ghlhosts.js";
-import { matchControl, norm, labelOf, describeBlocker, traceOf } from "../lib/ui.js";
-import { resolve, failDetail } from "./page.js";
+import { norm, labelOf, describeBlocker, traceOf } from "../lib/ui.js";
+import { bindSelector, failDetail, isGhlBuilderFrame } from "./page.js";
 
 const DEFAULT_HOSTS = ["app.gohighlevel.com", "app.leadconnectorhq.com"];
 
@@ -255,43 +255,74 @@ async function tabOf(ctx, args) {
 /** @param {string} u */
 const pathOnly = u => { try { const x = new URL(String(u)); return x.host + x.pathname; } catch { return String(u).split(/[?#]/)[0]; } };
 
+/** The path of every frame's document: the builder navigating inside its iframe changes this, not the shell's URL. @param {any} snap */
+const framesKey = snap => (snap && Array.isArray(snap.frames) ? snap.frames.map((/** @type {any} */ f) => `${f.origin}${String(f.url || "").replace(/^[a-z]+:\/\/[^/]+/i, "")}`).join("|") : "");
+
 /** @param {any} ctx @param {number} ms */
 const nap = async (ctx, ms) => { if (ctx.stopped()) throw err("stopped"); await new Promise(r => setTimeout(r, ms)); };
 
 // ---------------------------------------------------------------- loading a section
 
 /**
- * Wait until a section has really loaded: the route changed (or its landmark control appeared, for
- * an app that routes without changing the URL), the page's own loading spinners are gone, the DOM
- * and network are quiet, and the landmark control is there. A default landmark is a guess at the
- * app's labels, so its absence after the page settles is a warning; a landmark the caller named
- * is required.
+ * Wait until a section has really loaded: the route changed (or its landmark control appeared, for an app that routes without changing
+ * the URL), the page's own loading spinners are gone, the DOM is quiet and the landmark control is there. The landmark is looked for in
+ * EVERY frame (GoHighLevel's Workflows UI lives in a cross-origin iframe, its left nav in the shell), and the result says which.
+ *
+ * One look per poll does all of it: the snapshot that finds the landmark also carries the spinners and quiet times, so the section
+ * is done the moment both hold. With the landmark in hand the network is not waited on: GoHighLevel polls and beacons all day, and
+ * requiring a quiet network cost the 2.5 s soft limit of the settle step on every call (measured by reading: settle soft limit 2.5 s, then a
+ * separate 1 s grace for a landmark that was missing, then the poll of each). A page with NO landmark still waits for a quiet network, soft as before.
+ * A default landmark is a guess at the app's labels, so its absence once the page is quiet is a warning after a short grace; a landmark the
+ * caller named is required.
  * @param {any} ctx @param {number} tabId @param {string} section @param {any[]} landmarks @param {boolean} required @param {number} timeoutMs @param {string[]} hosts
  */
 async function loaded(ctx, tabId, section, landmarks, required, timeoutMs, hosts) {
   const t0 = Date.now();
   const deadline = t0 + timeoutMs;
-  const landmarkHere = async () => {
-    if (!landmarks.length) return false;
+  const look = async () => {
     const snap = await ctx.call("page.snapshot", { tabId });
-    return landmarks.some(l => matchControl(l, snap.controls, resolve).control);
+    /** @type {any} */ let hit = null;
+    for (const l of landmarks) { const b = bindSelector(l, snap); if (b.control) { hit = b.control; break; } }
+    return { snap, hit };
   };
   // 1. The route: the URL shows the section and the tab is done loading, or the landmark is already on screen.
   for (;;) {
     const tab = await ctx.tabs.get(tabId);
     const urlOk = parse(tab.url, hosts).section === section && tab.status !== "loading";
-    if (urlOk || (landmarks.length && await landmarkHere())) break;
+    if (urlOk || (landmarks.length && (await look()).hit)) break;
     if (Date.now() >= deadline) throw err("timeout", `the ${section} section did not load in ${timeoutMs} ms`, await failDetail(ctx, tabId, { trace: { strategy: "url", waitedMs: Date.now() - t0 } }));
     await nap(ctx, 100);
   }
-  // 2. Spinners gone, DOM and network quiet.
-  const flags = (await ctx.call("page.wait", { tabId, settled: true, timeoutMs: Math.max(200, deadline - Date.now()) })).trace || {};
-  // 3. The landmark control.
-  let found = await landmarkHere();
-  const graceEnd = required ? deadline : Math.min(deadline, Date.now() + 1000);
-  while (landmarks.length && !found && Date.now() < graceEnd) { await nap(ctx, 100); found = await landmarkHere(); }
-  if (landmarks.length && !found && required) throw err("timeout", `the ${section} section loaded but the control that marks it did not appear`, await failDetail(ctx, tabId, { trace: { strategy: "landmark", waitedMs: Date.now() - t0 } }));
-  return { landmark: landmarks.length ? found : null, waitedMs: Date.now() - t0, flags: { ...(flags.busyIgnored ? { busyIgnored: true } : {}), ...(flags.domNeverQuiet ? { domNeverQuiet: true } : {}), ...(flags.netIgnored ? { netIgnored: true } : {}) } };
+  // 2. Spinners gone, DOM quiet (and the network, when there is no landmark to prove it), and the landmark.
+  const tRoute = Date.now();
+  const softAt = Math.min(Math.max(200, deadline - tRoute) / 2, 2500);
+  /** @type {any} */ const flags = {};
+  let graceFrom = 0;
+  for (;;) {
+    if (ctx.stopped()) throw err("stopped");
+    const { snap, hit } = await look();
+    const st = snap.state;
+    const soft = Date.now() - tRoute >= softAt;
+    const noBusy = !st || !st.busy;
+    const domQuiet = !st || st.domQuietMs === undefined || st.domQuietMs >= 150;
+    const netQuiet = !st || (st.netPending === 0 && st.netQuietMs >= 250);
+    const settled = (noBusy || soft) && (domQuiet || soft) && (hit || netQuiet || soft);
+    if (settled) {
+      if (!noBusy) flags.busyIgnored = true;
+      if (!domQuiet) flags.domNeverQuiet = true;
+      if (!netQuiet && (soft || hit)) flags.netIgnored = true;
+      if (!landmarks.length || hit) return { landmark: landmarks.length ? true : null, landmarkFrame: hit ? { frame: hit.frame ?? 0, ...(hit.frameOrigin ? { frameOrigin: hit.frameOrigin } : {}) } : undefined, waitedMs: Date.now() - t0, flags };
+      // The page is quiet and the landmark is not there. A required one keeps being waited for; a guessed one gets a moment.
+      graceFrom = graceFrom || Date.now();
+      if (!required && Date.now() - graceFrom >= 1000) return { landmark: false, waitedMs: Date.now() - t0, flags };
+    } else graceFrom = 0;
+    if (Date.now() >= deadline) {
+      if (settled && required) throw err("timeout", `the ${section} section loaded but the control that marks it did not appear`, await failDetail(ctx, tabId, { snap, trace: { strategy: "landmark", waitedMs: Date.now() - t0 } }));
+      if (settled) return { landmark: false, waitedMs: Date.now() - t0, flags };
+      throw err("timeout", `the page did not settle in ${timeoutMs} ms`, await failDetail(ctx, tabId, { snap, trace: { strategy: "settled", waitedMs: Date.now() - t0 }, extra: { state: st ? { busy: st.busy, domQuietMs: st.domQuietMs, netPending: st.netPending } : undefined } }));
+    }
+    await nap(ctx, 100);
+  }
 }
 
 // ---------------------------------------------------------------- saving
@@ -306,7 +337,15 @@ export default {
     "ghl.context": async (args, ctx) => {
       const t = await tabOf(ctx, args);
       const info = parse(t && t.url, await hostsOf(ctx));
-      return { tab: t && t.id, ...info, trace: traceOf({ strategy: "tab", waitedMs: 0 }) };
+      // The workflow builder is an iframe on a leadconnectorhq.com automation host: say so, whatever the shell's host is.
+      /** @type {any} */ let builderFrame;
+      try {
+        if (t && ctx.frames && ctx.frames.list) {
+          const fr = (await ctx.frames.list(t.id)).find((/** @type {any} */ f) => isGhlBuilderFrame(f));
+          if (fr) builderFrame = { index: fr.index, origin: fr.origin, readable: fr.readable };
+        }
+      } catch { /* no frame tree: the shell alone */ }
+      return { tab: t && t.id, ...info, ...(builderFrame ? { builderFrame, ...(info.isGhl ? {} : { isGhl: true, viaFrame: true }) } : {}), trace: traceOf({ strategy: "tab", waitedMs: 0 }) };
     },
 
     "ghl.section": async (args, ctx) => {
@@ -340,9 +379,11 @@ export default {
         const [navName, navId] = /** @type {any} */ (NAV)[section];
         via = "url";
         if (args.via !== "url") {
-          // Inside the app: click the left nav, so the single-page app routes itself and no page reloads.
+          // Inside the app: click the left nav, so the single-page app routes itself and no page reloads. The nav is the shell's (the top
+          // frame; the app itself is an iframe), so it is looked for there and nowhere else. It is a static list: no need to wait for
+          // it to hold still, the click's own hit test refuses a moving target and the step retries.
           try {
-            const r = await ctx.call("page.act", { tabId, selector: sel(navName, navId), kind: "click", wait: { timeoutMs: 1500, stable: true }, optional: true, asked: args.asked === true });
+            const r = await ctx.call("page.act", { tabId, selector: { ...sel(navName, navId), frame: 0 }, kind: "click", wait: { timeoutMs: 1500 }, optional: true, asked: args.asked === true });
             if (r && r.ok && !r.skipped) via = "nav";
           } catch (e) {
             if (/** @type {any} */ (e)?.code === "stopped" || /** @type {any} */ (e)?.code === "modal") throw e;
@@ -352,7 +393,7 @@ export default {
         if (via === "url") await ctx.call("tabs.navigate", { tabId, url, asked: args.asked === true });
       }
       const r = await loaded(ctx, tabId, section === "automation" ? "workflows" : section, landmarks, !!args.landmark, timeoutMs, hosts);
-      return { ok: true, tab: tabId, section, via, loaded: true, landmark: r.landmark, ...(r.landmark === false ? { warning: "the section settled but its usual landmark control was not found; the app's labels may differ" } : {}), url: url.replace(/^https:\/\//, ""), ms: Date.now() - t0, trace: traceOf({ strategy: via, fallback, waitedMs: r.waitedMs, retries: 0, newTab, ...r.flags }) };
+      return { ok: true, tab: tabId, section, via, loaded: true, landmark: r.landmark, ...(r.landmarkFrame ? { landmarkFrame: r.landmarkFrame } : {}), ...(r.landmark === false ? { warning: "the section settled but its usual landmark control was not found; the app's labels may differ" } : {}), url: url.replace(/^https:\/\//, ""), ms: Date.now() - t0, trace: traceOf({ strategy: via, fallback, waitedMs: r.waitedMs, retries: 0, newTab, ...(r.landmarkFrame || {}), ...r.flags }) };
     },
 
     "ghl.flows": async () => ({ flows: Object.entries(FLOWS).map(([name, f]) => ({ name, about: f.about, params: f.params })), actions: Object.entries(ACTIONS).map(([id, a]) => ({ id, label: a.label })) }),
@@ -367,7 +408,7 @@ export default {
       const expect = args.expect && typeof args.expect === "object" ? args.expect : {};
       const before = await ctx.call("page.snapshot", { tabId });
       const seen = new Set(((before.state && before.state.toasts) || []).map((/** @type {any} */ x) => x.text));
-      const wasEnabled = (() => { const c = matchControl(target, before.controls, resolve).control; return c ? c.enabled !== false : false; })();
+      const wasEnabled = (() => { const c = bindSelector(target, before).control; return c ? c.enabled !== false : false; })();
       const act = await ctx.call("page.act", { tabId, selector: target, kind: "click", wait: STEP_WAIT, asked: args.asked === true });
       if (act && act.held) return act;
       const tClick = Date.now();
@@ -389,9 +430,9 @@ export default {
           if (expect.toast ? norm(x.text).includes(norm(expect.toast)) : SAVED.test(x.text)) { evidence = { kind: "toast", text: String(x.text).slice(0, 120) }; break; }
         }
         if (evidence) break;
-        if (pathOnly(snap.url) !== pathOnly(before.url)) { evidence = { kind: "url" }; break; }
+        if (pathOnly(snap.url) !== pathOnly(before.url) || framesKey(snap) !== framesKey(before)) { evidence = { kind: "url" }; break; }
         if (expect.listItem && (snap.controls.some((/** @type {any} */ c) => norm(c.name) === norm(expect.listItem)) || norm(snap.text).includes(norm(expect.listItem)))) { evidence = { kind: "list", text: String(expect.listItem).slice(0, 60) }; break; }
-        const now = matchControl(target, snap.controls, resolve).control;
+        const now = bindSelector(target, snap).control;
         if (wasEnabled && now && now.enabled === false && (st.netPending === 0 || st.netPending === undefined) && Date.now() - tClick >= 300) { evidence = { kind: "save-disabled" }; break; }
         if (Date.now() - t0 >= timeoutMs) throw await fail("not_saved", `save step: not confirmed after ${timeoutMs} ms (no success toast, disabled Save, URL change or list item)`);
       }
@@ -425,7 +466,9 @@ export default {
       const traces = (Array.isArray(r.results) ? r.results : []).map((/** @type {any} */ x) => x && x.trace).filter(Boolean);
       const trace = traceOf({ strategy: "batch", fallback: traces.some((/** @type {any} */ x) => x.fallback), waitedMs: traces.reduce((/** @type {number} */ a, /** @type {any} */ x) => a + (x.waitedMs || 0), 0), retries: traces.reduce((/** @type {number} */ a, /** @type {any} */ x) => a + (x.retries || 0), 0), newTab: traces.some((/** @type {any} */ x) => x.newTab) });
       const failed = r.ok === false && typeof r.failedAt === "number" ? { step: r.failedAt, label: steps[r.failedAt] && steps[r.failedAt].label, op: steps[r.failedAt] && steps[r.failedAt].op } : undefined;
-      return { flow: name, ...r, ...(failed ? { failed } : {}), ms, perStepMs: steps.length ? Math.round((ms / steps.length) * 10) / 10 : 0, steps: steps.length, trace };
+      // Which frame each step ran in: the shell's nav is frame 0, the builder's controls are in the iframe.
+      const stepFrames = (Array.isArray(r.results) ? r.results : []).map((/** @type {any} */ x, /** @type {number} */ i) => (x && x.trace && typeof x.trace.frame === "number" ? { step: i, ...(steps[i] && steps[i].label ? { label: steps[i].label } : {}), frame: x.trace.frame, ...(x.trace.frameOrigin ? { frameOrigin: x.trace.frameOrigin } : {}) } : null)).filter(Boolean);
+      return { flow: name, ...r, ...(failed ? { failed } : {}), ...(stepFrames.length ? { stepFrames } : {}), ms, perStepMs: steps.length ? Math.round((ms / steps.length) * 10) / 10 : 0, steps: steps.length, trace };
     },
   },
 };
