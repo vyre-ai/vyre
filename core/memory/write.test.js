@@ -296,3 +296,11 @@ test("write: ctx.memory.write reaches memory.write as module:<name>, with the lo
   assert.equal(r.data.data.got.input.kind, "note");
   assert.match((await reg.call("bakery.log", { kind: "decision" }, "cli")).data.threw, /does not declare under teaches.memory/);
 });
+
+test("write: two projects' own watchers matching the same email file one row, linked into both", async t => {
+  const { write, db } = await module_(t);
+  const d = await write({ kind: "note", project: "harlow", text: "Order 77 ships Monday", source_ref: "msg-77", on_behalf: "watcher:harlow-inbox" }, "module:watchers", WATCHERS);
+  const e = await write({ kind: "note", project: "northwind", text: "Order 77 ships Monday", source_ref: "msg-77", on_behalf: "watcher:northwind-inbox" }, "module:watchers", WATCHERS);
+  assert.deepEqual([e.id, e.linked], [d.id, true]);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM memory_writes WHERE source_ref = 'msg-77'").get()?.n, 1);
+});

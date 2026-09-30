@@ -91,6 +91,9 @@ export const quoted = w => NOT_INSTRUCTIONS + attribution(w);
 export function writeStore({ db, now = () => Date.now() }) {
   const q = {
     byRef: db.prepare("SELECT * FROM memory_writes WHERE source_ref = ? AND from_kind = ? AND from_name = ? ORDER BY at LIMIT 1"),
+    // Watchers and duties file one connection's items through the one watchers module: an email two
+    // projects' watchers both match is one row linked into both (watchers, 00:15), not two.
+    byRefWatched: db.prepare("SELECT * FROM memory_writes WHERE source_ref = ? AND from_kind IN ('watcher', 'duty') ORDER BY at LIMIT 1"),
     get: db.prepare("SELECT * FROM memory_writes WHERE id = ?"),
     link: db.prepare("SELECT * FROM memory_write_links WHERE write = ? AND project = ?"),
     links: db.prepare("SELECT project, state, at FROM memory_write_links WHERE write = ? ORDER BY at, project"),
@@ -117,7 +120,8 @@ export function writeStore({ db, now = () => Date.now() }) {
     add(w) {
       return tx(() => {
         const t = now();
-        const same = w.source_ref ? /** @type {any} */ (q.byRef.get(w.source_ref, w.from.kind, w.from.name)) : null;
+        const watched = w.from.kind === "watcher" || w.from.kind === "duty";
+        const same = !w.source_ref ? null : /** @type {any} */ (watched ? q.byRefWatched.get(w.source_ref) : q.byRef.get(w.source_ref, w.from.kind, w.from.name));
         if (same) {
           // One item, many projects: the same source_ref for another project links the row there.
           // Already filed here (live or forgotten): the same id, and a forget is never undone by a re-file.
