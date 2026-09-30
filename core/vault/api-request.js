@@ -142,8 +142,9 @@ function normalizeScope(sc) {
 export function scopeAllows(config, { agent, project }) {
   const sc = config.scope;
   if (!sc) return false;
-  const agentOk = !agent || sc.agents === "*" || sc.agents.includes(agent);
-  const projectOk = !project || sc.projects === "*" || sc.projects.includes(project);
+  // Fail closed: an absent agent or project matches only "*", never a list, so a caller that names neither is not let in by a scope that names someone.
+  const agentOk = sc.agents === "*" || Boolean(agent && sc.agents.includes(agent));
+  const projectOk = sc.projects === "*" || Boolean(project && sc.projects.includes(project));
   return agentOk && projectOk;
 }
 

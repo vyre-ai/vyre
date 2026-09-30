@@ -671,6 +671,15 @@ export class Vault {
    * throws in words and is audited.
    */
   async deriveAuk(password, who) {
+    // Every password attempt comes through here (unlock and enrolling Touch ID), so the guess limit lives here. The password is its own
+    // proof (no separate presence prompt), so after 5 wrong tries in a row every try is refused for 30 s, doubling to 15 minutes; a right
+    // password resets it. A refused try is not tested against the key at all.
+    const f = this.unlockFails || (this.unlockFails = { n: 0, until: 0 });
+    const t0 = now();
+    if (t0 < f.until) {
+      this.audit("account-unlock", null, who, false, "throttled after wrong passwords");
+      throw Object.assign(new Error(`too many wrong passwords in a row · try again in ${Math.ceil((f.until - t0) / 1000)} seconds`), { code: "throttled" });
+    }
     const rec = readJsonFile(this.dir, ACCOUNT);
     if (!rec) throw new Error("this vault has no account password yet · vyre vault account create");
     await this.key();
@@ -682,9 +691,12 @@ export class Vault {
     try {
       const auk = accountUnlockKey({ password: String(password ?? ""), secretKey: bytes, acct, salt: Buffer.from(String(rec.salt), "base64"), params });
       unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
+      f.n = 0; f.until = 0;
       return { auk, rec, acct };
     } catch {
-      this.audit("account-unlock", null, who, false, "wrong password");
+      f.n++;
+      if (f.n >= 5) f.until = now() + Math.min(30_000 * 2 ** (f.n - 5), 15 * 60_000);
+      this.audit("account-unlock", null, who, false, `wrong password (${f.n} in a row)`);
       throw new Error("that password does not open your personal vault");
     } finally { bytes.fill(0); }
   }
@@ -696,26 +708,7 @@ export class Vault {
   async unlockAccount({ password, method = "password" }, who = "cli") {
     let auk, rec, acct;
     if (method === "touchid") ({ auk, rec, acct } = await this.touchIdAuk(who));
-    else {
-      // The password is its own proof (no separate presence prompt), so guessing is slowed here: after 5 wrong tries in a row every
-      // try is refused for 30 s, doubling to 15 minutes; a right password resets it. A refused try is not tested against the key at all.
-      const f = this.unlockFails || (this.unlockFails = { n: 0, until: 0 });
-      const t0 = now();
-      if (t0 < f.until) {
-        this.audit("account-unlock", null, who, false, "throttled after wrong passwords");
-        throw Object.assign(new Error(`too many wrong passwords in a row · try again in ${Math.ceil((f.until - t0) / 1000)} seconds`), { code: "throttled" });
-      }
-      try { ({ auk, rec, acct } = await this.deriveAuk(password, who)); }
-      catch (e) {
-        if (/** @type {any} */ (e)?.code !== "locked" && /does not open/.test(String(/** @type {any} */ (e)?.message))) {
-          f.n++;
-          if (f.n >= 5) f.until = now() + Math.min(30_000 * 2 ** (f.n - 5), 15 * 60_000);
-          this.audit("account-unlock", null, who, false, `wrong password (${f.n} in a row)`);
-        }
-        throw e;
-      }
-      f.n = 0; f.until = 0;
-    }
+    else ({ auk, rec, acct } = await this.deriveAuk(password, who));
     this.pvk = unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
     this.recoverStaged();
     const moved = await this.migratePersonal();
