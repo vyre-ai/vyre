@@ -1052,7 +1052,8 @@ async function scanEnvCmd(args) {
   for (const f of files) {
     const git = f.git && f.git.tracked ? dim(" · git tracks it, so the values are in its history too") : "";
     say(`  ${f.project ? `${bold(f.project)} ` : ""}${f.file} ${dim(`· ${plural(f.secrets, "secret")}${f.kinds && f.kinds.length ? ` (${f.kinds.join(", ")})` : ""}`)}${git}`);
-    say(f.command ? `    ${dim(f.command)}` : `    ${dim("this path has a control character in it, so no command is printed · rename the folder")}`);
+    // The printed line is POSIX quoting, so it is shown only on a POSIX host; elsewhere the file is named and the person runs `vyre vault import <file> --rewrite` in their own shell.
+    say(f.command && process.platform !== "win32" ? `    ${dim(f.command)}` : f.command ? `    ${dim("vyre vault import <the file above> --rewrite")}` : `    ${dim("this path has a control character in it, so no command is printed · rename the folder")}`);
   }
   if (files.length) say(dim("\n  import swaps each secret for a vault reference; the program then runs with vyre run -- <command> in that folder"));
   return 0;
