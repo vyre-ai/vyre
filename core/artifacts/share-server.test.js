@@ -12,7 +12,7 @@ const SCRIPT = path.join(import.meta.dirname, "share-server.js");
 
 /** @param {any} t @param {string} dir */
 async function serve(t, dir) {
-  const child = spawn(process.execPath, ["--permission", `--allow-fs-read=${dir}`, `--allow-fs-read=${SCRIPT}`, `--allow-fs-write=${dir}`, SCRIPT, "--dir", dir, "--port", "0"], { stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, ["--permission", `--allow-fs-read=${dir}`, `--allow-fs-read=${SCRIPT}`, `--allow-fs-write=${dir}`, SCRIPT, "--dir", dir, "--port", "0", "--not-uid", "99999"], { stdio: ["ignore", "pipe", "pipe"] });
   t.after(() => child.kill("SIGTERM"));
   const port = await new Promise((resolve, reject) => {
     let out = "";

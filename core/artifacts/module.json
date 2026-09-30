@@ -24,6 +24,7 @@
       { "name": "artifacts.unshare", "summary": "stop a public link", "reach": "anyone" },
       { "name": "artifacts.public.status", "summary": "whether public links are on", "reach": "anyone" },
       { "name": "artifacts.public.set", "summary": "turn public links on or off", "reach": "asked" },
+      { "name": "artifacts.public.base", "summary": "the public address links use (network setup)", "reach": "modules" },
       { "name": "artifacts.capture.register", "summary": "catch files a session saves in its artifacts folder", "reach": "modules" }
     ],
     "commands": [

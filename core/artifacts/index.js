@@ -15,19 +15,21 @@
 //   after each allowed write.
 // - Public links (option 4A): off until the person turns them on. A share copies one version,
 //   stripped of who and where, into <data>/public/<sha256 of token>/, served by share-server.js,
-//   a separate process with no way back into vyred. artifacts.share is `outward: post`: the
+//   a separate process under its OWN uid with no way back into vyred (reviewer-2 H2): vyred never
+//   starts it, the box image runs it, and public links stay off until vyred sees it running under
+//   a user that isn't vyred's. artifacts.share is `outward: post`: the
 //   person's tap or ask runs it, an agent's own idea waits at the Gate (PL-M2). Until the
 //   registry routes outward tools, an unasked agent call is refused here instead (fail closed).
 
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { isPerson, agentName } from "../../lib/caller.js";
 import { isProjectId } from "../../lib/project-id.js";
 import { findSecrets } from "../../lib/secret-text.js";
 import { openStore } from "./store.js";
-import { KINDS, MAIN_FILE, DATA_FILE, MAX_BYTES, BY_EXTENSION, page, pageHeaders, titleOf } from "./render.js";
+import { KINDS, MAIN_FILE, DATA_FILE, MAX_BYTES, BY_EXTENSION, page, pageHeaders, titleOf, withMetaCsp } from "./render.js";
 
 export const MIGRATIONS = [
   `
@@ -70,7 +72,22 @@ export const MIGRATIONS = [
   CREATE TABLE artifacts_capture_files (thread TEXT NOT NULL, name TEXT NOT NULL, artifact TEXT NOT NULL, PRIMARY KEY (thread, name));
   CREATE TABLE artifacts_kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
   `,
+  // reviewer-2 H1, M3: a capture folder's identity and owner; the version a public link last published.
+  `
+  ALTER TABLE artifacts_capture_dirs ADD COLUMN dev TEXT;
+  ALTER TABLE artifacts_capture_dirs ADD COLUMN ino TEXT;
+  ALTER TABLE artifacts_capture_dirs ADD COLUMN uid INTEGER;
+  ALTER TABLE artifacts_shares ADD COLUMN published INTEGER;
+  `,
 ];
+
+/** Seams for tests only, never reachable from outside this process: vyred's own uid, and a hook
+ * run between capture's checks and its open (to prove a swap there is caught). */
+export const _test = {
+  ownUid: () => (typeof process.getuid === "function" ? process.getuid() : -1),
+  /** @type {null | ((file: string) => void)} */
+  beforeOpen: null,
+};
 
 const PERSONAL = "personal";
 const DAY = 86_400_000;
@@ -82,8 +99,22 @@ const refuse = (/** @type {string} */ message, /** @type {string} */ code, extra
 const str = { type: "string" };
 const newId = () => `a_${crypto.randomBytes(9).toString("base64url")}`;
 
-/** @param {any} meta */
-const trustedCaller = meta => isPerson(meta) || /^module:/.test(String((meta && meta.caller) || ""));
+/** The person, or one of Vyre's own modules (meta.firstParty is set by the registry, never the
+ * caller). An added module gets an agent's rules (reviewer-2 M1). @param {any} meta */
+const trustedCaller = meta => isPerson(meta) || (/^module:/.test(String((meta && meta.caller) || "")) && meta.firstParty === true);
+/** An added module's name, when the caller is one. @param {any} meta */
+const addedModule = meta => { const c = String((meta && meta.caller) || ""); return /^module:/.test(c) && !(meta && meta.firstParty === true) ? c.slice(7) : null; };
+
+/** The uid a process runs as, or null when it can't be read. @param {number} pid */
+function uidOf(pid) {
+  try {
+    const m = /^Uid:\s+(\d+)/m.exec(fs.readFileSync(`/proc/${pid}/status`, "utf8"));
+    if (m) return Number(m[1]);
+  } catch {}
+  const r = spawnSync("ps", ["-o", "uid=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 });
+  const n = Number(String(r.stdout || "").trim());
+  return r.status === 0 && Number.isInteger(n) && String(r.stdout).trim() !== "" ? n : null;
+}
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -93,7 +124,8 @@ export default {
     const data = ctx.paths.data || path.join(ctx.paths.root, "data", "artifacts");
     const store = openStore(path.join(data, "store"));
     const publicDir = path.join(data, "public");
-    fs.mkdirSync(publicDir, { recursive: true, mode: 0o700 });
+    // Shared with the share server's own user through the folder's group (the box image sets it).
+    fs.mkdirSync(publicDir, { recursive: true, mode: 0o770 });
     const now = () => Date.now();
 
     // ---- reading rows -------------------------------------------------------------------------
@@ -111,6 +143,7 @@ export default {
       let seen = 0;
       try { seen = Number(fs.readFileSync(path.join(publicDir, s.hash, "views"), "utf8")) || 0; } catch {}
       return { path: `/s/${s.token}`, url: base ? `${String(base).replace(/\/$/, "")}/s/${s.token}` : null, version: s.version ?? "latest",
+        published: s.published ?? null, unpublished: s.version === null && s.published ? Math.max(0, r.head - s.published) : 0,
         created_at: s.created_at, expires_at: s.expires_at ?? null, views: seen };
     };
 
@@ -133,12 +166,28 @@ export default {
       return r && r.data && r.data.thread ? r.data.thread : null;
     };
 
-    /** The one project an agent may reach: its own thread's, else the person's own space. The person
-     * and Vyre's own modules reach every project (null). @param {any} meta */
+    /**
+     * What a caller reaches. The person and Vyre's own modules: everything. An agent in a project:
+     * that project. An agent with no project (or an added module): only what it made itself, in the
+     * person's own space, never the person's own artifacts there (reviewer-2 M2).
+     * @param {any} meta
+     * @returns {Promise<{ all: true } | { project: string } | { own: { thread: string|null, agent: string|null, module: string|null } }>}
+     */
     const scopeOf = async meta => {
-      if (trustedCaller(meta)) return null;
-      const t = await threadOf(meta && meta.thread);
-      return (t && t.project) || PERSONAL;
+      if (trustedCaller(meta)) return { all: true };
+      const mod = addedModule(meta);
+      const t = mod ? null : await threadOf(meta && meta.thread);
+      if (t && t.project) return { project: t.project };
+      return { own: { thread: mod ? null : (meta && meta.thread) || null, agent: mod ? null : agentName(meta) || (t && t.agent) || null, module: mod } };
+    };
+
+    /** @param {any} r @param {Awaited<ReturnType<typeof scopeOf>>} scope */
+    const inScope = (r, scope) => {
+      if ("all" in scope) return true;
+      if ("project" in scope) return r.project === scope.project;
+      if (r.project !== PERSONAL) return false;
+      const by = JSON.parse(r.made_by), own = scope.own;
+      return Boolean((own.thread && r.thread === own.thread) || (own.agent && by.kind === "agent" && by.name === own.agent) || (own.module && by.kind === "module" && by.name === own.module));
     };
 
     /** An artifact the caller may reach, or a refusal that says nothing about others. @param {string} id @param {any} meta
@@ -146,8 +195,7 @@ export default {
     const reach = async (id, meta, o = {}) => {
       const r = typeof id === "string" ? row(id) : null;
       if (!r || (r.deleted_at && !o.deleted)) throw refuse(`no artifact ${id}`, "not_found");
-      const scope = await scopeOf(meta);
-      if (scope !== null && r.project !== scope) throw refuse(`no artifact ${id}`, "not_found");
+      if (!inScope(r, await scopeOf(meta))) throw refuse(`no artifact ${id}`, "not_found");
       return r;
     };
 
@@ -157,20 +205,21 @@ export default {
       const scope = await scopeOf(meta);
       const want = project == null || project === "" ? null : String(project);
       if (want !== null && want !== PERSONAL && !isProjectId(want)) throw refuse(`${want} is not a project id`, "bad_input");
-      if (scope === null) {
+      if ("all" in scope) {
         if (want) return want;
         const t = await threadOf(meta && meta.thread);
         return (t && t.project) || PERSONAL;
       }
-      if (want !== null && want !== scope) throw refuse(`an agent makes artifacts only in its own project (${scope === PERSONAL ? "your own space" : scope})`, "denied");
-      return scope;
+      const mine = "project" in scope ? scope.project : PERSONAL;
+      if (want !== null && want !== mine) throw refuse(`an agent makes artifacts only in its own project (${mine === PERSONAL ? "your own space" : mine})`, "denied");
+      return mine;
     };
 
     /** Who made this, from the call itself, never from the input. @param {any} meta */
     const madeBy = async meta => {
       if (isPerson(meta)) return { kind: "person" };
       const caller = String((meta && meta.caller) || "");
-      if (/^module:/.test(caller)) return { kind: "module", name: caller.slice(7) };
+      if (/^module:/.test(caller)) return { kind: "module", name: caller.slice(7), ...(meta.firstParty === true ? {} : { added: true }) };
       const t = await threadOf(meta && meta.thread);
       const name = agentName(meta) || (t && t.agent) || null;
       return { kind: name ? "agent" : "session", ...(name ? { name } : {}), ...(t && t.provider ? { provider: t.provider } : {}), ...(meta && meta.thread ? { thread: meta.thread } : {}) };
@@ -204,9 +253,10 @@ export default {
       return { v, files: await store.read(r.project, r.id, v.sha) };
     };
 
-    /** Save a version and its row, emit, and republish a share that follows the latest.
-     * @param {any} r @param {Record<string,string>} files @param {number} size @param {any} by @param {string} message */
-    const commit = async (r, files, size, by, message) => {
+    /** Save a version and its row, emit, and republish a share that follows the latest, but only
+     * for the person's own change: an agent's later edit never goes public by itself (reviewer-2 M3).
+     * @param {any} r @param {Record<string,string>} files @param {number} size @param {any} by @param {string} message @param {boolean} [republish] */
+    const commit = async (r, files, size, by, message, republish = false) => {
       const n = r.head + 1;
       const sha = await store.write(r.project, r.id, files, `v${n}${message ? `: ${message}` : ""}`);
       const at = now();
@@ -214,7 +264,7 @@ export default {
       db.prepare("UPDATE artifacts_items SET head = ?, text = ?, updated_at = ? WHERE id = ?").run(n, textOf(files), at, r.id);
       const fresh = row(r.id);
       const s = /** @type {any} */ (db.prepare("SELECT * FROM artifacts_shares WHERE artifact = ?").get(r.id));
-      if (s && s.version === null) await publish(fresh, s.token, null, s.expires_at).catch(e => ctx.log(`artifacts: republish ${r.id}: ${e.message}`));
+      if (s && s.version === null && republish) await publish(fresh, s.token, null, s.expires_at).catch(e => ctx.log(`artifacts: republish ${r.id}: ${e.message}`));
       return fresh;
     };
 
@@ -240,15 +290,17 @@ export default {
       const dir = path.join(publicDir, hash);
       const tmp = path.join(publicDir, `.${hash}.${process.pid}`);
       fs.rmSync(tmp, { recursive: true, force: true });
-      fs.mkdirSync(tmp, { mode: 0o700 });
-      fs.writeFileSync(path.join(tmp, "index.html"), html, { mode: 0o600 });
-      fs.writeFileSync(path.join(tmp, "meta.json"), JSON.stringify({ expires_at, headers: pageHeaders({ scripts, framedBy: "none" }) }), { mode: 0o600 });
+      fs.mkdirSync(tmp, { mode: 0o770 });
+      fs.writeFileSync(path.join(tmp, "index.html"), html, { mode: 0o640 });
+      fs.writeFileSync(path.join(tmp, "meta.json"), JSON.stringify({ expires_at, headers: pageHeaders({ scripts, framedBy: "none" }) }), { mode: 0o640 });
       let seen = null;
       try { seen = fs.readFileSync(path.join(dir, "views"), "utf8"); } catch {}
       if (seen !== null) fs.writeFileSync(path.join(tmp, "views"), seen);
       fs.rmSync(dir, { recursive: true, force: true });
       fs.renameSync(tmp, dir);
       fs.rmSync(path.join(publicDir, `${hash}.gone`), { force: true });
+      db.prepare("UPDATE artifacts_shares SET published = ? WHERE artifact = ?").run(version ?? r.head, r.id);
+      return version ?? r.head;
     };
 
     /** Take a public link down at once. @param {string} id */
@@ -261,26 +313,25 @@ export default {
       return true;
     };
 
-    // The share server: started while public links are on, stopped when they go off.
-    /** @type {import("node:child_process").ChildProcess|null} */
-    let server = null;
-    /** @type {number|null} */
-    let serverPort = null;
-    const portWanted = () => Number(process.env.VYRE_ARTIFACTS_SHARE_PORT ?? 7311);
-    const startServer = () => new Promise(resolve => {
-      if (server) return resolve(serverPort);
-      const script = path.join(path.dirname(new URL(import.meta.url).pathname), "share-server.js");
-      const child = spawn(process.execPath, ["--permission", `--allow-fs-read=${publicDir}`, `--allow-fs-read=${script}`, `--allow-fs-write=${publicDir}`,
-        script, "--dir", publicDir, "--port", String(portWanted())], { stdio: ["ignore", "pipe", "pipe"], env: { PATH: "/usr/bin:/bin", NODE_OPTIONS: "" } });
-      server = child;
-      let out = "";
-      const done = (/** @type {number|null} */ p) => { serverPort = p; resolve(p); };
-      child.stdout.on("data", b => { out += b; const m = /listening (\d+)/.exec(out); if (m) done(Number(m[1])); });
-      child.stderr.on("data", b => ctx.log(`artifacts share server: ${String(b).trim()}`));
-      child.on("exit", () => { if (server === child) { server = null; serverPort = null; } done(null); });
-    });
-    const stopServer = () => { if (server) { server.kill("SIGTERM"); server = null; serverPort = null; } };
-    if (kv.get("public_on")) await startServer();
+    // The share server is not vyred's child: the box image runs it as its own user and it writes
+    // <public>/.server.json {pid, uid, port} when it listens. Public links work only while that
+    // process is alive and its real uid is not vyred's (reviewer-2 H2); vyred can't drop to another
+    // user itself, so without the image's server they stay off, said plainly.
+    const serverFile = path.join(publicDir, ".server.json");
+    const offFile = path.join(publicDir, ".off");
+    /** @returns {{ ok: true, port: number } | { ok: false, why: string }} */
+    const serverState = () => {
+      let info;
+      try { info = JSON.parse(fs.readFileSync(serverFile, "utf8")); } catch { return { ok: false, why: "no share server is running on this box" }; }
+      const pid = Number(info && info.pid);
+      if (!Number.isInteger(pid) || pid <= 1) return { ok: false, why: "the share server's record is not valid" };
+      try { process.kill(pid, 0); } catch (e) { if (/** @type {any} */ (e).code !== "EPERM") return { ok: false, why: "the share server is not running" }; }
+      const uid = uidOf(pid);
+      if (uid === null) return { ok: false, why: "the share server's user can't be checked" };
+      if (uid === _test.ownUid() || uid === 0) return { ok: false, why: "the share server runs as Vyre's own user (or root), so public links stay off" };
+      return { ok: true, port: Number(info.port) || 7311 };
+    };
+    const NOT_YET = "public links arrive with the next server update";
 
     // ---- sweeping -----------------------------------------------------------------------------
 
@@ -342,7 +393,7 @@ export default {
         const content = i.content !== undefined ? i.content : /** @type {any} */ (cur)[MAIN_FILE[/** @type {keyof typeof MAIN_FILE} */ (r.format)]];
         const dataIn = r.format === "chart" ? (i.data !== undefined ? i.data : /** @type {any} */ (cur)[DATA_FILE]) : i.data;
         const { files, size } = filesFor(r.format, content, dataIn);
-        fresh = await commit(fresh, files, size, by, i.message || "");
+        fresh = await commit(fresh, files, size, by, i.message || "", isPerson(meta));
         if (!trustedCaller(meta) && !r.untrusted) db.prepare("UPDATE artifacts_items SET untrusted = 1 WHERE id = ?").run(r.id), fresh = row(r.id);
       } else if (i.title === undefined) throw refuse("nothing to change: give content, data or a title", "bad_input");
       emit("artifact.updated", fresh, { made_by: by });
@@ -353,33 +404,68 @@ export default {
 
     // ---- capture: files saved in a session's artifacts folder --------------------------------
 
+    const LINUX_FD = fs.existsSync("/proc/self/fd");
+    /** The folder's identity now, or null if it is no longer a real, unlinked folder. @param {string} dir */
+    const dirId = dir => {
+      try {
+        const st = fs.lstatSync(dir, { bigint: true });
+        if (!st.isDirectory() || st.isSymbolicLink() || fs.realpathSync(dir) !== dir) return null;
+        return `${st.dev}:${st.ino}`;
+      } catch { return null; }
+    };
+
+    /**
+     * Read a file an agent saved, without ever following anything it could swap in (reviewer-2 H1):
+     * the folder must still be the one registered (same device and inode, no link anywhere in its
+     * path), the file is opened O_NOFOLLOW and checked on the open descriptor (a regular file, one
+     * link, the agent's own uid, the size cap), and on Linux the descriptor's own path must be that
+     * folder's. The content is read from the descriptor, never by path again.
+     * @param {any} reg @param {string} file @returns {string|null}
+     */
+    const readCaptured = (reg, file) => {
+      const id = `${reg.dev}:${reg.ino}`;
+      if (dirId(reg.dir) !== id) return null;
+      if (_test.beforeOpen) _test.beforeOpen(file);
+      let fd;
+      try { fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); } catch { return null; }
+      try {
+        const st = fs.fstatSync(fd, { bigint: true });
+        if (!st.isFile() || st.nlink !== 1n || st.size > BigInt(MAX_BYTES)) return null;
+        if (reg.uid !== null && reg.uid !== undefined && st.uid !== BigInt(reg.uid)) return null;
+        if (LINUX_FD) { try { if (fs.readlinkSync(`/proc/self/fd/${fd}`) !== file) return null; } catch { return null; } }
+        const buf = Buffer.alloc(Number(st.size));
+        let got = 0;
+        while (got < buf.length) { const n = fs.readSync(fd, buf, got, buf.length - got, got); if (n <= 0) break; got += n; }
+        if (dirId(reg.dir) !== id) return null;
+        return buf.subarray(0, got).toString("utf8");
+      } finally { fs.closeSync(fd); }
+    };
+
     /** @param {{ thread?: string, path?: string }} e */
     const capture = async e => {
       if (!e || typeof e.thread !== "string" || typeof e.path !== "string") return;
-      const reg = /** @type {any} */ (db.prepare("SELECT dir FROM artifacts_capture_dirs WHERE thread = ?").get(e.thread));
-      if (!reg) return;
-      let real, st;
-      try { real = fs.realpathSync(e.path); st = fs.lstatSync(e.path); } catch { return; }
-      const base = fs.realpathSync(reg.dir);
-      const rel = path.relative(base, real);
-      if (!rel || rel.startsWith("..") || path.isAbsolute(rel) || rel.includes(path.sep)) return; // top level only
-      if (!st.isFile() || st.isSymbolicLink() || st.size > MAX_BYTES) return;
-      const ext = path.extname(rel).toLowerCase();
+      const reg = /** @type {any} */ (db.prepare("SELECT * FROM artifacts_capture_dirs WHERE thread = ?").get(e.thread));
+      if (!reg || !reg.dev) return;
+      const name = path.basename(e.path);
+      const file = path.join(reg.dir, name);
+      if (path.resolve(e.path) !== file || name.startsWith(".")) return; // top level only, named inside the folder
+      const ext = path.extname(name).toLowerCase();
       const how = BY_EXTENSION[ext];
       if (!how) return;
-      const content = fs.readFileSync(real, "utf8");
-      const meta = { caller: `mcp:thread:${e.thread}`, thread: e.thread };
+      const content = readCaptured(reg, file);
+      if (content === null) return;
+      const rel = name;
+      const meta = { caller: "module:artifacts", firstParty: true, thread: e.thread };
       const known = /** @type {any} */ (db.prepare("SELECT artifact FROM artifacts_capture_files WHERE thread = ? AND name = ?").get(e.thread, rel));
       if (known && row(known.artifact) && !row(known.artifact).deleted_at) {
         const cur = row(known.artifact);
         if (cur.archived_at) return;
         const { files } = await filesAt(cur);
         if (files[MAIN_FILE[/** @type {keyof typeof MAIN_FILE} */ (cur.format)]] === content) return;
-        await update({ id: cur.id, content, message: `saved ${rel}` }, { ...meta, caller: "module:artifacts" }).catch(() => {});
+        await update({ id: cur.id, content, message: `saved ${rel}` }, meta).catch(() => {});
         return;
       }
-      const made = await create({ kind: how.kind, format: how.format, content, title: titleOf(content) || path.basename(rel, ext), message: `saved ${rel}` },
-        { ...meta, caller: "module:artifacts", project: undefined }).catch(() => null);
+      const made = await create({ kind: how.kind, format: how.format, content, title: titleOf(content) || path.basename(rel, ext), message: `saved ${rel}` }, meta).catch(() => null);
       if (!made) return;
       // A captured file is the session's own work: record its thread's project, agent and provider.
       const t = await threadOf(e.thread);
@@ -428,15 +514,16 @@ export default {
       run: async (i, meta) => {
         const scope = await scopeOf(meta);
         const where = ["deleted_at IS NULL"], args = [];
-        if (scope !== null) {
-          if (i.project !== undefined && i.project !== scope && !(scope === PERSONAL && i.project === null)) throw refuse("an agent lists only its own project's artifacts", "denied");
-          where.push("project = ?"); args.push(scope);
+        if (!("all" in scope)) {
+          const mine = "project" in scope ? scope.project : PERSONAL;
+          if (i.project !== undefined && i.project !== null && i.project !== mine) throw refuse("an agent lists only its own project's artifacts", "denied");
+          where.push("project = ?"); args.push(mine);
         } else if (i.project) { where.push("project = ?"); args.push(i.project); }
         if (i.kind) { where.push("kind = ?"); args.push(i.kind); }
         where.push(i.archived ? "archived_at IS NOT NULL" : "archived_at IS NULL");
         if (i.shared !== undefined) where.push(`${i.shared ? "" : "NOT "}EXISTS (SELECT 1 FROM artifacts_shares s WHERE s.artifact = artifacts_items.id)`);
-        const rows = /** @type {any[]} */ (db.prepare(`SELECT * FROM artifacts_items WHERE ${where.join(" AND ")} ORDER BY updated_at DESC LIMIT ?`).all(...args, i.limit || 200));
-        return rows.map(shape);
+        const rows = /** @type {any[]} */ (db.prepare(`SELECT * FROM artifacts_items WHERE ${where.join(" AND ")} ORDER BY updated_at DESC LIMIT ?`).all(...args, "own" in scope ? 5000 : i.limit || 200));
+        return rows.filter(r => inScope(r, scope)).slice(0, i.limit || 200).map(shape);
       },
     });
 
@@ -451,10 +538,12 @@ export default {
         const where = ["deleted_at IS NULL", "(title LIKE ? ESCAPE '\\' OR text LIKE ? ESCAPE '\\')"];
         const like = `%${q.replace(/[\\%_]/g, c => `\\${c}`)}%`;
         const args = [like, like];
-        const project = scope !== null ? scope : i.project;
-        if (scope !== null && i.project && i.project !== scope) throw refuse("an agent searches only its own project's artifacts", "denied");
+        const mine = "all" in scope ? null : "project" in scope ? scope.project : PERSONAL;
+        if (mine !== null && i.project && i.project !== mine) throw refuse("an agent searches only its own project's artifacts", "denied");
+        const project = mine !== null ? mine : i.project;
         if (project) { where.push("project = ?"); args.push(project); }
-        const rows = /** @type {any[]} */ (db.prepare(`SELECT * FROM artifacts_items WHERE ${where.join(" AND ")} ORDER BY updated_at DESC LIMIT ?`).all(...args, i.limit || 20));
+        const rows = /** @type {any[]} */ (db.prepare(`SELECT * FROM artifacts_items WHERE ${where.join(" AND ")} ORDER BY updated_at DESC LIMIT ?`).all(...args, "own" in scope ? 5000 : i.limit || 20))
+          .filter(r => inScope(r, scope)).slice(0, i.limit || 20);
         return rows.map(r => {
           const at = r.text.toLowerCase().indexOf(q.toLowerCase());
           return { ...shape(r), snippet: at < 0 ? "" : r.text.slice(Math.max(0, at - 60), at + q.length + 60) };
@@ -497,7 +586,7 @@ export default {
         const { files } = await filesAt(r, i.version);
         const size = Object.values(files).reduce((n, v) => n + Buffer.byteLength(v), 0);
         const by = await madeBy(meta);
-        const fresh = await commit(r, files, size, by, `back to v${i.version}`);
+        const fresh = await commit(r, files, size, by, `back to v${i.version}`, isPerson(meta));
         emit("artifact.restored", fresh, { from: i.version, made_by: by });
         emit("artifact.updated", fresh, { made_by: by });
         return shape(fresh);
@@ -513,7 +602,7 @@ export default {
         const to = i.project == null || i.project === "" ? PERSONAL : String(i.project);
         if (to !== PERSONAL && !isProjectId(to)) throw refuse(`${to} is not a project id`, "bad_input");
         const scope = await scopeOf(meta);
-        if (scope !== null && to !== scope) throw refuse("an agent moves artifacts only into its own project", "denied");
+        if (!("all" in scope) && to !== ("project" in scope ? scope.project : PERSONAL)) throw refuse("an agent moves artifacts only into its own project", "denied");
         if (to === r.project) return shape(r);
         await store.move(r.project, to, r.id);
         db.prepare("UPDATE artifacts_items SET project = ?, updated_at = ? WHERE id = ?").run(to, now(), r.id);
@@ -572,7 +661,8 @@ export default {
         const r = await reach(i.id, meta);
         const { v, files } = await filesAt(r, i.version);
         const base = r.title.replace(/[^A-Za-z0-9 _-]+/g, "").trim().replace(/\s+/g, "-").slice(0, 80) || r.id;
-        if ((i.as || "page") === "page") return { name: `${base}.html`, type: "text/html", version: v.n, body: page({ title: r.title, format: r.format, files }).html };
+        // Opened from Downloads a page has no server headers, so it carries its own network ban (reviewer-2 L2).
+        if ((i.as || "page") === "page") return { name: `${base}.html`, type: "text/html", version: v.n, body: withMetaCsp(page({ title: r.title, format: r.format, files }).html) };
         const main = MAIN_FILE[/** @type {keyof typeof MAIN_FILE} */ (r.format)];
         return { name: `${base}${path.extname(main)}`, type: "text/plain", version: v.n, body: files[main], ...(r.format === "chart" ? { data: files[DATA_FILE] } : {}) };
       },
@@ -589,15 +679,18 @@ export default {
         const r = await reach(i.id, meta);
         if (r.archived_at) throw refuse(`${r.id} is archived; bring it back first`, "archived");
         if (!kv.get("public_on")) throw refuse("public links are off. Turn them on in Settings, or ask to turn them on", "public_off", { fix: { tool: "artifacts.public.set", input: { on: true } } });
+        const srv = serverState();
+        if (!srv.ok) throw refuse(`${NOT_YET} (${srv.why})`, "not_available");
         const version = i.version === undefined ? r.head : i.version === "latest" ? null : i.version;
         if (version !== null && !versionRow(r.id, version)) throw refuse(`${r.id} has versions 1 to ${r.head}`, "not_found");
         const ttl = EXPIRES[i.expires || "30d"];
         const expires_at = ttl === null ? null : now() + ttl;
         const old = /** @type {any} */ (db.prepare("SELECT * FROM artifacts_shares WHERE artifact = ?").get(r.id));
         const token = old ? old.token : crypto.randomBytes(18).toString("base64url");
-        await publish(r, token, version, expires_at);
         db.prepare(`INSERT INTO artifacts_shares (artifact, token, hash, version, created_at, expires_at) VALUES (?,?,?,?,?,?)
           ON CONFLICT(artifact) DO UPDATE SET version = excluded.version, expires_at = excluded.expires_at`).run(r.id, token, hashOf(token), version, now(), expires_at);
+        try { await publish(r, token, version, expires_at); }
+        catch (e) { if (!old) db.prepare("DELETE FROM artifacts_shares WHERE artifact = ?").run(r.id); throw e; }
         emit("artifact.shared", r, { shared_version: version ?? "latest", expires_at });
         return shape(row(r.id));
       },
@@ -614,41 +707,63 @@ export default {
     });
 
     ctx.tool("artifacts.public.status", {
-      description: "Whether public links are on, the address they use, and how many are live.",
+      description: "Whether public links are on, whether this box can serve them, the address they use, and how many are live.",
       input: { type: "object", properties: {} }, examples: [{}],
-      run: async () => ({ on: Boolean(kv.get("public_on")), base: kv.get("public_base") || null, serving: Boolean(server && serverPort), port: serverPort,
-        path: "/s/", live: /** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM artifacts_shares").get()).n }),
+      run: async () => {
+        const srv = serverState();
+        return { on: Boolean(kv.get("public_on")), available: srv.ok, ...(srv.ok ? { port: srv.port } : { why: `${NOT_YET} (${srv.why})` }),
+          base: kv.get("public_base") || null, path: "/s/", live: /** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM artifacts_shares").get()).n };
+      },
     });
 
     ctx.tool("artifacts.public.set", {
-      description: "Turn public links on or off. Off takes every public link down at once (they come back if turned on again before they expire). Vyre's network module sets base, the public address.",
-      input: { type: "object", properties: { on: { type: "boolean" }, base: { type: ["string", "null"] } } },
+      description: "Turn public links on or off. Off stops every public link at once (they answer again if turned back on before they expire). On needs this box's share server, running under its own user.",
+      input: { type: "object", required: ["on"], properties: { on: { type: "boolean" } } },
       examples: [{ on: true }],
       run: async (i, meta) => {
-        const mod = /^module:/.test(String((meta && meta.caller) || ""));
-        if (i.base !== undefined) {
-          if (!mod) throw refuse("the public address is set by Vyre's network setup", "denied");
-          if (i.base !== null && !/^https:\/\/[a-z0-9.-]+(?::\d{1,5})?$/.test(i.base)) throw refuse("base must be an https origin", "bad_input");
-          kv.set("public_base", i.base);
-        }
-        if (i.on !== undefined) {
-          if (!isPerson(meta) && !(meta && meta.asked) && !mod) throw refuse("turning public links on or off waits for the person's own ask", "not_asked");
-          kv.set("public_on", Boolean(i.on));
-          if (i.on) await startServer(); else stopServer();
-          ctx.events.emit("artifact-links.changed", { on: Boolean(i.on), port: serverPort, path: "/s/" });
-        }
-        return { on: Boolean(kv.get("public_on")), base: kv.get("public_base") || null, port: serverPort };
+        if (!isPerson(meta) && !(meta && meta.asked)) throw refuse("turning public links on or off waits for the person's own ask", "not_asked");
+        if (Object.keys(i).some(k => k !== "on")) throw refuse("public.set takes only on; the address is the network setup's", "bad_input");
+        const srv = serverState();
+        if (i.on && !srv.ok) throw refuse(`${NOT_YET} (${srv.why})`, "not_available");
+        kv.set("public_on", Boolean(i.on));
+        if (i.on) fs.rmSync(offFile, { force: true }); else fs.writeFileSync(offFile, "", { mode: 0o640 });
+        ctx.events.emit("artifact-links.changed", { on: Boolean(i.on), port: srv.ok ? srv.port : null, path: "/s/" });
+        return { on: Boolean(i.on), available: srv.ok, base: kv.get("public_base") || null };
+      },
+    });
+
+    ctx.tool("artifacts.public.base", {
+      description: "Vyre's network setup only: the public https address links use, or null.",
+      input: { type: "object", required: ["base"], properties: { base: { type: ["string", "null"] } } },
+      examples: [{ base: "https://studio.tail1234.ts.net:8443" }],
+      run: async (i, meta) => {
+        if (!(meta && meta.firstParty === true)) throw refuse("the public address is set by Vyre's network setup", "denied");
+        if (i.base !== null && !/^https:\/\/[a-z0-9.-]+(?::\d{1,5})?$/.test(i.base)) throw refuse("base must be an https origin", "bad_input");
+        kv.set("public_base", i.base);
+        return { base: i.base };
       },
     });
 
     ctx.tool("artifacts.capture.register", {
       description: "Sessions' own: the folder a thread saves artifacts in ($VYRE_ARTIFACTS_DIR). Files written at its top level become artifacts.",
-      input: { type: "object", required: ["thread", "dir"], properties: { thread: str, dir: str } },
-      examples: [{ thread: "t_1", dir: "/work/.vyre-artifacts/t_1" }],
-      run: async i => {
-        if (!path.isAbsolute(i.dir)) throw refuse("dir must be absolute", "bad_input");
-        db.prepare("INSERT OR REPLACE INTO artifacts_capture_dirs (thread, dir) VALUES (?, ?)").run(i.thread, i.dir);
-        return { thread: i.thread, dir: i.dir };
+      input: { type: "object", required: ["thread", "dir"], properties: { thread: str, dir: str, uid: { type: "integer", minimum: 0 } } },
+      examples: [{ thread: "t_1", dir: "/work/.vyre-artifacts/t_1", uid: 1001 }],
+      run: async (i, meta) => {
+        if (!(meta && meta.firstParty === true) && !isPerson(meta)) throw refuse("sessions registers capture folders", "denied");
+        const dir = String(i.dir);
+        // A real folder, named by its own real path (no link anywhere in it), and never inside
+        // vyred's home (reviewer-2 H1, L1). uid: the agent's own user; files by anyone else are ignored.
+        if (!path.isAbsolute(dir) || path.resolve(dir) !== dir || dir === path.parse(dir).root) throw refuse("dir must be an absolute folder path", "bad_input");
+        let home = path.resolve(ctx.paths.root);
+        try { home = fs.realpathSync(home); } catch {}
+        let real;
+        try { real = fs.realpathSync(dir); } catch { throw refuse(`${dir} does not exist`, "bad_input"); }
+        if (real !== dir) throw refuse("dir must not go through a link", "bad_input");
+        if (real === home || real.startsWith(home + path.sep)) throw refuse("dir can't be inside Vyre's own home", "denied");
+        const st = fs.lstatSync(dir, { bigint: true });
+        if (!st.isDirectory()) throw refuse(`${dir} is not a folder`, "bad_input");
+        db.prepare("INSERT OR REPLACE INTO artifacts_capture_dirs (thread, dir, dev, ino, uid) VALUES (?,?,?,?,?)").run(i.thread, dir, String(st.dev), String(st.ino), i.uid ?? null);
+        return { thread: i.thread, dir, uid: i.uid ?? null };
       },
     });
 
@@ -672,7 +787,6 @@ export default {
       async stop() {
         clearInterval(sweeper);
         if (typeof offWrote === "function") offWrote();
-        stopServer();
       },
     };
   },

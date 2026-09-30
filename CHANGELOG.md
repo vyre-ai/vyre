@@ -14,9 +14,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   version (`artifacts.capture.register`, `floor.wrote`).
 - Public links, off until you turn them on: `artifacts.share` publishes one version, with nothing
   about the project, agent or thread, and `artifacts.unshare` stops it at once. Links expire (30
-  days by default). A separate share server with no way back into Vyre answers them, under Node's
-  permission model. A share that looks like it holds a key is refused. Sharing counts as posting: an
-  agent's own share waits for you.
+  days by default). A separate share server with no way back into Vyre answers them, under its own
+  user and Node's permission model: public links stay off until Vyre sees it running as a user
+  that isn't Vyre's. A share that looks like it holds a key is refused. Sharing counts as posting:
+  an agent's own share waits for you, and an agent's later edit never goes public by itself.
+- An agent with no project, or a module you added, reaches only the artifacts it made. Capture opens
+  files without following links and checks the folder and the file's owner, so a swapped link is
+  never read.
 - Artifact pages, private or public, always run at an opaque origin (a CSP `sandbox` header), with
   no network, no forms and no remote images.
 - `lib/secret-text`: finds vendor key shapes in text, without repeating them.

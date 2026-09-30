@@ -135,6 +135,17 @@ table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}th,td{bo
 blockquote{margin:0;padding-left:12px;border-left:3px solid var(--rule);color:var(--text2)}hr{border:0;border-top:1px solid var(--rule)}
 section.slide{border:1px solid var(--rule);border-radius:12px;padding:24px;margin:0 0 16px}img.svg{max-width:100%;height:auto}`;
 
+/** The network ban a page carries itself, for a copy opened with no server headers (a download).
+ * A meta tag can't set `sandbox`, but it does stop every request out. @param {string} html */
+export function withMetaCsp(html) {
+  const tag = `<meta http-equiv="Content-Security-Policy" content="${BASE.join("; ")}; script-src 'unsafe-inline'">`;
+  const head = /<head[^>]*>/i.exec(html);
+  if (head) return html.slice(0, head.index + head[0].length) + tag + html.slice(head.index + head[0].length);
+  const doctype = /^\s*<!doctype[^>]*>/i.exec(html);
+  if (doctype) return `${doctype[0]}<head>${tag}</head>${html.slice(doctype[0].length)}`;
+  return `<!doctype html><head>${tag}</head>${html}`;
+}
+
 /** @param {string} title @param {string} body */
 const shell = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>${esc(title)}</title><style>${STYLE}</style></head><body><main>${body}</main></body></html>`;
 
