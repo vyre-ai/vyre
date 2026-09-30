@@ -859,3 +859,22 @@ test("cdpmux: a 'fill' client ignores agentName entirely -- no browser context, 
   assert.equal(seenCall.params.browserContextId, undefined, "no browserContextId injected for a fill client");
   assert.equal(fake.seen.filter(s => s.method === "Target.createBrowserContext").length, 0, "a fill client never triggers a browser-context creation");
 });
+
+test("cdpmux: a call sent while an agent's browser context is still being made waits for it, so its Target.createTarget lands in that context, never the shared one", async () => {
+  const { mux, fake } = world();
+  // Chrome answers Target.createBrowserContext late: the browser session is up and the context is not.
+  const real = mux.call.bind(mux);
+  mux.call = (method, params, sid) => (method === "Target.createBrowserContext" ? tick(80).then(() => real(method, params, sid)) : real(method, params, sid));
+  const a = client(mux, "agent", "alice-1", "alice");
+  // The window itself: the browser session is up and the context is not yet made.
+  const inner = [...mux.clients][0];
+  for (let i = 0; i < 100 && !inner.browserSid; i++) await tick(2);
+  assert.ok(inner.browserSid && !inner.browserContextId, "the browser session is open and the context is still being made");
+  const made = a.call("Target.createTarget", { url: "about:blank#alice" });
+  const { result } = await made;
+  const info = [...fake.targets.values()].find(t => t.targetId === result.targetId);
+  assert.ok(info && info.browserContextId && info.browserContextId !== "ctx-default", `created in the agent's own context, not the shared default one: ${JSON.stringify(info)}`);
+  assert.equal(info.browserContextId, inner.browserContextId, "the context the mux made for this agent");
+  const listed = (await a.call("Target.getTargets")).result.targetInfos.map(t => t.targetId);
+  assert.ok(listed.includes(result.targetId), "and the agent sees its own target");
+});

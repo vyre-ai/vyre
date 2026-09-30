@@ -66,6 +66,7 @@
     "!**/*.app/**",
     "!**/DerivedData/**",
     "!local/capsule/native/Tests/**",
+    "!local/capsule/native-win/**",
     "!**/.DS_Store",
     "!**/testing.js",
     "!**/testing/**",

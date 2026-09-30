@@ -103,6 +103,10 @@ test("setupOverrides: only a plain wss relay and a plain https install URL are t
   // Elsewhere, only Vyre's own hosts (or a runner's loopback): an arbitrary https host is not an install line.
   assert.deepEqual(setupOverrides({ installUrl: "https://evil.example.com/i", relay: "wss://evil.example.com" }, "staging.vyre-site.pages.dev"), {});
   assert.deepEqual(setupOverrides({ installUrl: "https://vyre.run.evil.example.com/i" }, "x.pages.dev"), {}, "a suffix trick");
+  // pages.dev and workers.dev are shared: only the site's own project host counts, never another name on them.
+  assert.deepEqual(setupOverrides({ installUrl: "https://evil.pages.dev/i", relay: "wss://evil.workers.dev" }, "staging.vyre-site.pages.dev"), {});
+  assert.deepEqual(setupOverrides({ installUrl: "https://evilvyre-site.pages.dev/i" }, "staging.vyre-site.pages.dev"), {}, "not a dot boundary");
+  assert.deepEqual(setupOverrides({ installUrl: "https://feature-x.vyre-site.pages.dev/i" }, "feature-x.vyre-site.pages.dev"), { installUrl: "https://feature-x.vyre-site.pages.dev/i" });
   assert.deepEqual(setupOverrides({ relay: "ws://127.0.0.1:45123", installUrl: "http://localhost:45124/i" }, "127.0.0.1"), { relay: "ws://127.0.0.1:45123", installUrl: "http://localhost:45124/i" });
   for (const bad of [{ relay: "ws://x.example.com" }, { relay: "wss://x.example.com/path" }, { relay: "wss://x.example.com;evil" }, { relay: "https://x.example.com" },
     { relay: "ws://evil.example.com" }, { installUrl: "http://evil.example.com/i" }, { installUrl: "http://127.0.0.1@evil.example.com/i" }, { installUrl: "https://u:p@x.example.com/i" }, { installUrl: "https://x.example.com/i?a=1" }, { installUrl: "https://x.example.com/i#f" },

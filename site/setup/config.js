@@ -3,7 +3,8 @@
 // scripts/stage-site.sh writes. Production never takes it: on vyre.run and www.vyre.run the file is ignored whatever it says, so
 // nothing put on the production origin can change the install line the person pastes into a shell. Elsewhere the values are checked:
 // a relay must be a plain wss:// host (with an optional port), the install URL a plain https:// address with no login, query or
-// fragment, and both must be on a host under vyre.run or pages.dev (relay: or workers.dev too); anything else is ignored. A test
+// fragment, and must be on a host under vyre.run (the install URL may also be on vyre-site.pages.dev, the site's own project, and its preview
+// subdomains, never another pages.dev name); anything else is ignored. A test
 // runner's own machine is the one other place: ws:// to, and http:// on, a loopback address (127.0.0.1, localhost or [::1]).
 
 const PRODUCTION = new Set(["vyre.run", "www.vyre.run"]);
@@ -19,13 +20,13 @@ export function setupOverrides(j, hostname = "") {
   if (typeof o.relay === "string") {
     const w = /^wss:\/\/([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?)(:\d{1,5})?$/.exec(o.relay);
     const l = /^ws:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d{1,5})?$/.exec(o.relay);
-    if ((w && under(w[1].toLowerCase(), ["vyre.run", "pages.dev", "workers.dev"])) || l) out.relay = o.relay;
+    if ((w && under(w[1].toLowerCase(), ["vyre.run"])) || l) out.relay = o.relay;
   }
   if (typeof o.installUrl === "string" && o.installUrl.length <= 300) {
     try {
       const u = new URL(o.installUrl);
       const host = u.hostname.toLowerCase();
-      const ok = (u.protocol === "https:" && !/^[\d.]+$|^\[/.test(host) && under(host, ["vyre.run", "pages.dev"])) || (u.protocol === "http:" && LOOPBACK.test(host));
+      const ok = (u.protocol === "https:" && !/^[\d.]+$|^\[/.test(host) && under(host, ["vyre.run", "vyre-site.pages.dev"])) || (u.protocol === "http:" && LOOPBACK.test(host));
       if (ok && !u.username && !u.password && !u.search && !u.hash) out.installUrl = u.href;
     } catch { /* not a URL */ }
   }
