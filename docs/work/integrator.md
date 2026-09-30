@@ -42,6 +42,7 @@ Never the test box (now the user's real server) and never the user's Mac. Tests 
 - 30 Sep: box/Dockerfile and compose.yml have the per-account uids 2000-2063 (0700 HOMEs, vyre-accounts volume) and the uid 3000 OUTPUT REJECT (158b7dfa).
 
 - 30 Sep: LANDED platform work/platform-contract 12a09627 on stage/0.2 as merge 795a00b7 (CI run 36667526975: node 22 and 24, box-image, sessions-sdk, capsule-mac green; two single-test flakes, computerd CDP identity on 22 and upgrade.test.js on 24, each green on rerun, neither touches platform files). Next in the order: tailnet-02, sessions-02, launch-onboard-fix.
+- 30 Sep: tailnet-02 NOT landed. A test merge through 24fb61c2 plus c97dbf01 was red (15 failures), and the branch's own CI at c97dbf01 is red too (sdk types miss declaredSetupTools and coreKeys, tailnet.test.js:211, ten onboard tests). Stage reset to 795a00b7. Sent to tailnet; asked reviewer-2 about 34ccec9b, which has no clearance.
 
 ## Doing
 
