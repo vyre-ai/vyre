@@ -61,7 +61,7 @@ const USAGE = "vyre update [--check] [--channel stable|beta] [--to <version>] [-
  * @typedef {{ tty: boolean, ask(q: string): Promise<string> }} IO
  * @typedef {{ home?: string, api?: string, npm?: string, repo?: string, build?: () => import("../../daemon/build.js").Build,
  *   bring?: typeof bring, waitFor?: typeof waitFor, backup?: typeof backup, restore?: typeof restore, stop?: typeof stop,
- *   call?: typeof call, io?: IO, supervisor?: string, window?: number, key?: string }} Deps
+ *   call?: typeof call, io?: IO, supervisor?: string, window?: number, key?: string, pkg?: string }} Deps
  */
 
 /** Fetch with a time limit, as the one client Vyre is to GitHub. */
@@ -228,7 +228,7 @@ export async function update(args, deps = {}) {
     bring: deps.bring || bring, waitFor: deps.waitFor || waitFor,
     backup: deps.backup || backup, restore: deps.restore || restore, stop: deps.stop || stop, call: deps.call || call,
     io: deps.io || terminal, window: deps.window ?? 60_000,
-    key: deps.key || RELEASE_KEY, allowUnsigned: Boolean(flags["allow-unsigned"]),
+    pkg: deps.pkg || REPO, key: deps.key || RELEASE_KEY, allowUnsigned: Boolean(flags["allow-unsigned"]),
   };
   if (flags.rollback) return rollback(ctx);
 
@@ -283,6 +283,8 @@ async function install(ctx, releases, target, channel) {
   const { home, say, current } = ctx;
   const dir = path.join(home, "releases", target.version);
   let meta, tgz;
+  // Only a release whose signature verified is published for the phone's shell check; --allow-unsigned installs one, and stops there.
+  let releaseSigned = false;
   try {
     const got = await fetchMeta(target, dir);
     meta = got.meta;
@@ -306,7 +308,7 @@ async function install(ctx, releases, target, channel) {
         return fail(`${problem}; nothing was installed`, { code: "unsigned", next: "vyre update --allow-unsigned installs it anyway" });
       }
       ctx.say(beacon(`  WARNING: ${problem}. Installing it anyway because you passed --allow-unsigned: nothing proves this release came from Vyre.`));
-    } else say(dim("  signature checked against Vyre's release key"));
+    } else { releaseSigned = true; say(dim("  signature checked against Vyre's release key")); }
     tgz = await fetchChecked(target, "vyre.tgz", dir, got.sums);
     await fetchShellFiles(target, dir, got.sums);
   } catch (e) {
@@ -356,7 +358,7 @@ async function install(ctx, releases, target, channel) {
   if (!h) return undo(`vyred did not report ${target.version} on /v1/health within ${Math.round(ctx.window / 1000)}s`, true);
 
   // Healthy: from here on nothing restores the data by itself.
-  publishRelease(dir);
+  if (releaseSigned) publishRelease(dir, ctx.pkg);
   const removed = prune(home, target.version);
   const fresh = await whatsNew(ctx, current);
   if (json()) return emit({ updated: true, from: current, to: target.version, channel, backup: file, removed, new: fresh });

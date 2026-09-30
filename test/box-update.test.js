@@ -703,3 +703,43 @@ test("box update: the release's SHA256SUMS, signature and shell.json are put in 
   assert.equal(/** @type {any} */ ((await p.run(["update"], {}))).code, 0);
   assert.deepEqual(fs.readdirSync(path.join(p.U, "status", "release")).sort(), ["SHA256SUMS", "SHA256SUMS.sig"]);
 });
+
+test("publish-release: root copies without following links and publishes only when SHA256SUMS.sig verifies over the copy and shell.json is the listed file", async t => {
+  const b = await box(t, { releases: [] });
+  units_dirs(b);
+  const src = path.join(b.DIR, "src-rel");
+  fs.mkdirSync(src);
+  const sums = Buffer.from(`${sha("shell")}  shell.json\n${sha("tgz")}  vyre.tgz\n`);
+  const write = (/** @type {crypto.KeyObject|null} */ key, shell = "shell") => {
+    fs.rmSync(src, { recursive: true, force: true }); fs.mkdirSync(src);
+    fs.writeFileSync(path.join(src, "SHA256SUMS"), sums);
+    if (key) fs.writeFileSync(path.join(src, "SHA256SUMS.sig"), signSums(sums, key));
+    fs.writeFileSync(path.join(src, "shell.json"), shell);
+  };
+  const published = () => (fs.existsSync(path.join(b.U, "status", "release")) ? fs.readdirSync(path.join(b.U, "status", "release")).sort() : []);
+  // Unsigned, and signed by another key: nothing is published.
+  write(null);
+  let r = /** @type {any} */ (await b.run(["publish-release", src], {}));
+  assert.deepEqual(published(), []);
+  assert.match(r.out, /SHA256SUMS\.sig is missing or does not verify/);
+  write(OTHER.privateKey);
+  await b.run(["publish-release", src], {});
+  assert.deepEqual(published(), []);
+  // A shell.json that is not the one the signed list has is left out, the signed files still go.
+  write(RELEASE.privateKey, "not the signed shell");
+  r = /** @type {any} */ (await b.run(["publish-release", src], {}));
+  assert.deepEqual(published(), ["SHA256SUMS", "SHA256SUMS.sig"]);
+  assert.match(r.out, /shell\.json is not the file the signed SHA256SUMS lists/);
+  // Signed and right: all three.
+  write(RELEASE.privateKey);
+  await b.run(["publish-release", src], {});
+  assert.deepEqual(published(), ["SHA256SUMS", "SHA256SUMS.sig", "shell.json"]);
+  // A link in the caller's folder is copied as a link and refused: a file only root can read is never published through it.
+  fs.rmSync(path.join(b.U, "status", "release"), { recursive: true });
+  const secret = path.join(b.DIR, "root-only.txt");
+  fs.writeFileSync(secret, "secret\n");
+  write(RELEASE.privateKey);
+  fs.rmSync(path.join(src, "SHA256SUMS")); fs.symlinkSync(secret, path.join(src, "SHA256SUMS"));
+  await b.run(["publish-release", src], {});
+  assert.deepEqual(published(), [], "nothing was published through a link");
+});
