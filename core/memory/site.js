@@ -98,10 +98,9 @@ export function register(ctx, { denied }) {
     q.forgot.run(key, JSON.stringify(rec), now()); q.gone.run(key, now()); q.del.run(key); event(key, why, item, null);
     // What was said about it is forgotten too: an answer that quoted the site stays in the answers log and in a correction of it.
     const like = `%"site:${key.replace(/[%_]/g, "")}:%`;
-    try {
-      db.prepare("UPDATE memory_iq_fixes SET old = '[forgotten]', text = CASE WHEN action = 'replace' THEN text ELSE NULL END WHERE answer IN (SELECT id FROM memory_iq_answers WHERE turns LIKE ?)").run(like);
-      db.prepare("UPDATE memory_iq_answers SET answer = '[forgotten]' WHERE turns LIKE ?").run(like);
-    } catch { /* the answers log is memory's own; not there yet */ }
+    // Each in its own try: the answers log is memory's own and may lack a table, and one failing must not skip the other.
+    try { db.prepare("UPDATE memory_iq_fixes SET old = '[forgotten]', text = CASE WHEN action = 'replace' THEN text ELSE NULL END WHERE answer IN (SELECT id FROM memory_iq_answers WHERE turns LIKE ?)").run(like); } catch { /* no fixes table */ }
+    try { db.prepare("UPDATE memory_iq_answers SET answer = '[forgotten]' WHERE turns LIKE ?").run(like); } catch { /* no answers table */ }
     return 1;
   };
   /** Bring back a record forgotten in the last 24 hours. @param {string} key */
