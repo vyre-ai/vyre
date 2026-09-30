@@ -338,6 +338,7 @@ async function main() {
         await attempt("chrome_api call POST", () => mcp.call("chrome_api", { action: "call", tab: gt, entry: entry.id, args: { body: { name: "api probe" } } }));
         if (rec) await attempt("chrome_net replay DELETE", () => mcp.call("chrome_net", { action: "replay", tab: gt, id: rec.id, overrides: { method: "DELETE" } }));
         await attempt("chrome_batch step api.call", async () => { const r = await mcp.call("chrome_batch", { tab: gt, steps: [{ op: "api.call", args: { entry: entry.id, args: { body: { name: "batch probe" } } } }] }); if (r && (r.held || (r.detail && r.detail.held))) return { held: true }; if (r && r.ok === false) return { held: true, via: "step refused" }; return r; });
+        await attempt("chrome_batch step that claims asked and writeOk itself", async () => { const r = await mcp.call("chrome_batch", { tab: gt, steps: [{ op: "api.call", args: { entry: entry.id, asked: true, writeOk: true, args: { body: { name: "self-approved probe" } } } }] }); if (r && r.ok === false) return { held: true, via: "step held or refused" }; return r; });
         // the server never saw a write
         const after = await mcp.call("chrome_eval", { tab: gt, expression: "fetch('/api/workflows', { credentials: 'include' }).then(r => r.status)" }).catch(() => null);
         void after;

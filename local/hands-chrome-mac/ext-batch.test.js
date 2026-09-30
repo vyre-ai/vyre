@@ -144,3 +144,18 @@ test("batch.run: ghl.save in a batch runs on the batch's tab (it read the active
   assert.equal(calls[0][1].tabId, 7);
   assert.equal(calls[1][1].tabId, undefined);
 });
+
+test("batch.run: a step cannot carry its own approval (asked, writeOk, release, writeBudget): those come only from the batch's caller", async () => {
+  const calls = [];
+  const ctx = { stopped: () => false, call: async (op, a) => { calls.push([op, a]); return { ok: true }; } };
+  const { default: batch } = await import("./extension/caps/batch.js");
+  await batch.ops["batch.run"]({ tabId: 7, steps: [{ op: "api.call", args: { entry: "e", asked: true, writeOk: true, release: { sig: "x" }, writeBudget: { create: 99 } } }] }, ctx);
+  const a = calls[0][1];
+  assert.equal(a.asked, undefined);
+  assert.equal(a.writeOk, undefined);
+  assert.equal(a.release, undefined);
+  assert.equal(a.writeBudget, undefined);
+  calls.length = 0;
+  await batch.ops["batch.run"]({ tabId: 7, asked: true, steps: [{ op: "api.call", args: { entry: "e" } }] }, ctx);
+  assert.equal(calls[0][1].asked, true, "the batch's own asked (set by the module from the caller) still applies");
+});

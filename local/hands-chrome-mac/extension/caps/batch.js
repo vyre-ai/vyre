@@ -67,6 +67,8 @@ export default {
         if (step.op === "batch.run") { halt("a batch cannot contain a batch", "bad_request"); if (stopOnError) break; continue; }
         try {
           const stepArgs = subst(step.args || {}, results);
+          // A step is the model's text. The approvals (asked, writeOk, release, the module's write budget) come from the batch's own caller, never from a step.
+          for (const k of ["asked", "writeOk", "release", "writeBudget"]) delete stepArgs[k];
           // A page acts on whatever a person's last click just caused: look for the control for a moment instead of failing on the first
           // look (a table that fills after its section opens). Set `wait` on a step, or `wait: false` on the batch, to change it.
           const wants = (step.op === "page.act" || step.op === "page.fill") && stepArgs.wait === undefined && args.wait !== false;
