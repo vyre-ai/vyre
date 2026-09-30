@@ -20,6 +20,8 @@ export const IDLE_MS = 30_000;
 export const BEAT_MS = 2000;
 /** An open question is raised again after this long. */
 export const REMIND_MS = 120_000;
+/** A question nobody answered stops owning the run after this long (the act stays held and can still be answered). */
+export const WAIT_MAX_MS = 10 * 60_000;
 /** 12 icon frames at 5 frames a second. */
 const FRAMES = 12;
 export const FRAME_MS = 200;
@@ -112,7 +114,8 @@ export const pillScript = st => `(() => {
   document.addEventListener("keydown", e => { if (e.key === "Escape" && window.__vyrePill && window.__vyrePill.host.isConnected) stop("esc"); }, true);
   (document.body || document.documentElement).appendChild(host);
   set(ST);
-  window.__vyrePill = { host, set };
+  const rectOf = label => { const b = [...box.querySelectorAll("button")].find(x => x.textContent === label); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+  window.__vyrePill = { host, set, rectOf };
   return true;
 })()`;
 
@@ -166,6 +169,7 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
   let badgeOwned = () => false;
   const bound = new Set();
   /** @type {any} */ let remind = null;
+  /** @type {any} */ let expire = null;
   let asked = 0;
   /** @param {{ title: string, message: string }} n */
   function notify(n) {
@@ -234,21 +238,55 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
     pulse = weak(setI(() => { frame = (frame + 1) % FRAMES; void safe(() => a.setIcon({ path: { 16: `frames/working-${String(frame).padStart(2, "0")}.png` } })); }, FRAME_MS));
   }
 
-  /** The pill in a tab's top page, through the debugger the agent already holds there. @param {number} tabId */
+  /**
+   * Everything Vyre draws in a page runs in an ISOLATED WORLD (its own JavaScript globals, the page's DOM): a website cannot see window.__vyrePill, cannot
+   * call or overwrite the stop and login bindings (they exist only in this world, by executionContextName), and cannot read the closed shadow root.
+   * @type {Map<number, { frameId: string, contextId: number }>}
+   */
+  const worlds = new Map();
+  const WORLD = "vyre-ui";
+  /** Run a script in the tab's isolated world, making the world on first use and again after a navigation. @param {number} tabId @param {string} expression @param {boolean} [withBindings] */
+  async function inWorld(tabId, expression, withBindings = true) {
+    if (!cdp || !cdp.attached().includes(tabId)) return undefined;
+    const run = async (/** @type {number} */ contextId) => cdp.send(tabId, "Runtime.evaluate", { expression, contextId, returnByValue: true });
+    const make = async () => {
+      const t = await cdp.send(tabId, "Page.getFrameTree", {});
+      const frameId = t && t.frameTree && t.frameTree.frame && t.frameTree.frame.id;
+      if (!frameId) throw new Error("no frame");
+      const w = await cdp.send(tabId, "Page.createIsolatedWorld", { frameId, worldName: WORLD, grantUniveralAccess: false });
+      worlds.set(tabId, { frameId, contextId: w.executionContextId });
+      return w.executionContextId;
+    };
+    if (withBindings && !bound.has(tabId)) {
+      bound.add(tabId);
+      for (const name of ["vyreStop", "vyreLogin"]) await safe(() => cdp.send(tabId, "Runtime.addBinding", { name, executionContextName: WORLD }));
+    }
+    const have = worlds.get(tabId);
+    try { return await run(have ? have.contextId : await make()); }
+    catch { return safe(async () => run(await make())); }
+  }
+  /** The pill in a tab's top page. @param {number} tabId */
   async function pill(tabId) {
-    if (!run || !cdp || !cdp.attached().includes(tabId)) return;
-    if (!bound.has(tabId)) { bound.add(tabId); await safe(() => cdp.send(tabId, "Runtime.addBinding", { name: "vyreStop" })); await safe(() => cdp.send(tabId, "Runtime.addBinding", { name: "vyreLogin" })); }
-    await safe(() => cdp.send(tabId, "Runtime.evaluate", { expression: pillScript(view()), returnByValue: true }));
+    if (!run) return;
+    await safe(() => inWorld(tabId, pillScript(view())));
   }
   async function unpill(/** @type {number} */ tabId) {
-    if (!cdp || !cdp.attached().includes(tabId)) return;
-    await safe(() => cdp.send(tabId, "Runtime.evaluate", { expression: pillGone, returnByValue: true }));
+    await safe(() => inWorld(tabId, pillGone));
+    if (cdp && cdp.attached().includes(tabId)) for (const name of ["vyreStop", "vyreLogin"]) await safe(() => cdp.send(tabId, "Runtime.removeBinding", { name }));
+    bound.delete(tabId); worlds.delete(tabId);
   }
+  // Only the isolated world's own buttons reach these, and only these words are believed, whatever else a payload says.
+  const STOP_VIA = new Set(["pill", "esc", "pause"]);
+  const LOGIN_ACT = new Set(["continue", "skip"]);
   if (cdp && cdp.on) cdp.on((/** @type {number} */ tabId, /** @type {string} */ method, /** @type {any} */ p) => {
-    if (method === "Runtime.bindingCalled" && p && p.name === "vyreStop" && run) { const via = String(p.payload || "pill"); if (run) run.paused = via === "pause" ? "pause" : "stop"; onStop(via); void paintBadge(); paintIcon(); for (const t of run ? run.tabs : []) void pill(t); }
-    if (method === "Runtime.bindingCalled" && p && p.name === "vyreLogin" && run && run.waiting) onLogin(String(p.payload || "continue"), tabId);
+    if (method !== "Runtime.bindingCalled" || !p || !run) return;
+    const w = worlds.get(tabId);
+    if (!w || p.executionContextId !== w.contextId) return;
+    const payload = String(p.payload || "");
+    if (p.name === "vyreStop" && STOP_VIA.has(payload)) { run.paused = payload === "pause" ? "pause" : "stop"; onStop(payload); void paintBadge(); paintIcon(); for (const t of run.tabs) void pill(t); }
+    else if (p.name === "vyreLogin" && run.waiting && LOGIN_ACT.has(payload)) onLogin(payload, tabId);
   });
-  if (cdp && cdp.onDetach) cdp.onDetach((/** @type {number} */ tabId) => bound.delete(tabId));
+  if (cdp && cdp.onDetach) cdp.onDetach((/** @type {number} */ tabId) => { bound.delete(tabId); worlds.delete(tabId); });
 
   /** Put a tab Vyre opened, or took over while it was not in a group of the person's, into the Vyre group. @param {number} tabId */
   async function group(tabId) {
@@ -303,7 +341,7 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
       const last = [...done.tabs].pop();
       /** @type {Record<string, number>} */ const counts = {};
       for (const c of done.changes) counts[c.kind || "change"] = (counts[c.kind || "change"] || 0) + 1;
-      if (last !== undefined && cdp.attached().includes(last)) await safe(() => cdp.send(last, "Runtime.evaluate", { expression: cardScript({ counts, items: done.changes, steps: done.steps }), returnByValue: true }));
+      if (last !== undefined) await safe(() => inWorld(last, cardScript({ counts, items: done.changes, steps: done.steps }), false));
     }
     // The group stays, titled "Vyre, done", for the person to look at; it goes back to plain "Vyre" on the next run. Nothing ever closes a tab.
     try { onFinish({ steps: done.steps, of: done.of, startedAt: done.startedAt, endedAt: now(), tabs: [...done.tabs], changes: done.changes, failed: done.failed }); } catch { /* the card must not break the shell */ }
@@ -315,7 +353,8 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
     return undefined;
   };
 
-  return {
+  /** @type {any} */ let this_ = null;
+  const api = {
     /** Who owns the badge (the connection diagnosis does, while failing). @param {() => boolean} f */
     badgeOwnedBy(f) { badgeOwned = f; },
     /** A run is on. */
@@ -371,7 +410,7 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
       if (s.stopped !== undefined) run.paused = s.stopped ? (s.stopped === "pause" ? "pause" : "stop") : null;
       if (typeof s.of === "number" && s.of > 0) run.of = s.of;
       if (typeof s.label === "string") run.label = s.label.slice(0, 120);
-      if (s.waiting !== undefined) { run.waiting = s.waiting ? String(s.waiting).slice(0, 100) : null; if (run.waiting) { if (idle) { clearT(idle); idle = null; } } else arm(); }
+      if (s.waiting !== undefined) { run.waiting = s.waiting ? String(s.waiting).slice(0, 100) : null; if (expire) { clearT(expire); expire = null; } if (run.waiting) { const w0 = run.waiting; expire = weak(setT(() => { if (run && run.waiting === w0) void this_.state({ waiting: null }); }, WAIT_MAX_MS)); } if (run.waiting) { if (idle) { clearT(idle); idle = null; } } else arm(); }
       if (!run.waiting && !idle) arm();
       await paintBadge();
       paintIcon();
@@ -380,7 +419,14 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
     /** A change the run made (for the finish card): one line, and where to open it. @param {{ what: string, url?: string, undo?: any }} c */
     change(c) { if (run) run.changes.push({ ...c, at: now() }); },
     finish,
+    /** The centre of one of the pill's own buttons, so the trusted side can press it with a real click (the proof that the button reaches the binding). @param {number} tabId @param {string} label */
+    async buttonPoint(tabId, label) {
+      const r = await inWorld(tabId, `(() => { const p = window.__vyrePill; return p && p.rectOf ? p.rectOf(${JSON.stringify(String(label))}) : null; })()`);
+      return r && r.result ? r.result.value : null;
+    },
     /** For tests. */
     groups: () => new Map(groups),
   };
+  this_ = api;
+  return api;
 }

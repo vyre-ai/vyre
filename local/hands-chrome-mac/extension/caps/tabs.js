@@ -125,10 +125,22 @@ export default {
     "tabs.presence": async (args, ctx) => {
       const tabId = typeof args.tabId === "number" ? args.tabId : undefined;
       const p = ctx.presence;
-      const out = { active: !!(p && p.active()), label: p ? p.label() : "", group: null, pill: null };
+      const out = { active: !!(p && p.active()), label: p ? p.label() : "", group: null, pill: null, card: null, exposedToPage: null };
       if (tabId !== undefined) {
         try { const t = await ctx.tabs.get(tabId); if (t && t.groupId != null && t.groupId !== -1) { const g = chrome.tabGroups ? await chrome.tabGroups.get(t.groupId) : null; out.group = g ? { id: g.id, title: g.title, color: g.color, collapsed: g.collapsed } : { id: t.groupId }; } } catch { /* no groups API */ }
-        try { const r = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: "!!(window.__vyrePill && window.__vyrePill.host && window.__vyrePill.host.isConnected)", returnByValue: true }); out.pill = !!(r && r.result && r.result.value); } catch { /* not attached */ }
+        try {
+          const r = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: "JSON.stringify({ pill: !!document.querySelector('vyre-pill'), card: !!document.querySelector('vyre-card'), stop: typeof window.vyreStop, login: typeof window.vyreLogin, state: typeof window.__vyrePill })", returnByValue: true });
+          const v = JSON.parse(r && r.result ? r.result.value : "{}");
+          out.pill = !!v.pill; out.card = !!v.card;
+          // What a website's own script can see of Vyre: nothing should be there.
+          out.exposedToPage = { vyreStop: v.stop !== "undefined", vyreLogin: v.login !== "undefined", pillState: v.state !== "undefined" };
+        } catch { /* not attached */ }
+        // A real mouse click on one of the pill's own buttons, to prove the button reaches the stop. The same as the person clicking it.
+        if (args.press && p && p.buttonPoint) {
+          const pt = await p.buttonPoint(tabId, String(args.press));
+          out.pressed = !!pt;
+          if (pt) for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type, x: pt.x, y: pt.y, button: "left", clickCount: 1 });
+        }
       }
       return out;
     },

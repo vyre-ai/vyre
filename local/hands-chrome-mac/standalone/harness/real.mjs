@@ -240,8 +240,20 @@ async function main() {
         return { refused: true };
       });
 
+      // A script cannot write with the page's login by submitting a form either.
+      await stage("eval_form_submit_refused", async () => {
+        const c = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/checkout?form=1`, openIfMissing: true }); const ct = c.id ?? (c.tab && c.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: ct, url: `${fixture.url}/checkout?form=1` }); await sleep(300);
+        let err = /** @type {any} */ (null);
+        try { await mcp.call("chrome_eval", { tab: ct, expression: "(() => { const f = document.querySelector('form'); f.method = 'post'; f.action = '/api/form-probe'; f.requestSubmit(); return 'submitted'; })()" }); } catch (e) { err = e; }
+        if (!err || !/POST/.test(String(err.message))) throw new Error("a script's form submit was not refused: " + String(err && err.message).slice(0, 200));
+        const r2 = await mcp.call("chrome_tabs", { action: "presence", tab: ct });
+        return { refused: String(err.message).slice(0, 120), pageStillAt: r2 && r2.pill !== undefined };
+      });
+
       // What the person sees: Vyre's tab is in a group named Vyre, the badge run is on, a pill is in the page (hidden from snapshots), and the pill's Stop stops the run.
       await stage("presence", async () => {
+        await mcp.call("chrome_summary", {}); // end whatever an earlier stage left open (a held send nobody answered still owns the badge)
         const p0 = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/checkout?presence=1`, openIfMissing: true }); const pt = p0.id ?? (p0.tab && p0.tab.id);
         await mcp.call("chrome_tabs", { action: "navigate", tab: pt, url: `${fixture.url}/checkout?presence=1` }); await sleep(300);
         await mcp.call("chrome_act", { tab: pt, selector: { identifier: "apply-promo" }, kind: "click" });
@@ -253,13 +265,21 @@ async function main() {
         if (!st.pill) throw new Error("no pill in the page");
         const snap = await mcp.call("chrome_snapshot", { tab: pt });
         if (/vyre-pill|Esc to stop|Step \d+ of/i.test(JSON.stringify(snap))) throw new Error("the snapshot shows the pill");
-        // The pill's Stop is a binding the page calls; the run must halt.
-        await mcp.call("chrome_eval", { tab: pt, expression: "window.vyreStop('pill')", asked: true }).catch(() => {});
+        // A hostile page: it tries to stop the run, to reach Vyre's state, to show its own words in the pill and to swallow Esc. None of it may work.
+        if (st.exposedToPage && (st.exposedToPage.vyreStop || st.exposedToPage.vyreLogin || st.exposedToPage.pillState)) throw new Error("the page can see Vyre's bindings or state: " + JSON.stringify(st.exposedToPage));
+        await mcp.call("chrome_eval", { tab: pt, expression: "(() => { let r = []; try { window.vyreStop('pill'); r.push('stop-called'); } catch (e) { r.push('no-stop'); } try { window.__vyrePill.set('hacked'); r.push('set-called'); } catch (e) { r.push('no-set'); } document.addEventListener('keydown', e => e.stopImmediatePropagation(), true); return r.join(','); })()", asked: true }).catch(() => {});
+        const still = await mcp.call("chrome_act", { tab: pt, selector: { identifier: "apply-promo" }, kind: "click" });
+        if (still.ok === false) throw new Error("a page calling vyreStop stopped the run: " + JSON.stringify(still).slice(0, 200));
+        const after = await mcp.call("chrome_tabs", { action: "presence", tab: pt });
+        if (/hacked/.test(JSON.stringify(after)) || !/Step \d+/.test(after.label || "")) throw new Error("the page changed what the pill says: " + JSON.stringify(after).slice(0, 200));
+        // The pill's own Stop button, pressed with a real click, halts the run (even with a page listener swallowing keys).
+        const pressed = await mcp.call("chrome_tabs", { action: "presence", tab: pt, press: "Pause" });
+        if (!pressed.pressed) throw new Error("no Pause button in the pill to press: " + JSON.stringify(pressed).slice(0, 200));
         let halted = false;
         for (let i = 0; i < 20 && !halted; i++) { try { await mcp.call("chrome_act", { tab: pt, selector: { identifier: "apply-promo" }, kind: "click" }); } catch (e) { halted = /stop/i.test(String(e && /** @type {any} */ (e).message || e)); } if (!halted) await sleep(150); }
         await mcp.call("chrome_resume", { answer: "ok" }).catch(() => {});
-        if (!halted) throw new Error("the pill's Stop did not halt the run");
-        return { label: st.label, group: st.group, pill: st.pill, haltedByPill: halted };
+        if (!halted) throw new Error("the pill's Pause button did not halt the run");
+        return { label: st.label, group: st.group, pill: st.pill, exposedToPage: st.exposedToPage, haltedByPill: halted };
       });
 
       // Approve once, write many: without a plan a write made with the page's login is held; with one the person approved, that many go through and the next asks again.

@@ -852,7 +852,10 @@ async function mouseClick(ctx, tabId, ctl, snap) {
   const x = own ? loc.inFrameX : loc.x, y = own ? loc.inFrameY : loc.y;
   const p = { x, y, button: "left", clickCount: 1 };
   const t1 = Date.now();
-  await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }, session);
+  // On a cross-process frame's own session a mouseMoved is never acknowledged, so awaiting it costs the whole command timeout (measured: 5001 ms on all three OSes, press and release 2 ms).
+  // Chrome still gets it, in order, ahead of the press; nothing waits for it.
+  if (own) void ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }, session).catch(() => {});
+  else await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }, session);
   const tMove = Date.now() - t1;
   await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mousePressed", ...p }, session);
   const tPress = Date.now() - t1 - tMove;

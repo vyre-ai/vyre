@@ -433,3 +433,14 @@ test("pinIndexes and bindSelector on plain objects", () => {
   assert.equal(bindSelector({ name: "Save" }, { controls, frames }).why, "tied");
   assert.equal(bindSelector({ name: "Save", frame: 1 }, { controls, frames }).control.frame, 1);
 });
+
+test("act: a mouseMoved on a frame's own session is not awaited (real Chrome never acknowledges it: 5001 ms), and the click still lands", async () => {
+  const w = await world();
+  const send = w.ctx.cdp.send.bind(w.ctx.cdp);
+  w.ctx.cdp.send = (tab, method, params, session) => (method === "Input.dispatchMouseEvent" && params.type === "mouseMoved" && session ? new Promise(() => {}) : send(tab, method, params, session));
+  const t0 = Date.now();
+  const r = await act(w.ctx, { selector: { name: "Create Workflow" }, kind: "click", asked: true });
+  assert.equal(r.ok, true);
+  assert.ok(Date.now() - t0 < 1500, "did not wait for the move");
+  assert.equal(w.fx.page("APP").clicks.length, 1);
+});

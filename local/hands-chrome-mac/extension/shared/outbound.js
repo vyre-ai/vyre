@@ -94,6 +94,13 @@ export const guardInstall = `(() => {
     return xs.apply(this, arguments);
   };
   if (sb) navigator.sendBeacon = function (u, d) { if (hold("POST", u, typeof d === "string" ? d : "")) return false; return sb.apply(this, arguments); };
+  // A script that submits a form writes too (form.submit(), form.requestSubmit(), or a click on a submit button), not only fetch and XHR. Under the eval flag a non-GET form submit is refused.
+  const fs = HTMLFormElement.prototype.submit, frs = HTMLFormElement.prototype.requestSubmit;
+  const formWrite = f => { try { return writes && String(f.method || "get").toLowerCase() !== "get"; } catch { return writes; } };
+  HTMLFormElement.prototype.submit = function () { if (formWrite(this)) { hold(String(this.method || "POST"), this.action || location.href, "form"); blocked[blocked.length - 1].write = true; return; } return fs.apply(this, arguments); };
+  if (frs) HTMLFormElement.prototype.requestSubmit = function () { if (formWrite(this)) { hold(String(this.method || "POST"), this.action || location.href, "form"); blocked[blocked.length - 1].write = true; return; } return frs.apply(this, arguments); };
+  const onSubmit = e => { if (formWrite(e.target)) { e.preventDefault(); e.stopImmediatePropagation(); blocked.push({ method: String(e.target.method || "POST").toUpperCase(), url: String(e.target.action || location.href), why: "form", write: true }); } };
+  if (writes) document.addEventListener("submit", onSubmit, true);
   // Channels the network layer does not always see: WebRTC (ICE resolves a hostname) and link hints that make the browser
   // resolve or connect (dns-prefetch, preconnect, prefetch). A cross-origin one made by the script is refused and reported.
   const RTC = window.RTCPeerConnection, WRTC = window.webkitRTCPeerConnection;
@@ -114,7 +121,7 @@ export const guardInstall = `(() => {
   P.insertBefore = function (n) { if (hint(n)) { refuse("LINK", n.getAttribute("href")); return n; } return oi.apply(this, arguments); };
   E.append = function () { for (const n of arguments) if (hint(n)) { refuse("LINK", n.getAttribute("href")); return; } return oap.apply(this, arguments); };
   E.prepend = function () { for (const n of arguments) if (hint(n)) { refuse("LINK", n.getAttribute("href")); return; } return opp.apply(this, arguments); };
-  window.__vyreGuard = { blocked, restore() { if (WS) window.WebSocket = WS; if (RTC) window.RTCPeerConnection = RTC; if (WRTC) window.webkitRTCPeerConnection = WRTC; P.appendChild = oa; P.insertBefore = oi; E.append = oap; E.prepend = opp; window.fetch = of; XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; } };
+  window.__vyreGuard = { blocked, restore() { if (WS) window.WebSocket = WS; if (RTC) window.RTCPeerConnection = RTC; if (WRTC) window.webkitRTCPeerConnection = WRTC; P.appendChild = oa; P.insertBefore = oi; E.append = oap; E.prepend = opp; window.fetch = of; XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; HTMLFormElement.prototype.submit = fs; if (frs) HTMLFormElement.prototype.requestSubmit = frs; document.removeEventListener("submit", onSubmit, true); } };
   return true;
 })()`;
 

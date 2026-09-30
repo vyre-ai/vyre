@@ -49,14 +49,19 @@ export const highlightScript = (on) => `(() => {
   return true;
 })()`;
 
-/** A name a person knows the app by. @param {string} host */
+/** Names only for a host that IS the vendor's: an exact registrable-domain match, never a substring (google-login.evil.example is not Google). Anything else is named by its host. @param {string} host */
 export function appName(host) {
-  const h = String(host || "").toLowerCase();
+  const h = String(host || "").toLowerCase().replace(/:\d+$/, "");
+  const on = (/** @type {string} */ d) => h === d || h.endsWith("." + d);
   if (isGhlHost(h)) return "GoHighLevel";
-  if (/google/.test(h)) return "Google";
-  if (/microsoft|live\.com/.test(h)) return "Microsoft";
-  return h.replace(/^(www|app|login|accounts|id|auth)\./, "") || "the site";
+  if (on("google.com") || on("accounts.google.com")) return "Google";
+  if (on("microsoftonline.com") || on("live.com") || on("microsoft.com")) return "Microsoft";
+  if (on("github.com")) return "GitHub";
+  return h || "the site";
 }
+
+/** The host a person sees next to the name, always. @param {string} host */
+export const bareHost = host => String(host || "").toLowerCase().replace(/:\d+$/, "");
 
 /**
  * Is this tab at a login wall? Looks in every readable frame. Returns what kind and in which frame, never a value.
@@ -100,9 +105,11 @@ export async function handoff(ctx, tabId, wall) {
   try { await ctx.tabs.update(tabId, { active: true }); if (tab.windowId != null && ctx.tabs.focusWindow) await ctx.tabs.focusWindow(tab.windowId); } catch { /* the tab may be gone */ }
   try { await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: highlightScript(true), returnByValue: true }); } catch { /* not attached; the front tab is the main thing */ }
   waiting.set(tabId, { since: Date.now(), app: wall.app });
-  const message = `Sign in to ${wall.app} in the window I opened. I'll carry on when you're in.`;
-  if (ctx.presence) await ctx.presence.state({ waiting: `sign in to ${wall.app}`, login: { site: wall.app } });
-  ctx.emit({ event: "login.wall", tab: tabId, app: wall.app, kind: wall.kind, message });
+  const host = bareHost(wall.host);
+  const named = host && host !== wall.app ? `${wall.app} (${host})` : wall.app;
+  const message = `Sign in to ${named} in the window I opened. I'll carry on when you're in.`;
+  if (ctx.presence) await ctx.presence.state({ waiting: `sign in to ${named}`, login: { site: named } });
+  ctx.emit({ event: "login.wall", tab: tabId, app: wall.app, host, kind: wall.kind, message });
   return { handedOff: true, app: wall.app, message };
 }
 
@@ -123,7 +130,7 @@ export async function onFailure(op, args, e, ctx) {
   try { w = await check(ctx, args.tabId); } catch { return null; }
   if (!w.wall) return null;
   const h = await handoff(ctx, args.tabId, w);
-  return { code: "login_required", message: `${w.app} is asking the person to sign in (${w.kind}), so this step could not run. I brought that tab to the front and told them. Call chrome_login with action "wait" and I will carry on when they are in. Do not type a password.`, detail: { app: w.app, kind: w.kind, handedOff: h.handedOff, tab: args.tabId } };
+  return { code: "login_required", message: `${w.app}${bareHost(w.host) && bareHost(w.host) !== w.app ? ` (${bareHost(w.host)})` : ""} is asking the person to sign in (${w.kind}), so this step could not run. I brought that tab to the front and told them. Call chrome_login with action "wait" and I will carry on when they are in. Do not type a password.`, detail: { app: w.app, kind: w.kind, handedOff: h.handedOff, tab: args.tabId } };
 }
 
 /** @type {{ name: string, ops: Record<string, (args: any, ctx: any) => Promise<any>> }} */

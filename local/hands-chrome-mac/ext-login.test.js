@@ -33,7 +33,10 @@ test("the app is named the way a person knows it", () => {
   assert.equal(appName("app.gohighlevel.com"), "GoHighLevel");
   assert.equal(appName("client-app.leadconnectorhq.com"), "GoHighLevel");
   assert.equal(appName("accounts.google.com"), "Google");
-  assert.equal(appName("login.acme.example"), "acme.example");
+  assert.equal(appName("login.acme.example"), "login.acme.example", "an unknown site is named by its host");
+  // a look-alike host is never announced as the vendor
+  for (const evil of ["google-login.evil.example", "accounts.google.com.evil.example", "evilgoogle.com", "notgohighlevel.com", "microsoftonline.com.phish.example"]) assert.equal(appName(evil), evil, evil);
+  assert.equal(appName("app.gohighlevel.com:443"), "GoHighLevel");
 });
 
 test("a failed step on a login page: the tab comes to the front, the form is outlined, the person is told once, and the error is login_required", async () => {
@@ -45,8 +48,8 @@ test("a failed step on a login page: the tab comes to the front, the form is out
   assert.deepEqual(w.st.updates, [["update", 5, { active: true }], ["focus", 2]]);
   assert.ok(w.st.sent.some(s => s.includes("data-vyre-hl")), "outlined");
   assert.equal(w.st.events.filter(e => e.event === "login.wall").length, 1);
-  assert.equal(w.st.events[0].message, "Sign in to GoHighLevel in the window I opened. I'll carry on when you're in.");
-  assert.deepEqual(w.st.presence[0], { waiting: "sign in to GoHighLevel", login: { site: "GoHighLevel" } });
+  assert.equal(w.st.events[0].message, "Sign in to GoHighLevel (app.gohighlevel.com) in the window I opened. I'll carry on when you're in.");
+  assert.deepEqual(w.st.presence[0], { waiting: "sign in to GoHighLevel (app.gohighlevel.com)", login: { site: "GoHighLevel (app.gohighlevel.com)" } });
   // a second failure while they are signing in does not tell them again
   await onFailure("page.act", { tabId: 5 }, { code: "timeout" }, w.ctx);
   assert.equal(w.st.events.filter(e => e.event === "login.wall").length, 1);
@@ -96,4 +99,12 @@ test("the pill's Continue re-checks at once and Skip gives up; neither can make 
   const sk = await login.ops["login.wait"]({ tabId: 12, timeoutMs: 5000, pollMs: 100000 }, k.ctx);
   assert.equal(sk.skipped, true);
   assert.deepEqual(k.st.presence[k.st.presence.length - 1], { waiting: null });
+});
+
+test("a phishing page with a password field is announced by its own host, never as a vendor", async () => {
+  const w = world({ url: "https://google-login.evil.example/signin", wall: "password" });
+  const e = await onFailure("page.act", { tabId: 21 }, { code: "not_found" }, w.ctx);
+  assert.match(String(e && e.message), /google-login\.evil\.example/);
+  assert.doesNotMatch(String(e && e.message), /^Google /);
+  assert.equal(w.st.events[0].message, "Sign in to google-login.evil.example in the window I opened. I'll carry on when you're in.");
 });

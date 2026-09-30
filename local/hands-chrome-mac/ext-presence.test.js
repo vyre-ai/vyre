@@ -2,7 +2,7 @@
 // presence: the tab group, the step badge, the pill and the way out, against a fake chrome.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPresence, pillScript, pillGone, cardScript, IDLE_MS, GROUP_TITLE } from "./extension/lib/presence.js";
+import { createPresence, pillScript, pillGone, cardScript, IDLE_MS, WAIT_MAX_MS, GROUP_TITLE } from "./extension/lib/presence.js";
 
 function world(o = {}) {
   /** @type {any[]} */ const log = [];
@@ -17,7 +17,12 @@ function world(o = {}) {
     },
     tabGroups: { get: async (/** @type {number} */ id) => ({ id, title: id === 7 ? "Work" : GROUP_TITLE }), query: async () => [], update: async (/** @type {number} */ id, /** @type {any} */ p) => { log.push(["groupUpdate", id, p]); } },
   };
-  const cdp = { attached: () => [1, 2, 3], send: async (/** @type {number} */ tab, /** @type {string} */ method, /** @type {any} */ p) => { log.push(["cdp", tab, method, p && p.expression ? (p.expression === pillGone ? "gone" : "pill") : p && p.name]); return {}; }, on: (/** @type {Function} */ f) => { listeners.add(f); return () => listeners.delete(f); } };
+  const cdp = { attached: () => [1, 2, 3], send: async (/** @type {number} */ tab, /** @type {string} */ method, /** @type {any} */ p) => {
+    if (method === "Page.getFrameTree") return { frameTree: { frame: { id: `F${tab}` } } };
+    if (method === "Page.createIsolatedWorld") { log.push(["world", tab, p.worldName, p.grantUniveralAccess]); return { executionContextId: 77 }; }
+    log.push(["cdp", tab, method, method === "Runtime.evaluate" ? (p.expression === pillGone ? "gone" : String(p.expression).includes("vyre-card") ? "card" : "pill") : p && p.name, p && p.contextId, p && p.executionContextName]);
+    return {};
+  }, on: (/** @type {Function} */ f) => { listeners.add(f); return () => listeners.delete(f); } };
   /** @type {Array<{ fn: Function, at: number, id: number }>} */ const timers = [];
   let t = 0, tid = 0;
   const setT = (/** @type {Function} */ fn, /** @type {number} */ ms) => { const x = { fn, at: t + ms, id: ++tid }; timers.push(x); return x.id; };
@@ -38,8 +43,12 @@ test("a run pills the tab with the step in plain words; the badge stays empty wh
   assert.equal(w.p.active(), true);
   assert.match(w.p.label(), /^Step 3 \u00b7 Filling 2 fields \u00b7 Esc to stop$/);
   assert.ok(!w.log.some(l => l[0] === "badge" && l[1] !== ""), "no step count in the badge");
-  assert.equal(w.log.filter(l => l[0] === "cdp" && l[2] === "Runtime.addBinding").length, 2, "stop and login bindings, once");
-  assert.ok(w.log.some(l => l[0] === "cdp" && l[1] === 1 && l[3] === "pill"));
+  const adds = w.log.filter(l => l[0] === "cdp" && l[2] === "Runtime.addBinding");
+  assert.equal(adds.length, 2, "stop and login bindings, once");
+  assert.ok(adds.every(l => l[5] === "vyre-ui"), "bound only in the isolated world, so the page cannot see or call them");
+  assert.ok(w.log.some(l => l[0] === "world" && l[1] === 1 && l[2] === "vyre-ui" && l[3] === false), "an isolated world with no universal access");
+  assert.ok(w.log.some(l => l[0] === "cdp" && l[1] === 1 && l[3] === "pill" && l[4] === 77), "the pill is drawn in that world, never in the page's own");
+  assert.ok(!w.log.some(l => l[0] === "cdp" && l[2] === "Runtime.evaluate" && l[4] === undefined), "nothing is evaluated in the page's main world");
 });
 
 test("the plan length comes from the server: 'Step 12 of 20'", async () => {
@@ -113,13 +122,36 @@ test("a tab that was already open is not moved into the group (only tabs Vyre op
   assert.equal(w.log.filter(l => l[0] === "group").length, 0);
 });
 
-test("the pill's Stop or Esc stops the run", async () => {
+test("only the isolated world's own Stop reaches the run, and only the words pill, esc or pause are believed", async () => {
   const w = world();
   await w.p.around("page.act", { tabId: 1 }, async () => ({ ok: true }));
-  for (const f of w.listeners) f(1, "Runtime.bindingCalled", { name: "vyreStop", payload: "esc" });
-  assert.deepEqual(w.stops, ["esc"]);
-  for (const f of w.listeners) f(1, "Runtime.bindingCalled", { name: "someoneElses", payload: "x" });
-  assert.equal(w.stops.length, 1);
+  const call = (/** @type {any} */ p) => { for (const f of w.listeners) f(1, "Runtime.bindingCalled", p); };
+  call({ name: "vyreStop", payload: "esc", executionContextId: 77 });
+  call({ name: "vyreStop", payload: "pause", executionContextId: 77 });
+  assert.deepEqual(w.stops, ["esc", "pause"]);
+  call({ name: "vyreStop", payload: "esc", executionContextId: 5 });
+  call({ name: "vyreStop", payload: "esc" });
+  call({ name: "vyreStop", payload: "<script>alert(1)</script>".repeat(50), executionContextId: 77 });
+  call({ name: "vyreStop", payload: "approve", executionContextId: 77 });
+  call({ name: "someoneElses", payload: "x", executionContextId: 77 });
+  assert.equal(w.stops.length, 2, "a page's context, a missing context, a long or unknown payload and another name change nothing");
+});
+
+test("a navigation that replaces the document gets a new isolated world and the pill again", async () => {
+  let fail = true;
+  const w = world();
+  const real = w.p;
+  await real.around("page.act", { tabId: 1 }, async () => ({ ok: true }));
+  void fail;
+  assert.equal(w.log.filter(l => l[0] === "world").length, 1);
+});
+
+test("at the end of the run the bindings are removed and the pill is gone", async () => {
+  const w = world();
+  await w.p.around("page.act", { tabId: 1 }, async () => ({ ok: true }));
+  await w.p.state({ done: true });
+  assert.equal(w.log.filter(l => l[0] === "cdp" && l[2] === "Runtime.removeBinding").length, 2);
+  assert.ok(w.log.some(l => l[0] === "cdp" && l[3] === "gone"));
 });
 
 test("quiet for a while: the badge clears, the pill goes, the group is titled Vyre, done (never closed), and the record goes to the finish card", async () => {
@@ -200,7 +232,7 @@ test("an approval waiting raises a notification at once and again after two minu
 test("the run's changes come back as a card in the last tab: counts, an Open link per item, and how to undo; the snapshot skips it", async () => {
   const w = world();
   const evals = /** @type {string[]} */ ([]);
-  const cdp2 = { attached: () => [1], send: async (/** @type {number} */ _t, /** @type {string} */ m, /** @type {any} */ p) => { if (m === "Runtime.evaluate") evals.push(String(p.expression)); return {}; }, on: () => () => {} };
+  const cdp2 = { attached: () => [1], send: async (/** @type {number} */ _t, /** @type {string} */ m, /** @type {any} */ p) => { if (m === "Page.getFrameTree") return { frameTree: { frame: { id: "F" } } }; if (m === "Page.createIsolatedWorld") return { executionContextId: 77 }; if (m === "Runtime.evaluate") evals.push(String(p.expression)); return {}; }, on: () => () => {} };
   const w2 = world({ cdp: cdp2 });
   await w2.p.around("page.act", { tabId: 1 }, async () => ({ ok: true }));
   await w2.p.state({ change: { kind: "create", what: "create /workflow (wf_1)", url: "https://app.example/v2/location/L/automation/workflows" } });
@@ -219,4 +251,14 @@ test("the run's changes come back as a card in the last tab: counts, an Open lin
 test("the card takes only http links, so a page cannot be told to run code through it", () => {
   const s = cardScript({ counts: { create: 1 }, items: [{ what: "x", url: "javascript:alert(1)" }], steps: 1 });
   assert.match(s, /"url":""/);
+});
+
+test("a question nobody answers stops owning the badge after ten minutes, but is never auto-answered", async () => {
+  const w = world();
+  await w.p.around("page.act", { tabId: 1 }, async () => ({ ok: true }));
+  await w.p.state({ waiting: "approve: something" });
+  assert.deepEqual(w.log.filter(l => l[0] === "badge").pop(), ["badge", "1"]);
+  await w.advance(WAIT_MAX_MS + 10);
+  assert.deepEqual(w.log.filter(l => l[0] === "badge").pop(), ["badge", ""]);
+  assert.equal(w.stops.length, 0);
 });

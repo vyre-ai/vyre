@@ -852,6 +852,7 @@ The tabs in the person's own Chrome. list: every tab (id, title, URL; pages Vyre
     - `title` string
     - `url` string
   - `openIfMissing` boolean
+  - `press` string: For presence: press one of the pill's own buttons (Stop or Pause) with a real click, the same as the person clicking it.
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.
   - `timeoutMs` integer: Give up after this many ms. Default 30000.
   - `url` string
