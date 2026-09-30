@@ -61,6 +61,8 @@ export const MIGRATIONS = [
   // A removed device's tagged node still waiting on its API delete (the reviewer's LOW): kept
   // apart from node_id, so nothing can admit it, and retried until Tailscale confirms.
   `ALTER TABLE relay_devices ADD COLUMN orphan_node TEXT;`,
+  // relay.devices.ask-trust: when an untrusted browser last asked to be trusted (once per limit).
+  `ALTER TABLE relay_devices ADD COLUMN trust_asked INTEGER;`,
 ];
 /** A direct report counts as the device's path for this long; the app reports on every switch. */
 const DIRECT_FRESH = 10 * 60_000;
@@ -867,6 +869,24 @@ export default {
       },
     });
 
+    ctx.tool("relay.devices.ask-trust", {
+      description: "A browser paired from the hosted web app asks the owner to trust it fully. Only that browser, about itself; it tells every surface once (device.trust-asked) and the owner's own relay.devices.trust, with presence, is the approval.",
+      input: obj(),
+      run: async (_, meta = {}) => {
+        const c = String((meta && meta.caller) || "");
+        if (!c.startsWith("device:") || agentClaim(c) || (meta && meta.agent)) throw fail("denied", "only a paired browser can ask to be trusted, about itself");
+        const id = c.slice("device:".length);
+        const row = /** @type {any} */ (db.prepare("SELECT id, name, kind, pub, trusted, trust_asked FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+        if (!row) throw fail("not_found", "this browser is not paired");
+        if (row.kind !== "web") throw fail("bad_input", "only a browser from the web app has limits to lift");
+        if (row.trusted) return { id, trusted: true, asked: false };
+        if (row.trust_asked) return { id, trusted: false, asked: true, already: true };
+        db.prepare("UPDATE relay_devices SET trust_asked = ? WHERE id = ?").run(now(), id);
+        ctx.events.emit("device.trust-asked", { id, name: row.name, fingerprint: keyFingerprint(Buffer.from(row.pub, "base64url")) });
+        return { id, trusted: false, asked: true, already: false };
+      },
+    });
+
     ctx.tool("relay.devices.trust", {
       description: "Give a browser paired from the hosted web app the full powers of the owner's app (pairing devices, vault secrets), or take them back. Not callable from a web device that is not trusted.",
       input: obj({ id: str, trusted: { type: "boolean" } }, ["id", "trusted"]),
@@ -877,7 +897,7 @@ export default {
         const row = /** @type {any} */ (db.prepare("SELECT kind FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
         if (!row) throw fail("not_found", `no paired device ${id}`);
         if (row.kind !== "web") throw fail("bad_input", "only a browser from the web app has limits to lift");
-        db.prepare("UPDATE relay_devices SET trusted = ? WHERE id = ?").run(input.trusted ? 1 : 0, id);
+        db.prepare("UPDATE relay_devices SET trusted = ?, trust_asked = NULL WHERE id = ?").run(input.trusted ? 1 : 0, id);
         // Open channels keep the handler they started with: close them so the next one gets the new one.
         for (const ch of live.get(id) || []) ch.close(1000, "trust changed");
         live.delete(id);
