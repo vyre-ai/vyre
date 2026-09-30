@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":332,"tool":754,"event":317,"config":235,"env":170,"screen":18,"concept":43},
+  "counts": {"command":332,"tool":755,"event":317,"config":236,"env":170,"screen":18,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -114,6 +114,7 @@
     {"kind":"tool","name":"chrome.install","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeinstall","module":"chrome","mentions":[]},
     {"kind":"tool","name":"chrome.interject","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeinterject","module":"chrome","mentions":[{"page":"adr/0049-deep-chrome-control.md","line":96,"anchor":"oversight"}]},
     {"kind":"event","name":"chrome.interjected","definedIn":"local/hands-chrome-mac/oversight.js","page":"reference/events.md#chrome","module":"chrome","mentions":[]},
+    {"kind":"config","name":"chrome.learn","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"chrome.login","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromelogin","module":"chrome","mentions":[]},
     {"kind":"config","name":"chrome.nativeHost","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"chrome.net","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromenet","module":"chrome","mentions":[]},
@@ -125,6 +126,7 @@
     {"kind":"event","name":"chrome.plan","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeplan","module":"chrome","mentions":[{"page":"adr/0049-deep-chrome-control.md","line":96,"anchor":"oversight"}]},
     {"kind":"tool","name":"chrome.plan.edit","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeplanedit","module":"chrome","mentions":[]},
     {"kind":"config","name":"chrome.platform","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
+    {"kind":"tool","name":"chrome.recipe","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromerecipe","module":"chrome","mentions":[]},
     {"kind":"config","name":"chrome.registry","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"chrome.release","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromerelease","module":"chrome","mentions":[{"page":"adr/0049-deep-chrome-control.md","line":146,"anchor":"hardening-after-review-reviewer-2-30-sep"}]},
     {"kind":"event","name":"chrome.replaced","definedIn":"local/hands-chrome-mac/index.js","page":"reference/events.md#chrome","module":"chrome","mentions":[{"page":"adr/0049-deep-chrome-control.md","line":173,"anchor":"hardening-after-review-reviewer-2-30-sep"}]},

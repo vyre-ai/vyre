@@ -12,6 +12,9 @@
 // does not resolve fails that step. The batch halts at the first failure or hold, and the result
 // says which step and why so the module can turn a hold into a Gate card and resume from there.
 
+import { toRecipe } from "../lib/recipes.js";
+import { remember } from "./recipe.js";
+import { originOf } from "../lib/observe.js";
 import { err } from "../lib/err.js";
 
 const MAX_STEPS = 200;
@@ -86,6 +89,16 @@ export default {
           halt(String(/** @type {any} */ (e)?.message || e), code, undefined, /** @type {any} */ (e)?.detail);
           if (stopOnError) break;
         }
+      }
+      // A batch that was given a name and did every step is kept as a recipe: its steps with every literal turned into a {parameter}.
+      if (typeof args.saveAs === "string" && args.saveAs && out.ok && out.done === steps.length) {
+        try {
+          const name = args.saveAs.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+          const t = typeof args.tabId === "number" && ctx.tabs ? await ctx.tabs.get(args.tabId) : null;
+          const origin = originOf(String((t && (t.pendingUrl || t.url)) || ""));
+          const saved = origin && name ? await remember(ctx, origin, toRecipe(name, steps, results)) : null;
+          if (saved) /** @type {any} */ (out).recipe = { name: saved.name, steps: saved.steps.length, params: saved.params.map((/** @type {any} */ p) => p.name) };
+        } catch { /* a recipe that cannot be kept is not a failed batch */ }
       }
       return out;
     },

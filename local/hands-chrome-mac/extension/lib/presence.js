@@ -379,7 +379,7 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
           const t = tabOfCall(args, r);
           if (t !== undefined) { run.tabs.add(t); { const rr = /** @type {any} */ (r); if (rr && ((op === "tabs.open" && rr.opened !== false) || (/^tabs\.(use|find)/.test(op) && rr.reused === false))) await group(t); } void pill(t); }
           { const tx = stepText(op, args); if (tx) run.text = tx; }
-          if (/^(batch\.run|ghl\.run)$/.test(op)) run.steps += Math.max(0, Number(/** @type {any} */ (r) && /** @type {any} */ (r).done) || 0);
+          if (/^(batch\.run|ghl\.run|recipe\.run)$/.test(op)) run.steps += Math.max(0, Number(/** @type {any} */ (r) && /** @type {any} */ (r).done) || 0);
           else if (STEP.test(op)) run.steps += 1;
           if (r && typeof r === "object" && /** @type {any} */ (r).ok === false) run.failed = true;
           await paintBadge();

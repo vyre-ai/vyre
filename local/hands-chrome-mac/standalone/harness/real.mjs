@@ -240,6 +240,30 @@ async function main() {
         return { refused: true };
       });
 
+      // A flow that worked becomes a recipe (what was typed turns into parameters) and replays as ONE call with the same guards.
+      await stage("recipe_replay", async () => {
+        const g = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/ghl`, openIfMissing: true }); const gt = g.id ?? (g.tab && g.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: gt, url: `${fixture.url}/ghl` }); await sleep(300);
+        const steps = WORKFLOW_STEPS.map(s => s.op === "click"
+          ? { op: "page.act", args: { tabId: gt, selector: { identifier: (/data-testid="([^"]+)"/.exec(s.selector) || [])[1] }, kind: "click" } }
+          : { op: "page.fill", args: { tabId: gt, fields: [{ selector: { identifier: s.selector.replace(/^#/, "") }, value: s.value }] } });
+        const t0 = performance.now();
+        const first = await mcp.call("chrome_batch", { tab: gt, steps, saveAs: "make-workflow" });
+        const firstMs = Math.round(performance.now() - t0);
+        if (first.ok === false || !first.recipe) throw new Error("the batch did not leave a recipe: " + JSON.stringify(first).slice(0, 300));
+        const typed = WORKFLOW_STEPS.filter(s => s.op !== "click").map(s => String(s.value));
+        const list = await mcp.call("chrome_recipe", { action: "list", tab: gt });
+        if (!list.recipes || !list.recipes.some((/** @type {any} */ r) => r.name === "make-workflow")) throw new Error("the recipe is not listed: " + JSON.stringify(list).slice(0, 300));
+        if (typed.some(v => v.length > 2 && JSON.stringify(list).includes(v))) throw new Error("a typed value is in the recipe listing");
+        await mcp.call("chrome_tabs", { action: "navigate", tab: gt, url: `${fixture.url}/ghl` }); await sleep(300);
+        const params = Object.fromEntries(first.recipe.params.map((/** @type {string} */ n) => [n, `Replay ${n}`]));
+        const t1 = performance.now();
+        const run = await mcp.call("chrome_recipe", { action: "run", tab: gt, name: "make-workflow", params }, 60_000);
+        const replayMs = Math.round(performance.now() - t1);
+        if (run.ok === false || run.done !== steps.length) throw new Error("the replay did not do every step: " + JSON.stringify(run).slice(0, 400));
+        return { steps: steps.length, params: first.recipe.params.length, firstMs, replayMs, oneCall: true };
+      });
+
       // A script cannot write with the page's login by submitting a form either.
       await stage("eval_form_submit_refused", async () => {
         const c = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/checkout?form=1`, openIfMissing: true }); const ct = c.id ?? (c.tab && c.tab.id);
