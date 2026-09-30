@@ -267,4 +267,13 @@ export const MIGRATIONS = [
   CREATE INDEX memory_decisions_project ON memory_decisions (project, topic, decided_at);
   CREATE INDEX memory_decisions_session ON memory_decisions (session);
   CREATE TABLE memory_decisions_cursor (session TEXT PRIMARY KEY, upto INTEGER NOT NULL, v INTEGER NOT NULL) WITHOUT ROWID;`,
+  // One corrections listing with its source (plan 3.1E): capsule, chat:<thread> or reader. The
+  // reader's cursor per session (chatfix.js) and what a correction of an answer did to a decision
+  // (a replace adds the person's decision, a wrong drops the one it says is wrong; undone with it).
+  `ALTER TABLE memory_corrections ADD COLUMN source TEXT;
+  ALTER TABLE memory_iq_fixes ADD COLUMN source TEXT;
+  CREATE TABLE memory_chatfix_cursor (session TEXT PRIMARY KEY, upto INTEGER NOT NULL) WITHOUT ROWID;
+  CREATE TABLE memory_decision_fixes (id INTEGER PRIMARY KEY, fix INTEGER NOT NULL, at INTEGER NOT NULL, project TEXT NOT NULL, topic TEXT NOT NULL, action TEXT NOT NULL,
+    value TEXT, display TEXT, statement TEXT, source TEXT, undone INTEGER);
+  CREATE INDEX memory_decision_fixes_fix ON memory_decision_fixes (fix);`,
 ];

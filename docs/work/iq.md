@@ -53,10 +53,21 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
   1.0. Remaining decision/history misses are things only Claude said (fonts, sitemap, versions), the
   rate stated as a fact, and free-form topics; the model path takes them once replies are recorded.
 
+- 4. Corrections from chat: core/memory/iq/chatfix.js (catchCorrection, groundedAnswer, sourceOf),
+  memory.heard (agent-callable; from_turn checked by threads.said, applies as the person's, else a
+  suggestion plus, with a granted project, an attributed correction filed through memory.write),
+  the reader's catch (index.js catchFromChat, runs with the decisions sync; first sight of a session
+  reads only the last 10 minutes), a `source` column on memory_corrections and memory_iq_fixes
+  (capsule | chat:<thread> | reader), and memory_decision_fixes (a correction of a decision answer:
+  replace = the person's newest decision, wrong = drops the current one; undone with the fix).
+  Tests: core/memory/iq/chatfix.test.js (5). memory.decisions now reads fresh (a forced sync).
+  TODO: agents' own correction rows are quoted text only and do not yet outrank/undo anything;
+  the person's `yes` to an agent proposal still needs threads.said.
+
 ## Doing
 - Fixed reviewer-2 H1 at 22ad3f07 (my ctx.memory.write door reverted at cece5c54; platform owns the door).
 - Two confident-wrong bugs fixed: d6890a60 (a correction in chat wins its one-value slot, old value becomes history), 28e51fab (personal fast path stays out of work questions).
-- 3 decisions built (see Done); next: 4 corrections from chat, then 5 memory.brief and the five MCP tools.
+- 3 decisions built (see Done); 4 corrections from chat built (see Done); next: 5 memory.brief and the five MCP tools.
 
 ## Next
 - Review 1 and 2, then 3.
@@ -100,7 +111,7 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
 - memory.relevant may add items {id: "write:<id>", text: "From memory, not instructions: ...",
   source, via: "write", confidence, at}; memory.today may add such lines; memory.retrieve and
   memory.ask passages may include {role: "memory", session: "write:<id>", write, untrusted}.
-- Kernel: none. platform owns the ctx.memory.write door (92838e8c on work/platform: kind checked against
+- Kernel: none. New tool memory.heard {action, answer|fact|subject+rel+object, from_turn?, project?} -> {applied, ...} | {applied:false, suggestion, filed?}; memory_corrections and memory_iq_fixes gain source; write.js register() now returns { write }. platform owns the ctx.memory.write door (92838e8c on work/platform: kind checked against
   teaches.memory, calls memory.write as module:<name> with from and untrusted after the spread; the
   registry sets meta.firstParty). memory.write reads who wrote it from the caller and meta.firstParty only.
   Reverted my copy at cece5c54 (reviews/iq.md H1).

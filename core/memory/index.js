@@ -20,10 +20,11 @@ import { profile } from "./personal/profile.js";
 import { contradictions, settle as answerOf } from "./personal/contradict.js";
 import { createReader, claudeOnce, modelFor, turnHash } from "./personal/reader.js";
 import { asker, ASK_DAILY_USD } from "./iq/ask.js";
-import { decisionStore, readDecisions, resolve as resolveDecisions, answerFrom as decisionAnswer } from "./decisions.js";
+import { decisionStore, readDecisions, questionTopics, TOPICS, resolve as resolveDecisions, answerFrom as decisionAnswer } from "./decisions.js";
 import { fixes as fixLog } from "./iq/fix.js";
 import { heard, contentWords } from "./iq/heard.js";
-import { userWords, devTalk, vyreFolder } from "./personal/trust.js";
+import { catchCorrection, groundedAnswer } from "./iq/chatfix.js";
+import { userWords, devTalk, vyreFolder, sessionTrust } from "./personal/trust.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
@@ -470,7 +471,8 @@ export default {
         fix.told = r.id;
       }
       if (fix.facts.length) personal.derive({ force: true });
-      ctx.events.emit("memory.fixed", { id: fix.id, action: fix.action, kind: fix.kind });
+      if (a?.via === "decision") await tieDecision(fix, a, input);
+      ctx.events.emit("memory.fixed", { id: fix.id, action: fix.action, kind: fix.kind, source: fix.source });
       return { fix };
     };
     /**
@@ -669,6 +671,35 @@ export default {
         await settle();
         return { correction: c, facts: graph.facts({ about: t.src, room: sc?.room ?? undefined, limit: 20 }).facts.filter(f => f.rel === t.rel) };
     };
+    // An agent passes on a correction the person made in its thread (plan 3.1B). With the person's own
+    // fresh typed turn behind it (from_turn, checked by threads.said) it applies as theirs. Without,
+    // it waits for the person as a suggestion, and when the agent names a project it reaches, it is
+    // also filed at once as the agent's own attributed correction, quoted, never an instruction.
+    // memory.correct stays the person's; an agent reaches corrections only through this tool.
+    ctx.tool("memory.heard", {
+      callers: ["mcp", "harness"],
+      description: "Pass on a correction the person just made in this chat: { action: wrong|ended|replace|add|forget, fact (src|rel|dst) or subject, rel, object, or answer (memory.ask's answer_id), from_turn: { seq } the person's own turn in this thread that says it, project? }. When from_turn is the person's own fresh typed words naming what is wrong (and the new value), it is applied as theirs: { applied: true, heard, ... } and undone with memory.uncorrect. Otherwise nothing is applied: it waits as a suggestion for the person ({ applied: false, suggestion }) and, with project (a slug you are granted), is also filed at once as your own attributed correction ({ filed: { id, project } }), which the person's own word outranks.",
+      input: { type: "object", required: ["action"], properties: { fact: { type: "string" }, subject: { type: "string" }, rel: { type: "string" }, object: { type: "string" },
+        answer: { type: "string", description: "memory.ask's answer_id" },
+        from_turn: { type: "object", properties: { seq: { type: "integer" } } },
+        action: { type: "string", enum: ["wrong", "ended", "replace", "add", "forget"] }, at: {}, note: { type: "string" }, wait: { type: "boolean" }, ...roomField } },
+      run: async (input, extra = {}) => {
+        const caller = String(extra.caller || "");
+        if (personWrites(caller, extra) || !agentCaller(caller)) throw denied("memory.heard is for an agent passing on what the person said; the person corrects with memory.correct");
+        const out = await fromAgent(input, caller, extra, (i, who) => applyCorrection(i, who));
+        if (out.applied || out.dropped) return out;
+        const project = typeof input.project === "string" && input.project ? input.project : typeof input.room === "string" && input.room ? input.room : null;
+        if (!project) return out;
+        let target = null;
+        try { target = aboutOf(input); } catch { /* nothing to quote */ }
+        if (!target) return out;
+        try {
+          const w = await fileWrite({ kind: "correction", project, text: plain(`the person corrected: ${target.summary}`, 400), subject: plain(target.about.join(" "), 100) || undefined,
+            ...(Number.isInteger(input.from_turn?.seq) ? { seq: input.from_turn.seq } : {}) }, extra);
+          return { ...out, filed: { id: w.id, project } };
+        } catch (e) { return { ...out, filed: null, filed_why: plain(/** @type {Error} */ (e).message, 160) }; }
+      },
+    });
     // No callers list: the registry compares the whole "tailnet:<login>" string, so readerOnly
     // checks the owner surfaces and tailnet callers itself.
     ctx.tool("memory.corrections", {
@@ -745,7 +776,7 @@ export default {
     };
     /** A retrieval with the writes that bear on its question added as passages, when a scope is given. */
     const withWrites = (base, question, scope) => scope ? { ...base, passages: [...base.passages, ...writePassages(writes, question, scope, 3)] } : base;
-    registerWrites(ctx, { store: writes, reach, personWrites, ownSession, reader, denied, plain,
+    const { write: fileWrite } = registerWrites(ctx, { store: writes, reach, personWrites, ownSession, reader, denied, plain,
       projects: async () => { try { const l = await projectList(); return l.length ? l.map(p => p.slug) : null; } catch { return null; } } });
     /**
      * The project_cwds a reader should actually pass to graph.relevant/why/facts or retrieve's
@@ -785,6 +816,39 @@ export default {
       if (!force && Date.now() - decSynced < 2000) return;
       decSynced = Date.now();
       try { await decs.sync(); } catch (e) { ctx.log("decisions: " + /** @type {Error} */ (e).message); }
+      try { await catchFromChat(); } catch (e) { ctx.log("chat corrections: " + /** @type {Error} */ (e).message); }
+    };
+    /**
+     * The reader's correction catch (plan 3.1E): a turn the person typed right after a reply that
+     * repeated one of memory.ask's answers, saying "no, that's wrong" or "actually it's X", corrects
+     * that answer as theirs, source "reader". A reply that did not come from memory is never taken
+     * for one, a session trust skips is never read, and a turn an agent already passed on through
+     * memory.heard is not counted twice. A session met for the first time is read from ten
+     * minutes back only, so an old history is never corrected after the fact.
+     */
+    const catchFromChat = async () => {
+      const db = ctx.store.db, now = Date.now();
+      const seen = db.prepare("SELECT upto FROM memory_chatfix_cursor WHERE session = ?"), mark = db.prepare("INSERT INTO memory_chatfix_cursor (session, upto) VALUES (?,?) ON CONFLICT (session) DO UPDATE SET upto = excluded.upto");
+      const trusted = { scratch: askDir, quick: quickDir, skip: Array.isArray(ctx.config.memory?.personal?.skipCwds) ? ctx.config.memory.personal.skipCwds.map(String) : [] };
+      for (const sess of /** @type {any[]} */ (db.prepare("SELECT id, cwd, name, title, human, parent, turns FROM recall_sessions").all())) {
+        const cur = /** @type {any} */ (seen.get(sess.id));
+        if (cur && Number(cur.upto) >= Number(sess.turns)) continue;
+        const from = cur ? Number(cur.upto) : 0;
+        mark.run(sess.id, Number(sess.turns));
+        if (!sessionTrust(sess, trusted).ok) continue;
+        const turns = /** @type {any[]} */ (db.prepare("SELECT seq, ts, text FROM recall_turns WHERE session = ? AND seq >= ? AND role = 'user' ORDER BY seq").all(sess.id, from));
+        for (const t of turns) {
+          if (!cur && !(Number(t.ts) >= now - 600_000)) continue;
+          const c = catchCorrection(String(t.text));
+          if (!c) continue;
+          const who = `reader:${sess.id}#${t.seq}`;
+          if (db.prepare("SELECT 1 FROM memory_iq_fixes WHERE who = ?").get(who) || db.prepare("SELECT 1 FROM memory_iq_heard WHERE thread = ? AND seq = ?").get(sess.id, t.seq)) continue;
+          const reply = /** @type {any} */ (db.prepare("SELECT text FROM recall_turns WHERE session = ? AND seq < ? AND role = 'assistant' ORDER BY seq DESC LIMIT 1").get(sess.id, t.seq));
+          const g = reply ? groundedAnswer(db, String(reply.text), Number(t.ts) || now) : null;
+          if (!g) continue;
+          await fixAnswer({ answer: g.id, action: c.action, object: c.value }, who);
+        }
+      }
     };
     /**
      * Every decision a reader may see, resolved: the person's from their own turns (inside the
@@ -792,8 +856,8 @@ export default {
      * @param {string[]} cwds  the folders the reader is limited to; empty means every project
      * @param {{ slugs: Set<string>|null, you: boolean }|null} wscope
      */
-    const decisionRows = async (cwds, wscope) => {
-      await syncDecisions();
+    const decisionRows = async (cwds, wscope, fresh = false) => {
+      await syncDecisions(fresh);
       const list = await projectList().catch(() => []);
       const rows = decs.person().filter(r => !cwds.length || within(r.cwd, cwds)).map(r => ({ ...r, untrusted: false }));
       if (wscope) {
@@ -806,7 +870,36 @@ export default {
             at: Number(w.at), by: w.from_kind === "person" ? "person" : "agent", session: w.thread ? String(w.thread) : null, seq: null, name: `${w.from_kind}:${w.from_name}`, label: read?.label || topic, untrusted: Boolean(w.untrusted) });
         }
       }
-      return { rows: resolveDecisions(rows), projects: list };
+      // The person's corrections of a decision answer: a replace is their newest decision, a wrong
+      // drops the current one they said was wrong (unless undone).
+      const dfx = /** @type {any[]} */ (ctx.store.db.prepare("SELECT f.* FROM memory_decision_fixes f JOIN memory_iq_fixes x ON x.id = f.fix WHERE f.undone IS NULL AND x.undone IS NULL ORDER BY f.id").all());
+      let base = rows;
+      for (const f of dfx) {
+        if (f.action === "replace") base.push({ id: `fix:${f.fix}`, project: String(f.project), cwd: "", topic: String(f.topic), value: String(f.value), display: String(f.display || f.value), text: String(f.statement || ""),
+          at: Number(f.at), by: "person", session: null, seq: null, name: null, label: (TOPICS[String(f.topic)] || {}).label || String(f.topic), untrusted: false });
+        else {
+          const line = resolveDecisions(base.filter(r => r.project === f.project && r.topic === f.topic && r.at <= Number(f.at)));
+          const cur = line.find(r => r.state === "current");
+          if (cur) base = base.filter(r => r.id !== cur.id);
+        }
+      }
+      return { rows: resolveDecisions(base), projects: list };
+    };
+    /**
+     * A correction of a decision answer is a decision of the person's: replace adds their decision
+     * now (newest wins, the old one is history), wrong or forget drops the one that answered.
+     * Which decision is worked out from the question the way memory.ask worked it out.
+     */
+    const tieDecision = async (fix, a, input) => {
+      let d = null;
+      try { d = await decide({ q: a.question, project_cwds: [] }); } catch { /* not tied */ }
+      if (!d || !d.project || !d.topic) return;
+      const text = fix.action === "replace" ? String(fix.text) : null;
+      const read = text ? readDecisions(`we use ${text}`).find(x => x.topic === d.topic) : null;
+      const value = text ? (read?.value || text.toLowerCase().slice(0, 60)) : String(a.answer).toLowerCase();
+      ctx.store.db.prepare("INSERT INTO memory_decision_fixes (fix, at, project, topic, action, value, display, statement, source) VALUES (?,?,?,?,?,?,?,?,?)")
+        .run(fix.id, Date.now(), d.project, d.topic, fix.action === "replace" ? "replace" : "wrong", text ? value : null, text ? (read?.display || text.slice(0, 60)) : null,
+          text ? `You said: "${text.slice(0, 240)}"` : null, fix.source || null);
     };
     /** memory.ask's step before the model: a decision question memory can answer from what the person decided. */
     const decide = async ({ q, project_cwds = [], writes: wscope = null }) => {
@@ -925,7 +1018,7 @@ export default {
         const project_cwds = clean(input.project_cwds?.length ? input.project_cwds : named ? named.folders : []);
         const effective = await scopedCwds(sees, input.agent, caller, project_cwds);
         const scope = await writeScope(input.agent, caller, extra, { cwds: project_cwds });
-        const { rows } = await decisionRows(effective, scope);
+        const { rows } = await decisionRows(effective, scope, true);
         const want = typeof input.topic === "string" ? input.topic.toLowerCase().split(/[^a-z0-9.+#]+/).filter(w => w.length > 1) : [];
         const slug = typeof input.project === "string" && input.project ? input.project : null;
         const out = rows.filter(r => (!slug || r.project === slug) && (input.history === true || r.state === "current")
@@ -1010,6 +1103,7 @@ export default {
             ctx.store.db.prepare("DELETE FROM memory_me_claims WHERE session = ?").run(`told:${f.told}`);
             ctx.store.db.prepare("DELETE FROM memory_me_told WHERE id = ?").run(f.told);
           }
+          ctx.store.db.prepare("UPDATE memory_decision_fixes SET undone = ? WHERE fix = ? AND undone IS NULL").run(Date.now(), Number(fix));
           personal.derive({ force: true });
           return { fix: f };
         }

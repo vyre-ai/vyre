@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Corrections made in chat reach memory three ways (plan 3.1B, 3.1E). New agent tool `memory.heard
+  { action, answer | fact | subject+rel+object, from_turn: { seq }, project? }`: with the person's own
+  fresh typed turn behind it (checked by `threads.said`) it applies as theirs; without it, it waits
+  for the person as a suggestion and, when the agent names a project it reaches, is also filed at
+  once as the agent's own attributed correction (quoted, never an instruction). `memory.correct`
+  stays the person's. The reader now catches "no, that's wrong", "actually it's X" and "we
+  switched to X" typed right after a reply that repeated one of `memory.ask`'s answers, and
+  corrects that answer as theirs; a reply that did not come from memory is never taken for one.
+  Every correction of an answer now records its source (capsule, chat:<thread> or reader), shown
+  in `memory.corrections`. Correcting a decision answer updates the decision: a replace is the
+  person's newest decision, a wrong drops the current one, and undoing the correction undoes both.
+  `memory.write` now returns its run for `memory.heard` to file as the same agent.
 - Memory keeps decisions (plan 3.5). The person's typed turns are read for what they decided
   ("host it on netlify", "going back to stripe", "30 min slots"), per project and topic, and the
   newest decision wins: the old one is replaced, or reverted when the person goes back to it, and

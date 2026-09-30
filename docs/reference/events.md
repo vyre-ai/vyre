@@ -243,7 +243,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | `memory.answered` | `abstained`, `id`, `limited` |
 | `memory.corrected` | `action`, `addresses`, `prior_confidence`, `prior_rule`, `prior_source`, `rel`, `scope` |
 | `memory.curated` | `edges`, `ms`, `nodes`, `updated` |
-| `memory.fixed` | `action`, `id`, `kind` |
+| `memory.fixed` | `action`, `id`, `kind`, `source` |
 | `memory.forgot` | `from`, `id`; sometimes `project` |
 | `memory.graph-grew` | `edges`, `new`, `nodes`, `updated` |
 | `memory.merged` | `id`, `scope` |

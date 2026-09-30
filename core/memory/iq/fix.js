@@ -34,6 +34,18 @@ export function questionKind(q) {
   return "other";
 }
 
+/**
+ * Where a correction came from, from the who it was made under.
+ * @param {string | null | undefined} who
+ */
+export function sourceOf(who) {
+  const w = String(who || "");
+  const h = /^heard:(.+)#\d+$/.exec(w);
+  if (h) return `chat:${h[1]}`;
+  if (/^reader:/.test(w)) return "reader";
+  return "capsule";
+}
+
 const DAY = 86_400_000;
 
 /**
@@ -45,7 +57,7 @@ export function fixes({ db, now = () => Date.now() }) {
       ON CONFLICT (id) DO UPDATE SET at = excluded.at`),
     answer: db.prepare("SELECT * FROM memory_iq_answers WHERE id = ?"),
     prune: db.prepare("DELETE FROM memory_iq_answers WHERE at < ? AND id NOT IN (SELECT answer FROM memory_iq_fixes)"),
-    add: db.prepare(`INSERT INTO memory_iq_fixes (at, answer, qkey, question, kind, action, old, text, facts, turns, who) VALUES (?,?,?,?,?,?,?,?,?,?,?)`),
+    add: db.prepare(`INSERT INTO memory_iq_fixes (at, answer, qkey, question, kind, action, old, text, facts, turns, who, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
     told: db.prepare("UPDATE memory_iq_fixes SET told = ? WHERE id = ?"),
     byKey: db.prepare("SELECT * FROM memory_iq_fixes WHERE qkey = ? AND undone IS NULL AND action IN ('replace', 'wrong') ORDER BY id DESC LIMIT 1"),
     forgotten: db.prepare("SELECT turns FROM memory_iq_fixes WHERE undone IS NULL AND action = 'forget'"),
@@ -58,7 +70,7 @@ export function fixes({ db, now = () => Date.now() }) {
   };
   let lastPrune = 0;
   const row = r => r && ({ id: Number(r.id), at: Number(r.at), answer: String(r.answer), question: String(r.question), kind: String(r.kind), action: String(r.action),
-    old: String(r.old), text: r.text == null ? null : String(r.text), told: r.told == null ? null : Number(r.told), facts: JSON.parse(String(r.facts || "[]")), turns: JSON.parse(String(r.turns || "[]")), undone: r.undone == null ? null : Number(r.undone) });
+    old: String(r.old), text: r.text == null ? null : String(r.text), source: r.source == null ? sourceOf(r.who) : String(r.source), told: r.told == null ? null : Number(r.told), facts: JSON.parse(String(r.facts || "[]")), turns: JSON.parse(String(r.turns || "[]")), undone: r.undone == null ? null : Number(r.undone) });
 
   return {
     /**
@@ -84,7 +96,7 @@ export function fixes({ db, now = () => Date.now() }) {
       const text = f.action === "replace" ? String(f.text || "").replace(/\s+/g, " ").trim().slice(0, 500) : null;
       if (f.action === "replace" && !text) throw Object.assign(new Error("replace needs the right answer in object"), { code: "bad_input" });
       const id = Number(q.add.run(now(), a.id, questionKey(a.question), a.question, questionKind(a.question), f.action, a.answer, text,
-        JSON.stringify(a.facts), JSON.stringify(a.turns), f.who || null).lastInsertRowid);
+        JSON.stringify(a.facts), JSON.stringify(a.turns), f.who || null, sourceOf(f.who)).lastInsertRowid);
       for (const fact of a.facts) q.deny.run(fact, id);
       return row(q.get.get(id));
     },

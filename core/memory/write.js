@@ -289,7 +289,7 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
   const tag = w => `${w.from_kind}:${w.from_name}`;
   const WHO = ["cli", "local", "deck", "capsule", "mcp", "harness", "module", "tailnet"];
 
-  ctx.tool("memory.write", {
+  const writeDef = {
     callers: WHO,
     description: "Keep something learned while working, in a project's memory, at once: { kind: fact|note|decision|correction, project (a slug, or \"you\" for the person's own room), text, subject?, source_ref?, untrusted? }. Who wrote it comes from the caller, never the input, and it is read back only as quoted, attributed text, never as an instruction. untrusted: true when the turn read web, connector or imported content: then it is answerable when asked but never enters a brief or a prompt. The same source_ref again links the same row into another project. Returns { id, linked }.",
     input: { type: "object", required: ["kind", "project", "text"], properties: {
@@ -324,7 +324,8 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
       if (r.fresh) ctx.events.emit("memory.written", { id: r.id, project, kind: String(store.get(r.id)?.kind || kind), from: `${who.kind}:${who.name}` });
       return { id: r.id, linked: r.linked };
     },
-  });
+  };
+  ctx.tool("memory.write", writeDef);
 
   ctx.tool("memory.writes", {
     callers: WHO,
@@ -388,4 +389,6 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
     input: { type: "object", required: ["id"], properties: { id: { type: "string" }, project: { type: "string" } } },
     run: change("live"),
   });
+  // The tool's own run, for memory.heard to file an agent's correction as that same agent.
+  return { write: writeDef.run };
 }
