@@ -16,7 +16,7 @@ import { observeOp, observeMiss, originOf } from "./observe.js";
 export const FLUSH_MS = 10_000;
 export const STALE_MS = 10 * 60_000;
 export const WANT_EVERY_MS = 60_000;
-const VISIT_MS = 30 * 60_000;
+const DEFAULT_VISIT_MS = 30 * 60_000;
 const MAX_LABELS = 400;
 
 /**
@@ -33,7 +33,8 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
   /** Off until the server says learning is on (site.config): nothing is read from storage, asked, queued, sent or written. */
   let enabled = false;
   const stats = { learned: 0, sent: 0, refused: 0, dropped: 0 };
-  const visit = () => `v${Math.floor(now() / VISIT_MS)}`;
+  let visitMs = DEFAULT_VISIT_MS;
+  const visit = () => `v${Math.floor(now() / visitMs)}`;
   const store = chrome && chrome.storage && chrome.storage.local;
   const weak = (/** @type {any} */ h) => { try { if (h && typeof h.unref === "function") h.unref(); } catch { /* not node */ } return h; };
 
@@ -121,15 +122,29 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
         const s = sanitize(patch);
         stats.dropped += s.dropped.length;
         if (!s.ok) { stats.refused++; continue; } // a secret-shaped field: nothing of this observation leaves the browser
-        emit({ event: "site.put", origin, patch: s.record });
+        // What goes on the wire is the observation's own items that the allowlist KEPT, with the evidence they carry (two visits, container, siblings): the store cleans them again,
+        // and it needs that evidence to keep a label or an identifier. (The cleaned record itself has the evidence stripped, so it cannot be sent.)
+        const kept = { key: patch.key, ...(patch.family ? { family: patch.family } : {}), ...(patch.names ? { names: patch.names } : {}), ...(patch.related ? { related: patch.related } : {}) };
+        const EVIDENCE = ["container", "siblings", "nameVisits", "identifierVisits", "choicesContainer", "choicesVisits"];
+        for (const part of ["controls", "api", "frames"]) {
+          const rawById = new Map((Array.isArray(patch[part]) ? patch[part] : []).map((/** @type {any} */ x) => [x.id, x]));
+          // The CLEANED item (what the local allowlist kept, a label it dropped stays dropped) with only the evidence fields of the observation put back: the store needs them and cleans again.
+          const items = (s.record[part] || []).map((/** @type {any} */ c) => { const raw = /** @type {any} */ (rawById.get(c.id)) || {}; const ev = /** @type {any} */ ({}); for (const k of EVIDENCE) if (raw[k] !== undefined) ev[k] = raw[k]; return { ...c, ...ev }; });
+          if (items.length) /** @type {any} */ (kept)[part] = items;
+        }
+        emit({ event: "site.put", origin, patch: kept });
+        // What this device just taught the store makes its copy of the card out of date: the next arrival asks again (at once, not after the usual wait).
+        asked.delete(origin); { const cc = cards.get(origin); if (cc) cc.at = 0; }
         stats.sent++;
-        out.push({ origin, patch: s.record });
+        out.push({ origin, patch: kept });
       }
       return out;
     },
     /** The card for an origin, rebuilt from a full record the server sent. @param {any} record */
     async setRecord(record) { if (record && record.key) await this_.setCard(record.key, arrivalCard(record), record.rev); },
     choicesVisits,
+    /** The length of a visit, from the person's config (30 minutes by default). @param {number} ms */
+    setVisitMs(ms) { visitMs = Number.isFinite(ms) && ms >= 1000 ? Math.round(ms) : DEFAULT_VISIT_MS; },
     /** @param {boolean} on */
     setEnabled(on) { enabled = !!on; if (!enabled) { pending.clear(); cards.clear(); labels.clear(); } },
     enabled: () => enabled,

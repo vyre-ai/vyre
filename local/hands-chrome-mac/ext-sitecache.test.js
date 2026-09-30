@@ -246,23 +246,79 @@ test("a miss is reported only for a control the card knows, and only for not_fou
   assert.equal((await c.flush()).length, 0);
 });
 
-test("the file store: a miss lowers a stored fact's confidence, three misses quarantine it and the card stops offering it, a success raises it", () => {
+test("the file store: one miss counts per item per 30 minutes, three counted misses over two days set it aside (the card stops offering it), a success raises it, and the test clock is honoured only under the test flag", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sk-"));
   try {
-    let now = Date.parse("2026-10-01T00:00:00Z");
-    const st = createSiteStore({ dataDir: dir, now: () => now });
+    const clockFile = path.join(dir, "clock.txt");
+    const at = (/** @type {string} */ iso) => fs.writeFileSync(clockFile, iso + "\n");
+    at("2026-10-01T09:00:00Z");
+    const st = createSiteStore({ dataDir: dir, env: { VYRE_CHROME_TEST: "1", VYRE_SITE_TEST_CLOCK: clockFile } });
     const origin = "https://app.gohighlevel.com";
-    const id = "c_test01";
+    const id = "c_test0001";
     st.put({ origin, patch: { key: origin, controls: [{ id, page: "/workflows", role: "button", selector: { strategy: "identifier", identifier: "save-workflow" }, identifierVisits: ["a", "b"] }] } });
-    assert.equal(st.report({ origin, part: "controls", id, outcome: "miss" }).data.conf, 0.3);
-    assert.equal(st.report({ origin, part: "controls", id, outcome: "ok" }).data.conf, 0.4);
+    const miss = () => st.report({ origin, part: "controls", id, outcome: "miss" }).data;
+    assert.equal(miss().conf, 0.3);
+    at("2026-10-01T09:10:00Z");
+    assert.equal(miss().misses, 1, "a second miss ten minutes later is the same visit: it does not count");
     assert.equal(st.report({ origin, part: "controls", id: "nope", outcome: "miss" }).data.known, false);
     assert.equal(st.report({ origin, part: "controls", id, outcome: "sideways" }).error.code, "bad_request");
-    for (let i = 0; i < 3; i++) st.report({ origin, part: "controls", id, outcome: "miss" });
-    const r = st.report({ origin, part: "controls", id, outcome: "miss" }).data;
-    assert.equal(r.quarantined, true, "conf under 0.15: quarantined");
+    at("2026-10-03T09:30:00Z");
+    const two = miss();
+    assert.equal(two.misses, 2);
+    assert.equal(two.quarantined, false, "two counted misses, and conf below 0.15 alone no longer sets it aside");
+    at("2026-10-03T10:05:00Z");
+    const three = miss();
+    assert.equal(three.misses, 3);
+    assert.equal(three.quarantined, true, "three counted misses over two days");
     assert.equal(st.get({ origin }).data.origin.controls.length, 0, "the arrival card no longer offers it");
-    now += 1000; // the record itself still holds it, as "used to work"
-    assert.equal(st.record(origin).controls.length, 1);
+    assert.equal(st.record(origin).controls.length, 1, "the record keeps it as used to work");
+    // without the test flag the clock file is ignored
+    // and in a folder that is not under the OS temp directory the clock file is ignored even under the flag
+    const elsewhere = fs.mkdtempSync(path.join(process.cwd(), ".sk-notmp-"));
+    try {
+      const notTmp = createSiteStore({ dataDir: elsewhere, env: { VYRE_CHROME_TEST: "1", VYRE_SITE_TEST_CLOCK: clockFile }, now: () => Date.parse("2031-01-01T00:00:00Z") });
+      notTmp.put({ origin, patch: { key: origin, controls: [{ id, page: "/w", role: "button", selector: { strategy: "identifier", identifier: "save-workflow" }, identifierVisits: ["a", "b"] }] } });
+      assert.ok(Date.parse(notTmp.record(origin).updated) >= Date.parse("2031-01-01T00:00:00Z"), "a store outside the temp directory ignores the clock file");
+    } finally { fs.rmSync(elsewhere, { recursive: true, force: true }); }
+    const real = createSiteStore({ dataDir: dir, env: {}, now: () => Date.parse("2030-01-01T00:00:00Z") });
+    at("2026-10-01T09:00:00Z");
+    assert.ok(real.report({ origin, part: "controls", id, outcome: "ok" }).data.known);
+    assert.ok(Date.parse(real.record(origin).updated) >= Date.parse("2030-01-01T00:00:00Z"), "the real clock was used");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("generated ids always have the shape the store accepts, even when the hash has no digit", () => {
+  const ids = new Set();
+  let noDigitHashes = 0;
+  for (let i = 0; i < 20000; i++) {
+    if (!/\d/.test(hash(`k${i}`))) noDigitHashes++;
+    const id = controlId("/x", { identifier: `k${i}` });
+    ids.add(id);
+    assert.equal(sanitize({ key: "https://a.example", controls: [{ id, page: "/x", role: "button", selector: { strategy: "identifier", identifier: "save" }, identifierVisits: ["a", "b"] }] }).record.controls.length, 1, id);
+  }
+  assert.ok(noDigitHashes > 0, "the sample includes hashes with no digit, which is the case being guarded");
+  assert.ok(ids.size > 19990, "ids stay distinct");
+});
+
+test("end to end: what a device sends after two visits is kept by the store (the evidence travels with the item), and a label needs its evidence too", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sk-"));
+  try {
+    let t = 1_000_000;
+    const sent = /** @type {any[]} */ ([]);
+    const c = createSiteCache({ emit: e => sent.push(e), now: () => t, setT: () => 1, clearT: () => {} });
+    c.setEnabled(true); c.setVisitMs(1200);
+    const url = "http://127.0.0.1:5555/checkout?heal=1";
+    const res = { ...act({ role: "button", name: "Apply promo", identifier: "apply-promo" }), evidence: { container: "none", siblings: 1 } };
+    for (let i = 0; i < 3; i++) { c.learn({ op: "page.act", args: { selector: { identifier: "apply-promo", name: "Apply promo" } }, result: res, tabUrl: url }); t += 1500; }
+    const out = await c.flush();
+    assert.equal(out.length, 1);
+    const item = out[0].patch.controls[0];
+    assert.ok(Array.isArray(item.identifierVisits) && item.identifierVisits.length >= 2, "the evidence is on the wire");
+    const st = createSiteStore({ dataDir: dir });
+    assert.equal(st.put({ origin: out[0].origin, patch: out[0].patch }).data.accepted, true);
+    const stored = st.record(out[0].origin).controls;
+    assert.equal(stored.length, 1, "the store keeps it");
+    assert.equal(stored[0].selector.identifier, "apply-promo");
+    assert.equal(stored[0].name, "Apply promo", "a fixed-UI label with container, siblings and two visits is kept");
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

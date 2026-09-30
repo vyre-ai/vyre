@@ -112,7 +112,7 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 14
+    timeout-minutes: 26
     defaults:
       run:
         shell: bash
@@ -127,6 +127,11 @@ jobs:
       - name: Frames suite on a real Chrome
         timeout-minutes: 12
         run: node local/hands-chrome-mac/standalone/harness/frames-suite.mjs --out "results/frames-suite-${{ runner.os }}.json"
+      - name: Frames suite, DNR layer alone (Fetch off, test profile only)
+        timeout-minutes: 12
+        env:
+          VYRE_CHROME_TEST_NOFETCH: "1"
+        run: node local/hands-chrome-mac/standalone/harness/frames-suite.mjs --out "results/frames-suite-nofetch-${{ runner.os }}.json"
       - name: Results
         if: always()
         run: for f in results/*.json; do echo "== $f"; cat "$f"; done

@@ -31,7 +31,7 @@
 import { redact } from "../lib/shared.js";
 import { passwordFieldScript, CREDENTIAL_STORE } from "../shared/guards.js";
 import { guardInstall, guardInstallWrites, guardCollect, held as heldRequest } from "../shared/outbound.js";
-import { egressGuard } from "./net.js";
+import { egressGuard, clearDenied } from "./net.js";
 import { isGhlHost } from "../shared/ghlhosts.js";
 import { err } from "../lib/err.js";
 import { matchControl, norm, nearMisses, topBlocker, classifyBlocker, describeBlocker, redactDom, whereOf, traceOf, nap } from "../lib/ui.js";
@@ -1402,8 +1402,8 @@ export default {
       // A script that opens the page's stored login is refused, and one that WRITES with it (fetch, XHR, beacon, form submit) is refused: nothing is sent.
       if (CREDENTIAL_STORE.test(String(args.expression))) throw err("blocked", "the script reads the page's stored login (IndexedDB or storage auth tokens, cookies). Vyre does not hand a login to a script, and a script should not hold one. Use chrome_api (action \"call\"): it signs the request with the page's own login inside the page, and the token is never in your hands. Prefer api.call over eval-fetch.");
       const guarded = trust.asked !== true;
-      const egress = guarded ? await egressGuard(ctx, tabId) : null;
-      if (guarded) await run(frame, guardInstallWrites, {});
+      const egress = guarded ? await egressGuard(ctx, tabId, frame && frame.how !== "top" ? frame : null, { noFetch: trust.noFetch === true, diag: trust.diag === true }) : (await clearDenied(ctx, tabId), null);
+      if (guarded) await run(frame, `window.__vyreAllow = ${JSON.stringify(egress && egress.allowed || [])};` + guardInstallWrites, {});
       /** @type {any} */ let r;
       /** @type {any[]} */ let blocked = [];
       /** @type {any[]} */ let outside = [];
@@ -1412,7 +1412,7 @@ export default {
         if (guarded) { const c = await run(frame, guardCollect, {}).catch(() => null); { const bv = c && c.result && c.result.value; blocked = Array.isArray(bv) ? bv : []; } }
         if (egress) outside = await egress.stop().catch(() => []);
       }
-      if (outside.length) { const b = outside[0]; return heldRequest(b.method, b.origin, `the script tried to reach ${b.origin}, which is not this page or anything it already talks to`, `${args.expression}\n${b.method} ${b.origin}`); }
+      if (outside.length) { const b = outside[0]; return { ...heldRequest(b.method, b.origin, (b.method === "GUARD" ? (b.stopped ? b.origin : `${b.origin}. A request MAY HAVE BEEN SENT`) : `the script tried to reach ${b.origin}, which is not this page or anything it already talks to${b.leaked ? ". The request could not be stopped in time and MAY HAVE BEEN SENT" : ""}`), `${args.expression}\n${b.method} ${b.origin}`), diag: trust.diag === true && egress && egress.diag ? egress.diag() : undefined, egress: outside.slice(0, 10).map((/** @type {any} */ x) => ({ method: x.method, origin: x.origin, type: x.type, ...(x.session ? { session: "child" } : {}), ...(x.leaked ? { leaked: true } : {}) })) }; }
       const wrote = blocked.find((/** @type {any} */ b) => b.write);
       if (wrote) throw err("blocked", `the script tried to ${wrote.method} ${redact.url(wrote.url)} with the page's own login. Nothing was sent. A script may read with the page's login but not write with it: use chrome_api (action "call"), which makes the same request from inside the page, names it, and is asked first. Prefer api.call over eval-fetch.`);
       if (blocked.length) { const b = blocked[0]; return heldRequest(b.method, b.url, b.why, `${args.expression}\n${b.method} ${b.url}`); }

@@ -539,3 +539,12 @@ test("site knowledge in standalone is off until the person turns it on, and then
   assert.equal((await put()).data.accepted, true);
   assert.equal((await runtime.call("memory.site.get", { origin: "https://app.example.com" })).data.origin.controls[0].selector.identifier, "save");
 });
+
+test("the visit window for the two-visit evidence is floored at 5 minutes unless a test flag is on", async () => {
+  const { visitMsFrom } = await import("./runtime.js");
+  assert.equal(visitMsFrom(undefined, {}), 30 * 60_000, "default 30 minutes");
+  assert.equal(visitMsFrom(0.02, {}), 5 * 60_000, "a tiny setting is floored");
+  assert.equal(visitMsFrom(10, {}), 10 * 60_000);
+  assert.equal(visitMsFrom(0.02, { VYRE_CHROME_TEST: "1" }), 1200, "the harness may use a short window");
+  assert.equal(visitMsFrom(0.0001, { NODE_ENV: "test" }), 1000);
+});
