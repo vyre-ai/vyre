@@ -127,7 +127,8 @@
       "design/teammates.md",
       "design/tailscale-plan.md",
       "design/vitals.md",
-      "design/assistant.md"
+      "design/assistant.md",
+      "design/said.md"
     ]},
     { "title": "Design system", "pages": [
       "design/system/README.md",
