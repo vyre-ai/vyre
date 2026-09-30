@@ -483,26 +483,31 @@ try {
         }
       }
       // Finish the step, so the next screen is the one a person reaches.
-      if (step === "you") {
-        await page.run(`type("#name", "alex"); type("#assistant", "Juno"); await until('!document.querySelector("#primary").disabled');`);
-        await page.run(`click("#primary"); await until('location.hash === "#claude"');`);
-      } else if (step === "claude") {
-        // Skipped, as a person without Claude at hand does: the setup then ends with no assistant
-        // made (nothing to run it on, and no real claude here to greet with), so the Deck opens on
-        // the Create your assistant card. The Deck world has juno for everything else.
-        await ob.call("onboard.skip", { step: "claude" });
-      } else if (step === "tailscale" && !shot) {
-        await page.run(`click("#primary"); await until('/continue/i.test(document.querySelector("#primary").innerText)', 20000);`);
-      } else if (step === "name" && !shot) {
-        await page.run(`click("#primary"); await until('/switch to/i.test(document.querySelector("#primary").innerText)', 30000);`);
-      } else if (step === "devices") {
-        // Open Vyre: onboard.finish, then the ending screen.
-        await page.run(`click("#primary"); await until('document.querySelector(".ob-end")', 20000); await wait(1500);`);
-        continue;
-      } else if (step === "ready") break;
-      // A fresh render of the next step reads the new status.
-      await page.run(`location.reload(); await wait(10);`).catch(() => {});
-      await sleep(2500);
+      try {
+        if (step === "you") {
+          await page.run(`type("#name", "alex"); type("#assistant", "Juno"); await until('!document.querySelector("#primary").disabled');`);
+          await page.run(`click("#primary"); await until('location.hash === "#claude"');`);
+        } else if (step === "claude") {
+          // Skipped, as a person without Claude at hand does: the setup then ends with no assistant
+          // made (nothing to run it on, and no real claude here to greet with), so the Deck opens on
+          // the Create your assistant card. The Deck world has juno for everything else.
+          await ob.call("onboard.skip", { step: "claude" });
+        } else if (step === "tailscale" && !shot) {
+          await page.run(`click("#primary"); await until('/continue/i.test(document.querySelector("#primary").innerText)', 20000);`);
+        } else if (step === "name" && !shot) {
+          await page.run(`click("#primary"); await until('/switch to/i.test(document.querySelector("#primary").innerText)', 30000);`);
+        } else if (step === "devices") {
+          // Open Vyre: onboard.finish, then the ending screen.
+          await page.run(`click("#primary"); await until('document.querySelector(".ob-end")', 20000); await wait(1500);`);
+          continue;
+        } else if (step === "ready") break;
+        // A fresh render of the next step reads the new status.
+        await page.run(`location.reload(); await wait(10);`).catch(() => {});
+        await sleep(2500);
+      } catch (e) {
+        // The walk no longer matches the onboarding (its steps changed): stop here, keep the shots already taken, and let the Deck shots run.
+        log(`  ${step}: could not finish the step: ${/** @type {Error} */ (e).message}; the onboarding walk stops here`); process.exitCode = 1; break;
+      }
     }
     await page.close();
     // The Deck of the box just set up: no assistant yet, and the Mac still asking to pair.
