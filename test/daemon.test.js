@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start, retryUnknown } from "../core/daemon/index.js";
+import { htmlWithBuild } from "../core/daemon/build.js";
 import { request, call } from "../core/daemon/client.js";
 import { tempHome, writeModule } from "./helpers.js";
 
@@ -219,7 +220,7 @@ test("daemon: a real directory under deck/ with no index.html of its own still g
   t.after(() => d.stop());
   const get = p => new Promise(resolve => http.get({ socketPath: d.paths.socket, path: p }, res => { let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, body: b })); }));
 
-  const shell = fs.readFileSync(path.join(dir, "index.html"), "utf8");
+  const shell = htmlWithBuild(fs.readFileSync(path.join(dir, "index.html"), "utf8"));
   const r = await get("/_daemon-test-no-index");
   assert.equal(r.status, 200);
   assert.equal(r.body, shell);
@@ -461,8 +462,12 @@ test("daemon: the Deck's resilience client is served from core/resilience, and n
   assert.equal(seed.status, 200);
   assert.equal(seed.headers["content-type"], "text/javascript");
   assert.equal(seed.body, fs.readFileSync(path.join(import.meta.dirname, "..", "lib", "avatar-seed", "index.js"), "utf8"));
+  // lib/caps-flags (PLAN.md C14b): the provider capability flags, served the same way.
+  const caps = /** @type {any} */ (await get("/lib/caps-flags/index.js"));
+  assert.equal(caps.status, 200);
+  assert.equal(caps.body, fs.readFileSync(path.join(import.meta.dirname, "..", "lib", "caps-flags", "index.js"), "utf8"));
   // node.js (Node transports) and the tests are not the Deck's; neither is anything else in core/ or lib/.
-  for (const p of ["/core/resilience/node.js", "/core/resilience/sse.test.js", "/core/daemon/index.js", "/lib/avatar-seed/index.test.js", "/lib/identity.js"]) {
+  for (const p of ["/core/resilience/node.js", "/core/resilience/sse.test.js", "/core/daemon/index.js", "/lib/avatar-seed/index.test.js", "/lib/caps-flags/index.test.js", "/lib/identity.js"]) {
     const r = /** @type {any} */ (await get(p));
     assert.doesNotMatch(r.body, /^\/\/ @ts-check/, p);
   }
@@ -500,4 +505,26 @@ test("daemon: Wink's relay client (deck/js/pair-ticket.js's ../../relay/client/*
   // to the relay runs from here, not from /relay/client/*.js).
   const shell = /** @type {any} */ (await get("/pair/scan"));
   assert.ok(shell.headers["content-security-policy"].includes("wss://relay.vyre.run"));
+});
+
+test("daemon: a real box never serves the Deck's sample data; only a dev world does (0.2 honesty pass)", { timeout: 20_000 }, async t => {
+  const root = tempHome(t);
+  const saved = process.env.VYRE_DECK_FIXTURES;
+  delete process.env.VYRE_DECK_FIXTURES;
+  t.after(() => { if (saved === undefined) delete process.env.VYRE_DECK_FIXTURES; else process.env.VYRE_DECK_FIXTURES = saved; });
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const { socketPath } = await import("../core/config/index.js");
+  const http = await import("node:http");
+  const get = (/** @type {string} */ p) => new Promise((resolve, reject) => http.get({ socketPath: socketPath(root), path: p }, res => {
+    let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, body: b }));
+  }).on("error", reject));
+  for (const p of ["/fixtures/threads.json", "/chat/fixtures/session-blocks.json", "/fixtures/../fixtures/threads.json"]) {
+    const r = /** @type {any} */ (await get(p));
+    assert.equal(r.status, 404, p);
+    assert.doesNotMatch(r.body, /Harlow|Northwind/, p);
+  }
+  process.env.VYRE_DECK_FIXTURES = "1";
+  const dev = /** @type {any} */ (await get("/fixtures/threads.json"));
+  assert.equal(dev.status, 200, "a dev world still gets its sample data");
 });

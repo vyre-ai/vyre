@@ -1,0 +1,66 @@
+/* The report card (report.js; result-card.md). Theme variables only. */
+
+.cv-report { display: flex; flex-direction: column; min-width: 0; background: var(--panel); border: 1px solid var(--rule);
+  border-radius: var(--radius-card, 12px); overflow: hidden; }
+.cv-report:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cv-report .cv-card-head { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; flex-shrink: 0; border-bottom: 1px solid var(--rule); }
+.cv-report .cv-card-ico { display: inline-flex; color: var(--text-2); }
+.cv-report .cv-card-sp { flex: 1; }
+.cv-rp-htitle { min-width: 0; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--label); }
+.cv-rp-cmd { font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cv-rp-copy { flex-shrink: 0; }
+.cv-rp-copied { font-size: 12px; line-height: 16px; color: var(--text-2); padding: 0 4px; }
+
+.cv-rp-empty { padding: 12px 16px; font-size: 13px; line-height: 18px; color: var(--label); }
+.cv-rp-scroll { min-width: 0; overflow-x: auto; }
+.cv-rp-scroll.tall { max-height: 360px; overflow-y: auto; }
+.cv-rp-rows { display: flex; flex-direction: column; }
+.cv-rp-row { display: flex; align-items: baseline; gap: 8px; width: 100%; min-height: 36px; padding: 8px 16px; box-sizing: border-box; border: 0; border-top: 1px solid var(--rule);
+  background: transparent; color: var(--text); text-align: left; font-family: var(--sans); font-size: 13px; line-height: 18px; }
+.cv-rp-row:first-child { border-top: 0; }
+.cv-rp-row.go { cursor: pointer; }
+.cv-rp-row.go:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+@media (hover: hover) { .cv-rp-row.go:hover { background: var(--hover); } }
+.cv-rp-row .cv-mark { align-self: center; }
+.cv-rp-title { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.cv-rp-meta { margin-left: auto; padding-left: 12px; font-size: 12px; line-height: 16px; color: var(--label); text-align: right; overflow-wrap: anywhere; }
+
+.cv-rp-table { width: 100%; border-collapse: collapse; }
+.cv-rp-table th { height: 32px; padding: 0 16px; text-align: left; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--label); white-space: nowrap; }
+.cv-rp-table td { padding: 7px 16px; border-top: 1px solid var(--rule); font-size: 13px; line-height: 18px; color: var(--text); vertical-align: baseline; }
+.cv-rp-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.cv-rp-st { display: inline-flex; align-items: center; gap: 8px; }
+
+.cv-rp-text { padding: 12px 16px; font-size: 13px; line-height: 18px; color: var(--text); }
+.cv-rp-text.clamp { max-height: calc(18px * 12 + 24px); overflow: hidden; }
+.cv-rp-prose p { margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cv-rp-prose p:last-child { margin-bottom: 0; }
+.cv-rp-code { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--code-bg); color: var(--text); font-family: var(--mono); font-size: 13px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.cv-rp-card { padding: 4px 16px 8px; }
+.cv-rp-subject { padding: 8px 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--text); }
+.cv-rp-fact { display: flex; align-items: baseline; gap: 12px; padding: 7px 0; border-top: 1px solid var(--rule); }
+.cv-rp-subject + .cv-rp-fact, .cv-rp-fact:first-child { border-top: 0; }
+.cv-rp-k { width: 64px; flex-shrink: 0; font-size: 12px; line-height: 16px; color: var(--label); }
+.cv-rp-v { min-width: 0; font-size: 13px; line-height: 18px; color: var(--text); overflow-wrap: anywhere; }
+
+.cv-rp-error { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px 16px; font-size: 13px; line-height: 18px; color: var(--text); }
+.cv-rp-errline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cv-rp-detail { font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--text-2); overflow-wrap: anywhere; }
+.cv-rp-queued, .cv-rp-doneline { padding: 8px 16px 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
+.cv-rp-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--rule); }
+
+.cv-report .cv-mark { width: 8px; height: 8px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 1.5px solid var(--label); background: transparent; }
+.cv-report .cv-mark-running { border-color: var(--focus); border-top-color: transparent; animation: cv-rp-spin 0.9s linear infinite; }
+.cv-report .cv-mark-failed { position: relative; border-color: var(--text); }
+.cv-report .cv-mark-failed::after { content: ""; position: absolute; left: 50%; top: -1px; bottom: -1px; width: 1.5px; margin-left: -0.75px; background: var(--text); transform: rotate(45deg); }
+@keyframes cv-rp-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .cv-report .cv-mark-running { animation: none; } }
+
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .cv-report { border-radius: var(--radius-card-phone, 10px); }
+  .cv-rp-row { min-height: 44px; align-items: center; }
+  .cv-rp-text { font-size: 17px; line-height: 24px; }
+  .cv-rp-text.clamp { max-height: calc(24px * 12 + 24px); }
+  .cv-rp-foot .btn { min-height: 44px; }
+}

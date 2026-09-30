@@ -1,0 +1,81 @@
+/* The PR review card (pr-review.js; pr-review.md). Theme variables only. The file list inside is
+   diff-files.css; buttons are the Deck's .btn system. */
+
+.cv-pr-review { display: flex; flex-direction: column; min-width: 0; background: var(--panel); border: 1px solid var(--rule);
+  border-radius: var(--radius-card, 12px); overflow: hidden; }
+.cv-pr-review:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cv-pr-review .cv-card-head { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; flex-shrink: 0; }
+.cv-pr-review .cv-card-ico { display: inline-flex; color: var(--text-2); }
+.cv-pr-review .cv-card-title { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--text); min-width: 0; }
+.cv-pr-review .cv-card-sp { flex: 1; }
+.cv-pr-review .cv-card-meta { font-size: 12px; line-height: 16px; color: var(--label); white-space: nowrap; }
+.cv-prr-branch { font-family: var(--mono); font-size: 12px; color: var(--label); }
+.cv-prr-asks { padding: 0 16px 8px; font-size: 12px; line-height: 16px; color: var(--label); }
+
+.cv-prr-summary-wrap { padding: 0 16px 12px; }
+.cv-prr-summary { font-size: 13px; line-height: 18px; color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cv-prr-summary.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.cv-prr-steplink { padding: 0; margin-top: 4px; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 12px; line-height: 16px;
+  text-decoration: underline; text-decoration-color: var(--rule-strong); cursor: pointer; }
+.cv-prr-steplink:hover { color: var(--text); }
+.cv-prr-steplink:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+
+/* Check chips: the mark and the name (and a hidden status word), never colour alone. */
+.cv-prr-checks-wrap { padding: 0 16px 12px; }
+.cv-prr-checks { display: flex; flex-wrap: wrap; gap: 8px; }
+.cv-pr-review .cv-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 4px; border: 0;
+  background: var(--hover); color: var(--text-2); font-family: var(--sans); font-size: 12px; line-height: 16px; white-space: nowrap; }
+.cv-pr-review button.cv-chip { cursor: pointer; }
+.cv-pr-review button.cv-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cv-pr-review .cv-mark { width: 8px; height: 8px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 1.5px solid var(--label); background: transparent; }
+.cv-pr-review .cv-mark-running { border-color: var(--focus); border-top-color: transparent; animation: cv-prr-spin 0.9s linear infinite; }
+.cv-pr-review .cv-mark-failed { position: relative; border-color: var(--text); }
+.cv-pr-review .cv-mark-failed::after { content: ""; position: absolute; left: 50%; top: -1px; bottom: -1px; width: 1.5px; margin-left: -0.75px; background: var(--text); transform: rotate(45deg); }
+.cv-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.cv-prr-log { margin: 8px 0 0; padding: 8px 10px; background: var(--code-bg); border-radius: 8px; color: var(--text-2);
+  font-family: var(--mono); font-size: 12px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; }
+
+/* The file list has its own scroll on the desktop; a phone scrolls with the page. */
+.cv-prr-files { border-top: 1px solid var(--rule); max-height: 400px; overflow: auto; }
+.cv-prr-files .cv-dfl-bar { position: sticky; top: 0; z-index: 1; background: var(--panel); }
+
+.cv-prr-comments:empty { display: none; }
+.cv-prr-comment { display: flex; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--rule); }
+.cv-prr-av { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%;
+  background: var(--hover); color: var(--text-2); font-size: 11px; line-height: 1; font-weight: 600; }
+.cv-prr-cbody { min-width: 0; flex: 1; }
+.cv-prr-chead { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-height: 20px; }
+.cv-prr-cname { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text); }
+.cv-prr-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 4px; background: var(--hover); color: var(--text-2); font-size: 11px; }
+.cv-prr-anchor { font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--label); overflow-wrap: anywhere; }
+.cv-prr-ctext { margin-top: 2px; font-size: 13px; line-height: 18px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cv-prr-cacts { display: flex; gap: 12px; }
+.cv-prr-cacts:empty { display: none; }
+
+.cv-prr-foot { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--rule); }
+.cv-prr-foot.resolved { padding: 12px 16px; }
+.cv-prr-actions, .cv-prr-note { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cv-prr-field { flex: 1; min-width: 160px; }
+.cv-prr-outline { background: transparent; border-color: var(--rule-strong); color: var(--text); }
+.cv-prr-btn .kbd { margin-left: 2px; }
+.cv-prr-btn[aria-busy="true"] { cursor: progress; }
+.cv-prr-btn:disabled { opacity: 0.6; cursor: default; }
+.cv-prr-resolved, .cv-prr-sent { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; color: var(--text-2); }
+.cv-prr-queued { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: var(--text-2); }
+.cv-prr-err { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; line-height: 18px; color: var(--text); }
+.cv-prr-err-t { min-width: 0; overflow-wrap: anywhere; }
+.cv-pr-review .cv-from { font-size: 12px; line-height: 16px; color: var(--label); }
+
+@keyframes cv-prr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .cv-pr-review .cv-mark-running { animation: none; } }
+
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .cv-pr-review { border-radius: var(--radius-card-phone, 10px); }
+  .cv-prr-checks { flex-wrap: nowrap; overflow-x: auto; }
+  .cv-prr-files { max-height: none; overflow: visible; }
+  .cv-prr-actions { flex-wrap: wrap; }
+  .cv-prr-actions .cv-prr-btn { height: 44px; flex: 1 1 0; }
+  .cv-prr-actions [data-act="merge"] { height: 54px; flex-basis: 100%; }
+  .cv-prr-note { flex-direction: column; align-items: stretch; }
+  .cv-prr-note .cv-prr-btn { height: 44px; }
+}

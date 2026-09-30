@@ -7,6 +7,109 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### tests: every Chrome launch carries the mock-keychain flags
 
 - Chrome on macOS reached for the login Keychain and put a real dialog on the user's screen. `lib/chrome-flags` exports `CHROME_SAFE` (`--use-mock-keychain`, `--password-store=basic`), spread into every Chrome launch in the Deck shot and browser scripts, the native-bar run, the vyrecode harness, hands-chrome's and the onboarding page's tests, the docs build, design-audit, the iOS icon script and the app-perf playwright launch. `test/chrome-flags.test.js` fails on any file that launches Chrome without them (containers' own Chrome and the fakes are listed as exempt, each with why).
+#### chat: "/" opens the assistant's thread; card review follow-ups
+
+- `deck/js/home.js`: "/" goes to the assistant's current thread (`assistant.daily`, else the assistant's own thread from `agents.list`), else Now. The welcome cards are the first thing after setup.
+- reviewer-2 on 01b46eb8: `firstParty` now refuses the hub's third-party form (`mcp__vyre__<server>__<tool>`, the gate's HUB pattern); only Vyre's own one-segment MCP tools count. The frame nonce is removed (the nonce sits in the frame's own URL, so a hostile page can read it): the guard counts loads as before, and a line drawn by the Deck outside the frame always says "Made by <agent>. It runs on its own and is not part of Vyre."
+
+#### chat: "Charter changed by <agent>", a quiet notice with the diff and a one-tap Revert
+
+- `deck/chat/cards/charter-changed.js` (+ css): in a teammate's own thread, when an agent (not the person's own surface) wrote a new charter version, a quiet row says "Charter changed by <agent>" with the note. "Show changes" opens `team.charter.diff` inline; Revert calls `team.charter.revert` to the version before (itself a new version, so it can be undone the same way); a first version has no Revert. It is a notice, never a prompt, and Dismiss keeps it away for that version.
+- `session.js` draws it from the `teammate.charter-changed` event and, on open, from `team.charter.history` when the latest version is an agent's from the last day. Tests: `charter-changed.test.js` (6).
+
+#### chat cards: reviewer-2's two MEDIUMs
+
+- M1: a display card is actionable only when its tool block's name is a Vyre tool (`firstParty`: a registry name, or `mcp__vyre__*`; the name comes from the transcript, a model cannot set it). A result from Bash, a fetch, a read or another server draws the same card with no buttons (`ctx.readOnly`): no report actions or links, no merge or review on a pull request, no RSVP on an event. A report's buttons call only tools on `ACTION_TOOLS` in `report.js`, never a name taken from the payload.
+- M2: the artifact frame guard takes a per-render nonce. The Deck asks the render route with `?n=<nonce>` and expects `{vyreFrame: nonce}` posted to the parent from the frame's own window; a first load with no message within 2 s, or any later load, blanks the frame. Asked for only where the route answers a HEAD with `x-vyre-frame-nonce`, so a route that does not yet send it is counted the old way. The route's half (the last script and the header) is artifacts'.
+
+#### projects: rename, archive and the history question from the Deck
+
+- `deck/js/project-actions.js`: `renameProject` (the project page's heading becomes a field; `projects.rename {project, name}`, name only, slug and tile stay) and `archiveProject` (`projects.archive`, then the list, with an Undo toast; `archived: false` is Restore). The Projects list gains an Archived view with Restore on each row.
+- `createProject` carries `projects.create`'s history offer (kind `history`, tool `projects.history` only); `historyOffer` and `offerThen` ask the one question, "Keep version history for this folder?", before the person lands in the project: Keep history or No thanks, never asked again. Used by the New project form, the inline create and "New project from this".
+- Tests: `deck/js/project-actions.test.js` (7). `test/deck-contract.test.js` lists `projects.rename`, `projects.archive` and `projects.history` as optional until teammates merges; `deck/test/fake-dom.js` gains `replaceWith`.
+
+#### chat: the land cards, the assistant's first message after setup
+
+- `deck/chat/cards/land.js` (+ `land.css`): `welcomeRow` draws `assistant.welcome` ({text, cards:[{id, title, body, href?}]}) at the top of the assistant's own empty thread, and redraws when `onboard.stepped` says a step finished (its card leaves). A card carries an id and words, never a tool: each known id (`claude`, `tailscale`, `history`, `import`, `phone`) has its own handler here, and an unknown id is drawn only when it carries an https link (reviewer-2's BLOCKER, C21).
+- `claude`: `onboard.claude {mode:"setup-token"}` for the sign-in page (https only), then the pasted code. `history`: `import.scan`, pick folders (suggested ones ticked), `import.plan`, Fast or Gentle with neither preselected, `import.start`. `import`: `import.status` and the `import.progress` event. `phone`: opens Settings > Devices, where the live Vyre code ring already is. `tailscale`: the card's own https link.
+- Tests: `deck/chat/cards/land.test.js` (9). `test/deck-contract.test.js` lists `assistant.welcome` and `team.retire` as optional until assistant and teammates merge; the goal chip test reads `Ctrl+Enter` off a Mac.
+
+#### chat: the common components, designed once (app-design section 10)
+
+- `deck/chat/cards/`: one registry (`index.js`) with two ways in and no third. A blocking ask of kind
+  `pr_review`, `email_draft`, `calendar_draft`, `survey` or `confirmation` draws through `askCardFor`
+  (a plain question that carries survey fields becomes the survey). A tool result that carries
+  `render: {kind, ...}` (or `{render}` in its JSON output) draws through `toolDisplay`: `pr_review`,
+  `diff` (multi-file), `report`, `email_thread`, `calendar_event`, `file_preview`, `link_preview`,
+  `artifact`. The session event `thread.artifact` makes one artifact card per version.
+- Components: PR review (merge and review from the card, "Approve and merge anyway" after a failed
+  check, collaborator comments folded), multi-file diff, report, email thread (bodies are text only),
+  email and calendar drafts (edit in place; the person's own matched ask sends with no passkey),
+  calendar event (Accept, Maybe, Decline), survey (recommended mark, thoughts box, progress),
+  confirmation line ("You said to", Undo), file and link preview, artifact card with its viewer
+  (side panel, phone sheet, `/a/<id>`).
+- An artifact page is framed with `sandbox="allow-scripts"` only, and a second load event on the
+  frame blanks it with "This page tried to open another site" (artifacts review M5).
+- `@role` makes a teammate at once (no confirm card) and sends the ask; the handoff card says "Made
+  design, a new teammate" with Undo (`team.retire`) until the teammate replies. A name one slip from an
+  existing role (`@desgin`) shows "Did you mean @design?", Tab takes it, sending as typed still creates
+  the new role. `@kit`, the person's own agent, goes to `agents.ask` and opens in the agent's chat; a
+  role of the same name wins. With Teammates off the note links to that project's Settings.
+- Settings: the confirm sheet is gone. A widening or loosening change saves at once like any other,
+  with no preview call and no passkey; the change is logged and undoable (settings.undo).
+- Tests: every component has its own file; three older tests learned the platform key hint, the
+  installed-window rail keys and the settings change id.
+
+#### settings: an agent changes a setting only when you asked, and every change can be undone (PLAN.md C25)
+
+- The person's own changes ask nothing now (the charter's "security without friction", lead's
+  decision 30 Sep): `settings.set` and `settings.reset` need no `confirm: true` and no presence
+  proof, security settings included. A preview still names what a change widens or loosens. The
+  Deck's confirm sheet comes out with the 0.2 UI work. A hand edit of hub.json that loosens
+  security still waits for the person, since any program can write that file.
+
+- `settings.request` (agents, inside a conversation): changes or resets a setting only when the
+  person's own words in this conversation asked for it, as vault's `gate.said.match` answers for
+  the calling thread (P17). No match, or no gate yet: refused, with words the agent passes on.
+  Asking is approving, so no confirm step for that change. `settings.set` and `settings.reset`
+  stay the person's.
+- Every change is logged (`settings_changes`: key, level, before and after, who, the turn it was
+  asked in; secret keys log no values). `settings.changes` lists them; `settings.undo {change}`
+  puts the value before back, with no prompt. `settings.changed` now carries `change` and `by`.
+
+#### The desktop shell contract, hardened (PLAN.md C22, reviewer-2 H4)
+
+- deck/js/platform.js: the Windows or Mac app is detected only by a value its host injects
+  (`window.__vyreShell`), never a query or a header, and it only changes presentation. Key hints
+  follow the platform ("Ctrl+K" off a Mac, "⌘K" on one), and the rail's Cmd/Ctrl+1 to 9 work only
+  in an installed window, where they don't fight the browser's tab keys.
+- lib/deeplink parses `vyre://open/...` links to an in-app route or nothing (no pairing verb, no
+  URL, no path tricks), with golden vectors in spec/deeplink/open.json for the desktop apps.
+- A terminal URL reached by a link shows "Open the terminal" instead of attaching on load; the app's
+  own opening still attaches at once (deck/chat/lib/opened-here.js).
+
+#### deck: a page is never older than its box, and nobody is asked
+
+- vyred stamps its build id into the Deck page (`<meta name="vyre-build">`, core/daemon/build.js
+  htmlWithBuild) as it already does into sw.js. Each time the stream comes back, deck/js/build-check.js
+  compares the page's id with system.info's; on a mismatch the service worker updates and the page
+  reloads when untouched or next hidden (drafts kept). No prompt. A dev checkout never reloads.
+
+#### lib/caps-flags and chat's provider capabilities (0.2, PLAN.md C14b)
+
+- `lib/caps-flags/index.js` is the one list of provider capability flags, with `normalizeCaps`
+  (every flag present and typed; missing means off) and `checkCaps` (names each gap, for sessions'
+  conformance test). vyred serves it to the Deck at /lib/caps-flags/index.js, beside
+  lib/avatar-seed, from one fixed list.
+- `deck/chat/core/provider-caps.js` turns a provider's live caps into each chat control's state
+  (on, hidden, or off with a plain reason) and the meter's level. Controls read live caps; a
+  thread's snapshot only renders the past. Not yet wired into the UI (it waits for app-design).
+
+#### A real box never serves the Deck's sample data
+
+- vyred refuses any path under a `fixtures` folder of the Deck unless VYRE_DECK_FIXTURES=1 (dev
+  worlds and tests set it), so a `?fixtures=1` link can't show sample threads on a real install.
+  Placeholders that named the sample world now say what to type ("Your project's name").
 
 - Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
   when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is

@@ -17,7 +17,7 @@ import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice } from "../modules/index.js";
-import { build, swWithBuild } from "./build.js";
+import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence } from "../presence/index.js";
@@ -755,9 +755,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // through a real vyred the way a phone does.
   const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise)\.js$/.exec(url.pathname);
   if (resRelay) return serveFile(res, path.join(REPO, "relay", "client", resRelay[1] + ".js"), cfg);
-  // lib/avatar-seed (ADR 0043 section 6): the one rule for a project tile's bytes, which the Deck
-  // imports as ../../lib/avatar-seed/index.js, so the Deck and Node load the one copy. Only this file.
-  if (req.method === "GET" && url.pathname === "/lib/avatar-seed/index.js") return serveFile(res, path.join(REPO, "lib", "avatar-seed", "index.js"), cfg);
+  // The pure libs the Deck shares with Node, so both load the one copy: lib/avatar-seed (ADR 0043
+  // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).
+  // Exact paths only, nothing else in lib/.
+  if (req.method === "GET" && DECK_LIBS.has(url.pathname)) return serveFile(res, path.join(REPO, ...url.pathname.slice(1).split("/")), cfg);
   // The one app (ADR 0027), beside the Deck until it takes over /. Once config app.root flips
   // (mobile's client-side migration, off by default: core/config/index.js), /app/* is a 301 to
   // the same path under "/" instead, so an installed /app/ Home Screen icon or a stale bookmark
@@ -837,6 +838,9 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
   ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
   ".ttf": "font/ttf", ".map": "application/json" };
 
+/** The lib files vyred serves to the Deck (pure, import-free, shared with Node). */
+const DECK_LIBS = new Set(["/lib/avatar-seed/index.js", "/lib/caps-flags/index.js"]);
+
 /**
  * The Deck: static files from deck/ in the repo (the deck workstream builds them). Paths that
  * are not files get index.html, so the Deck can route on the client. Nothing outside deck/ is
@@ -847,6 +851,12 @@ function serveDeck(res, pathname, cfg) {
   const shell = path.join(dir, "index.html");
   let file = path.resolve(dir, "." + path.posix.normalize(decodeURIComponent(pathname)));
   if (!file.startsWith(dir + path.sep) && file !== dir) return send(res, 404, { error: { code: "not_found", message: pathname } });
+  // Sample data (deck/fixtures, deck/chat/fixtures) is for dev worlds and tests only: a real box
+  // never serves it, so no ?fixtures=1 link can put sample threads in front of a person (0.2
+  // honesty pass, PLAN.md D2). Dev worlds set VYRE_DECK_FIXTURES=1.
+  if (process.env.VYRE_DECK_FIXTURES !== "1" && path.relative(dir, file).split(path.sep).includes("fixtures")) {
+    return send(res, 404, { error: { code: "not_found", message: pathname } });
+  }
   // A path that is not a file at all (any client route) wants the one shell. A path that IS a
   // real directory (a view's own folder of modules, e.g. deck/chat/) wants that shell too, unless
   // the directory happens to carry its own index.html: a bare 404 there would be surprising, since
@@ -863,6 +873,7 @@ function serveDeck(res, pathname, cfg) {
   // The service worker carries the build, so a release is a new sw.js and a phone swaps its cache
   // at once (deck/sw.js BUILD).
   if (file === path.join(dir, "sw.js")) buf = Buffer.from(swWithBuild(buf.toString("utf8")));
+  if (file === shell || wantsShell) buf = Buffer.from(htmlWithBuild(buf.toString("utf8")));
   res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...deckHeaders(cfg) });
   res.end(buf);
 }
