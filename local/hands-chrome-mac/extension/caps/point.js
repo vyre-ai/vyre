@@ -34,16 +34,21 @@ const hitScript = (/** @type {number} */ x, /** @type {number} */ y) => script("
   if (tag === "iframe" || tag === "frame") { out.kind = "iframe"; out.src = el.src || ""; out.name = el.name || ""; return out; }
   if (tag === "canvas") out.kind = "canvas"; else if (tag === "video" || tag === "audio") out.kind = "media"; else if (tag === "svg" || el instanceof SVGElement) out.kind = "svg"; else if (tag === "img") out.kind = "image"; else if (tag === "object" || tag === "embed") out.kind = "embed";
   const clickable = n => { if (!n || n.nodeType !== 1) return false; const t = n.tagName.toLowerCase(); if (["button", "a", "input", "select", "textarea", "summary", "label", "option"].includes(t)) return true; const r = n.getAttribute("role"); if (r && /^(button|link|menuitem|menuitemcheckbox|menuitemradio|tab|option|checkbox|radio|switch|treeitem|gridcell)$/.test(r)) return true; if (n.hasAttribute("onclick") || (n.tabIndex >= 0 && n.hasAttribute("tabindex"))) return true; try { return getComputedStyle(n).cursor === "pointer"; } catch (e) { return false; } };
-  const parts = []; const seen = new Set();
-  const add = v => { v = String(v == null ? "" : v).replace(/\\s+/g, " ").trim(); if (v && !seen.has(v)) { seen.add(v); parts.push(v.slice(0, 160)); } };
-  let n = el, stop = false;
+  // TWO texts. text (generous) is for the send/delete patterns only: the hit element's and its ancestors' words (a few levels, up to the nearest clickable), so a Send drawn as a bare div holds even when the
+  // pointer lands on its icon. own decides whether the target says what it is: the hit element's own words and, from non-clickable ancestors, only aria-label, title and alt (never innerText), so a
+  // canvas inside a page that has a heading is still a drawn surface.
+  const parts = [], ownParts = []; const seen = new Set(), seenOwn = new Set();
+  const addTo = (list, set, v) => { v = String(v == null ? "" : v).replace(/\s+/g, " ").trim(); if (v && !set.has(v)) { set.add(v); list.push(v.slice(0, 160)); } };
+  const both = v => { addTo(parts, seen, v); addTo(ownParts, seenOwn, v); };
+  const label = n => { both(n.getAttribute("aria-label")); both(n.getAttribute("title")); both(n.getAttribute("alt")); const lb = n.getAttribute("aria-labelledby"); if (lb) for (const id of lb.split(/\s+/).slice(0, 3)) { const t = document.getElementById(id); if (t) both(t.textContent); } };
+  let n = el, stop = false, chain = true;
   for (let i = 0; n && i < 8 && !stop; i++) {
     if (n.nodeType === 1) {
-      add(n.getAttribute("aria-label")); add(n.getAttribute("title")); add(n.getAttribute("alt")); add(n.getAttribute("placeholder"));
-      const lb = n.getAttribute("aria-labelledby"); if (lb) for (const id of lb.split(/\\s+/).slice(0, 3)) { const t = document.getElementById(id); if (t) add(t.textContent); }
-      if (n.tagName === "INPUT" && /^(button|submit|reset|image)$/i.test(n.type || "")) add(n.value);
-      const tx = n.innerText != null ? n.innerText : n.textContent; add(String(tx || "").slice(0, 200));
-      if (clickable(n)) stop = true;
+      const isClick = clickable(n);
+      const inner = () => String((n.innerText != null ? n.innerText : n.textContent) || "").slice(0, 200);
+      if (i === 0 || isClick) { label(n); addTo(parts, seen, n.getAttribute("placeholder")); addTo(ownParts, seenOwn, n.getAttribute("placeholder")); if (n.tagName === "INPUT" && /^(button|submit|reset|image)$/i.test(n.type || "")) both(n.value); both(inner()); }
+      else { const a = n.getAttribute("aria-label"), t = n.getAttribute("title"), al = n.getAttribute("alt"); addTo(ownParts, seenOwn, a); addTo(ownParts, seenOwn, t); addTo(ownParts, seenOwn, al); addTo(parts, seen, a); addTo(parts, seen, t); addTo(parts, seen, al); if (i <= 4 && !n.querySelector('canvas,video,svg,embed,object,iframe')) addTo(parts, seen, inner()); }
+      if (isClick) stop = true;
     }
     if (!stop) n = n.parentElement || (n.getRootNode && n.getRootNode().host) || null;
   }
@@ -51,7 +56,9 @@ const hitScript = (/** @type {number} */ x, /** @type {number} */ y) => script("
   const c = el.closest ? el.closest("button,input,[role=button]") : null;
   if (c && ((c.tagName === "BUTTON" && (c.type || "submit") === "submit" && c.form) || (c.tagName === "INPUT" && /^(submit|image)$/i.test(c.type || "")))) out.submit = true;
   out.text = parts.join(" | ").slice(0, 300);
+  out.own = ownParts.join(" | ").slice(0, 300);
   out.textless = out.text.length === 0;
+  out.ownless = out.own.length === 0;
   const fe = el.closest ? el.closest("input,textarea,select,[contenteditable=''],[contenteditable='true']") : null;
   if (fe) { const t = fe.tagName.toLowerCase(); out.fillable = t !== "input" || !/^(button|submit|reset|image|checkbox|radio|range|color|file)$/i.test(fe.type || "text"); const ty = String(fe.type || "").toLowerCase(), ac = String(fe.getAttribute("autocomplete") || "").toLowerCase(), id = (fe.name || "") + " " + (fe.id || ""); out.password = ty === "password" || ac === "one-time-code" || /current-password|new-password/.test(ac) || /\\b(otp|passcode|2fa|mfa|verification[-_ ]?code)\\b/i.test(id); }
   out.path = tag + (el.id ? "#" + String(el.id).slice(0, 30) : "") + "@" + out.rect.l + "," + out.rect.t + "," + out.rect.w + "," + out.rect.h;
@@ -167,7 +174,8 @@ export default {
       const dropCons = dropInfo && dropInfo.text ? classifyText(String(dropInfo.text)) : { consequential: false, why: "" };
       const consequential = write && (cons.consequential || info.submit === true || dropCons.consequential || (dropInfo && dropInfo.submit === true));
       // Drawn: nothing in the DOM says what it is (a canvas, a video, a frame Vyre cannot see into, a closed shadow root, an empty element).
-      const drawn = write && !consequential && (!!hit.unreadable || info.none === true || info.textless === true || (dropInfo ? dropInfo.textless === true : false));
+      const ownless = (/** @type {any} */ x) => (x.ownless !== undefined ? x.ownless === true : x.textless === true);
+      const drawn = write && !consequential && (!!hit.unreadable || info.none === true || ownless(info) || (dropInfo ? ownless(dropInfo) : false));
       const sig = digest([action, hit.frameOrigin, String(info.path || ""), text, String(dropInfo && dropInfo.path || ""), shot.metrics.url, `${Math.round(cx)},${Math.round(cy)}`].join("\n"));
       const held = (/** @type {string} */ why) => ({ ok: false, held: true, why, control: { role: consequential ? "control" : "drawn surface", name: consequential ? text.slice(0, 80) : `${info.kind || "surface"} at ${Math.round(px)},${Math.round(py)}` }, fields: [{ name: "where", value: `${hit.frameOrigin || "this page"}, ${action} at ${Math.round(px)},${Math.round(py)}` }, { name: "under the point", value: text ? text.slice(0, 120) : (hit.unreadable || `${info.kind || "nothing readable"} (nothing in the page says what this does)`) }, ...(action === "type" ? [{ name: "typing", value: `${String(args.text).length} characters` }] : [])], sig, origin: hit.frameOrigin });
       const asked = trust.asked === true;
@@ -191,7 +199,9 @@ export default {
         log.push(nowMs); recent.set(tabId, log);
         // Right before dispatch: the same thing must still be under the point (a dialog or a navigation that arrived in between).
         const again = await resolveHit(ctx, tabId, cx, cy);
-        if ((again.info && again.info.path) !== (info.path || undefined) || (again.info && again.info.modals) !== info.modals || again.frameOrigin !== hit.frameOrigin) throw err("changed", "something else is under the point now, so nothing was done: take a fresh screenshot");
+        let dropAgain = null;
+        if (to) dropAgain = await resolveHit(ctx, tabId, to.x, to.y);
+        if ((again.info && again.info.path) !== (info.path || undefined) || (again.info && again.info.modals) !== info.modals || again.frameOrigin !== hit.frameOrigin || (to && (!dropAgain || (dropAgain.info && dropAgain.info.path) !== (dropInfo && dropInfo.path || undefined) || (dropAgain.info && dropAgain.info.modals) !== (dropInfo && dropInfo.modals)))) throw err("changed", "something else is under the point now, so nothing was done: take a fresh screenshot");
       }
       const f = hit.frame, at = { x: Math.round(hit.x), y: Math.round(hit.y) };
       if (action === "hover") await mouse(ctx, tabId, f, "mouseMoved", { x: at.x, y: at.y }, { wait: false });

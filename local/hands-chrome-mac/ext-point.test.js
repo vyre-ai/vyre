@@ -170,3 +170,38 @@ test("a runaway loop of point acts is rate limited", async () => {
   for (let i = 0; i < 12 && !limited; i++) { try { await op({ tabId: 1, shot: id, x: 1, y: 1, action: "click" }, w.ctx); } catch (e) { limited = /** @type {any} */ (e).code === "rate_limited"; } }
   assert.equal(limited, true);
 });
+
+test("a canvas inside a page that has a heading or a nav is still a drawn surface: only its own words and aria-label, title and alt count, never an ancestor's text", async () => {
+  // text is the generous text (for the Send and Delete patterns); own is what the target says about itself
+  const w = world({ under: () => el({ tag: "canvas", kind: "canvas", text: "Quarterly board | Home Settings", textless: false, own: "", ownless: true, path: "canvas@0,0,800,600" }) });
+  const held = await op({ tabId: 1, shot: shotOf(), x: 50, y: 50, action: "click" }, w.ctx);
+  assert.equal(held.held, true, "no approval, no plan: held");
+  assert.ok(!w.mouse().length);
+  assert.equal((await op({ tabId: 1, shot: shotOf(), x: 50, y: 50, action: "click", ...plan() }, w.ctx)).ok, true, "a plan covers it");
+  // the same canvas with a heading that says Send is held whatever the plan says (the generous text is over-cautious on purpose)
+  const s = world({ under: () => el({ tag: "canvas", kind: "canvas", text: "Send feedback | Board", textless: false, own: "", ownless: true }) });
+  assert.equal((await op({ tabId: 1, shot: shotOf(), x: 50, y: 50, action: "click", ...plan() }, s.ctx)).held, true);
+  // a labelled canvas says what it is
+  const l = world({ under: () => el({ tag: "canvas", kind: "canvas", text: "Open the board", textless: false, own: "Open the board", ownless: false }) });
+  assert.equal((await op({ tabId: 1, shot: shotOf(), x: 50, y: 50, action: "click" }, l.ctx)).ok, true);
+});
+
+test("drag: the drop point is checked again right before dispatch", async () => {
+  let drops = 0;
+  const w = world({ under: (x) => { if (x > 300) { drops++; return el({ tag: "div", text: "Card", textless: false, own: "Card", ownless: false, modals: drops > 1 ? 1 : 0, path: "div@400,0,10,10" }); } return el({ tag: "div", text: "Card", textless: false, own: "Card", ownless: false }); } });
+  await assert.rejects(op({ tabId: 1, shot: shotOf(), x: 100, y: 100, action: "drag", to: { x: 500, y: 100 } }, w.ctx), { code: "changed" });
+});
+
+test("a screenshot is refused when ANY frame's address is blind, readable or not", async () => {
+  const { default: page } = await import("./extension/caps/page.js");
+  let shots = 0;
+  const ctx = {
+    cdp: { async send(/** @type {number} */ _t, /** @type {string} */ m) { if (m === "Page.captureScreenshot") { shots++; return { data: "AAAA" }; } return { result: { value: undefined } }; } },
+    frames: { list: async () => [{ index: 0, how: "top", frameId: "TOP", url: "https://app.example/", readable: true }, { index: 1, how: "session", frameId: "K", url: "https://accounts.google.com/signin", readable: false, session: "S" }] },
+    floorUrl: async (/** @type {string} */ u) => (/accounts\.google/.test(u) ? { allow: false, tier: "blind", why: "a sign-in page" } : { allow: true, tier: "open" }),
+    floorAllows: async () => ({ allow: true }),
+    tabs: { active: async () => ({ id: 1 }) },
+  };
+  await assert.rejects(page.ops["page.screenshot"]({ tabId: 1 }, ctx), { code: "blocked" });
+  assert.equal(shots, 0, "no picture was taken");
+});

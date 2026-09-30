@@ -1446,6 +1446,8 @@ export default {
       const quality = Math.min(Math.max(Math.round(Number(args.quality) || 60), 10), 100);
       // A picture shows what is on screen: a password or one-time-code field in any frame of the page means no picture (the same rule chrome_eval applies before it runs).
       for (const f of await framesOf(ctx, tabId)) {
+        // Every frame's address answers to the floor, readable or not: a sign-in or bank page framed into an allowed one is not pictured.
+        if (f.url && typeof ctx.floorUrl === "function") { const v = await ctx.floorUrl(String(f.url), "page.screenshot"); if (v && v.tier === "blind") throw err("blocked", `a frame of this page is off limits (${v.why || "blind"}), so Vyre does not take a picture of it`); }
         if (f.readable === false) continue;
         let pw = false;
         try { pw = await evaluate(ctx, tabId, passwordFieldScript, {}, f); } catch { /* a frame that cannot be checked is not a frame the picture is taken of */ }
