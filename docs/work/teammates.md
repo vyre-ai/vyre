@@ -760,3 +760,5 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   proposal. One seam, `personAsked(meta)` in core/team/index.js, becomes `gate.said.match` (act_out, lineage-aware) with P17;
   then an asked duty from the assistant or a session starts at once. On the P17 release list with charter, fill/grant and retire.
 - Note for team-lead: this supersedes "the assistant can turn a proposed duty on" until P17; the person's tap does it.
+- reviewer-2 (54c90229 cleared): with the P17 swap, an edited proposal must show "changed since you last saw it" or re-show its
+  instruction when turned on, so the approved text is the text that runs. On the release list (Deck card + an `expect` check on enable).
