@@ -555,6 +555,22 @@ test("github.project.issue.list / .get: issues without pull requests, search wit
   assert.ok(w.log.every(l => l.method === "GET"));
 });
 
+test("github.act.target: the destination a person's yes must name - merge and review bind repo and PR number, open binds repo and branch; only the registry may ask", async t => {
+  const w = await prWorld(t);
+  const reg = w.as("module:vyred", { firstParty: true });
+  const to = async (tool, input) => (await reg("github.act.target", { tool, input }));
+  assert.deepEqual((await to("github.project.pr.merge", { project: "app", pr: 12, method: "squash" })).data, { to: ["alex/app#12"] });
+  assert.deepEqual((await to("github.project.pr.review", { project: "app", pr: 40, event: "APPROVE" })).data, { to: ["alex/app#40"] });
+  assert.deepEqual((await to("github.project.pr.open", { project: "app", session: "s1", title: "t" })).data, { to: ["alex/app@vyre/s1"] });
+  assert.deepEqual((await to("github.project.pr.open", { project: "app", head: "feature/x", title: "t" })).data, { to: ["alex/app@feature/x"] });
+  assert.equal((await to("github.project.pr.merge", { project: "nope", pr: 1 })).error.code, "not_found");
+  assert.equal((await to("github.project.pr.merge", { project: "app", pr: "x" })).error.code, "bad_input");
+  assert.equal((await to("github.project.pr.open", { project: "app", title: "t" })).error.code, "bad_input");
+  assert.equal((await to("github.project.pr.get", { project: "app", pr: 1 })).error.code, "bad_input", "not one of the asked tools");
+  assert.equal((await w.as("deck")("github.act.target", { tool: "github.project.pr.merge", input: { project: "app", pr: 1 } })).error.code, "denied", "internal: not a person's tool");
+  assert.equal((await w.as("module:evil", { firstParty: true })("github.act.target", { tool: "github.project.pr.merge", input: { project: "app", pr: 1 } })).error.code, "denied");
+});
+
 test("github.project.pr.merge / .review: a person runs; a project without a repo is not_found (agents are held by reach: asked, see registry.test.js)", async t => {
   const w = await prWorld(t);
   const m = await w.as("deck")("github.project.pr.merge", { project: "app", pr: 7, method: "squash" });
