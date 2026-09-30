@@ -240,7 +240,7 @@ test("net.replay runs inside the page through Runtime.evaluate, with credentials
   const k = makeCtx({ respond: { "Runtime.evaluate": { result: { value: { status: 200, mime: "application/json", headers: { "content-type": "application/json", "set-cookie": "sessionid=SETCOOKIEVALUE123456" }, body: JSON.stringify({ ok: true, access_token: "REFRESHCOOKIE77665544" }) } } } } });
   await op(k, "net.start");
   orderRequest(k);
-  const out = await op(k, "net.replay", { id: "r1", overrides: { body: { item: "rye", password: "hunter2hunter2" } } });
+  const out = await op(k, "net.replay", { id: "r1", writeOk: true, overrides: { body: { item: "rye", password: "hunter2hunter2" } } });
   const ev = k.calls("Runtime.evaluate");
   assert.equal(ev.length, 1, "replay is one Runtime.evaluate");
   assert.match(ev[0].params.expression, /fetch\(P\.url, P\.init\)/);

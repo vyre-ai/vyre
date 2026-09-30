@@ -76,8 +76,12 @@ test("net.replay: a captured send is held unless asked", async () => {
   const h = await net.ops["net.replay"]({ tab: 3, id: "9" }, k.ctx);
   assert.equal(h.held, true);
   const sentBefore = k.sent.filter(s => s.method === "Runtime.evaluate").length;
-  const ok = await net.ops["net.replay"]({ tab: 3, id: "10" }, k.ctx);
-  assert.equal(ok.held, undefined, "a tag write is not a send");
+  const tagHeld = await net.ops["net.replay"]({ tab: 3, id: "10" }, k.ctx);
+  assert.equal(tagHeld.held, true, "a tag write is a change with the person's login: held unless a plan covers it");
+  assert.equal(tagHeld.write, true);
+  assert.equal(k.sent.filter(s => s.method === "Runtime.evaluate").length, sentBefore, "nothing was sent");
+  const ok = await net.ops["net.replay"]({ tab: 3, id: "10", writeOk: true }, k.ctx);
+  assert.equal(ok.held, undefined, "covered by a plan, it runs");
   assert.ok(k.sent.filter(s => s.method === "Runtime.evaluate").length > sentBefore);
   const asked = await net.ops["net.replay"]({ tab: 3, id: "9", asked: true }, k.ctx);
   assert.equal(asked.held, undefined, "asked runs it");
@@ -96,4 +100,22 @@ test("dev.console.eval: the script runs, its own send is held back, asked runs i
   const r = await dt.ops["dev.console.eval"]({ tab: 3, expression: "1", asked: true }, plain.ctx);
   assert.equal(r.ok, true);
   assert.ok(!plain.sent.some(s => s.params && s.params.expression === guardInstallWrites), "asked runs with no guard");
+});
+
+test("net.replay: a method override to DELETE or PUT is held, a GET replay is not, and nothing is sent until the gate passes", async () => {
+  const k = makeCtx({ active: 3 });
+  await net.ops["net.start"]({ tab: 3 }, k.ctx);
+  k.push(3, "Network.requestWillBeSent", { requestId: "g1", type: "XHR", request: { url: `${GHL}/contacts/c1`, method: "GET", headers: { authorization: "Bearer abcdefghijklmnop" }, postData: undefined } });
+  k.respond["Runtime.evaluate"] = () => ({ result: { value: { status: 200, mime: "application/json", headers: {}, body: "{}" } } });
+  const get = await net.ops["net.replay"]({ tab: 3, id: "g1" }, k.ctx);
+  assert.equal(get.held, undefined);
+  assert.equal(get.status, 200);
+  const before = k.sent.filter(s => s.method === "Runtime.evaluate").length;
+  for (const method of ["DELETE", "PUT", "PATCH", "POST"]) {
+    const h = await net.ops["net.replay"]({ tab: 3, id: "g1", overrides: { method } }, k.ctx);
+    assert.equal(h.held, true, method);
+    assert.equal(h.kind, method === "DELETE" ? "delete" : method === "POST" ? "create" : "edit");
+  }
+  assert.equal(k.sent.filter(s => s.method === "Runtime.evaluate").length, before, "no write reached the page");
+  assert.equal((await net.ops["net.replay"]({ tab: 3, id: "g1", overrides: { method: "DELETE" }, asked: true }, k.ctx)).status, 200);
 });

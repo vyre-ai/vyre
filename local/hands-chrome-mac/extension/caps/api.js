@@ -17,7 +17,7 @@
 // fetch INSIDE that frame by default (or the one `frame` names: index, id or a piece of its origin), so that
 // frame's own cookies and auth sign it; the origin guard then compares against that frame's origin.
 
-import { classifySend, held, heldWrite } from "../shared/outbound.js";
+import { classifySend, held, writeGate } from "../shared/outbound.js";
 import { learn, mergeCatalog, buildCall } from "../shared/apilearn.js";
 import { records, target, refuse, pageFetch, present, start, frameList } from "./net.js";
 
@@ -110,8 +110,9 @@ const ops = {
     // a post, a payment) when nobody asked: that waits at the Gate. Judged by method and endpoint.
     const ob = classifySend(built.method, built.url, typeof built.body === "string" ? built.body : "");
     if (ob.send && args?.asked !== true) return held(built.method, built.url, ob.why, `${built.method} ${built.url} ${typeof built.body === "string" ? built.body : ""}`);
-    // Every other write is a change made with the person's login. It needs their yes: one call asked, or a plan they approved once (the module says so with writeOk).
-    if (!/^(GET|HEAD|OPTIONS)$/i.test(built.method) && args?.asked !== true && args?.writeOk !== true) return heldWrite(built.method, built.url, `${built.method} ${built.url} ${typeof built.body === "string" ? built.body : ""}`);
+    // Every other write is a change made with the person's login: the one write gate decides (asked, or a plan the module says covers it).
+    const gate = writeGate(built.method, built.url, typeof built.body === "string" ? built.body : "", args);
+    if (gate.held) return gate.held;
     // Which frame runs it: the one asked for, else the one the entry was learned in, else the top page.
     const frames = await frameList(ctx, tab);
     /** @type {any} */ let frame = null;
@@ -126,7 +127,7 @@ const ops = {
       if (!frame && frames.some(f => f.origin === entry.frame)) throw refuse("not_found", `the frame this call was learned in (${entry.frame}) cannot be read right now`);
       if (frame) guard = entry.frame;
     }
-    const res = await pageFetch(ctx, tab, { url: built.url, method: built.method, headers, body: built.body }, { origin: guard, frame });
+    const res = await pageFetch(ctx, tab, { url: built.url, method: built.method, headers, body: built.body }, { origin: guard, frame, gate });
     return { entryId: entry.id, ...(frame && frame.index > 0 ? { frame: frame.index, frameOrigin: frame.origin } : {}), ...(authNote ? { authNote } : {}), ...present({ method: built.method, url: built.url, status: res.status, mime: res.mime, responseHeaders: res.headers, responseBody: res.body }) };
   },
 };

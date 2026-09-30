@@ -25,7 +25,7 @@
 
 import * as redact from "../shared/redact.js";
 import { classify } from "../shared/floor.js";
-import { classifySend, held } from "../shared/outbound.js";
+import { classifySend, held, writeGate, PASS } from "../shared/outbound.js";
 import { fail } from "../shared/proto.js";
 
 const DEFAULT_MAX_REQUESTS = 500;
@@ -511,10 +511,12 @@ export async function frameList(ctx, tab) {
  * credentials somewhere else.
  * @param {any} ctx @param {number} tab
  * @param {{ url: string, method?: string, headers?: Record<string, string>, body?: string }} req
- * @param {{ origin?: string, frame?: any }} [opts] `frame`: run the fetch INSIDE that frame (lib/frames.js Frame), so its own cookies sign it;
+ * @param {{ origin?: string, frame?: any, gate?: { pass?: symbol } }} [opts] `gate`: what writeGate() returned. A write without its pass is refused here, whatever the caller did. `frame`: run the fetch INSIDE that frame (lib/frames.js Frame), so its own cookies sign it;
  *   `origin` is then compared against that frame's origin, not the top page's.
  */
 export async function pageFetch(ctx, tab, req, opts = {}) {
+  // The last line of the write gate: no request that changes anything is issued with the page's credentials without the pass from writeGate().
+  if (!/^(GET|HEAD|OPTIONS)$/i.test(String(req.method || "GET")) && !(opts.gate && opts.gate.pass === PASS)) throw refuse("blocked", "a write was about to be made with the page's login without passing the write gate; nothing was sent");
   const headers = {};
   for (const [k, v] of Object.entries(req.headers || {})) {
     const n = k.toLowerCase();
@@ -680,9 +682,12 @@ const ops = {
     // A replay that SENDS something as the person waits at the Gate unless the person asked (P17).
     const ob = classifySend(m, url, typeof body === "string" ? body : "");
     if (ob.send && args?.asked !== true) return held(m, url, ob.why, `${m} ${url} ${typeof body === "string" ? body : ""}`);
+    // Any other write is a change made with the person's login: the one write gate decides (asked, or a plan the module says covers it).
+    const gate = writeGate(m, url, typeof body === "string" ? body : "", args);
+    if (gate.held) return gate.held;
     // A request a child frame made is replayed inside that frame: its own cookies and origin sign it.
     const frame = r.session || r.frame ? await frameOfRec(ctx, tab, r) : null;
-    const res = await pageFetch(ctx, tab, { url, method: m, headers, body }, { origin: frame ? r.frame || frame.origin : originOf(r.url), frame });
+    const res = await pageFetch(ctx, tab, { url, method: m, headers, body }, { origin: frame ? r.frame || frame.origin : originOf(r.url), frame, gate });
     return present({ method: m, url, status: res.status, mime: res.mime, requestHeaders: res.sentHeaders, requestBody: body, responseHeaders: res.headers, responseBody: res.body, replayOf: r.id });
   },
 };

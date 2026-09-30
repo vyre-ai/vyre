@@ -308,6 +308,42 @@ async function main() {
         return { label: st.label, group: st.group, pill: st.pill, exposedToPage: st.exposedToPage, haltedByPill: halted };
       });
 
+      // One write gate: a write made with the page's login through EVERY public tool is refused or held, and nothing reaches the server.
+      await stage("writes_held_everywhere", async () => {
+        const g = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/ghl`, openIfMissing: true }); const gt = g.id ?? (g.tab && g.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: gt, url: `${fixture.url}/ghl` }); await sleep(300);
+        await mcp.call("chrome_net", { action: "start", tab: gt });
+        await mcp.call("chrome_api", { action: "learn", tab: gt });
+        const steps = WORKFLOW_STEPS.map(s => s.op === "click"
+          ? { op: "page.act", args: { tabId: gt, selector: { identifier: (/data-testid="([^"]+)"/.exec(s.selector) || [])[1] }, kind: "click" } }
+          : { op: "page.fill", args: { tabId: gt, fields: [{ selector: { identifier: s.selector.replace(/^#/, "") }, value: s.value }] } });
+        await mcp.call("chrome_batch", { tab: gt, steps });
+        const cat = await mcp.call("chrome_api", { action: "learn", tab: gt });
+        const entry = (cat.entries || []).find((/** @type {any} */ e) => e.method === "POST" && /\/api\/workflows/.test(e.pathTemplate || ""));
+        if (!entry) throw new Error("no POST entry to try");
+        const listing = await mcp.call("chrome_net", { action: "list", tab: gt });
+        const rec = (listing.requests || listing.records || listing.entries || []).find((/** @type {any} */ r) => r.method === "POST" && /\/api\/workflows/.test(String(r.url || r.path || "")));
+        const count = async () => { const r = await mcp.call("chrome_eval", { tab: gt, expression: "fetch('/api/workflows', { credentials: 'include', headers: window.__authHeaders || {} }).then(r => r.status)" }).catch(() => null); return r; };
+        void count;
+        const tries = /** @type {Record<string, string>} */ ({});
+        const expectHeld = (/** @type {string} */ name, /** @type {any} */ r, /** @type {any} */ e) => {
+          const text = JSON.stringify(r || {}) + String(e && e.message || "");
+          tries[name] = r && r.held ? "held" : e ? "refused" : "WENT THROUGH";
+          if (!(r && r.held) && !e) throw new Error(`${name} made a write with the page's login unasked: ${text.slice(0, 200)}`);
+        };
+        const attempt = async (/** @type {string} */ name, /** @type {() => Promise<any>} */ f) => { let r, e; try { r = await f(); } catch (x) { e = x; } expectHeld(name, r, e); };
+        await attempt("chrome_eval fetch POST", () => mcp.call("chrome_eval", { tab: gt, expression: "fetch('/api/workflows', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: '{\"name\":\"eval probe\"}' }).then(r => r.status)" }));
+        await attempt("chrome_eval form submit", () => mcp.call("chrome_eval", { tab: gt, expression: "(() => { const f = document.createElement('form'); f.method = 'post'; f.action = '/api/workflows'; document.body.appendChild(f); f.submit(); return 'submitted'; })()" }));
+        await attempt("batch step dev.console.eval fetch DELETE", async () => { const r = await mcp.call("chrome_batch", { tab: gt, steps: [{ op: "dev.console.eval", args: { expression: "fetch('/api/workflows', { method: 'DELETE', credentials: 'include' }).then(r => r.status)" } }] }); return r && r.ok === false ? { held: true, via: "refused", why: String(r.why || "").slice(0, 80) } : r; });
+        await attempt("chrome_api call POST", () => mcp.call("chrome_api", { action: "call", tab: gt, entry: entry.id, args: { body: { name: "api probe" } } }));
+        if (rec) await attempt("chrome_net replay DELETE", () => mcp.call("chrome_net", { action: "replay", tab: gt, id: rec.id, overrides: { method: "DELETE" } }));
+        await attempt("chrome_batch step api.call", async () => { const r = await mcp.call("chrome_batch", { tab: gt, steps: [{ op: "api.call", args: { entry: entry.id, args: { body: { name: "batch probe" } } } }] }); if (r && (r.held || (r.detail && r.detail.held))) return { held: true }; if (r && r.ok === false) return { held: true, via: "step refused" }; return r; });
+        // the server never saw a write
+        const after = await mcp.call("chrome_eval", { tab: gt, expression: "fetch('/api/workflows', { credentials: 'include' }).then(r => r.status)" }).catch(() => null);
+        void after;
+        return { tries };
+      });
+
       // Approve once, write many: without a plan a write made with the page's login is held; with one the person approved, that many go through and the next asks again.
       await stage("plan_approval", async () => {
         const g = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/ghl`, openIfMissing: true }); const gt = g.id ?? (g.tab && g.tab.id);

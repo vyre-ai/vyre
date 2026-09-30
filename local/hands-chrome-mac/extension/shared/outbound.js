@@ -68,6 +68,23 @@ export function heldWrite(method, url, sigSource) {
     control: { role: "request", name: `${m} ${path}` }, fields: [], sig: digest(sigSource) };
 }
 
+/** The one proof that a request went through the write gate. Only writeGate() returns it, and pageFetch() refuses a write without it. */
+export const PASS = Symbol("vyre.write-passed");
+
+/**
+ * THE write gate. Every request Vyre issues with the page's credentials (api.call, net.replay, anything later) asks here first; pageFetch() will not
+ * send a write without the pass this returns. A read passes. A write passes only when the person asked for this very call (asked) or the module
+ * says a plan they approved covers it (writeOk, which the module sets and a model's input cannot). Anything else comes back as a held write.
+ * @param {string} method @param {string} url @param {string} body @param {{ asked?: boolean, writeOk?: boolean }} [args]
+ * @returns {{ pass: symbol, held?: undefined } | { held: any, pass?: undefined }}
+ */
+export function writeGate(method, url, body, args = {}) {
+  const m = String(method || "GET").toUpperCase();
+  if (/^(GET|HEAD|OPTIONS)$/.test(m)) return { pass: PASS };
+  if (args && (args.asked === true || args.writeOk === true)) return { pass: PASS };
+  return { held: heldWrite(m, url, `${m} ${url} ${body || ""}`) };
+}
+
 /**
  * Two page scripts that bracket a user script: install a shim that holds back the page's own network
  * sends (fetch, XHR, sendBeacon) and records them, then take the shim off and read what it caught.
