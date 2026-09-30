@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: trust asks survive a reload; the box's error texts join the internal-words guard
+
+- The trust card reads who is waiting from `relay.devices.list` (tailnet's `trustAsked`, for a web device that asked and is not trusted), so an ask waits until it is acted on, and drops when the box no longer lists it. The key fingerprint comes from the event; a row from the list has none yet, so after a reload the card says the key is not shown, turns Trust off, and asks the browser to ask again (asked of tailnet: a `fingerprint` on the row). The claimed name also loses bidi, zero-width and C1 control characters (reviewer-2).
+- `test/no-internal-words.test.js` now also counts internal words ("vyred", "switchboard") in error texts built in `core/`, `modules/` and `local/` (the terminal, the daemon's own process messages and tests are out of scope): a file may not gain one, and each owner lowers its count in `BASELINE` as it cleans its file. `core/resilience` said "vyred answered ... with no JSON" to the Deck and now says "The box answered ...".
+
 #### deck: a GitHub token paste, and duties through team.duties.enable
 
 - Settings, Connections, Add a GitHub account: under "Sign in with GitHub", "Paste a token instead" opens a password field (autocomplete and spellcheck off) and "Connect with this token", which calls `github.connect {name, token}`. The token is cleared from the field once sent and never drawn. On success the form closes and a toast says the login and, when GitHub said, "reaches N repos"; on failure GitHub's own message is shown as it came. A one-line hint says a fine-grained token can reach fewer repos than signing in.

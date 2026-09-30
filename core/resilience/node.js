@@ -48,7 +48,7 @@ export function caller(base, { headers = {}, timeoutMs = 15_000 } = {}) {
       res.on("data", c => { raw += c; });
       res.on("end", () => {
         try { resolve(JSON.parse(raw)); }
-        catch { resolve({ error: { code: "unreachable", message: `vyred answered ${res.statusCode} with no JSON` } }); }
+        catch { resolve({ error: { code: "unreachable", message: `The box answered ${res.statusCode} with no JSON` } }); }
       });
       res.on("error", e => resolve({ error: { code: "unreachable", message: e.message } }));
     });
