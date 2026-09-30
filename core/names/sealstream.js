@@ -4,14 +4,17 @@
 // interrupted export can pick up where it stopped.
 //
 // Shape (v2; seal.js is still the v1 whole-buffer format, which restore keeps reading):
-//   "vyre-box-backup:v2:" + one JSON line (kdf, salt, nonce prefix, chunk size, time) + "\n"
+//   "vyre-box-backup:v2:" + one JSON line (kdf, salt, chunk size, time) + "\n"
 //   then records: seg (1 byte), flags (1 byte, bit 0 = last chunk of its segment), length (4 bytes,
-//   big endian), then that many bytes of AES-256-GCM ciphertext with its 16-byte tag.
+//   big endian), a fresh random 12-byte nonce, then `length` bytes of AES-256-GCM ciphertext with its
+//   16-byte tag.
 //   A segment is one logical stream (the manifest, the state, one project folder). The file ends with
 //   an end record (seg 255, last), so a file cut short anywhere is refused rather than half-restored.
-// The nonce is the 4-byte prefix plus the record's position in the file, so a record moved, dropped or
-// repeated fails its tag. The additional data is the sha256 of the header line, the segment and the
-// flags, so a header edited to change the key cost or the chunk size fails too. Every chunk except a
+// Every record gets its own random nonce, so a resume or a rewind (which write a record at a position
+// that may already have held another) can never encrypt two plaintexts under one nonce. The record's
+// position is in the additional data with the sha256 of the header line, the segment and the flags, so
+// a record moved, dropped or repeated fails its tag, and so does a header edited to change the key cost
+// or the chunk size. Every chunk except a
 // segment's last is exactly `chunk` bytes long, which is what lets a resume skip whole chunks.
 
 import crypto from "node:crypto";
@@ -24,6 +27,10 @@ export const END_SEG = 255;
 const SCRYPT = { N: 1 << 17, r: 8, p: 1 };
 const TAG = 16;
 const MAX_HEADER = 4096;
+const NONCE = 12;
+const RECORD_HEAD = 6 + NONCE;
+/** No chunk size above this is believed: a reader allocates one chunk at a time. */
+export const MAX_CHUNK = 16 << 20;
 
 /** @param {string} passphrase @param {Buffer} salt @param {{N:number,r:number,p:number}} c */
 function derive(passphrase, salt, { N, r, p }) {
@@ -32,8 +39,7 @@ function derive(passphrase, salt, { N, r, p }) {
   return crypto.scryptSync(String(passphrase).normalize("NFKC"), salt, 32, { N, r, p, maxmem: 256 * N * r + 64 * 1024 * 1024 });
 }
 
-const nonceOf = (prefix, counter) => { const n = Buffer.alloc(12); prefix.copy(n, 0); n.writeBigUInt64BE(BigInt(counter), 4); return n; };
-const aadOf = (headHash, seg, flags) => Buffer.concat([headHash, Buffer.from([seg, flags])]);
+const aadOf = (headHash, seg, flags, counter) => { const c = Buffer.alloc(8); c.writeBigUInt64BE(BigInt(counter)); return Buffer.concat([headHash, Buffer.from([seg, flags]), c]); };
 
 /** Is this the start of a v2 file? @param {Buffer} buf */
 export const isStream = buf => Buffer.isBuffer(buf) && buf.subarray(0, MAGIC2.length).equals(Buffer.from(MAGIC2));
@@ -45,7 +51,7 @@ export function inspectStream(buf) {
   if (nl === -1 || nl > MAX_HEADER) throw new Error("not a sealed vyre backup");
   let header;
   try { header = JSON.parse(buf.subarray(MAGIC2.length, nl).toString("utf8")); } catch { throw new Error("not a sealed vyre backup"); }
-  if (!header || header.v !== 2 || header.kdf !== "scrypt" || !header.salt || !header.prefix || !Number.isInteger(header.chunk)) throw new Error("not a sealed vyre backup");
+  if (!header || header.v !== 2 || header.kdf !== "scrypt" || !header.salt || !Number.isInteger(header.chunk) || header.chunk < 1 || header.chunk > MAX_CHUNK) throw new Error("not a sealed vyre backup");
   return { header, line: buf.subarray(MAGIC2.length, nl), bodyStart: nl + 1 };
 }
 
@@ -54,28 +60,29 @@ export function inspectStream(buf) {
  * Async only where a stream is read; the file writes are sync appends of whole records.
  */
 export class SealWriter {
-  /** @param {number} fd @param {Buffer} key @param {Buffer} prefix @param {Buffer} headHash @param {number} counter @param {number} chunk @param {number} pos where the next record goes */
-  constructor(fd, key, prefix, headHash, counter, chunk, pos) {
-    this.pos = pos; this.fd = fd; this.key = key; this.prefix = prefix; this.headHash = headHash; this.counter = counter; this.chunk = chunk;
+  /** @param {number} fd @param {Buffer} key @param {Buffer} headHash @param {number} counter @param {number} chunk @param {number} pos where the next record goes */
+  constructor(fd, key, headHash, counter, chunk, pos) {
+    this.pos = pos; this.fd = fd; this.key = key; this.headHash = headHash; this.counter = counter; this.chunk = chunk;
   }
 
   /** A new file: writes the header. @param {string} file @param {string} passphrase @param {{ params?: {N:number,r:number,p:number}, chunk?: number }} [o] */
   static create(file, passphrase, { params = SCRYPT, chunk = CHUNK } = {}) {
     checkPassphrase(passphrase);
-    const salt = crypto.randomBytes(16), prefix = crypto.randomBytes(4);
-    const line = Buffer.from(JSON.stringify({ v: 2, kdf: "scrypt", N: params.N, r: params.r, p: params.p, chunk, at: Date.now(), salt: salt.toString("base64"), prefix: prefix.toString("base64") }));
+    const salt = crypto.randomBytes(16);
+    const line = Buffer.from(JSON.stringify({ v: 2, kdf: "scrypt", N: params.N, r: params.r, p: params.p, chunk, at: Date.now(), salt: salt.toString("base64") }));
     const fd = fs.openSync(file, "wx", 0o600);
     const head = Buffer.concat([Buffer.from(MAGIC2), line, Buffer.from("\n")]);
     fs.writeSync(fd, head, 0, head.length, 0);
-    return new SealWriter(fd, derive(passphrase, salt, params), prefix, crypto.createHash("sha256").update(line).digest(), 0, chunk, head.length);
+    return new SealWriter(fd, derive(passphrase, salt, params), crypto.createHash("sha256").update(line).digest(), 0, chunk, head.length);
   }
 
   /** Continue a partial file after `scanned` (see scanPartial): truncates the torn tail. */
   static resume(file, passphrase, scanned) {
-    const fd = fs.openSync(file, "r+");
+    // Never through a link: the partial file must be a regular file we can open in place.
+    const fd = fs.openSync(file, fs.constants.O_RDWR | fs.constants.O_NOFOLLOW);
     fs.ftruncateSync(fd, scanned.end);
     const { header, line } = inspectStream(fs.readFileSync(file).subarray(0, MAX_HEADER + MAGIC2.length));
-    return new SealWriter(fd, derive(passphrase, Buffer.from(header.salt, "base64"), header), Buffer.from(header.prefix, "base64"), crypto.createHash("sha256").update(line).digest(), scanned.records, header.chunk, scanned.end);
+    return new SealWriter(fd, derive(passphrase, Buffer.from(header.salt, "base64"), header), crypto.createHash("sha256").update(line).digest(), scanned.records, header.chunk, scanned.end);
   }
 
   /** Cut the file back to an earlier whole-record point (a project segment started again). @param {{ end: number, records: number }} at */
@@ -84,11 +91,12 @@ export class SealWriter {
   /** @param {number} seg @param {boolean} last @param {Buffer} plain */
   record(seg, last, plain) {
     const flags = last ? 1 : 0;
-    const c = crypto.createCipheriv("aes-256-gcm", this.key, nonceOf(this.prefix, this.counter));
-    c.setAAD(aadOf(this.headHash, seg, flags));
+    const nonce = crypto.randomBytes(NONCE);
+    const c = crypto.createCipheriv("aes-256-gcm", this.key, nonce);
+    c.setAAD(aadOf(this.headHash, seg, flags, this.counter));
     const ct = Buffer.concat([c.update(plain), c.final(), c.getAuthTag()]);
     const head = Buffer.alloc(6); head[0] = seg; head[1] = flags; head.writeUInt32BE(ct.length, 2);
-    const rec = Buffer.concat([head, ct]);
+    const rec = Buffer.concat([head, nonce, ct]);
     fs.writeSync(this.fd, rec, 0, rec.length, this.pos);
     this.pos += rec.length;
     this.counter++;
@@ -157,25 +165,25 @@ export function* readRecords(file, passphrase) {
     const { header, line, bodyStart } = inspectStream(first.subarray(0, n));
     let key;
     try { key = derive(passphrase, Buffer.from(header.salt, "base64"), header); } catch (e) { if (/not allowed/.test(String(/** @type {Error} */ (e).message))) throw e; throw new Error("that passphrase does not open this backup"); }
-    const prefix = Buffer.from(header.prefix, "base64"), headHash = crypto.createHash("sha256").update(line).digest();
+    const headHash = crypto.createHash("sha256").update(line).digest();
     const size = fs.fstatSync(fd).size;
     let pos = bodyStart, counter = 0, ended = false;
-    const head = Buffer.alloc(6);
+    const head = Buffer.alloc(RECORD_HEAD);
     while (pos < size) {
-      if (size - pos < 6 || fs.readSync(fd, head, 0, 6, pos) < 6) throw new Error("this backup file is cut short");
+      if (size - pos < RECORD_HEAD || fs.readSync(fd, head, 0, RECORD_HEAD, pos) < RECORD_HEAD) throw new Error("this backup file is cut short");
       const seg = head[0], flags = head[1], len = head.readUInt32BE(2);
       if (len < TAG || len > header.chunk + TAG) throw new Error("that passphrase does not open this backup");
-      if (size - pos - 6 < len) throw new Error("this backup file is cut short");
+      if (size - pos - RECORD_HEAD < len) throw new Error("this backup file is cut short");
       const ct = Buffer.alloc(len);
-      fs.readSync(fd, ct, 0, len, pos + 6);
+      fs.readSync(fd, ct, 0, len, pos + RECORD_HEAD);
       let plain;
       try {
-        const d = crypto.createDecipheriv("aes-256-gcm", key, nonceOf(prefix, counter));
-        d.setAAD(aadOf(headHash, seg, flags));
+        const d = crypto.createDecipheriv("aes-256-gcm", key, head.subarray(6, RECORD_HEAD));
+        d.setAAD(aadOf(headHash, seg, flags, counter));
         d.setAuthTag(ct.subarray(len - TAG));
         plain = Buffer.concat([d.update(ct.subarray(0, len - TAG)), d.final()]);
       } catch { throw new Error("that passphrase does not open this backup"); }
-      pos += 6 + len; counter++;
+      pos += RECORD_HEAD + len; counter++;
       if (seg === END_SEG) { ended = true; if (pos !== size) throw new Error("that passphrase does not open this backup"); break; }
       yield { seg, last: (flags & 1) === 1, plain };
     }
@@ -199,23 +207,23 @@ export function scanPartial(file, passphrase) {
     const { header, line, bodyStart } = parsed;
     let key;
     try { key = derive(passphrase, Buffer.from(header.salt, "base64"), header); } catch { return null; }
-    const prefix = Buffer.from(header.prefix, "base64"), headHash = crypto.createHash("sha256").update(line).digest();
+    const headHash = crypto.createHash("sha256").update(line).digest();
     const size = fs.fstatSync(fd).size;
     let pos = bodyStart, counter = 0;
     /** @type {Record<number, {bytes:number, done:boolean}>} */ const segs = {};
     let openSeg = -1, openHash = crypto.createHash("sha256");
     let end = bodyStart, openAt = { records: 0, end: bodyStart };
-    const head = Buffer.alloc(6);
-    while (size - pos >= 6) {
-      fs.readSync(fd, head, 0, 6, pos);
+    const head = Buffer.alloc(RECORD_HEAD);
+    while (size - pos >= RECORD_HEAD) {
+      fs.readSync(fd, head, 0, RECORD_HEAD, pos);
       const seg = head[0], flags = head[1], len = head.readUInt32BE(2);
-      if (len < TAG || len > header.chunk + TAG || size - pos - 6 < len) break;
+      if (len < TAG || len > header.chunk + TAG || size - pos - RECORD_HEAD < len) break;
       const ct = Buffer.alloc(len);
-      fs.readSync(fd, ct, 0, len, pos + 6);
+      fs.readSync(fd, ct, 0, len, pos + RECORD_HEAD);
       let plain;
       try {
-        const d = crypto.createDecipheriv("aes-256-gcm", key, nonceOf(prefix, counter));
-        d.setAAD(aadOf(headHash, seg, flags));
+        const d = crypto.createDecipheriv("aes-256-gcm", key, head.subarray(6, RECORD_HEAD));
+        d.setAAD(aadOf(headHash, seg, flags, counter));
         d.setAuthTag(ct.subarray(len - TAG));
         plain = Buffer.concat([d.update(ct.subarray(0, len - TAG)), d.final()]);
       } catch { if (counter === 0) return null; break; }
@@ -223,7 +231,7 @@ export function scanPartial(file, passphrase) {
       const s = segs[seg] || (segs[seg] = { bytes: 0, done: false });
       if (openSeg !== seg) { openSeg = seg; openHash = crypto.createHash("sha256"); }
       s.bytes += plain.length; openHash.update(plain);
-      pos += 6 + len; counter++; end = pos;
+      pos += RECORD_HEAD + len; counter++; end = pos;
       if ((flags & 1) === 1) { s.done = true; openSeg = -1; openAt = { records: counter, end: pos }; }
     }
     const open = openSeg >= 0 ? { seg: openSeg, bytes: segs[openSeg].bytes, sha256: openHash.digest("hex") } : null;

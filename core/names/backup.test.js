@@ -424,3 +424,127 @@ test("export: a large tree (240 MB of incompressible files) streams in bounded m
   const got = tree(back);
   assert.deepEqual(got, Object.fromEntries(Object.entries(sums).map(([k, v]) => ["work/" + k.replace("work/", ""), v]).map(([k, v]) => [k.replace(/^work\//, ""), v])));
 });
+
+// --- reviewer-2's HOLD on the stream format: nonces, a hostile .partial, header caps, room, destinations, links ---
+
+import { SealWriter, inspectStream, MAX_CHUNK } from "./sealstream.js";
+import { planRestore } from "./backup.js";
+
+/** Every record's nonce in a v2 file, in order. */
+function nonces(file) {
+  const buf = fs.readFileSync(file);
+  const { bodyStart } = inspectStream(buf.subarray(0, 8192));
+  const out = []; let pos = bodyStart;
+  while (pos + 18 <= buf.length) { out.push(buf.subarray(pos + 6, pos + 18).toString("hex")); pos += 18 + buf.readUInt32BE(pos + 2); }
+  return out;
+}
+
+test("export: a resume that rewinds never reuses an AES-GCM nonce, not within the file and not with the records it replaced", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), work = path.join(home, "work");
+  fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
+  const file = path.join(home, "all.vyre");
+  await assert.rejects(backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work] }, ...FAST,
+    onProgress: p => { if (p.phase === "projects" && p.done > 150_000) throw new Error("power cut"); } }), /power cut/);
+  const before = nonces(file + ".partial");
+  // Files change while it is stopped, so the resume must rewind the project and write it again.
+  fs.writeFileSync(path.join(work, "harlow-intake", "docs", "f0.bin"), crypto.randomBytes(50_000));
+  const r = await backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work] }, ...FAST });
+  assert.match(r.warnings.join(" "), /started again/, "the rewind path ran");
+  const after = nonces(file);
+  assert.equal(new Set(after).size, after.length, "no nonce repeats in the finished file");
+  // Records of the discarded attempt: the ones before the rewind point are kept, the rest must be new.
+  const kept = before.filter((n, i) => after[i] === n).length;
+  const discarded = before.slice(kept);
+  assert.ok(discarded.length > 0, "some records were written again");
+  for (const n of discarded) assert.ok(!after.includes(n), "a discarded record's nonce is not used again");
+  const back = path.join(home, "back");
+  await restore({ root: path.join(home, "b"), file, passphrase: PASSPHRASE, workTo: { work: back }, alive: dead });
+  const want = tree(work); delete want["northwind-site/link"];
+  assert.deepEqual(tree(back), want);
+});
+
+test("export: an unfinished file that is a link or a folder is refused, never written through", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"); fs.mkdirSync(a); seed(a);
+  const victim = path.join(home, "victim.txt"); fs.writeFileSync(victim, "keep me");
+  const file = path.join(home, "b.vyre");
+  fs.symlinkSync(victim, file + ".partial");
+  await assert.rejects(backup({ root: a, file, passphrase: PASSPHRASE, ...FAST }), /not a regular file/);
+  assert.equal(fs.readFileSync(victim, "utf8"), "keep me");
+  fs.rmSync(file + ".partial");
+  fs.mkdirSync(file + ".partial");
+  await assert.rejects(backup({ root: a, file, passphrase: PASSPHRASE, ...FAST }), /not a regular file/);
+});
+
+test("export: a header naming a chunk bigger than 16 MiB is refused before anything is allocated", () => {
+  const line = JSON.stringify({ v: 2, kdf: "scrypt", N: 1024, r: 8, p: 1, chunk: MAX_CHUNK + 1, at: 0, salt: "AAAAAAAAAAAAAAAAAAAAAA==" });
+  assert.throws(() => inspectStream(Buffer.from(`vyre-box-backup:v2:${line}\n`)), /not a sealed vyre backup/);
+  const ok = JSON.stringify({ v: 2, kdf: "scrypt", N: 1024, r: 8, p: 1, chunk: MAX_CHUNK, at: 0, salt: "AAAAAAAAAAAAAAAAAAAAAA==" });
+  assert.equal(inspectStream(Buffer.from(`vyre-box-backup:v2:${ok}\n`)).header.chunk, MAX_CHUNK);
+});
+
+test("restore: not enough room on the disk is said before anything is written", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), work = path.join(home, "work");
+  fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
+  const file = path.join(home, "all.vyre");
+  await backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work] }, ...FAST });
+  const real = fs.statfsSync;
+  // @ts-ignore a stub for the test: 10 MB free
+  fs.statfsSync = () => ({ bavail: 2560, bsize: 4096 });
+  try {
+    const b = path.join(home, "b");
+    await assert.rejects(restore({ root: b, file, passphrase: PASSPHRASE, workTo: { work: path.join(home, "back") }, alive: dead }), /not enough room on the disk holding .* MB is free/);
+    assert.ok(!fs.existsSync(path.join(b, "vyre.db")) && !fs.existsSync(path.join(home, "back")), "nothing written");
+  } finally { fs.statfsSync = real; }
+});
+
+test("restore: project files go back where they came from only under the project folder; anywhere else must be named", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), work = path.join(home, "work");
+  fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
+  const file = path.join(home, "all.vyre");
+  await backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work] }, ...FAST });
+  // The manifest's own path is not this device's project folder: it is refused, with what to do.
+  await assert.rejects(restore({ root: path.join(home, "b"), file, passphrase: PASSPHRASE, projectRoots: [path.join(home, "elsewhere")], alive: dead }), /not this device's project folder; say where they go with --work-to/);
+  assert.ok(!fs.existsSync(path.join(home, "b", "vyre.db")));
+  // A configured project root that holds it is enough, and the plan says where, before anything runs.
+  const plan = planRestore({ file, passphrase: PASSPHRASE, projectRoots: [home] });
+  assert.equal(plan.projects[0].to, work);
+  assert.equal(plan.projects[0].from, work);
+  // --skip-projects needs no destination at all.
+  const out = await restore({ root: path.join(home, "c"), file, passphrase: PASSPHRASE, skipProjects: true, projectRoots: [], alive: dead });
+  assert.deepEqual(out.projects, []);
+});
+
+test("restore: a link inside either tar is refused before any project folder or the box's data is touched", async t => {
+  const home = tempHome(t);
+  const evil = (name, where) => {
+    const tarDir = path.join(home, `src-${name}`); fs.mkdirSync(tarDir, { recursive: true });
+    fs.writeFileSync(path.join(tarDir, "config.json"), "{}");
+    if (where === "state") { fs.mkdirSync(path.join(tarDir, "vault")); fs.symlinkSync("/etc/passwd", path.join(tarDir, "vault", "link")); }
+    const projDir = path.join(home, `proj-${name}`); fs.mkdirSync(projDir);
+    fs.writeFileSync(path.join(projDir, "notes.md"), "Northwind Bakery");
+    if (where === "project") fs.symlinkSync("/etc/passwd", path.join(projDir, "pw"));
+    const tgz = (dir, out) => execFileSync("tar", ["-czf", out, "-C", dir, "."]);
+    tgz(tarDir, path.join(home, `state-${name}.tgz`)); tgz(projDir, path.join(home, `proj-${name}.tgz`));
+    const file = path.join(home, `evil-${name}.vyre`);
+    const w = SealWriter.create(file, PASSPHRASE, { params: { N: 1024, r: 8, p: 1 }, chunk: 4096 });
+    const one = async (seg, buf) => { await w.segment(seg, (async function* () { yield buf; })()); };
+    return (async () => {
+      await one(0, Buffer.from(JSON.stringify({ v: 2, at: 0, projects: [{ seg: 2, name: "work", path: path.join(home, `dest-${name}`), files: 1, bytes: 10, links: 0 }] })));
+      await one(1, fs.readFileSync(path.join(home, `state-${name}.tgz`)));
+      await one(2, fs.readFileSync(path.join(home, `proj-${name}.tgz`)));
+      w.end();
+      return file;
+    })();
+  };
+  for (const where of ["state", "project"]) {
+    const file = await evil(where, where);
+    const dest = path.join(home, `dest-${where}`), b = path.join(home, `into-${where}`);
+    await assert.rejects(restore({ root: b, file, passphrase: PASSPHRASE, projectRoots: [home], alive: dead }), /link or special file/, where);
+    assert.ok(!fs.existsSync(path.join(b, "config.json")), `${where}: the box's data was not touched`);
+    assert.ok(!fs.existsSync(path.join(dest, "notes.md")), `${where}: no project file was moved`);
+  }
+});

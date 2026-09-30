@@ -181,7 +181,11 @@ export async function backup({ root = config.home(), file, db, passphrase, inclu
 
     // Resume: the same passphrase must open the unfinished file.
     let scanned = null;
-    if (fs.existsSync(partial)) {
+    let pst = null;
+    try { pst = fs.lstatSync(partial); } catch { /* none */ }
+    // A link or folder where the unfinished file should be is not ours to write through or replace.
+    if (pst && !pst.isFile()) throw new Error(`${partial} is not a regular file; move it aside and run this again`);
+    if (pst) {
       try { scanned = scanPartial(partial, passphrase); } catch { scanned = null; }
       if (!scanned || scanned.complete || scanned.header.chunk !== chunk) { fs.rmSync(partial, { force: true }); scanned = null; }
     }
@@ -328,6 +332,16 @@ export function checkEntries(list) {
   if (bad.length) throw new Error(`refusing a backup with unsafe entries: ${bad.slice(0, 5).join(", ")}`);
 }
 
+/** As refuseLinks, but a top-level file whose name matches `skip` is ours (a staged segment), not the archive's. */
+function refuseLinksExcept(dir, skip) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (skip.test(e.name)) continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) refuseLinks(p);
+    else if (!e.isFile()) throw new Error(`refusing a backup containing a link or special file: ${e.name}`);
+  }
+}
+
 /** Walk an extracted tree; links could point anywhere once moved into the root, so refuse them. */
 function refuseLinks(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -375,7 +389,7 @@ async function restoreV1({ root, file, passphrase }) {
 }
 
 /** Move an extracted folder's entries into `dest`, refusing links; existing names need force. */
-function moveInto(from, dest, force) {
+function moveInto(from, dest) {
   refuseLinks(from);
   fs.mkdirSync(dest, { recursive: true });
   for (const name of fs.readdirSync(from)) {
@@ -385,35 +399,89 @@ function moveInto(from, dest, force) {
   }
 }
 
+/** A verbose tar listing may hold files and folders only: a link or device is refused before extraction. */
+function refuseSpecialEntries(verbose) {
+  for (const line of String(verbose).split("\n")) {
+    if (!line) continue;
+    if (!/^[-d]/.test(line)) throw new Error(`refusing a backup containing a link or special file: ${line.replace(/^\S+\s+/, "").slice(0, 80)}`);
+  }
+}
+
+/** The nearest existing folder at or above `p`. */
+function existingAncestor(p) {
+  let q = path.resolve(p);
+  while (!fs.existsSync(q)) { const up = path.dirname(q); if (up === q) break; q = up; }
+  return q;
+}
+
+/** Room for `need` bytes where `p` is (or would be), per device, or an error saying how much is missing. */
+function checkRoom(needs) {
+  /** @type {Map<number, { need: number, at: string }>} */ const byDev = new Map();
+  for (const { at, need } of needs) {
+    const q = existingAncestor(at);
+    const dev = fs.statSync(q).dev;
+    const cur = byDev.get(dev) || { need: 0, at: q };
+    cur.need += need; byDev.set(dev, cur);
+  }
+  for (const { need, at } of byDev.values()) {
+    const st = fs.statfsSync(at);
+    const free = Number(st.bavail) * Number(st.bsize);
+    if (free < need) throw new Error(`not enough room on the disk holding ${at}: this needs about ${Math.ceil(need / 1048576)} MB and ${Math.floor(free / 1048576)} MB is free`);
+  }
+}
+
+/**
+ * Read a v2 backup's manifest (its first segment) and say where each project folder would go, without
+ * changing anything. A folder is put back where it came from only when that is under this box's project
+ * folder (or `projectRoots`); anywhere else it must be named with `workTo`.
+ * @param {{ file: string, passphrase: string, workTo?: Record<string,string>, skipProjects?: boolean, projectRoots?: string[] }} o
+ * @returns {{ at: number, projects: { name: string, from: string, to: string, files: number, bytes: number, seg: number }[] }}
+ */
+export function planRestore({ file, passphrase, workTo, skipProjects = false, projectRoots = [config.workDir()] }) {
+  const parts = [];
+  for (const r of readRecords(path.resolve(file), passphrase)) { if (r.seg !== 0) break; parts.push(r.plain); if (r.last) break; }
+  let manifest;
+  try { manifest = JSON.parse(Buffer.concat(parts).toString("utf8")); } catch { throw new Error("this backup has no readable manifest"); }
+  const inside = (p, root) => { const rel = path.relative(path.resolve(root), path.resolve(p)); return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel)); };
+  const projects = [];
+  for (const pr of skipProjects ? [] : manifest.projects || []) {
+    const chosen = workTo && workTo[pr.name];
+    if (chosen === undefined && (typeof pr.path !== "string" || !path.isAbsolute(pr.path) || !projectRoots.some(r => inside(pr.path, r)))) {
+      throw new Error(`the project files "${pr.name}" came from ${String(pr.path).slice(0, 120)}, which is not this device's project folder; say where they go with --work-to DIR (or skip them with --skip-projects)`);
+    }
+    projects.push({ name: pr.name, from: pr.path, to: path.resolve(chosen ?? pr.path), files: pr.files, bytes: pr.bytes, seg: pr.seg });
+  }
+  return { at: manifest.at, projects };
+}
+
 /**
  * Put a v2 backup back: every segment is decrypted and checked to its end record before anything on
  * disk changes, then the box's data goes into `root` and each project folder into its own place.
  */
-async function restoreV2({ root, file, passphrase, force, workTo, skipProjects }) {
+async function restoreV2({ root, file, passphrase, force, workTo, skipProjects, projectRoots }) {
+  // Where things go is settled, and refused if it is not allowed, before a byte is written.
+  const plan = planRestore({ file, passphrase, workTo, skipProjects, projectRoots });
+  const sealedSize = fs.statSync(path.resolve(file)).size;
+  checkRoom([{ at: root, need: Math.ceil(sealedSize * 1.1) + 64 * 1048576 }, ...plan.projects.map(p => ({ at: p.to, need: Math.ceil(p.bytes * 1.05) }))]);
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   // Staging inside the root, so the box's own pieces move into place with a rename on the same disk.
   const staging = fs.mkdtempSync(path.join(root, ".restore-"));
   try {
     /** @type {Map<number, number>} */ const fds = new Map();
     const segFile = n => path.join(staging, `seg-${n}.tar.gz`);
+    const wanted = new Set(plan.projects.map(p => p.seg));
     try {
       for (const r of readRecords(path.resolve(file), passphrase)) {
-        if (r.seg !== 0 && skipProjects && r.seg >= 2) continue;
+        if (r.seg >= 2 && !wanted.has(r.seg)) continue;
         let fd = fds.get(r.seg);
         if (fd === undefined) { fd = fs.openSync(r.seg === 0 ? path.join(staging, "manifest.json") : segFile(r.seg), "w", 0o600); fds.set(r.seg, fd); }
         fs.writeSync(fd, r.plain);
       }
     } finally { for (const fd of fds.values()) fs.closeSync(fd); }
-    let manifest = { projects: [] };
-    try { manifest = JSON.parse(fs.readFileSync(path.join(staging, "manifest.json"), "utf8")); } catch { throw new Error("this backup has no readable manifest"); }
     if (!fds.has(1)) throw new Error("this backup holds no box data");
 
-    // Plan and check everything before changing anything.
-    const projects = [];
-    for (const pr of manifest.projects || []) {
-      if (skipProjects || !fds.has(pr.seg)) continue;
-      const dest = (workTo && workTo[pr.name]) || pr.path;
-      if (typeof dest !== "string" || !path.isAbsolute(dest)) throw new Error(`no place to put the project files "${pr.name}": pass a folder for them`);
+    // Everything is checked before anything moves: names, then link and device entries.
+    for (const pr of plan.projects) {
       const list = String(await run(["tar", "-tzf", segFile(pr.seg)]));
       const tops = new Set();
       for (const raw of list.split("\n").map(x => x.replace(/\r$/, "")).filter(Boolean)) {
@@ -421,27 +489,29 @@ async function restoreV2({ root, file, passphrase, force, workTo, skipProjects }
         const e = raw.replace(/^\.\//, "").replace(/\/$/, "");
         if (e && e !== ".") tops.add(e.split("/")[0]);
       }
-      const clash = [...tops].filter(t => fs.existsSync(path.join(dest, t)));
-      if (clash.length && !force) throw new Error(`${path.join(dest, clash[0])} already exists; pass force to replace it`);
-      projects.push({ ...pr, dest });
+      const clash = [...tops].filter(t => fs.existsSync(path.join(pr.to, t)));
+      if (clash.length && !force) throw new Error(`${path.join(pr.to, clash[0])} already exists; pass force to replace it`);
+      refuseSpecialEntries(await run(["tar", "-tvzf", segFile(pr.seg)]));
     }
     checkEntries(String(await run(["tar", "-tzf", segFile(1)])));
+    refuseSpecialEntries(await run(["tar", "-tvzf", segFile(1)]));
 
+    // The box's own data first, and its links caught right after this tar, before any project is touched.
     await run(["tar", "-xzpf", segFile(1), "-C", staging]);
     fs.rmSync(segFile(1), { force: true });
-    const restored = [];
-    for (const pr of projects) {
+    fs.rmSync(path.join(staging, "manifest.json"), { force: true });
+    refuseLinksExcept(staging, /^seg-\d+\.tar\.gz$/);
+    for (const pr of plan.projects) {
       // Inside the destination itself: it may be a mount point, whose parent is not ours to write.
-      fs.mkdirSync(pr.dest, { recursive: true });
-      const tmp = fs.mkdtempSync(path.join(pr.dest, ".vyre-restore-"));
+      fs.mkdirSync(pr.to, { recursive: true });
+      const tmp = fs.mkdtempSync(path.join(pr.to, ".vyre-restore-"));
       try {
         await run(["tar", "-xzpf", segFile(pr.seg), "-C", tmp]);
-        moveInto(tmp, pr.dest, force);
+        moveInto(tmp, pr.to);
       } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+      fs.rmSync(segFile(pr.seg), { force: true });
     }
-    // The manifest and segment files are not part of the box's data.
-    for (const n of fs.readdirSync(staging)) if (/^seg-|^manifest\./.test(n)) fs.rmSync(path.join(staging, n), { force: true });
-    refuseLinks(staging);
+    const restored = [];
     for (const name of INCLUDE) {
       const src = path.join(staging, name);
       if (!fs.existsSync(src)) continue;
@@ -452,7 +522,7 @@ async function restoreV2({ root, file, passphrase, force, workTo, skipProjects }
       fs.renameSync(src, dst);
       restored.push(name);
     }
-    return { restored, projects: projects.map(p => ({ name: p.name, to: p.dest, files: p.files, bytes: p.bytes })) };
+    return { restored, projects: plan.projects.map(p => ({ name: p.name, to: p.to, files: p.files, bytes: p.bytes })) };
   } finally {
     fs.rmSync(staging, { recursive: true, force: true });
   }
@@ -462,10 +532,10 @@ async function restoreV2({ root, file, passphrase, force, workTo, skipProjects }
  * Put a backup back into `root`. vyred must be stopped, and an existing store is only replaced
  * with force. Reads the current format (a stream, with project files) and the first one.
  * @param {{ root?: string, file: string, passphrase: string, force?: boolean, workTo?: Record<string,string>,
- *   skipProjects?: boolean, alive?: (o: { pid: number, socket: string }) => boolean | Promise<boolean> }} o
+ *   skipProjects?: boolean, projectRoots?: string[], alive?: (o: { pid: number, socket: string }) => boolean | Promise<boolean> }} o
  * @returns {Promise<{ restored: string[], projects: { name: string, to: string, files: number, bytes: number }[] }>}
  */
-export async function restore({ root = config.home(), file, passphrase, force = false, workTo, skipProjects = false, alive = defaultAlive }) {
+export async function restore({ root = config.home(), file, passphrase, force = false, workTo, skipProjects = false, projectRoots, alive = defaultAlive }) {
   const p = config.paths(root);
   let pid = 0;
   try { pid = Number(fs.readFileSync(p.pid, "utf8").trim()) || 0; } catch {}
@@ -477,6 +547,6 @@ export async function restore({ root = config.home(), file, passphrase, force = 
   const fd = fs.openSync(path.resolve(file), "r");
   let n = 0;
   try { n = fs.readSync(fd, head, 0, head.length, 0); } finally { fs.closeSync(fd); }
-  if (isStream(head.subarray(0, n))) return restoreV2({ root, file, passphrase, force, workTo, skipProjects });
+  if (isStream(head.subarray(0, n))) return restoreV2({ root, file, passphrase, force, workTo, skipProjects, projectRoots });
   return { ...(await restoreV1({ root, file, passphrase })), projects: [] };
 }

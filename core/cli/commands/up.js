@@ -23,7 +23,7 @@ import { json, emit, fail, failTool, usage, viewing } from "../kit.js";
 import * as config from "../../config/index.js";
 import { dialogsAllowed, isRealHome, realBoxAllowed } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
-import { backup, restore, estimate, inspect as inspectSealed } from "../../names/backup.js";
+import { backup, restore, estimate, planRestore, isStream, inspect as inspectSealed } from "../../names/backup.js";
 import { hiddenPrompt } from "../../vault/cli-io.js";
 import * as tailnet from "../tailnet.js";
 import { printEnding } from "../ending.js";
@@ -616,10 +616,11 @@ export default [
       const { flags, rest } = parse(args, ["user", "connect", "work-to"]);
       if (!rest[0]) return usage("vyre restore needs the backup file", "vyre restore <file> [--force]");
       const file = path.resolve(rest[0]);
+      let v2 = false;
       try {
         const fd = fs.openSync(file, "r"); const head = Buffer.alloc(8192);
         let n = 0; try { n = fs.readSync(fd, head, 0, head.length, 0); } finally { fs.closeSync(fd); }
-        const v2 = head.toString("latin1", 0, 19) === "vyre-box-backup:v2:";
+        v2 = isStream(head.subarray(0, n));
         const { header } = inspectSealed(v2 ? head.subarray(0, n) : fs.readFileSync(file));
         out(dim(`  backup from ${new Date(header.at).toISOString().slice(0, 10)} · ${Math.round(fs.statSync(file).size / 1024)} KB sealed`));
       } catch (e) { return fail(`${file} is not a sealed Vyre backup: ${String(/** @type {Error} */ (e).message)}`); }
@@ -631,6 +632,11 @@ export default [
         // --work-to DIR: where the project files go, when it is not where they came from. Each
         // project gets a folder of its own name inside it.
         const workTo = typeof flags["work-to"] === "string" ? new Proxy({}, { get: (_, name) => typeof name === "string" ? path.resolve(String(flags["work-to"]), name) : undefined }) : undefined;
+        // Where the project files will go, said before anything is written (and refused if it is not allowed).
+        if (v2) {
+          const plan = planRestore({ file, passphrase, workTo, skipProjects: Boolean(flags["skip-projects"]) });
+          if (!json()) for (const p of plan.projects) out(dim(`  project files "${p.name}" -> ${p.to} (${p.files} files)`));
+        }
         r = await restore({ root: config.home(), file, passphrase, force: Boolean(flags.force), skipProjects: Boolean(flags["skip-projects"]), workTo });
       }
       catch (e) {
@@ -639,7 +645,6 @@ export default [
       }
       finally { passphrase = ""; }
       if (json()) return emit({ restored: path.resolve(rest[0]), projects: r.projects });
-      for (const p of r.projects) out(dim(`  project files "${p.name}" -> ${p.to} (${p.files} files)`));
       out("  restored · vyre up to start");
       return 0;
     },
