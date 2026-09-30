@@ -150,7 +150,7 @@ export function createTestContext(manifest, opts = {}) {
   /** memory.write answers with no setup, so a module that declares its kinds just works. */
   /** @type {Record<string, (input: any) => any>} */
   const fakes = {
-    "memory.write": row => { memory.push(row); return { id: `mem-${memory.length}`, linked: false }; },
+    "memory.write": row => { memory.push(row); return { id: `mem-${memory.length}` }; },
   };
   /** @param {string} why */
   const violate = why => { violations.push(why); return why; };

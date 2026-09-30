@@ -551,14 +551,6 @@ export class Registry {
           const r = await this.call("memory.teach", { kind, fact, from: m.name }, `module:${m.name}`, { door: true });
           return !r.error;
         },
-        // A memory row through memory's memory.write (ADR 0047 section 3): memory sets who wrote it
-        // from this caller and forces untrusted for an added module. Resolves { data: { id, linked } } or { error }.
-        write: async row => {
-          const declared = (m.teaches && m.teaches.memory) || [];
-          const kind = row && row.kind;
-          if (!declared.includes(kind)) throw new Error(`${m.name} wrote a ${kind} to memory, which its manifest does not declare under teaches.memory`);
-          return this.call("memory.write", { ...row }, `module:${m.name}`, { door: true });
-        },
       },
       // Another module's tool, through the same path as every caller: input checked, rules run.
       // This is the only way one module uses another; never import its files.
