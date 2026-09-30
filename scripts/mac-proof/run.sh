@@ -126,7 +126,8 @@ ok "vyred is running under launchd"
 "$VYRE_SERVER_DIR/bin/colima" version | head -n 1 || bad "the pinned colima does not run"
 "$VYRE_SERVER_DIR/lima/bin/limactl" --version | head -n 1 || bad "the pinned limactl does not run"
 "$VYRE_SERVER_DIR/bin/docker" --version | head -n 1 || bad "the pinned docker client does not run"
-ok "the pinned Node, Colima, Lima and docker client matched their sums and run"
+"$VYRE_SERVER_DIR/bin/gh" --version | head -n 1 || bad "the pinned gh does not run"
+ok "the pinned Node, Colima, Lima, docker client and gh matched their sums and run"
 
 # A second run repairs: same release, nothing breaks, still one core.
 echo "::group::reinstall"
