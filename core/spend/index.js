@@ -13,6 +13,8 @@
 // that is about to spend asks spend.check first; memory answers from facts and search while capped.
 
 export const PROVIDERS = ["claude", "codex", "gemini", "grok", "kimi"];
+/** The cap over every provider together, whichever they are (openrouter and the rest included). */
+export const ALL = "all";
 const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet"];
 
 const SCHEMA = `
@@ -32,7 +34,9 @@ const bad = (/** @type {string} */ m) => Object.assign(new Error(m), { code: "ba
 
 /** The one line, for a thread's note and the event. @param {string} provider @param {number} spent @param {number} cap @param {string} [who] */
 export const capLine = (provider, spent, cap, who = "") =>
-  `${who ? `${who}'s ` : ""}${provider[0].toUpperCase()}${provider.slice(1)} spend today reached ${usd(spent)} of the ${usd(cap)} daily cap, so this is paused. Raise it: vyre spend raise ${provider} <dollars>`;
+  provider === ALL
+    ? `${who ? `${who}'s ` : ""}Spend across every provider today reached ${usd(spent)} of the ${usd(cap)} daily cap, so this is paused. Raise it: vyre spend raise all <dollars>`
+    : `${who ? `${who}'s ` : ""}${provider[0].toUpperCase()}${provider.slice(1)} spend today reached ${usd(spent)} of the ${usd(cap)} daily cap, so this is paused. Raise it: vyre spend raise ${provider} <dollars>`;
 
 export default {
   /** @param {any} ctx */
@@ -46,6 +50,7 @@ export default {
         usd = round(usd + excluded.usd, 6), tokens_in = tokens_in + excluded.tokens_in, tokens_out = tokens_out + excluded.tokens_out,
         calls = calls + excluded.calls, estimated = MAX(estimated, excluded.estimated)`),
       day: db.prepare("SELECT COALESCE(SUM(usd), 0) AS usd FROM spend WHERE day_utc = ? AND provider = ?"),
+      all: db.prepare("SELECT COALESCE(SUM(usd), 0) AS usd FROM spend WHERE day_utc = ?"),
       rows: db.prepare("SELECT * FROM spend WHERE day_utc = ? ORDER BY provider, purpose, account, agent"),
       noted: db.prepare("SELECT 1 FROM spend_capped WHERE day_utc = ? AND provider = ?"),
       note: db.prepare("INSERT OR IGNORE INTO spend_capped (day_utc, provider, at) VALUES (?,?,?)"),
@@ -56,10 +61,10 @@ export default {
       if (!/^[a-z][a-z0-9-]{1,30}$/.test(v)) throw bad("provider is a name like claude or codex");
       return v;
     };
-    const spentToday = (/** @type {string} */ p, t = now()) => num(/** @type {any} */ (q.day.get(dayUtc(t), p)).usd);
+    const spentToday = (/** @type {string} */ p, t = now()) => num(/** @type {any} */ (p === ALL ? q.all.get(dayUtc(t)) : q.day.get(dayUtc(t), p)).usd);
 
     // The five providers have a setting each; any other provider name (openrouter, a module's) shares spend.other.daily_usd, a cap for each of them.
-    const keyOf = (/** @type {string} */ p) => `spend.${PROVIDERS.includes(p) ? p : "other"}.daily_usd`;
+    const keyOf = (/** @type {string} */ p) => `spend.${p === ALL || PROVIDERS.includes(p) ? p : "other"}.daily_usd`;
     /** The provider's daily cap in USD, or null for none: the setting, else config. @param {string} p */
     const capOf = async p => {
       try {
@@ -68,9 +73,22 @@ export default {
         if (typeof v === "number" && v > 0) return v;
         if (v === 0) return null;
       } catch { /* no settings hub: config below */ }
-      const c = ctx.config && ctx.config.spend && (ctx.config.spend[p] || (!PROVIDERS.includes(p) ? ctx.config.spend.other : null));
+      const c = ctx.config && ctx.config.spend && (ctx.config.spend[p] || (p !== ALL && !PROVIDERS.includes(p) ? ctx.config.spend.other : null));
       const v = c && (c.dailyUsd ?? c.daily_usd);
       return typeof v === "number" && v > 0 ? v : null;
+    };
+
+    /**
+     * Where a provider stands: its own cap, then the cap over every provider. The first one reached wins.
+     * @param {string} p @returns {Promise<{ capped: boolean, scope: string, spent: number, cap: number | null }>}
+     */
+    const stand = async p => {
+      for (const scope of p === ALL ? [ALL] : [p, ALL]) {
+        const cap = await capOf(scope), spent = spentToday(scope);
+        if (cap != null && spent >= cap) return { capped: true, scope, spent, cap };
+      }
+      const cap = await capOf(p);
+      return { capped: false, scope: p, spent: spentToday(p), cap };
     };
 
     /** Say once a day that a provider is at its cap. Returns the line, or null when already said. */
@@ -92,17 +110,17 @@ export default {
      */
     const record = async i => {
       const p = provider(i.provider);
+      if (p === ALL) throw bad("a spend belongs to a provider; all is the cap over every provider");
       const cost = Math.max(0, num(i.usd));
       q.add.run(dayUtc(now()), p, String(i.account || ""), String(i.purpose || "other").slice(0, 60), String(i.agent || ""),
         cost, Math.max(0, Math.floor(num(i.tokens_in))), Math.max(0, Math.floor(num(i.tokens_out))), Math.max(1, Math.floor(num(i.calls)) || 1), i.estimated ? 1 : 0);
-      const cap = await capOf(p);
-      const spent = spentToday(p);
-      if (cap == null || spent < cap) return { capped: false, spent, cap };
-      announce(p, spent, cap, i);
+      const at = await stand(p);
+      if (!at.capped) return { capped: false, spent: at.spent, cap: at.cap };
+      announce(at.scope, at.spent, at.cap, i);
       if (i.thread) {
-        try { await ctx.call("threads.halt", { thread: i.thread, reason: "spend", text: capLine(p, spent, cap, i.agent) }); } catch { /* not running here */ }
+        try { await ctx.call("threads.halt", { thread: i.thread, reason: "spend", text: capLine(at.scope, at.spent, at.cap, i.agent) }); } catch { /* not running here */ }
       }
-      return { capped: true, spent, cap };
+      return { capped: true, spent: at.spent, cap: at.cap, scope: at.scope };
     };
 
     // A thread's turns, from the Switchboard's own event: the ledger sees every provider's threads
@@ -138,14 +156,15 @@ export default {
       input: { type: "object", properties: { provider: { type: "string" } } },
       run: async i => {
         const p = provider(i.provider);
-        const cap = await capOf(p), spent = spentToday(p);
-        const capped = cap != null && spent >= cap;
-        return { ok: !capped, capped, spent: Math.round(spent * 1e4) / 1e4, cap, left: cap == null ? null : Math.max(0, Math.round((cap - spent) * 1e4) / 1e4), ...(capped && cap != null ? { line: capLine(p, spent, cap) } : {}) };
+        const at = await stand(p);
+        const round = (/** @type {number} */ n) => Math.round(n * 1e4) / 1e4;
+        return { ok: !at.capped, capped: at.capped, scope: at.scope, spent: round(at.spent), cap: at.cap, left: at.cap == null ? null : Math.max(0, round(at.cap - at.spent)),
+          ...(at.capped && at.cap != null ? { line: capLine(at.scope, at.spent, at.cap) } : {}) };
       },
     });
 
     ctx.tool("spend.summary", {
-      description: "Today's spend (UTC) per provider with its cap, and the rows behind it: { day, providers: [{ provider, spent, cap, left, capped, calls, estimated }], rows }. day is YYYY-MM-DD for an earlier one.",
+      description: "Today's spend (UTC) per provider with its cap, and the rows behind it: { day, all: { spent, cap, left, capped }, providers: [{ provider, spent, cap, left, capped, calls, estimated }], rows }; all is every provider together against spend.all.daily_usd. day is YYYY-MM-DD for an earlier one.",
       input: { type: "object", properties: { day: { type: "string" } } },
       run: async i => {
         const day = i.day ? String(i.day) : dayUtc(now());
@@ -158,12 +177,14 @@ export default {
           providers.push({ provider: p, spent: Math.round(spent * 1e4) / 1e4, cap, left: cap == null ? null : Math.max(0, Math.round((cap - spent) * 1e4) / 1e4),
             capped: cap != null && spent >= cap, calls: mine.reduce((n, r) => n + num(r.calls), 0), estimated: mine.some(r => r.estimated) });
         }
-        return { day, providers, rows };
+        const every = rows.reduce((n, r) => n + num(r.usd), 0), allCap = await capOf(ALL);
+        const all = { spent: Math.round(every * 1e4) / 1e4, cap: allCap, left: allCap == null ? null : Math.max(0, Math.round((allCap - every) * 1e4) / 1e4), capped: allCap != null && every >= allCap };
+        return { day, all, providers, rows };
       },
     });
 
     ctx.tool("spend.raise", {
-      description: "Raise a provider's daily cap: to (new cap in USD) or by (add this much), or off: true for no cap. The person's own surfaces only. Takes effect at once; a paused thread goes on when it is resumed, and the cap says again tomorrow if reached.",
+      description: "Raise a provider's daily cap (provider: all is the cap over every provider together): to (new cap in USD) or by (add this much), or off: true for no cap. The person's own surfaces only. Takes effect at once; a paused thread goes on when it is resumed, and the cap says again tomorrow if reached.",
       callers: PEOPLE,
       input: { type: "object", properties: { provider: { type: "string" }, to: { type: "number" }, by: { type: "number" }, off: { type: "boolean" } } },
       run: async i => {

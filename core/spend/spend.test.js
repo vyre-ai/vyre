@@ -129,3 +129,37 @@ test("spend: an agent, module or automation is held at a provider's cap before a
   await spendCheck({ call: async () => { throw new Error("no spend module"); } }, "module:agents", "claude");
   await spendCheck({ call: async () => ({ error: { code: "no_such_tool" } }) }, "module:agents", "claude");
 });
+
+test("spend: a cap across every provider pauses work on any of them, openrouter included, and shows first", async t => {
+  const w = await world(t, { all: 2 });
+  await w.call("spend.record", { provider: "claude", purpose: "thread", usd: 0.9 }, "module:memory", FP);
+  await w.call("spend.record", { provider: "openrouter", purpose: "x", usd: 0.8 }, "module:memory", FP);
+  assert.equal(w.halted.length, 0);
+  const r = await w.call("spend.record", { provider: "openrouter", purpose: "x", thread: "t1", usd: 0.5 }, "module:memory", FP);
+  assert.deepEqual([r.data.capped, r.data.scope], [true, "all"]);
+  assert.equal(w.halted.length, 1);
+  assert.match(w.halted[0].text, /Spend across every provider today reached \$2\.20 of the \$2\.00 daily cap.*vyre spend raise all/);
+  const caps = w.emitted.filter(e => e.type === "spend.capped");
+  assert.equal(caps.length, 1);
+  assert.deepEqual([caps[0].payload.provider, caps[0].payload.action.input], ["all", { provider: "all", to: 4 }]);
+  // Every provider is held, each under the shared cap, and a spend filed as "all" is refused.
+  for (const p of ["claude", "codex", "openrouter"]) { const c = (await w.call("spend.check", { provider: p })).data; assert.deepEqual([c.ok, c.scope], [false, "all"], p); }
+  assert.equal((await w.call("spend.record", { provider: "all", purpose: "x", usd: 1 }, "module:memory", FP)).code, "bad_input");
+  const s = (await w.call("spend.summary")).data;
+  assert.deepEqual([s.all.spent, s.all.cap, s.all.capped], [2.2, 2, true]);
+  // Raising it lets every provider go on.
+  assert.equal((await w.call("spend.raise", { provider: "all", to: 10 })).data.cap, 10);
+  assert.equal(w.settings.all, 10);
+  assert.equal((await w.call("spend.check", { provider: "codex" })).data.ok, true);
+  // A provider's own cap still holds under a roomy all-cap.
+  w.settings.claude = 1;
+  assert.equal((await w.call("spend.check", { provider: "claude" })).data.scope, "claude");
+  assert.equal((await w.call("spend.check", { provider: "codex" })).data.ok, true);
+});
+
+test("spend: the all-providers cap is the first setting in Settings, Spend", async () => {
+  const { default: fs } = await import("node:fs");
+  const m = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
+  assert.equal(m.settings[0].key, "spend.all.daily_usd");
+  assert.ok(m.settings.every(x => x.group === "spend"));
+});

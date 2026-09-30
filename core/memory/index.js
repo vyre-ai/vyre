@@ -123,13 +123,15 @@ export default {
     // and the reader waits. Kept from spend's own events, so no answer waits on a call.
     let spendCapped = false;
     const capOffs = [
-      ctx.events.on("spend.capped", e => { if (e && e.payload && e.payload.provider === "claude") spendCapped = true; }),
-      ctx.events.on("spend.raised", e => { if (e && e.payload && e.payload.provider === "claude") spendCapped = false; }),
+      ctx.events.on("spend.capped", e => { if (e && e.payload && (e.payload.provider === "claude" || e.payload.provider === "all")) spendCapped = true; }),
+      ctx.events.on("spend.raised", () => void readSpend()),
     ];
-    Promise.resolve().then(() => ctx.call("spend.check", { provider: "claude" })).then(r => {
+    // Whether Claude may spend now, its own cap and the cap over every provider together (spend.check).
+    const readSpend = () => Promise.resolve().then(() => ctx.call("spend.check", { provider: "claude" })).then(r => {
       const d = r && (r.data || r);
-      if (d && d.capped === true) spendCapped = true;
+      if (d && typeof d.capped === "boolean") spendCapped = d.capped;
     }).catch(() => {});
+    void readSpend();
     const model = createReader({
       db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log, config: () => ctx.config,
       capped: () => spendCapped,

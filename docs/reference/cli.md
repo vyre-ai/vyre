@@ -683,7 +683,7 @@ vyre spend [raise <provider> <usd|+usd|off>] [--json]
 Read it:
   vyre spend                          today's spend (UTC) per provider against its cap
 Change a cap:
-  vyre spend raise <provider> <usd>   set the cap in dollars
+  vyre spend raise <provider> <usd>   set the cap in dollars (provider all: every provider together)
   vyre spend raise <provider> +<usd>  add to it
   vyre spend raise <provider> off     no cap
 At a cap the spending thread pauses with one line, and Vyre Memory answers from facts and search.

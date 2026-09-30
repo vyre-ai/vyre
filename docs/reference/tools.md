@@ -5552,7 +5552,7 @@ Whether a provider may spend now: { ok, capped, spent, cap, left, line? }. Ask b
 
 ### `spend.raise`
 
-Raise a provider's daily cap: to (new cap in USD) or by (add this much), or off: true for no cap. The person's own surfaces only. Takes effect at once; a paused thread goes on when it is resumed, and the cap says again tomorrow if reached.
+Raise a provider's daily cap (provider: all is the cap over every provider together): to (new cap in USD) or by (add this much), or off: true for no cap. The person's own surfaces only. Takes effect at once; a paused thread goes on when it is resumed, and the cap says again tomorrow if reached.
 
 - Input:
   - `by` number
@@ -5580,7 +5580,7 @@ Put one spend in the ledger: { provider, account?, purpose, agent?, thread?, usd
 
 ### `spend.summary`
 
-Today's spend (UTC) per provider with its cap, and the rows behind it: { day, providers: [{ provider, spent, cap, left, capped, calls, estimated }], rows }. day is YYYY-MM-DD for an earlier one.
+Today's spend (UTC) per provider with its cap, and the rows behind it: { day, all: { spent, cap, left, capped }, providers: [{ provider, spent, cap, left, capped, calls, estimated }], rows }; all is every provider together against spend.all.daily_usd. day is YYYY-MM-DD for an earlier one.
 
 - Input:
   - `day` string
