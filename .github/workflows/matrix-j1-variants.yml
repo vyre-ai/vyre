@@ -36,7 +36,7 @@ jobs:
       - name: A browser for arm64 (Google ships no Linux arm64 Chrome, so Playwright's Chromium)
         if: matrix.chrome == 'playwright'
         run: |
-          npx --yes playwright@1.49.1 install --with-deps chromium
+          npx --yes playwright@1.56.0 install --with-deps chromium
           CH=$(ls -d "$HOME"/.cache/ms-playwright/chromium-*/chrome-linux/chrome | head -1)
           echo "J1_CHROME=$CH" >>"$GITHUB_ENV"
           "$CH" --version
