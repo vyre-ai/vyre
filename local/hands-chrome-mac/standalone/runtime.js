@@ -69,6 +69,22 @@ export async function createRuntime(o = {}) {
 
   const running = await chromeModule.start(ctx);
 
+  // What this server knows, for `vyre-chrome doctor` and the install check to read from another process: the connection state, why not, the one fix.
+  const statusFile = path.join(dataDir, "run", "status.json");
+  const writeStatus = async () => {
+    try {
+      const r = /** @type {any} */ (await run("chrome.status", {}, "cli"));
+      fs.mkdirSync(path.dirname(statusFile), { recursive: true, mode: 0o700 });
+      const tmp = `${statusFile}.${process.pid}`;
+      fs.writeFileSync(tmp, JSON.stringify({ pid: process.pid, at: new Date().toISOString(), connected: r.connected === true, listening: r.listening !== false, extension: r.extension ? { version: r.extension.version, protocol: r.extension.protocol } : null, stage: r.stage || null, problem: r.problem || null, fix: r.fix || null, socket: r.socket || null, hostInstalled: r.hostInstalled === true }, null, 2), { mode: 0o600 });
+      fs.renameSync(tmp, statusFile);
+    } catch { /* status is a courtesy; never a failure */ }
+  };
+  for (const ev of ["chrome.connected", "chrome.disconnected", "chrome.replaced"]) events.on(ev, () => { void writeStatus(); });
+  void writeStatus();
+  const statusTimer = setInterval(() => { void writeStatus(); }, 20_000);
+  statusTimer.unref();
+
   /** Run a tool as the model in Claude Code would: a person's session, not a named agent. @param {string} name @param {any} input @param {string} caller */
   async function run(name, input, caller) {
     const def = tools.get(name);
@@ -153,6 +169,6 @@ export async function createRuntime(o = {}) {
 
   return {
     dataDir, trace, list, invoke, held,
-    async stop() { trace.write({ kind: "session", event: "stop" }); await running.stop(); },
+    async stop() { clearInterval(statusTimer); try { fs.rmSync(statusFile, { force: true }); } catch { /* gone */ } trace.write({ kind: "session", event: "stop" }); await running.stop(); },
   };
 }

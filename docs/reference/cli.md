@@ -558,7 +558,7 @@ vyre watchers [list|test|create|pause|resume|logs|items] [name] [--json]
 MCP servers and Google accounts Vyre can reach for you.
 
 ```
-vyre connect list|add|remove|rm|test|help [--json]
+vyre connect list|apps|add|remove|rm|test|help [--json]
 ```
 
 ### vyre run

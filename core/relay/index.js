@@ -608,13 +608,14 @@ export default {
         if (status === 409) { pendingTickets.delete(sha(secret).toString("hex")); throw fail("conflict", "the relay already holds a ticket with that seed; choose a new one"); }
         if (connected && status !== 200) { pendingTickets.delete(sha(secret).toString("hex")); throw fail("unavailable", "the relay did not confirm the ticket; try again"); }
       }
-      return { ticket: rawTicket.toString("base64url"), expiresAt: exp, connected };
+      // A ticket the app chose is the app's own secret: not echoed back.
+      return seed ? { expiresAt: exp, connected } : { ticket: rawTicket.toString("base64url"), expiresAt: exp, connected };
     };
 
     ctx.tool("relay.pair.ticket", {
       description: "Mint a one-time pairing ticket for the Vyre code (Wink): a phone that scans it resolves the box's identity from the relay, then pairs exactly as relay.pair.start's QR does. Works once, for 5 minutes; call again for a fresh one (an old, unused ticket is simply left to expire, unlike relay.pair.start's single live QR). Not available on a Mac yet: see vyre-core (ADR 0040).",
       input: obj({ seed: str }),
-      presence: { when: () => !macCoreRefusal(platform, keys.core), summary: async () => `Pair a new device with this box, by scanning its Vyre code${settings().enabled ? "" : " (this also turns the relay on)"}` },
+      presence: { when: () => !macCoreRefusal(platform, keys.core), summary: async i => i && i.seed ? "Let the Windows PC that shows this code join this box" : `Pair a new device with this box, by scanning its Vyre code${settings().enabled ? "" : " (this also turns the relay on)"}` },
       run: async (input, meta = {}) => {
         const refusal = macCoreRefusal(platform, keys.core);
         if (refusal) throw refusal;

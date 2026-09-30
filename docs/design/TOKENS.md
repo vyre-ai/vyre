@@ -76,7 +76,8 @@ Spacing: 4px base. Use 8, 12, 16, 24, 32, 48, 72. Page side gutter 72px desktop,
 
 - Hairline: `1px solid #2B2926`. Separate with rules, not nested boxes. A box inside a box is a bug.
 - Strong: `1px solid #3A3733`.
-- Focus: `outline: 2px solid #C6F36B; outline-offset: 2px;` (paper: `#46700C`).
+- Primary: Bone (30 Sep 2026, user's pick): no accent hue. Dark: cream `#F1EEE6` fill, `#0E0D0C` ink, hover `#FFFFFF`. Paper: ink `#141311` fill, `#F4F1EA` ink. Focus, washes and the mark dot use the same neutral. On Deep glass a chip has no wash and focus is two-tone (see chip.md). `test/no-lime.test.js` fails if the retired lime returns.
+- Focus: `outline: 2px solid #F1EEE6; outline-offset: 2px;` (paper: `#141311`).
 - Light drawn once (top edge only, on windows and the Capsule):
   `box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);`
 - Popover: `box-shadow: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55);`
@@ -89,7 +90,7 @@ Construction (24 grid): V apex (12, 19.5), arms to (3.5, 5.5) and (20.5, 5.5), s
 ### 24px (paste verbatim)
 
 ```html
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#F1EEE6"/></svg>
 ```
 
 Paper version: replace both colours with `#141311`.
@@ -111,19 +112,19 @@ The dot grows slightly and turns Beacon. Ship as a non-template image (`#B8A4FF`
 ### 16px inline (no tile)
 
 ```html
-<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg>
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#F1EEE6"/></svg>
 ```
 
 ### Favicon (16 and 32; tile)
 
 ```html
-<svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#161513"/><path d="M8 10L15.5 22.5L19.81 15.31" stroke="#F1EEE6" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="23" cy="10" r="3" fill="#C6F36B"/></svg>
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#161513"/><path d="M8 10L15.5 22.5L19.81 15.31" stroke="#F1EEE6" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="23" cy="10" r="3" fill="#F1EEE6"/></svg>
 ```
 
 ### App icon (1024; also use for 64+)
 
 ```html
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" aria-hidden="true"><rect width="1024" height="1024" rx="230" fill="#161513"/><rect x="2" y="2" width="1020" height="1020" rx="228" stroke="#F1EEE6" stroke-opacity="0.08" stroke-width="4"/><path d="M230 3H794" stroke="#F1EEE6" stroke-opacity="0.2" stroke-width="3"/><g transform="translate(512 512) scale(25) translate(-12.55 -11.95)"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></g></svg>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" aria-hidden="true"><rect width="1024" height="1024" rx="230" fill="#161513"/><rect x="2" y="2" width="1020" height="1020" rx="228" stroke="#F1EEE6" stroke-opacity="0.08" stroke-width="4"/><path d="M230 3H794" stroke="#F1EEE6" stroke-opacity="0.2" stroke-width="3"/><g transform="translate(512 512) scale(25) translate(-12.55 -11.95)"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#F1EEE6"/></g></svg>
 ```
 
 ### Wordmark "vyre" (monoline, drawn in the mark's wire; always lowercase)

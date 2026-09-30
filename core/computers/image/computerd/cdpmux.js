@@ -286,7 +286,7 @@ const CONTEXT_READONLY_METHODS = new Set(["Browser.getVersion"]);
 /**
  * @typedef {{ send(text: string): void, close(): void }} Transport
  * @typedef {{ id: number, kind: string, transport: Transport, closed: boolean,
- *   browserSid: string|null, queue: string[], sessions: Set<string>,
+ *   browserSid: string|null, ready: boolean, queue: string[], sessions: Set<string>,
  *   agentId: string|null, agentName: string|null, browserContextId: string|null }} Client
  * @typedef {{ client: Client|null, origId?: number, method: string, sessionId?: string,
  *   resolve?: (v: any) => void, reject?: (e: Error) => void, timer?: any, browserContextId?: string }} Pending
@@ -394,7 +394,7 @@ export class CdpMux {
     }
     this.sessions.clear();
     const clients = [...this.clients];
-    for (const c of clients) { c.sessions.clear(); c.browserSid = null; }
+    for (const c of clients) { c.sessions.clear(); c.browserSid = null; c.ready = false; }
     for (const c of clients) this._drop(c);
     this.log(`cdp: Chrome's pipe closed; failed ${failed} pending calls, closed ${clients.length} clients`);
   }
@@ -580,7 +580,7 @@ export class CdpMux {
       id: ++this.nextClient, kind, transport, closed: false, browserSid: null, queue: [], sessions: new Set(),
       agentId: hasId ? agentId : null,
       agentName: hasId ? (typeof agentName === "string" && agentName ? agentName : agentId) : null,
-      browserContextId: null,
+      browserContextId: null, ready: false,
     };
     const handle = {
       /** @param {string} text */
@@ -605,6 +605,10 @@ export class CdpMux {
         }
         if (c.closed) return;
       }
+      // Only now, with the browser session AND the agent's context in hand, does a call go through: one that
+      // arrived in between ran with no context, and a Target.createTarget then landed in the shared default
+      // context, outside every fence (30 Sep, the flaky two-agents test).
+      c.ready = true;
       const queued = c.queue;
       c.queue = [];
       for (const text of queued) this._fromClient(c, text);
@@ -764,7 +768,7 @@ export class CdpMux {
   /** @param {Client} c @param {string} text */
   _fromClient(c, text) {
     if (c.closed) return;
-    if (!c.browserSid) {
+    if (!c.browserSid || !c.ready) {
       if (c.queue.length >= MAX_QUEUE) { this.log(`cdp: a ${c.kind} client sent too much before its session opened`); this._drop(c); return; }
       c.queue.push(text);
       return;

@@ -576,7 +576,8 @@ test("relay: a computer that chose its own ticket has the box register it; the r
   const seed = crypto.randomBytes(16);
   // No address yet: no origin in the record.
   let minted = (await d.registry.call("relay.pair.ticket", { seed: seed.toString("base64url") }, "cli", PROOF)).data;
-  assert.equal(minted.ticket, seed.toString("base64url"), "the box registers the app's own ticket and invents none");
+  assert.equal(minted.ticket, undefined, "the app's own ticket is not echoed back");
+  assert.ok(minted.expiresAt > Date.now());
   let resolved = await resolveTicket(new Uint8Array(seed), { relay: status.url, crypto: nodeCrypto() });
   assert.equal(resolved.address, null);
   // With an address, the origin (port kept, path dropped) rides in the MAC-covered record.

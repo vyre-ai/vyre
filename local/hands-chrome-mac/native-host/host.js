@@ -133,6 +133,11 @@ export const connectTo = p => () => new Promise((resolve, reject) => {
   s.once("error", e => { s.destroy(); reject(e); });
 });
 
+if (isMain() && process.argv.includes("--selftest")) {
+  // `vyre-chrome doctor` runs the launcher with this to prove launcher -> node -> host.js works, without connecting to anything.
+  console.log(JSON.stringify({ ok: true, node: process.version, execPath: process.execPath, socket: socketPath(), pid: process.pid }));
+  process.exit(0);
+}
 if (isMain()) {
   relay(process.stdin, process.stdout, connectTo(socketPath()), { origin: process.argv[2] || null }).then(code => process.exit(code));
 }

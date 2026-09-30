@@ -277,7 +277,8 @@ test("backup: shows the size of the project files up front, includes them by def
   assert.equal(skipped.code, 0, skipped.out);
   assert.deepEqual(JSON.parse(skipped.stdout).projects, []);
 
-  await run(from, ["backup", file], env, PASSPHRASE);
+  const again = await run(from, ["backup", file], env, PASSPHRASE);
+  assert.equal(again.code, 0, again.out);
   const to = tempHome(t), back = path.join(tempHome(t), "back");
   const r = await run(to, ["restore", file, "--work-to", back], {}, PASSPHRASE);
   assert.equal(r.code, 0, r.out);

@@ -18,7 +18,7 @@ use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use vyre_capsule_win::hotkey;
 use vyre_capsule_win::shell::Pinned;
-use vyre_capsule_win::{drive, update, wink};
+use vyre_capsule_win::{devicekey, drive, update};
 use vyre_capsule_win::shell;
 
 /// The data-only signal native-core reads (C22). A value, never a callable host object.
@@ -26,17 +26,25 @@ const SHELL_SIGNAL: &str = r#"Object.defineProperty(window, "__VYRE_SHELL__", { 
 
 struct Live {
     hotkey: Mutex<String>,
-    /// The nonce this app issued for an "Add this computer" the person started (C7). Only a
-    /// `vyre://pair` link carrying it is honored.
-    nonce: Mutex<Option<(String, std::time::Instant)>>,
-    /// A ticket that resolved and awaits the person's yes, with the address it would pin.
-    pending: Mutex<Option<(wink::Offer, String)>>,
+    /// The seed for the pairing the person started: 16 CSPRNG bytes, memory only, five minutes.
+    /// The person's Deck turns it into a Wink ticket, so nothing travels back to this computer.
+    seed: Mutex<Option<(String, std::time::Instant)>>,
+    /// An offer resolved by the bundled page and awaiting the person's Pair.
+    pending: Mutex<Option<PendingOut>>,
+    /// The person pressed Pair on the confirm window; the bundled page may now run the handshake.
+    confirmed: Mutex<bool>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct PendingOut {
     name: String,
     fingerprint: String,
+    /// The host the panel will load. Always shown, since the name is the box's own free text.
+    host: String,
+    /// True when the host is not on vyre.run; the confirm page shows it as its own line.
+    own_domain: bool,
+    #[serde(skip)]
+    address: String,
 }
 
 #[derive(Serialize)]
@@ -197,7 +205,7 @@ fn check_update(app: &AppHandle) -> Result<Option<String>, String> {
     let sums = fetch(&format!("{RELEASE_BASE}/SHA256SUMS"), 1 << 20)?;
     let sig = String::from_utf8(fetch(&format!("{RELEASE_BASE}/SHA256SUMS.sig"), 4096)?).map_err(|_| "signature is not text")?;
     let listed = update::verify_sums(&sums, &sig, update::RELEASE_KEY)?;
-    let Some((name, version)) = update::newer_installer(&listed, env!("CARGO_PKG_VERSION")) else { return Ok(None) };
+    let Some((name, version)) = update::newer_installer(&listed, option_env!("VYRE_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))) else { return Ok(None) };
     let bytes = fetch(&format!("{RELEASE_BASE}/{name}"), 300 << 20)?;
     update::check_file(&listed, &name, &bytes)?;
     // Written to the app's own data dir (not the shared temp dir), then re-hashed from disk so
@@ -250,79 +258,171 @@ fn unmount_drive(letter: String) -> Result<(), String> {
     net_use(&drive::unmap_args(&letter.to_ascii_uppercase())).map(|_| ())
 }
 
-const RELAY: &str = "https://relay.vyre.run";
+const SEED_LIFE: std::time::Duration = std::time::Duration::from_secs(300);
 
-/// Issue this app's nonce for "Add this computer"; the Deck's Wink link must carry it back.
+/// Start "Add this computer": a fresh 16-byte seed, shown to the person (QR or words), never put
+/// in a link or a log. Replaces any earlier seed.
 #[tauri::command]
 fn begin_pair(live: State<Live>) -> String {
     use base64::Engine;
     use rand::RngCore;
     let mut b = [0u8; 16];
-    rand::thread_rng().fill_bytes(&mut b);
-    let n = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b);
-    *live.nonce.lock().unwrap() = Some((n.clone(), std::time::Instant::now()));
-    n
+    rand::rngs::OsRng.fill_bytes(&mut b);
+    let seed = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b);
+    *live.seed.lock().unwrap() = Some((seed.clone(), std::time::Instant::now()));
+    *live.pending.lock().unwrap() = None;
+    *live.confirmed.lock().unwrap() = false;
+    seed
+}
+
+/// The bundled page resolved the ticket for our seed and hands over what the sealed record says.
+/// Refused unless a live seed exists and no offer is already waiting.
+#[tauri::command]
+fn offer_pair(app: AppHandle, live: State<Live>, name: String, fingerprint: String, handle: Option<String>, address: Option<String>) -> Result<(), String> {
+    match live.seed.lock().unwrap().as_ref() {
+        Some((_, at)) if at.elapsed() <= SEED_LIFE => {}
+        _ => return Err("This pairing ran out of time. Start again.".into()),
+    }
+    if live.pending.lock().unwrap().is_some() { return Err("A pairing is already waiting for your answer.".into()); }
+    let pin = shell::pin_from_offer(handle.as_deref(), address.as_deref()).map_err(|_| "That server's address does not check out.")?;
+    let host = pin.address.trim_start_matches("https://").to_string();
+    let clean = |s: &str, max: usize| s.chars().filter(|c| !c.is_control()).take(max).collect::<String>();
+    *live.pending.lock().unwrap() = Some(PendingOut { name: clean(&name, 64), fingerprint: clean(&fingerprint, 16), host, own_domain: pin.own_domain, address: pin.address });
+    let _ = WebviewWindowBuilder::new(&app, "confirm", WebviewUrl::App("confirm.html".into()))
+        .title("Vyre").inner_size(480.0, 340.0).resizable(false).build();
+    Ok(())
 }
 
 #[tauri::command]
-fn pending_pair(live: State<Live>) -> Option<PendingOut> {
-    live.pending.lock().unwrap().as_ref().map(|(o, _)| PendingOut { name: o.name.clone(), fingerprint: o.fingerprint.clone() })
-}
+fn pending_pair(live: State<Live>) -> Option<PendingOut> { live.pending.lock().unwrap().clone() }
 
 #[tauri::command]
 fn cancel_pair(app: AppHandle, live: State<Live>) {
     *live.pending.lock().unwrap() = None;
-    *live.nonce.lock().unwrap() = None;
+    *live.seed.lock().unwrap() = None;
+    *live.confirmed.lock().unwrap() = false;
     if let Some(w) = app.get_webview_window("confirm") { let _ = w.close(); }
 }
 
-/// The person said yes: pin the address the sealed record named, and open the panel there.
+/// The person pressed Pair: nothing is pinned yet. The bundled page sees "confirmed", runs the
+/// handshake, and only a finished handshake pins (finish_pair).
 #[tauri::command]
 fn confirm_pair(app: AppHandle, live: State<Live>) -> Result<(), String> {
-    let (_, address) = live.pending.lock().unwrap().take().ok_or("Nothing to pair.")?;
-    *live.nonce.lock().unwrap() = None;
-    save_pairing(app.clone(), address)?;
+    if live.pending.lock().unwrap().is_none() { return Err("Nothing to pair.".into()); }
+    *live.confirmed.lock().unwrap() = true;
     if let Some(w) = app.get_webview_window("confirm") { let _ = w.close(); }
     Ok(())
 }
 
-/// A `vyre://pair` link: honored only with this app's own nonce. The ticket is looked up once at
-/// the relay, MAC-checked and opened, then shown to the person before anything is pinned.
-fn handle_link(app: &AppHandle, link: &str) {
-    let live = app.state::<Live>();
-    if let Some(path) = shell::open_path(link) {
-        show_panel(app, &path);
-        return;
-    }
-    // The nonce lives 10 minutes, and a link is ignored while an offer already awaits a yes.
-    let Some((nonce, at)) = live.nonce.lock().unwrap().clone() else { return };
-    if at.elapsed() > std::time::Duration::from_secs(600) || live.pending.lock().unwrap().is_some() { return; }
-    if !shell::pair_matches(link, &nonce) { return; }
-    let ticket = url_param(link, "ticket").and_then(|t| {
-        use base64::Engine;
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(t).ok()
-    });
-    let Some(ticket) = ticket.filter(|t| t.len() == wink::TICKET_BYTES) else { return };
-    let app = app.clone();
-    std::thread::spawn(move || {
-        let body = serde_json::json!({ "loc": wink::locator(&ticket) }).to_string();
-        let res = ureq::post(&format!("{RELAY}/v1/pair")).set("content-type", "application/json").send_string(&body);
-        let Ok(res) = res else { return };
-        let Ok(text) = res.into_string() else { return };
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else { return };
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
-        let offer = wink::open_record(&ticket, v["record"].as_str().unwrap_or(""), v["mac"].as_str().unwrap_or(""), now);
-        let Ok(offer) = offer else { return };
-        // Only a handle on vyre.run gives an address; anything else is not pinned from a ticket.
-        let Some(address) = offer.address() else { return };
-        *app.state::<Live>().pending.lock().unwrap() = Some((offer, address));
-        let _ = WebviewWindowBuilder::new(&app, "confirm", WebviewUrl::App("confirm.html".into()))
-            .title("Vyre").inner_size(480.0, 320.0).resizable(false).build();
-    });
+/// "waiting" (no answer yet), "confirmed", or "cancelled" (the person said no, or it ran out).
+#[tauri::command]
+fn pair_status(live: State<Live>) -> &'static str {
+    let live_seed = matches!(live.seed.lock().unwrap().as_ref(), Some((_, at)) if at.elapsed() <= SEED_LIFE);
+    if *live.confirmed.lock().unwrap() { "confirmed" }
+    else if live.pending.lock().unwrap().is_some() && live_seed { "waiting" }
+    else { "cancelled" }
 }
 
-fn url_param(link: &str, key: &str) -> Option<String> {
-    url::Url::parse(link).ok()?.query_pairs().find(|(k, _)| k == key).map(|(_, v)| v.into_owned())
+/// The handshake finished: pin the confirmed address (with what `connect` needs to stay linked,
+/// which holds no secret), close the pairing page and open the panel.
+#[tauri::command]
+fn finish_pair(app: AppHandle, live: State<Live>, link: serde_json::Value) -> Result<(), String> {
+    if !*live.confirmed.lock().unwrap() { return Err("The pairing was not confirmed.".into()); }
+    let p = live.pending.lock().unwrap().take().ok_or("Nothing to pair.")?;
+    *live.seed.lock().unwrap() = None;
+    *live.confirmed.lock().unwrap() = false;
+    let path = record_path(&app).ok_or("No place to save on this computer.")?;
+    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(&path, serde_json::json!({ "address": p.address, "link": link }).to_string()).map_err(|e| e.to_string())?;
+    if let Some(w) = app.get_webview_window("first-run") { let _ = w.close(); }
+    ensure_link_window(&app);
+    show_panel(&app, "/quick");
+    Ok(())
+}
+
+/// What `connect` needs to stay linked to the paired box (no secret in it), for the link window.
+#[tauri::command]
+fn get_link(app: AppHandle) -> Option<serde_json::Value> {
+    let text = std::fs::read_to_string(record_path(&app)?).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    v.get("link").filter(|l| l.is_object()).cloned()
+}
+
+/// The persistent, hidden, bundled page that holds the box channel and makes box calls (Drive).
+/// The main panel never gets this: only this window has the device key commands after pairing.
+fn ensure_link_window(app: &AppHandle) {
+    if app.get_webview_window("link").is_some() || get_link(app.clone()).is_none() { return; }
+    let _ = WebviewWindowBuilder::new(app, "link", WebviewUrl::App("link.html".into()))
+        .title("Vyre link").visible(false).build();
+}
+
+/// A `vyre://open` link: a fixed route on the pinned origin, nothing else. Pairing has no link.
+fn handle_link(app: &AppHandle, link: &str) {
+    if let Some(path) = shell::open_path(link) { show_panel(app, &path); }
+}
+
+// The Noise device key. The private half stays here, DPAPI-protected on Windows; a bundled page
+// gets only the public half and DH results (relay/client/shellkey.js).
+fn key_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("device.key"))
+}
+
+#[cfg(windows)]
+fn protect(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB};
+    // Never let Windows raise its own dialog from here.
+    const CRYPTPROTECT_UI_FORBIDDEN: u32 = 1;
+    let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
+    let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+    let ok = unsafe {
+        if encrypt { CryptProtectData(&input, std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out) }
+        else { CryptUnprotectData(&input, std::ptr::null_mut(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out) }
+    };
+    if ok == 0 { return Err("Windows would not open the device key.".into()); }
+    let v = unsafe { std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec() };
+    unsafe { LocalFree(out.pbData as _) };
+    Ok(v)
+}
+
+// Off Windows this only exists so the crate builds for local checks; it is never shipped.
+#[cfg(not(windows))]
+fn protect(data: &[u8], _encrypt: bool) -> Result<Vec<u8>, String> { Ok(data.to_vec()) }
+
+static KEY_LOCK: Mutex<()> = Mutex::new(());
+
+/// Read the device key, or make it once. Two first calls cannot both create one (the lock), a
+/// key that exists but cannot be opened is an error and never replaced, and a new key is written
+/// to a side file then renamed into place, so a crash leaves either no key or a whole one.
+fn device_secret(app: &AppHandle) -> Result<[u8; 32], String> {
+    let _guard = KEY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let path = key_path(app)?;
+    if path.exists() {
+        let blob = std::fs::read(&path).map_err(|e| e.to_string())?;
+        let raw = protect(&blob, false)?;
+        return raw.try_into().map_err(|_| "The device key file is damaged.".to_string());
+    }
+    use rand::RngCore;
+    let mut k = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut k);
+    let dir = path.parent().unwrap();
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let tmp = dir.join(format!("device.key.{}.tmp", std::process::id()));
+    std::fs::write(&tmp, protect(&k, true)?).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    Ok(k)
+}
+
+fn b64u(b: &[u8]) -> String { use base64::Engine; base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b) }
+
+#[tauri::command]
+fn device_key_pub(app: AppHandle) -> Result<String, String> { Ok(b64u(&devicekey::public_key(&device_secret(&app)?))) }
+
+#[tauri::command]
+fn device_key_dh(app: AppHandle, remote: String) -> Result<String, String> {
+    use base64::Engine;
+    let r: [u8; 32] = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(remote).ok().and_then(|v| v.try_into().ok()).ok_or("That is not a public key.")?;
+    Ok(b64u(&devicekey::dh(&device_secret(&app)?, &r)?))
 }
 
 fn main() {
@@ -335,19 +435,21 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, pending_pair, confirm_pair, cancel_pair])
+        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
-            app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)), nonce: Mutex::new(None), pending: Mutex::new(None) });
+            app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)), seed: Mutex::new(None), pending: Mutex::new(None), confirmed: Mutex::new(false) });
 
             let open = MenuItem::with_id(app, "open", "Open Vyre", true, None::<&str>)?;
+            let drive = MenuItem::with_id(app, "drive", "Open Vyre Drive", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &quit])?;
+            let menu = Menu::with_items(app, &[&open, &drive, &quit])?;
             let mut tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, e| match e.id.as_ref() {
                     "open" => show_panel(app, "/quick"),
+                    "drive" => { use tauri::Emitter; let _ = app.emit_to("link", "vyre-drive", ()); }
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -361,6 +463,7 @@ fn main() {
 
             // Start in the tray; show the panel only when first-run is needed.
             if pinned(&handle).is_none() { show_first_run(&handle); }
+            ensure_link_window(&handle);
             spawn_update_loop(handle.clone());
 
             use tauri_plugin_deep_link::DeepLinkExt;

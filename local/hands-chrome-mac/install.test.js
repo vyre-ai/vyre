@@ -121,3 +121,26 @@ test("status and uninstall on Windows read and delete the registry keys", t => {
   assert.deepEqual(keys, {});
   assert.equal(fs.existsSync(path.join(vyreHome, "chrome", "run.vyre.chrome.json")), false);
 });
+
+test("Dia and Arc: registered on macOS under their own \"User Data\" folder when they are installed, listed by status, removed by uninstall; not a Linux or Windows browser here", t => {
+  const { home, hostDir } = rig(t);
+  const dia = path.join(home, "Library", "Application Support", "Dia", "User Data");
+  fs.mkdirSync(dia, { recursive: true });
+  // No Arc folder: detection registers Chrome and Dia only.
+  const r = install({ home, platform: "darwin", extensionId: ID, hostDir });
+  assert.deepEqual(r.written.map(w => w.browser).sort(), ["chrome", "dia"]);
+  const f = path.join(dia, "NativeMessagingHosts", "run.vyre.chrome.json");
+  assert.equal(JSON.parse(fs.readFileSync(f, "utf8")).allowed_origins[0], `chrome-extension://${ID}/`);
+  assert.deepEqual(status({ home, platform: "darwin", hostDir }).installed.map(x => x.browser).sort(), ["chrome", "dia"]);
+  // Asked for by name, Arc is registered even without a folder yet (the person is about to install it).
+  const a = install({ home, platform: "darwin", extensionId: ID, hostDir, browsers: ["arc"] });
+  assert.deepEqual(a.written.map(w => w.browser), ["arc"]);
+  assert.ok(fs.existsSync(path.join(home, "Library", "Application Support", "Arc", "User Data", "NativeMessagingHosts", "run.vyre.chrome.json")));
+  // On Linux they have no known place: skipped and said so, never an error or a wrong folder.
+  const l = install({ home, platform: "linux", extensionId: ID, hostDir, browsers: ["chrome", "dia", "arc"] });
+  assert.deepEqual(l.written.map(w => w.browser), ["chrome"]);
+  assert.deepEqual(l.skipped, ["dia", "arc"]);
+  const u = uninstall({ home, platform: "darwin" });
+  assert.ok(u.removed.some(x => x.browser === "dia") && u.removed.some(x => x.browser === "arc"));
+  assert.equal(fs.existsSync(f), false);
+});

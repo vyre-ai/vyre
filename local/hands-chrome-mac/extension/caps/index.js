@@ -14,6 +14,7 @@
 import { proto } from "../lib/shared.js";
 import { err } from "../lib/err.js";
 import { setGhlHosts } from "../shared/ghlhosts.js";
+import { url as redactUrl } from "../shared/redact.js";
 import tabs from "./tabs.js";
 import page from "./page.js";
 import batch from "./batch.js";
@@ -110,7 +111,12 @@ export async function dispatch(op, args, ctx) {
   if (proto.ACTING.has(op) && ctx.stopped()) throw err("stopped");
   if (typeof args.tabId === "number") {
     const v = await ctx.floorAllows(args.tabId, op);
-    if (!v.allow) throw err("blocked", `${v.why} (${v.tier})`);
+    if (!v.allow) {
+      // Say which tab and which page it saw, so "blocked" is never a mystery (the user's chrome.open then snapshot on a site that had not loaded).
+      let where = "";
+      try { const tb = await ctx.tabs.get(args.tabId); const u = String(tb.pendingUrl || tb.url || ""); where = `tab ${args.tabId} is on ${u ? redactUrl(u.split(/[?#]/)[0]) : "no page yet"}${tb.status === "loading" ? " (still loading)" : ""}: `; } catch { where = `tab ${args.tabId}: `; }
+      throw err("blocked", `${where}${v.why} (${v.tier})`);
+    }
   }
   return entry.handler(args, ctx);
 }

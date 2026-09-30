@@ -41,7 +41,7 @@ test("theme: the focus ring must keep 3:1", () => {
 });
 
 test("theme: the attention colour cannot be reused", () => {
-  const { problems } = applyOverride(base, { color: { dark: { beacon: "#C6F36B" } } });
+  const { problems } = applyOverride(base, { color: { dark: { beacon: "#F1EEE6" } } });
   assert.ok(problems.some(p => p.includes("beacon (attention) is reused as primaryBg")), problems.join("\n"));
 });
 

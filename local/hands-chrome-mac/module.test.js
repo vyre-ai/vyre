@@ -35,7 +35,7 @@ const GATE_JS = `export default { async start(ctx) {
   return {};
 } };`;
 
-async function rig(/** @type {any} */ t, { gate = true, nativeHost = /** @type {any} */ (null), floor = /** @type {any} */ (null) } = {}) {
+async function rig(/** @type {any} */ t, { gate = true, nativeHost = /** @type {any} */ (null), floor = /** @type {any} */ (null), origin = /** @type {any} */ (null) } = {}) {
   const home = tempHome(t);
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
@@ -48,7 +48,7 @@ async function rig(/** @type {any} */ t, { gate = true, nativeHost = /** @type {
   fs.writeFileSync(path.join(gateDir, "index.js"), GATE_JS);
   const f = fakeApp({ elements: [] });
   const reg = new Registry({ db, events: new Events(db), log: () => {},
-    config: { role: "local", hands: { runner: f.run, sleep: async () => {} }, chrome: { extensionOrigin: null, sockPath, nativeHost, floor, home: sockDir, platform: "darwin", hostDir: sockDir } } });
+    config: { role: "local", hands: { runner: f.run, sleep: async () => {} }, chrome: { extensionOrigin: origin, sockPath, nativeHost, floor, home: sockDir, platform: "darwin", hostDir: sockDir } } });
   const found = [...discover([path.dirname(HERE)]).filter(m => m.dir === HERE || m.dir === HANDS), ...(gate ? discover([path.join(home, "mods")]) : [])];
   // The stand-in Gate stands for Vyre's own Gate module, which is first party; an added module could not call chrome.release.
   const firstParty = reg.isFirstParty.bind(reg);
@@ -92,6 +92,7 @@ test("module: it offers chrome:mac to the Gate for acts, again before the first 
   await reg.call("chrome.act", { selector: { role: "button", name: "Send" }, kind: "click" }, "cli");
   const o = gate().offers.find((/** @type {any} */ x) => x.name === "chrome:mac");
   assert.deepEqual([o.tool, o.kinds], ["chrome.release", ["act"]]);
+  assert.equal(o.recipients, "to", "the Gate matches an asked send or a standing permission on the site origin, which is `to`");
 });
 
 test("module: with no extension connected, a call says so", async t => {
@@ -377,4 +378,67 @@ test("module: the panel's controls (pause, plan.edit, voice) are the person's, n
   assert.equal(events("chrome.voice").length, 1);
   assert.equal(events("chrome.plan").at(-1).payload.steps[1].text, "Fill in only the name");
   assert.equal(events("chrome.plan").at(-1).payload.run, "kit");
+});
+
+test("module: chrome.open on a site that did not load says so (the tab and why), not a bare blind refusal", async t => {
+  const { reg, connect } = await rig(t);
+  await connect({ "tabs.use": () => ({ id: 7, windowId: 1, url: "chrome-error://chromewebdata/", title: "app.harlow.example", opened: true, loaded: false, failed: "the page did not load: Chrome is showing its own error page." }) });
+  const r = await reg.call("chrome.open", { url: "https://app.harlow.example/" }, "cli");
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  assert.deepEqual([r.data.blind, r.data.tab, r.data.loaded], [true, 7, false]);
+  assert.match(r.data.failed, /did not load/);
+  assert.match(r.data.why, /did not load/);
+});
+
+// ---- why there is no extension, and the one fix (the user's first install: nothing said what was wrong)
+const HOST_OK = { status: () => ({ installed: [{ browser: "chrome" }], launcherExists: true, launcherExecutable: true }), install: () => ({}) };
+
+test("diagnose: nothing has ever connected: says Chrome never started the connector, and the fix (load and enable the extension, then quit and reopen Chrome)", async t => {
+  const { reg } = await rig(t, { nativeHost: HOST_OK });
+  const st = (await reg.call("chrome.status", {}, "cli")).data;
+  assert.equal(st.connected, false);
+  assert.equal(st.stage, "host_never_started");
+  assert.match(st.problem, /no connector process has ever connected/);
+  assert.match(st.fix, /chrome:\/\/extensions.*quit and reopen Chrome/);
+  const r = await reg.call("chrome.snapshot", {}, "cli");
+  assert.equal(r.error.code, "no_extension");
+  assert.match(r.error.message, /Chrome has not started the connector/);
+  assert.match(r.error.message, /quit and reopen Chrome/);
+});
+
+test("diagnose: a connector that is not registered says to run install", async t => {
+  const { reg } = await rig(t, { nativeHost: { status: () => ({ installed: [], launcherExists: true }), install: () => ({}) } });
+  const st = (await reg.call("chrome.status", {}, "cli")).data;
+  assert.equal(st.stage, "host_not_registered");
+  assert.match(st.fix, /vyre-chrome install/);
+});
+
+test("diagnose: a host that connected but never said hello, and one that was connected and dropped, are told apart", async t => {
+  const { reg, sockPath } = await rig(t, { nativeHost: HOST_OK });
+  const silent = await fakeExtension(sockPath, { hello: false });
+  await until(async () => (await reg.call("chrome.status", {}, "cli")).data.socket.connections >= 1);
+  assert.equal((await reg.call("chrome.status", {}, "cli")).data.stage, "host_no_hello");
+  await silent.close();
+  const good = await fakeExtension(sockPath);
+  await until(async () => (await reg.call("chrome.status", {}, "cli")).data.connected);
+  assert.equal((await reg.call("chrome.status", {}, "cli")).data.problem, undefined, "no problem while connected");
+  await good.close();
+  await until(async () => !(await reg.call("chrome.status", {}, "cli")).data.connected);
+  const st = (await reg.call("chrome.status", {}, "cli")).data;
+  assert.equal(st.stage, "extension_dropped");
+  assert.match(st.problem, /connected and then disconnected/);
+});
+
+test("diagnose: a host launched for a different extension id is refused and says so", async t => {
+  const key = JSON.parse(fs.readFileSync(path.join(HERE, "extension", "manifest.json"), "utf8")).key;
+  const { extensionIdFromKey } = await import("./native-host/install.js");
+  const right = `chrome-extension://${extensionIdFromKey(key)}/`;
+  const { reg, sockPath } = await rig(t, { nativeHost: HOST_OK, origin: right });
+  const wrong = await fakeExtension(sockPath, { hello: false });
+  await wrong.send({ event: "host", origin: "chrome-extension://" + "a".repeat(32) + "/" });
+  await wrong.hello();
+  await until(async () => (await reg.call("chrome.status", {}, "cli")).data.stage === "host_refused");
+  const st = (await reg.call("chrome.status", {}, "cli")).data;
+  assert.match(st.problem, /different extension id/);
+  assert.match(st.fix, /vyre-chrome install/);
 });

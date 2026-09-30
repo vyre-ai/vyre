@@ -15,8 +15,8 @@
     .lbl { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
     .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 14px; box-sizing: border-box; border-radius: 6px; border: 1px solid #3A3733; background: transparent; color: #F1EEE6; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; text-decoration: none; cursor: pointer; white-space: nowrap; }
     .btn:hover { background: #1E1C1A; }
-    .btn-primary { background: #C6F36B; border-color: #C6F36B; color: #0E0D0C; }
-    .btn-primary:hover { background: #D4F88A; border-color: #D4F88A; }
+    .btn-primary { background: #F1EEE6; border-color: #F1EEE6; color: #0E0D0C; }
+    .btn-primary:hover { background: #FFFFFF; border-color: #FFFFFF; }
     .btn-ghost { border-color: transparent; color: #B3AEA4; padding: 0 10px; }
     .ibtn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; box-sizing: border-box; border-radius: 6px; border: 1px solid transparent; background: transparent; color: #B3AEA4; cursor: pointer; padding: 0; }
     .ibtn:hover { background: #1E1C1A; color: #F1EEE6; }
@@ -33,13 +33,13 @@
     .sw-knob { position: absolute; top: 3px; width: 14px; height: 14px; border-radius: 7px; }
     .sw-on .sw-knob { left: 17px; background: #0E0D0C; }
     .sw-off .sw-knob { left: 3px; background: #8C877D; }
-    :focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+    :focus-visible { outline: 2px solid #F1EEE6; outline-offset: 2px; }
   </style>
 </helmet>
 <div style="width: 1600px; height: 1000px; overflow: hidden; box-sizing: border-box; background: #0E0D0C; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; display: flex; flex-direction: column;">
 
   <header style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 0; border-bottom: 1px solid #2B2926; background: #0E0D0C;">
-    <a href="DeckNow.dc.html" aria-label="vyre home" style="width: 216px; box-sizing: border-box; height: 48px; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none; flex-shrink: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <a href="DeckNow.dc.html" aria-label="vyre home" style="width: 216px; box-sizing: border-box; height: 48px; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none; flex-shrink: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#F1EEE6"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
     <div class="mono" style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid #2B2926; border-radius: 6px; font-size: 12px; line-height: 16px; color: #8C877D; flex-shrink: 0;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.2"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg><span>alex.vyre.run<span style="color: #F1EEE6;">/agents/kit</span></span></div>
     <label style="display: flex; align-items: center; gap: 10px; height: 32px; width: 420px; padding: 0 8px 0 12px; box-sizing: border-box; background: #161513; border: 1px solid #2B2926; border-radius: 6px; color: #8C877D;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.3"/><path d="M10.3 10.3L13.5 13.5"/></svg><input type="search" placeholder="Search threads, files, people" aria-label="Search threads, files, people" style="flex-grow: 1; min-width: 0; background: transparent; border: none; outline: none; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 13px;"><span class="kbd">⌘K</span></label>
     <div style="flex-grow: 1;"></div>
@@ -141,7 +141,7 @@
                   <span style="font-size: 13px; color: #8C877D;">Effort</span>
                   <div role="group" aria-label="Effort" style="display: flex; padding: 2px; border: 1px solid #2B2926; border-radius: 6px;">
                     <button type="button" aria-pressed="false" style="height: 30px; padding: 0 12px; border: none; border-radius: 4px; background: transparent; color: #B3AEA4; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 13px; cursor: pointer;">Low</button>
-                    <button type="button" aria-pressed="true" style="height: 30px; padding: 0 12px; border: none; border-radius: 4px; background: rgba(198,243,107,0.12); color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 13px; cursor: pointer;">Medium</button>
+                    <button type="button" aria-pressed="true" style="height: 30px; padding: 0 12px; border: none; border-radius: 4px; background: rgba(241,238,230,0.12); color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 13px; cursor: pointer;">Medium</button>
                     <button type="button" aria-pressed="false" style="height: 30px; padding: 0 12px; border: none; border-radius: 4px; background: transparent; color: #B3AEA4; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 13px; cursor: pointer;">High</button>
                   </div>
                 </div>

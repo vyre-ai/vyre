@@ -469,7 +469,8 @@ export class Pool {
       }
       if (st.host) this.hosts.set(agent, { host: st.host, ports: st.ports || { ...PORTS } });
       const h = this.hosts.get(agent);
-      if (!this.probe || (h && await this.probe(h.host, h.ports.vnc))) return;
+      // The screen AND computerd (its port answers a little after Xvnc: the first hands call right after a checkout used to hit a refused connection).
+      if (!this.probe || (h && await this.probe(h.host, h.ports.vnc) && (!h.ports.helper || await this.probe(h.host, h.ports.helper)))) return;
       if (Date.now() >= deadline) {
         throw bootFailure(`${agent}'s computer started but its screen did not answer within ${Math.round(this.opts.bootMs / 1000)} s`, `see docker logs ${this.opts.prefix}-computer-${agent} on the box`);
       }

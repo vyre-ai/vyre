@@ -9,7 +9,7 @@
     "withGlobalTauri": false,
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost https://relay.vyre.run wss://relay.vyre.run"
     }
   },
   "plugins": { "deep-link": { "desktop": { "schemes": ["vyre"] } } },

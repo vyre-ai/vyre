@@ -12,8 +12,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "..");
 
 /** Files and folders of local/hands-chrome-mac that the standalone needs, relative to it. */
-const KEEP = ["index.js", "bridge.js", "oversight.js", "floor-url.js", "caller.js", "extension", "native-host",
-  "standalone/cli.mjs", "standalone/vyre-chrome", "standalone/vyre-chrome.cmd", "standalone/runtime.js", "standalone/mcp.js", "standalone/trace.js", "standalone/GHL-PLAYBOOK.md"];
+const KEEP = ["index.js", "bridge.js", "diagnose.js", "oversight.js", "floor-url.js", "caller.js", "extension", "native-host",
+  "standalone/cli.mjs", "standalone/doctor.js", "standalone/vyre-chrome", "standalone/vyre-chrome.cmd", "standalone/runtime.js", "standalone/mcp.js", "standalone/trace.js", "standalone/GHL-PLAYBOOK.md"];
 const SKIP = /(\.test\.js|node-path|sock-path)$/;
 
 /** @param {string} from @param {string} to */

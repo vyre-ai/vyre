@@ -6,6 +6,7 @@
 // user's own, whether this machine is the box or the Mac, all come from ~/.vyre/config.json.
 
 import crypto from "node:crypto";
+import { ownerOnly } from "../../lib/owner-only.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -92,6 +93,7 @@ function pipeToken(root) {
   const file = path.join(root, "pipe-token");
   try { return fs.readFileSync(file, "utf8").trim(); } catch {}
   fs.mkdirSync(root, { recursive: true });
+  ownerOnly(root);
   const token = crypto.randomBytes(16).toString("hex");
   fs.writeFileSync(file, token, { mode: 0o600 });
   return token;
@@ -331,6 +333,7 @@ export function save(patch, root = home(), live) {
     } else user[k] = v;
   }
   fs.mkdirSync(p.root, { recursive: true, mode: 0o700 });
+  ownerOnly(p.root);
   const tmp = `${p.config}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(user, null, 2) + "\n", { mode: 0o600 });
   fs.renameSync(tmp, p.config);
@@ -382,6 +385,8 @@ export function fingerprint8(id) {
 export function ensure(root = home()) {
   const p = paths(root);
   for (const dir of [p.root, p.vault, p.modules, p.watchers, p.logs]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  // win32: mode bits do nothing, so the ACL is set on the home; everything inside inherits it.
+  ownerOnly(p.root);
   // POSIX: the socket's own shared folder is mode-checked before anything binds inside it, never
   // after: vyred's listener runs later, in core/daemon/index.js. Nothing to do on win32: a named
   // pipe (socketPath's win32 branch) has no filesystem folder to create or protect.

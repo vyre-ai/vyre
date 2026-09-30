@@ -113,7 +113,7 @@ export function estimate({ root = config.home(), workRoots = [] } = {}) {
 }
 
 /** tar's output as a gzip stream we can iterate. Exit 1 (a file changed or vanished while read) is a warning. */
-async function* tarGz(args, warnings) {
+export async function* tarGz(args, warnings) {
   const child = spawn("tar", args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, COPYFILE_DISABLE: "1" } });
   let err = "";
   child.stderr.on("data", d => { if (err.length < 4096) err += d; });
@@ -121,8 +121,12 @@ async function* tarGz(args, warnings) {
   const failed = new Promise((_, rej) => child.on("error", rej));
   failed.catch(() => {});
   const gz = child.stdout.pipe(zlib.createGzip({ level: 6 }));
-  try { for await (const part of gz) yield /** @type {Buffer} */ (part); }
-  finally { if (!child.killed && child.exitCode === null) child.kill(); }
+  // tar is only stopped when the reader gives up early. Once its output has ended it is about to exit
+  // on its own, but its exit code may not be in yet: killing it then turns a clean 0 into "exited null",
+  // which a busy machine (a runner at load 30) hit now and then (30 Sep).
+  let drained = false;
+  try { for await (const part of gz) yield /** @type {Buffer} */ (part); drained = true; }
+  finally { if (!drained && !child.killed && child.exitCode === null) child.kill(); }
   const code = await Promise.race([closed, failed]);
   if (code === 1) warnings.push("some files changed while they were being read");
   else if (code !== 0) throw new Error(`tar exited ${code}: ${err.trim()}`);
