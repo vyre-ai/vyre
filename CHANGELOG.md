@@ -14,6 +14,95 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Join links (reviewer-2 LOW): the row shows where "Open" goes (`in 10 min · meet.google.com`); a link in an event's location counts only on a known meeting host (Meet, Zoom, Teams, Webex), so an invite cannot put a phishing page in `join`; the meeting's own link (Google's hangout or conference entry, Graph's onlineMeeting) is preferred; events the person declined are skipped. `google.calendar.next` events gain `join` and `declined` only when present.
 - `vault`: an api-credential may carry `readers: [{ module, paths }]`, written with the credential (only a person's own surface can), so connecting is the grant and there is no second prompt. A listed module may make reads of those paths through the credential with no grant, and every other call (another path, a write, a send) is refused to it, never held. Reader paths are plain text, a literal prefix that may end in one `*` (no other wildcard), matched at a segment boundary: `calendarViewfoo`, `..` and an encoded slash, backslash or dot never match, and a reader that is also granted is still limited to its paths. `vault.update` and `vault.edit` cannot read an api-credential back, so `vault.put` from a person's surface is the only way to write or widen `readers` (tested for modules, mcp and agents). The Microsoft and personal Google presets name the connectors module and their calendar paths exactly (`/v1.0/me/calendarView`, `/calendar/v3/calendars/primary/events`, then only a query), and a path holding `;` is refused as well (reviewer-2 M-C1). `lib/connectors/calendar.js` shapes the answers.
 
+- CI now publishes stills of Lumen as an artifact (`lumen-screens-<sha>`): the lens drawing itself in on
+  a summon, the first-launch open at six moments, the menu bar mark light and dark, the panel in its
+  states, and a macOS screen capture of the panel with a word typed. The speed check reports "key to
+  first rows" against 50 ms and "key to all rows" (Spotlight and the like included) apart.
+- Lumen: Spotlight searches (files, documents, mail) now run entirely off the main thread, so a search
+  for a word no longer holds up the next keystroke. Text counts as typed only when a key press says
+  so; anything else that arrives in the box (a paste, a restored draft, dictation) is marked as not
+  typed.
+- Lumen: typing is lighter. The first paint of a search is a slice of 8 rows and the rest follow on
+  the next turn; one letter searches only what is already on this Mac (no Spotlight, mail or
+  document search) and shows at most 20 rows; and a newer key cancels the slow search an older one
+  started instead of letting it finish.
+- Lumen: a module's "needs" answer that names a credential (a need id, optionally the vendor) now opens
+  "Add your ..." in the panel; once it is saved, the command asks again. One without a credential is
+  shown as its words.
+- Lumen: stretches of the box that did not come from typing (a paste, a drop, undo, dictation, an
+  autocorrect) are tracked by position through every later edit, and sent with a message so that a
+  #Name inside them tags nothing.
+- Lumen: when a calendar module declares a next-meeting command, the empty box shows one line under
+  it: the next meeting and when ("Harlow Legal call · in 25 min"). It is asked when Lumen shows, at
+  most once a minute, and there is no line when there is no meeting.
+- Lumen: type "#" and some letters in the box to tag anything in your work: a saved login, a file, an
+  artifact, a repo or a pull request. The list shows names only, in the order the platform gives
+  them; Tab or Return writes the pick as #Name (or #"Name with spaces") and keeps it as a chip. Taking
+  the tag out of the words takes the chip off. A message sent to a session carries the chips that are
+  still in it. Nothing is looked up until you type a "#", and "issue#12" or "C#" stay plain words.
+- Lumen has its icon: the lens, on the app, in the menu bar (a one-colour template that follows light
+  and dark, with the bead larger and violet when something waits on you) and in the bar. On every
+  summon the bar arrives over 220 ms and the lens draws itself in; the first time Lumen runs, the
+  tile, the lens's point of light and "Vyre Lumen" appear for 1.6 s. With Reduce Motion everything is
+  simply there.
+- Lumen: icons for files and apps are made off the main thread, so a first letter no longer waits on
+  the system for a dozen pictures; a row draws without its icon and the icon appears when ready. The
+  panel is drawn once, hidden, shortly after launch, so the first summon is warm.
+- Lumen: words a module puts in the box (an ask effect) only sit there. Nothing is asked, looked up
+  or sent from them until you edit them or press Return. "Copy" says what it copies.
+- CLI: `vyre capsule` says Lumen ("Lumen built", "Lumen open", "Building Lumen for this Mac"). The
+  command name stays.
+- Lumen: commands that modules declare (Gmail, Calendar, Drive, GitHub, the vault and any module
+  you add) show up in the box as commands. Press Return on one and the box searches it: its list
+  is the results, Tab opens a row's detail, Command-K lists a row's actions, and Esc goes back one
+  step and then out. A form takes Return to send. Anything that sends as you shows exactly what will
+  go first; a second Return sends those words, and a change in them shows them again. A module you
+  added is marked "from <module>", and a link it gives opens only as https, mailto or vyre.
+  Nothing is polled; the list of commands is read when Lumen shows, at most twice a minute.
+- Capsule: the app is named Lumen (Vyre Lumen in the menu bar and in System Settings), and Vyre IQ
+  is now Vyre Memory in every line the Capsule shows. File and bundle names do not change in
+  0.2. Public use of the Lumen name waits for the trademark check.
+- Capsule: move and size the window of the app in front from the box. Type "left half", "right
+  half", "top right", "left third", "two thirds", "maximize", "center", "next display" or
+  "restore" and press Return. It needs Accessibility, which macOS asks for once the first time;
+  until then the row says what to allow. Restore puts a window back where it was before the
+  Capsule last moved it.
+- Capsule: Return now pastes clipboard history, snippets and emoji into the app you were in, instead
+  of only copying them. The first time, macOS asks once for Accessibility (until you allow it,
+  Return copies and says so). Type "paste" in the box and choose "Make Return copy instead of paste"
+  to switch back; Copy and Paste are always both in Command-K. Answers to a sum, a colour, a time or
+  a rate still copy.
+- Capsule: give any app, system command, snippet, quicklink or command of yours a short alias and a
+  hotkey. Press Command-K on the row and choose "Set alias" (type a word, Return) or "Set hotkey"
+  (press the shortcut). Typing the alias puts that row first. The hotkey runs the row from
+  anywhere with no window, except one that asks first (Restart, a shell line), which opens the
+  Capsule on it instead. macOS's own shortcuts and Option-Space are refused, and so is one another
+  app already holds. They are kept in `<vyre home>/capsule/bindings.json`.
+- Capsule: emoji, colours, time zones, money, snippets, quicklinks and your own commands now show
+  up as rows. ":tada" or "smile emoji" finds emoji, "#ff6347" gives every colour form, "time in
+  tokyo" gives the time there, and "100 usd in eur" converts. Money reads exchange rates from one
+  public source (open.er-api.com), only when you type something that reads as money, at most once
+  every 12 hours; with no rates there is no money row. Your own lists live in
+  `<vyre home>/capsule/snippets.json`: snippets (`;sig` copies its text with {date}, {time} and
+  {clipboard} filled in), quicklinks (`wiki pastry` opens a link with your words in it) and
+  commands (open a link, or run a shell line after you confirm). A bad entry is left out and the
+  rest still work.
+- Capsule speed check: the CI run now types real words a letter at a time and reports the median
+  and 95th percentile from key to rows and from hide to show, against one frame (16 ms) and 50 ms.
+- Capsule: the key that proves you are at the Mac no longer needs a fingerprint reader. It asks for
+  Touch ID where the Mac has it and for the Mac's login password where it does not, and only for
+  what already asked (pairing, vault reveals, sends you did not ask for). A Mac with no Secure
+  Enclave keeps the key in the keychain instead, guarded by the same check in the Capsule.
+- Capsule: on a Mac that runs vyre-core, the installer starts the Capsule with a one-time code on a
+  private channel. The Capsule makes its key, enrols it with vyre-core using that code, and tells
+  you the key's fingerprint to compare with the installer's. The code is used once, never written
+  down, and is sent only to a socket that really is vyre-core's.
+- Capsule: a small floating panel shows what an agent is doing while it drives your Mac or Chrome.
+  It lists the plan with the step it is on, and you can drag it anywhere (it remembers where) or
+  make it small. Change a step that has not started by double-clicking it, tell the agent what to
+  change in the field (Return sends, Esc stops), and Pause, Resume or Stop at any time. It asks
+  for nothing and shows no prompt. It appears when the agent's plan arrives and goes when the run
+  ends. Controls your Vyre cannot carry out are not shown.
 - lib/within.js is the one way to race a promise against a clock: the timer is held until the answer or the limit, then cleared. The modules registry, projects stop, recall stop, settings checks, presence Touch ID wait, glass link health, agents ask wait, the daemon drain, the backup tar exit wait, the ACP memory wait, teammates' boundedWait and the switchboard answer and control waits use it (each had an unref'd timer that let the loop drain mid-await on macOS and Node 22). test/within-hygiene.test.js fails on a new one-line unref'd race.
 #### fix: Settings did not load (a missing served module)
 

@@ -66,6 +66,31 @@ let snippetsSuite = Suite("snippets") { t in
         t.eq(UserSnippets.load(path: file.path).snippets.count, 2)
     }
 
+    t.test("quicklinks: parse, validate, match the keyword and its words, encode the hole") {
+        let q = #"""
+        { "snippets": [ { "keyword": "nw", "text": "x" } ],
+          "quicklinks": [
+            { "name": "Northwind wiki", "keyword": "wiki", "url": "https://wiki.example.com/search?q={query}" },
+            { "name": "Board", "keyword": "board", "url": "https://example.com/board" },
+            { "name": "Empty", "keyword": "", "url": "https://example.com" },
+            { "name": "Dupe", "keyword": "NW", "url": "https://example.com" },
+            { "name": "Script", "keyword": "js", "url": "javascript:alert(1)" },
+            { "name": "File", "keyword": "f", "url": "file:///etc/passwd" },
+            { "name": "Spaced", "keyword": "a b", "url": "https://example.com" } ] }
+        """#
+        let s = UserSnippets.parse(Data(q.utf8))
+        t.eq(s.quicklinks.map(\.keyword), ["wiki", "board"])
+        t.eq(s.problems, ["quicklink 3: keyword is empty", "quicklink 4: keyword \u{201C}NW\u{201D} is used twice",
+                          "quicklink 5: the url is not a link to open", "quicklink 6: the url is not a link to open",
+                          "quicklink 7: keyword \u{201C}a b\u{201D} has a space"])
+        let m = s.matchQuicklink("WIKI pastry & bread/rye")
+        t.eq(m?.link.name, "Northwind wiki"); t.eq(m?.arg, "pastry & bread/rye")
+        t.eq(m?.link.link(m?.arg)?.absoluteString, "https://wiki.example.com/search?q=pastry%20%26%20bread%2Frye")
+        t.eq(s.matchQuicklink("wiki")?.arg, nil)
+        t.eq(s.matchQuicklink("board")?.link.link(nil)?.absoluteString, "https://example.com/board")
+        t.ok(s.matchQuicklink("wikipedia x") == nil && s.matchQuicklink("") == nil)
+    }
+
     t.test("matching") {
         let s = UserSnippets.parse(Data(good.utf8))
         t.eq(s.matchSnippets(";sig").first?.snippet.keyword, ";sig")
