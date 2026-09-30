@@ -1,8 +1,8 @@
 // @ts-check
-// The phone's Capsule (docs/design/phone.md section 3): one floating bar at the bottom of the three
+// The phone's Lumen (docs/design/phone.md section 3): one floating bar at the bottom of the three
 // pages that opens Find. A tap opens it; a drag up opens it too, following the finger; holding the
 // mic dictates, and letting go puts the words in Find without sending them. The shell (app.js)
-// owns the route and decides when the Capsule shows; this file only draws it and reads gestures.
+// owns the route and decides when Lumen shows; this file only draws it and reads gestures.
 //
 //   const cap = capsule({ open(words) { ... } });
 //   deck.append(cap.el);

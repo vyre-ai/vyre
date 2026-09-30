@@ -116,7 +116,7 @@ function offlineLine(/** @type {HTMLElement} */ deck) {
 }
 
 /** Pull down from the top of one of the three pages (Now, Chats, Agents) to open Find, the same
- * as a tap on the Capsule. Only when everything under the finger is scrolled to the top, never
+ * as a tap on Lumen. Only when everything under the finger is scrolled to the top, never
  * from a text field or a row that swipes, and never on a pushed screen (a chat pages backwards
  * when pulled at its top). The page itself does not rubber-band (deck.css), so this is the only
  * thing a pull does, and a sideways swipe (the pager) cancels it. */

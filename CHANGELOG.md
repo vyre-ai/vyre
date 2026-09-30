@@ -5,6 +5,59 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - lib/within.js is the one way to race a promise against a clock: the timer is held until the answer or the limit, then cleared. The modules registry, projects stop, recall stop, settings checks, presence Touch ID wait, glass link health, agents ask wait, the daemon drain, the backup tar exit wait, the ACP memory wait, teammates' boundedWait and the switchboard answer and control waits use it (each had an unref'd timer that let the loop drain mid-await on macOS and Node 22). test/within-hygiene.test.js fails on a new one-line unref'd race.
+#### chat: a queued-message edit always sends `pasted`
+
+- `threads.edit` now carries `pasted` every time, `[]` when nothing was pasted: sessions hears an edited queued message only when the key is an array (an absent key counts the whole edit as not typed). `threads.send` still leaves the key out when nothing was pasted.
+
+#### settings: hidden keys, and the cap over every provider
+
+- The generic Settings groups skip a key its module marks `hidden: true` (iq hides every `spend.*` key: Settings, Spend is their one screen). Settings, Spend and the spend-cap line also handle provider `all`, the cap over every provider together (`spend.summary`'s `all`, `spend.raise {provider: "all"}`).
+
+#### chat and settings: the spend cap
+
+- `deck/chat/cards/spend-capped.js`: when iq's `spend.capped` event is for this thread, a quiet row under the paused thread shows the box's line and a Raise it button that opens one amount field (prefilled with the suggested cap). Raise calls `spend.raise {provider, to}` (or `{provider, off: true}` for No cap); the provider comes from the event, the amount from the field, and the tool is fixed, never the one the event names.
+- Settings, Spend (`deck/views/settings-spend.js`): today's spend (UTC) per provider against its daily cap from `spend.summary`, with Change cap (`spend.raise`). One plain line on a box with no spend module. `spend.summary` and `spend.raise` are optional in the deck contract test until iq merges.
+
+#### chat: a failed send or a queued message taken back keeps its own span map
+
+- The composer remembers, per sent message, the pasted spans and the tags it carried. A failed send, or a queued message taken back for editing, puts the words back with that map: the typed `#tags` (and their chips) survive, pasted text stays marked, and the edit (`threads.edit`) carries the same `pasted` and `mentions`. A draft restored across a reload has no map and stays all not-typed. `paste-spans` gains `mark(start, end)`; the tag picker gains `restore(list)`.
+
+#### app: the Expo typecheck
+
+- `ToolItem` in `deck/chat/core/session-state.js` declares `render?: Record<string, any>` (the card payload a tool result carries), so `apps/app`'s `tsc --noEmit` passes again (it failed at the `item.render` assignment). Run locally with `npm ci && npm run typecheck` in `apps/app`: clean.
+
+#### chat: text is typed only when a keystroke says so (reviewer-2 M-N3)
+
+- The pasted-span default is flipped: an `input` with no `inputType`, a restored draft, a recalled message and a dictation replacement are not typing and mark their stretch; the composer's own deliberate insertions (a picked command, file, suggestion, tag or the @role near-miss) announce themselves as the person's own. The new-session sheet follows the same rule.
+
+#### deck: the Windows shell contract (C22): window.__VYRE_SHELL__, /quick
+
+- `deck/js/platform.js` reads `window.__VYRE_SHELL__ = { platform }` (the Windows app injects it frozen before any page script; the older `__vyreShell = { os }` still reads). Inside the shell the key glyphs are Ctrl (every hard-coded Cmd-Enter hint now comes from `kbd()`), the browser "Install" step is hidden, and `installed()` is true. It only changes presentation and never grants anything.
+- `/quick` (`deck/views/quick.js`): the hotkey panel's compact ask, the assistant's current thread drawn small with its recent answer above one composer and an "Open in full" link, no rail. A link to it opens the thread and waits for words; nothing acts on load.
+
+#### chat: the # tag picker in the new-session sheet
+
+- The `#` picker, its chips and the pasted-span tracking are one component now (`deck/chat/tag-picker.js`), used by the composer and by the new-session sheet, where the first message is where `#` is used most. A pick shows the same chip; Start sends `mentions: [{kind, id, name}]` and `pasted` on both `threads.start` and `agents.ask`. Esc closes the picker before it closes the sheet. More paste tests: a multi-line CRLF paste, undo of a paste, and a drag and drop move.
+
+#### chat: the composer sends the pasted spans (reviewer-2 M-P2)
+
+- `deck/chat/core/paste-spans.js` tracks which stretches of the draft were pasted, dropped, redone or replaced (the input's `inputType`, or a paste event, marks the stretch the edit's diff found, so no string is compared and a Windows `\r\n` paste is marked like any other; then the offsets of every later edit: typing before moves a span, typing inside keeps the whole stretch marked, deleting drops it). `threads.send` carries them as `pasted: [string]` and the new-session sheet sends them on `threads.start` and `agents.ask`, so a `#Name` inside pasted text never resolves as a tag; only a picked chip can. No `pasted` key when nothing was pasted. Tests: `paste-spans.test.js` (5), two in `composer-vault.test.js`, one in `newsession.test.js`.
+
+#### settings: "Add a service", the connectors catalog
+
+- `deck/views/connectors.js`: the catalog of vendor-hosted connectors (`connectors.catalog`) grouped by `group`, above the existing MCP, Google and GitHub lists in Settings > Connections. Connect (or Add another) draws the box's step in place: an https sign-in page opened in a new tab with a paste box for a browser on another device (`connectors.connect.finish`), a hidden token field with the preset's own extra fields, a vault item picker for an OAuth client (read only at that step), or a plain "comes through another connector" line; Disconnect calls `connectors.disconnect`. It follows `connectors.connected`, `connect-failed` and `disconnected`, and shows one plain line on a box without the connectors module. Tests: `deck/test/connectors.test.js` (9); the connections tests expect the catalog call.
+
+#### deck: the Capsule is Lumen
+
+- Every user-facing mention of the Capsule in the Deck now says Lumen (settings, devices, pairing, onboarding, the surfaces list, asks answered from it, the sign-in line). Code identifiers (`capsule`, `capsule.js`, css classes, route and tool names) are unchanged. Vyre IQ is now Vyre Memory in the same places (the onboarding history step's question box and its limit line).
+
+#### chat: "#" is one universal tag; "/remember" saves a memory; artifacts render from /v1/artifacts/content
+
+- `#` (anywhere, first character included) opens one picker over everything that can be tagged, through `mentions.search {q, limit}` (vault items, artifacts, files, repos, projects; names and hints only), grouped by kind. A pick writes `#Name` into the words and shows a chip that carries `{kind, id}`; the turn goes out with `mentions: [{kind, id, name}]` for the tags still in the text. The "using #name" line for vault uses stays. The menu gains group headings (`row.group`).
+- "Save a memory" is `/remember <note>` (a command in the list, and the composer's memory mode); `#` no longer means memory anywhere.
+- `renderSrc` in `cards/artifact.js` is now `/v1/artifacts/content?id=&v=`.
+
+- test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.
 
 - test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.
 - modules: the timer behind a call's bounded wait (target, lineage, project and scope lookups) is no longer unref'd, so a pending wait keeps the event loop alive; on macOS the loop drained with the call unanswered and the test runner cancelled the rest of the file.
@@ -536,6 +589,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - vyred refuses any path under a `fixtures` folder of the Deck unless VYRE_DECK_FIXTURES=1 (dev
   worlds and tests set it), so a `?fixtures=1` link can't show sample threads on a real install.
   Placeholders that named the sample world now say what to type ("Your project's name").
+#### lib/caps-flags: the one provider capability list (C14b), on its own for sessions
+
+- `lib/caps-flags/index.js`: `FLAGS` (steer, queue, interrupt, resume, fork, rewind {conversation, code}, modes, plan, questions, permissions, thinking, effort, images, commands, tasks, subagents, model_switch, usage none|coarse|detailed, remember null|CLAUDE.md|AGENTS.md|GEMINI.md), `TOOL_KINDS` (read, edit, write, run, search, fetch, mcp, task, other), `normalizeCaps(raw)` (every flag present and typed, unknown keys dropped) and `checkCaps(raw)` (the problems, [] when exact). No imports. Extracted from work/native-core-0.2 (5a9d5f96) so sessions can import it in conform() and threads.get's `caps`; `task` added to the tool kinds as sessions' shapes say.
 - A pairing hello with `enroll: true` gets `enroll: { grant, expires, rpId }` in the box's reply (inside the device's own Noise channel): the one-time, five-minute presence grant to enroll a passkey at the box's own address, `rpId` being that address's host. The setup QR's `relay.setup.claim` answers the same three fields, so a phone has one enrolment flow. Not bound to a peer (at the address the phone is a tailnet node the pairing cannot know); the owner-login rule, the rp_id, five minutes and one use bind it.
 - Migrating a Mac to vyre-core's device key: `redeem` deletes a `relay-device/key.json` left by an earlier pairing the moment the new pairing succeeds, and its result names the old device (`superseded`) for the owner to remove at the box with `relay.devices.remove`, so the old file key stops being trusted (reviewer-2).
 - Your own domain now serves. `names.domain.serve { domain }`, after `names.domain.check` passes, gets the domain's certificate by ACME DNS-01 through the `_acme-challenge` CNAME (the challenge goes to `<routehash>.acme.vyre.run` through the directory and is cleared after), keeps it beside the box's name, and the tailnet listener presents it by SNI, accepts its Host, and applies the same owner and Origin rules. Events `domain.ready { domain, address }` and `domain.failed`; `names.status` gains `domain` and `port`. Renewed daily at 30 days like the name's. (The event is `domain.ready`, not `names.domain.ready`: event names are noun.past-verb.) Tested against the real directory Worker on the fake runtime and a fake DNS, and a real TLS connection on loopback.

@@ -5,6 +5,7 @@
 // "Wrong". After a save the closed fact shows muted above the new one, sourced "You, just now",
 // with an Undo that calls memory.uncorrect.
 
+import { kbd } from "../js/platform.js";
 import { h, put } from "../js/dom.js";
 import { call } from "../js/api.js";
 import { splitFact, pct, correctSummary } from "./memory-data.js";
@@ -61,7 +62,7 @@ export function correctForm(f, o) {
     h("p", { class: "mem-cx-text" }, h("span", { class: "dot recall", "aria-hidden": "true" }),
       h("span", null, parts.before, input, parts.after)),
     h("div", { class: "mem-cx-act" },
-      h("button", { type: "submit", class: "btn btn-sm" }, "Save", h("span", { class: "kbd mem-cx-kbd", "aria-hidden": "true" }, "⌘⏎")),
+      h("button", { type: "submit", class: "btn btn-sm" }, "Save", h("span", { class: "kbd mem-cx-kbd", "aria-hidden": "true" }, kbd("Enter"))),
       h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => send("ended") }, "No longer true"),
       h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => send("wrong") }, "Wrong"),
       h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: o.onCancel }, "Cancel")));
