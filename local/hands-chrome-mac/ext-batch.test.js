@@ -181,6 +181,9 @@ test("batch.run: a held write the module's budget covers is run again with write
   assert.equal(t1.covered, undefined, "a batch on another tab covers nothing");
   const t2 = await batch.ops["batch.run"]({ tabId: 7, steps: [{ op: "api.call", args: { entry: "a", tabId: 8 } }], stopOnError: false }, ctx, { writeBudget: { ...budget } });
   assert.equal(t2.covered, undefined, "a step that names another tab covers nothing");
+  // tabId = the plan's tab but tab = another one: the op reads tab, so nothing is covered
+  const t3 = await batch.ops["batch.run"]({ tabId: 7, steps: [{ op: "api.call", args: { entry: "a", tabId: 7, tab: 8 } }], stopOnError: false }, ctx, { writeBudget: { ...budget } });
+  assert.equal(t3.covered, undefined, "two different tab spellings are refused");
   // the tab moved off the plan's site: nothing
   const moved = { ...ctx, tabs: { get: async id => ({ id, url: "https://app.two.example/" }) } };
   assert.equal((await batch.ops["batch.run"]({ tabId: 7, steps, stopOnError: false }, moved, { writeBudget: { ...budget } })).covered, undefined);

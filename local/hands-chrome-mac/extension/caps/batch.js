@@ -47,10 +47,14 @@ function subst(v, results, depth = 0) {
 /**
  * Is this write one the approved plan covers? It must be made on the plan's own tab, that tab must still be on the plan's site, and the request must go to an
  * origin that tab's own traffic has talked to (the app's own API), never some other site the step names. A step's own tab wins over the batch's, so it is checked too.
- * @param {any} ctx @param {any} wb the budget @param {any} tab the tab the step will run on @param {any} res the held write
+ * @param {any} ctx @param {any} wb the budget @param {any} merged the step's args as it will be called (the batch's tab filled in) @param {any} res the held write
  */
-async function budgetFits(ctx, wb, tab, res) {
+async function budgetFits(ctx, wb, merged, res) {
   try {
+    // The tab exactly as the op will read it: both spellings present and different is refused, and neither is refused.
+    const a = merged && typeof merged.tabId === "number" ? merged.tabId : undefined, b = merged && typeof merged.tab === "number" ? merged.tab : undefined;
+    if (a !== undefined && b !== undefined && a !== b) return false;
+    const tab = a !== undefined ? a : b;
     if (typeof tab !== "number") return false;
     if (wb.tab !== undefined && tab !== wb.tab) return false;
     if (wb.tabOrigin) { const t = await ctx.tabs.get(tab); if (originOf(String((t && (t.pendingUrl || t.url)) || "")) !== wb.tabOrigin) return false; }
@@ -96,7 +100,7 @@ export default {
           const onTab = typeof args.tabId === "number" && stepArgs.tabId === undefined && stepArgs.tab === undefined && !/^(tabs\.|ghl\.section)/.test(step.op) ? { tabId: args.tabId, tab: args.tabId } : {};
           let result = await ctx.call(step.op, { ...onTab, ...(wants ? { wait: args.wait && typeof args.wait === "object" ? args.wait : { timeoutMs: 3000 } } : {}), ...stepArgs }, { asked: trust.asked === true });
           // A write the module's approved plan covers (it sent a budget; a model's input cannot): run it again with writeOk, up to the budget, on the one API origin.
-          if (wb && result && typeof result === "object" && result.held === true && result.write === true && (wb[result.kind] || 0) > 0 && (!wb.origin || result.origin === wb.origin) && await budgetFits(ctx, wb, typeof stepArgs.tabId === "number" ? stepArgs.tabId : typeof stepArgs.tab === "number" ? stepArgs.tab : args.tabId, result)) {
+          if (wb && result && typeof result === "object" && result.held === true && result.write === true && (wb[result.kind] || 0) > 0 && (!wb.origin || result.origin === wb.origin) && await budgetFits(ctx, wb, { ...onTab, ...stepArgs }, result)) {
             wb[result.kind]--; if (!wb.origin && result.origin) wb.origin = result.origin;
             const again = await ctx.call(step.op, { ...onTab, ...stepArgs }, { writeOk: true });
             covered.push({ kind: result.kind, res: again });
