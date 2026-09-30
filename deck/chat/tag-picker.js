@@ -79,6 +79,8 @@ export function tagPicker({ ta, menu, caret, setValue, attempt, use = (_t, fn) =
     /** The turn's mentions, and forget them. */
     take() { const m = chips().map(t => ({ kind: t.kind, id: t.id, name: t.name })); tags.clear(); return m; },
     clear() { tags.clear(); },
+    /** Put the tags a sent message carried back, for a retry or an edit. @param {{ kind: string, id: string, name: string }[]} list */
+    restore(list) { tags.clear(); for (const m of list || []) if (m?.name) tags.set(m.name, { kind: m.kind, id: m.id, name: m.name }); },
     signature: () => chips().map(t => t.name),
   };
 }

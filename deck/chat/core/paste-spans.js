@@ -13,7 +13,7 @@
 /** The input types that bring in text the person did not type at the keyboard (beforeinput/input `inputType`). */
 export const NOT_TYPED = new Set(["insertFromPaste", "insertFromPasteAsQuotation", "insertFromDrop", "insertFromYank", "insertReplacementText", "historyUndo", "historyRedo", "insertFromComposition"]);
 
-/** @returns {{ edit: (before: string, after: string, notTyped?: boolean) => void, spans: () => Span[], of: (text: string) => string[], reset: () => void }} */
+/** @returns {{ edit: (before: string, after: string, notTyped?: boolean) => void, mark: (start: number, end: number) => void, spans: () => Span[], of: (text: string) => string[], reset: () => void }} */
 export function pasteTracker() {
   /** @type {Span[]} */ let spans = [];
   return {
@@ -39,6 +39,8 @@ export function pasteTracker() {
       if (notTyped && newEnd > p) next.push({ start: p, end: newEnd });
       spans = next.filter(x => x.end > x.start).sort((a, b) => a.start - b.start);
     },
+    /** Mark [start, end) as pasted, for a message put back with the pasted map it was sent with. @param {number} start @param {number} end */
+    mark(start, end) { if (end > start) spans = [...spans, { start, end }].sort((a, b) => a.start - b.start); },
     spans: () => spans.map(x => ({ ...x })),
     /** The pasted spans of `text` (the draft as it stands), as strings; only those still inside it. @param {string} text */
     of: text => spans.filter(x => x.end <= text.length).map(x => text.slice(x.start, x.end)).filter(Boolean),

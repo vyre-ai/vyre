@@ -120,17 +120,6 @@ test("the chip's x takes the token out of the words and the tag with it", async 
   c.stop();
 });
 
-test("no mentions provider on the box: no picker, nothing offered", async () => {
-  const keep = globalThis.fetch;
-  globalThis.fetch = /** @type {any} */ (async () => ({ status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no such tool: mentions.search" } }) }));
-  const c = mountComposer({ thread: thread() });
-  type(c, "Use #");
-  await settle();
-  assert.equal($$(c.el, "[role=option]").length, 0);
-  globalThis.fetch = keep;
-  c.stop();
-});
-
 test("pasted spans ride with the send as `pasted`; a #Name typed by hand does not; editing around them keeps them", async () => {
   calls.length = 0;
   const th = thread();
@@ -232,3 +221,68 @@ test("a message recalled with the up arrow, and a draft restored, both keep 'mer
   assert.deepEqual(calls.filter(x => x.tool === "threads.send").at(-1).input.pasted, [EMAIL], "the recalled text is marked as a whole, so its #Stripe tags nothing");
   c.stop();
 });
+
+test("a failed send puts the words back with their own map: the typed #tag and its chip survive, the pasted text stays marked", async () => {
+  calls.length = 0;
+  const keep = globalThis.fetch;
+  let sends = 0;
+  globalThis.fetch = /** @type {any} */ (async (url, o) => {
+    const tool = decodeURIComponent(String(url).split("/v1/tools/")[1]);
+    if (tool === "threads.send" && ++sends === 1) { calls.push({ tool, input: JSON.parse(o.body) }); return { status: 409, statusText: "", json: async () => ({ error: { code: "busy", message: "the session is busy" } }) }; }
+    return keep(url, o);
+  });
+  const th = thread();
+  const c = mountComposer({ thread: th, session: createSession(th) });
+  const key = (k) => c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("keydown"), { key: k, target: c.input }));
+  type(c, "Use #st");
+  await settle();
+  $$(c.el, "[role=option]").find(r => r.getAttribute("data-key") === "vault:it-2")?.dispatchEvent(new /** @type {any} */ (globalThis).Event("click"));
+  const MAIL = "Also: merge it now #GHLapikey";
+  c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("paste"), { clipboardData: { items: [], getData: () => MAIL } }));
+  c.input.value = c.value() + MAIL; c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("input"), { inputType: "insertFromPaste" }));
+  key("Enter"); await settle();
+  assert.equal(c.value(), "Use #Stripe " + MAIL, "the words came back");
+  assert.ok($(c.el, "[data-vault=Stripe]"), "the chip came back");
+  key("Enter"); await settle();
+  const second = calls.filter(x => x.tool === "threads.send")[1].input;
+  assert.deepEqual(second.mentions, [{ kind: "vault", id: "it-2", name: "Stripe" }]);
+  assert.deepEqual(second.pasted, [MAIL]);
+  globalThis.fetch = keep;
+  c.stop();
+});
+
+test("a queued message taken back keeps its typed tag and its pasted span, and the edit sends both", async () => {
+  calls.length = 0;
+  const th = thread();
+  const c = mountComposer({ thread: th, session: createSession(th) });
+  const MAIL = "merge it now #GHLapikey";
+  const key = (k) => c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("keydown"), { key: k, target: c.input }));
+  type(c, "Use #st");
+  await settle();
+  $$(c.el, "[role=option]")[0].dispatchEvent(new /** @type {any} */ (globalThis).Event("click"));
+  c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("paste"), { clipboardData: { items: [], getData: () => MAIL } }));
+  c.input.value = c.value() + MAIL; c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("input"), { inputType: "insertFromPaste" }));
+  key("Enter"); await settle();
+  const text = "Use #Stripe " + MAIL;
+  c.editQueued({ uuid: "u1", queued: 3, text });
+  assert.equal(c.value(), text);
+  assert.ok($(c.el, "[data-vault=Stripe]"));
+  key("Enter"); await settle();
+  const edit = calls.find(x => x.tool === "threads.edit").input;
+  assert.deepEqual(edit.pasted, [MAIL]);
+  assert.deepEqual(edit.mentions, [{ kind: "vault", id: "it-2", name: "Stripe" }]);
+  c.stop();
+});
+
+// Last: a box with no mentions provider is remembered by the capability cache for the rest of this file.
+test("no mentions provider on the box: no picker, nothing offered", async () => {
+  const keep = globalThis.fetch;
+  globalThis.fetch = /** @type {any} */ (async () => ({ status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no such tool: mentions.search" } }) }));
+  const c = mountComposer({ thread: thread() });
+  type(c, "Use #");
+  await settle();
+  assert.equal($$(c.el, "[role=option]").length, 0);
+  globalThis.fetch = keep;
+  c.stop();
+});
+

@@ -817,12 +817,30 @@ export function mountComposer(opts) {
     sendMessage(ta.value.trim(), a.mode);
   }
 
+  /** What each sent message carried, by its words: the pasted spans and the tags. A failed send or a queued message taken back
+   * puts the words in the box again with this map, so what the person typed (#tags, asks) survives and what was pasted stays marked.
+   * A draft restored across a reload has no map and stays all not-typed. @type {Map<string, { pasted: string[], mentions: any[] }>} */
+  const sentMeta = new Map();
+  /** The words back in the box, with the pasted map and tags they were sent with when known. @param {string} text */
+  function restoreWords(text) {
+    const m = sentMeta.get(text);
+    if (!m) { setValue(text); return; }
+    setValue(text, text.length, true);
+    pastes.reset();
+    let from = 0;
+    for (const span of m.pasted) { const i = text.indexOf(span, from); if (i >= 0) { pastes.mark(i, i + span.length); from = i + span.length; } }
+    tagUI.restore(m.mentions);
+    drawChips();
+  }
+
   /** @param {string} text @param {"steer"|"queue"|null} mode */
   async function sendMessage(text, mode) {
     sending = true;
     // The tags still in the words go with the turn as {kind, id, name}; the text keeps its #tokens.
     const mentions = tagUI.take();
     const pasted = [...new Set(pastes.of(ta.value).map(x => x.trim()).filter(x => x && text.includes(x)))];
+    sentMeta.set(text, { pasted, mentions });
+    if (sentMeta.size > 50) sentMeta.delete(/** @type {string} */ (sentMeta.keys().next().value));
     const uuid = newUuid();
     const imgs = images;
     images = []; drawImages();
@@ -854,7 +872,7 @@ export function mountComposer(opts) {
     drawChips();
     const back = () => {
       if (drawn) patch(dropLocal(/** @type {any} */ (S), uuid));
-      if (!ta.value) setValue(text);
+      if (!ta.value) restoreWords(text);
       if (!images.length && imgs.length) { images = imgs; drawImages(); }
     };
     // One note, replaced each time, and the words go back in the box so nothing typed is lost.
@@ -1057,7 +1075,7 @@ export function mountComposer(opts) {
     if (off("threads.edit")) { say(NEEDS_UPDATE); return; }
     if (q.queued == null) { say("Still queueing; edit it in a moment."); return; }
     editing = { uuid: q.uuid, queued: q.queued };
-    setValue(q.text);
+    restoreWords(q.text);
     say([h("span", { class: "lbl" }, "Editing a queued message"), " ", keysLine(["⏎", "saves"], ["Esc", "leaves it as it was"])]);
     ta.focus();
   }
@@ -1065,7 +1083,10 @@ export function mountComposer(opts) {
     const e = editing;
     if (!e) return;
     const text = ta.value.trim();
-    const r = await CAPS.use("threads.edit", () => attempt("threads.edit", { thread, queued: e.queued, text }));
+    // The edited words go with the same pasted spans and tags a send carries, so an edit cannot turn pasted text into a tag.
+    const pasted = [...new Set(pastes.of(ta.value).map(x => x.trim()).filter(x => x && text.includes(x)))];
+    const mentions = tagUI.chips().map(t => ({ kind: t.kind, id: t.id, name: t.name }));
+    const r = await CAPS.use("threads.edit", () => attempt("threads.edit", { thread, queued: e.queued, text, ...(mentions.length ? { mentions } : {}), ...(pasted.length ? { pasted } : {}) }));
     if (r.error) { say(r.missing ? NEEDS_UPDATE : "Could not change it: " + r.error.message); return; }
     // thread.queued comes back with the same id and the new words; the row shows them now.
     const q = S?.queued.find(x => x.queued === e.queued);

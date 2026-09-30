@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: a failed send or a queued message taken back keeps its own span map
+
+- The composer remembers, per sent message, the pasted spans and the tags it carried. A failed send, or a queued message taken back for editing, puts the words back with that map: the typed `#tags` (and their chips) survive, pasted text stays marked, and the edit (`threads.edit`) carries the same `pasted` and `mentions`. A draft restored across a reload has no map and stays all not-typed. `paste-spans` gains `mark(start, end)`; the tag picker gains `restore(list)`.
+
 #### app: the Expo typecheck
 
 - `ToolItem` in `deck/chat/core/session-state.js` declares `render?: Record<string, any>` (the card payload a tool result carries), so `apps/app`'s `tsc --noEmit` passes again (it failed at the `item.render` assignment). Run locally with `npm ci && npm run typecheck` in `apps/app`: clean.
