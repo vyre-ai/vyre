@@ -547,6 +547,8 @@ export class Registry {
         const mine = this.isFirstParty(f.dir), theirs = this.isFirstParty(prev.dir);
         /** @param {{ manifest: any, dir: string }} rec @param {string} error */
         const reject = (rec, error) => { this.modules.set(`${name}@${rec.dir}`, { manifest: rec.manifest, dir: rec.dir, state: "invalid", error }); this.deps.log(`warn: module ${name}@${rec.dir} invalid: ${error}`); };
+        // The two "added vs Vyre" branches below cannot be reached today: the shipped-names check at the top of the loop already sends an added copy of a
+        // shipped name to `name@dir` as invalid, in either folder order. They stay as defence in depth; the invariant lives in that top check.
         if (mine && !theirs) {
           // Vyre's own module always owns its name, whatever the folder order: an added module found first steps aside.
           reject(prev, `a Vyre module named ${name} owns that name; this one is ignored`);
