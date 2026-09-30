@@ -59,7 +59,7 @@ test("connect apps lists the catalog, the connected ones and the vendors ruled o
   assert.equal(r.code, 0, r.all);
   assert.match(r.out, /ghl\s+GoHighLevel/);
   assert.match(r.out, /fakevendor/);
-  assert.match(r.out, /slack\s+Slack\s+cannot be connected: /);
+  assert.match(r.out, /dropbox\s+Dropbox\s+cannot be connected: /);
   const j = JSON.parse((await run(w.root, ["connect", "apps", "--json"])).out);
   assert.ok(j.presets.some(p => p.id === "ghl" && p.setup === "none"));
 });
@@ -89,7 +89,7 @@ test("connect add app: an app that needs your own OAuth app says how, and a toke
   const g = await run(w.root, ["connect", "add", "app", "ghl", "--mode", "token"]);
   assert.equal(g.code, 2);
   assert.match(g.all, /needs a token, typed at a hidden prompt/);
-  const slack = await run(w.root, ["connect", "add", "app", "slack"]);
+  const slack = await run(w.root, ["connect", "add", "app", "dropbox"]);
   assert.equal(slack.code, 1);
-  assert.match(slack.all, /Slack cannot be connected/);
+  assert.match(slack.all, /Dropbox cannot be connected/);
 });
