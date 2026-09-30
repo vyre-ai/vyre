@@ -339,7 +339,8 @@ function stepsBox(script = {}) {
       box.calls.push([tool, input]);
       if (input.provider) { const flow = `f-${input.provider}`; st.flows[flow] = { provider: input.provider, polls: 0 }; return input.provider === "claude" ? { flow, step: "url", url: "https://claude.ai/oauth/authorize?x=1", paste: true } : { flow, step: "code", url: "https://example.org/device", code: "WXYZ-1234" }; }
       const f = st.flows[input.flow];
-      if (input.code) { f.done = input.code === "good-code"; return f.done ? { step: "waiting" } : { step: "failed", why: "that code did not work" }; }
+      if (input.code) { f.done = input.code === "good-code"; return f.done ? { step: "waiting" } : { step: "failed", message: "Claude said that code has expired" }; }
+      if (f.failStatus) return { flow: input.flow, step: "failed", provider: f.provider, message: "the sign-in page was closed before it finished" };
       f.polls++;
       return f.provider === "claude" ? { step: f.done ? "done" : "url" } : { step: f.polls >= 2 ? "done" : "code" };
     }
@@ -380,7 +381,7 @@ test("steps: AI sign-in comes before Tailscale, needs one done login, and a past
   assert.equal(claude().paste, true);
   await flow.submitAiCode(claude().id, "bad-code");
   assert.equal(claude().step, "failed");
-  assert.equal(claude().error, "that code did not work");
+  assert.equal(claude().error, "Claude said that code has expired", "the box's own words (core/sessions/signin.js answers `message`), not a generic line");
   flow.startAi("claude");
   await until(() => flow.state.ai.accounts.filter(a => a.provider === "claude").some(a => a.step === "url"));
   const again = flow.state.ai.accounts.find(a => a.provider === "claude" && a.step === "url");
@@ -821,4 +822,17 @@ test("domain: after the recovery code is saved, a domain of the person's own is 
   await flow.checkDomain("bad.example");
   assert.equal(flow.state.domain.error, "that is not a domain of your own", "the box's refusal is shown in its words");
   flow.stop();
+});
+
+test("steps: a sign-in that fails while the page polls shows the box's message (message, as core/sessions/signin.js answers it)", async t => {
+  const box = stepsBox({ ts: "connected" });
+  const flow = await atNamed(t, box);
+  try {
+    flow.continueToAi();
+    flow.startAi("codex");
+    await until(() => box.st.flows["f-codex"]);
+    box.st.flows["f-codex"].failStatus = true;
+    const failed = await until(() => flow.state.ai.accounts.find(a => a.provider === "codex" && a.step === "failed"));
+    assert.equal(failed.error, "the sign-in page was closed before it finished");
+  } finally { flow.stop(); }
 });
