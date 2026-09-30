@@ -152,7 +152,8 @@ export const RESERVED_EVENTS = {
   // thread.deleted wipes a chat history: only the session modules that own threads emit thread.*.
   // tailscale.changed tells the setup page the tailnet is connected: only the network module says so.
   tailscale: ["network"],
-  thread: ["threads", "harness", "link", "projects", "sessions"],
+  // artifacts emits thread.artifact, the chat card for a version (card only, never a deletion).
+  thread: ["threads", "harness", "link", "projects", "sessions", "artifacts"],
 };
 
 export function validate(m, { firstParty = false } = {}) {

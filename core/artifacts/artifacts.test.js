@@ -191,7 +191,9 @@ test("artifacts: public links, served by a separate process, pinned to a version
   assert.equal((await call("artifacts.public.set", { on: true }, "mcp:agent:juno", { thread: "t1" })).error.code, "not_asked", "an agent turns public links on only when asked");
   const on = await ok("artifacts.public.set", { on: true });
   assert.equal(on.available, true);
-  assert.equal((await call("artifacts.share", { id: a.id }, "mcp:agent:juno", { thread: "t1" })).error.code, "not_asked", "an agent's own share waits for the person");
+  // The registry holds an outward call from anyone but the person (held_unavailable until the Gate
+  // is wired); artifacts refuses it itself as the second lock. Either way it doesn't run.
+  assert.match((await call("artifacts.share", { id: a.id }, "mcp:agent:juno", { thread: "t1" })).error.code, /^(not_asked|held_unavailable)$/, "an agent's own share waits for the person");
   const shared = await ok("artifacts.share", { id: a.id });
   assert.match(shared.share.path, /^\/s\/[A-Za-z0-9_-]{24}$/);
   assert.equal(shared.share.version, 1);
