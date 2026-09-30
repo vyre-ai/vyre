@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
+  when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is
+  now read again, retries start from a fresh table, a peer that already exited is a model's, and
+  only a definite answer is kept for a connection (`core/daemon/peer.js`, `core/daemon/index.js`).
 - `module.json` gains an optional `setupTools` list (v1, additive): built in modules name the tools the
   setup channel may call before sign-in. An added module that declares it fails to load.
 - An added module can no longer emit the gate, push, presence, said, memory, thread, tailscale or

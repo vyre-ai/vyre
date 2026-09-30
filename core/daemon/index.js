@@ -21,7 +21,7 @@ import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
+import { peerPid, insideClaude, processTable, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -296,15 +296,35 @@ export async function retryUnknown(check, attempts = 2, delayMs = 25) {
   return result;
 }
 
-async function above(socket, registry, caller) {
-  const pid = await peerPid(socket);
+/** Is this pid a running process? (EPERM means it is, and is not ours.) @param {number} pid */
+function alive(pid) {
+  try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e).code === "EPERM"; }
+}
+
+/**
+ * Whether the process on a socket runs under a Claude session or a thread vyred started.
+ * `deps` are test seams.
+ * @param {import("node:net").Socket} socket @param {any} registry @param {string} [caller]
+ * @param {{ peerPid?: typeof peerPid, insideClaude?: typeof insideClaude, processTable?: typeof processTable, alive?: (pid: number) => boolean, delayMs?: number }} [deps]
+ */
+export async function above(socket, registry, caller, deps = {}) {
+  const pid = await (deps.peerPid || peerPid)(socket);
   if (!pid) return { inside: false, nopid: true };
   const r = await registry.call("threads.pids", {}, "module:vyred");
   // The processes vyred runs threads in, their process groups and sessions (core/sessions/spawn.js
   // keeps a group listed until its last process is gone, so an orphan is still caught).
   const d = r.data || {};
   const threads = [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])];
-  const result = await retryUnknown(() => insideClaude(pid, { threads }));
+  // The first look may read a snapshot shared for a quarter second (and re-reads it on a miss);
+  // every retry starts from a table read of its own.
+  let looks = 0;
+  const table = deps.processTable || processTable;
+  const check = deps.insideClaude || insideClaude;
+  let result = await retryUnknown(() => check(pid, { threads, look: table({ fresh: looks++ > 0 }) }), 2, deps.delayMs);
+  // Still unreadable and the caller is gone: it connected, sent and exited before the walk (a
+  // forger's fire-and-forget). A real CLI waits for its answer, so it is alive here. Gone counts
+  // as a model's, never as the person's.
+  if (result.unknown && !result.server && !(deps.alive || alive)(pid)) result = { inside: true, by: pid, exited: true };
   // The pin lives in vyred's own db (presence.capsulePin()), never a file the same uid a model's
   // shell runs as could write to directly.
   if (result.unknown && caller === "capsule" && registry.deps.presence
@@ -382,17 +402,28 @@ async function serverTrusted(server, proofHeader, caller, registry) {
  * review). "anonymous" stays: the session could say "mcp" itself, so it gains nothing. An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
  * here; the person's own actions still refuse it (fromClaude). Asked once per connection.
  * @param {string} caller @param {import("node:net").Socket} socket @param {any} registry @param {string} [thread]
+ * @param {Parameters<typeof above>[3]} [deps] test seams for above()
  * @returns {Promise<{ caller: string, model: boolean }>}
  */
-async function asTaken(caller, socket, registry, thread) {
+export async function asTaken(caller, socket, registry, thread, deps) {
   if (MODEL_LABEL.test(caller) || caller === "anonymous") return { caller, model: false };
   let v = taken.get(socket);
   // A peer vyred cannot read where it normally can (perl failed or timed out) is not taken on its
   // word: a surface's label then counts as a model's, so a stall never reopens the forged label.
-  if (!v) { v = above(socket, registry).then(w => w.inside || Boolean(w.nopid && canReadPeers)); taken.set(socket, v); }
-  return await v ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true } : { caller, model: false };
+  // Only a definite answer stays for the connection's life: inside a model, or read to the top and
+  // outside. "Unknown" (an unreadable chain, a peer not found) is asked again on the next call.
+  if (!v) {
+    const mine = above(socket, registry, undefined, deps).then(w => ({
+      model: Boolean(w.inside || (w.nopid && canReadPeers)),
+      definite: Boolean(w.inside || (!w.unknown && !w.nopid)),
+    }));
+    v = mine;
+    taken.set(socket, mine);
+    mine.then(a => { if (!a.definite && taken.get(socket) === mine) taken.delete(socket); }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
+  }
+  return (await v).model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true } : { caller, model: false };
 }
-/** @type {WeakMap<object, Promise<boolean>>} */
+/** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean }>>} */
 const taken = new WeakMap();
 
 /**
