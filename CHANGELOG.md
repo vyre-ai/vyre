@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Capsule's `next` command (Lumen's next-meeting line)
+
+- `google`: `google.calendar.today` (read only, open to any caller) answers `{ events: [{ id, account, title, start, end, when, join?, link }] }`: timed meetings from now to the end of this box's day, running ones included, all-day events left out, `when` as "in 10 min" or "now, ends in 20 min", `join` only when the event carries an https link, `link` the join link or the event page. Nothing connected answers an empty list. Cached for a minute. The module declares `shows.capsule["view:next"]` over it (first-party, `root`, one "Open" action), so `capsule.commands` lists `next` and `capsule.view` answers a list frame.
+- Microsoft and personal Google are not in it: their calendars are read through `vault.request`, which a module may call only with a grant the person gives, and the connect flow cannot give one. That needs a decision from vault.
+
 - lib/within.js is the one way to race a promise against a clock: the timer is held until the answer or the limit, then cleared. The modules registry, projects stop, recall stop, settings checks, presence Touch ID wait, glass link health, agents ask wait, the daemon drain, the backup tar exit wait, the ACP memory wait, teammates' boundedWait and the switchboard answer and control waits use it (each had an unref'd timer that let the loop drain mid-await on macOS and Node 22). test/within-hygiene.test.js fails on a new one-line unref'd race.
 
 - test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.

@@ -260,6 +260,38 @@ export default {
       run: safe(({ account: a, limit }) => cal.next(forRead(accounts.all(), named(a)), { limit: clamp(limit, 1, 50, 5) })),
     });
 
+    // The Capsule's next-meeting line (capsule command `next`): today's upcoming and running meetings only, a
+    // join link when the event carries an https one, and nothing at all when no calendar is connected. Read
+    // only, and cached for a minute so the Capsule can ask whenever it opens without a Calendar call each time.
+    /** @type {{ key: string, at: number, value: any } | null} */
+    let upNext = null;
+    const relative = (startMs, endMs, at) => {
+      const mins = Math.round((startMs - at) / 60_000);
+      if (mins <= 0) return `now, ends in ${Math.max(1, Math.round((endMs - at) / 60_000))} min`;
+      return mins < 90 ? `in ${mins} min` : `in ${Math.round(mins / 60)} h`;
+    };
+    ctx.tool("google.calendar.today", {
+      description: "Today's next meetings, for a next-meeting line: { events: [{ id, account, title, start, end, when, join?, link }] }. Timed events only, from now to the end of today (this box's day), running ones included; `join` is an https meeting link if the event has one, and `link` is that or the event's own page. Empty when no Google account is connected. Read only; cached for a minute.",
+      input: obj({ limit: int }),
+      run: safe(async ({ limit }) => {
+        const accts = accounts.all();
+        const at = now();
+        const n = clamp(limit, 1, 10, 3);
+        if (!accts.length) return { events: [] };
+        const key = `${n}:${accts.map(a => a.name).join(",")}`;
+        if (upNext && upNext.key === key && at - upNext.at < 60_000) return upNext.value;
+        const end = new Date(at); end.setHours(23, 59, 59, 999);
+        const r = await cal.list(forRead(accts, undefined), { from: new Date(at).toISOString(), to: end.toISOString(), limit: 25 });
+        const events = r.events.filter(e => /T/.test(e.start) && Date.parse(e.end || e.start) > at).slice(0, n).map(e => {
+          const join = typeof e.where === "string" && /^https:\/\//.test(e.where) ? e.where : "";
+          return { id: e.id, account: e.account, title: e.title, start: e.start, end: e.end, when: relative(Date.parse(e.start), Date.parse(e.end || e.start), at), ...(join ? { join } : {}), link: join || e.url };
+        });
+        const value = { events };
+        upNext = { key, at, value };
+        return value;
+      }),
+    });
+
     ctx.tool("google.calendar.list", {
       description: "Events between two times (ISO 8601), across every account unless one is named.",
       input: obj({ from: str, to: str, account, limit: int }, ["from", "to"]),

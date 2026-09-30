@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":333,"tool":794,"event":325,"config":235,"env":170,"screen":18,"concept":43},
+  "counts": {"command":333,"tool":795,"event":325,"config":235,"env":170,"screen":18,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -401,6 +401,7 @@
     {"kind":"tool","name":"google.calendar.list","definedIn":"core/google/index.js","page":"reference/tools.md#googlecalendarlist","module":"google","mentions":[{"page":"adr/0016-connectors.md","line":157,"anchor":"6-google-native"},{"page":"adr/0025-planner.md","line":69,"anchor":"decision"}]},
     {"kind":"tool","name":"google.calendar.next","definedIn":"core/google/index.js","page":"reference/tools.md#googlecalendarnext","module":"google","mentions":[{"page":"adr/0016-connectors.md","line":156,"anchor":"6-google-native"}]},
     {"kind":"tool","name":"google.calendar.search","definedIn":"core/google/index.js","page":"reference/tools.md#googlecalendarsearch","module":"google","mentions":[{"page":"adr/0016-connectors.md","line":158,"anchor":"6-google-native"}]},
+    {"kind":"tool","name":"google.calendar.today","definedIn":"core/google/index.js","page":"reference/tools.md#googlecalendartoday","module":"google","mentions":[]},
     {"kind":"tool","name":"google.calendar.update","definedIn":"core/google/index.js","page":"reference/tools.md#googlecalendarupdate","module":"google","mentions":[]},
     {"kind":"tool","name":"google.connect","definedIn":"core/google/index.js","page":"reference/tools.md#googleconnect","module":"google","mentions":[{"page":"build/mcp-hub.md","line":77,"anchor":"google"},{"page":"adr/0016-connectors.md","line":172,"anchor":"6-google-native"},{"page":"adr/0028-vault-everywhere.md","line":388,"anchor":"9-connections-every-key-goes-in-through-the-vault-27-sep-2026"}]},
     {"kind":"event","name":"google.connect-failed","definedIn":"core/google/connect.js","page":"reference/events.md#google","module":"google","mentions":[{"page":"adr/0016-connectors.md","line":182,"anchor":"6-google-native"}]},

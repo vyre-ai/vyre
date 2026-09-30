@@ -445,3 +445,62 @@ test("google: on_behalf files a first-party module's held send under the thread 
   assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "juno" } }, "module:mail", {})).error.code, "denied");
   assert.equal(fake.mail.sent.length, 0, "a held send reached Gmail");
 });
+
+test("google: the Capsule's `next` command lists today's next meetings, with a join link, cached for a minute, and nothing without a calendar", async t => {
+  const fake = await startFakeGoogle(t);
+  const v = await vyred(t);
+  // Nothing connected: an empty list, not an error.
+  assert.deepEqual((await v.cli("google.calendar.today", {})).data, { events: [] });
+
+  const sa = fake.serviceAccount(ME);
+  await item(v, "work-google", "secret", { value: sa });
+  await v.cli("google.add", { name: "work", email: ME, auth: { type: "service-account", item: "work-google" }, base: fake.base });
+  // A meeting in ten minutes with a video link, and an all-day event, which is not a meeting.
+  const at = Date.now();
+  fake.calendar.events.push(
+    { kind: "calendar#event", id: "evjoin1", status: "confirmed", summary: "Kit and Alex, menu call", hangoutLink: "https://meet.example.test/abc-defg-hij",
+      start: { dateTime: new Date(at + 10 * 60_000).toISOString() }, end: { dateTime: new Date(at + 40 * 60_000).toISOString() } },
+    { kind: "calendar#event", id: "evallday1", status: "confirmed", summary: "Bakery closed", start: { date: new Date(at).toISOString().slice(0, 10) }, end: { date: new Date(at + 86_400_000).toISOString().slice(0, 10) } },
+  );
+  const local = new Date(at), endOfDay = new Date(at); endOfDay.setHours(23, 59, 59, 999);
+  if (endOfDay.getTime() - at < 2 * 3_600_000) return void t.skip("too close to the end of this box's day to have a meeting left today");
+  void local;
+
+  fake.calls.length = 0;
+  const today = (await v.cli("google.calendar.today", {})).data;
+  assert.deepEqual(today.events.map(e => e.id), ["evjoin1", "evharlow1"], "the all-day event is left out and the rest are in order");
+  const first = today.events[0];
+  assert.equal(first.title, "Kit and Alex, menu call");
+  assert.equal(first.join, "https://meet.example.test/abc-defg-hij");
+  assert.equal(first.link, first.join, "the link opens the meeting");
+  assert.match(first.when, /^in (9|10) min$/);
+  assert.equal(today.events[1].join, undefined, "a location that is not a link has no join");
+  assert.match(today.events[1].link, /^https:\/\/calendar\.google\.com\//, "it opens the event instead");
+
+  // Cached for a minute: the second ask does not call Calendar.
+  const calls = fake.calls.length;
+  assert.deepEqual((await v.cli("google.calendar.today", {})).data, today);
+  assert.equal(fake.calls.length, calls, "no second Calendar call inside the minute");
+  // A model may read it too (it is read only) and `limit` narrows it.
+  assert.equal((await v.model("google.calendar.today", { limit: 1 })).data.events.length, 1);
+
+  // The Capsule command is declared by the module, over this tool.
+  const manifest = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
+  const view = manifest.shows.capsule["view:next"];
+  assert.equal(view.list.tool, "google.calendar.today");
+  assert.deepEqual(view.list.map, { rows: "events", id: "id", title: "title", subtitle: "when", accessory: "account", url: "link" });
+  // If the Capsule module is running here, it lists the command with no tool name in it.
+  const cmds = await v.cli("capsule.commands", {});
+  if (cmds.data) {
+    const next = cmds.data.commands.find(c => c.module === "google" && c.id === "next");
+    assert.ok(next, JSON.stringify(cmds.data.commands.map(c => `${c.module}:${c.id}`)));
+    assert.equal(next.title, "Next meeting");
+    assert.equal(next.firstParty, true);
+    assert.ok(!JSON.stringify(next).includes("google.calendar"), "no tool names reach the Capsule");
+    const frame = await v.cli("capsule.view", { module: "google", command: "next" });
+    assert.equal(frame.data.kind, "list", JSON.stringify(frame));
+    assert.equal(frame.data.rows[0].title, "Kit and Alex, menu call");
+    assert.equal(frame.data.rows[0].subtitle.startsWith("in "), true);
+  }
+  assertNoLeak(v, secretsOf(fake, [sa]));
+});

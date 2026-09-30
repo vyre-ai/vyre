@@ -7,7 +7,7 @@
     "tools": [
       "google.accounts", "google.add", "google.remove", "google.test",
       "google.connect", "google.connect.finish", "google.connect.cancel",
-      "google.calendar.next", "google.calendar.list", "google.calendar.search", "google.calendar.create", "google.calendar.update",
+      "google.calendar.next", "google.calendar.today", "google.calendar.list", "google.calendar.search", "google.calendar.create", "google.calendar.update",
       "google.mail.search", "google.mail.read", "google.mail.draft", "google.mail.send",
       "google.find", "google.open", "google.release"
     ]
@@ -16,6 +16,14 @@
   "shows": {
     "deck": ["settings:connections"],
     "capsule": {
+      "view:next": {
+        "title": "Next meeting", "keywords": ["calendar", "agenda", "meeting", "join"], "icon": "calendar", "root": true,
+        "list": {
+          "tool": "google.calendar.today", "input": { "limit": 3 },
+          "map": { "rows": "events", "id": "id", "title": "title", "subtitle": "when", "accessory": "account", "url": "link" },
+          "actions": [ { "id": "open", "title": "Open", "do": { "open": "{url}" } } ]
+        }
+      },
       "results:google.find": { "title": "Google" },
       "action:google.open": { "title": "Open" },
       "action:google.open#reply": { "title": "Draft a reply", "input": { "as": "reply" } }
