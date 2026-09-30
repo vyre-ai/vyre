@@ -360,7 +360,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `settings.changed` | `apply`, `key`, `level`, `rev`; sometimes `by`, `project`, `session` |
+| `settings.changed` | `apply`, `by`, `key`, `level`, `rev`; sometimes `change`, `project`, `session` |
 
 ## sight
 

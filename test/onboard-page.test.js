@@ -16,6 +16,9 @@ import * as config from "../core/config/index.js";
 import { tempHome } from "./helpers.js";
 import { CHROME_SAFE } from "../lib/chrome-flags/index.js";
 
+// This test drives the Deck through its sample data (?fixtures=1), which a box serves only to dev worlds.
+process.env.VYRE_DECK_FIXTURES = "1";
+
 // An explicit override, then a real Chrome for local Mac use, then testbox's own
 // chrome-headless-shell (deck/test's own default path, e.g. deck/test/settings-browser.js):
 // without this second fallback these tests silently skip on testbox, which has no Chrome.app, so

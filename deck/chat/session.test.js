@@ -153,6 +153,9 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
     // own recall.transcript not_found does the same distinction; caps.js's isMissing agrees).
     return { status: 404, statusText: "", json: async () => ({ error: { code: "not_found", message: `harlow-legal has no teammate ${input.to}` } }) };
   }
+  if (tool === "team.list") return { status: 200, statusText: "", json: async () => ({ data: [{ role: "design", agent: "design-harlow-legal" }, { role: "review", agent: "review-harlow-legal" }] }) };
+  if (tool === "agents.list") return { status: 200, statusText: "", json: async () => ({ data: [{ name: "kit", kind: "agent" }] }) };
+  if (tool === "agents.ask") return { status: 200, statusText: "", json: async () => ({ data: { thread: "thr_kit", state: "sent" } }) };
   if (tool === "team.default.get") return { status: 200, statusText: "", json: async () => ({ data: { project: input.project, enabled: teamWorld?.defaultOn !== false } }) };
   if (tool === "team.add") {
     teamWorld?.adds?.push(input);
@@ -945,7 +948,7 @@ test("a teammate handoff (team_ask): its own card, the teammate's tile+name+Team
   assert.match(text($(row, ".cv-handoff-reply")), /Warmed up the copy in three places/);
 });
 
-test("@role: an existing teammate's own turn, never this session's; a typo offers to create one; team.default off just points at Setup (teammates.md section 2)", async (t) => {
+test("@role: an existing teammate's own turn, never this session's; an unknown role is made at once with no confirm; a near miss offers @design; teammates off points at Settings (native-core.md section 9)", async (t) => {
   const box12 = new El("div");
   doc.body.append(box12);
   const stop12 = mountSession(box12, { thread: NEW, project: null, onBack() {} });
@@ -964,36 +967,40 @@ test("@role: an existing teammate's own turn, never this session's; a typo offer
   assert.equal(calls.filter(c => c.tool === "threads.send").length, sendsBefore, "never this session's turn");
   assert.equal(ta.value, "", "cleared on a plain success");
 
-  // A typo (no "research" teammate yet), team.default on: an inline confirm, not a silent no-op.
+  // No "research" teammate yet, teammates on: made at once and asked, with no confirm card in between.
   teamWorld = { hasTeammate: false, defaultOn: true, adds: [] };
   ta.value = "@research find comparable filing fees";
   key("Enter");
   await wait();
-  assert.match(text($(box12, ".composer-note")), /There's no research teammate yet/);
-  const goBtn = /** @type {any} */ ($$(box12, ".composer-note button").find(b => /Create and send/.test(text(b))));
-  const hereBtn = /** @type {any} */ ($$(box12, ".composer-note button").find(b => /Don't create/.test(text(b))));
-  assert.ok(goBtn && hereBtn);
-  await goBtn.click();
-  await wait();
+  assert.equal($$(box12, ".composer-note button").filter(b => /Create and send|Don't create/.test(text(b))).length, 0, "no confirm card");
   assert.deepEqual(calls.filter(c => c.tool === "team.add").at(-1).input,
     { project: "harlow-legal", role: "research", brief: "Ask me about anything; I'll figure out the role from what you send me.", isolation: "folder", tools: ["files", "web"], model: "sonnet" });
   assert.deepEqual(calls.filter(c => c.tool === "team.ask").at(-1).input, { to: "research", text: "find comparable filing fees", surface: "deck" });
+  assert.equal(ta.value, "", "sent");
 
-  // "Don't create, answer here": an ordinary message to this session instead, never team.add.
+  // A near miss of a role this project has: one chip while typing, Tab takes it, and sending as typed still creates the new role.
+  teamWorld = { hasTeammate: true, defaultOn: true, adds: [] };
+  ta.value = "@desgin";
+  ta.dispatchEvent(new Event("input"));
+  await wait(400);
+  const chip = /** @type {any} */ ($$(box12, ".composer-note button").find(b => /@design/.test(text(b))));
+  assert.ok(chip, "Did you mean @design?");
+  assert.match(text($(box12, ".composer-note")), /Did you mean\s+@design\s*\?/);
+  const tab = key("Tab");
+  assert.equal(tab.defaultPrevented, true);
+  assert.equal(ta.value, "@design ", "Tab took the near role");
+
+  // The person's own agent by that name, when no role has it: agents.ask, not a new teammate.
   teamWorld = { hasTeammate: false, defaultOn: true, adds: [] };
-  ta.value = "@ghost is anyone there";
+  const addsBeforeA = calls.filter(c => c.tool === "team.add").length;
+  ta.value = "@kit what did we decide on the renewal wording";
   key("Enter");
   await wait();
-  const hereBtn2 = /** @type {any} */ ($$(box12, ".composer-note button").find(b => /Don't create/.test(text(b))));
-  const sendsBefore2 = calls.filter(c => c.tool === "threads.send").length;
-  const addsBefore2 = calls.filter(c => c.tool === "team.add").length;
-  await hereBtn2.click();
-  await wait();
-  assert.equal(calls.filter(c => c.tool === "team.add").length, addsBefore2, "not created");
-  assert.deepEqual(calls.filter(c => c.tool === "threads.send").at(-1).input.text, "@ghost is anyone there", "the whole draft, not the stripped body - declining creation never silently edits what was typed");
-  assert.equal(calls.filter(c => c.tool === "threads.send").length, sendsBefore2 + 1);
+  assert.deepEqual(calls.filter(c => c.tool === "agents.ask").at(-1).input, { agent: "kit", text: "what did we decide on the renewal wording", surface: "deck", wait: false });
+  assert.equal(calls.filter(c => c.tool === "team.add").length, addsBeforeA, "an agent is not a new teammate");
+  assert.match(text($(box12, ".composer-note")), /Sent to kit\.\s+Open kit's chat/);
 
-  // team.default off: no confirm, no create - straight to Setup, and nothing is sent anywhere.
+  // team.default off: no create, and the note points at that project's Settings, in words.
   teamWorld = { hasTeammate: false, defaultOn: false, adds: [] };
   const teamAsksBefore = calls.filter(c => c.tool === "team.ask").length;
   const sendsBefore3 = calls.filter(c => c.tool === "threads.send").length;
@@ -1001,7 +1008,7 @@ test("@role: an existing teammate's own turn, never this session's; a typo offer
   ta.value = "@legal check the filing deadline";
   key("Enter");
   await wait();
-  assert.match(text($(box12, ".composer-note")), /There's no legal teammate in this project\. Add one in Setup, or turn Teammates on for this project\./);
+  assert.match(text($(box12, ".composer-note")), /Teammates are off for this project, so there's no legal here\.\s+Turn them on in Settings/);
   assert.equal(calls.filter(c => c.tool === "team.add").length, addsBefore3);
   assert.equal(calls.filter(c => c.tool === "threads.send").length, sendsBefore3, "nothing sent");
   assert.equal(calls.filter(c => c.tool === "team.ask").length, teamAsksBefore + 1, "still tried the ask itself - only creation is gated on team.default");
