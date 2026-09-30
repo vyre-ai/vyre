@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: the # tag picker in the new-session sheet
+
+- The `#` picker, its chips and the pasted-span tracking are one component now (`deck/chat/tag-picker.js`), used by the composer and by the new-session sheet, where the first message is where `#` is used most. A pick shows the same chip; Start sends `mentions: [{kind, id, name}]` and `pasted` on both `threads.start` and `agents.ask`. Esc closes the picker before it closes the sheet. More paste tests: a multi-line CRLF paste, undo of a paste, and a drag and drop move.
+
 #### chat: the composer sends the pasted spans (reviewer-2 M-P2)
 
 - `deck/chat/core/paste-spans.js` tracks which stretches of the draft were pasted, dropped, redone or replaced (the input's `inputType`, or a paste event, marks the stretch the edit's diff found, so no string is compared and a Windows `\r\n` paste is marked like any other; then the offsets of every later edit: typing before moves a span, typing inside keeps the whole stretch marked, deleting drops it). `threads.send` carries them as `pasted: [string]` and the new-session sheet sends them on `threads.start` and `agents.ask`, so a `#Name` inside pasted text never resolves as a tag; only a picked chip can. No `pasted` key when nothing was pasted. Tests: `paste-spans.test.js` (5), two in `composer-vault.test.js`, one in `newsession.test.js`.

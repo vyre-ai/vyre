@@ -64,3 +64,26 @@ test("undo, a drop and a replacement are not typing", () => {
   assert.ok(NOT_TYPED.has("historyUndo") && NOT_TYPED.has("historyRedo") && NOT_TYPED.has("insertFromDrop") && NOT_TYPED.has("insertReplacementText") && NOT_TYPED.has("insertFromPaste"));
   for (const typed of ["insertText", "insertLineBreak", "deleteContentBackward"]) assert.equal(NOT_TYPED.has(typed), false, typed);
 });
+
+test("undo of a paste: the deletion drops the span, the undo that brings the text back marks it again", () => {
+  const t = pasteTracker();
+  const pasted = "Dear team,\nuse #GHLapikey\nthanks";
+  let v = "Read: ";
+  const to = (next, notTyped) => { t.edit(v, next, notTyped); v = next; };
+  to(v + pasted, true);
+  assert.deepEqual(t.of(v), [pasted]);
+  to("Read: ", false); // deleted (or undone)
+  assert.deepEqual(t.of(v), []);
+  to("Read: " + pasted, NOT_TYPED.has("historyUndo")); // redo/undo restores it
+  assert.deepEqual(t.of(v), [pasted]);
+});
+
+test("a drag and drop move: the text arrives marked wherever it lands", () => {
+  const t = pasteTracker();
+  let v = "";
+  const to = (next, inputType) => { t.edit(v, next, NOT_TYPED.has(inputType)); v = next; };
+  to("aaa bbb ccc", "insertText");
+  to("aaa  ccc", "deleteByDrag");
+  to("aaa  cccbbb ", "insertFromDrop");
+  assert.deepEqual(t.of(v), ["bbb "]);
+});

@@ -45,7 +45,7 @@ import { kbd } from "../js/platform.js";
 import { attempt, queued as viaOutbox, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import {
-  draftKind, draftBody, teammateRole, kindLabel, findMention, applyMention, findVaultMention, applyVault, vaultTokens, rankVault, rankFiles, historyStore, remember, recall, recalling, stopRecall,
+  draftKind, draftBody, teammateRole, kindLabel, findMention, applyMention, findVaultMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
   upAction, enterAction, createEsc, escape, nextMode, modeLabel, actionFor, addImage, removeImage, sendImages, newUuid, IMAGE_TYPES,
   modelChoices, shortModel,
 } from "./core/composer-state.js";
@@ -57,6 +57,7 @@ import { localSend, dropLocal, localShell, confirmSend } from "./core/session-st
 import { markMade, nearRole } from "./core/made.js";
 import { listMenu, keysLine } from "./pickers.js";
 import { pasteTracker, NOT_TYPED } from "./core/paste-spans.js";
+import { tagPicker } from "./tag-picker.js";
 import { voiceStatus, listen as listenVoice } from "./core/voice.js";
 import { ago, agoLong } from "../js/need-rows.js";
 
@@ -223,6 +224,8 @@ export function mountComposer(opts) {
     // An empty box is a fresh compose: the next message gets its own hint, not the last one's "not now".
     if (!v) { clearTimeout(hintTimer); hintDismissed = false; hideHints(); }
   };
+  // "#": one universal tag (chat/tag-picker.js, shared with the new-session sheet).
+  const tagUI = tagPicker({ ta, menu, caret, setValue, attempt, use: (tool, fn) => CAPS.use(tool, fn) });
   const say = (/** @type {any} */ what, soft = true) => { note.classList.toggle("soft", soft); put(note, what); };
 
   function maybeLease() {
@@ -267,7 +270,7 @@ export function mountComposer(opts) {
     chips.hidden = false;
     const s = /** @type {import("./core/session-state.js").Session} */ (S);
     // Called on every keystroke: rebuilt only when something it shows changed.
-    const vts = vaultChips();
+    const vts = tagUI.chips();
     const sig = JSON.stringify([vts.map(t => t.name), kind, busy, queueToggle, scope, s.mode, s.model, s.thinking,
       ["threads.model", "threads.mode", "threads.thinking", "threads.shell"].map(off), kind === "shell" ? opts.cwd?.() : null]);
     if (sig === chipSig) return;
@@ -279,10 +282,7 @@ export function mountComposer(opts) {
       chip("composer-model", "threads.model", "Switch the model", () => openModels(), shortModel(s.model) || "Model"),
       chip("composer-mode", "threads.mode", "Next mode (Shift+Tab)", () => cycleMode(), modeLabel(s.mode), h("span", { class: "kbd" }, "⇧Tab")),
       chip("composer-thinking", "threads.thinking", "Thinking on or off (Alt+T)", () => toggleThinking(), s.thinking === true ? "Thinking on" : s.thinking === false ? "Thinking off" : "Thinking"),
-      vts.length ? h("span", { class: "composer-scopes composer-vault", role: "list", "aria-label": "Tags on this message" },
-        vts.map(t => h("span", { class: "btn btn-ghost btn-sm composer-scope composer-vault-chip", role: "listitem", "data-vault": t.name, "data-kind": t.kind, title: t.kind === "vault" ? "This message can use #" + t.name + " for this session. The value is never shown." : "#" + t.name + " goes with this message" },
-          icon(t.kind === "vault" ? "key" : "file", 12), "#" + t.name,
-          h("button", { type: "button", "aria-label": "Remove #" + t.name, onclick: () => { const cur = vaultChips().find(x => x.name === t.name); if (cur) setValue((ta.value.slice(0, cur.start) + ta.value.slice(cur.end)).replace(/  +/g, " "), cur.start); ta.focus(); } }, "×")))) : null,
+      tagUI.chipsEl(),
       label && kind !== "command" ? h("span", { class: "composer-kind" }, label,
         kind === "shell" ? h("span", { class: "faint" }, " · runs in " + shortDir(opts.cwd?.() || "") + (off("threads.shell") ? " · " + NEEDS_UPDATE : "")) : null) : null,
       kind === "memory" ? h("span", { class: "composer-scopes", role: "radiogroup", "aria-label": "Save this to" },
@@ -374,7 +374,7 @@ export function mountComposer(opts) {
     const men = findMention(text, at);
     if (men && !machine) { showFiles(men); return; }
     const vm = findVaultMention(text, at);
-    if (vm && !machine && !draftKind(text).startsWith("shell")) { void showVault(vm); return; }
+    if (vm && !machine && !draftKind(text).startsWith("shell")) { tagUI.show(vm); return; }
     if (menu.kind === "command" || menu.kind === "mention" || menu.kind === "vault") menu.close();
   }
 
@@ -665,48 +665,6 @@ export function mountComposer(opts) {
     );
   }
 
-  // ---- "#": one universal tag: a vault item, file, artifact, repo, project... (mentions.search) ---------
-  /** The order groups show in; a kind the box adds later follows, by name. */
-  const TAG_ORDER = ["vault", "artifact", "drive", "github", "project", "session", "teammate"];
-  /** What was picked, by the name written after the "#": { kind, id, name }. Chips and the turn's mentions come from the tokens still in the text. */
-  const tags = /** @type {Map<string, { kind: string, id: string, name: string }>} */ (new Map());
-  let tagSeq = 0, tagTimer = /** @type {any} */ (null);
-  /** mentions.search's answer as one flat list: results, or groups of results. Names and hints only, never a value. @param {any} d */
-  function tagRows(d) {
-    const list = Array.isArray(d) ? d : Array.isArray(d?.results) ? d.results : Array.isArray(d?.groups) ? d.groups.flatMap((/** @type {any} */ g) => (g?.results || g?.items || []).map((/** @type {any} */ x) => ({ kind: g.kind, ...x }))) : [];
-    return list.map((/** @type {any} */ x) => ({ kind: String(x?.kind ?? ""), id: String(x?.id ?? x?.name ?? ""), name: String(x?.name ?? ""), hint: String(x?.hint ?? ""), label: String(x?.label ?? x?.kind ?? "") }))
-      .filter((/** @type {any} */ x) => x.kind && x.id && x.name)
-      .sort((/** @type {any} */ a, /** @type {any} */ b) => { const r = (/** @type {string} */ k) => { const n = TAG_ORDER.indexOf(k); return n < 0 ? TAG_ORDER.length : n; }; return r(a.kind) - r(b.kind) || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name); });
-  }
-  function showVault(/** @type {import("./core/composer-state.js").MentionRange} */ range) {
-    clearTimeout(tagTimer);
-    const seq = ++tagSeq;
-    // A short wait so a fast typist asks once; no query still lists what is at hand.
-    tagTimer = setTimeout(async () => {
-      const r = await CAPS.use("mentions.search", () => attempt("mentions.search", { q: range.query, limit: 30 }));
-      if (seq !== tagSeq) return;
-      // No provider on this box, or the text moved on while it searched: nothing is offered that does not work.
-      if (r.error || !findVaultMention(ta.value, caret())) { if (menu.kind === "vault") menu.close(); return; }
-      const rows = tagRows(r.data).slice(0, 24);
-      menu.setKind("vault");
-      menu.open(rows.map(v => ({ key: v.kind + ":" + v.id, group: v.label || v.kind, value: v, render: () => [h("span", { class: "cv-menu-name" }, "#" + v.name),
-        v.hint ? h("span", { class: "cv-menu-hint" }, v.hint) : null] })),
-      row => pickVault(row.value), "Tag", rows.length ? keysLine(["↑↓", "move"], ["⏎", "tag"], ["Esc", "close"]) : "Nothing by that name");
-    }, 120);
-    tagTimer?.unref?.();
-  }
-  function pickVault(/** @type {{ kind: string, id: string, name: string }} */ v) {
-    const range = findVaultMention(ta.value, caret());
-    menu.close();
-    if (!range) return;
-    tags.set(v.name, { kind: v.kind, id: v.id, name: v.name });
-    const r = applyVault(ta.value, range, v.name);
-    setValue(r.text, r.caret);
-    ta.focus();
-  }
-  /** The chips under the box: each "#name" still in the draft that was picked here, with a way to take it out. */
-  const vaultChips = () => (tags.size ? vaultTokens(ta.value, new Set(tags.keys())).map(t => ({ ...t, ...tags.get(t.name) })) : []);
-
   function showFiles(/** @type {import("./core/composer-state.js").MentionRange} */ range) {
     clearTimeout(fileTimer);
     const cwd = opts.cwd?.() || null;
@@ -858,9 +816,8 @@ export function mountComposer(opts) {
   async function sendMessage(text, mode) {
     sending = true;
     // The tags still in the words go with the turn as {kind, id, name}; the text keeps its #tokens.
-    const mentions = vaultChips().map(t => ({ kind: t.kind, id: t.id, name: t.name }));
+    const mentions = tagUI.take();
     const pasted = [...new Set(pastes.of(ta.value).map(x => x.trim()).filter(x => x && text.includes(x)))];
-    tags.clear();
     const uuid = newUuid();
     const imgs = images;
     images = []; drawImages();

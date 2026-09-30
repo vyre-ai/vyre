@@ -303,3 +303,33 @@ test("startCall: pasted spans go to agents.ask too, and only when there are some
   assert.deepEqual(r.input.pasted, ["use #Stripe for it."]);
   assert.equal("pasted" in /** @type {any} */ (startCall({ kind: "none" }, "kit", "hi", null, [])).input, false);
 });
+
+test("new session: # opens the same tag picker, a pick becomes a chip, and Start sends mentions and pasted on threads.start", async () => {
+  const api = vyred({ ...WORLD, "mentions.search": { results: [{ kind: "vault", id: "it-1", name: "Stripe", hint: "api.stripe.com", label: "Vault" }, { kind: "artifact", id: "a1", name: "Menu page", hint: "page", label: "Artifacts" }] } });
+  went.length = 0;
+  const box = /** @type {any} */ (document.createElement("div"));
+  const stop = mountNewSession(box, { project: "harlow-legal", onDone() {} });
+  await tick(); await tick();
+  const ta = $(box, "textarea");
+  const input = (v, inputType) => { ta.value = v; ta.setSelectionRange(v.length, v.length); ta.dispatchEvent(Object.assign(new Event("input"), { inputType })); };
+  input("Check #", "insertText");
+  await new Promise(r => setTimeout(r, 200));
+  assert.deepEqual($$(box, "[role=option]").map(o => o.getAttribute("data-key")), ["vault:it-1", "artifact:a1"]);
+  $$(box, "[role=option]")[0].dispatchEvent(new Event("click"));
+  assert.equal(ta.value, "Check #Stripe ");
+  assert.equal($(box, "[data-vault]").getAttribute("data-kind"), "vault");
+  input("Check #Stripe Wire it: pay #Menu now", "insertFromPaste");
+  $(box, "textarea").dispatchEvent(Object.assign(new Event("keydown"), { key: "Enter", metaKey: true }));
+  await tick(); await tick();
+  const sent = api.of("threads.start")[0].input;
+  assert.deepEqual(sent.mentions, [{ kind: "vault", id: "it-1", name: "Stripe" }]);
+  assert.deepEqual(sent.pasted, ["Wire it: pay #Menu now"]);
+  assert.equal(sent.prompt, "Check #Stripe Wire it: pay #Menu now");
+  stop();
+});
+
+test("startCall: mentions go to agents.ask too", () => {
+  const m = [{ kind: "github", id: "harlow/site#4", name: "site-pr-4" }];
+  assert.deepEqual(/** @type {any} */ (startCall({ kind: "none" }, "kit", "Review #site-pr-4", null, [], m)).input.mentions, m);
+  assert.equal("mentions" in /** @type {any} */ (startCall({ kind: "none" }, "kit", "hi", null, [], [])).input, false);
+});

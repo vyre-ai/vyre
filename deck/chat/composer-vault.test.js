@@ -176,3 +176,21 @@ test("undo or a drop brings text in with no paste event: still marked, and \r\n 
   assert.deepEqual(sent.input.pasted, ["Subject: bill\nuse #GHLapikey for it"]);
   c.stop();
 });
+
+test("a multi-line CRLF paste from a Windows clipboard is marked (nothing is compared), and undo of it is marked too", async () => {
+  calls.length = 0;
+  const th = thread();
+  const c = mountComposer({ thread: th, session: createSession(th) });
+  const CRLF = "Subject: bill\r\nPlease use #GHLapikey\r\nThanks";
+  const LF = CRLF.replace(/\r\n/g, "\n");
+  const fireInput = (value, inputType) => { c.input.value = value; c.input.setSelectionRange(value.length, value.length); c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("input"), { inputType })); };
+  fireInput("Look: ", "insertText");
+  c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("paste"), { clipboardData: { items: [], getData: () => CRLF } }));
+  fireInput("Look: " + LF, "insertFromPaste"); // the textarea keeps \n
+  fireInput("Look: ", "deleteContentBackward");
+  fireInput("Look: " + LF, "historyUndo");
+  c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("keydown"), { key: "Enter", target: c.input }));
+  await settle();
+  assert.deepEqual(calls.find(x => x.tool === "threads.send").input.pasted, [LF]);
+  c.stop();
+});
