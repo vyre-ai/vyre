@@ -58,7 +58,7 @@ export function register(ctx, { denied }) {
   const personOnly = (caller, what) => { if (!isPerson(caller)) throw denied(`${what} is for the person's own surfaces`); };
 
   /**
-   * A setting: learning is off until switched on, syncing is on. With no settings hub at all it is the default; if the hub fails, the last value it gave (a
+   * A setting, on by default. With no settings hub at all it is the default; if the hub fails, the last value it gave (a
    * person's OFF is never ignored on an error), and with none known, off.
    * @param {string} key
    */
@@ -73,7 +73,7 @@ export function register(ctx, { denied }) {
     if (failed) return last.has(key) ? /** @type {boolean} */ (last.get(key)) : false;
     return dflt(key);
   };
-  const dflt = (/** @type {string} */ key) => { const c = ctx.config && ctx.config.memory && ctx.config.memory.site; const k = key.split(".").pop() || ""; const v = c && c[k]; return typeof v === "boolean" ? v : k === "sync"; };
+  const dflt = (/** @type {string} */ key) => { const c = ctx.config && ctx.config.memory && ctx.config.memory.site; const k = key.split(".").pop() || ""; const v = c && c[k]; return typeof v === "boolean" ? v : true; };
 
   /** The ids a record already holds, which a step may refer to. @param {any} rec */
   const knownIds = rec => (rec ? [...rec.controls, ...rec.frames, ...rec.api].map((/** @type {any} */ x) => x.id).concat(rec.flows.flatMap((/** @type {any} */ f) => (f.steps || []).map((/** @type {any} */ st) => st.id))) : []);
