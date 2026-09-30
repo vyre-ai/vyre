@@ -25,7 +25,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
-import { personTurn, mentionsOf, matchItems, textHash, MENTION_NOTE } from "./said.js";
+import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
@@ -1294,25 +1294,22 @@ export class Switchboard {
    * surface holds it, the words are queued as for a terminal.
    */
   /**
-   * A person's own turn, before any provider sees it: the said row (turn.said) and the vault items
-   * it mentions, each recorded as a "use" intent (vault.said.record) bound to this thread. Vault
-   * absent or failing means no mentions, never a blocked send. Only for a caller personTurn admits.
-   * @param {string} id @param {string} text @param {string} surface @param {string} uuid
+   * A person's own turn, before any provider sees it: the said row (turn.said) and what it tags
+   * (a vault item, a Drive file, an artifact, a GitHub repo...), each resolved by its own provider
+   * for this thread (resolveTags) and said as thread.mentioned. `chips` are the composer's own
+   * {kind, id} picks. A provider absent or refusing means plain text, never a blocked send. Only
+   * for a caller personTurn admits.
+   * @param {string} id @param {string} text @param {string} surface @param {string} uuid @param {{ kind: string, id: string }[]} [chips]
    */
-  async ingress(id, text, surface, uuid) {
+  async ingress(id, text, surface, uuid, chips = []) {
     // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
     const names = mentionsOf(text);
-    if (!names.length) return [];
-    const items = await matchItems(names, (tool, input) => this.deps.call(tool, input));
-    const granted = [];
-    for (const it of items) {
-      const r = await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: "use", to: [it.name], what: `use #${it.name}` }).catch(() => null);
-      if (r && !r.error) granted.push(it);
-    }
-    if (granted.length) this.emit("thread.mentioned", { uuid, mentions: granted }, id, rec.project);
-    return granted;
+    if (!names.length && !chips.length) return [];
+    const tags = await resolveTags({ names, chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) });
+    if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
+    return tags;
   }
 
   async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "" } = {}) {
@@ -2380,6 +2377,7 @@ export default {
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
         images: { type: "array", items: { type: "object", required: ["media_type", "data"], properties: { media_type: { type: "string", enum: IMAGE_TYPES }, data: str } },
           description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` },
+        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str } }, description: "The # tags the composer picked ({kind, id}), from a person's own surface only; a #Name in the text that is exactly one thing is tagged too." },
         model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
@@ -2396,9 +2394,9 @@ export default {
         if (i.effort && had && had.effort !== i.effort) await sb.switchEffort(i.thread, i.effort);
         const uuid = idempotencyKey ? keyUuid(String(caller || ""), String(idempotencyKey)) : crypto.randomUUID();
         // The person's own words, and only theirs: said, and the credentials they let this thread use.
-        const heard = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid) ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid) : [];
+        const heard = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid) ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : []) : [];
         return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid,
-          ...(heard.length ? { note: MENTION_NOTE(heard) } : {}) });
+          ...(heard.length ? { note: tagNote(heard) } : {}) });
       });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each, how many questions are open, and live (a terminal has it open now).",
@@ -2594,7 +2592,7 @@ export default {
         return sb.shell(i.thread, i.command);
       }, ["cli", "local", "deck", "capsule"]);
 
-    tool("threads.remember", "Claude Code's # mode: add a line to CLAUDE.md: the project's (project, the default), your own (user) or this folder's private one (local, CLAUDE.local.md). Vyre's own memory is separate.",
+    tool("threads.remember", "/remember (Claude Code's # mode; # is a tag now): add a line to CLAUDE.md: the project's (project, the default), your own (user) or this folder's private one (local, CLAUDE.local.md). Vyre's own memory is separate.",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, scope: { type: "string", enum: ["project", "user", "local"] } } },
       async (i, { caller, thread }) => {
         if (thread && thread === i.thread) throw Object.assign(new Error("a session does not edit its own instructions"), { code: "denied" });

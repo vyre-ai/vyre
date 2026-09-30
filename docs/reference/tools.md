@@ -4914,7 +4914,7 @@ Give the keyboard back. Releasing a lease you do not hold changes nothing.
 
 ### `threads.remember`
 
-Claude Code's # mode: add a line to CLAUDE.md: the project's (project, the default), your own (user) or this folder's private one (local, CLAUDE.local.md). Vyre's own memory is separate.
+/remember (Claude Code's # mode; # is a tag now): add a line to CLAUDE.md: the project's (project, the default), your own (user) or this folder's private one (local, CLAUDE.local.md). Vyre's own memory is separate.
 
 - Input:
   - `text` string, required
@@ -4953,6 +4953,9 @@ Type into a thread. Only the surface holding its lease may type; a free thread i
     - `data` string, required
     - `media_type` one of "image/png", "image/jpeg", "image/gif", "image/webp", required
   - `machine` string
+  - `mentions` list of object: The # tags the composer picked ({kind, id}), from a person's own surface only; a #Name in the text that is exactly one thing is tagged too.
+    - `id` string, required
+    - `kind` string, required
   - `mode` "steer" or "queue": While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then.
   - `model` string: Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only.
   - `surface` string

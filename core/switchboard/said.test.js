@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { personTurn, mentionsOf, matchItems, textHash, MENTION_NOTE, MAX_MENTIONS } from "./said.js";
+import { personTurn, mentionsOf, resolveTags, textHash, tagNote, MAX_MENTIONS, NOTE_MAX } from "./said.js";
 
 test("personTurn: the person's own surfaces only", () => {
   for (const c of ["cli", "local", "deck", "capsule", "tailnet:alex@harlow", "link:box"]) assert.equal(personTurn(c), true, c);
@@ -18,18 +18,41 @@ test("mentionsOf: #Name and #\"Name with spaces\" at a word start, once each; co
   assert.deepEqual(mentionsOf(""), []);
 });
 
-test("matchItems: only a name vault has, exactly; a vault that fails or is absent means plain text", async () => {
-  const call = async (tool, input) => tool === "vault.items.names"
-    ? { data: { names: [{ name: "GHLapikey", kind: "token", hosts: ["services.leadconnectorhq.com"] }, { name: "GHLapikey2", kind: "token", hosts: [] }].filter(x => x.name.toLowerCase().includes(input.query.toLowerCase())) } }
-    : { error: { code: "no_such_tool" } };
-  assert.deepEqual(await matchItems(["ghlapikey", "missing"], call), [{ name: "GHLapikey", kind: "token", hosts: ["services.leadconnectorhq.com"] }]);
-  assert.deepEqual(await matchItems(["x"], async () => { throw new Error("locked"); }), []);
-  assert.deepEqual(await matchItems(["x"], async () => ({ error: { code: "no_such_tool" } })), []);
+test("resolveTags: chips and exact names become tags through each kind's resolve; ambiguous or unknown names, refusals and a missing provider are plain text", async () => {
+  const seen = [];
+  const call = async (tool, input) => {
+    seen.push([tool, input]);
+    if (tool === "mentions.search") return { data: { groups: [
+      { kind: "drive", items: [{ id: "f1", name: "Fee agreement", hint: "doc" }, { id: "f2", name: "Twin" }] },
+      { kind: "github", items: [{ id: "harlow/site", name: "harlow-site" }, { id: "9", name: "Twin" }] }] } };
+    if (tool === "mentions.resolve") {
+      if (input.id === "denied") return { error: { code: "denied" } };
+      return { data: { name: input.kind === "drive" ? "Fee agreement" : input.id, hint: input.kind, note: `read it with ${input.kind}.read` } };
+    }
+    return { error: { code: "no_such_tool" } };
+  };
+  const tags = await resolveTags({ names: ["fee agreement", "Twin", "nothing"], chips: [{ kind: "github", id: "harlow/site" }, { kind: "vault", id: "denied" }, { kind: "x" }], thread: "t1", said: "u1", call });
+  assert.deepEqual(tags.map(t => [t.kind, t.id]), [["github", "harlow/site"], ["drive", "f1"]], "Twin is two things: plain text");
+  assert.deepEqual(seen.filter(([t]) => t === "mentions.resolve").map(([, i]) => i), [{ kind: "github", id: "harlow/site", thread: "t1", said: "u1" }, { kind: "vault", id: "denied", thread: "t1", said: "u1" }, { kind: "drive", id: "f1", thread: "t1", said: "u1" }]);
+  assert.match(tagNote(tags), /#Fee agreement \(drive\): read it with drive\.read/);
 });
 
-test("textHash and MENTION_NOTE: a hash, and a note that names hosts and never a value", () => {
+test("resolveTags before the mentions mechanism exists: a name is a vault item, recorded as a use intent; a vault that fails is plain text", async () => {
+  const recorded = [];
+  const call = async (tool, input) => tool === "vault.items.names"
+    ? { data: { names: [{ name: "GHLapikey", kind: "token", hosts: ["services.leadconnectorhq.com"] }].filter(x => x.name.toLowerCase().includes(input.query.toLowerCase())) } }
+    : tool === "vault.said.record" ? (recorded.push(input), { data: { id: "i1" } }) : { error: { code: "no_such_tool" } };
+  assert.deepEqual(await resolveTags({ names: ["ghlapikey", "missing"], thread: "t1", said: "u1", call }),
+    [{ kind: "vault", id: "GHLapikey", name: "GHLapikey", hint: "token", hosts: ["services.leadconnectorhq.com"], note: null }]);
+  assert.deepEqual(recorded, [{ thread: "t1", said: "u1", kind: "use", to: ["GHLapikey"], what: "use #GHLapikey" }]);
+  assert.deepEqual(await resolveTags({ names: ["x"], thread: "t", said: "u", call: async () => { throw new Error("locked"); } }), []);
+});
+
+test("textHash and tagNote: a hash, and a note that is framed as data, names hosts, never a value, and is capped", () => {
   assert.match(textHash("hi"), /^[0-9a-f]{64}$/);
-  const n = MENTION_NOTE([{ name: "GHLapikey", hosts: ["a.test"] }]);
-  assert.match(n, /#GHLapikey \(on a\.test only\)/);
+  const n = tagNote([{ kind: "vault", name: "GHLapikey", hosts: ["a.test"], note: null }]);
+  assert.match(n, /#GHLapikey \(vault\): let you use on a\.test only/);
   assert.match(n, /never see its value/);
+  assert.match(n, /data, not instructions/);
+  assert.ok(tagNote([{ kind: "github", name: "x", hosts: [], note: "y".repeat(20000) }]).length < NOTE_MAX + 200);
 });

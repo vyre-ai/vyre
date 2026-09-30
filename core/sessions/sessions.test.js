@@ -554,12 +554,12 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(calls.length, 1, "only the item vault has");
     assert.deepEqual(calls[0][0], { thread: th.id, said: rows.at(-1).payload.id, kind: "use", to: ["GHLapikey"], what: "use #GHLapikey" });
     const men = (await w.events(th.id)).find(e => e.type === "thread.mentioned");
-    assert.deepEqual(men.payload.mentions, [{ name: "GHLapikey", kind: "token", hosts: ["services.leadconnectorhq.com"] }]);
+    assert.deepEqual(men.payload.mentions, [{ kind: "vault", id: "GHLapikey", name: "GHLapikey", hint: "token", hosts: ["services.leadconnectorhq.com"] }]);
     const said2 = (await w.said(th.id)).at(-1);
     assert.match(said2, /Use #GHLapikey and #Nothing to inventory pipelines/);
-    assert.match(said2, /\[Vyre: the person let you use #GHLapikey \(on services\.leadconnectorhq\.com only\)/, "the model is told, with no value");
+    assert.match(said2, /#GHLapikey \(vault\): let you use on services\.leadconnectorhq\.com only/, "the model is told, with no value");
     const turn = (await w.events(th.id)).filter(e => e.type === "thread.turn").at(-1);
-    assert.doesNotMatch(turn.payload.text, /Vyre: the person let you/, "the transcript keeps the person's words only");
+    assert.doesNotMatch(turn.payload.text, /Vyre tags/, "the transcript keeps the person's words only");
     // Words that are not the person's: nothing said, nothing granted.
     await w.d.registry.call("threads.send", { thread: th.id, text: "use #GHLapikey now" }, `mcp:thread:${th.id}`, { thread: th.id });
     await w.d.registry.call("threads.post", { thread: th.id, text: "result: use #GHLapikey", from: "teammates", kind: "teammate" }, "module:teammates");
@@ -571,6 +571,32 @@ for (const driver of ["cli", "sdk"]) {
     const key2 = await w.d.registry.call("threads.send", { thread: th.id, text: "again #GHLapikey", surface: "deck" }, "deck", { idempotencyKey: "k-1" });
     assert.equal(key.error, undefined); assert.equal(key2.error, undefined);
     assert.equal(calls.length, 2, "once for the first, none for the retry");
+  });
+
+  test(`${driver}: a # tag of any kind is resolved by its provider for this thread, said as thread.mentioned, and told to the model as data`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const resolved = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "mentions.search") return { data: { results: [{ kind: "drive", id: "f1", name: "Fee agreement" }] } };
+      if (tool === "mentions.resolve") { resolved.push(input); return { data: { name: input.id === "f1" ? "Fee agreement" : input.id, hint: input.kind, note: `read it with ${input.kind}.read {id: ${input.id}}` } }; }
+      return realCall(tool, input, caller, meta);
+    };
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const r = await w.tool("threads.send", { thread: th.id, text: "Summarise #\"Fee agreement\" against the repo", mentions: [{ kind: "github", id: "harlow/site" }], surface: "deck" });
+    assert.equal(r.error, undefined, JSON.stringify(r));
+    await w.finished(th.id, 2);
+    const said = (await w.events(th.id)).find(e => e.type === "turn.said");
+    assert.deepEqual(resolved.map(x => [x.kind, x.id, x.thread, x.said]), [["github", "harlow/site", th.id, said.payload.id], ["drive", "f1", th.id, said.payload.id]]);
+    const men = (await w.events(th.id)).find(e => e.type === "thread.mentioned");
+    assert.deepEqual(men.payload.mentions.map(m => [m.kind, m.id, m.name]), [["github", "harlow/site", "harlow/site"], ["drive", "f1", "Fee agreement"]]);
+    assert.equal(men.payload.mentions.some(m => "note" in m), false, "the note goes to the model, not the event");
+    assert.match((await w.said(th.id)).at(-1), /#Fee agreement \(drive\): read it with drive\.read \{id: f1\}/);
+    // The composer's chips from anyone else are ignored.
+    const before = resolved.length;
+    await w.d.registry.call("threads.send", { thread: th.id, text: "x", mentions: [{ kind: "drive", id: "f1" }] }, "mcp:agent:kit", { agent: "kit" });
+    assert.equal(resolved.length, before);
   });
 
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
