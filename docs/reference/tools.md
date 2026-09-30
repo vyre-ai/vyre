@@ -6522,7 +6522,6 @@ Type into a thread. Only the surface holding its lease may type; a free thread i
   - `text` string, required
   - `thread` string, required
   - `effort` one of "low", "medium", "high", "xhigh", "max": Set this effort first (as threads.effort). A person's surface only.
-  - `forPerson` boolean: First-party agents module only: the words are for a person's own ask, so the daily spend cap does not hold them. From anyone else it is ignored.
   - `images` list of object: Pasted images, base64: at most 5, 5 MB each.
     - `data` string, required
     - `media_type` one of "image/png", "image/jpeg", "image/gif", "image/webp", required

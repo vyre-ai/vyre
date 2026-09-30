@@ -344,10 +344,12 @@ export default {
             if (c && c.capped) await ctx.call("threads.notice", { thread, text: `The daily spend cap is reached ($${Number(c.spent).toFixed(2)} of $${Number(c.cap).toFixed(2)}). You asked, so this went through. To change the cap: vyre spend raise ${c.scope || "claude"} <dollars>` });
           } catch { /* no spend module: no cap to tell */ }
         };
+        // A person's ask is relayed as that person (threads.send hears it as their own turn, and the daily spend cap, which holds
+        // what agents and modules start on their own, does not hold it); any other caller's goes as this module and stays held.
         const sendWords = async thread => {
           await capNotice(thread);
-          if (!tagged) return use("threads.send", { thread, text: i.text, surface, ...(byPerson ? { forPerson: true } : {}) });
-          const r = await ctx.call("threads.send", { thread, text: i.text, surface, mentions: i.mentions || [], pasted: i.pasted || [], ...(byPerson ? { forPerson: true } : {}) }, { as: String(caller) });
+          if (!byPerson) return use("threads.send", { thread, text: i.text, surface });
+          const r = await ctx.call("threads.send", { thread, text: i.text, surface, ...(tagged ? { mentions: i.mentions || [], pasted: i.pasted || [] } : {}) }, { as: String(caller) });
           if (r.error) throw new Error(r.error.message);
           return r.data;
         };

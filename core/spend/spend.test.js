@@ -175,13 +175,3 @@ test("spend: the all-providers cap is the first setting in Settings, Spend", asy
   assert.equal(describe({ ...m.settings[0], module: "spend", levels: ["account"] }).hidden, true);
   assert.equal(describe({ key: "x.y", module: "x", label: "y", type: "bool", levels: ["account"], apply: "live" }).hidden, undefined);
 });
-
-test("spend: forPerson exempts a send from the cap only when the first-party agents module says it", async () => {
-  const { forPersonAsk } = await import("../switchboard/index.js");
-  assert.equal(forPersonAsk({ forPerson: true }, "module:agents", true), true);
-  for (const [caller, fp] of [["mcp:agent:juno", true], ["module:agents", false], ["module:agents", undefined], ["module:bakery", true], ["cli", true], ["hook", true]]) {
-    assert.equal(forPersonAsk({ forPerson: true }, caller, fp), false, `${caller} ${fp}`);
-  }
-  assert.equal(forPersonAsk({}, "module:agents", true), false);
-  assert.equal(forPersonAsk({ forPerson: "yes" }, "module:agents", true), false);
-});
