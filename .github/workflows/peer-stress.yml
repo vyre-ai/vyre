@@ -1,4 +1,4 @@
-# The caller check under load: the fire-and-forget forger test, 250 times, with busy loops on every
+# The caller check under load: the fire-and-forget forger tests, 5 shards of 50 runs each (250 in all), with busy loops on every
 # core, on Linux and on a Mac. One forger reaching a person's tool fails the run. Throwaway branches
 # named work/ci-peer-* only.
 name: peer-stress
@@ -14,8 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        shard: [1, 2, 3, 4, 5]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 45
     env:
       VYRE_NO_DIALOGS: "1"
     steps:
@@ -29,9 +30,9 @@ jobs:
           n=$( (nproc || sysctl -n hw.ncpu) 2>/dev/null )
           for i in $(seq 1 $((n * 2))); do nice -n 10 sh -c 'while :; do :; done' & done
           fails=0
-          for i in $(seq 1 250); do
+          for i in $(seq 1 50); do
             out=$(node --test --test-name-pattern="sends and exits|200 forgers|closed before or during" test/peer-race.test.js 2>&1) || true
             echo "$out" | grep -q "^ℹ fail 0" || { fails=$((fails+1)); echo "RUN $i FAILED"; echo "$out" | grep -vE "Experimental|trace-warn" | tail -40; }
           done
-          echo "fails=$fails of 250"
+          echo "fails=$fails of 50 (shard ${{ matrix.shard }}, ${{ matrix.os }})"
           test "$fails" = 0
