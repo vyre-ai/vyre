@@ -308,10 +308,17 @@ export async function scanOutgoing({ repoDir, branch, defaultBranch }) {
  * @returns {Promise<string | null>} why not, or null when the destination is exactly `url`
  */
 async function pushTargetProblem(repoDir, url) {
-  const rules = await gitAsync(repoDir, ["config", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$"]);
-  for (const line of rules.ok ? rules.stdout.split("\n").filter(Boolean) : []) {
-    const value = line.slice(line.indexOf(" ") + 1);
-    if (value && url.startsWith(value)) return "this repo's git config rewrites github.com addresses (url.*.insteadOf), so the token would not go where GitHub says";
+  // The repo's own config (local and per-worktree scopes: the ones a shell in the repo can write;
+  // the person's global config is not read at all) may not carry anything that reaches the
+  // network path: http.* (curloptResolve, sslCAInfo, proxy, extraHeader...), credential.*, url.*
+  // rewrites, protocol.*, core.gitProxy, core.askPass.
+  for (const scope of ["--local", "--worktree"]) {
+    const cfg = await gitAsync(repoDir, ["config", scope, "--name-only", "--get-regexp", "."]);
+    for (const key of cfg.ok ? cfg.stdout.split("\n").map(k => k.trim().toLowerCase()).filter(Boolean) : []) {
+      if (/^(https?|credential|url|protocol)\./.test(key) || key === "core.gitproxy" || key === "core.askpass") {
+        return `this repo's own git config sets ${key.replace(/^(url\.).*(\.[a-z]+)$/, "$1...$2")}, which could send the token somewhere other than GitHub; remove it and try again`;
+      }
+    }
   }
   const got = await gitAsync(repoDir, ["ls-remote", "--get-url", url]);
   if (!got.ok || got.stdout.trim() !== url) return "the push address does not resolve to the project's own GitHub repo";
@@ -320,7 +327,7 @@ async function pushTargetProblem(repoDir, url) {
 
 /** Config that could send a github.com connection through someone else, forced off for a push. */
 const NO_DETOURS = ["-c", "http.proxy=", "-c", "https.proxy=", "-c", "http.https://github.com/.proxy=", "-c", "http.sslVerify=true",
-  "-c", "credential.https://github.com.helper="];
+  "-c", "http.curloptResolve=", "-c", "http.sslCAInfo=", "-c", "http.sslCAPath=", "-c", "http.extraHeader=", "-c", "credential.https://github.com.helper="];
 
 /**
  * Push a session's own branch, and only that branch, to the same name on the project's own repo

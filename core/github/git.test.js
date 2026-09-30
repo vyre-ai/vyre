@@ -387,5 +387,11 @@ test("pushSession: the destination is the project's recorded repo, never .git/co
     await assert.rejects(pushSession({ repoDir, session: "tamper1", defaultBranch: "main", token: "not-a-real-token", fullName: "alex/harlow", base: DEAD }), e => e.code === "remote_changed");
     plainGit(repoDir, ["config", "--unset", `url.${evil}/.${key}`]);
   }
+  // Config that redirects or re-trusts the TLS connection itself is refused too.
+  for (const [key, value] of [["http.curloptResolve", "github.com:443:127.0.0.1"], ["http.https://github.com/.sslCAInfo", "/tmp/x.pem"], ["http.proxy", "http://127.0.0.1:1"], ["credential.helper", "store"], ["core.gitProxy", "x"]]) {
+    plainGit(repoDir, ["config", "--local", key, value]);
+    await assert.rejects(pushSession({ repoDir, session: "tamper1", defaultBranch: "main", token: "not-a-real-token", fullName: "alex/harlow", base: DEAD }), e => e.code === "remote_changed", key);
+    plainGit(repoDir, ["config", "--local", "--unset", key]);
+  }
   await assert.rejects(pushSession({ repoDir, session: "tamper1", defaultBranch: "main", token: "t", fullName: "../evil", base: DEAD }), e => e.code === "bad_input");
 });
