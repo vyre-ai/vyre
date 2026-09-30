@@ -75,7 +75,7 @@ const defaults = o => ({
  * One WebSocket to the relay and one handshake with the box.
  * @returns {Promise<{ channel: import("./channel.js").Channel, reply: any, ws: any }>}
  */
-function openChannel(o) {
+export function openChannel(o) {
   return new Promise((resolve, reject) => {
     const WS = o.WebSocket;
     if (!WS) { reject(new Error("no WebSocket here: pass one")); return; }

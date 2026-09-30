@@ -43,7 +43,7 @@ lead's 0.2 BUILD GO.
 
 ## Doing
 
-- Setup page slice 1 (start, install with streamed progress, found with check words) is built in site/setup; next: open the setup channel (setupHello over a Noise connection, needs a connectSetup helper: tailnet's test has one inline in core/relay/setup.test.js) for "Found and named" (names.check/names.claim), then Tailscale, AI sign-in, devices, claim. Mac-as-server choice waits for anywhere.
+- Setup page slices 1 and 2 (start, install with streamed progress, found with check words, open the setup channel, choose and claim the address, recovery code shown once) are built in site/setup. Next: the Tailscale step (names.connect and network.tailscale.* over the channel, reachability probe), AI sign-in (sessions' tool, open), devices/Wink, arrive and claim. Own-domain naming (names.domain.check) and the Mac-as-server choice are not in yet.
 - Export v2 (project files by default, streamed, resumable, size up front, --skip-projects) built; see CHANGELOG. Open: a Mac has no /work, so its project folders need teammates/projects to name them (pass --work DIR for now); a Settings toggle for the skip flag belongs to the Settings card (step 10).
 - Reviewer-2's HOLD and 4 MEDIUMs on fbff6d47/fc2723cf fixed; awaiting recheck.
 - Install script v2 core is built and tested (10 new tests, look tests green): see the CHANGELOG entry.

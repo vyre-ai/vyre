@@ -7,7 +7,7 @@ import crypto from "node:crypto";
 import * as client from "../../relay/client/setup.js";
 import { createRelay } from "../../relay/node/server.js";
 import * as wire from "../../core/relay/wire.js";
-import { createFlow, MESSAGES, MAX_LINES } from "./flow.js";
+import { createFlow, MESSAGES, MAX_LINES, suggestName } from "./flow.js";
 import { render, h } from "./ui.js";
 
 /** A relay on a free port, and the install script's side of the mailbox (the same POSTs install-box.sh makes). */
@@ -74,7 +74,7 @@ test("flow: a forged 'Done, open https://...' line is shown as text and moves no
   // The screen: text nodes only.
   const doc = new FakeDoc();
   const root = doc.createElement("main");
-  render(flow.state, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions: { begin() {}, copy() {} } });
+  render(flow.state, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions: { begin() {}, copy() {}, setName() {}, claim() {} } });
   const text = root.textContent;
   assert.ok(text.includes("Open https://evil.example/claim?c=1 to finish"), "shown as words");
   assert.ok(text.includes("<img src=x onerror=alert(1)><a href=\"https://evil.example\">Continue</a>"), "markup is shown, not made");
@@ -138,6 +138,118 @@ test("flow: the lines kept are capped, and each is cut to a sane length", async 
   flow.stop();
 });
 
+/** A fake box channel: names.check answers by a rule, names.claim by another; every call is recorded. */
+function fakeBox({ check, claim } = {}) {
+  const calls = [];
+  const ch = {
+    calls, closed: false,
+    async call(tool, input) {
+      calls.push([tool, input]);
+      if (tool === "names.check") return (check || (n => ({ name: n, valid: true, available: true, why: null, address: `${n}.vyre.run` })))(input.name);
+      if (tool === "names.claim") return (claim || (n => ({ phase: "dns", address: `https://${n}.vyre.run`, recoveryCode: "abcd-efgh-jklm-npqr-stuv-wxyz-23" })))(input.name);
+      throw new Error("no such tool");
+    },
+    close() { ch.closed = true; },
+  };
+  return ch;
+}
+/** A flow whose box offer appears at once and whose connection is `box`. */
+async function foundFlow(t, box, extra = {}) {
+  const w = await world(t);
+  const flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => { if (extra.connectFails) throw new Error("no"); return box; }, ...extra.flow });
+  await flow.begin();
+  await until(() => flow.state.stage === "found");
+  return flow;
+}
+
+test("naming: a first name is guessed from the server's name and checked live, and only the newest answer counts", async t => {
+  assert.equal(suggestName("Harlow Legal server"), "harlow-legal-server");
+  assert.equal(suggestName("  Northwind's Bakery!! "), "northwind-s-bakery");
+  assert.equal(suggestName("!!!"), "");
+  const box = fakeBox({ check: n => ({ name: n, valid: true, available: n !== "taken", why: n === "taken" ? "someone else has that name" : null, address: `${n}.vyre.run` }) });
+  const flow = await foundFlow(t, box);
+  await until(() => flow.state.channel === "ready" && flow.state.naming.check);
+  assert.equal(flow.state.naming.input, "harlow-legal-server");
+  assert.equal(flow.state.naming.check.available, true);
+  // typing fast: three keystrokes, one check, and it is for the last one
+  const before = box.calls.length;
+  flow.setName("t"); flow.setName("ta"); flow.setName("taken");
+  await until(() => flow.state.naming.check && flow.state.naming.check.name === "taken");
+  assert.equal(box.calls.length - before, 1, "one check for three keystrokes");
+  assert.equal(flow.state.naming.check.available, false);
+  assert.equal(flow.state.naming.check.why, "someone else has that name");
+  await flow.claim();
+  assert.equal(flow.state.stage, "found", "an unavailable name is not claimed");
+  assert.ok(!box.calls.some(c => c[0] === "names.claim"));
+  flow.stop();
+  assert.equal(box.closed, true, "the connection is closed with the page");
+});
+
+test("naming: claiming a free name shows the recovery code once, and a refusal keeps the person on the form", async t => {
+  const box = fakeBox();
+  const flow = await foundFlow(t, box);
+  await until(() => flow.state.naming.check);
+  await flow.claim();
+  assert.equal(flow.state.stage, "named");
+  assert.equal(flow.state.named.name, "harlow-legal-server");
+  assert.equal(flow.state.named.address, "https://harlow-legal-server.vyre.run");
+  assert.equal(flow.state.named.recoveryCode, "abcd-efgh-jklm-npqr-stuv-wxyz-23");
+  flow.stop();
+
+  const bad = fakeBox({ claim: () => { throw Object.assign(new Error("that name was taken a moment ago"), { code: "conflict" }); } });
+  const f2 = await foundFlow(t, bad);
+  await until(() => f2.state.naming.check);
+  await f2.claim();
+  assert.equal(f2.state.stage, "found");
+  assert.equal(f2.state.naming.error, "that name was taken a moment ago");
+  assert.equal(f2.state.naming.claiming, false);
+  f2.stop();
+
+  const failed = fakeBox({ claim: () => ({ phase: "failed", why: "the directory would not answer" }) });
+  const f3 = await foundFlow(t, failed);
+  await until(() => f3.state.naming.check);
+  await f3.claim();
+  assert.equal(f3.state.stage, "found");
+  assert.equal(f3.state.naming.error, "the directory would not answer");
+  f3.stop();
+});
+
+test("naming: a connection that cannot be opened says so in plain words", async t => {
+  const flow = await foundFlow(t, fakeBox(), { connectFails: true });
+  await until(() => flow.state.channel === "failed");
+  assert.equal(flow.state.error.message, MESSAGES.connect);
+  flow.stop();
+});
+
+test("screen: the name field keeps its element (and so its caret) while progress lines arrive, and the claim button follows the check", async t => {
+  const box = fakeBox({ check: n => ({ name: n, valid: n.length > 2, available: n.length > 2, why: n.length > 2 ? null : "too short", address: `${n}.vyre.run` }) });
+  const w = await world(t);
+  const doc = new FakeDoc();
+  const root = doc.createElement("main");
+  const typed = [];
+  const actions = { begin() {}, copy() {}, setName: x => typed.push(x), claim() {} };
+  const flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box,
+    onChange: s => render(s, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions }) });
+  await flow.begin();
+  await until(() => flow.state.naming.check);
+  const input = () => root.all().find(e => e.tag === "input");
+  const claimBtn = () => root.all().find(e => e.attrs["data-role"] === "claim");
+  const first = input();
+  assert.ok(first, "the form is there");
+  assert.equal(claimBtn().attrs.disabled, undefined, "a free name can be claimed");
+  await w.post(flow.state.code, "a late progress line", 0);
+  await until(() => flow.state.lines.length === 1);
+  assert.equal(input(), first, "the same input element after a progress line");
+  first.listeners.input({ currentTarget: { value: "ab" } });
+  assert.deepEqual(typed, ["ab"]);
+  await flow.setName("ab");
+  await until(() => flow.state.naming.check && flow.state.naming.check.name === "ab");
+  assert.equal(input(), first, "the same input element after a check");
+  assert.equal(claimBtn().attrs.disabled, "disabled", "a name that is not free cannot be claimed");
+  assert.ok(root.textContent.includes("too short"));
+  flow.stop();
+});
+
 // ---- a DOM just big enough to check what the screen makes ----
 class FakeEl {
   constructor(tag, doc) { this.tag = tag; this.doc = doc; this.attrs = {}; this.children = []; this.text = null; this.listeners = {}; }
@@ -146,11 +258,13 @@ class FakeEl {
   appendChild(c) { this.children.push(c); return c; }
   replaceChildren(...c) { this.children = c; }
   addEventListener(n, f) { this.listeners[n] = f; }
+  removeAttribute(k) { delete this.attrs[k]; }
   querySelector(sel) { return this.all().find(e => e.tag === sel) || null; }
   focus() {}
   all() { return this.children.flatMap(c => c instanceof FakeEl ? [c, ...c.all()] : []); }
   get textContent() { return this.children.map(c => (c instanceof FakeEl ? c.textContent : c.value)).join(" "); }
   set innerHTML(_) { this.doc.innerHtmlWrites++; }
+  set textContent(v) { this.children = [{ value: String(v) }]; }
 }
 class FakeDoc {
   constructor() { this.innerHtmlWrites = 0; }
@@ -171,5 +285,5 @@ test("site: the relay client copied the way build-site.sh does it loads on its o
   for (const name of ["createSetupKey", "setupCode", "resolveSetup", "setupWords", "mailboxReader"]) assert.equal(typeof m[name], "function", name);
   // and the page's own files import nothing at all except the client (page.js) and each other
   const page = fs.readFileSync(path.join(path.dirname(url.fileURLToPath(import.meta.url)), "page.js"), "utf8");
-  assert.deepEqual([...page.matchAll(/^import .* from "([^"]+)"/gm)].map(x => x[1]).sort(), ["./flow.js", "./relay/setup.js", "./ui.js"]);
+  assert.deepEqual([...page.matchAll(/^import .* from "([^"]+)"/gm)].map(x => x[1]).sort(), ["./box.js", "./flow.js", "./relay/bytes.js", "./relay/client.js", "./relay/setup.js", "./relay/webcrypto.js", "./ui.js"]);
 });
