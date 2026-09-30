@@ -34,9 +34,16 @@ Never the test box (now the user's real server) and never the user's Mac. Tests 
 - 30 Sep: stage/0.2 cut from origin/main 9381ab15, mirrored as work/stage-0.2.
 - 30 Sep: the platform test merge (work/platform-merge 3e1eef47) failed the full CI suite: 23 tests, where the default-deny for added modules breaks home-installed fixture modules. It is not landed.
 
+- 30 Sep: spikes on GitHub hosted runners (release-spike.yml, run 36659672015, all green):
+  - **I1:** box/Dockerfile builds natively on linux/arm64 (ubuntu-24.04-arm) in 42 s uncached, 912 MB, and boots healthy. Node 22 and Claude Code 2.1.285 run on aarch64.
+  - **S10:** the computer image builds on arm64 in 76 s, 1.2 GB. Debian's Chromium 154 runs headless.
+  - **I3:** keyless cosign works. A box verifies with only a pinned cosign binary (v2.5.2, checksum-checked) against the release workflow's identity; a wrong identity and an unsigned image are both refused; one verify takes 264 ms online. But the binary is 127 MB, too big to fetch per box. Plan: verify from inside the running image on updates, and on a fresh install use the pinned cosign container by digest.
+  - **IM1:** with the new image and compose topology, account uid 2000 can't read 2001's HOME, write into it, or read its /proc environ (nor can vyre-agent). The watchers' uid 3000 is refused to 1.1.1.1, a 100.x address, 127.0.0.1 and ::1, while uids 1000 and 2000 still connect. Caveat: tailscaled wasn't logged in, so the rule order under a live tailnet is checked again on e2e2's matrix.
+- 30 Sep: box/Dockerfile and compose.yml have the per-account uids 2000-2063 (0700 HOMEs, vyre-accounts volume) and the uid 3000 OUTPUT REJECT (158b7dfa).
+
 ## Doing
 
-- The release.yml v2 design, and spikes I1 (arm64 build) and I3 (cosign verify on a box).
+- release.yml v2 on work/integrator: buildx multi-arch, push by digest, cosign sign and attest, minisign, release.json v2. Dry-run first.
 
 ## Next
 
