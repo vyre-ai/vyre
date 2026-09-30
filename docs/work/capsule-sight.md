@@ -132,6 +132,22 @@ steps 1-3 first (outward classifier, Gate wiring, the one grant), then deep Chro
   extension therefore do not exist yet. Fix in the next push: stage logging to stderr, 120 s per stage, 240 s for the bench,
   5 s on closing the bridge and fixture, a 400 s watchdog that writes partial results, 8 min step timeout.
 
+### Standalone vyre-chrome (30 Sep, user's decision: Chrome ships first, no Vyre server)
+- local/hands-chrome-mac/standalone/: runtime.js (hosts the SAME chrome module with a small ctx: no Gate, held sends
+  return an id and chrome_send does them, so Claude Code's own permission is the approval), mcp.js (stdio JSON-RPC, tool
+  names with underscores), cli.mjs (install, uninstall [--purge], mcp, status, report, logs on|off|path|shots), trace.js
+  (JSONL per session in ~/.vyre-chrome/logs, redaction, 100 MB cap, report), build-release.mjs (folder + tar.gz + sha256,
+  imports checked to stay inside the package), README.md, GHL-PLAYBOOK.md, harness/real.mjs (real Chrome + real extension +
+  the built package over MCP), workflow .github/workflows/chrome-standalone.yml.
+- caller.js replaces the module's only import of core/modules (parity test). Native host launchers read a sock-path file.
+- Fixed on the way: the module treated "no_such_tool" from hands.indicator as a failure (vyred without hands); a batch of
+  fixture-side bugs in the old fuzz test; stand-in Gate in module.test.js is first party (stage/0.2 default-deny).
+- GHL hardening (subagent, 2f7d074c): waiting helper, popup allowlist, stale retries, fuzzy-but-safe labels, verified saves
+  (ghl.save), flows, trace + failure DOM snippet in every result.
+- Tests: 390 pass locally in chrome/hands/docs/boundaries; CI on the runners is what proves real Chrome and is NOT read yet:
+  needs a push of work/capsule-sight (runs chrome-spike.yml and chrome-standalone.yml).
+- Release: node local/hands-chrome-mac/standalone/build-release.mjs --out dist (also the `package` job's artifact).
+
 ### Doing
 - Waiting on a push of work/capsule-sight to run chrome-spike.yml on the runners (now includes spike/harness/real.mjs: the real extension + host + bridge, the bench, stop-halts-batch and blind-refused checks).
 - Esc: hands.indicator (new hands tool) raises the shared pill before every Chrome act, and the hands overlay's stop (Esc or double Control) stops Chrome control through oversight.
