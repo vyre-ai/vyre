@@ -40,7 +40,7 @@ async function mk(t) {
     return { error: { code: "no_such_tool", message: name } };
   };
   const said = saidTools.register({ vault: v, internal });
-  register({ vault: v, tool, internal, call, said, deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport: async r => { net.calls.push(`${r.method} ${r.url.pathname}`); return json(200, { value: [{ subject: "Harlow Legal check-in" }] }); } } });
+  register({ vault: v, tool, internal, call, said, deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport: async r => { net.last = r.headers; net.calls.push(`${r.method} ${r.url.pathname}`); return json(200, { value: [{ subject: "Harlow Legal check-in" }] }); } } });
   const secret = fake("secret");
   await v.put({ name: "microsoft", kind: "api-credential", fields: { config: JSON.stringify(CONFIG), secret } }, "cli");
   const ask = (input, caller) => tools.get("vault.request").run({ credential: "microsoft", ...input }, { caller });
@@ -141,4 +141,19 @@ test("readers can be written and widened only from a person's surface, by put, u
   assert.match((await reg("vault.edit", { name: "microsoft", fields: { config: wide } }, "cli")).error?.message || "", /never handed out|api-credential/);
   assert.ok((await reg("vault.put", { name: "microsoft", kind: "api-credential", fields: { config: wide, secret } }, "cli")).data);
   assert.equal(await versions(), 2);
+});
+
+test("replacing a calendar credential's key keeps its readers, so the next-meeting line survives a key rotation", async t => {
+  const m = await mk(t);
+  const read = () => m.ask({ method: "GET", url: "https://graph.microsoft.com/v1.0/me/calendarView" }, "module:connectors");
+  assert.equal((await read()).status, 200);
+  // the person replaces only the key (Replace the key): no config in the put
+  const newKey = fake("rotated");
+  await m.v.put({ name: "microsoft", kind: "api-credential", fields: { secret: newKey } }, "cli");
+  assert.equal((await read()).status, 200, "the reader still reads its calendar with no grant");
+  assert.equal(m.net.last.authorization, `Bearer ${newKey}`, "and with the new key");
+  await assert.rejects(m.ask({ method: "GET", url: "https://graph.microsoft.com/v1.0/me/messages" }, "module:connectors"), /may only read/, "the mailbox stays closed to it");
+  await assert.rejects(m.ask({ method: "GET", url: "https://elsewhere.example.test/x" }, "cli"), /host/i, "the hosts came along too");
+  // a module cannot replace the key (and so cannot reset the readers)
+  await assert.rejects(m.v.put({ name: "microsoft", kind: "api-credential", fields: { secret: fake("x") } }, "module:connectors"), /config|your own surfaces/);
 });
