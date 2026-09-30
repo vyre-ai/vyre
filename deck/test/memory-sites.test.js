@@ -8,9 +8,7 @@ const doc = /** @type {any} */ (install());
 doc.importNode = n => n;
 doc.createDocumentFragment = () => new /** @type {any} */ (globalThis).Element("fragment");
 Object.assign(globalThis, { dispatchEvent: () => true, DOMParser: class { parseFromString() { const E = /** @type {any} */ (globalThis).Element; const svg = new E("svg"); svg.append(new E("circle")); return { documentElement: svg }; } } });
-const store = new Map();
-Object.defineProperty(globalThis, "localStorage", { value: { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) }, configurable: true });
-const { default: sites, sitesOf, countsLine, ago, hostOf } = await import("../views/memory-sites.js");
+const { default: sites, sitesOf, countsLine, ago, hostOf, forgottenOf } = await import("../views/memory-sites.js");
 
 const LIST = { sites: [
   { key: "https://portal.northwind.example", kind: "origin", names: ["Northwind portal"], family: null, rev: 4, updated: Date.now() - 3600e3, verified: new Date(Date.now() - 86400e3).toISOString(), counts: { controls: 12, api: 0, flows: 3, notes: 2, frames: 1 }, used_to_work: 1 },
@@ -27,7 +25,6 @@ function world(answers = {}) {
 const click = el => el.dispatchEvent(new /** @type {any} */ (globalThis).Event("click"));
 const settle = () => new Promise(r => setTimeout(r, 10));
 async function mount(answers) {
-  store.clear();
   const w = world({ "memory.site.list": LIST, ...answers });
   const root = doc.createElement("div");
   const view = await sites(root, { alive: () => true }, { attempt: w.attempt });
@@ -59,8 +56,8 @@ test("the list shows each site with its counts, when it was checked, and what us
   assert.deepEqual(m.calls.map(c => c.tool), ["memory.site.list"]);
 });
 
-test("What it knows reads memory.site.detail and draws its rows; the row's Forget asks once, with no undo promised", async () => {
-  const m = await mount({ "memory.site.detail": DETAIL, "memory.site.forget": { forgotten: 1 } });
+test("What it knows reads memory.site.detail and draws its rows in the design's order with their meta", async () => {
+  const m = await mount({ "memory.site.detail": DETAIL });
   const key = "https://portal.northwind.example";
   click($(row(m.root, key), "[data-act=details]")); await settle();
   assert.deepEqual(m.of("memory.site.detail")[0].input, { key });
@@ -68,22 +65,31 @@ test("What it knows reads memory.site.detail and draws its rows; the row's Forge
   assert.match(t, /Sign in button on \/login.*checked today/);
   assert.match(t, /Export on \/reports.*stopped working/);
   assert.match(t, /Download a report.*5 runs, 0 failed/);
-  assert.deepEqual($$(row(m.root, key), ".ms-part").map(p => p.getAttribute("data-part")), ["flows", "controls"], "groups in the design's order, empty ones left out");
-  assert.match(t, /cannot be undone/);
-  click($(row(m.root, key), "[data-item=c1] [data-act=item-forget]"));
-  assert.equal(m.of("memory.site.forget").length, 0, "one tap only asks");
-  assert.match(text(row(m.root, key)), /Forget this\? It cannot be undone\./);
-  click($(row(m.root, key), "[data-act=item-no]"));
-  assert.equal(m.of("memory.site.forget").length, 0);
-  click($(row(m.root, key), "[data-item=c1] [data-act=item-forget]"));
-  click($(row(m.root, key), "[data-act=item-yes]")); await settle();
+  assert.deepEqual($$(row(m.root, key), ".ms-part").map(p => p.getAttribute("data-part")), ["flows", "controls"], "empty groups left out");
+  assert.doesNotMatch(t, /cannot be undone/);
+});
+
+test("Forget a row: no confirmation, it becomes one Forgot line in its place, and Undo calls memory.site.restore {key, part, id}", async () => {
+  let gone = false;
+  const detail = () => (gone ? { ...DETAIL, parts: { ...DETAIL.parts, controls: DETAIL.parts.controls.slice(1) } } : DETAIL);
+  const m = await mount({ "memory.site.detail": detail, "memory.site.forget": () => { gone = true; return { forgotten: 1, undo_ms: 86400000 }; },
+    "memory.site.restore": () => { gone = false; return { restored: 1 }; } });
+  const key = "https://portal.northwind.example";
+  click($(row(m.root, key), "[data-act=details]")); await settle();
+  click($(row(m.root, key), "[data-item=c1] [data-act=item-forget]")); await settle();
   assert.deepEqual(m.of("memory.site.forget")[0].input, { key, part: "controls", id: "c1" });
+  const line = $(row(m.root, key), "[data-item=c1]");
+  assert.match(text(line), /Forgot Sign in button on \/login\./, "one line where the row was");
+  assert.equal($(line, "[data-act=item-forget]"), null);
+  click($(line, "[data-act=undo]")); await settle();
+  assert.deepEqual(m.of("memory.site.restore")[0].input, { key, part: "controls", id: "c1" });
+  assert.ok($(row(m.root, key), "[data-item=c1] [data-act=item-forget]"), "back as its row");
 });
 
 test("Forget a site: memory.site.forget {key}, the site leaves the list, and a line with Undo stays; Undo calls memory.site.restore", async () => {
   let forgotten = false;
   const m = await mount({ "memory.site.list": () => (forgotten ? { sites: [LIST.sites[1], LIST.sites[2]] } : LIST), "memory.site.forget": () => { forgotten = true; return { forgotten: 1, undo_ms: 86400000 }; },
-    "memory.site.restore": () => { forgotten = false; return { restored: true }; } });
+    "memory.site.restore": () => { forgotten = false; return { restored: 1 }; } });
   const key = "https://portal.northwind.example";
   click($(row(m.root, key), "[data-act=forget]")); await settle();
   assert.deepEqual(m.of("memory.site.forget")[0].input, { key });
@@ -96,12 +102,25 @@ test("Forget a site: memory.site.forget {key}, the site leaves the list, and a l
   assert.equal($(m.root, "[data-kept]"), null);
 });
 
-test("Undo outlives a reload: a site forgotten in this browser in the last day is offered again", async () => {
-  const m = await mount({ "memory.site.list": { sites: [LIST.sites[1], LIST.sites[2]] } });
-  store.set("vyre.sites.forgotten", JSON.stringify([{ key: "https://portal.northwind.example", name: "Northwind portal", at: Date.now() - 3600e3 }, { key: "https://old.example", name: "Old", at: Date.now() - 30 * 3600e3 }]));
-  const root = doc.createElement("div");
-  await sites(root, { alive: () => true }, { attempt: m.attempt });
-  assert.deepEqual($$(root, "[data-kept]").map(e => e.getAttribute("data-kept")), ["https://portal.northwind.example"], "the day-old one is gone");
+test("Undo lives on the box: what it lists as forgotten shows as Forgot lines at the top, for a site and for a row, and Undo restores it", async () => {
+  const forgotten = [{ key: "https://old.example", name: "Old shop", at: Date.now() - 3600e3, until: Date.now() + 23 * 3600e3 },
+    { key: "https://portal.northwind.example", name: "Northwind portal", part: "controls", id: "c9", label: "Export on /reports", at: Date.now() - 600e3, until: Date.now() + 23 * 3600e3 }];
+  assert.equal(forgottenOf({ forgotten }).length, 2);
+  const m = await mount({ "memory.site.list": { sites: LIST.sites, forgotten }, "memory.site.restore": { restored: 1 } });
+  const lines = $$(m.root, ".ms-kept [data-kept]");
+  assert.equal(lines.length, 2);
+  assert.match(text(lines[0]), /Forgot Old shop\. Vyre will learn it again only if you use it\./);
+  assert.match(text(lines[1]), /Forgot Export on \/reports from Northwind portal\./);
+  click($(lines[1], "[data-act=undo]")); await settle();
+  assert.deepEqual(m.of("memory.site.restore")[0].input, { key: "https://portal.northwind.example", part: "controls", id: "c9" });
+  click($(m.root, ".ms-kept [data-kept] [data-act=undo]")); await settle();
+  assert.deepEqual(m.of("memory.site.restore")[1].input, { key: "https://old.example" });
+});
+
+test("a restore the box answers with 0 (after the day, or nothing forgotten) says it can no longer be brought back", async () => {
+  const m = await mount({ "memory.site.list": { sites: LIST.sites, forgotten: [{ key: "https://old.example", name: "Old shop", at: 1, until: 2 }] }, "memory.site.restore": { restored: 0 } });
+  click($(m.root, ".ms-kept [data-act=undo]")); await settle();
+  assert.match(text(m.root), /Old shop can no longer be brought back/);
 });
 
 test("Forget all asks once, then forgets every site, and Undo brings each back", async () => {

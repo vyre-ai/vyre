@@ -3,22 +3,24 @@
 // in: how a page is laid out, how to find its buttons, what its calls and flows do. Never a selector, a
 // value or a page's text: the box sends names, counts, how sure it is and when it last checked.
 //
-// One screen. The list (memory.site.list), a site's rows on request (memory.site.detail), and Forget:
-//   - a whole site: memory.site.forget {key}, then a line with Undo for 24 hours (memory.site.restore {key});
-//     the line is kept in this browser, so Undo is still there after a reload until the day is up.
-//   - Forget all: memory.site.forget {all: true}; Undo restores each site it took.
-//   - one item of a site: memory.site.forget {key, part, id}, after one "Forget?" tap. It has no undo
-//     (the box keeps only whole sites for a day), and the row says so before it is pressed.
-// "Wrong?" on an answer about a site is the ordinary memory.correct / memory.uncorrect path on the
-// answer itself; nothing here re-implements it. Nothing polls: it loads on open and after each action.
+// One screen. The list (memory.site.list), a site's rows on request (memory.site.detail), and Forget,
+// which never asks first because every Forget can be undone for 24 hours:
+//   - a whole site: memory.site.forget {key}; Undo is memory.site.restore {key}.
+//   - one row of a site: memory.site.forget {key, part, id}; Undo is memory.site.restore {key, part, id}.
+//   - Forget all: memory.site.forget {all: true}, after one "Forget all?" tap (the one place that asks);
+//     Undo restores each site it took.
+// Undo lives on the box (the tombstone), so it shows on any device and after any reload: the list answer's
+// `forgotten` entries ({ key, name, part?, id?, label?, at, until }) are drawn as "Forgot X. Undo" lines at
+// the top. A forget made on this screen leaves the same line in the place of the row or site it took.
+// A family asks once, with the count of sites it covers, since it touches several.
+// "Wrong?" on an answer about a site is the ordinary memory.correct / memory.uncorrect path on the answer
+// itself; nothing here re-implements it. Nothing polls: it loads on open and after each action.
 
 import { h, put, empty } from "../js/dom.js";
 import { attempt as apiAttempt } from "../js/api.js";
 import { plural } from "../js/fmt.js";
 import { icon } from "../js/icons.js";
 
-const DAY = 24 * 3600_000;
-const KEPT = "vyre.sites.forgotten";
 /** The part names memory.site.detail answers, in the order a person thinks of them. */
 export const PARTS = [["flows", "Flows"], ["controls", "Controls"], ["api", "API calls"], ["notes", "Notes"], ["frames", "Frames"]];
 
@@ -49,14 +51,11 @@ export function countsLine(c) {
 const errWords = (/** @type {any} */ e) => (e?.missing ? "Vyre Memory is not running on this box." : String(e?.message || e || "That did not go through."));
 const pct = (/** @type {any} */ n) => (typeof n === "number" ? `${Math.round(n * 100)}%` : "");
 
-/** Sites forgotten in this browser within the last day, for the Undo that outlives a reload. @returns {{ key: string, name: string, at: number }[]} */
-function keptRead() {
-  try {
-    const all = JSON.parse(localStorage.getItem(KEPT) || "[]");
-    return (Array.isArray(all) ? all : []).filter(x => x && typeof x.key === "string" && Date.now() - Number(x.at) < DAY);
-  } catch { return []; }
+/** The box's own list of what can still be brought back: [{ key, name, part?, id?, label?, at, until }], newest first. @param {any} d */
+export function forgottenOf(d) {
+  return (Array.isArray(d?.forgotten) ? d.forgotten : []).filter((/** @type {any} */ f) => f && typeof f.key === "string").map((/** @type {any} */ f) => ({
+    key: String(f.key), name: String(f.name || f.key), part: f.part ? String(f.part) : null, id: f.id != null ? String(f.id) : null, label: f.label ? String(f.label) : null, at: Number(f.at) || 0, until: Number(f.until) || 0 }));
 }
-function keptWrite(/** @type {{ key: string, name: string, at: number }[]} */ list) { try { localStorage.setItem(KEPT, JSON.stringify(list.slice(0, 50))); } catch { /* not kept: Undo lasts until this screen closes */ } }
 
 /**
  * @param {HTMLElement} root @param {{ alive: () => boolean, on?: (t: string, fn: (e: any) => void) => void }} ctx
@@ -67,8 +66,9 @@ export default async function sites(root, ctx, deps = {}) {
   let stopped = false;
   const alive = () => !stopped && ctx.alive();
   const st = { list: /** @type {ReturnType<typeof sitesOf>} */ ([]), error: /** @type {any} */ (null), open: "", detail: /** @type {Record<string, any>} */ ({}), busy: "",
-    sure: "", problem: /** @type {string|null} */ (null), kept: keptRead(), confirmAll: false, confirm: "",
-    /** Sites forgotten on this screen, kept in their row's place until it closes: key -> { name, site, at }. */ just: /** @type {Map<string, { name: string, site: any, at: number }>} */ (new Map()) };
+    problem: /** @type {string|null} */ (null), box: /** @type {ReturnType<typeof forgottenOf>} */ ([]), confirmAll: false, confirm: "",
+    /** Sites forgotten on this screen, held in their row's place: key -> { name, site, at }. */ just: /** @type {Map<string, { name: string, site: any, at: number }>} */ (new Map()),
+    /** Rows forgotten on this screen, held in their place in a site's detail: "key|part|id" -> { label, item, at }. */ justItem: /** @type {Map<string, { key: string, part: string, id: string, label: string, item: any, at: number }>} */ (new Map()) };
 
   const body = h("div", { class: "ml ml-pad ms" });
   put(root, body);
@@ -78,77 +78,90 @@ export default async function sites(root, ctx, deps = {}) {
     if (!alive()) return;
     st.error = r.error || null;
     st.list = r.error ? [] : sitesOf(r.data);
+    st.box = r.error ? [] : forgottenOf(r.data);
     // A site forgotten on this screen stays as its one line, in the place its row was.
     for (const [key, v] of st.just) if (!st.list.some(x => x.key === key)) st.list.splice(Math.min(v.at, st.list.length), 0, v.site);
-    st.kept = keptRead().filter(k => !st.list.some(s => s.key === k.key));
     draw();
+  }
+  async function loadDetail(/** @type {string} */ key) {
+    const r = await attempt("memory.site.detail", { key });
+    if (!alive()) return;
+    const d = r.error ? { error: errWords(r.error) } : r.data;
+    // A row forgotten on this screen stays as its one line, in the place it was.
+    if (d && d.parts) for (const v of st.justItem.values()) if (v.key === key && Array.isArray(d.parts[v.part]) && !d.parts[v.part].some((/** @type {any} */ x) => String(x.id) === v.id)) {
+      d.parts[v.part].splice(Math.min(v.at, d.parts[v.part].length), 0, { ...v.item, _forgot: true });
+    }
+    st.detail[key] = d;
   }
   async function openDetail(/** @type {string} */ key) {
     if (st.open === key) { st.open = ""; draw(); return; }
-    st.open = key; st.sure = ""; draw();
-    if (!st.detail[key]) {
-      const r = await attempt("memory.site.detail", { key });
-      if (!alive()) return;
-      st.detail[key] = r.error ? { error: errWords(r.error) } : r.data;
-    }
-    draw();
+    st.open = key; draw();
+    if (!st.detail[key]) { await loadDetail(key); draw(); }
   }
   async function forgetSite(/** @type {{ key: string, name: string }} */ s) {
     st.busy = s.key; st.problem = null; draw();
     const r = await attempt("memory.site.forget", { key: s.key });
     st.busy = "";
     if (r.error) { st.problem = errWords(r.error); draw(); return; }
-    keptWrite([{ key: s.key, name: s.name, at: Date.now() }, ...keptRead().filter(k => k.key !== s.key)]);
     st.just.set(s.key, { name: s.name, site: s, at: Math.max(0, st.list.findIndex(x => x.key === s.key)) });
     st.confirm = "";
     delete st.detail[s.key]; if (st.open === s.key) st.open = "";
     await load();
   }
   async function forgetAll() {
-    const was = st.list.map(s => ({ key: s.key, name: s.name }));
     st.confirmAll = false; st.busy = "*"; st.problem = null; draw();
     const r = await attempt("memory.site.forget", { all: true });
     st.busy = "";
     if (r.error) { st.problem = errWords(r.error); draw(); return; }
-    keptWrite([...was.map(s => ({ ...s, at: Date.now() })), ...keptRead().filter(k => !was.some(w => w.key === k.key))]);
     st.list.forEach((site, at) => st.just.set(site.key, { name: site.name, site, at }));
     st.detail = {}; st.open = "";
     await load();
   }
-  async function forgetItem(/** @type {string} */ key, /** @type {string} */ part, /** @type {string} */ id) {
-    st.busy = key + "|" + part + "|" + id; st.problem = null; draw();
-    const r = await attempt("memory.site.forget", { key, part, id });
-    st.busy = ""; st.sure = "";
+  async function forgetItem(/** @type {string} */ key, /** @type {string} */ part, /** @type {any} */ it) {
+    const token = key + "|" + part + "|" + it.id;
+    st.busy = token; st.problem = null; draw();
+    const at = Math.max(0, (st.detail[key]?.parts?.[part] || []).findIndex((/** @type {any} */ x) => String(x.id) === String(it.id)));
+    const r = await attempt("memory.site.forget", { key, part, id: String(it.id) });
+    st.busy = "";
     if (r.error) { st.problem = errWords(r.error); draw(); return; }
-    delete st.detail[key];
-    const d = await attempt("memory.site.detail", { key });
-    if (!alive()) return;
-    st.detail[key] = d.error ? { error: errWords(d.error) } : d.data;
+    st.justItem.set(token, { key, part, id: String(it.id), label: String(it.label || it.id), item: it, at });
+    await loadDetail(key);
     await load();
   }
-  async function restore(/** @type {{ key: string, name: string }} */ k) {
-    st.busy = "r" + k.key; st.problem = null; draw();
-    const r = await attempt("memory.site.restore", { key: k.key });
+  /** Bring one thing back: a whole site ({ key }), or a row ({ key, part, id }). memory.site.restore answers { restored: 1 | 0 }. @param {{ key: string, name?: string, part?: string|null, id?: string|null, label?: string|null }} k */
+  async function restore(k) {
+    const token = k.part ? `${k.key}|${k.part}|${k.id}` : k.key;
+    st.busy = "r" + token; st.problem = null; draw();
+    const r = await attempt("memory.site.restore", k.part ? { key: k.key, part: k.part, id: k.id } : { key: k.key });
     st.busy = "";
-    st.just.delete(k.key);
-    if (r.error || r.data?.restored === false) { st.problem = r.error ? errWords(r.error) : `${k.name} can no longer be brought back.`; keptWrite(keptRead().filter(x => x.key !== k.key)); await load(); return; }
-    keptWrite(keptRead().filter(x => x.key !== k.key));
+    if (k.part) st.justItem.delete(token); else st.just.delete(k.key);
+    if (r.error) st.problem = errWords(r.error);
+    else if (!r.data || !Number(r.data.restored)) st.problem = `${k.label || k.name || "That"} can no longer be brought back.`;
+    delete st.detail[k.key];
+    if (st.open === k.key) await loadDetail(k.key);
     await load();
   }
 
-  /** The rows of a site's detail: a label, a line of meta, and Forget this (one tap asks, and says it has no undo). */
+  /** "Forgot X. Undo", the same line for a site, a row and the box's own list. @param {{ text: string, busy: boolean, onUndo: () => void, attrs?: Record<string, string> }} o */
+  function forgotBlock(o) {
+    return h("div", { class: "ms-forgot-line", role: "status", ...(o.attrs || {}) },
+      h("span", { class: "small" }, o.text + " "),
+      h("button", { class: "btn btn-ghost btn-sm ms-undo", type: "button", "data-act": "undo", disabled: o.busy, onclick: o.onUndo }, o.busy ? "Bringing back" : "Undo"));
+  }
+
+  /** The rows of a site's detail: a label, a line of meta, and Forget (no confirmation: Undo follows). */
   function itemRow(/** @type {string} */ key, /** @type {string} */ part, /** @type {any} */ it) {
     const token = key + "|" + part + "|" + it.id;
-    const asking = st.sure === token;
+    if (it._forgot || st.justItem.has(token)) {
+      return h("div", { class: "ms-item ms-item-forgot", "data-item": String(it.id), "data-kept": token },
+        forgotBlock({ text: `Forgot ${it.label || it.id}.`, busy: st.busy === "r" + token, onUndo: () => restore({ key, part, id: String(it.id), label: String(it.label || it.id) }) }));
+    }
     const meta = it.quarantined ? `stopped working${it.verified ? ", " + ago(it.verified) : ""}`
       : part === "flows" && Number(it.runs) > 0 ? `${plural(Number(it.runs), "run")}, ${Number(it.fails) || 0} failed` : it.verified ? `checked ${ago(it.verified)}` : (typeof it.conf === "number" ? `${Math.round(it.conf * 100)}% sure` : "");
     return h("div", { class: "ms-item", "data-item": String(it.id) },
       h("span", { class: "ms-item-label" + (part === "api" ? " mono" : "") }, String(it.label || it.id)),
       meta ? h("span", { class: "small faint" + (it.quarantined ? " ms-stopped" : "") }, meta) : null,
-      asking ? h("span", { class: "ms-ask" }, h("span", { class: "small muted" }, "Forget this? It cannot be undone."),
-        h("button", { class: "btn btn-sm", type: "button", "data-act": "item-yes", disabled: st.busy === token, onclick: () => forgetItem(key, part, String(it.id)) }, "Forget this"),
-        h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "item-no", onclick: () => { st.sure = ""; draw(); } }, "Keep"))
-        : h("button", { class: "btn btn-ghost btn-sm ms-wrong", type: "button", "data-act": "item-forget", "aria-label": `Forget ${it.label || it.id}`, onclick: () => { st.sure = token; draw(); } }, "Wrong?"));
+      h("button", { class: "btn btn-ghost btn-sm ms-wrong", type: "button", "data-act": "item-forget", disabled: st.busy === token, "aria-label": `Forget ${it.label || it.id}`, onclick: () => forgetItem(key, part, it) }, "Forget"));
   }
   function detailPanel(/** @type {string} */ key) {
     const d = st.detail[key];
@@ -158,23 +171,26 @@ export default async function sites(root, ctx, deps = {}) {
     const groups = PARTS.filter(([p]) => Array.isArray(d.parts?.[p]) && d.parts[p].length);
     return h("div", { class: "ms-detail" },
       groups.length ? groups.map(([p, label]) => h("div", { class: "ms-part", "data-part": p },
-        h("div", { class: "ms-part-head" }, h("h3", { class: "ms-part-name" }, label), h("span", { class: "code ms-part-n" }, String(d.parts[p].length))),
-        d.parts[p].map((/** @type {any} */ it) => itemRow(key, p, it)))) : h("p", { class: "small muted" }, "Nothing is kept for this site yet."),
-      groups.length ? h("p", { class: "small faint" }, "Wrong? offers Forget this, which cannot be undone. Forgetting the whole site can be undone.") : null);
+        h("div", { class: "ms-part-head" }, h("h3", { class: "ms-part-name" }, label), h("span", { class: "code ms-part-n" }, String(d.parts[p].filter((/** @type {any} */ x) => !x._forgot).length))),
+        d.parts[p].map((/** @type {any} */ it) => itemRow(key, p, it)))) : h("p", { class: "small muted" }, "Nothing is kept for this site yet."));
   }
   /** How many sites a family covers: the origins that name it. @param {ReturnType<typeof sitesOf>[number]} s */
   const familyCount = s => st.list.filter(x => x.kind === "origin" && x.family && x.family === s.family).length;
 
   function siteRow(/** @type {ReturnType<typeof sitesOf>[number]} */ s) {
     // A site forgotten just now: one line where its row was, with an untimed Undo.
-    if (st.just.has(s.key)) return forgotLine(s.key, st.just.get(s.key));
+    if (st.just.has(s.key)) {
+      const k = /** @type {any} */ (st.just.get(s.key));
+      return h("div", { class: "ml-row ms-row ms-forgot", "data-site": s.key, "data-kept": s.key },
+        h("div", { class: "ml-main" }, forgotBlock({ text: `Forgot ${k.name}. Vyre will learn it again only if you use it.`, busy: st.busy === "r" + s.key, onUndo: () => restore({ key: s.key, name: k.name }) })));
+    }
     const open = st.open === s.key;
     const fam = s.kind === "family";
     if (fam && st.confirm === s.key) {
       const n = familyCount(s);
       return h("div", { class: "ml-row ms-row ms-confirm", "data-site": s.key },
         h("div", { class: "ml-main" }, h("div", { class: "ml-rule" }, `Forget the ${s.name}?`),
-          h("div", { class: "small muted" }, `This forgets what is shared across ${n ? plural(n, "site") : "its sites"}.`)),
+          h("div", { class: "small muted" }, `This forgets what is shared across ${n ? plural(n, "site") : "its sites"}. You can undo it for a day.`)),
         h("div", { class: "ml-act" },
           h("button", { class: "btn btn-sm", type: "button", "data-act": "family-yes", disabled: st.busy === s.key, onclick: () => forgetSite(s) }, n ? `Forget ${plural(n, "site")}` : "Forget"),
           h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "family-no", onclick: () => { st.confirm = ""; draw(); } }, "Cancel")));
@@ -195,25 +211,18 @@ export default async function sites(root, ctx, deps = {}) {
         h("button", { class: "ibtn ms-chev", type: "button", "data-act": "details", "aria-expanded": String(open), "aria-label": open ? `Hide what Vyre knows about ${s.name}` : `What Vyre knows about ${s.name}`,
           onclick: () => openDetail(s.key) }, icon("chevron", 16))));
   }
-  /** "Forgot X. Vyre will learn it again only if you use it." with an untimed Undo, in the row's place. */
-  function forgotLine(/** @type {string} */ key, /** @type {{ name: string }} */ k) {
-    return h("div", { class: "ml-row ms-row ms-forgot", "data-site": key, "data-kept": key, role: "status" },
-      h("div", { class: "ml-main" }, h("span", { class: "small" }, `Forgot ${k.name}. Vyre will learn it again only if you use it. `)),
-      h("div", { class: "ml-act" }, h("button", { class: "btn btn-ghost btn-sm ms-undo", type: "button", "data-act": "undo", disabled: st.busy === "r" + key, onclick: () => restore({ key, name: k.name }) },
-        st.busy === "r" + key ? "Bringing back" : "Undo")));
-  }
 
   function draw() {
     if (st.error) { put(body, empty(st.error?.missing ? "Sites are not on this box yet." : "Sites could not be read.", st.error)); return; }
-    // Sites forgotten earlier (before a reload) and still inside their day: a line each at the top, since their rows are gone.
-    const earlier = st.kept.filter(k => !st.just.has(k.key));
+    // What the box can still bring back (from any device, any reload), apart from what this screen shows in place.
+    const earlier = st.box.filter(f => (f.part ? !st.justItem.has(`${f.key}|${f.part}|${f.id}`) : !st.just.has(f.key)));
     put(body,
-      h("p", { class: "ml-note" }, "What Vyre for Chrome learned about each site: its layout, how to find its buttons, what its pages do. Never what you typed or what a page said."),
+      h("p", { class: "ml-note" }, "What Vyre for Chrome learned about each site: its layout, how to find its buttons, what its pages do. Never what you typed or what a page said. Forget anything and you can bring it back for a day."),
       st.problem ? h("p", { class: "small muted", role: "alert" }, st.problem) : null,
-      earlier.length ? h("div", { class: "ms-kept" }, earlier.map(k => h("div", { class: "ms-kept-row", "data-kept": k.key, role: "status" },
-        h("span", { class: "small" }, `Forgot ${k.name}. Vyre will learn it again only if you use it.`),
-        h("button", { class: "btn btn-ghost btn-sm ms-undo", type: "button", "data-act": "undo", disabled: st.busy === "r" + k.key, onclick: () => restore(k) }, st.busy === "r" + k.key ? "Bringing back" : "Undo")))) : null,
-      h("div", { class: "ml-head" }, h("h2", { class: "lbl" }, "Sites"), h("span", { class: "ml-count" }, plural(st.list.length, "site")),
+      earlier.length ? h("div", { class: "ms-kept" }, earlier.map(f => h("div", { class: "ms-kept-row", "data-kept": f.part ? `${f.key}|${f.part}|${f.id}` : f.key },
+        forgotBlock({ text: f.part ? `Forgot ${f.label || f.id} from ${f.name}.` : `Forgot ${f.name}. Vyre will learn it again only if you use it.`, busy: st.busy === "r" + (f.part ? `${f.key}|${f.part}|${f.id}` : f.key),
+          onUndo: () => restore(f) })))) : null,
+      h("div", { class: "ml-head" }, h("h2", { class: "lbl" }, "Sites"), h("span", { class: "ml-count" }, plural(st.list.filter(x => !st.just.has(x.key)).length, "site")),
         st.list.length > 1 ? (st.confirmAll
           ? h("span", { class: "ms-ask" }, h("span", { class: "small muted" }, `Forget all ${st.list.length}?`),
             h("button", { class: "btn btn-sm", type: "button", "data-act": "all-yes", onclick: forgetAll }, "Forget all"),
