@@ -93,13 +93,20 @@ one quiet reload; (4) shell contract: window.__vyreShell presentation only, vyre
 parser + golden vectors in spec/, /chat?term= never acts from a link; (5) settings.set/reset for
 agents on the person's request (P17 match, fail closed until it exists), with by/prev recorded
 for Undo.
-Done (committed, CI on GitHub runners pending): (1) b28be972 fixture-name fixes + vyred refuses
-deck fixtures unless VYRE_DECK_FIXTURES=1 (dev worlds set it); (2) lib/caps-flags + deck/chat/core/
-provider-caps.js (+ tests), served via DECK_LIBS in core/daemon; (3) build id stamped into
-index.html (htmlWithBuild), deck/js/build-check.js checks on every resume (sw.update or quiet reload).
+Done (committed; CI on GitHub runners): (1) b28be972 fixture-name fixes + vyred refuses deck
+fixtures unless VYRE_DECK_FIXTURES=1; (2) caps: lib/caps-flags + deck/chat/core/provider-caps.js,
+served via DECK_LIBS; (3) build id in index.html (htmlWithBuild) + deck/js/build-check.js on resume;
+(4) 16b1bddf shell contract: deck/js/platform.js (injected __vyreShell, kbd(), rail keys only when
+installed), lib/deeplink + spec/deeplink/open.json vectors, deck/chat/lib/opened-here.js (no terminal
+attach from a link); (5) fa492d50 settings.request (agents, P17 gate.said.match, fails closed),
+settings_changes log, settings.undo, settings.changes; module.json + docs:ref.
 NOTE: pushing again cancels the running node.yml (cancel-in-progress). Push once, then wait.
-Doing: (4) shell contract.
-Next: (5) settings on request. Needs: assistant+vault a P17 intent kind "setting" and a match call.
+Doing: CI for the whole range, then send to reviewer-2 + integrator.
+Next: when sessions ships providers.list caps, wire provider-caps into chat (UI waits for
+app-design). Open policy question for the lead: C25 says a person's own settings change needs no
+confirm or Touch ID either (security keys included, shown with Undo); settings.set still asks
+confirm/presence and the Deck's confirm sheet is UI, so that removal waits for the UI OK.
+Needs: assistant+vault the P17 intent kind "setting" and gate.said.match (CHAT.md 07:16).
 
 ## Done
 - 2026-09-27 77faf1e3: core/settings (registry of ~70 keys, stores: settings_values, config.json,
