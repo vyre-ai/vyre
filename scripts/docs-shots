@@ -444,6 +444,8 @@ try {
       log(`${shot.name} (${theme})`);
       const page = await browser.page();
       try {
+        // The Deck follows the OS scheme until the account picks one, so the look is chosen by the emulated media.
+        await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme === "light" ? "light" : "dark" }] });
         await page.send("Page.addScriptToEvaluateOnNewDocument", { source: theme === "light"
           ? `try { localStorage.setItem("vyre.theme", "paper"); } catch {}` : `try { localStorage.removeItem("vyre.theme"); } catch {}` });
         await save(shot, theme, await capture(page, shot, { navigate: base + shot.url, homes }));

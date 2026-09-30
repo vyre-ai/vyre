@@ -1,25 +1,25 @@
 {
   "docs/get-started/shots/onboarding-claude.png": {
-    "sha256": "44d5346eaa8244cee305ec2070b0c57206347ec690c5f3c01fef495d8eb485db",
+    "sha256": "eef4cdbfd371d5e1faf50cbf4a887601ee7657b42f045320d8e98a1195257980",
     "shows": {
-      "core/onboard/index.js": "40f7145e3543c3089058ef16588bd92e662e9808eaca1c0b222c88a213d7599f",
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/onboard/index.html": "f65f86d02266714498a86802827d2ca69d698114d9530fd763f2747b32bfc82f",
-      "deck/onboard/onboard.css": "e99a6845d21187cdb01618a88455c9ff37b6009b57daeda9665db64946ad78b1",
-      "deck/onboard/onboard.js": "956c21dac4534e144d616ac53af9bbb4945e4138faac6faf0c8aac603889a9d3"
+      "core/onboard/index.js": "f69f84f3ed28d714a39762b675ca1415293b2f0eda2f54e242bf4b300f1c2256",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/onboard/index.html": "a0abe40e5351285e86f906e6dbce9215e2d7232ae6eddb98829935b5c550c490",
+      "deck/onboard/onboard.css": "0431050f5eb18e954a0f63a6d24afebec0533e3002587d3eb5f364403d2508ae",
+      "deck/onboard/onboard.js": "48b70a13cbb4de7f28e7e13e210bf63ad9182336c52d2946421f224772a6b697"
     }
   },
   "docs/get-started/shots/onboarding-devices.png": {
-    "sha256": "f32afcd6010ccb44736605b24a2854a343f6dbd25f91567241d22cc06226f6c6",
+    "sha256": "0300b5cb01385019853d2c599427ca080a361d0e87a900d7284a729de1f6af50",
     "shows": {
-      "core/link/box.js": "94fbae91b8f2930cddc9455232a96688567d48553a4d8aec30c9efa645218be3",
-      "core/onboard/index.js": "40f7145e3543c3089058ef16588bd92e662e9808eaca1c0b222c88a213d7599f",
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/pair.css": "e08e628baee74cb02de6fe4850c61b980dbc27b3dc0636923318e36eac13b8a5",
+      "core/link/box.js": "09db85124958bd6f8661dc081f10833560ec7d906a0e7fc1ba281062f87d9472",
+      "core/onboard/index.js": "f69f84f3ed28d714a39762b675ca1415293b2f0eda2f54e242bf4b300f1c2256",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/pair.css": "b58652ff511809a8075c054157c478b4c6f689c126569ddf5c280bff47a6b1f7",
       "deck/js/pair.js": "6d0e64bbafee8e041553e4c9c33086faee48042f93001b76f980f795343ac066",
-      "deck/onboard/index.html": "f65f86d02266714498a86802827d2ca69d698114d9530fd763f2747b32bfc82f",
-      "deck/onboard/onboard.css": "e99a6845d21187cdb01618a88455c9ff37b6009b57daeda9665db64946ad78b1",
-      "deck/onboard/onboard.js": "956c21dac4534e144d616ac53af9bbb4945e4138faac6faf0c8aac603889a9d3"
+      "deck/onboard/index.html": "a0abe40e5351285e86f906e6dbce9215e2d7232ae6eddb98829935b5c550c490",
+      "deck/onboard/onboard.css": "0431050f5eb18e954a0f63a6d24afebec0533e3002587d3eb5f364403d2508ae",
+      "deck/onboard/onboard.js": "48b70a13cbb4de7f28e7e13e210bf63ad9182336c52d2946421f224772a6b697"
     }
   },
   "docs/get-started/shots/onboarding-history.png": {
@@ -33,14 +33,14 @@
     }
   },
   "docs/get-started/shots/onboarding-name.png": {
-    "sha256": "c7cfe65c6f98060f7bdf93f04c1a904d59d059d2bad1cc7d261ffe4706b9b9b5",
+    "sha256": "8b6517051838c1487cf614ae9f326ab3a9eb32f4f39adb3c7c8eb8cd0bf78e0f",
     "shows": {
-      "core/names/service.js": "0a65d29b7f146fad2136bee8ce5a067d4392b13ba26351a635f8182aa42e2473",
-      "core/onboard/index.js": "40f7145e3543c3089058ef16588bd92e662e9808eaca1c0b222c88a213d7599f",
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/onboard/index.html": "f65f86d02266714498a86802827d2ca69d698114d9530fd763f2747b32bfc82f",
-      "deck/onboard/onboard.css": "e99a6845d21187cdb01618a88455c9ff37b6009b57daeda9665db64946ad78b1",
-      "deck/onboard/onboard.js": "956c21dac4534e144d616ac53af9bbb4945e4138faac6faf0c8aac603889a9d3"
+      "core/names/service.js": "e9e8189d3a58eac5663a2b468e3484756b075d3d3df20cab00ac49ceadfddc8d",
+      "core/onboard/index.js": "f69f84f3ed28d714a39762b675ca1415293b2f0eda2f54e242bf4b300f1c2256",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/onboard/index.html": "a0abe40e5351285e86f906e6dbce9215e2d7232ae6eddb98829935b5c550c490",
+      "deck/onboard/onboard.css": "0431050f5eb18e954a0f63a6d24afebec0533e3002587d3eb5f364403d2508ae",
+      "deck/onboard/onboard.js": "48b70a13cbb4de7f28e7e13e210bf63ad9182336c52d2946421f224772a6b697"
     }
   },
   "docs/get-started/shots/onboarding-ready.png": {
@@ -54,432 +54,432 @@
     }
   },
   "docs/get-started/shots/onboarding-tailscale.png": {
-    "sha256": "2568e7e43f8bda613b4d43b07de7b2c74271daa924759153b9fe8b52ca6c900c",
+    "sha256": "48b70f9a98ffa7e9cb1b6b91de17cf46d0b3ca815b002fdaf7520d4522df238d",
     "shows": {
       "core/names/tailscale.js": "8f9129668c9e5bea0905434540b2482ca2badf18b05f2725f4e302698198b9ba",
-      "core/onboard/index.js": "40f7145e3543c3089058ef16588bd92e662e9808eaca1c0b222c88a213d7599f",
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/onboard/index.html": "f65f86d02266714498a86802827d2ca69d698114d9530fd763f2747b32bfc82f",
-      "deck/onboard/onboard.css": "e99a6845d21187cdb01618a88455c9ff37b6009b57daeda9665db64946ad78b1",
-      "deck/onboard/onboard.js": "956c21dac4534e144d616ac53af9bbb4945e4138faac6faf0c8aac603889a9d3"
+      "core/onboard/index.js": "f69f84f3ed28d714a39762b675ca1415293b2f0eda2f54e242bf4b300f1c2256",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/onboard/index.html": "a0abe40e5351285e86f906e6dbce9215e2d7232ae6eddb98829935b5c550c490",
+      "deck/onboard/onboard.css": "0431050f5eb18e954a0f63a6d24afebec0533e3002587d3eb5f364403d2508ae",
+      "deck/onboard/onboard.js": "48b70a13cbb4de7f28e7e13e210bf63ad9182336c52d2946421f224772a6b697"
     }
   },
   "docs/get-started/shots/onboarding-you.png": {
-    "sha256": "44d5346eaa8244cee305ec2070b0c57206347ec690c5f3c01fef495d8eb485db",
+    "sha256": "eef4cdbfd371d5e1faf50cbf4a887601ee7657b42f045320d8e98a1195257980",
     "shows": {
-      "core/onboard/index.js": "40f7145e3543c3089058ef16588bd92e662e9808eaca1c0b222c88a213d7599f",
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/onboard/index.html": "f65f86d02266714498a86802827d2ca69d698114d9530fd763f2747b32bfc82f",
-      "deck/onboard/onboard.css": "e99a6845d21187cdb01618a88455c9ff37b6009b57daeda9665db64946ad78b1",
-      "deck/onboard/onboard.js": "956c21dac4534e144d616ac53af9bbb4945e4138faac6faf0c8aac603889a9d3"
+      "core/onboard/index.js": "f69f84f3ed28d714a39762b675ca1415293b2f0eda2f54e242bf4b300f1c2256",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/onboard/index.html": "a0abe40e5351285e86f906e6dbce9215e2d7232ae6eddb98829935b5c550c490",
+      "deck/onboard/onboard.css": "0431050f5eb18e954a0f63a6d24afebec0533e3002587d3eb5f364403d2508ae",
+      "deck/onboard/onboard.js": "48b70a13cbb4de7f28e7e13e210bf63ad9182336c52d2946421f224772a6b697"
     }
   },
   "docs/using/shots/deck-agent.dark.png": {
-    "sha256": "dba1cf1108fd8c903af56b995930d75edb7747aa37c7d5f20427f99e7001d208",
+    "sha256": "f4f77601e5b46c4f5718143e6157697dbd5724ced175420a6ff186fd590613e8",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/agents.css": "bd3fefc2061970483f6e8febe1499fda0a45b7398c903f261ab63b60c9b03a8c",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/views/agents.js": "a482dda6c34b7d65cdc5d3355e1e803a3446a71e839ee72fcca16cefd06dae92"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/agents.css": "f5cb8850a2cea09fe81f69419d4d3db948d5524ba26c1829891af4c5732116d9",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/views/agents.js": "e682eafec7dd0182718b9eff002d25bea4c8e18eb01ea416df672a9dabba7108"
     }
   },
   "docs/using/shots/deck-agent.png": {
-    "sha256": "dba1cf1108fd8c903af56b995930d75edb7747aa37c7d5f20427f99e7001d208",
+    "sha256": "f4f77601e5b46c4f5718143e6157697dbd5724ced175420a6ff186fd590613e8",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/agents.css": "bd3fefc2061970483f6e8febe1499fda0a45b7398c903f261ab63b60c9b03a8c",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/views/agents.js": "a482dda6c34b7d65cdc5d3355e1e803a3446a71e839ee72fcca16cefd06dae92"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/agents.css": "f5cb8850a2cea09fe81f69419d4d3db948d5524ba26c1829891af4c5732116d9",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/views/agents.js": "e682eafec7dd0182718b9eff002d25bea4c8e18eb01ea416df672a9dabba7108"
     }
   },
   "docs/using/shots/deck-agents.dark.png": {
-    "sha256": "dba1cf1108fd8c903af56b995930d75edb7747aa37c7d5f20427f99e7001d208",
+    "sha256": "f4f77601e5b46c4f5718143e6157697dbd5724ced175420a6ff186fd590613e8",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/agents.css": "bd3fefc2061970483f6e8febe1499fda0a45b7398c903f261ab63b60c9b03a8c",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/views/agents.js": "a482dda6c34b7d65cdc5d3355e1e803a3446a71e839ee72fcca16cefd06dae92"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/agents.css": "f5cb8850a2cea09fe81f69419d4d3db948d5524ba26c1829891af4c5732116d9",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/views/agents.js": "e682eafec7dd0182718b9eff002d25bea4c8e18eb01ea416df672a9dabba7108"
     }
   },
   "docs/using/shots/deck-agents.png": {
-    "sha256": "dba1cf1108fd8c903af56b995930d75edb7747aa37c7d5f20427f99e7001d208",
+    "sha256": "f4f77601e5b46c4f5718143e6157697dbd5724ced175420a6ff186fd590613e8",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/agents.css": "bd3fefc2061970483f6e8febe1499fda0a45b7398c903f261ab63b60c9b03a8c",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/views/agents.js": "a482dda6c34b7d65cdc5d3355e1e803a3446a71e839ee72fcca16cefd06dae92"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/agents.css": "f5cb8850a2cea09fe81f69419d4d3db948d5524ba26c1829891af4c5732116d9",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/views/agents.js": "e682eafec7dd0182718b9eff002d25bea4c8e18eb01ea416df672a9dabba7108"
     }
   },
   "docs/using/shots/deck-chat.dark.png": {
-    "sha256": "899670adc95d48ec294e9e85f0380ba72b66343229f3b23f4df678a8cdaa077a",
+    "sha256": "ea9393613e2f86f791c7b14f31770e2030067cc850c29aa9e0255ef0125905ef",
     "shows": {
-      "deck/chat/chat.css": "793c223cf331a32c7500f4e31976d800f18e232fed139f1ab16bc2b1a6095e3a",
-      "deck/chat/index.js": "02fd506e2cfe3fb784d6750b4c241e66882f61d862074cc82358f2e7d28a7bee",
-      "deck/chat/nav.js": "1d4fa20ff539156db5edb22b5a2b683d571d041de0554f3a5f171fcc9bcf852e",
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
+      "deck/chat/chat.css": "9cff59d51615ea36a2ee372c7b04a571f625e8ffac2da9e597c5e591431d36cb",
+      "deck/chat/index.js": "ad8ef20fa5a4a2851625d5273797454f0bacb8ff9d73f3ff2a7b2be643723ab1",
+      "deck/chat/nav.js": "7d1b654bb3128d31d81e0e04c07c1d62f546837e16104a1fdedc18c303eb9d0e",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
       "deck/css/views/chat.css": "3572cd0d82ea2e84f4994ee64479aab9fe3acd4e72e8a9ed40589a3d9c883932",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
       "deck/views/chat.js": "3113eed30b4ee6ecab6ecf8cfe06d58f65bbb4b7809f4628520e27cd270d25e2"
     }
   },
   "docs/using/shots/deck-chat.png": {
-    "sha256": "899670adc95d48ec294e9e85f0380ba72b66343229f3b23f4df678a8cdaa077a",
+    "sha256": "ea9393613e2f86f791c7b14f31770e2030067cc850c29aa9e0255ef0125905ef",
     "shows": {
-      "deck/chat/chat.css": "793c223cf331a32c7500f4e31976d800f18e232fed139f1ab16bc2b1a6095e3a",
-      "deck/chat/index.js": "02fd506e2cfe3fb784d6750b4c241e66882f61d862074cc82358f2e7d28a7bee",
-      "deck/chat/nav.js": "1d4fa20ff539156db5edb22b5a2b683d571d041de0554f3a5f171fcc9bcf852e",
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
+      "deck/chat/chat.css": "9cff59d51615ea36a2ee372c7b04a571f625e8ffac2da9e597c5e591431d36cb",
+      "deck/chat/index.js": "ad8ef20fa5a4a2851625d5273797454f0bacb8ff9d73f3ff2a7b2be643723ab1",
+      "deck/chat/nav.js": "7d1b654bb3128d31d81e0e04c07c1d62f546837e16104a1fdedc18c303eb9d0e",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
       "deck/css/views/chat.css": "3572cd0d82ea2e84f4994ee64479aab9fe3acd4e72e8a9ed40589a3d9c883932",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
       "deck/views/chat.js": "3113eed30b4ee6ecab6ecf8cfe06d58f65bbb4b7809f4628520e27cd270d25e2"
     }
   },
   "docs/using/shots/deck-held.dark.png": {
-    "sha256": "e80e14ea2370ef990f83d06e394de7782533e82973fd0113c1b977771f948a01",
+    "sha256": "0f25b743275ee54a3d51c308369eb6043ed1942f419e1212a6a2627f7fbe837b",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/needs.css": "5ebd91b448a276a6c5c8c232a81333fd141b403edc52c9af19d2573e6b0d9e1b",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/js/needs.js": "cfcaae0b6072475c69e4f6174a32ebe4322c68cab70d382b1d2a73548301aabb",
-      "deck/views/needs.js": "764e0edecc16a6d7a2514e3fae83334de86834240311634385d9d960c5f94690"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/needs.css": "188af3e00a0c866ff058cf4445aad45f930eea7b122f479e434c5cb6aa53e619",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/js/needs.js": "0393e361ca7d917ecd192a338474976051a45d71b99dc805020bd869ddb8f65b",
+      "deck/views/needs.js": "cdfefa9e6aa13f89a0ed407b17c7606883167182e6d7e565471a539a9085be83"
     }
   },
   "docs/using/shots/deck-held.png": {
-    "sha256": "e80e14ea2370ef990f83d06e394de7782533e82973fd0113c1b977771f948a01",
+    "sha256": "0f25b743275ee54a3d51c308369eb6043ed1942f419e1212a6a2627f7fbe837b",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/needs.css": "5ebd91b448a276a6c5c8c232a81333fd141b403edc52c9af19d2573e6b0d9e1b",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/js/needs.js": "cfcaae0b6072475c69e4f6174a32ebe4322c68cab70d382b1d2a73548301aabb",
-      "deck/views/needs.js": "764e0edecc16a6d7a2514e3fae83334de86834240311634385d9d960c5f94690"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/needs.css": "188af3e00a0c866ff058cf4445aad45f930eea7b122f479e434c5cb6aa53e619",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/js/needs.js": "0393e361ca7d917ecd192a338474976051a45d71b99dc805020bd869ddb8f65b",
+      "deck/views/needs.js": "cdfefa9e6aa13f89a0ed407b17c7606883167182e6d7e565471a539a9085be83"
     }
   },
   "docs/using/shots/deck-memory.dark.png": {
-    "sha256": "3d5865661cc8831c548fe11ccef37bd7a1bb73d4b9f03655568924f900a7a2ef",
+    "sha256": "b0f1b53b6329b7a65fea46e5ea0fcf3dc1473018ca7dd61b205a377f11aea1c2",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/memory.css": "199f76fa65de8a7409acb9bf63507570d366b3fdb3903a0ba875efddd32893ca",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/memory.css": "0da67f28a0eb77e5338fb9269d7039a01df20108f4aced1c159fd59083157e10",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
       "deck/views/memory-data.js": "a6bee5ec028fb96ffdd5abf1ec15bae75326734284c2068c5a61d9fea9480d52",
-      "deck/views/memory-map.js": "ab32989c1d4383ef734c940473b8d1739b22f7ac1a771683db9de1bd94fe1d2c",
-      "deck/views/memory.js": "6a82ebc80a54428e8727cba6ad811bde23e3f6634279c46588f0d5a1fd33c72a"
+      "deck/views/memory-map.js": "7f3aa6763d70c37aa9a30693030a0ba0e2c27b6ae8125403c0bea6ec65097338",
+      "deck/views/memory.js": "3bbce26ba193eb7d0f4a34e6de98913b6b13ae9a45fc8efbaa2bc6ec44c18bae"
     }
   },
   "docs/using/shots/deck-memory.png": {
-    "sha256": "3d5865661cc8831c548fe11ccef37bd7a1bb73d4b9f03655568924f900a7a2ef",
+    "sha256": "b0f1b53b6329b7a65fea46e5ea0fcf3dc1473018ca7dd61b205a377f11aea1c2",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/memory.css": "199f76fa65de8a7409acb9bf63507570d366b3fdb3903a0ba875efddd32893ca",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/memory.css": "0da67f28a0eb77e5338fb9269d7039a01df20108f4aced1c159fd59083157e10",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
       "deck/views/memory-data.js": "a6bee5ec028fb96ffdd5abf1ec15bae75326734284c2068c5a61d9fea9480d52",
-      "deck/views/memory-map.js": "ab32989c1d4383ef734c940473b8d1739b22f7ac1a771683db9de1bd94fe1d2c",
-      "deck/views/memory.js": "6a82ebc80a54428e8727cba6ad811bde23e3f6634279c46588f0d5a1fd33c72a"
+      "deck/views/memory-map.js": "7f3aa6763d70c37aa9a30693030a0ba0e2c27b6ae8125403c0bea6ec65097338",
+      "deck/views/memory.js": "3bbce26ba193eb7d0f4a34e6de98913b6b13ae9a45fc8efbaa2bc6ec44c18bae"
     }
   },
   "docs/using/shots/deck-new-box.dark.png": {
-    "sha256": "560c6008aa087983fd93548b990b8461f9bdbcb5802b2987a0bab6be0e8ba042",
+    "sha256": "5726b9ba333cae6bd02ca0b63d435fea1bd5ef00f2432ae613cb257f4ed01686",
     "shows": {
-      "core/link/box.js": "94fbae91b8f2930cddc9455232a96688567d48553a4d8aec30c9efa645218be3",
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/pair.css": "e08e628baee74cb02de6fe4850c61b980dbc27b3dc0636923318e36eac13b8a5",
-      "deck/css/views/now.css": "1180679cd4d2f08f21469f5338a950bde5b0a9654a8fd2fc2e42e60985fbf396",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/js/assistant-setup.js": "2cfbc5c3024d28da32d377f3f2cd82c1fc56c063b5b3737d30438cd510ac5167",
-      "deck/js/needs.js": "cfcaae0b6072475c69e4f6174a32ebe4322c68cab70d382b1d2a73548301aabb",
+      "core/link/box.js": "09db85124958bd6f8661dc081f10833560ec7d906a0e7fc1ba281062f87d9472",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/pair.css": "b58652ff511809a8075c054157c478b4c6f689c126569ddf5c280bff47a6b1f7",
+      "deck/css/views/now.css": "f837a32d4457acbd04b3bcda25b7fb6af72a0091866bec913cfc8ac5ddd21f92",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/js/assistant-setup.js": "0aa646727434d376a6ea7abe866edebd789d0d333ef8aba393abe062c14457ab",
+      "deck/js/needs.js": "0393e361ca7d917ecd192a338474976051a45d71b99dc805020bd869ddb8f65b",
       "deck/js/pair.js": "6d0e64bbafee8e041553e4c9c33086faee48042f93001b76f980f795343ac066",
-      "deck/views/now.js": "51a459646ff00f5cf6a5d6294dadffa3bc08786a9c7ee9e587c8be7586d78877"
+      "deck/views/now.js": "3f3acc6b5ef81c49349b9e2aea2c7907ab6e40196a6ce7324b0e3a5ccdb31669"
     }
   },
   "docs/using/shots/deck-new-box.png": {
-    "sha256": "560c6008aa087983fd93548b990b8461f9bdbcb5802b2987a0bab6be0e8ba042",
+    "sha256": "5726b9ba333cae6bd02ca0b63d435fea1bd5ef00f2432ae613cb257f4ed01686",
     "shows": {
-      "core/link/box.js": "94fbae91b8f2930cddc9455232a96688567d48553a4d8aec30c9efa645218be3",
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/pair.css": "e08e628baee74cb02de6fe4850c61b980dbc27b3dc0636923318e36eac13b8a5",
-      "deck/css/views/now.css": "1180679cd4d2f08f21469f5338a950bde5b0a9654a8fd2fc2e42e60985fbf396",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/js/assistant-setup.js": "2cfbc5c3024d28da32d377f3f2cd82c1fc56c063b5b3737d30438cd510ac5167",
-      "deck/js/needs.js": "cfcaae0b6072475c69e4f6174a32ebe4322c68cab70d382b1d2a73548301aabb",
+      "core/link/box.js": "09db85124958bd6f8661dc081f10833560ec7d906a0e7fc1ba281062f87d9472",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/pair.css": "b58652ff511809a8075c054157c478b4c6f689c126569ddf5c280bff47a6b1f7",
+      "deck/css/views/now.css": "f837a32d4457acbd04b3bcda25b7fb6af72a0091866bec913cfc8ac5ddd21f92",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/js/assistant-setup.js": "0aa646727434d376a6ea7abe866edebd789d0d333ef8aba393abe062c14457ab",
+      "deck/js/needs.js": "0393e361ca7d917ecd192a338474976051a45d71b99dc805020bd869ddb8f65b",
       "deck/js/pair.js": "6d0e64bbafee8e041553e4c9c33086faee48042f93001b76f980f795343ac066",
-      "deck/views/now.js": "51a459646ff00f5cf6a5d6294dadffa3bc08786a9c7ee9e587c8be7586d78877"
+      "deck/views/now.js": "3f3acc6b5ef81c49349b9e2aea2c7907ab6e40196a6ce7324b0e3a5ccdb31669"
     }
   },
   "docs/using/shots/deck-now.dark.png": {
-    "sha256": "c2bd7653c37996561674adee2f9e30b13e020b6da90a251b40f4c2faa9cb7efb",
+    "sha256": "1a43e9d7a799a511373badcfd5d97b79fcd84f799fe674c42895c36082970104",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/now.css": "1180679cd4d2f08f21469f5338a950bde5b0a9654a8fd2fc2e42e60985fbf396",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/js/needs.js": "cfcaae0b6072475c69e4f6174a32ebe4322c68cab70d382b1d2a73548301aabb",
-      "deck/views/now.js": "51a459646ff00f5cf6a5d6294dadffa3bc08786a9c7ee9e587c8be7586d78877"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/now.css": "f837a32d4457acbd04b3bcda25b7fb6af72a0091866bec913cfc8ac5ddd21f92",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/js/needs.js": "0393e361ca7d917ecd192a338474976051a45d71b99dc805020bd869ddb8f65b",
+      "deck/views/now.js": "3f3acc6b5ef81c49349b9e2aea2c7907ab6e40196a6ce7324b0e3a5ccdb31669"
     }
   },
   "docs/using/shots/deck-now.png": {
-    "sha256": "c2bd7653c37996561674adee2f9e30b13e020b6da90a251b40f4c2faa9cb7efb",
+    "sha256": "1a43e9d7a799a511373badcfd5d97b79fcd84f799fe674c42895c36082970104",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/now.css": "1180679cd4d2f08f21469f5338a950bde5b0a9654a8fd2fc2e42e60985fbf396",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/js/needs.js": "cfcaae0b6072475c69e4f6174a32ebe4322c68cab70d382b1d2a73548301aabb",
-      "deck/views/now.js": "51a459646ff00f5cf6a5d6294dadffa3bc08786a9c7ee9e587c8be7586d78877"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/now.css": "f837a32d4457acbd04b3bcda25b7fb6af72a0091866bec913cfc8ac5ddd21f92",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/js/needs.js": "0393e361ca7d917ecd192a338474976051a45d71b99dc805020bd869ddb8f65b",
+      "deck/views/now.js": "3f3acc6b5ef81c49349b9e2aea2c7907ab6e40196a6ce7324b0e3a5ccdb31669"
     }
   },
   "docs/using/shots/deck-pair.dark.png": {
-    "sha256": "71254a42909f1eb568c996df4e99c104ccf70fd6c3b83b19628df95c395ae7fd",
+    "sha256": "0f0c04fefcb6d5b65b395a934985905b9726cf6a7bae16579236c9a66d7ba279",
     "shows": {
-      "core/link/box.js": "94fbae91b8f2930cddc9455232a96688567d48553a4d8aec30c9efa645218be3",
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/pair.css": "e08e628baee74cb02de6fe4850c61b980dbc27b3dc0636923318e36eac13b8a5",
-      "deck/css/views/now.css": "1180679cd4d2f08f21469f5338a950bde5b0a9654a8fd2fc2e42e60985fbf396",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/js/needs.js": "cfcaae0b6072475c69e4f6174a32ebe4322c68cab70d382b1d2a73548301aabb",
+      "core/link/box.js": "09db85124958bd6f8661dc081f10833560ec7d906a0e7fc1ba281062f87d9472",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/pair.css": "b58652ff511809a8075c054157c478b4c6f689c126569ddf5c280bff47a6b1f7",
+      "deck/css/views/now.css": "f837a32d4457acbd04b3bcda25b7fb6af72a0091866bec913cfc8ac5ddd21f92",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/js/needs.js": "0393e361ca7d917ecd192a338474976051a45d71b99dc805020bd869ddb8f65b",
       "deck/js/pair.js": "6d0e64bbafee8e041553e4c9c33086faee48042f93001b76f980f795343ac066",
-      "deck/views/now.js": "51a459646ff00f5cf6a5d6294dadffa3bc08786a9c7ee9e587c8be7586d78877"
+      "deck/views/now.js": "3f3acc6b5ef81c49349b9e2aea2c7907ab6e40196a6ce7324b0e3a5ccdb31669"
     }
   },
   "docs/using/shots/deck-pair.png": {
-    "sha256": "71254a42909f1eb568c996df4e99c104ccf70fd6c3b83b19628df95c395ae7fd",
+    "sha256": "0f0c04fefcb6d5b65b395a934985905b9726cf6a7bae16579236c9a66d7ba279",
     "shows": {
-      "core/link/box.js": "94fbae91b8f2930cddc9455232a96688567d48553a4d8aec30c9efa645218be3",
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/pair.css": "e08e628baee74cb02de6fe4850c61b980dbc27b3dc0636923318e36eac13b8a5",
-      "deck/css/views/now.css": "1180679cd4d2f08f21469f5338a950bde5b0a9654a8fd2fc2e42e60985fbf396",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/js/needs.js": "cfcaae0b6072475c69e4f6174a32ebe4322c68cab70d382b1d2a73548301aabb",
+      "core/link/box.js": "09db85124958bd6f8661dc081f10833560ec7d906a0e7fc1ba281062f87d9472",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/pair.css": "b58652ff511809a8075c054157c478b4c6f689c126569ddf5c280bff47a6b1f7",
+      "deck/css/views/now.css": "f837a32d4457acbd04b3bcda25b7fb6af72a0091866bec913cfc8ac5ddd21f92",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/js/needs.js": "0393e361ca7d917ecd192a338474976051a45d71b99dc805020bd869ddb8f65b",
       "deck/js/pair.js": "6d0e64bbafee8e041553e4c9c33086faee48042f93001b76f980f795343ac066",
-      "deck/views/now.js": "51a459646ff00f5cf6a5d6294dadffa3bc08786a9c7ee9e587c8be7586d78877"
+      "deck/views/now.js": "3f3acc6b5ef81c49349b9e2aea2c7907ab6e40196a6ce7324b0e3a5ccdb31669"
     }
   },
   "docs/using/shots/deck-project.dark.png": {
-    "sha256": "3380a7398f2428243d2a4e89a1e42ecf99fea9183b066bc49cfd9b1d80bc6add",
+    "sha256": "ea59a5334465c8808a6049b46c3f7f60cc5732fc392ad9c165de0d8fc2df3cb3",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/projects.css": "472e12c8f9662d265c3a79a6b81a6b4f8002a9615dce451756b7407c97581538",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/views/projects.js": "f3ce29716b85e898632af44abe68989eea029f7d10493499cf5147ca339d4ba5"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/projects.css": "64c1ebe307580f4480dac1f08a3bd83ee9d9731a73c0e4971f5a45b2db2ced1a",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/views/projects.js": "4fa805556d21d7133d9e1fd70e73a072fd707f5c7868a69e48b934ebd05775ae"
     }
   },
   "docs/using/shots/deck-project.png": {
-    "sha256": "3380a7398f2428243d2a4e89a1e42ecf99fea9183b066bc49cfd9b1d80bc6add",
+    "sha256": "ea59a5334465c8808a6049b46c3f7f60cc5732fc392ad9c165de0d8fc2df3cb3",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/projects.css": "472e12c8f9662d265c3a79a6b81a6b4f8002a9615dce451756b7407c97581538",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/views/projects.js": "f3ce29716b85e898632af44abe68989eea029f7d10493499cf5147ca339d4ba5"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/projects.css": "64c1ebe307580f4480dac1f08a3bd83ee9d9731a73c0e4971f5a45b2db2ced1a",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/views/projects.js": "4fa805556d21d7133d9e1fd70e73a072fd707f5c7868a69e48b934ebd05775ae"
     }
   },
   "docs/using/shots/deck-projects.dark.png": {
-    "sha256": "3380a7398f2428243d2a4e89a1e42ecf99fea9183b066bc49cfd9b1d80bc6add",
+    "sha256": "ea59a5334465c8808a6049b46c3f7f60cc5732fc392ad9c165de0d8fc2df3cb3",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/projects.css": "472e12c8f9662d265c3a79a6b81a6b4f8002a9615dce451756b7407c97581538",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/views/projects.js": "f3ce29716b85e898632af44abe68989eea029f7d10493499cf5147ca339d4ba5"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/projects.css": "64c1ebe307580f4480dac1f08a3bd83ee9d9731a73c0e4971f5a45b2db2ced1a",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/views/projects.js": "4fa805556d21d7133d9e1fd70e73a072fd707f5c7868a69e48b934ebd05775ae"
     }
   },
   "docs/using/shots/deck-projects.png": {
-    "sha256": "3380a7398f2428243d2a4e89a1e42ecf99fea9183b066bc49cfd9b1d80bc6add",
+    "sha256": "ea59a5334465c8808a6049b46c3f7f60cc5732fc392ad9c165de0d8fc2df3cb3",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/projects.css": "472e12c8f9662d265c3a79a6b81a6b4f8002a9615dce451756b7407c97581538",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/views/projects.js": "f3ce29716b85e898632af44abe68989eea029f7d10493499cf5147ca339d4ba5"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/projects.css": "64c1ebe307580f4480dac1f08a3bd83ee9d9731a73c0e4971f5a45b2db2ced1a",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/views/projects.js": "4fa805556d21d7133d9e1fd70e73a072fd707f5c7868a69e48b934ebd05775ae"
     }
   },
   "docs/using/shots/deck-search.dark.png": {
-    "sha256": "9b9f148a64367b2d45f7a9cd0f8c770101e130f04a2a5f191f5e69e6600213c3",
+    "sha256": "514288fa34f26f11b62fc704b2723de2971406ea4add5271a9ab19c7d55a3302",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb"
     }
   },
   "docs/using/shots/deck-search.png": {
-    "sha256": "9b9f148a64367b2d45f7a9cd0f8c770101e130f04a2a5f191f5e69e6600213c3",
+    "sha256": "514288fa34f26f11b62fc704b2723de2971406ea4add5271a9ab19c7d55a3302",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb"
     }
   },
   "docs/using/shots/deck-settings.dark.png": {
-    "sha256": "d38df42c96beffa1c066a282cfd7573b129c0fb10db19607ac538fe4a077ed16",
+    "sha256": "783e86bdd915c8816bcfb9b1d871c47cfa13456cb92c546c06a8f002c2462cfe",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/settings.css": "85a9dfc93d126011b10c3fae04d88144e63a297035ea00e74f1f5295ce70e04e",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/views/settings.js": "a46e7c34c66b48fb8a9d145b442956a4faf89a67725dd0fd950152a02fbc2883"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/settings.css": "833f87494e71ddbf75b3a702112f6b7e13984968d6dc225f83a838c53b001806",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/views/settings.js": "3f0c856b4f5eed93fb1eb3899fb8537565893d9f77160b28ae02c14ff9710f48"
     }
   },
   "docs/using/shots/deck-settings.png": {
-    "sha256": "d38df42c96beffa1c066a282cfd7573b129c0fb10db19607ac538fe4a077ed16",
+    "sha256": "783e86bdd915c8816bcfb9b1d871c47cfa13456cb92c546c06a8f002c2462cfe",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/settings.css": "85a9dfc93d126011b10c3fae04d88144e63a297035ea00e74f1f5295ce70e04e",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/views/settings.js": "a46e7c34c66b48fb8a9d145b442956a4faf89a67725dd0fd950152a02fbc2883"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/settings.css": "833f87494e71ddbf75b3a702112f6b7e13984968d6dc225f83a838c53b001806",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/views/settings.js": "3f0c856b4f5eed93fb1eb3899fb8537565893d9f77160b28ae02c14ff9710f48"
     }
   },
   "docs/using/shots/deck-vault-item.dark.png": {
-    "sha256": "217d172615b4850cbb2efc7a2a73eee3d13025d9cf755a29df462c8165b92e15",
+    "sha256": "f9950016c206e4d38e6efaf10d545dc575a4fe7bf158064ec0aaee8a40af79c1",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/vault.css": "4723793d1395e98f9395a33ae20ef9ebbe79ec39a0eb27e36ea0ee3b805cdb55",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/vault/model.js": "b72349eb149bc26f89a66e9ac5632e0b5056543034cbf8e57a10d0835134f475",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/vault.css": "37cd5edb49c0d42d0f7ad5c78795e00777751900141aac97ccbfc7606aa88f49",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/vault/model.js": "32b31194e733330c93a5b4fb902e7d15007cf4ada84b40ae82ab619477d00b38",
       "deck/views/vault-item.js": "87b02939c93a7f3e891a24c536effbe366f0b07d14050d15d09985865f430bf5",
       "deck/views/vault.js": "d96b6d2380c7328164f763c8f8b6224b54b0ece0ea34a633d7229a93b12b3cdc"
     }
   },
   "docs/using/shots/deck-vault-item.png": {
-    "sha256": "217d172615b4850cbb2efc7a2a73eee3d13025d9cf755a29df462c8165b92e15",
+    "sha256": "f9950016c206e4d38e6efaf10d545dc575a4fe7bf158064ec0aaee8a40af79c1",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/vault.css": "4723793d1395e98f9395a33ae20ef9ebbe79ec39a0eb27e36ea0ee3b805cdb55",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/vault/model.js": "b72349eb149bc26f89a66e9ac5632e0b5056543034cbf8e57a10d0835134f475",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/vault.css": "37cd5edb49c0d42d0f7ad5c78795e00777751900141aac97ccbfc7606aa88f49",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/vault/model.js": "32b31194e733330c93a5b4fb902e7d15007cf4ada84b40ae82ab619477d00b38",
       "deck/views/vault-item.js": "87b02939c93a7f3e891a24c536effbe366f0b07d14050d15d09985865f430bf5",
       "deck/views/vault.js": "d96b6d2380c7328164f763c8f8b6224b54b0ece0ea34a633d7229a93b12b3cdc"
     }
   },
   "docs/using/shots/deck-vault.dark.png": {
-    "sha256": "05a8d70a88b3674544026825edafe68011d662828dc24596ff95eb48184a75ee",
+    "sha256": "90bb13e3a694cd654afee7234baa54b62c16eb84b81ed2a165fda8c70d3de549",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/vault.css": "4723793d1395e98f9395a33ae20ef9ebbe79ec39a0eb27e36ea0ee3b805cdb55",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/vault/model.js": "b72349eb149bc26f89a66e9ac5632e0b5056543034cbf8e57a10d0835134f475",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/vault.css": "37cd5edb49c0d42d0f7ad5c78795e00777751900141aac97ccbfc7606aa88f49",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/vault/model.js": "32b31194e733330c93a5b4fb902e7d15007cf4ada84b40ae82ab619477d00b38",
       "deck/views/vault.js": "d96b6d2380c7328164f763c8f8b6224b54b0ece0ea34a633d7229a93b12b3cdc"
     }
   },
   "docs/using/shots/deck-vault.png": {
-    "sha256": "05a8d70a88b3674544026825edafe68011d662828dc24596ff95eb48184a75ee",
+    "sha256": "90bb13e3a694cd654afee7234baa54b62c16eb84b81ed2a165fda8c70d3de549",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/vault.css": "4723793d1395e98f9395a33ae20ef9ebbe79ec39a0eb27e36ea0ee3b805cdb55",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/vault/model.js": "b72349eb149bc26f89a66e9ac5632e0b5056543034cbf8e57a10d0835134f475",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/vault.css": "37cd5edb49c0d42d0f7ad5c78795e00777751900141aac97ccbfc7606aa88f49",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/vault/model.js": "32b31194e733330c93a5b4fb902e7d15007cf4ada84b40ae82ab619477d00b38",
       "deck/views/vault.js": "d96b6d2380c7328164f763c8f8b6224b54b0ece0ea34a633d7229a93b12b3cdc"
     }
   },
   "docs/using/shots/glass-files.dark.png": {
-    "sha256": "f665b189fb43ca547dfdc6d25be57d4200d1d7d143c9b2ba3716d54b2db225c7",
+    "sha256": "bce5b2bc5a9a63fe9f1c6ca5f92f339bbe250a7576faa7849c6b0fbc9d6539c6",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
       "deck/glass/files.js": "01428d8b746178b13e7f8ca7b62c1a35ed816799ad019e458a1de691c758f437",
-      "deck/glass/glass.css": "d041d8b11408c89f2b39bb2f448c821b0312b71793c5c3c05798ed6db378eca9",
+      "deck/glass/glass.css": "f5ed9814689474ce69819d2fe4511b894c3c9ad64caaac04dfdee2c026a2012d",
       "deck/glass/index.js": "0269169a46cbbba45a367e9dd296c4047a6b96de43e190e13f62f28fc8efd8bb",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
       "deck/views/glass.js": "f544a232c099c8882837f65c15b1338d89995279fc2b2e5f7fbe589aa4742c06"
     }
   },
   "docs/using/shots/glass-files.png": {
-    "sha256": "f665b189fb43ca547dfdc6d25be57d4200d1d7d143c9b2ba3716d54b2db225c7",
+    "sha256": "bce5b2bc5a9a63fe9f1c6ca5f92f339bbe250a7576faa7849c6b0fbc9d6539c6",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
       "deck/glass/files.js": "01428d8b746178b13e7f8ca7b62c1a35ed816799ad019e458a1de691c758f437",
-      "deck/glass/glass.css": "d041d8b11408c89f2b39bb2f448c821b0312b71793c5c3c05798ed6db378eca9",
+      "deck/glass/glass.css": "f5ed9814689474ce69819d2fe4511b894c3c9ad64caaac04dfdee2c026a2012d",
       "deck/glass/index.js": "0269169a46cbbba45a367e9dd296c4047a6b96de43e190e13f62f28fc8efd8bb",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
       "deck/views/glass.js": "f544a232c099c8882837f65c15b1338d89995279fc2b2e5f7fbe589aa4742c06"
     }
   },
   "docs/using/shots/phone-find.dark.png": {
-    "sha256": "9bb240659eae8bf308d7663000f6b46ab7fed66014200fe18025341c8842698d",
+    "sha256": "c655161037e1ff28533bbe22ac38a41baca5475971ab68f396f3076c7dcc4928",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/find.css": "d0b2a1a85cb813d0296899ca14dc0f0fe5a768999f461400fe035325019418da",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/find.css": "fe4e8e594a6623436f1695bb290efd1885bc429f6cd991124e56ab76cb8eb51e",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
       "deck/js/commands.js": "7b7a41776f05d973c40191d9555280667fb8a703f9cc991564b7d5ffae53dbbb",
-      "deck/views/find.js": "e30e23dbef04f87b1ce91ff9f84e6afe9a04ca88b06460e074da13d480d3774c"
+      "deck/views/find.js": "97988c3d8e1f7d534bbdf710c174efc98af6d8ba59578c9a21431e91362befc4"
     }
   },
   "docs/using/shots/phone-find.png": {
-    "sha256": "9bb240659eae8bf308d7663000f6b46ab7fed66014200fe18025341c8842698d",
+    "sha256": "c655161037e1ff28533bbe22ac38a41baca5475971ab68f396f3076c7dcc4928",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/find.css": "d0b2a1a85cb813d0296899ca14dc0f0fe5a768999f461400fe035325019418da",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/find.css": "fe4e8e594a6623436f1695bb290efd1885bc429f6cd991124e56ab76cb8eb51e",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
       "deck/js/commands.js": "7b7a41776f05d973c40191d9555280667fb8a703f9cc991564b7d5ffae53dbbb",
-      "deck/views/find.js": "e30e23dbef04f87b1ce91ff9f84e6afe9a04ca88b06460e074da13d480d3774c"
+      "deck/views/find.js": "97988c3d8e1f7d534bbdf710c174efc98af6d8ba59578c9a21431e91362befc4"
     }
   },
   "docs/using/shots/phone-held.dark.png": {
-    "sha256": "e80e14ea2370ef990f83d06e394de7782533e82973fd0113c1b977771f948a01",
+    "sha256": "0f25b743275ee54a3d51c308369eb6043ed1942f419e1212a6a2627f7fbe837b",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/needs.css": "5ebd91b448a276a6c5c8c232a81333fd141b403edc52c9af19d2573e6b0d9e1b",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/js/needs.js": "cfcaae0b6072475c69e4f6174a32ebe4322c68cab70d382b1d2a73548301aabb",
-      "deck/views/needs.js": "764e0edecc16a6d7a2514e3fae83334de86834240311634385d9d960c5f94690"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/needs.css": "188af3e00a0c866ff058cf4445aad45f930eea7b122f479e434c5cb6aa53e619",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/js/needs.js": "0393e361ca7d917ecd192a338474976051a45d71b99dc805020bd869ddb8f65b",
+      "deck/views/needs.js": "cdfefa9e6aa13f89a0ed407b17c7606883167182e6d7e565471a539a9085be83"
     }
   },
   "docs/using/shots/phone-held.png": {
-    "sha256": "e80e14ea2370ef990f83d06e394de7782533e82973fd0113c1b977771f948a01",
+    "sha256": "0f25b743275ee54a3d51c308369eb6043ed1942f419e1212a6a2627f7fbe837b",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/needs.css": "5ebd91b448a276a6c5c8c232a81333fd141b403edc52c9af19d2573e6b0d9e1b",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/js/needs.js": "cfcaae0b6072475c69e4f6174a32ebe4322c68cab70d382b1d2a73548301aabb",
-      "deck/views/needs.js": "764e0edecc16a6d7a2514e3fae83334de86834240311634385d9d960c5f94690"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/needs.css": "188af3e00a0c866ff058cf4445aad45f930eea7b122f479e434c5cb6aa53e619",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/js/needs.js": "0393e361ca7d917ecd192a338474976051a45d71b99dc805020bd869ddb8f65b",
+      "deck/views/needs.js": "cdfefa9e6aa13f89a0ed407b17c7606883167182e6d7e565471a539a9085be83"
     }
   },
   "docs/using/shots/phone-now.dark.png": {
-    "sha256": "a92beeee2796c0e1abec3e60d0d9df81d8a584368d2ec5378c05ec6174ab2d39",
+    "sha256": "c4e42890c64d90ece7830b1d7b0a2e7ca66f27493e39ccd54dd03d4adfa25e9f",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/now.css": "1180679cd4d2f08f21469f5338a950bde5b0a9654a8fd2fc2e42e60985fbf396",
-      "deck/css/views/phone-setup.css": "0a327a7c73d59c0ab5ea6addba80f81fe7578b240e4d971b2270f177cd6b4dd1",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/js/needs.js": "cfcaae0b6072475c69e4f6174a32ebe4322c68cab70d382b1d2a73548301aabb",
-      "deck/js/phone-setup.js": "f833adb8837b9dd747e4d720b60d20d7c2c894c80b6c0917ae6f1a773b795997",
-      "deck/views/now.js": "51a459646ff00f5cf6a5d6294dadffa3bc08786a9c7ee9e587c8be7586d78877"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/now.css": "f837a32d4457acbd04b3bcda25b7fb6af72a0091866bec913cfc8ac5ddd21f92",
+      "deck/css/views/phone-setup.css": "582eaa0f71ed85be0aeb1f00c86c74e00c61edd653f5686f20c18e989d262549",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/js/needs.js": "0393e361ca7d917ecd192a338474976051a45d71b99dc805020bd869ddb8f65b",
+      "deck/js/phone-setup.js": "1ff667b388eb5a40bfbe6fcf5e36125bdc54702bc2baf98f7538808a186f515f",
+      "deck/views/now.js": "3f3acc6b5ef81c49349b9e2aea2c7907ab6e40196a6ce7324b0e3a5ccdb31669"
     }
   },
   "docs/using/shots/phone-now.png": {
-    "sha256": "a92beeee2796c0e1abec3e60d0d9df81d8a584368d2ec5378c05ec6174ab2d39",
+    "sha256": "c4e42890c64d90ece7830b1d7b0a2e7ca66f27493e39ccd54dd03d4adfa25e9f",
     "shows": {
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/css/views/now.css": "1180679cd4d2f08f21469f5338a950bde5b0a9654a8fd2fc2e42e60985fbf396",
-      "deck/css/views/phone-setup.css": "0a327a7c73d59c0ab5ea6addba80f81fe7578b240e4d971b2270f177cd6b4dd1",
-      "deck/index.html": "7abcda4c8025fbe191d52b428299de04768ecc58d2f4acea55ffe9c865666f59",
-      "deck/js/app.js": "84c47c27c4a0c61d1d534f887e33a842e20e02da19f5bc3be6a38bed9350934c",
-      "deck/js/needs.js": "cfcaae0b6072475c69e4f6174a32ebe4322c68cab70d382b1d2a73548301aabb",
-      "deck/js/phone-setup.js": "f833adb8837b9dd747e4d720b60d20d7c2c894c80b6c0917ae6f1a773b795997",
-      "deck/views/now.js": "51a459646ff00f5cf6a5d6294dadffa3bc08786a9c7ee9e587c8be7586d78877"
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/css/views/now.css": "f837a32d4457acbd04b3bcda25b7fb6af72a0091866bec913cfc8ac5ddd21f92",
+      "deck/css/views/phone-setup.css": "582eaa0f71ed85be0aeb1f00c86c74e00c61edd653f5686f20c18e989d262549",
+      "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
+      "deck/js/app.js": "789d2e5c9eed856472d12a10d52caa246620fd11f950a5328591f73c6ba9e6cb",
+      "deck/js/needs.js": "0393e361ca7d917ecd192a338474976051a45d71b99dc805020bd869ddb8f65b",
+      "deck/js/phone-setup.js": "1ff667b388eb5a40bfbe6fcf5e36125bdc54702bc2baf98f7538808a186f515f",
+      "deck/views/now.js": "3f3acc6b5ef81c49349b9e2aea2c7907ab6e40196a6ce7324b0e3a5ccdb31669"
     }
   },
   "docs/using/shots/settings-connections.dark.png": {
