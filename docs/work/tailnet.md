@@ -86,6 +86,8 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+30 Sep 2026, reviewer-2's two changes on cc103f19 (d1e975c9 plus regenerated reference): the grant stores the claimed host and enrolls only a passkey whose rp_id equals it; relay.setup.claim is in WEB_DENY. presence and setup tests 56 of 56. Next: vyre-core phase 5 with anywhere (keys.js as a handle so macCoreRefusal can lift); asked anywhere in CHAT.md for the key-store client path and whether dh is sync.
+
 30 Sep 2026, 0.2 build on work/tailnet-02 (plan: team/0.2/plans/tailnet.md 3.6b, 3.6c). Built, each
 with tests in temp homes and fakes: link.health in the C5 shape (acf8c538); Funnel on /s/ with
 consent state, ADR 0014 amended (14f4599b; event is `funnel.changed`, `artifacts.public.set` gets
