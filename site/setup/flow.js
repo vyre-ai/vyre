@@ -35,12 +35,15 @@ export function suggestName(text) {
 }
 
 /**
- * @typedef {{ stage: "start"|"install"|"found"|"named"|"stopped", installLine: string, code: string, lines: string[],
+ * @typedef {{ stage: "start"|"install"|"found"|"named"|"tailscale"|"ai"|"stopped", installLine: string, code: string, lines: string[],
  *   box: null | { name: string, fingerprint: string, words: string[], handle: string|null },
  *   confirm: "none"|"pending"|"matched",
  *   channel: "none"|"connecting"|"ready"|"failed",
  *   naming: { input: string, check: null | { name: string, valid: boolean, available: boolean, why: string|null, address: string|null }, checking: boolean, claiming: boolean, error: string|null },
  *   named: null | { name: string, address: string|null, recoveryCode: string|null, saved: boolean },
+ *   tailscale: { status: null | { state: string, login: string|null, tailnet: string|null, tailnetKind: string|null, ip: string|null }, loginUrl: string|null, busy: boolean, error: string|null,
+ *     address: null | { phase: string, why: string|null } },
+ *   ai: { accounts: { id: string, provider: string, flow: string|null, step: "starting"|"code"|"url"|"waiting"|"done"|"failed", url: string|null, code: string|null, paste: boolean, error: string|null }[] },
  *   error: null | { code: string, message: string }, expiresAt: number, listening: boolean }} FlowState
  * @typedef {{ createSetupKey: Function, setupCode: Function, resolveSetup: Function, setupWords: Function, mailboxReader: Function }} SetupClient
  * @typedef {{ call: (tool: string, input?: object) => Promise<any>, close: () => void }} BoxChannel
@@ -58,8 +61,10 @@ export function createFlow(o) {
   const pollMs = o.pollMs ?? 3000;
   const debounceMs = o.debounceMs ?? 350;
   /** @type {FlowState} */
+  const blankTs = () => ({ status: null, loginUrl: null, busy: false, error: null, address: null });
+  const blankAi = () => ({ accounts: [] });
   const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
-  let state = { stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, error: null, expiresAt: 0, listening: false };
+  let state = { stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, tailscale: blankTs(), ai: blankAi(), error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
   let chan = null;
@@ -84,7 +89,7 @@ export function createFlow(o) {
     } catch { return fail("key"); }
     if (mine !== run) return;
     closeChan(); checkSeq++; pending = null;
-    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, error: null, expiresAt: now() + TTL_MS, listening: true });
+    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, tailscale: blankTs(), ai: blankAi(), error: null, expiresAt: now() + TTL_MS, listening: true });
     followMailbox(mine, key, secret);
     waitForBox(mine, key, secret);
     // The hour is the box's; the page stops listening when it is over.
@@ -206,9 +211,127 @@ export function createFlow(o) {
     }
   }
 
+  // ---- Tailscale: the box joins, and the address is published once it has a tailnet address ----
+
+  /** A link the box hands back is followed only if it is a plain https address with no login in it. @param {unknown} u @param {(host: string) => boolean} [okHost] */
+  function safeUrl(u, okHost) {
+    try {
+      const x = new URL(String(u));
+      if (x.protocol !== "https:" || x.username || x.password || x.href.length > 600 || /^[\d.]+$|^\[/.test(x.hostname)) return null;
+      return !okHost || okHost(x.hostname) ? x.href : null;
+    } catch { return null; }
+  }
+  const isTailscaleHost = h => h === "tailscale.com" || h.endsWith(".tailscale.com");
+
+  /** After the recovery code is saved: on to the AI sign-in. */
+  function continueToAi() {
+    if (state.stage !== "named" || !state.named || (state.named.recoveryCode && !state.named.saved)) return;
+    set({ stage: "ai" });
+  }
+
+  /** One signed-in AI is enough: on to Tailscale. */
+  function continueToTailscale() {
+    if (state.stage !== "ai" || !state.ai.accounts.some(a => a.step === "done")) return;
+    set({ stage: "tailscale", tailscale: blankTs() });
+    watchTailscale(run);
+  }
+
+  /** Read the box's Tailscale state now and every few seconds until it is connected and the address is up. */
+  async function watchTailscale(mine) {
+    while (mine === run && state.stage === "tailscale" && chan) {
+      try {
+        const st = await chan.call("network.tailscale.status");
+        if (mine !== run) return;
+        const status = { state: String(st.state || ""), login: st.login ? String(st.login).slice(0, 120) : null, tailnet: st.tailnet ? String(st.tailnet).slice(0, 120) : null, tailnetKind: st.tailnetKind ? String(st.tailnetKind) : null, ip: st.ip ? String(st.ip).slice(0, 60) : null };
+        set({ tailscale: { ...state.tailscale, status, error: null, loginUrl: status.state === "connected" ? null : state.tailscale.loginUrl } });
+        if (status.state === "connected" && (!state.tailscale.address || state.tailscale.address.phase !== "serving")) await publishAddress(mine);
+        if (state.tailscale.address && state.tailscale.address.phase === "serving") return;
+      } catch (e) { if (mine !== run) return; set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }
+      await sleep(pollMs);
+    }
+  }
+
+  /** With a tailnet address the name is claimed again, which publishes it and gets its certificate (names.claim's second run). */
+  async function publishAddress(mine) {
+    if (!chan || !state.named) return;
+    try {
+      const r = await chan.call("names.claim", { name: state.named.name });
+      if (mine !== run) return;
+      set({ tailscale: { ...state.tailscale, address: { phase: String((r && r.phase) || "dns"), why: r && r.why ? String(r.why).slice(0, 200) : null } } });
+    } catch (e) { if (mine === run) set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }
+  }
+
+  /** "Connect": ask the box for Tailscale's own sign-in link. It is shown as a link to click, never opened for the person. */
+  async function connectTailscale() {
+    if (!chan || state.stage !== "tailscale" || state.tailscale.busy) return;
+    const mine = run;
+    set({ tailscale: { ...state.tailscale, busy: true, error: null } });
+    try {
+      const r = await chan.call("network.tailscale.login");
+      if (mine !== run) return;
+      const url = r && r.loginUrl ? safeUrl(r.loginUrl, isTailscaleHost) : null;
+      set({ tailscale: { ...state.tailscale, busy: false, loginUrl: url, error: r && r.loginUrl && !url ? "The box gave a sign-in link that is not Tailscale's, so it was not shown." : null } });
+    } catch (e) { if (mine === run) set({ tailscale: { ...state.tailscale, busy: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }
+  }
+
+  // ---- Sign in to your AI: each provider's own login, one is enough to go on ----
+
+  /** @param {string} provider "claude" | "codex" | "grok" */
+  async function startAi(provider) {
+    if (!chan || state.stage !== "ai") return;
+    const mine = run;
+    const id = `${provider}-${state.ai.accounts.length + 1}`;
+    const row = { id, provider, flow: null, step: /** @type {const} */ ("starting"), url: null, code: null, paste: false, error: null };
+    set({ ai: { accounts: [...state.ai.accounts.filter(a => a.provider !== provider || a.step === "done"), row] } });
+    const upd = patch => { if (mine === run) set({ ai: { accounts: state.ai.accounts.map(a => (a.id === id ? { ...a, ...patch } : a)) } }); };
+    try {
+      const r = await chan.call("sessions.accounts.signin", { provider });
+      const url = r && r.url ? safeUrl(r.url) : null;
+      upd({ flow: String(r.flow), step: r.step === "url" ? "url" : "code", url, code: r.code ? String(r.code).slice(0, 80) : null, paste: Boolean(r.paste || r.step === "url") });
+      // A link that is not a plain https address is not shown and the sign-in is not followed.
+      if (r.url && !url) return upd({ step: "failed", url: null, code: null, error: "The box gave a sign-in link that is not a plain https address, so it was not shown." });
+    } catch (e) { return upd({ step: "failed", error: String(/** @type {Error} */ (e).message).slice(0, 200) }); }
+    // A login that hands back a code to type at the provider finishes on its own; one that wants a code pasted back waits for it.
+    while (mine === run) {
+      const a = state.ai.accounts.find(x => x.id === id);
+      if (!a || a.step === "done" || a.step === "failed") return;
+      if (!a.paste) {
+        await sleep(pollMs);
+        if (mine !== run) return;
+        try {
+          const r = await chan.call("sessions.accounts.signin", { flow: a.flow });
+          if (r && r.step === "done") return upd({ step: "done", error: null });
+          if (r && r.step === "failed") return upd({ step: "failed", error: String((r.why || r.error || "the sign-in did not finish")).slice(0, 200) });
+        } catch (e) { return upd({ step: "failed", error: String(/** @type {Error} */ (e).message).slice(0, 200) }); }
+      } else await sleep(200);
+    }
+  }
+
+  /** A code the person pasted back from the provider's page. @param {string} id @param {string} code */
+  async function submitAiCode(id, code) {
+    const a = state.ai.accounts.find(x => x.id === id);
+    const text = String(code || "").trim();
+    if (!chan || !a || !a.flow || !a.paste || !text || text.length > 400) return;
+    const mine = run;
+    const upd = patch => { if (mine === run) set({ ai: { accounts: state.ai.accounts.map(x => (x.id === id ? { ...x, ...patch } : x)) } }); };
+    upd({ step: "waiting", error: null });
+    try {
+      const r = await chan.call("sessions.accounts.signin", { flow: a.flow, code: text });
+      if (r && r.step === "failed") return upd({ step: "failed", paste: false, error: String(r.why || r.error || "that code did not work").slice(0, 200) });
+      // Signed in, or still finishing: ask until it says.
+      for (let i = 0; i < 40 && mine === run; i++) {
+        const s2 = await chan.call("sessions.accounts.signin", { flow: a.flow });
+        if (s2 && s2.step === "done") return upd({ step: "done", paste: false });
+        if (s2 && s2.step === "failed") return upd({ step: "failed", paste: false, error: String(s2.why || s2.error || "the sign-in did not finish").slice(0, 200) });
+        await sleep(pollMs);
+      }
+    } catch (e) { upd({ step: "failed", paste: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) }); }
+  }
+
   return {
     get state() { return state; },
     setName, claim, confirmWords, denyWords, markSaved,
+    continueToAi, continueToTailscale, connectTailscale, startAi, submitAiCode,
     /** Start (or start again): a new key and a new code; the old one is forgotten. */
     begin,
     /** Stop listening (the page is closing). */

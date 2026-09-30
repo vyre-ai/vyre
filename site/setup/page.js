@@ -18,6 +18,11 @@ const actions = {
   confirmWords: () => flow.confirmWords(),
   denyWords: () => flow.denyWords(),
   markSaved: () => flow.markSaved(),
+  continueToAi: () => flow.continueToAi(),
+  continueToTailscale: () => flow.continueToTailscale(),
+  connectTailscale: () => flow.connectTailscale(),
+  startAi: p => flow.startAi(p),
+  submitAiCode: (id, code) => flow.submitAiCode(id, code),
   async copy(text, button) {
     try { await navigator.clipboard.writeText(text); button.textContent = "Copied"; }
     catch { button.textContent = "Select the text and copy it"; }

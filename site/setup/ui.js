@@ -14,11 +14,12 @@ export function h(doc, tag, attrs, ...kids) {
   return el;
 }
 
-/** @typedef {{ begin: () => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void }} Actions */
+/** @typedef {{ begin: () => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void,
+ *   continueToAi: () => void, continueToTailscale: () => void, connectTailscale: () => void, startAi: (provider: string) => void, submitAiCode: (id: string, code: string) => void }} Actions */
 
 /** Per root: the region elements and the key each was last built for. @type {WeakMap<object, { regions: Record<string, any>, keys: Record<string, string>, stage: string|null }>} */
 const memory = new WeakMap();
-const REGIONS = ["head", "words", "naming", "log"];
+const REGIONS = ["head", "words", "naming", "ai", "tailscale", "log"];
 
 /**
  * @param {import("./flow.js").FlowState} s
@@ -72,6 +73,16 @@ export function render(s, ctx) {
       el("h1", { tabindex: "-1" }, s.stage === "named" && s.named ? (s.named.address || s.named.name) : found.name),
       s.stage === "found" ? el("p", { class: "lead" }, "It answered this page. Look at your server's terminal: it printed four words. Do they match these?") : null,
     ];
+    if (s.stage === "ai") return [
+      el("p", { class: "lbl" }, "Your AI"),
+      el("h1", { tabindex: "-1" }, "Sign in to your AI"),
+      el("p", { class: "lead" }, "Each one signs in with its own provider's page, on any browser. Vyre never sees your password. One is enough to go on; you can add more later."),
+    ];
+    if (s.stage === "tailscale") return [
+      el("p", { class: "lbl" }, "Tailscale"),
+      el("h1", { tabindex: "-1" }, "Connect your server to Tailscale"),
+      el("p", { class: "lead" }, "Tailscale is the private network your devices and this server share. You sign in on Tailscale's own page."),
+    ];
     return [
       el("p", { class: "lbl" }, "Stopped"),
       el("h1", { tabindex: "-1" }, "Setup stopped"),
@@ -111,6 +122,7 @@ export function render(s, ctx) {
       const code = saved ? null : s.named.recoveryCode;
       const copy = el("button", { type: "button", class: "btn secondary" }, "Copy");
       if (code) copy.addEventListener("click", ev => actions.copy(code, /** @type {HTMLElement} */ (ev.currentTarget)));
+      const go = el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToAi()));
       return code ? [
         el("h2", { class: "sub" }, "Your recovery code"),
         el("p", { class: "lead" }, "Save this somewhere safe. It is shown once. If you ever reinstall, it takes this address back."),
@@ -118,7 +130,7 @@ export function render(s, ctx) {
         el("p", { class: "note" }, "Copying puts it on your clipboard, where a clipboard history tool may keep it: clear that afterwards, or write it down instead."),
         el("p", { class: "warn", role: "alert" }, "This page is the only place it is shown. If you close it or reload before you have saved the code, it is gone."),
         el("div", { class: "actions" }, button("I saved it", "primary", () => actions.markSaved())),
-      ] : [el("p", { class: "lead" }, s.named.recoveryCode ? "Saved. You can close this page when you are ready." : "This address was already yours.")];
+      ] : [el("p", { class: "lead" }, s.named.recoveryCode ? "Saved." : "This address was already yours."), go];
     }
     return [];
   });
@@ -133,6 +145,56 @@ export function render(s, ctx) {
     if (claim) { const ok = Boolean(c && c.available) && !s.naming.claiming; if (ok) claim.removeAttribute?.("disabled"); else claim.setAttribute("disabled", "disabled"); claim.textContent = s.naming.claiming ? "Claiming" : "Claim this address"; }
   }
   void rebuiltNaming;
+
+  // ---- ai: each provider's own sign-in ----
+  const providers = [["claude", "Claude"], ["codex", "ChatGPT (Codex)"], ["grok", "Grok"]];
+  const aiKey = s.stage === "ai" ? "a:" + s.ai.accounts.map(a => `${a.id}/${a.step}/${a.url}/${a.code}/${a.error}`).join("|") : "none";
+  region("ai", aiKey, () => s.stage !== "ai" ? [] : [
+    el("div", { class: "providers" }, ...providers.map(([id, label]) => button(`Sign in with ${label}`, "secondary", () => actions.startAi(id)))),
+    ...s.ai.accounts.map(a => {
+      const label = (providers.find(p => p[0] === a.provider) || [0, a.provider])[1];
+      const kids = [el("p", { class: "row-title" }, label)];
+      if (a.step === "starting") kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Starting the sign-in"));
+      if (a.step === "code" || a.step === "url") {
+        if (a.url) kids.push(el("p", { class: "hint" }, "Open ", el("a", { href: a.url, target: "_blank", rel: "noopener noreferrer" }, "the sign-in page"), a.code && !a.paste ? " and enter this code:" : a.paste ? ", sign in, and paste the code it shows you here:" : "."));
+        if (a.code && !a.paste) kids.push(el("p", { class: "code-line" }, a.code), el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Waiting for you to finish"));
+        if (a.paste) {
+          const input = el("input", { type: "text", class: "name", name: "code", autocomplete: "off", spellcheck: "false", "aria-label": `Code from ${label}`, maxlength: "400" });
+          const go = button("Finish", "primary", () => actions.submitAiCode(a.id, /** @type {any} */ (input).value));
+          kids.push(el("div", { class: "field" }, input), el("div", { class: "actions" }, go));
+        }
+      }
+      if (a.step === "waiting") kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Finishing the sign-in"));
+      if (a.step === "done") kids.push(el("p", { class: "hint" }, `${label} is signed in.`));
+      if (a.error) kids.push(el("p", { class: "warn", role: "alert" }, a.error));
+      return el("div", { class: "account" }, ...kids);
+    }),
+    s.ai.accounts.some(a => a.step === "done") ? el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToTailscale())) : null,
+  ]);
+
+  // ---- tailscale: the box joins the tailnet, then its address is published ----
+  const t = s.tailscale, ts = t.status;
+  const tsKey = s.stage === "tailscale" ? `t:${ts ? ts.state : "?"}|${ts ? ts.tailnetKind : ""}|${t.loginUrl}|${t.busy}|${t.error}|${t.address ? t.address.phase + t.address.why : ""}` : "none";
+  region("tailscale", tsKey, () => {
+    if (s.stage !== "tailscale") return [];
+    const kids = [];
+    const named = s.named && (s.named.address || s.named.name);
+    if (ts && ts.state === "connected") {
+      kids.push(el("p", { class: "hint" }, `Your server is on ${ts.tailnet || "your tailnet"}${ts.login ? ` as ${ts.login}` : ""}.`));
+      if (ts.tailnetKind === "organization") kids.push(el("p", { class: "warn", role: "alert" }, "This is a work network. Your company's admins can see and reach this server. A personal Tailscale account is usually what you want."));
+      const ph = t.address ? t.address.phase : null;
+      if (ph === "serving") kids.push(el("p", { class: "hint" }, `Your address is live: ${named}.`));
+      else if (ph === "failed") kids.push(el("p", { class: "warn", role: "alert" }, t.address && t.address.why ? t.address.why : "The address could not be published."));
+      else kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Publishing your address"));
+    } else if (ts && ts.state === "needs-approval") {
+      kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Waiting for approval in your Tailscale admin"));
+    } else {
+      kids.push(el("div", { class: "actions" }, button(t.busy ? "Getting the link" : "Connect my server", "primary", () => actions.connectTailscale())));
+      if (t.loginUrl) kids.push(el("p", { class: "hint" }, "Open ", el("a", { href: t.loginUrl, target: "_blank", rel: "noopener noreferrer" }, "Tailscale's sign-in page"), " and sign in. This page notices when your server joins."));
+    }
+    if (t.error) kids.push(el("p", { class: "warn", role: "alert" }, t.error));
+    return kids;
+  });
 
   // ---- log: the install as the server tells it, as plain text ----
   region("log", `${s.lines.length}|${s.lines[s.lines.length - 1] || ""}`, () => s.lines.length ? [

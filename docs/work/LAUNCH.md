@@ -43,6 +43,7 @@ lead's 0.2 BUILD GO.
 
 ## Doing
 
+- Setup page now goes found (words confirmed) -> named (recovery code saved) -> AI sign-in -> Tailscale. Still to build: devices/Wink, arrive and claim (relay.setup.end at the claim), land + cards, own-domain naming, Mac-as-server. After tailnet-02 lands on stage/0.2: rebase this branch onto stage, drop merge cfd95c2b, fix box.test.js to start setup through the boot path (relay.setup.begin is module:onboard/launch only in e426a549), and rerun setup-handoff.
 - Setup page slices 1 and 2 (start, install with streamed progress, found with check words, open the setup channel, choose and claim the address, recovery code shown once) are built in site/setup. Next: the Tailscale step (names.connect and network.tailscale.* over the channel, reachability probe), AI sign-in (sessions' tool, open), devices/Wink, arrive and claim. Own-domain naming (names.domain.check) and the Mac-as-server choice are not in yet.
 - Export v2 (project files by default, streamed, resumable, size up front, --skip-projects) built; see CHANGELOG. Open: a Mac has no /work, so its project folders need teammates/projects to name them (pass --work DIR for now); a Settings toggle for the skip flag belongs to the Settings card (step 10).
 - Reviewer-2's HOLD and 4 MEDIUMs on fbff6d47/fc2723cf fixed; awaiting recheck.

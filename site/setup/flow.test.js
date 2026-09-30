@@ -323,6 +323,147 @@ test("forged lines: an <img onerror> payload and a very long line are text, capp
   flow.stop();
 });
 
+/** A fake box for the later steps: Tailscale and provider sign-ins follow a script the test drives. */
+function stepsBox(script = {}) {
+  const box = fakeBox();
+  const base = box.call;
+  const st = { ts: "needs-login", kind: "personal", loginUrl: "https://login.tailscale.com/a/abc123", claimPhase: "dns", flows: {}, ...script };
+  box.st = st;
+  box.call = async (tool, input) => {
+    if (tool === "network.tailscale.status") { box.calls.push([tool, input]); return { state: st.ts, login: "alex@example.com", tailnet: "alex.example", tailnetKind: st.kind, ip: st.ts === "connected" ? "100.64.0.9" : null }; }
+    if (tool === "network.tailscale.login") { box.calls.push([tool, input]); return { loginUrl: st.loginUrl, state: "needs-login" }; }
+    if (tool === "names.claim" && st.claimPhase) { box.calls.push([tool, input]); return { phase: st.claimPhase, address: "https://harlow-legal-server.vyre.run", recoveryCode: st.ts === "connected" ? null : "abcd-efgh-jklm-npqr-stuv-wxyz-23" }; }
+    if (tool === "sessions.accounts.signin") {
+      box.calls.push([tool, input]);
+      if (input.provider) { const flow = `f-${input.provider}`; st.flows[flow] = { provider: input.provider, polls: 0 }; return input.provider === "claude" ? { flow, step: "url", url: "https://claude.ai/oauth/authorize?x=1", paste: true } : { flow, step: "code", url: "https://example.org/device", code: "WXYZ-1234" }; }
+      const f = st.flows[input.flow];
+      if (input.code) { f.done = input.code === "good-code"; return f.done ? { step: "waiting" } : { step: "failed", why: "that code did not work" }; }
+      f.polls++;
+      return f.provider === "claude" ? { step: f.done ? "done" : "url" } : { step: f.polls >= 2 ? "done" : "code" };
+    }
+    return base(tool, input);
+  };
+  return box;
+}
+async function atNamed(t, box) {
+  const flow = await foundFlow(t, box);
+  await until(() => flow.state.naming.check);
+  await flow.claim();
+  flow.markSaved();
+  return flow;
+}
+
+test("steps: AI sign-in comes before Tailscale, needs one done login, and a pasted code finishes the ones that want it", async t => {
+  const box = stepsBox();
+  const flow = await atNamed(t, box);
+  flow.continueToTailscale();
+  assert.equal(flow.state.stage, "named", "Tailscale is not reachable from the naming screen");
+  flow.continueToAi();
+  assert.equal(flow.state.stage, "ai");
+  flow.continueToTailscale();
+  assert.equal(flow.state.stage, "ai", "no login is done yet");
+
+  flow.startAi("codex");
+  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].code === "WXYZ-1234");
+  assert.equal(flow.state.ai.accounts[0].url, "https://example.org/device");
+  await until(() => flow.state.ai.accounts[0].step === "done");
+  assert.ok(box.calls.some(c => c[0] === "sessions.accounts.signin" && c[1].flow === "f-codex"), "it polled with the flow");
+
+  flow.startAi("claude");
+  await until(() => flow.state.ai.accounts.find(a => a.provider === "claude" && a.step === "url"));
+  const claude = () => flow.state.ai.accounts.find(a => a.provider === "claude");
+  assert.equal(claude().paste, true);
+  await flow.submitAiCode(claude().id, "bad-code");
+  assert.equal(claude().step, "failed");
+  assert.equal(claude().error, "that code did not work");
+  flow.startAi("claude");
+  await until(() => flow.state.ai.accounts.filter(a => a.provider === "claude").some(a => a.step === "url"));
+  const again = flow.state.ai.accounts.find(a => a.provider === "claude" && a.step === "url");
+  await flow.submitAiCode(again.id, "good-code");
+  await until(() => flow.state.ai.accounts.find(a => a.id === again.id).step === "done");
+  flow.continueToTailscale();
+  assert.equal(flow.state.stage, "tailscale");
+  flow.stop();
+});
+
+test("steps: a sign-in link that is not a plain https address is not shown", async t => {
+  const box = stepsBox();
+  const orig = box.call;
+  box.call = async (tool, input) => { const r = await orig(tool, input); return tool === "sessions.accounts.signin" && input.provider ? { ...r, url: "javascript:alert(1)" } : r; };
+  const flow = await atNamed(t, box);
+  flow.continueToAi();
+  flow.startAi("codex");
+  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].error);
+  assert.equal(flow.state.ai.accounts[0].url, null);
+  assert.match(flow.state.ai.accounts[0].error, /not a plain https address/);
+  flow.stop();
+});
+
+test("steps: Tailscale shows a checked sign-in link, waits for the join, then publishes the address once and stops", async t => {
+  const box = stepsBox();
+  const flow = await atNamed(t, box);
+  flow.continueToAi(); flow.startAi("codex");
+  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
+  flow.continueToTailscale();
+  await until(() => flow.state.tailscale.status);
+  assert.equal(flow.state.tailscale.status.state, "needs-login");
+  await flow.connectTailscale();
+  assert.equal(flow.state.tailscale.loginUrl, "https://login.tailscale.com/a/abc123");
+  box.st.ts = "connected"; box.st.claimPhase = "serving";
+  await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
+  const claims = box.calls.filter(c => c[0] === "names.claim").length;
+  await new Promise(r => setTimeout(r, 60));
+  assert.equal(box.calls.filter(c => c[0] === "names.claim").length, claims, "no more claims once it is serving");
+  assert.equal(flow.state.tailscale.loginUrl, null, "the link is dropped once connected");
+  flow.stop();
+
+  // Not Tailscale's page: refused.
+  const bad = stepsBox({ loginUrl: "https://evil.example/login" });
+  const f2 = await atNamed(t, bad);
+  f2.continueToAi(); f2.startAi("codex");
+  await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
+  f2.continueToTailscale();
+  await f2.connectTailscale();
+  assert.equal(f2.state.tailscale.loginUrl, null);
+  assert.match(f2.state.tailscale.error, /not Tailscale's/);
+  f2.stop();
+});
+
+test("steps: the screens render, links are real https anchors only where the box's link was checked, and the pasted-code field keeps its element", async t => {
+  const box = stepsBox({ ts: "connected", kind: "organization", claimPhase: "certificate" });
+  const doc = new FakeDoc(), root = doc.createElement("main");
+  let flow;
+  const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords: () => flow.confirmWords(), denyWords() {}, markSaved: () => flow.markSaved(),
+    continueToAi: () => flow.continueToAi(), continueToTailscale: () => flow.continueToTailscale(), connectTailscale: () => flow.connectTailscale(), startAi: p => flow.startAi(p), submitAiCode: (i, c) => flow.submitAiCode(i, c) };
+  const w = await world(t);
+  flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box,
+    onChange: s => render(s, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions }) });
+  await flow.begin();
+  await until(() => flow.state.stage === "found");
+  flow.confirmWords();
+  await until(() => flow.state.naming.check);
+  await flow.claim(); flow.markSaved(); flow.continueToAi();
+  flow.startAi("claude");
+  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "url");
+  const anchors = () => root.all().filter(e => e.tag === "a");
+  assert.deepEqual(anchors().map(a => a.attrs.href), ["https://claude.ai/oauth/authorize?x=1"]);
+  assert.ok(anchors().every(a => a.attrs.rel.includes("noopener") && a.attrs.target === "_blank"));
+  const field = () => root.all().find(e => e.tag === "input" && e.attrs.name === "code");
+  const first = field();
+  assert.ok(first);
+  await w.post(flow.state.code, "a progress line while the code is being typed", 0);
+  await until(() => flow.state.lines.length === 1);
+  assert.equal(field(), first, "the same field after a progress line");
+  first.value = "good-code";
+  root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Finish")).listeners.click();
+  await until(() => flow.state.ai.accounts[0].step === "done");
+  flow.continueToTailscale();
+  await until(() => flow.state.tailscale.address);
+  assert.ok(root.textContent.includes("This is a work network"), "the work-network warning");
+  assert.ok(root.textContent.includes("Publishing your address"));
+  flow.stop();
+});
+
 // ---- a DOM just big enough to check what the screen makes ----
 class FakeEl {
   constructor(tag, doc) { this.tag = tag; this.doc = doc; this.attrs = {}; this.children = []; this.text = null; this.listeners = {}; }
