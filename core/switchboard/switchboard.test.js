@@ -258,7 +258,9 @@ async function boot(t, { vault, ungranted = [], probe, modules = [] } = {}) {
       } };`);
   }
   for (const m of modules) writeModule(path.join(root, "modules"), m.name, m.manifest, m.source);
-  const d = await start({ root, presence: present, log: () => {} });
+  // The probe stands in for one of Vyre's own modules asking an internal tool, so with it the
+  // home's modules load as first party (ADR 0047: an added module reaches only declared reach).
+  const d = await start({ root, presence: present, log: () => {}, ...(probe ? { firstPartyRoots: [path.join(root, "modules")] } : {}) });
   daemon = d;
   // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
   // Vyre's own state, as it does on a real machine. realpath: on the Mac the temp dir sits under

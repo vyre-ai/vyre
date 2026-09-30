@@ -18,7 +18,10 @@ if (!(real(root) + path.sep).startsWith(real(os.tmpdir()) + path.sep) || real(ro
   process.exit(1);
 }
 process.env.VYRE_NO_DIALOGS = "1";
-const d = await start({ root, presence: present }).catch(e => { console.error("vyred: " + e.message); process.exit(1); });
+// A test's fixture modules in this temp home stand in for Vyre's own (a probe using the built in
+// only vault.fetch, ADR 0047), so they load as first party. This launcher decides that itself;
+// nothing reaches it from config, the environment or the command line, and vyred never does it.
+const d = await start({ root, presence: present, firstPartyRoots: [path.join(root, "modules")] }).catch(e => { console.error("vyred: " + e.message); process.exit(1); });
 const quit = async () => { await d.stop(); process.exit(0); };
 process.on("SIGTERM", quit);
 process.on("SIGINT", quit);

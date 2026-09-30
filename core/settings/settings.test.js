@@ -400,7 +400,9 @@ test("settings.write: a module sets its own plain keys, and nothing else", async
   ]);
   homeModule(root, "oven", [{ key: "oven.heat", label: "Heat", type: "int", levels: ["account"], apply: "live" }]);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const d = await start({ root, log: () => {} });
+  // The fixture stands in for one of Vyre's own modules calling settings.write (ADR 0047: an added
+  // module sets its settings through ctx.settings.set instead), so it loads as first party.
+  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
   /** @type {any[]} */
@@ -440,7 +442,9 @@ test("settings.write: a module's own secret key comes back masked, like settings
   const root = tempHome(t);
   homeModule(root, "bakery", [{ key: "bakery.token", label: "Till token", type: "string", levels: ["account"], apply: "live", secret: true }]);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const d = await start({ root, log: () => {} });
+  // The fixture stands in for one of Vyre's own modules calling settings.write (ADR 0047: an added
+  // module sets its settings through ctx.settings.set instead), so it loads as first party.
+  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const r = await call("bakery.put", { key: "bakery.token", value: "northwind-till-1" }, { root });
   assert.equal(r.error, undefined, JSON.stringify(r.error));

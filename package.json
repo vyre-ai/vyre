@@ -63,7 +63,8 @@
     "!local/capsule/native/Tests/**",
     "!**/.DS_Store",
     "!**/testing.js",
-    "!**/testing/**"
+    "!**/testing/**",
+    "packages/module-sdk/testing.js"
   ],
   "homepage": "https://vyre.run",
   "repository": {

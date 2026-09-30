@@ -73,6 +73,13 @@ test("floor: raw clients on vyred's socket are refused, and so is a forged calle
     `python3 -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/home/sam/.vyre/vyred.sock')"`,
     `node -e "require('http').request({socketPath: process.env.HOME + '/.vyre/vyred.sock', path: '/v1/tools'})"`,
     `curl --unix-socket /tmp/vyre-501/x.sock -d '{"id":"g1"}' http://x/v1/tools/gate.approve`,
+    // The Chrome bridge's socket drives the person's browser: as closed as vyred's own.
+    `nc -U /home/sam/.vyre/run/chrome.sock`,
+    `curl --unix-socket ~/.vyre/run/chrome.sock http://x/`,
+    `socat - UNIX-CONNECT:/home/sam/.vyre/run/chrome.sock`,
+    `nc -U /srv/elsewhere/chrome.sock`,
+    `curl --unix-socket /Users/alex/chrome.sock http://x/`,
+    `python3 -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/home/sam/.vyre/run/chrome.sock')"`,
   ];
   for (const c of denied) assert.equal(bash(c), "deny", c);
   for (const c of [`curl --unix-socket "$S" http://x/v1/tools`, `nc -U $(ls /tmp/*/*.sock | head -1)`, `python3 -c "import socket; socket.socket(socket.AF_UNIX).connect(p)"`]) assert.equal(bash(c), "ask", c);
