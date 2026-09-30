@@ -170,6 +170,13 @@ export default {
       run: gated(async () => hands.halt("tool")),
     });
 
+    ctx.tool("hands.indicator", {
+      description: "Show the on-screen pill that says Vyre is controlling an app, and arm the Escape key to stop it. The chrome module calls this before every act it makes in the person's Chrome, so the person can see and stop it exactly as they can stop the hands. Refuses with no_indicator where the pill cannot be shown.",
+      input: { type: "object", properties: { app: str } },
+      callers: [...PEOPLE, "module"],
+      run: wrap(async input => { await overlay.controlling(String((input && input.app) || "Chrome"), null); return { ok: true }; }),
+    });
+
     ctx.tool("hands.grant.list", {
       description: "Every agent granted to drive this Mac's computer use, and when.",
       input: { type: "object", properties: {} },

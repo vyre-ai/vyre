@@ -104,9 +104,11 @@ steps 1-3 first (outward classifier, Gate wiring, the one grant), then deep Chro
   and tips tests clean.
 
 ### Doing
-- Waiting on a push of work/capsule-sight to run chrome-spike.yml on the runners.
+- Waiting on a push of work/capsule-sight to run chrome-spike.yml on the runners (now includes spike/harness/real.mjs: the real extension + host + bridge, the bench, stop-halts-batch and blind-refused checks).
+- Esc: hands.indicator (new hands tool) raises the shared pill before every Chrome act, and the hands overlay's stop (Esc or double Control) stops Chrome control through oversight.
 
 ## Next (when resumed)
+0. Read the chrome-spike results (spike, direct-CDP bench, real.mjs) per OS, fix what the real Chrome shows.
 1. Read the spike results (headless new + load-extension + native messaging on mac/windows, attach cost,
    round-trip p50/p95). If headless cannot load the extension, run headed under xvfb/the runner desktop.
 2. Real-extension mode: bench/bridge-connect.mjs (starts bridge.js, waits for hello, call/close), align

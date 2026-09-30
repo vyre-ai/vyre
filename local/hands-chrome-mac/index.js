@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { createBridge } from "./bridge.js";
 import { createOversight } from "./oversight.js";
 import { classify, originOf } from "./floor-url.js";
+import { ACTING } from "./extension/shared/proto.js";
 import * as nativeHost from "./native-host/install.js";
 import { extensionIdFromKey, extensionIdFromPath } from "./native-host/install.js";
 import { callerKind } from "../../core/modules/index.js";
@@ -106,6 +107,15 @@ export default {
       // The extension saw the person stop Vyre in the browser itself.
       else if (e.event === "stop") oversight.stop({ by: "esc" });
     });
+
+    // Esc and a double Control are heard by the hands overlay, which Chrome control shares: one pill,
+    // one stop key for everything Vyre does on this Mac. Its stop is our stop.
+    const offHands = ctx.events.on("hands.stopped", () => { oversight.stop({ by: "esc" }); });
+    /** The pill must be up before Vyre acts in the person's browser, exactly as for the hands. A Mac without the hands module (Windows, a box) has none to show. */
+    const indicator = async () => {
+      const r = await ctx.call("hands.indicator", { app: "Chrome" });
+      if (r && r.error && r.error.code !== "unknown_tool" && r.error.code !== "not_found") throw Object.assign(new Error(r.error.message), { code: r.error.code || "no_indicator" });
+    };
 
     let offered = false;
     const offer = async () => {
@@ -207,6 +217,7 @@ export default {
         try {
           await requireGrant(agent);
           carry = oversight.guard(agent, meta.caller);
+          if (ACTING.has(op)) await indicator();
           const { goes, on } = targets(args);
           for (const u of goes) floor(u, undefined);
           if (on) floor(on, op);
@@ -388,7 +399,7 @@ export default {
       }, { callers: PEOPLE, presence: { summary: () => "Install the Vyre connector for Chrome (registers a native messaging host with your browser)" } });
 
     return {
-      async stop() { off(); await bridge.close(); },
+      async stop() { off(); if (typeof offHands === "function") offHands(); await bridge.close(); },
     };
   },
 };

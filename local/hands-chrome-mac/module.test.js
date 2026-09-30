@@ -303,3 +303,14 @@ test("module: bad input is refused by the Registry's schema check before anythin
   assert.equal((await reg.call("chrome.net", { action: "nope" }, "cli")).error.code, "bad_input");
   assert.equal(x.ops("tabs.list").length, before);
 });
+
+test("module: the hands' Escape stops Chrome control too, and an act raises the pill first", async t => {
+  const { reg, connect } = await rig(t);
+  await connect();
+  // The hands module's fake overlay stands in for the pill; hands.indicator must answer.
+  assert.equal((await reg.call("hands.indicator", { app: "Chrome" }, "cli")).data.ok, true);
+  assert.equal((await reg.call("chrome.act", { selector: { name: "Email" }, kind: "click" }, "cli")).error, undefined);
+  reg.deps.events.emit("hands", "hands.stopped", { by: "person" });
+  const r = await reg.call("chrome.act", { selector: { name: "Email" }, kind: "click" }, "cli");
+  assert.equal(r.error.code, "stopped");
+});

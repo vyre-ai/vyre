@@ -30,7 +30,7 @@ test("module: starts in the Registry, registers its tools, and act observes agai
   const found = discover([path.dirname(HERE)]).filter(m => m.dir === HERE);
   await reg.start(found, { role: "local" });
   assert.equal(reg.status().find(m => m.name === "hands")?.state, "running");
-  assert.deepEqual(reg.listTools().map(x => x.name).sort(), ["hands.act", "hands.commit", "hands.find", "hands.grant.add", "hands.grant.list", "hands.grant.remove", "hands.observe", "hands.stop"]);
+  assert.deepEqual(reg.listTools().map(x => x.name).sort(), ["hands.act", "hands.commit", "hands.find", "hands.grant.add", "hands.grant.list", "hands.grant.remove", "hands.indicator", "hands.observe", "hands.stop"]);
 
   const seen = await reg.call("hands.observe", {}, "mcp");
   assert.deepEqual(seen.data.elements[0].selector, { role: "AXButton", name: "7", path: "/0/0/7" });

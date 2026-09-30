@@ -34,7 +34,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
-| [`hands`](#hands) | `local/hands-mac` | `local` | 9 | 3 | none |
+| [`hands`](#hands) | `local/hands-mac` | `local` | 10 | 3 | none |
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
@@ -270,7 +270,7 @@ Computer use on macOS through the accessibility tree: observe an app, act on one
 - Folder: `local/hands-mac`, version 0.3.0
 - Runs on: `local`
 - Requires: none
-- Tools: [9](tools.md#hands), 1 of them only for other modules
+- Tools: [10](tools.md#hands), 1 of them only for other modules
 - Emits: [3 events](events.md#hands)
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
