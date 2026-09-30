@@ -186,13 +186,15 @@ extension CapsuleModel {
     init(retry: @escaping @MainActor () async -> ActionOutcome?) { self.retry = retry }
 }
 
-/// vault.account.unlock as the person (their presence proof goes with the call): Touch ID, or the vault password
-/// where there is no reader. Nil on success, else the words.
+/// vault.account.unlock as the person: Touch ID (with their presence proof), or the vault password where there is
+/// no reader (the password is the proof). Nil on success, else the words.
 @MainActor
 func unlockVaultAccount(_ vyred: VyredClient, password: String?) async -> String? {
+    // Touch ID is the person's presence proof. The vault password is its own proof: no separate proof is
+    // sent with it, so the person is asked once, not twice (vault, work/vault-next b7d53689).
     var input: [String: Any] = ["method": "touchid"]
     if let password { input = ["password": password] }
-    let r = await vyred.call("vault.account.unlock", input, presence: true, summary: "Unlock your vault on this Mac")
+    let r = await vyred.call("vault.account.unlock", input, presence: password == nil, summary: "Unlock your vault on this Mac")
     if let why = Bridge.explain(r) { return why }
     return nil
 }
