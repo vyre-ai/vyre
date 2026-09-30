@@ -75,6 +75,13 @@ DOCKER_VERSION=29.8.1
 DOCKER_SHA256_ARM64=5a8f5604d7673202b2af925229d15eb4bbb86f7f542e4ac8cd7aa3f14cfa0f8b
 DOCKER_SHA256_AMD64=de42b6bb38d0ea08333cdddc18b054d61d4c9f003b3616ae55d85ccea72c47c9
 
+# gh, for GitHub sign-in (vyred runs the real gh through VYRE_GH_BIN). The pinned release zips, sums
+# from gh_2.102.0_checksums.txt in the release itself. VYRE_GH_URL / VYRE_GH_SHA256 override, for tests.
+GH_VERSION=2.102.0
+GH_SHA256_ARM64=da922c20d1792e5b2cbf375593d7a658acf034c12c84e007e71c76ef959c337e
+GH_SHA256_AMD64=b245f24eb2bf5f75b426b4c26da3651a107f8d5b6f4fddfbfccc5679041378b3
+GH_BIN=""
+
 # The Node bundled for the system service: the official Node 22 LTS darwin tarball, pinned by version
 # and sha256. Both sums are the lines for node-v22.23.3-darwin-{arm64,x64}.tar.gz in
 # https://nodejs.org/dist/v22.23.3/SHASUMS256.txt, read with curl on 2026-09-30.
@@ -330,6 +337,38 @@ setup_colima() {
   step "Colima is running"
 }
 
+# setup_gh: the gh CLI. One already on PATH is used; else Homebrew; else the pinned release zip,
+# checked against its sum, into BIN. If none works it says so and goes on: GitHub sign-in waits for gh.
+setup_gh() {
+  if [ "$DRY" = 1 ]; then say "would make sure the gh CLI is installed (Homebrew, or a pinned download) and give vyred its path"; return 0; fi
+  g=$(command -v gh 2>/dev/null || true)
+  if [ -z "$g" ] && command -v brew >/dev/null 2>&1; then
+    say "Installing gh with Homebrew..."
+    brew install gh >/dev/null 2>&1 && g=$(command -v gh 2>/dev/null || true)
+  fi
+  if [ -z "$g" ]; then
+    case "$UNAME_M" in
+      arm64|aarch64) ga=arm64; gs=$GH_SHA256_ARM64 ;;
+      x86_64|amd64) ga=amd64; gs=$GH_SHA256_AMD64 ;;
+      *) say "  note  no pinned gh for this Mac ($UNAME_M); GitHub sign-in needs gh"; return 0 ;;
+    esac
+    gs=${VYRE_GH_SHA256-$gs}
+    gu=${VYRE_GH_URL:-https://github.com/cli/cli/releases/download/v$GH_VERSION/gh_${GH_VERSION}_macOS_$ga.zip}
+    [ -n "$gs" ] || { say "  note  no pinned gh for this release; GitHub sign-in needs gh"; return 0; }
+    say "Downloading gh (checked against its pinned checksum)..."
+    curl -fsSL --retry 2 -o "$TMP/gh.zip" "$gu" || { say "  note  could not download gh; GitHub sign-in needs gh"; return 0; }
+    [ "$(sha256 "$TMP/gh.zip")" = "$gs" ] || { say "  note  the gh download does not match its pinned checksum; nothing was installed"; return 0; }
+    mkdir -p "$TMP/gh-x"
+    unzip -q -o "$TMP/gh.zip" -d "$TMP/gh-x" || { say "  note  the gh download did not unpack; nothing was installed"; return 0; }
+    gf=$(find "$TMP/gh-x" -type f -name gh -path '*/bin/*' | head -n 1)
+    [ -n "$gf" ] || { say "  note  the gh download has no gh in it; nothing was installed"; return 0; }
+    mkdir -p "$BIN"; cp "$gf" "$BIN/gh"; chmod 755 "$BIN/gh"
+    g=$BIN/gh
+  fi
+  GH_BIN=$g
+  step "gh is $g"
+}
+
 # write_env: DOCKER_HOST at Colima's own socket, and the setup code with the time it was written,
 # into VYRE_HOME/vyre.env (0600). The rest of the file is kept. The code is never an argument.
 write_env() {
@@ -352,6 +391,7 @@ write_wrapper() {
   if [ "$DRY" = 1 ]; then say "would write $BIN/vyre-serve and $BIN/vyre"; return 0; fi
   mkdir -p "$BIN"
   WNODE=$(wrapper_node)
+  GH_LINE=""; [ -z "$GH_BIN" ] || GH_LINE="export VYRE_GH_BIN=\"$GH_BIN\""
   cat >"$BIN/vyre-serve" <<EOF
 #!/bin/sh
 # vyre on a Mac server: written by install-mac-server.sh
@@ -367,6 +407,7 @@ if [ -f "\$ENVF" ]; then
   done <"\$ENVF"
 fi
 export VYRE_HOME="$VHOME"
+$GH_LINE
 exec "$CAFF" -ims "$WNODE" "$APP/core/daemon/main.js"
 EOF
   cat >"$BIN/vyre" <<EOF
@@ -421,6 +462,7 @@ system_install() {
   if [ "$DRY" = 1 ]; then say "would run, under one sudo: node $im install (the root installer; it asks for your password)"; return 0; fi
   set -- install --owner-uid "$(id -u)" --owner-name "$(id -un)" --owner-home "$HOME" \
     --release-dir "$TMP/release" --node "$NODE_DIST/bin/node" --vyred-wrapper "$BIN/vyre-serve"
+  [ -z "$GH_BIN" ] || set -- "$@" --gh-bin "$GH_BIN"
   if [ -n "$COLIMA_ARGS" ]; then
     oldifs=$IFS; IFS='
 '
@@ -518,6 +560,7 @@ main() {
   preflight
   install_app
   setup_colima
+  setup_gh
   write_env
   write_wrapper
   if [ "$SYSTEM" = 1 ]; then

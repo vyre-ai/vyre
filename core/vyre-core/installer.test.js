@@ -383,3 +383,12 @@ test("install-main: --dry-run prints the plan without root and touches nothing; 
     assert.equal(spawnSync(process.execPath, [main, "apply"], { encoding: "utf8" }).status, 1);
   }
 });
+
+test("vyred's LaunchDaemon carries VYRE_GH_BIN only when given, and only an absolute path", (t) => {
+  const f = fixture(t);
+  assert.equal(buildPlists(f.opts(f.rel))[LABELS.vyred].EnvironmentVariables.VYRE_GH_BIN, undefined);
+  const p = buildPlists(f.opts(f.rel, { ghBin: "/Users/alice/.vyre-server/bin/gh" }));
+  assert.deepEqual(p[LABELS.vyred].EnvironmentVariables, { HOME: "/Users/alice", VYRE_GH_BIN: "/Users/alice/.vyre-server/bin/gh" });
+  assert.equal(p[LABELS.core].EnvironmentVariables.VYRE_GH_BIN, undefined, "core never gets it");
+  assert.throws(() => buildPlists(f.opts(f.rel, { ghBin: "gh" })), /absolute/);
+});

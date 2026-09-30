@@ -49,7 +49,7 @@ exit 0`,
      fs.writeFileSync(path.join(h, "saw.json"), JSON.stringify({ code: process.env.VYRE_SETUP_CODE ?? null, at: process.env.VYRE_SETUP_CODE_AT ?? null, docker: process.env.DOCKER_HOST ?? null }));
      setInterval(() => {}, 1000);\n`);
   const env = {
-    PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, VYRE_UNAME_S: "Darwin",
+    PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, VYRE_UNAME_S: "Darwin", VYRE_GH_SHA256: "",
     VYRE_LAUNCHCTL: path.join(bin, "launchctl"), VYRE_CAFFEINATE: path.join(bin, "caffeinate"),
     VYRE_HOME: path.join(home, ".vyre"), VYRE_SERVER_DIR: path.join(home, ".vyre-server"), VYRE_LAUNCHAGENTS: path.join(home, "LaunchAgents"),
   };
@@ -448,3 +448,35 @@ function noBrewSys(/** @type {import("node:test").TestContext} */ t) {
   s.env.PATH = `${tools}:/usr/bin:/bin`;
   return s;
 }
+
+test("install-mac-server.sh: gh is the pinned download when neither PATH nor Homebrew has it, and vyred is told where it is", t => {
+  const m = noBrewSys(t);
+  const d = path.join(m.base, "pk-gh", "gh_9_macOS_arm64", "bin"); fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(d, "gh"), "#!/bin/sh\necho gh\n", { mode: 0o755 });
+  const zip = path.join(m.base, "gh.zip");
+  execFileSync("zip", ["-qr", zip, "gh_9_macOS_arm64"], { cwd: path.join(m.base, "pk-gh") });
+  const env = { ...m.env, VYRE_GH_URL: `file://${zip}`, VYRE_GH_SHA256: sha(fs.readFileSync(zip)) };
+  const r = run(env, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const gh = path.join(m.env.VYRE_SERVER_DIR, "bin", "gh");
+  assert.ok(fs.existsSync(gh));
+  const a = m.rootCalls()[0].argv;
+  assert.equal(a[a.indexOf("--gh-bin") + 1], gh);
+  assert.match(fs.readFileSync(path.join(m.env.VYRE_SERVER_DIR, "bin", "vyre-serve"), "utf8"), new RegExp(`export VYRE_GH_BIN="${gh}"`));
+  // A download that does not match its pin installs nothing and passes nothing on.
+  const bad = noBrewSys(t);
+  const r2 = run({ ...bad.env, VYRE_GH_URL: `file://${zip}`, VYRE_GH_SHA256: sha("no") }, ["--yes", "--system"]);
+  assert.equal(r2.status, 0, r2.stderr);
+  assert.match(r2.stdout, /gh download does not match its pinned checksum/);
+  assert.ok(!bad.rootCalls()[0].argv.includes("--gh-bin"));
+});
+
+test("install-mac-server.sh: a gh already on PATH is used as it is", t => {
+  const m = sys(t);
+  fs.writeFileSync(path.join(m.base, "bin", "gh"), "#!/bin/sh\necho gh\n", { mode: 0o755 });
+  const r = run(m.env, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const a = m.rootCalls()[0].argv;
+  assert.equal(a[a.indexOf("--gh-bin") + 1], path.join(m.base, "bin", "gh"));
+  assert.ok(!fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, "bin", "gh")));
+});

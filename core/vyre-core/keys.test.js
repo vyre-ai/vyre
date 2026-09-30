@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { startCore } from "./server.js";
+import { startCore, notModelOf } from "./server.js";
 import { openKeys } from "./keys.js";
 import { createCoreKeys, fakeCoreKeys, xPrivateKey, pubRaw } from "../../lib/vyre-core-keys.js";
 import { coreTool } from "../../lib/vyre-core-client.js";
@@ -124,4 +124,14 @@ test("keys: the fake has the client's shape and the same maths", async () => {
   assert.deepEqual(await fakeCoreKeys("alex").boxPub(), await f.boxPub(), "the seed fixes the identity");
   assert.notDeepEqual(await fakeCoreKeys("kit").boxPub(), await f.boxPub());
   assert.equal((await f.routeSign(Buffer.from("x"))).length, 64);
+});
+
+test("keys: notModelOf refuses a claude ancestor and an unreadable chain, and allows a launchd job's leader", () => {
+  const table = { 10: { ppid: 1, args: "/usr/local/bin/vyre-serve", pgid: 10, sid: 10 }, 11: { ppid: 10, args: "node main.js", pgid: 10, sid: 10 },
+    20: { ppid: 1, args: "claude", pgid: 20, sid: 20 }, 21: { ppid: 20, args: "-zsh", pgid: 20, sid: 20 }, 22: { ppid: 21, args: "node x.js", pgid: 20, sid: 20 },
+    30: { ppid: 99, args: "orphan", pgid: 30, sid: 30 } };
+  const look = (/** @type {number} */ pid) => /** @type {any} */ (table)[pid] || null;
+  assert.equal(notModelOf(22, { look }), false, "inside a claude session");
+  assert.equal(notModelOf(11, { look }), true, "a launchd job's own child");
+  assert.equal(notModelOf(30, { look }), false, "a chain that can't be read to the top");
 });

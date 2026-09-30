@@ -92,6 +92,18 @@ const peerVerdict = await coreTool("keys.exists", {}, { socket: cfg.socket });
 console.log(JSON.stringify({ name: hello.name, version: hello.version, keys: peerVerdict.data }));
 JS
 "$node_bin" "$work/probe.mjs" || bad "core did not answer as it should"
+# A model's process gets nothing: the same call from a process named claude is refused by core.
+cat >"$work/neg.mjs" <<'JS'
+import { coreTool, readCoreConfig } from "/Library/Application Support/Vyre/current/lib/vyre-core-client.js";
+const cfg = readCoreConfig();
+for (const tool of ["keys.box.pub", "keys.box.dh", "keys.route.sign", "keys.ensure"]) {
+  const r = await coreTool(tool, { remote: "AA", message: "AA" }, { socket: cfg.socket });
+  if (!r.error || r.error.code !== "not_person_side") { console.error(tool + " was not refused: " + JSON.stringify(r)); process.exit(1); }
+}
+JS
+cp "$node_bin" "$work/claude"
+"$work/claude" "$work/neg.mjs" || bad "a process named claude was not refused"
+ok "a process running as claude is refused every key call"
 sudo test -f "$base/data/keys.json" || bad "core stored no keys"
 [ "$(sudo stat -f %Su "$base/data/keys.json")" = _vyre ] || bad "keys.json is not _vyre's"
 [ "$(sudo stat -f %Lp "$base/data/keys.json")" = 600 ] || bad "keys.json is not 0600"

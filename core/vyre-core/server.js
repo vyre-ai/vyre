@@ -25,7 +25,7 @@ import http from "node:http";
 import path from "node:path";
 import { open } from "../store/index.js";
 import { Presence, parse } from "../presence/index.js";
-import { insideClaude, loginOf } from "../daemon/peer.js";
+import { insideClaude, loginOf, ancestry } from "../daemon/peer.js";
 import { readPeerCred } from "./peercred.js";
 import { procTable } from "./procs.js";
 import { openVault } from "./vault.js";
@@ -58,6 +58,22 @@ export function personOf(pid) {
   if (inside.unknown) return { person: false, why: "its ancestry can't be read to the top" };
   if (!loginOf(pid, /** @type {any} */ (look))) return { person: false, why: "no login terminal" };
   return { person: true, why: "a login terminal" };
+}
+
+/**
+ * Is this peer outside every Claude session? No claude (or thread) in its ancestry, and the
+ * ancestry read to the top. An ambiguous top (a launchd job's leader, which is what vyred is, or a
+ * runner's own shell) is allowed: insideClaude cannot tell a real leader from a detached one there,
+ * and refusing it would refuse vyred. What this does not stop is a same-uid process that deliberately
+ * detaches from its parent to look like a leader; that limit is ADR 0040 section 3's, the same for
+ * every check on this uid. A chain that can't be read to the top is refused.
+ * @param {number} pid @param {{ look?: any }} [o]
+ */
+export function notModelOf(pid, { look = procTable() } = {}) {
+  const inside = insideClaude(pid, { look });
+  if (inside.inside) return false;
+  if (!inside.unknown) return true;
+  return ancestry(pid, look).complete;
 }
 
 /**
@@ -126,11 +142,7 @@ export async function startCore(o) {
     "keys.route.pub": async () => ({ pub: keys.routePub() }),
     "keys.route.sign": async input => ({ sig: keys.routeSign(input.message) }),
   };
-  const notModel = o.notModel || (pid => {
-    const look = procTable();
-    const inside = insideClaude(pid, { look });
-    return !inside.inside && !inside.unknown;
-  });
+  const notModel = o.notModel || (pid => notModelOf(pid));
 
   /** @type {WeakMap<object, Promise<{ pid: number, uid: number } | null>>} */
   const creds = new WeakMap();

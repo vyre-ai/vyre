@@ -193,7 +193,9 @@ Also for 2a:
   agree). Tools on core's socket: keys.exists, keys.ensure, keys.box.pub, keys.box.dh {remote},
   keys.route.pub, keys.route.sign {message}. No tool returns a private half.
 - Caller rule: any owner-uid process that is inside no Claude session with its ancestry read to the
-  top (`notModel`). Not the person verdict: vyred is a launchd job with no login terminal. A dh answer
+  top (`notModelOf`). An ambiguous leader (what vyred is under launchd) is allowed: found on the
+  runner, insideClaude answers `unknown` for it and refusing it would refuse vyred. A same-uid
+  process that deliberately detaches to look like a leader is not stopped (ADR 0040 section 3's limit). Not the person verdict: vyred is a launchd job with no login terminal. A dh answer
   is an oracle for impersonating the box, so a model never gets one.
 - Client: lib/vyre-core-keys.js `createCoreKeys()`, async everywhere (dh included), trusted only
   through root-owned core.json and the socket check; `fakeCoreKeys(seed)` for tests. tailnet's core/relay

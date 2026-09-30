@@ -3,7 +3,7 @@
 // under one sudo, and by launchd for the update daemon.
 //
 //   install   --owner-uid N --owner-name NAME --release-dir DIR --node PATH --vyred-wrapper PATH
-//             [--version V] [--owner-home DIR] [--colima-program ARG ...] [--dry-run]
+//             [--version V] [--owner-home DIR] [--gh-bin PATH] [--colima-program ARG ...] [--dry-run]
 //   uninstall [--purge]
 //   apply
 //
@@ -58,6 +58,7 @@ try {
       ownerUid: Number(f["owner-uid"]), ownerName: String(f["owner-name"]), version, release,
       nodeBinary: String(f.node), vyredWrapper: String(f["vyred-wrapper"]),
       ...(typeof f["owner-home"] === "string" ? { ownerHome: f["owner-home"] } : {}),
+      ...(typeof f["gh-bin"] === "string" ? { ghBin: f["gh-bin"] } : {}),
       ...(colima.length ? { colimaAgent: true, colimaProgram: colima } : {}),
     };
     if (dry) {

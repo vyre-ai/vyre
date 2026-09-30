@@ -76,6 +76,7 @@ export function defaultRun(cmd, args, { input } = {}) {
  * @property {{ tarball: string, manifest: string, sig: string }} release  file paths
  * @property {string} nodeBinary  the bundled node to copy in
  * @property {string} vyredWrapper  person-side wrapper vyred's LaunchDaemon runs, as the owner
+ * @property {string} [ghBin]  absolute path of the gh CLI, set as VYRE_GH_BIN in vyred's LaunchDaemon environment
  * @property {boolean} [colimaAgent]
  * @property {string[]} [colimaProgram]  program arguments for com.vyre.colima
  */
@@ -93,6 +94,7 @@ function checkOpts(o) {
   if (!o.release || !o.release.tarball || !o.release.manifest || !o.release.sig) throw new Error("release needs tarball, manifest and sig paths");
   if (!o.nodeBinary || !path.isAbsolute(o.nodeBinary)) throw new Error("nodeBinary must be an absolute path");
   if (!o.vyredWrapper || !path.isAbsolute(o.vyredWrapper)) throw new Error("vyredWrapper must be an absolute path");
+  if (o.ghBin !== undefined && (!path.isAbsolute(o.ghBin) || /[\0\n]/.test(o.ghBin))) throw new Error("ghBin must be an absolute path");
   if (o.ownerHome !== undefined && !path.isAbsolute(o.ownerHome)) throw new Error("ownerHome must be an absolute path");
   if (o.colimaAgent && (!Array.isArray(o.colimaProgram) || !o.colimaProgram.length || !o.colimaProgram.every((a) => typeof a === "string") || !path.isAbsolute(o.colimaProgram[0])))
     throw new Error("colimaAgent needs colimaProgram: program arguments starting with an absolute path");
@@ -323,7 +325,7 @@ export function buildPlists(o) {
       Label: LABELS.vyred,
       ProgramArguments: [o.vyredWrapper],
       UserName: o.ownerName,
-      EnvironmentVariables: { HOME: home },
+      EnvironmentVariables: { HOME: home, ...(o.ghBin ? { VYRE_GH_BIN: o.ghBin } : {}) },
       RunAtLoad: true,
       KeepAlive: true,
     },
