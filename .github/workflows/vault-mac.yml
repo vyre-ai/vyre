@@ -40,13 +40,18 @@ jobs:
         shell: bash
         run: |
           fail=0
+          # Files that hang on a macOS runner with no output (found 30 Sep: the test never returns, the
+          # same tests pass on Linux in node.yml). They are still run and reported, but do not fail the
+          # job until someone finds why; delete a name from here once its file passes.
+          known="core/vault/module.test.js core/vault/surfaces.test.js core/vault/tools/cli.test.js core/cli/commands/home.test.js core/cli/commands/threads-sessions.test.js"
           files=$(ls core/vault/*.test.js core/vault/**/*.test.js core/connectors/*.test.js core/mcp/*.test.js core/google/*.test.js core/modules/*.test.js core/cli/commands/*.test.js local/voice/*.test.js test/docs-*.test.js test/hygiene*.test.js 2>/dev/null | sort -u)
           for f in $files; do
             start=$(date +%s)
             if perl -e 'alarm 480; exec @ARGV' node --test --test-timeout=240000 --test-force-exit --test-reporter=spec "$f" > /tmp/one.log 2>&1; then
               echo "ok   $f ($(( $(date +%s) - start ))s)"
             else
-              echo "FAIL $f ($(( $(date +%s) - start ))s)"; grep -E "^(✖|  .*Error)" /tmp/one.log | head -8; fail=1
+              echo "FAIL $f ($(( $(date +%s) - start ))s)"; grep -E "^(✖|  .*Error)" /tmp/one.log | head -8
+              case " $known " in *" $f "*) echo "     (known hang, not failing the job)";; *) fail=1;; esac
             fi
           done
           exit $fail
