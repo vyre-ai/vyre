@@ -11,6 +11,7 @@ import { call } from "../daemon/client.js";
 import { tempHome } from "../../test/helpers.js";
 import { coerce, validateDecls } from "../config/settings.js";
 import { MASK } from "./index.js";
+import { settingTo } from "../../lib/said/setting.js";
 
 /** A vyred with one project (northwind) and Claude Code's folder in the temp home. */
 async function world(t, { disable = [] } = {}) {
@@ -480,22 +481,30 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
 
   // The real vault keeps what the person said; sessions record it from a `said` row.
   const say = (/** @type {any} */ i) => d.registry.call("vault.said.record", { said: "row-1", what: "use this setting", ...i }, "module:sessions");
-  assert.ok(!(await say({ thread: "t_other", kind: "setting", to: [k.key] })).error, "recorded for another thread");
+  const to = (/** @type {any} */ v, level = "account") => settingTo({ key: k.key, value: v, level });
+  assert.ok(!(await say({ thread: "t_other", kind: "setting", to: [to(want)] })).error, "recorded for another thread");
   r = await req({ key: k.key, value: want });
   assert.equal(r.error?.code, "denied", "words in another thread don't count");
-  assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: ["some.other.key"] })).error);
+  assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: [k.key] })).error);
+  r = await req({ key: k.key, value: want });
+  assert.equal(r.error?.code, "denied", "an ask that names only the key covers no value");
+  assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: [to(!want)] })).error);
+  r = await req({ key: k.key, value: want });
+  assert.equal(r.error?.code, "denied", "an ask for the opposite value doesn't count");
+  assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: [settingTo({ key: "some.other.key", value: want, level: "account" })] })).error);
   r = await req({ key: k.key, value: want });
   assert.equal(r.error?.code, "denied", "an ask that names a different key doesn't count");
-  assert.ok(!(await say({ thread: "t_asked", kind: "send", to: [k.key] })).error);
+  assert.ok(!(await say({ thread: "t_asked", kind: "send", to: [to(want)] })).error);
   r = await req({ key: k.key, value: want });
   assert.equal(r.error?.code, "denied", "an ask of another kind doesn't count");
+  assert.equal((await c("settings.get", { key: k.key })).data.value, k.default, "none of those changed it");
 
-  const asked = await say({ thread: "t_asked", kind: "setting", to: [k.key] });
+  const asked = await say({ thread: "t_asked", kind: "setting", to: [to(want)] });
   assert.ok(!asked.error, JSON.stringify(asked.error));
   r = await req({ key: k.key, value: want });
   assert.ok(!r.error, JSON.stringify(r.error));
   assert.equal((await c("settings.get", { key: k.key })).data.value, want);
-  assert.equal((await req({ key: k.key, value: !want })).error?.code, "denied", "one ask, one change: it was used up");
+  assert.equal((await req({ key: k.key, value: want })).error?.code, "denied", "one ask, one change: it was used up");
   assert.equal((await req({ key: k.key, value: want }, {})).error?.code, "denied", "outside a conversation: refused");
 
   // The direct path stays the person's.
