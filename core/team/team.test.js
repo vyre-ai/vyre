@@ -516,6 +516,11 @@ test("team.duties: a session's duty is stored as a proposal (off, no watcher); o
   assert.ok(click.error && /watchers/.test(click.error.message));
   const viaSession = await call("team.duties.enable", { id: d.id }, { root, caller: "mcp", timeout: 20_000, session });
   assert.ok(viaSession.error && !/watchers/.test(viaSession.error.message));
+  // No module may start a worker, and a thread or agent claim on a person surface is no person either.
+  for (const caller of ["module:mail", "cli:agent:kit", "cli:thread:x"]) {
+    const r = await raw("team.duties.enable", { id: d.id }, caller);
+    assert.ok(r.error && !/watchers/.test(r.error.message), `enable by ${caller}`);
+  }
 });
 
 test("person-only writes: a session or an agent is refused projects.rename, projects.archive and team.charter.set; the person is not", async t => {

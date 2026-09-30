@@ -796,5 +796,5 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
 
 ## Person-surface click is the asking (2026-10-01, team-lead's ruling)
 
-- `team.duties.enable {id}` and `team.duties.disable {id}` for the duty card's tap: callers cli, local, deck, capsule and module (never mcp, so never a model).
+- `team.duties.enable {id}`: cli, local, deck, capsule only, plus an isPerson check (no module, agent or thread claim); `team.duties.disable {id}` also takes module callers since it only stops work.
   They are the same change as team.duties.update {enabled}, which keeps its gate for agents and sessions (personAsked, gate.said.match with P17).

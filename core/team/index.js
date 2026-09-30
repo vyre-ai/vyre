@@ -1043,17 +1043,27 @@ export default {
         return dutyApi.update(id, patch);
       },
     });
-    // A click on a person surface (Deck, CLI, Lumen, verified over the tailnet) IS the person asking: the one-tap enable and pause
-    // a duty card shows. The same change through team.duties.update is open to anyone, but only the person's own words (a
-    // surface click here, gate.said.match for a model) start an unattended worker.
-    for (const [name, enabled, what] of [["team.duties.enable", true, "Turn a duty on: the person's tap. A proposed duty starts its watcher now; a paused one resumes."], ["team.duties.disable", false, "Pause a duty (its watcher stays, stopped). Anyone who may edit the duty may; it is the person's tap on a card."]]) {
-      ctx.tool(name, {
-        description: `${what} Person surfaces only (Deck, CLI, Lumen); an agent or session asks through team.duties.update, which keeps the gate.`,
-        input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
-        callers: CHARTER_WRITERS,
-        run: async (i, meta = {}) => { await dutyTarget(i, meta, { write: true, id: i.id }); return dutyApi.update(i.id, { enabled }); },
-      });
-    }
+    // A click on a person surface (Deck, CLI, Lumen, verified over the tailnet) IS the person asking: the one-tap enable a duty
+    // card shows. Starting an unattended worker is the person's alone, so enable takes the person's own surfaces only: no module
+    // (a third-party one could otherwise start a worker) and no thread or agent claim riding on one of them. A model asks through
+    // team.duties.update, which keeps the gate (personAsked, gate.said.match with P17).
+    ctx.tool("team.duties.enable", {
+      description: "Turn a duty on: the person's own tap. A proposed duty starts its watcher now; a paused one resumes. Person surfaces only (Deck, CLI, Lumen): no module, agent or session; those ask through team.duties.update, which keeps the gate.",
+      input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+      callers: ["cli", "local", "deck", "capsule"],
+      run: async (i, meta = {}) => {
+        if (!isPerson(meta.caller)) throw Object.assign(new Error("turning a duty on is the person's own tap"), { code: "denied" });
+        await dutyTarget(i, meta, { write: true, id: i.id });
+        return dutyApi.update(i.id, { enabled: true });
+      },
+    });
+    // Pausing is safe for anyone who may edit the duty (a person's surface or a module acting for them): it only stops work.
+    ctx.tool("team.duties.disable", {
+      description: "Pause a duty (its watcher stays, stopped). Open to the person's surfaces and to modules acting for them, because it only stops work; an agent or session pauses through team.duties.update.",
+      input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+      callers: CHARTER_WRITERS,
+      run: async (i, meta = {}) => { await dutyTarget(i, meta, { write: true, id: i.id }); return dutyApi.update(i.id, { enabled: false }); },
+    });
     ctx.tool("team.duties.delete", {
       description: "Remove a duty and its watcher. A person, the assistant, or a session in the project; never a teammate.",
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },

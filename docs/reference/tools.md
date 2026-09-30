@@ -5707,7 +5707,7 @@ Remove a duty and its watcher. A person, the assistant, or a session in the proj
 
 ### `team.duties.disable`
 
-Pause a duty (its watcher stays, stopped). Anyone who may edit the duty may; it is the person's tap on a card. Person surfaces only (Deck, CLI, Lumen); an agent or session asks through team.duties.update, which keeps the gate.
+Pause a duty (its watcher stays, stopped). Open to the person's surfaces and to modules acting for them, because it only stops work; an agent or session pauses through team.duties.update.
 
 - Input:
   - `id` string, required
@@ -5715,11 +5715,11 @@ Pause a duty (its watcher stays, stopped). Anyone who may edit the duty may; it 
 
 ### `team.duties.enable`
 
-Turn a duty on: the person's tap. A proposed duty starts its watcher now; a paused one resumes. Person surfaces only (Deck, CLI, Lumen); an agent or session asks through team.duties.update, which keeps the gate.
+Turn a duty on: the person's own tap. A proposed duty starts its watcher now; a paused one resumes. Person surfaces only (Deck, CLI, Lumen): no module, agent or session; those ask through team.duties.update, which keeps the gate.
 
 - Input:
   - `id` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `team.duties.list`
 
