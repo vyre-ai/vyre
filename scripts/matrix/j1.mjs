@@ -5,7 +5,7 @@
 //   node scripts/matrix/j1.mjs --cdp http://127.0.0.1:9222 --site http://127.0.0.1:PORT --env-file env.json --out results/j1
 // env.json holds the environment for the install line: VYRE_BOX_URL, VYRE_RELAY and the like.
 import fs from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { connect } from "./lib/cdp.mjs";
 import { recorder, fixtureHits } from "./lib/results.mjs";
 
@@ -79,6 +79,48 @@ try {
   await click("Claim this address");
   const claimed = await sees(/recovery code/i, 60000);
   r.step("1.7b-name-claimed", claimed, { shot: await shot("setup-claimed") });
+  if (!claimed) throw new Error("name not claimed");
+  await click("I saved it");
+  await sleep(500);
+  await click("Continue");
+
+  // 1.8 AI: Claude signs in through the page. FAKE: the box runs a stand-in `claude setup-token`.
+  await sees(/Sign in with Claude/i, 30000);
+  await click("Sign in with Claude");
+  const paste = await sees(/the sign-in page/i, 60000);
+  r.step("1.8a-claude-signin-offered", paste, { shot: await shot("setup-ai-link"), why: "fake claude setup-token" });
+  await page.evaluate(`(() => { const i = document.querySelector('input[name="code"]'); i.focus(); i.value = "good-code#rc1"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+  await click("Finish");
+  const signed = await sees(/Claude is signed in/i, 60000);
+  r.step("1.8b-claude-signed-in", signed ? "fake" : false, { shot: await shot("setup-ai-done"), why: "fake claude setup-token" });
+  if (!signed) throw new Error("claude sign-in did not finish");
+  await click("Continue");
+
+  // 1.9 Tailscale. STAND-IN: a headscale on the runner. The person's "sign in on Tailscale's page" is the register command.
+  await sees(/Connect my server/i, 30000);
+  await click("Connect my server");
+  await sees(/Tailscale's sign-in page/i, 60000);
+  const login = String(await page.evaluate(`(([...document.querySelectorAll("a[href]")].find(a => /sign-in page/.test(a.textContent))||{}).href)||""`));
+  const key = (login.match(/\/register\/([A-Za-z0-9_-]+)/) || [])[1];
+  r.step("1.9a-tailscale-login-link", Boolean(key), { why: key ? "register link shown (headscale stand-in)" : "no register link: " + hide(login).slice(0, 100), shot: await shot("setup-ts-link") });
+  if (!key) throw new Error("no tailscale login link");
+  const reg = spawnSync("docker", ["exec", "e2e-headscale", "headscale", "nodes", "register", "--user", "marlow", "--key", key], { encoding: "utf8" });
+  r.step("1.9b-node-approved", reg.status === 0, { why: reg.status === 0 ? "headscale stand-in" : (reg.stderr || reg.stdout).slice(0, 200) });
+  const live = await sees(/Your address is live/i, 240000);
+  r.step("1.9c-address-live", live, { shot: await shot("setup-ts-live"), why: live ? "certificate from a stand-in ACME server (pebble), DNS record in the fake zone" : undefined });
+  if (!live) throw new Error("address never went live");
+  await click("Continue");
+
+  // 1.10 devices: the ring is scanned by a person's phone. By hand; here the page is walked past it.
+  await sees(/Add my phone|Skip for now/i, 30000);
+  r.step("1.10a-phone-ring-offered", /Add my phone/i.test(await page.waitText(/Add my phone/i, 10000)), { shot: await shot("setup-devices") });
+  r.step("1.10b-phone-pairs", "by-hand", { why: "scan the ring with the Vyre app: batch U1" });
+  await click("Skip for now");
+
+  // 1.11 claim: the page mints the passkey link for the server's own address
+  const arrive = await sees(/Open your server/i, 60000);
+  const claimHref = String(await page.evaluate(`(([...document.querySelectorAll("a[href]")].find(a => /onboard\\/passkey/.test(a.href))||{}).href)||""`));
+  r.step("1.11-claim-link", arrive && /^https:\/\/marlow-finch\.vyre\.run\/onboard\/passkey#claim=/.test(claimHref), { shot: await shot("setup-claim"), why: hide(claimHref).slice(0, 120) });
 } catch (e) {
   r.step("run", false, { why: hide(e.message).slice(0, 300) });
   try { await shot("failure"); } catch {}
