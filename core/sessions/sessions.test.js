@@ -404,11 +404,38 @@ for (const driver of ["cli", "sdk"]) {
     await w.finished(th.id);
     assert.equal((await w.said(th.id))[0].startsWith("echo: "), true);
     assert.match((await w.said(th.id))[0], /\[brief\].*where is it hosted$/s);
-    assert.deepEqual(asked[0], { prompt: "where is it hosted", first: true, thread: th.id, project: "harlow-legal" }, "the scope is the thread's record");
+    assert.deepEqual(asked[0], { prompt: "where is it hosted", first: true, thread: th.id, project: "harlow-legal", person: true }, "the scope is the thread's record: a person's own thread says so");
     await w.tool("threads.send", { thread: th.id, text: "and the domain", surface: "deck" });
     await w.finished(th.id, 2);
     assert.match((await w.said(th.id))[1], /\[lines\].*and the domain$/s);
     assert.equal(asked[1].first, false);
+  });
+
+  test(`${driver}: memory.prompt for a Grok or Codex thread names the agent for an agent's thread and says person for the person's own, from the thread's record only`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    const asked = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool !== "memory.prompt") return realCall(tool, input, caller, meta);
+      asked.push({ thread: input.thread, agent: input.agent, person: input.person });
+      return { data: { blocks: [{ type: "text", text: "[memory]" }] } };
+    };
+    assert.equal((await w.tool("agents.create", { name: "scout", projects: [], instructions: "Research only." })).error, undefined);
+    // An agent's thread: the agent named, never person.
+    const a = await w.d.registry.call("threads.launch", { cwd: w.work, agent: "scout", agent_kind: "agent", provider: "grok", prompt: "what do you know", purpose: "agent" }, "module:agents");
+    assert.equal(a.error, undefined, JSON.stringify(a));
+    await w.finished(a.data.id);
+    assert.deepEqual(asked.filter(x => x.thread === a.data.id), [{ thread: a.data.id, agent: "scout", person: undefined }]);
+    // A person's own thread, chat or project: person true, no agent.
+    const p = (await w.tool("threads.start", { cwd: w.work, provider: "grok", prompt: "hello", surface: "deck" })).data;
+    await w.finished(p.id);
+    assert.deepEqual(asked.filter(x => x.thread === p.id), [{ thread: p.id, agent: undefined, person: true }]);
+    // A job or helper with no agent is not the person's own thread: it names nothing, so memory gives it nothing.
+    const j = await w.d.registry.call("threads.launch", { cwd: w.work, provider: "grok", prompt: "summarise", purpose: "job", once: true }, "module:learn");
+    assert.equal(j.error, undefined, JSON.stringify(j));
+    await w.finished(j.data.id);
+    assert.deepEqual(asked.filter(x => x.thread === j.data.id), [{ thread: j.data.id, agent: undefined, person: undefined }]);
   });
 
   test(`${driver}: switching provider mid-session: same thread, a brief of what was said, a notice, and only between turns`, { skip }, async t => {
