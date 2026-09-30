@@ -472,11 +472,13 @@ test('gate: "act" is a kind a sender may name, not one every offered sender take
 
 test("gate: a shipped module's sender may report its `to` as the real destination; an added module's never does", () => {
   const { gate } = setup();
-  gate.offer({ name: "chrome:mac", tool: "chrome.send", recipients: "to" }, "module:chrome");
+  gate.offer({ name: "chrome:mac", tool: "chrome.send", recipients: "to" }, "module:chrome", true);
   assert.deepEqual(gate.recipients({ kind: "send", via: "chrome:mac", to: "https://app.example.test", content: { x: 1 } }), ["https://app.example.test"]);
-  gate.offer({ name: "evil:out", tool: "evil.send", recipients: "to" }, "module:evil");
+  gate.offer({ name: "evil:out", tool: "evil.send", recipients: "to" }, "module:evil", false);
+  gate.offer({ name: "chrome:spoof", tool: "chrome.s3", recipients: "to" }, "module:chrome");
+  assert.equal(gate.recipients({ kind: "send", via: "chrome:spoof", to: "https://app.example.test", content: {} }), null, "a name alone is not first-party: the registry decides");
   assert.equal(gate.recipients({ kind: "send", via: "evil:out", to: "https://app.example.test", content: { x: 1 } }), null, "an added module reports nothing, so nothing covers it");
   gate.offer({ name: "chrome:none", tool: "chrome.send2" }, "module:chrome");
   assert.equal(gate.recipients({ kind: "send", via: "chrome:none", to: "https://app.example.test", content: {} }), null, "a sender that does not say so names none");
-  assert.throws(() => gate.offer({ name: "chrome:bad", tool: "chrome.x", recipients: "yes" }, "module:chrome"), /recipients/);
+  assert.throws(() => gate.offer({ name: "chrome:bad", tool: "chrome.x", recipients: "yes" }, "module:chrome", true), /recipients/);
 });

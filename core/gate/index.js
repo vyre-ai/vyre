@@ -225,7 +225,7 @@ export default {
       internal: true,
       description: "A module offers a sender of its own: `name` in its namespace (<module>, <module>:<x> or <module>-<x>), and `tool`, one of its own internal tools, which the Gate calls with { id, to, content } once the user approves. Offer again at every start; it replaces the last.",
       input: obj({ name: str, tool: str, recipients: { type: "string", enum: ["to"] }, kinds: { type: "array", items: { type: "string", enum: KINDS } }, content: { type: "object" } }, ["name", "tool"]),
-      run: (input, { caller }) => gate.offer(input, caller),
+      run: (input, { caller, firstParty }) => gate.offer(input, caller, firstParty === true),
     });
 
     // What the person's own words asked to go out (P17). The intents live in the vault; these are

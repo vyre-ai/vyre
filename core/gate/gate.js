@@ -64,8 +64,6 @@ const HUB = /^mcp__(?:vyre|plugin_vyre_vyre)__[a-z][a-z0-9-]{0,31}__./;
  * Kept the same as core/harness/rules.js.
  */
 const GATED = new Set(["google_mail_send"].flatMap(t => [`mcp__vyre__${t}`, `mcp__plugin_vyre_vyre__${t}`]));
-/** The shipped modules whose senders may report their `to` as the real destination. */
-export const REPORTERS = ["chrome", "hands", "sight", "computers", "google", "mail", "github", "mcp"];
 const MAX_SNIPPETS = 12, SNIPPET = 160, MAX_WORDS = 1500;
 
 const json = (s, d) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
@@ -124,7 +122,7 @@ export class Gate {
    * @param {{ name: string, tool: string, kinds?: string[], content?: Record<string, string> }} input
    * @param {string} caller
    */
-  offer({ name, tool, kinds, content, recipients }, caller) {
+  offer({ name, tool, kinds, content, recipients }, caller, firstParty = false) {
     const m = /^module:(.+)$/.exec(String(caller || ""))?.[1];
     if (!m) throw new Error("only a module offers a sender");
     name = String(name || ""); tool = String(tool || "");
@@ -134,9 +132,9 @@ export class Gate {
     if (this.offered[name] && this.offered[name].module !== m) throw new Error(`${name} is already offered by ${this.offered[name].module}`);
     if (kinds !== undefined && (!Array.isArray(kinds) || !kinds.length || kinds.some(k => !KINDS.includes(k)))) throw new Error(`kinds must be some of ${KINDS.join(", ")}`);
     if (content !== undefined && !isObject(content)) throw new Error("content must be an object describing what the sender takes");
-    // Only a module Vyre ships may say its `to` is the real destination; shipped names cannot be taken by an added module.
+    // Only a module the registry says ships with Vyre (meta.firstParty, set by the loader, never by a caller) may say its `to` is the real destination.
     if (recipients !== undefined && recipients !== "to") throw new Error('recipients is "to": the sender\'s `to` is its real destination');
-    this.offered[name] = { module: m, name, tool, kinds: kinds || [...DEFAULT_KINDS], content: content || {}, reports: recipients === "to" && REPORTERS.includes(m) };
+    this.offered[name] = { module: m, name, tool, kinds: kinds || [...DEFAULT_KINDS], content: content || {}, reports: recipients === "to" && firstParty === true };
     return { name, kinds: this.offered[name].kinds };
   }
 
