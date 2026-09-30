@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Lumen: Spotlight searches (files, documents, mail) now run entirely off the main thread, so a search
+  for a word no longer holds up the next keystroke. Text counts as typed only when a key press says
+  so; anything else that arrives in the box (a paste, a restored draft, dictation) is marked as not
+  typed.
 - Lumen: typing is lighter. The first paint of a search is a slice of 8 rows and the rest follow on
   the next turn; one letter searches only what is already on this Mac (no Spotlight, mail or
   document search) and shows at most 20 rows; and a newer key cancels the slow search an older one
