@@ -26,7 +26,7 @@ const log = (/** @type {string} */ m) => console.error(`[standalone +${Math.roun
 const within = (p, ms, what) => new Promise((res, rej) => { const t = setTimeout(() => rej(new Error(`${what} took longer than ${ms} ms`)), ms); p.then(v => { clearTimeout(t); res(v); }, e => { clearTimeout(t); rej(e); }); });
 
 /** What a failed batch or flow says, short but complete about the step that failed. @param {any} r */
-const brief = r => { try { const last = Array.isArray(r.results) ? r.results[r.done ?? r.results.length - 1] : undefined; return JSON.stringify({ done: r.done, failedAt: r.failedAt, code: r.code, why: r.why, failed: r.failed, last }).slice(0, 1500); } catch { return String(r).slice(0, 500); } };
+const brief = r => { try { const last = Array.isArray(r.results) ? r.results[r.results.length - 1] : undefined; return JSON.stringify({ done: r.done, failedAt: r.failedAt, code: r.code, why: r.why, failed: r.failed, last }).slice(0, 1500); } catch { return String(r).slice(0, 500); } };
 
 /** A minimal MCP client over a child's stdio. @param {import("node:child_process").ChildProcess} child */
 function mcpClient(child) {
