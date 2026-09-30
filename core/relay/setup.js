@@ -2,7 +2,7 @@
 // setup: the box's half of the setup session over the relay (tailnet plan 3.5, 3.6, 3.6b).
 //
 // The setup page makes a code (core/relay/wire.js: secret16 || the fingerprint of its own P-256
-// key), the install line carries it in VYRE_CODE, and this box registers a sealed offer at the
+// key), the install line carries it in VYRE_SETUP_CODE, and this box registers a sealed offer at the
 // code's locator. Three things live here:
 //   SetupSession  one code's whole life: the hello check, the one-ticket rule, the hour, the end.
 //   setupGate     the allowlist handler the setup device's channel gets in place of owner powers.

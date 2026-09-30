@@ -4,7 +4,7 @@
 // core/relay/wire.js, which these functions match byte for byte (setup.test.js checks it).
 //
 //   1. createSetupKey()        a non-extractable P-256 key, made before the install line is shown.
-//   2. setupCode(secret, spki)  C = base64url(secret16 || fp16): what VYRE_CODE carries.
+//   2. setupCode(secret, spki)  C = base64url(secret16 || fp16): what VYRE_SETUP_CODE carries.
 //   3. resolveSetup(secret)     the same /v1/pair a phone uses, for the box's sealed offer.
 //   4. setupHello(...)          the signed hello the box admits only for this key.
 //   5. setupWords(...)          the four check words to show beside "Found your server".

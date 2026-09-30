@@ -369,7 +369,7 @@ export default {
     }
 
     /**
-     * Start a setup session from the code on the install line (VYRE_CODE): discard any earlier
+     * Start a setup session from the code on the install line (VYRE_SETUP_CODE): discard any earlier
      * unclaimed session and its device, register the sealed offer at the code's locator (first
      * writer wins there; a 409 means another server used this code first), and start the hour.
      * @param {string} code
@@ -838,7 +838,7 @@ export default {
     });
 
     // The setup session's tools (tailnet plan 3.6b). begin and end are modules-only: the install's
-    // own boot (VYRE_CODE, below) and the claim (launch) call them, never a person, a model or a
+    // own boot (VYRE_SETUP_CODE, below) and the claim (launch) call them, never a person, a model or a
     // channel. status is the one a setup channel may call, and the install script reads it too.
     // Internal is "a module", not "this module": name the modules that may call each one.
     const only = (/** @type {any} */ meta, /** @type {string[]} */ names, /** @type {string} */ what) => {
@@ -889,11 +889,11 @@ export default {
       },
     });
 
-    // The install line's own boot: the code arrives in VYRE_CODE (never argv), is taken once and
+    // The install line's own boot: the code arrives in VYRE_SETUP_CODE (never argv), is taken once and
     // removed from this process's environment so no child inherits it.
-    const bootCode = (seam.env || process.env).VYRE_CODE;
+    const bootCode = (seam.env || process.env).VYRE_SETUP_CODE;
     if (bootCode) {
-      if (!seam.env) delete process.env.VYRE_CODE;
+      if (!seam.env) delete process.env.VYRE_SETUP_CODE;
       beginSetup(String(bootCode)).catch(e => ctx.log(`relay: setup code not used: ${/** @type {Error} */ (e).message}`));
     }
 
