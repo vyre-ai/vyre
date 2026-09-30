@@ -17,6 +17,7 @@ import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from 
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
 import { Accounts, ACCOUNTS_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { isPerson } from "../../lib/caller.js";
 import { Routes, ROUTES_MIGRATION } from "./routes.js";
 import { usesSpawner } from "./spawn.js";
 import { grokProvider } from "./drivers/grok.js";
@@ -43,6 +44,21 @@ const LIMITS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_limits (project TE
 
 /** The agent's own session id for a thread on an ACP provider, so a resume after a vyred restart loads it instead of starting fresh. */
 const ACP_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_acp (thread TEXT PRIMARY KEY, provider TEXT NOT NULL, agent_session TEXT NOT NULL)`;
+
+/**
+ * "asked" reach, enforced here until the kernel's own check (P17) lands: the tool runs for the
+ * person, for a first-party module and for the assistant; any other agent only when meta.asked says
+ * the person's own words in their own turn asked for exactly this. Otherwise refused, no prompt.
+ * @param {any} meta @param {string} what
+ */
+export function askedOnly(meta, what) {
+  const m = meta || {};
+  if (isPerson(m)) return;
+  if (m.firstParty && String(m.caller || "").startsWith("module:")) return;
+  if (m.agentKind === "assistant") return;
+  if (m.asked) return;
+  throw Object.assign(new Error(`${what} runs only when the person asked for it; nothing in their own words asked for this`), { code: "not_asked" });
+}
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const str = { type: "string" };
@@ -226,15 +242,15 @@ export default {
     tool("sessions.accounts.add", `Add an account: a label, its kind, and for an api-key or setup-token the vault item that already holds its credential (add it in the Vault first and grant it to threads; this never touches its value). kind login has no vault item: the provider's own sign-in fills that account's private home. scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves. Each account runs as its own user on a server, so one account's sign-in is unreadable from another's.`,
       { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: str,
         scope: { type: "object", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean" } } },
-      async i => { if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); return accounts.add(i); });
+      async (i, meta) => { askedOnly(meta, "Adding an account"); if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); return accounts.add(i); });
 
     tool("sessions.accounts.remove", "Remove an account. Threads already resumed on it keep running; the next resume on that thread asks for another (a removed account is never a silent fallback).",
       { type: "object", required: ["id"], properties: { id: str } },
-      async i => accounts.remove(i.id));
+      async (i, meta) => { askedOnly(meta, "Removing an account"); return accounts.remove(i.id); });
 
     tool("sessions.accounts.bind", "Grant an account to one more project or agent (added to its scope, others it already has kept), or make it its provider's default.",
       { type: "object", required: ["id"], properties: { id: str, project: str, agent: str, is_default: { type: "boolean" } } },
-      async i => accounts.bind(i));
+      async (i, meta) => { askedOnly(meta, "Binding an account"); return accounts.bind(i); });
 
     ctx.tool("sessions.accounts.resolve", {
       description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.", internal: true,

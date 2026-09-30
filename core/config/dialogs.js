@@ -108,7 +108,7 @@ export function expandAccountFolders(folders) {
     if (!m || m[1].includes("*") || m[2].includes("*") || m[2].split("/").includes("..")) { out.push(f); continue; }
     let names = [];
     try { names = fs.readdirSync(m[1]); } catch {}
-    for (const n of names.sort()) { const p = path.join(m[1], n, m[2]); try { if (fs.statSync(p).isDirectory()) out.push(p); } catch {} }
+    for (const n of names.sort()) { const p = path.join(m[1], n, m[2]); try { if (fs.lstatSync(p).isDirectory() && !fs.lstatSync(path.join(m[1], n)).isSymbolicLink()) out.push(p); } catch {} }
   }
   return out;
 }

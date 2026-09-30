@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { claudeHome, claudeJson, realHome, transcriptFolders } from "./dialogs.js";
+import { claudeHome, claudeJson, realHome, transcriptFolders, expandAccountFolders } from "./dialogs.js";
 import { load } from "./index.js";
 import { tempHome } from "../../test/helpers.js";
 
@@ -67,4 +67,17 @@ test("transcriptFolders: a temp home never reads the person's Claude folder, thr
   assert.deepEqual(transcriptFolders([link], realHome(), env), [link], "the person's own ~/.vyre reads them");
   assert.deepEqual(transcriptFolders([link], realHome(), { ...env, NODE_TEST_CONTEXT: "child" }), [], "never under node --test");
   assert.deepEqual(transcriptFolders([link], "", env), [], "no home named: nothing of the person's");
+});
+
+test("expandAccountFolders: one folder per account that has it, never through a link an account planted", t => {
+  const base = fs.mkdtempSync(path.join(path.dirname(tempHome(t)), "acct-"));
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(base, "2000", ".claude", "projects"), { recursive: true });
+  fs.mkdirSync(path.join(base, "2001"), { recursive: true });
+  const outside = path.join(base, "elsewhere");
+  fs.mkdirSync(outside);
+  fs.symlinkSync(outside, path.join(base, "2002"));
+  fs.mkdirSync(path.join(base, "2003", ".claude"), { recursive: true });
+  fs.symlinkSync(outside, path.join(base, "2003", ".claude", "projects"));
+  assert.deepEqual(expandAccountFolders([path.join(base, "*", ".claude", "projects"), "/plain"]), [path.join(base, "2000", ".claude", "projects"), "/plain"]);
 });

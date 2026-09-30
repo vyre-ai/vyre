@@ -427,6 +427,34 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(ev.some(e => e.type === "thread.text" && e.payload.notice && /moved to Grok: Claude's limit was reached/.test(e.payload.text)), JSON.stringify(ev.filter(e => e.payload && e.payload.notice)));
   });
 
+  test(`${driver}: threads.origin says a session is a person's only from the Switchboard's own record`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    const ask = id => w.d.registry.call("threads.origin", { session: id }, "module:vyred");
+    assert.deepEqual((await ask(th.id)).data, { session: th.id, known: true, human: true, provider: "claude", account: null });
+    const stranger = crypto.randomUUID();
+    assert.deepEqual((await ask(stranger)).data, { session: stranger, known: false, human: false, provider: null, account: null }, "a transcript with no thread is not a person's");
+    assert.equal((await w.tool("threads.origin", { session: th.id })).error.code, "no_such_tool", "modules only");
+  });
+
+  test(`${driver}: accounts add/remove/bind are "asked": an ordinary agent is refused with no prompt, the assistant and the person are not`, { skip }, async t => {
+    const w = await boot(t, { driver, sessions: { thread_socket: "on" }, vault: { "work-token": "fake-work-value" } });
+    assert.equal((await w.tool("agents.create", { name: "kit", projects: [] })).error, undefined);
+    assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined);
+    const body = JSON.stringify({ provider: "grok", label: "Sneaky", kind: "setup-token", vault_item: "work-token" });
+    const say = async agent => {
+      const th = (await w.tool("threads.start", { cwd: w.work, agent, prompt: `vyre-sock sessions.accounts.add ${body}`, surface: "deck" })).data;
+      await w.finished(th.id);
+      return JSON.parse((await w.said(th.id)).at(-1));
+    };
+    const kit = await say("kit");
+    assert.equal(kit.error && kit.error.code, "not_asked", JSON.stringify(kit));
+    assert.equal((await w.tool("sessions.accounts.list", { provider: "grok" })).data.length, 0, "nothing was added");
+    const juno = await say("juno");
+    assert.equal(juno.error, undefined, JSON.stringify(juno));
+    assert.equal((await w.tool("sessions.accounts.add", { provider: "codex", label: "Mine", kind: "login" })).error, undefined, "the person adds directly");
+  });
+
   test(`${driver}: from inside a session, a person-only call is refused, even claiming to be the CLI`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "forge cli sessions.prompt.set", surface: "deck" })).data;

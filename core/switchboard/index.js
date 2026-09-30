@@ -2489,6 +2489,17 @@ export default {
       input: { type: "object", required: ["key"], properties: { agent: str, session: str, key: str } },
       run: async i => ({ thread: i.agent ? sb.vouch(i.agent, i.key) : i.session ? sb.sessions.vouch(i.session, i.key) : null }),
     });
+    // For recall: who really started a session under an account's folder, from this record and never
+    // from what the transcript says about itself. No record, or an agent's or a job's: not a person's.
+    ctx.tool("threads.origin", {
+      description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["session"], properties: { session: str } },
+      run: async i => {
+        const rec = sb.record(String(i.session));
+        const human = Boolean(rec && !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || "chat")));
+        return { session: String(i.session), known: Boolean(rec), human, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
+      },
+    });
     ctx.tool("threads.pids", {
       description: "The processes Claude sessions run in: vyred's own thread children and every live bound session. vyred refuses a person-only call from under any of them.", internal: true,
       input: { type: "object", properties: {} },
