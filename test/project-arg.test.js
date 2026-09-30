@@ -40,3 +40,22 @@ test("project grants: every agent-reachable tool with a project, projects or cwd
   }
   assert.deepEqual(missing, [], "declare projectArg/cwdArg on these tools (core/modules/index.js enforces the agent's grant), or add them to EXEMPT with the reason");
 });
+
+test("project grants: a tool that takes `room` as an alias for `project` declares both, so an agent cannot name an ungranted project through room", () => {
+  const h = harvest({});
+  const declared = new Map();
+  for (const m of manifests()) for (const e of toolEntries(m.manifest)) declared.set(e.name, e);
+  const missing = [];
+  const seen = new Set();
+  for (const role of ["box", "local"]) for (const v of Object.values(h[role] || {})) for (const t of /** @type {any} */ (v).tools || []) {
+    if (seen.has(t.name)) continue;
+    seen.add(t.name);
+    const props = Object.keys((t.input && t.input.properties) || {});
+    if (t.internal || !props.includes("room") || !props.includes("project")) continue;
+    const arg = (declared.get(t.name) || {}).projectArg;
+    if (arg == null) continue;      // not declared at all: the test above says so
+    const list = Array.isArray(arg) ? arg : [arg];
+    if (!list.includes("room")) missing.push(`${t.name}: takes room and project, and projectArg names only ${list.join(", ")}`);
+  }
+  assert.deepEqual(missing, []);
+});
