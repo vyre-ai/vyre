@@ -41,6 +41,8 @@ export function suggestName(text) {
  *   channel: "none"|"connecting"|"ready"|"failed",
  *   naming: { input: string, check: null | { name: string, valid: boolean, available: boolean, why: string|null, address: string|null }, checking: boolean, claiming: boolean, error: string|null },
  *   named: null | { name: string, address: string|null, recoveryCode: string|null, saved: boolean },
+ *   domain: { open: boolean, input: string, checking: boolean, error: string|null,
+ *     result: null | { domain: string, ok: boolean, cname: { host: string, expected: string, found: string[], ok: boolean }, caa: { present: boolean, ok: boolean|null, optional: boolean } } },
  *   tailscale: { status: null | { state: string, login: string|null, tailnet: string|null, tailnetKind: string|null, ip: string|null }, loginUrl: string|null, busy: boolean, error: string|null,
  *     address: null | { phase: string, why: string|null } },
  *   ai: { accounts: { id: string, provider: string, flow: string|null, step: "starting"|"code"|"url"|"waiting"|"done"|"failed", url: string|null, code: string|null, paste: boolean, error: string|null }[] },
@@ -67,8 +69,9 @@ export function createFlow(o) {
   const blankAi = () => ({ accounts: [] });
   const blankClaim = () => ({ phase: "idle", url: null, expiresAt: 0, error: null });
   const blankDevices = () => ({ phone: "idle", expiresAt: 0, error: null, paired: null });
+  const blankDomain = () => ({ open: false, input: "", checking: false, error: null, result: null });
   const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
-  let state = { stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: 0, listening: false };
+  let state = { stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
   let chan = null;
@@ -97,7 +100,7 @@ export function createFlow(o) {
     } catch { return fail("key"); }
     if (mine !== run) return;
     closeChan(); checkSeq++; pending = null; ticket = null; sess = null;
-    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: now() + TTL_MS, listening: true });
+    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: now() + TTL_MS, listening: true });
     followMailbox(mine, key, secret);
     waitForBox(mine, key, secret);
     // The hour is the box's; the page stops listening when it is over.
@@ -201,6 +204,45 @@ export function createFlow(o) {
   /** "I saved it": the warning about closing the page before the code is safe goes away. */
   function markSaved() {
     if (state.named) set({ named: { ...state.named, saved: true } });
+  }
+
+  // ---- Own domain: an optional step after the address is claimed. The box reads the DNS live; this only shows what it found ----
+
+  const DOMAIN_SHAPE = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
+  const tidy = t => String(t || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/[/.]+$/, "").slice(0, 100);
+  const domainOk = ok => state.stage === "named" && state.named && (!state.named.recoveryCode || state.named.saved) && ok !== false;
+
+  /** Show or hide the own-domain form. */
+  function openDomain(open = true) {
+    if (!domainOk()) return;
+    set({ domain: { ...state.domain, open: Boolean(open), error: null } });
+  }
+
+  /** Ask the box to look up the records for a domain of the person's own. Asking again after adding them is the way to see them arrive. @param {string} [text] */
+  async function checkDomain(text) {
+    if (!chan || !domainOk() || state.domain.checking) return;
+    const domain = tidy(text ?? state.domain.input);
+    if (!DOMAIN_SHAPE.test(domain)) return set({ domain: { ...state.domain, input: domain, error: "That does not look like a domain, for example harlowlegal.com.", result: null } });
+    const mine = run;
+    set({ domain: { ...state.domain, input: domain, checking: true, error: null } });
+    try {
+      const r = await chan.call("names.domain.check", { domain });
+      if (mine !== run) return;
+      const list = v => (Array.isArray(v) ? v : []).slice(0, 5).map(x => String(x).slice(0, 253));
+      const c = (r && r.cname) || {}, a = (r && r.caa) || {};
+      set({ domain: { ...state.domain, checking: false, error: null, result: { domain: String(r.domain || domain).slice(0, 253), ok: r.ok === true,
+        cname: { host: String(c.host || `_acme-challenge.${domain}`).slice(0, 300), expected: String(c.expected || "").slice(0, 253), found: list(c.found), ok: c.ok === true },
+        caa: { present: a.present === true, ok: a.ok === true ? true : a.ok === false ? false : null, optional: true } } } });
+    } catch (e) {
+      if (mine !== run) return;
+      set({ domain: { ...state.domain, checking: false, result: null, error: String(/** @type {Error} */ (e).message).slice(0, 200) } });
+    }
+  }
+
+  /** Forget the typed domain's answer as soon as the text changes: an old "in place" must never sit beside a new name. @param {string} text */
+  function setDomain(text) {
+    if (state.stage !== "named") return;
+    set({ domain: { ...state.domain, input: String(text || "").slice(0, 100), result: null, error: null } });
   }
 
   /** Claim the name that was just checked as free. The recovery code comes back once and is kept only in this state. */
@@ -463,7 +505,7 @@ export function createFlow(o) {
 
   return {
     get state() { return state; },
-    setName, claim, confirmWords, denyWords, markSaved,
+    setName, claim, confirmWords, denyWords, markSaved, openDomain, setDomain, checkDomain,
     continueToClaim, mintClaim, continueToDevices, addPhone, currentTicket: () => ticket,
     continueToAi, continueToTailscale, connectTailscale, startAi, submitAiCode,
     /** Start (or start again): a new key and a new code; the old one is forgotten. */

@@ -140,7 +140,7 @@ test("flow: the lines kept are capped, and each is cut to a sane length", async 
 });
 
 /** A fake box channel: names.check answers by a rule, names.claim by another; every call is recorded. */
-function fakeBox({ check, claim } = {}) {
+function fakeBox({ check, claim, domain } = {}) {
   const calls = [];
   const ch = {
     calls, closed: false,
@@ -148,6 +148,7 @@ function fakeBox({ check, claim } = {}) {
       calls.push([tool, input]);
       if (tool === "names.check") return (check || (n => ({ name: n, valid: true, available: true, why: null, address: `${n}.vyre.run` })))(input.name);
       if (tool === "names.claim") return (claim || (n => ({ phase: "dns", address: `https://${n}.vyre.run`, recoveryCode: "abcd-efgh-jklm-npqr-stuv-wxyz-23" })))(input.name);
+      if (tool === "names.domain.check") return domain(input.domain);
       throw new Error("no such tool");
     },
     close() { ch.closed = true; },
@@ -782,4 +783,41 @@ test("site: the setup page loads nothing from another origin, and its headers sa
   for (const want of ["default-src 'none'", "script-src 'self'", "style-src 'self'", "font-src 'self'", "object-src 'none'", "worker-src 'none'", "Cross-Origin-Opener-Policy: same-origin", "Permissions-Policy: camera=(), microphone=(), geolocation=(), clipboard-read=()"]) assert.ok(headers.includes(want), want);
   assert.ok(!headers.includes("googleapis") && !headers.includes("gstatic"));
   assert.match(headers, /^\/setup\n/m, "the redirect from /setup carries the headers too");
+});
+
+test("domain: after the recovery code is saved, a domain of the person's own is looked up by the box, and an old answer never sits beside new text", async t => {
+  let seen = 0;
+  const box = fakeBox({ domain: d => { seen++; if (d === "bad.example") throw new Error("that is not a domain of your own");
+    return { domain: d, ok: seen > 1, cname: { host: `_acme-challenge.${d}`, expected: "abc123.acme.vyre.run", found: seen > 1 ? ["abc123.acme.vyre.run"] : [], ok: seen > 1 }, caa: { host: d, present: false, found: [], expected: null, ok: null, optional: true } }; } });
+  const flow = await foundFlow(t, box);
+  await until(() => flow.state.naming.check);
+  await flow.claim();
+  await flow.checkDomain("harlowlegal.com");
+  assert.equal(box.calls.filter(c => c[0] === "names.domain.check").length, 0, "not before the recovery code is saved");
+  flow.markSaved();
+  const doc = new FakeDoc(), root = doc.createElement("main");
+  const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords() {}, denyWords() {}, markSaved() {}, openDomain: o => flow.openDomain(o), setDomain: x => flow.setDomain(x), checkDomain: () => flow.checkDomain() };
+  const draw = () => render(flow.state, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions });
+  draw();
+  root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Use a domain of your own too")).listeners.click();
+  assert.equal(flow.state.domain.open, true);
+  flow.setDomain("https://HarlowLegal.com/");
+  await flow.checkDomain();
+  assert.equal(flow.state.domain.input, "harlowlegal.com", "tidied: no scheme, no slash, lower case");
+  assert.deepEqual(box.calls.filter(c => c[0] === "names.domain.check").map(c => c[1]), [{ domain: "harlowlegal.com" }]);
+  assert.equal(flow.state.domain.result.ok, false);
+  draw();
+  assert.ok(root.textContent.includes("_acme-challenge.harlowlegal.com  CNAME  abc123.acme.vyre.run"), "the record to add, from the box's own answer");
+  assert.ok(root.textContent.includes("not there yet"));
+  await flow.checkDomain();
+  assert.equal(flow.state.domain.result.ok, true);
+  draw();
+  assert.ok(root.textContent.includes("The record is in place."));
+  flow.setDomain("other.com");
+  assert.equal(flow.state.domain.result, null, "typing again drops the old answer");
+  await flow.checkDomain("not a domain");
+  assert.match(flow.state.domain.error, /does not look like a domain/);
+  await flow.checkDomain("bad.example");
+  assert.equal(flow.state.domain.error, "that is not a domain of your own", "the box's refusal is shown in its words");
+  flow.stop();
 });

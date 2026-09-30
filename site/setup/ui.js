@@ -14,14 +14,15 @@ export function h(doc, tag, attrs, ...kids) {
   return el;
 }
 
-/** @typedef {{ begin: () => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void,
+/** @typedef {{ begin: () => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void, openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void,
  *   continueToAi: () => void, continueToTailscale: () => void, connectTailscale: () => void, startAi: (provider: string) => void, submitAiCode: (id: string, code: string) => void,
  *   continueToDevices: () => void, addPhone: () => void, drawRing: (slot: HTMLElement) => void,
- *   continueToClaim: () => void, mintClaim: () => void, drawQr: (slot: HTMLElement, text: string) => void }} Actions */
+ *   continueToClaim: () => void, mintClaim: () => void, drawQr: (slot: HTMLElement, text: string) => void,
+ *   openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void }} Actions */
 
 /** Per root: the region elements and the key each was last built for. @type {WeakMap<object, { regions: Record<string, any>, keys: Record<string, string>, stage: string|null }>} */
 const memory = new WeakMap();
-const REGIONS = ["head", "words", "naming", "ai", "tailscale", "devices", "claim", "log"];
+const REGIONS = ["head", "words", "naming", "domain", "ai", "tailscale", "devices", "claim", "log"];
 
 /**
  * @param {import("./flow.js").FlowState} s
@@ -163,6 +164,34 @@ export function render(s, ctx) {
     if (claim) { const ok = Boolean(c && c.available) && !s.naming.claiming; if (ok) claim.removeAttribute?.("disabled"); else claim.setAttribute("disabled", "disabled"); claim.textContent = s.naming.claiming ? "Claiming" : "Claim this address"; }
   }
   void rebuiltNaming;
+
+  // ---- domain: optional, after the address is claimed and the recovery code saved ----
+  const dm = s.domain;
+  const domainShown = s.stage === "named" && s.named && (!s.named.recoveryCode || s.named.saved) && s.named.name;
+  const domainKey = !domainShown ? "none" : !dm.open ? "closed" : `open:${dm.checking}|${dm.error}|${dm.result ? `${dm.result.domain}/${dm.result.ok}/${dm.result.cname.found.join(",")}/${dm.result.caa.ok}` : ""}`;
+  region("domain", domainKey, () => {
+    if (domainKey === "none") return [];
+    if (domainKey === "closed") return [el("div", { class: "actions" }, button("Use a domain of your own too", "secondary", () => actions.openDomain(true)))];
+    const input = el("input", { type: "text", class: "name", name: "domain", autocomplete: "off", autocapitalize: "none", spellcheck: "false", "aria-label": "Your domain", "aria-describedby": "domain-status", maxlength: "100", placeholder: "harlowlegal.com" });
+    /** @type {any} */ (input).value = dm.input;
+    input.addEventListener("input", ev => actions.setDomain(/** @type {any} */ (ev.currentTarget).value));
+    input.addEventListener("keydown", ev => { if (/** @type {any} */ (ev).key === "Enter") actions.checkDomain(); });
+    const check = button(dm.checking ? "Checking" : dm.result ? "Check again" : "Check", "primary", () => actions.checkDomain());
+    if (dm.checking) check.setAttribute("disabled", "disabled");
+    const r = dm.result;
+    const status = dm.error ? dm.error : dm.checking ? "Looking up your DNS" : r ? (r.ok ? "The record is in place." : "The record is not there yet. DNS can take a few minutes to show it: check again after adding it.") : "";
+    const record = r ? el("div", { class: "cmd" }, el("pre", null, el("code", null, `${r.cname.host}  CNAME  ${r.cname.expected}`))) : null;
+    return [
+      el("h2", { class: "sub" }, "Your own domain"),
+      el("p", { class: "lead" }, `Your server stays ${s.named && s.named.name}.vyre.run. To use a domain you own as well, add one DNS record for it. Type the domain and this page looks it up.`),
+      el("div", { class: "field" }, input),
+      el("div", { class: "actions" }, check, button("Not now", "secondary", () => actions.openDomain(false))),
+      el("p", { id: "domain-status", class: "hint", role: "status", "data-role": "domain-hint" }, status),
+      record,
+      r && r.cname.found.length && !r.cname.ok ? el("p", { class: "note" }, `Found instead: ${r.cname.found.join(", ")}`) : null,
+      r && r.caa.present && r.caa.ok === false ? el("p", { class: "note" }, "A CAA record on this domain does not name this server's certificate account. Certificates for it may be refused.") : null,
+    ];
+  });
 
   // ---- ai: each provider's own sign-in ----
   const providers = [["claude", "Claude"], ["codex", "ChatGPT (Codex)"], ["grok", "Grok"]];
