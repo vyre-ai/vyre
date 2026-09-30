@@ -42,7 +42,10 @@ viewer UI (native-core, app-design) wait for app-design's screens and the user's
 
 ## Doing
 
-- Nothing in flight.
+- Paused (usage-limit restart, 30 Sep). Head 07fee1c0 is CLEARED by reviewer-2 and handed to the
+  integrator to land on stage/0.2, with the share-server-as-its-own-user image item. Nothing
+  uncommitted. Resume: check CHAT.md for replies from sessions, tailnet, native-core, app-design and
+  integrator, then Next.
 
 ## Next
 
