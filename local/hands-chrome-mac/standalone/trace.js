@@ -18,7 +18,9 @@ import * as redact from "../extension/shared/redact.js";
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // Seven or more digits with the separators a phone number has, or a bare 10 or 11 digits; a longer bare run is an id and is left alone.
 const PHONE = /(?<![\w.])\+?\d[\d ()\-.]{5,}\d(?![\w])/g;
-export const DEFAULTS = Object.freeze({ logs: "on", shots: false, maxMB: 100, fileMB: 10 });
+// values: which typed values a trace keeps. "ghl" (default): only on GoHighLevel pages, where the values are workflow
+// text; everywhere else a typed value is logged as its length. "all": every value. "none": never.
+export const DEFAULTS = Object.freeze({ logs: "on", shots: false, maxMB: 100, fileMB: 10, values: "ghl" });
 
 /**
  * The fallback ladder, one mechanism: which rung a tool call works on, and what to try when it fails.
@@ -49,9 +51,14 @@ export function nextRung(rung) {
   })[/** @type {1|2|3|4|5} */ (rung)] || "";
 }
 
-/** Mask email- and phone-shaped text. @param {string} s */
+/** A digit run that passes the Luhn check and is 13 to 19 digits long, as a card number does. @param {string} digits */
+const luhn = digits => { if (digits.length < 13 || digits.length > 19) return false; let sum = 0, alt = false; for (let i = digits.length - 1; i >= 0; i--) { let n = digits.charCodeAt(i) - 48; if (alt) { n *= 2; if (n > 9) n -= 9; } sum += n; alt = !alt; } return sum % 10 === 0; };
+const SSN = /\b\d{3}-\d{2}-\d{4}\b|\b(?<!\d)\d{9}(?!\d)\b/g;
+const CARD = /\b\d(?:[ -]?\d){12,18}\b/g;
+
+/** Mask email-, phone-, card- and SSN-shaped text. @param {string} s */
 export function pii(s) {
-  return String(s).replace(EMAIL, "[email]").replace(PHONE, m => { const n = m.replace(/\D/g, "").length; return n >= 7 && (/[ ()\-.+]/.test(m) || (n >= 10 && n <= 11)) ? "[phone]" : m; });
+  return String(s).replace(CARD, m => (luhn(m.replace(/\D/g, "")) ? "[card]" : m)).replace(SSN, "[ssn]").replace(EMAIL, "[email]").replace(PHONE, m => { const n = m.replace(/\D/g, "").length; return n >= 7 && (/[ ()\-.+]/.test(m) || (n >= 10 && n <= 11)) ? "[phone]" : m; });
 }
 
 /** A value made safe to write: secrets by name and shape, then contact details by shape. @param {any} v @param {number} [depth] */
@@ -86,6 +93,16 @@ export function safeArgs(args) {
   if (a && Array.isArray(a.fields) && args && Array.isArray(args.fields)) a.fields = a.fields.map((/** @type {any} */ f, /** @type {number} */ i) => fix(f, args.fields[i]));
   return a;
 }
+
+/** Replace typed values with their length. @param {any} v @param {number} [depth] */
+export function stripValues(v, depth = 0) {
+  if (!v || typeof v !== "object" || depth > 6) return v;
+  if (Array.isArray(v)) return v.map(x => stripValues(x, depth + 1));
+  /** @type {Record<string, any>} */ const o = {};
+  for (const [k, x] of Object.entries(v)) o[k] = (k === "value" || k === "text" || k === "config" || k === "params" || k === "answer") && x != null && typeof x !== "object" ? `[${String(x).length} chars]` : (k === "params" || k === "config") ? "[params omitted]" : stripValues(x, depth + 1);
+  return o;
+}
+const GHL_HOST = /(^|\.)(gohighlevel\.com|leadconnectorhq\.com)(:\d+)?$|^127\.0\.0\.1(:\d+)?$/;
 
 /** Host and path of a URL, no query, no login, no fragment. @param {any} u */
 export function hostPath(u) {
@@ -125,6 +142,7 @@ export function createTrace({ dataDir, now = Date.now, pid = process.pid, versio
   let cfg = readConfig(dataDir);
   let cfgAt = now();
   let seq = 0, part = 0, written = 0, file = "";
+  /** @type {Map<number, string>} */ const hostByTab = new Map();
   const cfgNow = () => { if (now() - cfgAt > 15_000) { cfg = readConfig(dataDir); cfgAt = now(); } return cfg; };
   const pathFor = () => path.join(dir, `session-${id}${part ? `.${part}` : ""}.jsonl`);
 
@@ -157,8 +175,16 @@ export function createTrace({ dataDir, now = Date.now, pid = process.pid, versio
     /** One finished tool call. @param {{ tool: string, args: any, queueMs: number, runMs: number, ok: boolean, result?: any, error?: any, caller?: string }} c */
     call(c) {
       const meta = describe(c.result, c.error);
+      const mode = cfgNow().values;
+      // The host a call ran on: from its own result, or the last one seen for the tab it names.
+      const tabId = Number.isInteger(meta.tab) ? meta.tab : Number.isInteger(c.args && c.args.tab) ? c.args.tab : undefined;
+      if (meta.host && tabId !== undefined) hostByTab.set(tabId, meta.host);
+      const host = meta.host || (tabId !== undefined ? hostByTab.get(tabId) : undefined);
+      if (!meta.host && host) meta.host = host;
+      const keep = mode === "all" || (mode !== "none" && host && GHL_HOST.test(String(host)));
+      const args = keep ? c.args : stripValues(c.args);
       const rung = rungOf(c.tool, c.args);
-      return write({ kind: "call", tool: c.tool, ...(rung ? { rung, rungName: /** @type {any} */ (RUNGS)[rung] } : {}), args: safeArgs(c.args), queueMs: Math.round(c.queueMs), runMs: Math.round(c.runMs), ok: c.ok, ...meta });
+      return write({ kind: "call", tool: c.tool, ...(rung ? { rung, rungName: /** @type {any} */ (RUNGS)[rung] } : {}), args: safeArgs(args), queueMs: Math.round(c.queueMs), runMs: Math.round(c.runMs), ok: c.ok, ...meta });
     },
     /** @param {string} type @param {any} payload */
     event(type, payload) { return write({ kind: "event", type, data: safe(payload) }); },
@@ -209,8 +235,8 @@ export function describe(result, error) {
       if (hp) Object.assign(m, hp);
       if (d.step !== undefined) m.error.step = safe(d.step);
       if (d.failed) m.error.failed = safe(d.failed);
-      if (d.dom !== undefined) m.error.dom = pii(redact.text(String(typeof d.dom === "string" ? d.dom : JSON.stringify(d.dom)))).slice(0, 2200);
-      else if (d.snippet !== undefined) m.error.dom = pii(redact.text(String(d.snippet))).slice(0, 2200);
+      if (d.dom !== undefined) m.error.dom = pii(redact.text(String(typeof d.dom === "string" ? d.dom : JSON.stringify(d.dom)))).slice(0, 1200);
+      else if (d.snippet !== undefined) m.error.dom = pii(redact.text(String(d.snippet))).slice(0, 1200);
       if (d.candidates) m.error.candidates = safe(d.candidates);
       if (d.blockers) m.error.blockers = safe(d.blockers);
     }

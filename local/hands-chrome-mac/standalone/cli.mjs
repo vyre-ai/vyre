@@ -26,6 +26,7 @@ const HELP = `vyre-chrome ${version}: control your own Chrome from Claude Code
   vyre-chrome status                              is it installed, is logging on
   vyre-chrome report [--last N] [--out FILE]      one redacted bundle of your last N sessions, with a summary
   vyre-chrome logs on|off|path                    turn the local trace on or off, or print where it is
+  vyre-chrome logs values ghl|all|none            which typed values a trace keeps (default ghl: only on GoHighLevel pages)
   vyre-chrome logs shots on|off                   keep a small screenshot of a failure (off by default)
   vyre-chrome mcp                                 the MCP server (Claude Code runs this; you do not)
 
@@ -86,6 +87,7 @@ async function main() {
   if (cmd === "logs") {
     const sub = args[0];
     if (sub === "on" || sub === "off") { writeConfig(dataDir, { logs: sub }); out(`Logging is ${sub}.`); return; }
+    if (sub === "values") { const v = args[1]; if (!["ghl", "all", "none"].includes(v)) throw new Error("logs values: ghl (default: typed values on GoHighLevel pages only), all, or none"); writeConfig(dataDir, { values: v }); out(`Typed values are kept for: ${v}.`); return; }
     if (sub === "shots") { const v = args[1] === "on"; writeConfig(dataDir, { shots: v }); out(`Failure screenshots are ${v ? "on" : "off"}.`); return; }
     if (sub === "path" || sub === undefined) { out(path.join(dataDir, "logs")); return; }
     throw new Error(`logs: unknown "${sub}"`);

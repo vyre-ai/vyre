@@ -12,6 +12,16 @@ export const wireName = n => n.replace(/\./g, "_");
  * @returns {Promise<void>} resolves when stdin ends
  */
 export function serve({ runtime, stdin, stdout, name = "vyre-chrome", version = "0.0.0", log = () => {} }) {
+  let clientElicits = false;
+  let nextServerId = 1;
+  /** @type {Map<number, (m: any) => void>} */ const asking = new Map();
+  /** Ask the person through the client (MCP elicitation), or null when the client cannot. @param {string} message */
+  const ask = (/** @type {string} */ message) => !clientElicits ? null : new Promise(resolve => {
+    const id = `s${nextServerId++}`;
+    const t = setTimeout(() => { asking.delete(/** @type {any} */ (id)); resolve({ action: "cancel" }); }, 5 * 60_000);
+    asking.set(/** @type {any} */ (id), (/** @type {any} */ m) => { clearTimeout(t); resolve(m && m.result ? m.result : { action: "cancel" }); });
+    send({ jsonrpc: "2.0", id, method: "elicitation/create", params: { message, requestedSchema: { type: "object", properties: { approve: { type: "boolean", title: "Send it" } }, required: ["approve"] } } });
+  });
   const byWire = () => new Map(runtime.list().map((/** @type {any} */ t) => [wireName(t.name), t.name]));
   const send = (/** @type {any} */ m) => { try { stdout.write(JSON.stringify(m) + "\n"); } catch (e) { log(`write failed: ${/** @type {Error} */ (e).message}`); } };
   const reply = (/** @type {any} */ id, /** @type {any} */ result) => send({ jsonrpc: "2.0", id, result });
@@ -30,7 +40,7 @@ export function serve({ runtime, stdin, stdout, name = "vyre-chrome", version = 
     const real = byWire().get(String(p && p.name));
     if (!real) return fail(id, -32602, `unknown tool ${p && p.name}`);
     let out;
-    try { out = await runtime.invoke(real, p.arguments || {}, { receivedAt }); }
+    try { out = await runtime.invoke(real, p.arguments || {}, { receivedAt, ask: clientElicits ? ask : null }); }
     catch (e) { out = { ok: false, error: e }; }
     if (out.ok) return reply(id, { content: content(out.result) });
     const e = out.error || {};
@@ -39,12 +49,16 @@ export function serve({ runtime, stdin, stdout, name = "vyre-chrome", version = 
   }
 
   function onMessage(/** @type {any} */ m) {
-    if (!m || typeof m !== "object" || typeof m.method !== "string") return;
+    if (!m || typeof m !== "object") return;
+    if (typeof m.method !== "string" && !(m.id !== undefined && asking.has(m.id))) return;
+    // A reply to something we asked the client (an approval).
+    if (m.method === undefined && m.id !== undefined && asking.has(m.id)) { const f = /** @type {any} */ (asking.get(m.id)); asking.delete(m.id); return f(m); }
     const { id, method, params } = m;
     const isRequest = id !== undefined && id !== null;
     switch (method) {
       case "initialize": {
         const asked = params && params.protocolVersion;
+        clientElicits = Boolean(params && params.capabilities && params.capabilities.elicitation);
         return reply(id, { protocolVersion: SUPPORTED.has(asked) ? asked : PROTOCOL, capabilities: { tools: { listChanged: false } }, serverInfo: { name, version },
           instructions: "Control the person's own Chrome. Read with chrome_snapshot, act with chrome_act and chrome_fill. Reuse the open tab (chrome_tabs use); never open a tab per step. A send, post or payment is held and returns an id: call chrome_send with it, which the person approves. If the person presses Esc everything stops until they answer and you call chrome_resume." });
       }

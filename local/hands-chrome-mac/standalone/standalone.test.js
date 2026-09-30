@@ -259,3 +259,38 @@ test("ladder: a failure names its rung and the next one, and the trace and repor
   assert.deepEqual([rec.rung, rec.rungName], [2, "dom"]);
   assert.equal(report(dataDir).summary.rungs.dom.failures, 1);
 });
+
+test("privacy: typed values are logged as lengths off GoHighLevel pages, kept on them, and card and SSN numbers are always masked", async t => {
+  const { call, dataDir } = await rig(t, (/** @type {string} */ op, /** @type {any} */ a) => ({ ok: true, url: a && a.tabId === 2 ? "https://app.gohighlevel.com/x" : "https://harlow.example/intake" }));
+  await call("chrome_fill", { tab: 1, fields: [{ label: "Notes", value: "client Alex Sample owes 4200 for the Harlow matter" }] });
+  await call("chrome_fill", { tab: 2, fields: [{ label: "Subject", value: "Welcome to Harlow Legal" }] });
+  const recs = /** @type {any} */ (readSessions(dataDir, 1)).records.filter((/** @type {any} */ x) => x.tool === "chrome.fill");
+  assert.equal(recs[0].args.fields[0].value, "[50 chars]");
+  assert.equal(pii("card 4242 4242 4242 4242 and ssn 123-45-6789 and order 1234567890123"), "card [card] and ssn [ssn] and order 1234567890123");
+  assert.equal(recs.length, 2);
+});
+
+test("send approval: a client that can ask (MCP elicitation) is asked by the server, and a no means nothing is sent", async t => {
+  let released = 0;
+  const handler = (/** @type {string} */ op, /** @type {any} */ a) => {
+    if (op === "page.act" && a.release) { released++; return { ok: true }; }
+    if (op === "page.act") return { ok: false, held: true, control: { role: "button", name: "Send" }, fields: [{ name: "Email", value: "alex@example.com" }], sig: "s", url: "https://harlow.example/x" };
+    return { ok: true };
+  };
+  const dataDir = tmp(t);
+  const runtime = await createRuntime({ dataDir, sockPath: path.join(dataDir, "run", "chrome.sock"), log: () => {}, chrome: { extensionOrigin: null } });
+  t.after(() => runtime.stop());
+  const ext = await fakeExtension(path.join(dataDir, "run", "chrome.sock"), { handler });
+  t.after(() => ext.sock.destroy());
+  await until(async () => (await runtime.invoke("chrome.status", {})).result.connected);
+  const held = (await runtime.invoke("chrome.act", { selector: { name: "Send" }, kind: "click", tab: 1 })).result;
+  const asked = /** @type {string[]} */ ([]);
+  const no = await runtime.invoke("chrome.send", { id: held.id }, { ask: async (/** @type {string} */ m) => { asked.push(m); return { action: "accept", content: { approve: false } }; } });
+  assert.equal(no.ok, false);
+  assert.equal(no.error.code, "declined");
+  assert.equal(released, 0);
+  assert.match(asked[0], /harlow\.example/);
+  const yes = await runtime.invoke("chrome.send", { id: held.id }, { ask: async () => ({ action: "accept", content: { approve: true } }) });
+  assert.equal(yes.ok, true);
+  assert.equal(released, 1);
+});

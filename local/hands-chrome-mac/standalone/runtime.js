@@ -79,7 +79,7 @@ export async function createRuntime(o = {}) {
    * One tool call from the MCP server: timed, traced, and returned as {ok, result} or {ok:false, error}.
    * @param {string} name @param {any} input @param {{ receivedAt?: number }} [o2]
    */
-  async function invoke(name, input, { receivedAt = Date.now() } = {}) {
+  async function invoke(name, input, { receivedAt = Date.now(), ask = null } = {}) {
     const t0 = Date.now();
     const queueMs = t0 - receivedAt;
     /** @type {any} */ let out;
@@ -88,6 +88,14 @@ export async function createRuntime(o = {}) {
         const id = String(input && input.id || "");
         const h = held.get(id);
         if (!h) throw Object.assign(new Error("no held act with that id (it was already sent, or it is not one this session held)"), { code: "not_found" });
+        // The person is asked by the server itself when the client can show a question, so an allow rule
+        // for this server never stands in for their yes. Without it, Claude Code's own permission is the approval.
+        if (typeof ask === "function") {
+          const c = h.content || {};
+          const fields = Array.isArray(c.fields) ? c.fields.slice(0, 12).map((/** @type {any} */ f) => `${f.name || f.label || "field"}: ${String(f.value ?? "").slice(0, 60)}`).join("\n") : "";
+          const r = /** @type {any} */ (await ask(`Send this from ${c.origin || "your browser"}?\nControl: ${c.control || "?"}${fields ? "\n" + fields : ""}`));
+          if (!r || r.action !== "accept" || !r.content || r.content.approve !== true) throw Object.assign(new Error("the person did not approve this send, so nothing was sent"), { code: "declined" });
+        }
         held.delete(id);
         out = { ok: true, result: await run("chrome.release", { id, content: h.content }, "module:gate") };
       } else if (HIDDEN.has(name) || !tools.has(name)) {
@@ -122,7 +130,7 @@ export async function createRuntime(o = {}) {
     }));
     rows.push({
       name: "chrome.send",
-      description: "Do an act that sends something as the person (a real submit, a message, a post, a payment) which another chrome tool held and returned an id for. Claude Code asks the person to approve this call; nothing that sends goes out without it. Refused if the page changed since it was held.",
+      description: "Never put this tool in an allow list: it is where the person approves. Do an act that sends something as the person (a real submit, a message, a post, a payment) which another chrome tool held and returned an id for. Claude Code asks the person to approve this call; nothing that sends goes out without it. Refused if the page changed since it was held.",
       inputSchema: { type: "object", properties: { id: { type: "string", description: "The id from the held answer." } }, required: ["id"] },
     });
     return rows;

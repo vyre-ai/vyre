@@ -36,7 +36,7 @@ Then remove the extension in `chrome://extensions`. Nothing else was installed.
 There is no Gate here. Claude Code's own permissions are the approval.
 
 - Reading, filling and clicking are ordinary tools (`chrome_snapshot`, `chrome_act`, `chrome_fill`, `chrome_batch`, `chrome_ghl`, ...). Allow them in Claude Code if you want it to work without asking.
-- An act that sends something as you (a real submit, a message, a post, a payment, a delete) is not done. It comes back `held: true` with an id and the fields it would send. Doing it is a separate tool, `chrome_send`. Leave `chrome_send` on "ask" in Claude Code so you approve every send. It is refused if the page changed since it was held.
+- An act that sends something as you (a real submit, a message, a post, a payment, a delete) is not done. It comes back `held: true` with an id and the fields it would send. Doing it is a separate tool, `chrome_send`. Never put `chrome_send` in an allow list: it is where you approve. If your Claude Code supports questions from a tool (MCP elicitation) the server itself asks you, showing the site, the button and the field values, and a no sends nothing; otherwise Claude Code's own permission prompt is the approval. It is refused if the page changed since it was held.
 - `chrome_resume` (carry on after you pressed Esc) also belongs on "ask".
 - Esc in Chrome stops everything at once, and it waits until you answer.
 
@@ -60,11 +60,12 @@ Honest limit: the labels come from GoHighLevel's documentation and have not been
 
 ## Logs
 
-Every session writes one trace file, `~/.vyre-chrome/logs/session-<time>-<pid>.jsonl`, on this computer only. Nothing is ever sent anywhere. Each tool call records its arguments (masked), how long it queued, ran and waited on the page, whether it worked, the error and the step that failed, retries, which selector strategy matched and whether a fallback was needed, the page's host and path (no query), the tab, and whether a tab was opened. A failure adds a small masked snippet of the page. Secrets, passwords, tokens and cookies are always masked; emails and phone numbers are masked in values while field names stay; the text of a workflow you build stays readable. Old logs are removed to stay under 100 MB.
+Every session writes one trace file, `~/.vyre-chrome/logs/session-<time>-<pid>.jsonl`, on this computer only. Nothing is ever sent anywhere. Each tool call records its arguments (masked), how long it queued, ran and waited on the page, whether it worked, the error and the step that failed, retries, which selector strategy matched and whether a fallback was needed, the page's host and path (no query), the tab, and whether a tab was opened. A failure adds a small masked snippet of the page. Secrets, passwords, tokens and cookies are always masked; card numbers, national ids, emails and phone numbers are masked; on GoHighLevel pages the text you type into workflows stays readable, and on any other site a typed value is logged only as its length (`logs values all` keeps them, `logs values none` drops them everywhere). Field names always stay. Old logs are removed to stay under 100 MB.
 
     node ~/vyre-chrome/standalone/cli.mjs report --last 5     # one masked bundle plus a summary
     node ~/vyre-chrome/standalone/cli.mjs logs off            # stop logging (on turns it back on)
     node ~/vyre-chrome/standalone/cli.mjs logs shots on       # also keep a small screenshot of each failure (off by default)
+    node ~/vyre-chrome/standalone/cli.mjs logs values ghl|all|none   # which typed values are kept
     node ~/vyre-chrome/standalone/cli.mjs logs path
 
 The report prints the slowest steps, failures by kind and the fallback rate, and writes the bundle to `~/.vyre-chrome/reports/`.

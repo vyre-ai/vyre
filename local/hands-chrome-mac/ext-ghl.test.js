@@ -607,3 +607,12 @@ test("the fixture has the awkward behaviours, and the bench scenario only names 
   assert.ok(steps.length > 10);
   assert.ok(Object.keys(SECTIONS).length > 5);
 });
+
+test("popups: a dialog that asks for agreement is never closed with OK, Got it, Accept or Allow", () => {
+  const snap = { controls: [{ blk: 0, name: "Got it", enabled: true }, { blk: 0, name: "OK", enabled: true }, { blk: 0, name: "Accept all", enabled: true }] };
+  const agree = classifyBlocker({ i: 0, title: "Welcome", text: "By continuing you agree to our terms and privacy policy" }, snap);
+  assert.notEqual(agree.kind, "safe");
+  const tour = classifyBlocker({ i: 0, title: "Welcome tour", text: "Take a tour of the new builder" }, snap);
+  assert.equal(tour.kind, "safe");
+  assert.equal(classifyBlocker({ i: 0, title: "Consent", text: "consent to marketing" }, snap).kind, "unknown", "bare consent is no longer a safe popup");
+});

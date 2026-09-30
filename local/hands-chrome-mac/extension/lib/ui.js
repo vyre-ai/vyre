@@ -111,7 +111,9 @@ export function nearMisses(want, controls, n = 6) {
 // ---------------------------------------------------------------- blockers
 
 const UNSAFE = /unsaved|discard|leave (this )?page|leave site|are you sure|confirm|delete|remove|cannot be undone|can't be undone|permanent|lose (your |any )?(changes|progress)|changes (that )?you made|will be lost|publish|send now/i;
-const SAFE = /what'?s new|new features?|product (update|tour)|announcement|release notes|cookie|consent|tour\b|walkthrough|welcome|getting started|tips?\b|take a tour|feature (update|tour)/i;
+/** A dialog that asks for agreement: never closed with an OK or Got it, since that could be a yes. */
+const AGREES = /consent|agree|terms|privacy|subscribe|opt.?in|marketing (emails|messages)/i;
+const SAFE = /what'?s new|new features?|product (update|tour)|announcement|release notes|cookie|tour\b|walkthrough|welcome|getting started|tips?\b|take a tour|feature (update|tour)/i;
 /** Close controls, in preference order. Nothing that saves, sends, deletes or confirms is on the list. */
 const CLOSERS = [/^(close|dismiss|close dialog|close modal|close popup)$/i, /^(skip|skip tour|skip for now)$/i, /^(no thanks|not now|maybe later|remind me later|later)$/i, /^(got it|ok|okay)$/i, /^(x|×|✕|✖)$/, /^(decline|reject( all)?|necessary only)$/i, /^(accept( all)?( cookies)?|allow)$/i];
 
@@ -143,7 +145,10 @@ export function classifyBlocker(b, snap) {
   const said = `${b.title || ""} ${b.text || ""}`;
   if (UNSAFE.test(said)) return { kind: "unsafe", why: "the dialog asks about changes, a confirmation or something that cannot be undone", closers };
   if (!SAFE.test(said)) return { kind: "unknown", why: "the dialog is not one of the known announcement, tour or cookie popups", closers };
+  const agrees = AGREES.test(said);
   for (const re of CLOSERS) {
+    // Only a plain Close or Skip on a dialog that asks for agreement; never OK, Got it, Accept or Allow.
+    if (agrees && /accept|allow|got it|ok/i.test(re.source)) continue;
     const closer = inside.find((/** @type {any} */ c) => re.test(String(c.name || "").trim()));
     if (closer) return { kind: "safe", why: "an announcement, tour or cookie popup with a plain close control", closer, closers };
   }
