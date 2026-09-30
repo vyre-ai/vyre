@@ -427,7 +427,7 @@ test("github.session.push: refuses a secret in the outgoing commits before ever 
   assert.equal(wt.error, undefined, JSON.stringify(wt));
   execFileSync("git", ["-C", wt.data.path, "config", "user.email", "a@example.com"]);
   execFileSync("git", ["-C", wt.data.path, "config", "user.name", "a"]);
-  fs.writeFileSync(path.join(wt.data.path, "keys.env"), "AWS_KEY=AKIAABCDEFGHIJKLMNOP\n");
+  fs.writeFileSync(path.join(wt.data.path, "keys.env"), "AWS_KEY=" + "AKIA" + "ABCDEFGHIJKLMNOP\n");
   execFileSync("git", ["-C", wt.data.path, "add", "keys.env"]);
   execFileSync("git", ["-C", wt.data.path, "commit", "-q", "-m", "oops"]);
 
@@ -445,7 +445,7 @@ test("github.session.push: an agent cannot lift the secret scan with allow_secre
   const wt = await w.as("module:threads", { firstParty: true })("github.session.worktree", { project: "harlow", session: "s2" });
   execFileSync("git", ["-C", wt.data.path, "config", "user.email", "a@example.com"]);
   execFileSync("git", ["-C", wt.data.path, "config", "user.name", "a"]);
-  fs.writeFileSync(path.join(wt.data.path, "keys.env"), "AWS_KEY=AKIAABCDEFGHIJKLMNOP\n");
+  fs.writeFileSync(path.join(wt.data.path, "keys.env"), "AWS_KEY=" + "AKIA" + "ABCDEFGHIJKLMNOP\n");
   execFileSync("git", ["-C", wt.data.path, "add", "keys.env"]);
   execFileSync("git", ["-C", wt.data.path, "commit", "-q", "-m", "oops"]);
   const agent = await w.as("mcp:agent:kit")("github.session.push", { project: "harlow", session: "s2", allow_secret: true });

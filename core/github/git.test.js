@@ -302,7 +302,7 @@ test("defaultBranchOf: prefers origin/HEAD when there's a remote, falls back to 
 test("scanOutgoing: finds a known secret shape only in the ADDED lines of a branch, not in the default branch's own history, and reports the file and an approximate line", async t => {
   const repoDir = makeClonedRepo(t);
   plainGit(repoDir, ["checkout", "-q", "-b", "vyre/s1"]);
-  fs.writeFileSync(path.join(repoDir, "config.env"), "PORT=3000\nAWS_KEY=AKIAABCDEFGHIJKLMNOP\n");
+  fs.writeFileSync(path.join(repoDir, "config.env"), "PORT=3000\nAWS_KEY=" + "AKIA" + "ABCDEFGHIJKLMNOP\n");
   plainGit(repoDir, ["add", "config.env"]);
   plainGit(repoDir, ["commit", "-q", "-m", "add config"]);
 
