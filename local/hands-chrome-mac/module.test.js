@@ -316,27 +316,26 @@ test("module: the hands' Escape stops Chrome control too, and an act raises the 
   assert.equal(r.error.code, "stopped");
 });
 
-test("module: an agent's own Gate card releases nothing, and a script or API call is held unless the person asked", async t => {
+test("module: an agent's own Gate card releases nothing, and a script or API call is hands-free unless it SENDS", async t => {
   const { reg, gate, connect } = await rig(t);
-  const x = await connect();
+  const sendHeld = { ok: false, held: true, why: "This would POST /conversations/messages", control: { role: "request", name: "POST /conversations/messages" }, fields: [], sig: "s9", url: "https://app.example/x" };
+  const x = await connect({ "page.eval": (/** @type {any} */ a) => a.asked ? { ok: true, value: 2 } : /send/.test(a.expression) ? sendHeld : { ok: true, value: 1 } });
   await reg.call("hands.grant.add", { agent: "kit" }, "cli");
   await reg.call("chrome.plan", PLAN, KIT);
-  // A forged card: an id chrome never issued, carrying its own op and args.
   const forged = await reg.call("chrome.release", { id: "held-99", content: { op: "page.eval", args: { expression: "fetch('/send',{method:'POST'})" }, signature: "x" } }, "module:gate");
   assert.equal(forged.error.code, "denied");
-  assert.equal(x.ops("page.eval").length, 0);
-  // The agent's script does not run: it becomes a card. The person's own turn runs it.
-  const held = await reg.call("chrome.eval", { expression: "document.title", tab: 1 }, KIT);
+  // A script that sends nothing runs for the agent with no card.
+  const free = await reg.call("chrome.eval", { expression: "document.title", tab: 1 }, KIT);
+  assert.equal(free.data.value, 1);
+  assert.equal(gate().requests.length, 0);
+  // One whose effect is a send is held by the extension and becomes a card.
+  const held = await reg.call("chrome.eval", { expression: "send()", tab: 1 }, KIT);
   assert.equal(held.data.held, true);
-  assert.equal(x.ops("page.eval").length, 0);
-  assert.equal((await reg.call("chrome.eval", { expression: "document.title", tab: 1 }, "cli")).error, undefined);
-  assert.equal(x.ops("page.eval").length, 1);
-  // Approving the card runs the stored record, and only that.
+  assert.equal(gate().requests.length, 1);
+  // The person's own turn runs it with no card; approving the card runs the stored record once.
+  assert.equal((await reg.call("chrome.eval", { expression: "send()", tab: 1 }, "cli")).data.value, 2);
   const rel = await reg.call("chrome.release", { id: held.data.id, content: {} }, "module:gate");
   assert.equal(rel.error, undefined, JSON.stringify(rel));
-  assert.equal(x.ops("page.eval").length, 2);
-  assert.equal(x.ops("page.eval")[1].args.asked, true);
-  // Approving twice does nothing the second time.
+  assert.equal(x.ops("page.eval").at(-1).args.asked, true);
   assert.equal((await reg.call("chrome.release", { id: held.data.id, content: {} }, "module:gate")).error.code, "denied");
-  assert.ok(gate().requests.length >= 1);
 });

@@ -139,23 +139,6 @@ export default {
 
     const denied = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(`${code}: ${message}`), { code });
 
-    /**
-     * Ops that can send, post, pay or delete as the person through the page's own API, not through
-     * a button the extension can see: they follow the same rule as a submit (held at the Gate unless
-     * the person's own turn asked, P17). A batch is judged by its steps.
-     * @param {string} op @param {any} args @returns {string|null} words for the card, or null when free
-     */
-    const outwardOp = (op, args) => {
-      if (op === "page.eval" || op === "dev.console.eval") return `run a script on the page: ${scrub(String(args.expression || "").slice(0, 160))}`;
-      if (op === "api.call") return `call the page's own API (${scrub(String(args.entryId || "an entry"))})`;
-      if (op === "net.replay") return `re-send a captured request${args.overrides && args.overrides.method ? ` as ${String(args.overrides.method).toUpperCase()}` : ""}`;
-      if (op === "ghl.run") return `run the GoHighLevel automation ${scrub(String(args.flow || "of your own steps"))}`;
-      if (op === "batch.run" && Array.isArray(args.steps)) {
-        for (const st of args.steps) { const w = st && typeof st.op === "string" ? outwardOp(st.op, st.args || {}) : null; if (w) return w; }
-      }
-      return null;
-    };
-
     /** The one grant lives in the hands module: an agent granted to drive the Mac may drive its Chrome. */
     const requireGrant = async (/** @type {string|null} */ agent) => {
       if (!agent) return;
@@ -246,10 +229,10 @@ export default {
           // The person's own direct turn (their CLI, the Capsule) may run an outward act free; an
           // agent's, or the model's in a Claude session, may not: the extension holds those.
           args.asked = PEOPLE.includes(callerKind(meta.caller)) && !agent;
-          const outward = args.asked ? null : outwardOp(op, args);
-          let res = outward
-            ? { held: true, why: `This would ${outward}. It could send or change something as the person, so it waits for their approval.`, control: { role: "action", name: outward }, fields: [], sig: "none" }
-            : screen(await bridge.call(op, args, { timeoutMs: args.timeoutMs }));
+          // Scripts, API calls, replays and automations are hands-free after the grant. The extension
+          // holds only a request that SENDS something as the person (a message, a post, a payment)
+          // when `asked` is false, judged by method and endpoint (extension/shared/outbound.js).
+          let res = screen(await bridge.call(op, args, { timeoutMs: args.timeoutMs }));
           if (isObj(res) && res.held === true) res = await hold(op, args, res, meta, summary);
           else if (op === "batch.run" && isObj(res) && isObj(res.held) && res.held.held === true) {
             // The batch stopped at a held step: the card is for that step, released on its own.
@@ -314,7 +297,7 @@ export default {
     pass("chrome.act", "page.act", "Do one thing to one control found by selector: click, type (with value), select an option, check a box, or press a key (value: the key). An act that sends something as the person (a real submit, a Send, Pay or Post control, decided from the page itself) is held for their approval at the Gate unless they asked for it directly: the answer has held: true.",
       { selector, kind: { type: "string", enum: ["click", "type", "select", "check", "press"] }, value: { ...str, description: "For type and select: the text or option. For press: the key, e.g. Enter." } });
     pass("chrome.fill", "page.fill", "Set many form fields in one step: fields is a list of {selector, value}. Values a person typed never come back in results. A submit is held like chrome.act's.", { fields: { type: "array", items: obj({ selector, value: str }, ["selector"]) }, submit: bool });
-    pass("chrome.eval", "page.eval", "Run a JavaScript expression in a tab and return its JSON result. Values shaped like credentials (tokens, keys, JWTs, values under secret-looking names) are masked; other values come back as the page holds them, so an expression can still read a short cookie or a typed field. Refused on a page with a visible password field. Held at the Gate unless the person asked for it directly, since a script can also send or change things as them.", { expression: str });
+    pass("chrome.eval", "page.eval", "Run a JavaScript expression in a tab and return its JSON result. Values shaped like credentials (tokens, keys, JWTs, values under secret-looking names) are masked; other values come back as the page holds them, so an expression can still read a short cookie or a typed field. Refused on a page with a visible password field. Hands-free, except that a message, post or payment the script tries to send is held for the person's approval unless they asked for it.", { expression: str });
     pass("chrome.wait", "page.wait", "Wait for exactly one thing: a control (selector), the URL to contain some text (url), or the network to be quiet for idleMs, up to timeoutMs.", { selector: { description: "A selector object, or a CSS selector string." }, url: { ...str, description: "Wait until the page URL contains this." }, idleMs: { ...int, description: "Wait until the network has been quiet this long." } });
     pass("chrome.screenshot", "page.screenshot", "A PNG of a tab (or of one control), base64-encoded. Nothing from pages Vyre may not look at.", { agent: str });
     pass("chrome.batch", "batch.run", "Run a list of steps inside the browser with no round trip between them: fastest for a known sequence. It stops at the first failure, on the person's stop, or at a page Vyre may not touch, and says which step.", { steps: { type: "array", items: { type: "object" } } });

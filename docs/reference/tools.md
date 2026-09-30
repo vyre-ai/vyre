@@ -324,7 +324,7 @@ The page's console: messages, exceptions and log entries kept in a ring buffer, 
 
 ### `chrome.eval`
 
-Run a JavaScript expression in a tab and return its JSON result. Values shaped like credentials (tokens, keys, JWTs, values under secret-looking names) are masked; other values come back as the page holds them, so an expression can still read a short cookie or a typed field. Refused on a page with a visible password field. Held at the Gate unless the person asked for it directly, since a script can also send or change things as them.
+Run a JavaScript expression in a tab and return its JSON result. Values shaped like credentials (tokens, keys, JWTs, values under secret-looking names) are masked; other values come back as the page holds them, so an expression can still read a short cookie or a typed field. Refused on a page with a visible password field. Hands-free, except that a message, post or payment the script tries to send is held for the person's approval unless they asked for it.
 
 - Input:
   - `expression` string

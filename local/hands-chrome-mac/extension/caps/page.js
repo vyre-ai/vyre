@@ -22,6 +22,7 @@
 // release accepts either spelling.
 
 import { redact } from "../lib/shared.js";
+import { guardInstall, guardCollect, held as heldRequest } from "../shared/outbound.js";
 import { err } from "../lib/err.js";
 
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
@@ -553,7 +554,17 @@ export default {
       // with a visible password field is not one it runs on at all.
       const pw = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: "!![...document.querySelectorAll('input[type=password]')].some(e => e.offsetParent !== null || e.getClientRects().length)", returnByValue: true });
       if (pw && pw.result && pw.result.value === true) throw err("blocked", "this page has a password field, so a script is not run on it");
-      const r = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: args.expression, returnByValue: true, awaitPromise: true, timeout: 10_000 });
+      // Hands-free, except that a script's own network SENDS (a message, a post, a payment) are held
+      // back and reported unless the person asked: the script runs, the send waits at the Gate.
+      const guarded = args.asked !== true;
+      if (guarded) await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: guardInstall, returnByValue: true });
+      /** @type {any} */ let r;
+      /** @type {any[]} */ let blocked = [];
+      try { r = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: args.expression, returnByValue: true, awaitPromise: true, timeout: 10_000 }); }
+      finally {
+        if (guarded) { const c = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: guardCollect, returnByValue: true }).catch(() => null); blocked = (c && c.result && c.result.value) || []; }
+      }
+      if (blocked.length) { const b = blocked[0]; return heldRequest(b.method, b.url, b.why, `${args.expression}\n${b.method} ${b.url}`); }
       if (r && r.exceptionDetails) {
         const d = r.exceptionDetails;
         return { ok: false, error: redact.text(String((d.exception && d.exception.description) || d.text || "the page threw")) };

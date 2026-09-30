@@ -19,6 +19,7 @@
 
 import * as redact from "../shared/redact.js";
 import { classify } from "../shared/floor.js";
+import { classifySend, held } from "../shared/outbound.js";
 import { fail } from "../shared/proto.js";
 
 const DEFAULT_MAX_REQUESTS = 500;
@@ -505,6 +506,9 @@ const ops = {
     if (originOf(url) !== originOf(r.url)) throw refuse("bad_request", "a replay stays on the origin it was captured from");
     const headers = { ...r.reqHeaders, ...(o.headers || {}) };
     const body = o.body !== undefined ? (typeof o.body === "string" ? o.body : JSON.stringify(o.body)) : r.postData;
+    // A replay that SENDS something as the person waits at the Gate unless the person asked (P17).
+    const ob = classifySend(m, url, typeof body === "string" ? body : "");
+    if (ob.send && args?.asked !== true) return held(m, url, ob.why, `${m} ${url} ${typeof body === "string" ? body : ""}`);
     const res = await pageFetch(ctx, tab, { url, method: m, headers, body }, { origin: originOf(r.url) });
     return present({ method: m, url, status: res.status, mime: res.mime, requestHeaders: res.sentHeaders, requestBody: body, responseHeaders: res.headers, responseBody: res.body, replayOf: r.id });
   },

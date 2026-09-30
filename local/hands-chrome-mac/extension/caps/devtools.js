@@ -15,6 +15,7 @@
 
 import * as redact from "../shared/redact.js";
 import { classify } from "../shared/floor.js";
+import { guardInstall, guardCollect, held as heldRequest } from "../shared/outbound.js";
 import { fail } from "../shared/proto.js";
 
 const IDLE_MS = 5 * 60_000;
@@ -323,7 +324,15 @@ const ops = {
     const tab = await target(ctx, args, "dev.console.eval", true);
     if (typeof args?.expression !== "string" || !args.expression) throw refuse("bad_request", "expression is required");
     await ensure(ctx, tab, "console");
-    const r = await ctx.cdp.send(tab, "Runtime.evaluate", { expression: args.expression, returnByValue: true, awaitPromise: true, generatePreview: true, timeout: 5000, userGesture: false, replMode: true });
+    const guarded = args.asked !== true;
+    if (guarded) await ctx.cdp.send(tab, "Runtime.evaluate", { expression: guardInstall, returnByValue: true });
+    /** @type {any} */ let r;
+    /** @type {any[]} */ let blocked = [];
+    try { r = await ctx.cdp.send(tab, "Runtime.evaluate", { expression: args.expression, returnByValue: true, awaitPromise: true, generatePreview: true, timeout: 5000, userGesture: false, replMode: true }); }
+    finally {
+      if (guarded) { const c = await ctx.cdp.send(tab, "Runtime.evaluate", { expression: guardCollect, returnByValue: true }).catch(() => null); blocked = (c && c.result && c.result.value) || []; }
+    }
+    if (blocked.length) { const b = blocked[0]; return heldRequest(b.method, b.url, b.why, `${args.expression}\n${b.method} ${b.url}`); }
     if (r?.exceptionDetails) return redact.value({ ok: false, error: clip(String(r.exceptionDetails.exception?.description || r.exceptionDetails.text || "error"), 4000).text });
     const o = r?.result || {};
     const v = "value" in o ? o.value : o.unserializableValue ?? o.description ?? o.type;

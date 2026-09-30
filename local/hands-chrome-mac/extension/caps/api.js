@@ -12,6 +12,7 @@
 // returned or logged, and the response comes back through redact.request. A call that is not GET
 // or HEAD is acting: refused while stop is in force and checked against the floor.
 
+import { classifySend, held } from "../shared/outbound.js";
 import { learn, mergeCatalog, buildCall } from "../shared/apilearn.js";
 import { records, target, refuse, pageFetch, present, start } from "./net.js";
 
@@ -96,6 +97,10 @@ const ops = {
       if (src && k) headers[k] = src.reqHeaders[k];
       else authNote = "no captured request carries this credential any more; trigger the app once, then call again";
     }
+    // Hands-free after the grant, except a request that SENDS something as the person (a message,
+    // a post, a payment) when nobody asked: that waits at the Gate. Judged by method and endpoint.
+    const ob = classifySend(built.method, built.url, typeof built.body === "string" ? built.body : "");
+    if (ob.send && args?.asked !== true) return held(built.method, built.url, ob.why, `${built.method} ${built.url} ${typeof built.body === "string" ? built.body : ""}`);
     const res = await pageFetch(ctx, tab, { url: built.url, method: built.method, headers, body: built.body }, { origin: entry.origin });
     return { entryId: entry.id, ...(authNote ? { authNote } : {}), ...present({ method: built.method, url: built.url, status: res.status, mime: res.mime, responseHeaders: res.headers, responseBody: res.body }) };
   },

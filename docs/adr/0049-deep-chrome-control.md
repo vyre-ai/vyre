@@ -122,9 +122,18 @@ it; Windows `HKCU\Software\Google\Chrome\NativeMessagingHosts\run.vyre.chrome`),
   failure masks the whole field.
 - `chrome.release` replays only the record the module itself stored under the Gate's id, after
   re-checking the causing agent's grant. The card carries only what the person reads.
-- A script, an API call, a replay or a GoHighLevel run is held at the Gate unless the person's own
-  turn asked for it (P17), because it can send or change things through the page's own API. A page
-  with a visible password field is not one `page.eval` runs on.
+- After the one-time grant, scripts, API reads and writes, replays and GoHighLevel runs are
+  hands-free. The Gate holds only what the no-nag list holds: a request whose effect is to SEND
+  something as the person (a message, an email, a post, a payment) that nobody asked for and no
+  standing permission covers. It is judged by method and endpoint (`extension/shared/outbound.js`,
+  which knows GoHighLevel's conversation, campaign, invoice, payment and social-posting endpoints, and
+  reads a GraphQL mutation's name). Tagging a contact, saving a workflow or reading is never held.
+  `api.call` and `net.replay` are judged before they run. A script's own `fetch`, XHR and
+  `sendBeacon` sends are held back and reported while the rest of the script runs (a shim installed
+  around the evaluation, not a wrapper around the script, so a page's CSP cannot break it); the held
+  card is released by re-running with `asked`. The person's own turn (`asked`) runs everything free.
+  A page with a visible password field is still not one `page.eval` runs on, because that rule is
+  invisible.
 - One floor list (`extension/shared/floor.js`) is imported by the module and the extension.
 - The network buffer is judged per record and emptied when a tab navigates to a blind page.
   Not yet done: the console and script rings are not emptied on such a navigation (scripts are
@@ -133,5 +142,4 @@ it; Windows `HKCU\Software\Google\Chrome\NativeMessagingHosts\run.vyre.chrome`),
   key's id) can be "the extension". A replacement connection is announced with a `replaced` event.
 - Accepted: the manifest key is public, so anyone can build an unpacked extension with the same id.
   Reaching the host that way needs the person's own Chrome profile.
-- Not done: failing non-GET requests during a `page.eval` (the hold covers the unasked case), and
-  naming `chrome.sock` in the floor's rule that denies a shell from talking to vyred's sockets.
+- Not done: naming `chrome.sock` in the floor's rule that denies a shell from talking to vyred's sockets.
