@@ -14,6 +14,7 @@ import { keyPair } from "./noise.js";
 import { loadKeys } from "./keys.js";
 import { deviceSide } from "./channel.js";
 import * as wire from "./wire.js";
+import { WEB_DENY } from "./index.js";
 import { SetupSession, setupGate, setupToolAllowed, registerSetupTool, setupExtensions, SETUP_TOOLS } from "./setup.js";
 import { createSetupKey, setupCode, setupHello, setupWords, resolveSetup, mailboxReader } from "../../relay/client/setup.js";
 import { pairTicket } from "../../relay/client/client.js";
@@ -521,4 +522,9 @@ test("setup boot: a code starts only with a stamp from the last hour; missing, g
     assert.equal(process.env.VYRE_SETUP_CODE, undefined, "taken out of the environment either way");
     await w.d.stop();
   }
+});
+
+test("web deny: an untrusted paired browser cannot ask for the Tailscale sign-in link, and can still read the status", () => {
+  assert.equal(WEB_DENY.test("network.tailscale.login"), true);
+  for (const ok of ["network.tailscale.status", "network.tailscale.peers", "link.health", "names.check"]) assert.equal(WEB_DENY.test(ok), false, ok);
 });
