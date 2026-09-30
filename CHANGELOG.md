@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Project grants enforced once, in the registry: a tool entry may name `projectArg` (an input field, or a list of them), and an
+  agent's call for a project it is not granted is refused with `not_found` before the tool runs, through `projects.reach` (the owner's
+  revokes included); the tool gets `meta.reach` for listings. Declared on the agent-callable tools that take a project: goals.list and
+  set, planner.list, add, update and calendar.create, projects.threads, add-threads, remove-threads and context, team.ask and list,
+  sessions.limits.get, mode.get and prompt.preview, settings.get, snapshot and request, harness.brief, gate.held and request, and the memory
+  tools (`core/modules/index.js`, the manifest schema and checker, the module.json files). Found by the github audit (reviewer-2).
 - The asked-tool check now sits inside the once-per-Idempotency-Key run, so a retry that only replays a stored answer never asks vault or spends an ask; a `not_asked` answer is not stored, so the retry after the person's yes runs (`core/modules/index.js`, `core/modules/idempotency.js`).
 - The asked-tool check (reviewer-2): the match now passes `consume: true`, so one "yes" is spent by one act; the check is the last gate before the tool runs (after input validation, the rules and presence), so a call refused earlier never spends the ask; the target and thread-lineage calls get two seconds each and late is `not_asked` (`core/modules/index.js`).
 - An asked tool may carry `target` (built in only): an internal tool of its module that answers what one call acts on. The registry asks it before `vault.said.match` and passes its answer as the whole `to` of the match (github answers `github.project.pr.merge:alex/app#7`), so the person's yes binds one pull request, not the whole tool; an error, an empty answer or one later than two seconds is `not_asked` (`core/modules/index.js`, the manifest checker and schema; github's ask).

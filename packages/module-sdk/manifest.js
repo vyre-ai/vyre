@@ -248,6 +248,12 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
       firstParty, moduleName: String(m.name),
     }));
   }
+  // projectArg names the input field(s) holding a project: the registry refuses an agent's call for a project it is not granted.
+  for (const e of toolEntries(m)) {
+    if (e.projectArg == null) continue;
+    const names = Array.isArray(e.projectArg) ? e.projectArg : [e.projectArg];
+    if (!names.length || names.some(n => typeof n !== "string" || !/^[a-zA-Z][a-zA-Z0-9_]{0,30}$/.test(n))) out.push(`tool "${e.name}": projectArg must be an input field name, or a list of them`);
+  }
   // An asked tool's `target` names one internal tool of this module (built in only, see addedCheck).
   for (const e of toolEntries(m)) {
     if (!e.target) continue;
@@ -287,7 +293,7 @@ export function toolEntries(m) {
   return list.flatMap((/** @type {any} */ t) => {
     if (typeof t === "string") return [{ name: t, summary: "", reach: "anyone", outward: null, cost: null }];
     if (!TYPES.object(t) || typeof t.name !== "string") return [];
-    return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null, target: typeof t.target === "string" ? t.target : null }];
+    return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null, target: typeof t.target === "string" ? t.target : null, projectArg: typeof t.projectArg === "string" || Array.isArray(t.projectArg) ? t.projectArg : null }];
   });
 }
 

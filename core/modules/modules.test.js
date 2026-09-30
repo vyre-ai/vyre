@@ -853,6 +853,43 @@ test("modules v1: an asked tool's retry with the same Idempotency-Key returns th
   assert.equal(g().matches, 2, "and never asked vault, so it spent nothing");
 });
 
+test("modules v1: a tool's projectArg refuses an agent's call for a project it is not granted, with not_found, before the tool runs", async t => {
+  /** @type {any} */ (globalThis).__ran = [];
+  t.after(() => { delete /** @type {any} */ (globalThis).__ran; });
+  // A stand-in projects.reach: agent kit reaches harlow only; every other caller is the owner.
+  const projects = `export default { async start(ctx) {
+    ctx.tool("projects.reach", { internal: true, input: { type: "object" }, run: async ({ caller }) => /agent:kit/.test(caller) ? { all: false, agent: "kit", projects: [{ slug: "harlow", name: "Harlow Legal" }] } : { all: true, agent: null } });
+    return {};
+  } };`;
+  const notes = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "notes.read", projectArg: "project" }, { name: "notes.brief", projectArg: ["project", "projects"] }, "notes.plain"] } };
+  const notesSrc = `export default { async start(ctx) {
+    ctx.tool("notes.read", { input: { type: "object" }, run: async (i, meta) => { globalThis.__ran.push(["read", i.project, meta.reach]); return { ok: true }; } });
+    ctx.tool("notes.brief", { input: { type: "object" }, run: async () => ({ ok: true }) });
+    ctx.tool("notes.plain", { input: { type: "object" }, run: async () => ({ ok: true }) });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", notes, notesSrc], ["projects", { version: "0.1.0", does: { tools: ["projects.reach"] } }, projects]], { builtIn: true });
+  const kit = (tool, input) => reg.call(tool, input, "mcp:agent:kit");
+  assert.deepEqual((await kit("notes.read", { project: "harlow" })).data, { ok: true }, "its own project");
+  assert.equal((await kit("notes.read", { project: "northwind" })).error.code, "not_found", "another project");
+  assert.equal(globalThis.__ran.length, 1, "the refused call never reached the tool");
+  assert.equal((await kit("notes.read", { project: "Harlow Legal" })).data.ok, true, "a project by its name too");
+  assert.deepEqual(globalThis.__ran.at(-1)[2], { all: false, projects: ["harlow"] }, "the tool gets meta.reach for its listings");
+  assert.deepEqual((await kit("notes.read", {})).data, { ok: true }, "no project named: the tool lists within meta.reach");
+  assert.equal((await kit("notes.brief", { project: "harlow", projects: ["harlow", "northwind"] })).error.code, "not_found", "every entry of a list argument is checked");
+  assert.equal((await kit("notes.brief", { projects: ["harlow"] })).data.ok, true);
+  assert.equal((await kit("notes.plain", { project: "northwind" })).data.ok, true, "a tool with no projectArg is unchanged");
+  for (const caller of ["cli", "deck", "mcp"]) assert.equal((await reg.call("notes.read", { project: "northwind" }, caller)).data.ok, true, `${caller} is the owner's`);
+  // No projects module at all: a named project is refused for an agent (fail closed), the owner is unaffected.
+  const bare = await registry(t, [["notes", notes, notesSrc]], { builtIn: true });
+  assert.equal((await bare.call("notes.read", { project: "harlow" }, "mcp:agent:kit")).error.code, "not_found");
+  assert.equal((await bare.call("notes.read", { project: "harlow" }, "cli")).data.ok, true);
+  // The manifest: a field name, or a list of them.
+  const base = { name: "notes", version: "0.1.0", apiVersion: 1, description: "x", roles: ["local"] };
+  assert.match(validate({ ...base, does: { tools: [{ name: "notes.read", summary: "r", projectArg: "not a name" }] } }).join(), /projectArg must be an input field name/);
+  assert.deepEqual(validate({ ...base, does: { tools: [{ name: "notes.read", summary: "r", projectArg: ["project", "projects"] }] } }).filter(p => /projectArg/.test(p)), []);
+});
+
 test("modules v1: a required module below the range keeps the module from starting", async t => {
   const reg = await registry(t, [["bakery", { ...bakeryV1(), requires: { notes: ">=0.2.0" } }, bakerySrc], ["notes", good, notesSrc]]);
   assert.equal(reg.modules.get("bakery").state, "failed");

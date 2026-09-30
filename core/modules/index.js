@@ -926,7 +926,7 @@ export class Registry {
           internal: Boolean(def.internal) || reach === "modules",
           callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, declaredReach: objectForm.has(name) });
+          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, declaredReach: objectForm.has(name) });
       },
     };
   }
@@ -1021,6 +1021,24 @@ export class Registry {
     }
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
+    // A tool that takes a project declares projectArg, and an agent's call for a project it is not granted is refused
+    // here, once, for every module: the one door is projects.reach (owner's revokes and the assistant's rule included).
+    // not_found, so a refusal never says whether the project exists. The tool gets meta.reach for what it lists.
+    if (def.projectArg && agentClaim(caller) !== null) {
+      const named = (Array.isArray(def.projectArg) ? def.projectArg : [def.projectArg]).flatMap((/** @type {string} */ arg) => {
+        const v = input && typeof input === "object" ? input[arg] : undefined;
+        return v === undefined || v === null || v === "" ? [] : Array.isArray(v) ? v : [v];
+      });
+      const r = await withinMs(this.call("projects.reach", { caller: String(caller), kind: "content" }, "module:vyred", { door: true }), TARGET_MS);
+      const reach = r && r.data && typeof r.data === "object" ? r.data : null;
+      // A project named and no answer on who may reach what: no (fail closed). Nothing named: the tool lists within meta.reach when it has one.
+      if (!reach) { if (named.length) return { error: { code: "not_found", message: "no such project" } }; }
+      else {
+        const slugs = reach.all ? null : (Array.isArray(reach.projects) ? reach.projects : []).flatMap((/** @type {any} */ p) => [p && p.slug, p && p.name]).filter(Boolean);
+        if (slugs && named.some((/** @type {any} */ one) => !slugs.includes(String(one)))) return { error: { code: "not_found", message: "no such project" } };
+        meta = { ...meta, reach: reach.all ? { all: true } : { all: false, projects: (Array.isArray(reach.projects) ? reach.projects : []).map((/** @type {any} */ p) => p && p.slug).filter(Boolean) } };
+      }
+    }
     if (this.deps.rules) {
       const verdict = await this.deps.rules({ tool, input, caller });
       if (!verdict.allow) return { error: { code: "denied", message: verdict.reason || "denied by rules" } };
