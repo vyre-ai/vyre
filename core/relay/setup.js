@@ -27,7 +27,7 @@ export const SETUP_TOOLS = Object.freeze(new Set([
 /** The Tailscale tools the channel may call, by exact name: a later tool (logout, an auth key) is not exposed by being added. */
 export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.tailscale\.(login|status|peers)$/]);
 /** The events the setup page may follow, one type per stream. */
-export const SETUP_EVENTS = Object.freeze(new Set(["network.tailscale.changed", "relay.paired", "name.claimed", "certificate.issued", "certificate.failed"]));
+export const SETUP_EVENTS = Object.freeze(new Set(["tailscale.changed", "relay.paired", "name.claimed", "certificate.issued", "certificate.failed"]));
 
 // The named extension point for tools added later (the sessions sign-in tool, for "Sign in to your
 // AI"). Empty for now. A module calls registerSetupTool("sessions.signin") from its own start;

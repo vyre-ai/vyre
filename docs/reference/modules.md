@@ -44,7 +44,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 29 | 13 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 11 | 9 | cli |
-| [`network`](#network) | `core/network` | `box` | 6 | 3 | capsule, cli, deck |
+| [`network`](#network) | `core/network` | `box` | 9 | 4 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 12 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 12 | 6 | capsule, cli, deck |
@@ -373,13 +373,13 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 
 ## network
 
-Who besides the owner the box's tailnet listener serves: guests from other tailnets, each limited to view-only tools. Also publishes the artifacts share path (/s/) on Tailscale Funnel when the person turns public links on.
+Who besides the owner the box's tailnet listener serves: guests from other tailnets, each limited to view-only tools. Also the box's Tailscale sign-in and status for setup, and publishes the artifacts share path (/s/) on Tailscale Funnel when the person turns public links on.
 
 - Folder: `core/network`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [6](tools.md#network)
-- Emits: [3 events](events.md#network)
+- Tools: [9](tools.md#network)
+- Emits: [4 events](events.md#network)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 

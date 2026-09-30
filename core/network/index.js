@@ -15,6 +15,7 @@ import { classify } from "../names/identity.js";
 import { GUEST_SAFE, allowedTools, grantedPatterns, listed, settings } from "../names/guests.js";
 import { agentClaim } from "../modules/index.js";
 import { startFunnel } from "./funnel.js";
+import { startTailscale } from "./tailscale.js";
 
 const LOGIN = /^[^\s@]{1,128}@[^\s@]{1,128}$/;
 const str = { type: "string" };
@@ -139,6 +140,8 @@ export default {
       if (["anonymous", "onboard", "hook"].includes(c)) throw fail("denied", "the public link's state is the owner's, from the box's terminal, the Capsule or the Deck");
     } });
 
-    return { async stop() { await funnel.stop(); } };
+    const tailscale = startTailscale(ctx);
+
+    return { async stop() { tailscale.stop(); await funnel.stop(); } };
   },
 };

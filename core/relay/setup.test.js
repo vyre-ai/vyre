@@ -140,10 +140,10 @@ test("setup gate: the ticket works once and only while no owner exists; events a
   assert.equal(p.path("GET", "/v1/tools"), true);
   for (const [m, u] of [["GET", "/v1/events"], ["GET", "/v1/modules"], ["POST", "/v1/person/token"], ["GET", "/v1/health/x"], ["GET", "/deck/index.html"]]) assert.equal(p.path(m, u), false, `${m} ${u}`);
 
-  r = await call("GET", "/v1/events?type=network.tailscale.changed");
+  r = await call("GET", "/v1/events?type=tailscale.changed");
   assert.equal(r.status, 200);
-  assert.equal(seen.at(-1).eventType, "network.tailscale.changed");
-  for (const type of ["device.paired", "vault.opened", "", "network.tailscale.changed,device.paired"]) {
+  assert.equal(seen.at(-1).eventType, "tailscale.changed");
+  for (const type of ["device.paired", "vault.opened", "", "tailscale.changed,device.paired"]) {
     r = await call("GET", `/v1/events?type=${encodeURIComponent(type)}`);
     assert.equal(r.status, 404, `event ${type || "(none)"}`);
   }
