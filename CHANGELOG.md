@@ -6,7 +6,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### chat: the composer sends the pasted spans (reviewer-2 M-P2)
 
-- `deck/chat/core/paste-spans.js` tracks which stretches of the draft were pasted (the paste event plus the offsets of every later edit: typing before moves a span, typing inside keeps the whole stretch marked, deleting drops it). `threads.send` carries them as `pasted: [string]` and the new-session sheet sends them on `threads.start`, so a `#Name` inside pasted text never resolves as a tag; only a picked chip can. No `pasted` key when nothing was pasted. Tests: `paste-spans.test.js` (5), two in `composer-vault.test.js`, one in `newsession.test.js`.
+- `deck/chat/core/paste-spans.js` tracks which stretches of the draft were pasted (the paste event plus the offsets of every later edit: typing before moves a span, typing inside keeps the whole stretch marked, deleting drops it). `threads.send` carries them as `pasted: [string]` and the new-session sheet sends them on `threads.start` and `agents.ask`, so a `#Name` inside pasted text never resolves as a tag; only a picked chip can. No `pasted` key when nothing was pasted. Tests: `paste-spans.test.js` (5), two in `composer-vault.test.js`, one in `newsession.test.js`.
 
 #### settings: "Add a service", the connectors catalog
 

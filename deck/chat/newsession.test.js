@@ -296,3 +296,10 @@ test("startCall: pasted spans of the first message go to threads.start, only the
   assert.deepEqual(r.input.pasted, ["Wire it with #Stripe."]);
   assert.equal("pasted" in /** @type {any} */ (startCall({ kind: "project", slug: "harlow-legal" }, null, "hi", "/work", [])).input, false);
 });
+
+test("startCall: pasted spans go to agents.ask too, and only when there are some", () => {
+  const r = /** @type {any} */ (startCall({ kind: "none" }, "kit", "Check this: use #Stripe for it. Thanks", null, ["use #Stripe for it."]));
+  assert.equal(r.tool, "agents.ask");
+  assert.deepEqual(r.input.pasted, ["use #Stripe for it."]);
+  assert.equal("pasted" in /** @type {any} */ (startCall({ kind: "none" }, "kit", "hi", null, [])).input, false);
+});

@@ -36,7 +36,8 @@ export function startCall(where, agent, text, fallback, pasted = []) {
   const prompt = String(text || "").trim();
   if (agent) {
     if (!prompt) return { error: `Write the first message for ${agent}.` };
-    return { tool: "agents.ask", input: { agent, text: prompt, surface: "deck", wait: false } };
+    const held = [...new Set(pasted.map(x => String(x).trim()).filter(x => x && prompt.includes(x)))];
+    return { tool: "agents.ask", input: { agent, text: prompt, surface: "deck", wait: false, ...(held.length ? { pasted: held } : {}) } };
   }
   const input = /** @type {Record<string, any>} */ ({ surface: "deck" });
   if (prompt) input.prompt = prompt;
