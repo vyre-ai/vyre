@@ -380,9 +380,19 @@ export class Switchboard {
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null,
+      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, parent: optsOf(r).parent || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
+  }
+
+  /** A thread's ancestors, nearest first, up to the thread nobody started it from (the person's own). @param {string} id */
+  lineage(id) {
+    const out = [];
+    for (let cur = this.record(id), n = 0; cur && cur.parent && n < 16 && !out.includes(cur.parent); n++) {
+      out.push(cur.parent);
+      cur = this.record(cur.parent);
+    }
+    return out;
   }
 
   must(id) {
@@ -514,6 +524,9 @@ export class Switchboard {
       if (o.purpose === "capsule" && o.append) kept.append = String(o.append).slice(0, 20000);
       // The surface that started it (the Capsule, the Deck, a phone): threads.get says it as origin.
       if (o.surface) kept.origin = String(o.surface).slice(0, 80);
+      // The thread this one was started for (a teammate's or sub-agent's), so a person's words in the parent
+      // count for it (threads.lineage). Only what vyred verified: never an id read from a model's input.
+      if (o.parent && this.record(String(o.parent))) kept.parent = String(o.parent);
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
       if (w.branch) kept.branch = w.branch;
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
@@ -2129,8 +2142,15 @@ export default {
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
-        lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." } } },
-      async (i, { caller }) => { guard(caller, "start sessions"); return sb.launch({ ...i, surface: surfaceOf(i, caller) }); });
+        lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
+        parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
+      async (i, { caller, thread, firstParty }) => {
+        guard(caller, "start sessions");
+        // The parent is the calling session's own verified thread, or (a first-party module starting it
+        // on a thread's behalf) the id it names. Anyone else's claim is dropped, never believed.
+        const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
+        return sb.launch({ ...i, parent, surface: surfaceOf(i, caller) });
+      });
 
     /**
      * On the box, the person's words for a thread the box does not have go to the paired Mac that
@@ -2586,6 +2606,11 @@ export default {
         const human = Boolean(rec && !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || "chat")));
         return { session: String(i.session), known: Boolean(rec), human, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
       },
+    });
+    ctx.tool("threads.lineage", {
+      description: "A thread's ancestors, nearest first, up to the person's own thread: the threads it was started for (a teammate's or sub-agent's). The Gate matches what the person said in any of them.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["thread"], properties: { thread: str } },
+      run: async i => ({ thread: String(i.thread), lineage: sb.lineage(String(i.thread)) }),
     });
     ctx.tool("threads.pids", {
       description: "The processes Claude sessions run in: vyred's own thread children and every live bound session. vyred refuses a person-only call from under any of them.", internal: true,

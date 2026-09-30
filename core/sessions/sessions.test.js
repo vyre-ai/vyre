@@ -472,6 +472,23 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.origin", { session: th.id })).error.code, "no_such_tool", "modules only");
   });
 
+  test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const root = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    const lineage = id => w.d.registry.call("threads.lineage", { thread: id }, "module:vyred").then(r => r.data.lineage);
+    assert.deepEqual(await lineage(root.id), [], "a person's own thread has none");
+    // A session starting a thread (its calls carry the thread vyred verified) is that thread's parent.
+    const mate = (await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate" }, `mcp:thread:${root.id}`, { thread: root.id })).data;
+    const sub = (await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate" }, `mcp:thread:${mate.id}`, { thread: mate.id })).data;
+    assert.deepEqual(await lineage(sub.id), [mate.id, root.id]);
+    assert.equal((await w.tool("threads.get", { thread: sub.id })).data.thread.parent, mate.id);
+    // A claim in the input is dropped: the person's surface and a plain session cannot name a parent.
+    const forged = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", parent: root.id })).data;
+    assert.deepEqual(await lineage(forged.id), []);
+    assert.deepEqual(await lineage(crypto.randomUUID()), [], "an unknown thread has none");
+    assert.equal((await w.tool("threads.lineage", { thread: sub.id })).error.code, "no_such_tool", "modules only");
+  });
+
   test(`${driver}: signing in: the provider's own login runs as the account, the code comes back to show, and the account is signed in only when it finishes`, { skip }, async t => {
     const w = await boot(t, { driver });
     const bin = path.join(w.root, "shim2");

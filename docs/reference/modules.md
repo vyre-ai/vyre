@@ -65,7 +65,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 13 | 6 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 47 | 30 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 48 | 30 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 109 | 42 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
@@ -612,7 +612,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [47](tools.md#threads), 17 of them only for other modules
+- Tools: [48](tools.md#threads), 18 of them only for other modules
 - Emits: [30 events](events.md#threads)
 - Shows on: cli
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
