@@ -27,6 +27,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 import { checkSchema, toolEntries } from "./manifest.js";
 
 /** Event families only their owner may emit (ADR 0047 section 2). */
@@ -52,17 +53,18 @@ const hostAllowed = (/** @type {string[]} */ list, /** @type {URL} */ u) => list
 });
 
 /**
- * Who a test call comes from. The person on their own surface, an agent (asked: the person's own
- * words in their own turn asked for exactly this), another module, or the webhook route.
- * @typedef {{ who?: "person" | "agent" | "module" | "hook", asked?: boolean, agent?: string, module?: string,
- *   project?: string, thread?: string }} As
+ * Who a test call comes from. The person on their own surface, a tap on a control the module drew
+ * (slot), an agent (asked: the person's own words in their own turn asked for exactly this), another
+ * module (added: an added module, held to default-deny), or the webhook route.
+ * @typedef {{ who?: "person" | "slot" | "agent" | "module" | "hook", asked?: boolean, added?: boolean, agent?: string, module?: string,
+ *   project?: string, thread?: string, item?: string }} As
  */
 
 /**
  * What the fakes answer. Every key is optional; each fake has a plain default.
  * @typedef {{
  *   home?: string, firstParty?: boolean,
- *   tools?: Record<string, (input: any, meta: any) => any>,
+ *   tools?: Record<string, ((input: any, meta: any) => any) | { reach?: string, run: (input: any, meta: any) => any }>,
  *   vault?: ((id: string, req: any) => any) | Record<string, any>,
  *   fetch?: (url: string, init: any) => any,
  *   ask?: (prompt: string, opts: any) => any,
@@ -88,6 +90,8 @@ export function createTestContext(manifest, opts = {}) {
   fs.mkdirSync(data, { recursive: true });
 
   const entries = new Map(toolEntries(m).map(e => [e.name, e]));
+  /** Tools with a declared reach (an object entry); a string entry is grace form. */
+  const objectForm = new Set(((m.does && m.does.tools) || []).filter((/** @type {any} */ e) => e && typeof e === "object").map((/** @type {any} */ e) => e.name));
   const emits = (m.watches && m.watches.emits) || [];
   const on = (m.watches && m.watches.on) || [];
   const needsTools = (m.needs && m.needs.tools) || [];
@@ -145,13 +149,38 @@ export function createTestContext(manifest, opts = {}) {
   const undeclared = why => refuse("undeclared", violate(`${name}: ${why}`));
   const memoryKinds = (m.teaches && Array.isArray(m.teaches.memory)) ? m.teaches.memory : [];
   const notices = (m.shows && Array.isArray(m.shows.notices)) ? m.shows.notices : [];
-  const hold = (/** @type {string} */ kind, /** @type {string} */ via, /** @type {any} */ content, /** @type {string} */ who) => {
+  /** source: who asked, or "slot" for a tap on a control the module drew (a gate card, H5). */
+  const hold = (/** @type {string} */ kind, /** @type {string} */ via, /** @type {any} */ content, /** @type {string} */ who, source = who) => {
     const id = `hold-${++nextHold}`;
-    holds.push({ id, kind, via, content, who, state: "held" });
+    holds.push({ id, kind, via, content, who, source, state: "held" });
     return id;
   };
-  /** Whether the call now running was cleared by the person: their tap, an ask, or an approval. */
-  const cleared = () => { const c = current.getStore(); return Boolean(c && (c.who === "person" || c.asked || c.gate)); };
+  /**
+   * Gate items that cleared an outward run (the person's words, a P17 match, an approval). Each
+   * lets exactly one vault or connection write through (ADR 0047 section 2, M3); `write` is its
+   * fingerprint once used. An approved vault hold instead expects the write it held.
+   * @type {Map<string, { id: string, via: string, used: boolean, write: any, expect?: any }>}
+   */
+  const gateItems = new Map();
+  let nextItem = 0;
+  const hash = (/** @type {unknown} */ body) => createHash("sha256").update(JSON.stringify(body === undefined ? null : body)).digest("hex");
+  /**
+   * A write out (vault or connection): through at once when an approved hold expects exactly it, or
+   * when the call now running holds an unused Gate item; held otherwise.
+   * @param {{ method: string, url: string, body: unknown }} w @param {string} kind @param {string} via
+   * @returns {string | null} a hold id, or null when the write may go
+   */
+  const gateWrite = (w, kind, via) => {
+    const fp = { method: w.method, url: w.url, body: hash(w.body) };
+    const same = (/** @type {any} */ x) => x && x.method === fp.method && x.url === fp.url && x.body === fp.body;
+    const expected = [...gateItems.values()].find(i => i.expect && !i.used && same(i.expect));
+    if (expected) { expected.used = true; expected.write = fp; return null; }
+    const c = current.getStore(), item = c && c.gate ? gateItems.get(c.gate.item) : null;
+    if (item && !item.used) { item.used = true; item.write = fp; return null; }
+    return hold(kind, via, { method: w.method, url: w.url, body: w.body }, (c && c.who) || "module");
+  };
+  /** MCP tools that change something outside, for a connection call's Gate check. */
+  const MCP_WRITE = /(^|[._-])(create|update|delete|remove|send|post|write|merge|close|add|set|put|patch)/i;
 
   /** Another module's tool, the way the registry routes ctx.call. @param {string} tool @param {any} input */
   const callOut = async (tool, input = {}) => {
@@ -161,8 +190,14 @@ export function createTestContext(manifest, opts = {}) {
       throw undeclared(`ctx.call ${tool}, which needs.tools does not list`);
     }
     if (own) return route(tool, input, { who: "module", module: name });
-    const fake = (opts.tools && opts.tools[tool]) || fakes[tool];
-    if (!fake) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    const given = (opts.tools && opts.tools[tool]) || fakes[tool];
+    if (!given) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    // A fake is a function (a grace-form tool, no declared reach) or { reach, run }. An added
+    // module reaches only a declared anyone or asked tool (H4).
+    const fake = typeof given === "function" ? given : given.run;
+    const reach = typeof given === "function" ? null : given.reach || null;
+    if (!firstParty && (reach === null || reach === "modules")) return { error: { code: "not_declared", message: `${tool} is not open to added modules` } };
+    if (reach === "person" || reach === "hook") return { error: { code: "denied", message: `${tool} is not available to modules` } };
     try { return { data: await fake(input, { caller: `module:${name}`, who: "module" }) }; }
     catch (e) { return asError(e); }
   };
@@ -193,7 +228,7 @@ export function createTestContext(manifest, opts = {}) {
       if (!firstParty && def.presence) throw new Error(violate(`tool ${tool} declares presence; presence is never a module's to declare, use reach "asked"`));
       if (!firstParty && (def.internal || def.hook)) throw new Error(violate(`tool ${tool} sets ${def.internal ? "internal" : "hook"}; declare reach "${def.internal ? "modules" : "hook"}" in module.json instead`));
       if (def.examples !== undefined && !Array.isArray(def.examples)) throw new Error(`tool ${tool}: examples must be a list of { input }`);
-      tools.set(tool, { ...def, input: def.input || { type: "object" }, entry: entries.get(tool) });
+      tools.set(tool, { ...def, input: def.input || { type: "object" }, entry: entries.get(tool), declared: objectForm.has(tool) });
     },
     call: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => {
       if (o && o.as) throw new Error(violate(`${name} may not call ${tool} as ${o.as}`));
@@ -260,7 +295,10 @@ export function createTestContext(manifest, opts = {}) {
         const method = String(req.method || "GET").toUpperCase();
         const write = !["GET", "HEAD"].includes(method);
         calls.push({ member: "vault.request", id, req: { ...req, method } });
-        if (write && !cleared()) return { held: hold("vault", `vault.request:${id}`, { method, url: req.url, body: req.body }, current.getStore()?.who || "module") };
+        if (write) {
+          const held = gateWrite({ method, url: String(req.url), body: req.body }, "vault", `vault.request:${id}`);
+          if (held) return { held };
+        }
         const answer = typeof opts.vault === "function" ? await opts.vault(id, req) : opts.vault && opts.vault[id];
         return answer || { status: 200, headers: {}, body: { ok: true } };
       },
@@ -270,10 +308,18 @@ export function createTestContext(manifest, opts = {}) {
       async call(/** @type {string} */ provider, /** @type {string} */ tool, /** @type {any} */ input = {}) {
         if (!connections.includes(provider)) throw undeclared(`called the ${provider} connection, which needs.connections does not declare`);
         calls.push({ member: "connections.call", provider, tool, input });
+        if (MCP_WRITE.test(tool)) {
+          const held = gateWrite({ method: "MCP", url: `${provider}/${tool}`, body: input }, "connection", `connections.call:${provider}`);
+          if (held) return { held };
+        }
         try { return { data: opts.connections ? await opts.connections(provider, tool, input) : null }; } catch (e) { return asError(e); }
       },
     },
     async fetch(/** @type {string} */ url, /** @type {any} */ init = {}) {
+      // GET and HEAD only, with no body (H3): sending data out goes through ctx.vault.request or an
+      // outward tool, where the Gate sees it. A webhook URL can't be posted to this way (L1).
+      const method = String((init && init.method) || "GET").toUpperCase();
+      if (!["GET", "HEAD"].includes(method) || (init && init.body !== undefined)) throw refuse("method_not_allowed", `ctx.fetch sends GET or HEAD with no body; to send data use ctx.vault.request or an outward tool`);
       let u;
       try { u = new URL(url); } catch { throw refuse("bad_input", `${url} is not a URL`); }
       if (PRIVATE.some(re => re.test(u.hostname))) throw refuse("denied", `${u.hostname} is a private address; ctx.fetch reaches only public hosts`);
@@ -376,24 +422,32 @@ export function createTestContext(manifest, opts = {}) {
     const hidden = { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (!def) return hidden;
     const { reach, outward } = def.entry;
+    // Default-deny for an added module's call (H4): only a declared reach is open to it, and
+    // reach modules is for Vyre's own modules only.
+    if (who === "module" && as.added && (!def.declared || reach === "modules")) return { error: { code: "not_declared", message: `${tool} is not open to added modules` } };
     // Hidden reaches are not there at all for the wrong caller; the others say why.
     if ((reach === "hook") !== (who === "hook")) return hidden;
     if (reach === "modules" && who !== "module") return hidden;
-    if (reach === "person" && who !== "person") return { error: { code: who === "agent" ? "person_only" : "denied", message: `${tool} is the person's own; ask them to do it` } };
+    // A tap on a control the module drew (a Now card action, a renderer button, a Capsule action)
+    // is the person's tap for anything but an outward tool, which gets vyred's own Gate card (H5).
+    const tap = who === "slot";
+    if (reach === "person" && who !== "person" && !tap) return { error: { code: who === "agent" ? "person_only" : "denied", message: `${tool} is the person's own; ask them to do it` } };
     if (reach === "asked" && who === "module") return { error: { code: "denied", message: `${tool} is not available to modules` } };
     if (reach === "asked" && who === "agent" && !as.asked) return { error: { code: "not_asked", message: `${tool} runs for an agent only when the person asked for it; tell them what you would do` } };
     const problems = checkSchema(def.input, input, "input");
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
-    /** @type {"person" | "asked" | "approved" | undefined} */
+    /** @type {{ via: "person" | "asked" | "approved", item: string } | undefined} */
     let gate;
     if (outward) {
-      if (as.gate === "approved") gate = "approved";
-      else if (who === "person") gate = "person";
-      else if (who === "agent" && as.asked) gate = "asked";
-      else return { held: hold(outward, tool, input, who) };
+      /** @type {"person" | "asked" | "approved" | null} */
+      const via = as.gate === "approved" ? "approved" : who === "person" ? "person" : who === "agent" && as.asked ? "asked" : null;
+      if (!via) return { held: hold(outward, tool, input, tap ? "person" : who, tap ? "slot" : who) };
+      const item = as.item || `gate-${++nextItem}`;
+      gateItems.set(item, { id: item, via: tool, used: false, write: null });
+      gate = { via, item };
     }
-    const caller = as.gate === "approved" ? "module:gate" : who === "person" ? "deck" : who === "agent" ? `mcp:agent:${as.agent || "kit"}` : who === "module" ? `module:${as.module || "other"}` : "hook";
-    const meta = { caller, who: as.gate === "approved" ? "module" : who, ...(as.agent || who === "agent" ? { agent: as.agent || "kit" } : {}),
+    const caller = as.gate === "approved" ? "module:gate" : who === "person" || tap ? "deck" : who === "agent" ? `mcp:agent:${as.agent || "kit"}` : who === "module" ? `module:${as.module || "other"}` : "hook";
+    const meta = { caller, who: as.gate === "approved" ? "module" : tap ? "person" : who, ...(tap ? { slot: true } : {}), ...(as.agent || who === "agent" ? { agent: as.agent || "kit" } : {}),
       ...(as.thread ? { thread: as.thread } : {}), ...(as.project ? { project: as.project } : {}), asked: Boolean(as.asked), ...(gate ? { gate } : {}) };
     return current.run(meta, async () => {
       try { return { data: await def.run(input, meta) }; }
@@ -402,7 +456,7 @@ export function createTestContext(manifest, opts = {}) {
   }
 
   return {
-    ctx, home, dir: home, holds, calls, events, logs, memory, violations, tools, registered,
+    ctx, home, dir: home, holds, calls, events, logs, memory, violations, tools, registered, gateItems,
     /** Call one of this module's tools as the person (default), an agent, another module or the webhook. */
     call: (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {As} */ as = {}) => route(tool, input, as),
     /** Approve a held outward call, as the person at the Gate: it runs as module:gate, with content they may have edited. */
@@ -410,8 +464,13 @@ export function createTestContext(manifest, opts = {}) {
       const h = holds.find(x => x.id === id && x.state === "held");
       if (!h) return { error: { code: "not_found", message: `no hold ${id}` } };
       h.state = "approved";
-      if (!tools.has(h.via)) return { data: null };
-      return route(h.via, content === undefined ? h.content : content, { who: "module", gate: "approved" });
+      // A held write: the module's retry of exactly this write goes through once (M3).
+      if (!tools.has(h.via)) {
+        const c = h.content || {};
+        gateItems.set(id, { id, via: h.via, used: false, write: null, expect: { method: c.method, url: c.url, body: hash(c.body) } });
+        return { data: null };
+      }
+      return route(h.via, content === undefined ? h.content : content, { who: "module", gate: "approved", item: id });
     },
     /** An event from elsewhere, delivered to the module's subscriptions. */
     deliver: (/** @type {string} */ type, /** @type {any} */ payload, /** @type {any} */ where) => deliver(type, payload, where, "test"),

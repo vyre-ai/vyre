@@ -253,11 +253,14 @@ export interface CallMeta {
   /** True when vyred's P17 match found the person's own words in their own turn asking for this. */
   asked?: boolean;
   /**
-   * For an outward tool: how this run was cleared. "person" when the person tapped it on their own
-   * surface, "asked" when the Gate's P17 match ran it at once, "approved" when the person approved
-   * a hold (called as module:gate with the approved content). Absent for other tools.
+   * For an outward tool: how this run was cleared, and the Gate item that cleared it. via is
+   * "person" for the person's own words (a command they typed), "asked" when the Gate's P17 match
+   * ran it at once, "approved" when the person approved a hold (called as module:gate with the
+   * approved content). The item lets exactly one vault or connection write through (M3).
    */
-  gate?: "person" | "asked" | "approved";
+  gate?: { via: "person" | "asked" | "approved"; item: string };
+  /** True when the call is a tap on a control the module drew (a slot). An outward tool never runs from one. */
+  slot?: boolean;
   /** How a person proved presence for this call, when the tool needed it. Never the proof. */
   presence?: { method: string; keyId: string | null };
   idempotencyKey?: string;
@@ -421,10 +424,12 @@ export interface ModuleContext {
   /** @planned A tool on a vendor-hosted MCP connection declared under needs.connections. Writes hold at the Gate. */
   connections: { call<T = any>(provider: string, tool: string, input?: Record<string, unknown>): Promise<CallResult<T>> };
   /**
-   * @planned An uncredentialed request to a needs.network host. Private, loopback, link-local,
-   * CGNAT, tailnet and metadata addresses are refused after DNS and on every redirect.
+   * @planned An uncredentialed GET or HEAD, with no body, to a needs.network host; anything else
+   * throws code "method_not_allowed". Private, loopback, link-local, CGNAT, tailnet and metadata
+   * addresses are refused after DNS and on every redirect. To send data, use ctx.vault.request or
+   * an outward tool.
    */
-  fetch(url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }): Promise<{ status: number; headers: Record<string, string>; text(): Promise<string>; json(): Promise<any> }>;
+  fetch(url: string, init?: { method?: "GET" | "HEAD"; headers?: Record<string, string> }): Promise<{ status: number; headers: Record<string, string>; text(): Promise<string>; json(): Promise<any> }>;
   /** @planned Propose an outward act through an existing sender (the mail module, say). */
   gate: { request(req: { kind: string; via: ToolName; to?: string; content: unknown; why?: string }): Promise<{ held: string } | { sent: unknown }> };
   memory: {

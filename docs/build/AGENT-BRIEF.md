@@ -104,7 +104,7 @@ A module is a folder: `module.json`, an entry file (`index.js`) whose default ex
 | `apiVersion`, `description` | Required. `1`, and one plain sentence for the install card. |
 | `roles` | `box` (the server), `local` (a device), `mac`. Default `["box"]`. `windows` alone loads nowhere yet. |
 | `does.tools[]` | `{ name, summary, reach?, outward?, cost? }`. `name` is `<module>.<verb>`. |
-| `reach` | `anyone` (default): the person, agents, modules listing it. `asked`: an agent only when the person's own words asked. `modules`: other modules only. `hook`: the webhook route only. Never `person`. |
+| `reach` | `anyone` (default): the person, agents, modules listing it. `asked`: an agent only when the person's own words asked. `modules`: Vyre's own modules only. `hook`: the webhook route only. Never `person`. |
 | `outward` | `send`, `post`, `pay` or `delete`, with reach `anyone` or `asked`. Runs for the person's tap; every other call is held at the Gate. |
 | `cost` | `"paid"` when the tool spends money through your own model or API use. |
 | `does.commands[]` | `{ verb, tool, summary, args? }` gives `vyre <module> <verb>`. |
@@ -113,14 +113,14 @@ A module is a folder: `module.json`, an entry file (`index.js`) whose default ex
 | `watches.on` | Every pattern you subscribe to: a type, `noun.*` or `*`. |
 | `shows.deck` | Slots: `now:<tool>`, `renderer:<tool>`, `slash:<name>`, `settings`, `view:<name>`, `panel:<name>`. |
 | `settings[]` | `{ key: "<module>.<key>", label, type, default, levels, apply }`. |
-| `needs.tools` | Every tool you call with `ctx.call` (`module.*` for all of one module's), and `gate.request` if you use `ctx.gate.request`. <!-- terms: ignore --> |
+| `needs.tools` | Every tool you call with `ctx.call`, named one by one (no `module.*`), and `gate.request` if you use `ctx.gate.request`. You reach only tools whose own manifest declares `reach` `anyone` or `asked`; any other answers `not_declared`. <!-- terms: ignore --> |
 | `needs.credentials` | Vault items by `id`, `kind`, `provider`, `purpose`. Used only through `ctx.vault.request`. |
-| `needs.network` | Public hosts `ctx.fetch` may reach without a key. |
+| `needs.network` | Public hosts `ctx.fetch` may read from without a key. |
 | `needs.connections` | `{ provider, purpose }` for vendor MCP connections. |
 | `needs.spend` | `{ dailyUsd }`, your daily cap. Needed for `ctx.ask` and `ctx.spend`. |
 | `teaches.memory` | The kinds `ctx.memory.write` writes: `fact`, `note` or both. |
 | `shows.notices` | The notice kinds `ctx.push.offer` raises. |
-| Built in only | `does.providers`, `shows.streams`, `needs.vault`. An added module can't use them in 0.2. |
+| Built in only | `does.providers`, `shows.streams`, `needs.vault`, `replaces`. An added module can't use them in 0.2. |
 
 ## ctx cheat sheet
 
@@ -140,7 +140,7 @@ A module is a folder: `module.json`, an entry file (`index.js`) whose default ex
 | `ctx.settings.get(key)`, `.set(key, value)`, `.on(key, fn)` | Your declared settings. |
 | `ctx.vault.request(id, { method, url, headers?, query?, body? })` | A vendor API call with a key you never see. Writes hold at the Gate unless the person asked. |
 | `ctx.connections.call(provider, tool, input)` | A tool on a vendor MCP connection you declared. |
-| `ctx.fetch(url, init?)` | A plain request to a `needs.network` host. Private addresses are refused. |
+| `ctx.fetch(url, init?)` | A GET or HEAD, with no body, to a `needs.network` host. Anything else throws `method_not_allowed`. Private addresses are refused. |
 | `ctx.gate.request({ kind, via, to, content, why })` | Propose an outward act through an existing sender. Answers `{ held }` or `{ sent }`. |
 | `ctx.memory.write({ kind, project?, text, subject?, source_ref? })` | A memory row. Set `source_ref` so a retry is one row. |
 | `ctx.ask(prompt, { purpose, maxUsd? })` | A one-shot model read. `{ text, usd }` or `{ error: { code: "capped" } }`. |
@@ -171,7 +171,9 @@ ctx.tool("bakery.add", {
 });
 ```
 
-An outward tool. Vyre only runs it after the person tapped it, asked for it or approved it:
+An outward tool. Vyre only runs it after the person's own words asked for it or they approved it.
+A tap on a button your module drew never runs it: Vyre shows its own Gate card instead. The one
+supplier write inside the cleared run goes through without a second card:
 
 ```js
 ctx.tool("bakery.flour", {
@@ -232,6 +234,10 @@ test("bakery.flour is held for an agent and runs for the person", async t => {
 | `imports node:child_process; a module has no process, socket or thread of its own` | Use `ctx.fetch`, `ctx.vault.request` or `ctx.call`. |
 | `imports ...; a module never imports Vyre's files` | Remove the import and use `ctx`. |
 | `imports ..., which is outside the module folder` | Copy what you need into your folder. |
+| `ctx.fetch sends GET or HEAD with no body` (`method_not_allowed`) | To send data, webhook URLs included, use an `outward` tool or `ctx.vault.request`. |
+| `needs.tools "x.*": an added module names each tool it calls` | List each tool by name. |
+| `replaces: an added module can't replace one of Vyre's modules` | Remove `replaces` and pick a name of your own. |
+| `not_declared` from `ctx.call` | The tool you called has no declared reach, or is for Vyre's own modules. Use another tool. |
 | `X is declared under does.tools, but start did not register it` | Call `ctx.tool("X", ...)` in `start`, or remove the entry. |
 | `registered tool X, which its manifest does not declare` | Add X to `does.tools`. |
 | `X has no examples` | Give `ctx.tool` `examples: [{ input: {...} }]`. |
@@ -251,6 +257,9 @@ test("bakery.flour is held for an agent and runs for the person", async t => {
 
 ## What a module must never do
 
+- Send data with `ctx.fetch`. It reads only (GET or HEAD, no body). A URL can carry a secret, such
+  as a webhook URL, so posting to one goes through an `outward` tool or `ctx.vault.request`, where
+  the Gate and the vault see it.
 - Import a Vyre file, or anything outside its folder.
 - Open a process, socket, server or thread of its own.
 - Read or write files outside `ctx.paths.data`, or another module's data.

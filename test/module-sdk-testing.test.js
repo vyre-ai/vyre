@@ -68,17 +68,17 @@ test("testing: an outward tool is held for anyone but the person, and runs once 
   const held = await h.call("kit.mail", { to: "alex" }, { who: "agent" });
   assert.deepEqual(held, { held: "hold-1" });
   assert.equal(ran.length, 0, "a held call never runs");
-  assert.deepEqual(h.holds, [{ id: "hold-1", kind: "send", via: "kit.mail", content: { to: "alex" }, who: "agent", state: "held" }]);
+  assert.deepEqual(h.holds, [{ id: "hold-1", kind: "send", via: "kit.mail", content: { to: "alex" }, who: "agent", source: "agent", state: "held" }]);
   assert.ok("held" in await h.call("kit.mail", {}, { who: "module" }));
   assert.equal((await h.call("kit.mail", {}, { who: "hook" })).error.code, "no_such_tool", "the webhook reaches only hook tools");
   await h.call("kit.mail", { to: "alex" });
-  assert.equal(ran.at(-1).meta.gate, "person");
+  assert.deepEqual(ran.at(-1).meta.gate, { via: "person", item: "gate-1" });
   await h.call("kit.mail", { to: "juno" }, { who: "agent", asked: true });
-  assert.equal(ran.at(-1).meta.gate, "asked");
+  assert.deepEqual(ran.at(-1).meta.gate, { via: "asked", item: "gate-2" });
   // The person edits the held content, and it runs once as module:gate.
   const r = await h.approve("hold-1", { to: "alex", text: "edited" });
   assert.deepEqual(r, { data: { ok: true } });
-  assert.deepEqual({ caller: ran.at(-1).meta.caller, gate: ran.at(-1).meta.gate, input: ran.at(-1).input }, { caller: "module:gate", gate: "approved", input: { to: "alex", text: "edited" } });
+  assert.deepEqual({ caller: ran.at(-1).meta.caller, gate: ran.at(-1).meta.gate, input: ran.at(-1).input }, { caller: "module:gate", gate: { via: "approved", item: "hold-1" }, input: { to: "alex", text: "edited" } });
   assert.equal((await h.approve("hold-1")).error.code, "not_found", "a hold runs once");
 });
 
@@ -193,4 +193,63 @@ export default { async start(ctx) {
   await h.stop();
   assert.equal(/** @type {any} */ (globalThis).__kitStopped, 1);
   assert.ok(!fs.existsSync(h.dir));
+});
+
+test("testing: a tap on a control the module drew never runs an outward tool (H5)", async t => {
+  const { h, ran } = world(t);
+  const r = await h.call("kit.mail", { to: "alex" }, { who: "slot" });
+  assert.ok("held" in r);
+  assert.equal(ran.length, 0);
+  assert.deepEqual({ source: h.holds[0].source, who: h.holds[0].who }, { source: "slot", who: "person" });
+  // Anything else a slot taps runs as the person's own tap.
+  assert.deepEqual(await h.call("kit.read", {}, { who: "slot" }), { data: { ok: true } });
+  assert.deepEqual({ who: ran[0].meta.who, slot: ran[0].meta.slot, caller: ran[0].meta.caller }, { who: "person", slot: true, caller: "deck" });
+});
+
+test("testing: an added module reaches only declared reach, and reach modules is for Vyre's own (H4)", async t => {
+  const { h } = world(t, { tools: { "planner.list": () => ({ rows: [] }), "planner.add": { reach: "anyone", run: () => ({ id: 1 }) }, "planner.sync": { reach: "modules", run: () => 1 }, "planner.own": { reach: "person", run: () => 1 } } });
+  assert.equal((await h.ctx.call("planner.list", {})).error.code, "not_declared", "grace form");
+  assert.deepEqual(await h.ctx.call("planner.add", {}), { data: { id: 1 } });
+  assert.equal((await h.ctx.call("planner.sync", {})).error.code, "not_declared");
+  assert.equal((await h.ctx.call("planner.own", {})).error.code, "denied");
+  // The module's own tools, called by another module: reach modules is for built in callers only.
+  assert.deepEqual(await h.call("kit.inner", {}, { who: "module" }), { data: { ok: true } });
+  assert.equal((await h.call("kit.inner", {}, { who: "module", added: true })).error.code, "not_declared");
+  assert.deepEqual(await h.call("kit.read", {}, { who: "module", added: true }), { data: { ok: true } });
+  // Vyre's own modules keep grace form.
+  const fp = createTestContext({ ...manifest(), does: { tools: ["kit.read"] } }, { firstParty: true, tools: { "planner.list": () => ({ rows: [] }) } });
+  t.after(() => fp.stop());
+  assert.deepEqual(await fp.ctx.call("planner.list", {}), { data: { rows: [] } });
+});
+
+test("testing: ctx.fetch is GET or HEAD with no body", async t => {
+  const { h } = world(t);
+  assert.equal((await h.ctx.fetch("https://api.juno.example/x", { method: "HEAD" })).status, 200);
+  for (const init of [{ method: "POST" }, { method: "put" }, { body: "{}" }, { method: "GET", body: "x" }]) {
+    await assert.rejects(h.ctx.fetch("https://api.juno.example/hook", /** @type {any} */ (init)), (/** @type {any} */ e) => e.code === "method_not_allowed", JSON.stringify(init));
+  }
+});
+
+test("testing: a Gate item lets exactly one write through, and an approved held write goes once (M3)", async t => {
+  const h = createTestContext(manifest());
+  t.after(() => h.stop());
+  const post = (/** @type {any} */ body) => h.ctx.vault.request("mailer", { method: "POST", url: "https://api.juno.example/send", body });
+  /** @type {any[]} */ const got = [];
+  h.ctx.tool("kit.mail", { input: { type: "object" }, run: async (_i, meta) => { got.push(await post({ to: "alex" }), await post({ to: "alex" })); return meta.gate; } });
+  const r = await h.call("kit.mail", {});
+  assert.deepEqual(r.data, { via: "person", item: "gate-1" });
+  assert.equal(got[0].status, 200, "the first write inside the cleared run goes");
+  assert.ok("held" in got[1], "a second write is held");
+  assert.equal(h.gateItems.get("gate-1").write.url, "https://api.juno.example/send");
+  // A write held outside any cleared run goes once the person approves it, and only that write.
+  const held = await post({ to: "juno" });
+  await h.approve(held.held);
+  assert.ok("held" in await post({ to: "kit" }), "a different body is not what was approved");
+  assert.equal((await post({ to: "juno" })).status, 200);
+  assert.ok("held" in await post({ to: "juno" }), "an approval is used once");
+  // A connection write is held the same way; a read is not.
+  const c = createTestContext({ ...manifest(), needs: { connections: [{ provider: "github", purpose: "issues" }] } });
+  t.after(() => c.stop());
+  assert.deepEqual(await c.ctx.connections.call("github", "issues.list", {}), { data: null });
+  assert.ok("held" in await c.ctx.connections.call("github", "issues.create", { title: "rye" }));
 });

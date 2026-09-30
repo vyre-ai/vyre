@@ -144,6 +144,12 @@ export function checkManifest(m, { firstParty = false } = {}) {
       const v = TYPES.object(m[block]) ? m[block][key] : undefined;
       if (Array.isArray(v) ? v.length : v !== undefined) out.push(`${block}.${key} is built in only in 0.2; an added module can't use it`);
     }
+    // H3: a wildcard hides what an added module reaches; it names each tool.
+    for (const t of TYPES.object(m.needs) && Array.isArray(m.needs.tools) ? m.needs.tools : []) {
+      if (typeof t === "string" && t.endsWith(".*")) out.push(`needs.tools "${t}": an added module names each tool it calls; a module.* wildcard is for Vyre's own modules`);
+    }
+    // H2: in 0.2 the allowlist of modules an added module may replace is empty.
+    if (m.replaces !== undefined) out.push(`replaces: an added module can't replace one of Vyre's modules; the 0.2 allowlist of replaceable modules is empty`);
     if (Array.isArray(m.roles) && m.roles.length && m.roles.every((/** @type {string} */ r) => r === "windows")) out.push(`roles ["windows"] loads nowhere in 0.2: only the Mac has a local node yet; add "mac" or "box"`);
   }
   // Everything a manifest maps to a tool must be one this module registers itself.
@@ -243,6 +249,8 @@ export function capabilities(m) {
     // ctx.memory.write takes a fact or a note kind declared under teaches.memory (ADR 0047 section 3).
     memory: { kinds: [...list(teaches.memory)], writes: list(teaches.memory).some((/** @type {string} */ k) => k === "fact" || k === "note") },
     notices: [...list(shows.notices)],
+    // Every tool it calls through ctx.call: the card says what data each one reaches (H3).
+    calls: list(needs.tools).filter((/** @type {unknown} */ t) => typeof t === "string"),
     runs: Array.isArray(m && m.roles) && m.roles.length ? [...m.roles] : ["box"],
   };
 }
@@ -253,7 +261,7 @@ export function capabilities(m) {
  * section 6); anything else shows the card again with only these lines.
  * @param {ReturnType<typeof capabilities>} before
  * @param {ReturnType<typeof capabilities>} after
- * @returns {{ kind: "outward" | "host" | "credential" | "connection" | "asked" | "spend", what: string, from?: number | null, to?: number }[]}
+ * @returns {{ kind: "outward" | "host" | "credential" | "connection" | "asked" | "tool" | "spend", what: string, from?: number | null, to?: number }[]}
  */
 export function widened(before, after) {
   /** @type {ReturnType<typeof widened>} */
@@ -268,7 +276,27 @@ export function widened(before, after) {
   for (const c of after.connections) if (!had(connBefore, c.provider)) out.push({ kind: "connection", what: c.provider });
   const askedBefore = (before.tools.asked || []).map(t => t.tool);
   for (const t of after.tools.asked || []) if (!had(askedBefore, t.tool)) out.push({ kind: "asked", what: t.tool });
+  for (const t of after.calls || []) if (!had(before.calls || [], t)) out.push({ kind: "tool", what: t });
   const from = before.spend ? before.spend.dailyUsd : null, to = after.spend ? after.spend.dailyUsd : null;
   if (to !== null && (from === null || to > from)) out.push({ kind: "spend", what: `up to $${to.toFixed(2)} a day`, from, to });
   return out;
+}
+
+/**
+ * What to do with an update (ADR 0047 section 6, reviews/platform.md H1). A widening shows the card
+ * with only the difference. Otherwise it installs when the person asked for this update, or gave a
+ * standing "keep it updated", and waits in their list when nobody asked. codeChanged says the tree
+ * differs from the pinned sha256, which the log line and the module's row name even when the
+ * permissions are the same.
+ * @param {{ sha256?: string, capabilities?: ReturnType<typeof capabilities>, manifest?: any }} oldLock the modules.lock.json entry
+ * @param {any} newManifest
+ * @param {string} newTreeSha
+ * @param {{ asked?: boolean, standing?: boolean }} [o]
+ * @returns {{ action: "install" | "card" | "wait", codeChanged: boolean, widened: ReturnType<typeof widened> }}
+ */
+export function updatePlan(oldLock, newManifest, newTreeSha, { asked = false, standing = false } = {}) {
+  const before = oldLock && oldLock.capabilities ? oldLock.capabilities : capabilities(oldLock && oldLock.manifest);
+  const w = widened(before, capabilities(newManifest));
+  const codeChanged = !oldLock || oldLock.sha256 !== newTreeSha;
+  return { action: w.length ? "card" : asked || standing ? "install" : "wait", codeChanged, widened: w };
 }

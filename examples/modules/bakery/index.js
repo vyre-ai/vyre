@@ -86,13 +86,14 @@ export default {
       description: "Order flour from the supplier, in kilograms",
       input: { type: "object", required: ["kg"], additionalProperties: false, properties: { kg: { type: "integer", minimum: 1, maximum: 500 } } },
       examples: [{ input: { kg: 25 } }],
-      // outward "pay": this only runs after the person tapped it, asked for it, or approved it at
-      // the Gate. meta.gate says which. The vault attaches the supplier key in vyred.
+      // outward "pay": this only runs after the person's own words asked for it, a P17 match, or an
+      // approval at the Gate. meta.gate says which, and its item lets this one supplier write
+      // through without a second card. The vault attaches the supplier key in vyred.
       run: async ({ kg }, meta) => {
         const r = await ctx.vault.request("supplier", { method: "POST", url: "https://api.flourco.example/orders", body: { product: "flour", kg } });
         if ("held" in r) return { held: r.held };
         if (r.status >= 400) throw refuse("supplier_refused", `the supplier said ${r.status}`);
-        return { ordered: true, kg, status: r.status, cleared: meta.gate || null };
+        return { ordered: true, kg, status: r.status, cleared: meta.gate ? meta.gate.via : null };
       },
     });
 

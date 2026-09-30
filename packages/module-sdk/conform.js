@@ -292,14 +292,19 @@ export async function conformModule(dir, opts = {}) {
       }
       const input = examples[0] && examples[0].input !== undefined ? examples[0].input : {};
       if (checkSchema(def.input, input).length) continue;
-      // 6. An outward tool called by an agent without an ask is held and doesn't run; the person's tap runs it once.
+      // 6. An outward tool called by an agent without an ask, or from a slot tap, is held and doesn't run;
+      // the person's own words run it once.
       if (outward) {
         const before = runs.get(name) || 0;
         const held = await t.call(name, input, { who: "agent" });
         if (!held || !("held" in held)) fails.push(`${name} is outward, but an agent's call without an ask was not held at the Gate`);
         if ((runs.get(name) || 0) !== before) fails.push(`${name} ran for an agent that wasn't asked; an outward tool runs only after the Gate`);
+        // A tap on a control the module drew never runs it: vyred shows its own Gate card (H5, L2).
+        const slot = await t.call(name, input, { who: "slot" });
+        if (!slot || !("held" in slot) || !t.holds.some(h => h.id === slot.held && h.source === "slot")) fails.push(`${name} is outward, but a tap on a control the module drew was not turned into a Gate card`);
+        if ((runs.get(name) || 0) !== before) fails.push(`${name} ran from a tap on a control the module drew; an outward tool runs only from vyred's Gate card`);
         await t.call(name, input, { who: "person" });
-        if ((runs.get(name) || 0) !== before + 1) fails.push(`${name} did not run exactly once for the person's own tap`);
+        if ((runs.get(name) || 0) !== before + 1) fails.push(`${name} did not run exactly once for the person's own words`);
       }
       // 7. An asked tool called by an agent without an ask answers not_asked.
       if (reach === "asked") {

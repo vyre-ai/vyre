@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkManifest, toolEntries, capabilities, widened, REACHES } from "../packages/module-sdk/manifest.js";
+import { checkManifest, toolEntries, capabilities, widened, updatePlan, REACHES } from "../packages/module-sdk/manifest.js";
 
 /** The ADR's example, from the sample world: an added module in v1 shape. */
 const bakery = () => ({
@@ -73,6 +73,10 @@ test("v1: an added module keeps to the stricter rules, and Vyre's own may not ne
   has(edit(m => { m.shows.streams = ["live"]; }), /shows\.streams is built in only in 0\.2/);
   has(edit(m => { m.needs.vault = ["bakery-key"]; }), /needs\.vault is built in only in 0\.2/);
   has(edit(m => { m.roles = ["windows"]; }), /loads nowhere in 0\.2/);
+  has(edit(m => { m.needs.tools = ["memory.*"]; }), /needs\.tools "memory\.\*": an added module names each tool/);
+  assert.deepEqual(edit(m => { m.needs.tools = ["memory.*"]; }, true), []);
+  has(edit(m => { m.replaces = "bakery"; }), /the 0\.2 allowlist of replaceable modules is empty/);
+  assert.deepEqual(edit(m => { m.replaces = "bakery"; }, true), []);
   assert.deepEqual(edit(m => { m.roles = ["mac", "windows"]; }), []);
   // Built in: string entries, person reach and the built in only keys stay valid.
   assert.deepEqual(edit(m => {
@@ -137,4 +141,18 @@ test("v1: widened names only what an update adds", () => {
     "credential social (juno)", "connection kit", "asked bakery.clear", "spend up to $2.00 a day",
   ]);
   assert.deepEqual(w.at(-1), { kind: "spend", what: "up to $2.00 a day", from: 0.5, to: 2 });
+});
+
+test("v1: widened counts a new needs.tools entry, and updatePlan says install, card or wait (H1)", () => {
+  const lock = { sha256: "a".repeat(64), capabilities: capabilities(bakery()) };
+  assert.deepEqual(updatePlan(lock, bakery(), "a".repeat(64)), { action: "wait", codeChanged: false, widened: [] });
+  assert.deepEqual(updatePlan(lock, bakery(), "b".repeat(64), { asked: true }), { action: "install", codeChanged: true, widened: [] });
+  assert.deepEqual(updatePlan(lock, bakery(), "b".repeat(64), { standing: true }).action, "install");
+  assert.equal(updatePlan(lock, bakery(), "b".repeat(64)).action, "wait", "nobody asked: it waits in the list");
+  const more = bakery();
+  more.needs.tools.push("recall.search");
+  const plan = updatePlan(lock, more, "b".repeat(64), { asked: true, standing: true });
+  assert.deepEqual(plan, { action: "card", codeChanged: true, widened: [{ kind: "tool", what: "recall.search" }] });
+  // A lock that kept the manifest instead of the capabilities reads the same.
+  assert.equal(updatePlan({ sha256: "a".repeat(64), manifest: bakery() }, more, "a".repeat(64)).action, "card");
 });

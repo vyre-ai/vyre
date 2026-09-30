@@ -56,7 +56,7 @@ test("bakery.flour is outward: held for an agent, run for the person, run once a
   const held = await h.call("bakery.flour", { kg: 25 }, { who: "agent" });
   assert.deepEqual(held, { held: "hold-1" });
   assert.equal(h.calls.filter(c => c.member === "vault.request").length, 0, "nothing reached the supplier");
-  assert.deepEqual(h.holds[0], { id: "hold-1", kind: "pay", via: "bakery.flour", content: { kg: 25 }, who: "agent", state: "held" });
+  assert.deepEqual(h.holds[0], { id: "hold-1", kind: "pay", via: "bakery.flour", content: { kg: 25 }, who: "agent", source: "agent", state: "held" });
 
   assert.deepEqual((await h.call("bakery.flour", { kg: 10 })).data, { ordered: true, kg: 10, status: 201, cleared: "person" });
   const sent = h.calls.filter(c => c.member === "vault.request");
@@ -70,4 +70,11 @@ test("bakery.flour is outward: held for an agent, run for the person, run once a
 test("bakery.flour says so when the supplier refuses", async t => {
   const h = await bakery(t, { vault: () => ({ status: 503, headers: {}, body: {} }) });
   assert.deepEqual((await h.call("bakery.flour", { kg: 5 })).error, { code: "supplier_refused", message: "the supplier said 503" });
+});
+
+test("bakery.flour from a tap on the Now card becomes a Gate card, and nothing is ordered", async t => {
+  const h = await bakery(t);
+  assert.ok("held" in await h.call("bakery.flour", { kg: 500 }, { who: "slot" }));
+  assert.equal(h.holds[0].source, "slot");
+  assert.equal(h.calls.filter(c => c.member === "vault.request").length, 0);
 });

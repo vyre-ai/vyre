@@ -13,7 +13,9 @@ Everything an outside author needs to write a Vyre module against module API 1
 - `manifest.js`: `checkManifest(manifest)` returns a list of problems, empty when the manifest is
   valid for an added module (`{ firstParty: true }` for Vyre's own). `toolEntries(manifest)` gives
   every tool as `{ name, summary, reach, outward, cost }`. `capabilities(manifest)` is the install
-  card, computed from the manifest alone, and `widened(before, after)` lists what an update adds.
+  card, computed from the manifest alone, `widened(before, after)` lists what an update adds, and
+  `updatePlan(lock, manifest, sha, { asked, standing })` says whether to install, show the card or
+  wait.
 - `testing.js` (`@vyre/module-sdk/testing`): `testModule(dir)` starts a module over a temp home
   with a fake registry, Gate, vault, spend and push, and no daemon.
 - `conform.js` (`@vyre/module-sdk/conform`): `conformModule(dir)` runs the checks every module must
