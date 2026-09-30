@@ -1,0 +1,40 @@
+{
+  "$schema": "https://vyre.run/schema/module-1.json",
+  "name": "bakery",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "description": "Northwind Bakery's orders, the daily target and the flour order.",
+  "roles": ["box"],
+  "requires": ["memory"],
+  "does": {
+    "tools": [
+      { "name": "bakery.orders", "summary": "list today's orders" },
+      { "name": "bakery.add", "summary": "record an order" },
+      { "name": "bakery.target", "summary": "change the daily target", "reach": "asked" },
+      { "name": "bakery.flour", "summary": "order flour from the supplier", "outward": "pay" },
+      { "name": "bakery.today", "summary": "today's orders against the target" }
+    ],
+    "commands": [{ "verb": "orders", "tool": "bakery.orders", "summary": "today's orders" }],
+    "watchers": ["watchers/big-order.json"]
+  },
+  "watches": { "emits": ["bakery.order-added"], "on": ["memory.written"] },
+  "shows": { "deck": ["now:bakery.today"], "capsule": { "bakery.orders": { "title": "Orders" } } },
+  "settings": [
+    { "key": "bakery.target", "label": "Daily target", "type": "int", "default": 40, "min": 1, "max": 10000,
+      "levels": ["account"], "apply": "live" }
+  ],
+  "needs": {
+    "tools": ["memory.write", "push.offer"],
+    "credentials": [
+      { "id": "supplier", "kind": "api-credential", "provider": "flourco", "purpose": "place flour orders" }
+    ],
+    "network": ["api.flourco.example"],
+    "spend": { "dailyUsd": 0.5 }
+  },
+  "teaches": {
+    "tips": [
+      { "id": "orders", "text": "Ask \"how many orders today?\" in any chat.", "surfaces": ["chat"],
+        "level": "first-use", "trigger": "never-used", "since": "0.1.0" }
+    ]
+  }
+}

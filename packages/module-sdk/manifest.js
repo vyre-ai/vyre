@@ -96,7 +96,7 @@ export function checkSchema(schema, value, where = "manifest", root = schema) {
       if (k in props) { out.push(...checkSchema(props[k], v, at, root)); continue; }
       const matched = patterns.filter(([re]) => re.test(k));
       if (matched.length) { for (const [, s] of matched) out.push(...checkSchema(s, v, at, root)); continue; }
-      if (schema.additionalProperties === false) out.push(`${at} is not a manifest key in module API 1`);
+      if (schema.additionalProperties === false) out.push(where.startsWith("manifest") ? `${at} is not a manifest key in module API 1` : `${at} is not allowed`);
       else if (schema.additionalProperties !== undefined) out.push(...checkSchema(schema.additionalProperties, v, at, root));
     }
   }
