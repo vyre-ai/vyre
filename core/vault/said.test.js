@@ -321,3 +321,16 @@ test("grants: vault.list decides 'granted to that agent' by the agent's project 
   assert.deepEqual(await list("juno", { project: "northwind" }), ["api-x"]);
   assert.equal((await cli("vault.list")).data.items.length, 3, "the person sees everything");
 });
+
+test("connect: a person's put of an api-credential may grant it to connectors and to no one else, with no second prompt", async t => {
+  const { reg, cli } = await daemon(t);
+  const cred = extra => ({ name: "ms-graph", kind: "api-credential", fields: { config: JSON.stringify({ auth: { type: "oauth", client: { item: "ms-app" }, authorize_uri: "https://login.example.test/authorize", token_uri: "https://login.example.test/token", scopes: ["Calendars.Read"] }, hosts: ["graph.example.test"] }) }, ...extra });
+  await cli("vault.put", { name: "ms-app", kind: "api-key", fields: { value: "fixture-client-id-000000" } });
+  const ok = await cli("vault.put", cred({ grants: ["connectors"] }));
+  assert.equal(ok.data?.granted?.[0], "connectors", JSON.stringify(ok));
+  assert.equal((await cli("vault.list")).data.items.find(i => i.name === "ms-graph").grants.some(g => g.module === "connectors"), true, "active at once");
+  assert.ok((await cli("vault.put", cred({ name: "ms-2", grants: ["planner"] }))).error, "not to another module");
+  assert.ok((await cli("vault.put", cred({ name: "ms-3", grants: ["connectors", "planner"] }))).error, "not to connectors plus another");
+  assert.ok((await cli("vault.put", { name: "plain", kind: "api-key", fields: { value: "fixture-key-0000000000" }, grants: ["connectors"] })).error, "only an api-credential");
+  assert.ok((await reg("vault.put", cred({ name: "ms-4", grants: ["connectors"] }), "mcp")).error, "a model cannot");
+});
