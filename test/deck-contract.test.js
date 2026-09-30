@@ -26,6 +26,8 @@ const OPTIONAL = {
   "team.status": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
   "team.notes": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
   "team.duties.list": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.duties.enable": "teammates ships it (4d1a3c3d); the Team tab says so in a line when it fails. Leaves this list when teammates merges.",
+  "team.duties.disable": "teammates ships it (4d1a3c3d); the Team tab says so in a line when it fails. Leaves this list when teammates merges.",
   "team.duties.update": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
   "team.duties.run-now": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
   "team.role.fill": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",

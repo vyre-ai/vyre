@@ -609,6 +609,25 @@ export async function drawConnections(el, ctx, deps = {}) {
     const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cgh-name", autocomplete: "off", spellcheck: "false", placeholder: "work" }));
     const stt = h("div", { class: "small muted set-status", role: "status" });
     const save = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-primary" }, "Sign in with GitHub"));
+    // The second way in: a token the person made at GitHub. A secret: a password field, sent once, never shown, logged or kept here.
+    const token = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cgh-token", type: "password", autocomplete: "off", spellcheck: "false", "aria-label": "GitHub token" }));
+    const tokBtn = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-sm", "data-act": "github-token", onclick: async () => {
+      const n = name.value.trim(), t = token.value.trim();
+      if (!n) { put(stt, "Give the account a name, like work or personal."); return; }
+      if (!t) { put(stt, "Paste the token first."); return; }
+      tokBtn.disabled = true; save.disabled = true;
+      put(stt, "Checking the token.");
+      const r = await attempt("github.connect", { name: n, token: t });
+      token.value = "";
+      if (!ctx.alive()) return;
+      tokBtn.disabled = false; save.disabled = false;
+      // GitHub's own message is shown as it came (a bad token is a 401 with its words); nothing is made up.
+      if (r.error) { put(stt, String(r.error.message || r.error.code || "GitHub did not take that token.")); return; }
+      const login = str(r.data?.login), repos = num(r.data?.repos);
+      st.form = ""; put(formBox);
+      showToast({ text: login ? `Connected ${login}${repos != null ? `, reaches ${plural(repos, "repo")}` : ""}` : "Connected the GitHub account." });
+      await load();
+    } }, "Connect with this token"));
     const form = h("form", { class: "set-form cn-form", "data-form": "github", onsubmit: async (/** @type {Event} */ e) => {
       e.preventDefault();
       const n = name.value.trim();
@@ -628,7 +647,10 @@ export async function drawConnections(el, ctx, deps = {}) {
       h("div", { class: "rows" },
         frow("cgh-name", "Name", name, "What the assistant calls it, like work or personal.")),
       h("p", { class: "small faint" }, "GitHub asks for repo access, full read/write on every repo the account can reach. Its device sign-in has no narrower option; a later release narrows this to the repos you pick."),
-      h("div", { class: "set-actions" }, save, h("button", { type: "button", class: "btn btn-ghost", onclick: closeForm }, "Cancel")), stt);
+      h("div", { class: "set-actions" }, save, h("button", { type: "button", class: "btn btn-ghost", onclick: closeForm }, "Cancel")),
+      h("details", { class: "cn-token" }, h("summary", { class: "small" }, "Paste a token instead"),
+        h("div", { class: "rows" }, frow("cgh-token", "Token", token, "A token you made at GitHub. A fine-grained token can reach fewer repos than signing in does.")),
+        h("div", { class: "set-actions" }, tokBtn)), stt);
     put(formBox, form);
     name.focus();
   }

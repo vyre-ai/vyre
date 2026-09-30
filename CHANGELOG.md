@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: a GitHub token paste, and duties through team.duties.enable
+
+- Settings, Connections, Add a GitHub account: under "Sign in with GitHub", "Paste a token instead" opens a password field (autocomplete and spellcheck off) and "Connect with this token", which calls `github.connect {name, token}`. The token is cleared from the field once sent and never drawn. On success the form closes and a toast says the login and, when GitHub said, "reaches N repos"; on failure GitHub's own message is shown as it came. A one-line hint says a fine-grained token can reach fewer repos than signing in.
+- The project Team tab turns a duty on or off through teammates' `team.duties.enable` and `team.duties.disable` (a click on a person's surface is the asking), not `team.duties.update`.
+
 #### deck: the trust prompt for a browser asking for full access
 
 - `deck/js/trust-ask.js`: tailnet's `device.trust-asked {id, name, fingerprint}` raises a toast ("A browser is asking for full access", Review) and a card at the top of Settings, Your devices. The card puts the key fingerprint first, in mono and in groups of four, to compare with what that browser shows, and labels the name "It says it is ...": the browser's own claim, plain text, at most 64 characters, control characters removed. Trust calls `relay.devices.trust {id, trusted: true}` with the person's own presence (the existing tool, nothing granted here); Not now sets it aside on this screen. Pending asks are held in memory only.

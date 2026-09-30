@@ -2,7 +2,7 @@
 // A project's Team tab (/projects/<slug>?tab=team): the teammates that serve it, and for each one what it is
 // doing now, what it last delivered, its notes, and its setup (who fills the role, its charter, its duties).
 // Reads: team.list {project}, team.status {request}, team.notes {agent}, team.charter.get, team.duties.list.
-// Writes, all the person's own: team.add, team.notes set, team.charter.set and .draft, team.duties.update and
+// Writes, all the person's own: team.add, team.notes set, team.charter.set and .draft, team.duties.enable, .disable and
 // .run-now, team.role.fill, team.retire, team.default.set. Every value from the box is drawn as text. Nothing
 // polls: it loads on open, after each action, and on the team and teammate events.
 //
@@ -113,7 +113,7 @@ export async function drawTeam(el, ctx, project, deps = {}) {
         h("div", { class: "set-row" }, h("div", { class: "set-k" }, "Duties"),
           h("div", { class: "set-v tm-col" }, p.duties.length ? p.duties.map((/** @type {any} */ d) => h("div", { class: "tm-duty", "data-duty": String(d.id) },
             h("span", { class: "small" }, clip(d.instruction || d.id, 120)), d.when ? h("span", { class: "small faint" }, String(typeof d.when === "string" ? d.when : d.when?.text || "")) : null,
-            h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-toggle", disabled: st.busy === "duty" + d.id, onclick: () => act("duty" + d.id, () => attempt("team.duties.update", { id: String(d.id), enabled: !d.enabled })) }, d.enabled ? "Pause" : "Turn on"),
+            h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-toggle", disabled: st.busy === "duty" + d.id, onclick: () => act("duty" + d.id, () => attempt(d.enabled ? "team.duties.disable" : "team.duties.enable", { id: String(d.id) })) }, d.enabled ? "Pause" : "Turn on"),
             d.enabled ? h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-run", onclick: () => act("run" + d.id, () => attempt("team.duties.run-now", { id: String(d.id) })) }, "Run now") : null)) : h("span", { class: "small muted" }, "No duties."))),
         st.sure === t.agent
           ? h("div", { class: "tm-actions" }, h("span", { class: "small muted" }, `Retire ${t.role}? Its notes and history are kept, and adding ${t.role} again brings it back.`),

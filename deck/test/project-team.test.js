@@ -68,7 +68,7 @@ test("Open reads the pane: now, last result, notes, charter, duties; only reads"
 });
 
 test("Edit notes saves through team.notes set; Edit charter through team.charter.set; fill and duties call their tools", async () => {
-  const m = await mount({ "team.notes": i => (i.action === "set" ? { version: 2 } : ANS["team.notes"]), "team.charter.set": { version: 3 }, "team.role.fill": {}, "team.duties.update": {} });
+  const m = await mount({ "team.notes": i => (i.action === "set" ? { version: 2 } : ANS["team.notes"]), "team.charter.set": { version: 3 }, "team.role.fill": {}, "team.duties.enable": {}, "team.duties.disable": {} });
   const a = "design-harlow-legal";
   click($(row(m.el, a), "[data-act=open]")); await settle();
   click($(row(m.el, a), "[data-act=notes-edit]"));
@@ -83,7 +83,8 @@ test("Edit notes saves through team.notes set; Edit charter through team.charter
   click($(row(m.el, a), "[data-act=fill]")); await settle();
   assert.deepEqual(m.of("team.role.fill")[0].input, { teammate: a }, "no agent means the project's helper");
   click($(row(m.el, a), "[data-act=duty-toggle]")); await settle();
-  assert.deepEqual(m.of("team.duties.update")[0].input, { id: "d1", enabled: true });
+  assert.deepEqual(m.of("team.duties.enable")[0].input, { id: "d1" }, "a click on a person's surface is the asking: enable, not update");
+  assert.equal(m.of("team.duties.update").length, 0);
 });
 
 test("Retire asks once, says the notes are kept, then calls team.retire", async () => {
