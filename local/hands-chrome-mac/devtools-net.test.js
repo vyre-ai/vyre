@@ -524,3 +524,34 @@ test("egress: third parties share one budget per guard (1 KB, 8 requests), a loa
   assert.ok(eg2.allowed.includes("https://chat.widget.example"), "a size-capped origin stays allowed for the tab afterwards");
   await eg2.stop();
 });
+
+test("egress probe: every readable frame on an allowed origin is probed (its own nonce path), and the test-only noFetch guard is DNR alone: no Fetch, no probe", async () => {
+  const { k } = await guardedWorld(async k => {
+    k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }, { index: 1, frameId: "B", how: "session", readable: true, origin: "https://app.example", url: "https://app.example/inner" }] };
+  });
+  const eg = await egressGuard(k.ctx, 1);
+  const probes = k.calls("Runtime.evaluate").map(c => /__vyre_probe_[a-z0-9]+_(\d+)/.exec(String(c.params.expression || ""))).filter(Boolean).map(m => /** @type {RegExpExecArray} */ (m)[1]);
+  assert.ok(probes.includes("0") && probes.includes("1"), "both frames were probed: " + probes.join());
+  await eg.stop();
+  const k2 = (await guardedWorld(async () => {})).k;
+  const before = k2.calls("Fetch.enable").length;
+  const eg2 = await egressGuard(k2.ctx, 1, null, { noFetch: true });
+  assert.equal(k2.calls("Fetch.enable").length, before, "no Fetch on a noFetch guard");
+  assert.equal(k2.calls("Runtime.evaluate").filter(c => /__vyre_probe_/.test(String(c.params.expression || ""))).length, 0, "and no probe");
+  assert.ok(/** @type {any} */ (k2.ctx).dnr.rules.length >= 1, "the DNR rule is still set");
+  await eg2.stop();
+});
+
+test("egress guard: a worker target has no Fetch domain in Chrome; that one error is tolerated (the DNR rules cover it) and the worker is resumed, any other enable failure is not", async () => {
+  const k = makeCtx({ active: 1 });
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg = await egressGuard(k.ctx, 1);
+  k.respond["Fetch.enable"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-W9") throw new Error("'Fetch.enable' wasn't found"); return {}; };
+  k.push(1, "Target.attachedToTarget", { sessionId: "S-W9", waitingForDebugger: true, targetInfo: { targetId: "W9", type: "worker", url: "blob:https://a.example/w" } });
+  await new Promise(r => setTimeout(r, 5));
+  assert.ok(k.sent.some(s => s.session === "S-W9" && s.method === "Network.enable"), "capture still goes on");
+  assert.ok(k.sent.some(s => s.session === "S-W9" && s.method === "Runtime.runIfWaitingForDebugger"), "the worker is resumed");
+  assert.equal(k.sent.some(s => s.method === "Runtime.terminateExecution"), false, "the script is not stopped for it");
+  const out = await eg.stop();
+  assert.equal(out.some((/** @type {any} */ o) => o.method === "GUARD"), false);
+});

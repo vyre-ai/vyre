@@ -166,7 +166,7 @@ test("ctx.dnr.block: a block rule over every resource type but the main frame an
   assert.equal(b.ok, true);
   const blocks = st.rules.filter((/** @type {any} */ r) => r.action.type === "block");
   assert.equal(blocks.length, 2, "one for the tab, one for requests that belong to no tab");
-  for (const bl of blocks) { assert.ok(["image", "websocket", "sub_frame", "xmlhttprequest"].every(t => bl.condition.resourceTypes.includes(t))); assert.ok(!bl.condition.resourceTypes.includes("main_frame")); }
+  for (const bl of blocks) { assert.ok(["image", "websocket", "sub_frame", "xmlhttprequest", "main_frame"].every(t => bl.condition.resourceTypes.includes(t)), "navigation is blocked too"); }
   assert.deepEqual(blocks[1].condition.tabIds, [-1]);
   assert.deepEqual(blocks[1].condition.initiatorDomains, ["app.example.com"]);
   const allows = st.rules.filter((/** @type {any} */ r) => r.action.type === "allow");

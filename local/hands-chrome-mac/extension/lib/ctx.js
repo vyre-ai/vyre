@@ -89,7 +89,7 @@ export function createCtx({ chrome, emit = () => {} }) {
       try { const old = (await api.getSessionRules()).map((/** @type {any} */ r) => r.id).filter((/** @type {number} */ id) => id >= RULE_MIN && id <= RULE_MAX); if (old.length) await api.updateSessionRules({ removeRuleIds: old }); } catch { /* nothing to clear */ }
     },
     /**
-     * Block EVERY request of one tab (all resource types except the main frame's own navigation, which the Fetch guard judges) to anything not in the allow list, at the network
+     * Block EVERY request of one tab (all resource types, the page's own navigation included: `location = ...` is an exfiltration channel too) to anything not in the allow list, at the network
      * level, in every frame of the tab including one a script just made. The allow list is exact origins (scheme, host AND port) as higher-priority ALLOW rules, not hostnames:
      * a hostname list would also allow other ports and every subdomain. `ok` is false when the browser could not set the rules (no API, or it refused).
      * @param {{ tab: number, allowOrigins?: string[], allowHosts?: string[] }} o @returns {Promise<{ id: number|null, ids: number[], ok: boolean, why?: string }>}
@@ -98,7 +98,7 @@ export function createCtx({ chrome, emit = () => {} }) {
       const api = dnrApi();
       if (!api) return { id: null, ids: [], ok: false, why: "this browser has no declarativeNetRequest" };
       const next = () => (ruleSeq >= RULE_MAX ? (ruleSeq = RULE_MIN) : ++ruleSeq);
-      const TYPES = ["sub_frame", "stylesheet", "script", "image", "font", "object", "xmlhttprequest", "ping", "csp_report", "media", "websocket", "webtransport", "webbundle", "other"];
+      const TYPES = ["main_frame", "sub_frame", "stylesheet", "script", "image", "font", "object", "xmlhttprequest", "ping", "csp_report", "media", "websocket", "webtransport", "webbundle", "other"];
       const origins = [...new Set(allowOrigins)].filter(o => /^https?:\/\/[^/\s*^|?]+$/.test(o)).slice(0, 200);
       // A second pair for requests that belong to no tab (tabId -1: a shared or service worker's own fetches), scoped by the INITIATOR's host so other sites' workers are left alone.
       const hosts = [...new Set(initiatorHosts)].filter(h => /^[a-z0-9.\-]+$/i.test(h)).slice(0, 50);

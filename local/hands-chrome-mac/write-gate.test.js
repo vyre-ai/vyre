@@ -23,7 +23,7 @@ test("the page-side fetch() call exists only in pageFetch (net.js) and in the gu
   const close = net.indexOf("\nexport ", open + 10) > 0 ? net.indexOf("\n}\n", open) : net.length;
   const inside = net.slice(open, close);
   const hits = [...net.matchAll(/(^|[^.\w])fetch\(/g)].map(m => m.index || 0);
-  // probeGuard fires one fetch at an unroutable host from a string, to prove the interceptor is live; it sends nothing of the person's.
+  // probeGuard fires one fetch at a nonce path on the frame's own origin from a string, to prove the interceptor is live; it is failed at the pause and carries nothing of the person's.
   const pOpen = net.indexOf("async function probeGuard"), pClose = net.indexOf("\n}\n", pOpen);
   assert.ok(hits.length > 0 && hits.every(i => (i > open && i < close + 1) || (i > pOpen && i < pClose)), "every fetch( in net.js is inside pageFetch (or the guard's probe)");
   assert.match(inside, /writeGate|PASS/, "pageFetch checks the pass");

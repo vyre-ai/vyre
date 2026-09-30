@@ -30,6 +30,9 @@ import * as nativeHost from "./native-host/install.js";
 import { extensionIdFromKey, extensionIdFromPath } from "./native-host/install.js";
 import { callerKind, agentClaim } from "./caller.js";
 
+/** True when a folder is under the OS temp directory (resolved): a test profile, never a person's real one. @param {string|undefined} dir */
+const inTempDir = dir => { if (!dir) return false; try { const real = (/** @type {string} */ p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } }; const d = real(dir), t = real(os.tmpdir()); return d === t || d.startsWith(t + path.sep); } catch { return false; } };
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /** An mcp caller inside a named agent's own thread: the same rule as hands. */
@@ -267,6 +270,8 @@ export default {
         { const bad = trustKeyIn(args); if (bad) throw denied("bad_request", `arguments may not carry "${bad}": approvals come from the host, not from arguments`); }
         /** @type {any} */ const trust = {};
         if (process.env.VYRE_CHROME_TEST) trust.diag = true;
+        // The DNR layer alone, for measuring it: honoured only under the test flag AND when this profile's folder is under the OS temp directory (like the site store's test clock).
+        if (process.env.VYRE_CHROME_TEST && process.env.VYRE_CHROME_TEST_NOFETCH === "1" && inTempDir(process.env.VYRE_CHROME_HOME)) trust.noFetch = true;
         syncSiteConfig();
         const summary = summarize(op, input);
         /** @type {any} */

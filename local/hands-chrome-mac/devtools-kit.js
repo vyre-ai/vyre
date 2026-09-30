@@ -25,9 +25,10 @@ export function makeCtx(o = {}) {
       async attach(/** @type {number} */ t) { attachedSet.add(t); },
       async send(/** @type {number} */ tab, /** @type {string} */ method, /** @type {any} */ params, /** @type {string} [session] */ session) {
         sent.push(session ? { tab, method, params, session } : { tab, method, params });
-        // The guard's readiness probe (an Image and a fetch to an unroutable host): Chrome would pause both, so the fake does too.
-        if (method === "Runtime.evaluate" && typeof params?.expression === "string" && params.expression.includes("vyre-guard-probe") && !/** @type {any} */ (o).blindProbe) {
-          for (const [i, type] of ["Image", "Fetch"].entries()) for (const l of [...listeners]) l(tab, "Fetch.requestPaused", { requestId: "probe" + i, resourceType: type, request: { url: "http://vyre-guard-probe.invalid/" + (i ? "f" : "i"), method: "GET", headers: {} } }, session);
+        // The guard's readiness probe (an Image and a fetch to a nonce path on the frame's own origin): Chrome would pause both, so the fake does too.
+        const pm = method === "Runtime.evaluate" && typeof params?.expression === "string" && !/** @type {any} */ (o).blindProbe ? /__vyre_probe_([a-z0-9]+_\d+)/.exec(params.expression) : null;
+        if (pm) {
+          for (const type of ["Image", "Fetch"]) for (const l of [...listeners]) l(tab, "Fetch.requestPaused", { requestId: "probe-" + type + pm[1], resourceType: type, request: { url: "https://app.example.com/__vyre_probe_" + pm[1], method: "GET", headers: {} } }, session);
           return { result: { value: 1 } };
         }
         const r = respond[method];
