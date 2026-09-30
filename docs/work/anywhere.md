@@ -188,8 +188,15 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   fallback (no Homebrew) feeds the Colima LaunchDaemon in system mode. test/install-mac-server.test.js 24/24.
 - Fixed: `out=$(sudo ...; printf rc)` died under set -e in a substitution; now && / ||.
 
+- Phase 5 built (0ef9f34e): core/vyre-core/keys.js + keys.* tools, lib/vyre-core-keys.js (createCoreKeys, fakeCoreKeys),
+  core/vyre-core/keys.test.js. Answer to tailnet: async only, caller = any owner-uid process outside every Claude session.
+- Found: the root extract did not strip npm pack's package/ folder (release.js extract, fixed 66f3a020, tested).
+- work/vyre-core == work/anywhere-server (ff'd), pushed at 66f3a020. Proof: .github/workflows/mac-server.yml runs
+  scripts/mac-proof/run.sh on macos-latest (throwaway release key via scripts/mac-proof/release.mjs, real sudo, PATH
+  without brew so the Colima/Lima/docker pins are checked for real). RESULT: pending (run on work/vyre-core).
+
 ## Next
-1. Phase 5 (co-built with tailnet): core keys tools (keys.exists/ensure/box.pub/box.dh/route.pub/route.sign),
+1. (done, see above) Phase 5 (co-built with tailnet): core keys tools (keys.exists/ensure/box.pub/box.dh/route.pub/route.sign),
    lib/vyre-core-keys.js client + fakeCoreKeys, on work/vyre-core.
 2. Ask reviewer-2 for review of work/vyre-core; land.
 3. GitHub macOS runner proof: workflow builds a release signed with a throwaway key (key patched into the test
