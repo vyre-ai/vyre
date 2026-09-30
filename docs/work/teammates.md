@@ -688,4 +688,8 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   survives the daemon's relabel to `mcp`, so the forged team.ask lands. Sent to reviewer-2 and lead.
 - Next: team.add widened to the assistant/chat (still checks project), @role create without confirm,
   projects.rename/archive, team.list all:true, team.ask explicit project, filler/charters/duties.
+- Built the quiet local history wiring (team-lead's ask): projects.create calls github.project.local-init
+  for a new/empty folder, offers once for an existing non-repo folder (result carries `offer`),
+  `projects.history {project, keep}` answers it, state in projects_history. Needs github 63caf8e3 on
+  stage to do anything (without it create still works quietly). Tests: core/projects/history.test.js.
 

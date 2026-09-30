@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Projects: version history without GitHub. A new project folder is made a local git repo quietly
+  (through `github.project.local-init`). An existing folder that isn't a repo is offered it once
+  ("Keep version history for this folder?"); the answer, yes or no, is remembered and never asked
+  again. New tool `projects.history {project, keep}` answers it, for the person or their agent.
+
 - Teammates: `team.retire` ends a teammate's life cleanly. A person, or a session in the project
   acting on the person's request, can retire one: its queued asks are cancelled, its notes and history
   stay readable, and adding the same role again brings it back. `undo: true` takes back a teammate

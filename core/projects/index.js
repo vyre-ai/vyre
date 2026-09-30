@@ -101,6 +101,7 @@ export default {
       db: ctx.store.db, config: ctx.config, call: ctx.call,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
     });
+    const setHistory = (project, state) => ctx.store.db.prepare("INSERT INTO projects_history (project, state, at) VALUES (?,?,?) ON CONFLICT(project) DO UPDATE SET state = excluded.state, at = excluded.at").run(project, state, Date.now());
     // Only markers already known are read at start. Walking the roots waits for the first list
     // or create, so starting vyred never crawls the user's folders unasked.
     try { P.refresh(); } catch (e) { ctx.log("could not read project markers: " + /** @type {Error} */ (e).message); }
@@ -134,6 +135,7 @@ export default {
             if (t.error || !t.data?.thread) throw Object.assign(new Error(`there is no chat ${id} to make a project from`), { code: "not_found" });
           }
         }
+        const before = P.previewHome(input);
         const created = P.create(input);
         const r = await ctx.call("agents.list", {});
         if (!r.error) {
@@ -147,7 +149,31 @@ export default {
             if (g.error) throw new Error(`${created.slug} was created, but could not grant ${a.name} access to it: ${g.error.message}`);
           }
         }
-        return created;
+        // Version history with no GitHub needed (charter): a new folder gets it quietly; an
+        // existing folder that is not a repo gets one quiet offer, once. A module caller (sync,
+        // github) maps folders it made itself and is never asked or offered anything.
+        if (String((meta && meta.caller) || "").startsWith("module:") || before.isRepo) return created;
+        if (before.fresh) {
+          const g = await ctx.call("github.project.local-init", { project: created.slug }).catch(e => ({ error: { message: String(e && e.message || e) } }));
+          if (!g.error) setHistory(created.slug, "kept");
+          else ctx.log?.(`projects: no local history for ${created.slug}: ${g.error.message}`);
+          return created;
+        }
+        setHistory(created.slug, "offered");
+        return { ...created, offer: { kind: "history", question: "Keep version history for this folder?", tool: "projects.history", input: { project: created.slug } } };
+      },
+    });
+    ctx.tool("projects.history", {
+      description: "Answer the one question about version history for a project's folder: keep: true makes the folder a local git repo (no GitHub, no remote) so each session gets its own copy, branch and Undo; keep: false says no and it is never asked again. A folder that already has a history is left as it is. The person, or their agent on their request.",
+      input: { type: "object", required: ["project", "keep"], properties: { project: str, keep: { type: "boolean" } } },
+      callers: [...OWNER, "mcp"],
+      run: async ({ project, keep }) => {
+        const p = P.resolve(project);
+        if (!keep) { setHistory(p.slug, "declined"); return { project: p.slug, state: "declined" }; }
+        const g = await ctx.call("github.project.local-init", { project: p.slug }).catch(e => ({ error: { code: "unavailable", message: String(e && e.message || e) } }));
+        if (g.error) throw Object.assign(new Error(g.error.message), { code: g.error.code });
+        setHistory(p.slug, "kept");
+        return { project: p.slug, state: "kept", ...g.data };
       },
     });
     ctx.tool("projects.add-threads", {

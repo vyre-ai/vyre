@@ -110,6 +110,16 @@ export const MIGRATIONS = [
     at INTEGER NOT NULL
   );
   `,
+  // Local version history for a project's folder (github.project.local-init): 'kept' once it is a
+  // repo, 'declined' when the person said no, 'offered' once the one quiet question was asked.
+  // Any row means never ask again.
+  `
+  CREATE TABLE projects_history (
+    project TEXT PRIMARY KEY,
+    state   TEXT NOT NULL,
+    at      INTEGER NOT NULL
+  );
+  `,
 ];
 
 /** @typedef {import("./markers.js").Project} Project */
@@ -183,6 +193,15 @@ export class Projects {
    * Make a project from what a person chose. The home defaults to a new folder in the projects
    * folder. A folder that already has a marker is refused, not overwritten.
    */
+  /** The folder create() would use, and whether it is new (missing or empty): the quiet-history rule needs to know before create() makes it. */
+  previewHome({ name, home }) {
+    const slug = M.slugify(String(name || "").trim());
+    const where = M.real(home ? untilde(home) : path.join(this.config.projectsDir, slug || "project"));
+    let fresh = true;
+    try { fresh = fs.readdirSync(where).length === 0; } catch {}
+    return { where, fresh, isRepo: fs.existsSync(path.join(where, ".git")) };
+  }
+
   create({ name, home, org, workspaces = [], threads = [], people = [], watchers = [], from_thread }) {
     const clean = String(name || "").trim();
     if (!clean) throw new Error("a project needs a name");
