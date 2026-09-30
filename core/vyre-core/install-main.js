@@ -21,6 +21,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { install, uninstall, apply, plan } from "./installer.js";
 
+// The installer makes root-owned trees other accounts must read (core runs as _vyre): a caller's
+// umask (the install script's root step uses 077 for its scratch folder) must not narrow them.
+process.umask(0o022);
+
 const argv = process.argv.slice(2);
 const cmd = argv[0];
 const fail = (m) => { process.stderr.write(`vyre-install: ${m}\n`); process.exit(1); };
