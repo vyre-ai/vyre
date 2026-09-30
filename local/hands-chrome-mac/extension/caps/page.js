@@ -25,6 +25,7 @@ import { redact } from "../lib/shared.js";
 import { passwordFieldScript } from "../shared/guards.js";
 import { guardInstall, guardCollect, held as heldRequest } from "../shared/outbound.js";
 import { err } from "../lib/err.js";
+import { matchControl, nearMisses, topBlocker, classifyBlocker, describeBlocker, redactDom, whereOf, traceOf, nap } from "../lib/ui.js";
 
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 
@@ -106,20 +107,31 @@ const script = (/** @type {string} */ kind, /** @type {any} */ args, /** @type {
 
 // Shared by every script: the same path function the snapshot uses, and its inverse.
 const PRELUDE = `
+  function parentOf(n) {
+    if (n.parentElement) return n.parentElement;
+    const r = n.getRootNode ? n.getRootNode() : null;
+    return r && r.host ? r.host : null;
+  }
   function pathOf(el) {
     const parts = [];
     let n = el;
     while (n && n.nodeType === 1 && parts.length < 8) {
-      const parent = n.parentElement;
-      const idx = parent ? [...parent.children].indexOf(n) : 0;
+      const par = n.parentNode;
+      const idx = par && par.children ? [...par.children].indexOf(n) : 0;
       parts.unshift(n.tagName.toLowerCase() + "[" + idx + "]");
-      n = parent;
+      n = parentOf(n);
     }
     return parts.join(">");
+  }
+  // Every element, looking inside open shadow roots too (closed roots and cross-origin frames are not reachable).
+  function deepAll(root, out) {
+    for (const el of root.querySelectorAll("*")) { out.push(el); if (el.shadowRoot) deepAll(el.shadowRoot, out); }
+    return out;
   }
   function find(path) {
     const last = path.split(">").pop().split("[")[0];
     for (const el of document.getElementsByTagName(last)) if (pathOf(el) === path) return el;
+    for (const el of deepAll(document, [])) if (el.tagName.toLowerCase() === last && pathOf(el) === path) return el;
     return null;
   }
   function setNative(el, prop, v) {
@@ -203,8 +215,77 @@ export const EXPRESSION = script("snapshot", {}, `
     previews.set(form, out);
     return out;
   }
+  const FILL = ["textbox", "searchbox", "combobox", "checkbox", "radio", "switch", "spinbutton", "listbox", "slider"];
+  const txt = t => String(t || "").trim().replace(/\\s+/g, " ");
+  // vyre-ext: the label a person would read next to a field, for pages whose inputs carry no label element.
+  function nearOf(el) {
+    let n = el;
+    for (let i = 0; i < 3 && n && n.parentElement; i++) {
+      const s = n.previousElementSibling;
+      if (s && !["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(s.tagName) && !s.querySelector("input,select,textarea,button")) { const t = txt(s.innerText || s.textContent); if (t && t.length <= 80) return t; }
+      const p = n.parentElement;
+      const l = p.querySelector(":scope > label, :scope > legend, :scope > [class*=label], :scope > [class*=Label]");
+      if (l && !l.contains(el)) { const t = txt(l.innerText || l.textContent); if (t && t.length <= 80) return t; }
+      n = p;
+    }
+    return "";
+  }
+  const vis = el => {
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const cs = getComputedStyle(el);
+    return cs.display !== "none" && cs.visibility !== "hidden" && cs.opacity !== "0";
+  };
+  // vyre-ext: page state the waiting helper reads with the same evaluate: DOM and network quiet, spinners, dialogs, toasts.
+  const TOAST = '[role="status"],[role="alert"],[aria-live="polite"],[aria-live="assertive"],[class*="toast"],[class*="Toast"],[class*="snackbar"],[class*="Snackbar"],.n-message,.el-message';
+  if (!window.__vyreQuiet) {
+    window.__vyreQuiet = { t: Date.now() };
+    new MutationObserver(() => { window.__vyreQuiet.t = Date.now(); }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+  }
+  if (!window.__vyreNet) {
+    const net = window.__vyreNet = { pending: 0, t: Date.now() };
+    const done = () => { net.pending = Math.max(0, net.pending - 1); net.t = Date.now(); };
+    const begin = () => { net.pending++; net.t = Date.now(); };
+    const f = window.fetch;
+    if (typeof f === "function") window.fetch = function () { begin(); let p; try { p = f.apply(this, arguments); } catch (e) { done(); throw e; } p.then(done, done); return p; };
+    if (window.XMLHttpRequest) { const send = XMLHttpRequest.prototype.send; XMLHttpRequest.prototype.send = function () { begin(); this.addEventListener("loadend", done); return send.apply(this, arguments); }; }
+  }
+  if (!window.__vyreToasts) {
+    window.__vyreToasts = [];
+    new MutationObserver(muts => {
+      for (const m of muts) for (const n of m.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        const hit = n.matches(TOAST) ? n : n.querySelector(TOAST);
+        if (hit) setTimeout(() => { const t = txt(hit.innerText || hit.textContent).slice(0, 160); if (t) { window.__vyreToasts.push({ t: Date.now(), text: t }); if (window.__vyreToasts.length > 20) window.__vyreToasts.shift(); } }, 40);
+      }
+    }).observe(document, { subtree: true, childList: true });
+  }
+  const state = { domQuietMs: Date.now() - window.__vyreQuiet.t, netPending: window.__vyreNet.pending, netQuietMs: window.__vyreNet.pending ? 0 : Date.now() - window.__vyreNet.t };
+  const BUSY = '[aria-busy="true"],[role="progressbar"],[class*="skeleton"],[class*="Skeleton"],[class*="spinner"],[class*="Spinner"],[class*="loading"],[class*="Loading"],[class*="loader"],[class*="Loader"],[class*="shimmer"],.animate-pulse,.animate-spin,.n-spin';
+  const busy = [];
+  for (const el of document.querySelectorAll(BUSY)) { if (busy.length >= 20) break; if (vis(el)) busy.push(el); }
+  state.busy = busy.length;
+  if (busy.length) state.busySample = busy.slice(0, 2).map(e => e.tagName.toLowerCase() + (e.className && typeof e.className === "string" ? "." + e.className.trim().split(/\\s+/)[0] : ""));
+  const vw = window.innerWidth || 1, vh = window.innerHeight || 1;
+  const backdrop = [...document.querySelectorAll('[class*="backdrop"],[class*="Backdrop"],[class*="mask"],.v-modal')].some(e => vis(e) && getComputedStyle(e).position === "fixed");
+  const blockers = [];
+  for (const el of document.querySelectorAll('[role="dialog"],[role="alertdialog"],[aria-modal="true"],[class*="modal"],[class*="Modal"],[class*="popup"],[class*="Popup"],[class*="overlay"],[class*="Overlay"],[class*="drawer"],[class*="Drawer"],[class*="dialog"],[class*="Dialog"]')) {
+    if (blockers.length >= 6) break;
+    if (!vis(el) || blockers.some(b => b.el.contains(el))) continue;
+    const cs = getComputedStyle(el), r = el.getBoundingClientRect(), role = el.getAttribute("role");
+    const layer = (cs.position === "fixed" || cs.position === "absolute") && r.width * r.height >= 0.08 * vw * vh;
+    if (!(role === "dialog" || role === "alertdialog" || el.getAttribute("aria-modal") === "true" || layer)) continue;
+    const ariaModal = el.getAttribute("aria-modal") === "true" || role === "alertdialog";
+    const cover = cs.position === "fixed" && r.width * r.height >= 0.6 * vw * vh;
+    const head = el.querySelector("h1,h2,h3,h4,[class*=title],[class*=Title]");
+    blockers.push({ el, i: blockers.length, path: pathOf(el), role: role || undefined, title: txt(el.getAttribute("aria-label") || (head && head.textContent)).slice(0, 80), text: txt(el.innerText || el.textContent).slice(0, 300), modal: ariaModal || cover || (backdrop && (role === "dialog" || layer)) });
+  }
+  state.blockers = blockers.map(({ el, ...b }) => b);
+  const toasts = (window.__vyreToasts || []).filter(x => Date.now() - x.t < 15000).map(x => ({ ageMs: Date.now() - x.t, text: x.text }));
+  for (const el of document.querySelectorAll(TOAST)) { if (toasts.length >= 8) break; if (!vis(el)) continue; const t = txt(el.innerText || el.textContent).slice(0, 160); if (t && !toasts.some(x => x.text === t)) toasts.push({ ageMs: null, text: t }); }
+  state.toasts = toasts.slice(-8);
   const out = [];
-  for (const el of document.querySelectorAll("*")) {
+  for (const el of deepAll(document, [])) {
     const role = roleOf(el);
     if (!role || !ACTIONABLE.has(role)) continue;
     const style = getComputedStyle(el);
@@ -217,12 +298,20 @@ export const EXPRESSION = script("snapshot", {}, `
     const c = { path: pathOf(el), role, enabled: !disabled, frame: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) } };
     if (name) c.name = name; else c.nameless = true;
     if (identifier) c.identifier = identifier;
+    if (FILL.includes(role)) {
+      const aria = txt(el.getAttribute("aria-label")), ph = txt(el.getAttribute("placeholder")), near = nearOf(el);
+      if (aria && aria !== name) c.aria = aria.slice(0, 80);
+      if (ph && ph !== name) c.placeholder = ph.slice(0, 80);
+      if (near && near !== name) c.near = near;
+    }
+    if (blockers.length) { const bi = blockers.findIndex(b => b.el.contains(el)); if (bi >= 0) c.blk = bi; }
     const container = containerOf(el);
     if (container) c.container = container;
     if (document.activeElement === el) c.focused = true;
     if ("value" in el && el.value !== undefined && el.value !== null && el.value !== "" && el.type !== "password") c.value = String(el.value);
     if (el.type === "password" && el.value) c.length = el.value.length;
     if (el.type === "checkbox" || el.type === "radio") c.checked = el.checked === true;
+    else if (el.getAttribute("aria-checked") !== null) c.checked = el.getAttribute("aria-checked") === "true";
     const form = el.form || el.closest("form");
     if (form) {
       c.inForm = true;
@@ -233,7 +322,7 @@ export const EXPRESSION = script("snapshot", {}, `
     }
     out.push(c);
   }
-  return { title: document.title, url: location.href, text: (document.body ? document.body.innerText : "").slice(0, 20000), controls: out };
+  return { title: document.title, url: location.href, text: (document.body ? document.body.innerText : "").slice(0, 20000), controls: out, state };
 `);
 
 /** Find a control by path, scroll it to the middle and report where its centre is. */
@@ -247,7 +336,7 @@ const locate = (/** @type {string} */ path, focus = false) => script("locate", {
   const x = r.x + r.width / 2, y = r.y + r.height / 2;
   const top = document.elementFromPoint(x, y);
   const hit = !!top && (top === el || el.contains(top) || top.contains(el));
-  return { found: true, x, y, hit, checked: el.checked === true };
+  return { found: true, x, y, hit, checked: el.checked === true || el.getAttribute("aria-checked") === "true" };
 `);
 
 /** Set fields, all in one evaluate. kind is auto (decide from the element), type, select or check. */
@@ -301,6 +390,43 @@ const quiet = () => script("quiet", {}, `
   return Date.now() - window.__vyreQuiet.t;
 `);
 
+/** A compact, attribute-trimmed outline of the target's area (or the top dialog, or the page) for a failure report. The worker masks it and caps it. */
+const domOutline = (/** @type {string|undefined} */ path) => script("dom", { path: path || "" }, `
+  ${PRELUDE}
+  const KEEP = ["id", "data-testid", "role", "aria-label", "placeholder", "name", "type", "disabled", "aria-disabled", "aria-busy", "aria-modal", "aria-checked", "title"];
+  const SECRET = /pass|secret|token|card|cvv|cvc|ssn|otp|pin/i;
+  const SKIP = new Set(["SCRIPT", "STYLE", "SVG", "NOSCRIPT", "PATH", "IMG", "LINK", "META", "IFRAME", "HEAD"]);
+  const BARE = new Set(["DIV", "SPAN", "SECTION", "P"]);
+  let root = ARGS.path ? find(ARGS.path) : null;
+  if (root) root = root.closest('[role="dialog"],[role="alertdialog"],form,[class*="drawer"],[class*="modal"]') || root.parentElement || root;
+  if (!root) {
+    const tops = [...document.querySelectorAll('[aria-modal="true"],[role="alertdialog"],[role="dialog"]')].filter(e => e.getBoundingClientRect().width > 0);
+    root = tops.length ? tops[tops.length - 1] : (document.querySelector("main") || document.body);
+  }
+  let budget = 3600;
+  const parts = [];
+  const push = t => { parts.push(t); budget -= t.length; };
+  function walk(el, depth) {
+    if (budget <= 0 || depth > 16 || SKIP.has(el.tagName.toUpperCase())) return;
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden") return;
+    const tag = el.tagName.toLowerCase();
+    let attrs = "";
+    for (const k of KEEP) { const v = el.getAttribute(k); if (v !== null && v !== "") attrs += " " + k + '="' + String(v).slice(0, 60) + '"'; }
+    if ("value" in el && typeof el.value === "string" && el.value && !SECRET.test((el.type || "") + (el.name || "") + (el.id || "") + (el.autocomplete || ""))) attrs += ' value="' + el.value.slice(0, 40) + '"';
+    const bare = BARE.has(el.tagName) && !attrs;
+    if (!bare) push("<" + tag + attrs + ">");
+    for (const n of el.childNodes) {
+      if (n.nodeType === 3) { const t = String(n.textContent || "").trim().replace(/\\s+/g, " ").slice(0, 80); if (t) push(t); }
+      else if (n.nodeType === 1) walk(n, depth + 1);
+    }
+    if (el.shadowRoot) for (const n of el.shadowRoot.children) walk(n, depth + 1);
+    if (!bare) push("</" + tag + ">");
+  }
+  walk(root, 0);
+  return { html: parts.join("") };
+`);
+
 // ---------------------------------------------------------------- CDP plumbing
 
 /**
@@ -320,6 +446,7 @@ export function toSnapshot(raw) {
   const controls = Array.isArray(raw && raw.controls) ? raw.controls : [];
   return {
     title: (raw && raw.title) || "", url: (raw && raw.url) || "", text: (raw && raw.text) || "",
+    ...(raw && raw.state ? { state: raw.state } : {}),
     controls, named: controls.filter((/** @type {any} */ c) => !c.nameless).length, nameless: controls.filter((/** @type {any} */ c) => c.nameless).length,
   };
 }
@@ -335,13 +462,6 @@ async function tabOf(/** @type {any} */ args, /** @type {any} */ ctx, /** @type 
   const v = await ctx.floorAllows(a.id, op);
   if (!v.allow) throw err("blocked", `${v.why} (${v.tier})`);
   return a.id;
-}
-
-/** @param {Selector} sel @param {any} snap */
-function bind(sel, snap) {
-  const r = resolve(sel, snap.controls);
-  if (r.control) return r.control;
-  throw err(r.why === "tied" ? "tied" : "not_found", `${r.why === "tied" ? "more than one control matches" : "nothing matches"} ${JSON.stringify({ role: sel.role, name: sel.name, identifier: sel.identifier })}`);
 }
 
 // ---------------------------------------------------------------- holds and signatures
@@ -479,30 +599,219 @@ async function doAct(ctx, tabId, snap, ctl, kind, value, release, asked = false)
   return { ok: true, did: kind, control: brief(ctl) };
 }
 
-// ---------------------------------------------------------------- waiting
+
+// ---------------------------------------------------------------- waiting, one helper for every op
+
+const POLL_MS = 60;
+const STABLE_MS = 150;
+const BACKOFF_MS = [60, 150, 300];
+const STRATEGY_ORDER = ["identifier", "role+name", "name", "name-ci", "aria", "nearby-label", "text"];
+
+/**
+ * The optional `wait` argument of page.act and page.fill: how long to keep looking for the control
+ * and whether it must hold still. Absent means one look and no waiting, which is what these ops
+ * always did.
+ * @param {any} raw
+ */
+export function waitOpts(raw) {
+  const w = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  return { timeoutMs: Math.min(Math.max(Number(w.timeoutMs) || 0, 0), 120_000), stable: w.stable === true, busyMs: w.busyMs !== undefined && Number.isFinite(Number(w.busyMs)) ? Math.max(0, Number(w.busyMs)) : undefined };
+}
+
+/**
+ * @typedef {{ sel: Selector, fillable?: boolean, optional?: boolean, label?: string }} Spec
+ * @typedef {{ control: any|null, strategy?: string, fallback?: boolean, why?: string, candidates?: string[] }} Bound
+ */
+
+/** @param {Spec} spec @param {any} snap @returns {Bound} */
+function bindOne(spec, snap) {
+  const blockers = (snap.state && snap.state.blockers) || [];
+  const within = spec.fillable && blockers.length ? (/** @type {any} */ c) => c.blk !== undefined : undefined;
+  return matchControl(spec.sel, snap.controls, resolve, { fillable: spec.fillable, within });
+}
+
+/** The weakest strategy among matches, and whether any was a fallback. @param {Bound[]} bound */
+function summarizeStrategy(bound) {
+  const used = bound.filter(b => b.control && b.strategy);
+  const worst = used.reduce((/** @type {string} */ w, b) => (STRATEGY_ORDER.indexOf(/** @type {string} */ (b.strategy)) > STRATEGY_ORDER.indexOf(w) ? /** @type {string} */ (b.strategy) : w), used.length ? /** @type {string} */ (used[0].strategy) : "");
+  return { strategy: worst, fallback: used.some(b => b.fallback) };
+}
+
+/**
+ * Where the page is and what it looks like, small and masked: the detail every failure carries.
+ * @param {any} ctx @param {number} tabId @param {{ path?: string, trace?: any, extra?: any }} [o]
+ */
+export async function failDetail(ctx, tabId, o = {}) {
+  /** @type {any} */ let tab = null;
+  try { tab = await ctx.tabs.get(tabId); } catch { /* the tab may be gone */ }
+  /** @type {string|undefined} */ let dom;
+  try { const r = await evaluate(ctx, tabId, domOutline(o.path)); dom = redactDom(r && r.html, 2048); } catch { /* the page may be gone or blind */ }
+  return { ...(tab ? { tab: whereOf(tab.pendingUrl || tab.url) } : {}), ...(o.trace ? { trace: traceOf(o.trace) } : {}), ...(dom ? { dom } : {}), ...(o.extra || {}) };
+}
+
+/** @param {any} ctx @param {number} tabId @param {any} snap @param {any} blocker @param {any} trace */
+async function modalError(ctx, tabId, snap, blocker, trace) {
+  const d = describeBlocker(blocker, snap);
+  const detail = await failDetail(ctx, tabId, { path: blocker.path, trace, extra: { blockers: [d] } });
+  const shown = (d.title || d.text || "a dialog").slice(0, 80);
+  const how = d.kind === "unsafe" ? "It asks about changes or a confirmation, so it was not dismissed." : "It is not one of the popups Vyre dismisses on its own.";
+  return err("modal", `a dialog is blocking the page: ${JSON.stringify(shown)}. ${how} Read it, then act on one of its own controls (${d.controls.map(c => JSON.stringify(c)).join(", ") || "none listed"}).`, detail);
+}
+
+/**
+ * Bind selectors to controls, waiting up to wait.timeoutMs for them to exist, be enabled, be in
+ * front of any modal dialog, be free of loading spinners and (wait.stable) hold still for 150 ms.
+ * A safe popup in the way (what's new, tour, cookies) is dismissed and reported; any other dialog
+ * in front of a control is an error that describes it. Loading spinners are soft: after a grace
+ * period the wait gives up on them and says so in the trace, so one endlessly animated element
+ * cannot stall a flow. timeoutMs 0 is one look.
+ * @param {any} ctx @param {number} tabId @param {Spec[]} specs @param {ReturnType<typeof waitOpts>} wait @param {number} [t0]
+ */
+async function acquire(ctx, tabId, specs, wait, t0 = Date.now()) {
+  /** @type {any[]} */ const dismissed = [];
+  let dismissals = 0, prevKey = "", sameSince = 0;
+  const busyGrace = wait.busyMs !== undefined ? wait.busyMs : Math.min(wait.timeoutMs * 0.6, 3000);
+  /** @type {any} */ let flags = {};
+  for (;;) {
+    if (ctx.stopped()) throw err("stopped");
+    const snap = await snapshot(ctx, tabId);
+    const elapsed = Date.now() - t0;
+    const bound = specs.map(sp => bindOne(sp, snap));
+    const done = (/** @type {any} */ extra) => ({ snap, bound, trace: { ...summarizeStrategy(bound), waitedMs: Date.now() - t0, retries: 0, newTab: false, ...(dismissed.length ? { dismissed } : {}), ...flags, ...(extra || {}) } });
+    // A modal dialog in front of the page. A missing control might live behind it, so it counts too.
+    /** @type {any} */ let blocker = null;
+    for (const b of bound) { blocker = topBlocker(snap, b.control); if (blocker) break; }
+    if (blocker) {
+      const c = classifyBlocker(blocker, snap);
+      if (c.kind === "safe" && dismissals < 3) {
+        await mouseClick(ctx, tabId, c.closer.path);
+        dismissals++;
+        dismissed.push({ what: (blocker.title || blocker.text || "").slice(0, 60), control: String(c.closer.name).slice(0, 30) });
+        await nap(ctx, 180); // the dialog's own closing animation
+        continue;
+      }
+      const anyFound = bound.some(b => b.control);
+      // Something that asks about changes is surfaced at once when it is in the way; an unfamiliar one, or a control
+      // that has not rendered yet, gets the rest of the wait first (a dialog may close itself, a drawer may still be filling).
+      if ((c.kind === "unsafe" && anyFound) || c.kind === "safe" || elapsed >= wait.timeoutMs) throw await modalError(ctx, tabId, snap, blocker, done().trace);
+      await nap(ctx, POLL_MS);
+      continue;
+    }
+    if (!bound.some(b => !b.control)) {
+      const ctls = bound.map(b => b.control);
+      const st = snap.state || {};
+      let ready = true;
+      if (st.busy > 0 && elapsed < busyGrace) ready = false;
+      else if (st.busy > 0) flags = { ...flags, busyIgnored: true };
+      if (ctls.some(c => c.enabled === false) && elapsed < wait.timeoutMs) ready = false;
+      if (wait.stable) {
+        const key = ctls.map(c => c.path + JSON.stringify(c.frame)).join("|");
+        if (key !== prevKey) { prevKey = key; sameSince = Date.now(); ready = false; } else if (Date.now() - sameSince < STABLE_MS) ready = false;
+      }
+      if (ready) return done();
+      if (elapsed >= wait.timeoutMs) return done(wait.stable ? { unstable: true } : undefined);
+    } else if (elapsed >= wait.timeoutMs) return done();
+    await nap(ctx, POLL_MS);
+  }
+}
+
+/** A control that vanished or was covered between the look and the click. */
+const isStale = (/** @type {any} */ e) => e && ((e.code === "not_found" && /disappeared|gone/.test(String(e.message))) || e.code === "covered");
+
+/** The error for a selector that bound nothing. @param {any} ctx @param {number} tabId @param {Selector} sel @param {Bound} b @param {any} got @param {any} trace */
+async function notFoundError(ctx, tabId, sel, b, got, trace) {
+  const tied = b.why === "tied";
+  const detail = await failDetail(ctx, tabId, { trace, extra: { candidates: b.candidates && b.candidates.length ? b.candidates : nearMisses(String(sel.name || sel.identifier || ""), got.snap.controls) } });
+  return err(tied ? "tied" : "not_found", `${tied ? "more than one control matches" : "nothing matches"} ${JSON.stringify({ role: sel.role, name: sel.name, identifier: sel.identifier })}`, detail);
+}
+
+/**
+ * The settle step of page.wait: no spinners, the DOM quiet for quietMs and the network quiet for
+ * netQuietMs. Spinners, a page that never goes quiet and requests that never end are soft after a
+ * grace period (reported, not fatal). A page with no state (a test double) has nothing to wait on.
+ * @param {any} ctx @param {number} tabId @param {{ quietMs?: number, netQuietMs?: number }} o @param {number} t0 @param {number} timeoutMs
+ */
+export async function settleLoop(ctx, tabId, o, t0, timeoutMs) {
+  const domNeed = o.quietMs ?? 150, netNeed = o.netQuietMs ?? 250;
+  const softAt = Math.min(timeoutMs / 2, 2500);
+  /** @type {any} */ const flags = {};
+  for (;;) {
+    if (ctx.stopped()) throw err("stopped");
+    const snap = await snapshot(ctx, tabId);
+    const st = snap.state;
+    if (!st) return flags;
+    const el = Date.now() - t0;
+    const soft = el >= softAt;
+    const netQuiet = st.netPending === 0 && st.netQuietMs >= netNeed;
+    if ((!st.busy || soft) && (st.domQuietMs >= domNeed || soft) && (netQuiet || soft)) {
+      if (st.busy) flags.busyIgnored = true;
+      if (st.domQuietMs < domNeed) flags.domNeverQuiet = true;
+      if (!netQuiet) flags.netIgnored = true;
+      return flags;
+    }
+    if (el >= timeoutMs) throw err("timeout", `the page did not settle in ${timeoutMs} ms`, await failDetail(ctx, tabId, { trace: { strategy: "settled", waitedMs: el }, extra: { state: { busy: st.busy, domQuietMs: st.domQuietMs, netPending: st.netPending } } }));
+    await nap(ctx, POLL_MS);
+  }
+}
 
 /** @param {any} ctx @param {number} tabId @param {any} args */
 async function waitFor(ctx, tabId, args) {
   const timeoutMs = Math.min(Math.max(Number(args.timeoutMs) || 10_000, 100), 120_000);
   const idleMs = Number(args.idleMs) || 0;
-  const deadline = Date.now() + timeoutMs;
-  const kinds = [args.selector != null, typeof args.url === "string", idleMs > 0].filter(Boolean).length;
-  if (kinds !== 1) throw err("bad_request", "page.wait needs exactly one of selector, url or idleMs");
+  const t0 = Date.now();
+  const deadline = t0 + timeoutMs;
+  const kinds = [args.selector != null, typeof args.url === "string", idleMs > 0, args.settled === true].filter(Boolean).length;
+  if (kinds !== 1) throw err("bad_request", "page.wait needs exactly one of selector, url, idleMs or settled");
+  /** @param {string} strategy @param {any} [extra] */
+  const trace = (strategy, extra) => traceOf({ strategy, fallback: false, waitedMs: Date.now() - t0, retries: 0, newTab: false, ...(extra || {}) });
+  const timeout = async (/** @type {any} */ tr) => err("timeout", `still waiting after ${timeoutMs} ms`, await failDetail(ctx, tabId, { trace: tr }));
+  const ok = (/** @type {any} */ tr) => ({ ok: true, waitedMs: Date.now() - t0, trace: tr });
+
+  if (args.settled === true) return ok(trace("settled", await settleLoop(ctx, tabId, args, t0, timeoutMs)));
+  if (typeof args.selector === "string" && /[.#\[:>]/.test(args.selector)) {
+    // A CSS selector: existence only (or absence, with gone).
+    while (true) {
+      if (ctx.stopped()) throw err("stopped");
+      const here = !!(await evaluate(ctx, tabId, exists(args.selector)));
+      if (here !== (args.gone === true)) return ok(trace("css"));
+      if (Date.now() >= deadline) throw await timeout(trace("css"));
+      await nap(ctx, 100);
+    }
+  }
+  if (args.selector != null) {
+    const sel = selectorArg(args.selector);
+    if (args.gone === true) {
+      while (true) {
+        if (ctx.stopped()) throw err("stopped");
+        if (!matchControl(sel, (await snapshot(ctx, tabId)).controls, resolve).control) return ok(trace("absent"));
+        if (Date.now() >= deadline) throw await timeout(trace("absent"));
+        await nap(ctx, 100);
+      }
+    }
+    const got = await acquire(ctx, tabId, [{ sel }], { timeoutMs, stable: args.stable === true, busyMs: undefined }, t0);
+    const b = got.bound[0];
+    if (!b.control || (args.enabled === true && b.control.enabled === false)) throw await timeout(got.trace);
+    const flags = args.quietMs !== undefined || args.netQuietMs !== undefined ? await settleLoop(ctx, tabId, args, t0, Math.max(100, deadline - Date.now())) : {};
+    return ok(traceOf({ ...got.trace, ...flags, waitedMs: Date.now() - t0 }));
+  }
+  const byUrl = typeof args.url === "string";
   while (true) {
     if (ctx.stopped()) throw err("stopped");
-    let done = false;
-    if (args.selector != null) {
-      if (typeof args.selector === "string" && /[.#\[:>]/.test(args.selector)) done = !!(await evaluate(ctx, tabId, exists(args.selector)));
-      else done = !!resolve(selectorArg(args.selector), (await snapshot(ctx, tabId)).controls).control;
-    } else if (typeof args.url === "string") done = String(await evaluate(ctx, tabId, href())).includes(args.url);
-    else done = Number(await evaluate(ctx, tabId, quiet())) >= idleMs;
-    if (done) return { ok: true };
-    if (Date.now() >= deadline) throw err("timeout", `still waiting after ${timeoutMs} ms`);
-    await sleep(100);
+    const done = byUrl ? String(await evaluate(ctx, tabId, href())).includes(args.url) : Number(await evaluate(ctx, tabId, quiet())) >= idleMs;
+    if (done) return ok(trace(byUrl ? "url" : "idle"));
+    if (Date.now() >= deadline) throw await timeout(trace(byUrl ? "url" : "idle"));
+    await nap(ctx, 100);
   }
 }
 
 // ---------------------------------------------------------------- ops
+
+/** A page.fill field as a spec: a selector, or a plain label matched the way a person reads a form. @param {any} f @param {number} i @returns {Spec} */
+function fieldSpec(f, i) {
+  if (f && f.selector != null) return { sel: selectorArg(f.selector), optional: f.optional === true };
+  if (f && typeof f.label === "string" && f.label.trim()) return { sel: { name: f.label.trim() }, fillable: true, optional: f.optional === true, label: f.label.trim() };
+  throw err("bad_request", `field ${i}: a field needs a selector or a label`);
+}
 
 /** @type {{ name: string, ops: Record<string, (args: any, ctx: any) => Promise<any>> }} */
 export default {
@@ -520,32 +829,83 @@ export default {
       if (!["click", "type", "select", "check", "press"].includes(kind)) throw err("bad_request", `unknown kind ${JSON.stringify(kind)}`);
       if ((kind === "type" || kind === "select" || kind === "press") && (args.value === undefined || args.value === null)) throw err("bad_request", `${kind} needs a value`);
       const sel = selectorArg(args.selector);
-      const snap = await snapshot(ctx, tabId);
-      return doAct(ctx, tabId, snap, bind(sel, snap), kind, args.value, args.release, args.asked === true);
+      const wait = waitOpts(args.wait);
+      const t0 = Date.now();
+      let retries = 0;
+      for (;;) {
+        const got = await acquire(ctx, tabId, [{ sel, fillable: args.fillable === true }], wait, t0);
+        const b = got.bound[0];
+        const trace = { ...got.trace, waitedMs: Date.now() - t0, retries };
+        if (!b.control) {
+          if (args.optional === true && b.why === "unbound") return { ok: true, skipped: true, why: `no control matches ${JSON.stringify(sel.name || sel.identifier)}, and this step is optional`, trace: traceOf(trace) };
+          throw await notFoundError(ctx, tabId, sel, b, got, trace);
+        }
+        try {
+          const r = await doAct(ctx, tabId, got.snap, b.control, kind, args.value, args.release, args.asked === true);
+          if (r.ok === false && /gone|disappeared/.test(String(r.why))) throw err("not_found", "the control disappeared");
+          if (r.ok === false && !r.held) return { ...r, trace: traceOf(trace), ...(await failDetail(ctx, tabId, { path: b.control.path })) };
+          return { ...r, trace: traceOf(trace) };
+        } catch (e) {
+          if (isStale(e) && retries < BACKOFF_MS.length) { await nap(ctx, BACKOFF_MS[retries++]); continue; }
+          if (e && /** @type {any} */ (e).detail !== undefined) throw e;
+          throw err(/** @type {any} */ (e)?.code || "error", String(/** @type {any} */ (e)?.message || e), await failDetail(ctx, tabId, { path: b.control.path, trace }));
+        }
+      }
     },
 
     "page.fill": async (args, ctx) => {
       const tabId = await tabOf(args, ctx, "page.fill");
-      if (!Array.isArray(args.fields) || !args.fields.length) throw err("bad_request", "page.fill needs fields: [{selector, value}]");
+      if (!Array.isArray(args.fields) || !args.fields.length) throw err("bad_request", "page.fill needs fields: [{selector | label, value}]");
       if (args.fields.length > 100) throw err("bad_request", "page.fill takes at most 100 fields");
-      const snap = await snapshot(ctx, tabId);
-      // Resolve every field first: a fill that lands half the form is worse than one that lands none.
-      const bound = args.fields.map((/** @type {any} */ f, /** @type {number} */ i) => {
-        try { return bind(selectorArg(f && f.selector), snap); } catch (e) { throw err(/** @type {any} */ (e).code || "bad_request", `field ${i}: ${/** @type {any} */ (e).message}`); }
-      });
-      const off = bound.findIndex((/** @type {any} */ c) => c.enabled === false);
-      if (off >= 0) throw err("bad_request", `field ${off} is disabled`);
-      const results = await evaluate(ctx, tabId, apply(bound.map((/** @type {any} */ c, /** @type {number} */ i) => ({ path: c.path, kind: "auto", value: args.fields[i].value }))));
-      const summary = bound.map((/** @type {any} */ c, /** @type {number} */ i) => ({ name: c.name || c.identifier || c.role, ok: !!(results[i] && results[i].ok), ...(results[i] && results[i].why ? { why: results[i].why } : {}) }));
-      const filled = summary.filter((/** @type {any} */ s) => s.ok).length;
-      if (filled !== summary.length) return { ok: false, why: "some fields could not be set", filled, fields: summary };
-      if (args.submit !== true) return { ok: true, filled, fields: summary };
-      const after = await snapshot(ctx, tabId);
-      const form = bound[0].form;
-      const btn = after.controls.find((/** @type {any} */ c) => c.submit && c.form === form) || after.controls.find((/** @type {any} */ c) => c.submit);
-      if (!btn) return { ok: true, filled, fields: summary, submitted: false, why: "no submit control found" };
-      const r = await doAct(ctx, tabId, after, btn, "click", undefined, args.release, args.asked === true);
-      return { ...r, filled, ...(r.ok ? { submitted: true } : {}) };
+      const partial = args.partial === true;
+      const wait = waitOpts(args.wait);
+      const specs = args.fields.map((/** @type {any} */ f, /** @type {number} */ i) => fieldSpec(f, i));
+      const asked = (/** @type {number} */ i) => String(specs[i].label || specs[i].sel.name || specs[i].sel.identifier || "");
+      const t0 = Date.now();
+      let retries = 0;
+      for (;;) {
+        const got = await acquire(ctx, tabId, specs, wait, t0);
+        const trace = { ...got.trace, waitedMs: Date.now() - t0, retries };
+        /** @type {Map<number, { why: string, candidates: string[] }>} */
+        const lost = new Map();
+        got.bound.forEach((/** @type {Bound} */ b, /** @type {number} */ i) => {
+          if (!b.control) lost.set(i, { why: b.why === "tied" ? "more than one control matches" : "nothing matches", candidates: b.candidates && b.candidates.length ? b.candidates : nearMisses(asked(i), got.snap.controls, 4).map(c => c.name) });
+        });
+        // Resolve every field first: a fill that lands half the form is worse than one that lands none (unless partial was asked for).
+        const hard = [...lost.keys()].filter(i => !specs[i].optional);
+        if (hard.length && !partial) {
+          const i = hard[0], l = /** @type {any} */ (lost.get(i));
+          throw err(l.why.startsWith("more") ? "tied" : "not_found", `field ${i}: ${l.why} ${JSON.stringify({ role: specs[i].sel.role, name: specs[i].sel.name, identifier: specs[i].sel.identifier })}`, await failDetail(ctx, tabId, { trace, extra: { candidates: l.candidates } }));
+        }
+        const off = got.bound.findIndex((/** @type {Bound} */ b) => b.control && b.control.enabled === false);
+        if (off >= 0 && !partial) throw err("bad_request", `field ${off} is disabled`, await failDetail(ctx, tabId, { path: got.bound[off].control.path, trace }));
+        const use = got.bound.map((/** @type {Bound} */ b, /** @type {number} */ i) => ({ b, i })).filter(x => x.b.control && x.b.control.enabled !== false);
+        const results = use.length ? await evaluate(ctx, tabId, apply(use.map(x => ({ path: x.b.control.path, kind: "auto", value: args.fields[x.i].value })))) : [];
+        if (retries < BACKOFF_MS.length && results.some((/** @type {any} */ r) => r && r.ok === false && /gone/.test(String(r.why)))) { await nap(ctx, BACKOFF_MS[retries++]); continue; }
+        const byField = new Map(use.map((x, k) => [x.i, results[k]]));
+        const summary = got.bound.map((/** @type {Bound} */ b, /** @type {number} */ i) => {
+          const c = b.control;
+          if (!c) return { name: asked(i), ok: false, why: /** @type {any} */ (lost.get(i)).why, ...(specs[i].optional ? { optional: true } : {}) };
+          const cname = c.name || c.identifier || c.role;
+          if (c.enabled === false) return { name: asked(i), matched: cname, ok: false, why: "disabled" };
+          const r = byField.get(i);
+          return { name: specs[i].label ? asked(i) : cname, ...(specs[i].label ? { matched: cname } : {}), ok: !!(r && r.ok), strategy: b.strategy, ...(b.fallback ? { fallback: true } : {}), ...(r && r.why ? { why: r.why } : {}) };
+        });
+        const filled = summary.filter((/** @type {any} */ s) => s.ok).length;
+        const notFound = [...lost.keys()].map(asked);
+        const failed = summary.filter((/** @type {any} */ s) => !s.ok && !s.optional);
+        if (failed.length) {
+          const lostHard = hard.map(asked);
+          return { ok: false, why: lostHard.length ? `could not find: ${lostHard.join(", ")}` : "some fields could not be set", filled, fields: summary, ...(notFound.length ? { notFound } : {}), trace: traceOf(trace), ...(await failDetail(ctx, tabId, { extra: { candidates: [...lost.values()][0]?.candidates } })) };
+        }
+        if (args.submit !== true) return { ok: true, filled, fields: summary, ...(notFound.length ? { notFound, skipped: notFound } : {}), trace: traceOf(trace) };
+        const after = await snapshot(ctx, tabId);
+        const form = got.bound.find((/** @type {Bound} */ b) => b.control)?.control.form;
+        const btn = after.controls.find((/** @type {any} */ c) => c.submit && c.form === form) || after.controls.find((/** @type {any} */ c) => c.submit);
+        if (!btn) return { ok: true, filled, fields: summary, submitted: false, why: "no submit control found", trace: traceOf(trace) };
+        const r = await doAct(ctx, tabId, after, btn, "click", undefined, args.release, args.asked === true);
+        return { ...r, filled, trace: traceOf(trace), ...(r.ok ? { submitted: true } : {}) };
+      }
     },
 
     "page.eval": async (args, ctx) => {
@@ -589,4 +949,3 @@ export default {
     },
   },
 };
-

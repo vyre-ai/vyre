@@ -5,13 +5,17 @@
 import { proto } from "./shared.js";
 
 export class VyreError extends Error {
-  /** @param {string} code @param {string} [detail] */
-  constructor(code, detail) {
+  /**
+   * @param {string} code @param {string} [detail] the message
+   * @param {any} [data] structured detail (a trace, a redacted page snippet) that rides with the error
+   */
+  constructor(code, detail, data) {
     super(proto.fail(code, detail).message);
     this.name = "VyreError";
     this.code = code;
+    if (data !== undefined) /** @type {any} */ (this).detail = data;
   }
 }
 
-/** @param {string} code @param {string} [detail] */
-export const err = (code, detail) => new VyreError(code, detail);
+/** @param {string} code @param {string} [detail] @param {any} [data] */
+export const err = (code, detail, data) => new VyreError(code, detail, data);

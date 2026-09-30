@@ -4,7 +4,7 @@
 //   GET  /checkout            12-field checkout-like form with a submit button
 //   GET  /ghl                 single-page CRM: contacts table, workflow builder, action modal, save
 //   GET  /api/contacts        needs `Authorization: Bearer <token>` AND the `sid` cookie (set by /ghl)
-//   GET  /api/workflows       same auth; POST creates one (201), GET /api/workflows/<id> reads it
+//   GET  /api/workflows       same auth; POST creates one (201), GET /api/workflows/<id> reads it, PUT updates it (200)
 //   GET  /healthz             no auth
 // The auth pair mirrors a real app: a bearer header the page's JS adds, plus a session cookie the
 // browser adds, so the API-learning path (bench/api-learn.mjs) has both kinds to classify.
@@ -83,13 +83,27 @@ export async function startFixtureServer({ port = 0, host = "127.0.0.1" } = {}) 
           let body;
           try { body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"); } catch { return json(res, 400, { error: "bad json" }); }
           const id = `wf_${crypto.randomBytes(5).toString("hex")}`;
-          const wf = { id, name: String(body.name || ""), trigger: body.trigger ?? null, actions: Array.isArray(body.actions) ? body.actions : [] };
+          const wf = { id, name: String(body.name || ""), trigger: body.trigger ?? null, actions: Array.isArray(body.actions) ? body.actions : [], status: body.status === "published" ? "published" : "draft" };
           workflows.set(id, wf);
           json(res, 201, { data: wf });
         });
         return;
       }
       const wfOne = /^\/api\/workflows\/([\w-]+)$/.exec(p);
+      if (req.method === "PUT" && wfOne) {
+        const w = workflows.get(wfOne[1]);
+        if (!w) return json(res, 404, { error: "not found" });
+        /** @type {Buffer[]} */
+        const chunks = [];
+        req.on("data", c => chunks.push(c));
+        req.on("end", () => {
+          let body;
+          try { body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"); } catch { return json(res, 400, { error: "bad json" }); }
+          Object.assign(w, { name: String(body.name ?? w.name), trigger: body.trigger ?? w.trigger, actions: Array.isArray(body.actions) ? body.actions : w.actions, status: body.status === "published" ? "published" : "draft" });
+          json(res, 200, { data: w });
+        });
+        return;
+      }
       if (req.method === "GET" && wfOne) {
         const w = workflows.get(wfOne[1]);
         return w ? json(res, 200, { data: w }) : json(res, 404, { error: "not found" });

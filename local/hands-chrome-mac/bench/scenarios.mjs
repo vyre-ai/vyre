@@ -41,6 +41,31 @@ export const WORKFLOW_STEPS = [
   { op: "click", selector: t("contact-row-0") },
 ];
 
+/**
+ * The awkward-moments scenario: the same fixture with a slow route (skeleton), a blocking "what's
+ * new" popup, an unsaved-changes guard, a toast on save and a toolbar that re-renders. It runs as
+ * ONE ghl.run flow through the extension (the direct-CDP driver has no ghl ops), then checks the
+ * fixture's own state. `expect.identifiers` are the controls the flow must find; `state` is read
+ * from window.__state afterwards.
+ */
+export const GHL_ROBUST = {
+  path: "/ghl?slow=600&whatsnew=1&guard=1&stale=1&toast=2500",
+  flow: "create-workflow",
+  params: {
+    name: "Robust flow", trigger: "contact-created",
+    actions: [
+      { type: "send-email", config: { subject: "Welcome to Harlow Legal", body: "Thanks for getting in touch" } },
+      { type: "add-tag", config: { "Tag name": "new-lead" } },
+    ],
+  },
+  /** Run first: go to Automation through the nav (the popup is in the way, the route is slow). */
+  before: [{ op: "page.act", args: { selector: { name: "Automation", identifier: "nav-automation" }, kind: "click", wait: { timeoutMs: 8000, stable: true } } }, { op: "page.wait", args: { settled: true, timeoutMs: 8000 } }],
+  expect: {
+    identifiers: ["nav-automation", "create-workflow", "trigger-picker", "trigger-search", "add-action", "action-search", "save-workflow", "whatsnew-close", "unsaved-stay", "unsaved-discard"],
+    state: { saved: true, steps: 2, trigger: "Contact Created", whatsnewClosed: 1, discarded: 0 },
+  },
+};
+
 export const CHECKOUT_PATH = "/checkout";
 export const GHL_PATH = "/ghl";
 

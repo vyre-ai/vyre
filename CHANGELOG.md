@@ -4,6 +4,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- chrome extension, GoHighLevel control made robust for workflow building. One waiting helper backs
+  page.act, page.fill, page.wait and the ghl ops: a control must exist, be enabled and hold still
+  (150 ms), loading spinners and skeletons must clear, DOM and network go quiet; spinners and a
+  never-quiet page are soft after a grace period and reported. A safe popup (what's new, tour,
+  cookies) is dismissed by its own close control; an unsaved-changes, confirm or unknown dialog is
+  refused and described (`modal` error). Stale or covered controls are looked up again with backoff
+  (3 tries, counted). `page.fill` takes `{label}` fields with fuzzy-but-safe matching (label,
+  aria-label or placeholder, nearby text, whole-word text; only when exactly one control fits) and
+  reports what was set and what was not found. Every page and ghl result carries `trace`
+  ({strategy, fallback, waitedMs, retries, newTab}); a failure's error carries `detail` (tab host and
+  path, trace, a masked 2 KB page snippet), which now travels through batch.run, the extension's
+  error frame and the module's tool error. `ghl.section` reuses the open tab by location, clicks the
+  left nav in the app, and waits until the section is loaded; new `ghl.save` verifies a save (toast,
+  disabled Save, URL change, list item) or fails naming the step; flows gain add-trigger, add-action,
+  edit-workflow, save-workflow, publish-workflow and the nine action types. New optional fields:
+  `wait`, `optional`, `fillable` on chrome.act; `label`, `partial`, `wait` on chrome.fill;
+  `settled`, `enabled`, `stable`, `gone`, `quietMs`, `netQuietMs` on chrome.wait; `save`, `landmark`,
+  `via`, `expect` on chrome.ghl. Proto codes covered, changed, modal and not_saved. The bench GoHighLevel
+  fixture gains a slow route, a what's new popup, an unsaved-changes guard, a save toast, a
+  re-rendering toolbar, a trigger search, an action drawer with labeled fields and a workflow list.
+  Model playbook: `local/hands-chrome-mac/standalone/GHL-PLAYBOOK.md`.
 - hands (Mac computer use): an outward act (send, post, pay) holds through the Gate like any
   other send, via a new "hands:mac" sender and Gate kind "act", instead of its own bespoke
   hold-and-commit path. The held card carries a signature of the screen at hold time; the

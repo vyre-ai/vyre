@@ -10,13 +10,23 @@
   main { padding: 24px; }
   table { border-collapse: collapse; width: 100%; }
   td, th { border-bottom: 1px solid #ddd; padding: 4px 8px; text-align: left; cursor: default; }
-  .hidden { display: none; }
+  .hidden { display: none !important; }
   .dropdown, .panel { border: 1px solid #999; padding: 8px; margin: 8px 0; background: #fafafa; }
   #modal { position: fixed; left: 20%; top: 20%; width: 400px; background: #fff; border: 2px solid #333; padding: 16px; z-index: 10; }
+  #modal .row { margin: 6px 0; }
   #toast { color: #060; }
+  #toasts { position: fixed; right: 16px; bottom: 16px; z-index: 30; }
+  #toasts .toast { background: #222; color: #fff; padding: 8px 12px; margin-top: 6px; border-radius: 4px; }
+  .skeleton { height: 18px; margin: 8px 0; background: linear-gradient(90deg, #eee, #ddd, #eee); }
+  #backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 40; }
+  .layer { position: fixed; left: 30%; top: 30%; width: 420px; background: #fff; border: 2px solid #333; padding: 16px; z-index: 50; }
 </style>
 </head>
 <body>
+<!-- Behaviours that mimic the real app's awkward moments are OFF unless the URL asks:
+     /ghl?slow=600 (skeleton while a route loads), &whatsnew=1 (a blocking popup), &guard=1 (an
+     unsaved-changes dialog on leaving a dirty builder), &stale=1 (the toolbar re-renders after Add action),
+     &toast=2500 (how long a save toast stays). The bench's own scenario uses none of them. -->
 <nav>
   <button type="button" data-testid="nav-contacts" id="nav-contacts">Contacts</button>
   <button type="button" data-testid="nav-automation" id="nav-automation">Automation</button>
@@ -24,6 +34,7 @@
 <main>
   <section id="contacts-view">
     <h1>Contacts</h1>
+    <button type="button" data-testid="add-contact" id="add-contact">Add contact</button>
     <table data-testid="contacts-table"><thead><tr><th>Name</th><th>Email</th><th>Stage</th></tr></thead><tbody id="contacts-body"></tbody></table>
     <div id="contact-detail" data-testid="contact-detail" class="panel hidden">
       <b id="detail-name"></b>
@@ -32,37 +43,82 @@
   </section>
   <section id="automation-view" class="hidden">
     <h1>Automation</h1>
-    <button type="button" data-testid="create-workflow" id="create-workflow">Create workflow</button>
-    <div id="builder" class="panel hidden">
-      <label>Workflow name <input id="workflow-name" data-testid="workflow-name"></label>
-      <div>
-        <button type="button" data-testid="trigger-picker" id="trigger-picker">Choose trigger</button>
-        <span id="trigger-label" data-testid="trigger-label">none</span>
-        <div id="trigger-list" class="dropdown hidden">
-          <button type="button" data-testid="trigger-contact-created" data-trigger="Contact Created">Contact Created</button>
-          <button type="button" data-testid="trigger-tag-added" data-trigger="Tag Added">Tag Added</button>
-          <button type="button" data-testid="trigger-form-submitted" data-trigger="Form Submitted">Form Submitted</button>
+    <div id="skeleton" class="hidden" aria-busy="true"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+    <div id="automation-body">
+      <button type="button" data-testid="create-workflow" id="create-workflow">Create workflow</button>
+      <p><label>Search workflows <input id="workflow-search" data-testid="workflow-search" placeholder="Search workflows"></label></p>
+      <div id="workflow-list" data-testid="workflow-list"></div>
+      <div id="builder" class="panel hidden">
+        <label>Workflow name <input id="workflow-name" data-testid="workflow-name"></label>
+        <label><input type="checkbox" role="switch" id="publish-toggle" data-testid="publish-toggle"> Publish</label>
+        <div>
+          <button type="button" data-testid="trigger-picker" id="trigger-picker">Choose trigger</button>
+          <span id="trigger-label" data-testid="trigger-label">none</span>
+          <div id="trigger-list" class="dropdown hidden">
+            <input id="trigger-search" data-testid="trigger-search" placeholder="Search triggers">
+            <button type="button" data-testid="trigger-contact-created" data-trigger="Contact Created">Contact Created</button>
+            <button type="button" data-testid="trigger-tag-added" data-trigger="Tag Added">Tag Added</button>
+            <button type="button" data-testid="trigger-form-submitted" data-trigger="Form Submitted">Form Submitted</button>
+            <button type="button" data-testid="trigger-appointment-booked" data-trigger="Appointment Booked">Appointment Booked</button>
+            <button type="button" data-testid="trigger-opportunity-created" data-trigger="Opportunity Created">Opportunity Created</button>
+          </div>
         </div>
+        <ol id="steps" data-testid="steps"></ol>
+        <div id="toolbar"><button type="button" id="add-action" data-testid="add-action">Add action</button><button type="button" id="save-workflow" data-testid="save-workflow">Save</button></div>
       </div>
-      <ol id="steps" data-testid="steps"></ol>
-      <button type="button" data-testid="add-action" id="add-action">Add action</button>
-      <button type="button" data-testid="save-workflow" id="save-workflow">Save</button>
-      <span id="toast" data-testid="toast"></span>
     </div>
   </section>
+  <span id="toast" data-testid="toast"></span>
 </main>
-<div id="modal" data-testid="action-modal" class="hidden" role="dialog">
+<div id="toasts" role="status" aria-live="polite"></div>
+<div id="modal" data-testid="action-modal" class="hidden" role="dialog" aria-label="Pick an action">
   <h3>Pick an action</h3>
-  <button type="button" data-testid="action-send-email" data-action="Send Email">Send Email</button>
-  <button type="button" data-testid="action-send-sms" data-action="Send SMS">Send SMS</button>
-  <button type="button" data-testid="action-wait" data-action="Wait">Wait</button>
-  <button type="button" data-testid="action-add-tag" data-action="Add Tag">Add Tag</button>
+  <input id="action-search" data-testid="action-search" placeholder="Search actions">
+  <div id="action-buttons">
+    <button type="button" data-testid="action-send-email" data-action="Send Email">Send Email</button>
+    <button type="button" data-testid="action-send-sms" data-action="Send SMS">Send SMS</button>
+    <button type="button" data-testid="action-wait" data-action="Wait">Wait</button>
+    <button type="button" data-testid="action-add-tag" data-action="Add Tag">Add Tag</button>
+    <button type="button" data-testid="action-remove-tag" data-action="Remove Tag">Remove Tag</button>
+    <button type="button" data-testid="action-webhook" data-action="Webhook">Webhook</button>
+  </div>
+  <div id="fields-send-email" class="fields hidden">
+    <div class="row"><label for="f-subject">Subject</label> <input id="f-subject" data-field="subject"></div>
+    <div class="row"><label for="f-body">Message body</label> <input id="f-body" data-field="body"></div>
+  </div>
+  <div id="fields-send-sms" class="fields hidden">
+    <!-- no label element: the visible text next to the input is the only label -->
+    <div class="row"><span>SMS text</span> <input id="f-sms" data-field="sms"></div>
+  </div>
+  <div id="fields-wait" class="fields hidden">
+    <div class="row"><label for="f-duration">Duration</label> <input id="f-duration" data-field="duration"></div>
+    <div class="row"><input id="f-unit" data-field="unit" placeholder="Unit (minutes, hours)"></div>
+  </div>
+  <div id="fields-add-tag" class="fields hidden">
+    <div class="row"><input id="f-tag" data-field="tag" aria-label="Tag name"></div>
+  </div>
   <p><label>Config <input id="action-config" data-testid="action-config"></label></p>
   <button type="button" data-testid="action-confirm" id="action-confirm">Confirm</button>
 </div>
+<div id="backdrop" class="hidden"></div>
+<div id="whatsnew" class="layer hidden" role="dialog" aria-modal="true" aria-label="What's new">
+  <h3>What's new in Harlow CRM</h3>
+  <p>Try the new workflow templates and a quick tour.</p>
+  <button type="button" data-testid="whatsnew-tour">Take a tour</button>
+  <button type="button" data-testid="whatsnew-close" id="whatsnew-close">Close</button>
+</div>
+<div id="unsaved" class="layer hidden" role="alertdialog" aria-modal="true" aria-label="Unsaved changes">
+  <h3>Unsaved changes</h3>
+  <p>You have unsaved changes. If you leave, they will be lost.</p>
+  <button type="button" data-testid="unsaved-stay" id="unsaved-stay">Stay</button>
+  <button type="button" data-testid="unsaved-discard" id="unsaved-discard">Discard changes</button>
+</div>
 <script>
   window.__AUTH = { token: 'fixture-token-123' };
-  window.__state = { saved: false, steps: [], trigger: null, chosen: null };
+  window.__state = { saved: false, steps: [], trigger: null, chosen: null, editId: null, dirty: false, discarded: 0, whatsnewClosed: 0 };
+  var Q = new URLSearchParams(location.search);
+  var FX = { slow: Number(Q.get('slow')) || 0, whatsnew: Q.get('whatsnew') === '1', guard: Q.get('guard') === '1', stale: Q.get('stale') === '1', toast: Number(Q.get('toast')) || 2500 };
+  window.__fx = FX;
   function $(id) { return document.getElementById(id); }
   function hide(id, h) { $(id).classList.toggle('hidden', h); }
   function api(method, path, body) {
@@ -73,6 +129,12 @@
     }).then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); });
   }
   window.__api = api;
+  function toast(text) {
+    var t = document.createElement('div');
+    t.className = 'toast'; t.textContent = text;
+    $('toasts').appendChild(t);
+    setTimeout(function () { t.remove(); }, FX.toast);
+  }
   var contacts = [];
   function renderContacts() {
     var tb = $('contacts-body');
@@ -90,44 +152,136 @@
     });
   }
   api('GET', '/api/contacts?limit=25').then(function (r) { contacts = r.body.data || []; renderContacts(); });
-  api('GET', '/api/workflows').then(function () {});
-  $('nav-contacts').addEventListener('click', function () { hide('contacts-view', false); hide('automation-view', true); });
-  $('nav-automation').addEventListener('click', function () { hide('contacts-view', true); hide('automation-view', false); });
-  $('close-detail').addEventListener('click', function () { hide('contact-detail', true); });
-  $('create-workflow').addEventListener('click', function () {
-    hide('automation-view', false); hide('contacts-view', true); hide('builder', false);
+
+  // ---- the workflow list (search filters it; a row opens the builder with that workflow)
+  var known = [];
+  function renderList() {
+    var q = ($('workflow-search').value || '').toLowerCase();
+    var box = $('workflow-list');
+    box.innerHTML = '';
+    known.forEach(function (w, i) {
+      if (q && w.name.toLowerCase().indexOf(q) < 0) return;
+      var b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('data-testid', 'workflow-open-' + i); b.textContent = w.name;
+      b.addEventListener('click', function () { openBuilder(w); });
+      box.appendChild(b);
+    });
+  }
+  function loadList() { return api('GET', '/api/workflows').then(function (r) { known = r.body.data || []; renderList(); }); }
+  loadList();
+  $('workflow-search').addEventListener('input', renderList);
+
+  // ---- routes: a slow load shows a skeleton first
+  function showSection(which) {
+    hide('contacts-view', which !== 'contacts'); hide('automation-view', which !== 'automation');
+    if (which === 'automation' && FX.slow) {
+      hide('skeleton', false); hide('automation-body', true);
+      setTimeout(function () { hide('skeleton', true); hide('automation-body', false); }, FX.slow);
+    } else { hide('skeleton', true); hide('automation-body', false); }
+  }
+  function leaveFor(which) {
+    if (FX.guard && window.__state.dirty) { window.__pendingNav = which; hide('backdrop', false); hide('unsaved', false); return; }
+    showSection(which);
+  }
+  $('nav-contacts').addEventListener('click', function () { leaveFor('contacts'); });
+  $('nav-automation').addEventListener('click', function () { leaveFor('automation'); });
+  $('unsaved-stay').addEventListener('click', function () { hide('unsaved', true); hide('backdrop', true); window.__pendingNav = null; });
+  $('unsaved-discard').addEventListener('click', function () {
+    window.__state.dirty = false; window.__state.discarded++;
+    hide('unsaved', true); hide('backdrop', true);
+    var n = window.__pendingNav; window.__pendingNav = null; if (n) showSection(n);
   });
-  $('trigger-picker').addEventListener('click', function () { hide('trigger-list', false); });
+  $('close-detail').addEventListener('click', function () { hide('contact-detail', true); });
+
+  // ---- the "what's new" popup blocks the page until closed
+  if (FX.whatsnew) { hide('backdrop', false); hide('whatsnew', false); }
+  $('whatsnew-close').addEventListener('click', function () { hide('whatsnew', true); hide('backdrop', true); window.__state.whatsnewClosed++; });
+
+  // ---- the builder
+  // The toolbar is static markup at load; renderToolbar rebuilds it (new nodes) the way a single-page app re-renders.
+  function renderToolbar() {
+    var tb = $('toolbar');
+    tb.innerHTML = '';
+    var add = document.createElement('button'); add.type = 'button'; add.id = 'add-action'; add.setAttribute('data-testid', 'add-action'); add.textContent = 'Add action';
+    var save = document.createElement('button'); save.type = 'button'; save.id = 'save-workflow'; save.setAttribute('data-testid', 'save-workflow'); save.textContent = 'Save';
+    add.addEventListener('click', onAdd); save.addEventListener('click', onSave);
+    tb.appendChild(add); tb.appendChild(save);
+  }
+  function openBuilder(w) {
+    hide('builder', false); hide('automation-view', false); hide('contacts-view', true);
+    window.__state.editId = w ? w.id : null;
+    window.__state.trigger = w ? w.trigger : null; window.__state.steps = w ? (w.actions || []).slice() : [];
+    $('workflow-name').value = w ? w.name : ''; $('trigger-label').textContent = window.__state.trigger || 'none';
+    $('publish-toggle').checked = !!(w && w.status === 'published');
+    $('steps').innerHTML = ''; window.__state.steps.forEach(function (a) { var li = document.createElement('li'); li.textContent = a.type + ': ' + (a.config || ''); $('steps').appendChild(li); });
+    window.__state.dirty = false;
+  }
+  $('create-workflow').addEventListener('click', function () { openBuilder(null); });
+  ['workflow-name', 'publish-toggle'].forEach(function (id) { $(id).addEventListener('input', function () { window.__state.dirty = true; }); $(id).addEventListener('change', function () { window.__state.dirty = true; }); });
+  $('trigger-picker').addEventListener('click', function () { $('trigger-search').value = ''; filterTriggers(); hide('trigger-list', false); });
+  function filterTriggers() {
+    var q = $('trigger-search').value.toLowerCase();
+    document.querySelectorAll('[data-trigger]').forEach(function (b) { b.classList.toggle('hidden', !!q && b.textContent.toLowerCase().indexOf(q) < 0); });
+  }
+  $('trigger-search').addEventListener('input', filterTriggers);
   document.querySelectorAll('[data-trigger]').forEach(function (b) {
     b.addEventListener('click', function () {
-      window.__state.trigger = b.getAttribute('data-trigger');
+      window.__state.trigger = b.getAttribute('data-trigger'); window.__state.dirty = true;
       $('trigger-label').textContent = window.__state.trigger;
       hide('trigger-list', true);
     });
   });
-  $('add-action').addEventListener('click', function () { window.__state.chosen = null; $('action-config').value = ''; hide('modal', false); });
+  function onAdd() {
+    window.__state.chosen = null; $('action-config').value = ''; $('action-search').value = ''; filterActions();
+    document.querySelectorAll('#modal input').forEach(function (i) { i.value = ''; });
+    document.querySelectorAll('.fields').forEach(function (f) { f.classList.add('hidden'); });
+    hide('modal', false);
+    // A single-page app re-renders under you: the toolbar is rebuilt (new nodes, one extra banner ahead of them).
+    if (FX.stale) setTimeout(function () { renderToolbar(); var p = document.createElement('p'); p.textContent = 'Autosave is on'; $('builder').insertBefore(p, $('toolbar')); }, 80);
+  }
+  function filterActions() {
+    var q = $('action-search').value.toLowerCase();
+    document.querySelectorAll('[data-action]').forEach(function (b) { b.classList.toggle('hidden', !!q && b.textContent.toLowerCase().indexOf(q) < 0); });
+  }
+  $('action-search').addEventListener('input', filterActions);
   document.querySelectorAll('[data-action]').forEach(function (b) {
-    b.addEventListener('click', function () { window.__state.chosen = b.getAttribute('data-action'); });
+    b.addEventListener('click', function () {
+      window.__state.chosen = b.getAttribute('data-action');
+      document.querySelectorAll('.fields').forEach(function (f) { f.classList.add('hidden'); });
+      var f = $('fields-' + window.__state.chosen.toLowerCase().replace(/ /g, '-'));
+      if (f) f.classList.remove('hidden');
+    });
   });
   $('action-confirm').addEventListener('click', function () {
     if (!window.__state.chosen) return;
-    window.__state.steps.push({ type: window.__state.chosen, config: $('action-config').value });
+    var fields = {};
+    document.querySelectorAll('#modal .fields:not(.hidden) [data-field]').forEach(function (i) { fields[i.getAttribute('data-field')] = i.value; });
+    var config = $('action-config').value;
+    window.__state.steps.push({ type: window.__state.chosen, config: config, fields: fields });
+    window.__state.dirty = true;
     var li = document.createElement('li');
-    li.textContent = window.__state.chosen + ': ' + $('action-config').value;
+    li.textContent = window.__state.chosen + ': ' + (config || Object.keys(fields).map(function (k) { return k + '=' + fields[k]; }).join(', '));
     $('steps').appendChild(li);
     hide('modal', true);
   });
-  $('save-workflow').addEventListener('click', function () {
-    api('POST', '/api/workflows', { name: $('workflow-name').value, trigger: window.__state.trigger, actions: window.__state.steps }).then(function (r) {
-      window.__state.saved = r.status === 201;
+  function onSave() {
+    var body = { name: $('workflow-name').value, trigger: window.__state.trigger, actions: window.__state.steps, status: $('publish-toggle').checked ? 'published' : 'draft' };
+    var id = window.__state.editId;
+    api(id ? 'PUT' : 'POST', id ? '/api/workflows/' + id : '/api/workflows', body).then(function (r) {
+      window.__state.saved = r.status === 201 || r.status === 200;
+      if (window.__state.saved) { window.__state.dirty = false; window.__state.editId = r.body.data.id; }
       $('toast').textContent = window.__state.saved ? 'Saved' : 'Failed';
+      toast(window.__state.saved ? 'Workflow saved successfully' : 'Could not save the workflow');
+      loadList();
     });
-  });
+  }
+  $('add-action').addEventListener('click', onAdd); $('save-workflow').addEventListener('click', onSave);
   window.__reset = function () {
-    window.__state = { saved: false, steps: [], trigger: null, chosen: null };
+    window.__state = { saved: false, steps: [], trigger: null, chosen: null, editId: null, dirty: false, discarded: 0, whatsnewClosed: 0 };
     $('steps').innerHTML = ''; $('toast').textContent = ''; $('trigger-label').textContent = 'none';
-    $('workflow-name').value = ''; $('action-config').value = '';
+    $('workflow-name').value = ''; $('action-config').value = ''; $('publish-toggle').checked = false;
     hide('builder', true); hide('modal', true); hide('trigger-list', true); hide('contact-detail', true);
+    hide('unsaved', true); hide('whatsnew', true); hide('backdrop', true); hide('skeleton', true); hide('automation-body', false);
     hide('automation-view', true); hide('contacts-view', false);
     return true;
   };

@@ -102,10 +102,10 @@ export function createFakeChrome(seed = []) {
  */
 export function createFakePage(model) {
   const page = {
-    model, clicks: /** @type {any[]} */ ([]), keys: /** @type {any[]} */ ([]), applies: 0, evaluates: 0, covered: false,
+    model, locateFail: 0, clicks: /** @type {any[]} */ ([]), keys: /** @type {any[]} */ ([]), applies: 0, evaluates: 0, covered: false,
     /** @param {number} tabId @param {string} method @param {any} params */
     handler(tabId, method, params) {
-      if (method === "Input.dispatchMouseEvent") { if (params.type === "mousePressed") page.clicks.push({ x: params.x, y: params.y }); return {}; }
+      if (method === "Input.dispatchMouseEvent") { if (params.type === "mousePressed") { page.clicks.push({ x: params.x, y: params.y }); if (page.onClick) page.onClick(params.x, params.y, model); } return {}; }
       if (method === "Input.dispatchKeyEvent") { page.keys.push(params); return {}; }
       if (method === "Page.captureScreenshot") return { data: Buffer.from("pixels-" + (params.format || "png")).toString("base64") };
       if (method !== "Runtime.evaluate") return {};
@@ -117,9 +117,15 @@ export function createFakePage(model) {
       const args = JSON.parse(m[2]);
       const byPath = (/** @type {string} */ p) => model.controls.find((/** @type {any} */ c) => c.path === p);
       const val = (/** @type {any} */ v) => ({ result: { type: typeof v, value: v } });
-      if (kind === "snapshot") return val(structuredClone({ title: model.title, url: model.url, text: model.text || "", controls: model.controls }));
+      if (kind === "snapshot") {
+        page.snapshots = (page.snapshots || 0) + 1;
+        if (page.onSnapshot) page.onSnapshot(page.snapshots, model);
+        return val(structuredClone({ title: model.title, url: model.url, text: model.text || "", controls: model.controls, ...(model.state ? { state: model.state } : {}) }));
+      }
+      if (kind === "dom") return val({ html: model.dom !== undefined ? model.dom : model.controls.map((/** @type {any} */ c) => `<${c.role}${c.identifier ? ` data-testid="${c.identifier}"` : ""}>${c.name || ""}</${c.role}>`).join("") });
       if (kind === "locate") {
         const c = byPath(args.path);
+        if (page.locateFail > 0) { page.locateFail--; return val({ found: false }); }
         if (!c) return val({ found: false });
         return val({ found: true, x: c.frame.x + c.frame.w / 2, y: c.frame.y + c.frame.h / 2, hit: !page.covered, checked: !!c.checked });
       }

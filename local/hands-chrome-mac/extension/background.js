@@ -90,7 +90,9 @@ export function start(chrome, opts = {}) {
     } catch (e) {
       const code = /** @type {any} */ (e)?.code;
       const known = typeof code === "string" && code in proto.CODES;
-      post({ id, ok: false, error: proto.fail(known ? code : "error", redact.text(String(/** @type {any} */ (e)?.message || e))) });
+      // A capability's structured detail (a trace, a redacted page snippet) rides in error.detail; the bridge and the module pass it on.
+      const detail = /** @type {any} */ (e)?.detail;
+      post({ id, ok: false, error: { ...proto.fail(known ? code : "error", redact.text(String(/** @type {any} */ (e)?.message || e))), ...(detail !== undefined && typeof detail === "object" ? { detail: redactResult(detail) } : {}) } });
     }
   }
 

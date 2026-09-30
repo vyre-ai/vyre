@@ -73,13 +73,14 @@ const selector = {
   properties: { role: str, name: str, identifier: str, container: str, text: str, ref: str },
 };
 const timeout = { ...int, description: "Give up after this many ms. Default 30000." };
+const WAIT = obj({ timeoutMs: { ...int, description: "Keep looking for the control this long: it must exist, be enabled and (with stable) hold still, and loading spinners must clear. Default 0: one look." }, stable: bool, busyMs: { ...int, description: "How long to wait for spinners before giving up on them." } });
 
 /** Which tabs.* op an action means. */
 const TAB_OPS = { list: "tabs.list", find: "tabs.find", use: "tabs.use", open: "tabs.open", activate: "tabs.activate", close: "tabs.close", navigate: "tabs.navigate" };
 const SOURCE_OPS = { list: "dev.sources.list", get: "dev.sources.get", search: "dev.sources.search" };
 const NET_OPS = { start: "net.start", list: "net.list", get: "net.get", watch: "net.watch", unwatch: "net.unwatch", on: "net.on", off: "net.off", rules: "net.rules", replay: "net.replay" };
 const API_OPS = { learn: "api.learn", catalog: "api.catalog", call: "api.call" };
-const GHL_OPS = { context: "ghl.context", section: "ghl.section", flows: "ghl.flows", run: "ghl.run" };
+const GHL_OPS = { context: "ghl.context", section: "ghl.section", flows: "ghl.flows", run: "ghl.run", save: "ghl.save" };
 
 /** @param {any} v */ const isObj = v => v && typeof v === "object" && !Array.isArray(v);
 
@@ -207,8 +208,11 @@ export default {
       return `${op}${bits.length ? ": " + bits.filter(Boolean).join(" ") : ""}`;
     };
 
+    /** A capability's structured error detail (trace, page snippet), as bounded text the model can read; already masked twice on the way here. @param {any} d */
+    const detailText = d => { try { return JSON.stringify(d).slice(0, 3000); } catch { return "unreadable"; } };
+
     /** Tool errors keep their code so a caller can tell "not connected" from "floor" from "stopped". @param {any} e */
-    const wrapErr = e => e && e.code === "error" && /changed since it was held/.test(String(e.message)) ? Object.assign(new Error(`changed: ${e.message}`), { code: "changed" }) : e && e.code && !/^[a-z_]+: /.test(String(e.message)) ? Object.assign(new Error(`${e.code}: ${e.message}`), { code: e.code, ...(e.detail !== undefined ? { detail: e.detail } : {}), ...(e.interjection ? { interjection: e.interjection } : {}) }) : e;
+    const wrapErr = e => e && e.code === "error" && /changed since it was held/.test(String(e.message)) ? Object.assign(new Error(`changed: ${e.message}`), { code: "changed" }) : e && e.code && !/^[a-z_]+: /.test(String(e.message)) ? Object.assign(new Error(`${e.code}: ${e.message}${e.detail !== undefined ? ` | detail: ${detailText(e.detail)}` : ""}`), { code: e.code, ...(e.detail !== undefined ? { detail: e.detail } : {}), ...(e.interjection ? { interjection: e.interjection } : {}) }) : e;
 
     /**
      * The one path every op takes: grant, oversight, floor, the socket, hold. `guarded: false`
@@ -313,10 +317,10 @@ export default {
 
     pass("chrome.snapshot", "page.snapshot", "The actionable controls of a page in one read: role, name, state, and a selector to hand to chrome.act or chrome.fill, plus the text on screen (secrets in it are masked). Nothing is returned from pages Vyre may not look at.", { limit: { ...int, description: "Most controls to return." }, agent: str });
     pass("chrome.act", "page.act", "Do one thing to one control found by selector: click, type (with value), select an option, check a box, or press a key (value: the key). An act that sends something as the person (a real submit, a Send, Pay or Post control, decided from the page itself) is held for their approval at the Gate unless they asked for it directly: the answer has held: true.",
-      { selector, kind: { type: "string", enum: ["click", "type", "select", "check", "press"] }, value: { ...str, description: "For type and select: the text or option. For press: the key, e.g. Enter." } });
-    pass("chrome.fill", "page.fill", "Set many form fields in one step: fields is a list of {selector, value}. Values a person typed never come back in results. A submit is held like chrome.act's.", { fields: { type: "array", items: obj({ selector, value: str }, ["selector"]) }, submit: bool });
+      { selector, kind: { type: "string", enum: ["click", "type", "select", "check", "press"] }, value: { ...str, description: "For type and select: the text or option. For press: the key, e.g. Enter." }, wait: WAIT, optional: { ...bool, description: "True: if nothing matches, answer skipped instead of failing." }, fillable: { ...bool, description: "True: match only form fields, by their label." } });
+    pass("chrome.fill", "page.fill", "Set many form fields in one step: fields is a list of {selector, value}. Values a person typed never come back in results. A submit is held like chrome.act's.", { fields: { type: "array", items: obj({ selector, label: { ...str, description: "Instead of a selector: the field's visible label." }, value: str, optional: bool }) }, submit: bool, partial: { ...bool, description: "True: set the fields that are found and report the rest (notFound) instead of failing before setting any." }, wait: WAIT });
     pass("chrome.eval", "page.eval", "Run a JavaScript expression in a tab and return its JSON result. Values shaped like credentials (tokens, keys, JWTs, values under secret-looking names) are masked; other values come back as the page holds them, so an expression can still read a short cookie or a typed field. Refused on a page with a visible password field. Hands-free, except that a message, post or payment the script tries to send is held for the person's approval unless they asked for it.", { expression: str });
-    pass("chrome.wait", "page.wait", "Wait for exactly one thing: a control (selector), the URL to contain some text (url), or the network to be quiet for idleMs, up to timeoutMs.", { selector: { description: "A selector object, or a CSS selector string." }, url: { ...str, description: "Wait until the page URL contains this." }, idleMs: { ...int, description: "Wait until the network has been quiet this long." } });
+    pass("chrome.wait", "page.wait", "Wait for exactly one thing: a control (selector), the URL to contain some text (url), or the network to be quiet for idleMs, up to timeoutMs.", { selector: { description: "A selector object, or a CSS selector string." }, url: { ...str, description: "Wait until the page URL contains this." }, idleMs: { ...int, description: "Wait until the network has been quiet this long." }, settled: { ...bool, description: "Wait until loading spinners are gone and the DOM and network are quiet." }, enabled: bool, stable: bool, gone: { ...bool, description: "With selector: wait until it is absent." }, quietMs: int, netQuietMs: int });
     pass("chrome.screenshot", "page.screenshot", "A PNG of a tab (or of one control), base64-encoded. Nothing from pages Vyre may not look at.", { agent: str });
     pass("chrome.batch", "batch.run", "Run a list of steps inside the browser with no round trip between them: fastest for a known sequence. It stops at the first failure, on the person's stop, or at a page Vyre may not touch, and says which step.", { steps: { type: "array", items: { type: "object" } } });
     pass("chrome.inspect", "dev.inspect", "DevTools' view of the page: an element's outerHTML, attributes and box model, computed styles, the CSS rules that match it, and its event listeners.", { selector, what: { type: "array", items: { type: "string", enum: ["dom", "box", "styles", "rules", "listeners"] } } });
@@ -330,8 +334,8 @@ export default {
     tool("chrome.api", "An app's own API, learned from its traffic. learn: reduce captured requests to a catalog (method, path, query and body shape, auth kind, sample status; values masked). catalog: read it. call: invoke one entry from inside the page.",
       obj({ action: { type: "string", enum: Object.keys(API_OPS) }, tab, entry: str, args: { type: "object" }, host: str, timeoutMs: timeout }, ["action"]),
       (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (API_OPS)[action], { ...rest, action }, m); });
-    tool("chrome.ghl", "GoHighLevel in the person's own Chrome. context: which sub-account and section the open tab is on. section: go to Contacts, Workflows, Conversations and so on in the tab already open (it never opens another). flows: the ready-made automations. run: do one end to end, either a named flow with params or your own steps, as ONE batch inside the browser, and get back how long it took.",
-      obj({ action: { type: "string", enum: Object.keys(GHL_OPS) }, tab, section: str, locationId: str, flow: str, params: { type: "object" }, steps: { type: "array", items: { type: "object" } }, timeoutMs: timeout }, ["action"]),
+    tool("chrome.ghl", "GoHighLevel in the person's own Chrome. context: which sub-account and section the open tab is on. section: go to Contacts, Workflows, Conversations and so on in the tab already open (it never opens another). flows: the ready-made automations. run: do one end to end, either a named flow with params or your own steps, as ONE batch inside the browser, and get back how long it took. save: press Save and verify it saved (toast, disabled Save, URL change or list item); a save that cannot be confirmed is an error. Every result carries a trace, and a failure's error carries the page's host and path and a small masked snippet of the page.",
+      obj({ action: { type: "string", enum: Object.keys(GHL_OPS) }, tab, section: str, locationId: str, landmark: str, via: { ...str, description: "For section: nav (default, click the left nav) or url." }, expect: { type: "object", description: "For save: {toast, listItem, status} to check besides the built-in evidence." }, name: str, identifier: str, flow: str, params: { type: "object" }, steps: { type: "array", items: { type: "object" } }, timeoutMs: timeout }, ["action"]),
       (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (GHL_OPS)[action], { ...rest, action }, m); });
     pass("chrome.state", "dev.state", "What a page has stored, by name only: cookie names and flags, localStorage and sessionStorage keys. Values are never returned.", { what: { type: "array", items: { type: "string", enum: ["cookies", "local", "session"] } } });
 

@@ -51,13 +51,13 @@ export default {
       const stopOnError = args.stopOnError !== false;
       /** @type {any[]} */
       const results = [];
-      /** @type {{ ok: boolean, done: number, results: any[], failedAt?: number, why?: string, code?: string, held?: any, haltMs?: number }} */
+      /** @type {{ ok: boolean, done: number, results: any[], failedAt?: number, why?: string, code?: string, held?: any, haltMs?: number, detail?: any }} */
       const out = { ok: true, done: 0, results };
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
-        const halt = (/** @type {string} */ why, /** @type {string} */ code, /** @type {any} */ result) => {
-          results.push(result === undefined ? { ok: false, error: { code, message: why } } : result);
-          if (out.ok) { out.ok = false; out.failedAt = i; out.why = why; out.code = code; }
+        const halt = (/** @type {string} */ why, /** @type {string} */ code, /** @type {any} */ result, /** @type {any} */ detail) => {
+          results.push(result === undefined ? { ok: false, error: { code, message: why, ...(detail !== undefined ? { detail } : {}) } } : result);
+          if (out.ok) { out.ok = false; out.failedAt = i; out.why = why; out.code = code; if (detail !== undefined) out.detail = detail; }
         };
         if (ctx.stopped()) { halt("the person pressed stop", "stopped"); out.haltMs = ctx.stoppedAt ? Date.now() - ctx.stoppedAt : undefined; break; }
         if (!step || typeof step.op !== "string") { halt(`step ${i} has no op`, "bad_request"); if (stopOnError) break; continue; }
@@ -66,14 +66,18 @@ export default {
           const result = await ctx.call(step.op, { ...(args.asked === true ? { asked: true } : {}), ...subst(step.args || {}, results) });
           results.push(result);
           if (result && result.ok === false) {
-            if (out.ok) { out.ok = false; out.failedAt = i; out.why = String(result.why || (result.error && result.error.message) || "the step did not succeed"); if (result.held) out.held = result; }
+            if (out.ok) {
+              out.ok = false; out.failedAt = i; out.why = String(result.why || (result.error && result.error.message) || "the step did not succeed"); if (result.held) out.held = result;
+              // The failed step's own trace and page snippet travel with the halt, so the caller need not dig in results.
+              if (result.trace || result.dom) out.detail = { ...(result.trace ? { trace: result.trace } : {}), ...(result.dom ? { dom: result.dom } : {}) };
+            }
             if (stopOnError) break;
             continue;
           }
           out.done++;
         } catch (e) {
           const code = /** @type {any} */ (e)?.code || "error";
-          halt(String(/** @type {any} */ (e)?.message || e), code);
+          halt(String(/** @type {any} */ (e)?.message || e), code, undefined, /** @type {any} */ (e)?.detail);
           if (stopOnError) break;
         }
       }
