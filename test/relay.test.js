@@ -18,6 +18,7 @@ import { macCoreRefusal } from "../core/relay/index.js";
 import { useReleasesFile } from "../core/relay/releases.js";
 import { signed } from "../core/presence/person.js";
 import { pairTicket, resolveTicket, pairOffer } from "../relay/client/client.js";
+import { shellDeviceKey } from "../relay/client/shellkey.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import crypto from "node:crypto";
@@ -597,7 +598,15 @@ test("relay: a computer that chose its own ticket has the box register it; the r
   // The app's own ticket pairs like any other.
   const seed3 = crypto.randomBytes(16);
   await d.registry.call("relay.pair.ticket", { seed: seed3.toString("base64url") }, "cli", PROOF);
-  const paired = await pairTicket(new Uint8Array(seed3), { relay: status.url, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "win-key.json")), name: "kit's PC" });
+  // ...including when the device's private key never leaves its shell: the Noise handshake runs with the shell's own DH.
+  const shellPair = crypto.generateKeyPairSync("x25519");
+  const shellPub = new Uint8Array(shellPair.publicKey.export({ format: "der", type: "spki" }).subarray(-32));
+  const shell = shellDeviceKey(async (cmd, args) => {
+    if (cmd === "device_key_pub") return Buffer.from(shellPub).toString("base64url");
+    const remote = crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b656e032100", "hex"), Buffer.from(args.remote, "base64url")]), format: "der", type: "spki" });
+    return crypto.diffieHellman({ privateKey: shellPair.privateKey, publicKey: remote }).toString("base64url");
+  }, { crypto: nodeCrypto() });
+  const paired = await pairTicket(new Uint8Array(seed3), { relay: status.url, ...shell, name: "kit's PC" });
   assert.ok(paired.device);
   void minted;
 });
