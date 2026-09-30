@@ -44,6 +44,15 @@ Above the block, in the tool row that holds it: the path in mono and the counts 
 - **Full** (Files tab): a sticky file header (path, counts), all hunks, "3 unchanged lines" rows
   between hunks that expand on click.
 - **New file**: every line added; the tool row meta reads "new · +60".
+- **Multi-file** (30 Sep, the PR review card's use, `pr-review.md`): several files' diffs in one
+  scroll, each behind its own collapsed file row: path (mono 13, `--text`), counts `+12 −4`
+  (`--text-2`), a chevron. Collapsed by default beyond the first file; a file with a review
+  comment on it (see `pr-review.md`) opens by default regardless of position. Collapsing one file
+  never affects the others - each file's open state is independent, and "Collapse all" /
+  "Expand all" (ghost, header of the file list) set every file at once. Everything else (the
+  per-line anatomy, the added/removed washes, Too large per file) is unchanged from the single-
+  file diff above; a file over the Too large threshold collapses to its own message inline rather
+  than blocking the rest of the list.
 
 ## Sizes
 

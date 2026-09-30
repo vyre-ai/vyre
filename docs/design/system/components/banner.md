@@ -46,7 +46,11 @@ border, no shadow.
 | Vault note | "12 passwords are reused" | "A todo is waiting in Planner" | none (the banner opens it) |
 | One-time notice | the fact, in `--text-2` 12/16 | | none |
 
-A firing alarm is not this banner: it rings on every device and is drawn by the agenda spec.
+A firing alarm is not this banner: it rings on every device and is drawn by the agenda spec. "The
+box can't be reached" is NOT this component - native-core already committed (CHAT.md, 30 Sep, C5)
+to reading `link.health {reach, why, fix?}` straight into the existing floating pill
+(`pill.md`), not a new banner; see that file's Unreachable states instead. Noted here only so a
+future reader doesn't add a second, conflicting "unreachable" surface.
 
 ## Sizes
 

@@ -37,18 +37,27 @@ icon) with the presence line under it (see presence-line).
 
 ## States
 
-| When | Pill |
-|---|---|
-| Stream open, or a blip healing on its first retry | nothing |
-| After the first failed retry (about 2 s) | spinner, "Reconnecting…" |
-| 60 s after the box last answered | no-signal icon, "No answer from the box since 14:02 · Retry now" |
-| Phone width, 60 s | "No answer since 14:02 · Retry now" |
-| The device has no network | no-signal icon, "This phone is offline" ("This Mac is offline") |
-| Retry now pressed | spinner, "Reconnecting…", the 60 s clock restarts |
-| Back | the pill fades out; queued lines send in order and each turns into its sent state |
+Reads `link.health {reach: "direct"|"relay"|"none", why, since, fix?: {action, label}}` (C5,
+agreed with native-core, tailnet, windows and pwa in CHAT.md, 30 Sep - this replaces the pill's
+own earlier elapsed-time-only logic below the table, kept here as history since the timer
+mechanics still apply, just driven by `since` instead of a locally started clock):
 
-The words change once at 60 s by one timer started when the pill shows, never an interval. A
-failover between Tailscale and the relay that succeeds shows nothing.
+| `reach` | Pill |
+|---|---|
+| `direct` | nothing (the healthy case, matching the old "stream open" row) |
+| `relay`, first 60 s | nothing - a failover that resolves quickly stays quiet, unchanged from before |
+| `relay`, after 60 s | the quiet note, no icon colour change: "Through the relay" (meta, `--text-2`), no spinner, no urgency - this is working, just slower |
+| `none`, before the first failed retry | nothing |
+| `none`, after the first failed retry (~2 s) | spinner, "Reconnecting…" |
+| `none`, 60 s since `link.health.since` | no-signal icon, "No answer from the box since 14:02" (the literal time, computed from `since`, not a guess) - plus `fix.label` as part of the pill (the whole pill becomes the button, e.g. "Turn on Tailscale") when `fix` is present, else "Retry now" as before |
+| `why` present | shown as the pill's second line, tap/hover to expand from the collapsed one-liner - tailnet/native-core supply it pre-written, never a raw error string |
+| Phone width, 60 s | "No answer since 14:02 · Retry now" (or `fix.label`), one line |
+| The device has no network | no-signal icon, "This phone is offline" ("This Mac is offline") - a local fact, not read from `link.health` |
+| Retry now / `fix.label` pressed | spinner, "Reconnecting…", the 60 s clock restarts |
+| Back to `direct` | the pill fades out; queued lines send in order and each turns into its sent state |
+
+The words change once at 60 s by one timer started when the pill shows (or reset on retry), never
+an interval.
 
 ## Motion
 
