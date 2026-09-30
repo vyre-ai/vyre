@@ -20,6 +20,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (side panel, phone sheet, `/a/<id>`).
 - An artifact page is framed with `sandbox="allow-scripts"` only, and a second load event on the
   frame blanks it with "This page tried to open another site" (artifacts review M5).
+- `@role` makes a teammate at once (no confirm card) and sends the ask; the handoff card says "Made
+  design, a new teammate" with Undo (`team.retire`) until the teammate replies. A name one slip from an
+  existing role (`@desgin`) shows "Did you mean @design?", Tab takes it, sending as typed still creates
+  the new role. `@kit`, the person's own agent, goes to `agents.ask` and opens in the agent's chat; a
+  role of the same name wins. With Teammates off the note links to that project's Settings.
+- Settings: the confirm sheet is gone. A widening or loosening change saves at once like any other,
+  with no preview call and no passkey; the change is logged and undoable (settings.undo).
 - Tests: every component has its own file; three older tests learned the platform key hint, the
   installed-window rail keys and the settings change id.
 

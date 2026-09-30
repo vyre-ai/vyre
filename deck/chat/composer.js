@@ -53,6 +53,7 @@ import { scorePath, compareScores } from "./core/match.js";
 import { queryInput, suggestRows, applySuggestion, pickedInput, tokenBefore } from "./core/suggest.js";
 import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
+import { markMade, nearRole } from "./core/made.js";
 import { listMenu, keysLine } from "./pickers.js";
 import { voiceStatus, listen as listenVoice } from "./core/voice.js";
 import { ago, agoLong } from "../js/need-rows.js";
@@ -155,7 +156,7 @@ export function mountComposer(opts) {
 
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
     rows: 1, placeholder: "Message this session", "aria-label": "Message", enterkeyhint: "send",
-    oninput: () => { grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); scheduleHint(); },
+    oninput: () => { grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); scheduleHint(); scheduleNear(); },
     onkeydown: onKey, onkeyup: (/** @type {KeyboardEvent} */ e) => { if (keyUp(e)) e.preventDefault(); }, onpaste: onPaste,
   }));
   const thumbs = h("div", { class: "composer-images", hidden: true });
@@ -915,7 +916,47 @@ export function mountComposer(opts) {
 
   // ---- "@role": a project teammate's own turn (teammates.md section 2) ----------------------
 
-  /** @param {string|null} role @param {string} text @param {string} raw the whole draft, "@role" and all - "answer here" (below) sends this, not just the stripped body, so declining creation never silently edits what was typed */
+  /** The project's roles, read when asked and kept a minute (nothing polls). */
+  let rolesAt = 0, rolesList = /** @type {string[]} */ ([]);
+  async function knownRoles(fresh = false) {
+    const project = opts.project?.();
+    if (!project) return [];
+    if (!fresh && Date.now() - rolesAt < 60_000) return rolesList;
+    const r = await attempt("team.list", { project });
+    rolesAt = Date.now();
+    rolesList = r.error || !Array.isArray(r.data) ? [] : /** @type {any[]} */ (r.data).map(x => String(x.role || "")).filter(Boolean);
+    return rolesList;
+  }
+
+  /** "Did you mean @design?" while the person types a name one slip from a role this project has. Tab or a tap takes it; sending as typed still works. */
+  let nearTimer = /** @type {any} */ (null), nearSeq = 0, nearFor = /** @type {string|null} */ (null);
+  function scheduleNear() {
+    clearTimeout(nearTimer);
+    const role = draftKind(ta.value) === "teammate" && !/\s/.test(ta.value) ? teammateRole(ta.value) : null;
+    if (!role || !opts.project?.() || machine) { if (nearFor) { nearFor = null; put(note); note.classList.remove("soft"); } return; }
+    const seq = ++nearSeq;
+    nearTimer = setTimeout(async () => {
+      const roles = await knownRoles();
+      if (seq !== nearSeq) return;
+      const near = nearRole(role, roles);
+      if (!near) { if (nearFor) { nearFor = null; put(note); note.classList.remove("soft"); } return; }
+      nearFor = near;
+      say([h("span", null, "Did you mean "), h("button", { class: "btn btn-ghost btn-sm cv-near", type: "button", onclick: () => takeNear() }, "@" + near),
+        h("span", null, "? "), keysLine(["Tab", "takes it"])]);
+    }, 250);
+    nearTimer.unref?.();
+  }
+  /** Put the near role in place of the typed one. Returns whether it did. */
+  function takeNear() {
+    if (!nearFor) return false;
+    const rest = ta.value.replace(/^@[A-Za-z][A-Za-z0-9-]{0,40}/, "");
+    setValue("@" + nearFor + (rest || " "));
+    nearFor = null; put(note); note.classList.remove("soft");
+    ta.focus();
+    return true;
+  }
+
+  /** @param {string|null} role @param {string} text @param {string} raw the whole draft, "@role" and all */
   async function askTeammate(role, text, raw) {
     if (!role || !text || sending) return;
     sending = true; send.disabled = true;
@@ -926,31 +967,34 @@ export function mountComposer(opts) {
     // same distinction session.js's own recall.transcript not_found already makes.
     const r = await attempt("team.ask", { to: role, text, surface: "deck" });
     sending = false; send.disabled = false;
-    if (!r.error) { setValue(""); put(note); note.classList.remove("soft"); return; }
+    if (!r.error) { setValue(""); put(note); note.classList.remove("soft"); nearFor = null; return; }
     if (r.error.missing && r.error.code !== "not_found") { say(NEEDS_UPDATE); return; }
-    // Any project's teammates match on the role slug only (never fuzzy): a typo or a role that
-    // does not exist yet both read as not_found - the offer to create is exactly where that gets
-    // caught, per teammates.md section 2.
     if (r.error.code !== "not_found") { say(`Could not reach ${role}: ${r.error.message || r.error.code}`); return; }
+    // No role of that name: the person's own agent by that name (its own chat, anywhere), else a
+    // new role made at once (native-core.md section 9: no confirm card). A role beats an agent of
+    // the same name here; the two are never merged.
+    const mine = await attempt("agents.list", {});
+    const agent = Array.isArray(/** @type {any} */ (mine.data)) ? /** @type {any[]} */ (mine.data).find(a => String(a.name || "").toLowerCase() === role) : null;
+    if (agent) { await askAgent(String(agent.name), text); return; }
     const project = opts.project?.();
     if (!project) { say(`There's no ${role} teammate here.`); return; }
     const d = await attempt("team.default.get", { project });
     if (d.error || !/** @type {any} */ (d.data)?.enabled) {
-      say(`There's no ${role} teammate in this project. Add one in Setup, or turn Teammates on for this project.`);
+      const to = `/settings?project=${encodeURIComponent(project)}#teammates`;
+      say([h("span", null, `Teammates are off for this project, so there's no ${role} here. `), link(to, null, "Turn them on in Settings")]);
       return;
     }
-    confirmCreate(role, text, project, raw);
+    await createAndAsk(role, text, project, raw);
   }
 
-  /** The inline confirm before team.add on @role's first use: one tap creates and sends, the
-   * other answers here instead - never a form, per teammates.md section 2. */
-  function confirmCreate(/** @type {string} */ role, /** @type {string} */ text, /** @type {string} */ project, /** @type {string} */ raw) {
-    put(note); note.classList.remove("soft");
-    say([
-      h("span", null, `There's no ${role} teammate yet. I'll create one and send it your message.`), " ",
-      h("button", { class: "btn btn-primary btn-sm", type: "button", onclick: () => createAndAsk(role, text, project, raw) }, "Create and send"),
-      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { put(note); note.classList.remove("soft"); sendMessage(raw, null); } }, "Don't create, answer here"),
-    ]);
+  /** "@kit ...": the person's own agent, a personal chat that works anywhere. Sent without waiting for the reply; it opens in the agent's own chat. */
+  async function askAgent(/** @type {string} */ name, /** @type {string} */ text) {
+    sending = true; send.disabled = true;
+    const r = await attempt("agents.ask", { agent: name, text, surface: "deck", wait: false });
+    sending = false; send.disabled = false;
+    if (r.error) { say(r.error.missing ? NEEDS_UPDATE : `Could not reach ${name}: ${r.error.message || r.error.code}`); return; }
+    setValue("");
+    say([h("span", null, `Sent to ${name}. `), link(`/agents/${encodeURIComponent(name)}`, null, `Open ${name}'s chat`)]);
   }
 
   /** The middle tier of the box's own model list (sessions.models.get's aliases, its one list:
@@ -964,23 +1008,23 @@ export function mountComposer(opts) {
     return typeof id === "string" ? id : null;
   }
 
-  /** @param {string} role @param {string} text @param {string} project @param {string} raw the
-   *  whole draft, passed through so a not_found right after team.add still has it (createAndAsk
-   *  calls askTeammate again, which needs raw for its own possible confirmCreate). */
+  /** @param {string} role @param {string} text @param {string} project @param {string} raw */
   async function createAndAsk(role, text, project, raw) {
     sending = true; send.disabled = true;
-    // A generic template on a guess (teammates.md section 2): no role-specific brief guessed from
-    // the name (guessing wrong is worse than asking), never worktree isolation (a deliberate,
-    // person-made choice, not a side effect of typing a word with an @ in front of it), the box's
-    // own middle-tier model (not the ADR's Opus default for a person-made teammate, read from
-    // sessions.models.get rather than named here) since it exists on a guess and should not spend
-    // Opus turns proving out a role nobody has scoped yet.
+    // A generic template on a guess: no role-specific brief guessed from the name (guessing wrong is
+    // worse than asking; the role's charter is drafted by an agent from the project, teammates' side),
+    // never worktree isolation, and the box's own middle-tier model (read from sessions.models.get,
+    // not named here) since it exists on a guess and should not spend Opus turns proving out a role
+    // nobody has scoped yet.
     const model = await guessModel();
     const r = await attempt("team.add", { project, role, brief: "Ask me about anything; I'll figure out the role from what you send me.",
       isolation: "folder", tools: ["files", "web"], ...(model ? { model } : {}) });
-    if (r.error) { sending = false; send.disabled = false; say(`Could not add ${role}: ${r.error.message || r.error.code}`); return; }
     sending = false; send.disabled = false;
-    askTeammate(role, text, raw);
+    if (r.error) { say(`Could not add ${role}: ${r.error.message || r.error.code}`); return; }
+    rolesAt = 0;
+    const d = /** @type {any} */ (r.data) || {};
+    markMade(project, role, typeof d.agent === "string" ? d.agent : typeof d.id === "string" ? d.id : null);
+    await askTeammate(role, text, raw);
   }
 
   /** A queued message back in the box: Enter saves the new words (threads.edit), Esc lets it be. */
@@ -1060,6 +1104,8 @@ export function mountComposer(opts) {
       if ((e.key === "Enter" && !e.shiftKey) || (e.key === "Tab" && !e.shiftKey)) { if (menu.pick()) { e.preventDefault(); return; } }
     }
     if (e.key === "Escape") { if (onEscape()) e.preventDefault(); return; }
+    // Tab takes "Did you mean @design?".
+    if (e.key === "Tab" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && nearFor && takeNear()) { e.preventDefault(); return; }
     // Tab on a word: suggest's completions (the box's names, entities and phrases).
     if (e.key === "Tab" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !menu.isOpen() && rich()) {
       const { token } = tokenBefore(ta.value, caret());

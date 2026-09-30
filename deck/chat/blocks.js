@@ -11,6 +11,8 @@
 // Nothing here uses innerHTML: every string is a text node.
 
 import { h, add, put } from "../js/dom.js";
+import { attempt } from "../js/api.js";
+import { madeNow, unmark } from "./core/made.js";
 import { icon } from "../js/icons.js";
 import { personAvatar, assistantAvatar, agentAvatar, teammateAvatar, teammateId } from "../js/avatars.js";
 import { clock } from "../js/fmt.js";
@@ -342,7 +344,17 @@ export function handoffCard(b) {
       ),
       failed ? h("span", { class: "cv-tool-state cv-failed" }, "no answer") : null,
     );
-    put(el, head, body);
+    // "@design" made this teammate a moment ago: say so, and offer Undo while nothing has run (no reply yet).
+    const made = !replied && !failed && project ? madeNow(project, role) : null;
+    const undo = made ? h("button", { class: "btn btn-ghost btn-sm cv-made-undo", type: "button", onclick: async () => {
+      undo.disabled = true;
+      const r = await attempt("team.retire", { teammate: made.id || `${role}-${project}`, reason: "undone by the person right after @" + role + " made it" });
+      if (r.error) { undo.disabled = false; put(madeLine, `Made ${role}, a new teammate. Could not undo it: ${r.error.missing ? "this box cannot remove teammates yet" : r.error.message || r.error.code}`, undo); return; }
+      unmark(project, role);
+      put(madeLine, `Undone. ${role} is gone.`);
+    } }, "Undo") : null;
+    const madeLine = made ? h("div", { class: "cv-made", role: "status" }, `Made ${role}, a new teammate `, undo) : null;
+    put(el, head, body, madeLine);
     show();
   };
   el.update(b);
