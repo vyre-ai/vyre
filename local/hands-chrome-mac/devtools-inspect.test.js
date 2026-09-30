@@ -12,7 +12,7 @@ const dom = () => ({
   "DOM.getDocument": { root: { nodeId: 1 } },
   "DOM.querySelector": { nodeId: 7 },
   "DOM.getOuterHTML": { outerHTML: `<form id="f"><input name="csrf_token" type="hidden" value="abcdefSECRETVALUE1"><input type="password" value="hunter2hunter2"><p>${JWT}</p></form>` },
-  "DOM.getAttributes": { attributes: ["id", "f", "data-token", "AKIAABCDEFGHIJKLMNOP", "class", "x"] },
+  "DOM.getAttributes": { attributes: ["id", "f", "data-token", "AKIA" + "ABCDEFGHIJKLMNOP", "class", "x"] },
   "DOM.getBoxModel": { model: { width: 10, height: 20 } },
   "CSS.getComputedStyleForNode": { computedStyle: [{ name: "display", value: "block" }, { name: "animation-name", value: "none" }] },
   "CSS.getMatchedStylesForNode": { matchedCSSRules: [{ rule: { selectorList: { text: ".x" }, origin: "regular", style: { cssProperties: [{ name: "color", value: "red" }] } } }] },

@@ -303,6 +303,27 @@ test("hub: an update that changes the connection stops the server and drops its 
   await hub.stop();
 });
 
+test("hub: a repointed url or transport invalidates the old cached token; scope/args alone do not (P21)", async () => {
+  const { hub } = fakeHub({ values: { at: "oauth-item" } });
+  let calls = 0;
+  const orig = hub.creds.invalidate.bind(hub.creds);
+  hub.creds.invalidate = (...a) => { calls++; return orig(...a); };
+  await hub.add({ name: "svc", transport: "http", url: "https://example.test/mcp", auth: { type: "oauth", item: "at" } });
+
+  await hub.update({ name: "svc", scope: { agents: ["juno"] } });
+  assert.equal(calls, 0, "a scope change alone never touches the cached token");
+
+  await hub.update({ name: "svc", args: [] }); // no-op field for an http row, does not change url/transport
+  assert.equal(calls, 0);
+
+  await hub.update({ name: "svc", url: "https://example.test/mcp/v2" });
+  assert.equal(calls, 1, "a url change invalidates the old row's cached token");
+
+  await hub.update({ name: "svc", transport: "sse", url: "https://example.test/mcp/v2" });
+  assert.equal(calls, 2, "a transport change invalidates it too");
+  await hub.stop();
+});
+
 test("hub: a server whose tool list changed is re-cached on start", async () => {
   let v = 0;
   const { hub, events } = fakeHub({ behave: { tools: () => (v === 0 ? [{ name: "list_issues" }] : [{ name: "list_issues" }, { name: "get_issue" }]) } });
@@ -313,4 +334,17 @@ test("hub: a server whose tool list changed is re-cached on start", async () => 
   assert.deepEqual((await hub.tools(person)).map(x => x.name), ["t__get_issue", "t__list_issues"]);
   assert.equal(events.filter(e => e.type === "mcp.refreshed").length, 2);
   await hub.stop();
+});
+
+test("hub: a github or google credential is bound to its vendor's hosted MCP host", async () => {
+  const { normalize, githubServer, BOUND_ITEMS } = await import("./hub.js");
+  const ok = normalize(githubServer("alex"));
+  assert.equal(ok.url, "https://api.githubcopilot.com/mcp/");
+  assert.deepEqual(ok.auth, { type: "bearer", item: "github-alex", field: "token" });
+  for (const url of ["https://evil.example.test/mcp/", "https://api.githubcopilot.com.evil.test/mcp/", "https://github.com/mcp/"]) {
+    assert.throws(() => normalize({ ...githubServer("alex"), url }), /goes only to api\.githubcopilot\.com/, url);
+  }
+  assert.throws(() => normalize({ name: "mail", transport: "http", url: "https://evil.example.test/", auth: { type: "bearer", item: "google-work", field: "token" } }), /google credential/);
+  assert.ok(normalize({ name: "docs", transport: "http", url: "https://docs.example.test/", auth: { type: "bearer", item: "harlow-docs" } }), "any other item is unaffected");
+  assert.ok(BOUND_ITEMS.length >= 2);
 });
