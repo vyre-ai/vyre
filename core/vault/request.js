@@ -35,7 +35,7 @@ import { defaultField } from "../../lib/vault-kinds/kinds.js";
 import { rowMac, same } from "./crypto.js";
 import {
   checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
-  readerMayRead,
+  readerMayRead, scopeAllows,
 } from "./api-request.js";
 
 const GATE_SENDER = "vault-api";
@@ -453,9 +453,21 @@ export class ApiRequests {
     }
 
     // A thread the person tagged with #<this credential> uses it by right: note it quietly (vault.used), and the hosts the item has now must be the ones it had at the tag.
+    let tagged = false;
     if (meta.thread && this.deps.said && this.deps.call) {
       const use = await this.deps.said.match({ kind: "use", to: [name], hosts: plan.config.hosts }, { thread: meta.thread }).catch(() => null);
-      if (use) this.deps.call("vault.use.note", { item: name, thread: meta.thread, via: "vault.request" }).catch(() => {});
+      if (use) { tagged = true; this.deps.call("vault.use.note", { item: name, thread: meta.thread, via: "vault.request" }).catch(() => {}); }
+    }
+
+    // A model reads through a credential only inside its scope: a named agent, or a session bound to a project, must be named by the
+    // credential's { projects, agents } (or the person tagged the credential to its thread). The person's own session, the assistant and
+    // a module with a grant keep their reach. A read inside scope still runs with no prompt.
+    const agentName = meta.agent || (/^mcp:agent:(.+)$/.exec(caller) || [])[1];
+    const isModel = caller === "mcp" || caller.startsWith("mcp:");
+    if (isModel && plan.kind === "read" && (agentName || meta.project) && /** @type {any} */ (meta).agentKind !== "assistant" && !tagged
+        && !scopeAllows(plan.config, { agent: agentName, project: /** @type {any} */ (meta).project })) {
+      audit(false, `${plan.method} ${plan.url.hostname} refused: outside the credential's scope`);
+      throw bad(`${name} is not available to ${agentName ? `the agent ${agentName}` : "this project"}: give it access in the credential's scope (projects and agents)`, "denied");
     }
 
     if (plan.kind === "read") return { ...(await this.execute(plan, { who: watcher ? `${caller}/${watcher}` : caller })), kind: "read" };
