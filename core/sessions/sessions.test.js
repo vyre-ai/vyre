@@ -936,7 +936,7 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: a person's "retire the designer" or "fill the design role with kit" records an act_out for the team key the project really has, through the assistant's teamIntents, and nothing for words that name none of it`, { skip }, async t => {
     const w = await boot(t, { driver });
     const recorded = [];
-    let roster = { roles: [{ role: "design" }, { role: "intake" }], duties: [{ id: "d1", teammate: "harlow-legal-design", title: "inbox triage" }] };
+    let roster = { roles: [{ role: "design" }, { role: "intake" }], duties: [{ id: "d1", teammate: "harlow-legal-design", title: "inbox triage", hash: "h1a2b3c", enabled: false, started: false }] };
     const realCall = w.d.registry.call.bind(w.d.registry);
     w.d.registry.call = async (tool, input, caller, meta) => {
       if (tool === "vault.said.record") { recorded.push(input); return { data: { id: `i${recorded.length}` } }; }
@@ -963,7 +963,7 @@ for (const driver of ["cli", "sdk"]) {
     await say("Retire the plumber.");                  // not a role of this project
     assert.equal(recorded.length, 0);
     await say("Turn on the inbox duty.");
-    assert.deepEqual(recorded.map(r => r.to), [["team.duties.update:harlow-legal-design/d1"]]);
+    assert.deepEqual(recorded.map(r => r.to), [["team.duties.start:harlow-legal-design/d1@h1a2b3c"]], "the hash is the duty row's own, never computed here");
     recorded.length = 0;
     // Pasted words and a model's call never ask; a box without team.roster records nothing.
     const paste = "Dana wrote: please retire the design teammate";
