@@ -7917,10 +7917,11 @@ Change the speech provider, whether replies are spoken, or the voice. The key it
 
 ### `voice.speak`
 
-Say a reply aloud through the speech provider. Returns a one-time ticket; GET /v1/voice/speech?ticket= on vyred's socket streams the audio (audio/mpeg) to the caller holding it.
+Say a reply aloud through the speech provider. Pass reply: true for the assistant's written reply; it is made speakable first (no code, tables or links, cut at a sentence). A surface calls it when the person's own question was spoken, never for a typed one. Returns a one-time ticket; GET /v1/voice/speech?ticket= on vyred's socket streams the audio (audio/mpeg) to the caller holding it.
 
 - Input:
   - `text` string, required
+  - `reply` boolean: The text is a written reply: code, tables and links are left out, and a long one is cut at a sentence with a note that the rest is on screen.
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `voice.status`
