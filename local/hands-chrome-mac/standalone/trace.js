@@ -105,6 +105,8 @@ export function stripValues(v, depth = 0) {
 }
 const GHL_HOST = /(^|\.)(gohighlevel\.com|leadconnectorhq\.com)(:\d+)?$|^127\.0\.0\.1(:\d+)?$/;
 /** GoHighLevel automation and workflow builder pages (and the fixture's /ghl). */
+/** GoHighLevel's real workflow address, on any host: an automatically recognised white-label account keeps its builder text too. */
+const WORKFLOW_SHAPE = /^\/(v2\/)?location\/[A-Za-z0-9]{10,40}\/automation\/workflows(\/|$)/;
 const BUILDER_PATH = /\/automation|\/workflows?(\/|$)|^\/ghl(\/|$)/i;
 
 /** Host and path of a URL, no query, no login, no fragment. @param {any} u */
@@ -184,7 +186,7 @@ export function createTrace({ dataDir, now = Date.now, pid = process.pid, versio
       if (meta.host && tabId !== undefined) hostByTab.set(tabId, { host: meta.host, path: meta.path || "" });
       const seen = meta.host ? { host: meta.host, path: meta.path || "" } : (tabId !== undefined ? hostByTab.get(tabId) : undefined);
       if (!meta.host && seen) { meta.host = seen.host; if (seen.path) meta.path = seen.path; }
-      const keep = mode === "all" || (mode !== "none" && seen && (GHL_HOST.test(String(seen.host)) || (Array.isArray(cfgNow().ghlHosts) ? cfgNow().ghlHosts : []).some((/** @type {string} */ h) => String(seen.host) === h || String(seen.host).endsWith("." + h))) && BUILDER_PATH.test(String(seen.path)));
+      const keep = mode === "all" || (mode !== "none" && seen && (WORKFLOW_SHAPE.test(String(seen.path)) || GHL_HOST.test(String(seen.host)) || (Array.isArray(cfgNow().ghlHosts) ? cfgNow().ghlHosts : []).some((/** @type {string} */ h) => String(seen.host) === h || String(seen.host).endsWith("." + h))) && BUILDER_PATH.test(String(seen.path)));
       const args = keep ? c.args : stripValues(c.args);
       const rung = rungOf(c.tool, c.args);
       return write({ kind: "call", tool: c.tool, ...(rung ? { rung, rungName: /** @type {any} */ (RUNGS)[rung] } : {}), args: safeArgs(args), queueMs: Math.round(c.queueMs), runMs: Math.round(c.runMs), ok: c.ok, ...meta });

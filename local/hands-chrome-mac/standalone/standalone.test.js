@@ -368,3 +368,12 @@ test("ghl hosts: the configured white-label domain reaches the extension on ever
   await runtime.invoke("chrome.tabs", { action: "list" });
   assert.deepEqual(ext.ops("tabs.list").at(-1).args.ghlHosts, ["agency.example"]);
 });
+
+test("privacy: an automatically recognised white-label builder page keeps typed values; its contacts page does not", async t => {
+  const { call, dataDir } = await rig(t, (/** @type {string} */ op, /** @type {any} */ a) => ({ ok: true, url: a && (a.tab === 2 || a.tabId === 2) ? "https://crm.agency.example/v2/location/abcdefghij12/contacts/list" : "https://crm.agency.example/v2/location/abcdefghij12/automation/workflows/wf1" }));
+  await call("chrome_fill", { tab: 1, fields: [{ label: "Subject", value: "Welcome to Harlow Legal" }] });
+  await call("chrome_fill", { tab: 2, fields: [{ label: "Notes", value: "call the client about the deed" }] });
+  const recs = /** @type {any} */ (readSessions(dataDir, 1)).records.filter((/** @type {any} */ x) => x.tool === "chrome.fill");
+  assert.equal(recs[0].args.fields[0].value, "Welcome to Harlow Legal");
+  assert.match(String(recs[1].args.fields[0].value), /^\[\d+ chars\]$/);
+});
