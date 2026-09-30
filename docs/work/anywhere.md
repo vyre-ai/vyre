@@ -195,6 +195,8 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   scripts/mac-proof/run.sh on macos-latest (throwaway release key via scripts/mac-proof/release.mjs, real sudo, PATH
   without brew so the Colima/Lima/docker pins are checked for real). RESULT: pending (run on work/vyre-core).
 
+- 30 Sep, reviewer-2's round fixed (H1 verify before sudo + root copies/hashes, H2 placeholder gate, M1 staging, M2 pax, M3 audited keys + ADR 5a). Real release key pinned (release.js + script). gh in the installer (--gh-bin). scripts/sign-manifest.mjs + release.yml signing on publishing runs on main. First runner proof failed only at my keys check (launchd leader "unknown"), fixed; rerun pending the push (branch CI was still running).
+
 ## Next
 1. (done, see above) Phase 5 (co-built with tailnet): core keys tools (keys.exists/ensure/box.pub/box.dh/route.pub/route.sign),
    lib/vyre-core-keys.js client + fakeCoreKeys, on work/vyre-core.

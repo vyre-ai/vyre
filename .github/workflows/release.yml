@@ -76,13 +76,28 @@ jobs:
           min_from=$( [ -f release/min_from ] && tr -d ' \n' < release/min_from || echo 0.1.0 )
           echo "VERSION=$version" >> "$GITHUB_ENV"; echo "CHANNEL=$channel" >> "$GITHUB_ENV"; echo "MIN_FROM=$min_from" >> "$GITHUB_ENV"
           echo "$TAG: version $version, channel $channel, min_from $min_from" | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Box files and vyre.tgz, as build-site.sh makes them
+      - name: The tag's commit is on main (a publishing run signs; a commit off main never does)
+        if: env.PUBLISH == 'true'
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor HEAD FETCH_HEAD || { echo "the tag's commit is not on main; refusing to sign a release from it"; exit 1; }
+      - name: Box files and vyre.tgz, as build-site.sh makes them (signed on a publishing run)
+        env:
+          # The private release key (PKCS8 PEM) exists in this step only on a publishing run.
+          VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}
+          VYRE_CHANNEL: ${{ env.CHANNEL }}
         run: |
           sh scripts/build-site.sh
-          for f in install-box.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do
+          for f in install-box.sh install-mac-server.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do
             [ -f "site/box/$f" ] || { echo "build-site made no $f"; exit 1; }
             cp "site/box/$f" dist/
           done
+          if [ "$PUBLISH" = true ]; then
+            for f in manifest.json manifest.sig; do
+              [ -f "site/box/$f" ] || { echo "a publishing run made no $f"; exit 1; }
+              cp "site/box/$f" dist/
+            done
+          fi
           [ "$(cat dist/VERSION)" = "$VERSION" ]
       - name: The Android app from app.yml on this commit, when there is one
         env:
