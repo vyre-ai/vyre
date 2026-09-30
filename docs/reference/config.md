@@ -78,15 +78,20 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_ALLOW_DIALOGS` | `1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins. | `core/config/dialogs.js`, `core/daemon/index.js` |
 | `VYRE_ALLOW_REAL_BOX` | Not described yet. | `core/config/dialogs.js` |
 | `VYRE_ALLOW_REAL_TRANSCRIPTS` | `1`: a home other than `~/.vyre` reads the transcripts in `~/.claude` too. Never under tests. | `core/config/dialogs.js` |
+| `VYRE_BACKUP_SKIP_PROJECTS` | Not described yet. | `core/cli/commands/up.js` |
+| `VYRE_BACKUP_SKIP_TRANSCRIPTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |
 | `VYRE_BOX_PAIR_WAIT_MS` | Not described yet. | `core/cli/commands/box.js` |
 | `VYRE_BOX_POLL_MS` | How often `vyre box` checks on an install in progress. Default 5000. | `core/cli/commands/box.js` |
 | `VYRE_BOX_PROBE_MS` | How long `vyre box` waits for the box's address to answer. Default two minutes. | `core/cli/commands/box.js` |
 | `VYRE_BOX_WAIT_MS` | How long `vyre box` waits for an install to finish. Default 65 minutes. | `core/cli/commands/box.js` |
 | `VYRE_CHECK_VIEWS` | Not described yet. | `core/cli/view.js` |
+| `VYRE_CHROME_HOST_DIR` | Not described yet. | `local/hands-chrome-mac/standalone/cli.mjs` |
+| `VYRE_CHROME_NO_COPY` | Not described yet. | `local/hands-chrome-mac/standalone/cli.mjs` |
 | `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/memory/index.js`, `core/memory/personal/reader.js`, `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/switchboard/index.js` |
 | `VYRE_CLAUDE_HOME` | Claude Code's folder for a home other than `~/.vyre`. Without it such a home uses its own `claude` folder and never reads `~/.claude`. | `core/config/dialogs.js` |
 | `VYRE_CLOUDFLARE_API` | The Cloudflare API base URL, in place of the real one. | `core/names/index.js` |
+| `VYRE_CODEX_HOME` | Not described yet. | `core/import/formats/index.js` |
 | `VYRE_COMPUTERS_CAP_ADD` | Extra Linux capabilities for agent computers, comma separated. | `core/dockerproxy/main.js` |
 | `VYRE_COMPUTERS_IMAGE` | The container image agent computers run. Default `vyre/computer:0.1`. | `core/dockerproxy/main.js` |
 | `VYRE_COMPUTERS_LABEL_PREFIX` | The label prefix that marks Vyre's containers. Default `run.vyre.computers`. | `core/dockerproxy/main.js` |
@@ -107,11 +112,10 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_EGRESS_SOCKET` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_EGRESS_UPSTREAM` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_FREEZE_FD` | Not described yet. | `core/computers/image/computerd/index.js` |
-| `VYRE_GITHUB_OAUTH_CLIENT_ID` | Not described yet. | `core/github/index.js` |
-| `VYRE_GITHUB_OAUTH_CLIENT_SECRET` | Not described yet. | `core/github/index.js` |
+| `VYRE_GEMINI_HOME` | Not described yet. | `core/import/formats/index.js` |
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/switchboard/index.js` |
-| `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js` |
+| `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/native-host/install.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
 | `VYRE_MODULE_SDK` | A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm. | `core/cli/commands/module.js` |
 | `VYRE_NAMES_DEV_CLOUDFLARE` | Not described yet. | `core/names/index.js` |
@@ -128,7 +132,8 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
 | `VYRE_PROJECTS_MOVE` | Not described yet. | `core/projects/index.js` |
 | `VYRE_REDUCED_MOTION` | Not described yet. | `core/cli/delight.js` |
-| `VYRE_RELEASES_API` | Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server. | `core/cli/commands/update.js` |
+| `VYRE_RELEASES_API` | Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server. | `core/cli/commands/update.js`, `core/update/index.js` |
+| `VYRE_RELEASES_REPO` | Not described yet. | `core/update/index.js` |
 | `VYRE_SCREEN_BIN` | Not described yet. | `local/screen-mac/index.js` |
 | `VYRE_SESSIONS_DRIVER` | Not described yet. | `core/sessions/config.js` |
 | `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js`, `core/spawner/main.js` |
@@ -149,6 +154,9 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_TMPDIR` | Not described yet. | `core/files/index.js`, `core/names/backup.js` |
 | `VYRE_TMUX_BIN` | Not described yet. | `core/daemon/peer.js` |
 | `VYRE_UID` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_UPDATE_DIR` | Not described yet. | `core/update/index.js` |
+| `VYRE_UPDATE_QUIET` | Not described yet. | `core/update/index.js` |
+| `VYRE_UPDATE_STATE` | Not described yet. | `core/update/index.js` |
 | `VYRE_UP_WAIT_MS` | Not described yet. | `core/cli/daemonctl.js` |
 | `VYRE_USER_HOME` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WORK` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
@@ -165,7 +173,10 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_AGENT` | The agent a thread runs as. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
 | `VYRE_AGENT_KEY` | The key that proves a thread's calls come from its agent. | `core/daemon/client.js`, `core/switchboard/index.js` |
 | `VYRE_AGENT_KIND` | `assistant` or `agent`. Only the assistant is offered the tools that drive other threads. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
+| `VYRE_CHROME_HOME` | Not described yet. | `local/hands-chrome-mac/standalone/runtime.js` |
+| `VYRE_CHROME_SOCK` | Not described yet. | `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/spike/host/host.js` |
 | `VYRE_CORE_OWNER` | The owner's uid: the only uid vyre-core answers. Required. | `core/vyre-core/main.js` |
+| `VYRE_GH_BIN` | Not described yet. | `core/github/index.js` |
 | `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
 | `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
 | `VYRE_PROJECT` | The project a thread belongs to, for its brief. | `harness/hooks/hook.js` |

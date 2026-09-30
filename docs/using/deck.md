@@ -14,7 +14,7 @@ separate login, because Tailscale says who is on the other end (see [Tailscale](
 It shows what needs you, what is running, your projects, agents, memory and vault, and every
 setting the onboarding made or skipped. The same pages work on a phone, and it installs as an app
 there (see [Mobile](mobile.md)). The Deck reads and writes only through vyred's API, so it never
-disagrees with the terminal or the [Capsule](capsule.md). On a box with a paired Mac, it also lists
+disagrees with the terminal or the [Lumen](capsule.md). On a box with a paired Mac, it also lists
 the Mac's projects and sessions, read from the Mac as you look (see
 [Your Mac's sessions on the box](#your-macs-sessions-on-the-box)).
 

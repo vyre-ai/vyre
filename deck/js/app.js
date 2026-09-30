@@ -17,7 +17,7 @@
 // Views never touch the shell; they reach vyred only through js/api.js.
 
 import { h, put, link, go, back, isPhone, PHONE_QUERY } from "./dom.js";
-import { attempt, on, onResume, fromFixtures, fixturesOn } from "./api.js";
+import { attempt, on, onResume, fromFixtures, fixturesOn, canProve } from "./api.js";
 import { icon, mark } from "./icons.js";
 import * as needs from "./needs.js";
 import { when, base, initials } from "./fmt.js";
@@ -28,6 +28,8 @@ import { isMac, machineChip } from "./machine.js";
 import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
 import { installPersonHandler } from "./person.js";
+import { offerEnroll } from "./enroll-grant.js";
+import { enrollPasskey } from "./phone-setup.js";
 import { rail, placeForKey } from "./rail.js";
 import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
@@ -63,6 +65,9 @@ const ROUTES = [
   ["/find", "find"],
   // An artifact an agent made, full screen (views/artifact.js).
   ["/a/:id", "artifact"],
+  // The box's shared folders, browsed from a phone (views/files.js).
+  ["/files", "files"],
+  ["/files/:share", "files"],
   ["/planner", "planner"],
   // A planner push notification opens /planner/<firing> (ADR 0025).
   ["/planner/:firing", "planner"],
@@ -781,6 +786,9 @@ window.addEventListener("deck:navigate", route);
 (async () => {
   // A box that asks for a person session gets a sign-in sheet, and the call goes again once.
   installPersonHandler();
+// Just paired by scanning the Wink ring: the box's own address opens with a one-time grant in the
+// fragment, and this phone makes its Face ID key now (js/enroll-grant.js).
+offerEnroll({ enroll: enrollPasskey, canProve }).catch(() => {});
   // The theme and scheme from the settings hub, live (ADR 0035); a box without the hub keeps /theme.css.
   followTheme({ attempt, on, onResume });
   // A tap on anyone's avatar plays its small hop (js/avatars.js), one listener for the page.

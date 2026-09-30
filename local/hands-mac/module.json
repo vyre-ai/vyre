@@ -1,10 +1,10 @@
 {
   "name": "hands",
-  "version": "0.2.0",
-  "description": "Computer use on macOS through the accessibility tree: observe an app, act on one control and verify by observing again, inside the floor, with a visible indicator and a stop key.",
+  "version": "0.3.0",
+  "description": "Computer use on macOS through the accessibility tree: observe an app, act on one control and verify by observing again, inside the floor, with a visible indicator and a stop key. An outward act (a send, post or pay) holds at the Gate; a named agent needs the one grant before it may drive this Mac at all.",
   "roles": ["local"],
   "requires": [],
-  "does": { "tools": ["hands.observe", "hands.find", "hands.act", "hands.commit", "hands.stop"] },
+  "does": { "tools": ["hands.observe", "hands.find", "hands.act", "hands.commit", "hands.release", "hands.stop", "hands.indicator", "hands.grant.list", "hands.grant.add", "hands.grant.remove"] },
   "watches": { "emits": ["hands.acted", "hands.stopped", "hands.resumed"] },
   "shows": {},
   "needs": {},
@@ -13,7 +13,8 @@
       {"id": "stop", "text": "While Vyre drives the Mac a pill says so. Press `Esc` or `⌃⌃` to stop it at once.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "Esc"},
       {"id": "grant", "text": "If Vyre cannot act on an app, turn on Accessibility for it in System Settings, Privacy and Security.", "surfaces": ["capsule", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0"},
       {"id": "floor", "text": "Vyre never acts in password managers, sign-in dialogs or its own windows. Sign in with the Vault instead.", "surfaces": ["capsule"], "level": "power", "trigger": "idle", "since": "0.1.0"},
-      {"id": "resume", "text": "After you stop Vyre, it asks before it carries on. Nothing more is done until you say yes.", "surfaces": ["capsule"], "level": "power", "trigger": "idle", "since": "0.1.0"}
+      {"id": "resume", "text": "After you stop Vyre, it asks before it carries on. Nothing more is done until you say yes.", "surfaces": ["capsule"], "level": "power", "trigger": "idle", "since": "0.1.0"},
+      {"id": "computer-use-grant", "text": "An agent needs one grant, made here with Touch ID, before it can drive this Mac's computer use at all.", "surfaces": ["capsule", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.2.0"}
     ]
   }
 }

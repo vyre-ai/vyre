@@ -131,6 +131,9 @@
       "vault.api.send"
     ]
   },
+  "mentions": [
+    { "kind": "vault", "label": "Vault", "icon": "key", "search": "vault.mention.search", "resolve": "vault.mention.resolve" }
+  ],
   "watches": {
     "emits": [
       "vault.item-added",

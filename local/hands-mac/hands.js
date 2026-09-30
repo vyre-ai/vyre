@@ -119,10 +119,11 @@ function target(/** @type {{ app?: string, pid?: number, window?: string }} */ i
 export class Hands {
   /**
    * @param {{ run: Runner, sleep?: (ms: number) => Promise<void>, emit?: (type: string, payload: any) => void,
-   *   overlay?: import("./overlay.js").Overlay, known?: () => Promise<Known> }} deps
+   *   overlay?: import("./overlay.js").Overlay, known?: () => Promise<Known>,
+   *   hold?: (o: { content: Record<string, unknown>, thread?: string }) => Promise<{ id: string } | null> }} deps
    */
-  constructor({ run, sleep = ms => new Promise(r => setTimeout(r, ms)), emit = () => {}, overlay = NO_OVERLAY, known = async () => ({}) }) {
-    this.run = run; this.sleep = sleep; this.emit = emit; this.overlay = overlay; this.known = known;
+  constructor({ run, sleep = ms => new Promise(r => setTimeout(r, ms)), emit = () => {}, overlay = NO_OVERLAY, known = async () => ({}), hold = async () => null }) {
+    this.run = run; this.sleep = sleep; this.emit = emit; this.overlay = overlay; this.known = known; this.hold = hold;
     /** Set by a stop, cleared only by an act that passes resume: true. @type {{ app: string | null, by: string } | null} */
     this.stopped = null;
     /** The app of the live control session, for the stop event. @type {string | null} */
@@ -209,14 +210,15 @@ export class Hands {
   }
 
   /**
-   * Do one thing to one control, and prove it. `commit` is set only by hands.commit, after the
-   * registry has checked a person's proof; it skips the outward hold and nothing else.
+   * Do one thing to one control, and prove it. `commit` is set only from hands.release, the
+   * Gate's own callback once a person approved the held item; it skips the outward hold and
+   * nothing else.
    *
    * @param {{ selector: Selector, kind: string, action?: string, value?: string, key?: string, modifiers?: string[],
    *   app?: string, pid?: number, window?: string, limit?: number, settleMs?: number, resume?: boolean }} input
-   * @param {{ commit?: boolean }} [o]
+   * @param {{ commit?: boolean, thread?: string }} [o]
    */
-  async act(input, { commit = false } = {}) {
+  async act(input, { commit = false, thread } = {}) {
     const { selector, kind } = input;
     if (!KINDS.includes(kind)) throw new HandsError("bad_input", `kind must be one of ${KINDS.join(", ")}`);
     if ((kind === "set" || kind === "type") && typeof input.value !== "string") throw new HandsError("bad_input", `${kind} needs a value`);
@@ -273,13 +275,28 @@ export class Hands {
       throw new HandsError("needs_front", `${before.app || "The app"} is in the background, and a key only reaches the app in front. Nothing was done. Press the control instead (for example the Send button), or ask the person to bring ${before.app || "the app"} to the front`);
     }
 
-    // Held, not refused: sending as the person needs the person. hands.commit carries it.
+    // Held, not refused: sending as the person needs the person, through the same one Gate every
+    // other outward action goes through (PLAN.md C4): a real held card, not a bespoke path.
     // Confirm and pick are other ways to press a control, and a Send button confirmed is sent.
     const asKind = kind === "action" && (input.action === "AXConfirm" || input.action === "AXPick") ? "press" : kind;
-    const out = commit ? null : outward(placeOf(before), { kind: asKind, name: el.name, role: el.role, key: input.key, modifiers: input.modifiers, value: input.value });
+    const out = commit ? null : outward(placeOf(before), { kind: asKind, name: el.name, role: el.role, identifier: el.identifier, key: input.key, modifiers: input.modifiers, value: input.value });
     if (out) {
-      const r = this.finish({ input, before, after: null, acted: false, verified: false, reason: `${out}, so it was held and nothing was done. A person has to allow it: call hands.commit with the same input`, held: true });
-      return { ...r, held: true, use: "hands.commit" };
+      // The snapshot's own signature (verify.js) is the "did the screen move" check hands.release
+      // redoes before ever acting: reviewer-2 H1's `changed` refusal. The whole input rides along
+      // so release replays exactly what was approved, never a re-derived guess at it.
+      const summary = await this.summary(input);
+      const held = await this.hold({
+        content: { app: before.app, window: before.window, control: summary, value: input.value !== undefined ? clip(input.value) : undefined, hash: signature(before), input },
+        thread,
+      }).catch(() => null);
+      // The person's own words (or a standing permission) covered it: the Gate already replayed the act.
+      if (held && held.sent) return held.result;
+      const use = held && held.id ? "gate.approve" : "hands.commit";
+      const reason = held && held.id
+        ? `${out}, so it was held for the person to approve (${held.id}). Nothing was done.`
+        : `${out}, so it was held and nothing was done. A person has to allow it: call hands.commit with the same input`;
+      const r = this.finish({ input, before, after: null, acted: false, verified: false, reason, held: true });
+      return { ...r, held: true, ...(held && held.id ? { id: held.id } : {}), use };
     }
 
     // Visible before it happens. In real use this starts the indicator and its stop keys, and
@@ -366,6 +383,26 @@ export class Hands {
       after: after ? side(after, now) : null,
       changes: after ? diff(before, after) : null,
     };
+  }
+
+  /**
+   * The Gate's own callback (hands.release) once a person approved a held act: re-check the
+   * screen has not moved since it was held (reviewer-2 H1: approving something blind, from a
+   * stale screenshot, is not approving what actually runs), then replay exactly the input that
+   * was held, never a re-derived guess at it.
+   * @param {{ input: any, hash: string }} content
+   */
+  async release({ input, hash }) {
+    if (!input || typeof input !== "object") throw new HandsError("bad_input", "nothing to replay: the held content lost its input");
+    const k = await this.knownPlace();
+    const w = await this.where(target(input));
+    const off = untouchable(placeOf(w), k);
+    if (off) throw new HandsError("floor", `Vyre does not act in ${off}. Nothing was done`);
+    const fresh = await this.snap({ pid: w.pid, ...(input.window ? { window: input.window } : {}) }, { valueMax: VALUE_FULL });
+    if (!hash || signature(fresh) !== hash) {
+      throw new HandsError("changed", "the screen changed since this was held. Nothing was done; ask again so the person sees what is actually there now");
+    }
+    return this.act(input, { commit: true });
   }
 
   /**

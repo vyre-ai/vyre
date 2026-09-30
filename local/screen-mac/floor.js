@@ -51,8 +51,65 @@ export const MESSAGING = new Set([
   "com.hnc.Discord", "org.whispersystems.signal-desktop", "com.facebook.archon", "us.zoom.xos",
 ]);
 
-/** Words on a control that make pressing it an act that goes out as the user. */
-const OUTWARD_NAMES = /^(send( now| message| email)?|reply( all)?|forward|post|publish|tweet|share|submit|pay( now)?|buy( now)?|place order|purchase|confirm (payment|purchase|order)|transfer|delete account|approve|sign|merge( pull request)?)$/i;
+/**
+ * Browsers: Return in a text field here can submit an ordinary web form (a checkout, a comment
+ * box, a bank transfer), and the page's own submit button is a control Vyre has no AX-level way
+ * to mark "default" (that needs the DOM, which is capsule-sight's deep-Chrome-control work, not
+ * this AX-only floor). Held on the safe side until that lands.
+ */
+export const BROWSERS = new Set([
+  "com.apple.Safari", "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.dev",
+  "com.google.Chrome.canary", "org.mozilla.firefox", "com.microsoft.edgemac", "com.brave.Browser",
+  "company.thebrowser.Browser", "com.operasoftware.Opera", "com.vivaldi.Vivaldi",
+]);
+/** Text-entry roles: a Return in one of these, in a browser, can submit a form. */
+// The address bar and search boxes are AXComboBox and AXSearchField; Return there navigates or
+// searches, it does not send anything, so they stay free (reviewer-2 M4).
+const TEXT_ROLES = new Set(["AXTextField", "AXTextArea"]);
+
+/**
+ * Words on a control that mean pressing it sends, posts or pays as the user (reviewer-2 B1,
+ * 30 Sep): matched as a substring, case-insensitively, so real checkout and composer labels
+ * ("Place your order", "Pay $40.00", "Continue to payment", "Confirm and pay", "Post comment")
+ * are caught, not just an exact "Send"/"Pay". Anchored words stay too, so a label that IS one of
+ * these words and nothing else still matches with no substring false-positive risk either way.
+ * English first; other charter-market languages follow the same shape.
+ */
+const OUTWARD_WORDS_EN = [
+  "send", "reply", "reply all", "forward", "post", "publish", "tweet", "share to", "submit",
+  "pay", "place your order", "place order", "buy", "purchase", "checkout", "continue to payment",
+  "confirm and pay", "confirm payment", "confirm purchase", "confirm order", "transfer",
+  "delete account", "approve", "sign and send", "e-sign", "merge pull request", "donate", "subscribe",
+];
+/** German, Spanish, French, Portuguese equivalents of the same list, for the same reason. */
+const OUTWARD_WORDS_INTL = [
+  // de
+  "senden", "antworten", "weiterleiten", "veröffentlichen", "teilen", "absenden", "bezahlen",
+  "kaufen", "bestellen", "jetzt kaufen", "weiter zur zahlung", "zahlung bestätigen", "überweisen",
+  // es
+  "enviar", "responder", "reenviar", "publicar", "compartir", "pagar", "comprar", "confirmar pago",
+  "confirmar compra", "realizar pedido", "transferir",
+  // fr
+  "envoyer", "répondre", "transférer", "publier", "partager", "payer", "acheter",
+  "confirmer et payer", "confirmer la commande", "passer la commande", "virer",
+  // pt
+  "enviar", "responder", "reenviar", "publicar", "compartilhar", "pagar", "comprar",
+  "confirmar pagamento", "confirmar pedido", "finalizar compra", "transferir",
+];
+const OUTWARD_WORDS = [...OUTWARD_WORDS_EN, ...OUTWARD_WORDS_INTL];
+/** A word counts as a whole word: "Send", "Pay $40.00", "Post comment" hold; "Sender", "Postcode", "Assign", "Approved", "Shared with me" do not (reviewer-2 M3). */
+const OUTWARD_WORD_RES = OUTWARD_WORDS.map(w => new RegExp(`(^|[^\\p{L}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}])`, "iu"));
+/** A label that is exactly one of the short words above (old anchored behaviour, kept for parity). */
+const OUTWARD_NAMES = /^(send( now| message| email)?|reply( all)?|forward|post|publish|tweet|submit|pay( now)?|buy( now)?|place order|purchase|confirm (payment|purchase|order)|transfer|delete account|approve|merge( pull request)?)$/i;
+
+/** Whether a control's own label (or its AX identifier) reads as an outward action. */
+function namesOutward(/** @type {string} */ name, /** @type {string} */ identifier = "") {
+  const n = name.trim().toLowerCase();
+  const d = String(identifier || "").trim().toLowerCase();
+  if (!n && !d) return false;
+  if (OUTWARD_NAMES.test(name.trim())) return true;
+  return OUTWARD_WORD_RES.some(re => re.test(n) || re.test(d));
+}
 
 /**
  * @typedef {{ bundle?: string|null, app?: string|null, window?: string|null, url?: string|null }} Where
@@ -89,21 +146,30 @@ export function untouchable(w, k = {}) {
 
 /**
  * Whether one act sends something out as the user (floor rule 1), and why. Such an act is not
- * refused, it is held for a person: hands.commit carries it, and hands.commit needs presence.
+ * refused, it is held for a person to see and approve at the Gate (reviewer-2 H1: the card shows
+ * the real snapshot, not just this reason string).
  * @param {Where} w
- * @param {{ kind: string, name?: string|null, role?: string|null, key?: string|null, modifiers?: string[]|null, value?: string|null }} act
+ * @param {{ kind: string, name?: string|null, role?: string|null, identifier?: string|null, key?: string|null, modifiers?: string[]|null, value?: string|null }} act
  * @returns {string|null}
  */
 export function outward(w, act) {
   const name = String(act.name || "").trim();
-  if (act.kind === "press" && OUTWARD_NAMES.test(name)) return `pressing "${name}" sends something as you`;
+  const id = String(act.identifier || "").trim();
+  if (act.kind === "press" && namesOutward(name, id)) return `pressing "${name || id}" sends something as you`;
   const mods = (act.modifiers || []).map(m => m.toLowerCase());
   const isReturn = act.kind === "key" && /^(return|enter)$/i.test(act.key || "");
+  const shifted = mods.includes("shift");
   // Command-Return sends in Mail, Gmail, Outlook and most composers.
   if (isReturn && (mods.includes("cmd") || mods.includes("command"))) return "Command-Return sends the message";
   if (MESSAGING.has(w.bundle || "")) {
-    if (isReturn && !mods.includes("shift")) return `Return sends the message in ${w.app || "this app"}`;
+    if (isReturn && !shifted) return `Return sends the message in ${w.app || "this app"}`;
     if (act.kind === "type" && /[\r\n]/.test(act.value || "")) return `a line break sends the message in ${w.app || "this app"}`;
+  }
+  // Return in a text field of a browser can submit an ordinary web form (a checkout, a comment
+  // box, a payment); held on the safe side until deep Chrome control can see the real DOM and
+  // tell a submit from a plain newline (reviewer-2 B1).
+  if (BROWSERS.has(w.bundle || "") && isReturn && !shifted && TEXT_ROLES.has(String(act.role || ""))) {
+    return `Return can submit a form in ${w.app || "this browser"}`;
   }
   return null;
 }

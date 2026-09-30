@@ -326,7 +326,7 @@ Optional, off by default. Vyre support: built, read-only unless you make one sha
 
 VyreDrive (built on Tailscale's Taildrive) puts the box's folders on your Mac. The box shares only
 named folders (`projects` and `glass-files` by default, config
-`files.drive.shares`), and your Mac mounts them at `~/Vyre/Box/<share>` so Finder and the Capsule
+`files.drive.shares`), and your Mac mounts them at `~/Vyre/Box/<share>` so Finder and Lumen
 open box files in place. Taildrive is in alpha at Tailscale.
 
 1. Add to the policy:
@@ -370,7 +370,7 @@ open box files in place. Taildrive is in alpha at Tailscale.
    ```
 
 To edit box files from Finder: `"access": "rw"` in the grant, then make that one share
-read-write, from the box's terminal, the Capsule or your paired Mac. It asks for no proof, since
+read-write, from the box's terminal, Lumen or your paired Mac. It asks for no proof, since
 the share already exists; an agent or a guest is refused:
 
 ```sh
@@ -408,7 +408,7 @@ Optional, off by default. Vyre support: built.
    vyre send ~/Downloads/northwind-invoice.pdf
    ```
 
-   From the Capsule, option-return on a file row sends it. From a phone, use the Share menu,
+   From Lumen, option-return on a file row sends it. From a phone, use the Share menu,
    choose Tailscale, then `vyre`.
 
 Files land in the box's inbox, `/work/inbox` (the `inbox` setting under `files` in the box's config moves it). Vyre announces each one as

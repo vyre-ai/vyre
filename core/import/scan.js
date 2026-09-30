@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { formatFor } from "./formats/index.js";
 
 /** How much of a session's start is read to find its folder, and the caps on one scan (e2e). */
 export const HEAD_BYTES = 16 * 1024;
@@ -72,8 +73,8 @@ export function notSuggested(cwd, { quick = null, ask = null, isDev = () => fals
 
 /**
  * Sources, each with its sessions grouped by the folder they ran in.
- * @param {{ path: string, kind: "claude"|"archive"|"folder" }[]} roots
- * @param {{ projectOf?: (cwd: string) => { slug: string, name: string }|null, quick?: string|null, ask?: string|null, isDev?: (cwd: string) => boolean }} [o]
+ * @param {{ path: string, kind: "claude"|"archive"|"folder"|"codex"|"gemini-cli" }[]} roots
+ * @param {{ projectOf?: (cwd: string) => { slug: string, name: string }|null, candidates?: string[], quick?: string|null, ask?: string|null, isDev?: (cwd: string) => boolean }} [o]
  */
 export function scan(roots, o = {}) {
   const sources = [];
@@ -84,7 +85,10 @@ export function scan(roots, o = {}) {
   /** @type {Map<string, { file: string, id: string, bytes: number, mtime: number, cwd: string|null, source: string }>} */
   const files = new Map();
   for (const r of roots) {
-    const list = sessionFiles(r.path);
+    // Codex and Gemini CLI: their own allowlisted readers list and peek; everything else is Claude Code's layout.
+    const fmt = formatFor(r.kind);
+    const list = fmt ? fmt.list(r.path) : sessionFiles(r.path);
+    if (fmt && !list.length) continue;
     const id = "src_" + crypto.createHash("sha256").update(path.resolve(r.path)).digest("hex").slice(0, 10);
     /** @type {Map<string, any>} */
     const byCwd = new Map();
@@ -94,12 +98,12 @@ export function scan(roots, o = {}) {
       // The same session in two folders (an archive copy): counted once, where it was found first.
       if (files.has(f.id)) continue;
       if (++files_seen > CAPS.files) { capped = true; break; }
-      const cwd = cwdOf(f.file, budget);
-      budget -= Math.min(HEAD_BYTES, f.bytes);
+      const cwd = fmt ? fmt.head(r.path, f.file, { candidates: o.candidates }) : cwdOf(f.file, budget);
+      budget -= Math.min(fmt ? fmt.headBytes : HEAD_BYTES, f.bytes);
       if (budget <= 0) capped = true;
       if (cwd && o.isDev && o.isDev(cwd)) { left.vyre++; continue; }
       if (cwd && excluded.some(x => cwd === x || cwd.startsWith(x + "/"))) { left.excluded++; continue; }
-      files.set(f.id, { ...f, cwd, source: id });
+      files.set(f.id, { ...f, cwd, source: id, ...(fmt ? { format: r.kind, home: r.path } : {}) });
       bytes += f.bytes; from = Math.min(from, f.mtime); to = Math.max(to, f.mtime);
       const k = cwd || "";
       const g = byCwd.get(k) || { cwd: cwd || null, sessions: 0, bytes: 0, from: Infinity, to: 0 };
@@ -112,7 +116,7 @@ export function scan(roots, o = {}) {
       return { cwd: g.cwd, sessions: g.sessions, bytes: g.bytes, from: Math.round(g.from), to: Math.round(g.to), ...(p ? { project: p.slug, name: p.name } : {}), suggested: !why, ...(why ? { why } : {}) };
     }).sort((a, b) => b.to - a.to || (String(a.cwd) < String(b.cwd) ? -1 : 1));
     const sessions = folders.reduce((n, f) => n + f.sessions, 0);
-    sources.push({ id, path: r.path, kind: r.kind, sessions, bytes, ...(sessions ? { from: Math.round(from), to: Math.round(to) } : {}), folders });
+    sources.push({ id, path: r.path, kind: r.kind, agent: fmt ? r.kind : "claude-code", sessions, bytes, ...(sessions ? { from: Math.round(from), to: Math.round(to) } : {}), folders });
   }
   return { sources, files, left_out: left, capped };
 }

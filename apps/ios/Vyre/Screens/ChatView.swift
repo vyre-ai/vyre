@@ -28,7 +28,7 @@ struct ChatHome: View {
             Section {
                 if rows.isEmpty {
                     LoadState(loading: loading && all.isEmpty, problem: all.isEmpty ? problem : nil,
-                              empty: project == nil ? "No sessions yet. Ask from the Capsule to start one." : "No sessions in this project in the last day.")
+                              empty: project == nil ? "No sessions yet. Ask from Lumen to start one." : "No sessions in this project in the last day.")
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets())
                 }
@@ -453,7 +453,7 @@ struct ThreadView: View {
     private func holderName(_ h: String) -> String {
         switch h {
         case "deck": "The Deck"
-        case "capsule": "The Capsule"
+        case "capsule": "Lumen"
         case "android": "Your Android phone"
         default: h.hasPrefix("tailnet:") ? "Another device" : h.hasPrefix("agent:") ? String(h.dropFirst(6)) : h
         }

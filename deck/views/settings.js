@@ -43,6 +43,7 @@ const SECTIONS = [
   ["modules", "Modules"],
   ["appearance", "Appearance"],
   ["machine", "This machine"],
+  ["data", "Update, export and uninstall"],
 ];
 
 /** The onboarding's steps (deck/onboard/onboard.js), each with the command that does the same.
@@ -135,6 +136,7 @@ export default async function settings(ctx) {
     drawNetwork(body.network, ctx), drawDevices(body.devices, ctx), drawServer(body.server, ctx), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
+    import("./settings-data.js").then(m => m.drawData(body.data, ctx)).catch(e => put(body.data, empty("Update, export and uninstall did not load.", e))),
   ];
   // A push notification's path is a query (?section=lessons, a plain fetchable link), not a hash.
   // ?key=<key> goes to one of the registry's settings and highlights it.
