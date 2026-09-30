@@ -392,14 +392,14 @@ export default {
 
     ctx.tool("github.session.cleanup", {
       internal: true,
-      description: "Sessions only: remove a session's worktree, but ONLY when nothing would be lost (no uncommitted change, no untracked file, no commit missing from the default branch and every remote). Otherwise nothing is removed and github.cleanup-needed is emitted with what's at stake, for a person to decide by hand.",
-      input: obj({ project: str, session: str }, ["project", "session"]),
+      description: "Sessions only: remove a session's worktree, but ONLY when nothing would be lost (with deleted: true, for a deleted chat, its commits and uncommitted changes are first kept under the undo ref, so only ignored files such as .env can stop it) (no uncommitted change, no untracked file, no commit missing from the default branch and every remote). Otherwise nothing is removed and github.cleanup-needed is emitted with what's at stake, for a person to decide by hand.",
+      input: obj({ project: str, session: str, deleted: { type: "boolean" } }, ["project", "session"]),
       callers: ["module"],
-      run: async ({ project, session }, meta = {}) => {
+      run: async ({ project, session, deleted }, meta = {}) => {
         checkModuleCaller("github.session.cleanup", meta, SESSION_ONLY);
         const repo = await repoOf(project);
         if (!repo) return { removed: false };
-        const out = await worktreeRemove({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch });
+        const out = await worktreeRemove({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch, deleted: Boolean(deleted) });
         if (out.needsConfirm) {
           ctx.events.emit("github.cleanup-needed", { project, session, path: out.path, branch: out.branch, dirty: out.dirty, commits: out.commits });
         }
@@ -504,7 +504,7 @@ export default {
     });
 
     ctx.tool("github.session.undo", {
-      description: "Undo a session's commits: back to `to` (a commit id from github.session.history; that commit and everything after it come off) or, without `to`, all the way to where the session started. Nothing is deleted: the tip is saved first and github.session.redo puts it back. Refuses while the worktree has uncommitted changes. Never touches the default branch, never a remote.",
+      description: "Undo a session's commits: back to `to` (a commit id from github.session.history; that commit and everything after it come off) or, without `to`, all the way to where the session started. Nothing is deleted: the tip is saved first and github.session.redo puts it back. Uncommitted changes are kept first as one marked commit under the saved ref, so redo brings everything back; no refusal. Never touches the default branch, never a remote.",
       input: obj({ project: str, session: str, to: str }, ["project", "session"]),
       callers: [...PEOPLE_AND_AGENTS, "module"],
       run: async ({ project, session, to }, meta = {}) => {

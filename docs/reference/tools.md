@@ -1020,7 +1020,7 @@ Put back what the latest (or numbered) github.session.undo took off. Only when t
 
 ### `github.session.undo`
 
-Undo a session's commits: back to `to` (a commit id from github.session.history; that commit and everything after it come off) or, without `to`, all the way to where the session started. Nothing is deleted: the tip is saved first and github.session.redo puts it back. Refuses while the worktree has uncommitted changes. Never touches the default branch, never a remote.
+Undo a session's commits: back to `to` (a commit id from github.session.history; that commit and everything after it come off) or, without `to`, all the way to where the session started. Nothing is deleted: the tip is saved first and github.session.redo puts it back. Uncommitted changes are kept first as one marked commit under the saved ref, so redo brings everything back; no refusal. Never touches the default branch, never a remote.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller

@@ -211,11 +211,26 @@ async function worktreeSafety({ repoDir, dest, branch, defaultBranch }) {
  * a second, independent backstop behind the check above, not a substitute for it.
  * @param {{ repoDir: string, session: string, defaultBranch: string }} p
  */
-export async function worktreeRemove({ repoDir, session, defaultBranch }) {
+export async function worktreeRemove({ repoDir, session, defaultBranch, deleted = false }) {
   const id = safeSegment(session, "session id");
   const dest = path.join(repoDir, ".sessions", id);
   const branch = `vyre/${id}`;
   if (!fs.existsSync(dest)) return { removed: false, existed: false };
+  if (deleted) {
+    // The chat was deleted: keep its work under the undo ref (uncommitted changes as one marked
+    // commit first), then remove the worktree. Ignored files (.env, build output) are the one thing
+    // a commit does not keep, so they still stop the removal and are handed to a person.
+    const ig = await gitAsync(dest, ["ls-files", "--others", "--ignored", "--exclude-standard"]);
+    const ignored = ig.ok ? ig.stdout.split("\n").map(l => l.trim()).filter(Boolean) : ["(could not read the worktree's ignored files)"];
+    if (ignored.length) return { removed: false, needsConfirm: true, path: dest, branch, dirty: ignored, commits: [] };
+    await saveDirty(dest);
+    const ahead = await gitAsync(dest, ["rev-list", "--count", `refs/heads/${defaultBranch}..HEAD`]);
+    const saved = Number(ahead.stdout.trim()) > 0 ? await saveTip(repoDir, dest, id) : null;
+    const rm = await gitAsync(repoDir, ["worktree", "remove", dest]);
+    if (!rm.ok) throw fail(`git worktree remove failed: ${rm.stderr.trim().slice(0, 300) || "no output"}`, "cleanup_failed");
+    const del = await gitAsync(repoDir, ["branch", "-d", branch]);
+    return { removed: true, pruned: del.ok, ...(saved ? { saved_as: saved.ref } : {}) };
+  }
   const safety = await worktreeSafety({ repoDir, dest, branch, defaultBranch });
   if (!safety.safe) return { removed: false, needsConfirm: true, path: dest, branch, dirty: safety.dirty, commits: safety.commits };
   const rm = await gitAsync(repoDir, ["worktree", "remove", dest]);
@@ -365,18 +380,42 @@ export async function sessionHistory({ repoDir, session, defaultBranch }) {
   return { commits, dirty: st.ok ? st.stdout.split("\n").filter(Boolean).length : 0 };
 }
 
+const WIP = "vyre: unsaved changes (kept by undo)";
+
+/** Commit whatever is uncommitted in a session's worktree (tracked or new, not ignored) as one marked commit. True when there was something. */
+async function saveDirty(dest) {
+  const st = await gitAsync(dest, ["status", "--porcelain"]);
+  if (!st.ok || !st.stdout.trim()) return false;
+  const a = await gitAsync(dest, ["add", "-A"]);
+  if (!a.ok) throw fail(`could not keep the unsaved changes first, so nothing was undone: ${a.stderr.trim().slice(0, 200)}`, "failed");
+  const c = await gitAsync(dest, [...IDENT, "commit", "-q", "-m", WIP]);
+  if (!c.ok) throw fail(`could not keep the unsaved changes first, so nothing was undone: ${c.stderr.trim().slice(0, 200)}`, "failed");
+  return true;
+}
+
+/** Save `HEAD` under refs/vyre/undone/<id>/<n> and return that ref and n. */
+async function saveTip(repoDir, dest, id) {
+  const head = (await gitAsync(dest, ["rev-parse", "HEAD"])).stdout.trim();
+  const n = (await gitAsync(repoDir, ["for-each-ref", "--format=%(refname)", `refs/vyre/undone/${id}/`])).stdout.split("\n").filter(Boolean).length + 1;
+  const ref = `refs/vyre/undone/${id}/${n}`;
+  const save = await gitAsync(repoDir, ["update-ref", ref, head]);
+  if (!save.ok) throw fail(`could not save the current state first, so nothing was undone: ${save.stderr.trim().slice(0, 200)}`, "failed");
+  return { ref, n, head };
+}
+
 /**
  * Undo a session's commits back to `to` (a commit already on the session branch, default: where the
- * session started, the default branch's tip it was cut from). Nothing is deleted: the current tip is
- * first saved as refs/vyre/undone/<session>/<n>, and `sessionRedo` puts it back. Refuses with
- * uncommitted changes in the worktree (nothing here stashes or discards them).
+ * session started, the default branch's tip it was cut from). Nothing is deleted: uncommitted
+ * changes are first committed as one marked commit, the tip is saved as refs/vyre/undone/<session>/<n>,
+ * and `sessionRedo` puts everything back (the unsaved changes as uncommitted again). No refusal.
  * @param {{ repoDir: string, session: string, defaultBranch: string, to?: string }} p
  */
 export async function sessionUndo({ repoDir, session, defaultBranch, to }) {
   const dest = wtPath(repoDir, session);
   const id = safeSegment(session, "session id");
+  if (!fs.existsSync(dest)) throw fail(`no worktree for session ${session}`, "not_found");
+  const hadDirty = await saveDirty(dest);
   const h = await sessionHistory({ repoDir, session, defaultBranch });
-  if (h.dirty) throw fail(`the session has ${h.dirty} uncommitted change(s); commit them first, so nothing is lost`, "dirty");
   if (!h.commits.length) throw fail("this session has no commits to undo", "nothing_to_undo");
   let target, undone = h.commits.length;
   if (to != null) {
@@ -388,15 +427,11 @@ export async function sessionUndo({ repoDir, session, defaultBranch, to }) {
   } else {
     target = `${h.commits[h.commits.length - 1].sha}^`;
   }
-  const head = (await gitAsync(dest, ["rev-parse", "HEAD"])).stdout.trim();
-  const n = (await gitAsync(repoDir, ["for-each-ref", "--format=%(refname)", `refs/vyre/undone/${id}/`])).stdout.split("\n").filter(Boolean).length + 1;
-  const ref = `refs/vyre/undone/${id}/${n}`;
-  const save = await gitAsync(repoDir, ["update-ref", ref, head]);
-  if (!save.ok) throw fail(`could not save the current state first, so nothing was undone: ${save.stderr.trim().slice(0, 200)}`, "failed");
+  const { ref, n } = await saveTip(repoDir, dest, id);
   const reset = await gitAsync(dest, ["reset", "--hard", "-q", target]);
   if (!reset.ok) throw fail(`git reset failed: ${reset.stderr.trim().slice(0, 300)}`, "failed");
   const now = (await gitAsync(dest, ["rev-parse", "HEAD"])).stdout.trim();
-  return { undone, saved_as: ref, n, head: now };
+  return { undone: hadDirty ? undone - 1 : undone, saved_as: ref, n, head: now, kept_unsaved: hadDirty };
 }
 
 /**
@@ -413,8 +448,11 @@ export async function sessionRedo({ repoDir, session, n }) {
   const pick = n ?? nums[nums.length - 1];
   if (!pick || !nums.includes(pick)) throw fail("nothing to redo", "nothing_to_redo");
   const st = await gitAsync(dest, ["status", "--porcelain"]);
-  if (st.ok && st.stdout.trim()) throw fail("the session has uncommitted changes; commit them first", "dirty");
+  if (st.ok && st.stdout.trim()) throw fail("the session has uncommitted changes; undo or commit them first", "dirty");
   const m = await gitAsync(dest, ["merge", "--ff-only", "-q", `refs/vyre/undone/${id}/${pick}`]);
   if (!m.ok) throw fail("the session has moved on since that undo, so it cannot be put back cleanly; its saved commits are still kept", "diverged");
-  return { redone: pick, head: (await gitAsync(dest, ["rev-parse", "HEAD"])).stdout.trim() };
+  // The marked commit was only a way to keep unsaved work: bring it back as uncommitted changes.
+  const subj = (await gitAsync(dest, ["log", "-1", "--format=%s"])).stdout.trim();
+  const restored = subj === WIP && (await gitAsync(dest, ["reset", "-q", "--mixed", "HEAD^"])).ok;
+  return { redone: pick, restored_unsaved: restored, head: (await gitAsync(dest, ["rev-parse", "HEAD"])).stdout.trim() };
 }

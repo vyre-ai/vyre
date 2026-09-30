@@ -8,6 +8,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - Chrome on macOS reached for the login Keychain and put a real dialog on the user's screen. `lib/chrome-flags` exports `CHROME_SAFE` (`--use-mock-keychain`, `--password-store=basic`), spread into every Chrome launch in the Deck shot and browser scripts, the native-bar run, the vyrecode harness, hands-chrome's and the onboarding page's tests, the docs build, design-audit, the iOS icon script and the app-perf playwright launch. `test/chrome-flags.test.js` fails on any file that launches Chrome without them (containers' own Chrome and the fakes are listed as exempt, each with why).
 - Undo for a session: see its commits, take them off (all or from one point on) and put them back. Nothing is deleted; the commits stay saved until you say otherwise.
+- Undo for a session: see its commits, take them off (all or from one point on) and put them back, even with unsaved changes, which come back as unsaved. Deleting a chat keeps its work under the same saved ref. Nothing is deleted.
 
 - Projects without GitHub get undo and per-session isolation: a folder can be made a git repo in one step (secret-looking files stay out of the first commit), so each session works on its own branch.
 

@@ -527,7 +527,7 @@ test("github.project.local-init: an empty or plain folder becomes a repo whose s
   assert.equal((await w.as("module:evil")("github.project.local-init", { project: "plain" })).error.code, "denied");
 });
 
-test("github.session.undo / redo / history: undo takes a session's commits off but keeps them, redo puts them back, dirty is refused, the default branch is never touched", async t => {
+test("github.session.undo / redo / history: undo takes a session's commits off but keeps them, redo puts them back, unsaved work is kept, the default branch is never touched", async t => {
   const home = makeRepo(t);
   const w = await world(t, { projectsRows: [{ slug: "p", name: "p", home }] });
   const sess = w.as("module:sessions", { firstParty: true });
@@ -537,27 +537,58 @@ test("github.session.undo / redo / history: undo takes a session's commits off b
   const person = w.as("deck");
   const h = (await person("github.session.history", { project: "p", session: "s1" })).data;
   assert.deepEqual(h.commits.map(c => c.subject), ["three", "two", "one"]);
-  // dirty refuses
+  // uncommitted work does not block undo: it is kept with the rest and comes back on redo
   fs.writeFileSync(path.join(wt.path, "d.txt"), "wip");
-  assert.equal((await person("github.session.undo", { project: "p", session: "s1" })).error.code, "dirty");
-  fs.rmSync(path.join(wt.path, "d.txt"));
+  fs.writeFileSync(path.join(wt.path, "a.txt"), "edited");
   // undo from "two" on: two and three come off
   const u = await person("github.session.undo", { project: "p", session: "s1", to: h.commits[1].sha });
   assert.equal(u.error, undefined);
   assert.equal(u.data.undone, 2);
+  assert.equal(u.data.kept_unsaved, true);
+  assert.equal(fs.existsSync(path.join(wt.path, "d.txt")), false);
+  assert.equal(fs.readFileSync(path.join(wt.path, "a.txt"), "utf8"), "a.txt");
   assert.equal(fs.existsSync(path.join(wt.path, "b.txt")), false);
   assert.equal(fs.existsSync(path.join(wt.path, "a.txt")), true);
   assert.equal(plainGit(home, ["rev-parse", "main"]).trim(), plainGit(home, ["rev-list", "--max-parents=0", "main"]).trim(), "main untouched");
-  assert.equal(plainGit(home, ["rev-parse", u.data.saved_as]).trim(), h.commits[0].sha, "the old tip is kept");
+  assert.equal(plainGit(home, ["log", "-1", "--format=%s", u.data.saved_as]).trim(), "vyre: unsaved changes (kept by undo)", "the old tip is kept, with the unsaved work on top");
   // a commit that isn't on the branch is refused
   assert.equal((await person("github.session.undo", { project: "p", session: "s1", to: "deadbeef" })).error.code, "bad_input");
   // redo puts them back
   const r = await person("github.session.redo", { project: "p", session: "s1" });
-  assert.equal(r.data.head, h.commits[0].sha);
+  assert.equal(r.data.restored_unsaved, true);
+  assert.equal(r.data.head, h.commits[0].sha, "back on the session's last real commit");
   assert.equal(fs.existsSync(path.join(wt.path, "c.txt")), true);
+  assert.equal(fs.readFileSync(path.join(wt.path, "a.txt"), "utf8"), "edited");
+  assert.equal(fs.readFileSync(path.join(wt.path, "d.txt"), "utf8"), "wip", "unsaved work is uncommitted again");
+  assert.match(plainGit(wt.path, ["status", "--porcelain"]), /d\.txt/);
+  fs.rmSync(path.join(wt.path, "d.txt")); plainGit(wt.path, ["checkout", "--", "a.txt"]);
   // redo after the branch moved on is refused, nothing lost
   await person("github.session.undo", { project: "p", session: "s1" });
   commit("z.txt", "new");
   assert.equal((await person("github.session.redo", { project: "p", session: "s1" })).error.code, "diverged");
   assert.equal((await w.as("module:evil")("github.session.undo", { project: "p", session: "s1" })).error.code, "denied");
+});
+
+test("github.session.cleanup {deleted: true}: a deleted chat's commits and unsaved work are kept under the undo ref, the worktree goes; ignored files still stop it", async t => {
+  const home = makeRepo(t);
+  const w = await world(t, { projectsRows: [{ slug: "p", name: "p", home }] });
+  const sess = w.as("module:sessions", { firstParty: true });
+  const wt = (await sess("github.session.worktree", { project: "p", session: "s2" })).data;
+  fs.writeFileSync(path.join(wt.path, "x.txt"), "x"); plainGit(wt.path, ["add", "x.txt"]);
+  plainGit(wt.path, ["-c", "user.email=a@example.com", "-c", "user.name=a", "commit", "-q", "-m", "real"]);
+  fs.writeFileSync(path.join(wt.path, "y.txt"), "unsaved");
+  // the ordinary (archive) cleanup still refuses: work would be lost
+  assert.equal((await sess("github.session.cleanup", { project: "p", session: "s2" })).data.needsConfirm, true);
+  const r = await sess("github.session.cleanup", { project: "p", session: "s2", deleted: true });
+  assert.equal(r.data.removed, true);
+  assert.equal(fs.existsSync(wt.path), false);
+  assert.equal(plainGit(home, ["show", `${r.data.saved_as}:y.txt`]), "unsaved");
+  assert.equal(plainGit(home, ["show", `${r.data.saved_as}:x.txt`]), "x");
+  // an ignored file (a .env) is not in any commit, so it still stops removal
+  const wt3 = (await sess("github.session.worktree", { project: "p", session: "s3" })).data;
+  fs.writeFileSync(path.join(home, ".git", "info", "exclude"), ".env\n.sessions/\n");
+  fs.writeFileSync(path.join(wt3.path, ".env"), "SECRET=1");
+  const r3 = await sess("github.session.cleanup", { project: "p", session: "s3", deleted: true });
+  assert.equal(r3.data.needsConfirm, true);
+  assert.equal(fs.existsSync(path.join(wt3.path, ".env")), true);
 });
