@@ -196,3 +196,14 @@ test("save-key: a provider-shaped key from a site that is not that provider's ow
   assert.equal(real.body.data.provider, "anthropic");
   assert.equal(calls.length, 1);
 });
+
+test("save-key: the key-issuing pages only: github outside /settings and a workspace subdomain are not the provider", async t => {
+  const { call, both } = await setup(t, { connect: async () => ({ module: "voice" }) });
+  const pat = () => ["ghp", "_", fake(36)].join("");
+  const issue = await call("save-key", { url: "https://github.com/some/repo/issues/1", raisedOn: "https://github.com/some/repo/issues/1", value: pat(), label: "token" }, both);
+  assert.equal(issue.body.data.provider, undefined, "user content on github.com");
+  const settings = await call("save-key", { url: "https://github.com/settings/tokens", raisedOn: "https://github.com/settings/tokens", value: pat(), label: "token2" }, both);
+  assert.equal(settings.body.data.provider, "github");
+  const sneaky = await call("save-key", { url: "https://github.com/settingsx/tokens", raisedOn: "https://github.com/settingsx/tokens", value: pat(), label: "token3" }, both);
+  assert.equal(sneaky.body.data.provider, undefined, "a prefix must end at a path boundary");
+});
