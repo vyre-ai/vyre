@@ -42,8 +42,10 @@ async function prove(which) {
   const mock = /** @type {any} */ (await mockModel(req => {
     if (scen.mode === "hang") return { hang: true, text: "late" };
     if (scen.mode === "tool" && !req.hasToolResult) {
-      const t = req.tools.find(x => /shell|exec|bash|run|command/i.test(String(x.name || (x.function && x.function.name) || ""))) || req.tools[0];
-      const name = t ? String(t.name || (t.function && t.function.name) || t.type) : "shell";
+      // Only the main request has a shell-like tool (Grok also sends a title request with one tool, session_title): anything else gets text.
+      const t = req.tools.find(x => /shell|exec|bash|run_?command|local_shell/i.test(String(x.name || (x.function && x.function.name) || x.type || "")));
+      if (!t) return { text: "noted" };
+      const name = String(t.name || (t.function && t.function.name) || t.type);
       return { tool: { name, args: shellArgs(t, scen.cmd) } };
     }
     return { text: scen.mode === "tool" ? "TOOL-DONE" : scen.text };
@@ -90,7 +92,7 @@ async function prove(which) {
   const done1 = await turn(proc, "Run the touch command with your shell tool.");
   say(ask ? "PASS" : "FAIL", `${which}: the shell tool call was asked about, not auto-approved`);
   say(done1 && fs.existsSync(markAllow) ? "PASS" : "FAIL", `${which}: an allowed command ran (marker ${fs.existsSync(markAllow) ? "exists" : "missing"}) and the turn finished${done1 ? "" : " (no result in time)"}`);
-  say("INFO", `${which}: the stand-in saw tools ${JSON.stringify((mock.seen.find(x => x.toolNames && x.toolNames.length) || {}).toolNames || [])}`);
+  say("INFO", `${which}: the stand-in saw tools ${JSON.stringify([...mock.seen].sort((a, b) => (b.toolNames || []).length - (a.toolNames || []).length)[0]?.toolNames || [])}`);
 
   // deny
   scen.cmd = `touch ${markDeny}`; ask = null;
