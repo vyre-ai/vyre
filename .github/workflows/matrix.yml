@@ -61,6 +61,13 @@ jobs:
         with: { name: box, path: box }
       - name: Install a box with the real installer
         run: sh scripts/matrix/box-up.sh box link.txt
+      - name: Why the install failed (diagnostics)
+        if: failure()
+        run: |
+          docker version --format 'engine {{.Server.Version}}'; docker compose version
+          cd /srv/vyre && cat .env && docker compose config --images; docker compose config | sed -n '/^  vyre:/,/^  [a-z]/p' | head -30
+          docker images; docker compose ps -a
+          docker compose up -d 2>&1 | tail -20
       - name: J0 in desktop Chrome
         run: |
           google-chrome --headless=new --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome" --no-first-run about:blank >/dev/null 2>&1 &
