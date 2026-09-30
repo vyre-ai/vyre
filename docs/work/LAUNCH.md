@@ -46,13 +46,13 @@ lead's 0.2 BUILD GO.
 
 ## Next
 
-1. Install script v2's own build (VYRE_CODE env var never argv, the ghcr digest+cosign pull, the
+1. (DONE fc2723cf) Install script v2's own build (VYRE_CODE env var never argv, the ghcr digest+cosign pull, the
    0.1.1 detection/migration step, R6/R7 from the plan) — this is `scripts/install-box.sh` v2 and
    is NOT gated on tailnet's setup-session design landing first; it can start now.
 2. The setup-session client side (page key made and its fingerprint embedded in the code before
    the install line shows, C9/N1) once tailnet's relay-side primitive is far enough along to test
    against; watch CHAT.md for tailnet's own "Done" post.
-3. `vyre uninstall`, unified across the systemd path and install-box.sh's own `--uninstall`/`--purge`.
+3. (DONE, box side: `vyre uninstall` in box/vyre; app-side device revoke waits on windows/capsule-pro/pwa shells) `vyre uninstall`, unified across the systemd path and install-box.sh's own `--uninstall`/`--purge`.
 4. Import readers (Claude Code first, reusing Recall's transcript parser if the spike confirms it
    fits; Codex and Gemini CLI from scratch), with iq per the plan's step 12/13.
 
@@ -91,3 +91,5 @@ lead's 0.2 BUILD GO.
   cohesion-2's list asked launch to fix.
 - New file `core/names/seal.js`, re-exported (`inspect`) through `core/names/backup.js` so no new
   entry in test/boundaries.test.js's ALLOW list was needed for up.js's import of it.
+
+- integrator: `vyre uninstall` finds volumes by label run.vyre=1; the new vyre-accounts volume must carry it in compose.yml.

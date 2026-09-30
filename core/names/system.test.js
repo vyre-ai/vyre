@@ -265,7 +265,7 @@ function runScript(t, args, extra, prepare = () => {}, env = {}) {
   return { ...r, dir: box.dir, wrapper: box.wrapper, calls: box.calls() };
 }
 
-const READ_ONLY = /^(uname|id|docker (compose version|info|volume ls|manifest inspect))/;
+const READ_ONLY = /^(uname|id|docker (--version|compose version|info|volume ls|manifest inspect))/;
 
 test("install-box.sh: parses with sh -n", () => {
   execFileSync("sh", ["-n", SCRIPT]);
@@ -406,16 +406,14 @@ test("install-box.sh: uninstall dry run, and --purge lists the volumes and asks"
     fs.copyFileSync(path.join(REPO, "box", "vyre"), wrapper);
   });
   assert.equal(kept.status, 0, kept.stderr);
-  assert.match(kept.stdout, new RegExp(`^would run: sh -c 'cd "\\$1" && docker compose down --remove-orphans' sh ${kept.dir}$`, "m"));
-  assert.match(kept.stdout, new RegExp(`^would run: sudo rm -f ${kept.wrapper}$`, "m"));
-  assert.match(kept.stdout, /^ {2}vyre_vyre-home$/m);
-  // No terminal to ask on, so the answer is no.
-  assert.match(kept.stdout, /^kept the volumes$/m);
+  // The wrapper is the one uninstall (box/vyre): it lists the volumes and asks. Without --yes the
+  // installer hands it no answer, so it asks; a dry run only shows that call.
+  assert.match(kept.stdout, new RegExp(`^would run: env VYRE_DIR=${kept.dir} VYRE_WRAPPER=${kept.wrapper} ${kept.wrapper} uninstall$`, "m"));
   assert.ok(!kept.stdout.includes("docker volume rm"));
   for (const c of kept.calls) assert.match(c, READ_ONLY, `mutating call in a dry run: ${c}`);
 
   const gone = runScript(t, ["--dry-run", "--yes", "--uninstall", "--purge"]);
-  assert.match(gone.stdout, /^would run: docker volume rm vyre_vyre-home vyre_vyre-work vyre_tailscale-state$/m);
+  assert.match(gone.stdout, /^would run: docker compose -p vyre down --remove-orphans$/m, "no wrapper here, so the plain path");
   assert.ok(fs.existsSync(path.join(REPO, "box", "vyre")));
 });
 

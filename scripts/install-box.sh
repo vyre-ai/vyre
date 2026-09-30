@@ -600,6 +600,15 @@ verify_images() {
 }
 
 uninstall() {
+  # The wrapper is the one uninstall (box/vyre): it lists every volume and asks once. --purge asks
+  # (or deletes with --yes); plain --uninstall keeps the data.
+  if [ -f "$DIR/compose.yml" ] && [ -e "$WRAPPER" ] && grep -q "$MARK" "$WRAPPER" 2>/dev/null; then
+    flag=--keep-data
+    if [ "$PURGE" = 1 ]; then flag=""; [ "$YES" = 0 ] || flag=--delete-data; fi
+    # shellcheck disable=SC2086 # flag is one option or nothing
+    dk env "VYRE_DIR=$DIR" "VYRE_WRAPPER=$WRAPPER" "$WRAPPER" uninstall $flag
+    return 0
+  fi
   if [ -f "$DIR/compose.yml" ]; then
     # $1 expands in the inner shell, which is the point.
     # shellcheck disable=SC2016

@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `vyre uninstall` on a box (box/vyre, PLAN.md HIGH 1): one flow. It removes the containers, agents' computers,
+  the network and the vyre command, lists every Vyre volume with what is in it (an unknown volume is still
+  named), and asks once whether to delete them; yes IS the approval, there is no second confirm, and with no
+  terminal the data is kept. `--delete-data` and `--keep-data` answer for a script. It points at `vyre backup`
+  and at removing the server from the Tailscale machines list. `install-box.sh --uninstall [--purge]` now hands
+  off to it. Volumes are found by the `run.vyre=1` label, so a new volume (vyre-accounts) needs that label in
+  compose.yml. 4 new tests; system.test.js updated for the hand-off and for the read-only Docker checks.
 - `scripts/install-box.sh` v2 (PLAN.md C6, R7, R6, M6-M11): the setup code comes from `VYRE_CODE` (or a
   hidden prompt on a terminal, Enter skips) and is never an argument (`--code` is refused); it is
   checked (43 base64url characters), never printed, and written only to `$VYRE_DIR/vyre.env` at 0600 as
