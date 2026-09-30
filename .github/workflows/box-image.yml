@@ -85,6 +85,11 @@ jobs:
             done
             [ "$(ls /home/acct | wc -l)" = 64 ]
             for g in 2000 2001 2063; do id -G vyre | tr " " "\n" | grep -qx "$g" || { echo "vyre is not in group $g"; exit 1; }; done
+            # Nobody but vyre is in any account's group: that is what keeps one account out of another's home.
+            for g in $(seq 2000 2063); do
+              m=$(getent group "$g" | cut -d: -f4)
+              [ "$m" = vyre ] || { echo "group $g has members [$m], want only vyre"; exit 1; }
+            done
             echo "account homes ok"'
       - name: Image size
         run: docker image ls "$IMAGE" --format '{{.Repository}}:{{.Tag}} {{.Size}}' | tee -a "$GITHUB_STEP_SUMMARY"
