@@ -55,12 +55,13 @@ const rpc = (/** @type {string} */ method, /** @type {any} */ params) => new Pro
 const call = async (/** @type {string} */ name, /** @type {any} */ a = {}) => { const r = /** @type {any} */ (await rpc("tools/call", { name, arguments: a })); if (r.error) throw new Error(r.error.message); const t = r.result.content[0].text; if (r.result.isError) throw new Error(t.slice(0, 400)); try { return JSON.parse(t); } catch { return t; } };
 const stage = async (/** @type {string} */ name, /** @type {() => Promise<any>} */ fn) => { log(`stage ${name}`); try { out.stages[name] = { ok: true, ...(await fn()) }; } catch (e) { out.stages[name] = { ok: false, error: String(/** @type {Error} */ (e).message).slice(0, 500) }; } };
 
+/** @type {number|undefined} */ let tab;
 try {
   await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {} });
   await stage("connected", async () => { for (let i = 0; i < 60; i++) { const s = await call("chrome_status"); if (s.connected) return {}; await sleep(500); } throw new Error("never connected"); });
-  await stage("open_shell", async () => { const r = await call("chrome_tabs", { action: "open", url: `http://a.localhost:${port}/` }); await sleep(2500); return { open: r }; });
-  await stage("frames_probe", async () => { const r = await call("chrome_frames", { action: "probe" }); return { probe: r }; });
-  await stage("frames_list", async () => { const r = await call("chrome_frames", { action: "list" }); return { list: r }; });
+  await stage("open_shell", async () => { const r = await call("chrome_tabs", { action: "open", url: `http://a.localhost:${port}/` }); tab = r.id; await sleep(2500); return { open: r }; });
+  await stage("frames_probe", async () => { const r = await call("chrome_frames", { action: "probe", tab }); return { probe: r }; });
+  await stage("frames_list", async () => { const r = await call("chrome_frames", { action: "list", tab }); return { list: r }; });
 } finally { stopProcess(l.child); try { child.kill(); } catch { /* gone */ } server.close(); }
 const p = out.stages.frames_probe;
 const rows = p && p.probe && p.probe.frames || [];
