@@ -28,7 +28,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 30 | 20 | cli, deck |
-| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 9 | 3 | cli, deck |
+| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 10 | 3 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 28 | 3 | capsule, cli, deck |
@@ -36,7 +36,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`github`](#github) | `core/github` | `box`, `local` | 29 | 8 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
-| [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
+| [`google`](#google) | `core/google` | `box`, `local` | 20 | 7 | capsule, cli, deck |
 | [`hands`](#hands) | `local/hands-mac` | `local` | 12 | 4 | none |
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
@@ -210,9 +210,9 @@ Every CLI verb the running modules declare, in one list any surface can draw.
 - Folder: `core/connectors`, version 0.2.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `mcp`
-- Tools: [9](tools.md#connectors), 2 of them only for other modules
+- Tools: [10](tools.md#connectors), 2 of them only for other modules
 - Emits: [3 events](events.md#connectors)
-- Shows on: cli, deck
+- Shows on: capsule, cli, deck
 - Needs vault: `per-connection`
 
 ## context
@@ -298,7 +298,7 @@ A goal and an ordered milestone list, attached to a session or a project. An age
 - Folder: `core/google`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `gate`
-- Tools: [19](tools.md#google), 1 of them only for other modules
+- Tools: [20](tools.md#google), 1 of them only for other modules
 - Emits: [7 events](events.md#google)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-connection`

@@ -13,6 +13,7 @@
 //   rotates a refresh token.
 
 import { connections, MIGRATIONS } from "../../lib/connectors/connect.js";
+import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/calendar.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 
 const str = { type: "string" };
@@ -118,6 +119,37 @@ export default {
       run: (input, { caller }) => {
         if (!["module:sessions", "module:assistant", "module:mentions"].includes(String(caller))) throw fail("only sessions and the assistant resolve a tag", "denied");
         return conn.mentionResolve(input);
+      },
+    });
+
+    // The Capsule's `next` command: today's next meetings from every calendar connected, Google's native module
+    // and the Microsoft and personal Google connections (read through vault.request as a reader the person named
+    // when they connected). Read only, cached for a minute, and empty when nothing is connected.
+    /** @type {{ key: string, at: number, value: any } | null} */
+    let cached = null;
+    ctx.tool("connectors.calendar.today", {
+      description: "Today's next meetings across every connected calendar, for a next-meeting line: { events: [{ id, account, title, start, end, when, join?, link }] }. Empty when none is connected. Read only; cached for a minute.",
+      input: obj({ limit: { type: "integer" } }),
+      run: async ({ limit } = {}) => {
+        const at = Date.now();
+        const n = Number.isInteger(limit) ? Math.min(10, Math.max(1, limit)) : 3;
+        const apis = conn.namesOf(["microsoft", "google-personal"]);
+        const key = `${n}:${apis.map(a => a.name).join(",")}`;
+        if (cached && cached.key === key && at - cached.at < 60_000) return cached.value;
+        const end = new Date(at); end.setHours(23, 59, 59, 999);
+        const rq = requests(new Date(at).toISOString(), end.toISOString());
+        /** @type {any[]} */ const events = [];
+        // One calendar failing or missing never hides the rest.
+        try { const g = await ctx.call("google.calendar.today", { limit: 10 }); if (g.data && Array.isArray(g.data.events)) events.push(...g.data.events); } catch { /* no google module */ }
+        for (const a of apis) {
+          try {
+            const r = await ctx.call("vault.request", { credential: a.name, ...(a.preset === "microsoft" ? rq.graph : rq.google) });
+            if (r.data) events.push(...(a.preset === "microsoft" ? fromGraph(r.data.body, a.name) : fromGoogle(r.data.body, a.name)));
+          } catch { /* not signed in, or no network */ }
+        }
+        const value = { events: upNext(events, at, n) };
+        cached = { key, at, value };
+        return value;
       },
     });
 
