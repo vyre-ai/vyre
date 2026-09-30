@@ -177,7 +177,8 @@ export default {
       }, presence("Save an item in the vault", ({ name, kind, grants }) => {
         const old = vault.row(name);
         // The approval is the one the code relies on: when the put also grants, the prompt says so.
-        return `${old ? "Replace" : "Add"} ${kind || (old && old.kind) || "secret"} ${quoted(name)} in the vault${Array.isArray(grants) && grants.length ? ` and let ${grants.join(", ")} use it` : ""}`;
+        if (Array.isArray(grants) && grants.length) return `${old ? "Replace" : "Add"} ${quoted(name)} ${old ? "in" : "to"} your vault and let ${grants.join(", ")} use it`;
+        return `${old ? "Replace" : "Add"} ${kind || (old && old.kind) || "secret"} ${quoted(name)} in the vault`;
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
