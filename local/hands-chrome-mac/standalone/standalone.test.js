@@ -377,3 +377,45 @@ test("privacy: an automatically recognised white-label builder page keeps typed 
   assert.equal(recs[0].args.fields[0].value, "Welcome to Harlow Legal");
   assert.match(String(recs[1].args.fields[0].value), /^\[\d+ chars\]$/);
 });
+
+
+test("launcher: finds Node itself when PATH has none (nvm, Homebrew), refuses an old Node, follows a symlink, and install puts it in ~/.local/bin", { skip: process.platform === "win32" && "sh launcher" }, async t => {
+  const home = tmp(t);
+  const out = path.join(home, "rel"); fs.mkdirSync(out);
+  const rel = build({ out });
+  const launcher = path.join(rel.dir, "vyre-chrome");
+  assert.ok(fs.statSync(launcher).mode & 0o111, "the launcher is executable");
+  const env = (/** @type {Record<string,string>} */ e = {}) => ({ HOME: home, PATH: "/usr/bin:/bin", VYRE_CHROME_HOME: path.join(home, ".vyre-chrome"), ...e });
+  const run = (/** @type {string[]} */ args, /** @type {any} */ e, bin = launcher) => spawnSync(bin, args, { env: env(e), encoding: "utf8" });
+  // No node anywhere it looks: a clear message, exit 127.
+  const none = run(["version"], { PATH: "/nonexistent" });
+  if (!fs.existsSync("/usr/bin/node") && !fs.existsSync("/usr/local/bin/node") && !fs.existsSync("/opt/homebrew/bin/node")) {
+    assert.equal(none.status, 127);
+    assert.match(none.stderr, /needs Node 22 or newer/);
+  }
+  // Node under nvm, not on PATH.
+  const nvmBin = path.join(home, ".nvm", "versions", "node", "v22.99.0", "bin");
+  fs.mkdirSync(nvmBin, { recursive: true });
+  fs.symlinkSync(process.execPath, path.join(nvmBin, "node"));
+  const viaNvm = run(["version"]);
+  assert.equal(viaNvm.status, 0, viaNvm.stderr);
+  assert.match(viaNvm.stdout.trim(), /^\d+\.\d+\.\d+$/);
+  // An old node is skipped: a fake v20 that reports failure on the version check is never chosen.
+  const oldBin = path.join(home, ".nvm", "versions", "node", "v20.1.0", "bin");
+  fs.mkdirSync(oldBin, { recursive: true });
+  fs.writeFileSync(path.join(oldBin, "node"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  assert.equal(run(["version"]).status, 0, "the old one is skipped, the new one is used");
+  // Through a symlink, as install leaves it in ~/.local/bin.
+  const link = path.join(home, "somewhere", "vyre-chrome");
+  fs.mkdirSync(path.dirname(link)); fs.symlinkSync(launcher, link);
+  assert.equal(run(["version"], {}, link).status, 0, "a symlink to the launcher still finds the package");
+  // Install (from the release, with no node on PATH) puts the command in ~/.local/bin and prints how to reach it.
+  const inst = run(["install", "--browsers", "chrome"]);
+  assert.equal(inst.status, 0, inst.stderr);
+  const installed = path.join(home, ".local", "bin", "vyre-chrome");
+  assert.ok(fs.lstatSync(installed).isSymbolicLink(), "the command is in ~/.local/bin");
+  assert.match(inst.stdout, /~\/\.local\/bin is not on your PATH yet/);
+  assert.equal(run(["version"], {}, installed).status, 0, "and it works from there");
+  assert.equal(run(["uninstall"]).status, 0);
+  assert.equal(fs.existsSync(installed), false, "uninstall removes the command it put there");
+});
