@@ -16,10 +16,10 @@ const PLAIN = {
 };
 const say = (e) => PLAIN[e && e.code] || (e && e.message) || String(e);
 
-export async function startPairing({ onSeed, onWaiting, onError, onDone }) {
+export async function startPairing({ onSeed, onWaiting, onError, onDone, onEnd }) {
   try {
     const seed = await invoke("begin_pair");
-    onSeed(seed.replace(/(.{4})/g, "$1 ").trim());
+    onSeed(seed);
     const bytes = fromBase64url(seed);
     const until = Date.now() + 5 * 60 * 1000;
     let found = null;
@@ -33,6 +33,7 @@ export async function startPairing({ onSeed, onWaiting, onError, onDone }) {
         throw e;
       }
     }
+    onEnd();
     onWaiting(found.name);
     await invoke("offer_pair", { name: found.name, fingerprint: found.fingerprint, handle: found.handle, address: found.address ?? null });
     for (;;) {
@@ -43,8 +44,10 @@ export async function startPairing({ onSeed, onWaiting, onError, onDone }) {
     }
     const link = await pairOffer(found.offer, { name: "this computer", about: { kind: "app" }, ...shellDeviceKey(invoke) });
     await invoke("finish_pair", { link });
+    onEnd();
     onDone();
   } catch (e) {
+    onEnd();
     await invoke("cancel_pair").catch(() => {});
     onError(say(e));
   }
