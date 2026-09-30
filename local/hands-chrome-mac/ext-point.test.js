@@ -181,8 +181,8 @@ test("a canvas inside a page that has a heading or a nav is still a drawn surfac
   // the same canvas with a heading that says Send is held whatever the plan says (the generous text is over-cautious on purpose)
   const s = world({ under: () => el({ tag: "canvas", kind: "canvas", text: "Send feedback | Board", textless: false, own: "", ownless: true }) });
   assert.equal((await op({ tabId: 1, shot: shotOf(), x: 50, y: 50, action: "click", ...plan() }, s.ctx)).held, true);
-  // a labelled canvas says what it is
-  const l = world({ under: () => el({ tag: "canvas", kind: "canvas", text: "Open the board", textless: false, own: "Open the board", ownless: false }) });
+  // a label cannot say what drawn pixels do: a labelled canvas is still drawn (the real page script sets ownless for canvas, media and embed); a labelled svg or image is readable
+  const l = world({ under: () => el({ tag: "svg", kind: "svg", text: "Open the board", textless: false, own: "Open the board", ownless: false }) });
   assert.equal((await op({ tabId: 1, shot: shotOf(), x: 50, y: 50, action: "click" }, l.ctx)).ok, true);
 });
 

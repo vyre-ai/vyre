@@ -58,7 +58,8 @@ const hitScript = (/** @type {number} */ x, /** @type {number} */ y) => script("
   out.text = parts.join(" | ").slice(0, 300);
   out.own = ownParts.join(" | ").slice(0, 300);
   out.textless = out.text.length === 0;
-  out.ownless = out.own.length === 0;
+  // A label cannot say what drawn pixels do: a canvas, a video, an embed or an object is a drawn surface even when the page labels it (the label still feeds the send/delete patterns above).
+  out.ownless = out.own.length === 0 || out.kind === "canvas" || out.kind === "media" || out.kind === "embed";
   const fe = el.closest ? el.closest("input,textarea,select,[contenteditable=''],[contenteditable='true']") : null;
   if (fe) { const t = fe.tagName.toLowerCase(); out.fillable = t !== "input" || !/^(button|submit|reset|image|checkbox|radio|range|color|file)$/i.test(fe.type || "text"); const ty = String(fe.type || "").toLowerCase(), ac = String(fe.getAttribute("autocomplete") || "").toLowerCase(), id = (fe.name || "") + " " + (fe.id || ""); out.password = ty === "password" || ac === "one-time-code" || /current-password|new-password/.test(ac) || /\\b(otp|passcode|2fa|mfa|verification[-_ ]?code)\\b/i.test(id); }
   out.path = tag + (el.id ? "#" + String(el.id).slice(0, 30) : "") + "@" + out.rect.l + "," + out.rect.t + "," + out.rect.w + "," + out.rect.h;

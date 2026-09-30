@@ -119,7 +119,7 @@ export function createFramesWorld() {
       }
       if (req.method === "GET" && p === "/canvas-page") { html(res, `<!doctype html><html><head><meta charset="utf-8"><title>Canvas board</title><style>body{margin:0;font-family:sans-serif}#box{position:absolute;left:0;top:320px}.dv{display:inline-block;width:110px;height:36px;margin:4px;background:#ddd;line-height:36px;text-align:center;cursor:pointer}</style></head><body>
 <h1 style="position:absolute;left:620px;top:0;margin:0;font-size:16px">Quarterly board</h1><nav style="position:absolute;left:620px;top:30px">Home Settings</nav>
-<canvas id="c" width="600" height="300" style="position:absolute;left:0;top:0"></canvas>
+<canvas id="c" width="600" height="300" aria-label="Quarterly board canvas" style="position:absolute;left:0;top:0"></canvas>
 <div id="box"><div class="dv" id="dsend">Send</div><div class="dv" id="ddel">Delete account</div></div>
 <iframe src="{{C}}/canvas-frame" style="position:absolute;left:0;top:400px;width:300px;height:120px;border:0"></iframe>
 <input id="typed" style="position:absolute;left:320px;top:330px;width:200px" aria-label="Notes">
