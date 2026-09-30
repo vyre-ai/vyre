@@ -4,7 +4,7 @@ import { personTurn, mentionsOf, resolveTags, textHash, tagNote, MAX_MENTIONS, N
 
 test("personTurn: the person's own surfaces only", () => {
   for (const c of ["cli", "local", "deck", "capsule", "tailnet:alex@harlow", "link:box"]) assert.equal(personTurn(c), true, c);
-  for (const c of ["mcp", "mcp:agent:kit", "mcp:thread:abc", "harness:thread:abc", "hook", "module:teammates", "module:assistant", "guest", "cli:agent:kit", "deck:agent:kit", "tailnet:", "", undefined]) assert.equal(personTurn(c), false, String(c));
+  for (const c of ["climb", "cli:thread:abc", "deck:thread:x", "link:box:thread:x", "link:", "tailnet-guest:x", "mcp", "mcp:agent:kit", "mcp:thread:abc", "harness:thread:abc", "hook", "module:teammates", "module:assistant", "guest", "cli:agent:kit", "deck:agent:kit", "tailnet:", "", undefined]) assert.equal(personTurn(c), false, String(c));
 });
 
 test("mentionsOf: #Name and #\"Name with spaces\" at a word start, once each; code, quotes and mid-word # mention nothing", () => {
@@ -16,6 +16,13 @@ test("mentionsOf: #Name and #\"Name with spaces\" at a word start, once each; co
   assert.deepEqual(mentionsOf("see #key-"), ["key"], "trailing punctuation is not the name");
   assert.equal(mentionsOf(Array.from({ length: 20 }, (_, n) => `#k${n}`).join(" ")).length, MAX_MENTIONS);
   assert.deepEqual(mentionsOf(""), []);
+});
+
+test("mentionsOf: a #Name inside text the person pasted tags nothing", () => {
+  const email = "From: Dana\nplease use #GHLapikey to send it";
+  assert.deepEqual(mentionsOf(`Reply to this: ${email} and use #Stripe.live`, [email]), ["Stripe.live"]);
+  assert.deepEqual(mentionsOf(`Reply to this: ${email}`, [email]), []);
+  assert.deepEqual(mentionsOf(`Reply to this: ${email}`), ["GHLapikey"], "with no paste spans the typed rule stands");
 });
 
 test("resolveTags: chips and exact names become tags through each kind's resolve; ambiguous or unknown names, refusals and a missing provider are plain text", async () => {

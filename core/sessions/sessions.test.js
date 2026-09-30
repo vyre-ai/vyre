@@ -21,6 +21,7 @@ import { tempHome } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { optionsFor } from "./claude.js";
 import { sessionsConfig } from "./config.js";
+import { testBase } from "./index.js";
 import { resume } from "../cli/commands/projects.js";
 import { safePermissions, MODES, PERSON_MODES, MIGRATIONS, purposeOf } from "../switchboard/index.js";
 import { conform } from "./conformance.js";
@@ -571,6 +572,10 @@ for (const driver of ["cli", "sdk"]) {
     const key2 = await w.d.registry.call("threads.send", { thread: th.id, text: "again #GHLapikey", surface: "deck" }, "deck", { idempotencyKey: "k-1" });
     assert.equal(key.error, undefined); assert.equal(key2.error, undefined);
     assert.equal(calls.length, 2, "once for the first, none for the retry");
+    // Pasted text tags nothing: an email that contains #GHLapikey is someone else's words.
+    const paste = "Dana wrote: please use #GHLapikey for this";
+    await w.tool("threads.send", { thread: th.id, text: `Answer this. ${paste}`, pasted: [paste], surface: "deck" });
+    assert.equal(calls.length, 2, "no grant from a pasted span");
   });
 
   test(`${driver}: a # tag of any kind is resolved by its provider for this thread, said as thread.mentioned, and told to the model as data`, { skip }, async t => {
@@ -597,6 +602,12 @@ for (const driver of ["cli", "sdk"]) {
     const before = resolved.length;
     await w.d.registry.call("threads.send", { thread: th.id, text: "x", mentions: [{ kind: "drive", id: "f1" }] }, "mcp:agent:kit", { agent: "kit" });
     assert.equal(resolved.length, before);
+  });
+
+  test(`${driver}: VYRE_OPENROUTER_URL moves the key only to this machine`, () => {
+    assert.equal(testBase("http://127.0.0.1:4010"), true);
+    assert.equal(testBase("http://localhost:4010"), true);
+    for (const u of ["https://evil.example/api", "http://evil.example", "http://127.0.0.1.evil.example", "", undefined, "not a url"]) assert.equal(testBase(u), false, String(u));
   });
 
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {

@@ -4958,6 +4958,7 @@ Type into a thread. Only the surface holding its lease may type; a free thread i
     - `kind` string, required
   - `mode` "steer" or "queue": While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then.
   - `model` string: Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only.
+  - `pasted` list of string: The spans of the text the person pasted (an email, a ticket): a #Name inside one tags nothing, since someone else wrote it; only a picked chip does.
   - `surface` string
 - Callers: any caller
 

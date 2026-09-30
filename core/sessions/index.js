@@ -66,6 +66,13 @@ export function askedOnly(meta, what) {
   throw Object.assign(new Error(`${what} runs only when the person asked for it; nothing in their own words asked for this`), { code: "not_asked" });
 }
 
+/**
+ * Where the OpenRouter key may be sent besides openrouter.ai: this machine only, a test double. A
+ * VYRE_OPENROUTER_URL in the environment that names any other host is ignored, so a poisoned
+ * environment cannot point the key elsewhere.
+ * @param {string|undefined} u
+ */
+export const testBase = u => { try { const x = new URL(String(u)); return x.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(x.hostname); } catch { return false; } };
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const str = { type: "string" };
 const scope = { type: "string", description: "assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)" };
@@ -201,7 +208,7 @@ export default {
     });
     const drivers = { codex: codexProvider({ sessions: acpSessions("codex") }), grok: grokProvider({ sessions: acpSessions("grok") }),
       // The last rung: a plain API-key driver, its conversation kept here so a resume carries on.
-      openrouter: openrouterProvider({ ...(process.env.VYRE_OPENROUTER_URL ? { baseUrl: process.env.VYRE_OPENROUTER_URL } : {}), store: {
+      openrouter: openrouterProvider({ ...(testBase(process.env.VYRE_OPENROUTER_URL) ? { baseUrl: process.env.VYRE_OPENROUTER_URL } : {}), store: {
         get: id => { const r = /** @type {any} */ (db.prepare("SELECT messages FROM sessions_openrouter WHERE thread = ?").get(String(id))); try { return r ? JSON.parse(String(r.messages)) : undefined; } catch { return undefined; } },
         set: (id, m) => { db.prepare("INSERT INTO sessions_openrouter (thread, messages) VALUES (?,?) ON CONFLICT(thread) DO UPDATE SET messages = excluded.messages").run(String(id), JSON.stringify(m)); } } }) };
     for (const [name, driver] of Object.entries(drivers)) ctx.provider(name, driver);
