@@ -10,7 +10,8 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { tempHome, writeModule } from "../../../test/helpers.js";
 import { setJson, EXIT } from "../kit.js";
-import { moduleCommand, checkModule, scaffold } from "./module.js";
+import { moduleCommand, checkModule, scaffold, agentBrief, testModuleDir } from "./module.js";
+import { conformModule } from "../../../packages/module-sdk/conform.js";
 
 process.env.VYRE_NO_DIALOGS = "1";
 
@@ -92,11 +93,11 @@ test("new writes the files, they pass check, and their own test passes", async t
   const c = capture(t);
   assert.equal(await moduleCommand(["new", "bake"], deps), EXIT.OK);
   const dir = path.join(modules, "bake");
-  for (const f of ["module.json", "index.js", "bake.test.js", "README.md", "package.json"]) assert.ok(fs.existsSync(path.join(dir, f)), f);
+  for (const f of ["module.json", "index.js", "bake.test.js", "README.md", "package.json", "AGENTS.md", "jsconfig.json"]) assert.ok(fs.existsSync(path.join(dir, f)), f);
   const m = JSON.parse(fs.readFileSync(path.join(dir, "module.json"), "utf8"));
   assert.deepEqual({ name: m.name, version: m.version, apiVersion: m.apiVersion, roles: m.roles, does: m.does, watches: m.watches },
     { name: "bake", version: "0.1.0", apiVersion: 1, roles: ["box", "local"], does: { tools: [{ name: "bake.hello", summary: "say hello", reach: "anyone" }] }, watches: { emits: ["bake.said"] } });
-  assert.match(text(c), /vyre module check/);
+  assert.match(text(c), /vyre module test/);
   assert.match(text(c), /vyre down && vyre up/);
   assert.match(text(c), /vyre call bake\.hello/);
 
@@ -113,6 +114,9 @@ test("new writes the files, they pass check, and their own test passes", async t
   assert.match(run, /fail 0/);
   const readme = fs.readFileSync(path.join(dir, "README.md"), "utf8");
   assert.match(readme, /docs\/build\/first-module\.md/);
+  assert.match(readme, /AGENTS\.md/);
+  // The template is module API 1 from the start: it conforms as an added module.
+  assert.deepEqual(await conformModule(dir), []);
   for (const f of Object.values(scaffold("bake"))) assert.ok(!f.includes("\u2014") && !f.includes("\u00a7"));
 });
 
@@ -147,6 +151,47 @@ test("new refuses a bad name, a shipped name, a running name and a folder that i
   assert.equal(await moduleCommand(["new"], deps), EXIT.USAGE);
   assert.equal(await moduleCommand([], deps), EXIT.USAGE);
   assert.equal(await moduleCommand(["frob"], deps), EXIT.USAGE);
+});
+
+test("new writes AGENTS.md, the agent brief without its front matter", async t => {
+  const { deps, modules } = world(t);
+  capture(t);
+  assert.equal(await moduleCommand(["new", "kit-log"], deps), EXIT.OK);
+  const agents = fs.readFileSync(path.join(modules, "kit-log", "AGENTS.md"), "utf8");
+  const brief = fs.readFileSync(path.resolve(import.meta.dirname, "..", "..", "..", "docs", "build", "AGENT-BRIEF.md"), "utf8");
+  assert.equal(agents, agentBrief());
+  assert.ok(brief.startsWith("---\n") && !agents.startsWith("---"));
+  assert.ok(brief.endsWith(agents));
+  assert.match(agents, /^# Writing a Vyre module/);
+  assert.match(agentBrief(path.join(modules, "nowhere")), /AGENT-BRIEF\.md/, "a checkout without docs still points at the brief");
+});
+
+// ---------------------------------------------------------------------------------------------
+// test
+
+test("test runs conformance, then the module's own tests", async t => {
+  const { deps, modules, home } = world(t);
+  const c = capture(t);
+  assert.equal(await moduleCommand(["new", "bake"], deps), EXIT.OK);
+  const dir = path.join(modules, "bake");
+  const r = await testModuleDir(dir, { repo: path.resolve(import.meta.dirname, "..", "..", ".."), node: process.execPath });
+  assert.deepEqual({ ok: r.ok, failures: r.failures, pass: r.tests.pass, fail: r.tests.fail, files: r.tests.files }, { ok: true, failures: [], pass: 2, fail: 0, files: ["bake.test.js"] });
+  assert.equal(await moduleCommand(["test", dir], deps), EXIT.OK);
+  assert.match(text(c), /conforms to module API 1/);
+  assert.match(text(c), /2 passed, 0 failed/);
+
+  // A tool without examples, and a test that fails: both are reported, and the exit is 1.
+  const bad = path.join(home, "bad");
+  fs.cpSync(dir, bad, { recursive: true });
+  fs.writeFileSync(path.join(bad, "index.js"), fs.readFileSync(path.join(bad, "index.js"), "utf8").replace(/\n\s*examples: \[.*\],/, ""));
+  fs.writeFileSync(path.join(bad, "bake.test.js"), fs.readFileSync(path.join(bad, "bake.test.js"), "utf8").replace('"Hello, alex!"', '"Hi, alex!"'));
+  setJson(true);
+  t.after(() => setJson(false));
+  assert.equal(await moduleCommand(["test", bad], deps), EXIT.FAILED);
+  const d = c.json.at(-1);
+  assert.equal(d.ok, false);
+  assert.ok(d.failures.some(f => /bake\.hello has no examples/.test(f)), d.failures.join("; "));
+  assert.deepEqual({ ok: d.tests.ok, pass: d.tests.pass, fail: d.tests.fail }, { ok: false, pass: 1, fail: 1 });
 });
 
 // ---------------------------------------------------------------------------------------------

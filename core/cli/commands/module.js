@@ -1,12 +1,17 @@
 // @ts-check
-// `vyre module new|check|add`: make, check and install a module (ADR 0033 section 5).
+// `vyre module new|check|test|add`: make, check, test and install a module (ADR 0033 section 5,
+// ADR 0047 section 7).
 //
-//   new <name>      writes a module that passes `check` and its own test: module.json, index.js,
-//                   <name>.test.js, package.json and a README, in <home>/modules/<name>/ unless
+//   new <name>      writes a module on module API 1 that passes `check`, conformance and its own
+//                   test: module.json, index.js, <name>.test.js (on @vyre/module-sdk/testing),
+//                   AGENTS.md (docs/build/AGENT-BRIEF.md, for an agent working in the folder),
+//                   jsconfig.json, package.json and a README, in <home>/modules/<name>/ unless
 //                   --dir names another parent. It refuses a name Vyre ships or runs already.
 //   check [dir]     the manifest against the published schema (packages/module-sdk) and the
 //                   loader's own rules (core/modules validate), then the entry file: that it is
 //                   there, and that `node --check` reads it. Exit 0 clean, 1 with problems.
+//   test [dir]      conformModule (packages/module-sdk/conform.js), then `node --test` on the
+//                   module's own *.test.js files. Exit 0 when both pass, 1 otherwise.
 //   add <source>    a folder, or a git URL cloned with --depth 1 into a staging folder under the
 //                   home. The staged copy is checked (so what was checked is what goes in), shown,
 //                   confirmed, and renamed into <home>/modules/<name>/ without its .git. Then
@@ -24,18 +29,20 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import * as config from "../../config/index.js";
 import { REPO } from "../../daemon/index.js";
 import { request } from "../../daemon/client.js";
 import { discover, validate } from "../../modules/index.js";
 import { checkManifest, SCHEMA, toolEntries } from "../../../packages/module-sdk/manifest.js";
+import { conformModule } from "../../../packages/module-sdk/conform.js";
 import { stop, ensureUp } from "../daemonctl.js";
 import { health, waitFor, terminal } from "./up.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { EXIT, UsageError, json, emit, fail, parse, closest } from "../kit.js";
 
-const USAGE = "vyre module new <name> [--dir <parent>] | check [dir] | add <path|git url> [--yes]";
-const SUBS = ["new", "check", "add"];
+const USAGE = "vyre module new <name> [--dir <parent>] | check [dir] | test [dir] | add <path|git url> [--yes]";
+const SUBS = ["new", "check", "test", "add"];
 /** The loader's module name rule, from the one schema both of them read. */
 const NAME = new RegExp(SCHEMA.$defs.moduleName.pattern);
 /** Vyre's own modules live in these folders of the repo; a module anywhere else is not first party. */
@@ -197,12 +204,85 @@ async function check(args, flags, o, deps) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// test
+
+/**
+ * `node --test` on a module's own *.test.js files, in its folder, as its own run: without
+ * NODE_TEST_CONTEXT it reports as it would for the author.
+ * @param {string} node @param {string} dir @param {string[]} files
+ * @returns {Promise<{ ok: boolean, pass: number | null, fail: number | null, tail: string[] }>}
+ */
+function nodeTest(node, dir, files) {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  return new Promise(resolve => {
+    execFile(node, ["--test", ...files], { cwd: dir, env, timeout: 120_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
+      const text = String(stdout) + String(stderr);
+      const count = (/** @type {string} */ k) => { const m = new RegExp(`^(?:# |\u2139 )${k} (\\d+)`, "m").exec(text); return m ? Number(m[1]) : null; };
+      const lines = text.split("\n").map(l => l.trimEnd()).filter(Boolean);
+      resolve({ ok: !err, pass: count("pass"), fail: count("fail"), tail: err ? lines.slice(-20) : [] });
+    });
+  });
+}
+
+/**
+ * Test a module folder: conformance (ADR 0047 section 7), then its own tests.
+ * @param {string} dir @param {{ repo: string, node: string, firstParty?: boolean }} o
+ */
+export async function testModuleDir(dir, { repo, node, firstParty = firstPartyDir(repo, dir) }) {
+  const failures = fs.existsSync(path.join(dir, "module.json")) ? await conformModule(dir, { firstParty }) : [`there is no module.json in ${dir}`];
+  const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => /\.test\.(m|c)?js$/.test(f)).sort() : [];
+  const tests = files.length ? { files, ...(await nodeTest(node, dir, files)) } : { files, ok: true, pass: 0, fail: 0, tail: [] };
+  let name = null;
+  try { name = JSON.parse(fs.readFileSync(path.join(dir, "module.json"), "utf8")).name || null; } catch {}
+  return { ok: failures.length === 0 && tests.ok, module: name, dir, failures, tests };
+}
+
+async function runTests(args, flags, o, deps) {
+  if (args.length > 1) throw new UsageError("vyre module test takes one folder", "vyre module test [dir]");
+  const dir = path.resolve(args[0] || ".");
+  const r = await testModuleDir(dir, { repo: deps.repo || REPO, node: deps.node || process.execPath });
+  const exit = r.ok ? EXIT.OK : EXIT.FAILED;
+  const t = r.tests;
+  const testNote = !t.files.length ? "no *.test.js files" : `${t.pass ?? "?"} passed, ${t.fail ?? "?"} failed`;
+  const view = { kind: "checks", title: r.module ? `module ${r.module}` : "module", items: [
+    { id: "conform", label: "conforms to module API 1", state: r.failures.length ? "failed" : "ok", ...(r.failures.length ? { note: r.failures.join("; ") } : {}) },
+    { id: "tests", label: "its own tests pass", state: t.ok ? "ok" : "failed", note: testNote },
+  ] };
+  return o.done(exit, { ok: r.ok, module: r.module, dir, failures: r.failures, tests: { files: t.files, ok: t.ok, pass: t.pass, fail: t.fail } }, view, () => {
+    out(`  ${bold(r.module || path.basename(dir))} ${dim(dir)}`);
+    out(`  ${r.failures.length ? beacon("failed") : signal("ok    ")} conforms to module API 1`);
+    for (const f of r.failures) out(dim(`         ${f}`));
+    out(`  ${t.ok ? signal("ok    ") : beacon("failed")} its own tests ${dim(testNote)}`);
+    for (const l of t.tail) out(dim(`         ${l}`));
+    out(dim(r.ok ? `  next: vyre module add ${args[0] || "."}` : "  next: fix what failed, then vyre module test again"));
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
 // new
 
-/** The files `new` writes. Every name here passed NAME, so it is safe inside a string. */
-export function scaffold(name) {
+/** docs/build/AGENT-BRIEF.md without its front matter: the AGENTS.md `new` writes. @param {string} repo */
+export function agentBrief(repo = REPO) {
+  try {
+    const text = fs.readFileSync(path.join(repo, "docs", "build", "AGENT-BRIEF.md"), "utf8");
+    return text.replace(/^---\n[\s\S]*?\n---\n+/, "");
+  } catch {
+    return "# Writing a Vyre module\n\nRead docs/build/AGENT-BRIEF.md in the Vyre repository before you change this module.\n";
+  }
+}
+
+/**
+ * The files `new` writes. Every name here passed NAME, so it is safe inside a string. The test
+ * imports @vyre/module-sdk/testing, and until that is on npm falls back to the SDK in the Vyre
+ * checkout the module was made from (or VYRE_MODULE_SDK, a folder holding testing.js).
+ * @param {string} name @param {{ repo?: string }} [o]
+ */
+export function scaffold(name, { repo = REPO } = {}) {
   const tool = `${name}.hello`, event = `${name}.said`;
+  const sdk = path.join(repo, "packages", "module-sdk");
   const manifest = {
+    $schema: "https://vyre.run/schema/module-1.json",
     name, version: "0.1.0", apiVersion: 1,
     description: `A module made with vyre module new. It says hello.`,
     roles: ["box", "local"],
@@ -213,17 +293,22 @@ export function scaffold(name) {
     "module.json": JSON.stringify(manifest, null, 2) + "\n",
     // So Node reads index.js as an ES module on every version Vyre supports (docs/build/first-module.md).
     "package.json": JSON.stringify({ type: "module", private: true }) + "\n",
+    // Editor help: the SDK's types for ctx and the manifest, checked as you type.
+    "jsconfig.json": JSON.stringify({ compilerOptions: { checkJs: true, module: "nodenext", target: "es2022", paths: { "@vyre/module-sdk": [path.join(sdk, "index.d.ts")] } }, include: ["*.js"] }, null, 2) + "\n",
+    "AGENTS.md": agentBrief(repo),
     "index.js": `// @ts-check
 // ${name}: a module made with \`vyre module new\`. It offers one tool, ${tool}, and emits
 // ${event} each time the tool runs. Change it into what you need; module.json lists every
-// tool it registers and every event it emits.
+// tool it registers (with who may call it) and every event it emits. AGENTS.md has the rules.
 
 /** @type {import("@vyre/module-sdk").Module} */
 export default {
   async start(ctx) {
     ctx.tool("${tool}", {
       description: "Say hello: to whoever is named, or to the world.",
-      input: { type: "object", properties: { to: { type: "string" } } },
+      input: { type: "object", properties: { to: { type: "string", maxLength: 80 } }, additionalProperties: false },
+      // The conformance test calls every example; the first is what an agent sees as a sample.
+      examples: [{ input: { to: "alex" } }, { input: {} }],
       run: async ({ to } = {}) => {
         const text = \`Hello, \${to || "world"}!\`;
         // Every module and the Deck can read the event log, so the event says a greeting went
@@ -232,52 +317,44 @@ export default {
         return { text };
       },
     });
-    ctx.log("ready");
+    ctx.log.info("ready");
     return { async stop() {} };
   },
 };
 `,
-    [`${name}.test.js`]: `// ${name}'s own test. It needs no running vyred: start() gets a stand-in ctx that holds only
-// what the module uses, and the test looks at what it registered and emitted.
+    [`${name}.test.js`]: `// ${name}'s own test, on the SDK's testing harness: a temp home, a fake registry and no vyred.
+// \`vyre module test\` runs the conformance checks, then this file.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import mod from "./index.js";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-function fakeCtx() {
-  const tools = new Map();
-  const emitted = [];
-  return {
-    tools, emitted,
-    ctx: {
-      name: "${name}",
-      log: () => {},
-      tool: (name, def) => tools.set(name, def),
-      events: { emit: (type, payload) => emitted.push({ type, payload }) },
-    },
-  };
-}
+const DIR = fileURLToPath(new URL(".", import.meta.url));
+// @vyre/module-sdk/testing once it is on npm; until then the Vyre checkout this was made from.
+const SDK = process.env.VYRE_MODULE_SDK ? pathToFileURL(path.join(process.env.VYRE_MODULE_SDK, "testing.js")).href : ${JSON.stringify(pathToFileURL(path.join(sdk, "testing.js")).href)};
+const { testModule } = await import("@vyre/module-sdk/testing").catch(() => import(SDK));
 
-test("${tool} greets whoever is named", async () => {
-  const { ctx, tools } = fakeCtx();
-  const handle = await mod.start(ctx);
-  assert.deepEqual(await tools.get("${tool}").run({ to: "alex" }), { text: "Hello, alex!" });
-  assert.deepEqual(await tools.get("${tool}").run({}), { text: "Hello, world!" });
-  await handle.stop();
+test("${tool} greets whoever is named, for the person and for an agent", async t => {
+  const h = await testModule(DIR);
+  t.after(() => h.stop());
+  assert.deepEqual(await h.call("${tool}", { to: "alex" }), { data: { text: "Hello, alex!" } });
+  assert.deepEqual(await h.call("${tool}", {}, { who: "agent" }), { data: { text: "Hello, world!" } });
+  assert.equal((await h.call("${tool}", { to: 7 })).error.code, "bad_input");
 });
 
-test("${event} never carries what a person typed", async () => {
-  const { ctx, tools, emitted } = fakeCtx();
-  await mod.start(ctx);
-  await tools.get("${tool}").run({ to: "alex" });
-  assert.deepEqual(emitted, [{ type: "${event}", payload: { named: true } }]);
-  assert.ok(!JSON.stringify(emitted).includes("alex"));
+test("${event} never carries what a person typed", async t => {
+  const h = await testModule(DIR);
+  t.after(() => h.stop());
+  await h.call("${tool}", { to: "alex" });
+  assert.deepEqual(h.events.map(e => [e.type, e.payload]), [["${event}", { named: true }]]);
+  assert.ok(!JSON.stringify(h.events).includes("alex"));
 });
 `,
     "README.md": `# ${name}
 
 A Vyre module made with \`vyre module new\`. It offers one tool, \`${tool}\`, and emits
-\`${event}\` when the tool runs.
+\`${event}\` when the tool runs. An agent working here reads \`AGENTS.md\` first.
 
 ## Run it
 
@@ -293,22 +370,16 @@ $ vyre call ${tool} '{"to":"alex"}'
 A folder made somewhere else goes in with \`vyre module add <folder>\`, which checks it, copies
 it into the home and restarts vyred.
 
-## Check it
+## Check and test it
 
 \`\`\`console
 $ vyre module check .
+$ vyre module test .
 \`\`\`
 
-It checks module.json against the module API schema and the loader's rules, and that the entry
-file is there and parses. Run it after every change to module.json.
-
-## Test it
-
-\`\`\`console
-$ node --test
-\`\`\`
-
-The test starts the module with a stand-in ctx, so it needs no running vyred.
+\`check\` reads module.json against the module API schema and the loader's rules, and checks that
+the entry file is there and parses. \`test\` runs the conformance checks every module must pass,
+then \`node --test\` on this folder's tests, which use the SDK's harness and need no running vyred.
 
 ## Switch it off
 
@@ -322,8 +393,8 @@ Its tools go away; anything it stored stays, so switching it back on loses nothi
 
 ## Next
 
-\`docs/build/first-module.md\` in the Vyre repository builds a module step by step: tools with
-input, a table, a setting, events and tests.
+\`docs/build/AGENT-BRIEF.md\` and \`docs/build/first-module.md\` in the Vyre repository, and the
+complete example in \`examples/modules/bakery\`.
 `,
   };
 }
@@ -341,11 +412,11 @@ async function make(args, flags, o, deps) {
   const dir = path.join(parent, name);
   if (fs.existsSync(dir)) return o.refuse(`${dir} is already there`, { code: "exists", next: "pick another name, or --dir <parent> for another folder" });
 
-  const files = scaffold(name);
+  const files = scaffold(name, { repo });
   fs.mkdirSync(dir, { recursive: true });
   for (const [f, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, f), text);
   const inHome = parent === path.resolve(config.paths(home).modules);
-  const next = [`vyre module check ${dir}`, inHome ? "vyre down && vyre up" : `vyre module add ${dir}`, `vyre call ${name}.hello`];
+  const next = [`vyre module test ${dir}`, inHome ? "vyre down && vyre up" : `vyre module add ${dir}`, `vyre call ${name}.hello`];
   const data = { created: true, module: name, dir, files: Object.keys(files), next };
   const view = { kind: "card", title: `made ${name}`, state: "ok", fields: [{ label: "Folder", value: dir }, { label: "Files", value: Object.keys(files).join(", ") }, { label: "Next", value: next.join(" · ") }] };
   return o.done(EXIT.OK, data, view, () => {
@@ -355,7 +426,7 @@ async function make(args, flags, o, deps) {
     out(`  ${next[0]}`);
     out(`  ${next[1]}${dim(inHome ? "   loads it (vyre up alone keeps a vyred that is running)" : "   copies it into your home and loads it")}`);
     out(`  ${next[2]}`);
-    out(dim(`  node --test in the folder runs its own test`));
+    out(dim(`  AGENTS.md in the folder is the brief to hand an agent that writes the rest`));
   });
 }
 
@@ -532,15 +603,16 @@ export async function moduleCommand(args, deps = {}) {
   const [sub, ...rest] = args.filter(a => a !== "--view");
   const o = outlet(sub && SUBS.includes(sub) ? `module ${sub}` : "module", view);
   try {
-    if (!sub || sub.startsWith("-")) throw new UsageError("vyre module needs new, check or add", USAGE);
+    if (!sub || sub.startsWith("-")) throw new UsageError("vyre module needs new, check, test or add", USAGE);
     const { flags, pos } = parse(rest, { bool: ["yes"], values: ["dir"], cmd: "module" });
     if (flags.dir !== undefined && sub !== "new") throw new UsageError("--dir goes with vyre module new", "vyre module new <name> --dir <parent>");
     if (flags.yes && sub !== "add") throw new UsageError("--yes goes with vyre module add", "vyre module add <source> --yes");
     if (sub === "new") return await make(pos, flags, o, deps);
     if (sub === "check") return await check(pos, flags, o, deps);
+    if (sub === "test") return await runTests(pos, flags, o, deps);
     if (sub === "add") return await install(pos, flags, o, deps);
     const near = closest(sub, SUBS);
-    throw new UsageError(`vyre module ${sub}: not a verb; it is new, check or add`, near.length ? `did you mean vyre module ${near[0]}?` : USAGE);
+    throw new UsageError(`vyre module ${sub}: not a verb; it is new, check, test or add`, near.length ? `did you mean vyre module ${near[0]}?` : USAGE);
   } catch (e) {
     if (e instanceof UsageError) return o.refuse(e.message, { code: "bad_input", exit: EXIT.USAGE, next: e.next || "vyre help module" });
     throw e;
@@ -549,11 +621,13 @@ export async function moduleCommand(args, deps = {}) {
 
 export default {
   name: "module", order: 90, usage: USAGE,
-  summary: "make, check and add a module of your own",
+  summary: "make, check, test and add a module of your own",
   help: [
-    "new <name>        a module that passes check and its own test, in <home>/modules/<name>",
+    "new <name>        a module on module API 1 that passes check, test and its own test, in",
+    "                  <home>/modules/<name>, with AGENTS.md: the brief to hand an agent",
     "  --dir PARENT    make it in PARENT/<name> instead",
     "check [dir]       the manifest (schema and loader rules) and the entry file; exit 1 on a problem",
+    "test [dir]        the conformance checks every module passes, then its own *.test.js files",
     "add <source>      a folder or a git URL (https://, git@, file://): check it, show what it asks",
     "                  for, copy it into <home>/modules and restart vyred to load it",
     "  --yes           do not ask first (needed without a terminal, and with --json or --view)",
