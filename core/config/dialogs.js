@@ -108,7 +108,14 @@ export function expandAccountFolders(folders) {
     if (!m || m[1].includes("*") || m[2].includes("*") || m[2].split("/").includes("..")) { out.push(f); continue; }
     let names = [];
     try { names = fs.readdirSync(m[1]); } catch {}
-    for (const n of names.sort()) { const p = path.join(m[1], n, m[2]); try { if (fs.lstatSync(p).isDirectory() && !fs.lstatSync(path.join(m[1], n)).isSymbolicLink()) out.push(p); } catch {} }
+    for (const n of names.sort()) { const p = path.join(m[1], n, m[2]); try {
+        // The account's own folder, and everything on the way to `rest` really inside it: a link the
+        // account planted at .claude or projects passes lstat of the last part but leads elsewhere.
+        const acct = path.join(m[1], n);
+        if (fs.lstatSync(acct).isSymbolicLink() || !fs.lstatSync(p).isDirectory()) continue;
+        const real = fs.realpathSync(p), base = fs.realpathSync(acct);
+        if (real === base || real.startsWith(base + path.sep)) out.push(p);
+      } catch {} }
   }
   return out;
 }

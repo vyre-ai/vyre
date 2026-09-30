@@ -79,5 +79,8 @@ test("expandAccountFolders: one folder per account that has it, never through a 
   fs.symlinkSync(outside, path.join(base, "2002"));
   fs.mkdirSync(path.join(base, "2003", ".claude"), { recursive: true });
   fs.symlinkSync(outside, path.join(base, "2003", ".claude", "projects"));
+  fs.mkdirSync(path.join(base, "2004"), { recursive: true });
+  fs.symlinkSync(path.join(outside), path.join(base, "2004", ".claude"));   // .claude itself is a link: projects is "inside" it by path only
+  fs.mkdirSync(path.join(outside, "projects"));
   assert.deepEqual(expandAccountFolders([path.join(base, "*", ".claude", "projects"), "/plain"]), [path.join(base, "2000", ".claude", "projects"), "/plain"]);
 });
