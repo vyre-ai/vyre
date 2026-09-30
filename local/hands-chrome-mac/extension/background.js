@@ -25,6 +25,7 @@ import { createCtx } from "./lib/ctx.js";
 import { dispatch, deliver, ready, loadReport, opNames } from "./caps/index.js";
 import { explain } from "./shared/diag.js";
 import { createPresence } from "./lib/presence.js";
+import { createSiteCache } from "./lib/sitecache.js";
 import { onFailure as loginFailure, signal as loginSignal } from "./caps/login.js";
 
 export const MIN_RETRY_MS = 2500;
@@ -113,8 +114,12 @@ export function start(chrome, opts = {}) {
     chrome, cdp: ctx.cdp, setT, clearT,
     onStop: via => { ctx.setStopped(true); post({ event: "stop", via }); },
     onLogin: (action, tabId) => loginSignal(tabId, action),
+    onFinish: () => { void sites.flush(); },
   });
   /** @type {any} */ (ctx).presence = presence;
+  // What Vyre has learned about the sites it works on: read from this device, written to the server in batches (lib/sitecache.js).
+  const sites = createSiteCache({ chrome, emit: evt => { post(evt); }, setT, clearT });
+  /** @type {any} */ (ctx).sites = sites;
   presence.badgeOwnedBy(() => conn.failingSince != null && now() - conn.failingSince >= BADGE_AFTER_MS);
 
   /** @param {any} msg */
@@ -126,6 +131,7 @@ export function start(chrome, opts = {}) {
       if (msg.event === "stop") { ctx.setStopped(true); void presence.state({ stopped: msg.via === "pause" ? "pause" : "stop" }); }
       else if (msg.event === "resume") { ctx.setStopped(false); void presence.state({ stopped: false }); }
       else if (msg.event === "presence") { await presence.state(msg); return; }
+      else if (msg.event === "site.card") { await sites.setCard(String(msg.origin || ""), msg.card, Number(msg.rev)); return; }
       await deliver(msg, ctx);
       return;
     }
@@ -133,7 +139,11 @@ export function start(chrome, opts = {}) {
     const id = msg.id;
     try {
       if (typeof msg.op !== "string") throw Object.assign(new Error(proto.CODES.bad_request), { code: "bad_request" });
+      const tabArg = msg.args && typeof msg.args === "object" ? (typeof msg.args.tabId === "number" ? msg.args.tabId : typeof msg.args.tab === "number" ? msg.args.tab : undefined) : undefined;
+      // Arriving on a site: its card is read from this device at once (no wait), and asked of the server in the background when there is none.
+      if (tabArg !== undefined && !/^(site|caps|status)/.test(msg.op)) void ctx.tabs.get(tabArg).then((/** @type {any} */ t) => sites.arrive(String(t && (t.pendingUrl || t.url) || ""))).catch(() => {});
       const result = await presence.around(msg.op, msg.args, () => dispatch(msg.op, msg.args, ctx));
+      if (tabArg !== undefined && result && typeof result === "object" && /^(page\.(act|fill)|api\.learn|frames\.(list|probe))/.test(msg.op)) void ctx.tabs.get(tabArg).then((/** @type {any} */ t) => sites.learn({ op: msg.op, args: msg.args, result, tabUrl: String(t && (t.pendingUrl || t.url) || "") })).catch(() => {});
       // A batch or flow that stopped on a login page is the person's to fix, not the page's fault.
       if (result && typeof result === "object" && result.ok === false && result.code && /^(batch|ghl)\./.test(msg.op)) {
         const a = msg.args && typeof msg.args === "object" ? { ...msg.args, ...(typeof msg.args.tab === "number" && msg.args.tabId === undefined ? { tabId: msg.args.tab } : {}) } : {};

@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import chromeModule from "../index.js";
 import { createTrace, rungOf, nextRung } from "./trace.js";
 import { callerKind } from "../caller.js";
+import { createSiteStore } from "./sitestore.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PKG = path.resolve(HERE, "..");
@@ -33,6 +34,7 @@ export async function createRuntime(o = {}) {
   const dataDir = o.dataDir || dataDirOf();
   const log = o.log || (m => process.stderr.write(`[vyre-chrome] ${m}\n`));
   const trace = createTrace({ dataDir, version: o.version });
+  const sites = createSiteStore({ dataDir });
   /** @type {Map<string, any>} */ const tools = new Map();
   /** @type {Map<string, Set<Function>>} */ const listeners = new Map();
   /** @type {Map<string, { content: any, tool: string }>} */ const held = new Map();
@@ -58,6 +60,11 @@ export async function createRuntime(o = {}) {
       return { data: { id, state: "held" } };
     }
     if (tool === "hands.grant.list") return { data: [] };
+    // Vyre Memory's site knowledge, answered from files in this folder when there is no Vyre to ask.
+    if (tool === "memory.site.get") return sites.get(input || {});
+    if (tool === "memory.site.put") return trace.config().learn === false ? { data: { accepted: false, refused: [{ path: "", why: "learning is off" }] } } : sites.put(input || {});
+    if (tool === "memory.site.list") return sites.list();
+    if (tool === "memory.site.forget") return sites.forget(input || {});
     return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
   }
 
