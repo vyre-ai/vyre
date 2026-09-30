@@ -31,6 +31,8 @@ struct Live {
     seed: Mutex<Option<(String, std::time::Instant)>>,
     /// An offer resolved by the bundled page and awaiting the person's Pair.
     pending: Mutex<Option<PendingOut>>,
+    /// The person pressed Pair on the confirm window; the bundled page may now run the handshake.
+    confirmed: Mutex<bool>,
 }
 
 #[derive(Serialize, Clone)]
@@ -269,6 +271,7 @@ fn begin_pair(live: State<Live>) -> String {
     let seed = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b);
     *live.seed.lock().unwrap() = Some((seed.clone(), std::time::Instant::now()));
     *live.pending.lock().unwrap() = None;
+    *live.confirmed.lock().unwrap() = false;
     seed
 }
 
@@ -297,16 +300,42 @@ fn pending_pair(live: State<Live>) -> Option<PendingOut> { live.pending.lock().u
 fn cancel_pair(app: AppHandle, live: State<Live>) {
     *live.pending.lock().unwrap() = None;
     *live.seed.lock().unwrap() = None;
+    *live.confirmed.lock().unwrap() = false;
     if let Some(w) = app.get_webview_window("confirm") { let _ = w.close(); }
 }
 
-/// The person said Pair: pin the address the sealed record named, and open the panel there.
+/// The person pressed Pair: nothing is pinned yet. The bundled page sees "confirmed", runs the
+/// handshake, and only a finished handshake pins (finish_pair).
 #[tauri::command]
 fn confirm_pair(app: AppHandle, live: State<Live>) -> Result<(), String> {
+    if live.pending.lock().unwrap().is_none() { return Err("Nothing to pair.".into()); }
+    *live.confirmed.lock().unwrap() = true;
+    if let Some(w) = app.get_webview_window("confirm") { let _ = w.close(); }
+    Ok(())
+}
+
+/// "waiting" (no answer yet), "confirmed", or "cancelled" (the person said no, or it ran out).
+#[tauri::command]
+fn pair_status(live: State<Live>) -> &'static str {
+    let live_seed = matches!(live.seed.lock().unwrap().as_ref(), Some((_, at)) if at.elapsed() <= SEED_LIFE);
+    if *live.confirmed.lock().unwrap() { "confirmed" }
+    else if live.pending.lock().unwrap().is_some() && live_seed { "waiting" }
+    else { "cancelled" }
+}
+
+/// The handshake finished: pin the confirmed address (with what `connect` needs to stay linked,
+/// which holds no secret), close the pairing page and open the panel.
+#[tauri::command]
+fn finish_pair(app: AppHandle, live: State<Live>, link: serde_json::Value) -> Result<(), String> {
+    if !*live.confirmed.lock().unwrap() { return Err("The pairing was not confirmed.".into()); }
     let p = live.pending.lock().unwrap().take().ok_or("Nothing to pair.")?;
     *live.seed.lock().unwrap() = None;
-    save_pairing(app.clone(), p.address)?;
-    if let Some(w) = app.get_webview_window("confirm") { let _ = w.close(); }
+    *live.confirmed.lock().unwrap() = false;
+    let path = record_path(&app).ok_or("No place to save on this computer.")?;
+    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(&path, serde_json::json!({ "address": p.address, "link": link }).to_string()).map_err(|e| e.to_string())?;
+    if let Some(w) = app.get_webview_window("first-run") { let _ = w.close(); }
+    show_panel(&app, "/quick");
     Ok(())
 }
 
@@ -377,10 +406,10 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, device_key_pub, device_key_dh])
+        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, device_key_pub, device_key_dh])
         .setup(|app| {
             let handle = app.handle().clone();
-            app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)), seed: Mutex::new(None), pending: Mutex::new(None) });
+            app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)), seed: Mutex::new(None), pending: Mutex::new(None), confirmed: Mutex::new(false) });
 
             let open = MenuItem::with_id(app, "open", "Open Vyre", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

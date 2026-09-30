@@ -34,6 +34,20 @@ key DPAPI-protected in Rust (RFC 7748 tested). capsule-win now builds the NSIS i
 before SHA256SUMS. NOT DONE: the bundled page that runs relay/client (needs tailnet's work/tailnet-win
 to land: resolveTicket with address, words.js, shellkey.js), a Rust-side 409 surface (the page shows it).
 
+**Device key at rest (reviewer-2, MEDIUM-low, accepted):** DPAPI CurrentUser protects
+`device.key` (app data dir) at rest and from other Windows users, not from code running as the same
+user. No friction fix wanted. No command resets, exports or replaces the key; device_key_pub makes it
+only when none exists; device_key_dh refuses an all-zero result. Both commands are granted only to
+the bundled first-run window, never to main. TODO: owner-only ACL on the key file (app data dir is
+per-user already).
+
+**Pairing page (built, unrun):** first-run loads `pair.js` (tailnet's relay client copied into
+ui/relay at CI time, not forked): begin_pair seed, poll resolveTicket, offer_pair, wait for the
+person's Pair, run pairOffer with the DPAPI key, finish_pair pins and stores the link record. Person
+types the seed (22 characters); no QR or words form yet (no bytes-to-words encoder exists on the Deck
+side). The persistent link window that keeps the channel for box calls (Drive) is NOT built.
+release.yml now calls capsule-win.yml as a reusable workflow and the release job needs it, no race.
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in

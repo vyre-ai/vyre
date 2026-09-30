@@ -13,6 +13,9 @@
     "allow-offer-pair",
     "allow-set-autostart",
     "allow-device-key-pub",
-    "allow-device-key-dh"
+    "allow-device-key-dh",
+    "allow-pair-status",
+    "allow-finish-pair",
+    "allow-cancel-pair"
   ]
 }
