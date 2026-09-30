@@ -128,7 +128,8 @@
       "design/tailscale-plan.md",
       "design/vitals.md",
       "design/assistant.md",
-      "design/said.md"
+      "design/said.md",
+      "design/undo.md"
     ]},
     { "title": "Design system", "pages": [
       "design/system/README.md",

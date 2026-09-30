@@ -21,6 +21,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   warnings, never failures. A module for a newer contract is never run: its row says which Vyre it
   needs. `vyre module upgrade` moves a module onto the current form, and pinned fixtures in
   `test/fixtures/modules/` hold every release to it.
+- Undo for what acts on your behalf (core/undo, PLAN P14). When an agent, the assistant, a watcher
+  or a module does something reversible for you, the module that did it records the inverse, and
+  one tap runs it. A model never supplies an inverse, and nothing that sends, posts, pays, deletes
+  outside or is your own action gets one. An agent can undo only its own actions. The log works
+  with the assistant switched off and keeps 30 days. `docs/design/undo.md` explains it.
 
 ## 0.1.1
 
