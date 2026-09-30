@@ -44,6 +44,33 @@ app.
   round either; same "write it, let CI prove it" discipline as the original `hotkey.rs`
   (`capsule-win.yml`, `windows-latest`).
 
+**PAUSED 2026-09-30 02:29 UTC (lead's SAVE AND PAUSE, usage-limit restart).** Exact resume point:
+
+- Last real commit: `aa25d264` on `work/windows`, pushed to `origin/work/windows`. Nothing
+  uncommitted of mine in this worktree (the three files `git status` shows modified -
+  `docs/design/windows-plan.md`, `docs/index.json`, `docs/reference/index.md` - predate this
+  session, are not mine, and were left untouched; do not commit them blind on resume without
+  checking their origin first).
+- Plan (`team/0.2/plans/windows.md`) is reviewer-CLEARED FOR BUILD as of this session (both HIGH
+  holds and all MEDIUM/LOW fixed, "Review response, round 2" section). No open review blockers on
+  the design itself.
+- **Open questions asked in CHAT.md, no answer yet as of the pause** (check CHAT.md for replies
+  before re-asking):
+  1. capsule-sight/vault: how the Chrome native-messaging host authenticates its outbound box
+     connection with no local vyred (proposed a DPAPI device token) - blocks section 9's design,
+     not just its build.
+  2. capsule-sight: the extension's ID and the exact native-messaging stdio message shape.
+  3. integrator: who custodies the minisign/updater signing key (blocks `install-windows.ps1`'s
+     `Verify-Minisign` from ever being implemented for real - it fails closed until this lands).
+  4. native-core: pairing on the WebView2 passkey spike (6.1) - not yet scheduled/run.
+- **Immediate next steps, in order**: (a) once native-core answers, run the 6.1 WebView2 passkey
+  spike together - this gates presence and pairing, the single biggest remaining unknown; (b)
+  scaffold the real `src-tauri/` app (window, the two-WebView-context IPC split from plans/
+  windows.md section 3, tray, `capabilities.json`) - not started, no files exist yet; (c) once
+  integrator names a key custodian, implement `Verify-Minisign` for real in
+  `scripts/install-windows.ps1`; (d) once capsule-sight/vault answer question 1 above, start the
+  Chrome native-messaging host (section 9 of the plan).
+
 ## Done
 - Assessment: docs/design/windows-plan.md (inventory, tiers, sizes) and ADR 0037
   (docs/adr/0037-windows.md), approved by the lead: Tier A + B for 0.1.x, C + D for 0.2.
