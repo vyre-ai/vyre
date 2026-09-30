@@ -355,7 +355,7 @@ export default {
       if (cur && cur.text === clean) return { ...cur, unchanged: true };
       const version = (cur?.version || 0) + 1;
       db.prepare("INSERT INTO team_charters (teammate, version, text, by, note, at) VALUES (?,?,?,?,?,?)").run(agent, version, clean, by, note || null, Date.now());
-      ctx.events.emit("teammate.charter-changed", { agent, project: byAgent(agent)?.project, version, by });
+      ctx.events.emit("teammate.charter-changed", { agent, project: byAgent(agent)?.project, version, previous: cur?.version || null, by, note: note || null });
       return { ...charterCurrent(agent), unchanged: false };
     };
 
@@ -869,6 +869,18 @@ export default {
         const old = charterRow(db.prepare("SELECT * FROM team_charters WHERE teammate = ? AND version = ?").get(tm.agent, Number(i.version)));
         if (!old) throw Object.assign(new Error(`${tm.agent} has no charter version ${i.version}`), { code: "not_found" });
         return writeCharter(tm.agent, old.text, meta.agent || String(meta.caller || "vyre"), `revert to version ${old.version}`);
+      },
+    });
+    ctx.tool("team.charter.diff", {
+      description: "What a charter version changed: the version's text beside the one before it (null for the first), who wrote it and how. What the Deck's \"charter changed by <agent>\" card shows before a one-tap team.charter.revert.",
+      input: { type: "object", properties: { ...charterRef, version: { type: "integer" } } },
+      callers: CHARTER_CALLERS,
+      run: async (i, meta = {}) => {
+        const tm = await charterTarget(i, meta, { write: false });
+        const cur = i.version ? charterRow(db.prepare("SELECT * FROM team_charters WHERE teammate = ? AND version = ?").get(tm.agent, Number(i.version))) : charterCurrent(tm.agent);
+        if (!cur) throw Object.assign(new Error(`${tm.agent} has no charter${i.version ? ` version ${i.version}` : ""}`), { code: "not_found" });
+        const before = charterRow(db.prepare("SELECT * FROM team_charters WHERE teammate = ? AND version < ? ORDER BY version DESC LIMIT 1").get(tm.agent, cur.version));
+        return { agent: tm.agent, version: cur.version, by: cur.by, note: cur.note, at: cur.at, text: cur.text, before: before ? { version: before.version, text: before.text, by: before.by } : null };
       },
     });
     ctx.tool("team.charter.draft", {

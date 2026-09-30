@@ -731,3 +731,10 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   to core/agents) and per-agent memory scope (iq contract, section 14.3). Both are cross-team; the launch runs in the
   project thread as the role, never in kit's personal thread.
 - Test: 1 new (52/52 in core/team). Regenerated docs/reference and docs/index.json.
+
+## Reviewer-2 MEDIUM-low on charters (2026-09-30)
+
+- `teammate.charter-changed` now carries `previous`, `by` and `note`; new `team.charter.diff {teammate|project+role, version?}`
+  returns the version beside the one before it. Backend for the Deck/feed card "charter changed by <agent>" with a one-tap
+  `team.charter.revert`; the card itself waits on app-design. `by` stays in history.
+- Agreed the duty shape with watchers (CHAT.md): duties are teammate-owned watchers, built when watchers.* lands.

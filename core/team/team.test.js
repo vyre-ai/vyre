@@ -426,6 +426,10 @@ test("charters: set makes versions, an identical text is no change, revert is a 
   assert.equal(v3.version, 3);
   assert.equal((await tool("team.charter.get", { teammate: agent })).charter.text, "You review copy for the Harlow Legal site.");
   assert.equal((await tool("team.charter.history", { teammate: agent })).versions.length, 3);
+  const dv = await tool("team.charter.diff", { teammate: agent, version: 2 });
+  assert.equal(dv.before.text, "You review copy for the Harlow Legal site.");
+  assert.equal(dv.text, "You review copy and layout.");
+  assert.equal((await tool("team.charter.diff", { teammate: agent, version: 1 })).before, null);
   assert.equal((await raw("team.charter.set", { teammate: agent, text: "  " })).error.code, "bad_input");
   assert.equal((await raw("team.charter.set", { teammate: agent, text: "x".repeat(8001) })).error.code, "bad_input");
   assert.equal((await raw("team.charter.revert", { teammate: agent, version: 9 })).error.code, "not_found");

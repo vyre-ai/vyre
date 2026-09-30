@@ -401,7 +401,7 @@ Listens for: `link.unpaired`
 | `summon.queued` | `priority`, `project`, `request`, `teammate` |
 | `summon.started` | `project`, `request`, `teammate` |
 | `team.role-changed` | `filler`, `project`, `role` |
-| `teammate.charter-changed` | `agent`, `by`, `project`, `version` |
+| `teammate.charter-changed` | `agent`, `by`, `note`, `previous`, `project`, `version` |
 | `teammate.created` | `agent`, `project`, `role`; sometimes `revived` |
 | `teammate.default-changed` | `enabled`, `project` |
 | `teammate.retired` | `agent`, `project`, `reason`, `role`, `undone` |
