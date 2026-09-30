@@ -122,6 +122,11 @@ it loads the same page. One dependency: the Deck does not read `window.__VYRE_SH
 stage 006da74a), so the Ctrl glyphs, the hidden browser-install card and the compact /quick variant the spec
 wants in the Windows panel are not switched on; that is native-core's side of C22.
 
+**New crates in the signed, auto-installed binary (reviewer-2 LOW):** the tauri `image-ico` feature (for the
+tray glyph) adds four transitive crates to app/Cargo.lock: image 0.25.10, moxcms 0.8.1, pxfm 0.1.30,
+byteorder-lite 0.1.0. Each lock entry carries a checksum, and the build is --locked with no other lock
+change. The tray theme is read with RegGetValueW (windows-sys Win32_System_Registry), no `reg.exe` process.
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in
