@@ -60,7 +60,7 @@ test("recall.search: a named agent reads only its granted project, never the who
   for (const h of own.data) assert.match(h.cwd, /northwind$/, h.cwd);
   // Asking for Harlow's folder by name is refused outright, not just empty.
   const cross = await d.registry.call("recall.search", { q: "invoice", project_cwds: [path.join(own.data[0].cwd, "..", "harlow-site")] }, "mcp:agent:kit");
-  assert.equal(cross.error?.code, "not_found", "the registry refuses a folder in a project kit is not granted (cwdArg), before recall does");
+  assert.match(cross.error?.message || "", /kit is not granted/);
   // A module forwarding a specific agent's call is scoped the same way as that agent directly.
   assert.equal((await d.registry.call("recall.search", { q: "intake form", agent: "kit" }, "module:memory")).data.length, 0);
   // The assistant sees every MAPPED project (both Northwind and Harlow), but never an unmapped
@@ -97,7 +97,7 @@ test("recall.sessions: a named agent lists only its granted project's sessions",
   for (const s of kit.data) assert.match(s.cwd, /northwind$/, s.cwd);
   assert.equal(kit.data.some(s => s.id === UNMAPPED_SESSION), false, "an unmapped session leaked to a scoped agent");
   const cross = await d.registry.call("recall.sessions", { cwd: path.join(work, "harlow-site") }, "mcp:agent:kit");
-  assert.match(cross.error?.message || "", /kit is not granted/);
+  assert.equal(cross.error?.code, "not_found", "the registry refuses a folder in a project kit is not granted (cwdArg), before recall does");
   // ids can name any session (the box's cross-project resolve for a Mac's picked ones); a
   // scoped agent's own list still narrows to what it may read.
   const ids = await d.registry.call("recall.sessions", { ids: [NORTHWIND_SESSION, HARLOW_SESSION] }, "mcp:agent:kit");
