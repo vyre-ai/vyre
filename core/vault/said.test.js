@@ -359,3 +359,15 @@ test("env scan: a person's surface lists the .env files in given folders by coun
   assert.ok(!JSON.stringify(r).includes(value), "never a value");
   for (const who of ["mcp", "mcp:agent:kit", "module:watchers"]) assert.ok((await reg("vault.env.scan", { roots: [dir] }, who)).error, who);
 });
+
+test("matchIntent: a plain setting or revoke ask lapses after 15 minutes; a composite setting key matches whole and exactly", () => {
+  const key = "setting:chat.model=\"sonnet\"@project:harlow";
+  const it = kind => intent({ kind, to: [kind === "setting" ? key : "s_abc123"], standing: false });
+  const at = 16 * 60_000;
+  assert.deepEqual(matchIntent({ kind: "setting", to: [key], at: T0 + 1000 }, [it("setting")], ["t-1"]), { id: "s_1" });
+  assert.equal(matchIntent({ kind: "setting", to: [key.replace("sonnet", "opus")], at: T0 + 1000 }, [it("setting")], ["t-1"]), null, "another value");
+  assert.equal(matchIntent({ kind: "setting", to: [key.replace("harlow", "northwind")], at: T0 + 1000 }, [it("setting")], ["t-1"]), null, "another project");
+  assert.equal(matchIntent({ kind: "setting", to: [key], at: T0 + at }, [it("setting")], ["t-1"]), null, "said 16 minutes ago");
+  assert.equal(matchIntent({ kind: "revoke", to: ["s_abc123"], at: T0 + at }, [it("revoke")], ["t-1"]), null, "a revoke ask lapses too");
+  assert.deepEqual(matchIntent({ kind: "setting", to: [key], at: T0 + at }, [{ ...it("setting"), standing: true }], []), { id: "s_1" }, "a standing one does not lapse");
+});
