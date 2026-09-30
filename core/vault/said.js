@@ -35,8 +35,10 @@ export const SAID_MACED = ["id", "thread", "said", "kind", "channel", "recipient
 export const INTENT_KINDS = ["send", "post", "pay", "act_out", "setting", "revoke", "use"];
 /** The only callers that may record what the person said. */
 export const RECORDERS = ["module:sessions", "module:assistant", "module:threads"];
-/** A plain (not standing) act_out ask is good this long from when it was said, unless the recorder gave its own window. */
-export const ACT_WINDOW_MS = 15 * 60_000;
+/** What the switchboard (module:threads), which hears the person's turn, may record: a # tag's use and an asked action, nothing else. */
+export const THREADS_KINDS = ["use", "act_out"];
+/** How long a plain (not standing) ask is good from when it was said, unless the recorder gave its own window (1 to 60 minutes): a stale "merge it" or "send that email" cannot be spent days later. */
+export const PLAIN_WINDOW_MS = Object.freeze({ act_out: 15 * 60_000, send: 60 * 60_000, post: 60 * 60_000, pay: 60 * 60_000 });
 const MAX_TO = 20, MAX_TEXT = 500;
 
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
@@ -81,7 +83,7 @@ export function matchIntent(call, intents, lineage = []) {
     // A plain ask is used up by the send it asked for; only a standing permission persists.
     if (it.used && !it.standing) continue;
     // A plain act_out ask is for now, not for days: it stops matching after its window (15 minutes unless the recorder said otherwise).
-    if (!it.standing && it.kind === "act_out" && at > it.at + (it.limits && Number.isFinite(it.limits.window_ms) ? it.limits.window_ms : ACT_WINDOW_MS)) continue;
+    if (!it.standing && PLAIN_WINDOW_MS[it.kind] && at > it.at + (it.limits && Number.isFinite(it.limits.window_ms) ? it.limits.window_ms : PLAIN_WINDOW_MS[it.kind])) continue;
     // An intent that names agents covers only them; one that names none covers any of the person's agents.
     if (it.agents && it.agents.length && !it.agents.map(norm).includes(norm(call.agent))) continue;
     if (!(it.at <= at)) continue;
@@ -119,6 +121,7 @@ export class SaidIntents {
    */
   async record(i, caller) {
     if (!isObj(i)) throw bad("an intent is an object");
+    if (caller === "module:threads" && !THREADS_KINDS.includes(i.kind)) throw bad(`the threads module records only ${THREADS_KINDS.join(" and ")} intents`);
     if (typeof i.thread !== "string" || !i.thread) throw bad("thread is the session the person spoke in");
     if (typeof i.said !== "string" || !i.said) throw bad("said is the id of the ingress row the words came from");
     if (!INTENT_KINDS.includes(i.kind)) throw bad(`kind must be one of ${INTENT_KINDS.join(", ")}`);

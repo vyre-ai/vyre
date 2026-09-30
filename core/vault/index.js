@@ -34,6 +34,7 @@ import * as agentTools from "./tools/agents.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
 import * as saidTools from "./said.js";
+import { grantPrompt } from "./prompt.js";
 import * as requestTools from "./request.js";
 
 export { presence };
@@ -178,6 +179,9 @@ export default {
       obj({ filter: str, kind: str, host: str }), (input, { caller, project }) => {
         const r = cli.list(vault.list(input), input);
         // A named agent sees only the items granted to it or to its project, and only their names and kinds (reviewer-2 L-V3).
+        // Grants go to MODULES (and narrow to a project), never to an agent as such, so "granted to that agent" is decided by two keys:
+        // the agent's project scope (the verified project of its thread, meta.project) matching a grant's project, or a grant whose
+        // module carries the agent's own name. An item granted to no project and no module of that name is invisible to it.
         const who = /^mcp:agent:(.+)$/.exec(String(caller));
         if (!who || !r || !Array.isArray(r.items)) return r;
         const mine = g => g.module === who[1] || (project && g.project === project);
@@ -215,7 +219,7 @@ export default {
       presence("Approve a pending grant or pass", ({ id }) => {
         const p = vault.pending();
         const g = p.grants.find(x => x.id === id);
-        if (g) return `Let ${g.module}${g.watcher ? `/${g.watcher}` : ""} use ${quoted(g.name)}${g.project ? ` in project ${g.project}` : " in every project"}${/^mcp:agent:/.test(String(g.by)) ? `, asked by agent ${String(g.by).slice(10)}` : ""} while you are away${vault.row(g.name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`;
+        if (g) return grantPrompt(g, vault.row(g.name)?.vault === "personal");
         const ag = p.agentGrants.find(x => x.id === id);
         if (ag) return vault.agents.summary(ag, () => ag.expires);
         const s = p.passes.find(x => x.id === id);

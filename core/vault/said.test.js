@@ -287,3 +287,36 @@ test("grants: a named agent withdraws only its own pending request, lists only w
   assert.deepEqual((await kit("vault.list", {})).data.items, [{ name: "api-b", kind: "api-key" }]);
   assert.equal((await cli("vault.list")).data.items.length, 2, "the person sees everything");
 });
+
+test("said: a plain send, post or pay ask lives an hour by default, the recorder may shorten it, and the threads module records only use and act_out", async t => {
+  const { reg } = await daemon(t);
+  const at = Date.now();
+  const rec = (o, caller = "module:sessions") => reg("vault.said.record", { thread: "t-1", said: "s", kind: "send", to: ["dana@harlowlegal.com"], what: "email Dana", ...o }, caller);
+  const ask = (o = {}) => reg("vault.said.match", { kind: "send", via: "mail", to: ["dana@harlowlegal.com"], thread: "t-1", ...o }, "module:gate");
+  await rec({ at: at - 61 * 60_000 });
+  assert.equal((await ask()).data.matched, false, "said 61 minutes ago");
+  await rec({ said: "s2", at: at - 30 * 60_000 });
+  assert.equal((await ask()).data.matched, true, "said 30 minutes ago");
+  await rec({ said: "s3", to: ["sam@harlowlegal.com"], at: at - 20 * 60_000, window_minutes: 10 });
+  assert.equal((await ask({ to: ["sam@harlowlegal.com"] })).data.matched, false, "the recorder's shorter window");
+  await rec({ said: "s4", to: ["kit@harlowlegal.com"], at: at - 5000 * 60_000, standing: true }, "module:assistant");
+  assert.equal((await ask({ to: ["kit@harlowlegal.com"], thread: "t-9" })).data.matched, true, "a standing one never lapses");
+  // module:threads: use and act_out only.
+  assert.match((await rec({ kind: "send" }, "module:threads")).error.message, /only use and act_out/);
+  assert.match((await rec({ kind: "pay", to: ["acct_1"], limits: { max_amount: 5, currency: "usd" } }, "module:threads")).error.message, /only use and act_out/);
+  assert.ok((await rec({ kind: "act_out", to: ["github.project.pr.merge:alex/app#7"], channel: "github" }, "module:threads")).data.id);
+  for (const lookalike of ["module:threads-evil", "module:threadsx"]) assert.ok((await rec({}, lookalike)).error, lookalike);
+});
+
+test("grants: vault.list decides 'granted to that agent' by the agent's project scope or a grant to a module of its own name", async t => {
+  const { reg, cli } = await daemon(t);
+  for (const n of ["api-p", "api-m", "api-x"]) await cli("vault.put", { name: n, kind: "api-key", fields: { value: `fixture-key-${n}-0000000000` } });
+  await cli("vault.grant", { name: "api-p", module: "planner", project: "harlow" });
+  await cli("vault.grant", { name: "api-m", module: "kit" });
+  await cli("vault.grant", { name: "api-x", module: "planner", project: "northwind" });
+  const list = (agent, meta = {}) => reg("vault.list", {}, `mcp:agent:${agent}`, { agent, ...meta }).then(r => r.data.items.map(i => i.name).sort());
+  assert.deepEqual(await list("kit", { project: "harlow" }), ["api-m", "api-p"], "its project's grant and the one to a module named kit, not another project's");
+  assert.deepEqual(await list("kit"), ["api-m"], "with no project scope only the grant to its own name counts");
+  assert.deepEqual(await list("juno", { project: "northwind" }), ["api-x"]);
+  assert.deepEqual(await list("juno"), [], "nothing is visible to an agent with no grant and no project");
+});
