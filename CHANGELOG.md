@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Import from other agents (PLAN step 13): `core/import/formats/` reads OpenAI Codex CLI
+  (`sessions/YYYY/MM/DD/rollout-*.jsonl`, both the `session_meta`/`response_item` layout and the older bare-record
+  one) and Gemini CLI (`tmp/<projectHash>/chats/session-*.jsonl` and legacy `.json`, with replaced, `$set` and
+  `$rewindTo` records applied) and converts each session into Claude Code's JSONL shape (cwd, sessionId,
+  timestamp, text turns, tool_use / tool_result), so scrub, sync, Recall and filing by folder work unchanged.
+  `import.scan` now lists a source per agent that has sessions, tagged `agent: claude-code | codex | gemini-cli`;
+  a Gemini folder is found by hashing the known projects' folders against the project hash (unknown otherwise).
+  Each reader lists and opens only its allowlist of transcript shapes, never a symlink, and never
+  auth.json, oauth_creds.json, google_accounts.json or a .env; `import.start` sends a converted copy staged in a
+  temporary folder that is removed after the batch. A temp home reads its own `<home>/codex` and `<home>/gemini`.
+  8 new tests.
 - `vyre uninstall` on a box (box/vyre, PLAN.md HIGH 1): one flow. It removes the containers, agents' computers,
   the network and the vyre command, lists every Vyre volume with what is in it (an unknown volume is still
   named), and asks once whether to delete them; yes IS the approval, there is no second confirm, and with no

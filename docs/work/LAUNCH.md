@@ -11,6 +11,9 @@ lead's 0.2 BUILD GO.
 
 ## Done
 
+- Step 13: Codex and Gemini CLI import readers (`core/import/formats/`), converting to Claude Code's shape; allowlisted paths,
+  no symlinks, credential files never opened (tests plant them). import.scan tags each source by agent.
+
 - R8 (export encryption, BLOCKER 3 in reviewer's red-team): `vyre backup`/`vyre restore`
   (`core/names/backup.js`, `core/cli/commands/up.js`) always seal the file under a passphrase now.
   New `core/names/seal.js`: passphrase sealing over raw bytes (scrypt N=2^17 r=8 p=1, AES-256-GCM,
@@ -53,8 +56,9 @@ lead's 0.2 BUILD GO.
    the install line shows, C9/N1) once tailnet's relay-side primitive is far enough along to test
    against; watch CHAT.md for tailnet's own "Done" post.
 3. (DONE, box side: `vyre uninstall` in box/vyre; app-side device revoke waits on windows/capsule-pro/pwa shells) `vyre uninstall`, unified across the systemd path and install-box.sh's own `--uninstall`/`--purge`.
-4. Import readers (Claude Code first, reusing Recall's transcript parser if the spike confirms it
-   fits; Codex and Gemini CLI from scratch), with iq per the plan's step 12/13.
+4. (DONE, step 13 readers: Codex and Gemini CLI in core/import/formats, see CHANGELOG) Still open: an
+   in-app picker copy for the new sources, and re-verifying the on-disk formats against a real Codex and Gemini
+   install (checked against upstream source only), with iq per the plan's step 12.
 
 ## Needs from others
 
