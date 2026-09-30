@@ -253,7 +253,7 @@ test("emergency: no value, escrow key or ticket reaches an audit row, an event o
 
 test("emergency: through the module, the relay listener answers /v1/emergency and the owner gets a planner todo", async t => {
   const todos = [];
-  const alex = await recorded(t, { relay: { host: "127.0.0.1", port: 0 } }, { call: async (tool, input) => { todos.push({ tool, input }); return { data: {} }; } });
+  const alex = await recorded(t, { relay: { host: "127.0.0.1", port: 0 } }, { call: async (tool, input) => { if (tool !== "gate.offer") todos.push({ tool, input }); return { data: {} }; } });
   const juno = await recorded(t);
   const pin = async (x, y, name) => {
     const card = (await y.run("vault.identity", {})).card;
