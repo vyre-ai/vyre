@@ -45,7 +45,11 @@ export async function ensureUp() {
   return { ok: false, log };
 }
 
-/** @returns {Promise<{ ok: boolean, wasRunning: boolean, pid?: number }>} */
+/** Is this pid a live process? (EPERM means it is.) @param {number} pid */
+function running(pid) {
+  try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e).code === "EPERM"; }
+}
+
 /**
  * Stop this home's vyred. Only a pid that is Vyre's own: the pid file's, and when the caller
  * read vyred's health first, that one too. A pid file left by a crash names a process that may
@@ -62,7 +66,10 @@ export async function stop(expect = {}) {
   process.kill(pid, "SIGTERM");
   for (let i = 0; i < 50; i++) {
     await new Promise(r => setTimeout(r, 100));
-    if (!(await ping(p.socket))) return { ok: true, wasRunning: true, pid };
+    // The socket goes quiet first: vyred still stops its modules and closes its store, and its lock
+    // is held until the process ends. A new vyred started in that gap finds the lock taken and
+    // exits, so a restart waits for the process itself (node 22 on a busy Linux runner, 30 Sep).
+    if (!(await ping(p.socket)) && !running(pid)) return { ok: true, wasRunning: true, pid };
   }
   return { ok: false, wasRunning: true, pid };
 }

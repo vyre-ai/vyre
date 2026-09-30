@@ -24,6 +24,14 @@ process.on("SIGTERM", quit);
 process.on("SIGINT", quit);
 
 const { start } = await import("./index.js");
-d = await start().catch(e => { console.error("vyred: " + e.message); process.exit(1); });
+// On a Mac with vyre-core installed, the relay's keys (box, route and device) live in core, not in a
+// file at this login. Decided here, never inside start(), so an in-process test can't reach the
+// real core. createCoreKeys checks the socket is core's before every call.
+let coreKeys = null;
+if (process.platform === "darwin") {
+  const { readCoreConfig } = await import("../../lib/vyre-core-client.js");
+  if (readCoreConfig()) coreKeys = (await import("../../lib/vyre-core-keys.js")).createCoreKeys();
+}
+d = await start({ coreKeys }).catch(e => { console.error("vyred: " + e.message); process.exit(1); });
 // Asked to stop while starting: now that it has started, stop it.
 if (stopping) { await d.stop(); process.exit(0); }

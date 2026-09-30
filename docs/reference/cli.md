@@ -211,7 +211,7 @@ Running a session vyred owns:
   vyre threads send <thread> --queue <text>         hold it until the turn ends (a terminal session always does)
   vyre threads send <thread> --steer <text>         join the running turn at its next step
   vyre threads send <thread> --image F [text]       with a picture (.png .jpg .gif .webp, 5 MB, 5 at most)
-  vyre threads send <thread> "!ls"                  a leading ! runs it (shell), # remembers it; --raw sends as typed
+  vyre threads send <thread> "!ls"                  a leading ! runs it (shell), /remember saves it; --raw sends as typed
   vyre threads send <thread> /compact               a slash command; vyre threads commands <thread> lists them
   vyre threads list [--all] [--agent A]             the headless threads of the last day (ls)
   vyre threads queue <thread>                       what is queued and not yet handed over
@@ -230,7 +230,7 @@ Running a session vyred owns:
   vyre threads rewind <thread> <n|uuid> [--restore conversation|code|both]
                                                     back to a message (double Esc); its words come back
   vyre threads shell <thread> <command...>          run it in the thread's folder (! mode); Claude sees it next
-  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (# mode)
+  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (/remember)
   vyre threads tasks <thread>                       its background tasks (shells, subagents)
   vyre threads kill-task <thread> <task>            stop one
   vyre threads commands <thread>                    the slash commands the running session offers

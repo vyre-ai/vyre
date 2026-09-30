@@ -465,7 +465,10 @@ function noBrewSys(/** @type {import("node:test").TestContext} */ t) {
   return s;
 }
 
-test("install-mac-server.sh: gh is the pinned download when neither PATH nor Homebrew has it, and vyred is told where it is", t => {
+// A gh on the machine's own PATH (hosted Linux runners have one) is used as it is, which is the next test;
+// the pinned download is what a Mac with no gh takes, and the macOS runner proof runs it for real.
+const hasSystemGh = spawnSync("sh", ["-c", "command -v gh"], { env: { PATH: "/usr/bin:/bin" } }).status === 0;
+test("install-mac-server.sh: gh is the pinned download when neither PATH nor Homebrew has it, and vyred is told where it is", { skip: hasSystemGh && "this machine has a gh on its PATH, so the download is never taken" }, t => {
   const m = noBrewSys(t);
   const d = path.join(m.base, "pk-gh", "gh_9_macOS_arm64", "bin"); fs.mkdirSync(d, { recursive: true });
   fs.writeFileSync(path.join(d, "gh"), "#!/bin/sh\necho gh\n", { mode: 0o755 });

@@ -37,6 +37,7 @@
 //  - no timers but the reconnect wait. Every string from the box is a text node (deck/js/dom.js).
 
 import { h, put, go, isPhone } from "../js/dom.js";
+import { markOpened } from "./lib/opened-here.js";
 import { attempt, on } from "../js/api.js";
 import { surfaceId } from "../glass/util.js";
 import { linkVerdict, holdKeys, withFrom, withMods, step, reopened, onClose, onAttachError, remember,
@@ -495,6 +496,7 @@ export function mountTerminal(container, { term, onBack }) {
       const r = await openTerminal(cwd);
       if (dead) return;
       if ("error" in r) { again.disabled = false; status("gone", termError(r.error), again); return; }
+      markOpened("term:" + r.term);
       go("/chat?term=" + encodeURIComponent(r.term));
     } }, "Open a new terminal here") : null;
     status("gone", "The server was updated and this terminal was closed.", again);

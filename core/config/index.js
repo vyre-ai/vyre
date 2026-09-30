@@ -218,6 +218,12 @@ export function boxProjectsDir() {
  * machine, the way `core/names/tailscale.js`'s `installCommand` already does.
  * @param {string} root @param {string} [platform]
  */
+/** On a box with accounts (each session's own uid and HOME), each account's Claude transcripts, expanded when read. */
+function accountTranscripts() {
+  const home = process.env.VYRE_ACCOUNTS_HOME || "/home/acct";
+  try { return fs.statSync(home).isDirectory() ? [path.join(home, "*", ".claude", "projects")] : []; } catch { return []; }
+}
+
 function defaults(root, platform = process.platform) {
   const claude = claudeHome(root);
   return {
@@ -235,7 +241,7 @@ function defaults(root, platform = process.platform) {
     roots: [],
     me: { domains: [], emails: [] },
     // synced: sessions a paired device sent here with the person's consent (ADR 0008, amendment).
-    transcripts: [path.join(claude, "projects"), path.join(claude, "projects-archive"), path.join(root, "synced")],
+    transcripts: [path.join(claude, "projects"), path.join(claude, "projects-archive"), path.join(root, "synced"), ...accountTranscripts()],
     modules: { enable: [], disable: [] },
     // Guests from another tailnet: off, nobody listed (ADR 0014 part 8, core/names/guests.js).
     network: { tailscale: false, guests: { enabled: false, people: {} } },
