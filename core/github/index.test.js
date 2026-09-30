@@ -46,7 +46,7 @@ function makeRepo(t, origin) {
 async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingThreads = new Set(), failCreate = false, failAddWorkspace = false, interruptIn } = {}) {
   const db = new DatabaseSync(":memory:");
   t.after(() => db.close());
-  const tools = new Map(), events = [], calls = [];
+  const tools = new Map(), events = [], calls = [], mcpRows = [];
   const rows = projectsRows.map(r => ({ workspaces: [], ...r }));
   const ctx = {
     config: { projectsDir: projectsDir || fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-projdir-")) },
@@ -61,6 +61,14 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
         return existingThreads.has(input.thread) ? { data: { thread: { id: input.thread } } } : { error: { code: "not_found", message: `no thread ${input.thread}` } };
       }
       if (toolName === "threads.interrupt-in" && interruptIn) return interruptIn(input);
+      if (toolName === "mcp.servers") return { data: mcpRows.map(r => ({ name: r.name, auth: { type: "bearer", item: r.auth.item } })) };
+      if (toolName === "mcp.add") {
+        if (mcpRows.some(r => r.name === input.name)) return { error: { code: "conflict", message: "exists" } };
+        mcpRows.push(input); return { data: { name: input.name } };
+      }
+      if (toolName === "mcp.remove") { const i = mcpRows.findIndex(r => r.name === input.name); if (i >= 0) mcpRows.splice(i, 1); return { data: { removed: i >= 0 } }; }
+      if (toolName === "mcp.test") return { data: { ok: true } };
+      if (toolName === "vault.grant") return { data: { grant: { status: "active" } } };
       if (toolName === "projects.list") return { data: { projects: rows } };
       if (toolName === "projects.add-workspace") {
         if (failAddWorkspace) return { error: { code: "boom", message: "injected failure" } };
@@ -87,7 +95,7 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
     try { return { data: await def.run(input, { caller, firstParty, ...(asked ? { asked: true } : {}) }) }; }
     catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code, message: err.message, ...(err.detail ? { detail: err.detail } : {}) } }; }
   };
-  return { db, events, calls, as, ctx };
+  return { db, events, calls, as, ctx, mcpRows };
 }
 
 /** Seed an account row directly, the way a prior github.connect would have left it. */
@@ -687,8 +695,35 @@ test("github.mentions.search / .resolve: the # picker lists repos, open PRs and 
   assert.match(pr.data.text, /form\.js \(\+4 -1\)/);
   assert.match(pr.data.text, /Comment by mallory/);
   assert.match((await w.as("deck")("github.mentions.resolve", { id: "issue:alex/harlow-legal#3" })).data.text, /Labels: bug/);
-  for (const id of ["repo:../x", "pr:alex/harlow-legal#0", "file:/etc/passwd", "repo:alex/x?y=1"]) assert.equal((await w.as("deck")("github.mentions.resolve", { id })).error.code, "bad_input", id);
+  for (const id of ["repo:../x", "repo:alex/..", "pr:alex/.#3", "pr:alex/harlow-legal#0", "file:/etc/passwd", "repo:alex/x?y=1"]) assert.equal((await w.as("deck")("github.mentions.resolve", { id })).error.code, "bad_input", id);
   assert.equal((await w.as("deck")("github.mentions.resolve", { id: "repo:nobody/nothing" })).error.code, "not_found");
   assert.equal((await w.as("module:evil", { firstParty: true })("github.mentions.search", { q: "x" })).error.code, "denied");
   assert.ok(log.every(l => l.auth === "Bearer test-token"), "only the connected account's token, never anything else");
+});
+
+test("github.mcp.sync / github.remove: each connected account gets GitHub's hosted MCP row (bound item, no file writes), a second account a distinct name, sync is idempotent, and removing the account removes its row", async t => {
+  const w = await world(t);
+  seedAccount(w.db, { name: "home", login: "alex" });
+  seedAccount(w.db, { name: "work", login: "sam" });
+  const person = w.as("deck");
+  const first = await person("github.mcp.sync", {});
+  assert.deepEqual(first.data.accounts.map(a => [a.name, a.added]), [["home", true], ["work", true]]);
+  assert.deepEqual(w.mcpRows.map(r => r.name), ["github", "github-work"]);
+  const row = w.mcpRows[0];
+  assert.equal(row.url, "https://api.githubcopilot.com/mcp/");
+  assert.deepEqual(row.auth, { type: "bearer", item: "github-home", field: "token" });
+  assert.deepEqual(row.tools.deny, ["create_or_update_file", "push_files", "delete_file"]);
+  assert.ok(w.calls.some(c => c.tool === "vault.grant" && c.input.name === "github-home" && c.input.module === "mcp"));
+  assert.deepEqual((await person("github.mcp.sync", {})).data.accounts.map(a => a.added), [false, false], "again changes nothing");
+  assert.equal(w.mcpRows.length, 2);
+  assert.equal((await w.as("mcp:agent:kit")("github.mcp.sync", {})).error.code, "denied");
+  // a failed add leaves no grant behind
+  const grantsBefore = w.calls.filter(c => c.tool === "vault.grant").length;
+  seedAccount(w.db, { name: "clash", login: "zed" });
+  w.mcpRows.push({ name: "github-clash", auth: { item: "someone-else" } });
+  const failed = await person("github.mcp.sync", {});
+  assert.equal(failed.data.accounts.find(a => a.name === "clash").added, false);
+  assert.equal(w.calls.filter(c => c.tool === "vault.grant").length, grantsBefore, "no grant for the item whose add failed");
+  await person("github.remove", { name: "home" });
+  assert.deepEqual(w.mcpRows.map(r => r.name), ["github-work", "github-clash"], "only the removed account's row goes");
 });

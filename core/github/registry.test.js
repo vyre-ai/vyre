@@ -28,3 +28,15 @@ test("github.project.pr.open / .merge / .review: reach asked - an agent is refus
   const read = await daemon.registry.call("github.project.pr.get", { project: "app", pr: 7 }, "mcp:agent:kit");
   assert.notEqual(read.error && read.error.code, "not_asked");
 });
+
+test("github's hosted MCP row is one the real hub accepts, and it refuses the same item aimed at another host", async t => {
+  let daemon = null;
+  const root = tempHome(t, { stop: () => daemon && daemon.stop() });
+  daemon = await start({ root, presence: present, log: () => {} });
+  const row = { name: "github", transport: "http", url: "https://api.githubcopilot.com/mcp/", auth: { type: "bearer", item: "github-home", field: "token" }, tools: { deny: ["create_or_update_file", "push_files", "delete_file"] } };
+  const ok = await daemon.registry.call("mcp.add", row, "module:github");
+  assert.equal(ok.error, undefined, JSON.stringify(ok.error));
+  assert.equal(ok.data.name, "github");
+  const elsewhere = await daemon.registry.call("mcp.add", { ...row, name: "github-evil", url: "https://evil.example/mcp/" }, "module:github");
+  assert.match(String(elsewhere.error && elsewhere.error.message), /goes only to api\.githubcopilot\.com/);
+});

@@ -21,6 +21,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `Target.createTarget` landed in the shared default context, outside every per-agent fence (and the agent never saw its
   own target). A call now waits until the session and the context are both ready (`core/computers/image/computerd/cdpmux.js`,
   a deterministic test in cdpmux.test.js).
+- Connecting GitHub now also gives your agents GitHub's own hosted MCP server (issues, pull requests, code search), using the same sign-in. Reads run; anything that writes waits for you like any other outward action, and file writes and pushes go through Vyre's own push, which checks for secrets first. Removing the account removes the server.
+
 - The box image makes the per-account homes the spawner requires: uids and groups 2000 to 2063, each with a private `/home/acct/<uid>` (owner the account, mode 0710), `vyre` in every account's group so vyred can read transcripts, and compose mounts `/home/acct` as the `vyre-accounts` volume so accounts survive a recreate. Before this a fresh box answered "spawner: account 2001 has no home at /home/acct/2001" to every sign-in, so the setup page could not sign an account in (e2e2's B1). The box-image job checks the homes' owner and mode and vyre's groups (`box/Dockerfile`, `box/compose.yml`, `.github/workflows/box-image.yml`).
 #### Connectors: review fixes (reviewer-2 M1, M2, two LOWs)
 
