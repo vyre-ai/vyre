@@ -1,0 +1,47 @@
+/* Artifact card and viewer (artifact-card.md). Only theme variables from css/tokens.css. */
+.cv-artifact { display: flex; align-items: center; gap: 10px; box-sizing: border-box; min-height: 56px; padding: 10px 12px;
+  background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); }
+.cv-art-ico { flex: 0 0 32px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-button, 8px);
+  background: var(--hover); color: var(--text-2); }
+.cv-art-text { flex: 1 1 auto; min-width: 0; }
+.cv-art-title { font-size: var(--size-base, 13px); line-height: var(--line-base, 18px); font-weight: 600; color: var(--text); }
+.cv-art-meta { font-size: var(--size-meta, 12px); line-height: var(--line-meta, 16px); color: var(--label); }
+.cv-art-actions { flex: 0 0 auto; display: flex; gap: var(--space-2, 4px); }
+
+/* The panel: 340 wide beside chat; a page or deck may widen to half the window. */
+.cv-art-panel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 30; width: 340px; max-width: 100%; display: flex; flex-direction: column;
+  background: var(--panel); border-left: 1px solid var(--rule); color: var(--text); box-shadow: var(--float);
+  animation: cv-art-in var(--motion-panel, 220ms) var(--ease, ease) both; }
+.cv-art-panel.cv-art-wide { width: 50vw; min-width: 340px; }
+.cv-art-panel-head { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-3, 8px); min-height: 44px; padding: 0 var(--space-5, 16px); border-bottom: 1px solid var(--rule); }
+.cv-art-panel-title { flex: 1 1 auto; margin: 0; font-size: var(--size-base, 13px); line-height: var(--line-base, 18px); font-weight: 600; color: var(--text); }
+.cv-art-screen { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg); color: var(--text); }
+.cv-art-view { flex: 1 1 auto; min-height: 0; overflow: auto; outline: none; }
+.cv-art-sheet-body { padding: 0; }
+
+.cv-art-bar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2, 4px); min-height: 44px; padding: 0 var(--space-5, 16px); border-bottom: 1px solid var(--rule); }
+.cv-art-bar-phone { border-bottom: 0; padding: 0; }
+.cv-art-pills { flex: 1 1 auto; display: flex; gap: var(--space-2, 4px); min-width: 0; overflow-x: auto; }
+.cv-art-pill { flex: 0 0 auto; height: var(--control-xs, 28px); padding: 0 8px; border: 1px solid var(--rule-strong); border-radius: var(--radius-full, 999px);
+  background: transparent; color: var(--text); font: inherit; font-size: var(--size-meta, 12px); cursor: pointer; }
+.cv-art-pill[aria-checked="true"] { background: var(--text); border-color: var(--text); color: var(--bg); }
+.cv-art-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cv-art-changes[aria-pressed="true"] { background: var(--hover); }
+
+.cv-art-body { padding: var(--space-5, 16px); animation: cv-art-fade var(--motion-reveal, 150ms) var(--ease, ease) both; }
+.cv-art-md { font-size: var(--size-read, 15px); line-height: var(--line-read, 22px); color: var(--text); }
+.cv-art-changes-view { overflow-x: auto; }
+.cv-art-frame { width: 100%; }
+.cv-art-iframe { display: block; width: 100%; min-height: 60vh; border: 0; background: var(--bg); }
+.cv-art-note { margin: 0; font-size: var(--size-base, 13px); line-height: var(--line-base, 18px); color: var(--text); }
+.cv-art-skel { display: flex; flex-direction: column; gap: var(--space-3, 8px); min-height: 120px; }
+.cv-art-skel-line { display: block; height: 12px; border-radius: var(--radius-chip, 4px); background: var(--hover); }
+.cv-art-skel-line:nth-child(2n) { width: 80%; }
+.cv-art-skel-line:nth-child(3n) { width: 60%; }
+
+.cv-art-share-copy { margin: 0 0 var(--space-3, 8px); font-size: var(--size-base, 13px); line-height: var(--line-base, 18px); color: var(--text-2); }
+.cv-art-link { margin: 0; padding: var(--space-3, 8px); border-radius: var(--radius-field, 8px); background: var(--code-bg); color: var(--text); font-family: var(--mono); font-size: var(--size-meta, 12px); overflow-wrap: anywhere; }
+
+@keyframes cv-art-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cv-art-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cv-art-panel, .cv-art-body { animation: none; } }

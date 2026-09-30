@@ -10,6 +10,7 @@
 // scrolls to it, and again when a kept Settings page comes back). The avatar opens Settings until
 // the account menu is drawn.
 
+import { macKeys } from "./mac-keys.js";
 import { h, link } from "./dom.js";
 import { icon, mark } from "./icons.js";
 import { badge } from "./status-mark.js";
@@ -54,9 +55,9 @@ export function typing(/** @type {any} */ t) {
   return false;
 }
 
-/** A Mac (or an iPad with a keyboard) uses Cmd; everything else Ctrl. */
-export const macKeys = (/** @type {any} */ nav = globalThis.navigator) =>
-  /Mac|iPhone|iPad|iPod/.test(String(nav?.userAgentData?.platform || nav?.platform || nav?.userAgent || ""));
+// A Mac (or an iPad with a keyboard) uses Cmd; everything else Ctrl (js/mac-keys.js, kept out of
+// this file so js/platform.js reads it without loading the rail's icons).
+export { macKeys };
 
 /**
  * Where Cmd+digit (Ctrl+digit off a Mac) goes: the place's href, or null when the press is not a

@@ -60,6 +60,8 @@ const ROUTES = [
   ["/settings", "settings"],
   ["/ask", "ask"],
   ["/find", "find"],
+  // An artifact an agent made, full screen (views/artifact.js).
+  ["/a/:id", "artifact"],
   ["/planner", "planner"],
   // A planner push notification opens /planner/<firing> (ADR 0025).
   ["/planner/:firing", "planner"],

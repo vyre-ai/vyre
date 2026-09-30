@@ -5,7 +5,7 @@
 // (Ctrl or Cmd glyphs, rail keys, no browser install card). It never grants anything, and the
 // in-page Needs and Gate rows show whatever it says.
 
-import { macKeys } from "./rail.js";
+import { macKeys } from "./mac-keys.js";
 
 /** The desktop shell hosting this page, or null in a browser tab. @returns {{ os: string, version: string } | null} */
 export function shell() {

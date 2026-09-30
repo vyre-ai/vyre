@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: the common components, designed once (app-design section 10)
+
+- `deck/chat/cards/`: one registry (`index.js`) with two ways in and no third. A blocking ask of kind
+  `pr_review`, `email_draft`, `calendar_draft`, `survey` or `confirmation` draws through `askCardFor`
+  (a plain question that carries survey fields becomes the survey). A tool result that carries
+  `render: {kind, ...}` (or `{render}` in its JSON output) draws through `toolDisplay`: `pr_review`,
+  `diff` (multi-file), `report`, `email_thread`, `calendar_event`, `file_preview`, `link_preview`,
+  `artifact`. The session event `thread.artifact` makes one artifact card per version.
+- Components: PR review (merge and review from the card, "Approve and merge anyway" after a failed
+  check, collaborator comments folded), multi-file diff, report, email thread (bodies are text only),
+  email and calendar drafts (edit in place; the person's own matched ask sends with no passkey),
+  calendar event (Accept, Maybe, Decline), survey (recommended mark, thoughts box, progress),
+  confirmation line ("You said to", Undo), file and link preview, artifact card with its viewer
+  (side panel, phone sheet, `/a/<id>`).
+- An artifact page is framed with `sandbox="allow-scripts"` only, and a second load event on the
+  frame blanks it with "This page tried to open another site" (artifacts review M5).
+- Tests: every component has its own file; three older tests learned the platform key hint, the
+  installed-window rail keys and the settings change id.
+
 #### settings: an agent changes a setting only when you asked, and every change can be undone (PLAN.md C25)
 
 - The person's own changes ask nothing now (the charter's "security without friction", lead's

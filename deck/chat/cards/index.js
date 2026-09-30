@@ -15,7 +15,7 @@ import { report } from "./report.js";
 import { emailThread } from "./email-thread.js";
 import { draftCard } from "./draft.js";
 import { calendarEvent } from "./calendar-event.js";
-import { surveyCard } from "./survey.js";
+import { surveyCard, isSurvey } from "./survey.js";
 import { confirmationLine } from "./confirmation.js";
 import { filePreview } from "./file-preview.js";
 import { artifactCard } from "./artifact.js";
@@ -46,7 +46,7 @@ export function displayRow(render, ctx = {}) {
 
 /** The card for a blocking ask of one of the new kinds, else null. @param {any} full @param {any} [ctx] */
 export function askCardFor(full, ctx = {}) {
-  const make = ASKS[full?.kind];
+  const make = ASKS[full?.kind] || (full?.kind === "question" && isSurvey(full) ? surveyCard : null);
   return make ? make(full, ctx) : null;
 }
 

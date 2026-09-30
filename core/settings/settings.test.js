@@ -201,7 +201,8 @@ test("settings.changed says which key, level and rev, the new value only for a k
   await c("settings.set", { key: "sessions.effort", value: "high", project: "northwind" });
   const e = d.events.since(0, { type: "settings.changed" }).at(-1);
   assert.equal(typeof e.payload.rev, "number");
-  assert.deepEqual({ ...e.payload, rev: 0 }, { key: "sessions.effort", level: "project", project: "northwind", apply: "session", rev: 0, value: "high" });
+  assert.match(e.payload.change, /^chg_/, "every change carries the id settings.undo takes");
+  assert.deepEqual({ ...e.payload, rev: 0, change: "chg" }, { key: "sessions.effort", level: "project", project: "northwind", apply: "session", rev: 0, change: "chg", by: "person", value: "high" });
   await c("settings.reset", { key: "sessions.effort", project: "northwind" });
   assert.equal(d.events.since(0, { type: "settings.changed" }).at(-1).payload.value, null, "a reset says null");
   // A secret key's change never carries its value.
