@@ -371,3 +371,19 @@ test("matchIntent: a plain setting or revoke ask lapses after 15 minutes; a comp
   assert.equal(matchIntent({ kind: "revoke", to: ["s_abc123"], at: T0 + at }, [it("revoke")], ["t-1"]), null, "a revoke ask lapses too");
   assert.deepEqual(matchIntent({ kind: "setting", to: [key], at: T0 + at }, [{ ...it("setting"), standing: true }], []), { id: "s_1" }, "a standing one does not lapse");
 });
+
+test("api-credential: a person's put with a new config and no secret keeps the stored secret; a new name with no secret is still refused", async t => {
+  const { reg, cli } = await daemon(t);
+  const config = extra => JSON.stringify({ auth: { type: "bearer" }, hosts: ["graph.example.test"], ...extra });
+  assert.equal((await cli("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config: config({}), secret: "fixture-secret-000000000" } })).error, undefined);
+  // Change who may use it, without the secret.
+  const moved = await cli("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config: config({ scope: { projects: ["project-a"], agents: "*" } }) } });
+  assert.equal(moved.error, undefined, JSON.stringify(moved));
+  // The secret survived: a read as the person still builds the request (it fails only at the network, never for a missing secret).
+  const r = await cli("vault.request", { credential: "ms-graph", method: "GET", url: "https://elsewhere.example.test/x" });
+  assert.match(String(r.error && r.error.message), /host/i, "the config carried its hosts and the secret was still there");
+  // A name that does not exist, with a config and no secret and no auth.item, is refused for lacking a secret.
+  assert.ok((await cli("vault.put", { name: "new-one", kind: "api-credential", fields: { config: config({}) } })).error);
+  // A module, watcher, agent or model still cannot rewrite the config of an existing credential.
+  for (const who of ["module:connectors", "module:watchers", "mcp", "mcp:agent:kit"]) assert.ok((await reg("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config: config({ scope: { projects: "*", agents: "*" } }) } }, who)).error, who);
+});

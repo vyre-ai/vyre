@@ -1134,12 +1134,19 @@ export class Vault {
       if (v.length > MAX_VALUE) throw new Error(`field ${k} is larger than 64 KB`);
       clean[k] = v;
     }
-    // Replacing only the key of an api-credential the person already made keeps everything they wrote into it (hosts, endpoints, readers):
-    // a put with a secret and no config carries the stored config over. Only a person's own surface may; the check below still refuses the rest.
-    if (kind === "api-credential" && clean.config === undefined && (clean.secret !== undefined || clean.value !== undefined)
-        && (["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) {
+    // Replacing only the key of an api-credential the person already made keeps everything they wrote into it (hosts, endpoints, readers,
+    // scope): a put with a secret and no config carries the stored config over. The mirror: a put with a config and no secret carries the
+    // stored secret over (and with it an oauth sign-in's sealed tokens), so who may use a connection can change without anyone knowing the
+    // secret. Only a person's own surface may; the check below still refuses the rest, and a new name with no secret is still refused.
+    if (kind === "api-credential" && (["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) {
       const had = /** @type {any} */ (this.db.prepare("SELECT kind FROM vault_items WHERE name = ?").get(String(name)));
-      if (had && had.kind === "api-credential") clean.config = JSON.stringify((await this.apiCredential(String(name))).config);
+      if (had && had.kind === "api-credential") {
+        if (clean.config === undefined && (clean.secret !== undefined || clean.value !== undefined)) clean.config = JSON.stringify((await this.apiCredential(String(name))).config);
+        else if (clean.config !== undefined && clean.secret === undefined && clean.value === undefined) {
+          const prev = (await this.apiCredential(String(name))).secret;
+          if (typeof prev === "string" && prev) clean.secret = prev;
+        }
+      }
     }
     checkFields(kind, clean);
     // An api-credential's hosts and endpoints decide what runs unasked and what holds, so only a
