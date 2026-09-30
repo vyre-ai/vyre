@@ -1,0 +1,56 @@
+# Speed of the Mac hands (observe, find, act with verify) on a real macOS runner, against a window the bench owns.
+# The runner is a throwaway VM: the bench builds the accessibility helper, opens its test window, and tries to give the
+# helper the Accessibility permission the way CI images allow it. If the runner refuses, the result says so
+# ("no Accessibility grant for the helper") and nothing else is claimed. Never run this on a person's machine.
+name: hands-mac-bench
+on:
+  workflow_dispatch:
+  push:
+    branches: [work/capsule-sight]
+    paths:
+      - local/hands-mac/**
+      - local/screen-mac/**
+      - .github/workflows/hands-mac-bench.yml
+permissions:
+  contents: read
+concurrency:
+  group: hands-mac-bench-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the helpers and the test window
+        run: |
+          sh local/hands-mac/build.sh
+          swiftc -O -o local/screen-mac/bin/testwin local/screen-mac/swift/testwin.swift
+      - name: Try to grant Accessibility to the helper (a throwaway VM)
+        continue-on-error: true
+        run: |
+          AX="$PWD/local/hands-mac/bin/ax"
+          for db in "/Library/Application Support/com.apple.TCC/TCC.db" "$HOME/Library/Application Support/com.apple.TCC/TCC.db"; do
+            sudo sqlite3 "$db" "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, flags) VALUES ('kTCCServiceAccessibility', '$AX', 1, 2, 4, 1, 0);" 2>&1 | tail -1 || true
+          done
+          "$AX" 2>/dev/null <<< '{"cmd":"trust"}' | head -c 200 || true
+      - name: Bench
+        id: bench
+        continue-on-error: true
+        run: node local/hands-mac/bench/hands-bench.mjs --iters 30 --out "results/hands-bench-${{ matrix.os }}.json"
+      - name: Results
+        if: always()
+        run: for f in results/*.json; do echo "== $f"; cat "$f"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hands-bench-${{ matrix.os }}
+          path: results/*.json
+          if-no-files-found: warn

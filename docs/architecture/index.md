@@ -22,7 +22,7 @@ Everything is a module, including the core services, and every module uses the s
 | --- | --- | --- | --- |
 | Core | the box (and the Mac, for the parts a Mac needs) | The services inside `vyred`: config, the store (SQLite through `node:sqlite`), the event log, the module loader, projects and threads, recall, memory, the vault, watchers, the Gate, the Switchboard (headless sessions), agents, computers, names and certificates, pairing, files, presence, learning, push. | `core/` |
 | Harness | inside every Claude Code session Vyre starts, and any session with the plugin installed | A Claude Code plugin. Vyre's own sessions load it with `--plugin-dir`, so your global Claude Code setup is never changed; you can also install it in your own Claude Code from the `vyre-ai/vyre` marketplace ([ADR 0020](../adr/0020-claude-code-plugin.md)). Hooks (Brief at session start, Enrich on each prompt, Rules before each tool call, Learn after file changes and commands, Stop at the end of each turn), the `vyre` MCP server that exposes module tools to Claude, three skills and the `/vyre` command. Every hook starts at `harness/hooks/run.js`, which runs the Vyre package's `harness/hooks/hook.js`, which calls `vyred`; with no Vyre on the machine it says how to install it once and does nothing else. If `vyred` is not running, Rules still runs in-process, so the floor holds. | `harness/` |
-| Local | the Mac only | The Capsule (the Control-twice command bar) and `hands-mac` (computer use through the macOS accessibility tree). | `local/` |
+| Local | the Mac only | Lumen (the Control-twice command bar) and `hands-mac` (computer use through the macOS accessibility tree). | `local/` |
 
 Optional first-party modules live in `modules/`: `hands-desktop` and `hands-chrome` (module name `chrome`) for agents' computers. `modules/vault-extension` is not a vyred module: it is the browser extension for vault autofill.
 
@@ -37,7 +37,7 @@ Every surface talks to `vyred`'s API. None reads the store directly ([Section 9 
 | Surface | What it is | Built from |
 | --- | --- | --- |
 | CLI | `vyre`: home, projects, threads, agents, vault, up, status, and `vyre call` for any tool. | `core/cli` |
-| Capsule | The command bar on the Mac: press Control twice, talk to the assistant, an agent or a session. | `local/capsule` |
+| Lumen | The command bar on the Mac: press Control twice, talk to the assistant, an agent or a session. | `local/capsule` |
 | Deck | The web app at your address: Now, Projects, Memory, Agents, Chat, Vault, Settings. | `deck/` |
 | Chat | Projects, then every Claude Code session on the machine, each shown as a readable conversation that follows the terminal live. Sending from Chat drives the same session. | `deck/chat` |
 | Glass | An agent's screen, live, with take-over. | `deck/glass` and `core/computers` |
@@ -73,7 +73,7 @@ The nine principles are in [Section 2 of the spec](spec.md#2-principles). The on
 - **Public Claude Code surfaces only.** Plugins, hooks, MCP and documented CLI flags. Reading transcript files is the one exception, kept in a single adapter, `core/transcripts`.
 - **Local first.** Nothing leaves your machines except through the Gate.
 - **Boring, readable code.** Node 22.5 or newer, ES modules, plain JavaScript with JSDoc types and `// @ts-check`, no build step for the core, `node:sqlite`, `node:test`. A dependency needs a reason in the changelog.
-- **Light by default.** Idle budgets for `vyred`, the Capsule and the Deck. `scripts/perf-check` holds `vyred` to its budget in CI; the Capsule and the Deck are measured by hand. See [Performance](performance.md).
+- **Light by default.** Idle budgets for `vyred`, Lumen and the Deck. `scripts/perf-check` holds `vyred` to its budget in CI; Lumen and the Deck are measured by hand. See [Performance](performance.md).
 - **The security floor cannot be configured away.** See [the floor](../concepts/floor.md) and [Security](../security/index.md).
 
 ## Decision records

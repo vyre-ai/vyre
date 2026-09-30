@@ -8,7 +8,7 @@ status: draft
 
 # How Vyre runs your sessions
 
-Every session Vyre starts, from Chat, the Capsule, your phone, an agent, the planner or a
+Every session Vyre starts, from Chat, Lumen, your phone, an agent, the planner or a
 learning job, is a real Claude Code session that vyred runs and keeps. A `claude` you start
 yourself in a terminal stays yours: Vyre follows it through [the plugin](claude-code.md) and never
 takes it over. The two kinds write the same transcripts, so either can pick up the other. The
@@ -41,7 +41,7 @@ under the key and says so in the thread.
 ## Which model
 
 Real work runs on Opus: Chat, agents and project sessions. Quick answers and background jobs
-(Capsule quick asks, memory, the planner, learning, any one-shot job) run on a faster, cheaper
+(Lumen quick asks, memory, the planner, learning, any one-shot job) run on a faster, cheaper
 model, haiku by default. An agent's own model wins, and you can change any of it:
 
 ```sh
@@ -61,7 +61,7 @@ at once, and it stays with the session when it comes back:
 vyre call threads.effort '{"thread":"<id>","effort":"high"}'
 ```
 
-A send can switch both first, which is what the Capsule's Cmd-Return does to go deeper on the
+A send can switch both first, which is what Lumen's Cmd-Return does to go deeper on the
 same thread: `threads.send {thread, text, model: "opus", effort: "max"}`.
 
 ## Your existing sessions
@@ -166,10 +166,10 @@ questions) are still added after your text.
 Only you can edit a system prompt. No agent, model or tool call from inside a session can, its own
 least of all.
 
-### The Capsule's quick answer (Vyre Memory)
+### Lumen's quick answer (Vyre Memory)
 
-A question you ask in the Capsule runs as a small session on the fast model with its own prompt:
-it is Vyre Memory, it answers only from the facts the Capsule showed you for the same words, cites
+A question you ask in Lumen runs as a small session on the fast model with its own prompt:
+it is Vyre Memory, it answers only from the facts Lumen showed you for the same words, cites
 them by number (`[1]`), and says "I don't know yet." in one line when none of them answers. It
 never talks about its access or tools, answers in one to three sentences, and fixes your typos
 without saying so. Thinking is off, so the same words get the same answer. The prompt is
@@ -200,4 +200,4 @@ where sessions run as their own user.
 `vyre resume <thread>` opens any thread in `claude` in your terminal, where it ran. A session vyred
 is running is handed over first: if it is idle vyred closes it, and your terminal takes it. If it
 is in the middle of a turn or waiting on a question, it is left alone and the command says so. A
-message from the Deck or the Capsule after you exit brings it back to vyred.
+message from the Deck or Lumen after you exit brings it back to vyred.

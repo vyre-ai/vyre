@@ -18,10 +18,10 @@ what was measured.
 | What | Budget |
 |---|---|
 | vyred idle | under 0.5% of one core and under 150 MB resident; no polling faster than once a minute when nothing is happening |
-| Capsule hidden | under 0.2% CPU, no GPU use, under 250 MB resident for all its processes |
-| Capsule shown and idle | under 2% CPU; wakes in under 100 ms |
+| Lumen hidden | under 0.2% CPU, no GPU use, under 250 MB resident for all its processes |
+| Lumen shown and idle | under 2% CPU; wakes in under 100 ms |
 | Deck in a background tab | no timers faster than a minute; the event stream only |
-| Heavy work (indexing, embedding, curation) | low priority, yields, pauses on battery and when you are active, never blocks a hook or the Capsule |
+| Heavy work (indexing, embedding, curation) | low priority, yields, pauses on battery and when you are active, never blocks a hook or Lumen |
 | Memory that grows with the corpus | bounded and measured |
 
 ## Check vyred with scripts/perf-check
@@ -113,9 +113,9 @@ Since the audit, Recall also indexes one session about 1.5 s after a turn ends
 driven by events and does nothing while no session is running. The numbers above predate
 it.
 
-### Capsule
+### Lumen
 
-These numbers are for the Electron Capsule, since retired. The native Capsule
+These numbers are for the Electron Lumen, since retired. The native Lumen
 (`local/capsule/native`) is measured in CI by `scripts/capsule-native-check.mjs`, against
 budgets of under 60 MB resident and under 0.1% CPU while hidden, and a wake under 50 ms.
 
@@ -150,7 +150,7 @@ first show after launch (about 721 ms).
 
 - Embedding and curation CPU, and pausing on battery.
 - A quiet, dedicated CI runner baseline for perf-check.
-- The Capsule's hidden CPU budget covers all its processes together; the numbers above are per
+- Lumen's hidden CPU budget covers all its processes together; the numbers above are per
   process.
 
 ## Where to go next

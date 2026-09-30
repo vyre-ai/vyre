@@ -194,7 +194,7 @@ function shellRoutes(command, { vyreHome, cwd, userHome, agent = null }) {
   if (SOCKET_CLIENT.test(flat) || nc) {
     const sock = socketPath(vyreHome);
     const tmp = path.dirname(sock).startsWith("/tmp/") ? path.dirname(sock) : null;
-    if (/vyred\.sock|\/tmp\/vyre-/.test(flat) || flat.includes(vyreHome) || flat.includes(sock) || (tmp && flat.includes(tmp))) return deny1("That is vyred's socket. " + APPROVALS);
+    if (/vyred\.sock|chrome\.sock|\/tmp\/vyre-/.test(flat) || flat.includes(vyreHome) || flat.includes(sock) || (tmp && flat.includes(tmp))) return deny1("That is vyred's socket. " + APPROVALS);
     const literal = w.some(x => /\.sock$/.test(x) && !dynamic(x));
     if (!literal || w.some(dynamic)) return ask1("This talks to a unix socket Vyre cannot identify from the command.");
   }

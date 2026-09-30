@@ -21,6 +21,11 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SESSIONS, HOME, writeTranscripts } from "../../test/fixtures/corpus.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { setPeerHosting } from "../../core/daemon/peer.js";
+
+// This world hosts vyred in its own process and drives it from that process and its children:
+// the one seam the caller check keeps for a test (core/daemon/peer.js).
+setPeerHosting(true);
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BIN = path.join(REPO, "bin", "vyre");
@@ -59,7 +64,7 @@ export function buildHome(root, extra = {}, alex = path.join(root, "alex")) {
   }, null, 2));
   // VYRE_NO_DIALOGS: nothing this world runs may raise a prompt on the Mac it runs on.
   // VYRE_TAILSCALE_BIN: a sample tailnet (fake-tailscale.js), never the real Tailscale of this machine.
-  const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness"),
+  const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_DECK_FIXTURES: "1", VYRE_NO_DIALOGS: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness"),
     VYRE_TAILSCALE_BIN: path.join(REPO, "deck", "test", "fake-tailscale.js"),
     // A send from the Deck resumes a session headless: with the Switchboard's fake claude, which
     // streams an echo back (or asks permission for "write <file>"), never the real one.

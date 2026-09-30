@@ -142,6 +142,8 @@ readline.createInterface({ input: process.stdin }).on("line", async line => {
   if (!line.trim()) return;
   let msg;
   try { msg = JSON.parse(line); } catch { return send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }); }
+  // JSON that is not a request object (null, a number, an array): refused, never dereferenced.
+  if (!msg || typeof msg !== "object" || Array.isArray(msg)) return send({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "invalid request" } });
   if (HUB_CHILD) { if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: "Vyre's MCP server does not run inside the MCP hub" } }); return; }
   try {
     const result = await handle(msg);

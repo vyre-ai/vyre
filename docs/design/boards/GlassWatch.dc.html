@@ -15,11 +15,11 @@
     .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
     .lbl { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
     .btn { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; height: 36px; padding: 0 14px; border-radius: 6px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; box-sizing: border-box; white-space: nowrap; }
-    .btn:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+    .btn:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #F1EEE6; outline-offset: 2px; }
     .btn-ghost { background: transparent; color: #F1EEE6; border: 1px solid #3A3733; }
     .btn-ghost:hover { background: #1E1C1A; }
-    .btn-primary { background: #C6F36B; color: #0E0D0C; border: 1px solid #C6F36B; }
-    .btn-primary:hover { background: #D4F88A; border-color: #D4F88A; }
+    .btn-primary { background: #F1EEE6; color: #0E0D0C; border: 1px solid #F1EEE6; }
+    .btn-primary:hover { background: #FFFFFF; border-color: #FFFFFF; }
     .kbd { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; padding: 1px 5px; border-radius: 4px; border: 1px solid #3A3733; color: #B3AEA4; letter-spacing: 0; }
     .rail-a { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 12px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 14px; line-height: 18px; }
     .rail-a:hover { background: #1E1C1A; color: #F1EEE6; }
@@ -40,7 +40,7 @@
   <!-- Top bar -->
   <header style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 24px; padding: 0 16px 0 20px; border-bottom: 1px solid #2B2926; box-sizing: border-box;">
     <a href="#" aria-label="vyre home" style="display: flex; align-items: center; gap: 8px; width: 180px; text-decoration: none;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#F1EEE6"/></svg>
       <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </a>
     <div class="mono" style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid #2B2926; border-radius: 6px; font-size: 12px; line-height: 16px; color: #B3AEA4;">
@@ -68,7 +68,7 @@
       <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 2l6 3.2-6 3.2-6-3.2z"/><path d="M2 8.4l6 3.2 6-3.2"/><path d="M2 11.2l6 3.2 6-3.2"/></svg>Memory</a>
       <a class="rail-a" href="#" style="color: #F1EEE6;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="8.5" rx="1"/><path d="M5.5 14h5M8 11v3"/></svg>Agents</a>
       <a class="rail-sub" href="#"><span>juno</span><span class="mono" style="font-size: 11px; color: #8C877D;">idle</span></a>
-      <a class="rail-sub" href="#" aria-current="page" style="background: rgba(198,243,107,0.12); color: #F1EEE6;"><span>kit</span><span class="mono" style="font-size: 11px; color: #C6F36B;">glass</span></a>
+      <a class="rail-sub" href="#" aria-current="page" style="background: rgba(241,238,230,0.12); color: #F1EEE6;"><span>kit</span><span class="mono" style="font-size: 11px; color: #F1EEE6;">glass</span></a>
       <a class="rail-sub" href="#"><span>pax</span><span class="mono" style="font-size: 11px; color: #8C877D;">working</span></a>
       <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>Vault</a>
       <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2.5 5h11M2.5 11h11"/><circle cx="6" cy="5" r="1.6" fill="#0E0D0C"/><circle cx="10" cy="11" r="1.6" fill="#0E0D0C"/></svg>Settings</a>
@@ -198,13 +198,13 @@
 
             <!-- live badge -->
             <div class="mono" style="position: absolute; right: 14px; top: 38px; display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 4px; background: #0E0D0C; border: 1px solid #2B2926; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; color: #F1EEE6;">
-              <span style="width: 6px; height: 6px; border-radius: 3px; background: #C6F36B;"></span>LIVE · REC
+              <span style="width: 6px; height: 6px; border-radius: 3px; background: #F1EEE6;"></span>LIVE · REC
             </div>
           </div>
 
           <!-- Caption: what kit is doing right now -->
           <div style="display: flex; align-items: baseline; gap: 16px; padding: 0 4px;">
-            <span class="lbl" style="color: #C6F36B; width: 36px;">Now</span>
+            <span class="lbl" style="color: #F1EEE6; width: 36px;">Now</span>
             <p style="margin: 0; font-size: 17px; line-height: 24px; color: #F1EEE6; flex-grow: 1; text-wrap: pretty;">Ticking search terms that spent money and never converted. Two so far, $4,215 in 90 days.</p>
             <span class="mono" style="font-size: 12px; color: #8C877D; white-space: nowrap;">step 13 of the audit plan</span>
           </div>
@@ -229,7 +229,7 @@
                 <!-- hover preview -->
                 <div class="mono" style="position: absolute; left: 24%; bottom: 30px; transform: translateX(-50%); padding: 4px 8px; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; font-size: 11px; line-height: 14px; color: #F1EEE6; white-space: nowrap; box-shadow: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55);">14:06 · opened ads.example.com</div>
                 <!-- playhead -->
-                <div style="position: absolute; right: -6px; top: 14px; width: 12px; height: 12px; border-radius: 6px; background: #C6F36B; box-shadow: 0 0 0 3px #0E0D0C;"></div>
+                <div style="position: absolute; right: -6px; top: 14px; width: 12px; height: 12px; border-radius: 6px; background: #F1EEE6; box-shadow: 0 0 0 3px #0E0D0C;"></div>
               </div>
               <button type="button" class="btn btn-ghost" style="height: 32px;">Live</button>
             </div>
@@ -262,7 +262,7 @@
             <div class="log-row"><span class="log-t">14:10:40</span><span><span class="mono" style="font-size: 12px; color: #F1EEE6;">python flag.py --conv 0</span> found 14 terms</span></div>
             <div class="log-row"><span class="log-t">14:24:18</span><span>Wrote wasted-spend.md</span></div>
             <div class="log-row"><span class="log-t">14:31:40</span><span>Ticked <span style="color: #F1EEE6;">free divorce advice</span>, $2,904, 0 conv.</span></div>
-            <div class="log-row" aria-current="step" style="background: rgba(198,243,107,0.12); color: #F1EEE6;"><span class="log-t" style="color: #C6F36B;">14:32:06</span><span>Ticking <span style="font-weight: 500;">child support calculator</span>, $1,311, 0 conv.</span></div>
+            <div class="log-row" aria-current="step" style="background: rgba(241,238,230,0.12); color: #F1EEE6;"><span class="log-t" style="color: #F1EEE6;">14:32:06</span><span>Ticking <span style="font-weight: 500;">child support calculator</span>, $1,311, 0 conv.</span></div>
           </div>
           <div style="flex-grow: 1;"></div>
           <div style="padding: 12px 12px 0 16px; border-top: 1px solid #2B2926; display: flex; flex-direction: column; gap: 6px;">

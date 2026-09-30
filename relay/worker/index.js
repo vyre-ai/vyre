@@ -6,7 +6,9 @@
 //   GET /v1/box?route=<id>                  the box's control socket, after a signed challenge
 //   GET /v1/box?route=<id>&c=<conn>&t=<ticket>   the box's data socket for one device connection
 //   GET /v1/device?route=<id>               a device; the relay tells the box, then pipes frames
-//   POST /v1/pair                           resolve a Wink pairing ticket's locator (ADR 0045)
+//   POST /v1/pair                           resolve a Wink pairing ticket's or a setup offer's locator (ADR 0045)
+//   POST /v1/setup/mbx                      append a line to a setup progress mailbox (the install script)
+//   GET /v1/setup/mbx                       read it, long poll, signed by the setup page's key (tailnet plan 3.6b)
 //   GET /health
 //
 // Hibernation: the DO holds no timers and no alarms, and keeps no state in instance fields. Every
@@ -113,6 +115,8 @@ const size = m => typeof m === "string" ? enc.encode(m).length : m.byteLength;
 /** ADR 0045's own ticket TTL (core/relay/wire.js's TICKET_TTL); repeated here so a box that ever
  * sent a wildly long exp cannot make a PairTicket object outlive what the mechanism promises. */
 const TICKET_TTL_MAX = 5 * 60_000;
+/** A setup offer and its mailbox live for the setup code's hour (core/relay/wire.js SETUP_TTL). */
+const SETUP_TTL_MAX = 60 * 60_000;
 const LOC_RE = /^[A-Za-z0-9_-]{20,64}$/;
 /** A Wink record is ciphertext the box sealed under a key only the ticket gives (core/relay/wire.js
  * ticketSeal); anything else, a plaintext JSON record included, is refused, so the relay never
@@ -126,6 +130,34 @@ const PAIR_CORS = { "access-control-allow-origin": "*" };
 const PAIR_PREFLIGHT = { ...PAIR_CORS, "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
 /** @param {Response} r */
 const withPairCors = r => { const out = new Response(r.body, r); for (const [k, v] of Object.entries(PAIR_CORS)) out.headers.set(k, v); return out; };
+/** The setup mailbox is read by the setup page from vyre.run, so it answers any origin too, and for the same reason: its safety is a signature and a MAC'd, sealed stream, never the origin. */
+const MBX_CORS = { "access-control-allow-origin": "*" };
+const MBX_PREFLIGHT = { ...MBX_CORS, "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type, x-vyre-setup-key, x-vyre-setup-ts, x-vyre-setup-sig", "access-control-max-age": "600" };
+const withMbxCors = r => { const out = new Response(r.body, r); for (const [k, v] of Object.entries(MBX_CORS)) out.headers.set(k, v); return out; };
+/** Mailbox limits, repeated from core/relay/wire.js (worker.test.js checks the line size). */
+const MBX = Object.freeze({ bytes: 64 * 1024, line: 2048, lines: 512, skew: 120_000, batch: 64, waitMax: 25 });
+const SETUP_TAG_KEY = "vyre-setup-key", SETUP_TAG_READ = "vyre-setup-read";
+const P256_HEAD = "3059301306072a8648ce3d020106082a8648ce3d030107034200";
+/** @param {Uint8Array} spki */
+const isP256Spki = spki => spki.length === 91 && spki[26] === 4 && P256_HEAD.match(/../g).every((h, i) => spki[i] === parseInt(h, 16));
+/** sha256("vyre-setup-key\n" || spki)[0:16], base64url: the fingerprint a setup code carries. @param {Uint8Array} spki */
+export async function setupFingerprint(spki) {
+  const head = enc.encode(`${SETUP_TAG_KEY}\n`);
+  const all = new Uint8Array(head.length + spki.length);
+  all.set(head); all.set(spki, head.length);
+  return b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", all)).slice(0, 16));
+}
+/** @param {string} loc @param {number} ts @param {number} after */
+const mbxReadMessage = (loc, ts, after) => enc.encode(`${SETUP_TAG_READ}\n${loc}\n${ts}\n${after}`);
+/** ECDSA P-256 over SHA-256, r || s. @param {Uint8Array} spki @param {Uint8Array} message @param {Uint8Array} sig */
+async function verifyP256(spki, message, sig) {
+  if (!isP256Spki(spki) || sig.length !== 64) return false;
+  try {
+    const key = await crypto.subtle.importKey("spki", spki, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+    return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, sig, message);
+  } catch { return false; }
+}
+const sha256b64 = async s => b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(s))));
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 /**
@@ -142,6 +174,8 @@ export default {
     if (!url.pathname.startsWith("/v1/")) return new Response(null, { status: 404 });
     if (url.pathname === "/v1/pair" && request.method === "OPTIONS") return new Response(null, { status: 204, headers: PAIR_PREFLIGHT });
     if (url.pathname === "/v1/pair" && request.method === "POST") return withPairCors(await onPairResolve(request, env));
+    if (url.pathname === "/v1/setup/mbx" && request.method === "OPTIONS") return new Response(null, { status: 204, headers: MBX_PREFLIGHT });
+    if (url.pathname === "/v1/setup/mbx" && (request.method === "POST" || request.method === "GET")) return withMbxCors(await onSetupMbx(request, url, env));
     if (String(request.headers.get("upgrade")).toLowerCase() !== "websocket") return new Response(null, { status: 426 });
     const route = url.searchParams.get("route") || "";
     if ((url.pathname !== "/v1/box" && url.pathname !== "/v1/device") || !ROUTE_RE.test(route)) return new Response(null, { status: 400 });
@@ -172,40 +206,160 @@ async function onPairResolve(request, env) {
   const loc = String((body && body.loc) || "");
   if (!LOC_RE.test(loc)) return json(400, { error: "bad request" });
   const res = await env.TICKETS.get(env.TICKETS.idFromName(loc)).fetch("https://ticket/resolve", { method: "POST" });
+  if (res.status === 409) return json(409, { error: "contested" });
   if (res.status !== 200) return json(404, { error: "this pairing code has expired or was already used" });
   return json(200, await res.json());
 }
 
 /**
- * One Wink pairing ticket (ADR 0045), keyed by its locator: what a box's control socket
- * registered (record, mac, exp), single-use. No timers, no alarm: expiry is checked lazily on the
- * one read that matters, and an unread, expired object simply sits in cheap Durable Object
- * storage until Cloudflare reclaims it -- a locator is an unguessable 256-bit hash, so there is
- * nothing worth actively sweeping.
+ * The setup mailbox's front door (tailnet plan 3.6, 3.6b). Two callers, two proofs, and the relay
+ * checks the second itself:
+ *   POST  the install script appends a line: { loc, fp, wtok, line? }. `wtok` is a token derived
+ *         from the setup secret (setupDerive "mbxw"); the first POST for a locator fixes it and the
+ *         page key's fingerprint `fp` (also in the setup code) and every later POST must repeat both,
+ *         or the locator is marked contested (first writer wins, as for the offer). The relay never
+ *         holds a key that can read or forge a line: each is AES-256-CTR sealed and HMAC'd under keys
+ *         only the secret gives, with its sequence number inside the HMAC.
+ *   GET   the page reads, a long poll: ?loc=&after=&wait= with x-vyre-setup-key (its SPKI), -ts and
+ *         -sig, an ECDSA signature over "vyre-setup-read\nloc\nts\nafter" (core/relay/wire.js
+ *         mbxReadMessage). This is the simplest thing that meets "only the page's key may read":
+ *         the relay holds fp from the writer, checks the SPKI hashes to it, and checks a signature
+ *         no more than two minutes old that names this locator and this read position. Whoever has
+ *         only the code has fp but neither the SPKI (a hash of it is all the code carries) nor the
+ *         private key. A request replayed inside the window returns ciphertext to whoever saw the
+ *         request, which is only the relay operator, who holds that ciphertext anyway.
+ * Per-address limits (env.SETUP_LIMITER, env.SETUP_READ_LIMITER) and a global one on appends
+ * (env.SETUP_LIMITER_GLOBAL), the same optional bindings /v1/pair uses, with a zone rule behind them.
+ * The long poll lives here, not in the object: it asks the object once a second (env.SETUP_POLL_MS).
+ * @param {Request} request @param {URL} url @param {any} env
+ */
+async function onSetupMbx(request, url, env) {
+  const who = request.headers.get("cf-connecting-ip") || "unknown";
+  const busy = () => json(429, { error: "too many setup requests; wait a minute" });
+  if (!env.TICKETS) return json(404, { error: "this relay does not support setup" });
+  const stub = loc => env.TICKETS.get(env.TICKETS.idFromName(loc));
+  if (request.method === "POST") {
+    if (env.SETUP_LIMITER && !(await env.SETUP_LIMITER.limit({ key: who })).success) return busy();
+    if (env.SETUP_LIMITER_GLOBAL && !(await env.SETUP_LIMITER_GLOBAL.limit({ key: "*" })).success) return busy();
+    const text = await request.text();
+    if (text.length > 8 * 1024) return json(413, { error: "too big" });
+    let m;
+    try { m = JSON.parse(text); } catch { return json(400, { error: "bad request" }); }
+    const loc = String((m && m.loc) || "");
+    if (!LOC_RE.test(loc) || !/^[A-Za-z0-9_-]{22}$/.test(String(m.fp || "")) || !/^[A-Za-z0-9_-]{43}$/.test(String(m.wtok || ""))) return json(400, { error: "bad request" });
+    const res = await stub(loc).fetch("https://ticket/mbx/append", { method: "POST", body: JSON.stringify({ fp: m.fp, wtok: m.wtok, line: m.line === undefined ? null : String(m.line) }) });
+    return new Response(res.body, { status: res.status, headers: { "content-type": "application/json" } });
+  }
+  if (env.SETUP_READ_LIMITER && !(await env.SETUP_READ_LIMITER.limit({ key: who })).success) return busy();
+  const loc = url.searchParams.get("loc") || "";
+  const after = Number(url.searchParams.get("after") || 0);
+  const wait = Math.min(Math.max(Number(url.searchParams.get("wait") || 0), 0), MBX.waitMax);
+  if (!LOC_RE.test(loc) || !Number.isInteger(after) || after < 0) return json(400, { error: "bad request" });
+  const read = { key: request.headers.get("x-vyre-setup-key") || "", ts: Number(request.headers.get("x-vyre-setup-ts") || 0), sig: request.headers.get("x-vyre-setup-sig") || "", after, loc };
+  const deadline = Date.now() + wait * 1000, tick = Number(env.SETUP_POLL_MS) || 1000;
+  for (;;) {
+    const res = await stub(loc).fetch("https://ticket/mbx/read", { method: "POST", body: JSON.stringify(read) });
+    const body = /** @type {any} */ (await res.json());
+    // Nothing yet (no mailbox, or no new line) is the only answer that waits.
+    if (res.status !== 200 || (body.lines && body.lines.length > 0) || Date.now() + tick > deadline) return json(res.status, body);
+    await new Promise(r => setTimeout(r, tick));
+  }
+}
+
+/**
+ * One Wink pairing ticket (ADR 0045) or one setup offer (tailnet plan 3.6), keyed by its locator:
+ * what a box's control socket registered (record, mac, exp). A Wink ticket is single-use; a setup
+ * offer lives its hour and is read as often as the page needs, and the same object holds the setup
+ * mailbox. FIRST WRITER WINS for both: a second register with a different record (or a different
+ * mac) leaves the first in place, marks the locator contested and answers 409; the identical record
+ * and mac again (a reconnect re-sending) answers 200. Once contested, resolve, append and read all
+ * answer 409 until the object's exp. No timers, no alarm needed for correctness: expiry is checked
+ * lazily on reads, and the alarm set at register time sweeps what nobody ever read.
  */
 export class PairTicket {
   /** @param {any} ctx */
   constructor(ctx) { this.ctx = ctx; }
+
+  /** Set an alarm no earlier than the one already there. @param {number} at */
+  async alarmAtLeast(at) {
+    const cur = await this.ctx.storage.getAlarm();
+    if (!cur || cur < at) await this.ctx.storage.setAlarm(at);
+  }
+
+  /** @param {number} exp */
+  async contest(exp) {
+    const t = await this.ctx.storage.get("t");
+    await this.ctx.storage.put("t", { ...(t || { exp }), contested: true });
+    await this.alarmAtLeast(t ? t.exp : exp);
+  }
+
   /** @param {Request} request */
   async fetch(request) {
     const url = new URL(request.url);
+    const now = Date.now();
     if (request.method === "PUT" && url.pathname === "/register") {
       let body;
       try { body = await request.json(); } catch { return new Response(null, { status: 400 }); }
       const record = String((body && body.record) || ""), mac = String((body && body.mac) || "");
-      const exp = Math.min(Number(body && body.exp) || 0, Date.now() + TICKET_TTL_MAX);
-      if (!SEALED.test(record) || !LOC_RE.test(mac) || exp <= Date.now()) return new Response(null, { status: 400 });
-      await this.ctx.storage.put("t", { record, mac, exp });
+      const setup = Boolean(body && body.setup);
+      const exp = Math.min(Number(body && body.exp) || 0, now + (setup ? SETUP_TTL_MAX : TICKET_TTL_MAX));
+      if (!SEALED.test(record) || !LOC_RE.test(mac) || exp <= now) return new Response(null, { status: 400 });
+      const cur = await this.ctx.storage.get("t");
+      if (cur && cur.exp > now) {
+        if (cur.contested) return json(200, { status: 409 });
+        if (cur.record === record && cur.mac === mac) return json(200, { status: 200 });
+        await this.ctx.storage.put("t", { ...cur, contested: true });
+        return json(200, { status: 409 });
+      }
+      await this.ctx.storage.put("t", { record, mac, exp, ...(setup ? { setup: true } : {}) });
       // A locator nobody ever resolves would otherwise sit in storage forever (reviewer's LOW,
       // 28 Sep): clean it up at its own exp either way, resolved or not.
-      await this.ctx.storage.setAlarm(exp);
-      return new Response(null, { status: 204 });
+      await this.alarmAtLeast(exp);
+      return json(200, { status: 200 });
     }
     if (request.method === "POST" && url.pathname === "/resolve") {
       const t = await this.ctx.storage.get("t");
-      if (t) { await this.ctx.storage.deleteAll(); await this.ctx.storage.deleteAlarm(); }
-      if (!t || t.exp <= Date.now()) return new Response(null, { status: 404 });
+      if (t && t.exp > now && t.contested) return new Response(null, { status: 409 });
+      if (t && !t.setup) { await this.ctx.storage.deleteAll(); await this.ctx.storage.deleteAlarm(); }
+      if (!t || t.exp <= now || !t.record) return new Response(null, { status: 404 });
       return json(200, { record: t.record, mac: t.mac });
+    }
+    if (request.method === "POST" && url.pathname === "/mbx/append") {
+      let body;
+      try { body = await request.json(); } catch { return json(400, { error: "bad request" }); }
+      const t = await this.ctx.storage.get("t");
+      if (t && t.exp > now && t.contested) return json(409, { error: "contested" });
+      const wh = await sha256b64(String(body.wtok));
+      let m = await this.ctx.storage.get("m");
+      if (m && m.exp <= now) { await this.ctx.storage.deleteAll(); m = undefined; }
+      if (m && !(sameTicket(m.fp, String(body.fp)) && sameTicket(m.wh, wh))) { await this.contest(m.exp); return json(409, { error: "contested" }); }
+      const line = body.line;
+      if (line !== null && line !== undefined && !(/^[A-Za-z0-9_-]{64,}$/.test(line) && line.length <= MBX.line)) return json(400, { error: "bad line" });
+      if (!m) { m = { fp: String(body.fp), wh, exp: now + SETUP_TTL_MAX, n: 0, bytes: 0 }; await this.alarmAtLeast(m.exp); }
+      if (line !== null && line !== undefined) {
+        if (m.bytes + line.length > MBX.bytes || m.n >= MBX.lines) return json(413, { error: "mailbox full" });
+        await this.ctx.storage.put(`m/${String(m.n).padStart(5, "0")}`, line);
+        m = { ...m, n: m.n + 1, bytes: m.bytes + line.length };
+      }
+      await this.ctx.storage.put("m", m);
+      return json(200, { n: m.n });
+    }
+    if (request.method === "POST" && url.pathname === "/mbx/read") {
+      let q;
+      try { q = await request.json(); } catch { return json(400, { error: "bad request" }); }
+      const t = await this.ctx.storage.get("t");
+      if (t && t.exp > now && t.contested) return json(409, { error: "contested" });
+      const m = await this.ctx.storage.get("m");
+      if (!m || m.exp <= now) return json(200, { n: 0, lines: [], absent: true });
+      const spki = unb64url(String(q.key || "")) || new Uint8Array(0);
+      const sig = unb64url(String(q.sig || "")) || new Uint8Array(0);
+      const ts = Number(q.ts), after = Number(q.after);
+      const good = isP256Spki(spki) && sameTicket(await setupFingerprint(spki), m.fp) && Number.isFinite(ts) && Math.abs(now - ts) <= MBX.skew
+        && await verifyP256(spki, mbxReadMessage(String(q.loc), ts, after), sig);
+      if (!good) return json(401, { error: "not the setup page's key" });
+      const lines = [];
+      for (let i = after; i < Math.min(m.n, after + MBX.batch); i++) lines.push({ i, line: await this.ctx.storage.get(`m/${String(i).padStart(5, "0")}`) });
+      return json(200, { n: m.n, lines });
     }
     return new Response(null, { status: 404 });
   }
@@ -320,7 +474,7 @@ export class RouteRelay {
     // The edge answers "ping"; this covers a runtime that delivers it anyway.
     if (message === "ping") { try { ws.send("pong"); } catch {} return; }
     if (r.k === "pending") return this.onAuth(ws, r, message);
-    if (r.k === "control") return this.onTicket(message);
+    if (r.k === "control") return this.onTicket(ws, message);
     if (!binary) return;
     if (r.k === "data") {
       const device = this.live(`dev:${r.c}`)[0];
@@ -358,27 +512,33 @@ export class RouteRelay {
   }
 
   /**
-   * The only thing a control socket sends after auth: registering a Wink pairing ticket's locator
-   * (ADR 0045) with its own PairTicket object. Everything here is the box's own word about its
-   * own route, so this is not a trust boundary the way /v1/pair's resolve side is (that's where
-   * the MAC matters); the size caps and the per-route cap are hygiene against a runaway or
-   * compromised box, not the real defence. Not "ticket" as in the per-connection auth ticket
-   * above -- ADR 0045's pairing ticket, a different thing with the same English word.
-   * @param {string|ArrayBuffer} message
+   * What a control socket sends after auth: registering a Wink pairing ticket's locator
+   * (ADR 0045, `t: "ticket"`) or a setup offer's (tailnet plan 3.6, `t: "setup"`, same fields) with
+   * its own PairTicket object. Either way the box hears back `{ t: "registered", loc, status }`,
+   * 200 or, when another server got there first with a different record, 409 (first writer wins).
+   * Everything here is the box's own word about its own route, so this is not a trust boundary the
+   * way /v1/pair's resolve side is (that's where the MAC matters); the size caps and the per-route
+   * cap are hygiene against a runaway or compromised box, not the real defence. Not "ticket" as in
+   * the per-connection auth ticket above -- ADR 0045's pairing ticket, a different thing with the
+   * same English word.
+   * @param {any} ws @param {string|ArrayBuffer} message
    */
-  async onTicket(message) {
+  async onTicket(ws, message) {
     if (typeof message !== "string" || !this.ticketRegAllowed()) return;
     let m;
     try { m = JSON.parse(message); } catch { return; }
-    if (m?.t !== "ticket") return;
+    if (m?.t !== "ticket" && m?.t !== "setup") return;
+    const setup = m.t === "setup";
     const loc = String(m.loc || ""), record = String(m.record || ""), mac = String(m.mac || "");
     if (!/^[A-Za-z0-9_-]{20,64}$/.test(loc) || !/^[A-Za-z0-9_-]{20,64}$/.test(mac) || !SEALED.test(record)) return;
-    const exp = Math.min(Number(m.exp) || 0, Date.now() + TICKET_TTL_MAX);
+    const exp = Math.min(Number(m.exp) || 0, Date.now() + (setup ? SETUP_TTL_MAX : TICKET_TTL_MAX));
     if (exp <= Date.now() || !this.env.TICKETS) return;
     try {
-      await this.env.TICKETS.get(this.env.TICKETS.idFromName(loc)).fetch("https://ticket/register", {
-        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ record, mac, exp }),
+      const res = await this.env.TICKETS.get(this.env.TICKETS.idFromName(loc)).fetch("https://ticket/register", {
+        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ record, mac, exp, setup }),
       });
+      const out = res.status === 200 ? /** @type {any} */ (await res.json()) : null;
+      if (out) this.json(ws, { t: "registered", loc, status: out.status });
     } catch {}
   }
 

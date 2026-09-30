@@ -89,9 +89,9 @@ async function harness(t, extra = []) {
   for (const [name, manifest, src] of extra) writeModule(root, name, manifest, src);
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
+  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {}, firstPartyRoots: [root] });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "harness");
-  await reg.start([...core, ...discover([root])], { role: "local" });
+  await reg.start([...core, ...discover([root], { firstPartyRoots: [root] })], { role: "local" });
   t.after(() => db.close());
   return { reg, events, home };
 }

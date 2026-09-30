@@ -197,19 +197,15 @@ for (const driver of ["cli", "sdk"]) {
   });
 
   test(`${driver}: a warm session for memory: the second question finds one waiting, each question a fresh one, none in the list`, { skip }, async t => {
-    const asker = { name: "asker", manifest: { does: { tools: ["asker.ask"] } }, source: `
-      export default { async start(ctx) {
-        ctx.tool("asker.ask", { input: { type: "object" }, run: async i => { const r = await ctx.call("threads.quick", i); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; } });
-        return { async stop() {} };
-      } };` };
-    const w = await boot(t, { driver, modules: [asker] });
+    const w = await boot(t, { driver });
+    const asker = { ask: async i => { const r = await w.internal("threads.quick", i); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return { data: r.data }; } };
     assert.equal((await w.tool("threads.quick", { purpose: "memory", prompt: "x" })).error.code, "no_such_tool", "internal: modules only");
-    const a = (await w.tool("asker.ask", { purpose: "memory", system: "Answer from the facts given.", prompt: "who is kit" })).data;
+    const a = (await asker.ask({ purpose: "memory", system: "Answer from the facts given.", prompt: "who is kit" })).data;
     assert.deepEqual([a.text, a.ok, a.warm], ["echo: who is kit", true, false]);
     // The spare for the next question is started behind it; wait for it to be up.
     const quickLive = async () => (await w.tool("threads.list", { all: true })).data.filter(r => r.name === "Vyre memory" && ["idle", "starting"].includes(r.status) && r.id !== a.thread);
     await until(async () => (await quickLive()).length === 1, "the spare");
-    const b = (await w.tool("asker.ask", { purpose: "memory", system: "Answer from the facts given.", prompt: "who is juno" })).data;
+    const b = (await asker.ask({ purpose: "memory", system: "Answer from the facts given.", prompt: "who is juno" })).data;
     assert.deepEqual([b.text, b.warm], ["echo: who is juno", true], "a fresh session that never heard the first question");
     assert.notEqual(a.thread, b.thread);
     await until(async () => (await w.tool("threads.get", { thread: a.thread })).data.thread.status === "stopped", "the used one closes");
@@ -217,6 +213,20 @@ for (const driver of ["cli", "sdk"]) {
     const launch = w.launches().filter(x => x.argv).at(-1).argv;
     assert.ok(launch.includes("--setting-sources") && !launch.includes("--plugin-dir"), "lean: no settings, no plugin");
     assert.ok(launch.includes("--no-session-persistence"), "no transcript for Recall to index");
+  });
+
+  test(`${driver}: threads.quick with stream hands partial text to the calling module, never to a caller that did not ask`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    // As a first-party module would call it (ctx.call's opts.onPartial becomes meta.partial).
+    const ask = async (extra, partial) => (await w.d.registry.call("threads.quick", { purpose: "memory", prompt: "who is kit", ...extra }, "module:vyred", partial ? { partial } : {}));
+    const parts = [];
+    const a = await ask({ stream: true }, d => parts.push(d));
+    assert.equal(a.error, undefined, JSON.stringify(a));
+    assert.equal(a.data.text, "echo: who is kit");
+    assert.equal(parts.join(""), "echo: who is kit", "the partials add up to the answer");
+    const none = [];
+    await ask({}, d => none.push(d));
+    assert.deepEqual(none, [], "no stream asked, none given");
   });
 
   test(`${driver}: an interrupted turn ends canceled, by you`, { skip }, async t => {
@@ -400,7 +410,7 @@ for (const driver of ["cli", "sdk"]) {
     const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
     // request: core/team's own id for the ask this reply answers, so a surface with two open
     // asks to the same teammate matches the reply by id, not by role, FIFO (teammates, ADR 0031).
-    const r = await w.tool("probe.post", { thread: th.id, text: "kit found the menu file", kind: "teammate-result", from: "teammate:kit", request: "req_abc123" });
+    const r = await w.internal("threads.post", { thread: th.id, text: "kit found the menu file", kind: "teammate-result", from: "teammate:kit", request: "req_abc123" });
     const posted = r.data && r.data.data ? r.data.data : r.data;
     assert.ok(posted, JSON.stringify(r));
     assert.equal(posted.queued, true, "queued behind the running turn, not steered");
@@ -420,7 +430,7 @@ for (const driver of ["cli", "sdk"]) {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
-    await w.tool("probe.post", { thread: th.id, text: "kit is done", kind: "teammate-result", from: "teammate:kit", request: "req_xyz" });
+    await w.internal("threads.post", { thread: th.id, text: "kit is done", kind: "teammate-result", from: "teammate:kit", request: "req_xyz" });
     await w.finished(th.id, 2);
     const sent = (await w.events(th.id)).find(e => e.type === "thread.sent" && e.payload.kind === "teammate-result");
     assert.equal(sent.payload.request, "req_xyz");
@@ -430,7 +440,7 @@ for (const driver of ["cli", "sdk"]) {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
-    await w.tool("probe.post", { thread: th.id, text: "kit is done", kind: "teammate-result", from: "teammate:kit", request: "a".repeat(65) });
+    await w.internal("threads.post", { thread: th.id, text: "kit is done", kind: "teammate-result", from: "teammate:kit", request: "a".repeat(65) });
     await w.finished(th.id, 2);
     const sent = (await w.events(th.id)).find(e => e.type === "thread.sent" && e.payload.kind === "teammate-result");
     assert.equal(sent.payload.request, undefined, "too long: never stored or emitted");

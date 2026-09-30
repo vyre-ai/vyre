@@ -1,7 +1,7 @@
 // @ts-check
-// Set up this phone: the three things that make the Deck work from a pocket, in order. Install
-// it to the Home Screen, turn on notifications, add a passkey. Shown at the top of Now on a phone
-// until all three are done or the user says "Not now".
+// Set up this phone: the two things that make the Deck work from a pocket, in order. Install
+// it to the Home Screen, turn on notifications. Shown at the top of Now on a phone
+// until both are done or the user says "Not now".
 //
 // This file is also the one implementation of subscribing to push and enrolling a passkey:
 // Settings uses subscribePush, unsubscribePush, pushState and enrollPasskey from here, so the
@@ -161,12 +161,13 @@ const b64url = (/** @type {ArrayBuffer} */ buf) => btoa(String.fromCharCode(.../
  * Add a passkey, with a one-time code from `vyre presence code` standing in for the proof there
  * is no passkey yet to make. Call it directly from a click handler: Safari makes a passkey only
  * for a user gesture, so the WebAuthn prompt comes before anything is awaited.
- * @param {{ name?: string, code: string }} input
+ * With `grant` (tailnet's one-time enrolment grant, given at pairing) no typed code is needed.
+ * @param {{ name?: string, code?: string, grant?: string }} input
  * @returns {Promise<{ id: string, kind: string, name: string, created: number }>}
  */
-export async function enrollPasskey({ name, code }) {
+export async function enrollPasskey({ name, code, grant }) {
   if (!canProve()) throw new Error("This browser cannot create a passkey. Open the Deck in Safari or Chrome over your tailnet.");
-  const c = String(code || "").trim();
+  const c = String(grant || code || "").trim();
   if (!c) throw new Error("Type the code from vyre presence code first.");
   const label = String(name || "").trim() || deviceName();
   /** @type {any} */ let cred;
@@ -189,7 +190,7 @@ export async function enrollPasskey({ name, code }) {
     kind: "passkey", name: label,
     public_key: b64url(r.getPublicKey()), alg: r.getPublicKeyAlgorithm(),
     rp_id: location.hostname, credential_id: id,
-  }, c);
+  }, c, grant ? "grant" : "code");
   set(PASSKEY_KEY, JSON.stringify({ id: k?.id || id, name: k?.name || label, at: Date.now() }));
   // A box with person sessions: sign in on this device now, once, so the first real action is
   // not a second prompt. Errors are dropped; an older box skips it (js/person.js).
@@ -254,7 +255,7 @@ export function setupCard() {
     h("div", { class: "ps-top" },
       h("h2", { id: "ps-h", class: "ps-title" }, "Set up this phone"),
       h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => { set(DISMISS_KEY, String(Date.now())); stop(); card.remove(); } }, "Not now")),
-    h("p", { class: "small muted ps-lede" }, "Three steps, then Vyre can reach you and you can answer from here."),
+    h("p", { class: "small muted ps-lede" }, "Two steps, then Vyre can reach you and you can answer from here."),
     steps);
 
   /** @type {{ push: any, key: any }} */
@@ -263,7 +264,10 @@ export function setupCard() {
   const installRow = h("li", { class: "ps-step" });
   const pushRow = h("li", { class: "ps-step" });
   const keyRow = h("li", { class: "ps-step" });
-  put(steps, installRow, pushRow, keyRow);
+  // No passkey step (0.2): a phone paired by scanning the Wink ring is a full owner device, and the
+  // box asks for Face ID only for pairing and vault reveals, so a passkey is set up where a reveal
+  // needs one (Settings, Devices), not as a chore on the way in. The keyRow below is kept off the card.
+  put(steps, installRow, pushRow);
 
   const isInstalled = () => standalone() || installed;
 
@@ -372,8 +376,7 @@ export function setupCard() {
   const settle = () => {
     if (!st.push || !st.key) return;
     const pushDone = st.push.on || (!st.push.ok && st.push.why === "unsupported");
-    const keyDone = st.key.on || !st.key.ok;
-    if (isInstalled() && pushDone && keyDone) { stop(); card.remove(); return; }
+    if (isInstalled() && pushDone) { stop(); card.remove(); return; }
     card.hidden = false;
   };
 

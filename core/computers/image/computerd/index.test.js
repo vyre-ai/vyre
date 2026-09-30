@@ -303,8 +303,18 @@ test("computerd: two agents sharing one computer each get their own CDP identity
   const { result: bCreate } = await bob.call("Target.createTarget", { url: "about:blank#bob" });
   assert.ok(aCreate.targetId && bCreate.targetId);
 
-  const aTargets = (await alice.call("Target.getTargets")).result.targetInfos.map(t => t.targetId);
-  const bTargets = (await bob.call("Target.getTargets")).result.targetInfos.map(t => t.targetId);
+  // Wait on the real condition (a target shows up in its owner's own list), not on time: on a slow runner the list lags the create.
+  const listOf = async (client, want) => {
+    let ids = [];
+    for (const end = Date.now() + 10_000; Date.now() < end;) {
+      ids = (await client.call("Target.getTargets")).result.targetInfos.map(t => t.targetId);
+      if (ids.includes(want)) break;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    return ids;
+  };
+  const aTargets = await listOf(alice, aCreate.targetId);
+  const bTargets = await listOf(bob, bCreate.targetId);
   assert.ok(aTargets.includes(aCreate.targetId), "alice cannot see her own target");
   assert.ok(!aTargets.includes(bCreate.targetId), "alice can see bob's target");
   assert.ok(bTargets.includes(bCreate.targetId), "bob cannot see his own target");

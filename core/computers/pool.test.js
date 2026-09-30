@@ -325,10 +325,14 @@ test("pool: a computer that exits on boot fails the checkout with the reason, an
 
 test("pool: a checkout waits for the screen to answer, and gives up after bootMs", async t => {
   let answers = 0;
+  const seen = /** @type {number[]} */ ([]);
   const { pool } = setup(t, { config: { bootMs: 5_000 } });
-  pool.probe = async () => ++answers >= 3;
+  // The screen answers on its third look; computerd's port answers at once, but is asked only after the screen.
+  pool.probe = async (_host, port) => { seen.push(port); return port === 5900 ? ++answers >= 3 : true; };
   await pool.checkout("kit");
   assert.equal(answers, 3, "probed until the screen answered");
+  assert.ok(seen.includes(7000), "computerd's own port is waited for too, so a hands call right after a checkout is not refused");
+  assert.ok(seen.lastIndexOf(7000) > seen.lastIndexOf(5900) - 1 && seen.indexOf(7000) > seen.indexOf(5900), "and only after the screen");
   pool.probe = async () => false;
   pool.opts.bootMs = 100;
   await assert.rejects(pool.checkout("pax"), /pax's computer started but its screen did not answer within 0 s/);

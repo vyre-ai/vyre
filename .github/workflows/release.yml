@@ -25,13 +25,21 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  # The Windows installer is built inside this run, so the release can never race it or ship
+  # without it: `release` needs this job, and fails if the installer is not in the artifact.
+  windows:
+    uses: ./.github/workflows/capsule-win.yml
+    permissions:
+      contents: read
+    with:
+      tag: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+
   release:
+    needs: windows
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: write      # the release
-      id-token: write      # the attestation's keyless identity
-      attestations: write
+      contents: read
       actions: read        # app.yml's Android artifact
     env:
       TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
@@ -39,6 +47,8 @@ jobs:
       # (unset today). Until then every run, a tag push included, uploads its assets as a workflow
       # artifact and publishes nothing.
       PUBLISH: ${{ github.event_name == 'push' && vars.VYRE_RELEASES == 'go' }}
+      # A dry run may carry the placeholder release key; a publishing run may not (scripts/check-release-key.mjs).
+      VYRE_ALLOW_PLACEHOLDER_KEY: ${{ (github.event_name == 'push' && vars.VYRE_RELEASES == 'go') && 'no' || '1' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,14 +84,46 @@ jobs:
           min_from=$( [ -f release/min_from ] && tr -d ' \n' < release/min_from || echo 0.1.0 )
           echo "VERSION=$version" >> "$GITHUB_ENV"; echo "CHANNEL=$channel" >> "$GITHUB_ENV"; echo "MIN_FROM=$min_from" >> "$GITHUB_ENV"
           echo "$TAG: version $version, channel $channel, min_from $min_from" | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Box files and vyre.tgz, as build-site.sh makes them
+      - name: The tag's commit is on main (a publishing run signs; a commit off main never does)
+        if: env.PUBLISH == 'true'
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor HEAD FETCH_HEAD || { echo "the tag's commit is not on main; refusing to sign a release from it"; exit 1; }
+      - name: What changed in the signing path since the last published release (for the approver)
+        # The approval on the `sign` job happens BEFORE that job starts, so the look has to be here, in
+        # the build job's summary, which is already written while the approval is pending. The base is
+        # the last release the publish job actually made (a tag anyone can push proves nothing).
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
+          if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
+          else prev=""; base=$(git hash-object -t tree /dev/null); fi
+          paths=".github/workflows scripts/sign-manifest.mjs scripts/check-release-key.mjs core/vyre-core/release.js"
+          {
+            echo "### Signing path: $TAG vs ${prev:-nothing (no published release yet)}"
+            if git diff --quiet "$base" HEAD -- $paths; then
+              echo "no changes to the signing path"
+            else
+              echo '```'
+              git diff --stat "$base" HEAD -- $paths
+              echo '```'
+              git diff "$base" HEAD -- $paths > "$RUNNER_TEMP/signing.diff" || true
+              n=$(wc -l < "$RUNNER_TEMP/signing.diff" | tr -d ' ')
+              echo "full diff: $n lines"
+              echo '```diff'
+              head -n 400 "$RUNNER_TEMP/signing.diff"
+              echo '```'
+              if [ "$n" -gt 400 ]; then echo "**TRUNCATED: $((n - 400)) more lines. Read the full diff before approving.**"; fi
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Box files and vyre.tgz, as build-site.sh makes them (unsigned, this job never sees the signing key)
         run: |
           sh scripts/build-site.sh
-          for f in install-box.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do
+          for f in install-box.sh install-mac-server.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do
             [ -f "site/box/$f" ] || { echo "build-site made no $f"; exit 1; }
             cp "site/box/$f" dist/
           done
-          [ "$(cat dist/VERSION)" = "$VERSION" ]
       - name: The Android app from app.yml on this commit, when there is one
         env:
           GH_TOKEN: ${{ github.token }}
@@ -99,6 +141,19 @@ jobs:
           else
             echo "Android: no green app.yml run on $sha, released without the APK" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+      - name: The Windows installer built by the windows job (required, never optional)
+        uses: actions/download-artifact@v4
+        with:
+          name: app-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/windows
+      - name: Add the Windows installer to dist
+        run: |
+          exe="Vyre_${VERSION}_x64-setup.exe"
+          [ -f "$RUNNER_TEMP/windows/$exe" ] || { echo "the Windows build is not $exe; refusing to release without it"; ls "$RUNNER_TEMP/windows"; exit 1; }
+          # The updater looks for Vyre_<version>_x64-setup.exe; install-windows.ps1 fetches VyreSetup.exe. Same bytes.
+          cp "$RUNNER_TEMP/windows/$exe" "dist/$exe"
+          cp "$RUNNER_TEMP/windows/$exe" dist/VyreSetup.exe
+          echo "Windows: $exe, from this run's windows job" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: release.json and SHA256SUMS
         run: |
           node -e '
@@ -106,23 +161,98 @@ jobs:
             fs.writeFileSync("dist/release.json", JSON.stringify({ version, channel, commit, date: new Date().toISOString(), min_from,
               notes: fs.readFileSync("dist/notes.md", "utf8") }, null, 2) + "\n");' "$VERSION" "$CHANNEL" "$(git rev-parse HEAD)" "$MIN_FROM"
           (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name notes.md | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
-          cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/attest-build-provenance@v2
-        if: env.PUBLISH == 'true'
+          { echo "### SHA256SUMS in this build lists $(wc -l < dist/SHA256SUMS | tr -d ' ') files (the sign step adds manifest.json and signs it)"; cat dist/SHA256SUMS; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
         with:
-          subject-path: "dist/*"
-      - name: Publish
-        if: env.PUBLISH == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pre=""; [ "$CHANNEL" = beta ] && pre="--prerelease"
-          assets=$(find dist -maxdepth 1 -type f ! -name notes.md | LC_ALL=C sort)
-          # shellcheck disable=SC2086
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Vyre $VERSION" --notes-file dist/notes.md $pre $assets
+          name: dist-${{ env.TAG }}
+          path: dist/
+          retention-days: 1
       - uses: actions/upload-artifact@v4
         if: env.PUBLISH != 'true'
         with:
           name: release-dry-run-${{ env.TAG }}
           path: dist/
           retention-days: 7
+
+  # The ONLY job that sees the release signing key: the GitHub Environment `release` holds it, needs
+  # the user's approval, and takes deployments only from main or v* tags. It gets the built files as
+  # an artifact, signs the tarball's manifest, and hands back manifest.json, SHA256SUMS and SHA256SUMS.sig.
+  sign:
+    needs: release
+    if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The tag's commit is on main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor HEAD FETCH_HEAD || { echo "the tag's commit is not on main; refusing to sign a release from it"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ env.TAG }}
+          path: dist
+      - name: Sign SHA256SUMS (the one signature the Mac installer and the Linux updater both verify)
+        env:
+          VYRE_SIGNING_KEY: ${{ secrets.VYRE_RELEASE_SIGNING_KEY }}
+        run: |
+          version=$(cat dist/VERSION)
+          channel=$(node -p 'require("./dist/release.json").channel')
+          node scripts/sign-manifest.mjs dist "$version" "$channel"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest-${{ env.TAG }}
+          path: |
+            dist/manifest.json
+            dist/SHA256SUMS
+            dist/SHA256SUMS.sig
+          retention-days: 1
+
+  publish:
+    needs: [release, sign]
+    if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write      # the release
+      id-token: write      # the attestation's keyless identity
+      attestations: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ env.TAG }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: manifest-${{ env.TAG }}
+          path: dist
+      - name: The signed files are all there
+        run: |
+          for f in manifest.json SHA256SUMS SHA256SUMS.sig; do [ -f "dist/$f" ] || { echo "no signed $f to publish"; exit 1; }; done
+          cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/*"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CHANNEL=$(node -p 'require("./dist/release.json").channel')
+          VERSION=$(cat dist/VERSION)
+          pre=""; [ "$CHANNEL" = beta ] && pre="--prerelease"
+          assets=$(find dist -maxdepth 1 -type f ! -name notes.md | LC_ALL=C sort)
+          # shellcheck disable=SC2086
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Vyre $VERSION" --notes-file dist/notes.md $pre $assets

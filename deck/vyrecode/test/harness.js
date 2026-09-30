@@ -28,6 +28,7 @@ function fingerprint8(publicSeed) {
   return [...crypto.createHash("sha256").update(publicSeed).digest()].slice(0, 8);
 }
 import { decodeCore2 } from "../decode-core2.js";
+import { CHROME_SAFE } from "../../../lib/chrome-flags/index.js";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -52,7 +53,7 @@ const base = `http://127.0.0.1:${PORT}`;
 
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "vyrecode2-chrome-"));
 const cdpPort = 9556;
-const chrome = spawn(CHROME, [`--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", `--user-data-dir=${profile}`,
+const chrome = spawn(CHROME, [`--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", ...CHROME_SAFE, `--user-data-dir=${profile}`,
   "--headless=new", "--no-first-run", "--window-size=1200,1200", "about:blank"], { stdio: "ignore" });
 const CDP = `http://127.0.0.1:${cdpPort}`;
 for (let i = 0; i < 100; i++) { try { await fetch(`${CDP}/json/version`); break; } catch { await sleep(200); } }

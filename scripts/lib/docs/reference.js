@@ -232,6 +232,10 @@ const ENV_MEANING = {
   COMPUTERS_IMAGE: "The container image agent computers run. Default `vyre/computer:0.1`.",
   COMPUTERS_LABEL_PREFIX: "The label prefix that marks Vyre's containers. Default `run.vyre.computers`.",
   COMPUTERS_NETWORK: "The Docker network agent computers join. Default `vyre-computers`.",
+  CORE_DATA: "vyre-core's data directory (ADR 0040). Default `/Library/Application Support/Vyre/data`.",
+  CORE_OWNER: "The owner's uid: the only uid vyre-core answers. Required.",
+  CORE_SOCKET: "vyre-core's socket. Default `/var/run/vyre/vyre-core.sock`, in a folder root makes and _vyre owns.",
+  CORE_STRICT: "`0` lets vyre-core start from a tree its owner could write (dev and Linux tests only). On by default on a Mac.",
   DOCKER_PROXY_PORT: "The port the Docker proxy listens on. Default 2375.",
   DTACH_BIN: "The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred.",
   HANDS_BIN: "Another build of the Mac hands helper.",
@@ -258,6 +262,7 @@ const ENV_MEANING = {
   THREAD: "The session id of a headless thread vyred runs.",
   WRAPPER: "Where `vyre box add` puts the `vyre` command on the server. Default `/usr/local/bin/vyre`.",
   TEST_DIALOGS: "`1`: allow dialogs under tests, for a person at the machine running one test on purpose.",
+  TEST_HOSTED: "`1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`.",
   TEST_REAL_TAILSCALE: "`1`: let a test use the real tailscale binary.",
 };
 
@@ -405,21 +410,25 @@ function collectTools(root, mods, harvested) {
     const local = new Map((harvested.local[m.name]?.tools || []).map(t => [t.name, t]));
     const both = (m.roles || ["box", "local"]).length > 1;
     const out = [];
-    for (const name of [...new Set(m.does?.tools || [])].sort(byName)) {
+    for (const name of [...new Set((m.does?.tools || []).map(t => typeof t === "string" ? t : t.name))].sort(byName)) {
       const t = box.get(name) || local.get(name);
       if (t) out.push({ ...t, only: both && !(box.has(name) && local.has(name)) ? (box.has(name) ? "box" : "local") : null });
       else out.push({ name, description: staticDescription(root, dir, name), input: null, callers: null, internal: false, hook: false, presence: false, only: null, unregistered: true });
     }
-    byModule.set(m.name, out);
+    // A name shared by two modules (the box's chrome and the Mac's) is one entry, tools once each.
+    const have = byModule.get(m.name) || [];
+    byModule.set(m.name, [...have, ...out.filter(t => !have.some(h => h.name === t.name))].sort((x, y) => byName(x.name, y.name)));
   }
   return byModule;
 }
 
 function toolsPage(mods, byModule) {
   const sections = [];
+  const done = new Set();
   for (const { manifest: m } of mods) {
     const tools = byModule.get(m.name) || [];
-    if (!tools.length) continue;
+    if (!tools.length || done.has(m.name)) continue;
+    done.add(m.name);
     const out = [`## ${m.name}`, ""];
     for (const t of tools) {
       out.push(`### ${code(t.name)}`, "");

@@ -10,6 +10,8 @@
 // The relay listener, when `vault.relay` is set in config.json, is the one door other people's
 // Vyre come through. It serves a single route and only answers signed requests for live passes.
 
+import { core as coreHolder } from "../presence/index.js";
+import { startForwarder } from "./forward.js";
 import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
 import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
 import { codes, importCodes } from "./codes.js";
@@ -31,6 +33,8 @@ import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
+import * as saidTools from "./said.js";
+import * as requestTools from "./request.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
@@ -51,6 +55,8 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
+    // On a Mac with vyre-core, core holds the vault: forward, and never open the old store.
+    if (coreHolder.link && typeof coreHolder.link.call === "function") return startForwarder(ctx, /** @type {any} */ (coreHolder.link));
     ctx.store.migrate(MIGRATIONS);
     ensureMacColumns(ctx.store.db);
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
@@ -152,6 +158,7 @@ export default {
         const slash = String(input.name).indexOf("/");
         if (slash > 0) {
           if (mod) throw new Error("modules cannot write to shared vaults");
+          if (input.kind === "api-credential") throw new Error("an api-credential is never put in a shared vault; it is used only by this Vyre's vault.request");
           return vault.shared.put({ ...input, vault: String(input.name).slice(0, slash), name: String(input.name).slice(slash + 1) }, caller);
         }
         if (mod) {
@@ -180,14 +187,14 @@ export default {
       },
       presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`));
 
-    tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",
-      obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },
+    tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. `project` scopes it to one project; omitted, it is good for every project. From Claude it waits for a person to approve it.",
+      obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },
       // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
-      presence("Let a module use a vault item", ({ name, module, watcher }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
+      presence("Let a module use a vault item", ({ name, module, watcher, project }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
         { skip: ({ caller }) => callerKind(caller) === "mcp", session: () => true }));
 
-    tool("vault.revoke", null, "Take an item away from a module, or from one of its watchers.",
-      obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller }) => vault.revoke(input, caller));
+    tool("vault.revoke", null, "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.",
+      obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller }) => vault.revoke(input, caller));
 
     tool("vault.pending", [...SURFACES, "mcp"], "Grants and passes an agent asked for, waiting for a person.",
       obj({}), () => vault.pending());
@@ -208,8 +215,8 @@ export default {
 
     ctx.tool("vault.release", {
       internal: true,
-      description: "One value, to a module holding a grant for it.",
-      input: obj({ name: str, field: str, watcher: str }, ["name"]),
+      description: "One value, to a module holding a grant for it. `project`, when the grant names one, must match.",
+      input: obj({ name: str, field: str, watcher: str, project: str }, ["name"]),
       run: (input, { caller }) => vault.release(input, caller),
     });
 
@@ -351,6 +358,13 @@ export default {
     // Google and mcp start after the vault, so their rows sync on first read and on their events.
     if (!vault.guarded) conns.connections.resync(["vault"]).catch(() => {});
 
+    // What the person's own turns asked to go out (P17): stored here, matched by the Gate.
+    /** A tool only other modules can call, as vault.release is. */
+    const internal = (name, description, input, run) => ctx.tool(name, { internal: true, description, input, run });
+    const said = saidTools.register({ vault, internal, tool, emit: (t, p) => ctx.events.emit(t, p) });
+    // A vendor API call with an api-credential: reads run, asked-for sends run, the rest hold at the Gate.
+    const requests = requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log });
+
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),
       presence("Offboard someone", ({ person }) => `Revoke every pass ${String(person).slice(0, 64)} holds and forget their card`));
@@ -381,6 +395,7 @@ export default {
       vault,
       connections: conns.connections,
       async stop() {
+        requests.stop();
         reminders.stop();
         await conns.stop();
         await kits.stop();

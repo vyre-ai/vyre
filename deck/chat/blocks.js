@@ -11,6 +11,8 @@
 // Nothing here uses innerHTML: every string is a text node.
 
 import { h, add, put } from "../js/dom.js";
+import { attempt } from "../js/api.js";
+import { madeNow, unmark } from "./core/made.js";
 import { icon } from "../js/icons.js";
 import { personAvatar, assistantAvatar, agentAvatar, teammateAvatar, teammateId } from "../js/avatars.js";
 import { clock } from "../js/fmt.js";
@@ -20,6 +22,7 @@ import { highlight } from "./lib/highlight.js";
 import { clip, commandText, duration, elapsed, langOf, rawLines, shortPath, toolState, toolTitle, toolVerb, turnParts } from "./lib/blocks.js";
 import { dataUrl, humanSize, inlineable, tooLarge, THUMB } from "./core/images.js";
 import { openLightbox } from "./lightbox.js";
+import { toolDisplay } from "./cards/index.js";
 
 const OUTPUT_LINES = 12;
 /** Bash shows this much of what it printed before "show all". */
@@ -341,7 +344,23 @@ export function handoffCard(b) {
       ),
       failed ? h("span", { class: "cv-tool-state cv-failed" }, "no answer") : null,
     );
-    put(el, head, body);
+    // "@design" made this teammate a moment ago: say so, and offer Undo while nothing has run (no reply yet).
+    const made = !replied && !failed && project ? madeNow(project, role) : null;
+    const undo = made ? h("button", { class: "btn btn-ghost btn-sm cv-made-undo", type: "button", onclick: async () => {
+      undo.disabled = true;
+      let r = await attempt("team.retire", { project, role, undo: true });
+      // Refused because it has already run: a plain retire instead (the teammate goes, its history stays), no second prompt.
+      if (r.error && !r.error.missing) {
+        const plain = await attempt("team.retire", { project, role });
+        if (!plain.error) { unmark(project, role); put(madeLine, `Retired ${role}.`); return; }
+        r = plain;
+      }
+      if (r.error) { undo.disabled = false; put(madeLine, `Made ${role}, a new teammate. Could not undo it: ${r.error.missing ? "this box cannot remove teammates yet" : r.error.message || r.error.code}`, undo); return; }
+      unmark(project, role);
+      put(madeLine, `Undone. ${role} is gone.`);
+    } }, "Undo") : null;
+    const madeLine = made ? h("div", { class: "cv-made", role: "status" }, `Made ${role}, a new teammate `, undo) : null;
+    put(el, head, body, madeLine);
     show();
   };
   el.update(b);
@@ -355,6 +374,9 @@ export function handoffCard(b) {
  * @returns {HTMLElement & { update: (b: any) => void, tick: (now?: number) => void }}
  */
 export function toolCard(b) {
+  // A result that carries a render payload (a PR, a thread, an event, a diff, an artifact) is that card, not a generic tool row.
+  const shown = toolDisplay(b);
+  if (shown) return shown;
   const el = /** @type {any} */ (tag(h("div", { class: "cv-row cv-tool" }), "assistant", b.ts));
   let open = null;
   /** @type {any} */ let timeEl = null;

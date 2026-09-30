@@ -17,7 +17,7 @@ style, no ring). Drawn on "Vault" and "Add your phone".
 |---|---|---|
 | Deck | `deck/views/vault-item.js`, `deck/css/views/vault.css` (main) | partial |
 | App | none in `apps/app` (work/mobile) | not built |
-| Capsule | none ("code northwind" is a typed command, not drawn) | not built |
+| Lumen | none ("code northwind" is a typed command, not drawn) | not built |
 
 ## Anatomy
 

@@ -49,7 +49,7 @@ let projectContextSuite = Suite("project context") { t in
         }
     }
 
-    t.test("memory.ask carries context:{project}: the session window's, then the front document's, never a guess") {
+    t.test("memory.ask carries context:{project, thread}: the session window's, then the front document's, never a guess") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         v.tool("memory.ask") { _ in ["answer": "Rye and sourdough.", "confidence": 0.8, "sources": []] }
         let out: [String]? = t.wait {
@@ -64,7 +64,7 @@ let projectContextSuite = Suite("project context") { t in
             func ask() async {
                 _ = await m.askIQ("what is on the menu today")
                 let c = v.callsOf("memory.ask").last?["context"] as? [String: Any]
-                got.append(VJ.str(c?["project"]) ?? "none")
+                got.append((VJ.str(c?["project"]) ?? "none") + "|" + (VJ.str(c?["thread"]) ?? "-"))
             }
             await MainActor.run { m.refreshProject() }
             await ask()
@@ -78,7 +78,8 @@ let projectContextSuite = Suite("project context") { t in
             await ask()
             return got
         }
-        t.eq(out, ["northwind", "harlow", "none", "northwind", "none"])
+        // The thread rides along only while the session window shows one (C13); "" is no thread yet.
+        t.eq(out, ["northwind|-", "harlow|t-harlow", "none|-", "northwind|-", "none|-"])
     }
 
     t.test("the bar shows the project's tile and name") {
