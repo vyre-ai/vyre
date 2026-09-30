@@ -21,12 +21,24 @@
 //
 // Tools: mcp.servers, mcp.add, mcp.update, mcp.remove, mcp.test, mcp.restart, google.accounts,
 // google.add, google.remove, google.test, google.connect, google.connect.finish,
-// google.connect.cancel, vault.list, vault.grant, projects.list, agents.list.
+// google.connect.cancel, vault.list, vault.grant, projects.list, agents.list, github.accounts,
+// github.connect, github.connect.cancel, github.remove.
+//
+// GitHub (ADR 0041): "Sign in with GitHub" is a device code, not a redirect. github.connect
+// returns a short code and GitHub's own page; the person types the code there (or opens
+// verification_uri_complete, which fills it in), and Vyre polls on its own until github.connected
+// or github.connect-failed arrives. No tab to catch, no address to paste, so its waiting panel is
+// simpler than Google's: the code, a copy button, an "Open GitHub" link, and how long the code
+// lasts. Nothing here ticks or polls; GitHub's own expiry ends the flow with github.connect-failed
+// when the person runs out of time. github.remove revokes at GitHub first, so a failed revoke
+// still says so.
 
 import { h, put, empty } from "../js/dom.js";
+import { icon } from "../js/icons.js";
 import { attempt as apiAttempt } from "../js/api.js";
-import { withPresence } from "./memory-presence.js";
-import { since } from "../js/fmt.js";
+import { withPresence, PresenceError } from "./memory-presence.js";
+import { showToast } from "../js/toast.js";
+import { since, plural } from "../js/fmt.js";
 import { statusMark, statusOf } from "../js/status-mark.js";
 
 /** Vault kinds that make sense for each way of using an item (ADR 0016, decision 2). */
@@ -46,14 +58,21 @@ const MODE_WORDS = [["read", "Read"], ["write", "Held"], ["off", "Off"]];
 const STATE_WORDS = { stopped: "stopped", starting: "starting", running: "running", failed: "failed" };
 /** The events that change what this section shows. mcp.called is left out: it only moves lastUsed. */
 export const EVENTS = ["mcp.added", "mcp.updated", "mcp.removed", "mcp.started", "mcp.stopped", "mcp.failed", "mcp.refreshed",
-  "google.added", "google.removed", "google.connected", "google.connect-failed", "vault.granted"];
+  "google.added", "google.removed", "google.connected", "google.connect-failed", "vault.granted",
+  "vault.connection-added", "vault.connection-removed", "vault.connection-changed",
+  "github.added", "github.removed", "github.connected", "github.connect-failed"];
 
 const str = v => (typeof v === "string" ? v : "");
 const strs = v => (Array.isArray(v) ? v.filter(x => typeof x === "string") : []);
 const num = v => (typeof v === "number" && isFinite(v) ? v : null);
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+/** Only https://github.com/... ever becomes a link's href (reviewer's LOW: verification_uri is
+ * GitHub's own reply, passed through unchecked otherwise); anything else falls back to the plain
+ * device page, which always works with the code shown beside it. */
+const safeGithubUrl = u => (/^https:\/\/github\.com\//.test(String(u || "")) ? u : "https://github.com/login/device");
 
 /** @typedef {{ id: string, name: string, url: string, over: boolean, stt: HTMLElement, win?: Window | null }} Flow */
+/** @typedef {{ id: string, name: string, user_code: string, verification_uri: string, verification_uri_complete?: string, minutes: number, over: boolean, stt: HTMLElement }} GhFlow */
 
 // ---- what the page reads, named fields only ------------------------------------------------------
 
@@ -85,6 +104,52 @@ export function pickAccounts(d) {
     name: a.name, email: str(a.email),
     auth: { type: a.auth?.type === "service-account" ? "service-account" : "oauth", item: str(a.auth?.item), subject: str(a.auth?.subject) },
   }));
+}
+
+/** github.accounts → rows with only the fields drawn: name, login and avatar, never a token. */
+export function pickGithubAccounts(d) {
+  const list = Array.isArray(d) ? d : [];
+  return list.filter(a => a && typeof a.name === "string").map(a => ({ name: a.name, login: str(a.login), avatar_url: str(a.avatar_url) }));
+}
+
+/**
+ * The surfaces vault.connections.grant/revoke know (ADR 0028 decision 9b). "Planner" is not
+ * one yet: app-design's Connections board shows a Planner chip, and the lead's ask is for these
+ * chips to grant real access, so this is a live question back to vault and app-design rather
+ * than a chip this file invents (docs/work/connectors.md, Needs from others).
+ */
+export const SURFACE_NAMES = ["capsule", "chat", "agents", "phone"];
+/** A provider name (core/vault/providers.js) to the word and card group the board draws. */
+const PROVIDER_WORDS = {
+  "google-oauth": { word: "Google", group: "google" }, "google-dwd": { word: "Google", group: "google" },
+  "google-apps-script": { word: "Apps Script", group: "mail" }, "imap-smtp": { word: "Mail login", group: "mail" },
+  mcp: { word: "MCP server", group: "mcp" },
+};
+const providerWord = p => (PROVIDER_WORDS[p] || { word: p || "Connection", group: "other" });
+
+/**
+ * vault.connections.list → one card's fields per connection, named only, whatever the source
+ * (Google, mail, Apps Script or an MCP server): the shape every mcp-native card in
+ * docs/design/mcp-native.md and app-design's Connections board (db3dbbfa) draws from. A
+ * multi-account server (two Gmail MCPs, one per inbox) is already two rows here, each its own
+ * card and its own grant, since the vault resyncs one connection per mcp.servers row.
+ * @param {any} d
+ */
+export function pickConnections(d) {
+  const list = Array.isArray(d) ? d : Array.isArray(d?.connections) ? d.connections : [];
+  return list.filter(c => c && typeof c.id === "string").map(c => {
+    const { word, group } = providerWord(str(c.provider));
+    const surfaces = SURFACE_NAMES.filter(s => Array.isArray(c.surfaces) && c.surfaces.includes(s));
+    const caps = strs(c.capabilities);
+    const defaultFor = strs(c.default).filter(cap => caps.includes(cap));
+    return {
+      id: c.id, provider: str(c.provider), providerWord: word, group,
+      account: str(c.account), label: str(c.label) || str(c.account),
+      ready: c.state === "ready", needs: Array.isArray(c.needs) ? c.needs.map(n => ({ module: str(n?.module), need: str(n?.need) })) : [],
+      capabilities: caps, surfaces, defaultFor,
+      lastUsed: num(c.last_used), connected: num(c.added),
+    };
+  });
 }
 
 /** vault.list → { name, kind, fields, grants } per live item: names only. */
@@ -146,30 +211,40 @@ export async function drawConnections(el, ctx, deps = {}) {
   const st = {
     servers: /** @type {ReturnType<typeof pickServers>} */ ([]), serverErr: /** @type {any} */ (null),
     accounts: /** @type {ReturnType<typeof pickAccounts>} */ ([]), accountErr: /** @type {any} */ (null),
+    connections: /** @type {ReturnType<typeof pickConnections>} */ ([]), connectionsErr: /** @type {any} */ (null),
+    githubAccounts: /** @type {ReturnType<typeof pickGithubAccounts>} */ ([]), githubErr: /** @type {any} */ (null),
     items: /** @type {ReturnType<typeof pickItems>} */ ([]),
     projects: /** @type {{ slug: string, name: string }[]} */ ([]), agents: /** @type {string[]} */ ([]),
     /** What Test found, kept across redraws so a refresh does not close it. */
     tested: new Map(), gtested: new Map(),
     /** A row asking "Remove?" */
     confirming: "",
-    form: /** @type {"" | "mcp" | "google"} */ (""),
+    form: /** @type {"" | "mcp" | "google" | "github"} */ (""),
     /** The open "Sign in with Google", if any. */
     flow: /** @type {Flow | null} */ (null),
+    /** The open "Sign in with GitHub" device code, if any. */
+    ghFlow: /** @type {GhFlow | null} */ (null),
   };
 
   const top = h("div");
+  const cardsBox = h("div", { class: "cn-cards" });
   const mcpBox = h("div", { class: "cn-group" });
   const googleBox = h("div", { class: "cn-group" });
+  const githubBox = h("div", { class: "cn-group" });
   const formBox = h("div");
-  put(el, top, mcpBox, googleBox, formBox);
+  put(el, top, cardsBox, mcpBox, googleBox, githubBox, formBox);
 
   async function load() {
-    const [s, g] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts")]);
+    const [s, g, c, gh] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts"), attempt("vault.connections.list"), attempt("github.accounts")]);
     if (!ctx.alive()) return;
     st.serverErr = s.error || null;
     st.servers = s.error ? [] : pickServers(s.data);
     st.accountErr = g.error || null;
     st.accounts = g.error ? [] : pickAccounts(g.data);
+    st.connectionsErr = c.error || null;
+    st.connections = c.error ? [] : pickConnections(c.data);
+    st.githubErr = gh.error || null;
+    st.githubAccounts = gh.error ? [] : pickGithubAccounts(gh.data);
     draw();
   }
 
@@ -184,17 +259,162 @@ export async function drawConnections(el, ctx, deps = {}) {
   }
 
   function draw() {
+    drawCards();
     const both = st.serverErr?.missing && st.accountErr?.missing;
     if (both) {
       put(top, h("div", { class: "empty cn-empty" }, "No connectors are running on this machine.",
         h("span", { class: "code" }, "The mcp and google modules are not running. When they are, MCP servers and Google accounts are added here or with vyre connect add.")));
-      put(mcpBox); put(googleBox); put(formBox);
+      put(mcpBox); put(googleBox); put(githubBox); put(formBox);
       return;
     }
     put(top, h("p", { class: "set-note small muted" },
       "MCP servers and Google accounts Vyre can use. Each one names a vault item; the value stays sealed in the vault and never comes to this page."));
     drawServers();
     drawAccounts();
+    drawGithub();
+  }
+
+  // ---- Connections cards (vault.connections.list) --------------------------------------------
+  //
+  // One card per connection, whatever the source (Google, mail, Apps Script, an MCP server), same
+  // shape (card.md's "Connections card" variant, account-row.md, chip.md's surface-grant chip,
+  // all finished by app-design f65d51e5/47030189; mcp-native gap 2). Two accounts of one MCP
+  // server are already two vault_connections rows, so already two cards, each its own grants.
+  // "Wrong account?" and a problem row's fix action are not wired yet (need a real reconnect flow
+  // per provider from app-design/vault); the toggle chips and "Connect another account" are real.
+
+  // Icon names from deck/js/icons.js's set: "globe" for an OAuth sign-in account (icons.md has no
+  // per-provider glyph yet, account-row.md's own Gaps), "mail" for a mail login or Apps Script,
+  // "agents" for an MCP server (the board's own choice, no MCP glyph exists either), "key" for
+  // anything else the catalog names.
+  const GROUP_ICON = { google: "globe", mail: "mail", mcp: "agents", other: "key" };
+  /** Surface name to the chip's label and icon, in the order the board draws them. */
+  const SURFACE_META = { capsule: { label: "Capsule", icon: "capsule" }, chat: { label: "Chat", icon: "chat" },
+    agents: { label: "Agents", icon: "agents" }, phone: { label: "Phone", icon: "phone" } };
+
+  function drawCards() {
+    if (st.connectionsErr) {
+      // A missing vault module: say nothing extra here, the group below already explains a
+      // missing mcp/google module, and vault.connections.list not existing yet on this box is
+      // not a fault to alarm over (older Vyre; the two groups below still work standalone).
+      put(cardsBox);
+      return;
+    }
+    if (!st.connections.length) { put(cardsBox); return; }
+    put(cardsBox, h("h3", { class: "set-h3" }, "Connections"),
+      h("div", { class: "cn-card-list" }, st.connections.map(connectionCard)),
+      h("div", { class: "cn-add", tabindex: "0", role: "button", onclick: () => chooseAdd() },
+        h("span", { class: "cn-avatar" }, icon("plus", 16)),
+        h("div", { class: "cn-add-t" }, h("span", { class: "cn-name" }, "Connect another account"),
+          h("span", { class: "cn-meta" }, "Google, a mail login, or any MCP server"))));
+  }
+
+  /** The existing add flow: MCP server or Google account (mail's own Deck row is not built yet). */
+  function chooseAdd() {
+    openForm(st.servers.length <= st.accounts.length ? "mcp" : "google");
+  }
+
+  /** account-row.md's meta line: "label · provider", or the provider alone with no custom label. */
+  function metaLine(c) {
+    return c.label && c.label !== c.account ? `${c.label} · ${c.providerWord}` : c.providerWord;
+  }
+
+  /** account-row.md's Trailing, priority order: a default beats Last used beats nothing. */
+  function trailing(c) {
+    if (c.defaultFor.length) return "Default";
+    if (c.lastUsed) return `Last used ${since(c.lastUsed)} ago`;
+    return "";
+  }
+
+  function connectionCard(c) {
+    if (!c.ready) {
+      return h("div", { class: "cn-card cn-card-problem", "data-connection": c.id },
+        h("span", { class: "cn-avatar" }, icon(GROUP_ICON[c.group] || GROUP_ICON.other, 16)),
+        h("div", { class: "cn-card-t" }, h("span", { class: "cn-name" }, c.account),
+          h("span", { class: "cn-meta" }, "Needs sign-in")),
+        h("button", { type: "button", class: "btn btn-sm" }, "Sign in"));
+    }
+    const trail = trailing(c);
+    return h("div", { class: "cn-card", "data-connection": c.id },
+      h("div", { class: "cn-card-top" },
+        h("span", { class: "cn-avatar" }, icon(GROUP_ICON[c.group] || GROUP_ICON.other, 16)),
+        h("div", { class: "cn-card-t" }, h("span", { class: "cn-name" }, c.account), h("span", { class: "cn-meta" }, metaLine(c))),
+        trail ? h("span", { class: "cn-trailing" }, trail) : null),
+      h("div", { class: "cn-granted" },
+        h("span", { class: "cn-granted-l" }, "Granted to"),
+        ...SURFACE_NAMES.map(s => chip(c, s))),
+      h("div", { class: "cn-card-f" },
+        h("span", { class: "cn-steplink", role: "button", tabindex: "0", onclick: () => chooseAdd() }, "Wrong account?"),
+        h("span", { class: "cn-connected" }, c.connected ? `Connected ${since(c.connected)} ago` : "")));
+  }
+
+  function chip(c, surface) {
+    const on = c.surfaces.includes(surface);
+    const { label, icon: iconName } = SURFACE_META[surface];
+    // Granting Agents hands a credential to an autonomous session, so it asks for Touch ID or a
+    // passkey first (chip.md's Asking state); the shield glyph trails the label whenever it is
+    // off, showing the affordance rather than leaving it to be discovered on tap. Every other
+    // grant, and every revoke, is one tap (card.md's Connections card, the lead's call
+    // 2026-09-28).
+    let shieldIcon = null;
+    if (!on && surface === "agents") {
+      shieldIcon = icon("shield", 12);
+      shieldIcon.setAttribute("class", "cn-chip-shield");
+    }
+    return h("button", { type: "button", class: "cn-chip" + (on ? " cn-chip-on" : ""), "aria-pressed": on ? "true" : "false",
+      onclick: (/** @type {Event} */ e) => toggleSurface(c, surface, !on, e) },
+      icon(iconName, 12), label, shieldIcon);
+  }
+
+  /**
+   * Grant or revoke one surface. Revoke, and a grant to anything but Agents, is optimistic
+   * (cohesion's docs/design/interaction.md): the chip flips and redraws before the call settles,
+   * then a toast either confirms with Undo (call the opposite action again) or, on error, reverts
+   * the chip and says why. Granting Agents does not flip until vault's own presence gate on
+   * `vault.connections.grant` (core/vault/tools/connections.js, `when: surface === "agents"`)
+   * resolves: withPresence (this file's `presence`, the same helper vault.grant already uses
+   * below) shows the system's Touch ID or passkey sheet, retries once proven, and a refusal
+   * leaves the chip Off with nothing shown but the system's own cancel (chip.md's Asking state;
+   * reusing vault's existing gate, not a new check, per the lead).
+   * @param {ReturnType<typeof pickConnections>[number]} c @param {string} surface @param {boolean} next
+   * @param {Event} [e]
+   */
+  async function toggleSurface(c, surface, next, e) {
+    const label = SURFACE_META[surface].label;
+    if (next && surface === "agents") {
+      const btn = /** @type {HTMLButtonElement} */ (e && e.currentTarget);
+      if (btn) btn.setAttribute("aria-busy", "true");
+      try {
+        await presence("vault.connections.grant", { id: c.id, surface }, { summary: `Let Agents use "${c.label}"` });
+      } catch (err) {
+        // Cancelled, no passkey, expired or refused: withPresence's own sheet already shows why
+        // (memory-presence.js), so nothing more here (chip.md: "nothing shown but the system's
+        // own cancel"). Only a plain tool error (not a PresenceError: the connection failed
+        // outright) gets a toast of its own.
+        if (btn) btn.removeAttribute("aria-busy");
+        if (!ctx.alive()) return;
+        if (!(err instanceof PresenceError)) showToast({ text: `Could not let Agents use ${c.label}: ${errText(err)}` });
+        return;
+      }
+      if (!ctx.alive()) return;
+      if (btn) btn.removeAttribute("aria-busy");
+      c.surfaces = [...new Set([...c.surfaces, surface])];
+      drawCards();
+      showToast({ text: `${label} granted for ${c.label}`, undo: () => toggleSurface(c, surface, false) });
+      return;
+    }
+    const before = c.surfaces;
+    c.surfaces = next ? [...new Set([...before, surface])] : before.filter(s => s !== surface);
+    drawCards();
+    const r = await attempt(next ? "vault.connections.grant" : "vault.connections.revoke", { id: c.id, surface });
+    if (!ctx.alive()) return;
+    if (r.error) {
+      c.surfaces = before;
+      drawCards();
+      showToast({ text: `Could not change ${label} for ${c.label}: ${errText(r.error)}` });
+      return;
+    }
+    if (next) showToast({ text: `${label} granted for ${c.label}`, undo: () => toggleSurface(c, surface, false) });
   }
 
   // ---- MCP servers ----
@@ -342,6 +562,139 @@ export async function drawConnections(el, ctx, deps = {}) {
     if (r) put(/** @type {HTMLElement} */ (r), text);
   }
 
+  // ---- GitHub accounts ----
+
+  function drawGithub() {
+    const add = h("button", { type: "button", class: "btn btn-sm" + (st.githubAccounts.length ? "" : " btn-primary"), "data-act": "add-github", disabled: !!st.githubErr, onclick: () => openForm("github") }, "Add GitHub account");
+    if (st.githubErr) { put(githubBox, h("h3", { class: "set-h3" }, "GitHub accounts"), empty("GitHub accounts are kept by the github module.", st.githubErr)); return; }
+    put(githubBox, h("h3", { class: "set-h3" }, "GitHub accounts"),
+      st.githubAccounts.length ? h("div", { class: "rows" }, st.githubAccounts.map(githubRow))
+        : h("div", { class: "empty" }, "No GitHub account yet. Connect one and an agent can clone your repos and work in its own worktree, one branch per session."),
+      h("div", { class: "set-actions" }, add));
+  }
+
+  function githubRow(a) {
+    const status = h("div", { class: "small muted set-status", role: "status" });
+    return h("div", { class: "cn-row", "data-github": a.name },
+      h("div", { class: "cn-head" },
+        a.avatar_url ? h("img", { class: "cn-avatar-img", src: a.avatar_url, alt: "", width: "20", height: "20" }) : null,
+        h("span", { class: "mono cn-name" }, a.name), h("span", { class: "muted" }, a.login)),
+      st.confirming === `github:${a.name}`
+        ? h("div", { class: "set-actions cn-confirm" },
+          h("span", { class: "small" }, `Disconnect ${a.name}? This removes the account from Vyre. To also cancel access at GitHub, open `,
+            h("a", { href: "https://github.com/settings/applications", target: "_blank", rel: "noopener noreferrer" }, "github.com/settings/applications"), "."),
+          h("button", { type: "button", class: "btn btn-sm", "data-act": "remove-yes", onclick: async () => {
+            const r = await attempt("github.remove", { name: a.name });
+            if (!ctx.alive()) return;
+            st.confirming = "";
+            if (r.error) { drawGithub(); sayGh(a.name, errText(r.error)); return; }
+            if (r.data?.warning) { await load(); if (!ctx.alive()) return; sayGh(a.name, r.data.warning); return; }
+            await load();
+          } }, "Disconnect"),
+          h("button", { type: "button", class: "btn btn-ghost btn-sm", "data-act": "remove-no", onclick: () => { st.confirming = ""; drawGithub(); } }, "Cancel"))
+        : h("div", { class: "set-actions cn-acts" },
+          h("button", { type: "button", class: "btn btn-ghost btn-sm", "data-act": "remove", onclick: () => { st.confirming = `github:${a.name}`; drawGithub(); } }, "Disconnect")),
+      status);
+  }
+  function sayGh(name, text) {
+    const r = githubBox.querySelector(`[data-github="${name}"] .set-status`);
+    if (r) put(/** @type {HTMLElement} */ (r), text);
+  }
+
+  /** "Connect a GitHub account": a name, then Sign in with GitHub (the device flow, ADR 0041). */
+  function githubForm() {
+    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cgh-name", autocomplete: "off", spellcheck: "false", placeholder: "work" }));
+    const stt = h("div", { class: "small muted set-status", role: "status" });
+    const save = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-primary" }, "Sign in with GitHub"));
+    const form = h("form", { class: "set-form cn-form", "data-form": "github", onsubmit: async (/** @type {Event} */ e) => {
+      e.preventDefault();
+      const n = name.value.trim();
+      if (!n) { put(stt, "Give the account a name, like work or personal."); return; }
+      save.disabled = true;
+      put(stt, "Starting.");
+      const r = await attempt("github.connect", { name: n });
+      if (!ctx.alive()) return;
+      const id = str(r.data?.id), user_code = str(r.data?.user_code), verification_uri = str(r.data?.verification_uri);
+      if (r.error || !id || !user_code || !verification_uri) { save.disabled = false; put(stt, r.error ? errText(r.error) : "GitHub did not return a code. Try again."); return; }
+      if (st.form !== "github") { attempt("github.connect.cancel", { id }); return; }
+      const verification_uri_complete = str(r.data?.verification_uri_complete) || undefined;
+      const minutes = Math.max(1, Math.round((num(r.data?.expires_in) || 900) / 60));
+      githubWaiting({ id, name: n, user_code, verification_uri, verification_uri_complete, minutes, over: false, stt: h("div") });
+    } },
+      h("h3", { class: "set-h3" }, "Add a GitHub account"),
+      h("div", { class: "rows" },
+        frow("cgh-name", "Name", name, "What the assistant calls it, like work or personal.")),
+      h("p", { class: "small faint" }, "GitHub asks for repo access, full read/write on every repo the account can reach. Its device sign-in has no narrower option; a later release narrows this to the repos you pick."),
+      h("div", { class: "set-actions" }, save, h("button", { type: "button", class: "btn btn-ghost", onclick: closeForm }, "Cancel")), stt);
+    put(formBox, form);
+    name.focus();
+  }
+
+  /**
+   * The open device-code sign-in: the code shown large with Copy, an "Open GitHub" link (or the
+   * verification_uri_complete address when GitHub sent one, which fills the code in for you), how
+   * long it lasts, and Cancel. Vyre polls GitHub on its own; nothing here polls or ticks, GitHub's
+   * own expiry ends the flow with github.connect-failed when the person runs out of time.
+   * @param {GhFlow} flow
+   */
+  function githubWaiting(flow) {
+    st.ghFlow = flow;
+    const codeEl = h("div", { class: "cn-gh-code", "aria-label": "Your code" }, flow.user_code);
+    const copyBtn = h("button", { type: "button", class: "btn btn-sm", "data-act": "copy-code", onclick: async () => {
+      try { await navigator.clipboard.writeText(flow.user_code); put(copyBtn, "Copied"); } catch { put(copyBtn, "Copy"); }
+    } }, "Copy");
+    const openHref = safeGithubUrl(flow.verification_uri_complete || flow.verification_uri);
+    put(formBox, h("div", { class: "set-form cn-form cn-wait", "data-form": "github", "data-signin": "waiting" },
+      h("h3", { class: "set-h3" }, "Add a GitHub account"),
+      h("p", { class: "cn-wait-t" }, "Enter this code at github.com/login/device:"),
+      h("div", { class: "cn-gh-code-row" }, codeEl, copyBtn),
+      h("div", { class: "set-actions" }, h("a", { class: "btn btn-primary", href: openHref, target: "_blank", rel: "noopener noreferrer", "data-act": "open-github" }, "Open GitHub")),
+      h("p", { class: "small muted" }, `Good for about ${plural(flow.minutes, "minute")}.`),
+      h("div", { class: "set-actions" }, h("button", { type: "button", class: "btn btn-ghost", "data-act": "cancel-signin", onclick: () => closeForm() }, "Cancel")),
+      h("div", { class: "small muted set-status", role: "status" }, flow.stt)));
+  }
+
+  /** The device sign-in finished: reload and close. */
+  async function githubConnected(flow) {
+    if (flow.over) return;
+    flow.over = true;
+    st.ghFlow = null;
+    st.form = "";
+    put(formBox);
+    await load();
+  }
+
+  /** The device sign-in ended without an account: say why, and offer to start again. */
+  function githubFailed(flow, error) {
+    if (flow.over) return;
+    flow.over = true;
+    st.ghFlow = null;
+    put(formBox, h("div", { class: "set-form cn-form cn-wait", "data-form": "github", "data-signin": "failed" },
+      h("h3", { class: "set-h3" }, "Add a GitHub account"),
+      h("p", { class: "small cn-err", "data-hint": "signin-failed" }, error || "The sign-in ended without an account."),
+      h("div", { class: "set-actions" },
+        h("button", { type: "button", class: "btn btn-sm", "data-act": "again", onclick: () => openForm("github") }, "Start again"),
+        h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => closeForm() }, "Close"))));
+  }
+
+  /** Cancel the open GitHub sign-in, if any. Nothing waits on the answer. */
+  function cancelGithubFlow() {
+    const flow = st.ghFlow;
+    if (!flow || flow.over) return;
+    flow.over = true;
+    st.ghFlow = null;
+    attempt("github.connect.cancel", { id: flow.id });
+  }
+
+  /** github.connected and github.connect-failed, for the open sign-in only. */
+  function onGithubFlow(type, e) {
+    const flow = st.ghFlow;
+    const p = isObj(e?.payload) ? e.payload : {};
+    if (!flow || flow.over || p.id !== flow.id || !ctx.alive()) return;
+    if (type === "github.connected") githubConnected(flow);
+    else if (type === "github.connect-failed") githubFailed(flow, str(p.error));
+  }
+
   /**
    * What a Workspace admin pastes to let a service account act for people: its client ID and the
    * scope line, each with Copy. Both are public identifiers, never a key.
@@ -382,13 +735,17 @@ export async function drawConnections(el, ctx, deps = {}) {
 
   async function openForm(kind) {
     cancelFlow();
+    cancelGithubFlow();
     st.form = kind;
+    // GitHub's sign-in names no vault item itself (it makes its own), so it needs none of the
+    // vault/project/agent choices the other two forms pick from.
+    if (kind === "github") { githubForm(); return; }
     put(formBox, h("div", { class: "empty" }, "Loading your vault's item names."));
     const { vaultErr } = await loadChoices();
     if (!ctx.alive() || st.form !== kind) return;
     if (kind === "mcp") mcpForm(vaultErr); else googleForm(vaultErr);
   }
-  const closeForm = () => { cancelFlow(); st.form = ""; put(formBox); };
+  const closeForm = () => { cancelFlow(); cancelGithubFlow(); st.form = ""; put(formBox); };
 
   /** The vault item select for one auth type, or a note when there is none of that kind. */
   function itemSelect(type, id, current = "") {
@@ -418,7 +775,7 @@ export async function drawConnections(el, ctx, deps = {}) {
     let transport = "stdio";
     const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-name", autocomplete: "off", spellcheck: "false", placeholder: "tracker" }));
     const command = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-command", autocomplete: "off", spellcheck: "false", placeholder: "npx" }));
-    const args = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-args", autocomplete: "off", spellcheck: "false", placeholder: "-y @northwind/tracker-mcp" }));
+    const args = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-args", autocomplete: "off", spellcheck: "false", placeholder: "Arguments, if any" }));
     const url = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-url", autocomplete: "off", spellcheck: "false", placeholder: "https://mcp.example.com/mcp" }));
     const auth = /** @type {HTMLSelectElement} */ (h("select", { class: "input set-select", id: "cn-auth", "aria-label": "Auth" }));
     const itemBox = h("div", { class: "set-v" });
@@ -541,7 +898,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   function googleForm(vaultErr) {
     let type = "signin";
     const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-name", autocomplete: "off", spellcheck: "false", placeholder: "work" }));
-    const email = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-email", type: "email", autocomplete: "off", spellcheck: "false", placeholder: "alex@harlowlegal.com" }));
+    const email = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-email", type: "email", autocomplete: "off", spellcheck: "false", placeholder: "Your email address" }));
     const subject = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-subject", type: "email", autocomplete: "off", spellcheck: "false", placeholder: "The address above" }));
     const seg = h("div", { class: "seg cn-seg", role: "group", "aria-label": "How it signs in" });
     const rest = h("div", { class: "rows" });
@@ -744,8 +1101,8 @@ export async function drawConnections(el, ctx, deps = {}) {
   }
 
   let t = 0;
-  for (const type of EVENTS) ctx.on(type, e => { onFlow(type, e); clearTimeout(t); t = setTimeout(load, 400); });
-  ctx.cleanup(() => { clearTimeout(t); cancelFlow(); });
+  for (const type of EVENTS) ctx.on(type, e => { onFlow(type, e); onGithubFlow(type, e); clearTimeout(t); t = setTimeout(load, 400); });
+  ctx.cleanup(() => { clearTimeout(t); cancelFlow(); cancelGithubFlow(); });
   await load();
 }
 

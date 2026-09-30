@@ -8,11 +8,11 @@
 name: vault-mac
 on:
   push:
-    paths: ["core/vault/**", "core/connectors/**", "core/mcp/**", "core/google/**", "core/modules/**",
+    paths: ["core/vault/**", "lib/connectors/**", "core/mcp/**", "core/google/**", "core/modules/**",
       "core/cli/commands/vault*.js", "core/cli/commands/connect.js", "local/voice/**", "test/docs-*.js",
       "test/hygiene*.js", ".github/workflows/vault-mac.yml"]
   pull_request:
-    paths: ["core/vault/**", "core/connectors/**", "core/mcp/**", "core/google/**", "core/modules/**",
+    paths: ["core/vault/**", "lib/connectors/**", "core/mcp/**", "core/google/**", "core/modules/**",
       "core/cli/commands/vault*.js", "core/cli/commands/connect.js", "local/voice/**", "test/docs-*.js",
       "test/hygiene*.js"]
   workflow_dispatch:
@@ -40,13 +40,17 @@ jobs:
         shell: bash
         run: |
           fail=0
-          files=$(ls core/vault/*.test.js core/vault/**/*.test.js core/connectors/*.test.js core/mcp/*.test.js core/google/*.test.js core/modules/*.test.js core/cli/commands/*.test.js local/voice/*.test.js test/docs-*.test.js test/hygiene*.test.js 2>/dev/null | sort -u)
+          # Files known to hang on a macOS runner without output, run and reported but not failing the
+          # job. Empty now: the five that hung on 30 Sep pass after the merge with stage (each under 15 s).
+          known=""
+          files=$(ls core/vault/*.test.js core/vault/**/*.test.js lib/connectors/*.test.js core/mcp/*.test.js core/google/*.test.js core/modules/*.test.js core/cli/commands/*.test.js local/voice/*.test.js test/docs-*.test.js test/hygiene*.test.js 2>/dev/null | sort -u)
           for f in $files; do
             start=$(date +%s)
             if perl -e 'alarm 480; exec @ARGV' node --test --test-timeout=240000 --test-force-exit --test-reporter=spec "$f" > /tmp/one.log 2>&1; then
               echo "ok   $f ($(( $(date +%s) - start ))s)"
             else
-              echo "FAIL $f ($(( $(date +%s) - start ))s)"; grep -E "^(✖|  .*Error)" /tmp/one.log | head -8; fail=1
+              echo "FAIL $f ($(( $(date +%s) - start ))s)"; grep -E "^(✖|  .*Error)" /tmp/one.log | head -8
+              case " $known " in *" $f "*) echo "     (known hang, not failing the job)";; *) fail=1;; esac
             fi
           done
           exit $fail

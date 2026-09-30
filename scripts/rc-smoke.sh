@@ -14,7 +14,8 @@
 #                    with its sources, and one it cannot know is not answered
 #   6 mail           an IMAP account added through vault.connect (made-up hosts, no server),
 #                    then mail.send is held at the Gate and the password never comes back
-#   7 theme          settings.set appearance.tokens changes /theme.css
+#   7 theme          settings.set appearance.tokens (as the person, a device proof) changes
+#                    /theme.css
 #   8 update         box/vyre's `vyre update` to a fake next release (the same package, one
 #                    patch version on), then `vyre update --rollback` back; the vault item from
 #                    step 3 survives both
@@ -68,9 +69,11 @@ vc() { "$RC_DOCKER" exec -u vyre "$C" vyre call "$@" 2>&1; }
 # The tool is on this box?
 has() { ! vc "$1" '{}' | grep -q 'no_such_tool'; }
 get() { "$RC_DOCKER" exec -u vyre "$C" node /opt/rc/get.js "$1"; }
+# `vyre status` says "vyred not running" while it starts, so match the whole phrase: a bare
+# "running" passed at once, and step 3 then met a vyred that was not up yet.
 ready() {
   i=0
-  until "$RC_DOCKER" exec "$C" vyre status 2>/dev/null | grep -qi running; do
+  until "$RC_DOCKER" exec "$C" vyre status 2>/dev/null | grep -q 'vyred running'; do
     i=$((i + 1)); [ $i -ge "${1:-90}" ] && return 1; sleep 1
   done
 }
@@ -202,9 +205,10 @@ if [ "$(vc settings.schema '{}' | j '(d.keys || []).some(k => k.key === "appeara
   skip "7 theme: appearance.tokens is not a setting in this build"
 else
   before=$(get /theme.css)
-  r=$(vc settings.set '{"key":"appearance.tokens","value":{"radius":{"card":16}}}')
+  # settings.set is the person's own (PERSON_ONLY), so it goes as the person, like step 6.
+  r=$("$RC_DOCKER" exec -u vyre "$C" node /opt/rc/person.mjs settings.set '{"key":"appearance.tokens","value":{"radius":{"card":16}}}' 2>&1)
   after=$(get /theme.css)
-  if echo "$r" | grep -q '"error"\|denied\|confirm_required\|bad_input'; then fail "7 theme: settings.set appearance.tokens: $(echo "$r" | short)"
+  if echo "$r" | grep -q '"error"\|denied\|confirm_required\|bad_input\|presence_required\|no_terminal'; then fail "7 theme: settings.set appearance.tokens: $(echo "$r" | short)"
   elif [ "$(echo "$after" | head -1)" = 200 ] && echo "$after" | grep -q -- '--radius-card: 16px' && [ "$before" != "$after" ]; then
     pass "7 theme: settings.set appearance.tokens changes /theme.css (--radius-card: 16px)"
   else fail "7 theme: /theme.css did not change: $(echo "$after" | head -3 | short)"; fi

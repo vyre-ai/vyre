@@ -24,6 +24,15 @@ import catalogue, { parse, up, resume } from "./projects.js";
 import { editText, toolError, PURPOSES } from "./sessions.js";
 import { json, emit, fail as kitFail, usage, viewing, EXIT } from "../kit.js";
 import { prompt } from "../view.js";
+import { threadStatus } from "../../../lib/thread-status.js";
+
+/** t.status as this CLI should say it to a person, not switchboard's raw internal word (cohesion
+ * found this printing the raw word directly: raw "waiting" is an open ask, which a person calls
+ * "asking", and raw "idle" is what a person calls "waiting" — this CLI had them backwards). Only
+ * the printed word changes; comparisons against the raw status (styling, `=== "stopped"` checks)
+ * are unchanged, since they already key off what the raw word actually means internally.
+ * @param {{ status?: string, stopped_reason?: string|null }} t */
+const statusWord = t => threadStatus(String(t && t.status || ""), t && t.stopped_reason || null);
 
 const SURFACE = "cli:" + process.pid;
 export const SUBS = ["start", "send", "list", "ls", "get", "show", "watch", "lease", "release", "asks", "answer", "stop",
@@ -101,18 +110,22 @@ const tail = (s, n) => { const t = String(s || ""); return t.length > n ? "…" 
 
 // ------------------------------------------------------------ how --view draws them (core/cli/view.js)
 
-/** A thread's status as a card's state. */
-const stateOf = st => (st === "idle" ? "ok" : st === "stopped" ? "unknown" : st === "failed" ? "failed" : "wait");
+/** The canonical status (lib/thread-status.js) as one of view.js's 4 card states. "paused" reads
+ * as "ok": an idle timeout, a restart or a rewind are resumable, nothing wrong happened, unlike a
+ * person deliberately stopping the thread ("stopped") or it dying on its own ("failed"). */
+const CARD_STATE = { starting: "wait", working: "wait", asking: "wait", waiting: "ok", paused: "ok", stopped: "unknown", finished: "ok", failed: "failed" };
+/** A thread's status as a card's state. @param {{status?: string, stopped_reason?: string|null}} t */
+const stateOf = t => CARD_STATE[statusWord(t)] || "wait";
 /** threads.list's rows as a table: the columns a person reads, the id kept to act on. @param {any[]} ts */
 export const threadTable = ts => ({ kind: "table", title: "Threads", empty: "No headless threads in the last day",
   columns: [{ key: "name", label: "Thread" }, { key: "status", label: "Status" }, { key: "holder", label: "Keyboard" }, { key: "agent", label: "Agent" }, { key: "asks", label: "Asks" }, { key: "id", label: "Id" }],
-  rows: ts.map(t => ({ id: t.id, name: t.name || tail(t.cwd, 40), status: t.status, holder: t.holder || "", agent: t.agent || "", asks: t.asks || 0 })) });
+  rows: ts.map(t => ({ id: t.id, name: t.name || tail(t.cwd, 40), status: statusWord(t), holder: t.holder || "", agent: t.agent || "", asks: t.asks || 0 })) });
 /** threads.get's answer as a card: the record, with how many events and asks came with it. @param {any} g */
 export const threadCard = g => {
   const t = g.thread || {};
   const last = (g.events || []).at(-1);
-  return { kind: "card", title: t.name || tail(t.cwd, 40), state: stateOf(t.status), fields: [
-    { label: "Id", value: t.id }, { label: "Status", value: t.status || "" }, { label: "Model", value: t.model || "" },
+  return { kind: "card", title: t.name || tail(t.cwd, 40), state: stateOf(t), fields: [
+    { label: "Id", value: t.id }, { label: "Status", value: t.status ? statusWord(t) : "" }, { label: "Model", value: t.model || "" },
     { label: "Keyboard", value: t.holder || "free" }, { label: "Agent", value: t.agent || "" }, { label: "Folder", value: t.cwd || "" },
     { label: "Events", value: `${(g.events || []).length}${last ? ", the last " + last.id : ""}` }, { label: "Open asks", value: String((g.asks || []).length) }] };
 };
@@ -330,15 +343,16 @@ export const restored = restore => (restore === "code" ? "the files (the convers
 
 /**
  * Where a composer line goes, as Claude Code's shortcuts do: "!ls" runs in the thread's folder
- * (threads.shell), "# prefer tabs" is a line for CLAUDE.md (threads.remember), anything else is a
- * message. raw sends it as typed.
+ * (threads.shell), "/remember prefer tabs" is a line for CLAUDE.md (threads.remember), anything else is a
+ * message (a leading # is a tag now, never a memory). raw sends it as typed.
  * @param {string} text @param {boolean} [raw]
  * @returns {{ tool: "threads.send"|"threads.shell"|"threads.remember", body: string }}
  */
 export function routeLine(text, raw = false) {
   const t = String(text ?? "");
   if (!raw && t.startsWith("!")) return { tool: "threads.shell", body: t.slice(1).trim() };
-  if (!raw && t.startsWith("#")) return { tool: "threads.remember", body: t.slice(1).trim() };
+  const m = !raw && /^\/remember(\s+([\s\S]*))?$/.exec(t);
+  if (m) return { tool: "threads.remember", body: (m[2] || "").trim() };
   return { tool: "threads.send", body: t };
 }
 
@@ -588,7 +602,7 @@ async function watch(id) {
   process.off("SIGINT", early);
   if (!g) return 1;
   const t = g.thread;
-  out(`  ${bold(t.name || tail(t.cwd, 40))}  ${dim([id8(t.id), t.status, t.holder ? "keyboard: " + t.holder : "", t.agent || ""].filter(Boolean).join(" · "))}`);
+  out(`  ${bold(t.name || tail(t.cwd, 40))}  ${dim([id8(t.id), statusWord(t), t.holder ? "keyboard: " + t.holder : "", t.agent || ""].filter(Boolean).join(" · "))}`);
   const streamed = new Set();
   let midline = false;
   const show = e => {
@@ -647,7 +661,8 @@ async function watch(id) {
 
 function row(t) {
   const label = t.name ? cut(t.name, 36) : tail(t.cwd, 36);
-  const status = t.status === "waiting" ? beacon(t.status.padEnd(8)) : t.status === "working" ? signal(t.status.padEnd(8)) : dim(String(t.status).padEnd(8));
+  const word = statusWord(t);
+  const status = t.status === "waiting" || word === "failed" ? beacon(word.padEnd(8)) : t.status === "working" ? signal(word.padEnd(8)) : dim(word.padEnd(8));
   const asks = t.asks ? beacon(`  ${t.asks} ask${t.asks === 1 ? "" : "s"}`) : "";
   out(`  ${dim(id8(t.id))}  ${status} ${dim(String(t.holder || "-").padEnd(14))} ${label.padEnd(36)} ${dim(t.agent || "")}${asks}`);
 }
@@ -679,13 +694,13 @@ const run = {
     if (error) return usage(error, "vyre help threads");
     if (how === "both") return usage("--queue and --steer disagree: pick one", "vyre help threads");
     if (!ref || (!words.length && !files.length)) return usage("vyre threads send <thread> [--queue|--steer] [--image F] [--raw] <text>", "vyre threads list shows the threads");
-    // The composer's shortcuts: a leading ! runs the line in the thread's folder, a leading # adds
+    // The composer's shortcuts: a leading ! runs the line in the thread's folder, /remember adds
     // it to CLAUDE.md. --raw sends either as a message.
     const route = routeLine(words.join(" "), raw);
     if (route.tool !== "threads.send") {
-      const mark = route.tool === "threads.shell" ? "!" : "#";
+      const mark = route.tool === "threads.shell" ? "!" : "/remember";
       if (files.length || how) return usage(`a ${mark} line takes no --image, --queue or --steer`, `--raw sends it as a message`);
-      if (!route.body) return usage(`nothing after the ${mark}`, route.tool === "threads.shell" ? "vyre threads send <thread> \"!ls\"" : "vyre threads send <thread> \"# prefer tabs\"");
+      if (!route.body) return usage(`nothing after the ${mark}`, route.tool === "threads.shell" ? "vyre threads send <thread> \"!ls\"" : "vyre threads send <thread> \"/remember prefer tabs\"");
     }
     /** @type {{ media_type: string, data: string }[] | null} */
     let images = null;
@@ -753,7 +768,7 @@ const run = {
     // --json: { thread, asks: [ask], events: [{ id, type, at, payload }] }
     if (json()) { emit(g, threadCard(g)); return 0; }
     const t = g.thread;
-    out(`  ${bold(t.name || tail(t.cwd, 40))}  ${dim([id8(t.id), t.status, t.model, t.holder ? "keyboard: " + t.holder : "", t.agent || ""].filter(Boolean).join(" · "))}`);
+    out(`  ${bold(t.name || tail(t.cwd, 40))}  ${dim([id8(t.id), statusWord(t), t.model, t.holder ? "keyboard: " + t.holder : "", t.agent || ""].filter(Boolean).join(" · "))}`);
     const streamed = new Set();
     let midline = false;
     for (const e of g.events || []) {
@@ -940,7 +955,7 @@ const run = {
     return shellLine(f.id, words.join(" "));
   },
 
-  /** Claude Code's # mode: a line for CLAUDE.md. */
+  /** /remember: a line for CLAUDE.md (Claude Code's # mode; # is a tag now). */
   async remember(args) {
     const { flags, pos } = parse(args, FLAGS.remember);
     const [ref, ...words] = pos;
@@ -1315,7 +1330,7 @@ export function sendArgs(args) {
  */
 const VERBS = [
   { verb: "start", summary: "a new session vyred owns", usage: `[<prompt...>] [--cwd d] [--project p] [--name n] [--model m] [--purpose ${PURPOSES.join("|")}] [--provider p]` },
-  { verb: "send", summary: "type into a thread: mid-turn it joins the turn; ! runs it, # remembers it", usage: "<thread> <text...> [--queue] [--steer] [--image file] [--raw]" },
+  { verb: "send", summary: "type into a thread: mid-turn it joins the turn; ! runs it, /remember saves it", usage: "<thread> <text...> [--queue] [--steer] [--image file] [--raw]" },
   { verb: "list", aliases: ["ls"], summary: "the headless threads of the last day", usage: "[--all] [--agent a]", read: true },
   { verb: "get", aliases: ["show"], summary: "one read: the record, open asks and events", usage: "<thread> [--since id] [--limit n]", read: true },
   { verb: "watch", summary: "follow a thread live; reconnects on its own", usage: "<thread>", read: true, live: true },
@@ -1331,7 +1346,7 @@ const VERBS = [
   { verb: "rewind", summary: "go back to a message (double Esc); no message: which ones", usage: `<thread> [message] [--restore ${RESTORE.join("|")}]` },
   { verb: "fork", summary: "a new session from this one's history", usage: "<thread> [<prompt...>]" },
   { verb: "shell", summary: "run a line in the thread's folder (! mode)", usage: "<thread> <command...>" },
-  { verb: "remember", summary: "a line for CLAUDE.md (# mode)", usage: `<thread> <text...> [--scope ${SCOPES.join("|")}]` },
+  { verb: "remember", summary: "a line for CLAUDE.md (/remember)", usage: `<thread> <text...> [--scope ${SCOPES.join("|")}]` },
   { verb: "tasks", summary: "its background tasks: shells and subagents", usage: "<thread>", read: true },
   { verb: "kill-task", summary: "stop a background task", usage: "<thread> <task>" },
   { verb: "commands", summary: "the slash commands the session offers", usage: "<thread>", read: true },
@@ -1356,7 +1371,7 @@ export default {
     "  vyre threads send <thread> --queue <text>         hold it until the turn ends (a terminal session always does)",
     "  vyre threads send <thread> --steer <text>         join the running turn at its next step",
     `  vyre threads send <thread> --image F [text]       with a picture (.png .jpg .gif .webp, ${IMAGES.mb} MB, ${IMAGES.count} at most)`,
-    "  vyre threads send <thread> \"!ls\"                  a leading ! runs it (shell), # remembers it; --raw sends as typed",
+    "  vyre threads send <thread> \"!ls\"                  a leading ! runs it (shell), /remember saves it; --raw sends as typed",
     "  vyre threads send <thread> /compact               a slash command; vyre threads commands <thread> lists them",
     "  vyre threads list [--all] [--agent A]             the headless threads of the last day (ls)",
     "  vyre threads queue <thread>                       what is queued and not yet handed over",
@@ -1375,7 +1390,7 @@ export default {
     "  vyre threads rewind <thread> <n|uuid> [--restore conversation|code|both]",
     "                                                    back to a message (double Esc); its words come back",
     "  vyre threads shell <thread> <command...>          run it in the thread's folder (! mode); Claude sees it next",
-    "  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (# mode)",
+    "  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (/remember)",
     "  vyre threads tasks <thread>                       its background tasks (shells, subagents)",
     "  vyre threads kill-task <thread> <task>            stop one",
     "  vyre threads commands <thread>                    the slash commands the running session offers",

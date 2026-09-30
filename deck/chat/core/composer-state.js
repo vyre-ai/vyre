@@ -3,8 +3,9 @@
 // Claude Code in the terminal, defined once here so both surfaces read one map.
 //
 // - What the draft is, by its first character: "/" a command, "!" a shell command run in the
-//   session's folder, "#" something to remember (CLAUDE.md), anything else a message. An "@"
-//   mention is found anywhere at the caret.
+//   session's folder, "#" something to remember (CLAUDE.md), "@role " a project teammate's own
+//   turn (teammates.md section 2 - team_ask, not this session's), anything else a message. An "@"
+//   mention is also found anywhere at the caret (a different feature: inserting a reference).
 // - Enter: idle sends; while a turn runs a message steers it (joins at its next step) unless
 //   Alt+Enter, or the "Queue for after this turn" toggle, queues it for after. A command typed
 //   while a turn runs is queued (a command is not something to steer with). Shift+Enter is a new
@@ -17,7 +18,7 @@
 //   the queue, the newest of those to edit.
 // - Pasted images: a count cap and a size cap, png, jpeg, gif and webp only.
 
-/** @typedef {"message"|"command"|"shell"|"memory"} DraftKind */
+/** @typedef {"message"|"command"|"shell"|"memory"|"teammate"} DraftKind */
 /** @typedef {"steer"|"queue"} SendMode */
 
 // ---- models --------------------------------------------------------------------------------
@@ -34,8 +35,9 @@ export const shortModel = m => (m ? (/(opus|sonnet|haiku|fable)/i.exec(m)?.[1]?.
  * @returns {{ id: string, label: string, description?: string, now: boolean }[]}
  */
 export function modelChoices(o = {}) {
-  /** @type {Map<string, { id: string, label: string, description?: string, now: boolean }>} */
+  /** @type {any[]} */
   const aliases = Array.isArray(o.aliases) ? o.aliases.filter((/** @type {any} */ m) => m && typeof m.id === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(m.id)) : [];
+  /** @type {Map<string, { id: string, label: string, description?: string, now: boolean }>} */
   const rows = new Map(aliases.map((/** @type {any} */ m) => [m.id, { id: m.id, label: String(m.label || m.id), ...(m.description ? { description: String(m.description) } : {}), now: false }]));
   /** @type {Map<string, string[]>} */
   const uses = new Map();
@@ -84,24 +86,40 @@ export function nextMode(current, offered) {
 
 // ---- the draft -----------------------------------------------------------------------------
 
+/**
+ * An "@role" at the very start of the draft, lowercased - the SLUG charset agentName already uses
+ * (core/computers', core/sight's AGENT regex: a-z first, then a-z0-9-, 41 chars). Followed by
+ * whitespace and the rest of the message, or nothing yet (still typing the name) - existence in
+ * the project is a send-time question (team.ask's own not_found), not this function's.
+ * @param {string} text @returns {string|null}
+ */
+export function teammateRole(text) {
+  const m = /^@([A-Za-z][A-Za-z0-9-]{0,40})(?=\s|$)/.exec(String(text ?? ""));
+  return m ? m[1].toLowerCase() : null;
+}
+
 /** @param {string} text @returns {DraftKind} */
 export function draftKind(text) {
-  const c = String(text ?? "")[0];
+  const t = String(text ?? "");
+  const c = t[0];
   if (c === "/") return "command";
   if (c === "!") return "shell";
   if (c === "#") return "memory";
+  if (c === "@" && teammateRole(t)) return "teammate";
   return "message";
 }
 
-/** The draft without its mode character (shell and memory), trimmed. @param {string} text */
+/** The draft without its mode character or, for a teammate, the "@role " itself, trimmed. @param {string} text */
 export function draftBody(text) {
   const t = String(text ?? "");
   const k = draftKind(t);
-  return (k === "shell" || k === "memory" ? t.slice(1) : t).trim();
+  if (k === "shell" || k === "memory") return t.slice(1).trim();
+  if (k === "teammate") return t.replace(/^@[A-Za-z][A-Za-z0-9-]{0,40}\s*/, "").trim();
+  return t.trim();
 }
 
 /** What the composer calls each mode, for its label ("Shell", "Memory"); null for a message. @param {DraftKind} kind */
-export const kindLabel = kind => ({ command: "Command", shell: "Shell", memory: "Memory", message: null })[kind] ?? null;
+export const kindLabel = kind => ({ command: "Command", shell: "Shell", memory: "Memory", teammate: "Teammate", message: null })[kind] ?? null;
 
 /** @typedef {{ start: number, end: number, query: string }} MentionRange */
 
@@ -135,6 +153,47 @@ export function applyMention(text, range, path) {
   const word = "@" + (/\s/.test(path) ? `"${path}"` : path);
   const gap = after.startsWith(" ") ? "" : " ";
   return { text: before + word + gap + after, caret: before.length + word.length + 1 };
+}
+
+/** The name written after a "#": plain when it is one word of letters, digits, dots, dashes and underscores, else quoted. @param {string} name */
+export const vaultToken = name => "#" + (/^[A-Za-z0-9][\w.-]*$/.test(name) ? name : `"${String(name).replace(/"/g, "")}"`);
+
+/**
+ * The "#" vault mention at the caret: a "#" after a space or an opening bracket or quote (never the very first
+ * character, which is the save-a-memory mode), then no whitespace up to the caret. A name with spaces is picked, not typed.
+ * @param {string} text @param {number} caret @returns {MentionRange|null}
+ */
+export function findVaultMention(text, caret) {
+  const t = String(text ?? "");
+  const end = Math.max(0, Math.min(caret, t.length));
+  for (let i = end - 1; i >= 1; i--) {
+    const ch = t[i];
+    if (/\s/.test(ch)) return null;
+    if (ch === "#") return /[\s("'`[{]/.test(t[i - 1]) ? { start: i, end, query: t.slice(i + 1, end).replace(/^"/, "") } : null;
+  }
+  return null;
+}
+
+/** The text with a vault token in place of the mention, and the caret after it and one space. @param {string} text @param {MentionRange} range @param {string} name */
+export function applyVault(text, range, name) {
+  const before = text.slice(0, range.start), after = text.slice(range.end);
+  const word = vaultToken(name);
+  const gap = after.startsWith(" ") ? "" : " ";
+  return { text: before + word + gap + after, caret: before.length + word.length + 1 };
+}
+
+/** Every vault token in a draft that is one of `names` (a "#" at the very start is a memory, never a token). @param {string} text @param {Set<string>} names @returns {{ start: number, end: number, name: string }[]} */
+export function vaultTokens(text, names) {
+  const out = [], t = String(text ?? ""), re = /(?<=[\s("'`[{])#(?:"([^"\n]+)"|([A-Za-z0-9][\w.-]*))/g;
+  for (let m; (m = re.exec(t));) { const name = m[1] ?? m[2]; if (m.index >= 1 && names.has(name)) out.push({ start: m.index, end: m.index + m[0].length, name }); }
+  return out;
+}
+
+/** Vault names for the picker: names starting with the query first, then names containing it, each by name. @param {{ name: string }[]} items @param {string} query */
+export function rankVault(items, query) {
+  const q = String(query ?? "").toLowerCase();
+  const tier = (/** @type {string} */ n) => { const l = n.toLowerCase(); return !q || l.startsWith(q) ? 0 : l.includes(q) ? 1 : 2; };
+  return items.filter(i => tier(i.name) < 2).sort((a, b) => tier(a.name) - tier(b.name) || a.name.localeCompare(b.name));
 }
 
 /**
@@ -284,7 +343,7 @@ export function enterAction(o) {
   const text = String(o.text ?? "");
   if (!text.trim() && !(o.images && o.images > 0)) return { do: "none" };
   const kind = draftKind(text);
-  if (kind === "shell" || kind === "memory") return draftBody(text) ? { do: "send", kind, mode: null } : { do: "none" };
+  if (kind === "shell" || kind === "memory" || kind === "teammate") return draftBody(text) ? { do: "send", kind, mode: null } : { do: "none" };
   if (!o.running) return { do: "send", kind, mode: null };
   if (kind === "command") return o.images && o.images > 0 ? { do: "refuse", why: "images-queue" } : { do: "send", kind, mode: "queue" };
   const queue = !!(o.alt || o.queueToggle || o.hold);
@@ -319,7 +378,7 @@ export function escape(st, o) {
   st.last = o.now;
   if (o.running) return "interrupt";
   const kind = draftKind(text);
-  if (kind === "shell" || kind === "memory") return "leave-mode";
+  if (kind === "shell" || kind === "memory" || kind === "teammate") return "leave-mode";
   if (o.recalled) return "clear";
   return "none";
 }
@@ -343,6 +402,7 @@ export const KEYMAP = Object.freeze([
   { id: "thinking", keys: ["Alt+T"], label: "⌥T", does: "Thinking on or off", tap: "The thinking chip" },
   { id: "thinking-view", keys: ["Ctrl+O"], label: "⌃O", does: "Show or hide the thinking" },
   { id: "tasks", keys: ["Ctrl+B"], label: "⌃B", does: "Background tasks", tap: "The tasks pill" },
+  { id: "voice", keys: ["Ctrl+M"], label: "⌃M", does: "Tap to talk, hold to push-to-talk", tap: "The mic button" },
   { id: "paste", keys: ["Mod+V"], label: "⌘V", does: "Paste an image" },
   { id: "command", keys: [], prefix: "/", label: "/", does: "Commands and skills" },
   { id: "mention", keys: [], prefix: "@", label: "@", does: "Files in the project" },

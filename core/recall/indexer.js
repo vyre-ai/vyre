@@ -22,6 +22,13 @@ const breathe = () => new Promise(r => setImmediate(r));
  * @typedef {{ sessions: number, added: number, appended: number, reindexed: number, skipped: number, failed: number, turns: number, ms: number }} Stats
  */
 
+/**
+ * A Tailscale sign-in link is a bearer invitation onto a machine (network.tailscale.login hands it
+ * to the person's own session). It must not sit in the index, where a later memory_ask could quote it.
+ * @param {string} text
+ */
+export const redactLinks = text => String(text).replace(/https?:\/\/login\.tailscale\.com\/\S*/gi, "[tailscale sign-in link removed]");
+
 export class Indexer {
   /**
    * @param {DB} db
@@ -118,6 +125,7 @@ export class Indexer {
     }
     const t = transcripts.read(entry.file, { id: entry.id, parent: entry.parent });
     if (!t) { s.failed++; return; }
+    for (const turn of t.turns) turn.text = redactLinks(turn.text);
 
     const have = prev ? Number(prev.turns) : 0;
     let from = 0, rewritten = false;
@@ -182,6 +190,22 @@ export class Indexer {
    * `pace` is awaited after each turn with how long its embedding took (pace.js).
    * @param {{ limit?: number, stopped?: () => boolean, onProgress?: (done: number, total: number) => void, pace?: (spentMs: number) => Promise<void> }} [opts]
    */
+  /**
+   * Forget sessions outright: their turns, vectors and rows (a revoked device's synced sessions).
+   * @param {string[]} ids @returns {number} how many sessions were there
+   */
+  forget(ids) {
+    const del = this.db.prepare("DELETE FROM recall_sessions WHERE id = ?");
+    let n = 0;
+    this.db.exec("BEGIN");
+    try {
+      for (const id of ids) { this.q.delVectors.run(id); this.q.delTurns.run(id); n += Number(del.run(id).changes); }
+      if (n) this.q.generation.run();
+      this.db.exec("COMMIT");
+    } catch (e) { this.db.exec("ROLLBACK"); throw e; }
+    return n;
+  }
+
   async vectorize(embedder, { limit = 0, stopped = () => false, onProgress, pace } = {}) {
     const t0 = Date.now();
     let rids = this.pending();

@@ -56,7 +56,7 @@ is ever read.**
 |---|---|---|---|
 | Local API | `~/.vyre/vyred.sock`, mode 0600 | the Unix user vyred runs as: the CLI, the Harness hooks, the Capsule | `x-vyre-caller`, a label only (`cli`, `harness`, `hook`, `mcp`, `capsule`); anything else, `module:*` and `tailnet:*` included, becomes `local` |
 | Tailnet | the box's Tailscale addresses, port 443, TLS | people on their own devices | `tailnet:<login>`, from whois of the TCP peer |
-| Onboarding | `127.0.0.1:7300` (next free port if taken), plain HTTP | the person installing, before an owner exists | `onboard`, from a one-time token exchanged for a session header |
+| Onboarding | `127.0.0.1:7300` (next free port if taken), plain HTTP; `7301` on a Mac chosen as Server (ADR 0039), which never attempts 7300 at all | the person installing, before an owner exists | `onboard`, from a one-time token exchanged for a session header |
 
 - **The tailnet listener binds only Tailscale addresses.** On Linux under systemd it is a socket
   unit, `ListenStream=443` with `BindToDevice=tailscale0`, handed to vyred as file descriptor 3.

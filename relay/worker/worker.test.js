@@ -18,7 +18,7 @@ const { newRouteKey, routeId, authMessage, signRoute, CLOSE } = wire;
 
 /** @param {any} t @param {{ hibernateEveryEvent?: boolean, limits?: object, env?: object }} [o] */
 function world(t, o = {}) {
-  const rt = createRuntime({ worker, Class: W.RouteRelay, hibernateEveryEvent: o.hibernateEveryEvent,
+  const rt = createRuntime({ worker, Class: W.RouteRelay, classes: { TICKETS: W.PairTicket }, hibernateEveryEvent: o.hibernateEveryEvent,
     env: { ...(o.limits ? { RELAY_LIMITS: JSON.stringify(o.limits) } : {}), ...(o.env || {}) } });
   t.after(async () => { await rt.settle(); assert.deepEqual(rt.errors.map(String), [], "no errors inside the Worker"); });
   return rt;
@@ -408,3 +408,224 @@ for (const hibernateEveryEvent of [false, true]) {
     assert.equal(link.open, 0, "the relay's close message ends the box's data socket");
   });
 }
+
+// Wink pairing tickets (ADR 0045): the box's control socket registers a locator/record/mac with
+// its own PairTicket object; /v1/pair resolves it, single-use, same contract as
+// relay/node/server.test.js's own ticket tests.
+for (const hibernateEveryEvent of [false, true]) {
+  test(`worker: a box registers a pairing ticket, /v1/pair resolves it once${hibernateEveryEvent ? " (hibernating after every event)" : ""}`, async t => {
+    const rt = world(t, { hibernateEveryEvent });
+    const b = await box(rt);
+    await b.s.json(); // "ready"
+    const exp = Date.now() + 5 * 60_000;
+    const ticket = Buffer.alloc(8, 7);
+    const sealed = wire.ticketSeal(ticket, JSON.stringify({ v: 1, name: "alex", relay: BASE, route: b.route, box: "x".repeat(43), exp }));
+    b.s.ws.send(JSON.stringify({ t: "ticket", loc: "a".repeat(43), record: sealed, mac: "b".repeat(43), exp }));
+    await rt.settle();
+    const stored = JSON.stringify([...rt.object("a".repeat(43), "TICKETS").ctx.storage.map.values()]);
+    assert.doesNotMatch(stored, /alex|"route"/, "the PairTicket object holds ciphertext only");
+
+    const res = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "a".repeat(43) }) }), rt.env);
+    assert.equal(res.status, 200);
+    const data = /** @type {any} */ (await res.json());
+    assert.equal(data.mac, "b".repeat(43));
+    assert.equal(data.record, sealed, "handed back byte for byte");
+    assert.equal(JSON.parse(wire.ticketOpen(ticket, data.record)).route, b.route);
+
+    // Single-use: the same locator resolves nothing a second time.
+    const again = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "a".repeat(43) }) }), rt.env);
+    assert.equal(again.status, 404);
+  });
+}
+
+test("worker: /v1/pair 404s an unknown or expired locator, and never leaks the pairing secret", async t => {
+  const rt = world(t);
+  const unknown = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "c".repeat(43) }) }), rt.env);
+  assert.equal(unknown.status, 404);
+
+  const b = await box(rt);
+  await b.s.json();
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "d".repeat(43), record: "s".repeat(64), mac: "e".repeat(43), exp: Date.now() - 1000 }));
+  await rt.settle();
+  const expired = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "d".repeat(43) }) }), rt.env);
+  assert.equal(expired.status, 404, "a registration with an already-past exp is refused, not stored past its own TTL");
+});
+
+test("worker: a plaintext ticket record is refused at registration, so the relay never holds one", async t => {
+  const rt = world(t);
+  const b = await box(rt);
+  await b.s.json();
+  const exp = Date.now() + 60_000;
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "j".repeat(43), record: JSON.stringify({ v: 1, name: "alex" }), mac: "k".repeat(43), exp }));
+  await rt.settle();
+  const res = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "j".repeat(43) }) }), rt.env);
+  assert.equal(res.status, 404);
+  // And the PairTicket object refuses one directly too, not only through the control socket.
+  const direct = await rt.env.TICKETS.get(rt.env.TICKETS.idFromName("m".repeat(43))).fetch("https://ticket/register", { method: "PUT", body: JSON.stringify({ record: "{\"name\":\"alex\"}", mac: "k".repeat(43), exp }) });
+  assert.equal(direct.status, 400);
+});
+
+test("worker: /v1/pair alone answers any origin, without credentials: the preflight, and every POST answer", async t => {
+  const rt = world(t);
+  const H = BASE.replace(/^ws/, "http");
+  const pre = await worker.fetch(new Request(`${H}/v1/pair`, { method: "OPTIONS", headers: { origin: "https://phone.vyre.run", "access-control-request-method": "POST", "access-control-request-headers": "content-type" } }), rt.env);
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get("access-control-allow-origin"), "*");
+  assert.equal(pre.headers.get("access-control-allow-methods"), "POST");
+  assert.equal(pre.headers.get("access-control-allow-headers"), "content-type");
+  assert.equal(pre.headers.get("access-control-allow-credentials"), null);
+  const miss = await worker.fetch(new Request(`${H}/v1/pair`, { method: "POST", headers: { origin: "https://alex.vyre.run", "content-type": "application/json" }, body: JSON.stringify({ loc: "y".repeat(43) }) }), rt.env);
+  assert.equal(miss.status, 404);
+  assert.equal(miss.headers.get("access-control-allow-origin"), "*");
+  const bad = await worker.fetch(new Request(`${H}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: "nope" }), rt.env);
+  assert.equal(bad.status, 400);
+  assert.equal(bad.headers.get("access-control-allow-origin"), "*");
+  for (const p of ["/health", "/v1/box", "/v1/device", "/nothing"]) {
+    const r = await worker.fetch(new Request(`${H}${p}`, { headers: { origin: "https://phone.vyre.run" } }), rt.env);
+    assert.equal(r.headers.get("access-control-allow-origin"), null, p);
+  }
+  const other = await worker.fetch(new Request(`${H}/v1/device`, { method: "OPTIONS", headers: { origin: "https://phone.vyre.run" } }), rt.env);
+  assert.equal(other.headers.get("access-control-allow-origin"), null);
+});
+
+test("worker: /v1/pair refuses a bad locator and a malformed body before ever asking a PairTicket object", async t => {
+  const rt = world(t);
+  const bad = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "short" }) }), rt.env);
+  assert.equal(bad.status, 400);
+  const garbage = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: "not json" }), rt.env);
+  assert.equal(garbage.status, 400);
+});
+
+test("worker: a control socket cannot register a ticket beyond the per-route cap", async t => {
+  const rt = world(t);
+  const b = await box(rt);
+  await b.s.json();
+  // A fixed-width, zero-padded index with a non-digit filler, so "f006" and "f060" can never
+  // collide the way `f${i}`.padEnd(...,"0") would (i=6 and i=60 padded with "0" are the same
+  // string).
+  const loc = i => `f${String(i).padStart(3, "0")}`.padEnd(43, "z");
+  for (let i = 0; i < 61; i++) b.s.ws.send(JSON.stringify({ t: "ticket", loc: loc(i), record: "s".repeat(64), mac: "g".repeat(43), exp: Date.now() + 60_000 }));
+  await rt.settle();
+  // The 61st registration is over the cap; its locator resolves nothing.
+  const over = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: loc(60) }) }), rt.env);
+  assert.equal(over.status, 404);
+  const under = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: loc(0) }) }), rt.env);
+  assert.equal(under.status, 200, "under the cap still registers");
+});
+
+test("worker: an unresolved ticket sets an alarm at its own exp, which cleans it up either way", async t => {
+  const rt = world(t);
+  const b = await box(rt);
+  await b.s.json();
+  const exp = Date.now() + 60_000;
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "h".repeat(43), record: "s".repeat(64), mac: "i".repeat(43), exp }));
+  await rt.settle();
+  const obj = rt.object("h".repeat(43), "TICKETS");
+  assert.equal(await obj.ctx.storage.getAlarm(), exp);
+  await obj.run(inst => inst.alarm());
+  assert.equal(obj.ctx.storage.map.size, 0, "the alarm cleans up an unresolved ticket");
+});
+
+// First writer wins, and the setup mailbox (tailnet plan 3.6, 3.6b), on the Worker: the same
+// contract as relay/node/server.test.js, with the object thrown away after every event too.
+const H = BASE.replace(/^ws/, "http");
+const resolveLoc = (rt, loc) => worker.fetch(new Request(`${H}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) }), rt.env);
+for (const hibernateEveryEvent of [false, true]) {
+  const mode = hibernateEveryEvent ? " (hibernating after every event)" : "";
+  test(`worker: a setup offer is first-writer-wins: 409 for another record, 200 for the identical one, contested for resolve${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent });
+    const a = await box(rt), b = await box(rt);
+    await a.s.json(); await b.s.json();
+    const secret = Buffer.alloc(16, 5);
+    const exp = Date.now() + 3_600_000;
+    const rec1 = wire.ticketSeal(secret, JSON.stringify({ v: 1, name: "first" })), rec2 = wire.ticketSeal(secret, JSON.stringify({ v: 1, name: "second" }));
+    const loc = "l".repeat(43), mac = "m".repeat(43);
+    a.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec1, mac, exp }));
+    assert.deepEqual(await a.s.json(), { t: "registered", loc, status: 200 });
+    a.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec1, mac, exp }));
+    assert.deepEqual(await a.s.json(), { t: "registered", loc, status: 200 }, "a reconnect re-sending is not a clash");
+    const first = await resolveLoc(rt, loc);
+    assert.equal(first.status, 200);
+    assert.equal(/** @type {any} */ (await first.json()).record, rec1);
+    assert.equal((await resolveLoc(rt, loc)).status, 200, "a setup offer is not single-use");
+    assert.equal(rt.object(loc, "TICKETS").ctx.storage.alarmAt !== null && rt.object(loc, "TICKETS").ctx.storage.alarmAt > Date.now() + 3_000_000, true, "its alarm sweeps at its own hour, not five minutes");
+    b.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec2, mac, exp }));
+    assert.deepEqual(await b.s.json(), { t: "registered", loc, status: 409 });
+    const after = await resolveLoc(rt, loc);
+    assert.equal(after.status, 409);
+    assert.deepEqual(await after.json(), { error: "contested" });
+  });
+
+  test(`worker: Wink tickets are first-writer-wins too, and stay single-use${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent });
+    const b = await box(rt);
+    await b.s.json();
+    const exp = Date.now() + 60_000;
+    const one = wire.ticketSeal(Buffer.alloc(8, 1), "{}"), two = wire.ticketSeal(Buffer.alloc(8, 2), "{}");
+    b.s.ws.send(JSON.stringify({ t: "ticket", loc: "t".repeat(43), record: one, mac: "m".repeat(43), exp }));
+    assert.equal((await b.s.json()).status, 200);
+    b.s.ws.send(JSON.stringify({ t: "ticket", loc: "t".repeat(43), record: two, mac: "m".repeat(43), exp }));
+    assert.equal((await b.s.json()).status, 409);
+    assert.equal((await resolveLoc(rt, "t".repeat(43))).status, 409);
+    b.s.ws.send(JSON.stringify({ t: "ticket", loc: "u".repeat(43), record: one, mac: "m".repeat(43), exp }));
+    assert.equal((await b.s.json()).status, 200);
+    assert.equal((await resolveLoc(rt, "u".repeat(43))).status, 200);
+    assert.equal((await resolveLoc(rt, "u".repeat(43))).status, 404);
+  });
+
+  test(`worker: the setup mailbox takes lines, only the page's key reads them, and a long poll waits${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent, env: { SETUP_POLL_MS: "20" } });
+    const { createSetupKey, mailboxReader } = await import("../client/setup.js");
+    const key = await createSetupKey();
+    const secret = randomBytes(16);
+    const loc = wire.setupDerive("loc", secret).toString("base64url");
+    const fp = wire.setupFingerprint(Buffer.from(key.spki)).toString("base64url");
+    const wtok = wire.setupDerive("mbxw", secret).toString("base64url");
+    const post = (line, extra = {}) => worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" }, body: JSON.stringify({ loc, fp, wtok, ...(line === undefined ? {} : { line }), ...extra }) }), rt.env);
+    const fetchThrough = (url, init) => worker.fetch(new Request(url, init), rt.env);
+    const reader = await mailboxReader({ relay: BASE, secret, key, fetch: fetchThrough });
+    assert.deepEqual(await reader.next(0), [], "nothing yet: no mailbox");
+    assert.equal((await post(wire.mbxSeal(secret, 0, "Found your server"))).status, 200);
+    const waiting = reader.next(5);
+    assert.deepEqual(await waiting, ["Found your server"]);
+    const late = reader.next(5);
+    setTimeout(() => post(wire.mbxSeal(secret, 1, "Installing")), 60);
+    assert.deepEqual(await late, ["Installing"], "the long poll returned when the line landed");
+    assert.deepEqual(await reader.next(0), []);
+    const stranger = await createSetupKey();
+    await assert.rejects((await mailboxReader({ relay: BASE, secret, key: stranger, fetch: fetchThrough })).next(0), { code: "unauthorized" });
+    await assert.rejects((await mailboxReader({ relay: BASE, secret, key, fetch: fetchThrough, now: () => Date.now() - 600_000 })).next(0), { code: "unauthorized" }, "a stale signature");
+    // Contested: a second writer's token
+    assert.equal((await post(wire.mbxSeal(secret, 0, "theirs"), { wtok: wire.setupDerive("mbxw", randomBytes(16)).toString("base64url") })).status, 409);
+    assert.equal((await post(wire.mbxSeal(secret, 2, "mine"))).status, 409, "contested for the first writer too");
+    await assert.rejects(reader.next(0), { code: "contested" });
+    assert.equal((await resolveLoc(rt, loc)).status, 409, "and resolve says so");
+  });
+}
+
+test("worker: the setup mailbox holds 64 KB, limits per address and globally, and answers any origin", async t => {
+  let allow = true, globalAllow = true;
+  const limiter = fn => ({ limit: async () => ({ success: fn() }) });
+  const rt = world(t, { env: { SETUP_LIMITER: limiter(() => allow), SETUP_LIMITER_GLOBAL: limiter(() => globalAllow), SETUP_POLL_MS: "20" } });
+  const loc = "z".repeat(43);
+  const post = (line, extra = {}) => worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "POST", headers: { origin: "https://vyre.run" }, body: JSON.stringify({ loc, fp: "f".repeat(22), wtok: "w".repeat(43), ...(line ? { line } : {}), ...extra }) }), rt.env);
+  const first = await post();
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("access-control-allow-origin"), "*");
+  const line = "A".repeat(1400);
+  let last = 200, n = 0;
+  while (last === 200 && n < 80) { last = (await post(line)).status; n++; }
+  assert.equal(last, 413);
+  assert.ok(n <= 47 && n >= 45, `64 KB of 1400-character lines, got ${n}`);
+  assert.equal((await post("short")).status, 400);
+  assert.equal((await worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "POST", body: "x".repeat(9000) }), rt.env)).status, 413);
+  allow = false;
+  assert.equal((await post()).status, 429, "per-address limiter");
+  allow = true; globalAllow = false;
+  assert.equal((await post()).status, 429, "global limiter");
+  const pre = await worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "OPTIONS", headers: { origin: "https://vyre.run" } }), rt.env);
+  assert.equal(pre.status, 204);
+  assert.match(String(pre.headers.get("access-control-allow-headers")), /x-vyre-setup-key/);
+  const badLoc = await worker.fetch(new Request(`${H}/v1/setup/mbx?loc=short`), rt.env);
+  assert.equal(badLoc.status, 400);
+});

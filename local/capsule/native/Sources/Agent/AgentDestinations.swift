@@ -51,7 +51,8 @@ extension CapsuleModel {
             routes.load(t.id, vyred, projectName: { [weak self] s in self?.catalog.projectName(s) ?? s }) { [weak self] in self?.search() }
         }
         let agentThreads = target.flatMap { $0.kind == .agent ? routes.threads($0.id) : nil } ?? []
-        var r = Route.destinations(target, words, catalog, agentThreads: agentThreads, quick: vyred.has("threads.start"))
+        var r = Route.destinations(target, words, catalog, agentThreads: agentThreads, quick: vyred.has("threads.start"),
+                                     models: (models.quick, models.deeper))
         // With no chip, a question answers itself and ⏎ / ⌘⏎ ask (AutoAsk.swift): no Quick or
         // Deeper answer rows.
         if target == nil { r.options.removeAll { $0.kind == .quick } }
@@ -86,7 +87,7 @@ extension CapsuleModel {
     /// Send the words to exactly this destination.
     func go(_ d: VyreDestination, _ words: String) async -> ActionOutcome {
         switch d.kind {
-        case .quick: return await ask(words, model: d.model ?? "haiku")
+        case .quick: return await ask(words, model: d.model ?? models.quick)
         case .recall: return .said("Nothing to send to: there is no assistant on this vyred yet. Memory has answered what it can.")
         case .assistant, .agent:
             let a = d.agent ?? ""
@@ -117,7 +118,7 @@ extension CapsuleModel {
     // MARK: the answer's own actions
 
     /// Deeper: the same question again, to the deeper model. Only after a fast answer finished.
-    var canGoDeeper: Bool { reply.map { $0.finished && $0.model == "haiku" && $0.queued == nil } == true && asked != nil }
+    var canGoDeeper: Bool { reply.map { $0.finished && $0.model == models.quick && $0.queued == nil } == true && asked != nil }
 
     func deeper() {
         guard canGoDeeper, let words = asked else { return }

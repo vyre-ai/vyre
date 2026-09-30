@@ -175,7 +175,7 @@ fun ChatScreen() {
     }
 
     Page(top = { ProjectChips(projects.v.value.orEmpty(), chip) { chip = it } }) {
-        loadState(load.v, all.isEmpty(), if (chip == null) "No sessions yet. Ask the Capsule to start one." else "No sessions in this project in the last day.")
+        loadState(load.v, all.isEmpty(), if (chip == null) "No sessions yet. Ask Lumen to start one." else "No sessions in this project in the last day.")
         if (all.isNotEmpty()) item {
             Grouped(Modifier.padding(top = Space.s)) {
                 all.forEachIndexed { i, t ->

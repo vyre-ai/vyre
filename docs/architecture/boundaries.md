@@ -33,7 +33,10 @@ A new exception needs the lead's OK.
 
 ## The frozen exceptions
 
-Frozen from main on 27 September 2026: 26 edges. "Becomes" says where each one should go:
+Frozen from main on 27 September 2026: 26 edges, 24 now (connectors moved its shared credential,
+mail-message and on_behalf helpers into `lib/connectors` on 2026-09-28, which removed
+`core/google -> core/connectors` and `core/mcp -> core/connectors` entirely rather than freezing
+their wider imports). "Becomes" says where each remaining one should go:
 
 - **ctx.call**: call a tool through the registry instead.
 - **lib**: the imported file is a pure helper; move it to `lib/<name>`.
@@ -45,16 +48,14 @@ Frozen from main on 27 September 2026: 26 edges. "Becomes" says where each one s
 | `core/cli -> core/recall` | embed.js, progress.js | `vyre status` and `vyre doctor` read index progress and the embedder's state directly | ctx.call |
 | `core/cli -> core/resilience` | backoff.js, node.js, stream.js | the reference client every surface uses, a pure library | lib |
 | `core/cli -> core/vault` | backup.js, cli-io.js, refs.js | `vyre vault`'s terminal side: no-echo prompts, `vault://` refs, the sealed backup format | surface |
-| `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Capsule has voice | ctx.call |
+| `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Lumen has voice | ctx.call |
 | `core/daemon -> core/harness` | rules.js | the kernel runs the security floor on every call's input; the floor belongs in the kernel | lib |
 | `core/daemon -> core/names` | guests.js | the router asks whether a tailnet caller is a guest before the registry | ctx.call |
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |
 | `core/files -> core/link` | transport.js | Mac to box file transfer over the tailnet transport | lib |
 | `core/files -> core/names` | tailscale.js | runs the tailscale CLI (Taildrive) | lib |
-| `core/google -> core/connectors` | auth.js | the connectors' shared credential library (ADR 0016, decision 2) | lib |
 | `core/hooks -> core/names` | tailscale.js | runs the tailscale CLI | lib |
 | `core/link -> core/names` | tailscale.js | finds the box on the tailnet | lib |
-| `core/mcp -> core/connectors` | auth.js | the connectors' shared credential library | lib |
 | `core/names -> core/link` | transport.js | names and link import each other; the transport belongs in a lib both use | lib |
 | `core/network -> core/names` | guests.js, identity.js, tailscale.js | the listeners identify tailnet peers (ADR 0002) | lib |
 | `core/onboard -> core/names` | service.js, tailscale.js | onboarding reserves the name and starts the tailnet listener in-process | ctx.call |
@@ -67,19 +68,21 @@ Frozen from main on 27 September 2026: 26 edges. "Becomes" says where each one s
 | `core/switchboard -> core/transcripts` | sanitize.js | keeps credentials out of what it builds from transcripts | lib |
 | `core/term -> core/computers` | ws.js | the RFC 6455 framing sliver Glass wrote, a pure helper | lib |
 | `core/term -> core/files` | safety.js | the path gate every file path passes through | ctx.call |
+| `core/vyre-core -> core/vault` | vault.js | vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2) | host |
 | `core/vault -> core/link` | transport.js | the vault relay between the Mac and the box | lib |
 | `core/vault -> core/names` | identity.js, tailscale.js | who is on the other end of a vault relay, and the tailscale CLI | lib |
-| `local/capsule -> core/cli` | commands/capsule-native.js | where the native Capsule app is built, shared with `vyre capsule` | lib |
+| `local/capsule -> core/cli` | commands/capsule-native.js | where the native Lumen app is built, shared with `vyre capsule` | lib |
 | `local/hands-mac -> local/screen-mac` | floor.js | the floor for Vyre's hands and eyes on the Mac (SPEC section 11) | lib |
 | `local/sideview -> local/screen-mac` | floor.js, runner.js | drives the sight helper and its floor directly | ctx.call |
 
 ## What the list says
 
-Four files carry most of it. `core/names/tailscale.js` (6 edges) and `core/link/transport.js`
-(3) are shared plumbing, not features: the first move is a small tailnet lib beside the kernel
-that both names and link use, which also ends the `names` and `link` cycle.
-`core/connectors/auth.js` (2) is already a library by design. The ctx.call cases (8) are places
-where a part reaches into another's state and should ask its tools instead.
+Two files carry most of the rest. `core/names/tailscale.js` (6 edges) and
+`core/link/transport.js` (3) are shared plumbing, not features: the first move is a small tailnet
+lib beside the kernel that both names and link use, which also ends the `names` and `link` cycle.
+The ctx.call cases (8) are places where a part reaches into another's state and should ask its
+tools instead. `lib/connectors` (auth.js, message.js, behalf.js) is the same move already done for
+the connectors' own shared helpers.
 
 ## First cleanup: a tailnet lib
 

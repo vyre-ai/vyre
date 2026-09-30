@@ -10,12 +10,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-// vyred serves core/resilience/*.js beside the Deck's own files (core/daemon), and the Deck imports them.
-const file = (/** @type {string} */ f) => path.join(f.startsWith("core/resilience/") ? path.join(DECK, "..") : DECK, f);
+// vyred serves core/resilience/*.js and lib/avatar-seed/index.js beside the Deck's own files
+// (core/daemon), and the Deck imports them.
+const SERVED = ["core/resilience/", "lib/avatar-seed/"];
+const file = (/** @type {string} */ f) => path.join(SERVED.some(d => f.startsWith(d)) ? path.join(DECK, "..") : DECK, f);
 const read = (/** @type {string} */ f) => fs.readFileSync(file(f), "utf8");
 const exists = (/** @type {string} */ p) => fs.existsSync(file(p === "/" ? "index.html" : p.slice(1)));
 
-test("pwa: every path the service worker keeps at install is a file in deck/ (or core/resilience/, which vyred serves)", () => {
+test("pwa: every path the service worker keeps at install is a file in deck/ (or core/resilience/ and lib/avatar-seed/, which vyred serves)", () => {
   const m = /const SHELL = \[([\s\S]*?)\];/.exec(read("sw.js"));
   assert.ok(m, "SHELL list in sw.js");
   const paths = [...m[1].matchAll(/"([^"]+)"/g)].map(x => x[1]);
@@ -453,7 +455,7 @@ test("pwa sideways: the JS asks the phone question only through dom.js isPhone /
         if (rel === path.join("js", "dom.js")) continue;
         assert.doesNotMatch(src, /["'`]\(max-width: (719|760)px\)/, `${rel} spells the phone query itself`);
         if (/\b(isPhone|PHONE_QUERY)\b/.test(src)) {
-          assert.match(src, /import \{[^}]*\b(isPhone|PHONE_QUERY)\b[^}]*\} from "(\.\/|\.\.\/js\/)dom\.js"/, `${rel} takes the helper from dom.js`);
+          assert.match(src, /import \{[^}]*\b(isPhone|PHONE_QUERY)\b[^}]*\} from "(\.\/|(\.\.\/)+js\/)dom\.js"/, `${rel} takes the helper from dom.js`);
           users++;
         }
       }

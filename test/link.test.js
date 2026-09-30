@@ -85,10 +85,13 @@ test("link: a device that is not the owner is refused, and a Mac cannot approve 
   // Claude on the box through MCP cannot approve, and a tailnet caller without a known node cannot.
   assert.ok((await s.boxCall("link.pair.approve", { code: p.code }, "mcp")).error);
   assert.ok((await s.boxCall("link.pair.approve", { code: p.code }, `tailnet:${OWNER}`)).error);
-  // The code is never listed on the box.
+  // The code is never listed on the box. It carries the request's real created time, not just
+  // when it expires, so waiting dates it exactly instead of guessing from the TTL.
   const pending = (await s.boxCall("link.pending")).data;
   assert.equal(pending.length, 1);
   assert.ok(!JSON.stringify(pending).includes(p.code.replace("-", "")));
+  assert.equal(typeof pending[0].created, "number");
+  assert.ok(pending[0].created <= pending[0].expires && pending[0].expires - pending[0].created <= 600_000);
   // Five wrong codes cancel every request.
   for (let i = 0; i < 4; i++) assert.match((await s.boxCall("link.pair.approve", { code: "000-000" === p.code ? "111-111" : "000-000" })).error.message, /no pairing request/);
   assert.match((await s.boxCall("link.pair.approve", { code: "000-000" === p.code ? "111-111" : "000-000" })).error.message, /too many wrong codes/);
@@ -356,4 +359,47 @@ test("link: link.health on an unpaired Mac is unknown with a reason, and the sea
   const p = await pair(t, { health: stub });
   assert.equal((await p.macCall("link.health")).data.path, "peer-relay");
   assert.deepEqual(asked, [{ stableId: "nBOX" }]);
+});
+
+test("link: link.health in the one reach shape, on the Mac, for a device over the relay and for the tailnet listener", async t => {
+  const s = await pair(t);
+  const dir = fs.mkdtempSync(path.join(s.macRoot, "..", "vyre-ts-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const node = (id, ip, extra = {}) => ({ ID: id, HostName: id, DNSName: `${id}.tail0000.ts.net.`, TailscaleIPs: [ip], Online: true,
+    CurAddr: "", Relay: "fra", PeerRelay: "", LastHandshake: "2026-09-27T10:00:00Z", RxBytes: 10, TxBytes: 20, ...extra });
+  const world = {
+    status: { BackendState: "Running", Self: { ID: "nSELF" }, Peer: {
+      a: node("nBOX", "100.64.0.5", { CurAddr: "203.0.113.7:41641" }), b: node("nMAC", "100.64.0.2") } },
+    ping: { "100.64.0.5": "pong from box (100.64.0.5) via 203.0.113.7:41641 in 12ms" },   // the Mac has no answer
+  };
+  fakeTailscale(t, dir, world);
+
+  // (1) The Mac: direct with its tailnet detail, and the old fields beside.
+  const mac = (await s.macCall("link.health")).data;
+  assert.equal(mac.reach, "direct");
+  assert.match(mac.why, /Tailscale/);
+  assert.deepEqual(mac.tailnet, { path: "direct", latencyMs: 12 });
+  assert.equal(typeof mac.since, "number");
+  assert.equal(mac.path, "direct");
+  assert.equal(mac.fix, undefined);
+
+  // (2) The box. A device over the relay channel is "relay", whatever the tailnet says.
+  const dev = (await s.boxCall("link.health", {}, "device:d1")).data;
+  assert.equal(dev.reach, "relay");
+  assert.match(dev.why, /relay/);
+  assert.equal(typeof dev.since, "number");
+  assert.equal(dev.tailnet, undefined);
+  assert.equal((await s.boxCall("link.health", {}, "device:d1")).data.since, dev.since, "since holds while the path does");
+  const pinned = (await s.boxCall("link.health", {}, "device:d1", { since: 1234 })).data;
+  assert.equal(pinned.since, 1234, "the channel's own start wins when the bridge says");
+  // An agent acting as a device is still an agent.
+  assert.match((await s.boxCall("link.health", {}, "device:d1 agent:kit")).error.message, /owner and its modules only/);
+
+  // The tailnet listener is "direct" even when the box's own ping of the caller goes unanswered.
+  const tn = (await s.boxCall("link.health", {}, `tailnet:${OWNER}`, { peer: MAC })).data;
+  assert.equal(tn.reach, "direct");
+  assert.equal(tn.fix, undefined);
+  assert.equal(typeof tn.since, "number");
+  assert.equal(tn.path, "relay", "the old fields stay what Tailscale said (DERP from status)");
+  assert.equal((await s.boxCall("link.health")).data.reach, "none", "nothing named: none, with why");
 });

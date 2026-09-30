@@ -31,7 +31,7 @@ const PHRASE = {
   client_of: (a, b) => b === "you" ? `${a} is your client` : `${a} is a client of ${b}`,
   repo_for: (a, b) => `the repo ${a} is for ${b}`,
   deadline: (a, b) => `${a} has a deadline on ${b}`,
-  prefers: (a, b) => `${a} prefers ${b}`,
+  prefers: (a, b) => a === "you" ? `you prefer ${b}` : `${a} prefers ${b}`,
   decided: (a, b) => a === "you" ? `you decided to ${b}` : `${a} decided to ${b}`,
 };
 /** A fact as a sentence, from its two ends' labels. */

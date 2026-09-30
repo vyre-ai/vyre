@@ -97,13 +97,20 @@ fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
 
 const fakeClaude = path.join(HERE, "fake-claude.js");
 fs.chmodSync(fakeClaude, 0o755);
-const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", NO_COLOR: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness"),
+// Opt-in fake GitHub (--fake-github): a global fetch() intercept preloaded into the daemon child
+// with --import, so github.connect runs for real against connect.js's real URLs but never reaches
+// the network (deck/test/native-bar/fake-github.mjs). Off unless asked for, so every other world
+// caller is unaffected.
+const fakeGithub = args.includes("--fake-github");
+const env = { ...process.env, VYRE_HOME: root, VYRE_DECK_FIXTURES: "1", VYRE_NO_DIALOGS: "1", NO_COLOR: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness"),
   VYRE_TAILSCALE_BIN: path.join(HARNESS, "deck", "test", "fake-tailscale.js"),
-  VYRE_CLAUDE_BIN: fakeClaude, FAKE_CLAUDE_TRANSCRIPTS: transcripts, FAKE_BAR_LOG: fakeLog };
+  VYRE_CLAUDE_BIN: fakeClaude, FAKE_CLAUDE_TRANSCRIPTS: transcripts, FAKE_BAR_LOG: fakeLog,
+  ...(fakeGithub ? { FAKE_GITHUB_ENABLE: "1", FAKE_GITHUB_LOGIN: arg("--fake-github-login", "alex-harlow"), FAKE_GITHUB_PENDING_POLLS: arg("--fake-github-pending", "1") } : {}) };
 const { socketPath } = await imp("core/config/index.js");
 const { call } = await imp("core/daemon/client.js");
 const sock = socketPath(root);
-const daemon = spawn(process.execPath, [path.join(TREE, "core", "daemon", "main.js")], { env, stdio: ["ignore", "ignore", "inherit"] });
+const daemonArgs = [...(fakeGithub ? ["--import", pathToFileURL(path.join(HERE, "fake-github.mjs")).href] : []), path.join(TREE, "core", "daemon", "main.js")];
+const daemon = spawn(process.execPath, daemonArgs, { env, stdio: ["ignore", "ignore", "inherit"] });
 const answers = () => call("system.info", {}, { root, timeout: 1000 }).then((/** @type {any} */ r) => !!r.data, () => false);
 for (let i = 0; i < 150 && !(await answers()); i++) await new Promise(r => setTimeout(r, 100));
 if (!(await answers())) { console.error("native-bar world: vyred did not come up"); daemon.kill("SIGTERM"); process.exit(1); }

@@ -23,6 +23,24 @@ import { classify } from "./detect.js";
 import { gate, openFailed } from "./fill-save.js";
 import { provider as catalog } from "./providers.js";
 
+/**
+ * The only sites a provider-shaped key may be saved AS that provider from (reviewer-2 H-K1): any web
+ * page can print a string shaped like a key, and one trusted click would otherwise make the page's
+ * own key the person's Anthropic, Slack or GitHub connection. From any other site the key is kept
+ * as a plain key, never connected. An entry names the exact host, and a path prefix where the host also serves user content.
+ */
+export const PROVIDER_SITES = Object.freeze({
+  anthropic: ["console.anthropic.com", "platform.claude.com"], "claude-setup-token": ["console.anthropic.com", "platform.claude.com"], openai: ["platform.openai.com"],
+  github: ["github.com/settings"], slack: ["api.slack.com"], cloudflare: ["dash.cloudflare.com"], tailscale: ["login.tailscale.com"],
+  deepgram: ["console.deepgram.com"], elevenlabs: ["elevenlabs.io/app"],
+});
+/** An entry is a host, or host/path-prefix: the key-issuing pages only, not the whole domain (a site's user content can print a key). @param {string} prov @param {string} host @param {string} [pathname] */
+export const onProviderSite = (prov, host, pathname = "/") => (PROVIDER_SITES[/** @type {keyof typeof PROVIDER_SITES} */ (prov)] || []).some(e => {
+  const [h, ...rest] = e.split("/");
+  const prefix = rest.length ? "/" + rest.join("/") : "";
+  return host === h && (!prefix || pathname === prefix || pathname.startsWith(prefix + "/"));
+});
+
 const MAX_VALUE = 8192;
 /** Shapes that are never a key to keep, whatever detect.js makes of their randomness: ids and hashes. */
 const NEVER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[0-9a-f]{32}$|^[0-9a-f]{40}$|^[0-9a-f]{56}$|^[0-9a-f]{64}$|^[0-9a-f]{128}$/i;
@@ -62,6 +80,8 @@ export async function saveKeyRoute(fill, b, h) {
   const { d, who, refuse } = /** @type {any} */ (g);
   const vault = fill.vault;
   const o = origin(b.url);
+  /** The page's path, for the key-issuing check. @param {any} u */
+  const pagePath = u => { try { return new URL(String(u)).pathname; } catch { return "/"; } };
   if (!o) return refuse(400, "bad_input", "the page is not an http or https page");
   /** @type {Map<string, { id: string, device: string, at: number, origin: string }>} */
   const made = /** @type {any} */ (fill).savedKeys || (/** @type {any} */ (fill).savedKeys = new Map());
@@ -104,7 +124,7 @@ export async function saveKeyRoute(fill, b, h) {
   try {
     const host = new URL(o).hostname;
     const name = freeName(vault, `${host}-${slug(label) || "key"}`);
-    const prov = c.provider && /^[a-z0-9][a-z0-9.-]{0,39}$/.test(c.provider) ? c.provider : undefined;
+    const prov = c.provider && /^[a-z0-9][a-z0-9.-]{0,39}$/.test(c.provider) && onProviderSite(c.provider, host.toLowerCase(), pagePath(b.url)) ? c.provider : undefined;
     await vault.put({ name, kind, description: `${label || "key"} from ${o}`.slice(0, 200), fields: { [field]: value }, origin: o,
       ...(prov ? { details: { provider: prov } } : {}) }, who);
     const row = vault.row(name);

@@ -10,6 +10,7 @@
 // scrolls to it, and again when a kept Settings page comes back). The avatar opens Settings until
 // the account menu is drawn.
 
+import { macKeys } from "./mac-keys.js";
 import { h, link } from "./dom.js";
 import { icon, mark } from "./icons.js";
 import { badge } from "./status-mark.js";
@@ -17,7 +18,7 @@ import { badge } from "./status-mark.js";
 /**
  * The places, in rail order: `key` is the digit that opens it with Cmd (or Ctrl), `end` puts it
  * in the bottom group. `views` are the routes (deck/views) the place is current on.
- * @type {readonly { href: string, label: string, icon: string, views: string[], key: string, end?: boolean }[]}
+ * @type {readonly { href: string, label: string, icon: string, views: string[], key?: string, end?: boolean }[]}
  */
 export const PLACES = Object.freeze([
   { href: "/now", label: "Now", icon: "now", views: ["now", "needs"], key: "1" },
@@ -27,6 +28,7 @@ export const PLACES = Object.freeze([
   { href: "/planner", label: "Planner", icon: "planner", views: ["planner"], key: "5" },
   { href: "/memory", label: "Memory", icon: "memory", views: ["memory"], key: "6" },
   { href: "/vault", label: "Vault", icon: "vault", views: ["vault"], key: "7" },
+  { href: "/files", label: "Drive", icon: "drive", views: ["files"] }, // no digit: the keys stay 1 to 9
   { href: "/settings#devices", label: "Devices", icon: "devices", views: [], key: "8", end: true },
   { href: "/settings", label: "Settings", icon: "settings", views: ["settings"], key: "9", end: true },
 ]);
@@ -54,9 +56,9 @@ export function typing(/** @type {any} */ t) {
   return false;
 }
 
-/** A Mac (or an iPad with a keyboard) uses Cmd; everything else Ctrl. */
-export const macKeys = (/** @type {any} */ nav = globalThis.navigator) =>
-  /Mac|iPhone|iPad|iPod/.test(String(nav?.userAgentData?.platform || nav?.platform || nav?.userAgent || ""));
+// A Mac (or an iPad with a keyboard) uses Cmd; everything else Ctrl (js/mac-keys.js, kept out of
+// this file so js/platform.js reads it without loading the rail's icons).
+export { macKeys };
 
 /**
  * Where Cmd+digit (Ctrl+digit off a Mac) goes: the place's href, or null when the press is not a
@@ -79,7 +81,7 @@ export function nowLabel(/** @type {number} */ n) {
 
 /**
  * The rail's elements. setNeeds(n) moves the badge and the mark's dot; setCurrent(view, hash)
- * marks the place; setOwner(name) puts the person's initial and name on the avatar.
+ * marks the place; setOwner(name, letter, face) puts the person's avatar (else initial) and name on it.
  */
 export function rail() {
   const count = /** @type {HTMLElement} */ (badge(0));
@@ -109,8 +111,9 @@ export function rail() {
       if (label === here) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     }
   }
-  function setOwner(/** @type {string | null | undefined} */ name, /** @type {string} */ letter) {
-    initial.replaceChildren(letter || "V");
+  /** `face`: the person's avatar (js/avatars.js), which takes the initial's place once system.info has answered. */
+  function setOwner(/** @type {string | null | undefined} */ name, /** @type {string} */ letter, /** @type {Element | null} */ face = null) {
+    initial.replaceChildren(face || letter || "V");
     avatar.setAttribute("title", name || "Account");
   }
   return { el, links, avatar, home, count, setNeeds, setCurrent, setOwner };

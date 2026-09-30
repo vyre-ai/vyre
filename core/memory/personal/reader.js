@@ -36,6 +36,16 @@ export const READER = { batch: 20, passes: 2, gapMs: 60_000, dailyUsd: 0.25, bac
   usdPerMIn: 1, usdPerMOut: 5 };
 const BUSY = ["starting", "working", "waiting"];
 
+/**
+ * A circuit breaker: a broken model (bad key, wrong model name, a quota error) fails the same
+ * way every time, and every new personal turn until it is fixed would otherwise trigger a paid
+ * retry of the same stuck batch. After this many CONSECUTIVE failed runs, back off for a growing
+ * wait before spending again; a run that succeeds resets the streak to zero. `force` (drain, the
+ * evaluation) always ignores this, same as the gap and a working thread.
+ */
+const FAIL_STREAK = 3;
+const FAIL_BACKOFF = [5 * 60_000, 15 * 60_000, 60 * 60_000];
+
 // ------------------------------------------------------------------ which turns
 
 /** A turn someone might say something about their life in: first person, and a life word. */
@@ -359,10 +369,25 @@ export function modelFor(config) {
   return String(m.memory || m.background || config?.memory?.model?.model || READER.model);
 }
 
+/** Keys that make Claude Code bill API dollars instead of the person's Claude plan. */
+export const API_BILLING_KEYS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"];
+
+/**
+ * The environment for a model call: the person's Claude login, never API dollars, unless
+ * config.memory.model.billing is "api".
+ * @param {NodeJS.ProcessEnv} env @param {string|undefined} billing
+ */
+export function modelEnv(env, billing) {
+  const out = { ...env, MAX_THINKING_TOKENS: "0" };
+  if (billing !== "api") for (const k of API_BILLING_KEYS) delete out[k];
+  return out;
+}
+
 /**
  * A runner that asks `claude -p` once: no tools, no MCP, no settings, no session kept (so nothing
  * lands in ~/.claude/projects for Recall to read back). Returns the answer and what it cost.
- * @param {{ bin?: string, cwd?: string, env?: NodeJS.ProcessEnv }} [o]
+ * billing: "api" keeps an API key in the environment; anything else runs on the Claude login.
+ * @param {{ bin?: string, cwd?: string, env?: NodeJS.ProcessEnv, billing?: () => string|undefined }} [o]
  * @returns {(r: { system: string, prompt: string, model: string, maxUsd: number }) => Promise<{ text: string, usd: number, tokens_in: number, tokens_out: number }>}
  */
 export function claudeOnce(o = {}) {
@@ -370,7 +395,7 @@ export function claudeOnce(o = {}) {
     const args = ["-p", "--model", model, "--output-format", "json", "--tools", "", "--strict-mcp-config", "--setting-sources", "",
       "--no-session-persistence", "--disable-slash-commands", "--system-prompt", system, "--max-budget-usd", String(Math.max(0.01, maxUsd))];
     // No extended thinking: on this job it spent 21k tokens and three minutes a batch for the same reads.
-    const env = { ...(o.env || process.env), MAX_THINKING_TOKENS: "0" };
+    const env = modelEnv(o.env || process.env, o.billing ? o.billing() : undefined);
     const p = spawn(o.bin || process.env.VYRE_CLAUDE_BIN || "claude", args, { cwd: o.cwd || process.cwd(), env, stdio: ["pipe", "pipe", "pipe"] });
     let out = "", err = "";
     const timer = setTimeout(() => { p.kill("SIGKILL"); reject(new Error("the model did not answer in time")); }, READER.timeoutMs);
@@ -407,23 +432,44 @@ export function createReader(deps) {
     const c = cfgOf();
     const m = c.memory?.model || {};
     const num = (x, d) => (x !== null && x !== "" && Number.isFinite(Number(x)) && Number(x) >= 0 ? Number(x) : d);
-    return { on: m.on !== false, model: modelFor(c), dailyUsd: num(m.dailyUsd, READER.dailyUsd), backfillUsd: num(m.backfillUsd, READER.backfillUsd),
-      batch: Math.max(1, Math.min(50, num(m.batch, READER.batch))), gapMs: Math.max(60_000, num(m.gapMs, READER.gapMs)),
+    // A fast first read the person chose on the import screen (memory.pace) reads bigger batches
+    // within the same plan limits: never extra paid usage, never faster than once a minute.
+    let fast = false;
+    try { fast = /** @type {any} */ (db.prepare("SELECT v FROM memory_meta WHERE k = 'read_pace'").get())?.v === "fast"; } catch { /* no memory_meta yet */ }
+    // The person's setting is a share of their plan (memory.plan_share); the usage figure behind it
+    // stays internal. An explicit memory.model.dailyUsd in config still wins, for advanced use.
+    const share = { small: 0.1, medium: READER.dailyUsd, large: 1 }[String(m.share || "medium")] ?? READER.dailyUsd;
+    return { on: m.on !== false, model: modelFor(c), dailyUsd: num(m.dailyUsd, share), backfillUsd: num(m.backfillUsd, READER.backfillUsd),
+      batch: fast ? 50 : Math.max(1, Math.min(50, num(m.batch, READER.batch))), gapMs: Math.max(60_000, num(m.gapMs, READER.gapMs)),
       passes: Math.max(1, Math.min(3, num(m.passes, READER.passes))) };
   };
   const day = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   const spentOn = k => /** @type {any} */ (db.prepare("SELECT usd, calls FROM memory_me_budget WHERE day = ?").get(k)) || { usd: 0, calls: 0 };
   const charge = (k, usd) => db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
     ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(k, usd);
-  // Recall's table may not exist yet when memory starts (Recall starts later, or not at all):
-  // prepared on first use, and no turn at all until it does.
-  let turnStmt = null;
-  const turnQ = { get: (session, seq) => {
-    if (!turnStmt) { try { turnStmt = db.prepare("SELECT text, role FROM recall_turns WHERE session = ? AND seq = ?"); } catch { return undefined; } }
-    // The reader sees only the person's own words: no harness blocks (personal/trust.js).
-    const r = /** @type {any} */ (turnStmt.get(session, seq));
-    return r && r.role === "user" ? { ...r, text: userWords(String(r.text)) } : r;
-  } };
+  /**
+   * Turns of the given sessions, by session and seq, read in ONE pass. recall_turns is an FTS5 table
+   * whose session and seq are unindexed columns, so every lookup by (session, seq) scans the whole
+   * table (about 20,000 rows on a real history): one lookup per queued turn, and two per turn for a
+   * reading batch, cost half a second or more of CPU a minute (30 Sep, perf-check on Node 22).
+   * @param {string[]} sessions @returns {Map<string, any>}
+   */
+  const loadTurns = sessions => {
+    /** @type {Map<string, any>} */ const out = new Map();
+    const ids = [...new Set(sessions.map(String))];
+    try {
+      for (let i = 0; i < ids.length; i += 400) {
+        const part = ids.slice(i, i + 400);
+        for (const t of /** @type {any[]} */ (db.prepare(`SELECT session, seq, role, text FROM recall_turns WHERE session IN (${part.map(() => "?").join(",")})`).all(...part))) out.set(`${t.session}\u0000${t.seq}`, t);
+      }
+    } catch { /* no recall table yet: no turn at all until it exists */ }
+    return out;
+  };
+  /** A loaded turn as the reader may see it: the person's own words only (personal/trust.js). @param {Map<string, any>} turns @param {string} session @param {number} seq */
+  const seen = (turns, session, seq) => {
+    const t = turns.get(`${session}\u0000${seq}`);
+    return t && t.role === "user" ? { role: t.role, text: userWords(String(t.text)) } : t;
+  };
   let timer = null, running = false, stopped = false, waiting = null;
 
   /** The people memory knows: first name, lower case -> role (spouse, daughter, dog, friend). */
@@ -461,8 +507,9 @@ export function createReader(deps) {
     if (!rows.length) return 0;
     let n = 0;
     const del = db.prepare("DELETE FROM memory_me_queue WHERE session = ? AND seq = ?");
+    const turns = loadTurns(rows.map(r => String(r.session)));
     for (const r of rows) {
-      const t = /** @type {any} */ (turnQ.get(r.session, r.seq));
+      const t = /** @type {any} */ (seen(turns, r.session, r.seq));
       if (t && t.role === "user") {
         const own = ownOf(String(t.text), known);
         const claims = [];
@@ -504,11 +551,21 @@ export function createReader(deps) {
     const last = /** @type {any} */ (db.prepare("SELECT MAX(started) s FROM memory_me_model").get()).s;
     if (!force && last != null && t - Number(last) < cfg.gapMs) return why("a minute apart");
     if (!force && await busy()) return why("a thread is working");
+    if (!force) {
+      const recent = /** @type {any[]} */ (db.prepare("SELECT status, started FROM memory_me_model ORDER BY id DESC LIMIT 8").all());
+      let streak = 0;
+      for (const r of recent) { if (r.status === "failed") streak++; else break; }
+      if (streak >= FAIL_STREAK) {
+        const wait = FAIL_BACKOFF[Math.min(streak - FAIL_STREAK, FAIL_BACKOFF.length - 1)];
+        if (t - Number(recent[0].started) < wait) return why("backing off after repeated failures");
+      }
+    }
     const turns = [];
+    const loaded = loadTurns(list.map(r => String(r.session)));
     for (const r of list) {
-      const x = /** @type {any} */ (turnQ.get(r.session, r.seq));
+      const x = /** @type {any} */ (seen(loaded, r.session, r.seq));
       if (!x || !readable(x.text)) { db.prepare("DELETE FROM memory_me_queue WHERE hash = ?").run(r.hash); continue; }
-      const before = /** @type {any} */ (turnQ.get(r.session, Number(r.seq) - 1));
+      const before = /** @type {any} */ (seen(loaded, r.session, Number(r.seq) - 1));
       turns.push({ hash: r.hash, text: String(x.text), before: before && before.role === "assistant" ? String(before.text) : null });
     }
     if (!turns.length) return why("nothing waiting");

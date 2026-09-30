@@ -57,7 +57,7 @@ const LEGACY_EVENTS = new Set(["ask.cancelled"]);
 // thread.shell, thread.remembered) and db44749b (thread.thinking); remove when on main.
 const AHEAD_TOOLS = new Set(["threads.model", "threads.commands",
   "threads.shell", "threads.remember", "threads.thinking", "threads.tasks", "threads.kill-task"]);
-const AHEAD_EVENTS = new Set(["model.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered"]);
+const AHEAD_EVENTS = new Set(["model.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered", "thread.artifact", "teammate.charter-changed", "vault.used"]);
 
 test("the sessions layer is on this tree (merge pre/3a first)", () => {
   assert.ok(serverTools.has("threads.send"), "core registers threads.send");
@@ -117,7 +117,7 @@ test("the payload fields chat keys on are the ones the server sends", () => {
   assert.match(st, /"canceled"/, "chat draws canceled tools");
   assert.match(st, /"failed"/, "chat draws the failed state");
   // Rewind in place: the answer's text comes back to the composer.
-  assert.match(sb, /rewound: true, thread: id, uuid, text/, "threads.rewind answers { rewound, thread, uuid, text }");
+  assert.match(sb, /rewound: true, id, thread: id, uuid, text/, "threads.rewind answers { rewound, id, thread, uuid, text }");
   // Asks anchor to their tool row.
   assert.match(sb + tr, /tool_use_id/, "ask.raised carries tool_use_id");
   // Per-turn cost, never the running total, on a turn.

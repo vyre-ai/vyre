@@ -12,7 +12,7 @@
 // - `connectors.persist` is internal and answers only the MCP hub, which calls it when a vendor
 //   rotates a refresh token.
 
-import { connections, MIGRATIONS } from "./connect.js";
+import { connections, MIGRATIONS } from "../../lib/connectors/connect.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 
 const str = { type: "string" };

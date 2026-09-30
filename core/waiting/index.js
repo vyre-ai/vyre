@@ -80,12 +80,14 @@ export const fromRinging = rows => rows.map(r => ({
   ...opt("detail", r.missed ? "missed" : ""), at: at(r.due), source: "planner",
   answer: { tool: "planner.done", input: { firing: r.firing }, fill: [] } }));
 
-/** link.pending rows. The code is on the Mac's screen only, so the person types it in. */
+/** link.pending rows. The code is on the Mac's screen only, so the person types it in. `created` is
+ * the request's real timestamp (core/link/box.js); a box that has not shipped it yet falls back to
+ * the fixed TTL subtracted from `expires`, which only holds while both sides agree on the TTL. */
 export const fromPending = rows => rows.map(p => {
   const name = clean(p.name, 80);
   return { id: `link:${p.id}`, kind: "pairing", title: name ? `Pair the Mac "${name}"` : "Pair a new Mac",
     ...opt("detail", clean([p.node, p.login].filter(Boolean).join(" · "), DETAIL_MAX)),
-    at: typeof p.expires === "number" ? p.expires - PAIR_TTL_MS : 0, source: "link",
+    at: at(typeof p.created === "number" ? p.created : typeof p.expires === "number" ? p.expires - PAIR_TTL_MS : 0), source: "link",
     answer: { tool: "link.pair.approve", input: {}, fill: ["code"] } };
 });
 

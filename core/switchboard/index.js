@@ -25,6 +25,8 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
+import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
+import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
@@ -32,9 +34,16 @@ import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
-import { wantsMacs, askMacs, mergeRows } from "../modules/federate.js";
+import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+// Reviewer's LOW on cb387d88, 2026-09-28: a teammate's own request id (threads.post -> thread.sent/
+// thread.queued -> threads_inbox) is a matching hint, not an auth fact, but it is still stored and
+// broadcast on every device watching the thread - checked for shape before either, same as any
+// other id this codebase stores untrusted.
+const REQUEST_ID = /^[\w-]{1,64}$/;
+const safeRequest = v => (typeof v === "string" && REQUEST_ID.test(v) ? v : undefined);
 
 /** Usage per turn (for agents.usage), and the last rate-limit report Claude Code gave a thread. */
 const USAGE_MIGRATION = `CREATE TABLE threads_turns (thread TEXT NOT NULL, agent TEXT, auth TEXT NOT NULL, at INTEGER NOT NULL, ok INTEGER NOT NULL,
@@ -83,6 +92,12 @@ export const MIGRATIONS = [
   // is (chat, agent, project, capsule, job, memory, planner, learn), which picks its model.
   `ALTER TABLE threads_runs ADD COLUMN provider TEXT;
    ALTER TABLE threads_runs ADD COLUMN purpose TEXT;`,
+  // Which account (sessions_accounts, ADR 0030 phase 2) a thread runs on: kept, so a resume never
+  // quietly moves to another person's paid account.
+  `ALTER TABLE threads_runs ADD COLUMN account TEXT;`,
+  // Every provider a thread has run on (a mid-session switch, a fallback): a provider that ran it
+  // before picks its own session back up; a new one starts fresh from a handoff brief.
+  `CREATE TABLE IF NOT EXISTS threads_providers (thread TEXT NOT NULL, provider TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (thread, provider))`,
   // Claude Code reports a session's cost as a running total (total_cost_usd, across the turns of
   // one process, continued from the transcript's saved total on a resume): the last one seen, so
   // each turn's own cost is the difference.
@@ -102,6 +117,12 @@ export const MIGRATIONS = [
   `ALTER TABLE threads_inbox ADD COLUMN images TEXT;
    CREATE TABLE threads_steers (uuid TEXT PRIMARY KEY, thread TEXT NOT NULL, text TEXT NOT NULL, images TEXT, at INTEGER NOT NULL);
    CREATE INDEX threads_steers_thread ON threads_steers (thread);`,
+  // A teammate's async reply (ADR 0031, core/team's finish()) carries its own request id, so a
+  // surface with two open asks to the same teammate can match a reply to the ask it answers
+  // instead of by role, FIFO (ambiguous once @role makes that a common case, not an edge one).
+  `ALTER TABLE threads_inbox ADD COLUMN request TEXT;`,
+  // A thread the person put away (threads.archive): out of the default list, its worktree cleaned up by github.
+  `ALTER TABLE threads_runs ADD COLUMN archived_at INTEGER;`,
 ];
 
 /** Images kept as JSON (a queued or steered message's), or null. @param {any} v */
@@ -178,7 +199,7 @@ export const LIMIT_NOTICE_AT = 0.8;
 const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
 
 /** Launch options kept with a thread and reused on every resume. */
-const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort", "quick"];
+const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort", "quick", "account"];
 
 /** Reasoning effort, as /effort takes it (the Agent SDK's EffortLevel). */
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -202,7 +223,7 @@ export const TEXT_EVERY_MS = 50;
  * is still catching up on the SSE backlog see the deltas first. VYRE_TEXT_PRUNE_MS overrides it.
  */
 export const TEXT_PRUNE_MS = 60_000;
-const LIVE = ["starting", "working", "waiting", "idle"];
+const LIVE = LIVE_STATUSES;
 /** thread.state's words for a record's status (ADR 0030 section 1). */
 const STATE = { starting: "starting", working: "running", waiting: "waiting", idle: "idle", stopped: "stopped" };
 
@@ -210,6 +231,9 @@ const STATE = { starting: "starting", working: "running", waiting: "waiting", id
  * The Harness plugin every thread loads. VYRE_HARNESS_DIR points elsewhere (tests, a user's own
  * copy); a missing plugin means the thread runs without Vyre's hooks rather than not at all.
  */
+/** The one MCP bridge (every module tool, scoped by vyred): Claude's plugin runs it, and so does every other provider. */
+const MCP_SERVER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "harness", "mcp", "server.js");
+
 export function pluginDir() {
   const dir = process.env.VYRE_HARNESS_DIR || path.resolve(HERE, "..", "..", "harness");
   return fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json")) ? dir : null;
@@ -281,6 +305,8 @@ export class Switchboard {
     this.groups = new Map();
     /** Spare quick sessions being started (threads.quick), which a stop waits for; and whether vyred is stopping. */
     this.starting = new Set();
+    /** @type {Set<string>} threads whose provider is being switched right now */
+    this.switches = new Set();
     this.closing = false;
     /** @type {Map<string, { path: string, close: () => Promise<void> }>} each live thread's own socket to vyred (deps.threadSocket) */
     this.socks = new Map();
@@ -315,6 +341,11 @@ export class Switchboard {
       this.db.prepare("UPDATE threads_runs SET status = 'stopped', stopped_reason = 'restart', pid = NULL WHERE id = ?").run(r.id);
       for (const a of this.asks.open(String(r.id))) this.closeAsk(a, "cancelled", "restart");
       this.emit("thread.stopped", { code: null, reason: "restart" }, String(r.id), r.project || null);
+      // The canonical status too (bypassing set(): there is no live process to route through it),
+      // so a surface watching thread.status in real time sees "paused" here, same as an idle
+      // close - not silence until its next poll, and never read as a crash.
+      this.emitRaw("thread.status", { status: threadStatus("stopped", "restart") }, String(r.id), r.project || null);
+      this.states.set(String(r.id), "stopped");
     }
   }
 
@@ -327,6 +358,8 @@ export class Switchboard {
     // Every event of a turn says which turn (ADR 0030): a surface follows one turn's events.
     const st = this.live.get(thread);
     if (st && st.turn && payload && payload.turn === undefined && /^(thread|ask)\./.test(type) && type !== "thread.stopped") payload = { ...payload, turn: st.turn };
+    // Which provider ran a tool call, so a card draws its own tool names and a mixed thread reads right.
+    if (type === "thread.tool" && payload && payload.phase === "started" && payload.provider === undefined) payload = { ...payload, provider: (st && st.launch && st.launch.provider) || "claude" };
     // The server's clock on every piece of text (ms epoch), for a surface's words-per-second meter.
     if ((type === "thread.text" || type === "thread.thinking") && payload && payload.t === undefined) payload = { ...payload, t: Date.now() };
     const ev = this.emitRaw(type, payload, thread, project);
@@ -350,10 +383,23 @@ export class Switchboard {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM threads_runs WHERE id = ?").get(id));
     if (!r) return null;
     const holder = this.leases.holder(id);
-    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status, model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", purpose: r.purpose || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null,
+    // status stays the raw internal word (unchanged: existing callers compare it). canonical_status
+    // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
+    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
+      canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
+      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
+  }
+
+  /** A thread's ancestors, nearest first, up to the thread nobody started it from (the person's own). @param {string} id */
+  lineage(id) {
+    const out = [];
+    for (let cur = this.record(id), n = 0; cur && cur.parent && n < 16 && !out.includes(cur.parent); n++) {
+      out.push(cur.parent);
+      cur = this.record(cur.parent);
+    }
+    return out;
   }
 
   must(id) {
@@ -365,17 +411,31 @@ export class Switchboard {
   set(id, fields) {
     const keys = Object.keys(fields);
     this.db.prepare(`UPDATE threads_runs SET ${keys.map(k => `${k} = ?`).join(", ")}, last_at = ? WHERE id = ?`).run(...keys.map(k => fields[k]), Date.now(), id);
-    // thread.state, once per change: the working dot and "waiting on you" read it.
+    // thread.state (legacy words, kept for surfaces that already read it) and thread.status (the
+    // canonical vocabulary, lib/thread-status.js), once per change: the working dot and "waiting
+    // on you" read one of these.
     if (fields.status && this.states.get(id) !== fields.status) {
       this.states.set(id, fields.status);
-      const rec = /** @type {any} */ (this.db.prepare("SELECT project FROM threads_runs WHERE id = ?").get(id));
+      const rec = /** @type {any} */ (this.db.prepare("SELECT project, stopped_reason FROM threads_runs WHERE id = ?").get(id));
       const st = this.live.get(id);
-      this.emitRaw("thread.state", { state: STATE[fields.status] || fields.status, ...(st && st.turn ? { turn: st.turn } : {}) }, id, rec ? rec.project : null);
+      const turn = st && st.turn ? { turn: st.turn } : {};
+      this.emitRaw("thread.state", { state: STATE[fields.status] || fields.status, ...turn }, id, rec ? rec.project : null);
+      const reason = fields.status === "stopped" ? (fields.stopped_reason ?? (rec ? rec.stopped_reason : null)) : null;
+      this.emitRaw("thread.status", { status: threadStatus(fields.status, reason), ...turn }, id, rec ? rec.project : null);
     }
   }
 
-  /** Where a thread runs: the folder given, else the project's home. */
-  async where({ cwd, project }) {
+  /**
+   * Where a thread runs: the folder given, else the project's home - or, for a brand-new
+   * thread starting at a GitHub project's own default folder (never an explicit cwd a caller
+   * gave), that project's own worktree for this session (ADR 0041 section 5: "use its path as
+   * the session's cwd instead"). Null-safe the same way every other cross-module call in this
+   * file is: no core/github, or the project has no repo, changes nothing.
+   * @param {string} [session] the new thread's own id, so github.session.worktree can key its
+   *   worktree to it - only given by launch() for a genuinely new thread, never a resume or fork
+   *   (both already have a fixed cwd of their own by the time this runs).
+   */
+  async where({ cwd, project }, session) {
     let slug = null, home = null;
     if (project) {
       const list = await this.deps.call("projects.list", {});
@@ -383,11 +443,34 @@ export class Switchboard {
       if (!p) throw new Error(`no project ${project}`);
       slug = p.slug; home = p.home;
     }
-    const dir = cwd ? path.resolve(cwd) : home;
+    let dir = cwd ? path.resolve(cwd) : home;
     if (!dir) throw new Error("a thread needs a folder: give cwd or project");
     if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new Error(`${dir} is not a folder`);
     if (!slug) { const of = await this.deps.call("projects.of", { cwd: dir }); slug = of.data?.slug || null; }
-    return { cwd: dir, project: slug };
+    let branch = null;
+    if (!cwd && slug && session) {
+      const gh = await this.deps.call("github.project.of", { project: slug }).catch(() => null);
+      if (gh && !gh.error && gh.data) {
+        const wt = await this.deps.call("github.session.worktree", { project: slug, session }).catch(() => null);
+        if (wt && !wt.error && wt.data && wt.data.path) { dir = wt.data.path; branch = wt.data.branch ? String(wt.data.branch) : null; }
+      }
+    }
+    return { cwd: dir, project: slug, branch };
+  }
+
+  /**
+   * The account a session on `provider` runs as: sessions.accounts.resolve (scope-checked, never a
+   * guess between two paid accounts). Null when the provider has only this machine's own login.
+   * `resuming`: the thread this is for, whose account must still exist.
+   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null }} q @param {string|null} [resuming]
+   */
+  async accountFor(q, resuming = null) {
+    const r = await this.deps.call("sessions.accounts.resolve", Object.fromEntries(Object.entries(q).filter(([, v]) => v)));
+    if (r.error) {
+      if (resuming && r.error.code === "not_found") throw Object.assign(new Error("the account this session used was removed; pick another to continue it (threads.send with account, or bind one to the project)"), { code: "account_removed", thread: resuming });
+      throw Object.assign(new Error(r.error.message), { code: r.error.code || "bad_input" });
+    }
+    return r.data && !r.data.synthetic ? r.data : null;
   }
 
   /**
@@ -404,7 +487,8 @@ export class Switchboard {
     if (o.resume) {
       rec = this.must(o.resume);
       id = rec.id;
-      if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.record(id); }
+      if (rec.archived) throw Object.assign(new Error(`${rec.name || String(id).slice(0, 8)} is archived: unarchive it to continue`), { code: "archived" });
+      if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.launched(id); }
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
     } else {
@@ -414,8 +498,8 @@ export class Switchboard {
         const src = this.record(o.fork) || await this.adopt(o.fork);
         o = { ...o, cwd: src.cwd, project: undefined, forkFrom: src.id, name: o.name || `${src.name || String(src.id).slice(0, 8)} (fork)` };
       }
-      const w = await this.where(o);
       id = crypto.randomUUID();
+      const w = await this.where(o, id);
       const now = Date.now();
       const provider = String(o.provider || "claude");
       if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) {
@@ -427,11 +511,15 @@ export class Switchboard {
         const r = await this.deps.call("sessions.models.resolve", Object.fromEntries(Object.entries({ purpose, project: w.project }).filter(([, v]) => v))).catch(() => null);
         if (r && r.data && r.data.model) o = { ...o, model: r.data.model };
       }
-      o = { ...o, provider, purpose };
+      // Which of the person's accounts on this provider (an explicit one, the teammate's, the
+      // project's, the provider's default), scope-checked however it was chosen. Null: this
+      // machine's own single login, as before accounts existed.
+      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent });
+      o = { ...o, provider, purpose, account: acct ? acct.id : undefined };
       this.db.prepare(`INSERT INTO threads_runs (id, name, cwd, project, agent, agent_kind, status, model, auth, started_at, last_at)
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
         o.model || null, o.auth || "ambient", now, now);
-      this.db.prepare("UPDATE threads_runs SET provider = ?, purpose = ? WHERE id = ?").run(o.provider, o.purpose, id);
+      this.db.prepare("UPDATE threads_runs SET provider = ?, purpose = ?, account = ? WHERE id = ?").run(o.provider, o.purpose, o.account || null, id);
       // A project's default mode (sessions.mode.set), for a new session a person starts there.
       if (w.project && !o.agent && !o.lean) {
         const m = await this.deps.call("sessions.mode.resolve", { project: w.project }).catch(() => null);
@@ -444,14 +532,34 @@ export class Switchboard {
       if (o.purpose === "capsule" && o.append) kept.append = String(o.append).slice(0, 20000);
       // The surface that started it (the Capsule, the Deck, a phone): threads.get says it as origin.
       if (o.surface) kept.origin = String(o.surface).slice(0, 80);
+      // What the provider could do when the thread started, kept for drawing its old items: never edited
+      // (a live control reads providers.list). A flag a provider does not say is false to a reader.
+      const drv = provider === "claude" ? null : this.deps.providers && this.deps.providers.get(provider);
+      kept.caps = provider === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true, usage: "detailed" }
+        : { ...((drv && drv.capabilities) || {}) };
+      // The thread this one was started for (a teammate's or sub-agent's), so a person's words in the parent
+      // count for it (threads.lineage). Only what vyred verified: never an id read from a model's input.
+      if (o.parent && this.record(String(o.parent))) kept.parent = String(o.parent);
+      // The session's own git branch (github.session.worktree), when the project gave it a worktree.
+      if (w.branch) kept.branch = w.branch;
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
     await this.room(id);
     if (!this.sdk && this.loadSdk) this.sdk = await this.loadSdk();
+    // The account's own credential, for this child only. On a resume the account must still exist
+    // (a removed one is an ask for another, never the provider's default), and its uid and HOME
+    // are the ones it always had.
+    let acct = null;
+    if (o.account) {
+      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent }, o.resume ? rec.id : null);
+      const c = this.deps.accountEnv ? await this.deps.accountEnv(acct) : { auth: "subscription", env: {} };
+      o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
+      this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
+    }
     // A thread no agent runs gets this machine's own Claude credential (sessions.auth): the
     // vault's setup token on a box, Claude Code's login on a Mac. An agent brings its own.
-    if (!o.agent && !(o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) && this.deps.auth) {
+    if (!o.agent && !acct && (rec.provider || o.provider || "claude") === "claude" && !(o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) && this.deps.auth) {
       const a = await this.deps.auth({ agent: null }).catch(e => { this.deps.log(`threads: ${e.message}; using this machine's own Claude login`); return null; });
       if (a && a.env) { o = { ...o, env: { ...(o.env || {}), ...a.env }, ...(a.fallback && !o.fallback ? { fallback: a.fallback } : {}) }; this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(a.auth, id); }
     }
@@ -459,7 +567,10 @@ export class Switchboard {
     // A quick answer thinks not at all, so the same words get the same answer (no temperature knob).
     if (o.purpose === "capsule" && !o.agent) o = { ...o, env: { ...(o.env || {}), MAX_THINKING_TOKENS: "0" } };
     await this.openSocket(id, rec);
-    this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) });
+    this.db.prepare("INSERT OR IGNORE INTO threads_providers (thread, provider, at) VALUES (?,?,?)").run(id, rec.provider || o.provider || "claude", Date.now());
+    // A rebind (switchProvider) gives a provider that never ran this thread a fresh native session
+    // under the same thread: there is nothing of its own to resume.
+    this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) && !o.rebind });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
     const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}), mode: fresh.mode,
@@ -474,8 +585,18 @@ export class Switchboard {
       if (o.surface) await this.send(id, o.prompt, o.surface);
       else { this.write(id, o.prompt); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
-    return this.record(id);
+    return this.launched(id);
   }
+
+  /**
+   * launch()'s own answer (threads.start, threads.fork, threads.launch): the record, plus
+   * `thread` as an alias of `id` (a naming footgun native-core hit: threads.rewind's answer
+   * echoes the new/resumed session id as `.thread`, so a client that copied that pattern reading
+   * `.thread` off a launch answer silently got undefined). `id` is canonical; drop `thread` here
+   * once every surface is confirmed off it (2026-09-28).
+   * @param {string} id
+   */
+  launched(id) { return { ...this.record(id), thread: id }; }
 
   /**
    * The system prompt for a launch: the levels a person edited (assistant, agent, project;
@@ -670,7 +791,26 @@ export class Switchboard {
     this.live.set(id, state);
     // How the process is spawned (core/sessions/spawn.js): the subreaper, another uid, and its
     // group recorded before it can run anything, for the peer check.
-    const how = { subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}),
+    // An account's own uid where the box can (the spawner); "shared" only for work under /work.
+    // A Mac has one user: a provider that keeps its login in HOME gets one folder per account there.
+    const ar = o.accountRun;
+    if (ar && ar.home) env.HOME = ar.home;
+    const account = ar && ar.uid != null ? { uid: ar.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/") } : null;
+    // What a provider that is not Claude gets: the floor as a function (its file and shell methods
+    // are served through it), and the same MCP bridge Claude's plugin uses (harness/mcp/server.js),
+    // scoped by vyred on the thread's own socket, never by anything the session could forge.
+    const foreign = o.provider && o.provider !== "claude";
+    const floor = call => floorRules({ ...call, cwd: call.cwd || rec.cwd, home: this.deps.root || undefined, agent: rec.agent || null });
+    const mcpEnv = { VYRE_THREAD: id, ...(sock ? { VYRE_SOCKET: sock.path } : {}), ...(o.agent ? { VYRE_AGENT: o.agent, VYRE_AGENT_KIND: o.agent_kind || "agent" } : {}),
+      ...(o.scope ? { VYRE_PROJECTS: o.scope.projects === "*" ? "*" : o.scope.projects.join(","), VYRE_SCOPE_CWDS: JSON.stringify(o.scope.cwds || []) } : {}) };
+    // Memory for a prompt (memory.prompt, iq): blocks of text, scoped by vyred to this thread's own agent
+    // and project. The scope is the thread's record, never anything the session says. Nothing if iq is absent.
+    const memory = async ({ prompt, first }) => {
+      const r = await this.deps.call("memory.prompt", { prompt, first: Boolean(first), thread: id, ...(rec.project ? { project: rec.project } : {}), ...(rec.agent ? { agent: rec.agent } : {}) }).catch(() => null);
+      return r && !r.error && r.data && Array.isArray(r.data.blocks) ? r.data.blocks.filter(b => b && b.type === "text" && typeof b.text === "string").map(b => ({ type: "text", text: b.text })) : [];
+    };
+    const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
+    const how = { ...foreignOpts, subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
       onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
     const on = { ...how, onMessage: m => { this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the
@@ -715,6 +855,7 @@ export class Switchboard {
     if (t.delta) {
       if (typeof t.block === "number" && t.block !== st.pendingBlock) { this.flush(id, st); st.pendingBlock = t.block; }
       st.pending += t.delta;
+      if (st.onText) { try { st.onText(t.delta); } catch {} }
       if (!st.timer) st.timer = setTimeout(() => this.flush(id, st), TEXT_EVERY_MS);
     }
     for (const e of t.events) {
@@ -746,6 +887,7 @@ export class Switchboard {
         // A failed turn is said as a state of its own, with its turn, before the thread goes idle.
         if (!e.payload.ok && !e.payload.canceled && !st.stopping) {
           this.emitRaw("thread.state", { state: "failed", turn: st.turn, error: e.payload.error || null }, id, project);
+          this.emitRaw("thread.status", { status: "failed", turn: st.turn, error: e.payload.error || null }, id, project);
           this.states.set(id, "failed");
         }
         if (this.asks.open(id).length === 0) this.set(id, { status: "idle" });
@@ -799,6 +941,7 @@ export class Switchboard {
     }
     if (t.limit) this.limit(id, st, t.limit, project);
     if (t.limited && st.launch.fallback && !st.switching) this.fallback(id, st);
+    else if (t.limited && !st.switching) this.routeFallback(id, st).catch(e => this.deps.log(`threads: no fallback for ${id.slice(0, 8)}: ${e.message}`));
   }
 
   /** Record an ask, set the thread waiting and emit ask.raised (small: never a permission's detail). */
@@ -894,6 +1037,111 @@ export class Switchboard {
   }
 
   /**
+   * What a provider that never saw this thread needs to carry on: the recent turns verbatim, the
+   * older ones cut short, built from the event log (the one record every provider writes). A
+   * deterministic cut for now; memory's summariser (iq) can replace the older half.
+   * @param {string} id
+   */
+  handoffBrief(id, { recent = 8, keep = 6000 } = {}) {
+    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT type, payload FROM events WHERE thread = ?
+      AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL AND json_extract(payload, '$.kind') IS NULL))
+      ORDER BY id`).all(id));
+    const turns = rows.map(r => ({ who: r.type === "thread.sent" ? "person" : "assistant", text: String(JSON.parse(String(r.payload)).text || "").trim() })).filter(t => t.text);
+    if (!turns.length) return "";
+    const older = turns.slice(0, -recent).map(t => `${t.who}: ${cut(t.text.replace(/\s+/g, " "), 160)}`);
+    const last = turns.slice(-recent).map(t => `${t.who}: ${cut(t.text, 1500)}`);
+    let body = [...(older.length ? ["Earlier, in brief:", ...older, ""] : []), "Most recent:", ...last].join("\n");
+    if (body.length > keep) body = "..." + body.slice(body.length - keep);
+    return `[Vyre handoff: this conversation was already under way with another assistant. The files are as they left them. What was said so far:\n${body}\n]`;
+  }
+
+  /**
+   * Move a thread to another provider and account, between turns: same thread id, same folder and
+   * files, same event log. The new provider gets a fresh native session and the handoff brief
+   * with the next message (or its own session back, if it ran this thread before). Says so in the
+   * transcript. A limit's fallback is this, triggered by the limit instead of a person.
+   * @param {string} id @param {{ provider: string, account?: string|null, model?: string|null, reason?: "asked"|"limit", text?: string|null }} o
+   */
+  /**
+   * Switch a thread's provider. One switch per thread at a time: a second while one runs (two
+   * rate-limit lines for one turn) is refused when a person asked and ignored when it is the router's,
+   * never a second process for the same thread. A switch in flight is waited for at shutdown.
+   * @param {string} id @param {{ provider: string, account?: string|null, model?: string|null, reason?: string, text?: string|null }} o
+   */
+  switchProvider(id, o) {
+    if (this.switches.has(id)) {
+      if ((o.reason || "asked") === "asked") return Promise.reject(Object.assign(new Error("this thread is already switching provider"), { code: "busy" }));
+      return Promise.resolve({ thread: id, provider: String(o.provider || ""), account: null, resumed: false, already: true });
+    }
+    this.switches.add(id);
+    const p = this.doSwitchProvider(id, o).finally(() => { this.switches.delete(id); this.starting.delete(tracked); });
+    const tracked = p.catch(() => {});
+    this.starting.add(tracked);
+    return p;
+  }
+
+  async doSwitchProvider(id, { provider, account = null, model = null, reason = "asked", text = null }) {
+    const rec = this.must(id);
+    provider = String(provider || "");
+    if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
+    const st = this.live.get(id);
+    if (st && st.turn && reason === "asked") throw Object.assign(new Error("a turn is running: interrupt it or wait for it to end, then switch"), { code: "busy" });
+    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent });
+    if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
+    const from = rec.provider || "claude";
+    const brief = this.handoffBrief(id);
+    const had = Boolean(this.db.prepare("SELECT 1 FROM threads_providers WHERE thread = ? AND provider = ?").get(id, provider));
+    if (st) {
+      st.switching = true;
+      const proc = st.proc;
+      this.live.delete(id);
+      await proc.stop();
+      for (const a of this.asks.open(id)) this.closeAsk(a, "cancelled", "switched provider");
+    }
+    const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
+    const kept = optsOf(row);
+    kept.provider = provider;
+    if (acct) kept.account = acct.id; else delete kept.account;
+    this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
+    const name = provider[0].toUpperCase() + provider.slice(1);
+    const why = reason === "limit" ? `moved to ${name}: ${from[0].toUpperCase() + from.slice(1)}'s limit was reached` : `continued on ${name}`;
+    this.emit("thread.text", { message: "vyre", text: why, done: true, notice: true }, id, rec.project);
+    this.emit("thread.provider", { from, to: provider, account: acct ? acct.id : null, reason }, id, rec.project);
+    const words = [had ? "" : brief, text || ""].filter(Boolean).join("\n\n");
+    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}) });
+    return { thread: id, provider, account: acct ? acct.id : null, resumed: had };
+  }
+
+  /**
+   * A limit was hit: the next entry of this thread's routing list (agent, project, then the
+   * machine's), one not already tried in this run of fallbacks. False when there is none, and the
+   * thread simply stays limited as it always did.
+   * @param {string} id @param {any} st
+   */
+  async routeFallback(id, st) {
+    // One at a time: a second limit line for the same turn arrives before the first has set `switching`.
+    if (st.routing) return false;
+    st.routing = true;
+    let switched = false;
+    try {
+      const rec = this.must(id);
+      st.tried = st.tried || new Set();
+      const r = await this.deps.call("sessions.routes.next", { provider: rec.provider || "claude", ...(rec.account ? { account: rec.account } : {}), ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), tried: [...st.tried] }).catch(() => ({}));
+      const hit = r.data && r.data.entry;
+      if (!hit) return false;
+      const last = st.lastPrompt || null;
+      const tried = new Set([...st.tried, `${rec.provider || "claude"}:${rec.account || ""}`]);
+      st.switching = true;
+      try { await this.switchProvider(id, { provider: hit.provider, account: hit.account || null, model: hit.model || null, reason: "limit", text: last }); switched = true; }
+      finally { const now = this.live.get(id); if (now) now.tried = tried; }
+      return true;
+    } finally {
+      // Only a switch that happened retires this state; any other way out lets the next limit try again.
+      if (!switched) { st.routing = false; if (this.live.get(id) === st) st.switching = false; }
+    }
+  }
+
+  /**
    * The subscription's limit was reached: carry on under the API key if the agent allows one,
    * within its budget, and say so in the thread. The turn that failed is sent again.
    */
@@ -943,7 +1191,7 @@ export class Switchboard {
    * @param {string} id @param {string} text @param {{ uuid?: string, steer?: boolean }} [o]
    * @returns {{ uuid: string, turn: string|null }}
    */
-  write(id, text, { uuid = crypto.randomUUID(), steer = false, images = null } = {}) {
+  write(id, text, { uuid = crypto.randomUUID(), steer = false, images = null, note = "" } = {}) {
     const st = this.live.get(id);
     this.touch(id, st);
     this.db.prepare("INSERT OR IGNORE INTO threads_sent (uuid, thread, at) VALUES (?,?,?)").run(uuid, id, Date.now());
@@ -951,7 +1199,7 @@ export class Switchboard {
     if (steer) {
       st.steers.set(uuid, String(text));
       this.db.prepare("INSERT OR REPLACE INTO threads_steers (uuid, thread, text, images, at) VALUES (?,?,?,?,?)").run(uuid, id, String(text), imagesJson(images), Date.now());
-      st.proc.write(userLine(text, id, { uuid, priority: "next", ...(images ? { images } : {}) }));
+      st.proc.write(userLine(note ? `${text}\n\n${note}` : text, id, { uuid, priority: "next", ...(images ? { images } : {}) }));
       return { uuid, turn: st.turn };
     }
     st.turn = `${id}:${++st.turnNo}`;
@@ -960,7 +1208,7 @@ export class Switchboard {
     // `!` shell lines the person ran since the last message go with this one, as Claude Code does.
     const shells = this.shellContext.get(id);
     if (shells) this.shellContext.delete(id);
-    st.proc.write(userLine(shells ? `${shells.join("\n")}\n\n${text}` : text, id, { uuid, ...(images ? { images } : {}) }));
+    st.proc.write(userLine(`${shells ? `${shells.join("\n")}\n\n` : ""}${text}${note ? `\n\n${note}` : ""}`, id, { uuid, ...(images ? { images } : {}) }));
     this.set(id, { status: "working" });
     const rec = this.record(id);
     this.emit("thread.turn", { turn: st.turn, uuid, text: cut(text, 2000) }, id, rec ? rec.project : null);
@@ -987,13 +1235,13 @@ export class Switchboard {
       this.emit("thread.turn", { turn: st.turn, uuid, text: cut([text, ...rest.map(r => r[1])].join("\n\n"), 2000), steered: true }, id, project);
       return;
     }
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return;
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     const taken = rows.filter(r => mark.run(now, r.id).changes);
     if (!taken.length) return;
-    for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", ...(r.kind ? { kind: r.kind } : {}) }, id, project);
+    for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project);
     const images = taken.flatMap(r => imagesFrom(r.images) || []);
     this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), images: images.length ? images : null });
   }
@@ -1017,6 +1265,9 @@ export class Switchboard {
    * send could adopt? What threads.send on the box checks before it asks a Mac.
    * @param {string} id
    */
+  /** Whether a message uuid was already handed to a session (a retried send is the same message). @param {string} uuid */
+  sentBefore(uuid) { return Boolean(this.db.prepare("SELECT 1 FROM threads_sent WHERE uuid = ?").get(uuid) || this.db.prepare("SELECT 1 FROM threads_inbox WHERE uuid = ?").get(uuid)); }
+
   knows(id) {
     return this.live.has(id) || Boolean(this.record(id)) || Boolean(findSession(this.deps.transcripts || [], id));
   }
@@ -1071,7 +1322,26 @@ export class Switchboard {
    * `wait` (the person at the box, through the link) never takes the keyboard: while another
    * surface holds it, the words are queued as for a terminal.
    */
-  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null } = {}) {
+  /**
+   * A person's own turn, before any provider sees it: the said row (turn.said) and what it tags
+   * (a vault item, a Drive file, an artifact, a GitHub repo...), each resolved by its own provider
+   * for this thread (resolveTags) and said as thread.mentioned. `chips` are the composer's own
+   * {kind, id} picks. A provider absent or refusing means plain text, never a blocked send. Only
+   * for a caller personTurn admits.
+   * @param {string} id @param {string} text @param {string} surface @param {string} uuid @param {{ kind: string, id: string }[]} [chips]
+   */
+  async ingress(id, text, surface, uuid, chips = [], pasted = []) {
+    // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
+    const rec = this.record(id) || { project: null };
+    this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
+    const names = mentionsOf(text, pasted);
+    if (!names.length && !chips.length) return [];
+    const tags = await resolveTags({ names, chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) });
+    if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
+    return tags;
+  }
+
+  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "" } = {}) {
     // The same message again (a retry whose first answer was lost): already handed over or queued.
     if (uuid) {
       const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
@@ -1103,11 +1373,11 @@ export class Switchboard {
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
     if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind, images });
     if (busy) {
-      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images });
+      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images, note });
       this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer" }, id, rec.project);
       return { sent: true, steered: true, thread: id, uuid: w.uuid, turn: w.turn };
     }
-    const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images });
+    const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images, note });
     this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}), ...(images ? { images: images.length } : {}) }, id, rec.project);
     return { sent: true, thread: id };
   }
@@ -1117,10 +1387,10 @@ export class Switchboard {
    * when the thread is idle here, queued for the turn's end when one runs, and for a session open
    * in a terminal, queued as a person's words are.
    */
-  async post(id, text, from, kind) {
+  async post(id, text, from, kind, request) {
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
-      if (this.elsewhere(id)) return this.queue(id, text, from, undefined, { kind });
+      if (this.elsewhere(id)) return this.queue(id, text, from, undefined, { kind, request });
       const rec = this.must(id);
       if (rec.agent) {
         const r = await this.deps.call("agents.resume", { agent: rec.agent, thread: id });
@@ -1129,9 +1399,9 @@ export class Switchboard {
     }
     const st = this.live.get(id);
     const rec = this.must(id);
-    if (st.turn && ["working", "waiting"].includes(String(rec.status))) return this.queue(id, text, from, null, { owned: true, kind });
+    if (st.turn && ["working", "waiting"].includes(String(rec.status))) return this.queue(id, text, from, null, { owned: true, kind, request });
     const w = this.write(id, text);
-    this.emit("thread.sent", { text: cut(text, 2000), surface: from, uuid: w.uuid, via: "post", kind }, id, rec.project);
+    this.emit("thread.sent", { text: cut(text, 2000), surface: from, uuid: w.uuid, via: "post", kind, ...(request ? { request } : {}) }, id, rec.project);
     return { sent: true, thread: id, uuid: w.uuid, turn: w.turn };
   }
 
@@ -1142,13 +1412,13 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
-  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, images = /** @type {any} */ (null) } = {}) {
+  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null) } = {}) {
     const rec = this.must(id);
     // A session open elsewhere takes queued words through its hooks, which carry text only.
     if (images && images.length && !owned) throw Object.assign(new Error("images cannot wait for a session open in a terminal; send them when it is free here"), { code: "bad_input" });
-    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images) VALUES (?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images));
+    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request) VALUES (?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null);
     const queued = Number(r.lastInsertRowid);
-    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, ...(kind ? { kind } : {}), ...(images && images.length ? { images: images.length } : {}) }, id, rec.project);
+    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, ...(kind ? { kind } : {}), ...(request ? { request } : {}), ...(images && images.length ? { images: images.length } : {}) }, id, rec.project);
     const name = rec.name || id.slice(0, 8);
     // A session Vyre runs is never called a terminal (it is working, and the words go in after).
     if (owned) return { sent: false, queued: true, queued_id: queued, uuid, thread: id, name, busy: "working",
@@ -1199,13 +1469,13 @@ export class Switchboard {
     const rec = this.must(id);
     const st = this.live.get(id);
     if (!st) return { sent: false, note: "This session is not running here; its words are handed over when its terminal's turn ends." };
-    const row = /** @type {any} */ (this.db.prepare("SELECT id, text, surface, uuid, images FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));
+    const row = /** @type {any} */ (this.db.prepare("SELECT id, text, surface, uuid, images, request FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));
     if (!row || !this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'now' WHERE id = ? AND delivered_at IS NULL").run(Date.now(), row.id).changes) {
       return { sent: false, note: "That message was already handed over, or was never queued here." };
     }
     const uuid = row.uuid || crypto.randomUUID();
     const w = this.write(id, row.text, { uuid, steer: Boolean(st.turn), images: imagesFrom(row.images) });
-    this.emit("thread.sent", { text: cut(row.text, 2000), surface: row.surface, queued: Number(row.id), uuid, via: "now" }, id, rec.project);
+    this.emit("thread.sent", { text: cut(row.text, 2000), surface: row.surface, queued: Number(row.id), uuid, via: "now", ...(row.request ? { request: row.request } : {}) }, id, rec.project);
     return { sent: true, thread: id, queued: Number(row.id), uuid, turn: w.turn };
   }
 
@@ -1215,14 +1485,14 @@ export class Switchboard {
    * @param {string} id @param {"stop"|"prompt"} via
    */
   deliver(id, via) {
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, at FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, at, request FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return { messages: [] };
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = ? WHERE id = ?");
     const rec = this.record(id);
     for (const m of rows) {
       mark.run(now, via, m.id);
-      this.emit("thread.sent", { text: cut(m.text, 2000), surface: m.surface, queued: m.id, via }, id, rec ? rec.project : null);
+      this.emit("thread.sent", { text: cut(m.text, 2000), surface: m.surface, queued: m.id, via, ...(m.request ? { request: m.request } : {}) }, id, rec ? rec.project : null);
     }
     return { messages: rows.map(m => ({ id: m.id, text: m.text, surface: m.surface, at: m.at })) };
   }
@@ -1371,8 +1641,8 @@ export class Switchboard {
    * The same thread and transcript; a running turn is stopped first.
    * @param {string} id @param {string} uuid the user message (thread.turn's uuid, the transcript line's)
    */
-  async rewind(id, uuid, restore = "conversation") {
-    const rec = this.must(id);
+  /** The user turn named by uuid, in this session's transcript here (rewind and forkAt share the lookup). */
+  findLine(id, uuid) {
     const t = findSession(this.deps.transcripts || [], id);
     if (!t) throw Object.assign(new Error("this session has no transcript here to rewind"), { code: "bad_input" });
     let line = null;
@@ -1381,6 +1651,23 @@ export class Switchboard {
       try { const j = JSON.parse(l); if (j.uuid === uuid && j.type === "user") { line = j; break; } } catch {}
     }
     if (!line) throw Object.assign(new Error(`no message ${String(uuid).slice(0, 8)} in this session`), { code: "bad_input" });
+    return line;
+  }
+
+  /**
+   * A new thread with this session's conversation up to (not including) a turn, that the
+   * original never sees - "fork from here" (rewind's own, in-place, the other menu item).
+   * @param {string} id @param {string} uuid @param {{ prompt?: string, name?: string, surface?: string }} [opts]
+   */
+  async forkAt(id, uuid, opts = {}) {
+    const line = this.findLine(id, uuid);
+    if (!line.parentUuid) throw Object.assign(new Error("that is the first message: fork the whole session instead"), { code: "bad_input" });
+    return this.launch({ fork: id, resumeAt: String(line.parentUuid), prompt: opts.prompt, name: opts.name, surface: opts.surface });
+  }
+
+  async rewind(id, uuid, restore = "conversation") {
+    const rec = this.must(id);
+    const line = this.findLine(id, uuid);
     const text = typeof line.message?.content === "string" ? line.message.content
       : (Array.isArray(line.message?.content) ? line.message.content.filter(b => b && b.type === "text").map(b => b.text).join("\n") : "");
     // The files first, while the session that made the changes is running: Claude Code puts back
@@ -1394,15 +1681,15 @@ export class Switchboard {
       files = { restored: true, ...(r && Array.isArray(r.filesChanged) ? { files_changed: r.filesChanged } : {}), ...(r && r.canRewind === false ? { restored: false, why: r.error || "no checkpoint" } : {}) };
       if (restore === "code") {
         this.emit("thread.rewound", { uuid, restore, files }, id, rec.project);
-        return { rewound: true, thread: id, uuid, restore, files };
+        return { rewound: true, id, thread: id, uuid, restore, files };
       }
     }
-    if (!line.parentUuid) return { rewound: false, thread: id, text, note: "That is the first message: start a new session with it instead.", ...(files ? { files } : {}) };
+    if (!line.parentUuid) return { rewound: false, id, thread: id, text, note: "That is the first message: start a new session with it instead.", ...(files ? { files } : {}) };
     const st = this.live.get(id);
     if (st) await this.close(id, st, "rewind");
     await this.launch({ resume: id, resumeAt: String(line.parentUuid) });
     this.emit("thread.rewound", { uuid, at: String(line.parentUuid), restore, ...(files ? { files } : {}) }, id, rec.project);
-    return { rewound: true, thread: id, uuid, text, ...(restore !== "conversation" ? { restore, files } : {}) };
+    return { rewound: true, id, thread: id, uuid, text, ...(restore !== "conversation" ? { restore, files } : {}) };
   }
 
   /**
@@ -1449,7 +1736,7 @@ export class Switchboard {
    * @param {{ purpose: string, system?: string|null, prompt: string, model?: string|null, timeoutMs?: number }} o
    * @returns {Promise<{ text: string, ok: boolean, cost_usd: number, warm: boolean, ms: number, thread: string }>}
    */
-  async quick({ purpose, system = null, prompt, model = null, timeoutMs = 60_000 }) {
+  async quick({ purpose, system = null, prompt, model = null, timeoutMs = 60_000, onText = null }) {
     const t0 = Date.now();
     const key = `${purpose}\u0000${model || ""}\u0000${crypto.createHash("sha256").update(String(system || "")).digest("hex")}`;
     this.spares = this.spares || new Map();
@@ -1464,6 +1751,7 @@ export class Switchboard {
       const t = setTimeout(() => { st.answered = null; reject(Object.assign(new Error(`no answer within ${timeoutMs} ms`), { code: "timeout" })); }, timeoutMs);
       t.unref?.();
     });
+    if (onText) st.onText = onText;
     this.write(id, String(prompt));
     // The next question's session starts now, while this one answers.
     if (!this.closing) {
@@ -1585,7 +1873,60 @@ export class Switchboard {
     return { thread: id, stopped: true };
   }
 
-  list({ agent, all } = {}) {
+  /**
+   * Is a turn streaming in this folder (a session's worktree)? For github's Undo, which must not reset
+   * a worktree an agent is writing in. Any live thread whose folder is, or is under, `cwd` counts.
+   * @param {string} cwd @returns {{ busy: boolean, threads: string[] }}
+   */
+  busyIn(cwd) {
+    const dir = path.resolve(String(cwd));
+    const threads = [];
+    for (const [id, st] of this.live) {
+      if (!st.turn) continue;
+      const rec = this.record(id);
+      if (rec && rec.cwd && (path.resolve(rec.cwd) === dir || path.resolve(rec.cwd).startsWith(dir + path.sep) || dir.startsWith(path.resolve(rec.cwd) + path.sep))) threads.push(id);
+    }
+    return { busy: threads.length > 0, threads };
+  }
+
+  /**
+   * Press stop for every turn streaming in a folder (as a person would before Undo), and wait until
+   * they have ended: an interrupt, not a kill, so the threads stay and take their next message.
+   * @param {string} cwd @param {number} [timeoutMs] @returns {Promise<{ stopped: string[], still: string[] }>}
+   */
+  async haltIn(cwd, timeoutMs = 15_000) {
+    const { threads } = this.busyIn(cwd);
+    await Promise.all(threads.map(id => this.interrupt(id).catch(() => null)));
+    const end = Date.now() + timeoutMs;
+    while (Date.now() < end && this.busyIn(cwd).busy) await new Promise(r => setTimeout(r, 50));
+    const still = this.busyIn(cwd).threads;
+    return { stopped: threads.filter(id => !still.includes(id)), still };
+  }
+
+  /**
+   * Delete a thread: stop it, remove its record, runs, questions, queue, steers and events, and say
+   * thread.deleted so whatever else keeps something of it (OpenRouter's stored conversation) lets go.
+   * What a provider's own program wrote to disk (Claude Code's transcript file) is that program's;
+   * Vyre does not reach into it.
+   * @param {string} id
+   */
+  async delete(id) {
+    const rec = this.must(id);
+    if (this.live.has(id)) { await this.stop(id).catch(() => {}); this.live.delete(id); }
+    this.closeSocket(id);
+    // The session's git worktree goes only when nothing is lost (github decides; safe to repeat). Not on stop.
+    if (rec.project) await this.deps.call("github.session.cleanup", { project: rec.project, session: id, deleted: true }).catch(() => null);
+    for (const [table, col] of [["threads_asks", "thread"], ["threads_leases", "thread"], ["threads_watches", "thread"], ["threads_inbox", "thread"], ["threads_providers", "thread"],
+      ["threads_sent", "thread"], ["threads_steers", "thread"], ["threads_turns", "thread"], ["events", "thread"], ["threads_runs", "id"]]) {
+      try { this.db.prepare(`DELETE FROM ${table} WHERE ${col} = ?`).run(id); } catch (e) { if (!/no such (table|column)/.test(/** @type {Error} */ (e).message)) throw e; }
+    }
+    this.states.delete(id);
+    // Not tied to the thread it names (its rows are gone): the payload carries the id.
+    this.deps.emit("thread.deleted", { thread: id, project: rec.project || null, agent: rec.agent || null }, { project: rec.project || undefined });
+    return { thread: id, deleted: true };
+  }
+
+  list({ agent, all, archived } = {}) {
     const rows = agent
       ? this.db.prepare("SELECT id FROM threads_runs WHERE agent = ? ORDER BY last_at DESC LIMIT 200").all(agent)
       : this.db.prepare(`SELECT id FROM threads_runs ${all ? "" : `WHERE status IN (${LIVE.map(() => "?").join(",")}) OR last_at > ?`} ORDER BY last_at DESC LIMIT 200`)
@@ -1593,7 +1934,52 @@ export class Switchboard {
     const live = this.sessions.live(this.ours());
     // Warm sessions (quick) are Vyre's own plumbing: listed only with all.
     const quick = all ? new Set() : new Set(/** @type {any[]} */ (this.db.prepare("SELECT id, opts FROM threads_runs WHERE opts LIKE '%\"quick\":true%'").all()).map(r => String(r.id)));
-    return rows.filter(r => !quick.has(String(r.id))).map(r => ({ ...this.record(String(r.id)), live: live.has(String(r.id)) }));
+    // Archived threads leave the default list; archived: true lists only them, all lists everything.
+    return rows.filter(r => !quick.has(String(r.id))).map(r => ({ ...this.record(String(r.id)), live: live.has(String(r.id)) }))
+      .filter(t => all || (archived ? t.archived : !t.archived));
+  }
+
+  /**
+   * Put a thread away: it stops, github cleans its worktree up (branch and commits kept unless it
+   * says otherwise), and it leaves the default list. The transcript and events stay.
+   * @param {string} id
+   */
+  async archive(id) {
+    const rec = this.must(id);
+    if (rec.archived) return { thread: id, archived: true, already: true };
+    if (this.live.has(id)) { await this.stop(id).catch(() => {}); this.live.delete(id); }
+    let cleanup = null;
+    if (rec.project) {
+      const gh = await this.deps.call("github.project.of", { project: rec.project }).catch(() => null);
+      if (gh && !gh.error && gh.data) cleanup = (await this.deps.call("github.session.cleanup", { project: rec.project, session: id }).catch(() => null))?.data || null;
+    }
+    this.db.prepare("UPDATE threads_runs SET archived_at = ? WHERE id = ?").run(Date.now(), id);
+    this.emit("thread.archived", { project: rec.project || null, agent: rec.agent || null }, id, rec.project);
+    return { thread: id, archived: true, ...(cleanup ? { cleanup } : {}) };
+  }
+
+  /**
+   * Bring an archived thread back: github makes its worktree again (an existing branch is checked
+   * out as it is), and the thread's folder is that worktree.
+   * @param {string} id
+   */
+  async unarchive(id) {
+    const rec = this.must(id);
+    if (!rec.archived) return { thread: id, archived: false, already: true };
+    if (rec.project) {
+      const gh = await this.deps.call("github.project.of", { project: rec.project }).catch(() => null);
+      const wt = gh && !gh.error && gh.data ? await this.deps.call("github.session.worktree", { project: rec.project, session: id }).catch(() => null) : null;
+      if (wt && !wt.error && wt.data && wt.data.path) {
+        this.db.prepare("UPDATE threads_runs SET cwd = ? WHERE id = ?").run(String(wt.data.path), id);
+        if (wt.data.branch) {
+          const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
+          this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify({ ...optsOf(row), branch: String(wt.data.branch) }), id);
+        }
+      }
+    }
+    this.db.prepare("UPDATE threads_runs SET archived_at = NULL WHERE id = ?").run(id);
+    this.emit("thread.unarchived", { project: rec.project || null, agent: rec.agent || null }, id, rec.project);
+    return { thread: id, archived: false, cwd: this.must(id).cwd };
   }
 
   /** A thread with its recent events, its open asks and who holds it. What a surface opening it needs. */
@@ -1602,6 +1988,45 @@ export class Switchboard {
     const events = this.db.prepare("SELECT * FROM events WHERE thread = ? AND id > ? ORDER BY id DESC LIMIT ?").all(id, since, Math.min(1000, limit))
       .reverse().map(e => ({ id: e.id, at: e.at, type: e.type, payload: JSON.parse(String(e.payload)) }));
     return { thread: rec, asks: this.asks.open(id).map(({ request_id, ...a }) => a), events };
+  }
+
+  /**
+   * A thread as the items a card list draws, oldest first, built from its stored events only (so it
+   * outlives every process and is the same for a session opened cold as for one watched live): what
+   * was said to it, what it said, each tool call with its last state, its plan as it changed, and
+   * notices. `since` is an event id; `next` is the last item's id, or null when nothing is left.
+   * A tool item's id is the event that started it, its status the last one said for that call.
+   * @param {string} id @param {{ since?: number, limit?: number }} [o]
+   */
+  items(id, { since = 0, limit = 50 } = {}) {
+    const rec = this.must(id);
+    const want = Math.max(1, Math.min(200, Number(limit) || 50));
+    const after = Math.max(0, Number(since) || 0);
+    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT id, at, type, payload FROM events WHERE thread = ? AND id > ?
+      AND type IN ('thread.sent','thread.text','thread.tool','thread.plan','thread.provider') ORDER BY id ASC LIMIT ?`).all(id, after, want * 4 + 200));
+    const done = this.db.prepare(`SELECT payload FROM events WHERE thread = ? AND type = 'thread.tool' AND json_extract(payload, '$.call') = ? AND json_extract(payload, '$.phase') = 'done' ORDER BY id DESC LIMIT 1`);
+    let provider = rec.provider || "claude";
+    /** @type {any[]} */ const items = [];
+    let more = false;
+    for (const e of rows) {
+      const p = JSON.parse(String(e.payload));
+      if (e.type === "thread.provider") { if (typeof p.to === "string") provider = p.to; continue; }
+      /** @type {any} */ let item = null;
+      if (e.type === "thread.sent") item = { kind: p.kind ? "notice" : "person", text: String(p.text || ""), ...(p.surface ? { surface: p.surface } : {}), ...(p.kind ? { from: p.surface || null } : {}) };
+      else if (e.type === "thread.text") { if (p.done && !p.kind && typeof p.text === "string") item = { kind: p.notice ? "notice" : "assistant", text: p.text }; }
+      else if (e.type === "thread.plan") item = { kind: "plan", plan: p.items || [] };
+      else if (e.type === "thread.tool" && p.phase === "started") {
+        const d = /** @type {any} */ (done.get(id, String(p.call)));
+        const last = d ? JSON.parse(String(d.payload)) : null;
+        item = { kind: "tool", tool: { call: p.call, name: p.name || p.tool, kind: p.kind || "other", status: last ? last.status : "running",
+          ...(p.path ? { path: p.path } : {}), ...(p.command ? { command: p.command } : {}), ...(p.query ? { query: p.query } : {}) } };
+        if (p.provider) item.provider = p.provider;
+      }
+      if (!item) continue;
+      if (items.length >= want) { more = true; break; }
+      items.push({ id: e.id, at: e.at, turn: p.turn || null, ...item, provider: item.provider || provider });
+    }
+    return { items, next: more || rows.length >= want * 4 + 200 ? (items.length ? items[items.length - 1].id : null) : null };
   }
 
   /**
@@ -1767,12 +2192,37 @@ export default {
       const out = { auth: "subscription", env: { CLAUDE_CODE_OAUTH_TOKEN: await fetch("setup-token") } };
       try { return { ...out, fallback: { env: { ANTHROPIC_API_KEY: await fetch("api-key") } } }; } catch { return out; }
     };
+    // An account's credential from the vault (the item must be granted to this module), as the
+    // environment variable its provider's CLI reads. A "login" account has none: its HOME does.
+    const ACCOUNT_ENV = /** @type {Record<string, Record<string, string>>} */ ({
+      claude: { "setup-token": "CLAUDE_CODE_OAUTH_TOKEN", "api-key": "ANTHROPIC_API_KEY" },
+      codex: { "api-key": "OPENAI_API_KEY" },
+      grok: { "api-key": "XAI_API_KEY" },
+      openrouter: { "api-key": "OPENROUTER_API_KEY" },
+    });
+    const accountEnv = async (/** @type {any} */ a) => {
+      if (a.kind === "login") return { auth: "subscription", env: {} };
+      const name = ACCOUNT_ENV[a.provider] && ACCOUNT_ENV[a.provider][a.kind];
+      if (!name) throw Object.assign(new Error(`a ${a.kind} account is not something ${a.provider} takes`), { code: "bad_input" });
+      const v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
+      if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads (vyre vault grant ${a.vault_item} threads)`), { code: "no_credential" });
+      return { auth: a.kind === "api-key" ? "api-key" : "subscription", env: { [name]: String(v) } };
+    };
+    // On a box the spawner puts each account in its own uid's HOME. Elsewhere a provider that
+    // keeps its login in HOME (not Claude, whose transcripts Vyre reads from the user's own) gets
+    // one private folder per account.
+    const accountHome = (/** @type {any} */ a) => {
+      if (usesSpawner() || a.provider === "claude") return null;
+      const dir = path.join(root, "accounts", String(a.id));
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      return dir;
+    };
     const sb = new Switchboard({
       db: ctx.store.db, call: ctx.call, root,
       transcripts: transcriptFolders((ctx.config && ctx.config.transcripts) || [], root),
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
-      idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers,
+      idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers, accountEnv, accountHome,
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
       threadSocket: cfg.thread_socket === "off" ? null
@@ -1784,6 +2234,24 @@ export default {
       ...(typeof cfg.uid === "number" ? { uid: cfg.uid, gid: typeof cfg.gid === "number" ? cfg.gid : cfg.uid } : {}),
     });
     sb.recover();
+    // ADR 0041 section 5, end side (start side is where()'s github.session.worktree call above):
+    // a github project's worktree is cleaned up once its session reaches "finished" - a one-shot's
+    // own natural completion (threads.launch's own purpose: "job", once: true; never resumed by
+    // design), the one canonical status that never needs the worktree again. Deliberately narrower
+    // than the ADR's "stopped or finished": an ordinary interactive session that stops (the person
+    // presses Stop, or an idle close/restart/rewind lands on "paused") is resumable - threads.send
+    // brings it back on its EXISTING cwd (launch()'s resume branch never calls where() at all) -
+    // so cleaning its worktree up there would break resume outright unless resume also learned to
+    // recreate a missing one, which is real, separate work, not done here. Flagged to github/
+    // reviewer-2 rather than guessed at silently.
+    const offGithubCleanup = ctx.events.on("thread.status", e => {
+      if (e.payload && e.payload.status === "finished" && e.project && e.thread) {
+        ctx.call("github.project.of", { project: e.project }).then(gh => {
+          if (!gh || gh.error || !gh.data) return;
+          return ctx.call("github.session.cleanup", { project: e.project, session: e.thread });
+        }).catch(() => {}); // no core/github, or nothing to clean up: changes nothing
+      }
+    });
     // The Agent SDK driver (ADR 0030). It is loaded with the first thread, not at start (the
     // import alone is about 40 MB), and installed in the background on first use while threads
     // run on the CLI runner.
@@ -1826,8 +2294,15 @@ export default {
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
-        lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." } } },
-      async (i, { caller }) => { guard(caller, "start sessions"); return sb.launch({ ...i, surface: surfaceOf(i, caller) }); });
+        lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
+        parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
+      async (i, { caller, thread, firstParty }) => {
+        guard(caller, "start sessions");
+        // The parent is the calling session's own verified thread, or (a first-party module starting it
+        // on a thread's behalf) the id it names. Anyone else's claim is dropped, never believed.
+        const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
+        return sb.launch({ ...i, parent, surface: surfaceOf(i, caller) });
+      });
 
     /**
      * On the box, the person's words for a thread the box does not have go to the paired Mac that
@@ -1858,11 +2333,81 @@ export default {
       return null;
     };
 
+    /**
+     * On the box, the person's answer to an ask the box does not have goes to the paired Mac it is
+     * on (docs/adr/0021-box-reads-the-mac.md, "v2"): the link signs it for that Mac, and the Mac
+     * checks the signature before it answers. The Mac's answer, labelled { source: "mac", machine },
+     * or null when no Mac has the ask, so the box answers as usual ("no ask"). Never retried: a Mac
+     * that says the ask is gone or cancelled has the last word, and a retry would carry a new nonce.
+     */
+    // The paired Macs' open asks, as their ask.raised reached this box (core/link relays them with
+    // source "mac"): ask id -> gated. Read synchronously by threads.answer's presence rule. Box only.
+    /** @type {Map<string, { gated: boolean }>} */
+    const macAsks = new Map();
+    /** Record a Mac's ask as gated or not, keeping at most 500. @param {string} ask @param {boolean} gated */
+    const rememberMacAsk = (ask, gated) => {
+      macAsks.delete(ask);
+      while (macAsks.size >= 500) macAsks.delete(/** @type {string} */ (macAsks.keys().next().value));
+      macAsks.set(ask, { gated });
+    };
+    const offs = [];
+    if (ctx.config && ctx.config.role === "box") {
+      offs.push(ctx.events.on("ask.raised", e => {
+        const p = e.payload || {};
+        if (p.source !== "mac" || typeof p.ask !== "string") return;
+        rememberMacAsk(p.ask, gatedAsk(p));
+      }));
+      offs.push(ctx.events.on("ask.answered", e => { const p = e.payload || {}; if (p.source === "mac") macAsks.delete(p.ask); }));
+    }
+    // Whether any Mac has ever paired here (core/link/box.js's own table, read across modules:
+    // "reads may join any table", core/modules/index.js). A box that has never paired one can
+    // never have a Mac-gated ask to fail closed on; querying it here, not link's own tool, keeps
+    // this synchronous, the way a presence `when` must be. Missing (link never started) reads as
+    // no Macs, not an error.
+    const hasPairedMacs = () => { try { return Boolean(ctx.store.db.prepare("SELECT 1 FROM link_peers WHERE kind = 'mac' LIMIT 1").get()); } catch { return false; } };
+    /**
+     * Would this answer go to a Mac, and approve a gated ask there? An ask the box never saw (the
+     * box restarted, or it raced ask.raised) counts as gated too, not only one named by `machine`,
+     * on a box that has ever paired a Mac: macAsks is memory-only, so "unknown, and a Mac could
+     * have it" must fail toward asking for a fresh proof, not toward skipping it (e2e, review of
+     * 0f2a8752, LOW 1). A box with no paired Mac, ever, has nothing to fail closed on (regression,
+     * cohesion 2026-09-28: a plain single-box install asked for presence on every unknown ask,
+     * `threads.answer` typo'd or already-closed alike, though ADR 0021 section 3a only fails
+     * closed for one a Mac could actually own); the person sees a proof prompt they didn't
+     * strictly need only when a Mac is actually in the picture.
+     */
+    const gatedOnMac = i => !sb.asks.get(i.ask) && (macAsks.has(i.ask) ? /** @type {any} */ (macAsks.get(i.ask)).gated : Boolean(i.machine) || hasPairedMacs());
+    /** The owner's device over the tailnet or the relay: the person needs a person session there (ADR 0032). */
+    const ownerDevice = caller => /^tailnet:(?!agent:)./.test(String(caller)) || /^device:[a-z2-7]{16}$/i.test(String(caller));
+
+    const answerOnMac = async (i, caller, peer, meta = {}) => {
+      // Defence in depth until the registry's person-session rule (ADR 0032) is on this branch: an
+      // owner device answers a Mac's ask only inside a person session. Nothing is signed or sent.
+      if (ownerDevice(caller) && !meta.person) throw Object.assign(new Error("answering a Mac's ask is the person's own action: sign in on this device with your passkey first"), { code: "person_session_required" });
+      // An ask that approves a floor tool needs a fresh proof (the registry checked it; a presence session is not one).
+      if (gatedOnMac(i) && (!meta.presence || meta.presence.method === "session")) throw Object.assign(new Error("this ask approves a protected action: prove you are here (passkey or Touch ID) to answer it"), { code: "presence_required" });
+      const input = { ask: i.ask, decision: i.decision, surface: surfaceOf(i, caller),
+        ...(i.message !== undefined ? { message: i.message } : {}), ...(i.answers !== undefined ? { answers: i.answers } : {}), ...(i.scope !== undefined ? { scope: i.scope } : {}) };
+      const by = { caller: String(caller || ""), ...(peer && peer.stableId ? { device: String(peer.stableId) } : {}),
+        ...(meta.person && meta.person.id ? { person: String(meta.person.id) } : {}), ...(meta.presence && meta.presence.method ? { presence: String(meta.presence.method) } : {}) };
+      const r = await ctx.call("link.macs.call", { tool: "threads.answer", as: "person", by, input, ...(i.machine ? { mac: i.machine } : {}) });
+      if (r.error || !Array.isArray(r.data) || !r.data.length) return null;
+      const done = r.data.find(a => a.ok);
+      if (done) return { ...(done.data || {}), source: "mac", machine: done.name };
+      const a = r.data[0];
+      const e = a.error || { code: "failed", message: "the Mac could not answer" };
+      if (e.code === "mac_offline") throw Object.assign(new Error(`${a.name} is offline; your answer was not sent`), { code: "mac_offline" });
+      if (e.code === "timeout") throw Object.assign(new Error(`${a.name} did not answer in time; your answer may not have reached it`), { code: "timeout" });
+      throw Object.assign(new Error(e.message), { code: e.code });
+    };
+
     tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first. On a box, the person's words for a paired Mac's thread go to that Mac (machine: its name, to pick one).",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
         images: { type: "array", items: { type: "object", required: ["media_type", "data"], properties: { media_type: { type: "string", enum: IMAGE_TYPES }, data: str } },
           description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` },
+        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str } }, description: "The # tags the composer picked ({kind, id}), from a person's own surface only; a #Name in the text that is exactly one thing is tagged too." },
+        pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the text the person pasted (an email, a ticket): a #Name inside one tags nothing, since someone else wrote it; only a picked chip does." },
         model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
@@ -1877,12 +2422,15 @@ export default {
         const had = (i.model || i.effort) ? sb.record(i.thread) : null;
         if (i.model && had && had.model !== i.model) await sb.switchModel(i.thread, i.model);
         if (i.effort && had && had.effort !== i.effort) await sb.switchEffort(i.thread, i.effort);
-        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images),
-          ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
+        const uuid = idempotencyKey ? keyUuid(String(caller || ""), String(idempotencyKey)) : crypto.randomUUID();
+        // The person's own words, and only theirs: said, and the credentials they let this thread use.
+        const heard = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid) ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : []) : [];
+        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid,
+          ...(heard.length ? { note: tagNote(heard) } : {}) });
       });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each, how many questions are open, and live (a terminal has it open now).",
-      { type: "object", properties: { agent: str, all: { type: "boolean" }, machines: { type: "string", enum: ["all", "local"] } } },
+      { type: "object", properties: { agent: str, all: { type: "boolean" }, archived: { type: "boolean", description: "Only the threads put away (threads.archive)." }, machines: { type: "string", enum: ["all", "local"] } } },
       async (i, { caller }) => {
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
@@ -1919,18 +2467,39 @@ export default {
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
       async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); });
 
-    tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now.",
-      { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] } } },
-      async (i, { caller, peer }) => { guard(caller, "read questions"); return withPresence(sb.asks.open(i.thread, i.kind).map(({ request_id, ...a }) => a), peer); });
+    tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now. On a box, for the person, the paired Macs' open asks too, labelled source and machine (machines: \"local\" for the box's own only).",
+      { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] }, machines: { type: "string", enum: ["all", "local"] } } },
+      async (i, { caller, peer }) => {
+        guard(caller, "read questions");
+        const { machines: _, ...q } = i;
+        const own = await withPresence(sb.asks.open(q.thread, q.kind).map(({ request_id, ...a }) => a), peer);
+        if (!wantsMacs(ctx, i, caller)) return own;
+        // On a box, for the person: the paired Macs' open asks too, each labelled with its machine,
+        // so a surface that reconnects has one list to reconcile from. What answering one takes is
+        // the box's rule, not the Mac's: a gated ask needs a fresh proof here (gatedOnMac), and the
+        // box learns which are gated from this list as it does from the relayed ask.raised.
+        const answers = await askMacs(ctx, "threads.asks", q);
+        const covered = own.length ? own[0].presence : await withPresence([{}], peer).then(r => r[0].presence);
+        for (const a of answers) if (a.ok && Array.isArray(a.data)) for (const r of a.data) if (r && typeof r.id === "string") rememberMacAsk(r.id, gatedAsk(r));
+        return mergeRows(ctx, own, answers.map(a => a.ok && Array.isArray(a.data)
+          ? { ...a, data: a.data.map(r => ({ ...r, presence: { ...covered, required: gatedAsk(r) } })) } : a),
+        { compare: (x, y) => (Number(x.at) || 0) - (Number(y.at) || 0) });
+      });
 
-    tool("threads.answer", "Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code offers it). A question is answered with allow and answers { [question]: chosen label(s) joined with \", \", or the typed text }, or declined with deny. Only a person's surface can answer; a model never approves a permission, its own or another session's.",
-      { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str,
+    tool("threads.answer", "Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code offers it). A question is answered with allow and answers { [question]: chosen label(s) joined with \", \", or the typed text }, or declined with deny. Only a person's surface can answer; a model never approves a permission, its own or another session's. On a box, the person's answer to a paired Mac's ask goes to that Mac (machine: its name, when the box has not seen the ask).",
+      { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str, machine: str,
         answers: { type: "object", additionalProperties: { type: "string" } },
         scope: { type: "string", enum: ["project"], description: "With always: allow this tool from now on in the thread's project only (the ask's always_project)." } } },
-      async (i, { caller, thread }) => {
+      async (i, meta) => {
+        const { caller, thread, peer } = meta;
         // A call vyred traced to a session never answers that session's own ask, whoever it says it is.
         const a = sb.asks.get(i.ask);
         if (a && thread && a.thread === thread) throw Object.assign(new Error("an ask is answered by the person, not from the session that raised it"), { code: "denied" });
+        // Only the person's own callers reach a Mac (a module never: it passes no `machines`).
+        if (!a && !thread && wantsMacs(ctx, {}, caller)) {
+          const mac = await answerOnMac(i, caller, peer, meta);
+          if (mac) return mac;
+        }
         // device: which of the person's devices answered, when the call says (a paired device over
         // the relay, the owner's tailnet node), not only the surface it claims.
         const device = /^(device|tailnet):./.test(String(caller || "")) ? String(caller) : null;
@@ -1942,7 +2511,12 @@ export default {
       // No presence proof: answering is the owner's own action on their own screen, and Vyre does
       // not nag (ADR 0024, "No nagging"). The allowlist keeps models, agents and guests out, and the
       // harness floor refuses a model's Bash that names this tool (core/presence PERSON_ONLY).
-      ["cli", "local", "module", "deck", "capsule", "tailnet"]);
+      // "link:box" is the person at the paired box, on a Mac: core/link runs it only after checking
+      // the box's signed assertion for this ask and this answer (docs/adr/0021, "v2").
+      ["cli", "local", "module", "deck", "capsule", "tailnet", "link:box"],
+      // On a box, an answer that goes to a Mac and approves a floor tool there needs a fresh proof
+      // (gatedOnMac). Every other answer asks nothing (the no-nag rule). A Mac declares no rule.
+      ctx.config && ctx.config.role === "box" ? { presence: { when: i => Boolean(i && i.ask) && gatedOnMac(i), summary: () => "Answer a protected request on your Mac" } } : {});
 
     tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
       { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },
@@ -1956,6 +2530,10 @@ export default {
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "interrupt sessions"); return sb.interrupt(i.thread); });
 
+    tool("threads.switch", "Continue a thread on another provider (and account), between turns: the same thread, folder and files, the new provider given a brief of what was said. A person or an agent that may act on the thread can do it. provider: claude, codex or grok; account: one granted to this project or agent (never a guess between two); text: the next message to send there.",
+      { type: "object", required: ["thread", "provider"], properties: { thread: str, provider: str, account: str, model: str, text: str } },
+      async (i, { caller }) => { guard(caller, "switch a session's provider"); return sb.switchProvider(i.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: i.text || null }); });
+
     tool("threads.unqueue", "Take back queued words before they are handed over: one (queued: the queued_id threads.send gave, or thread.queued's queued) or all of the thread's. Only a person's surface can.",
       { type: "object", required: ["thread"], properties: { thread: str, queued: { type: "integer" }, surface: str } },
       async (i, { caller }) => {
@@ -1964,13 +2542,13 @@ export default {
         return sb.unqueue(i.thread, i.queued, surfaceOf(i, caller));
       });
 
-    tool("threads.queue", "The words queued for a thread and not handed over yet, oldest first: queued (the row id), uuid, text, surface, at.",
+    tool("threads.queue", "The words queued for a thread and not handed over yet, oldest first: queued (the row id), uuid, text, surface, at, request (a teammate's own request id, when its reply carries one).",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => {
         guard(caller, "read queued words");
         sb.must(i.thread);
-        return { queued: /** @type {any[]} */ (sb.db.prepare("SELECT id, uuid, text, surface, at FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(i.thread))
-          .map(r => ({ queued: Number(r.id), uuid: r.uuid || null, text: String(r.text), surface: r.surface, at: r.at })) };
+        return { queued: /** @type {any[]} */ (sb.db.prepare("SELECT id, uuid, text, surface, at, request FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(i.thread))
+          .map(r => ({ queued: Number(r.id), uuid: r.uuid || null, text: String(r.text), surface: r.surface, at: r.at, request: r.request || null })) };
       });
 
     tool("threads.edit", "Change queued words before they are handed over (re-emits thread.queued with the same ids). Only a person's surface can.",
@@ -2044,16 +2622,20 @@ export default {
         return sb.shell(i.thread, i.command);
       }, ["cli", "local", "deck", "capsule"]);
 
-    tool("threads.remember", "Claude Code's # mode: add a line to CLAUDE.md: the project's (project, the default), your own (user) or this folder's private one (local, CLAUDE.local.md). Vyre's own memory is separate.",
+    tool("threads.remember", "/remember (Claude Code's # mode; # is a tag now): add a line to CLAUDE.md: the project's (project, the default), your own (user) or this folder's private one (local, CLAUDE.local.md). Vyre's own memory is separate.",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, scope: { type: "string", enum: ["project", "user", "local"] } } },
       async (i, { caller, thread }) => {
         if (thread && thread === i.thread) throw Object.assign(new Error("a session does not edit its own instructions"), { code: "denied" });
         return sb.remember(i.thread, i.text, i.scope || "project");
       }, ["cli", "local", "deck", "capsule"]);
 
-    tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation so far, in the same folder, that the original never sees. For a session busy in a terminal, the way to carry on from here without two keyboards on one transcript.",
-      { type: "object", required: ["thread"], properties: { thread: str, prompt: str, name: str, surface: str } },
-      async (i, { caller }) => { guard(caller, "fork sessions"); return sb.launch({ fork: i.thread, prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) }); });
+    tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation so far, in the same folder, that the original never sees. For a session busy in a terminal, the way to carry on from here without two keyboards on one transcript. at: a message's uuid (thread.turn's) - fork from just before that turn instead of from the live end, the other item in the rewind menu ('Fork from here' beside 'Restore').",
+      { type: "object", required: ["thread"], properties: { thread: str, at: str, prompt: str, name: str, surface: str } },
+      async (i, { caller }) => {
+        guard(caller, "fork sessions");
+        if (i.at) return sb.forkAt(i.thread, i.at, { prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) });
+        return sb.launch({ fork: i.thread, prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) });
+      });
 
     tool("threads.mode", "Put a running thread in a permission mode, as Shift+Tab does in Claude Code: default (ask), acceptEdits (edits without asking), plan (read and plan only) or bypassPermissions (\"Doesn't ask\": no questions; Vyre's security floor and the Gate still hold, and only in a session with Vyre's plugin). Only a person's surface can; no answer ever sets it.",
       { type: "object", required: ["thread", "mode"], properties: { thread: str, mode: { type: "string", enum: PERSON_MODES } } },
@@ -2063,6 +2645,34 @@ export default {
       },
       ["cli", "local", "deck", "capsule"]);
 
+    tool("threads.delete", "Delete a thread for good: it stops, and its record, questions, queued words and events go, and thread.deleted is said so anything else that kept a copy (OpenRouter's stored conversation) lets go too. A provider's own transcript file is not touched. A person, the assistant, or an agent for its own threads and its own projects' threads.",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, meta) => {
+        guard(meta.caller, "delete sessions");
+        const rec = sb.must(i.thread);
+        const m = /** @type {any} */ (meta);
+        if (m.agent && m.agentKind !== "assistant") {
+          const own = rec.agent === m.agent, granted = m.granted === "*" || (Array.isArray(m.granted) && rec.project && m.granted.includes(rec.project));
+          if (!own && !granted) throw Object.assign(new Error("an agent deletes its own threads, or threads of a project it is granted"), { code: "denied" });
+        }
+        return sb.delete(i.thread);
+      });
+
+    // The same reach as delete: a person, the assistant, or an agent for its own and its granted projects' threads.
+    const mayReach = (meta, rec) => {
+      const m = /** @type {any} */ (meta);
+      if (m.agent && m.agentKind !== "assistant") {
+        const own = rec.agent === m.agent, granted = m.granted === "*" || (Array.isArray(m.granted) && rec.project && m.granted.includes(rec.project));
+        if (!own && !granted) throw Object.assign(new Error("an agent acts on its own threads, or threads of a project it is granted"), { code: "denied" });
+      }
+    };
+    tool("threads.archive", "Put a thread away: it stops, its session worktree is cleaned up by github (the branch and commits stay), and it leaves the default list. thread.archived is said. threads.unarchive brings it back. A person, the assistant, or an agent for its own threads and its own projects' threads.",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, meta) => { guard(meta.caller, "archive sessions"); mayReach(meta, sb.must(i.thread)); return sb.archive(i.thread); });
+    tool("threads.unarchive", "Bring an archived thread back into the list; its worktree is made again on the same branch. thread.unarchived is said.",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, meta) => { guard(meta.caller, "unarchive sessions"); mayReach(meta, sb.must(i.thread)); return sb.unarchive(i.thread); });
+
     tool("threads.stop", "Stop a headless thread. Its transcript stays; threads.send resumes it.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "stop sessions"); return sb.stop(i.thread); });
@@ -2070,16 +2680,17 @@ export default {
     // For other modules (teammates, ADR 0031): put words in a thread that never steer: a new turn
     // when the thread is idle, else handed over when its running turn ends.
     ctx.tool("threads.post", {
-      description: "Give a thread words from a module (a teammate's result): a turn of their own now if it is idle, else after its running turn. Never steers.", internal: true,
-      input: { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, kind: str, from: str } },
-      run: async (i, { caller }) => sb.post(i.thread, i.text, String(i.from || caller || "module"), i.kind || "post"),
+      description: "Give a thread words from a module (a teammate's result): a turn of their own now if it is idle, else after its running turn. Never steers. request: the request this reply answers (core/team's own id), so a surface with two open asks to the same teammate can match it by id instead of by role, FIFO.", internal: true,
+      input: { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, kind: str, from: str, request: str } },
+      run: async (i, { caller }) => sb.post(i.thread, i.text, String(i.from || caller || "module"), i.kind || "post", safeRequest(i.request)),
     });
     // For other modules only (agents): start or resume with an agent's credentials, scope and
     // instructions. Internal, so no surface or model can hand a thread an environment.
     ctx.tool("threads.quick", {
       description: "One question to a purpose's warm session (a lean one already started, so no start-up wait): memory (Vyre IQ), planner, helper and the like. A fresh session per question; the system text is fixed per spare, the question's material goes in prompt. Returns { text, ok, cost_usd, warm, ms, thread }.", internal: true,
-      input: { type: "object", required: ["purpose", "prompt"], properties: { purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
-      run: async i => sb.quick({ purpose: i.purpose, prompt: i.prompt, system: i.system || null, model: i.model || null, timeoutMs: i.timeout_ms || 60_000 }),
+      input: { type: "object", required: ["purpose", "prompt"], properties: { purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, stream: { type: "boolean", description: "Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole." }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
+      run: async (i, meta) => sb.quick({ purpose: i.purpose, prompt: i.prompt, system: i.system || null, model: i.model || null, timeoutMs: i.timeout_ms || 60_000,
+        onText: i.stream && meta && typeof /** @type {any} */ (meta).partial === "function" ? /** @type {any} */ (meta).partial : null }),
     });
 
     ctx.tool("threads.launch", {
@@ -2129,6 +2740,9 @@ export default {
       run: async i => sb.replied(i.session, i.text || ""),
     });
     // For agents.history: conversations with agents, from the event log.
+    tool("threads.items", "A thread as the items a card list draws, oldest first, from its stored events: what was said to it, what it said, each tool call with its last state (kind, path, command, query), its plan as it changed, and notices. since: an event id; next: the last item's id, or null when nothing is left.",
+      { type: "object", required: ["thread"], properties: { thread: str, since: { type: "integer" }, limit: { type: "integer" } } },
+      async (i, { caller }) => { guard(caller, "read sessions"); return sb.items(String(i.thread), { since: i.since, limit: i.limit }); });
     ctx.tool("threads.history", {
       description: "Exchanges with agents (a send and its replies), newest last.", internal: true,
       input: { type: "object", properties: { agent: str, limit: { type: "integer" }, before: { type: "integer" } } },
@@ -2140,6 +2754,38 @@ export default {
       description: "The live thread of this agent, or this bound session, that holds this key; or null.", internal: true,
       input: { type: "object", required: ["key"], properties: { agent: str, session: str, key: str } },
       run: async i => ({ thread: i.agent ? sb.vouch(i.agent, i.key) : i.session ? sb.sessions.vouch(i.session, i.key) : null }),
+    });
+    // For recall: who really started a session under an account's folder, from this record and never
+    // from what the transcript says about itself. No record, or an agent's or a job's: not a person's.
+    // For github's Undo, which stops the turn first (a person pressing stop) and then resets the worktree.
+    ctx.tool("threads.interrupt-in", {
+      description: "Interrupt every turn streaming in a folder (a session's worktree) and wait for them to end; the threads stay. github calls it before Undo resets a worktree. Answers who stopped and who still runs.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["cwd"], properties: { cwd: str } },
+      run: async i => sb.haltIn(String(i.cwd)),
+    });
+    // For github's Undo: is a turn streaming in that worktree? (github asks before it resets one.)
+    ctx.tool("threads.busy", {
+      description: "Whether a turn is streaming in a folder (a session's worktree) or in a thread's own folder. github asks before Undo resets a worktree.", internal: true, callers: ["module"],
+      input: { type: "object", properties: { cwd: str, thread: str } },
+      run: async i => {
+        const dir = i.cwd || (i.thread ? sb.must(String(i.thread)).cwd : null);
+        if (!dir) throw Object.assign(new Error("give a folder or a thread"), { code: "bad_input" });
+        return sb.busyIn(String(dir));
+      },
+    });
+    ctx.tool("threads.origin", {
+      description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["session"], properties: { session: str } },
+      run: async i => {
+        const rec = sb.record(String(i.session));
+        const human = Boolean(rec && !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || "chat")));
+        return { session: String(i.session), known: Boolean(rec), human, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
+      },
+    });
+    ctx.tool("threads.lineage", {
+      description: "A thread's ancestors, nearest first, up to the person's own thread: the threads it was started for (a teammate's or sub-agent's). The Gate matches what the person said in any of them.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["thread"], properties: { thread: str } },
+      run: async i => ({ thread: String(i.thread), lineage: sb.lineage(String(i.thread)) }),
     });
     ctx.tool("threads.pids", {
       description: "The processes Claude sessions run in: vyred's own thread children and every live bound session. vyred refuses a person-only call from under any of them.", internal: true,
@@ -2153,6 +2799,6 @@ export default {
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     // An SDK install still running ends with vyred, and cleans up after itself (sdk.js).
-    return { async stop() { await abortInstalls(); await sb.stopAll(); } };
+    return { async stop() { offGithubCleanup(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
   },
 };

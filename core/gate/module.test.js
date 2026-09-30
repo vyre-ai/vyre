@@ -55,7 +55,9 @@ test("gate: an agent's email is held, edited and approved by the user, and sent 
   assert.equal((await cli("vault.grant", { name: "work-mail-token", module: "gate" })).data.grant.status, "active");
 
   const senders = (await juno("gate.senders")).data;
-  assert.deepEqual(senders.filter(s => s.type !== "module").map(s => s.name), ["mail"], "the configured senders; the vault also offers vault-api");
+  // "hands:mac" is offered by the hands module (local role, computer use), alongside the
+  // configured "mail" sender; not this test's concern, so only check "mail" is among them.
+  assert.ok(senders.map(s => s.name).includes("mail"));
 
   const held = await juno("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com",
     content: { subject: "Re: Intake form rebuild", body: "Hi Dana, the form is on staging. Call Thursday? Alex" }, thread: "t-1" });
@@ -128,7 +130,9 @@ test("gate: a module offers a sender, and the user's edited approval reaches its
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" },
     gate: { senders: { mail: { type: "gmail", vault: "work-mail-token" } } } }));
   writeModule(path.join(root, "modules"), "courier", { requires: ["gate"], does: { tools: ["courier.release", "courier.got", "courier.spoof"] } }, COURIER);
-  const d = await start({ root, presence: present, log: () => {} });
+  // courier stands in for one of Vyre's own senders (gate.offer is for built in senders; an added
+  // module is its own sender with an outward tool, ADR 0047), so it loads as first party.
+  const d = await start({ root, presence: present, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const local = (tool, input = {}) => call(tool, input, { root, caller: "local" });
   assert.equal(d.registry.status().find(m => m.name === "courier")?.state, "running");

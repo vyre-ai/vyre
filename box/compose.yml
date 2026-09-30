@@ -137,6 +137,20 @@ services:
       - vyre-work:/work
       # The CLI in this image talks to tailscaled through this socket.
       - tailscale-sock:/var/run/tailscale
+      # docker-api's bearer (core/dockerproxy/bearer.js): vyred (uid vyre, 1000) generates it
+      # here on first use and reads it back on every computers.docker request. Shared with the
+      # docker-api service below, mode 0400 -- unreadable to vyre-agent (uid 1001), which shares
+      # this container's filesystem and network but never this volume's file.
+      - docker-api-bearer:/var/lib/vyre-secrets
+      # Updates asked for from the Deck (core/update): vyred, and only vyred, drops the one-line file
+      # `request` in /var/lib/vyre-update/request (a folder root owns, with root-owned parents); a root path unit on the host (vyre updater install) runs the signed
+      # `vyre update` when it appears. Progress and the result come back through /var/lib/vyre-update/status, read-only
+      # here: the host writes it and vyred cannot. No socket, no arguments. See box/vyre.
+      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/request:/run/vyre-update
+      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status:/run/vyre-update-state:ro
+      # The release's SHA256SUMS, signature and shell.json, which vyred serves at /release/ for the phone's shell check.
+      # On the host, so a recreate of this container keeps them; root writes them (box/vyre publish_release).
+      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status/release:/opt/vyre/deck/release:ro
     healthcheck:
       test: ["CMD", "vyre", "status"]
       interval: 30s
@@ -174,8 +188,15 @@ services:
       - VYRE_COMPUTERS_IMAGE=${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}
       - VYRE_COMPUTERS_LABEL_PREFIX=${VYRE_COMPUTERS_LABEL_PREFIX:-run.vyre.computers}
       - VYRE_COMPUTERS_CAP_ADD=${VYRE_COMPUTERS_CAP_ADD:-}
+      # Required (core/dockerproxy/main.js refuses to start without it): every request must
+      # carry this bearer, so being on the docker-api network is not enough on its own -- a
+      # session sharing vyred's container and network cannot reach this proxy just by being on
+      # it. vyred writes the file this points at (core/computers/index.js, bearer.ensure); this
+      # container only ever reads it, and retries for a while on a first-boot race.
+      - DOCKER_PROXY_BEARER_FILE=/var/lib/vyre-secrets/docker-api-bearer
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - docker-api-bearer:/var/lib/vyre-secrets:ro
     networks:
       - docker-api
 
@@ -193,6 +214,9 @@ volumes:
     labels:
       run.vyre: "1"
   vyre-agent-home:
+    labels:
+      run.vyre: "1"
+  docker-api-bearer:
     labels:
       run.vyre: "1"
 

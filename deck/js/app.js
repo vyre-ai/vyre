@@ -17,7 +17,7 @@
 // Views never touch the shell; they reach vyred only through js/api.js.
 
 import { h, put, link, go, back, isPhone, PHONE_QUERY } from "./dom.js";
-import { attempt, on, onResume, fromFixtures, fixturesOn } from "./api.js";
+import { attempt, on, onResume, fromFixtures, fixturesOn, canProve } from "./api.js";
 import { icon, mark } from "./icons.js";
 import * as needs from "./needs.js";
 import { when, base, initials } from "./fmt.js";
@@ -28,11 +28,17 @@ import { isMac, machineChip } from "./machine.js";
 import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
 import { installPersonHandler } from "./person.js";
-import { rail, placeForKey, macKeys } from "./rail.js";
+import { offerEnroll } from "./enroll-grant.js";
+import { enrollPasskey } from "./phone-setup.js";
+import { rail, placeForKey } from "./rail.js";
 import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
+import { installAvatars, setIdentity, personAvatar } from "./avatars.js";
+import { checkBuild } from "./build-check.js";
+import { installed, kbd, mac } from "./platform.js";
 import { reportContext } from "./context-report.js";
+import { homePath } from "./home.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -57,11 +63,19 @@ const ROUTES = [
   ["/settings", "settings"],
   ["/ask", "ask"],
   ["/find", "find"],
+  // An artifact an agent made, full screen (views/artifact.js).
+  ["/a/:id", "artifact"],
+  // The box's shared folders, browsed from a phone (views/files.js).
+  ["/files", "files"],
+  ["/files/:share", "files"],
   ["/planner", "planner"],
   // A planner push notification opens /planner/<firing> (ADR 0025).
   ["/planner/:firing", "planner"],
   // `vyre phone add --tailscale-only` points the phone here (views/pair.js).
   ["/pair", "pair"],
+  // Scan your avatar to pair your phone (ADR 0037, "Wink"): phone.vyre.run points here
+  // (views/wink.js, js/pair-scan.js's sheet).
+  ["/pair/scan", "wink"],
 ];
 // The places and their order are the rail's (js/rail.js PLACES).
 // The phone's three pages, in pager order. Every other address is pushed over them.
@@ -152,7 +166,7 @@ put(deck,
     h("div", { class: "stage" },
       h("header", { class: "top" },
         address,
-        h("label", { class: "search" }, icon("search", 14), searchIn, h("span", { class: "kbd" }, "⌘K"), pop),
+        h("label", { class: "search" }, icon("search", 14), searchIn, h("span", { class: "kbd" }, kbd("K")), pop),
         h("div", { style: { flexGrow: "1" } }),
         fixtureNote,
         needsPill),
@@ -200,13 +214,15 @@ window.addEventListener("deck:pins", drawRail);
 
 async function drawFoot() {
   const r = await attempt("system.info");
+  if (!r.error) setIdentity(r.data || {});
   const host = r.data?.host || location.hostname;
   // The owner's initial when onboarding saved a name, else the machine's; the rail's avatar is
   // named for the person ("Account" until there is a name).
   const letter = initials(r.data?.owner?.name || host).slice(0, 1) || "V";
-  railEl.setOwner(r.data?.owner?.name || null, letter);
+  // The person's own avatar on the rail's account button and the phone header (ADR 0043).
+  railEl.setOwner(r.data?.owner?.name || null, letter, r.error ? null : personAvatar({ size: 32 }));
   owner = { name: r.data?.owner?.name || null, letter };
-  put(phInitial, letter);
+  put(phInitial, r.error ? letter : personAvatar({ size: 34 }));
   fixtureNote.hidden = !fromFixtures.size;
   if (fromFixtures.size) fixtureNote.setAttribute("title", [...fromFixtures].join(", "));
 }
@@ -265,9 +281,10 @@ document.addEventListener("click", e => { if (!(/** @type {Element} */ (e.target
 document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); searchIn.focus(); searchIn.select(); } });
 // Cmd+1 to Cmd+9 (Ctrl off a Mac): the rail's places in order, never while typing in a field. The
 // phone has no rail, so no rail keys.
-const MAC = macKeys();
+const MAC = mac();
 document.addEventListener("keydown", e => {
-  if (phone()) return;
+  // In a browser tab these chords switch the browser's own tabs; only an installed window takes them.
+  if (phone() || !installed()) return;
   const href = placeForKey(e, MAC);
   if (!href) return;
   e.preventDefault();
@@ -401,8 +418,8 @@ function leave(/** @type {string} */ key, /** @type {{ page: HTMLElement, name: 
 }
 
 async function route() {
-  // One address per page: "/" is Now, and the header's "+" asks Agents for its form by event.
-  if (location.pathname === "/") history.replaceState(history.state, "", "/now" + location.search + location.hash);
+  // "/" is the assistant's current thread (js/home.js), else Now; the header's "+" asks Agents for its form by event.
+  if (location.pathname === "/") history.replaceState(history.state, "", (await homePath(attempt)) + location.search + location.hash);
   let newAgent = false;
   if (phone() && location.pathname === "/agents" && new URLSearchParams(location.search).get("new") === "1") {
     history.replaceState(history.state, "", "/agents" + location.hash);
@@ -769,8 +786,13 @@ window.addEventListener("deck:navigate", route);
 (async () => {
   // A box that asks for a person session gets a sign-in sheet, and the call goes again once.
   installPersonHandler();
+// Just paired by scanning the Wink ring: the box's own address opens with a one-time grant in the
+// fragment, and this phone makes its Face ID key now (js/enroll-grant.js).
+offerEnroll({ enroll: enrollPasskey, canProve }).catch(() => {});
   // The theme and scheme from the settings hub, live (ADR 0035); a box without the hub keeps /theme.css.
   followTheme({ attempt, on, onResume });
+  // A tap on anyone's avatar plays its small hop (js/avatars.js), one listener for the page.
+  installAvatars();
   // Where the person is, for cohesion's context (ADR 0036): on each page and on coming back.
   reportContext({ attempt, surface: () => (phone() ? "phone" : "deck"), device: deviceId });
   // What needed the user last time, from this device, while the box is asked (ADR 0029 R3).
@@ -810,6 +832,23 @@ document.addEventListener("visibilitychange", () => {
   hiddenAt = 0;
 });
 
+// Whether the person has touched this page yet: a reload for a new build never lands under their finger.
+let touched = false;
+{
+  const touch = () => { touched = true; };
+  addEventListener("pointerdown", touch, { once: true, passive: true });
+  addEventListener("keydown", touch, { once: true, passive: true });
+}
+// Each time the stream comes back (the box may have been updated meanwhile): this page is never
+// older than its box. Invisible: deck/js/build-check.js.
+onResume(async () => {
+  const r = await attempt("system.info");
+  const reg = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration().catch(() => undefined) : undefined;
+  checkBuild({ page: document.querySelector('meta[name="vyre-build"]')?.getAttribute("content") || null, info: r.data,
+    sw: reg || null, reload: () => location.reload(), untouched: () => !touched || document.visibilityState === "hidden",
+    onHidden: fn => document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") fn(); }) });
+});
+
 if ("serviceWorker" in navigator) {
   // updateViaCache none: the browser asks the box for sw.js on every launch, so a release (a new
   // BUILD in it) installs now. When that new worker takes over a page that already had one, the
@@ -817,10 +856,6 @@ if ("serviceWorker" in navigator) {
   // so a release never mixes old and new modules under someone's finger.
   const hadController = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(() => {});
-  let touched = false;
-  const touch = () => { touched = true; };
-  addEventListener("pointerdown", touch, { once: true, passive: true });
-  addEventListener("keydown", touch, { once: true, passive: true });
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (!hadController) return;
     if (!touched || document.visibilityState === "hidden") { location.reload(); return; }

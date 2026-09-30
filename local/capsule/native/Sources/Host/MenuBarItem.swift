@@ -148,13 +148,19 @@ final class MenuBarItem: NSObject, NSPopoverDelegate {
     }
 }
 
-/// What the popover shows: who is up, how the box is reached, and the few things to do.
+/// What the popover shows: whose Vyre this is, who is up, how the box is reached, and the few
+/// things to do.
 struct MenuBarPopover: View {
     @ObservedObject var health: Health
+    /// The person (system.info), for the account row. Empty before the first read: the circle
+    /// then draws its no-fingerprint look and the row says "You".
+    var identities = Identities()
     let hotkeys: String
     let canTurnOnControl: Bool
     let open: () -> Void
     let turnOnControl: () -> Void
+    /// vyred is down: start it from here (the Capsule opens to show it going).
+    var start: (() -> Void)? = nil
     let quit: () -> Void
 
     var body: some View {
@@ -166,9 +172,16 @@ struct MenuBarPopover: View {
                 Circle().fill(Color(nsColor: health.dotColor)).frame(width: 7, height: 7)
             }
             .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10)
+            // The account: the person's circle (no Vyre code ring at this size) and their name.
+            HStack(spacing: 10) {
+                AvatarView(identities.person, size: 24)
+                Text(identities.ownerName ?? "You").font(Theme.title).foregroundColor(Theme.bone).lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 14).padding(.bottom, 10)
             VStack(alignment: .leading, spacing: 6) {
                 status(health.vyredUp ? "vyred is running" : "vyred is not running", ok: health.vyredUp,
-                       sub: health.vyredUp ? nil : "Start it with vyre up")
+                       sub: health.vyredUp ? nil : "Start Vyre below, or press Return in the Capsule")
                 if let l = health.link {
                     status("Box \(l.path)", ok: l.dot == .direct, sub: l.handshake)
                 } else if let why = health.linkWhy {
@@ -178,6 +191,7 @@ struct MenuBarPopover: View {
             .padding(.horizontal, 14).padding(.bottom, 12)
             Rule()
             VStack(spacing: 2) {
+                if !health.vyredUp, let start { PopoverButton(title: "Start Vyre", hint: nil, action: start) }
                 PopoverButton(title: "Open Capsule", hint: hotkeys, action: open)
                 if canTurnOnControl { PopoverButton(title: "Turn on Control twice…", hint: nil, action: turnOnControl) }
             }

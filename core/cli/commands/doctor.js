@@ -9,8 +9,8 @@
 // box that does not answer is a line that says so, not a hang.
 //
 // On a Mac it checks vyred, Tailscale here, the box (through Tailscale, its address, and through
-// the link for what only the box knows), the phone, the Capsule and the install. On a box it
-// checks the same things from the box's side.
+// the link for what only the box knows), the phone, the Capsule, whether every module on THIS
+// machine started, and the install. On a box it checks the same things from the box's side.
 //
 // --json: { ok, role, ms, checks: [{ id, label, ok, detail?, fix? }] }. --view draws the same
 // checks live: a checks frame as each one answers (data null), then the whole result as the last.
@@ -76,6 +76,7 @@ export function installSize(dir = REPO, cap = 200_000) {
  * @param {{ health?: () => Promise<any>, tool?: (name: string, input?: any) => Promise<{ data?: any, error?: any }>,
  *   tailscale?: () => Promise<any>, resolve?: (h: string) => Promise<any>, probe?: (a: string, ms: number) => Promise<any>,
  *   capsuleApps?: string[], size?: () => { bytes: number, files: number }, role?: string, box?: string | null,
+ *   modules?: () => Promise<{ data?: any, error?: any }>,
  *   path?: () => ReturnType<typeof shadows>, onCheck?: (i: number, c: Check | null) => void }} [deps] onCheck hears each
  *   check as it answers, by its place in IDS (null: it does not apply here)
  * @returns {Promise<{ role: string, checks: Check[], ms: number }>}
@@ -236,6 +237,23 @@ export async function diagnose(deps = {}) {
     return pass("path", labelPath);
   });
 
+  // Every module started: a manifest that under- or over-declares a tool or event fails that
+  // module alone, silently to a person just watching Chat or the Deck (every other module still
+  // loads, so "no such tool" from something that quietly never registered is the only symptom
+  // otherwise) - the gotcha that cost tailnet real time shipping relay.pair.ticket (docs/work/
+  // tailnet.md, 28 Sep 2026). vyred's own log already names the module and the exact manifest key
+  // (core/modules/index.js's startOne), but nothing surfaced it here until now, and the log is
+  // the only place it was loud. /v1/modules is this machine's own registry (box or Mac, whichever
+  // `vyre doctor` runs on), same status() the module never disappears from.
+  const modules = up ? within((deps.modules || (() => request("GET", "/v1/modules", undefined, { timeout: STEP_MS })))(), STEP_MS, () => ({ error: { message: "no answer" } })).then(r => {
+    const labelMods = "Every module started";
+    if (r.error || !Array.isArray(r.data)) return unknown("modules", labelMods, r.error ? r.error.message : "/v1/modules did not answer");
+    const bad = r.data.filter(m => m.state === "failed" || m.state === "invalid");
+    if (!bad.length) return pass("modules", labelMods, `${r.data.filter(m => m.state === "running").length} running`);
+    const names = bad.map(m => m.name).join(", ");
+    return failed("modules", labelMods, `${bad.length === 1 ? bad[0].name : `${bad.length} modules (${names})`}: ${bad[0].error}`, "check vyred's log for the module and manifest key it names");
+  }) : Promise.resolve(unknown("modules", "Every module started", "vyred is not running", "vyre up"));
+
   // Recall's index: keyword search works at once; meaning trickles in at low priority.
   const recall = up ? within(tool("recall.status"), STEP_MS, () => ({ error: { message: "no answer" } })).then(r => {
     if (r.error || !r.data) return unknown("recall", "Search", `recall.status did not answer${r.error ? ": " + r.error.message : ""}`);
@@ -243,7 +261,7 @@ export async function diagnose(deps = {}) {
     return pass("recall", "Search", line || `${Number(r.data.sessions || 0).toLocaleString("en-US")} sessions indexed${r.data.vectors && r.data.vectors.ready ? ", by meaning too" : ""}`);
   }) : Promise.resolve(null);
 
-  const all = [vyred, tailscale, magic, boxTailscale, phone, address, paired, passkey, claude, capsule, recall, onPath, size];
+  const all = [vyred, tailscale, magic, boxTailscale, phone, address, paired, passkey, claude, capsule, modules, recall, onPath, size];
   const left = Math.max(100, BUDGET_MS - (Date.now() - t0));
   const named = (c, i) => c && c.id === "?" ? { ...c, id: IDS[i], label: LABELS[i], detail: `no answer in ${BUDGET_MS / 1000} s` } : c;
   const results = await Promise.all(all.map((p, i) => within(p, left, () => ({ id: "?", label: "", ok: null, detail: "timed out" }))
@@ -253,8 +271,8 @@ export async function diagnose(deps = {}) {
 }
 
 /** Every check's id and short label, in the order diagnose runs them. */
-export const IDS = ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "capsule", "recall", "path", "install"];
-const LABELS = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the box", "Your phone", "The box's address", "Paired", "Passkey", "Claude on the box", "The Capsule", "Search", "The vyre on PATH", "Install size"];
+export const IDS = ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "capsule", "modules", "recall", "path", "install"];
+const LABELS = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the box", "Your phone", "The box's address", "Paired", "Passkey", "Claude on the box", "The Capsule", "Every module started", "Search", "The vyre on PATH", "Install size"];
 
 /**
  * A check as a checks frame's item: ok, failed or unknown, the detail and the fix in the note.

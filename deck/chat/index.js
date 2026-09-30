@@ -27,12 +27,14 @@
 import { h, put, empty, link, go, back } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
+import { threadAvatar, readSystem, readTeammates, setProjects } from "../js/avatars.js";
 import { when, plural } from "../js/fmt.js";
 import { renderNav } from "./nav.js";
 import { mountSession } from "./session.js";
 import { mountNewSession } from "./newsession.js";
 import { mountFolders, foldersHref } from "./folders.js";
 import { threadHref, projectHref } from "./lib/routes.js";
+import { markOpened, openedHere } from "./lib/opened-here.js";
 import { mergeSessions, title } from "./lib/sessions.js";
 import { machineChip, offlineChip, readMacs } from "../js/machine.js";
 
@@ -71,7 +73,8 @@ export async function openTerminalAt(cwd) {
   let mod;
   try { mod = await import("./term.js"); } catch { return "The terminal is not part of this Deck yet."; }
   const r = await mod.openTerminal(cwd);
-  if (!r || r.error) return "Could not open a terminal: " + (r?.error?.message || r?.error || "the box did not say why") + ".";
+  if (!r || r.error) return "Could not open a terminal: " + (r?.error?.message || r?.error || "the server did not say why") + ".";
+  markOpened("term:" + r.term);
   go("/chat?term=" + encodeURIComponent(r.term));
 }
 
@@ -90,8 +93,9 @@ export default async function chat(ctx) {
   /** Fetch and fold the result into state, live or offline. Shared by boot and refresh. */
   async function load() {
     const [p, c, t, macs] = await Promise.all([attempt("projects.list"), attempt("projects.catalog", { limit: CATALOG_LIMIT }), attempt("threads.list", { all: true }),
-      readMacs(attempt, state.macs)]);
+      readMacs(attempt, state.macs), readSystem(attempt), readTeammates(attempt)]);
     if (!ctx.alive()) return;
+    setProjects(p.data?.projects || []); // each project's tile seed (js/avatars.js)
     state.macs = macs;
     const offline = [p, c, t].some(r => r.error?.code === "offline");
     const snap = offline ? loadSnapshot() : null;
@@ -187,27 +191,33 @@ export default async function chat(ctx) {
     } else if (mode === "term") {
       const term = String(query.get("term"));
       pad.classList.add("chat-term");
-      put(pad, h("div", { class: "empty" }, "Opening the terminal…"));
-      import("./term.js").then(mod => {
-        if (!ctx.alive()) return;
-        put(pad);
-        try {
-          const stop = mod.mountTerminal(pad, { term, onBack: () => back("/chat?folders") });
-          if (typeof stop === "function") ctx.cleanup(stop);
-        } catch (e) {
-          put(pad, empty("The terminal could not open.", e), link("/chat?folders", { class: "link" }, "Back to Folders"));
-        }
-      }, () => {
-        if (!ctx.alive()) return;
-        put(pad, empty("The terminal is not part of this Deck yet."), link("/chat?folders", { class: "link" }, "Back to Folders"));
-      });
+      const mount = () => {
+        put(pad, h("div", { class: "empty" }, "Opening the terminal…"));
+        import("./term.js").then(mod => {
+          if (!ctx.alive()) return;
+          put(pad);
+          try {
+            const stop = mod.mountTerminal(pad, { term, onBack: () => back("/chat?folders") });
+            if (typeof stop === "function") ctx.cleanup(stop);
+          } catch (e) {
+            put(pad, empty("The terminal could not open.", e), link("/chat?folders", { class: "link" }, "Back to Folders"));
+          }
+        }, () => {
+          if (!ctx.alive()) return;
+          put(pad, empty("The terminal is not part of this Deck yet."), link("/chat?folders", { class: "link" }, "Back to Folders"));
+        });
+      };
+      // Opened by this page: attach now. Reached by a link: attach only on a click (opened-here.js).
+      if (openedHere("term:" + term)) mount();
+      else put(pad, h("div", { class: "empty" }, "A terminal on the server.",
+        h("button", { type: "button", class: "btn btn-primary btn-sm", onclick: mount }, "Open the terminal")));
     }
   }
 
   /** The two ways in from Chat's own pages: New session and Folders. */
   function actions(from) {
     return h("div", { class: "chat-actions" },
-      link("/chat?folders", { class: "btn btn-ghost btn-sm", title: "Folders on the box" }, icon("projects", 14), "Folders"),
+      link("/chat?folders", { class: "btn btn-ghost btn-sm", title: "Folders on the server" }, icon("projects", 14), "Folders"),
       h("button", { class: "btn btn-primary btn-sm chat-new", type: "button", title: "New session (n)", onclick: () => go(newHref({ project: from })) }, icon("plus", 14), "New session"));
   }
 
@@ -220,7 +230,8 @@ export default async function chat(ctx) {
       put(ctx.root, container);
       // A session the list knows the Switchboard never ran opens straight from its transcript.
       const known = /** @type {any} */ (state.rows.find(r => r.id === thread));
-      ctx.cleanup(mountSession(container, /** @type {any} */ ({ thread, project, recorded: !!known && !known.live, known: !!known, turns: known?.turns || 0,
+      ctx.cleanup(mountSession(container, /** @type {any} */ ({ thread, project: project || known?.project || null, projects: state.projects,
+        recorded: !!known && !known.live, known: !!known, turns: known?.turns || 0,
         source: known?.source || null, machine: known?.machine || null, shown, onBack: () => back(project ? projectHref(project) : "/chat") })));
       return;
     }
@@ -269,12 +280,13 @@ export default async function chat(ctx) {
     const where = inProject ? null : state.projects.find(p => p.slug === row.project)?.name;
     return link(threadHref(row, inProject), { class: "thread-row" },
       h("div", { class: "r1" },
-        h("span", { class: "av-agent", "aria-hidden": "true" }, row.agent ? row.agent.slice(0, 2) : icon("terminal", 14)),
+        threadAvatar({ agent: row.agent, project: row.project, thread: row.id }, { size: 24, cls: "av-agent" }),
         h("span", { class: "title ellipsis" }, title(row)),
         machineChip(row),
         row.status === "running" ? h("span", { class: "dot signal", title: "running" }) : null),
       h("div", { class: "meta" },
         h("span", null, row.last ? when(row.last) : "no activity yet"),
+        row.id ? h("span", { class: "code faint", title: `Session ${row.id}` }, "#" + String(row.id).slice(0, 6)) : null,
         h("span", null, row.turns ? plural(row.turns, "turn") : "no turns yet"),
         where ? h("span", { class: "ellipsis" }, where) : null,
         row.asks ? h("span", { class: "needs" }, h("span", { class: "dot beacon" }), `${row.asks} need${row.asks === 1 ? "s" : ""} you`) : null,

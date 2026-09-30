@@ -19,7 +19,8 @@ const DIAL_MS = 30_000;
 const closeCode = code => code === 1000 || (code >= 3000 && code <= 4999) ? code : 4000;
 
 /**
- * @param {{ url: string, route: string, routeKey: { priv: Buffer, pub: Buffer }, boxKey: { priv: Buffer, pub: Buffer },
+ * @param {{ url: string, route: string, routeKey: { pub: Buffer, priv?: Buffer, sign?: (msg: Buffer) => Promise<Buffer> },
+ *   boxKey: { pub: Buffer, priv?: Buffer, dh?: (remotePub: Buffer) => Buffer | Promise<Buffer> },
  *   admit: (devicePub: Buffer, hello: any) => Promise<any>,
  *   onchannel: (channel: import("./channel.js").Channel, info: { hello: any, reply: any }) => void,
  *   onstate?: (state: "connected"|"disconnected", why?: string) => void,
@@ -42,6 +43,30 @@ export function relayLink(o) {
   let connected = false;
   /** @type {Map<string, any>} */
   const data = new Map();
+  /** Ticket registrations (ADR 0045) waiting for a connected control socket to carry them; sent
+   * once, best effort, since each is single-use and short-lived on the relay anyway. */
+  /** @type {Array<{ loc: string, record: string, mac: string, exp: number }>} */
+  const pendingRegs = [];
+  /** Setup offers (tailnet plan 3.6) stand until dropped: each reconnect sends them again, which
+   * the relay answers 200 for the identical record and mac, so a box never locks itself out. */
+  /** @type {Map<string, { loc: string, record: string, mac: string, exp: number }>} */
+  const standing = new Map();
+  /** The relay's answers to registrations, by locator: 200, or 409 when another server got there first. */
+  /** @type {Map<string, Array<(status: number|null) => void>>} */
+  const answers = new Map();
+  const expect = (loc, ms = 5000) => new Promise(resolve => {
+    const list = answers.get(loc) || [];
+    answers.set(loc, list);
+    const t = setTimeout(() => { const i = list.indexOf(fn); if (i >= 0) list.splice(i, 1); resolve(null); }, ms);
+    t.unref?.();
+    const fn = status => { clearTimeout(t); resolve(status); };
+    list.push(fn);
+  });
+  const flushRegs = () => {
+    if (!control) return;
+    for (const r of pendingRegs.splice(0)) { try { control.send(JSON.stringify({ t: "ticket", ...r })); } catch {} }
+    for (const r of standing.values()) { try { control.send(JSON.stringify({ t: "setup", ...r })); } catch {} }
+  };
 
   /** @type {Array<(ok: boolean) => void>} */
   let waiters = [];
@@ -62,19 +87,23 @@ export function relayLink(o) {
     let settled = false;
     const dial = setTimeout(() => { log("relay: no answer from the relay; redialling"); gone({ code: 1006, reason: "dial timed out" }); }, DIAL_MS);
     dial.unref?.();
-    ws.onmessage = e => {
+    ws.onmessage = async e => {
       if (typeof e.data !== "string") return;
       if (e.data === "pong") { missed = 0; return; }
       let m;
       try { m = JSON.parse(e.data); } catch { return; }
       if (m.t === "challenge") {
-        const sig = signRoute(o.routeKey.priv, authMessage(o.route, Buffer.from(String(m.n), "base64url")));
+        const msg = authMessage(o.route, Buffer.from(String(m.n), "base64url"));
+        let sig;
+        try { sig = o.routeKey.sign ? await o.routeKey.sign(msg) : signRoute(/** @type {Buffer} */ (o.routeKey.priv), msg); } catch (err) { log(`relay: could not sign the challenge: ${/** @type {Error} */ (err).message}`); return; }
+        if (ws !== control) return;
         ws.send(JSON.stringify({ t: "auth", pub: o.routeKey.pub.toString("base64url"), sig: sig.toString("base64url") }));
       } else if (m.t === "ready") {
         clearTimeout(dial);
         ticket = String(m.ticket || "");
         backoff = BACKOFF_MIN;
         state("connected");
+        flushRegs();
         clearInterval(pinger);
         pinger = setInterval(() => {
           if (++missed > 2) { log("relay: no answer to two pings; reconnecting"); try { ws.close(4000, "stale"); } catch {} return; }
@@ -82,7 +111,8 @@ export function relayLink(o) {
         }, pingMs);
         pinger.unref?.();
         for (const c of Array.isArray(m.waiting) ? m.waiting : []) openData(String(c));
-      } else if (m.t === "open") openData(String(m.c));
+      } else if (m.t === "registered") { for (const f of answers.get(String(m.loc)) || []) f(Number(m.status)); answers.delete(String(m.loc)); }
+      else if (m.t === "open") openData(String(m.c));
       else if (m.t === "close") { data.get(String(m.c))?.close(1000); data.delete(String(m.c)); }
     };
     const gone = e => {
@@ -138,6 +168,25 @@ export function relayLink(o) {
     },
     /** How many device connections are open through the relay. */
     get open() { return data.size; },
+    /** Register a pairing ticket's locator/record/mac with the relay (ADR 0045), best effort:
+     * queued if not connected yet, sent once the control socket is, never retried afterward
+     * since each ticket is short-lived and single-use on the relay regardless. Resolves with the
+     * relay's answer (200, or 409 when the locator was already taken with another record), or null
+     * when it did not answer in 5 seconds.
+     * @param {{ loc: string, record: string, mac: string, exp: number }} reg @returns {Promise<number|null>} */
+    registerTicket(reg) { const a = expect(reg.loc); pendingRegs.push(reg); flushRegs(); return a; },
+    /** Register a setup offer's locator (tailnet plan 3.6): same fields, kept until dropSetup and
+     * sent again after every reconnect. Resolves as registerTicket does; 409 means another server
+     * used this code first, and the offer is dropped here so it is never re-sent.
+     * @param {{ loc: string, record: string, mac: string, exp: number }} reg @returns {Promise<number|null>} */
+    registerSetup(reg) {
+      standing.set(reg.loc, reg);
+      const a = expect(reg.loc).then(status => { if (status === 409) standing.delete(reg.loc); return status; });
+      flushRegs();
+      return a;
+    },
+    /** @param {string} loc */
+    dropSetup(loc) { standing.delete(loc); },
     stop() {
       stopped = true;
       clearTimeout(retry);

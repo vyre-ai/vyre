@@ -4,8 +4,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { tempHome } from "../../test/helpers.js";
-import { acquire } from "./lock.js";
+import { acquire, startOf, isVyred } from "./lock.js";
 import { start } from "./index.js";
 import { socketPath } from "../config/index.js";
 
@@ -35,6 +36,20 @@ test("lock: a home reached through a symlink is the same home: one vyred, one so
   assert.equal(fs.existsSync(path.join(root, "vyred.lock")), false, "stop gives the lock back");
 });
 
+/**
+ * A live process whose command line is vyred's (core/daemon/main.js), so it reads as vyred on
+ * every OS. The test's own parent is `node --test`, which names vyre only by where the repo sits.
+ * @param {any} t
+ */
+function vyreProcess(t) {
+  const dir = path.join(tempHome(t), "core", "daemon");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "main.js"), "setInterval(() => {}, 1000);");
+  const child = spawn(process.execPath, [path.join(dir, "main.js")], { stdio: "ignore" });
+  t.after(() => child.kill());
+  return /** @type {number} */ (child.pid);
+}
+
 test("lock: another live vyre process holds it; a dead one, or one from before this boot, does not", t => {
   const root = home(t);
   const file = path.join(fs.realpathSync(root), "vyred.lock");
@@ -43,15 +58,47 @@ test("lock: another live vyre process holds it; a dead one, or one from before t
   fs.writeFileSync(file, JSON.stringify({ pid: 2 ** 22 + 12345, boot }));
   const r1 = acquire(root);
   r1();
-  // The parent of this test is a live node process under the repo, so it reads as vyre's.
-  fs.writeFileSync(file, JSON.stringify({ pid: process.ppid, boot }));
-  if (/vyre/i.test(fs.existsSync(`/proc/${process.ppid}/cmdline`) ? fs.readFileSync(`/proc/${process.ppid}/cmdline`, "utf8") : process.cwd())) {
-    assert.throws(() => acquire(root), /already running \(pid/);
-  }
+  const live = vyreProcess(t);
+  fs.writeFileSync(file, JSON.stringify({ pid: live, boot }));
+  assert.throws(() => acquire(root), /already running \(pid/);
   // The same pid from an earlier boot is someone else now.
-  fs.writeFileSync(file, JSON.stringify({ pid: process.ppid, boot: boot - 600 }));
+  fs.writeFileSync(file, JSON.stringify({ pid: live, boot: boot - 600 }));
   const r2 = acquire(root);
   assert.throws(() => acquire(root), /already running in this process/);
   r2();
   assert.equal(fs.existsSync(file), false);
+});
+
+test("lock: a pid another process reuses (a box container replaced, the same boot) does not hold it", t => {
+  const root = home(t);
+  const file = path.join(fs.realpathSync(root), "vyred.lock");
+  const boot = Math.round((Date.now() - os.uptime() * 1000) / 60_000);
+  const live = vyreProcess(t);
+  const started = startOf(live);
+  assert.ok(started, "the kernel says when the process started");
+  // The lock's vyred started at another time: this live pid is someone else now.
+  fs.writeFileSync(file, JSON.stringify({ pid: live, boot, started: `${started}0` }));
+  const r = acquire(root);
+  r();
+  // The process that took it, still running, holds it.
+  fs.writeFileSync(file, JSON.stringify({ pid: live, boot, started }));
+  assert.throws(() => acquire(root), /already running \(pid/);
+  fs.rmSync(file, { force: true });
+});
+
+test("lock: only vyred's own command line holds it, not any process with vyre in its path", t => {
+  assert.equal(isVyred("node /opt/vyre/core/daemon/main.js"), true);
+  assert.equal(isVyred("node\0/Users/a/vyre/core/daemon/main.js\0"), true);
+  assert.equal(isVyred("/usr/local/bin/node /usr/local/bin/vyre daemon"), true);
+  assert.equal(isVyred("node --test /Users/a/vyre/test/x.test.js"), false, "a repo path is not vyred");
+  assert.equal(isVyred("vim /Users/a/vyre/core/daemon/main.js"), false, "a file named in another program's arguments");
+  assert.equal(isVyred("/usr/local/bin/vyre call x"), false, "the cli is not vyred");
+  // A live process that only has vyre in its arguments does not hold a lock.
+  const root = home(t);
+  const file = path.join(fs.realpathSync(root), "vyred.lock");
+  const boot = Math.round((Date.now() - os.uptime() * 1000) / 60_000);
+  const other = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", "vyre-lock-holder"], { stdio: "ignore" });
+  t.after(() => other.kill());
+  fs.writeFileSync(file, JSON.stringify({ pid: other.pid, boot }));
+  acquire(root)();
 });

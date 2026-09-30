@@ -4,6 +4,7 @@
 
 const P = {
   now: '<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/>',
+  drive: '<path d="M3.8 7.2V11L8 13.5 12.2 11V7.2"/><path d="M8 8.9v4.6"/><path d="M8 2.7L12.2 5 8 7.4 3.8 5z"/>',
   projects: '<path d="M2 4.5h4.2l1.4 1.5H14v6.5H2z"/>',
   memory: '<circle cx="4" cy="11.5" r="1.9"/><circle cx="12" cy="4.5" r="1.9"/><circle cx="12.5" cy="12" r="1.3"/><path d="M5.5 10.3l5-4.6M5.9 11.7h5.3"/>',
   agents: '<rect x="2" y="2.5" width="12" height="8.5" rx="1.2"/><path d="M5.5 14h5M8 11v3"/>',
@@ -42,6 +43,13 @@ const P = {
   planner: '<rect x="2.5" y="3.2" width="11" height="10.3" rx="1.2"/><path d="M2.5 6.7h11M5.5 1.8v2.6M10.5 1.8v2.6M5.3 9.6h1.4M9.3 9.6h1.4"/>',
   devices: '<rect x="1.5" y="3.5" width="8.5" height="6.2" rx="1"/><path d="M1.2 12.5h8.6"/><rect x="11.5" y="5.5" width="3.5" height="8" rx="0.9"/>',
   bell: '<path d="M8 2.3a3.8 3.8 0 00-3.8 3.8v2.1L2.8 10.5h10.4L11.8 8.2V6.1A3.8 3.8 0 008 2.3z"/><path d="M6.5 12.5a1.5 1.5 0 003 0"/>',
+  // From docs/design/system/components/icons.md's canonical set ("shield: the floor and the
+  // Gate"), reused on the Connections card's Agents grant chip when off (chip.md's Asking state:
+  // it needs Touch ID or a passkey to turn on).
+  shield: '<path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"/>',
+  // The Connections board's own Capsule surface glyph (docs/design/one-app/project/
+  // Connections.dc.html): not yet in icons.md's table, added here so the chip has one.
+  capsule: '<rect x="2" y="6" width="12" height="4" rx="2"/>',
 };
 
 const parser = new DOMParser();

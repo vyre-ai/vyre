@@ -4,7 +4,8 @@
 // This file is the tool layer. It decides who may call what and hands the work to the Gate class.
 // The rule behind the table: anyone may ask for something to go out, only a person may let it go.
 // So gate.request is open to Claude, and gate.approve, gate.revise and gate.reject refuse every
-// mcp caller. Only approving what acts as the user outside (a send, a spend, a deletion) needs presence
+// mcp caller. Only approving what acts as the user outside (a send, a spend, a deletion, or an
+// outward computer-use act) needs presence
 // (core/presence, floor rule 1, the no-nag rule), and one live presence session on the device
 // covers it; revising and discarding send nothing and need none. `presence.summary` says what the
 // person is proving before they prove it, and every held item carries `presence: {required,
@@ -18,6 +19,7 @@
 // gate`), or from vault.relay for a sender that uses someone else's relayed pass.
 
 import { Gate, MIGRATIONS, KINDS } from "./gate.js";
+import { inputHash } from "../presence/index.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -37,8 +39,9 @@ const previewOf = c => String((c && (c.subject || c.body || wordsOf(c.arguments)
 
 /**
  * The kinds that act as the user in the outside world: sending or posting, paying, and deleting
- * their mail, files or posts (which cannot be undone). Approving one needs presence. Every Gate
- * kind is one of these today; a kind added later asks only if it is listed here.
+ * their mail, files or posts (which cannot be undone), plus computer use pressing a control that
+ * does one of those (kind "act", PLAN.md C4). Approving one needs presence. Every Gate kind is
+ * one of these today; a kind added later asks only if it is listed here.
  */
 const OUTBOUND = new Set(["send", "spend", "delete", "act"]);
 
@@ -131,6 +134,7 @@ export default {
     ctx.tool("gate.request", {
       description: "Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here, unless the user's own words already asked for exactly this (same kind, same recipients), which goes out at once and is logged. See gate.senders for the `via` values and what each takes.",
       input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str, agent: str,
+        asked: { type: "object", description: "A person's own confirmation of exactly this send, from their surface: { surface, hash, at }. hash is inputHash({kind, via, to[], content}); valid 60 s; a mismatch always holds." },
         tool_use_id: { type: "string", description: "The tool call this request comes from, when the caller knows it, so the user's surface can show it in the session." } },
         ["kind", "via", "to", "content"]),
       // `agent` in the input is heard only from a module, which files a request for the agent it
@@ -140,6 +144,20 @@ export default {
         const by = { agent: agent || agentOf(caller) || (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) };
         // Asking is approving (P17): what the person's own words covered goes out now, with no
         // card and no proof; anything else holds. No match, or no vault to ask, is a hold as before.
+        // A person's own confirmation of exactly this send (Lumen or a Capsule form): from their surface, fresh, and the hash of what they saw.
+        const a = input.asked;
+        if (a !== undefined) {
+          const surface = String(caller || "");
+          const dests = (Array.isArray(input.to) ? input.to : [input.to]).map(String).filter(Boolean);
+          const fresh = a && typeof a === "object" && Number.isFinite(a.at) && Date.now() - a.at >= -5_000 && Date.now() - a.at <= 60_000;
+          const mine = a && a.surface === surface && ["deck", "capsule", "local", "cli"].includes(surface);
+          if (fresh && mine && a.hash === inputHash({ kind: input.kind, via: input.via, to: dests, content: input.content })) {
+            const { asked: _drop, ...rest } = input;
+            return gate.sendNow({ ...rest, ...filing }, { ...by, by: `asked:${surface}` });
+          }
+          const { asked: _drop, ...rest } = input;
+          return gate.request({ ...rest, ...filing }, by);
+        }
         const intent = await said(input, filing.thread, by.agent);
         if (intent) return gate.sendNow({ ...input, ...filing }, { ...by, intent });
         return gate.request({ ...input, ...filing }, by);
@@ -208,8 +226,8 @@ export default {
     ctx.tool("gate.offer", {
       internal: true,
       description: "A module offers a sender of its own: `name` in its namespace (<module>, <module>:<x> or <module>-<x>), and `tool`, one of its own internal tools, which the Gate calls with { id, to, content } once the user approves. Offer again at every start; it replaces the last.",
-      input: obj({ name: str, tool: str, kinds: { type: "array", items: { type: "string", enum: KINDS } }, content: { type: "object" } }, ["name", "tool"]),
-      run: (input, { caller }) => gate.offer(input, caller),
+      input: obj({ name: str, tool: str, recipients: { type: "string", enum: ["to"] }, kinds: { type: "array", items: { type: "string", enum: KINDS } }, content: { type: "object" } }, ["name", "tool"]),
+      run: (input, { caller, firstParty }) => gate.offer(input, caller, firstParty === true),
     });
 
     // What the person's own words asked to go out (P17). The intents live in the vault; these are

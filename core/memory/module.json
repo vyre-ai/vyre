@@ -4,8 +4,8 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": ["memory.graph", "memory.facts", "memory.relevant", "memory.why", "memory.pin", "memory.mute", "memory.teach", "memory.curate", "memory.stats",
-    "memory.correct", "memory.corrections", "memory.uncorrect", "memory.merge", "memory.split", "memory.me", "memory.answer", "memory.profile", "memory.remember", "memory.read", "memory.context", "memory.retrieve", "memory.ask", "memory.suggest"] },
-  "watches": { "emits": ["memory.curated", "memory.corrected", "memory.merged", "memory.split", "memory.remembered", "memory.profile-changed"] },
+    "memory.correct", "memory.corrections", "memory.uncorrect", "memory.merge", "memory.split", "memory.me", "memory.answer", "memory.profile", "memory.remember", "memory.read", "memory.context", "memory.retrieve", "memory.ask", "memory.suggest", "memory.today", "memory.device", "memory.contradictions", "memory.settle", "memory.card", "memory.pace"] },
+  "watches": { "emits": ["memory.curated", "memory.corrected", "memory.merged", "memory.split", "memory.remembered", "memory.profile-changed", "memory.thinking", "memory.answered", "memory.fixed", "memory.suggested", "memory.updated", "memory.forgot", "memory.graph-grew"] },
   "shows": { "deck": ["panel:memory"], "capsule": ["answer:memory.relevant"], "cli": ["memory", "why"] },
   "needs": {},
   "teaches": {
@@ -23,6 +23,6 @@
   },
   "settings": [
     {"key": "memory.model", "group": "memory", "label": "Use a model to learn facts", "type": "bool", "default": true, "levels": ["account"], "apply": "restart", "store": {"config": "memory.model.on"}},
-    {"key": "memory.daily_usd", "group": "memory", "label": "Memory spend per day (USD)", "type": "number", "min": 0, "default": 0.05, "levels": ["account"], "apply": "restart", "store": {"config": "memory.model.dailyUsd"}}
+    {"key": "memory.plan_share", "group": "memory", "label": "How much of your Claude plan memory may use each day", "help": "It never costs money: memory reads on your Claude plan, and this is the share of its usage it may take. More learns faster.", "type": "enum", "enum": ["small", "medium", "large"], "labels": {"small": "A little", "medium": "A small share", "large": "More, to learn faster"}, "default": "medium", "levels": ["account"], "apply": "restart", "store": {"config": "memory.model.share"}}
   ]
 }

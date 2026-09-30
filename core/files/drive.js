@@ -37,12 +37,19 @@ import { execFile } from "node:child_process";
 import { run as tailscale } from "../names/tailscale.js";
 import * as config from "../config/index.js";
 import { looksLikeKey, secretName, HOME_DENIED } from "./safety.js";
+import { reach, within } from "./access.js";
+import { classify, KINDS } from "./kinds.js";
+import { walk as searchWalk, defaults as searchDefaults } from "./search.js";
+import { picker } from "./picker.js";
+import { browse } from "./browse.js";
+import { mentions, MIGRATIONS as MENTION_MIGRATIONS } from "./mentions.js";
+import { uncFor, mapArgs, unmapArgs, parseNetUse, freeLetter, explainNetUse } from "./drive-windows.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: { mount(url, dir, opts), unmount(dir),
  * open(target), mounts(), home }. Anything left out uses the real thing, which refuses to run
  * under node --test.
- * @type {Map<string, { mount?: Function, unmount?: Function, open?: Function, mounts?: () => Promise<string[]>, home?: string }>}
+ * @type {Map<string, { mount?: Function, unmount?: Function, open?: Function, mounts?: () => Promise<string[]>, letter?: () => Promise<string|null>, platform?: string, home?: string }>}
  */
 export const seams = new Map();
 
@@ -238,11 +245,25 @@ const SYSTEM = {
   },
 };
 
+/**
+ * The Windows commands: net use maps the share as a drive letter (drive-windows.js), and Explorer
+ * opens it. Explorer answers exit code 1 even when it worked, so its exit is ignored.
+ */
+/** A drive letter and nothing else: a `*` from a state file would unmap every drive. */
+const letterOk = l => { if (!/^[A-Z]:$/.test(String(l))) throw refuse("not a drive letter", "bad_input"); };
+const SYSTEM_WIN = {
+  letter: async () => freeLetter(parseNetUse(await exec("net.exe", ["use"])).used),
+  mount: async (url, letter) => { letterOk(letter); try { await exec("net.exe", mapArgs(letter, uncFor(url))); } catch (e) { throw new Error(explainNetUse(/** @type {Error} */ (e).message)); } },
+  unmount: letter => { letterOk(letter); return exec("net.exe", unmapArgs(letter)); },
+  open: target => exec("explorer.exe", [target], true),
+  mounts: async () => parseNetUse(await exec("net.exe", ["use"])).vyre.map(x => x.letter),
+};
+
 /** @returns {Promise<string>} */
-function exec(cmd, args) {
+function exec(cmd, args, ignoreExit = false) {
   if (!livesAllowed()) return Promise.reject(refuse("mounting and opening are off under tests", "off_in_tests"));
-  return new Promise((resolve, reject) => execFile(cmd, args, { timeout: 30_000 }, (e, out, err) => {
-    if (e) reject(new Error(String(err || e.message).trim().split("\n")[0]));
+  return new Promise((resolve, reject) => execFile(cmd, args, { timeout: 30_000, windowsHide: true }, (e, out, err) => {
+    if (e && !ignoreExit) reject(new Error(String(err || out || e.message).trim().split(/\r?\n/)[0]));
     else resolve(String(out));
   }));
 }
@@ -254,7 +275,8 @@ function exec(cmd, args) {
  */
 export function drive(ctx, { role, guard: g, roots }) {
   const seam = seams.get(ctx.paths.root) || {};
-  const fx = { ...SYSTEM, ...seam };
+  const win = (seam.platform || process.platform) === "win32";
+  const fx = { ...(win ? SYSTEM_WIN : SYSTEM), ...seam };
   const nameInput = { type: "object", required: ["name"], properties: { name: { type: "string" } } };
 
   if (role === "box") return boxSide();
@@ -421,9 +443,43 @@ export function drive(ctx, { role, guard: g, roots }) {
     }
 
     ctx.tool("files.drive.status", {
-      description: "VyreDrive (built on Tailscale's Taildrive) on the box: whether this box may share folders with the paired Mac, the shares it offers (config files.drive.shares), and what is shared now.",
+      description: "VyreDrive (built on Tailscale's Taildrive) on the box: whether this box may share folders with the paired Mac, the shares it offers (config files.drive.shares), and what is shared now. A named agent (Vyre Drive step 5) sees only the shares whose folder falls inside one of its own granted projects; a share outside that is simply left off the list, the same as an ungranted project elsewhere.",
       input: { type: "object", properties: {} },
-      run: driveStatus,
+      run: async (input, meta = {}) => {
+        const st = await driveStatus();
+        const scope = await reach(ctx, meta && meta.caller);
+        if (scope.all) return st;
+        const mine = p => within(p, scope.folders);
+        return { ...st, shares: st.shares.filter(s => mine(s.path)), list: st.list.filter(s => mine(s.path)) };
+      },
+    });
+
+    /** Share one offered name: the guard, the secret scan, tailscale drive share, then an audit. */
+    const shareOne = async name => {
+      const p = known(name);
+      const st = await status();
+      if (!hasCap(st, "drive:share")) throw Object.assign(refuse("the tailnet policy does not let this box share folders (no drive:share node attribute)", "drive_off"), { detail: { fix: FIX_SHARE } });
+      const where = folder(p);
+      clean(name, where);
+      const r = await tailscale(["drive", "share", name, where]);
+      if (r.code !== 0) throw refuse((r.err || r.out).trim().split("\n")[0] || "tailscale drive share failed", "failed");
+      return { shared: name, path: where, access: specs()[name].access, audit: await audit() };
+    };
+
+    ctx.tool("files.drive.address", {
+      description: "Where one of this box's VyreDrive shares is reached on the tailnet, for a device that has no Vyre of its own to ask (a Windows PC's Vyre app): the WebDAV address, the Windows network path for it, the share's access, and whether the box is sharing it now. The owner and the owner's own devices only.",
+      input: { type: "object", required: ["share"], properties: { share: { type: "string" } } },
+      run: async ({ share }, meta = {}) => {
+        if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("only the owner's own devices ask where a share is", "denied");
+        known(String(share));
+        const st = await status();
+        const node = st && st.Self && String(st.Self.DNSName || "").replace(/\.$/, "");
+        if (!node) throw refuse("Tailscale on this box does not say its own name; is it signed in?", "no_tailscale");
+        const a = driveUrl(st, node, String(share));
+        const list = hasCap(st, "drive:share") ? await tailscale(["drive", "list"]) : null;
+        const shared = Boolean(list && list.code === 0 && parseDriveList(list.out).some(x => x.name === share));
+        return { ...a, unc: uncFor(a.url), access: specs()[String(share)].access, shared };
+      },
     });
 
     ctx.tool("files.drive.share", {
@@ -431,16 +487,16 @@ export function drive(ctx, { role, guard: g, roots }) {
       input: nameInput,
       run: async ({ name }, meta) => {
         owner(meta);
-        const p = known(name);
-        const st = await status();
-        if (!hasCap(st, "drive:share")) throw Object.assign(refuse("the tailnet policy does not let this box share folders (no drive:share node attribute)", "drive_off"), { detail: { fix: FIX_SHARE } });
-        const where = folder(p);
-        clean(name, where);
-        const r = await tailscale(["drive", "share", name, where]);
-        if (r.code !== 0) throw refuse((r.err || r.out).trim().split("\n")[0] || "tailscale drive share failed", "failed");
-        return { shared: name, path: where, access: specs()[name].access, audit: await audit() };
+        return shareOne(name);
       },
     });
+
+    ctx.store.migrate(MENTION_MIGRATIONS);
+    /** @type {{ tagged: Function }} */
+    const box = { tagged: () => null };
+    const { resolve: resolveIn } = browse(ctx, { g, folder, shares, tagged: (t, s, r) => box.tagged(t, s, r) });
+    box.tagged = mentions(ctx, { store: ctx.store, folder, shares, resolveIn }).tagged;
+    picker(ctx, { g, roots, folder, scan, specs, shares, owner, shareOne, limit: SCAN_LIMIT, skip: SKIP_DIRS });
 
     ctx.tool("files.drive.access", {
       description: "Make one of the box's shares read-only (ro) or read-write (rw) for the paired Mac. Owner only, with no proof asked; never an agent, a model or a guest. Says when the tailscale container's /work mount must change to match.",
@@ -472,9 +528,104 @@ export function drive(ctx, { role, guard: g, roots }) {
     });
 
     ctx.tool("files.drive.audit", {
-      description: "Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding.",
+      description: "Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding. A tailnet-wide security report, not a per-folder read: never an agent (Vyre Drive step 5), same as share/unshare/access above.",
       input: { type: "object", properties: {} },
-      run: audit,
+      run: async (input, meta = {}) => {
+        if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("an agent cannot audit VyreDrive's tailnet policy; that is for the owner");
+        return audit();
+      },
+    });
+
+    /**
+     * A path already known to sit inside a share's real folder, checked and described the same
+     * way files/index.js's own describe() does (same guard, same key-content refusal), without
+     * requiring the path to fall under one of the box's configured files.roots: a share may name
+     * any folder (shareSpecs), and search must cover it regardless.
+     * @param {string} shareReal @param {string} p
+     */
+    const describeInShare = (shareReal, p) => {
+      const rs = { live: [{ given: shareReal, real: shareReal }] };
+      const safe = g.resolveSafe(p, rs);
+      const st = fs.statSync(safe.real);
+      const name = path.basename(safe.path);
+      const { kind, mime } = classify(name, st.isDirectory());
+      return { path: safe.path, name, kind, mime, size: st.isDirectory() ? 0 : st.size, mtime: st.mtime.toISOString() };
+    };
+
+    ctx.tool("files.drive.search", {
+      description: "Find files by name or content across the box's offered VyreDrive shares (server files). It is the search behind the Capsule's find-a-file and the Windows panel, neither of which keeps its own index of the box's folders. A named agent sees only the shares whose folder falls inside its own granted projects (files.drive.status's own rule); an offered share outside that is left out of the search entirely, not merely hidden from the list.",
+      input: { type: "object", required: ["q"], properties: {
+        q: { type: "string" }, limit: { type: "integer" }, share: { type: "string" },
+        kinds: { type: "array", items: { type: "string", enum: KINDS } } } },
+      run: async ({ q, limit = 50, share, kinds }, meta = {}) => {
+        q = String(q || "").trim();
+        if (!q) throw refuse("q is required", "bad_input");
+        limit = Math.min(500, Math.max(1, Number(limit) || 50));
+        kinds = kinds && kinds.length ? kinds : undefined;
+        const scope = await reach(ctx, meta && meta.caller);
+        const map = shares();
+        let names = Object.keys(map);
+        if (share) {
+          if (!Object.prototype.hasOwnProperty.call(map, share)) {
+            // Reviewer M1: an agent never learns the box's other share names from a typo or a
+            // probe. The owner still gets the helpful list; a scoped caller gets the same bare
+            // "unknown" an ungranted-but-real share would also produce below.
+            throw refuse(scope.all ? `no share called "${share}"; the box offers ${names.join(", ") || "none"}` : `no share called "${share}"`, "unknown_share");
+          }
+          names = [share];
+        }
+        // Same rule as files.drive.status: an unrestricted caller sees every offered share; a
+        // named agent sees only the ones its own granted projects reach, either direction (a
+        // share nested inside a granted project, or a share that itself contains one).
+        if (!scope.all) names = names.filter(n => within(map[n], scope.folders) || scope.folders.some(f => within(f, [map[n]])));
+        const want = limit * 4 + 100;
+        const notes = [];
+        const results = [];
+        for (const name of names) {
+          if (results.length >= limit) break;
+          let shareReal;
+          try { shareReal = folder(map[name]); } catch { continue; } // must still pass the same check sharing does
+          // Reviewer H1: a share can be broader than what a named agent is granted (a share of
+          // /work with a grant of only /work/harlow-site). Walking and rg'ing the share's whole
+          // real folder in that case would hand the agent file names, and through rg a content
+          // oracle, for every sibling project under the same share. So for a restricted scope,
+          // narrow to the actual intersection: each granted folder that falls inside this share
+          // (the narrower side), or the whole share when it instead falls inside a granted
+          // folder (already covered end to end, same as today). An unrestricted caller keeps
+          // searching the whole share, as before.
+          //
+          // Compared against the share's own configured (not yet realpath-resolved) path, the
+          // same domain scope.folders itself lives in — a project's granted folder is never
+          // realpath-resolved either, so comparing against shareReal directly could miss a match
+          // behind a symlinked temp dir. Each winning raw folder is then resolved the same way
+          // folder() resolved the share itself (the module-level real(), not this loop's own
+          // shareReal), so what actually gets walked is real.
+          const rawShare = map[name];
+          const dirs = scope.all ? [shareReal] : [...new Set(scope.folders
+            .map(f => (within(f, [rawShare]) ? f : within(rawShare, [f]) ? rawShare : null))
+            .filter(Boolean)
+            .map(d => real(d) || d))];
+          if (!dirs.length) continue;
+          let candidates = [];
+          try { candidates = searchWalk(dirs, q, g, { max: want }); } catch { continue; }
+          try {
+            candidates.push(...await searchDefaults.rg(["-l", "-i", "-F", "--max-count", "1", "--max-filesize", "2M", "--", q, ...dirs], { max: want }));
+          } catch (e) {
+            if (/** @type {any} */ (e).code === "ENOENT" && !notes.includes("ripgrep is not installed, so only file names were matched")) notes.push("ripgrep is not installed, so only file names were matched");
+          }
+          const seen = new Set();
+          for (const c of candidates) {
+            if (results.length >= limit) break;
+            if (typeof c !== "string" || seen.has(c) || c.split(path.sep).includes("node_modules")) continue;
+            seen.add(c);
+            let d;
+            try { d = describeInShare(shareReal, c); } catch { continue; }
+            if (kinds && !kinds.includes(d.kind)) continue;
+            results.push({ share: name, path: d.path, name: d.name, kind: d.kind, mime: d.mime, size: d.size, mtime: d.mtime });
+          }
+        }
+        return { results, ...(notes.length ? { note: notes.join("; ") } : {}) };
+      },
     });
   }
 
@@ -490,11 +641,17 @@ export function drive(ctx, { role, guard: g, roots }) {
       fs.writeFileSync(tmp, JSON.stringify(v, null, 2) + "\n", { mode: 0o600 });
       fs.renameSync(tmp, file);
     };
+    /**
+     * Where a share is (or would be) mounted. On a Mac and on Linux that is ~/Vyre/Box/<share>. On
+     * Windows it is a drive letter, chosen when the share is mounted and remembered, so before
+     * that there is no place yet: null.
+     */
     const dirOf = share => {
       if (!NAME.test(String(share))) throw refuse(`"${share}" is not a share name`, "bad_input");
+      if (win) { const rec = load()[share]; return rec && /^[A-Z]:$/.test(String(rec.dir)) ? String(rec.dir) : null; }
       return path.join(base, share);
     };
-    const isMounted = async dir => { try { return (await fx.mounts()).map(String).includes(dir); } catch { return false; } };
+    const isMounted = async dir => { try { return Boolean(dir) && (await fx.mounts()).map(String).includes(String(dir)); } catch { return false; } };
 
     /** Ask the box, and turn its failure into a readable error with the box's code. */
     const forward = async (tool, input) => {
@@ -521,7 +678,7 @@ export function drive(ctx, { role, guard: g, roots }) {
         const box = await forward("files.drive.status", {});
         const mounted = load();
         const shares = await Promise.all((box && Array.isArray(box.shares) ? box.shares : []).map(async s => {
-          const dir = path.join(base, String(s.name));
+          const dir = win ? (mounted[s.name] && mounted[s.name].dir) || null : path.join(base, String(s.name));
           return { ...s, mounted: Boolean(mounted[s.name]) && await isMounted(dir), dir };
         }));
         return { ...box, shares, source: "box" };
@@ -542,6 +699,39 @@ export function drive(ctx, { role, guard: g, roots }) {
       run: () => forward("files.drive.audit", {}),
     });
 
+    // The picker, asked from the Mac. Reads are the owner's own surfaces only here (an agent's
+    // identity does not survive the hop to the box); offer is the owner's action, like share.
+    for (const [tool, what] of [["files.drive.candidates", "The box's folders you could share over VyreDrive, projects first (asked over the link)."], ["files.drive.measure", "How big one of the box's folders is and whether it may be shared (asked over the link)."]]) {
+      ctx.tool(tool, {
+        description: what,
+        input: tool === "files.drive.measure" ? { type: "object", required: ["path"], properties: { path: { type: "string" } } } : { type: "object", properties: {} },
+        run: async (input, meta = {}) => {
+          if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("an agent looks at the box's folders with files.dirs, not through the Mac", "denied");
+          return forward(tool, input);
+        },
+      });
+    }
+    ctx.tool("files.drive.offer", {
+      description: "Share one of the box's folders you picked over VyreDrive, by path, in one step. Owner only.",
+      input: { type: "object", required: ["path"], properties: { path: { type: "string" }, name: { type: "string" }, access: { type: "string", enum: ["ro", "rw"] } } },
+      callers: ["cli", "local", "capsule"],
+      run: input => forward("files.drive.offer", input),
+    });
+
+    // The # tag for files lives on the box (where chats run); the Mac only passes a search along.
+    ctx.tool("files.mentions.search", {
+      description: "Files on the box's VyreDrive shares whose name matches what you typed after #, for tagging one in a chat. Runs as the person asking.",
+      input: { type: "object", properties: { q: { type: "string" }, limit: { type: "integer" } } },
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet"],
+      run: input => forward("files.mentions.search", input),
+    });
+    ctx.tool("files.mentions.resolve", {
+      description: "Make a tagged file readable in the chat it was tagged in. The box does this; a Mac has no chats of its own.",
+      input: { type: "object", required: ["id", "thread"], properties: { id: { type: "string" }, thread: { type: "string" }, said: { type: "string" } } },
+      callers: ["module"],
+      run: async () => { throw refuse("that file is not available", "not_found"); },
+    });
+
     ctx.tool("files.drive.url", {
       description: "The WebDAV address of one of the box's VyreDrive shares, as this Mac reaches it.",
       input: { type: "object", required: ["share"], properties: { share: { type: "string" } } },
@@ -553,7 +743,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       input: { type: "object", required: ["share"], properties: { share: { type: "string" } } },
       callers: ["cli", "local", "capsule"],
       run: async ({ share }) => {
-        const dir = dirOf(share);
+        let dir = dirOf(share);
         const box = await forward("files.drive.status", {});
         const s = box && Array.isArray(box.shares) ? box.shares.find(x => x.name === share) : null;
         if (!s) throw refuse(`the box offers no share called "${share}"`, "unknown_share");
@@ -563,7 +753,12 @@ export function drive(ctx, { role, guard: g, roots }) {
         // The share's own access; a box from before shares had one sends only the top-level field.
         const readonly = (s.access || box.access) !== "rw";
         if (!(await isMounted(dir))) {
-          fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+          if (win) {
+            // A drive letter, not a folder. Windows' own client cannot map read-only, so the
+            // share's access is enforced by the box; `readonly` still says what the box allows.
+            dir = await fx.letter();
+            if (!dir) throw refuse("every drive letter is in use; free one and mount again", "no_letter");
+          } else fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
           await fx.mount(u.url, dir, { readonly, name: share });
         }
         save({ ...load(), [share]: { dir, boxPath: String(s.path), url: u.url } });
@@ -592,31 +787,53 @@ export function drive(ctx, { role, guard: g, roots }) {
       callers: ["cli", "local", "capsule"],
       run: async ({ share, path: rel }) => {
         const dir = dirOf(share);
-        if (!(await isMounted(dir))) throw refuse(`"${share}" is not mounted on this Mac; mount it first (files.drive.mount)`, "not_mounted");
+        if (!(await isMounted(dir))) throw refuse(`"${share}" is not mounted on this ${win ? "PC" : "Mac"}; mount it first (files.drive.mount)`, "not_mounted");
         const r = String(rel || "");
-        if (r.includes("\0") || path.isAbsolute(r) || r.split(/[\\/]+/).includes("..")) throw refuse("path must be relative to the share, with no ..", "bad_input");
-        const target = path.join(dir, r);
-        if (!inside(target, dir)) throw refuse("path must be inside the share", "bad_input");
+        const P = win ? path.win32 : path;
+        if (r.includes("\0") || P.isAbsolute(r) || /^[A-Za-z]:/.test(r) || r.split(/[\\/]+/).includes("..")) throw refuse("path must be relative to the share, with no ..", "bad_input");
+        const top = win ? String(dir) + "\\" : String(dir);
+        const target = P.join(top, r);
+        const back = P.relative(top, target);
+        if (back.startsWith("..") || P.isAbsolute(back)) throw refuse("path must be inside the share", "bad_input");
         await fx.open(target);
         return { opened: target };
       },
     });
 
     ctx.tool("files.drive.local", {
-      description: "Where a box file is on this Mac through a mounted VyreDrive share, or null when no mounted share holds it.",
+      description: "Where a box file is on this Mac through a mounted VyreDrive share, or null when no mounted share holds it. A named agent gets null for a box path outside its own granted projects, the same as any other refusal here (Vyre Drive step 5): it never learns whether a mount holds a path it may not see.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" } } },
-      run: async ({ path: p }) => {
+      run: async ({ path: p }, meta = {}) => {
         const want = String(p);
         if (!path.posix.isAbsolute(want) || want.includes("\0") || want.split("/").includes("..")) return { local: null };
+        const scope = await reach(ctx, meta && meta.caller);
+        // Reviewer H1: checking the SHARE against the grant (an overlap either direction) was
+        // not enough when the share is broader than the grant (a share of /work, a grant of only
+        // /work/harlow-site) — every path under that share, including a sibling project's,
+        // passed. The requested path itself must sit inside the grant.
+        if (!scope.all && !within(want, scope.folders)) return { local: null };
         const m = load();
         for (const [share, rec] of Object.entries(m)) {
           const bp = String(rec && rec.boxPath || "");
           if (!bp || !inside(want, bp)) continue;
           if (!(await isMounted(String(rec.dir)))) continue;
-          const local = path.join(String(rec.dir), path.posix.relative(bp, want));
-          if (inside(local, String(rec.dir))) return { local, share };
+          const rel = path.posix.relative(bp, want);
+          const local = win ? path.win32.join(String(rec.dir) + "\\", ...rel.split("/").filter(Boolean)) : path.join(String(rec.dir), rel);
+          if (!rel.startsWith("..")) return { local, share };
         }
         return { local: null };
+      },
+    });
+
+    ctx.tool("files.drive.search", {
+      description: "Find files by name or content across the box's offered VyreDrive shares, asked from this Mac (the search behind the Capsule's find-a-file and the Windows panel). An agent's identity does not survive the hop to the box (see files.search's own note on this), so this is the owner's own surfaces only for now; an agent searches this Mac's own files.search instead.",
+      input: { type: "object", required: ["q"], properties: {
+        q: { type: "string" }, limit: { type: "integer" }, share: { type: "string" },
+        kinds: { type: "array", items: { type: "string" } } } },
+      run: async (input, meta = {}) => {
+        const scope = await reach(ctx, meta && meta.caller);
+        if (!scope.all) throw refuse("an agent searches this Mac's own files only, not the box directly; use files.search", "denied");
+        return forward("files.drive.search", input);
       },
     });
   }

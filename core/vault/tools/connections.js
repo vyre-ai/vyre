@@ -34,9 +34,9 @@ export function register({ ctx, vault, tool }) {
   tool("vault.connections.get", ["module"], "One connection's metadata, for the module that acts on it: a row of its own source, or one whose uses name one of its tools. Anything else is not_found. Never a value.",
     obj({ id: str }, ["id"]), (input, { caller }) => c.get(input, caller));
 
-  tool("vault.connections.grant", PEOPLE, "Let a surface (capsule, chat, agents or phone) use a connection.",
+  tool("vault.connections.grant", PEOPLE, "Let a surface (capsule, chat, agents or phone) use a connection. Granting agents asks for presence (Touch ID or a passkey): it hands a credential to an autonomous session. Capsule, chat and phone are one tap.",
     obj({ id: str, surface: str }, ["id", "surface"]), (input, { caller }) => c.grant(input, caller),
-    presence("Let a surface use a connection", input => c.summary(input)));
+    presence("Let a surface use a connection", input => c.summary(input), { when: input => input.surface === "agents" }));
 
   tool("vault.connections.revoke", [...PEOPLE, "mcp"], "Take a surface's use of a connection away. Needs no one: taking access away is always allowed, but only of the caller's own surface.",
     obj({ id: str, surface: str }, ["id", "surface"]), (input, meta) => c.revoke(input, meta.caller, Boolean(meta.person)));

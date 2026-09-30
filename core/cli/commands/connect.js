@@ -15,14 +15,13 @@
 import { follow as followStream } from "../../resilience/stream.js";
 import { open } from "../../resilience/node.js";
 import readline from "node:readline";
-import { spawn } from "node:child_process";
 import { call } from "../../daemon/client.js";
 import * as config from "../../config/index.js";
 import { dialogsAllowed } from "../../config/dialogs.js";
 import { callAsPerson } from "../presence.js";
 import { flags } from "../../vault/cli-io.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, fail as kitFail, failTool, usage } from "../kit.js";
+import { json, emit, fail as kitFail, failTool, usage, openInBrowser } from "../kit.js";
 
 const USAGE = "vyre connect list|apps|add|remove|rm|test|help";
 const HELP = [
@@ -256,13 +255,7 @@ export const PASTE_HINT = "Open this address in a browser. Signing in on another
 /** Open the consent page in this machine's browser, if a person is here to see it. Failure is fine. */
 export function openBrowser(url) {
   if (!dialogsAllowed() || !process.stdout.isTTY) return;
-  const cmd = process.platform === "darwin" ? "open" : process.platform === "linux" ? "xdg-open" : null;
-  if (!cmd) return;
-  try {
-    const p = spawn(cmd, [url], { stdio: "ignore", detached: true });
-    p.on("error", () => {});
-    p.unref();
-  } catch {}
+  openInBrowser(url);
 }
 
 /**

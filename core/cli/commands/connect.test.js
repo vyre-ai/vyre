@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../../daemon/index.js";
 import { tempHome, present } from "../../../test/helpers.js";
 import { startFakeMcpHttp } from "../../mcp/testing/fake-mcp.js";
-import { startFakeGoogle } from "../../connectors/testing/fake-google.js";
+import { startFakeGoogle } from "../../../lib/connectors/testing/fake-google.js";
 import { INSTALL_LINE } from "./mcp.js";
 import { CLIENT_PUT } from "./connect.js";
 

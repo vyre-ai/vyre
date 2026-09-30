@@ -32,7 +32,7 @@ export const SAID_MIGRATION = `CREATE TABLE vault_said_intents (
 /** Every column but the MAC: what was said, where, to whom, how far it reaches and whether it still stands. */
 export const SAID_MACED = ["id", "thread", "said", "kind", "channel", "recipients", "what", "when_text", "standing", "limits", "at", "revoked", "agents", "used"];
 
-export const INTENT_KINDS = ["send", "post", "pay", "act_out", "setting", "revoke"];
+export const INTENT_KINDS = ["send", "post", "pay", "act_out", "setting", "revoke", "use"];
 /** The only callers that may record what the person said. */
 export const RECORDERS = ["module:sessions", "module:assistant"];
 const MAX_TO = 20, MAX_TEXT = 500;
@@ -42,7 +42,7 @@ const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } c
 const bad = msg => Object.assign(new Error(msg), { code: "bad_input" });
 
 /** The intent kinds an outward call may be covered by. A Gate `send` may be a post; nothing else crosses. */
-const COVERS = { send: ["send", "post"], post: ["post"], pay: ["pay"], spend: ["pay"], act_out: ["act_out"], delete: ["act_out"], act: ["act_out"], setting: ["setting"], revoke: ["revoke"] };
+const COVERS = { send: ["send", "post"], post: ["post"], pay: ["pay"], spend: ["pay"], act_out: ["act_out"], delete: ["act_out"], act: ["act_out"], setting: ["setting"], revoke: ["revoke"], use: ["use"] };
 
 /** A recipient as compared: trimmed and lower-cased, so an address differs only by what it says. */
 export const norm = s => String(s ?? "").trim().toLowerCase();
@@ -59,7 +59,7 @@ export function ambiguous(s) {
 
 /**
  * Whether one outward call is covered by something the person said.
- * @param {{ kind: string, channel?: string, via?: string, to?: string[], amount?: number, payee?: string, currency?: string, agent?: string, at?: number }} call
+ * @param {{ kind: string, channel?: string, via?: string, to?: string[], hosts?: string[], amount?: number, payee?: string, currency?: string, agent?: string, at?: number }} call
  * @param {{ id: string, thread: string, kind: string, channel?: string|null, to: string[], standing: boolean, limits?: any, at: number, revoked?: number|null }[]} intents
  * @param {string[]} lineage the call's thread and the threads it descends from
  * @returns {{ id: string } | null} the intent that covers it, the latest when several do
@@ -83,9 +83,13 @@ export function matchIntent(call, intents, lineage = []) {
     if (!(it.at <= at)) continue;
     if (!it.standing && !lineage.includes(it.thread)) continue;
     if (it.channel && !channels.has(norm(it.channel))) continue;
-    const named = new Set((it.to || []).filter(x => !ambiguous(x)).map(norm));
+    // A "use" intent names a vault item, which is a plain word: the exact name is enough, and the
+    // hosts the item had when the person tagged it must still cover the item's hosts now.
+    const use = covers[0] === "use";
+    if (use && it.limits && Array.isArray(it.limits.hosts) && !(Array.isArray(call.hosts) && call.hosts.every(h => it.limits.hosts.map(norm).includes(norm(h))))) continue;
+    const named = new Set((it.to || []).filter(x => use || !ambiguous(x)).map(norm));
     if (!named.size) continue;
-    if (!dests.every(d => !ambiguous(d) && named.has(norm(d)))) continue;
+    if (!dests.every(d => (use || !ambiguous(d)) && named.has(norm(d)))) continue;
     if (pay) {
       const max = it.limits && Number(it.limits.max_amount);
       if (!Number.isFinite(max) || !Number.isFinite(call.amount) || /** @type {number} */ (call.amount) < 0 || /** @type {number} */ (call.amount) > max) continue;
@@ -124,9 +128,11 @@ export class SaidIntents {
       const max = i.limits.max_amount;
       if (max !== undefined && !(typeof max === "number" && Number.isFinite(max) && max >= 0)) throw bad("limits.max_amount is a number");
       if (i.limits.currency !== undefined && (typeof i.limits.currency !== "string" || i.limits.currency.length > 8)) throw bad("limits.currency is a short code");
-      limits = { ...(max !== undefined ? { max_amount: max } : {}), ...(i.limits.currency ? { currency: i.limits.currency } : {}) };
+      const hosts = i.kind === "use" && Array.isArray(i.limits.hosts) && i.limits.hosts.every(h => typeof h === "string" && h.length <= 253) ? i.limits.hosts.slice(0, 50) : undefined;
+      limits = { ...(max !== undefined ? { max_amount: max } : {}), ...(i.limits.currency ? { currency: i.limits.currency } : {}), ...(hosts ? { hosts } : {}) };
     }
     if (i.kind === "pay" && !(limits && limits.max_amount !== undefined && limits.currency)) throw bad("a pay intent needs limits.max_amount and limits.currency");
+    if (i.kind === "use" && !(limits && Array.isArray(limits.hosts))) throw bad("a use intent carries the item's hosts as limits.hosts; record it through vault.mention.resolve");
     if (i.agents !== undefined && !(Array.isArray(i.agents) && i.agents.length <= MAX_TO && i.agents.every(x => typeof x === "string" && x.trim() && x.length <= 80))) throw bad("agents is a list of agent names");
     const agents = (i.agents || []).map(x => x.trim());
     const at = Number.isFinite(i.at) ? Number(i.at) : Date.now();
@@ -175,7 +181,7 @@ export class SaidIntents {
     // A plain ask is used up by the send it asked for: claim it before anything goes out, so two
     // calls cannot both ride it. A standing permission is never used up.
     const it = intents.find(x => x.id === m.id);
-    if (it && !it.standing) {
+    if (it && !it.standing && it.kind !== "use") {
       const r = this.vault.db.prepare("UPDATE vault_said_intents SET used = ? WHERE id = ? AND used IS NULL").run(Date.now(), m.id);
       if (!r.changes) return null;
       this.vault.sign("vault_said_intents", m.id);
@@ -201,14 +207,14 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 
 /**
  * Register the intent tools. `internal` makes a tool only other modules can call.
- * @param {{ vault: import("./vault.js").Vault, internal: (name: string, description: string, input: any, run: Function) => void }} o
+ * @param {{ vault: import("./vault.js").Vault, tool?: Function, emit?: (type: string, payload: any) => void, internal: (name: string, description: string, input: any, run: Function) => void }} o
  */
-export function register({ vault, internal }) {
+export function register({ vault, internal, tool, emit }) {
   const said = new SaidIntents(vault);
 
   internal("vault.said.record", "Store what the person's own turn asked for. Only sessions and the assistant call it, after extracting it from a `said` row; nothing a model, agent, watcher or tool result produces can.",
     obj({ thread: str, said: str, kind: { type: "string", enum: INTENT_KINDS }, channel: str, to: strs, what: str, when: str, standing: { type: "boolean" }, agents: strs,
-      limits: obj({ max_amount: { type: "number" }, currency: str }), at: { type: "integer" } }, ["thread", "said", "kind", "what"]),
+      limits: obj({ max_amount: { type: "number" }, currency: str, hosts: strs }), at: { type: "integer" } }, ["thread", "said", "kind", "what"]),
     (input, { caller }) => {
       if (!RECORDERS.includes(String(caller))) { vault.audit("said-record", null, caller, false, "not sessions or the assistant"); throw new Error("only sessions and the assistant record what the person said"); }
       return said.record(input, String(caller));
@@ -235,6 +241,41 @@ export function register({ vault, internal }) {
 
   internal("vault.said.revoke", "Take an intent back. The Gate's gate.said.revoke calls this for the person; no proof of presence, since removing permission never needs one.",
     obj({ id: str }, ["id"]), (input, { caller }) => said.revoke(input, String(caller)));
+
+  // ---- "#" vault mentions: the person tags an item and that thread may USE it, never see it ----
+
+  /** The pickable items: names, kinds and bound hosts only. Never a value, never an ssh key's private half. */
+  const pickable = (q = "") => vault.list({ filter: q }).items.filter(i => i.kind !== "ssh-key").map(i => ({ name: i.name, kind: i.kind, hosts: i.hosts || [], ...(i.description ? { description: String(i.description).slice(0, 120) } : {}) }));
+  const RESOLVERS = ["module:sessions", "module:assistant", "module:mentions"];
+
+  if (tool) {
+    tool("vault.items.names", ["cli", "local", "deck", "capsule", "tailnet"], "Names, kinds and bound hosts of the vault items a person may tag with #, for pickers. Never a value.",
+      obj({ q: str, kind: str, limit: { type: "integer" } }), ({ q, kind, limit }) => ({ items: pickable(q).filter(i => !kind || i.kind === kind).slice(0, Math.min(Number(limit) || 30, 100)) }));
+    tool("vault.mention.search", ["cli", "local", "deck", "capsule", "tailnet"], "The # picker's vault items: id and name are the item name, hint says the kind and host.",
+      obj({ q: str, limit: { type: "integer" } }), ({ q, limit }) => ({ items: pickable(q).slice(0, Math.min(Number(limit) || 30, 100)).map(i => ({ id: i.name, name: i.name, hint: `${i.kind}${i.hosts.length ? " · " + i.hosts.join(", ") : ""}`, icon: "key" })) }));
+  }
+
+  internal("vault.mention.resolve", "The person tagged #item in their own turn: record that this thread (and the threads under it) may use the item, bound to the hosts it has now. Only sessions and the assistant; answers what the tag grants, never a value.",
+    obj({ id: str, thread: str, said: str }, ["id", "thread"]),
+    async ({ id, thread, said: ref }, { caller }) => {
+      if (!RESOLVERS.includes(String(caller))) { vault.audit("mention-resolve", String(id || "") || null, caller, false, "not sessions or the assistant"); throw new Error("only sessions and the assistant resolve a # tag"); }
+      const it = pickable().find(x => x.name === String(id));
+      if (!it) throw Object.assign(new Error(`no vault item ${String(id).slice(0, 60)}`), { code: "not_found" });
+      const r = await said.record({ thread, said: ref || `mention:${id}`, kind: "use", to: [it.name], what: `use ${it.name}`, standing: false, limits: { hosts: it.hosts } },
+        RESOLVERS.includes(String(caller)) && String(caller) !== "module:mentions" ? String(caller) : "module:sessions");
+      return { name: it.name, hint: `${it.kind}${it.hosts.length ? " · " + it.hosts.join(", ") : ""}`, hosts: it.hosts, note: "You may use this credential through vault.request and connectors. You never see its value.", grant: { use: true, hosts: it.hosts }, intent: r.id };
+    });
+
+  internal("vault.use.check", "Whether a thread (or a thread it descends from) may use a vault item because the person tagged it. { item, thread, lineage?, hosts? } -> { allowed, id? }. Never a value. A host the item has now that it did not have at the tag ends the permission.",
+    obj({ item: str, thread: str, lineage: strs, hosts: strs }, ["item", "thread", "hosts"]),
+    async ({ item, thread, lineage, hosts }) => {
+      const m = await said.match({ kind: "use", to: [String(item)], ...(hosts ? { hosts } : {}) }, { thread, lineage });
+      return m ? { allowed: true, id: m.id } : { allowed: false };
+    });
+
+  internal("vault.use.note", "A quiet record that a tagged item was used: emits vault.used {item, thread, via} with no value.",
+    obj({ item: str, thread: str, via: str }, ["item"]),
+    ({ item, thread, via }, { caller }) => { vault.audit("used", String(item), String(caller), true, `via ${String(via || "?").slice(0, 40)}`); if (emit) emit("vault.used", { item: String(item), thread: thread || null, via: via || null }); return { ok: true }; });
 
   return said;
 }

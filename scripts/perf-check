@@ -53,6 +53,8 @@ const RSS_FLAT_MB = 3;
 const STARTUP_SECONDS = 30;
 const STARTUP_TIMEOUT_MS = 60_000;
 const SETTLE_MS = 3000;
+// Idle starts once vyred has sat under QUIET_PCT of a core for QUIET_SAMPLES samples in a row, at most QUIET_MAX_SECONDS after settling.
+const QUIET_PCT = 0.3, QUIET_SAMPLES = 3, QUIET_MAX_SECONDS = 45;
 
 // cpuPct/rssMB gate the steady state (p95 of the samples — one noisy `ps` tick, or a GC pause,
 // shouldn't fail the whole check when 39 of 40 samples are clean). cpuSustainedPct/window catch
@@ -108,12 +110,20 @@ async function main() {
     // moment after recall.status says indexing is done. Starting the idle window here would
     // count that drain as "idle activity" it is not.
     await sleep(SETTLE_MS);
+    // Startup work can finish later than any fixed settle: memory applies the kept reads to the waiting
+    // turns after the post-index rules pass (about 450 ms of CPU on this 20,000-turn corpus), and the
+    // time it lands moves with what else starts (30 Sep: a new module shifted it into the idle window on
+    // Node 22 and failed the check every time). Idle starts once vyred has been quiet for a few samples.
+    if (!(await waitQuiet(child.pid))) log(`vyred was still busy ${QUIET_MAX_SECONDS}s after indexing; sampling anyway, and the budget says what it costs`);
     const idleStart = Date.now();
     log("indexing done; sampling idle for " + IDLE_SECONDS + "s");
 
     const samples = await sampleIdle(child.pid, IDLE_SECONDS, SAMPLE_MS);
     // The settled size: run on until the last RSS_FLAT_SAMPLES samples sit within RSS_FLAT_MB.
     while (!rssFlat(samples) && Date.now() - idleStart < IDLE_MAX_SECONDS * 1000) samples.push(...await sampleIdle(child.pid, SAMPLE_MS / 1000, SAMPLE_MS));
+    // The idle window ends here: the GC snapshot and the shutdown below set timers of their own
+    // (Registry.stop races each module's stop() against a 5 s bound), which are not idle polling.
+    const idleEnd = Date.now();
     const startupPeakMB = await startup;
     const afterGc = await gcSnapshot(child, gcFile);
     // Stop vyred BEFORE reading the timer dump: timer-hook.mjs only writes it on process exit
@@ -121,7 +131,7 @@ async function main() {
     await stopChild(child);
     const timers = readTimers(timersFile);
 
-    const exitCode = report(samples, timers, idleStart, startupPeakMB, afterGc);
+    const exitCode = report(samples, timers, idleStart, idleEnd, startupPeakMB, afterGc);
     process.exitCode = exitCode;
   } finally {
     if (child && child.exitCode === null) await stopChild(child);
@@ -148,7 +158,10 @@ async function seed(home, transcriptsDir) {
   // vectors: false — see the file header for why this check does not wait out the embedder.
   // recall.every is left at its default (5 minutes) deliberately: that is the real interval
   // vyred runs at, and it is itself part of what this check is confirming stays under budget.
-  const config = { transcripts: [transcriptsDir], recall: { vectors: false } };
+  // memory.model.on: false — the personal reader sends unread turns to a paid model a batch a minute
+  // (core/memory/personal/reader.js): real work, with network and money behind it, worth its own budget,
+  // and on a runner with no model it only fails and backs off. Like the embedder, it is not "idle".
+  const config = { transcripts: [transcriptsDir], recall: { vectors: false }, memory: { model: { on: false } } };
   fs.writeFileSync(path.join(home, "config.json"), JSON.stringify(config));
 
   return { sessions: SESSIONS.length + synth.sessions, turns: fixtureTurns + synth.turns };
@@ -274,6 +287,17 @@ async function sampleIdle(pid, seconds, intervalMs) {
   return samples;
 }
 
+/** Wait for the daemon's startup work to drain: true once QUIET_SAMPLES samples in a row are under QUIET_PCT. @param {number} pid */
+async function waitQuiet(pid) {
+  let run = 0;
+  const t0 = Date.now();
+  while (Date.now() - t0 < QUIET_MAX_SECONDS * 1000) {
+    const [s] = await sampleIdle(pid, SAMPLE_MS / 1000, SAMPLE_MS);
+    if (s && s.cpuPct < QUIET_PCT) { if (++run >= QUIET_SAMPLES) return true; } else run = 0;
+  }
+  return false;
+}
+
 /** The highest RSS (MB) seen in the first `seconds` from spawn, sampled every `intervalMs`. */
 async function watchStartup(pid, seconds, intervalMs) {
   let peak = 0;
@@ -336,7 +360,7 @@ async function stopChild(child) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 /** Print the pass/fail table and return the process exit code. */
-function report(samples, timers, idleStart, startupPeakMB, afterGc) {
+function report(samples, timers, idleStart, idleEnd, startupPeakMB, afterGc) {
   const shipped = shippedNodeMajor();
   const node = Number(process.versions.node.split(".")[0]);
   // No box/Dockerfile (a packed tree): gate RSS as before.
@@ -356,7 +380,7 @@ function report(samples, timers, idleStart, startupPeakMB, afterGc) {
   // setTimeout: one-shot by construction, so only what recurred DURING the idle window this run
   // actually sampled counts as polling; a startup debounce that fired many times while a burst
   // of indexing events came in, then went silent, is not that (see timer-hook.mjs).
-  const idleTimeouts = (timers?.setTimeout || []).filter(t => t.t >= idleStart);
+  const idleTimeouts = (timers?.setTimeout || []).filter(t => t.t >= idleStart && t.t <= idleEnd);
   const badTimeouts = byPeriod(idleTimeouts).filter(t => t.period_ms > 0 && t.period_ms < BUDGET.minTimerMs && t.count >= 3);
   const fastestMs = Math.min(
     ...badIntervals.map(t => t.period_ms),

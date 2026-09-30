@@ -20,6 +20,9 @@ struct CapsuleView: View {
     /// Drawn off screen for a picture: a solid ground, since a window's material needs a window.
     var snapshot = false
     @FocusState private var boxFocused: Bool
+    @Environment(\.colorScheme) private var scheme
+    /// Reduce Transparency and Increase Contrast, live.
+    @ObservedObject private var display = DisplayPrefs.shared
 
     var body: some View {
         let open = CapsuleLayout.isOpen(model)
@@ -50,7 +53,7 @@ struct CapsuleView: View {
                         // The answer grows with its words up to the room left above a few results,
                         // then scrolls (AnswerScroll.swift). It never clips a line out of reach.
                         if model.asked != nil { answerCard(cap: CapsuleLayout.answerCap(model, alone: false)); Rule() }
-                        if model.showsMemory, let m = model.memory { MemoryLine(memory: m, expanded: $model.memoryExpanded); Rule() }
+                        if model.showsMemory, let m = model.memory { MemoryLine(memory: m, expanded: $model.memoryExpanded, who: model.identities); Rule() }
                         HStack(alignment: .top, spacing: 0) {
                             if !model.groups.isEmpty { results } else { Spacer(minLength: 0) }
                             if let side {
@@ -78,13 +81,13 @@ struct CapsuleView: View {
             }
         }
         .frame(width: Theme.width, height: CapsuleLayout.panelHeight(model), alignment: .top)
-        .background { if snapshot { Theme.carbon } else { Backdrop() } }
+        .background { if snapshot { Theme.carbon } else { Backdrop(reduced: display.reduceTransparency) } }
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.ruleStrong.opacity(0.9), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(DeepGlass.border(dark: scheme == .dark), lineWidth: DeepGlass.borderWidth))
         .overlay(alignment: .top) {
             // A hairline of light along the top edge, as on the Mac's own panels.
             RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                .strokeBorder(LinearGradient(colors: [Theme.bone.opacity(0.10), .clear], startPoint: .top, endPoint: .center), lineWidth: 1)
+                .strokeBorder(LinearGradient(colors: [DeepGlass.topEdge(dark: scheme == .dark), .clear], startPoint: .top, endPoint: .center), lineWidth: 1)
                 .allowsHitTesting(false)
         }
         .onChange(of: focus.count) { boxFocused = true }
@@ -145,6 +148,20 @@ struct CapsuleView: View {
                 .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
                 .fixedSize()
             }
+            // The project the Capsule is in (ProjectContext.swift): its tile and name, read-only.
+            if model.target == nil, model.attachments.isEmpty, model.current?.sendsTo == nil, let p = model.currentProject {
+                HStack(spacing: 5) {
+                    AvatarView(.project(seed: p.tileSeed, draft: false), size: 14)
+                    Text(p.name).lineLimit(1).truncationMode(.tail)
+                }
+                .font(Theme.type(Tokens.TypeScale.meta, .medium))
+                .foregroundColor(Theme.stone)
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
+                .frame(maxWidth: 160)
+                .fixedSize(horizontal: false, vertical: true)
+                .help("Answers use this project")
+            }
         }
         .padding(.horizontal, Theme.inset)
         .frame(height: Theme.barHeight)
@@ -168,7 +185,8 @@ struct CapsuleView: View {
 
     private var answer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
+                AvatarView(model.identities.person, size: 16)
                 Text("You").font(Theme.subtitle).foregroundColor(Theme.ash)
                 Text(model.asked ?? "").font(Theme.type(Tokens.TypeScale.base, .medium)).foregroundColor(Theme.bone).lineLimit(2)
             }
@@ -178,10 +196,12 @@ struct CapsuleView: View {
                 let working = model.reply.map { !$0.finished } == true || model.pending
                 if let depth = CapsuleLayout.answerDepth(model) {
                     if working { Pulse() }
+                    AvatarView(model.replyAvatar, size: 18)
                     Text("Vyre IQ").font(Theme.label).foregroundColor(Theme.ash)
                     Text(depth).font(Theme.subtitle).foregroundColor(Theme.ash)
                 } else {
-                    if working { Pulse() } else { MarkView(size: 13) }
+                    if working { Pulse() }
+                    AvatarView(model.replyAvatar, size: 18)
                     Text(model.replyWho).font(Theme.type(Tokens.TypeScale.base, .semibold)).foregroundColor(Theme.bone)
                 }
                 let state = replyState
@@ -190,7 +210,7 @@ struct CapsuleView: View {
             }
             // Before the answer is in, what memory said is the answer so far; once it is in, the
             // answer already uses it, so it folds into one line under the answer.
-            if let m = model.askedMemory, model.replyText.isEmpty { MemoryLine(memory: m, expanded: $model.memoryExpanded, inset: false) }
+            if let m = model.askedMemory, model.replyText.isEmpty { MemoryLine(memory: m, expanded: $model.memoryExpanded, inset: false, who: model.identities) }
             // Tool calls, collapsed to one line each, newest three; a row changes in place.
             if let tools = model.reply?.tools, !tools.isEmpty { ToolRows(tools: tools) }
             if let q = model.reply?.queued, !q.withdrawn {
@@ -198,16 +218,40 @@ struct CapsuleView: View {
                       systemImage: q.delivered ? "checkmark.circle" : "clock")
                     .font(Theme.subtitle).foregroundColor(Theme.stone)
             }
+            // Vyre IQ's draft (C13, the draft lines of memory.ask): dimmed, with "Checking", until the answer replaces it.
+            if model.pending, model.replyText.isEmpty, let draft = model.iqDraft {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Checking").font(Theme.subtitle).foregroundColor(DeepGlass.ink)
+                    Text(draft)
+                        .font(Theme.reply).italic().foregroundColor(DeepGlass.ink)
+                        .lineSpacing(Theme.lineGap(Tokens.TypeScale.read))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .opacity(DeepGlass.draftOpacity)
+                .accessibilityLabel("Checking: \(draft)")
+            }
             if !model.replyText.isEmpty {
                 Text(markdown(model.shownReplyText))
-                    .font(Theme.reply).foregroundColor(Theme.bone)
+                    .font(Theme.reply).foregroundColor(DeepGlass.ink)
                     .lineSpacing(Theme.lineGap(Tokens.TypeScale.read))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if let m = model.askedMemory, !model.replyText.isEmpty, !m.sources.isEmpty {
-                MemorySources(memory: m, expanded: $model.memoryExpanded)
+            if let m = model.askedMemory, !model.replyText.isEmpty, !m.sources.isEmpty || m.corrected {
+                MemorySources(memory: m, expanded: $model.memoryExpanded, who: model.identities, assistant: model.assistantName, openSource: { model.openSource($0) })
+            }
+            // Vyre IQ corrections (95b2b891): a quiet "Wrong?" line, its panel, or the last fix's Undo.
+            if model.reply?.finished == true, let id = model.iqAnswerId {
+                if let fixed = model.iqFixed {
+                    IQFixedLine(fix: fixed) { model.undoIQFix() }
+                } else if let c = model.iqCorrecting, c.answerId == id {
+                    IQCorrectPanel(state: c, onWrong: { model.correctIQ(action: "wrong") }, onForget: { model.correctIQ(action: "forget") },
+                                   onReplace: { model.correctIQ(action: "replace", object: $0) }, onCancel: { model.cancelIQCorrect() })
+                } else {
+                    IQWrongLine { model.openIQCorrect() }
+                }
             }
             if let r = model.reply, r.finished, let e = r.error, r.queued?.withdrawn != true {
                 Label(e == "stopped" ? "Stopped." : "Failed. \(e)", systemImage: "xmark.circle").font(Theme.subtitle).foregroundColor(Theme.stone)
@@ -227,6 +271,8 @@ struct CapsuleView: View {
     }
 
     private var replyState: String {
+        // Vyre IQ streaming (memory.thinking): the stage in words while memory.ask is out.
+        if model.pending, let stage = model.iqStage { return stage }
         if model.pending { return "starting" }
         guard let r = model.reply else { return "" }
         if let q = r.queued, !q.delivered, !r.finished { return "queued" }
@@ -638,6 +684,7 @@ struct MemoryLine: View {
     let memory: MemoryAnswer
     @Binding var expanded: Bool
     var inset = true
+    var who = Identities()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -657,31 +704,52 @@ struct MemoryLine: View {
             }
             .buttonStyle(.plain)
             .help(expanded ? "Fold the sources (⌘→)" : "Show where this comes from (⌘→)")
-            if expanded { SourceList(memory: memory).padding(.leading, 23) }
+            if expanded { SourceList(memory: memory, who: who).padding(.leading, 23) }
         }
         .padding(.horizontal, inset ? Theme.inset : 0).padding(.vertical, inset ? 11 : 0)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-/// Under an answer that used memory: "from 2 of your sessions", which unfolds into where.
+/// Under an answer that used memory: "from 2 of your sessions", which unfolds into where. A Vyre
+/// IQ answer (memory.iq) instead keeps the confidence line and shows up to three source chips,
+/// ⌘1..⌘3, each opening that turn in Vyre (capsule.md); "you corrected this" and no chips when
+/// via was "corrected" (its "fix:<n>" source is provenance, never a chip).
 struct MemorySources: View {
     let memory: MemoryAnswer
     @Binding var expanded: Bool
+    var who = Identities()
+    /// The assistant's name, for its mark when there is no fingerprint.
+    var assistant: String? = nil
+    var openSource: (Int) -> Void = { _ in }
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button { withAnimation(.easeOut(duration: 0.14)) { expanded.toggle() } } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "sparkle.magnifyingglass").imageScale(.small).foregroundColor(Theme.recall)
+        if memory.iq {
+            VStack(alignment: .leading, spacing: 6) {
+                // Vyre IQ's line wears the assistant's mark: the answer is its own reading.
+                HStack(spacing: 6) {
+                    AvatarView(who.assistant(assistant), size: 14)
+                    Text(IQAnswer.chip(memory))
+                }
+                .font(Theme.title).foregroundColor(Theme.stone)
+                if memory.corrected { IQCorrectedLine() } else if !memory.sources.isEmpty { IQSourceChips(memory: memory, open: openSource) }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                // A source chip (capsule.md): 28 tall, radius 14, 1 px ruleStrong, 13/18 text2.
+                HStack(spacing: 6) {
                     let n = memory.conversationCount
                     Text(n == 1 ? "from 1 of your sessions" : "from \(n) of your sessions")
-                    Image(systemName: expanded ? "chevron.down" : "chevron.right").imageScale(.small)
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right").imageScale(.small).foregroundColor(Theme.ash)
                 }
-                .font(Theme.subtitle).foregroundColor(Theme.ash)
-                .contentShape(Rectangle())
+                .font(Theme.title).foregroundColor(Theme.stone)
+                .padding(.horizontal, 10).frame(height: 28)
+                .fixedSize()
+                .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
+                .contentShape(Capsule())
+                .onTapGesture { withAnimation(.easeOut(duration: 0.14)) { expanded.toggle() } }
+                .accessibilityAddTraits(.isButton)
+                if expanded { SourceList(memory: memory, who: who) }
             }
-            .buttonStyle(.plain)
-            if expanded { SourceList(memory: memory) }
         }
     }
 }
@@ -689,12 +757,15 @@ struct MemorySources: View {
 /// Where memory's answer comes from: quotes as quotes, with who said them and when.
 struct SourceList: View {
     let memory: MemoryAnswer
+    var who = Identities()
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             ForEach(Memo.items(memory).filter { $0.kind == .quote || !$0.said && $0.text != memory.answer }) { it in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(it.kind == .quote ? "\u{201C}\(it.text)\u{201D}" : it.text).font(Theme.title).foregroundColor(Theme.stone).lineLimit(2)
                     HStack(spacing: 6) {
+                        // A quote wears the mark of who said it: the person, or the assistant.
+                        if it.kind == .quote { AvatarView(it.source?.role == "assistant" ? who.assistant() : who.person, size: 12) }
                         Text(it.kind == .quote ? "\(it.who ?? "You") said\(it.age.isEmpty ? "" : ", " + Memo.ago(it.age))" : "noted\(it.age.isEmpty ? "" : " " + Memo.ago(it.age))")
                         if let s = it.source { Text("·"); Text(s.name).lineLimit(1) }
                     }
@@ -851,23 +922,4 @@ struct MarkView: View {
         }
         .frame(width: size, height: size)
     }
-}
-
-/// The panel's ground: the system's HUD material under a carbon wash, so it reads as Vyre and still
-/// lets the desktop through a little, like Spotlight.
-struct Backdrop: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let v = NSVisualEffectView()
-        v.material = .hudWindow
-        v.blendingMode = .behindWindow
-        v.state = .active
-        v.appearance = NSAppearance(named: .darkAqua)
-        let wash = NSView()
-        wash.wantsLayer = true
-        wash.layer?.backgroundColor = NSColor(srgbRed: 0x16 / 255, green: 0x15 / 255, blue: 0x13 / 255, alpha: 0.86).cgColor
-        wash.autoresizingMask = [.width, .height]
-        v.addSubview(wash)
-        return v
-    }
-    func updateNSView(_ v: NSVisualEffectView, context: Context) {}
 }

@@ -1,6 +1,6 @@
 // @ts-check
 // The google module inside a real vyred, in a temp home, with the real vault and the real Gate,
-// against the fake Google (core/connectors/testing/fake-google.js). Never real Google.
+// against the fake Google (lib/connectors/testing/fake-google.js). Never real Google.
 //
 // What these prove: reads mint read-only tokens; a draft goes nowhere; a send and an invite with
 // attendees are held until the person approves, and then go out with exactly what was approved,
@@ -15,12 +15,14 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
-import { startFakeGoogle } from "../connectors/testing/fake-google.js";
+import { startFakeGoogle } from "../../lib/connectors/testing/fake-google.js";
 
 // "today" and "tomorrow" are this machine's days; pin them so the fake's times land predictably.
 process.env.TZ = "UTC";
 
 const S = "https://www.googleapis.com/auth/";
+// Later than the fake's "tomorrow 10:00" whatever day the suite runs (fixed dates went stale on 2026-09-30).
+const dayAt = (days, hh) => { const d = new Date(Date.now() + days * 86_400_000); d.setUTCHours(hh, 0, 0, 0); return d.toISOString(); };
 const ME = "alex@example.com";
 
 /** A vyred in a temp home with the file keystore, and helpers to call it as each kind of caller. */
@@ -179,7 +181,7 @@ test("google: a DWD service account reads with read-only tokens, holds sends and
   assert.equal(fake.mail.sent.length, 1);
 
   // An event with no attendees is written at once, and nobody is told.
-  const quiet = await v.model("google.calendar.create", { title: "Focus: Northwind Bakery menu", start: "2026-10-01T09:00:00Z", end: "2026-10-01T10:00:00Z" });
+  const quiet = await v.model("google.calendar.create", { title: "Focus: Northwind Bakery menu", start: dayAt(2, 9), end: dayAt(2, 10) });
   assert.ok(quiet.data.event.id, JSON.stringify(quiet));
   const quietEv = fake.calendar.events.find(e => e.id === quiet.data.event.id);
   assert.equal(quietEv._sendUpdates, "none");
@@ -190,7 +192,7 @@ test("google: a DWD service account reads with read-only tokens, holds sends and
 
   // An event with attendees is held; approval creates it with sendUpdates=all.
   const before = fake.calendar.events.length;
-  const invite = await v.model("google.calendar.create", { title: "Harlow Legal signing", start: "2026-10-02T15:00:00Z", where: "Zoom", attendees: ["dana@harlowlegal.com"] });
+  const invite = await v.model("google.calendar.create", { title: "Harlow Legal signing", start: dayAt(3, 15), where: "Zoom", attendees: ["dana@harlowlegal.com"] });
   const inviteId = invite.data.held;
   assert.ok(inviteId, JSON.stringify(invite));
   assert.equal(fake.calendar.events.length, before);
@@ -342,6 +344,10 @@ test("google: Sign in with Google over the loopback adds an account that works, 
   }
   assert.equal(tcp(), idle, "nothing listens before a sign-in");
   assert.match((await v.cli("google.connect", { name: "home", client: "google-client", base: "https://example.org" })).error.message, /loopback/);
+  // With no client named, the default item google-oauth-client is the one asked for (vault.connect's `next` passes only a name).
+  const dflt = await v.cli("google.connect", { name: "home", base: fake.base });
+  assert.match(dflt.error.message, /google-oauth-client/, JSON.stringify(dflt));
+  assert.equal(tcp(), idle, "a sign-in that could not start leaves no listener");
 
   const started = (await v.cli("google.connect", { name: "home", client: "google-client", base: fake.base })).data;
   assert.ok(started?.id && started.url && started.redirect, JSON.stringify(started));
@@ -408,4 +414,34 @@ test("google: a sign-in finished by the pasted address works once, and a cancell
   const types = v.d.registry.deps.events.since(0, { limit: 5000 }).filter(e => e.type.startsWith("google.")).map(e => e.type);
   assert.deepEqual(types, ["google.added", "google.connected", "google.connect-failed", "google.connect-failed"]);
   assertNoLeak(v, [client.client_secret, ...fake.issued.keys(), ...fake.tokens.keys(), new URL(back).searchParams.get("code") || ""]);
+});
+
+test("google: on_behalf files a first-party module's held send under the thread and agent it names; anyone else is refused", async t => {
+  const fake = await startFakeGoogle(t);
+  const v = await vyred(t);
+  await item(v, "work-google", "secret", { value: fake.serviceAccount(ME) });
+  assert.ok((await v.cli("google.add", { name: "work", email: ME, auth: { type: "service-account", item: "work-google" }, base: fake.base })).data);
+  const mail = { to: "dana@northwind-bakery.example", subject: "Oven rota", body: "Hi Dana, the rota is ready. Alex" };
+  const now = Date.now();
+  v.d.registry.deps.db.prepare("INSERT INTO threads_runs (id, cwd, agent, status, started_at, last_at) VALUES (?,?,?,?,?,?)").run("t-9", v.root, "kit", "stopped", now, now);
+
+  // The mail module sends for a chat (or an agent) that vyred verified for it.
+  const fromModule = await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } }, "module:mail", {});
+  assert.ok(fromModule.data?.held, JSON.stringify(fromModule));
+  const a = (await v.local("gate.get", { id: fromModule.data.held })).data;
+  assert.deepEqual([a.via, a.thread, a.agent], ["google:work", "t-9", "kit"]);
+
+  // Anyone else who passes on_behalf is refused: a model, a person's CLI, a module label the
+  // loader does not count as shipped (and passing firstParty in changes nothing).
+  assert.equal((await v.model("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } })).error.code, "denied");
+  assert.equal((await v.cli("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } })).error.code, "denied");
+  assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } }, "module:bakery-helper", { firstParty: true })).error.code, "denied");
+  // Without on_behalf a model's send is filed under its own verified thread, as before.
+  const fromModel = await v.model("google.mail.send", mail);
+  assert.equal((await v.local("gate.get", { id: fromModel.data.held })).data.thread, "t-1");
+
+  // A thread that does not exist, or that is another agent's, is refused.
+  assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-none" } }, "module:mail", {})).error.code, "bad_input");
+  assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "juno" } }, "module:mail", {})).error.code, "denied");
+  assert.equal(fake.mail.sent.length, 0, "a held send reached Gmail");
 });

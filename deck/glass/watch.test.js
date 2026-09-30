@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 const g = /** @type {any} */ (globalThis);
 if (!g.location) g.location = new URL("https://box.tail0000.ts.net/glass/kit");
 if (!g.window) g.window = g;
-const { levels, relayed } = await import("./watch.js");
+const { levels, relayed, latencyLabel } = await import("./watch.js");
 
 test("glass watch: laptop 6/2 and phone 5/4 on a direct link, 2/6 on a relay", () => {
   assert.deepEqual(levels(false), [6, 2]);
@@ -20,4 +20,12 @@ test("glass watch: laptop 6/2 and phone 5/4 on a direct link, 2/6 on a relay", (
   assert.equal(relayed({ path: "relay" }), true);
   assert.equal(relayed({ path: "direct" }), false);
   assert.equal(relayed(null), false);
+});
+
+test("glass watch: latencyLabel rounds a known latency to whole ms, blank otherwise", () => {
+  assert.equal(latencyLabel({ path: "direct", latencyMs: 41.6 }), "42 ms");
+  assert.equal(latencyLabel({ path: "relay", latencyMs: 0 }), "0 ms");
+  assert.equal(latencyLabel({ path: "direct", latencyMs: null }), "");
+  assert.equal(latencyLabel({ path: "direct" }), "");
+  assert.equal(latencyLabel(null), "");
 });

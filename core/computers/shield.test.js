@@ -96,7 +96,7 @@ test("computers.shield: refuses reads and input, tells computerd, and ends with 
     assert.deepEqual((await s.mod("computers.may-act", { agent: "kit", tool, read })).data, { ok: false, why: SHIELDED }, tool);
   }
   assert.equal(cd.told.length, 1);
-  assert.deepEqual(cd.told[0].body, { on: true });
+  assert.deepEqual(cd.told[0].body, { on: true, reason: "person" });
   assert.equal(cd.told[0].auth, `Bearer ${s.h.pool.row("kit").helper_token}`);
 
   // The take-over ends: the shield comes down with it, and computerd hears so.
@@ -106,7 +106,7 @@ test("computers.shield: refuses reads and input, tells computerd, and ends with 
   assert.deepEqual(cd.told.map(x => x.body.on), [true, false]);
   const types = s.events().map(e => e.type).filter(x => /shield|handed/.test(x));
   assert.deepEqual(types, ["computer.shielded", "computer.handed-back", "computer.unshielded"]);
-  assert.deepEqual(s.events().find(e => e.type === "computer.shielded").payload, { agent: "kit" });
+  assert.deepEqual(s.events().find(e => e.type === "computer.shielded").payload, { agent: "kit", reason: "person" });
   assert.equal((await s.cli("computers.shield", { agent: "kit", on: true })).error.code, "no_such_tool");
 });
 

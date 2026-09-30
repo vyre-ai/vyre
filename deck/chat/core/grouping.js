@@ -27,13 +27,16 @@ const BY_NAME = /** @type {Record<string, string>} */ ({
   Bash: "shell", Read: "read", Edit: "edit", MultiEdit: "edit", Write: "write", NotebookEdit: "edit",
   Grep: "search", Glob: "search", WebSearch: "search", WebFetch: "fetch", Task: "sub_agent", Agent: "sub_agent",
   TodoWrite: "todo", ExitPlanMode: "plan",
+  // A teammate handoff (teammates.md section 3, avatar.md's "never hidden, never folds into a
+  // run" rule) - the same exemption a plan or a todo list gets, so it stays its own visible line.
+  team_ask: "handoff", "team.ask": "handoff",
 });
 
 /** @param {any} item */
 const typeOf = item => (item.detail && item.detail.type) || BY_NAME[item.name] || "unknown";
 
 /** @param {any} item */
-const foldable = item => item && item.kind === "tool" && typeOf(item) !== "plan" && typeOf(item) !== "todo";
+const foldable = item => item && item.kind === "tool" && !item.render && typeOf(item) !== "plan" && typeOf(item) !== "todo" && typeOf(item) !== "handoff";
 
 /** @param {number} n @param {string} one @param {string} [many] */
 const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

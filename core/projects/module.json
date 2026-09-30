@@ -5,8 +5,10 @@
   "requires": [],
   "does": {
     "tools": [
-      "projects.list", "projects.create", "projects.add-threads", "projects.remove-threads",
-      "projects.catalog", "projects.of", "projects.threads", "projects.context", "projects.move"
+      "projects.list", "projects.create", "projects.history", "projects.rename", "projects.archive", "projects.add-threads", "projects.remove-threads", "projects.add-workspace",
+      "projects.watchers.add", "projects.watchers.remove",
+      "projects.catalog", "projects.of", "projects.threads", "projects.context", "projects.move",
+      "projects.access.grant", "projects.access.revoke", "projects.access.check", "projects.access.list", "projects.access.migrate", "projects.access.clear", "projects.reach"
     ]
   },
   "watches": { "emits": ["project.created", "project.changed", "thread.picked", "thread.unpicked", "projects.moved"] },

@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../../daemon/index.js";
 import { tempHome, present } from "../../../test/helpers.js";
 import { startFakeMcpHttp } from "../../mcp/testing/fake-mcp.js";
-import { startFakeAuthServer } from "../../connectors/testing/fake-oauth.js";
+import { startFakeAuthServer } from "../../../lib/connectors/testing/fake-oauth.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(HERE, "..", "..", "..", "bin", "vyre");

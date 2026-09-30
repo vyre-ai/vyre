@@ -101,7 +101,7 @@ test("guests: a guest never approves, never proves presence, never pairs, and a 
     assert.equal(r.error && r.error.code, "denied", tool);
   }
   const pair = await d.registry.call("link.pair.request", { name: "sams-laptop" }, guest, {});
-  assert.match(pair.error.message, /from the Mac, over the tailnet/);
+  assert.match(pair.error.message, /from the device, over the tailnet/);
   // x-vyre-caller over the listener is ignored, and over the socket a guest's label is anonymous.
   const { socketCaller } = await import("../core/daemon/index.js");
   assert.equal(socketCaller({ headers: { "x-vyre-caller": guest } }), "anonymous");
@@ -137,7 +137,7 @@ test("agent nodes: the node's agent must also bring that same agent's key", asyn
   assert.deepEqual([m.peer.kind, m.peer.agent, m.peer.stableId, m.peer.login], ["agent", "kit", "nKIT", null]);
   // An agent's node is not one of the owner's devices: it cannot pair.
   const pair = await call(KIT_IP, "link.pair.request", { name: "kit" }, { "x-vyre-agent-key": "kit-key" });
-  assert.match(pair.error.message, /from the Mac, over the tailnet/);
+  assert.match(pair.error.message, /from the device, over the tailnet/);
 });
 
 test("agent nodes: without a resolver's answer, the node is refused as a tagged node", async t => {
@@ -152,12 +152,17 @@ test("network.guests: add, remove and enable need presence and the owner; agents
   d.events.on("guest.*", e => got.push([e.type, e.payload]));
   const proof = { method: "test" };
   assert.equal((await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["threads.list"] }, "cli")).error.code, "presence_required");
-  for (const [caller, meta] of [["mcp:agent:kit", { agent: "kit", thread: "t" }], ["tailnet:agent:kit", { agent: "kit" }], ["tailnet-guest:sam@harlow.example", {}], ["anonymous", {}]]) {
+  // "cli agent:kit" is an agent vouched under the CLI transport, not "mcp:agent:"; agentClaim
+  // (core/modules) must still catch it, same as the narrower shape (e2e review, 2026-09-28).
+  for (const [caller, meta] of [["mcp:agent:kit", { agent: "kit", thread: "t" }], ["cli agent:kit", {}], ["tailnet:agent:kit", { agent: "kit" }], ["tailnet-guest:sam@harlow.example", {}], ["anonymous", {}]]) {
     for (const [tool, input] of [["network.guests.add", { login: "sam@harlow.example", tools: [] }], ["network.guests.remove", { login: "sam@harlow.example" }], ["network.guests.enable", { on: true }]]) {
       const r = await d.registry.call(tool, input, caller, { ...meta, proof });
       assert.equal(r.error && r.error.code, "denied", `${caller} ${tool}`);
     }
   }
+  // A claim with no name at all ("cli agent:") must still be refused, not read as no claim and
+  // trusted fully (agentClaim never returns "", e2e review, 2026-09-28).
+  assert.equal((await d.registry.call("network.guests.enable", { on: true }, "cli agent:", { proof })).error.code, "denied", "an empty agent name is still an agent");
   const bad = await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["glass.take"] }, "cli", { proof });
   assert.match(bad.error.message, /threads.list; not glass.take/);
   assert.equal((await d.registry.call("network.guests.add", { login: "alex@example.com", tools: [] }, "cli", { proof })).error.code, "bad_input");

@@ -4,7 +4,7 @@
   "description": "Push-to-talk for the Capsule: streams the mic to a speech provider and relays the words back, with optional spoken replies.",
   "roles": ["local"],
   "requires": [],
-  "does": { "tools": ["voice.status", "voice.settings", "voice.speak"] },
+  "does": { "tools": ["voice.status", "voice.settings", "voice.speak", "voice.listen"] },
   "watches": { "emits": [] },
   "shows": { "capsule": ["settings:voice"], "streams": ["listen"] },
   "needs": {

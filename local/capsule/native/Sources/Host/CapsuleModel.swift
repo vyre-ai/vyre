@@ -144,17 +144,41 @@ public final class CapsuleModel: ObservableObject {
     /// Chips for what extensions attach to this send ("sees: Safari · Northwind Bakery"), and the ones the user
     /// removed for it.
     @Published var attachments: [SendAttachment] = []
-    private var removedAttachments = Set<String>()
+    var removedAttachments = Set<String>()
     var attachers: [SendAttaching] = []
-    private var attachTask: Task<Void, Never>?
+    var attachTask: Task<Void, Never>?
+    /// The words the chips were last asked for.
+    var attachedWords = ""
     /// The memory line's sources, shown (a click or ⌘→) or folded.
     @Published var memoryExpanded = false
+    /// Vyre IQ's stage word while memory.ask streams (IQAsk.swift): "Understanding", "Searching
+    /// your sessions", etc. Nil outside a streamed ask, or once it answers.
+    @Published var iqStage: String?
+    /// the draft text so far (memory.ask's ndjson lines) while memory.ask streams (C13): drawn dimmed with "Checking",
+    /// replaced by the answer, and removed if the answer abstains or the call fails.
+    @Published var iqDraft: String?
+    /// The answer_id memory.ask gave the answer on screen (95b2b891); nil with no memory.ask, an
+    /// abstention with nothing to correct, or an already-corrected answer.
+    @Published var iqAnswerId: String?
+    /// "Wrong?" opened its three choices under the answer on screen (IQCardViews.swift).
+    @Published var iqCorrecting: IQCorrecting?
+    /// The last correction's fix, shown with Undo until it is undone or a new question is asked.
+    @Published var iqFixed: IQFixShown?
+    /// memory.ask said abstained: true for the answer on screen (openIQCorrect's "not sure" card).
+    @Published var iqAbstained = false
+    var iqAskSeq = 0
     /// A human-only call waiting for the person to prove they are here (Presence.swift).
     @Published var presenceAsk: PresenceAsk?
     /// "Add your Deepgram key": a module's missing key, asked for in the panel (Credentials.swift).
     @Published var credentialAsk: CredentialAsk?
     /// `vyre ...` run from the box, and what it said (CommandRun.swift).
     @Published var commandRun: CommandRun?
+    /// The session window's session while it is open (ProjectContext.swift), else nil.
+    var sessionFront: (thread: String?, project: String?)?
+    /// The project the Capsule is in: memory.ask's context and the chip in the bar.
+    @Published var currentProject: VyreProject?
+    /// The front app's document or folder, for the project rule (a fake in tests).
+    var frontPath: (FrontApp?) -> String? = { ProjectContext.frontPath($0) }
     /// The CLI to run instead of vyred's own (tests: a fake vyre).
     var cliOverride: [String]?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
@@ -202,6 +226,29 @@ public final class CapsuleModel: ObservableObject {
     /// Asked to step aside for the front app.
     public var onStepAside: (() async -> Bool)?
 
+    /// The Capsule's own two speeds: memory.ask / a lean thread (quick), and think-deeper's
+    /// session (deeper). Read from sessions.models.get on open (ADR 0036), so a model rename
+    /// needs no Capsule release; today's values (below) when the tool is missing or has not
+    /// answered yet.
+    public struct CapsuleModels: Equatable { public var quick = CapsuleModel.quickModel; public var deeper = CapsuleModel.deeperModel }
+    @Published public internal(set) var models = CapsuleModels()
+    /// Who the person and the assistant are (system.info), for their marks (Host/Identities.swift).
+    @Published public internal(set) var identities = Identities()
+    /// Today's fallback for the quick model: sessions.models.get's purpose "capsule" overrides it.
+    static let quickModel = ModelFallback.quick
+
+    /// Caches purposes.capsule and purposes.agent from sessions.models.get as the Capsule's quick
+    /// and deeper models. A vyred with no such tool, or one that errors, leaves today's values.
+    func loadModels() async {
+        guard vyred.has("sessions.models.get") else { return }
+        let r = await vyred.call("sessions.models.get", [:], presence: false)
+        guard r.error == nil, let d = r.data as? [String: Any], let purposes = d["purposes"] as? [String: Any] else { return }
+        var m = models
+        if let capsule = purposes["capsule"] as? [String: Any], let q = VJ.nonEmpty(capsule["model"]) { m.quick = q }
+        if let agent = purposes["agent"] as? [String: Any], let dp = VJ.nonEmpty(agent["model"]) { m.deeper = dp }
+        models = m
+    }
+
     public init(home: String, vyred: VyredClient, providers: [ResultProvider]) {
         self.home = home
         self.vyred = vyred
@@ -224,13 +271,17 @@ public final class CapsuleModel: ObservableObject {
         Task { @MainActor [vyred] in
             _ = await vyred.refreshTools()
             guard vyred.isUp else { return }
+            await self.loadModels()
+            await self.loadIdentities()
             self.catalog = await CatalogLoader.load(vyred)
+            self.refreshProject()
             if self.mentionQuery != nil { self.search() }
             self.targetChanged()
             await self.loadBox()
             self.desk.follow()
             await self.desk.load()
         }
+        refreshProject()
         if !text.isEmpty { search() }
     }
 
@@ -258,6 +309,7 @@ public final class CapsuleModel: ObservableObject {
         if let r = reply, !r.finished { return }
         followUp = false; autoKey = nil; autoTask?.cancel(); convo = []
         text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
+        iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
         cancelMentionRefresh()
         replySub?.cancel(); replySub = nil
     }
@@ -269,6 +321,7 @@ public final class CapsuleModel: ObservableObject {
     func refreshAttachments(_ words: String, to kind: SendTargetKind) {
         attachTask?.cancel()
         let w = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        attachedWords = w
         guard !attachers.isEmpty, !w.isEmpty else { if !attachments.isEmpty { attachments = [] }; return }
         let t = token
         attachTask = Task { @MainActor in
@@ -328,6 +381,9 @@ public final class CapsuleModel: ObservableObject {
     /// Search again for the same words (an extension's commands changed).
     func refresh() { search() }
 
+    /// How long a slow provider's old rows stay before they are dropped (tests lengthen it).
+    var staleAfter: TimeInterval = 0.3
+
     func search() {
         token += 1
         let t = token
@@ -364,7 +420,7 @@ public final class CapsuleModel: ObservableObject {
         if let argv = CLIRun.parse(q.text) {
             autoTask?.cancel(); recallTask?.cancel(); memory = nil; attachments = []
             partial = [:]
-            groups = [Group(section: .top, items: [commandRunItem(argv)])]
+            groups = [Group(section: .top, items: [offline ? startFirstItem(argv) : commandRunItem(argv)])]
             selected = 0
             return
         }
@@ -399,7 +455,7 @@ public final class CapsuleModel: ObservableObject {
         stale = pending
         scheduleAuto(q, token: t)
         staleTimer?.invalidate()
-        staleTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+        staleTimer = Timer.scheduledTimer(withTimeInterval: staleAfter, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, t == self.token, !self.stale.isEmpty else { return }
                 for id in self.stale { self.partial[id] = nil }
@@ -507,7 +563,7 @@ public final class CapsuleModel: ObservableObject {
         selected = was.flatMap { id in flat.firstIndex { $0.id == id } } ?? 0
         if !rows.isEmpty { line = nil }
         else if let chip = nestingChip { line = "Nothing called that in \(chip.label)." }
-        else { line = vyred.isUp ? "Nothing called that in Vyre yet." : "vyred is not running. Start it with vyre up." }
+        else { line = vyred.isUp ? "Nothing called that in Vyre yet." : "vyred is not running. Start Vyre: Return on an empty Capsule." }
     }
 
     /// Candidates for the `@` words, and the words left over as the message. The whole text is
@@ -784,8 +840,11 @@ public final class CapsuleModel: ObservableObject {
 
     // MARK: asking
 
-    func ask(_ words: String, model: String = "haiku", context: String? = nil, computerUse: Bool = false) async -> ActionOutcome {
+    func ask(_ words: String, model: String? = nil, context: String? = nil, computerUse: Bool = false) async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type a question first.") }
+        let model = model ?? models.quick
+        // Vyre IQ (IQAsk.swift): a plain quick question is memory.ask's, grounded or "Not sure yet."
+        if !computerUse, context == nil, model == models.quick, let out = await askIQ(words) { return out }
         let dir = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask")
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch {
             return .failed("Could not make the Capsule's folder: \(error.localizedDescription)")
@@ -851,6 +910,7 @@ public final class CapsuleModel: ObservableObject {
         guard !words.isEmpty else { return .said("Type what to send first.") }
         asked = words
         askedMemory = nil
+        iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
         pending = true
         switch c.kind {
         case .app:

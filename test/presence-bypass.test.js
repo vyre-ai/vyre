@@ -83,11 +83,11 @@ async function box(t) {
   t.after(() => d.stop());
 
   // The person's Capsule key, enrolled the way presence.enroll stores it.
-  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
-  const key = d.registry.deps.presence.enroll({ kind: "capsule", name: "Capsule", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url") });
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const key = d.registry.deps.presence.enroll({ kind: "capsule", name: "Capsule", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
   const signed = (tool, input) => {
     const ts = Date.now(), nonce = crypto.randomBytes(12).toString("base64url");
-    const sig = crypto.sign(null, Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), privateKey).toString("base64url");
+    const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
     return `capsule key=${key.id} ts=${ts} nonce=${nonce} sig=${sig}`;
   };
   const person = (tool, input) => call(tool, input, { root, caller: "cli", headers: { "x-vyre-presence": signed(tool, input) } });

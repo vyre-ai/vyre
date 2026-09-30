@@ -170,6 +170,8 @@ function stubs(dir, log, site, extra = {}) {
   "compose version") echo 2.29.1 ;;
   "volume ls") echo vyre_vyre-home; echo vyre_vyre-work; echo vyre_tailscale-state ;;
 esac
+# The update's signature check runs Node in the image: docker run ... --entrypoint node IMAGE -e CODE KEY SIG.
+if [ "$1" = run ]; then shift; while [ $# -gt 0 ] && [ "$1" != --entrypoint ]; do shift; done; shift 3; exec ${process.execPath} "$@"; fi
 exit 0`,
     // Serves https://vyre.run/box/<name> from the fake site folder; 22 is curl -f's 404.
     curl: `url=$2; out=$4; name=\${url#https://vyre.run/box/}; [ -f "${site}/$name" ] || exit 22; cp "${site}/$name" "$out"`,
@@ -265,7 +267,7 @@ function runScript(t, args, extra, prepare = () => {}, env = {}) {
   return { ...r, dir: box.dir, wrapper: box.wrapper, calls: box.calls() };
 }
 
-const READ_ONLY = /^(uname|id|docker (compose version|info|volume ls|manifest inspect))/;
+const READ_ONLY = /^(uname|id|docker (--version|compose version|info|volume ls|manifest inspect))/;
 
 test("install-box.sh: parses with sh -n", () => {
   execFileSync("sh", ["-n", SCRIPT]);
@@ -279,7 +281,7 @@ test("install-box.sh: shellcheck is clean when available", t => {
 test("install-box.sh: dry run lists every change and makes none", t => {
   const r = runScript(t, ["--dry-run", "--yes"]);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^dry run: nothing on this box will change$/m);
+  assert.match(r.stdout, /^dry run: nothing on this server will change$/m);
   assert.ok(r.stdout.split("\n").includes("would download: https://vyre.run/box/SHA256SUMS"), r.stdout);
   for (const f of ["compose.yml", "compose.build.yml", "vyre.env.example", "vyre"]) {
     assert.ok(r.stdout.split("\n").includes(`would download and verify: https://vyre.run/box/${f}`), `${f}: ${r.stdout}`);
@@ -313,14 +315,14 @@ test("install-box.sh: without --yes and no terminal, it prints the Docker comman
 test("install-box.sh: an old Compose stops the install", t => {
   const r = runScript(t, ["--dry-run", "--yes"], { docker: `[ "$1 $2" = "compose version" ] && echo 2.20.0; exit 0` });
   assert.equal(r.status, 1);
-  assert.match(r.stdout, /Compose 2\.24 or newer; this box has 2\.20\.0/);
+  assert.match(r.stdout, /Compose 2\.24 or newer; this server has 2\.20\.0/);
 });
 
-test("install-box.sh: says what to do on a Mac", t => {
+test("install-box.sh: on a Mac it looks for the Mac server's installer on the site, and stops when the site does not list it", t => {
   const mac = runScript(t, ["--dry-run"], { uname: `echo Darwin` });
-  assert.equal(mac.status, 0);
-  assert.match(mac.stdout, /On a Mac, Vyre installs with npm:\n {2}npm install -g https:\/\/vyre\.run\/box\/vyre\.tgz && vyre up$/m);
-  assert.deepEqual(mac.calls, ["uname -s"]);
+  assert.equal(mac.status, 1);
+  assert.match(mac.stderr, /SHA256SUMS has no line for install-mac-server\.sh/);
+  assert.ok(!mac.calls.some(c => /^(docker|sudo)/.test(c)), "nothing of the Linux install ran");
 });
 
 test("install-box.sh: --from DIR copies the checkout's files and builds from it", t => {
@@ -406,16 +408,14 @@ test("install-box.sh: uninstall dry run, and --purge lists the volumes and asks"
     fs.copyFileSync(path.join(REPO, "box", "vyre"), wrapper);
   });
   assert.equal(kept.status, 0, kept.stderr);
-  assert.match(kept.stdout, new RegExp(`^would run: sh -c 'cd "\\$1" && docker compose down --remove-orphans' sh ${kept.dir}$`, "m"));
-  assert.match(kept.stdout, new RegExp(`^would run: sudo rm -f ${kept.wrapper}$`, "m"));
-  assert.match(kept.stdout, /^ {2}vyre_vyre-home$/m);
-  // No terminal to ask on, so the answer is no.
-  assert.match(kept.stdout, /^kept the volumes$/m);
+  // The wrapper is the one uninstall (box/vyre): it lists the volumes and asks. Without --yes the
+  // installer hands it no answer, so it asks; a dry run only shows that call.
+  assert.match(kept.stdout, new RegExp(`^would run: env VYRE_DIR=${kept.dir} VYRE_WRAPPER=${kept.wrapper} ${kept.wrapper} uninstall$`, "m"));
   assert.ok(!kept.stdout.includes("docker volume rm"));
   for (const c of kept.calls) assert.match(c, READ_ONLY, `mutating call in a dry run: ${c}`);
 
   const gone = runScript(t, ["--dry-run", "--yes", "--uninstall", "--purge"]);
-  assert.match(gone.stdout, /^would run: docker volume rm vyre_vyre-home vyre_vyre-work vyre_tailscale-state$/m);
+  assert.match(gone.stdout, /^would run: docker compose -p vyre down --remove-orphans$/m, "no wrapper here, so the plain path");
   assert.ok(fs.existsSync(path.join(REPO, "box", "vyre")));
 });
 
@@ -428,9 +428,10 @@ esac
 exit 0` };
 
 test("install-box.sh: with no image to pull, it builds from a verified vyre.tgz in DIR/src", t => {
-  const r = runScript(t, ["--yes"], NO_IMAGE);
+  // A release with no signed image digests only installs when asked to build from source (fail closed).
+  const r = runScript(t, ["--yes"], NO_IMAGE, () => {}, { VYRE_BUILD: "tgz" });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /cannot pull ghcr\.io\/vyre-ai\/vyre:latest; building it from vyre\.tgz/);
+  assert.match(r.stdout, /building the image from vyre\.tgz \(VYRE_BUILD=tgz\)/);
   assert.equal(fs.readFileSync(path.join(r.dir, "src", "VERSION"), "utf8"), "0.3.0\n");
   assert.ok(fs.existsSync(path.join(r.dir, "src", "box", "Dockerfile")));
   assert.ok(!fs.existsSync(path.join(r.dir, "src.new")));
@@ -469,7 +470,7 @@ test("install-box.sh: a file with no line in SHA256SUMS stops the install", t =>
   const r = runScript(t, ["--yes"], NO_IMAGE, box => {
     const f = path.join(box.site, "SHA256SUMS");
     fs.writeFileSync(f, fs.readFileSync(f, "utf8").split("\n").filter(l => !l.endsWith("  vyre.tgz")).join("\n"));
-  });
+  }, { VYRE_BUILD: "tgz" });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /SHA256SUMS has no line for vyre\.tgz/);
   assert.ok(!fs.existsSync(path.join(r.dir, "src")));
@@ -491,8 +492,15 @@ function builtBox(t) {
   fs.writeFileSync(path.join(box.dir, "compose.yml"), "");
   fs.writeFileSync(path.join(box.dir, ".env"),
     `COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml:compose.build.yml\nVYRE_SOURCE=${box.dir}/src\n`);
-  const update = () => spawnSync("sh", [WRAPPER, "update"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: box.env });
-  return { ...box, update };
+  // The release is signed, as a real one is: SHA256SUMS.sig over the domain line and SHA256SUMS, with a key of this test's own, which the
+  // wrapper is told is the release key (VYRE_RELEASE_KEY is for tests only).
+  const keys = crypto.generateKeyPairSync("ed25519");
+  const signSums = () => fs.writeFileSync(path.join(box.site, "SHA256SUMS.sig"),
+    crypto.sign(null, Buffer.concat([Buffer.from("vyre-release-sums\n"), fs.readFileSync(path.join(box.site, "SHA256SUMS"))]), keys.privateKey).toString("base64") + "\n");
+  signSums();
+  const env = { ...box.env, VYRE_RELEASE_KEY: keys.publicKey.export({ type: "spki", format: "der" }).toString("base64") };
+  const update = () => spawnSync("sh", [WRAPPER, "update"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env });
+  return { ...box, env, update };
 }
 
 test("box/vyre: update refetches a verified vyre.tgz into DIR/src, then builds", t => {

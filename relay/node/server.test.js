@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRelay } from "./server.js";
-import { newRouteKey, routeId, authMessage, signRoute, CLOSE } from "../../core/relay/wire.js";
+import { newRouteKey, routeId, authMessage, signRoute, CLOSE, ticketSeal } from "../../core/relay/wire.js";
 
 /** A WebSocket that queues what it receives, so a test can await the next message or the close. */
 function sock(url) {
@@ -134,4 +134,148 @@ test("a text ping is answered by the relay and never forwarded", async t => {
   await b.s.json();
   b.s.ws.send("ping");
   assert.equal(await b.s.next(), "pong");
+});
+
+test("a pairing ticket's record must be sealed: a plaintext one is refused, a sealed one resolves once", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const b = await box(base);
+  assert.equal((await b.s.json()).t, "ready");
+  const exp = Date.now() + 60_000;
+  const ticket = Buffer.alloc(8, 3);
+  const sealed = ticketSeal(ticket, JSON.stringify({ v: 1, name: "alex", route: b.route }));
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "p".repeat(43), record: JSON.stringify({ v: 1, name: "alex" }), mac: "q".repeat(43), exp }));
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "r".repeat(43), record: sealed, mac: "q".repeat(43), exp }));
+  const http = base.replace(/^ws/, "http");
+  const resolve = loc => fetch(`${http}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
+  // The two registrations ride one socket in order; poll the sealed one until it lands.
+  let ok;
+  for (let i = 0; i < 20 && !(ok = await resolve("r".repeat(43))).ok; i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(ok.status, 200);
+  assert.equal((await ok.json()).record, sealed);
+  assert.equal((await resolve("p".repeat(43))).status, 404, "the plaintext record was never stored");
+});
+
+test("/v1/pair alone answers any origin, without credentials: the preflight, and every POST answer", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const pre = await fetch(`${http}/v1/pair`, { method: "OPTIONS", headers: { origin: "https://phone.vyre.run", "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get("access-control-allow-origin"), "*");
+  assert.equal(pre.headers.get("access-control-allow-methods"), "POST");
+  assert.equal(pre.headers.get("access-control-allow-headers"), "content-type");
+  assert.equal(pre.headers.get("access-control-allow-credentials"), null);
+  const miss = await fetch(`${http}/v1/pair`, { method: "POST", headers: { origin: "https://alex.vyre.run", "content-type": "application/json" }, body: JSON.stringify({ loc: "z".repeat(43) }) });
+  assert.equal(miss.status, 404);
+  assert.equal(miss.headers.get("access-control-allow-origin"), "*", "an error answer is readable too, so the phone sees ticket_gone");
+  assert.equal(miss.headers.get("access-control-allow-credentials"), null);
+  for (const p of ["/health", "/v1/box", "/v1/device", "/nothing"]) {
+    const r = await fetch(`${http}${p}`, { headers: { origin: "https://phone.vyre.run" } });
+    assert.equal(r.headers.get("access-control-allow-origin"), null, p);
+  }
+  const other = await fetch(`${http}/v1/device`, { method: "OPTIONS", headers: { origin: "https://phone.vyre.run" } });
+  assert.equal(other.headers.get("access-control-allow-origin"), null, "no preflight answer anywhere else");
+});
+
+// First writer wins (tailnet plan 3.6, N2): a locator taken with one record is not overwritten by
+// another; the second writer hears 409 and the locator is contested for everyone. The identical
+// record and mac again (a reconnect) is 200.
+test("a setup offer's locator is first-writer-wins: 409 for another record, 200 for the identical one, contested for resolve", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await box(base), b = await box(base);
+  await a.s.json(); await b.s.json();
+  const secret = Buffer.alloc(16, 5);
+  const exp = Date.now() + 3_600_000;
+  const rec1 = ticketSeal(secret, JSON.stringify({ v: 1, name: "first" })), rec2 = ticketSeal(secret, JSON.stringify({ v: 1, name: "second" }));
+  const loc = "l".repeat(43), mac = "m".repeat(43);
+  a.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec1, mac, exp }));
+  assert.deepEqual(await a.s.json(), { t: "registered", loc, status: 200 });
+  a.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec1, mac, exp }));
+  assert.deepEqual(await a.s.json(), { t: "registered", loc, status: 200 }, "the identical record and mac is a reconnect, not a clash");
+  const resolve = () => fetch(`${http}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
+  const first = await resolve();
+  assert.equal(first.status, 200);
+  assert.equal((await first.json()).record, rec1);
+  assert.equal((await resolve()).status, 200, "a setup offer is not single-use: the page may reload");
+  b.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec2, mac, exp }));
+  assert.deepEqual(await b.s.json(), { t: "registered", loc, status: 409 });
+  const after = await resolve();
+  assert.equal(after.status, 409);
+  assert.deepEqual(await after.json(), { error: "contested" });
+  a.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec1, mac, exp }));
+  assert.deepEqual(await a.s.json(), { t: "registered", loc, status: 409 }, "the first writer is told too once it is contested");
+});
+
+test("a setup offer is read as often as the page needs; a Wink ticket resolves once", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const b = await box(base);
+  await b.s.json();
+  const sealed = ticketSeal(Buffer.alloc(16, 1), "{}");
+  const far = Date.now() + 24 * 3_600_000;
+  b.s.ws.send(JSON.stringify({ t: "setup", loc: "s".repeat(43), record: sealed, mac: "m".repeat(43), exp: far }));
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "w".repeat(43), record: sealed, mac: "m".repeat(43), exp: far }));
+  await b.s.json(); await b.s.json();
+  const res = loc => fetch(`${http}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
+  assert.equal((await res("s".repeat(43))).status, 200);
+  assert.equal((await res("w".repeat(43))).status, 200);
+  assert.equal((await res("w".repeat(43))).status, 404, "the Wink ticket is single-use as before");
+});
+
+test("Wink tickets are first-writer-wins too: a second, different register is refused and contests the locator", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const b = await box(base);
+  await b.s.json();
+  const exp = Date.now() + 60_000;
+  const one = ticketSeal(Buffer.alloc(8, 1), "{}"), two = ticketSeal(Buffer.alloc(8, 2), "{}");
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "t".repeat(43), record: one, mac: "m".repeat(43), exp }));
+  assert.equal((await b.s.json()).status, 200);
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "t".repeat(43), record: two, mac: "m".repeat(43), exp }));
+  assert.equal((await b.s.json()).status, 409);
+  const res = await fetch(`${http}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "t".repeat(43) }) });
+  assert.equal(res.status, 409);
+});
+
+test("the setup mailbox: per-address creation limit, a size cap and a global cap", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const post = (n, extra = {}) => fetch(`${http}/v1/setup/mbx`, { method: "POST", body: JSON.stringify({ loc: `${String(n).padStart(3, "0")}`.padEnd(43, "q"), fp: "f".repeat(22), wtok: "w".repeat(43), ...extra }) });
+  for (let i = 0; i < 10; i++) assert.equal((await post(i)).status, 200, `mailbox ${i}`);
+  assert.equal((await post(10)).status, 429, "the eleventh new mailbox from one address in an hour");
+  assert.equal((await post(0)).status, 200, "an existing one still takes lines");
+  // 64 KB total, per mailbox
+  const line = "A".repeat(1400);
+  let last = 200;
+  for (let i = 0; i < 60 && last === 200; i++) last = (await post(0, { line })).status;
+  assert.equal(last, 413, "a mailbox holds 64 KB and no more");
+  assert.equal((await post(0, { line: "short" })).status, 400, "a line that is not a sealed line");
+  const bad = await fetch(`${http}/v1/setup/mbx`, { method: "POST", body: "nope" });
+  assert.equal(bad.status, 400);
+  const pre = await fetch(`${http}/v1/setup/mbx`, { method: "OPTIONS", headers: { origin: "https://vyre.run" } });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get("access-control-allow-origin"), "*");
+  assert.match(String(pre.headers.get("access-control-allow-headers")), /x-vyre-setup-sig/);
+});
+
+test("the setup mailbox has a global cap on live mailboxes, whoever asks", async t => {
+  const relay = createRelay({ setup: { maxBoxes: 3, createPerIp: 100 } });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const post = n => fetch(`${base.replace(/^ws/, "http")}/v1/setup/mbx`, { method: "POST", body: JSON.stringify({ loc: String(n).padEnd(43, "q"), fp: "f".repeat(22), wtok: "w".repeat(43) }) });
+  for (let i = 0; i < 3; i++) assert.equal((await post(i)).status, 200);
+  assert.equal((await post(3)).status, 429);
+  assert.equal((await post(1)).status, 200, "the ones already there keep working");
 });

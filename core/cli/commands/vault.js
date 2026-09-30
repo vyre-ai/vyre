@@ -21,7 +21,7 @@ import { finished } from "node:stream/promises";
 import os from "node:os";
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { emit, viewing, nextFor, EXIT } from "../kit.js";
+import { emit, viewing, nextFor, EXIT, openInBrowser } from "../kit.js";
 import { derive, prompt } from "../view.js";
 import fs from "node:fs";
 import { hiddenPrompt, visiblePrompt, Scrubber, parseRunArgs, flags } from "../../vault/cli-io.js";
@@ -1492,7 +1492,7 @@ async function kit() {
   say(`  ${r.data.url}`);
   say(dim("  print it, write your password on it by hand, keep it somewhere safe"));
   // Opened for a person at a terminal only; a script or a test gets the address and nothing else.
-  if (process.platform === "darwin" && process.stdout.isTTY && !viewing() && !process.env.VYRE_NO_OPEN && dialogsAllowed()) spawn("open", [r.data.url], { stdio: "ignore", detached: true }).unref();
+  if (process.stdout.isTTY && !viewing() && !process.env.VYRE_NO_OPEN && dialogsAllowed()) openInBrowser(r.data.url);
   return 0;
 }
 

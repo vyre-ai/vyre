@@ -232,12 +232,17 @@ const ENV_MEANING = {
   COMPUTERS_IMAGE: "The container image agent computers run. Default `vyre/computer:0.1`.",
   COMPUTERS_LABEL_PREFIX: "The label prefix that marks Vyre's containers. Default `run.vyre.computers`.",
   COMPUTERS_NETWORK: "The Docker network agent computers join. Default `vyre-computers`.",
+  CORE_DATA: "vyre-core's data directory (ADR 0040). Default `/Library/Application Support/Vyre/data`.",
+  CORE_OWNER: "The owner's uid: the only uid vyre-core answers. Required.",
+  CORE_SOCKET: "vyre-core's socket. Default `/var/run/vyre/vyre-core.sock`, in a folder root makes and _vyre owns.",
+  CORE_STRICT: "`0` lets vyre-core start from a tree its owner could write (dev and Linux tests only). On by default on a Mac.",
   DOCKER_PROXY_PORT: "The port the Docker proxy listens on. Default 2375.",
   DTACH_BIN: "The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred.",
   HANDS_BIN: "Another build of the Mac hands helper.",
   HARNESS_DIR: "The Harness plugin folder threads load. Default the one beside this install.",
   HOME: "Where Vyre keeps its data. Default `~/.vyre`.",
   HOST_USER: "The user name in the `ssh -L` line `vyre up` prints for reaching the box.",
+  MODULE_SDK: "A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm.",
   NO_DIALOGS: "`1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab).",
   NO_OPEN: "Never open a browser tab from the terminal.",
   NO_UP: "`vyre box add` installs Vyre without starting it.",
@@ -257,6 +262,7 @@ const ENV_MEANING = {
   THREAD: "The session id of a headless thread vyred runs.",
   WRAPPER: "Where `vyre box add` puts the `vyre` command on the server. Default `/usr/local/bin/vyre`.",
   TEST_DIALOGS: "`1`: allow dialogs under tests, for a person at the machine running one test on purpose.",
+  TEST_HOSTED: "`1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`.",
   TEST_REAL_TAILSCALE: "`1`: let a test use the real tailscale binary.",
 };
 
@@ -404,21 +410,25 @@ function collectTools(root, mods, harvested) {
     const local = new Map((harvested.local[m.name]?.tools || []).map(t => [t.name, t]));
     const both = (m.roles || ["box", "local"]).length > 1;
     const out = [];
-    for (const name of [...new Set(m.does?.tools || [])].sort(byName)) {
+    for (const name of [...new Set((m.does?.tools || []).map(t => typeof t === "string" ? t : t.name))].sort(byName)) {
       const t = box.get(name) || local.get(name);
       if (t) out.push({ ...t, only: both && !(box.has(name) && local.has(name)) ? (box.has(name) ? "box" : "local") : null });
       else out.push({ name, description: staticDescription(root, dir, name), input: null, callers: null, internal: false, hook: false, presence: false, only: null, unregistered: true });
     }
-    byModule.set(m.name, out);
+    // A name shared by two modules (the box's chrome and the Mac's) is one entry, tools once each.
+    const have = byModule.get(m.name) || [];
+    byModule.set(m.name, [...have, ...out.filter(t => !have.some(h => h.name === t.name))].sort((x, y) => byName(x.name, y.name)));
   }
   return byModule;
 }
 
 function toolsPage(mods, byModule) {
   const sections = [];
+  const done = new Set();
   for (const { manifest: m } of mods) {
     const tools = byModule.get(m.name) || [];
-    if (!tools.length) continue;
+    if (!tools.length || done.has(m.name)) continue;
+    done.add(m.name);
     const out = [`## ${m.name}`, ""];
     for (const t of tools) {
       out.push(`### ${code(t.name)}`, "");
@@ -502,6 +512,8 @@ const MEANING = {
   "modules.disable": "Modules never to start.",
   network: "How this machine is reached. See [Tailscale](../using/tailscale.md).",
   onboard: "Onboarding's own settings.",
+  owner: "The person's own, non-secret identity. Written only by core/onboard's own startup, never by a tool's input.",
+  "owner.id": "16 random bytes, hex. Made once and never changed; `system.info` exposes only a fingerprint of it (fingerprint8), never this value itself.",
   "network.tailscale": "Whether this machine serves over Tailscale.",
   "network.address": "The https URL the Deck is served at.",
   "network.owner": "The one Tailscale login this box serves (ADR 0002). Set by `vyre owner`.",
@@ -510,7 +522,7 @@ const MEANING = {
   "network.port": "The port the tailnet listener serves on.",
   "network.acme": "`staging` to get test certificates while trying things out; `production` otherwise.",
   "network.box": "On a Mac: the address of the box it is paired with.",
-  "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset.",
+  "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset, except 7301 on a Mac chosen as server, which never binds 7300.",
   "network.ownerSeen": "When the owner was first seen on the tailnet. Written by Vyre.",
   "network.origins": "Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `[\"https://app.vyre.run\"]` when unset; `[]` turns it off. Each call but the reachability probe and the token exchange needs a person session.",
   term: "Terminals in the browser. `keep_hours`: how long a terminal nobody is looking at is kept before it ends (12). `max`: how many may be open at once (8). `shell`: the shell to run, in place of your login shell.",

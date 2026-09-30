@@ -19,6 +19,7 @@ import { tempHome, present } from "../../test/helpers.js";
 import { FakeDriver } from "../../core/computers/driver/fake.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { scrub, bareUrl } from "./index.js";
+import { CHROME_SAFE } from "../../lib/chrome-flags/index.js";
 
 const CHROME_BIN = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const HAVE_CHROME = fs.existsSync(CHROME_BIN);
@@ -29,7 +30,7 @@ async function launchChrome(t) {
   const logFile = path.join(dir, "chrome.log");
   const log = fs.openSync(logFile, "a");
   const child = spawn(CHROME_BIN, [
-    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`,
+    "--headless=new", "--remote-debugging-port=0", ...CHROME_SAFE, `--user-data-dir=${dir}`,
     "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--disable-extensions", "about:blank",
   ], { stdio: ["ignore", log, log], detached: true });
   // Chrome's own helpers outlive a SIGKILL to the browser and keep writing the profile, so the
@@ -43,7 +44,7 @@ async function launchChrome(t) {
     try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {}
   });
   let port = null;
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const text = fs.readFileSync(logFile, "utf8");
     const m = /ws:\/\/127\.0\.0\.1:(\d+)\//.exec(text);
@@ -185,10 +186,15 @@ test("hands-chrome: navigates, snapshots, clicks an observable control and sees 
 
   const opened = await s.kit("chrome.open", { url: PAGE });
   assert.equal(opened.error, undefined, opened.error && opened.error.message);
-  assert.equal(opened.data.title, "start");
-
-  const snap = await s.kit("chrome.snapshot", {});
-  const names = snap.data.controls.map(c => c.name).sort();
+  // Wait on the page's real condition (its controls are there), not on time: a slow runner can answer
+  // the open before the document has finished.
+  let snap, names = [];
+  for (const end = Date.now() + 10_000; Date.now() < end;) {
+    snap = await s.kit("chrome.snapshot", {});
+    names = snap.data && snap.data.controls ? snap.data.controls.map(c => c.name).sort() : [];
+    if (names.length >= 3) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
   assert.deepEqual(names, ["Go", "Send message", "say something"]);
 
   const clicked = await s.kit("chrome.click", { selector: { role: "button", name: "Go" } });

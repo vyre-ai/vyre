@@ -54,6 +54,11 @@ test("a todo list is never folded: it is the thing to read", () => {
   assert.deepEqual(rows.map(r => r.type === "run" ? `${r.key}[${r.keys.length}]` : r.key), ["t:1", "t:2", "run:t:3[2]"]);
 });
 
+test("a teammate handoff (team_ask) is never folded either: it stays its own visible line (teammates.md section 3)", () => {
+  const rows = groupItems([tool("t:1", "Grep"), tool("t:2", "team_ask", { input: { to: "design", text: "make it calmer" } }), tool("t:3", "Read"), tool("t:4", "Read", { summary: "Read y" })]);
+  assert.deepEqual(rows.map(r => r.type === "run" ? `${r.key}[${r.keys.length}]` : r.key), ["t:1", "t:2", "run:t:3[2]"]);
+});
+
 // ---- incremental: createGrouper equals the full pass -------------------------------------------
 
 /** A small seeded random, so a failure repeats. */

@@ -77,6 +77,9 @@ const isObject = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
  */
 const moduleType = o => ({
   kinds: o.kinds, content: o.content,
+  // A first-party sender that says its `to` is the real destination (chrome: the site's origin, a
+  // contact) lets what the person said cover it exactly, like an email's addresses. Others name none.
+  ...(o.reports ? { recipients: (to) => to } : {}),
   check(to, c) { if (!isObject(c)) throw new Error("content must be an object"); },
   summary: (to, c) => cut(String(c.summary || c.subject || c.tool || o.name), 120),
   async send(to, c, s, deps) {
@@ -119,7 +122,7 @@ export class Gate {
    * @param {{ name: string, tool: string, kinds?: string[], content?: Record<string, string> }} input
    * @param {string} caller
    */
-  offer({ name, tool, kinds, content }, caller) {
+  offer({ name, tool, kinds, content, recipients }, caller, firstParty = false) {
     const m = /^module:(.+)$/.exec(String(caller || ""))?.[1];
     if (!m) throw new Error("only a module offers a sender");
     name = String(name || ""); tool = String(tool || "");
@@ -129,7 +132,9 @@ export class Gate {
     if (this.offered[name] && this.offered[name].module !== m) throw new Error(`${name} is already offered by ${this.offered[name].module}`);
     if (kinds !== undefined && (!Array.isArray(kinds) || !kinds.length || kinds.some(k => !KINDS.includes(k)))) throw new Error(`kinds must be some of ${KINDS.join(", ")}`);
     if (content !== undefined && !isObject(content)) throw new Error("content must be an object describing what the sender takes");
-    this.offered[name] = { module: m, name, tool, kinds: kinds || [...DEFAULT_KINDS], content: content || {} };
+    // Only a module the registry says ships with Vyre (meta.firstParty, set by the loader, never by a caller) may say its `to` is the real destination.
+    if (recipients !== undefined && recipients !== "to") throw new Error('recipients is "to": the sender\'s `to` is its real destination');
+    this.offered[name] = { module: m, name, tool, kinds: kinds || [...DEFAULT_KINDS], content: content || {}, reports: recipients === "to" && firstParty === true };
     return { name, kinds: this.offered[name].kinds };
   }
 
@@ -207,13 +212,13 @@ export class Gate {
    * fails, the item falls back to held with the error, exactly as a failed approval does: the
    * person decides, and nothing is sent twice.
    * @param {{ kind: string, via: string, to: string|string[], content: any, why?: string, thread?: string, project?: string, tool_use_id?: string }} input
-   * @param {{ agent?: string|null, intent: string }} who
+   * @param {{ agent?: string|null, intent?: string|null, by?: string }} who `by` names a person's confirmation ("asked:capsule") when no intent covers it
    */
-  async sendNow(input, { agent = null, intent }) {
+  async sendNow(input, { agent = null, intent = null, by: byWho }) {
     const { kind, via, content, why, thread, project, tool_use_id } = input;
     const { s, t, dest } = this.prepare(input);
     const id = crypto.randomBytes(9).toString("hex");
-    const by = `said:${intent}`;
+    const by = byWho || `said:${intent}`;
     this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, final, why, agent, thread, project, state, sender_module, tool_use_id, by)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'sending', ?, ?, ?)`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content), JSON.stringify(content),
       why ? cut(String(why), 1000) : null, agent, thread || null, project || null, s.module || null, tool_use_id ? cut(String(tool_use_id), 100) : null, by);
@@ -221,7 +226,7 @@ export class Gate {
     try {
       const result = await t.send(dest, content, s, { fetchCredential: this.deps.fetchCredential, relay: this.deps.relay, fetch: this.deps.fetch, call: this.deps.call, id });
       this.db.prepare("UPDATE gate_items SET state = 'sent', result = ?, error = NULL, decided = ? WHERE id = ?").run(JSON.stringify(result ?? null), this.now(), id);
-      this.deps.emit("gate.released", { id, kind, via, to: dest, edited: false, by, said: intent, agent, thread: thread || null, project: project || null }, w);
+      this.deps.emit("gate.released", { id, kind, via, to: dest, edited: false, by, said: intent || null, agent, thread: thread || null, project: project || null }, w);
       return { id, state: "sent", by, result: result ?? null, message: "Sent at once: you asked for this, so it did not wait at the Gate." };
     } catch (e) {
       const error = cut(scrub(String(/** @type {Error} */ (e)?.message || e), []), 500);

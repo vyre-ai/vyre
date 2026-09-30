@@ -18,7 +18,7 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
-import { startFakeAuthServer } from "./testing/fake-oauth.js";
+import { startFakeAuthServer } from "../../lib/connectors/testing/fake-oauth.js";
 import { startFakeMcpHttp } from "../mcp/testing/fake-mcp.js";
 
 async function world(t, presetsFor) {

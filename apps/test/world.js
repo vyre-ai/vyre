@@ -28,6 +28,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildHome, makeProjects, makeAgents, heldItems } from "../../deck/test/world.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { setPeerHosting } from "../../core/daemon/peer.js";
+
+// This world hosts vyred in its own process and drives it from that process and its children:
+// the one seam the caller check keeps for a test (core/daemon/peer.js).
+setPeerHosting(true);
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PORT = process.argv[2] === undefined ? 4800 : Number(process.argv[2]);
@@ -84,12 +89,12 @@ const handle = d.registry.deps.handler({});
 // key that is removed again at once, so the phone starts with nothing but a code to enroll with.
 {
   const presence = d.registry.deps.presence;
-  const cap = crypto.generateKeyPairSync("ed25519");
-  const key = presence.enroll({ kind: "capsule", name: "setup", public_key: cap.publicKey.export({ format: "der", type: "spki" }).toString("base64url") });
+  const cap = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const key = presence.enroll({ kind: "capsule", name: "setup", public_key: cap.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
   const { inputHash } = await import("../../core/presence/index.js");
   const person = (tool, input) => {
     const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
-    const sig = crypto.sign(null, Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), cap.privateKey).toString("base64url");
+    const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: cap.privateKey, dsaEncoding: "der" }).toString("base64url");
     return d.registry.call(tool, input, "cli", { proof: { method: "capsule", key: key.id, ts, nonce, sig } });
   };
   for (const name of ["harlow-gmail", "northwind-ads"]) {

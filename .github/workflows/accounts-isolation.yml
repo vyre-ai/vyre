@@ -1,0 +1,21 @@
+# Real uids, as root: account A's credentials and transcripts against account B, and vyred's reach
+# (core/spawner/isolation.test.js). Skipped by the normal suite, which never runs as root.
+name: accounts-isolation
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/sessions-*"]
+    paths: ["core/spawner/**", ".github/workflows/accounts-isolation.yml"]
+permissions:
+  contents: read
+jobs:
+  isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get install -y tini
+      - run: sudo env "PATH=$PATH" node --test "core/spawner/*.test.js"

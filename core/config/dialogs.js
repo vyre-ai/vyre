@@ -49,6 +49,26 @@ export function claudeHome(root, env = process.env) {
   return path.join(path.resolve(String(root)), "claude");
 }
 
+/**
+ * Claude Code's `.claude.json` (MCP servers at user and local scope, onboarding state) for the
+ * Vyre home at `root`. Ordinarily it sits beside `~/.claude`, not inside it, so this is its own
+ * function rather than a path built from claudeHome(); but when CLAUDE_CONFIG_DIR is set, Claude
+ * Code itself moves `.claude.json` inside that folder (not beside it), so this follows suit for
+ * the person's real ~/.vyre. Any other home (a dev world, a demo, a temp home, a test) gets
+ * `<root>/claude.json`, empty until a fixture puts one there, the same rule claudeHome follows for
+ * the folder next to it (e2e review, 2026-09-28, after discover.js read os.homedir() directly;
+ * corrected 2026-09-28, e2e LOW: CLAUDE_CONFIG_DIR does move .claude.json too).
+ * @param {string} root @param {NodeJS.ProcessEnv} [env]
+ */
+export function claudeJson(root, env = process.env) {
+  if (env.VYRE_CLAUDE_HOME) return path.join(path.dirname(path.resolve(env.VYRE_CLAUDE_HOME.replace(/^~(?=$|\/)/, os.homedir()))), ".claude.json");
+  if (isRealHome(root)) {
+    if (env.CLAUDE_CONFIG_DIR) return path.join(path.resolve(env.CLAUDE_CONFIG_DIR.replace(/^~(?=$|\/)/, os.homedir())), ".claude.json");
+    return path.join(os.homedir(), ".claude.json");
+  }
+  return path.join(path.resolve(String(root)), "claude.json");
+}
+
 const untilde = (/** @type {string} */ p) => String(p).replace(/^~(?=$|\/)/, os.homedir());
 
 /**
@@ -75,6 +95,32 @@ const within = (/** @type {string} */ p, /** @type {string} */ dir) => {
 };
 
 /**
+ * A folder written `<dir>/*` + `/rest` names that `rest` inside each subfolder of `dir` that has it
+ * (one level, no other pattern): the box's `<accounts home>/*` + `/.claude/projects`, one per
+ * account, each readable by vyred through the account's own group (core/spawner). An account added
+ * after vyred started shows up the next time this is read.
+ * @param {string[]} folders
+ */
+export function expandAccountFolders(folders) {
+  const out = [];
+  for (const f of folders) {
+    const m = /^(.*)\/\*\/(.+)$/.exec(String(f));
+    if (!m || m[1].includes("*") || m[2].includes("*") || m[2].split("/").includes("..")) { out.push(f); continue; }
+    let names = [];
+    try { names = fs.readdirSync(m[1]); } catch {}
+    for (const n of names.sort()) { const p = path.join(m[1], n, m[2]); try {
+        // The account's own folder, and everything on the way to `rest` really inside it: a link the
+        // account planted at .claude or projects passes lstat of the last part but leads elsewhere.
+        const acct = path.join(m[1], n);
+        if (fs.lstatSync(acct).isSymbolicLink() || !fs.lstatSync(p).isDirectory()) continue;
+        const real = fs.realpathSync(p), base = fs.realpathSync(acct);
+        if (real === base || real.startsWith(base + path.sep)) out.push(p);
+      } catch {} }
+  }
+  return out;
+}
+
+/**
  * The transcript folders a Vyre home may read. The person's own Claude Code folder (~/.claude, or
  * CLAUDE_CONFIG_DIR) is read only by their own ~/.vyre: a dev world, a demo, a trial or a temp home
  * indexing every real conversation on the machine is how a trial Capsule once answered from the
@@ -85,6 +131,7 @@ const within = (/** @type {string} */ p, /** @type {string} */ dir) => {
  * @param {string[]} folders @param {string} [root] the Vyre home @param {NodeJS.ProcessEnv} [env]
  */
 export function transcriptFolders(folders, root = "", env = process.env) {
+  folders = expandAccountFolders(folders);
   const theirs = [path.join(os.homedir(), ".claude"), ...(env.CLAUDE_CONFIG_DIR ? [env.CLAUDE_CONFIG_DIR] : [])];
   const personal = (/** @type {string} */ f) => theirs.some(d => within(f, d));
   if (env.NODE_TEST_CONTEXT) return folders.filter(f => !personal(f));

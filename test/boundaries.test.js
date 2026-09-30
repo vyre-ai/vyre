@@ -27,7 +27,7 @@ const TREES = ["core", "local", "modules", "lib"];
  * The frozen exceptions: "from -> to" with the files `from` imports, why, and what it becomes
  * (ctx.call: go through the registry; lib: move the helper to a kernel folder or its own small
  * lib with no feature state; surface: the CLI is a surface and may keep its command helpers).
- * @type {Record<string, { files: string[], why: string, next: "ctx.call" | "lib" | "surface" }>}
+ * @type {Record<string, { files: string[], why: string, next: "ctx.call" | "lib" | "surface" | "host" }>}
  */
 export const ALLOW = {
   "core/cli -> core/names": { files: ["core/names/backup.js", "core/names/system.js"], next: "ctx.call",
@@ -50,14 +50,10 @@ export const ALLOW = {
     why: "Mac to box file transfer over the tailnet transport" },
   "core/files -> core/names": { files: ["core/names/tailscale.js"], next: "lib",
     why: "runs the tailscale CLI (Taildrive); tailscale.js is the one place that does" },
-  "core/google -> core/connectors": { files: ["core/connectors/auth.js"], next: "lib",
-    why: "the connectors' shared credential library (ADR 0016, decision 2)" },
   "core/hooks -> core/names": { files: ["core/names/tailscale.js"], next: "lib",
     why: "runs the tailscale CLI" },
   "core/link -> core/names": { files: ["core/names/tailscale.js"], next: "lib",
     why: "finds the box on the tailnet through the tailscale CLI" },
-  "core/mcp -> core/connectors": { files: ["core/connectors/auth.js"], next: "lib",
-    why: "the connectors' shared credential library (ADR 0016, decision 2)" },
   "core/names -> core/link": { files: ["core/link/transport.js"], next: "lib",
     why: "names and link import each other: transport belongs in a small lib both use" },
   "core/network -> core/names": { files: ["core/names/guests.js", "core/names/identity.js", "core/names/tailscale.js"], next: "lib",
@@ -82,6 +78,8 @@ export const ALLOW = {
     why: "the RFC 6455 framing sliver Glass wrote; a pure helper" },
   "core/term -> core/files": { files: ["core/files/safety.js"], next: "ctx.call",
     why: "the path gate every file path passes through" },
+  "core/vyre-core -> core/vault": { files: ["core/vault/vault.js"], next: "host",
+    why: "vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2); permanent by design, lead's OK pending" },
   "core/vault -> core/link": { files: ["core/link/transport.js"], next: "lib",
     why: "vault relay between the Mac and the box" },
   "core/vault -> core/names": { files: ["core/names/identity.js", "core/names/tailscale.js"], next: "lib",

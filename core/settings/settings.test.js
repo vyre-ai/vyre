@@ -28,7 +28,7 @@ async function world(t, { disable = [] } = {}) {
   return { root, home, claudeDir, c, d };
 }
 
-test("every running module's declarations are valid, and a default passes its own check", async t => {
+test("every running module's declarations are valid, and a default passes its own check", { timeout: 30_000 }, async t => {
   const { c } = await world(t);
   const r = await c("settings.schema");
   assert.ok(r.data.keys.length > 40, "the core modules declare their settings");
@@ -71,16 +71,16 @@ test("ADR 0035 levels and hooks: device never with confirm or security, session 
   assert.deepEqual(validateDecls("bakery", [{ ...base, check: { tool: "bakery.check" }, choicesFrom: { tool: "bakery.get" } }], { tools: ["bakery.check", "bakery.get"] }), []);
 });
 
-test("env and plugins ask first; taking an entry off deny or ask asks first, adding one does not", async t => {
+test("the person's own changes ask nothing (C25): env, plugins and taking an entry off deny just apply; a preview still says what it widens", { timeout: 30_000 }, async t => {
   const { c, claudeDir } = await world(t);
-  assert.equal((await c("settings.set", { key: "sessions.env", value: { LOG_LEVEL: "debug" } })).error.code, "confirm_required");
-  assert.equal((await c("settings.set", { key: "sessions.plugins", value: { "bakery@market": true } })).error.code, "confirm_required");
+  assert.ok(!(await c("settings.set", { key: "sessions.env", value: { LOG_LEVEL: "debug" } })).error);
+  assert.ok(!(await c("settings.set", { key: "sessions.plugins", value: { "bakery@market": true } })).error);
   assert.ok(!(await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)", "WebFetch"] })).error, "adding to deny is stricter");
-  let r = await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)"] });
-  assert.equal(r.error.code, "confirm_required", "dropping WebFetch lets it run");
   assert.equal((await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)"], preview: true })).data.confirm, "Claude will no longer be refused what you take off this list.");
-  assert.equal((await c("settings.reset", { key: "sessions.deny" })).error.code, "confirm_required", "a reset drops them all");
-  assert.ok(!(await c("settings.reset", { key: "sessions.deny", confirm: true })).error);
+  const r = await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)"] });
+  assert.ok(!r.error, "dropping WebFetch applies at once; the log and Undo are the safety");
+  assert.equal((await c("settings.changes", { key: "sessions.deny" })).data[0].by, "cli");
+  assert.ok(!(await c("settings.reset", { key: "sessions.deny" })).error, "a reset drops them all, no confirm");
   assert.equal(JSON.parse(fs.readFileSync(path.join(claudeDir, "settings.json"), "utf8")).permissions?.deny, undefined);
   assert.ok(!(await c("settings.reset", { key: "sessions.ask" })).error, "nothing to drop, nothing to ask");
 });
@@ -104,7 +104,7 @@ test("coerce reads CLI text and refuses what is out of range", () => {
   assert.throws(() => coerce({ key: "x", type: "int", choices: [0, 2, 5, 15] }, 3), /one of 0, 2, 5, 15/);
 });
 
-test("a project's value beats the account's, which beats the default; reset falls back a level", async t => {
+test("a project's value beats the account's, which beats the default; reset falls back a level", { timeout: 30_000 }, async t => {
   const { c } = await world(t);
   let r = await c("settings.get", { key: "sessions.send_while_busy", project: "northwind" });
   assert.deepEqual([r.data.value, r.data.source], ["steer", "default"]);
@@ -124,7 +124,7 @@ test("a project's value beats the account's, which beats the default; reset fall
   assert.deepEqual([r.data.value, r.data.source], ["steer", "default"]);
 });
 
-test("an account-only key refuses a project value, and a bad value changes nothing", async t => {
+test("an account-only key refuses a project value, and a bad value changes nothing", { timeout: 30_000 }, async t => {
   const { c } = await world(t);
   let r = await c("settings.set", { key: "sessions.idle_minutes", value: 30, project: "northwind", level: "project" });
   assert.equal(r.error.code, "bad_input");
@@ -134,7 +134,7 @@ test("an account-only key refuses a project value, and a bad value changes nothi
   assert.equal((await c("settings.set", { key: "no.such", value: 1 })).error.code, "not_found");
 });
 
-test("config.json keys are written in place and the running vyred sees them", async t => {
+test("config.json keys are written in place and the running vyred sees them", { timeout: 30_000 }, async t => {
   const { c, root } = await world(t);
   await c("settings.set", { key: "sessions.idle_minutes", value: "25" });
   await c("settings.set", { key: "term.keep_hours", value: 4 });
@@ -157,7 +157,7 @@ test("config.json keys are written in place and the running vyred sees them", as
   assert.equal((await c("sessions.limits.get")).data.box.subagent, 5);
 });
 
-test("Claude Code's rules go to its own files: the account's settings.json, the project's settings.local.json", async t => {
+test("Claude Code's rules go to its own files: the account's settings.json, the project's settings.local.json", { timeout: 30_000 }, async t => {
   const { c, home, claudeDir } = await world(t);
   fs.mkdirSync(claudeDir, { recursive: true });
   fs.writeFileSync(path.join(claudeDir, "settings.json"), JSON.stringify({ model: "opus", permissions: { deny: ["Read(./.env)"] } }));
@@ -172,7 +172,7 @@ test("Claude Code's rules go to its own files: the account's settings.json, the 
   assert.deepEqual([r.data.value, r.data.source, r.data.owner], [["Read(./.env)"], "account", "C"]);
 });
 
-test("a broken Claude Code file is never written over", async t => {
+test("a broken Claude Code file is never written over", { timeout: 30_000 }, async t => {
   const { c, claudeDir } = await world(t);
   fs.mkdirSync(claudeDir, { recursive: true });
   fs.writeFileSync(path.join(claudeDir, "settings.json"), "{ not json");
@@ -181,7 +181,7 @@ test("a broken Claude Code file is never written over", async t => {
   assert.equal(fs.readFileSync(path.join(claudeDir, "settings.json"), "utf8"), "{ not json");
 });
 
-test("another module's keys go through its own tool, and a missing module reads as unavailable", async t => {
+test("another module's keys go through its own tool, and a missing module reads as unavailable", { timeout: 30_000 }, async t => {
   const { c } = await world(t);
   await c("settings.set", { key: "push.watch", value: false });
   assert.equal((await c("push.settings")).data.kinds.watch, false);
@@ -196,12 +196,13 @@ test("another module's keys go through its own tool, and a missing module reads 
   assert.equal((await c("sessions.limits.get", { project: "northwind" })).data.project.teammate, 2);
 });
 
-test("settings.changed says which key, level and rev, the new value only for a key that isn't secret; resolve is for modules only", async t => {
+test("settings.changed says which key, level and rev, the new value only for a key that isn't secret; resolve is for modules only", { timeout: 30_000 }, async t => {
   const { c, d } = await world(t);
   await c("settings.set", { key: "sessions.effort", value: "high", project: "northwind" });
   const e = d.events.since(0, { type: "settings.changed" }).at(-1);
   assert.equal(typeof e.payload.rev, "number");
-  assert.deepEqual({ ...e.payload, rev: 0 }, { key: "sessions.effort", level: "project", project: "northwind", apply: "session", rev: 0, value: "high" });
+  assert.match(e.payload.change, /^chg_/, "every change carries the id settings.undo takes");
+  assert.deepEqual({ ...e.payload, rev: 0, change: "chg" }, { key: "sessions.effort", level: "project", project: "northwind", apply: "session", rev: 0, change: "chg", by: "person", value: "high" });
   await c("settings.reset", { key: "sessions.effort", project: "northwind" });
   assert.equal(d.events.since(0, { type: "settings.changed" }).at(-1).payload.value, null, "a reset says null");
   // A secret key's change never carries its value.
@@ -212,7 +213,7 @@ test("settings.changed says which key, level and rev, the new value only for a k
   assert.equal((await c("settings.resolve", { project: "northwind" })).error.code, "no_such_tool");
 });
 
-test("a module switched off takes its settings with it", async t => {
+test("a module switched off takes its settings with it", { timeout: 30_000 }, async t => {
   const { c, root } = await world(t, { disable: ["planner"] });
   const keys = (await c("settings.schema")).data.keys.map(k => k.key);
   assert.ok(!keys.some(k => k.startsWith("planner.")), "no planner rows");
@@ -220,22 +221,23 @@ test("a module switched off takes its settings with it", async t => {
   assert.ok(root);
 });
 
-test("widening what Claude may do needs confirm; loosening security needs a proof; a preview writes nothing", async t => {
+test("widening what Claude may do and loosening security need no confirm and no proof from the person (C25); a preview writes nothing; Undo puts it back", { timeout: 30_000 }, async t => {
   const { c, claudeDir } = await world(t);
-  let r = await c("settings.set", { key: "sessions.allow", value: ["Bash(*)"] });
-  assert.equal(r.error.code, "confirm_required");
-  r = await c("settings.set", { key: "sessions.mode", value: "bypassPermissions" });
-  assert.equal(r.error.code, "confirm_required");
-  assert.ok(!(await c("settings.set", { key: "sessions.mode", value: "plan" })).error, "a mode that asks more needs nothing");
-  r = await c("settings.set", { key: "sessions.allow", value: ["Bash(*)"], preview: true });
-  assert.deepEqual([r.data.before, r.data.after, typeof r.data.confirm], [undefined, ["Bash(*)"], "string"]);
+  let r = await c("settings.set", { key: "sessions.allow", value: ["Bash(*)"], preview: true });
+  assert.deepEqual([r.data.before, r.data.after, typeof r.data.confirm], [undefined, ["Bash(*)"], "string"], "a preview still names what it widens");
   assert.ok(r.data.where.includes("settings.json"));
   assert.ok(!fs.existsSync(path.join(claudeDir, "settings.json")), "a preview writes nothing");
+  assert.ok(!(await c("settings.set", { key: "sessions.allow", value: ["Bash(*)"] })).error);
+  assert.ok(!(await c("settings.set", { key: "sessions.mode", value: "plan" })).error);
   r = await c("settings.set", { key: "vault.lock_idle", value: "8h" });
-  assert.equal(r.error.code, "presence_required");
+  assert.ok(!r.error, "a security setting: no Touch ID, no confirm");
+  const log = (await c("settings.changes", { key: "vault.lock_idle" })).data;
+  assert.equal(log.length, 1);
+  assert.ok(!(await c("settings.undo", { change: log[0].id })).error, "and Undo, with no prompt either");
+  assert.notEqual((await c("settings.get", { key: "vault.lock_idle" })).data.value, "8h");
 });
 
-test("the first write to a Claude Code file keeps a backup of it", async t => {
+test("the first write to a Claude Code file keeps a backup of it", { timeout: 30_000 }, async t => {
   const { c, claudeDir } = await world(t);
   fs.mkdirSync(claudeDir, { recursive: true });
   fs.writeFileSync(path.join(claudeDir, "settings.json"), JSON.stringify({ theme: "dark" }));
@@ -244,7 +246,7 @@ test("the first write to a Claude Code file keeps a backup of it", async t => {
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(claudeDir, "settings.json.vyre-backup"), "utf8")), { theme: "dark" });
 });
 
-test("the schema lists every key once, with its group", async t => {
+test("the schema lists every key once, with its group", { timeout: 30_000 }, async t => {
   const { c } = await world(t);
   const r = await c("settings.schema");
   const groups = new Set(r.data.groups.map(g => g.id));
@@ -308,7 +310,7 @@ export default { async start(ctx) {
   assert.deepEqual([...new Set(r.data.seen.slice(0, -1))], ["module:settings"], "the settings module, never the person, reached the home module's tools");
 });
 
-test("only a person changes a setting: agent labels, mcp, anonymous and an unsigned owner device are refused, and confirm is no proof", async t => {
+test("only a person changes a setting: agent labels, mcp, anonymous and an unsigned owner device are refused, and confirm is no proof", { timeout: 30_000 }, async t => {
   const { d } = await world(t);
   const as = (/** @type {string} */ caller, /** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, caller);
   for (const tool of ["settings.set", "settings.reset"]) {
@@ -327,7 +329,7 @@ test("only a person changes a setting: agent labels, mcp, anonymous and an unsig
   assert.ok(!(await as("cli", "settings.set", { key: "sessions.mode", value: "bypassPermissions", confirm: true })).error);
 });
 
-test("settings passes the person on only to the getters and setters first-party settings declare", async t => {
+test("settings passes the person on only to the getters and setters first-party settings declare", { timeout: 30_000 }, async t => {
   const { d } = await world(t);
   const rec = d.registry.modules.get("settings");
   const ctx = d.registry.context(rec.manifest);
@@ -342,7 +344,7 @@ test("settings passes the person on only to the getters and setters first-party 
   assert.ok(!d.registry.settingTools().has("threads.answer"));
 });
 
-test("a secret setting's values reach only the person: agents and a device without a session see names, never values", async t => {
+test("a secret setting's values reach only the person: agents and a device without a session see names, never values", { timeout: 30_000 }, async t => {
   const { d, claudeDir } = await world(t);
   fs.mkdirSync(claudeDir, { recursive: true });
   fs.writeFileSync(path.join(claudeDir, "settings.json"), JSON.stringify({ env: { NORTHWIND_TOKEN: "nw-secret-123", LOG_LEVEL: "debug" } }));
@@ -398,7 +400,9 @@ test("settings.write: a module sets its own plain keys, and nothing else", async
   ]);
   homeModule(root, "oven", [{ key: "oven.heat", label: "Heat", type: "int", levels: ["account"], apply: "live" }]);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const d = await start({ root, log: () => {} });
+  // The fixture stands in for one of Vyre's own modules calling settings.write (ADR 0047: an added
+  // module sets its settings through ctx.settings.set instead), so it loads as first party.
+  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
   /** @type {any[]} */
@@ -438,7 +442,9 @@ test("settings.write: a module's own secret key comes back masked, like settings
   const root = tempHome(t);
   homeModule(root, "bakery", [{ key: "bakery.token", label: "Till token", type: "string", levels: ["account"], apply: "live", secret: true }]);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const d = await start({ root, log: () => {} });
+  // The fixture stands in for one of Vyre's own modules calling settings.write (ADR 0047: an added
+  // module sets its settings through ctx.settings.set instead), so it loads as first party.
+  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const r = await call("bakery.put", { key: "bakery.token", value: "northwind-till-1" }, { root });
   assert.equal(r.error, undefined, JSON.stringify(r.error));
@@ -456,4 +462,50 @@ test("settings.write: a module's own secret key comes back masked, like settings
   const own = await call("settings.get", { key: "bakery.token" }, { root });
   assert.equal(own.error, undefined, JSON.stringify(own.error));
   assert.equal(own.data.value, "northwind-till-1");
+});
+
+test("an agent changes a setting only when the person asked (C25, P17), every change is logged, and undo needs no prompt", { timeout: 30_000 }, async t => {
+  const { c, d } = await world(t);
+  const schema = (await c("settings.schema")).data.keys;
+  const k = schema.find((/** @type {any} */ x) => x.type === "bool" && !x.store && !x.secret && !x.confirm && x.security !== "loosens" && x.levels.includes("account"));
+  assert.ok(k, "a plain on/off setting to try");
+  const want = !(k.default === true);
+  const agent = "mcp:agent:kit", meta = { thread: "t_asked" };
+  const req = (/** @type {any} */ input, /** @type {any} */ m = meta) => d.registry.call("settings.request", input, agent, m);
+
+  // No gate to ask yet: refused, in words the agent can pass on.
+  let r = await req({ key: k.key, value: want });
+  assert.equal(r.error?.code, "denied");
+  assert.match(r.error.message, /changes only when the person asks for it/);
+
+  /** @type {any[]} */ const asked = [];
+  let answer = { matched: false };
+  d.registry.tools.set("gate.said.match", { module: "vault", description: "", input: { type: "object" }, callers: null, internal: false, hook: false, presence: false,
+    run: async (/** @type {any} */ i) => { asked.push(i); return answer; } });
+  r = await req({ key: k.key, value: want });
+  assert.equal(r.error?.code, "denied", "the person's words didn't ask for it");
+  assert.deepEqual({ thread: asked[0].thread, kind: asked[0].kind, key: asked[0].key }, { thread: "t_asked", kind: "setting", key: k.key },
+    "the gate is asked about the calling thread, never a thread the agent names");
+
+  answer = { matched: true, said: { id: "said_1", turn: 3 } };
+  r = await req({ key: k.key, value: want });
+  assert.ok(!r.error, JSON.stringify(r.error));
+  assert.equal(asked.at(-1).thread, "t_asked");
+  assert.equal((await c("settings.get", { key: k.key })).data.value, want);
+  assert.equal((await req({ key: k.key, value: want }, {})).error?.code, "denied", "outside a conversation: refused");
+
+  // The direct path stays the person's.
+  assert.equal((await d.registry.call("settings.set", { key: k.key, value: !want }, agent, meta)).error?.code, "denied");
+
+  const log = (await c("settings.changes", { key: k.key })).data;
+  assert.equal(log[0].by, agent);
+  assert.equal(log[0].said, "said_1");
+  assert.equal(log[0].undone, false);
+
+  const u = await c("settings.undo", { change: log[0].id });
+  assert.ok(!u.error, JSON.stringify(u.error));
+  assert.equal((await c("settings.get", { key: k.key })).data.value, k.default ?? false, "the value before comes back");
+  assert.equal((await c("settings.changes", { key: k.key })).data.find((/** @type {any} */ x) => x.id === log[0].id).undone, true);
+  assert.equal((await c("settings.undo", { change: log[0].id })).error?.code, "bad_input", "once");
+  assert.equal((await d.registry.call("settings.undo", { change: log[0].id }, agent, meta)).error?.code, "denied", "undo is the person's");
 });

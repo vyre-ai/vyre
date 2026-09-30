@@ -17,6 +17,18 @@ export async function ensureUp() {
   }
   const p = config.ensure();
   if (await ping(p.socket)) return { ok: true, started: false };
+  // In the box's container a supervisor owns vyred (the loop under the spawner, core/daemon/loop.sh)
+  // and brings it back 2 s after it exits. A `vyre` run with docker exec in that gap must not start
+  // a second vyred of its own: that one lacks the spawner, makes the loop's vyred exit "already
+  // running" until the loop gives up, and dies with the exec. Wait for the supervisor's instead.
+  if (process.env.VYRE_SUPERVISOR === "docker") {
+    const wait = Number(process.env.VYRE_UP_WAIT_MS) || 20_000;
+    for (let t = 0; t < wait; t += 200) {
+      await new Promise(r => setTimeout(r, 200));
+      if (await ping(p.socket)) return { ok: true, started: false };
+    }
+    return { ok: false, started: false, error: "vyred is not answering in its container: docker compose -p vyre logs vyre" };
+  }
   const log = path.join(p.logs, "vyred.out");
   const fd = fs.openSync(log, "a");
   const child = spawn(process.execPath, [path.join(REPO, "core", "daemon", "main.js")], {
@@ -33,7 +45,11 @@ export async function ensureUp() {
   return { ok: false, log };
 }
 
-/** @returns {Promise<{ ok: boolean, wasRunning: boolean, pid?: number }>} */
+/** Is this pid a live process? (EPERM means it is.) @param {number} pid */
+function running(pid) {
+  try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e).code === "EPERM"; }
+}
+
 /**
  * Stop this home's vyred. Only a pid that is Vyre's own: the pid file's, and when the caller
  * read vyred's health first, that one too. A pid file left by a crash names a process that may
@@ -50,7 +66,10 @@ export async function stop(expect = {}) {
   process.kill(pid, "SIGTERM");
   for (let i = 0; i < 50; i++) {
     await new Promise(r => setTimeout(r, 100));
-    if (!(await ping(p.socket))) return { ok: true, wasRunning: true, pid };
+    // The socket goes quiet first: vyred still stops its modules and closes its store, and its lock
+    // is held until the process ends. A new vyred started in that gap finds the lock taken and
+    // exits, so a restart waits for the process itself (node 22 on a busy Linux runner, 30 Sep).
+    if (!(await ping(p.socket)) && !running(pid)) return { ok: true, wasRunning: true, pid };
   }
   return { ok: false, wasRunning: true, pid };
 }

@@ -66,7 +66,7 @@ extension CapsuleModel {
     /// The router's first choice for these words is a quick answer. The user's own work, or a
     /// command, goes to the assistant ("Ask juno"), and ⏎ runs that row instead.
     func quickFirst(_ words: String) -> Bool {
-        let first = Route.destinations(nil, words, catalog, quick: true).options.first
+        let first = Route.destinations(nil, words, catalog, quick: true, models: (models.quick, models.deeper)).options.first
         return first == nil || first?.kind == .quick
     }
 
@@ -96,6 +96,7 @@ extension CapsuleModel {
         }
         replySub?.cancel(); replySub = nil
         reply = nil; asked = nil; askedMemory = nil; autoKey = nil
+        iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
     }
 
     /// A finished answer: kept for the conversation and the cache.
@@ -152,7 +153,10 @@ extension CapsuleModel {
     func followUpSend(_ words: String) {
         text = ""
         guard let r = reply, !r.thread.isEmpty else {
-            Task { @MainActor in self.handle(await self.ask(words)) }
+            // A Vyre IQ answer has no thread: the follow-up starts one, told the conversation.
+            let said = convo.map { "Q: \($0.q)\nA: \($0.a)" }.joined(separator: "\n\n")
+            let context = said.isEmpty ? nil : "Earlier in this conversation:\n\n" + said
+            Task { @MainActor in self.handle(await self.ask(words, context: context)) }
             return
         }
         let who = VyreCandidate(kind: .thread, id: r.thread, label: "this answer")
@@ -172,24 +176,25 @@ extension CapsuleModel {
         }
         let said = convo.map { "Q: \($0.q)\nA: \($0.a)" }.joined(separator: "\n\n")
         let context = said.isEmpty ? nil : "Earlier in this conversation (answered by a faster model; answer again, more carefully):\n\n" + said
-        Task { @MainActor in self.handle(await self.ask(words, model: Self.deeperModel, context: context)) }
+        Task { @MainActor in self.handle(await self.ask(words, model: models.deeper, context: context)) }
     }
 
-    /// The model ⌘⏎ switches to.
-    static let deeperModel = "sonnet"
+    /// Today's fallback for the deeper model ⌘⏎ switches to: sessions.models.get's purpose
+    /// "agent" overrides it (CapsuleModel.loadModels), read as `models.deeper`.
+    static let deeperModel = ModelFallback.deeper
 
     /// ⌘⏎ in the answer's own thread: the deeper model and thinking on, then the words. The same
     /// question again is asked to be thought through; words typed after it are sent as they are.
     /// Thinking needs a running session: a thread that went idle gets it once the send wakes it.
     func deeperInThread(_ words: String, thread: String, question: String?) async -> ActionOutcome {
-        let switched = await vyred.call("threads.model", ["thread": thread, "model": Self.deeperModel], presence: false)
+        let switched = await vyred.call("threads.model", ["thread": thread, "model": models.deeper], presence: false)
         if let why = Bridge.explain(switched) { return .failed("Could not switch to the deeper model: \(why)") }
         let before = await vyred.call("threads.thinking", ["thread": thread, "on": true], presence: false)
         let thinking = (before.data as? [String: Any])?["thinking"] as? Bool == true
         let again = Self.autoKey(words) == Self.autoKey(question ?? "")
         let prompt = again ? "Think this through more carefully and answer again: \(words)" : words
         let who = VyreCandidate(kind: .thread, id: thread, label: "this answer")
-        let out = await send(prompt, to: who, model: Self.deeperModel)
+        let out = await send(prompt, to: who, model: models.deeper)
         if reply?.thread == thread { asked = words }
         if !thinking, reply?.thread == thread {
             _ = await vyred.call("threads.thinking", ["thread": thread, "on": true], presence: false)
@@ -227,19 +232,33 @@ extension CapsuleModel {
 
 extension CapsuleModel {
     /// Words spoken into the box (sight's talk chord). Partial words show as they come and ask
-    /// nothing; the final words are submitted as ⏎ would.
+    /// nothing. `final: true` ends the dictation with the words left in the box to edit -- tap
+    /// or hold-release to stop never asks anything on its own (the user's spec, 28 Sep, matching
+    /// chat's tap-to-talk); only submitDictated() (an ordinary ⏎ while listening, or the "send
+    /// it" command word) actually asks.
     func dictate(_ words: String, final: Bool) {
-        if !final {
-            dictating = true
-            autoTask?.cancel()
-            text = words
-            return
-        }
-        dictating = false
-        guard !words.isEmpty else { return }
+        dictating = !final
+        autoTask?.cancel()
         text = words
+        if final && words.isEmpty { search() } // nothing heard: back to plain search, not a submit
+    }
+
+    /// ⏎ while still listening, or the "send it" command word: submit the box's current words
+    /// right now, as ⏎ would. The caller (sight) has already stopped the mic.
+    func submitDictated() {
+        dictating = false
+        guard !text.isEmpty else { return }
         voiceTurn = true
         if !handleReturn(command: false) { voiceTurn = false; search() }
+    }
+
+    /// Esc while listening: back to exactly what the box held before this utterance (never a
+    /// general clear -- text typed before or after the dictated span is untouched, since the
+    /// dictated span is the box's whole content in this single-line box).
+    func cancelDictation(_ restore: String) {
+        dictating = false
+        autoTask?.cancel()
+        text = restore
     }
 
     /// An answer is being read aloud (Esc stops it, with the answer).

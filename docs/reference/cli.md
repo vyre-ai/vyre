@@ -26,7 +26,7 @@ In the order `vyre help` lists them.
 | [`vyre doctor`](#vyre-doctor) | check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix |
 | [`vyre status`](#vyre-status) | is it running, and what is it running |
 | [`vyre config`](#vyre-config) | every setting, at account or project level (the Deck's Settings, in the terminal) |
-| [`vyre projects`](#vyre-projects) | every project; on a box, move moves the homes to /work/projects |
+| [`vyre projects`](#vyre-projects) | every project; on a server, move moves the homes to /work/projects |
 | [`vyre recall`](#vyre-recall) | search every session for what was said (vyre recall eval <file> to measure it) |
 | [`vyre index`](#vyre-index) | index new and changed sessions now |
 | [`vyre new`](#vyre-new) | make a project by picking sessions (flags: --home --thread --workspace --person --org --no-pick) |
@@ -65,16 +65,18 @@ In the order `vyre help` lists them.
 | [`vyre phone`](#vyre-phone) | add a phone to your box, list, remove and test the ones it has |
 | [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code, no Tailscale |
 | [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
+| [`vyre vitals`](#vyre-vitals) | CPU, RAM, disk, network, GPU and battery, for this device or the server |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
+| [`vyre team`](#vyre-team) | Project teammates: add one, send it work, read what came back |
 | [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
 | [`vyre voice`](#vyre-voice) | push-to-talk from the terminal (Enter to talk), status, and the speech key |
 | [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
 | [`vyre update`](#vyre-update) | install the newest release after a backup, and roll back if it does not come up |
-| [`vyre backup`](#vyre-backup) | copy config, store, vault, watchers and certificates into one file |
+| [`vyre backup`](#vyre-backup) | seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes) |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
 | [`vyre tips`](#vyre-tips) | short tips on using each part of Vyre |
-| [`vyre module`](#vyre-module) | make, check and add a module of your own |
+| [`vyre module`](#vyre-module) | make, check, test and add a module of your own |
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
 | [`vyre tools`](#vyre-tools) | every tool Claude and the surfaces can call |
 | [`vyre call`](#vyre-call) | run any tool, e.g. vyre call system.echo '{"text":"hi"}' |
@@ -151,7 +153,7 @@ vyre config [list [group]|get <key>|set <key> <value>|reset <key>] [--project <s
 
 ### vyre projects
 
-Every project; on a box, move moves the homes to /work/projects.
+Every project; on a server, move moves the homes to /work/projects.
 
 ```
 vyre projects [list|move [--dry-run]] [--json]
@@ -209,7 +211,7 @@ Running a session vyred owns:
   vyre threads send <thread> --queue <text>         hold it until the turn ends (a terminal session always does)
   vyre threads send <thread> --steer <text>         join the running turn at its next step
   vyre threads send <thread> --image F [text]       with a picture (.png .jpg .gif .webp, 5 MB, 5 at most)
-  vyre threads send <thread> "!ls"                  a leading ! runs it (shell), # remembers it; --raw sends as typed
+  vyre threads send <thread> "!ls"                  a leading ! runs it (shell), /remember saves it; --raw sends as typed
   vyre threads send <thread> /compact               a slash command; vyre threads commands <thread> lists them
   vyre threads list [--all] [--agent A]             the headless threads of the last day (ls)
   vyre threads queue <thread>                       what is queued and not yet handed over
@@ -228,7 +230,7 @@ Running a session vyred owns:
   vyre threads rewind <thread> <n|uuid> [--restore conversation|code|both]
                                                     back to a message (double Esc); its words come back
   vyre threads shell <thread> <command...>          run it in the thread's folder (! mode); Claude sees it next
-  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (# mode)
+  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (/remember)
   vyre threads tasks <thread>                       its background tasks (shells, subagents)
   vyre threads kill-task <thread> <task>            stop one
   vyre threads commands <thread>                    the slash commands the running session offers
@@ -386,13 +388,15 @@ An id is its first few characters, as vyre needs and vyre gate print them.
 What memory holds, or everything about one thing.
 
 ```
-vyre memory [about [<thing...>]|ask <question...>|correct <fact> <action>|corrections|uncorrect <id>|merge <node> <into>|split <node>|pin <node>|mute <node>] [--project <slug>] [--json]
+vyre memory [about [<thing...>]|ask <question...>|fix [<answer id> <fix>]|correct <fact> <action>|corrections|uncorrect <id>|merge <node> <into>|split <node>|pin <node>|mute <node>] [--project <slug>] [--json]
 ```
 
 Read it:
   vyre memory [about] [<thing>] [--project <slug>]   what it holds, or everything about one thing
 Ask it:
-  vyre memory ask "<question>" [--sources]   one line about your life, from what you have said
+  vyre memory ask "<question>" [--sources]   Vyre IQ: an answer from your past sessions and what you have said, with where it came from
+  vyre memory fix <answer id> wrong | forget | "<the right answer>"   correct an answer; remembered next time
+  vyre memory fix [undo <n>]   what you corrected this week, or undo one
 Change what it holds:
   vyre memory correct <fact> wrong|ended|replace|confirm [new object] [--at <date>] [--note <why>] [--project <slug>]
   vyre memory correct '<subject>|<rel>|<object>' add [--project <slug>]
@@ -628,6 +632,14 @@ Send files from this Mac to your box with Taildrop.
 vyre send <file...> [--json]
 ```
 
+### vyre vitals
+
+CPU, RAM, disk, network, GPU and battery, for this device or the server.
+
+```
+vyre vitals [status|explain|advice] [--device <name>] [--json]
+```
+
 ### vyre apps
 
 Drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow.
@@ -635,6 +647,21 @@ Drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow.
 ```
 vyre apps [list | find <words...> | targets <app> [words...] | setup <app> | <words...>] [--app <App>] [--to <who>] [--model] [--json]
 ```
+
+### vyre team
+
+Project teammates: add one, send it work, read what came back.
+
+```
+vyre team [add|ask|status|cancel|notes] … [--project slug] [--json]
+```
+
+vyre team                     this project's teammates, states and queues
+vyre team add <role>          add a teammate
+vyre team ask <role> <text>   send it work; --urgent, --wait
+vyre team status <request>    one request's state and result
+vyre team cancel <request>    cancel a queued request
+vyre team notes <agent>       read its notes
 
 ### vyre sideview
 
@@ -673,7 +700,7 @@ vyre mcp [serve | install [--yes]] [--json]
 Install the newest release after a backup, and roll back if it does not come up.
 
 ```
-vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--rollback [--restore-data]] [--json]
+vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--allow-unsigned] [--rollback [--restore-data]] [--json]
 ```
 
 --check          say whether a newer release is out; exit 0 when current, 1 when one waits
@@ -688,10 +715,10 @@ vyre update does this; from a checkout, update with git.
 
 ### vyre backup
 
-Copy config, store, vault, watchers and certificates into one file.
+Seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes).
 
 ```
-vyre backup [file]
+vyre backup [file] [--skip-projects] [--skip-transcripts] [--work DIR] [--with-provider-logins]
 ```
 
 ### vyre presence
@@ -712,21 +739,27 @@ vyre tips [module | new | reset] [--json]
 
 ### vyre module
 
-Make, check and add a module of your own.
+Make, check, test and add a module of your own.
 
 ```
-vyre module new <name> [--dir <parent>] | check [dir] | add <path|git url> [--yes]
+vyre module new <name> [--dir <parent>] | check [dir] | test [dir] | upgrade [dir] [--dry-run] | add <path|git url> [--yes]
 ```
 
-new <name>        a module that passes check and its own test, in <home>/modules/<name>
+new <name>        a module on module API 1 that passes check, test and its own test, in
+                  <home>/modules/<name>, with AGENTS.md: the brief to hand an agent
   --dir PARENT    make it in PARENT/<name> instead
 check [dir]       the manifest (schema and loader rules) and the entry file; exit 1 on a problem
+test [dir]        the conformance checks every module passes, then its own *.test.js files
+upgrade [dir]     move a module onto the current contract: apiVersion to vyre, string tools to
+                  objects, ctx.memory.teach to ctx.memory.write; lists what it can't do, then
+                  runs the conformance checks
+  --dry-run       show the changes and check a copy; write nothing
 add <source>      a folder or a git URL (https://, git@, file://): check it, show what it asks
                   for, copy it into <home>/modules and restart vyred to load it
   --yes           do not ask first (needed without a terminal, and with --json or --view)
 
 A module runs inside vyred, trusted like an npm package. A module named like one of Vyre's
-own is refused, unless its module.json says "replaces" with that name and you pass --yes.
+own is refused, and in 0.2 an added module may not say "replaces".
 In the box's container, the host restarts vyred: docker compose restart vyre.
 --view prints frames for the Capsule and the phone (docs/reference/cli-json.md).
 
@@ -820,7 +853,7 @@ vyre home
 Put a backup back (vyred must be stopped).
 
 ```
-vyre restore <file> [--force]
+vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to DIR]
 ```
 
 ### vyre uninstall

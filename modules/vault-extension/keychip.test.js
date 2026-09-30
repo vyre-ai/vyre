@@ -153,7 +153,7 @@ test("worker: who may ask, and nothing while locked or for a value that is no ke
 class El {
   /** @param {string} tag @param {Record<string, any>} [o] */
   constructor(tag, o = {}) {
-    this.tagName = tag.toUpperCase(); this.children = []; this.listeners = {}; this.style = {}; this.textContent = ""; this.className = "";
+    this.tagName = tag.toUpperCase(); this.children = []; this.listeners = {}; this.style = { setProperty() {} }; this.textContent = ""; this.className = "";
     this.connected = false; this.attrs = {}; this.previousElementSibling = null; this.parentElement = null; this.firstElementChild = null; this.labels = null;
     Object.assign(this, o);
   }
@@ -203,11 +203,11 @@ function pageWith(fields, answers = {}) {
   const chrome = { runtime: { id: ID, lastError: undefined, sendMessage: (m, cb) => { sent.push(plain(m)); setTimeout(() => cb(replies[m.type](m)), 0); } } };
   class MutationObserver { observe() {} }
   const timers = (fn, ms) => { delays.push(ms); return ms >= 1000 ? 0 : setTimeout(fn, 0); };
-  const win = { document, chrome, HTMLInputElement, HTMLTextAreaElement, Element: El, MutationObserver, getSelection: () => ({ toString: () => "", anchorNode: null }),
+  const win = { location: { hostname: "console.example.com" }, document, chrome, HTMLInputElement, HTMLTextAreaElement, Element: El, MutationObserver, getSelection: () => ({ toString: () => "", anchorNode: null }),
     setTimeout: timers, clearTimeout, Date, console };
   vm.createContext(win);
   const self = vm.runInContext("globalThis", win);
-  win.window = self; win.top = self;
+  win.window = self; win.top = self; win.vyreKeyChipMinMs = 0;
   vm.runInContext(read("keyfind.js"), win);
   vm.runInContext(read("keychip.js"), win);
   const shown = () => { const h = hosts.find(x => x.isConnected); return h ? h.shadow.all() : []; };
@@ -215,11 +215,13 @@ function pageWith(fields, answers = {}) {
   return { sent, delays, shown, buttons, docListeners };
 }
 const tick = (ms = 20) => new Promise(r => setTimeout(r, ms));
+/** Wait for the page's worker replies to land (they arrive on timers), up to a few seconds on a loaded runner. */
+const until = async (fn, ms = 3000) => { const end = Date.now() + ms; while (Date.now() < end && !fn()) await tick(10); };
 
 test("page: a key-shaped value raises a chip; nothing but a fingerprint goes before the tap", async () => {
   const value = anthropic();
   const p = pageWith([codeEl(value, "New API key")]);
-  await tick();
+  await until(() => p.shown().length > 0);
   const raise = p.sent.find(m => m.type === "key-raise");
   assert.ok(raise, "asked the worker");
   assert.deepEqual(Object.keys(raise).sort(), ["fp", "generic", "type"]);
@@ -325,4 +327,16 @@ test("page: a trusted click on a Copy button finds the key in the box beside it"
   for (const fn of p.docListeners.click || []) fn({ isTrusted: true, target: bare });
   await tick();
   assert.equal(p.sent.length, before);
+});
+
+test("page: a tap before the chip has been visible long enough, or on a chip the page made see-through, saves nothing (H-K2)", async () => {
+  const value = anthropic();
+  // Too soon: the real minimum applies when the test does not lower it.
+  const p = pageWith([codeEl(value, "New API key")]);
+  await until(() => p.shown().length > 0);
+  assert.ok(p.shown().length > 0);
+  const src = fs.readFileSync(new URL("./keychip.js", import.meta.url), "utf8");
+  assert.match(src, /setProperty\(k, v, "important"\)/, "the host's styles carry !important");
+  assert.match(src, /elementFromPoint/, "a tap is checked against what is on top");
+  assert.match(src, /MAX_CHIPS_PER_MIN/, "chips are capped per minute");
 });
