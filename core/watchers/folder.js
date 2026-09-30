@@ -27,7 +27,7 @@ export const DEFAULT_TIMEOUT_S = 60;
  * @typedef {{ name: string, project: string, schedule: string, needs: string[], emits: string, timeout: number,
  *   on: string|null, where: Record<string, string|number|boolean>|null,
  *   net: Record<string, { vault?: string, field?: string, header: string, scheme: string }>|null,
- *   ask: { dailyUsd: number }|null,
+ *   ask: { dailyUsd: number }|null, summary: { when: string, check?: string, do: string }|null,
  *   owner: { kind: "teammate", teammate: string }|null, instruction: string|null, act: boolean, when: string|null }} Spec
  */
 
@@ -82,6 +82,7 @@ function check(raw, name, problems) {
   if (!Number.isFinite(timeout) || timeout <= 0 || timeout > MAX_TIMEOUT_S) problems.push(`timeout is seconds, at most ${MAX_TIMEOUT_S}`);
   const net = checkNet(raw.net, problems);
   const owner = checkOwner(raw.owner, problems);
+  const summary = checkSummary(raw.summary, problems);
   let ask = null;
   if (raw.ask !== undefined) {
     const a = raw.ask;
@@ -91,14 +92,29 @@ function check(raw, name, problems) {
   if (raw.instruction !== undefined && (typeof raw.instruction !== "string" || !raw.instruction.trim() || raw.instruction.length > 2000)) problems.push("instruction is plain words, at most 2000 characters");
   if (raw.act !== undefined && typeof raw.act !== "boolean") problems.push("act is true or false");
   if ((raw.instruction !== undefined || raw.act !== undefined) && !owner) problems.push("instruction and act are for a teammate's duty: they need owner");
-  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net", "owner", "instruction", "act", "when", "ask"].includes(k));
+  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net", "owner", "instruction", "act", "when", "ask", "summary"].includes(k));
   if (extra.length) problems.push(`watcher.json has keys the runtime does not read: ${extra.join(", ")}. Credentials go in the vault and are named under needs`);
   // A vault item named by net is fetched by the parent and attached to that host's requests only,
   // so it counts as a need: the same per-watcher grant covers it.
   const needed = new Set(Array.isArray(needs) ? needs : []);
   for (const h of Object.values(net || {})) if (h.vault) needed.add(h.vault);
-  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, ask, owner, when: typeof raw.when === "string" ? raw.when.slice(0, 200) : null, instruction: typeof raw.instruction === "string" ? raw.instruction.trim() : null, act: raw.act === true, emits: raw.emits || "watcher.item", timeout: Number(timeout),
+  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, ask, summary, owner, when: typeof raw.when === "string" ? raw.when.slice(0, 200) : null, instruction: typeof raw.instruction === "string" ? raw.instruction.trim() : null, act: raw.act === true, emits: raw.emits || "watcher.item", timeout: Number(timeout),
     on: typeof on === "string" ? on : null, where };
+}
+
+/**
+ * `summary`: the card's words for the parts the runtime cannot read out of code: { when, check?, do }
+ * in plain sentences. Descriptive only. What a watcher reads from, whether it can act and what it
+ * costs are worked out from the folder itself (runtime.card) and never taken from here.
+ * @returns {Spec["summary"]}
+ */
+function checkSummary(v, problems) {
+  if (v === undefined) return null;
+  const o = /** @type {any} */ (v);
+  const ok = o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).every(k => ["when", "check", "do"].includes(k))
+    && ["when", "do"].every(k => typeof o[k] === "string" && o[k].trim() && o[k].length <= 240) && (o.check === undefined || (typeof o.check === "string" && o.check.length <= 240));
+  if (!ok) { problems.push('summary is { "when": "...", "check": "..." (optional), "do": "..." }: one plain sentence each, at most 240 characters'); return null; }
+  return { when: o.when.trim(), ...(o.check ? { check: o.check.trim() } : {}), do: o.do.trim() };
 }
 
 /** @returns {Spec["owner"]} */

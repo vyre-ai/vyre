@@ -72,9 +72,9 @@ export default {
     });
     ctx.tool("watchers.create", {
       description: "Turn on a watcher exactly as it was last dry-run. Runs once now, then on its schedule. Only after the user has seen the dry run's items and agreed. With owner, when and instruction it creates a teammate's standing duty instead (teammates' call only): when is an event like thread.finished, a schedule like daily 07:00, or push gmail.",
-      input: { type: "object", required: ["name"], properties: { name: str, project: str, owner: { type: "object" }, when: str, instruction: str, act: { type: "boolean" } } },
+      input: { type: "object", required: ["name"], properties: { name: str, hash: str, project: str, owner: { type: "object" }, when: str, instruction: str, act: { type: "boolean" } } },
       run: async (i, { caller } = {}) => {
-        if (i.owner === undefined && i.when === undefined && i.instruction === undefined) return rt.create(i.name);
+        if (i.owner === undefined && i.when === undefined && i.instruction === undefined) return rt.create(i.name, { hash: i.hash || null });
         dutyCaller(caller);
         for (const k of ["project", "owner", "when", "instruction"]) if (i[k] === undefined) throw new Error(`a duty needs ${k}`);
         return rt.createDuty(i);
@@ -87,6 +87,11 @@ export default {
     });
     ctx.tool("watchers.delete", { description: "Stop and forget a watcher; a duty's folder goes too and its filed items stay.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.remove(name); } });
     ctx.tool("watchers.run", { description: "Run a turned-on watcher now and return what happened.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.run(name); } });
+    ctx.tool("watchers.card", {
+      description: "What to show before a watcher is turned on: its three lines (when, check, do), what it reads, whether it can act and what it costs, worked out from the folder itself, plus the hash to pass back to watchers.create so the tap turns on exactly this code. No network, no model.",
+      input: named,
+      run: async ({ name }) => rt.card(name),
+    });
     ctx.tool("watchers.pause", { description: "Stop a watcher running until it is resumed.", input: named, run: async ({ name }) => rt.pause(name) });
     ctx.tool("watchers.resume", { description: "Resume a paused watcher, clearing its failure count. The person's (or teammates' for a duty): an agent cannot undo a pause the person made.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.resume(name); } });
     ctx.tool("watchers.logs", {

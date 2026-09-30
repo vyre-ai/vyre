@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `watchers.card {name}`: what the person sees before turning a watcher on. Three plain lines
+  (when, check, do) from the author's `summary` in `watcher.json` (or derived for a duty and for a
+  summary-less watcher), plus facts Vyre works out from the folder itself and never from the
+  summary: hosts it reads, credentials attached per host, whether it can act, model cost cap. It
+  returns the code's hash; `watchers.create {name, hash}` refuses if the code moved since the card.
+
 - `ask(prompt)` for watchers: a model judgment with no tools (through `threads.quick`), only when `watcher.json` declares `ask: { dailyUsd }`. The budget is
   tallied per watcher per day for that cap, while the dollars reach core/spend by themselves (the
   quick session's thread.finished) and the provider's own cap is checked first with spend.check;

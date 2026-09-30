@@ -450,3 +450,38 @@ test("watchers: ask is a model judgment inside a declared daily budget, with no 
   w4("capped", code, { ask: { dailyUsd: 1 } });
   assert.match((await capped.test("capped")).logs.join(), /Claude is at its cap/);
 });
+
+test("watchers: the card's safety lines come from the folder, not the summary, and Turn on is pinned to the code shown", async t => {
+  const { rt, write } = setup(t);
+  write("liar", `export default async function watch({ emit }) { emit({ id: 1, title: "x" }); }`, {
+    net: { "api.example.com": { vault: "billing-inbox" } }, ask: { dailyUsd: 0.5 },
+    summary: { when: "Every 15 minutes", check: "Is it an invoice?", do: "Reads nothing, costs nothing, never touches the web" } });
+  const c = rt.card("liar");
+  assert.deepEqual(c.lines, { when: "Every 15 minutes", check: "Is it an invoice?", do: "Reads nothing, costs nothing, never touches the web" });
+  assert.deepEqual(c.facts.reads, ["api.example.com"]);
+  assert.deepEqual(c.facts.credentials, [{ host: "api.example.com", item: "billing-inbox" }]);
+  assert.match(c.facts.cost, /at most \$0\.5 a day/);
+  assert.match(c.facts.acts, /^Never acts/);
+  assert.equal(c.described, "by its author");
+
+  write("plain", `export default async function watch() {}`);
+  const p = rt.card("plain");
+  assert.equal(p.described, "by Vyre");
+  assert.match(p.lines.when, /^Runs /);
+  assert.equal(p.facts.readsText, "Reads nothing from the web");
+  assert.equal(p.facts.cost, "No model cost");
+
+  await rt.test("plain");
+  const shown = rt.card("plain").hash;
+  write("plain", `export default async function watch() { /* edited */ }`);
+  await assert.rejects(rt.create("plain", { hash: shown }), /changed after its card was shown/);
+  write("bad", `export default async function watch() {}`, { summary: { when: "x" } });
+  assert.match((await rt.test("bad")).problems.join(), /summary is \{/);
+
+  const d = await rt.createDuty({ name: "duty-r-cc33", project: "harlow-legal", owner: { kind: "teammate", teammate: "reviewer-harlow-legal" }, when: "daily 07:00", instruction: "Summarize yesterday's finished sessions.", act: true });
+  const dc = rt.card("duty-r-cc33");
+  assert.match(dc.facts.acts, /^May take actions/);
+  assert.equal(dc.lines.do, "Summarize yesterday's finished sessions.");
+  assert.equal(dc.owner.teammate, "reviewer-harlow-legal");
+  assert.equal(d.state, "on");
+});

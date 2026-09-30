@@ -108,6 +108,9 @@ ALREADY in the ledger; recording again under watcher:<name> would double count. 
 keeps a per-watcher day tally (watchers_spend) for dailyUsd. Attribution by watcher in the ledger needs core/spend to
 take a purpose for a quick (asked of iq/lead). Real-tool test of ask() still to write and run on a runner.
 
+Card (3.1c): `summary` in watcher.json, runtime.card + watchers.card, create pinned to the shown hash. The
+structured when/check/do PRESETS (mail and the rest, step 6b/9) are not built; the card reads `summary` or derives.
+
 ## Next
 
 Build order agreed with the lead (GO message): lib/sandbox first, jointly with platform and the

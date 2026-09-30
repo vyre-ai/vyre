@@ -191,9 +191,40 @@ export class Runtime {
     };
   }
 
-  /** Turn on what was dry-run. A scheduled watcher runs once straight away, then on its schedule. */
-  async create(name) {
+  /**
+   * What the card shows before the one tap. The safety-relevant lines (what it reads, whether it can
+   * act, what it costs) come from the folder itself, never from `summary`, which is only the
+   * author's description; `hash` is what Turn on must still match (watchers.create refuses if it moved).
+   */
+  card(name) {
     const { spec, hash } = this.spec(name);
+    const r = this.row(name);
+    const when = spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule);
+    const duty = spec.owner != null;
+    return {
+      name, hash, project: spec.project, state: !r || !r.enabled ? "draft" : r.paused ? "paused" : r.hash !== hash ? "changed" : "on",
+      owner: spec.owner ? { kind: "teammate", teammate: spec.owner.teammate } : { kind: "project", project: spec.project },
+      lines: {
+        when: spec.summary ? spec.summary.when : spec.when ? `Runs ${when} (${spec.when})` : `Runs ${when}`,
+        ...(spec.summary && spec.summary.check ? { check: spec.summary.check } : {}),
+        do: spec.summary ? spec.summary.do : duty && spec.instruction ? spec.instruction.split("\n")[0].slice(0, 240) : "Files what it finds into the project, marked as from outside",
+      },
+      facts: {
+        reads: spec.net ? Object.keys(spec.net) : [],
+        readsText: spec.net ? `Reads ${Object.keys(spec.net).join(", ")}` : "Reads nothing from the web",
+        credentials: spec.net ? Object.entries(spec.net).filter(([, v]) => v.vault).map(([h, v]) => ({ host: h, item: v.vault })) : [],
+        acts: duty && spec.act ? "May take actions for its teammate; anything outward that you did not ask for holds for you" : "Never acts: it reads and files",
+        cost: spec.ask ? `Asks a model, at most $${spec.ask.dailyUsd} a day` : "No model cost",
+        schedule: when,
+      },
+      described: spec.summary ? "by its author" : "by Vyre",
+    };
+  }
+
+  /** Turn on what was dry-run. A scheduled watcher runs once straight away, then on its schedule. */
+  async create(name, { hash: shown = null } = {}) {
+    const { spec, hash } = this.spec(name);
+    if (shown && shown !== hash) throw new Error(`${name} changed after its card was shown; show the card again, then turn it on`);
     const r = this.row(name);
     if (!r || r.tested_hash !== hash) throw new Error(`${name} has ${r && r.tested_hash ? "changed since its last dry run" : "not been dry-run"}; run watchers.test, show the user its items, then create it`);
     const project = await this.project(spec.project);

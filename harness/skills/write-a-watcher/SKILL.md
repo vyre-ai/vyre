@@ -83,6 +83,13 @@ in `watcher.json`: `"ask": { "dailyUsd": 0.25 }` (at most 5). At most 20 asks an
 a prompt per run. Text you fetched goes in the prompt as data; the answer is advice to your own
 code, and never decides a send. Prefer a plain rule when one works, since an ask costs money.
 
+Add a `summary` to `watcher.json` so the card can say what the watcher does in plain words:
+`"summary": { "when": "Every 15 minutes", "check": "Is it an invoice?", "do": "Files each invoice into Harlow Legal" }`
+(`check` is optional; one sentence each). Before asking the user to turn it on, call `watchers_card`
+and show what it returns. The lines about what it reads, whether it can act and what it costs are
+worked out by Vyre from the folder, not from your summary, so keep the summary honest: it is shown
+next to them. Pass the card's `hash` to `watchers_create` so the tap turns on exactly that code.
+
 ## 3. Write two files in the watchers folder
 
 Call the `watchers_list` tool first. It is an MCP tool, not a shell command: Claude Code names
