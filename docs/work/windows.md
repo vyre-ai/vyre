@@ -65,10 +65,12 @@ of files.drive.candidates' answer; both need a real PC run.
 Fixed in this round:
 - **Config and key file permissions (security, was MEDIUM).** Node's 0700/0600 do nothing on Windows; files take
   the parent's ACL. Private under the user profile, but a home kept elsewhere inherited whoever the parent
-  allows. `lib/owner-only.js` now sets an owner-only ACL (icacls, inheritance removed) on the Vyre home in
+  allows. `lib/owner-only.js` now grants the current user alone (by SID) and removes inherited access (icacls, run by
+  full path from System32, verified from the SDDL afterwards) on the Vyre home in
   `config.ensure`/`save`, the pipe token, and the relay device key folder. Tests check the ACL on win32
   (no Everyone, Users or Authenticated Users) and the mode bits elsewhere. Best effort: a machine without
-  icacls keeps the profile default.
+  icacls keeps the profile default. Stricter than a default profile: SYSTEM and Administrators lose access to
+  that folder too, so a backup or antivirus tool running as SYSTEM will not read the Vyre home.
 
 Real gaps, NOT fixed (severity, reason):
 - **`vyre box add` / `box move` from a Windows CLI (MEDIUM, unsupported).** `core/cli/ssh.js` uses a fixed
