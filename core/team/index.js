@@ -28,6 +28,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { duties as makeDuties, DUTIES_MIGRATION } from "./duties.js";
 import { isPerson } from "../../lib/caller.js";
 import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
   headSha, resetTo, mergeBranchIn, stillConflicted, compareAndSwap, detectTestCommand, B } from "./git.js";
@@ -85,6 +86,8 @@ export const MIGRATIONS = [
   // Who fills the role (plan section 14): null is the project-only default helper, else the name of one
   // of the person's agents (agents_agents). The role's notes, charter and history stay with the binding.
   `ALTER TABLE team_teammates ADD COLUMN filler TEXT`,
+  // Standing duties (plan section 9.2): identity only; watchers runs them.
+  DUTIES_MIGRATION,
 ];
 
 /** The longest charter (characters): a role's purpose and habits, not a manual. */
@@ -236,6 +239,7 @@ export default {
     const mustR = id => { const r = reqById(id); if (!r) throw Object.assign(new Error(`no request ${id}`), { code: "not_found" }); return r; };
 
     /** Tool results unwrapped; an error becomes a throw with its message. */
+    const dutyApi = makeDuties({ db, call: (tool, input) => ctx.call(tool, input), emit: (e, p) => ctx.events.emit(e, p) });
     const use = async (tool, input) => { const r = await ctx.call(tool, input); if (r.error) throw new Error(r.error.message); return r.data; };
 
     // ---------------------------------------------------------------- caller and project
@@ -808,7 +812,11 @@ export default {
         const tx = db.prepare("UPDATE team_requests SET state = 'cancelled', finished_at = ? WHERE teammate = ? AND state = 'queued'");
         tx.run(now, tm.agent);
         for (const id of cancelled) ctx.events.emit("summon.cancelled", { request: id, teammate: tm.agent, project: tm.project });
+        // A retired teammate does nothing on its own: its duties go off (undo removes them, and the charter, entirely).
+        if (undone) await dutyApi.removeAll(tm.agent);
+        else for (const d of dutyApi.list(tm.agent)) if (d.enabled) await dutyApi.update(d.id, { enabled: false }).catch(() => {});
         if (undone) {
+          db.prepare("DELETE FROM team_charters WHERE teammate = ?").run(tm.agent);
           db.prepare("DELETE FROM team_requests WHERE teammate = ?").run(tm.agent);
           db.prepare("DELETE FROM team_notes WHERE teammate = ?").run(tm.agent);
           db.prepare("DELETE FROM team_teammates WHERE agent = ?").run(tm.agent);
@@ -938,6 +946,60 @@ export default {
         ctx.events.emit("team.role-changed", { project: tm.project, role: tm.role, filler });
         return { agent: tm.agent, project: tm.project, role: tm.role, filler, unchanged: false };
       },
+    });
+
+    /**
+     * A duty's teammate and the mode. A teammate may only propose for itself (kept off, no watcher until a person or their assistant turns it on);
+     * everything else is the charter's rule: a person, the assistant, or a session in the project on the person's request.
+     */
+    const dutyTarget = async (i, meta, { write, id }) => {
+      const d = id ? dutyApi.get(id) : null;
+      const ref = d ? { teammate: d.teammate } : i;
+      if (write && callerTeammate(meta.agent)) {
+        const me = callerTeammate(meta.agent);
+        const tm = ref.teammate ? byAgent(String(ref.teammate)) : ref.project && ref.role ? byRole(String(ref.project), String(ref.role)) : null;
+        if (!d && tm && tm.agent === me.agent && !tm.retired_at) return { tm, propose: true };
+        throw Object.assign(new Error("a teammate can only propose a duty for itself; turning it on is the person's"), { code: "denied" });
+      }
+      return { tm: await charterTarget(ref, meta, { write }), propose: false };
+    };
+    const dutyRef = { ...charterRef };
+    ctx.tool("team.duties.create", {
+      description: "Give a teammate a standing duty: something it does by itself when a trigger fires (an event like thread.finished or goal.stale, a schedule like daily 07:00, or a connection's push), described in plain words. act: true lets it call tools and ask a model (every outward call still holds at the Gate); false only files what it notices into the teammate's notes and the waiting list. A person, the assistant, or a session in the project on the person's request starts it at once; a teammate's own suggestion waits off in the list until a person turns it on.",
+      input: { type: "object", required: ["when", "instruction"], properties: { ...dutyRef, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" } } },
+      callers: CHARTER_CALLERS,
+      run: async (i, meta = {}) => {
+        const { tm, propose } = await dutyTarget(i, meta, { write: true });
+        return dutyApi.create(tm, { when: i.when, instruction: i.instruction, act: i.act, propose, by: meta.agent || String(meta.caller || "vyre") });
+      },
+    });
+    ctx.tool("team.duties.list", {
+      description: "A teammate's standing duties: trigger, instruction, whether it acts, whether it is on, and who made it. A teammate may read its own.",
+      input: { type: "object", properties: { ...dutyRef } },
+      callers: CHARTER_CALLERS,
+      run: async (i, meta = {}) => { const tm = await charterTarget(i, meta, { write: false }); return { agent: tm.agent, duties: dutyApi.list(tm.agent) }; },
+    });
+    ctx.tool("team.duties.update", {
+      description: "Change a duty: when, instruction, act, or enabled (true turns a proposed duty on; false pauses it). A person, the assistant, or a session in the project; never a teammate.",
+      input: { type: "object", required: ["id"], properties: { id: { type: "string" }, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" }, enabled: { type: "boolean" } } },
+      callers: CHARTER_CALLERS,
+      run: async (i, meta = {}) => {
+        await dutyTarget(i, meta, { write: true, id: i.id });
+        const { id, ...patch } = i;
+        return dutyApi.update(id, patch);
+      },
+    });
+    ctx.tool("team.duties.delete", {
+      description: "Remove a duty and its watcher. A person, the assistant, or a session in the project; never a teammate.",
+      input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+      callers: CHARTER_CALLERS,
+      run: async (i, meta = {}) => { await dutyTarget(i, meta, { write: true, id: i.id }); return dutyApi.remove(i.id); },
+    });
+    ctx.tool("team.duties.run-now", {
+      description: "Run a duty once now, without waiting for its trigger. Refused while it is off.",
+      input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+      callers: CHARTER_CALLERS,
+      run: async (i, meta = {}) => { await dutyTarget(i, meta, { write: true, id: i.id }); return dutyApi.runNow(i.id); },
     });
 
     ctx.tool("team.list", {

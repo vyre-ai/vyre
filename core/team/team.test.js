@@ -477,6 +477,21 @@ test("team.role.fill: an agent fills a role, its character and the charter ride 
   assert.equal(launches().filter(l => l.argv.includes("--append-system-prompt")).length, n + 1, "the new filler started a fresh thread");
 });
 
+// --- standing duties (plan section 9.2) -----------------------------------------------------------
+
+test("team.duties: watchers' refusal leaves no row, a bare mcp caller is refused, an unknown duty is not_found", async t => {
+  const { tool, raw, root, project } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design" });
+  // The person's own duty goes to watchers, which here is the 0.1 module that has no duty shape yet: a clean refusal, no row left.
+  const refused = await raw("team.duties.create", { teammate: agent, when: "daily 07:00", instruction: "Read the open issues." });
+  assert.ok(refused.error && /watchers/.test(refused.error.message));
+  assert.deepEqual((await tool("team.duties.list", { teammate: agent })).duties, []);
+  const bare = await call("team.duties.create", { teammate: agent, when: "daily 07:00", instruction: "x" }, { root, caller: "mcp", timeout: 20_000 });
+  assert.equal(bare.error.code, "denied");
+  assert.equal((await raw("team.duties.run-now", { id: "nope" })).error.code, "not_found");
+});
+
 // --- step 2: notes-changed enforcement and compaction re-injection ------------------------------
 
 test("team.done refuses to close a request when the notes have not changed since it started; writing them lets it through", async t => {

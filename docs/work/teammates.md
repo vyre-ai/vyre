@@ -738,3 +738,17 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   returns the version beside the one before it. Backend for the Deck/feed card "charter changed by <agent>" with a one-tap
   `team.charter.revert`; the card itself waits on app-design. `by` stays in history.
 - Agreed the duty shape with watchers (CHAT.md): duties are teammate-owned watchers, built when watchers.* lands.
+
+## Standing duties (2026-09-30, built ahead of watchers per team-lead)
+
+- `core/team/duties.js` + `team_duties` (identity only: teammate, watcher name, trigger, instruction, act, enabled, started,
+  created_by). Tools `team.duties.create/list/update/delete/run-now`, event `teammate.duty-changed`. Everything runs through
+  `watchers.*` (create with owner {kind:"teammate"}, update, pause, resume, delete, run), injected as `call`, so tests use a fake.
+- A duty a teammate proposes for itself is off with NO watcher until a person or their assistant turns it on (update enabled:true);
+  a proposal can never run, spend or act. A teammate cannot update, delete or run a duty. Person, assistant, or a session in
+  the project on the person's request create one that starts at once. If watchers refuses, no row is left.
+- team.retire: plain retire turns the duties off; undo removes them and the charter too (undo previously left the charters behind).
+- Contract to confirm with watchers on landing: the input names (`when`, `instruction`, `act`, `owner`) and that
+  `watchers.update/delete/run` exist. The live watchers module in this tree is still the 0.1 shape, so a real create is refused
+  cleanly until theirs lands (covered by a test). Adapter is the one `watchers()` helper and `start()` in duties.js.
+- Tests: duties.test.js (5, fake watchers) plus 1 through the daemon; core/team 58/58.
