@@ -372,6 +372,18 @@ put_wrapper() {
 # android: bring the release's phone app into the container's releases folder, APK first and
 # android.json last through a temp name and a rename, the old manifest kept as android.json.prev.
 # Then releases.sign signs it with the owner's key. Its refusal is reported, never fatal.
+# publish_release: the release's SHA256SUMS, its signature and shell.json go into the container's deck/release, which vyred
+# serves at /release/, so the phone's service worker can check the web shell against the one release signature (pwa). Only
+# what was downloaded and checked; a missing file is skipped, and none of it can fail the update. Written as the container's
+# own root, into the install folder, through a temp name and a rename.
+publish_release() {
+  for f in SHA256SUMS SHA256SUMS.sig shell.json; do
+    [ -f "$tmp/$f" ] || continue
+    compose exec -T -u 0 vyre sh -c 'mkdir -p "$1" && cat >"$1/.$2.new" && mv -f "$1/.$2.new" "$1/$2"' sh /opt/vyre/deck/release "$f" <"$tmp/$f" \
+      || echo "vyre: could not put $f in the container's deck/release; the phone's shell check stays off until the next update" >&2
+  done
+}
+
 android() {
   listed android.json || return 0
   get android.json
@@ -460,7 +472,7 @@ update() {
     src=$(sed -n 's/^VYRE_SOURCE=//p' "$DIR/.env" | tail -n 1)
     if [ "${src%/}" = "${DIR%/}/src" ]; then BUILD_SRC=1; get vyre.tgz; fi
   fi
-  for f in $BOXF VERSION vyre release.json; do if listed "$f"; then get "$f"; fi; done
+  for f in $BOXF VERSION vyre release.json shell.json; do if listed "$f"; then get "$f"; fi; done
   VERSION=$(tr -d ' \n' 2>/dev/null <"$tmp/VERSION" || true)
   VERSION=${VERSION:-${TAG#v}}
   VERSION=${VERSION:-$(date -u +%Y%m%d%H%M%S)}
@@ -519,6 +531,7 @@ update() {
   state ok finished "updated to $VERSION"
   say "updated to $VERSION"
 
+  publish_release
   android
   # Report only: a fresh link would void the one the user was sent and has not opened yet.
   docker compose exec -T vyre vyre up --keep-link || true

@@ -681,3 +681,24 @@ test("update-from-request: the update's backup and its passphrase live in root's
   assert.equal(/** @type {any} */ ((await h.run(["update"], {}))).code, 0);
   assert.ok(fs.existsSync(path.join(h.DIR, "backups", "pre-0.2.0.key")));
 });
+
+test("box update: the release's SHA256SUMS, signature and shell.json are put in the container's deck/release for the phone's shell check (pwa)", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  // shell.json is one more file of the release; it is listed in SHA256SUMS like the rest.
+  const dl = path.join(b.DL, "dl", "v0.2.0");
+  fs.writeFileSync(path.join(dl, "shell.json"), JSON.stringify({ "/deck/app.js": "abc" }));
+  const names = fs.readdirSync(dl).filter(n => n !== "SHA256SUMS" && n !== "SHA256SUMS.sig").sort();
+  fs.writeFileSync(path.join(dl, "SHA256SUMS"), names.map(n => `${sha(fs.readFileSync(path.join(dl, n)))}  ${n}\n`).join(""));
+  fs.writeFileSync(path.join(dl, "SHA256SUMS.sig"), signSums(fs.readFileSync(path.join(dl, "SHA256SUMS")), RELEASE.privateKey));
+  const r = /** @type {any} */ (await b.run(["update"], {}));
+  assert.equal(r.code, 0, r.out);
+  const rel = path.join(b.FAKE, "ctr", "opt", "vyre", "deck", "release");
+  assert.equal(fs.readFileSync(path.join(rel, "SHA256SUMS"), "utf8"), fs.readFileSync(path.join(dl, "SHA256SUMS"), "utf8"));
+  assert.equal(fs.readFileSync(path.join(rel, "SHA256SUMS.sig"), "utf8"), fs.readFileSync(path.join(dl, "SHA256SUMS.sig"), "utf8"));
+  assert.equal(fs.readFileSync(path.join(rel, "shell.json"), "utf8"), fs.readFileSync(path.join(dl, "shell.json"), "utf8"));
+  assert.deepEqual(fs.readdirSync(rel).sort(), ["SHA256SUMS", "SHA256SUMS.sig", "shell.json"], "no temp file left");
+  // A release without shell.json still updates; only what it has is put there.
+  const p = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  assert.equal(/** @type {any} */ ((await p.run(["update"], {}))).code, 0);
+  assert.deepEqual(fs.readdirSync(path.join(p.FAKE, "ctr", "opt", "vyre", "deck", "release")).sort(), ["SHA256SUMS", "SHA256SUMS.sig"]);
+});

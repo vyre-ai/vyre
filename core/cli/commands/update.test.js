@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process";
 import { tempHome } from "../../../test/helpers.js";
 import { setJson } from "../kit.js";
 import * as config from "../../config/index.js";
-import { update, prune } from "./update.js";
+import { update, prune, publishRelease } from "./update.js";
 
 process.env.VYRE_NO_DIALOGS = "1";
 
@@ -328,4 +328,19 @@ test("update: a checkout refuses and points at git; so does the box's container"
   assert.equal(await update(["--yes"], { ...box.deps, supervisor: "docker" }), 1);
   assert.match(box.text(), /the host's vyre update does this/);
   assert.deepEqual(box.served, [], "nothing was fetched");
+});
+
+test("update: after a healthy update the release's SHA256SUMS, signature and shell.json go into the installed package's deck/release, and never into a checkout", t => {
+  const home = tempHome(t);
+  const dir = path.join(home, "rel"), pkg = path.join(home, "pkg"), checkout = path.join(home, "co");
+  for (const d of [dir, pkg, checkout]) fs.mkdirSync(d, { recursive: true });
+  fs.mkdirSync(path.join(checkout, ".git"));
+  fs.writeFileSync(path.join(dir, "SHA256SUMS"), "sums\n");
+  fs.writeFileSync(path.join(dir, "SHA256SUMS.sig"), "sig\n");
+  publishRelease(dir, pkg);
+  const to = path.join(pkg, "deck", "release");
+  assert.deepEqual(fs.readdirSync(to).sort(), ["SHA256SUMS", "SHA256SUMS.sig"], "only what the release has, and no temp file");
+  assert.equal(fs.readFileSync(path.join(to, "SHA256SUMS.sig"), "utf8"), "sig\n");
+  publishRelease(dir, checkout);
+  assert.ok(!fs.existsSync(path.join(checkout, "deck")), "a git checkout is left alone");
 });

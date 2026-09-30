@@ -107,6 +107,34 @@ async function fetchMeta(rel, dir) {
   return { sums, meta };
 }
 
+/**
+ * The release's signature and shell.json, kept beside its checked files for the phone's shell check (pwa): SHA256SUMS.sig is
+ * not listed in SHA256SUMS (it signs it), and shell.json is checked against the list. Neither can fail an update.
+ */
+async function fetchShellFiles(rel, dir, sums) {
+  try { if (rel.assets["SHA256SUMS.sig"]) await download(rel.assets["SHA256SUMS.sig"], path.join(dir, "SHA256SUMS.sig")); } catch { /* the check stays off */ }
+  try { if (rel.assets["shell.json"] && sums["shell.json"]) await fetchChecked(rel, "shell.json", dir, sums); } catch { /* the check stays off */ }
+}
+
+/**
+ * After a healthy update: the release's SHA256SUMS, signature and shell.json into the installed package's deck/release, which
+ * vyred serves at /release/. Not into a git checkout (a developer's tree), and never fails the update.
+ */
+export function publishRelease(dir, pkg = REPO) {
+  try {
+    if (fs.existsSync(path.join(pkg, ".git"))) return;
+    const to = path.join(pkg, "deck", "release");
+    fs.mkdirSync(to, { recursive: true });
+    for (const f of ["SHA256SUMS", "SHA256SUMS.sig", "shell.json"]) {
+      const from = path.join(dir, f);
+      if (!fs.existsSync(from)) continue;
+      const tmp = path.join(to, `.${f}.new`);
+      fs.copyFileSync(from, tmp);
+      fs.renameSync(tmp, path.join(to, f));
+    }
+  } catch { /* the phone's shell check stays off until the next update */ }
+}
+
 /** A release folder kept in <home>/releases, checked again before it is used. */
 function kept(dir) {
   const tgz = path.join(dir, "vyre.tgz");
@@ -261,6 +289,7 @@ async function install(ctx, releases, target, channel) {
       });
     }
     tgz = await fetchChecked(target, "vyre.tgz", dir, got.sums);
+    await fetchShellFiles(target, dir, got.sums);
   } catch (e) {
     fs.rmSync(dir, { recursive: true, force: true });
     return fail(`${/** @type {Error} */ (e).message}; nothing was installed`, { code: "bad_release", next: "try again later; if it keeps failing the release is broken" });
@@ -308,6 +337,7 @@ async function install(ctx, releases, target, channel) {
   if (!h) return undo(`vyred did not report ${target.version} on /v1/health within ${Math.round(ctx.window / 1000)}s`, true);
 
   // Healthy: from here on nothing restores the data by itself.
+  publishRelease(dir);
   const removed = prune(home, target.version);
   const fresh = await whatsNew(ctx, current);
   if (json()) return emit({ updated: true, from: current, to: target.version, channel, backup: file, removed, new: fresh });
