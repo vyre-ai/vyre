@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Red-team refusals for a credential's read scope
+
+- `test/redteam/scope.test.js` (RT-S1 to RT-S4): a named agent outside the credential's scope, a credential with no scope and a named agent, a project-bound session outside the projects, and a model giving itself scope or claiming to be the assistant, are refused; `core/vault/api-readers.test.js` also proves that putting the rebuilt config with a new scope and no secret keeps the stored key and the readers, and that new hosts still need the key. Daemon tests: runners and the test box only.
+
 #### One meaning of "no scope": you and the assistant only
 
 - `mcp`: a server added without a scope is for you, your own unnamed sessions and the assistant (recognised by what vyred says the agent is, `agents.list` kind, never by name). The stored shape is `{ projects: "*", agents: [], assistant: true }`; a named agent needs a scope that names it (`scope: { agents: ["kit"] }`) or a `#tag` on its thread. An explicit `{ projects: "*", agents: "*" }` is open as before. `mcp.update` with `scope: null` puts a server back on the default. One migration writes an explicit open scope on any existing row that had none (the old default was already written out on every row, so nothing that worked breaks), and another does the same for the connector connections made before, except the apps that are vault credentials, which never had a scope. `vyre connect list` says "you and the assistant only".
