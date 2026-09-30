@@ -1,7 +1,8 @@
 // @ts-check
 // install-mac-server.sh (anywhere, the Mac mini case): the setup code and its time land in vyre.env at
 // 0600 and in no argument, the release is checked against SHA256SUMS, the LaunchAgent runs vyred under
-// caffeinate with the env file's lines exported, and uninstall leaves the person's data. All against a
+// caffeinate with the env file's lines exported, and uninstall leaves the person's data. The default
+// (system service) mode runs the root installer under one fake sudo. All against a
 // fake launchctl, caffeinate, brew and colima in a temp home: no real service, no Homebrew, no root.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -55,8 +56,13 @@ exit 0`,
   return { base, home, src, env, calls: () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "") };
 }
 
-const run = (/** @type {Record<string,string>} */ env, /** @type {string[]} */ args) =>
-  spawnSync("sh", [SCRIPT, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env, timeout: 60_000 });
+// The tests below the login-only ones pass "--system" to take the default (system service) path;
+// everything else runs the login-only mode these tests were written for.
+const run = (/** @type {Record<string,string>} */ env, /** @type {string[]} */ args) => {
+  const system = args.includes("--system");
+  const a = system ? args.filter(x => x !== "--system") : ["--login-only", ...args];
+  return spawnSync("sh", [SCRIPT, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env, timeout: 60_000 });
+};
 
 test("install-mac-server.sh: --code is refused, because a process list shows arguments", t => {
   const m = mac(t);
@@ -273,3 +279,172 @@ test("install-mac-server.sh: a Docker Desktop already there is untouched and no 
   assert.equal(fs.readFileSync(path.join(m.base, "tools", "docker"), "utf8"), before);
   assert.equal(fs.readFileSync(path.join(app, "Info.plist"), "utf8"), "docker desktop");
 });
+
+// ---------------------------------------------------------------------------------------------
+// The default mode: the system service (ADR 0040 phase 4). The root installer is a fake that acts
+// like the real one where the script can see it: it prints the enrolment line last, writes core.json
+// and core's socket file, and starts the wrapper it was given as launchd would.
+
+const ENROL = "K7QX2M";
+
+/** A Mac where the script installs the system service: a fake sudo that records its argv, a fake root installer, a Node tarball to bundle, and a signed-looking release on file://. */
+function sys(/** @type {import("node:test").TestContext} */ t, /** @type {{ fail?: boolean, noEnrol?: boolean }} */ o = {}) {
+  const m = mac(t);
+  const bin = path.join(m.base, "bin"), site = path.join(m.base, "site"), core = path.join(m.base, "core-base");
+  fs.mkdirSync(site); fs.mkdirSync(core);
+  // The Node the script bundles: a tarball whose bin/node runs the real one.
+  const nd = path.join(m.base, "nodepkg", "node-v0"); fs.mkdirSync(path.join(nd, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(nd, "bin", "node"), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
+  execFileSync("tar", ["-czf", path.join(m.base, "node.tgz"), "-C", path.dirname(nd), "node-v0"]);
+  // sudo: records that it ran and with what, then runs the command as this user (the test is not root).
+  fs.writeFileSync(path.join(bin, "sudo"), `#!/bin/sh\necho "sudo $*" >>"${path.join(m.base, "calls.log")}"\nexec "$@"\n`, { mode: 0o755 });
+  // The fake root installer.
+  const pkg = path.join(m.base, "pkg", "vyre"); fs.mkdirSync(path.join(pkg, "core", "daemon"), { recursive: true }); fs.mkdirSync(path.join(pkg, "core", "vyre-core"), { recursive: true });
+  fs.copyFileSync(path.join(m.src, "core", "daemon", "main.js"), path.join(pkg, "core", "daemon", "main.js"));
+  fs.writeFileSync(path.join(pkg, "core", "vyre-core", "install-main.js"), `import fs from "node:fs"; import path from "node:path"; import { spawn } from "node:child_process";
+const a = process.argv.slice(2), cmd = a[0];
+const flag = k => a[a.indexOf(k) + 1];
+const base = process.env.FAKE_CORE_BASE;
+fs.appendFileSync(path.join(process.env.FAKE_LOG_DIR, "root.log"), JSON.stringify({ argv: a, uid: process.getuid?.() }) + "\\n");
+if (cmd === "uninstall") { fs.rmSync(path.join(base, "core.json"), { force: true }); console.log("  ok  removed"); process.exit(0); }
+if (${o.fail ? "true" : "false"}) { console.error("vyre-install: the manifest signature does not verify"); process.exit(1); }
+for (const f of ["vyre.tgz", "manifest.json", "manifest.sig"]) if (!fs.existsSync(path.join(flag("--release-dir"), f))) { console.error("missing " + f); process.exit(1); }
+const sock = path.join(base, "vyre-core.sock"); fs.writeFileSync(sock, "");
+fs.writeFileSync(path.join(base, "core.json"), JSON.stringify({ socket: sock, uid: 400 }));
+spawn(flag("--vyred-wrapper"), [], { detached: true, stdio: "ignore" }).unref();
+console.log("  ok  installed");
+${o.noEnrol ? "" : `console.log("VYRE_CORE_ENROL=${ENROL}");`}
+`);
+  execFileSync("tar", ["-czf", path.join(site, "vyre.tgz"), "-C", path.dirname(pkg), "vyre"]);
+  fs.writeFileSync(path.join(site, "manifest.json"), JSON.stringify({ version: "0.2.0", sha256: sha(fs.readFileSync(path.join(site, "vyre.tgz"))) }));
+  fs.writeFileSync(path.join(site, "manifest.sig"), "c2ln\n");
+  fs.writeFileSync(path.join(site, "SHA256SUMS"), ["vyre.tgz", "manifest.json", "manifest.sig"].map(f => `${sha(fs.readFileSync(path.join(site, f)))}  ${f}`).join("\n") + "\n");
+  const env = {
+    ...m.env, PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, VYRE_UNAME_M: "arm64",
+    VYRE_SUDO: path.join(bin, "sudo"), VYRE_CORE_BASE: core, FAKE_CORE_BASE: core, FAKE_LOG_DIR: m.base,
+    VYRE_BOX_URL: `file://${site}/`, VYRE_NODE_URL: `file://${path.join(m.base, "node.tgz")}`, VYRE_NODE_SHA256: sha(fs.readFileSync(path.join(m.base, "node.tgz"))),
+  };
+  const rootCalls = () => (fs.existsSync(path.join(m.base, "root.log")) ? fs.readFileSync(path.join(m.base, "root.log"), "utf8").trim().split("\n").map(l => JSON.parse(l)) : []);
+  return { ...m, env, site, core, rootCalls };
+}
+
+test("install-mac-server.sh: the default is the system service, under one sudo, and vyred and core are up", t => {
+  const m = sys(t);
+  const r = run({ ...m.env, VYRE_CODE: CODE }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.equal((m.calls().match(/^sudo /gm) || []).length, 1, "one sudo, once");
+  const calls = m.rootCalls();
+  assert.equal(calls.length, 1);
+  const a = calls[0].argv;
+  assert.equal(a[0], "install");
+  assert.equal(a[a.indexOf("--owner-uid") + 1], String(process.getuid?.()), "the person's own uid, never root");
+  assert.match(a[a.indexOf("--release-dir") + 1], /release$/, "the three verified downloads sit in one folder");
+  assert.equal(a[a.indexOf("--vyred-wrapper") + 1], path.join(m.env.VYRE_SERVER_DIR, "bin", "vyre-serve"));
+  assert.equal(a[a.indexOf("--node") + 1], path.join(m.env.VYRE_SERVER_DIR, "node-dist", "bin", "node"), "the bundled node, checked against its pin");
+  assert.ok(!fs.existsSync(path.join(m.env.VYRE_LAUNCHAGENTS, "run.vyre.server.plist")), "no LaunchAgent: launchd's system domain runs it");
+  assert.ok(!/launchctl bootstrap/.test(m.calls()), "the script never bootstraps; the root installer does");
+  assert.match(r.stdout, /vyre-core is up/);
+  assert.match(r.stdout, /starts when this Mac boots, with nobody signed in/);
+  // The enrolment code is read and dropped: never on screen, never in the env file, never in a call.
+  assert.ok(!(r.stdout + r.stderr).includes(ENROL) && !m.calls().includes(ENROL));
+  assert.ok(!fs.readFileSync(path.join(m.env.VYRE_HOME, "vyre.env"), "utf8").includes(ENROL));
+  assert.ok(!(r.stdout + r.stderr).includes(CODE), "the setup code is never shown either");
+});
+
+test("install-mac-server.sh: a failing root installer stops the script, says so, and shows no code", t => {
+  const m = sys(t, { fail: true });
+  const r = run(m.env, ["--yes", "--system"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /the root installer failed/);
+  assert.ok(!/vyre-core is up/.test(r.stdout));
+});
+
+test("install-mac-server.sh: an installer that never printed the enrolment line did not finish", t => {
+  const m = sys(t, { noEnrol: true });
+  const r = run(m.env, ["--yes", "--system"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /did not finish/);
+});
+
+test("install-mac-server.sh: system mode downloads the manifest and signature and refuses a bad sum", t => {
+  const m = sys(t);
+  fs.writeFileSync(path.join(m.site, "manifest.sig"), "tampered\n");
+  const r = run(m.env, ["--yes", "--system"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /manifest\.sig does not match SHA256SUMS/);
+  assert.equal(m.rootCalls().length, 0, "root is never asked");
+  assert.ok(!/^sudo /m.test(m.calls()));
+});
+
+test("install-mac-server.sh: a Node download that does not match its pin installs nothing and never reaches sudo", t => {
+  const m = sys(t);
+  const r = run({ ...m.env, VYRE_NODE_SHA256: sha("other") }, ["--yes", "--system"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /Node download does not match its pinned checksum/);
+  assert.ok(!/^sudo /m.test(m.calls()));
+  assert.ok(!fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, "node-dist")));
+});
+
+test("install-mac-server.sh: --from needs --login-only in system mode, because a checkout has no signed release", t => {
+  const m = sys(t);
+  const r = run(m.env, ["--from", m.src, "--system"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /no signed release/);
+});
+
+test("install-mac-server.sh: --dry-run in system mode prints the plan and changes nothing", t => {
+  const m = sys(t);
+  const r = run({ ...m.env, VYRE_CODE: CODE }, ["--dry-run", "--system"]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /one sudo/);
+  assert.deepEqual(fs.readdirSync(m.home), []);
+  assert.ok(!/^sudo /m.test(m.calls()));
+});
+
+test("install-mac-server.sh: the system Colima start command reaches the root installer, one argument each", t => {
+  const m = noBrewSys(t);
+  const r = run(m.env, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const a = m.rootCalls()[0].argv;
+  const progs = a.flatMap((x, i) => (x === "--colima-program" ? [a[i + 1]] : []));
+  assert.equal(progs[0], "/usr/bin/env");
+  assert.match(progs[1], /^PATH=.*\.vyre-server\/bin:/);
+  assert.ok(progs.includes(path.join(m.env.VYRE_SERVER_DIR, "bin", "colima")));
+  assert.deepEqual(progs.slice(progs.indexOf("start")), ["start", "--foreground", "--vm-type", "vz", "--cpu", "2", "--memory", "4", "--disk", "40"]);
+  assert.ok(progs.includes("--foreground") && progs.includes("vz"));
+  assert.ok(!fs.existsSync(path.join(m.env.VYRE_LAUNCHAGENTS, "run.vyre.colima.plist")), "no per-user Colima agent in system mode");
+});
+
+test("install-mac-server.sh: a Colima that does not match its pin is not handed to the root installer", t => {
+  const m = noBrewSys(t);
+  const r = run({ ...m.env, VYRE_COLIMA_SHA256: sha("no") }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!m.rootCalls()[0].argv.includes("--colima-program"));
+});
+
+test("install-mac-server.sh: system uninstall runs the root uninstaller once, and --purge --yes asks it to purge", t => {
+  const m = sys(t);
+  assert.equal(run(m.env, ["--yes", "--system"]).status, 0);
+  const im = path.join(m.core, "current-install-main.js");
+  fs.copyFileSync(path.join(m.env.VYRE_SERVER_DIR, "app", "core", "vyre-core", "install-main.js"), im);
+  const r = run({ ...m.env, VYRE_INSTALL_MAIN: im }, ["--uninstall", "--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const last = m.rootCalls().at(-1).argv;
+  assert.deepEqual(last, ["uninstall"]);
+  assert.ok(fs.existsSync(path.join(m.env.VYRE_HOME, "vyre.env")), "data stays");
+  const p = run({ ...m.env, VYRE_INSTALL_MAIN: im }, ["--uninstall", "--purge", "--yes", "--system"]);
+  assert.equal(p.status, 0, p.stderr);
+  assert.deepEqual(m.rootCalls().at(-1).argv, ["uninstall", "--purge"]);
+  assert.ok(!fs.existsSync(m.env.VYRE_HOME));
+});
+
+/** sys() on a Mac with no Homebrew and no colima, the release and pinned tools served from file://. */
+function noBrewSys(/** @type {import("node:test").TestContext} */ t) {
+  const s = sys(t), nb = noBrew(t);
+  const tools = path.join(s.base, "tools"); fs.mkdirSync(tools);
+  for (const n of ["launchctl", "caffeinate", "sudo"]) fs.copyFileSync(path.join(s.base, "bin", n), path.join(tools, n));
+  fs.symlinkSync(process.execPath, path.join(tools, "node"));
+  for (const k of ["VYRE_COLIMA_URL", "VYRE_COLIMA_SHA256", "VYRE_LIMA_URL", "VYRE_LIMA_SHA256", "VYRE_DOCKER_URL", "VYRE_DOCKER_SHA256"]) s.env[k] = nb.env[k];
+  s.env.PATH = `${tools}:/usr/bin:/bin`;
+  return s;
+}

@@ -428,7 +428,8 @@ system_install() {
     IFS=$oldifs
   fi
   say "Vyre now asks for your Mac password once, to install its system service."
-  out=$("$SUDO" "$NODE_DIST/bin/node" "$im" "$@"; printf 'rc:%s' "$?")
+  # && / || rather than `;`: `set -e` reaches into the substitution in some shells and would end it before the status is read.
+  out=$("$SUDO" "$NODE_DIST/bin/node" "$im" "$@" && printf 'rc:0' || printf 'rc:%s' "$?")
   rc=${out##*rc:}
   out=${out%rc:*}
   [ "$rc" = 0 ] || { out=""; die "the root installer failed (exit $rc); its message is above"; }

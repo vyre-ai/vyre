@@ -175,19 +175,26 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   Homebrew) is not built: it needs a hash we pin at release; without Homebrew the script says so and
   agents get no computer.
 
+## Done (cont. 9): 30 Sep, phase 4 (lead's rulings: no setup-only exception, I own work/vyre-core)
+- work/vyre-core (../vyre-core) now carries my installer commits (release manifest verify, root installer,
+  LaunchDaemons for core, update and vyred and Colima, signed apply step) and has stage/0.2 MERGED in (not
+  rebased: 19 commits each conflicting on generated docs). Resolved: presence role is cfg.machine, reach entries
+  and the core flag both kept, vault kinds import from lib/vault-kinds, the macOS session test injects its
+  Capsule stand-in. vyre-core, boundaries, docs, presence, modules, daemon tests green.
+- work/anywhere-server was reset onto work/vyre-core (backup: backup/anywhere-server-0930) with my three script
+  commits replayed. scripts/install-mac-server.sh default mode = system service: pinned Node fetched, release
+  + manifest + signature checked against SHA256SUMS, ONE sudo runs the root installer, enrolment line read and
+  dropped, waits for vyred and core's socket. `--login-only` is the old LaunchAgent mode. Colima pinned-binary
+  fallback (no Homebrew) feeds the Colima LaunchDaemon in system mode. test/install-mac-server.test.js 24/24.
+- Fixed: `out=$(sudo ...; printf rc)` died under set -e in a substitution; now && / ||.
+
 ## Next
-1. ADR 0040 (vyre-core, drafted by e2e at 644c9e50 on work/e2e-setsid): write my three named
-   sections -- install mechanics under the no-Apple-Developer-ID constraint (sudo once,
-   LaunchDaemon+LaunchAgent, root-owned bundled node, self-verified Ed25519 release-signed
-   updates), the vault migration sequence (~/.vyre/vyre.db into vyre-core's root-owned store) and
-   its failure modes, and whether the Solo-Deck loopback design above needs to change once
-   vyre-core exists (presence verification moves to vyre-core; person-side vyred may proxy reads
-   only, never a privileged write, per team-lead's binding constraint).
-2. Once ADR 0040's install design is agreed, redo `vyre server here` / the Mac server service
-   against it -- the plan in ADR 0039 section 3 is explicitly superseded, not a thing to build
-   as originally written.
-3. `core/cli/commands/up.js`: stop assuming role=local means "find a box"; ask/default Solo.
-4. Coordinate the move engine contract (section 4) with federation -- done (see Needs).
+1. Phase 5 (co-built with tailnet): core keys tools (keys.exists/ensure/box.pub/box.dh/route.pub/route.sign),
+   lib/vyre-core-keys.js client + fakeCoreKeys, on work/vyre-core.
+2. Ask reviewer-2 for review of work/vyre-core; land.
+3. GitHub macOS runner proof: workflow builds a release signed with a throwaway key (key patched into the test
+   tarball's release.js), runs the real script + real sudo, checks _vyre, daemons, core socket, vyred, pinned Colima.
+4. Then merge work/vyre-core into work/anywhere-server, review, land.
 
 ## Needs from others
 - federation: answered their vault/sessions atomicity question (no atomic pairing needed; their
