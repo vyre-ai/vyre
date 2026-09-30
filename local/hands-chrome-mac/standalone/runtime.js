@@ -63,6 +63,7 @@ export async function createRuntime(o = {}) {
     // Vyre Memory's site knowledge, answered from files in this folder when there is no Vyre to ask.
     if (tool === "memory.site.get") return sites.get(input || {});
     if (tool === "memory.site.put") return readConfig(dataDir).learn !== true ? { data: { accepted: false, refused: [{ path: "", why: "learning is off" }] } } : sites.put(input || {});
+    if (tool === "memory.site.report") return readConfig(dataDir).learn !== true ? { data: { known: false } } : sites.report(input || {});
     if (tool === "memory.site.list") return sites.list();
     if (tool === "memory.site.forget") return sites.forget(input || {});
     return { error: { code: "no_such_tool", message: `no tool ${tool}` } };

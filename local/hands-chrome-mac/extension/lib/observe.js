@@ -34,6 +34,17 @@ export function pageTemplate(url) {
 /** @param {string} url @returns {string} the origin, or "" for a page that is not http(s) */
 export function originOf(url) { try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.origin : ""; } catch { return ""; } }
 
+/**
+ * The id a control is stored under: the page template plus what was ASKED FOR (its identifier, else its label), not what was found. So when a stored identifier stops
+ * matching and a fallback strategy finds the control, the new selector comes back under the same id and heals the old one instead of starting a second control.
+ * @param {string} page @param {any} requested the selector the caller gave
+ */
+export function controlId(page, requested) {
+  const r = requested && typeof requested === "object" ? requested : {};
+  const key = r.identifier ? `i|${r.identifier}` : r.name ? `n|${r.role || ""}|${r.name}` : "";
+  return key ? `c_${hash(`${page}|${key}`)}` : "";
+}
+
 /** @param {string} origin */
 function hostOf(origin) { try { return new URL(origin).host; } catch { return ""; } }
 
@@ -82,7 +93,7 @@ export function observeOp(o) {
       const visits = name && o.nameVisits ? o.nameVisits(origin, `${page}|${role}|${name}`, name) : [];
       if (!identifier && !(name && visits.length >= 2)) continue; // nothing stable to find it by, and nothing that may be stored
       items.push({
-        id: `c_${hash(`${page}|${role}|${identifier || name}`)}`, page, role,
+        id: controlId(page, (o.args && o.args.selector) || { identifier: rawId, name: c.name, role }) || `c_${hash(`${page}|${role}|${identifier || name}`)}`, page, role,
         ...(evd ? { container: evd.container, siblings: evd.siblings } : {}),
         ...(identifier ? { identifierVisits: idVisits } : {}),
         ...(name ? { name, nameVisits: visits } : {}),
@@ -130,4 +141,22 @@ export function paramWithChoices(param, ev = {}) {
   const opts = Array.isArray(ev.options) ? ev.options.map(x => String(x)).filter(Boolean) : [];
   if (!opts.length || opts.length > 8 || !ev.container || !CHOICE_WIDGETS.has(String(ev.container).toLowerCase()) || !Array.isArray(ev.visits) || new Set(ev.visits).size < 2) return base;
   return { ...base, type: "choice", choices: opts, choicesContainer: String(ev.container).toLowerCase(), choicesVisits: [...new Set(ev.visits)].slice(0, 4) };
+}
+
+/**
+ * A step that failed to find a control the device KNOWS about is a miss for that stored fact: its confidence drops, and after repeated misses it stops being trusted.
+ * Only a fact already in the card is reported (there is nothing to lower for a control never learned), and only "not found" counts: a stop, a covered control or a
+ * blocked page says nothing about the selector.
+ * @param {{ op: string, args?: any, error?: any, tabUrl?: string, card?: any }} o @returns {{ origin: string, part: "controls", id: string } | null}
+ */
+export function observeMiss(o) {
+  const origin = originOf(String(o.tabUrl || ""));
+  if (!origin || !/^(page\.act|page\.fill)$/.test(o.op) || !o.error || String(o.error.code) !== "not_found") return null;
+  const page = pageTemplate(String(o.tabUrl));
+  const sels = o.op === "page.act" ? [o.args && o.args.selector] : (Array.isArray(o.args && o.args.fields) ? o.args.fields.map((/** @type {any} */ f) => f && f.selector) : []);
+  for (const sel of sels) {
+    const id = controlId(page, sel);
+    if (id && o.card && Array.isArray(o.card.controls) && o.card.controls.some((/** @type {any} */ c) => c.id === id)) return { origin, part: "controls", id };
+  }
+  return null;
 }

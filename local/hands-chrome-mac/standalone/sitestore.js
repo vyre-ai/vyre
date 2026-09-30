@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk } from "../extension/shared/sk/site-knowledge.js";
+import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk, heal, itemId } from "../extension/shared/sk/site-knowledge.js";
 
 /** @param {{ dataDir: string, now?: () => number }} o */
 export function createSiteStore({ dataDir, now = Date.now }) {
@@ -43,6 +43,20 @@ export function createSiteStore({ dataDir, now = Date.now }) {
       const rec = mergeRecord(base, s.record, { now: now() });
       write(rec);
       return { data: { accepted: true, rev: rec.rev, dropped: s.dropped.length } };
+    },
+    /** A stored fact worked or did not: its confidence moves (lib heal). @param {{ origin: string, part: string, id: string, outcome: string }} i */
+    report(i) {
+      const key = String(i && i.origin || "");
+      if (!keyOk(key)) return { error: { code: "bad_request", message: "not an origin" } };
+      if (!["controls", "api", "frames", "flows"].includes(String(i.part)) || !["ok", "miss"].includes(String(i.outcome))) return { error: { code: "bad_request", message: "bad part or outcome" } };
+      const rec = read(key);
+      const list = rec && rec[i.part];
+      const at = Array.isArray(list) ? list.findIndex((/** @type {any} */ x) => itemId(i.part, x) === String(i.id)) : -1;
+      if (at < 0) return { data: { known: false } };
+      list[at] = heal(list[at], /** @type {"ok"|"miss"} */ (i.outcome), now());
+      rec.rev = (rec.rev || 0) + 1; rec.updated = new Date(now()).toISOString();
+      write(rec);
+      return { data: { known: true, conf: list[at].conf, misses: list[at].misses || 0, quarantined: !!list[at].qAt } };
     },
     /** What is known, by origin. */
     list() {

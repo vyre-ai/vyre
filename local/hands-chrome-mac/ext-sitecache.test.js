@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pageTemplate, observeOp, familyOf, hash, paramWithChoices } from "./extension/lib/observe.js";
+import { pageTemplate, observeOp, familyOf, hash, paramWithChoices, controlId } from "./extension/lib/observe.js";
 import { sanitize } from "./extension/shared/sk/site-knowledge.js";
 import { createSiteCache, FLUSH_MS, WANT_EVERY_MS } from "./extension/lib/sitecache.js";
 import { createSiteStore } from "./standalone/sitestore.js";
@@ -209,4 +209,60 @@ test("a menu's choices survive only with the widget's role and two visits that s
   assert.equal(flow(paramWithChoices({ name: "x" }, { options: Array.from({ length: 12 }, (_, i) => `Opt ${i}`), container: "menu", visits: ["v1", "v2"] })).choices, undefined, "too many options");
   const c = createSiteCache({ now: () => 1_000_000 });
   assert.equal(c.choicesVisits("https://a.example", "p|menu", ["A", "B"]).length, 0, "one visit is not evidence");
+});
+
+test("verify and self-heal: a control keeps ONE id whichever selector found it, so a fallback heals the stored one instead of starting another", () => {
+  const two = () => ["v1", "v2"];
+  const asked = { identifier: "create-workflow", name: "Create Workflow" };
+  const direct = observeOp({ op: "page.act", tabUrl: GHL, args: { selector: asked }, result: act({ role: "button", name: "Create Workflow", identifier: "create-workflow" }), nameVisits: two });
+  // the identifier stopped matching; the label found the control, and the page now shows a different identifier
+  const healed = observeOp({ op: "page.act", tabUrl: GHL, args: { selector: asked }, result: { ...act({ role: "button", name: "Create Workflow", identifier: "btn-create-wf" }, { strategy: "name", fallback: true }), evidence: { container: "none", siblings: 1 } }, nameVisits: two });
+  const a = direct && direct.patch.controls[0], b = healed && healed.patch.controls[0];
+  assert.equal(a.id, b.id, "the same stored control");
+  assert.equal(b.selector.identifier, "btn-create-wf", "the new selector comes back under the old id");
+  assert.equal(controlId("/x", { identifier: "a" }), controlId("/x", { identifier: "a", name: "Other" }), "what was asked for by identifier names it");
+});
+
+test("a miss is reported only for a control the card knows, and only for not_found", async () => {
+  const sent = /** @type {any[]} */ ([]);
+  let t = 1_000_000;
+  const c = createSiteCache({ emit: e => sent.push(e), now: () => t, setT: () => 1, clearT: () => {} });
+  c.setEnabled(true);
+  const page = "/v2/location/{id}/automation/workflows";
+  const id = controlId(page, { identifier: "save-workflow" });
+  await c.setCard("https://app.gohighlevel.com", { v: 1, key: "https://app.gohighlevel.com", controls: [{ id, page }] }, 2);
+  const miss = (/** @type {any} */ sel, /** @type {string} */ code = "not_found") => c.miss({ op: "page.act", args: { selector: sel }, error: { code }, tabUrl: GHL });
+  miss({ identifier: "save-workflow" });
+  miss({ identifier: "never-learned" });
+  miss({ identifier: "save-workflow" }, "covered");
+  miss({ identifier: "save-workflow" }, "stopped");
+  await c.flush();
+  const reports = sent.filter(e => e.event === "site.report");
+  assert.equal(reports.length, 1, "one report, deduplicated, for the known fact only");
+  assert.deepEqual([reports[0].part, reports[0].id, reports[0].outcome], ["controls", id, "miss"]);
+  // off: nothing is reported
+  c.setEnabled(false);
+  miss({ identifier: "save-workflow" });
+  assert.equal((await c.flush()).length, 0);
+});
+
+test("the file store: a miss lowers a stored fact's confidence, three misses quarantine it and the card stops offering it, a success raises it", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sk-"));
+  try {
+    let now = Date.parse("2026-10-01T00:00:00Z");
+    const st = createSiteStore({ dataDir: dir, now: () => now });
+    const origin = "https://app.gohighlevel.com";
+    const id = "c_test01";
+    st.put({ origin, patch: { key: origin, controls: [{ id, page: "/workflows", role: "button", selector: { strategy: "identifier", identifier: "save-workflow" }, identifierVisits: ["a", "b"] }] } });
+    assert.equal(st.report({ origin, part: "controls", id, outcome: "miss" }).data.conf, 0.3);
+    assert.equal(st.report({ origin, part: "controls", id, outcome: "ok" }).data.conf, 0.4);
+    assert.equal(st.report({ origin, part: "controls", id: "nope", outcome: "miss" }).data.known, false);
+    assert.equal(st.report({ origin, part: "controls", id, outcome: "sideways" }).error.code, "bad_request");
+    for (let i = 0; i < 3; i++) st.report({ origin, part: "controls", id, outcome: "miss" });
+    const r = st.report({ origin, part: "controls", id, outcome: "miss" }).data;
+    assert.equal(r.quarantined, true, "conf under 0.15: quarantined");
+    assert.equal(st.get({ origin }).data.origin.controls.length, 0, "the arrival card no longer offers it");
+    now += 1000; // the record itself still holds it, as "used to work"
+    assert.equal(st.record(origin).controls.length, 1);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
