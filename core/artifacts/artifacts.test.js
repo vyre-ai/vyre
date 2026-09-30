@@ -111,7 +111,8 @@ test("artifacts: kinds, formats, dashboards and limits are checked", async t => 
   const svg = await ok("artifacts.create", { kind: "diagram", format: "svg", title: "Flow", content: "<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>" });
   const ex = await ok("artifacts.export", { id: svg.id, as: "page" });
   assert.ok(!ex.body.includes("<script>"), "an SVG is only ever an image");
-  assert.match(ex.body, /<img class="svg"/);
+  assert.match(ex.body, /<img alt="Flow"/);
+  assert.match(ex.body, /Vyre removed a script from this SVG/, "the page says what was removed");
 });
 
 test("artifacts: the private view is served at an opaque origin, to the person only", async t => {
