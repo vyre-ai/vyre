@@ -305,11 +305,15 @@ function alive(pid) {
  * Whether the process on a socket runs under a Claude session or a thread vyred started.
  * `deps` are test seams.
  * @param {import("node:net").Socket} socket @param {any} registry @param {string} [caller]
- * @param {{ peerPid?: typeof peerPid, insideClaude?: typeof insideClaude, processTable?: typeof processTable, alive?: (pid: number) => boolean, delayMs?: number }} [deps]
+ * @param {{ self?: boolean, peerPid?: typeof peerPid, insideClaude?: typeof insideClaude, processTable?: typeof processTable, alive?: (pid: number) => boolean, delayMs?: number }} [deps]
  */
 export async function above(socket, registry, caller, deps = {}) {
   const pid = await (deps.peerPid || peerPid)(socket);
   if (!pid) return { inside: false, nopid: true };
+  // vyred never connects to its own socket: a peer that is vyred itself is a misread (a recycled
+  // descriptor), never the person. Only an in-process test client, which `deps.self` names, is let
+  // through.
+  if (!deps.self && pid === process.pid) return { inside: true, by: pid, self: true };
   const r = await registry.call("threads.pids", {}, "module:vyred");
   // The processes vyred runs threads in, their process groups and sessions (core/sessions/spawn.js
   // keeps a group listed until its last process is gone, so an orphan is still caught).

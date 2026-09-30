@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- A peer pid equal to vyred's own is refused as a model's (defence in depth, reviewer-2); an in-process test client passes `deps.self` (`core/daemon/index.js`).
 - Closed a fail-open in the caller check under load: a peer that connected, sent and exited freed its
   fd number, and the helper that reads the peer's pid could be handed another descriptor (its own
   stdout pipe), which named vyred itself, read as "vyred itself, not a caller" and ran a person's tool

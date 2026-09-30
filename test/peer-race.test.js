@@ -146,6 +146,15 @@ test("peer race: a socket that closed before or during the read gives no pid (it
   assert.equal(await readPeerPid(/** @type {any} */ (closing), seam), null, "closed while the helper ran: its answer is thrown away");
 });
 
+test("peer race: a peer that is vyred itself is a misread and a model's; only an in-process seam lets it through", async () => {
+  const deps = { peerPid: async () => process.pid, delayMs: 1, alive: () => true, processTable: () => () => ({ ppid: 1, args: "node" }) };
+  const r = await above({}, registry, "cli", deps);
+  assert.equal(r.inside, true);
+  assert.equal(r.self, true);
+  const seam = await above({}, registry, "cli", { ...deps, self: true });
+  assert.equal(seam.inside, false, "an in-process test client is let through by name");
+});
+
 /** A forger: a node script run under a fake `claude`, saying it is the person's cli. */
 function forger(dir, socket, i, { fireAndForget = false } = {}) {
   const js = path.join(dir, `forge-${i}.mjs`);
