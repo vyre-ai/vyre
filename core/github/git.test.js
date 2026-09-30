@@ -367,7 +367,7 @@ test("pushSession: a hostile session id can't push anything but its own sanitize
   );
 });
 
-test("pushSession: the destination is the project's recorded repo, never .git/config - a tampered origin is never contacted, and a url rewrite rule refuses before the token is handed over", async t => {
+test("pushSession: the push runs from a fresh throwaway repo that has read none of the project's config - origin, pushurl, insteadOf, http.*, include.path, credential - and the folder is deleted after", async t => {
   const repoDir = makeClonedRepo(t);
   const evil = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-evil-"));
   t.after(() => fs.rmSync(evil, { recursive: true, force: true }));
@@ -376,22 +376,32 @@ test("pushSession: the destination is the project's recorded repo, never .git/co
   fs.writeFileSync(path.join(w.path, "n.md"), "x\n");
   plainGit(w.path, ["add", "n.md"]);
   plainGit(w.path, ["commit", "-q", "-m", "n"]);
-  // An agent's shell rewrote origin and added a push url.
+  const tip = plainGit(repoDir, ["rev-parse", "refs/heads/vyre/tamper1"]).trim();
+  // Everything an agent's shell could plant, including an include.path to a file that carries a scoped curloptResolve.
+  const poison = path.join(evil, "evil.cfg");
+  fs.writeFileSync(poison, '[http "https://github.com/"]\n\tcurloptResolve = github.com:443:127.0.0.1\n\tsslCAInfo = /tmp/evil-ca.pem\n');
   plainGit(repoDir, ["remote", "set-url", "origin", evil]);
   plainGit(repoDir, ["config", "remote.origin.pushurl", evil]);
-  await assert.rejects(pushSession({ repoDir, session: "tamper1", defaultBranch: "main", token: "not-a-real-token", fullName: "alex/harlow", base: DEAD }), /push failed/);
+  plainGit(repoDir, ["config", `url.${evil}/.insteadOf`, `${DEAD}/`]);
+  plainGit(repoDir, ["config", `url.${evil}/.pushInsteadOf`, `${DEAD}/`]);
+  plainGit(repoDir, ["config", "http.curloptResolve", "github.com:443:127.0.0.1"]);
+  plainGit(repoDir, ["config", "http.proxy", "http://127.0.0.1:1"]);
+  plainGit(repoDir, ["config", "credential.helper", "store"]);
+  plainGit(repoDir, ["config", "core.gitProxy", "x"]);
+  plainGit(repoDir, ["config", "include.path", poison]);
+  let seen = null;
+  const inspect = tmp => {
+    const cfg = fs.readFileSync(path.join(tmp, "config"), "utf8");
+    seen = { tmp, cfg, refs: plainGit(tmp, ["for-each-ref", "--format=%(refname) %(objectname)"]).trim(), hooks: fs.existsSync(path.join(tmp, "hooks")), type: plainGit(tmp, ["cat-file", "-t", tip]).trim() };
+  };
+  await assert.rejects(pushSession({ repoDir, session: "tamper1", defaultBranch: "main", token: "not-a-real-token", fullName: "alex/harlow", base: DEAD, inspect }), /push failed/);
+  assert.ok(seen, "the push ran from a temp repo");
+  for (const bad of ["evil", "include", "insteadOf", "http", "credential", "gitProxy", "remote"]) assert.ok(!seen.cfg.includes(bad), `the temp repo's config has no ${bad}`);
+  assert.equal(seen.refs, `refs/heads/vyre/tamper1 ${tip}`, "one ref, the session's tip");
+  assert.equal(seen.hooks, false);
+  assert.equal(seen.type, "commit", "the project's objects are reachable through the alternates file");
+  assert.equal(fs.existsSync(seen.tmp), false, "the temp repo is deleted");
   assert.equal(plainGit(evil, ["for-each-ref"]).trim(), "", "the rewritten origin was never pushed to");
-  // insteadOf / pushInsteadOf rules that would catch the real address are refused outright.
-  for (const key of ["insteadOf", "pushInsteadOf"]) {
-    plainGit(repoDir, ["config", `url.${evil}/.${key}`, `${DEAD}/`]);
-    await assert.rejects(pushSession({ repoDir, session: "tamper1", defaultBranch: "main", token: "not-a-real-token", fullName: "alex/harlow", base: DEAD }), e => e.code === "remote_changed");
-    plainGit(repoDir, ["config", "--unset", `url.${evil}/.${key}`]);
-  }
-  // Config that redirects or re-trusts the TLS connection itself is refused too.
-  for (const [key, value] of [["http.curloptResolve", "github.com:443:127.0.0.1"], ["http.https://github.com/.sslCAInfo", "/tmp/x.pem"], ["http.proxy", "http://127.0.0.1:1"], ["credential.helper", "store"], ["core.gitProxy", "x"]]) {
-    plainGit(repoDir, ["config", "--local", key, value]);
-    await assert.rejects(pushSession({ repoDir, session: "tamper1", defaultBranch: "main", token: "not-a-real-token", fullName: "alex/harlow", base: DEAD }), e => e.code === "remote_changed", key);
-    plainGit(repoDir, ["config", "--local", "--unset", key]);
-  }
   await assert.rejects(pushSession({ repoDir, session: "tamper1", defaultBranch: "main", token: "t", fullName: "../evil", base: DEAD }), e => e.code === "bad_input");
+  await assert.rejects(pushSession({ repoDir, session: "nobranch", defaultBranch: "main", token: "t", fullName: "alex/harlow", base: DEAD }), /no branch/);
 });

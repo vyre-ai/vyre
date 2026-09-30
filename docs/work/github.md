@@ -579,3 +579,4 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
   allow_secret counts only for a non-model caller or meta.asked. cloneRepo left (fresh dir, no local
   config: reviewer's LOW). Tests in git.test.js and index.test.js.
 - reviewer-2 LOW on 622904e8: gh is resolved to an absolute path (config/VYRE_GH_BIN if absolute, else /usr/bin, /usr/local/bin, /opt/homebrew/bin, /bin, else a PATH folder the user cannot write); a planted gh in a writable PATH folder is never run.
+- reviewer-2 include.path bypass + lead ruling: no more per-key config scanning. pushSession now pushes from a fresh throwaway bare repo (alternates to the project's objects, one ref, git defaults, no template), token only there, folder deleted after. Test poisons origin/pushurl/insteadOf/http.*/include.path/credential/gitProxy and asserts the temp repo has none of it.

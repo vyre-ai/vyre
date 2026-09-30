@@ -11,6 +11,7 @@
 // blocked on this, and is fully implemented and tested below.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { gitAsync, gitWithAskpass } from "../../lib/git-safe.js";
 
@@ -299,48 +300,23 @@ export async function scanOutgoing({ repoDir, branch, defaultBranch }) {
 }
 
 /**
- * Where a token-carrying push may go: the repo's own repo on github.com, built from Vyre's own
- * record (`fullName`, from the project's github_projects row), never read from `.git/config`,
- * which an agent's shell can edit (`remote set-url`, `pushurl`, `url.<x>.insteadOf`). Config that
- * could still redirect or observe the connection is refused, or overridden on the command line
- * (command-line settings beat the repo's own), before the token is handed over.
- * @param {string} repoDir @param {string} url
- * @returns {Promise<string | null>} why not, or null when the destination is exactly `url`
- */
-async function pushTargetProblem(repoDir, url) {
-  // The repo's own config (local and per-worktree scopes: the ones a shell in the repo can write;
-  // the person's global config is not read at all) may not carry anything that reaches the
-  // network path: http.* (curloptResolve, sslCAInfo, proxy, extraHeader...), credential.*, url.*
-  // rewrites, protocol.*, core.gitProxy, core.askPass.
-  for (const scope of ["--local", "--worktree"]) {
-    const cfg = await gitAsync(repoDir, ["config", scope, "--name-only", "--get-regexp", "."]);
-    for (const key of cfg.ok ? cfg.stdout.split("\n").map(k => k.trim().toLowerCase()).filter(Boolean) : []) {
-      if (/^(https?|credential|url|protocol)\./.test(key) || key === "core.gitproxy" || key === "core.askpass") {
-        return `this repo's own git config sets ${key.replace(/^(url\.).*(\.[a-z]+)$/, "$1...$2")}, which could send the token somewhere other than GitHub; remove it and try again`;
-      }
-    }
-  }
-  const got = await gitAsync(repoDir, ["ls-remote", "--get-url", url]);
-  if (!got.ok || got.stdout.trim() !== url) return "the push address does not resolve to the project's own GitHub repo";
-  return null;
-}
-
-/** Config that could send a github.com connection through someone else, forced off for a push. */
-const NO_DETOURS = ["-c", "http.proxy=", "-c", "https.proxy=", "-c", "http.https://github.com/.proxy=", "-c", "http.sslVerify=true",
-  "-c", "http.curloptResolve=", "-c", "http.sslCAInfo=", "-c", "http.sslCAPath=", "-c", "http.extraHeader=", "-c", "credential.https://github.com.helper="];
-
-/**
  * Push a session's own branch, and only that branch, to the same name on the project's own repo
- * (`https://github.com/<fullName>.git`, built here from the project's record, never `origin` and
- * never anything from `.git/config`) - an explicit refspec, never `--force` (not even
- * with-lease), and never anything but this one branch. Runs `scanOutgoing` first and refuses on
- * a hit unless `allowSecret` (the caller decides who may set it; see github.session.push). A
- * non-fast-forward remote (someone else pushed to the same branch) is reported, never
- * overwritten (reviewer's M2). fd-3 token only, the same isolation `cloneRepo` already has.
- * `base` is a test seam; the tool never passes it.
- * @param {{ repoDir: string, session: string, defaultBranch: string, token: string, fullName: string, allowSecret?: boolean, base?: string }} p
+ * (`https://github.com/<fullName>.git`, built here from the project's record) - an explicit
+ * refspec, never `--force` (not even with-lease), and never anything but this one branch. Runs
+ * `scanOutgoing` first and refuses on a hit unless `allowSecret` (the caller decides who may set
+ * it; see github.session.push). A non-fast-forward remote (someone else pushed to the same
+ * branch) is reported, never overwritten. fd-3 token only, the same isolation `cloneRepo` has.
+ *
+ * The push runs from a fresh throwaway bare repo, never from the project's own repo: the token
+ * only ever reaches a git that has read no config a shell in the project could have written
+ * (`remote set-url`, `pushurl`, `url.*.insteadOf`, `http.*`, `include.path`, and whatever is
+ * thought of next). The temp repo borrows the project's objects through an alternates file and
+ * gets one ref, the session's branch tip; its own config is git's defaults. Global and system
+ * config are already off (safeGitEnv). Deleted afterwards.
+ * `base` and `inspect` are test seams; the tool passes neither.
+ * @param {{ repoDir: string, session: string, defaultBranch: string, token: string, fullName: string, allowSecret?: boolean, base?: string, inspect?: (tmp: string) => void }} p
  */
-export async function pushSession({ repoDir, session, defaultBranch, token, fullName, allowSecret = false, base = "https://github.com" }) {
+export async function pushSession({ repoDir, session, defaultBranch, token, fullName, allowSecret = false, base = "https://github.com", inspect }) {
   const branch = `vyre/${safeSegment(session, "session id")}`;
   if (!/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(String(fullName || "")) || /(^|\/)\.\.?$/.test(fullName)) throw fail("the project's recorded repo name is not owner/name", "bad_input");
   if (!allowSecret) {
@@ -348,20 +324,35 @@ export async function pushSession({ repoDir, session, defaultBranch, token, full
     if (hit) return { pushed: false, blocked: "secret", ...hit };
   }
   const url = `${base}/${fullName}.git`;
-  const bad = await pushTargetProblem(repoDir, url);
-  if (bad) throw fail(`not pushing: ${bad}`, "remote_changed");
   const refspec = `refs/heads/${branch}:refs/heads/${branch}`;
-  const r = await gitWithAskpass(repoDir, [...NO_DETOURS, "push", "--", url, refspec], { token, timeout: 120_000 });
-  if (r.ok) {
-    // Keep "is this commit on a remote" (worktree cleanup's safety check) true after a push by URL.
-    const sha = await gitAsync(repoDir, ["rev-parse", `refs/heads/${branch}`]);
-    if (sha.ok) await gitAsync(repoDir, ["update-ref", `refs/remotes/origin/${branch}`, sha.stdout.trim()]);
-    return { pushed: true, branch };
+  const sha = await gitAsync(repoDir, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+  if (!sha.ok) throw fail(`git push failed: no branch ${branch} to push`, "push_failed");
+  const objects = await gitAsync(repoDir, ["rev-parse", "--path-format=absolute", "--git-path", "objects"]);
+  const shallow = await gitAsync(repoDir, ["rev-parse", "--path-format=absolute", "--git-path", "shallow"]);
+  if (!objects.ok) throw fail("git push failed: could not find the repo's objects", "push_failed");
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-push-"));
+  try {
+    const init = await gitAsync(tmp, ["init", "--bare", "-q", "--template=", tmp]);
+    if (!init.ok) throw fail(`git push failed: ${init.stderr.trim().slice(0, 200)}`, "push_failed");
+    fs.mkdirSync(path.join(tmp, "objects", "info"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "objects", "info", "alternates"), `${objects.stdout.trim()}\n`);
+    if (shallow.ok && fs.existsSync(shallow.stdout.trim())) fs.copyFileSync(shallow.stdout.trim(), path.join(tmp, "shallow"));
+    const ref = await gitAsync(tmp, ["update-ref", `refs/heads/${branch}`, sha.stdout.trim()]);
+    if (!ref.ok) throw fail(`git push failed: ${ref.stderr.trim().slice(0, 200)}`, "push_failed");
+    if (inspect) inspect(tmp);
+    const r = await gitWithAskpass(tmp, ["push", "--", url, refspec], { token, timeout: 120_000 });
+    if (r.ok) {
+      // Keep "is this commit on a remote" (worktree cleanup's safety check) true after a push by URL.
+      await gitAsync(repoDir, ["update-ref", `refs/remotes/origin/${branch}`, sha.stdout.trim()]);
+      return { pushed: true, branch };
+    }
+    if (/\[rejected\]|non-fast-forward|fetch first/i.test(r.stderr)) {
+      return { pushed: false, blocked: "non_fast_forward", detail: r.stderr.trim().slice(0, 300) };
+    }
+    throw fail(`git push failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "push_failed");
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
   }
-  if (/\[rejected\]|non-fast-forward|fetch first/i.test(r.stderr)) {
-    return { pushed: false, blocked: "non_fast_forward", detail: r.stderr.trim().slice(0, 300) };
-  }
-  throw fail(`git push failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "push_failed");
 }
 
 /** File names never swept into the starting commit of a project Vyre turns into a repo. */
