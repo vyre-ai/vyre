@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### pwa: removing a phone wipes it
+
+- On a phone, a `presence.removed` or `device.removed` event naming this phone's own passkey or device, or a launch check that finds its passkey no longer listed by `presence.keys`, clears Cache Storage, every IndexedDB database (the resilience store and device key), this app's localStorage and sessionStorage, the push subscription, the app badge and the service workers, then shows "This phone was removed." A box that cannot be asked wipes nothing. `js/wipe.js` (reviewer P-M2, plans/pwa.md check 6). Needs a real-phone run to verify a cold relaunch shows nothing.
+
 - eval (reviewer-2 notes): the recording re-reads the key's usage from OpenRouter every 20 calls (spend by anything else on the key is seen, and a read that fails stops the run), and scripts/provider-proof.mjs applies the same start guard (refuses at $14 or more, or when the usage cannot be read) and prints the usage before and after.
 - eval: the recording harness guards the key's own spend. Before any call it reads the key's usage from OpenRouter (GET /api/v1/key) and refuses to start at $14 or more, or when it cannot read it (exit 3, nothing sent to the model); during a run it stops cleanly before a call that could pass $15 of the key's total (so spend that never reached the committed ledger counts), writing the partial results; it prints the key's usage before and after, never the key.
 - memory.site.list's `forgotten` entries also carry `until` (the same epoch ms as expires_at), and a row entry's `name` is the site's name when it has one.

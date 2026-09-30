@@ -29,6 +29,7 @@ import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
 import { installPersonHandler } from "./person.js";
 import { offerEnroll } from "./enroll-grant.js";
+import { watchRemoval } from "./wipe.js";
 import { enrollPasskey } from "./phone-setup.js";
 import { rail, placeForKey } from "./rail.js";
 import { fillPlaces, readPin } from "./places.js";
@@ -792,6 +793,8 @@ window.addEventListener("deck:navigate", route);
 // Just paired by scanning the Wink ring: the box's own address opens with a one-time grant in the
 // fragment, and this phone makes its Face ID key now (js/enroll-grant.js).
 offerEnroll({ enroll: enrollPasskey, canProve }).catch(() => {});
+// A phone the owner removed from Settings > Devices wipes what it kept of the box (js/wipe.js).
+if (isPhone()) watchRemoval({ on, attempt, root: document.body });
   // The theme and scheme from the settings hub, live (ADR 0035); a box without the hub keeps /theme.css.
   followTheme({ attempt, on, onResume });
   // A tap on anyone's avatar plays its small hop (js/avatars.js), one listener for the page.
