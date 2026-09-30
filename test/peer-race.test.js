@@ -18,6 +18,9 @@ import { processTable, readPeerPid, insideClaude, setPeerHosting } from "../core
 // (setPeerHosting(true) is called by the helpers for the other tests' own clients; the control below sets it).
 setPeerHosting(false);
 
+/** The kernel-verified leader a chain may top out at on this platform (login is forgeable on macOS). */
+const LEADER = process.platform === "darwin" ? "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" : "/usr/bin/login";
+
 /** A macOS-shaped snapshot: pid -> row. */
 const rows = obj => new Map(Object.entries(obj).map(([k, v]) => [Number(k), { pgid: Number(k), ...v }]));
 const BASE = { 400: { ppid: 1, args: "node --test" } };
@@ -94,7 +97,7 @@ test("peer race: fail closed, an empty ps read or a pid a fresh table lacks is a
   // A chain that is whole and holds no claude is read to the top, not failed closed.
   const person = await above({}, registry, "cli", { peerPid: async () => 710, delayMs: 1, alive: () => true,
     processTable: o => processTable({ ...o, platform: "darwin", read: () => rows({ ...BASE, 700: { ppid: 1, args: "/usr/bin/login -pf alex" }, 710: { ppid: 700, args: "vyre call probe.mine" } }), cache: { at: 0, rows: null } }),
-    insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => "/usr/bin/login", started: () => "t" }) });
+    insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => LEADER, started: () => "t" }) });
   assert.equal(person.inside, false, JSON.stringify(person));
   assert.equal(person.unreadable, undefined, "a whole chain is not an unreadable one");
   assert.equal(person.exited, undefined);
@@ -172,11 +175,11 @@ test("peer race: a chain through an exited, unreaped process (no command line) i
     assert.equal(r.unreadable, true);
   }
   // Parentheses in the middle of a real command line are not an unreaped process (reviewer-2).
-  const paren = insideClaude(20, { look: pid => ({ 20: { ppid: 10, args: "node app.js (x)" }, 10: { ppid: 1, pgid: 10, args: "/usr/bin/login -pf alex" } }[pid] || null), exe: () => "/usr/bin/login", started: () => "t", uid: () => 501, self: 1 });
+  const paren = insideClaude(20, { look: pid => ({ 20: { ppid: 10, args: "node app.js (x)" }, 10: { ppid: 1, pgid: 10, args: "/usr/bin/login -pf alex" } }[pid] || null), exe: () => LEADER, started: () => "t", uid: () => 501, self: 1 });
   assert.notEqual(paren.unreadable, true, JSON.stringify(paren));
   const live = await above({}, registry, "cli", { peerPid: async () => 20, alive: () => true, delayMs: 1,
     processTable: () => pid => ({ 20: { ppid: 10, args: "vyre call x", pgid: 10 }, 10: { ppid: 1, args: "/usr/bin/login -pf alex", pgid: 10 } }[pid] || null),
-    insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => "/usr/bin/login", started: () => "t" }) });
+    insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => LEADER, started: () => "t" }) });
   assert.equal(live.unreadable, undefined, "readable args are not this case");
 });
 

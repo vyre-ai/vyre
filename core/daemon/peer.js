@@ -13,6 +13,7 @@
 // a terminal, shares them.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn, execFileSync, spawnSync } from "node:child_process";
 import { claudeCommand } from "../switchboard/sessions.js";
@@ -275,10 +276,15 @@ export function processUid(pid) {
  * fallback as everything else not on this list (Ghostty, iTerm2, VS Code's terminal, Warp, tmux,
  * screen, ssh -- named servers, never a flat refusal: see insideClaude's `server` case below).
  */
-/** The system's own login: root-owned, and what every terminal app runs to hand the person a shell. */
-const LOGIN_PATHS = new Set(["/usr/bin/login", "/bin/login"]);
-const TRUSTED_PATHS = new Set(["/usr/bin/login", "/bin/login",
-  "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"]);
+/**
+ * The system's own login: root-owned, and what a terminal app runs to hand the person a shell. Not
+ * on macOS: there login is setuid and skips authentication for the caller's own name, so any
+ * same-uid process can run `/usr/bin/login -pfl $USER <cmd>` and put a root-owned login in its own
+ * chain, at the top or in the middle (reviewer-2's probe on a real Mac, 30 Sep). There the trusted top
+ * is the SIP-protected Terminal binary alone. On Linux `login -f` needs root, so it holds.
+ */
+const LOGIN_PATHS = process.platform === "darwin" ? new Set() : new Set(["/usr/bin/login", "/bin/login"]);
+const TRUSTED_PATHS = new Set([...LOGIN_PATHS, "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"]);
 
 /**
  * Every component from `/` down to the file itself must be root-owned and not group- or
@@ -329,7 +335,7 @@ function agentHost(args) {
  * ancestors ends the walk as it always did. Shipped code never turns it on: `setPeerHosting` is
  * called by test/helpers.js, and a vyred a test starts as a child process (`vyre up` in a temp
  * home) takes it from VYRE_TEST_HOSTED only under node's test runner (NODE_TEST_CONTEXT) and with
- * a live parent that is not init, launchd or systemd, which the person's own vyred never has.
+ * a live parent that is not init, launchd or systemd, and only over a home that is not ~/.vyre.
  * @type {boolean | null}
  */
 let hostingSet = null;
@@ -338,6 +344,9 @@ export function setPeerHosting(on) { hostingSet = on; }
 export function peerHosting() {
   if (hostingSet !== null) return hostingSet;
   if (process.env.VYRE_TEST_HOSTED !== "1" || !process.env.NODE_TEST_CONTEXT || !(process.ppid > 1)) return false;
+  // Only a vyred over a temp home: the person's daemon runs over ~/.vyre, whatever its environment.
+  const home = process.env.VYRE_HOME;
+  if (!home || path.resolve(home) === path.resolve(os.homedir(), ".vyre")) return false;
   const parent = processTable({ fresh: true })(process.ppid);
   return Boolean(parent && !/(^|\/)(systemd|launchd|init)(\s|$)/.test(parent.args));
 }
