@@ -134,7 +134,13 @@ try {
     fs.writeFileSync(out + "/addr-diag.txt", ["names.status", "network.tailscale.status"].map(t => { const x = dbg(t); return `== ${t}\n${hide(x.stdout || "")}${x.stderr || ""}`; }).join("\n"));
   }
   r.step("1.9c-address-live", live, { shot: await shot("setup-ts-live"), why: live ? "certificate from a stand-in ACME server (pebble), DNS record in the fake zone" : undefined });
-  if (!live) throw new Error("address never went live");
+  if (!live) {
+    const ns = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", "names.status", "{}"], { encoding: "utf8" });
+    const phase = ((ns.stdout || "").match(/"phase":\s*"([^"]+)"/) || [])[1];
+    r.step("1.9c2-box-says-serving", phase === "serving", { why: `names.status phase "${phase}" while the page still says Publishing your address` });
+    for (const st of ["1.10-devices", "1.11-claim-link"]) r.step(st, "skip", { why: "blocked: the page never left Publishing your address (B3)" });
+    throw new Error("address never went live");
+  }
   await click("Continue");
 
   // 1.10 devices: the ring is scanned by a person's phone. By hand; here the page is walked past it.
