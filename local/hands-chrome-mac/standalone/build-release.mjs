@@ -35,7 +35,7 @@ export function build({ out }) {
   fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "vyre-chrome", version, private: true, type: "module", description: "Control your own Chrome from Claude Code. No server.", engines: { node: ">=22" }, bin: { "vyre-chrome": "standalone/cli.mjs" } }, null, 2) + "\n");
   fs.chmodSync(path.join(dir, "standalone", "cli.mjs"), 0o755);
   const tar = path.join(out, `vyre-chrome-${version}.tar.gz`);
-  const r = spawnSync("tar", ["-czf", tar, "-C", out, "vyre-chrome"], { encoding: "utf8" });
+  const r = spawnSync("tar", [...(process.platform === "win32" ? ["--force-local"] : []), "-czf", tar, "-C", out, "vyre-chrome"], { encoding: "utf8" });
   if (r.status !== 0) throw new Error(`tar failed: ${r.stderr}`);
   const sha = crypto.createHash("sha256").update(fs.readFileSync(tar)).digest("hex");
   fs.writeFileSync(`${tar}.sha256`, `${sha}  ${path.basename(tar)}\n`);

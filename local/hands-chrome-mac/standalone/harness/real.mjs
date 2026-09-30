@@ -25,6 +25,9 @@ const log = (/** @type {string} */ m) => console.error(`[standalone +${Math.roun
 /** @template T @param {Promise<T>} p @param {number} ms @param {string} what @returns {Promise<T>} */
 const within = (p, ms, what) => new Promise((res, rej) => { const t = setTimeout(() => rej(new Error(`${what} took longer than ${ms} ms`)), ms); p.then(v => { clearTimeout(t); res(v); }, e => { clearTimeout(t); rej(e); }); });
 
+/** What a failed batch or flow says, short but complete about the step that failed. @param {any} r */
+const brief = r => { try { const last = Array.isArray(r.results) ? r.results[r.done ?? r.results.length - 1] : undefined; return JSON.stringify({ done: r.done, failedAt: r.failedAt, code: r.code, why: r.why, failed: r.failed, last }).slice(0, 1500); } catch { return String(r).slice(0, 500); } };
+
 /** A minimal MCP client over a child's stdio. @param {import("node:child_process").ChildProcess} child */
 function mcpClient(child) {
   let n = 0, calls = 0, buf = ""; const waiting = new Map();
@@ -117,7 +120,7 @@ async function main() {
         for (let k = 0; k < 5; k++) {
           await mcp.call("chrome_tabs", { action: "navigate", tab: gt, url: `${fixture.url}/ghl` }); await sleep(200);
           const t = performance.now(); const r = await mcp.call("chrome_batch", { tab: gt, steps });
-          if (r.ok === false) throw new Error("batch failed: " + JSON.stringify(r).slice(0, 300));
+          if (r.ok === false) throw new Error("batch failed: " + brief(r));
           batchMs.push(performance.now() - t);
         }
         return { steps: steps.length, oneCall: stats(batchMs) };
@@ -132,7 +135,7 @@ async function main() {
         const ms = Math.round(performance.now() - t0);
         const st = await mcp.call("chrome_eval", { tab: gt, expression: "JSON.stringify(window.__state)" });
         const state = JSON.parse(typeof st === "string" ? st : (st.value ?? st.result ?? "null"));
-        for (const [k, v] of Object.entries(GHL_ROBUST.expect.state)) if (JSON.stringify(state[k]) !== JSON.stringify(v)) throw new Error(`state.${k} is ${JSON.stringify(state[k])}, wanted ${JSON.stringify(v)}; run: ${JSON.stringify(run).slice(0, 400)}`);
+        for (const [k, v] of Object.entries(GHL_ROBUST.expect.state)) if (JSON.stringify(state[k]) !== JSON.stringify(v)) throw new Error(`state.${k} is ${JSON.stringify(state[k])}, wanted ${JSON.stringify(v)}; run: ${brief(run)}`);
         return { ms, ok: run.ok !== false, state: { saved: state.saved, steps: (state.steps || []).length, trigger: state.trigger, whatsnewClosed: state.whatsnewClosed, discarded: state.discarded } };
       });
 
@@ -157,6 +160,7 @@ async function main() {
 
       await stage("held_send", async () => {
         const c = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/checkout`, openIfMissing: true }); const ct = c.id ?? (c.tab && c.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: ct, url: `${fixture.url}/checkout` }); await sleep(300);
         const h = await mcp.call("chrome_act", { tab: ct, selector: { identifier: "place-order" }, kind: "click" });
         if (!h.held || !h.id) throw new Error("the order button was not held: " + JSON.stringify(h).slice(0, 300));
         const sent = await mcp.call("chrome_send", { id: h.id });
