@@ -522,6 +522,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller says it is in session ${session.slice(0, 8)}, and vyred has no running session bound with this key` } });
     via.thread = v.data.thread;
   }
+  // What a verified agent is really granted, from its stored row (agents.scope), never from
+  // anything the caller sent: a tool that scopes by project reads meta.granted ("*" or slugs).
+  // A named agent with no row is granted nothing.
+  if (via.agent) {
+    const g = await registry.call("agents.scope", { name: via.agent }, "module:vyred");
+    /** @type {any} */ (via).granted = g && g.data ? g.data.projects : [];
+    /** @type {any} */ (via).agentKind = g && g.data ? g.data.kind : null;
+  }
   // A person's label from a model's shell is the session's own, whatever the tool (asTaken).
   const shell = socket && !policy.caller ? await asTaken(caller, req.socket, registry, via.thread) : { caller, model: false };
   caller = shell.caller;
