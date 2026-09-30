@@ -32,14 +32,14 @@ export class GoogleError extends Error {
 }
 
 /**
- * @typedef {{ name: string, email: string, auth: import("../connectors/auth.js").Auth, base?: string | null }} Account
+ * @typedef {{ name: string, email: string, auth: import("../../lib/connectors/auth.js").Auth, base?: string | null }} Account
  * @typedef {{ api: "calendar" | "gmail", scope: string, method?: string, path: string,
  *   query?: Record<string, string | number | boolean | string[] | undefined>, body?: any }} Request
  */
 
 /**
  * A client bound to one Credentials instance.
- * @param {{ creds: import("../connectors/auth.js").Credentials, fetch?: typeof fetch }} deps
+ * @param {{ creds: import("../../lib/connectors/auth.js").Credentials, fetch?: typeof fetch }} deps
  */
 export function client({ creds, fetch: f = globalThis.fetch }) {
   /**

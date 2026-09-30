@@ -11,12 +11,15 @@
 // Nothing here uses innerHTML: every string is a text node.
 
 import { h, add, put } from "../js/dom.js";
-import { icon, mark } from "../js/icons.js";
+import { icon } from "../js/icons.js";
+import { personAvatar, assistantAvatar, agentAvatar, teammateAvatar, teammateId } from "../js/avatars.js";
 import { clock } from "../js/fmt.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { renderUnified, renderRows, patchRows } from "./lib/diff.js";
 import { highlight } from "./lib/highlight.js";
-import { clip, commandText, duration, elapsed, langOf, rawLines, toolState, toolTitle, turnParts } from "./lib/blocks.js";
+import { clip, commandText, duration, elapsed, langOf, rawLines, shortPath, toolState, toolTitle, toolVerb, turnParts } from "./lib/blocks.js";
+import { dataUrl, humanSize, inlineable, tooLarge, THUMB } from "./core/images.js";
+import { openLightbox } from "./lightbox.js";
 
 const OUTPUT_LINES = 12;
 /** Bash shows this much of what it printed before "show all". */
@@ -36,37 +39,72 @@ function opensByDefault(b) {
   return false;
 }
 
-/** The chip beside "you" (the owner's initial when the Deck knows the name, else a plain dot) or another surface (its initial). */
+/** The person's avatar beside "you" (or another of their surfaces): the person family (js/avatars.js). */
 export function personAv(who, me) {
-  const letter = who === "you" ? (me ? String(me).trim().charAt(0).toUpperCase() : "") : String(who || "").trim().charAt(0).toUpperCase();
-  return h("span", { class: "av-person msg-av cv-av" + (letter ? "" : " cv-av-dot"), title: who === "you" && me ? me : who }, letter || h("span", { class: "cv-dot" }));
+  return personAvatar({ size: 24, title: who === "you" && me ? me : who, cls: "av-person msg-av cv-av" });
 }
 
-/** The chip beside a reply: the Vyre mark for the assistant (whatever it is called), an agent's two letters. */
+/** The avatar beside a reply: the assistant's creature (whatever it is called), else the agent's
+ * blob, or a teammate's character when team.list knows its id (js/avatars.js). */
 export function agentAv(who, assistant = who === "Vyre") {
-  if (assistant) return h("span", { class: "av-agent msg-av cv-av cv-av-vyre", title: who }, mark(16));
-  return h("span", { class: "av-agent msg-av cv-av", title: who }, String(who).slice(0, 2).toLowerCase());
+  if (assistant) return assistantAvatar({ size: 24, title: who, cls: "av-agent msg-av cv-av cv-av-vyre" });
+  return agentAvatar(String(who), { size: 24, title: who, cls: "av-agent msg-av cv-av" });
 }
 
 /** A row's kind, for the header rule (lib/blocks.js plan): user, assistant, turn, or card. */
 const tag = (el, kind, ts) => { /** @type {any} */ (el)._kind = kind; /** @type {any} */ (el)._ts = ts ?? null; return el; };
 
-/** "you" (or a surface's name) and the words, as a chat message. */
+/**
+ * A thumbnail, fixed to `size` (THUMB by default) so it never shifts the rows around it while the
+ * picture decodes (interaction.md section 1: never a layout jump). A tap opens the full picture
+ * (lightbox.js). `context`: who sent it, or which tool - joined with the picture's own name when
+ * it has one. Exported for session.js's sight strip (a step's screen), the same shape as any other
+ * picture, at its own smaller size (chat.css sets a caller's size by class, never by overriding
+ * this inline style, which always wins on the same element).
+ * @param {import("./core/images.js").Picture} p @param {string} [context] @param {{ w: number, h: number }} [size]
+ */
+export function pictureThumb(p, context, size = THUMB) {
+  const src = dataUrl(p);
+  const caption = p.name && context ? `${p.name} - ${context}` : p.name || context || "";
+  return h("button", { class: "cv-pic", type: "button", style: `--pic-w:${size.w}px;--pic-h:${size.h}px`,
+    "aria-label": p.name ? `Open ${p.name}` : "Open picture", onclick: () => openLightbox(src, { alt: p.name || "", caption }) },
+    h("img", { class: "cv-pic-img", src, alt: "", loading: "lazy" }));
+}
+
+/** A picture too large to inline (core/images.js's INLINE_LIMIT_BYTES): a plain file line, not a link yet. */
+function fileChip(p) {
+  return h("span", { class: "cv-pic-file" }, icon("file", 14), p.name || "Picture", p.size ? h("span", { class: "faint" }, humanSize(p.size)) : null);
+}
+
+/**
+ * "you" (or a surface's name) and the words, as a chat message. `images`: the attachments that
+ * went with it. An array (this device's own, or a step's still) draws real thumbnails; a bare
+ * number (an older read, or another device's send: the box does not echo the bytes back) falls
+ * back to a plain count, as before.
+ * @param {string} who @param {string} text @param {number|null} ts @param {string|null} me
+ * @param {number|import("./core/images.js").Picture[]} [images]
+ */
 export function userRow(who, text, ts, me = null, images = 0) {
+  const list = Array.isArray(images) ? images : [];
+  const inline = inlineable(list), big = tooLarge(list);
+  const count = Array.isArray(images) ? list.length : images;
   return tag(h("div", { class: "msg cv-row cv-user" },
     personAv(who, me),
     h("div", { class: "msg-body" },
       h("div", { class: "msg-head" }, h("span", { class: "msg-who" }, who), ts ? h("span", { class: "msg-when" }, clock(ts)) : null),
       h("div", { class: "msg-text cv-user-text" }, String(text ?? "")),
-      // Pasted images went with the words (threads.send images); the count, not the pictures.
-      images > 0 ? h("div", { class: "cv-user-images faint" }, images === 1 ? "1 image" : `${images} images`) : null),
+      inline.length ? h("div", { class: "cv-user-images" }, inline.map(p => pictureThumb(p, `from ${who}`))) : null,
+      big.length ? h("div", { class: "cv-user-images" }, big.map(fileChip)) : null,
+      !list.length && count > 0 ? h("div", { class: "cv-user-images faint" }, count === 1 ? "1 image" : `${count} images`) : null),
   ), "user", ts);
 }
 
-/** The header an assistant run starts with: the assistant's name (or the agent's) and the time. */
-export function headRow(who, ts, assistant = who === "Vyre") {
+/** The header an assistant run starts with: the assistant's name (or the agent's) and the time.
+ * `av`: the avatar to wear (session.js passes js/avatars.js threadAvatar: the project's tile, a
+ * chat's draft tile, an agent or teammate, or the assistant); without it, agentAv's. */
+export function headRow(who, ts, assistant = who === "Vyre", av = null) {
   return tag(h("div", { class: "cv-row cv-head" },
-    agentAv(who, assistant),
+    av || agentAv(who, assistant),
     h("span", { class: "msg-who" }, who),
     ts ? h("span", { class: "msg-when" }, clock(ts)) : null,
   ), "assistant", ts);
@@ -128,12 +166,14 @@ export function thinkingRow(text, ts, label = "Thinking") {
 }
 
 /**
- * The quiet line under a turn: time taken, tokens, cost. A stopped turn leads with "Stopped by
- * you" (t.byMe) or "Stopped"; a failed one with what failed.
+ * The quiet line under a turn: time taken, tokens, cost ("18 s · 4.2k tokens · $0.04"). A stopped
+ * turn leads with "Stopped by you" (t.byMe) or "Stopped"; a failed one with what failed. An open
+ * turn (still running) draws nothing until it ends.
  */
 export function turnRow(t) {
   const lead = t.canceled ? (t.byMe ? "Stopped by you" : "Stopped") : t.error ? "Turn failed: " + t.error : null;
-  const parts = [lead, ...turnParts(t)].filter(Boolean);
+  // A turn still going has no footer yet: its time and tokens so far read as if it had ended.
+  const parts = t.open ? [] : [lead, ...turnParts(t)].filter(Boolean);
   const el = /** @type {any} */ (tag(h("div", { class: "cv-row cv-turn" + (t.open ? " cv-open" : "") + (t.error && !t.canceled ? " cv-turn-err" : "") }, parts.length ? parts.join(" · ") : null), "turn", t.ts));
   el._cost = typeof t.cost_usd === "number" ? t.cost_usd : null;
   return el;
@@ -185,25 +225,23 @@ function toolBody(b) {
       if (out != null && out !== "") parts.push(outputEl(out, { err, lang: "text", max: BASH_LINES }));
       break;
     case "Edit":
-      parts.push(fileLine(i.file_path));
+      // The path is the row's own summary; the detail starts at the diff.
       // The file's own line numbers when the result carried its patch; the strings alone otherwise.
       if (Array.isArray(b.patch) && b.patch.length) parts.push(renderRows(patchRows(b.patch)));
       else if (i.old_string != null || i.new_string != null) parts.push(renderUnified(i.old_string ?? "", i.new_string ?? ""));
       if (err && out) parts.push(outputEl(out, { err }));
       break;
     case "MultiEdit":
-      parts.push(fileLine(i.file_path));
       if (Array.isArray(b.patch) && b.patch.length) { parts.push(renderRows(patchRows(b.patch))); if (err && out) parts.push(outputEl(out, { err })); break; }
       for (const e of Array.isArray(i.edits) ? i.edits : []) parts.push(renderUnified(e.old_string ?? "", e.new_string ?? ""));
       if (err && out) parts.push(outputEl(out, { err }));
       break;
     case "Write":
-      parts.push(fileLine(i.file_path, "new file"));
+      parts.push(fileLine(i.file_path, "new file", b.cwd));
       if (i.content != null) parts.push(outputEl(i.content, { lang: langOf(i.file_path), max: 20 }));
       if (err && out) parts.push(outputEl(out, { err }));
       break;
     case "Read":
-      parts.push(fileLine(i.file_path));
       if (out) parts.push(outputEl(out, { err, lang: err ? "text" : langOf(i.file_path) }));
       break;
     case "Grep": case "Glob": {
@@ -233,11 +271,81 @@ function toolBody(b) {
       if (b.destination) parts.push(h("div", { class: "cv-note" }, "to " + b.destination));
       if (out) parts.push(outputEl(out, { err }));
   }
+  // A picture the tool's result carried (cohesion item 18: "an image the agent made"), whatever
+  // the tool - a screenshot, a Canva render, a read of an image file. Same thumbnail and lightbox
+  // as the person's own pasted pictures, just after the tool's own detail rather than the words.
+  const pics = inlineable(b.images), big = tooLarge(b.images);
+  if (pics.length) parts.push(h("div", { class: "cv-user-images" }, pics.map(p => pictureThumb(p, b.tool))));
+  if (big.length) parts.push(h("div", { class: "cv-user-images" }, big.map(fileChip)));
   return parts;
 }
 
-function fileLine(path, note) {
-  return h("div", { class: "cv-file" }, icon("file", 12), h("span", { class: "cv-file-path" }, String(path || "")), note ? h("span", { class: "cv-file-note" }, note) : null);
+/** The file a detail is about, relative to the session's folder (the whole path in its title). */
+function fileLine(path, note, cwd = null) {
+  return h("div", { class: "cv-file" }, icon("file", 12), h("span", { class: "cv-file-path", title: String(path || "") }, shortPath(path, cwd)),
+    note ? h("span", { class: "cv-file-note" }, note) : null);
+}
+
+/** The row's icon from the stroke set (tool-row.md): file, terminal, search, globe (as search), agents, else the chevron alone. */
+function toolIcon(tool) {
+  const name = ({ Read: "file", Edit: "file", MultiEdit: "file", Write: "file", NotebookEdit: "file", Bash: "terminal", BashOutput: "terminal",
+    KillShell: "terminal", KillBash: "terminal", Grep: "search", Glob: "search", WebFetch: "search", WebSearch: "search", Task: "agents", Agent: "agents",
+    TodoWrite: "check", AskUserQuestion: "ask", ExitPlanMode: "lines" })[tool];
+  return name ? icon(name, 14) : null;
+}
+
+/**
+ * A teammate handoff (teammates.md section 3, tool-row.md's "Handoff" variant): a session calling
+ * team_ask/team.ask. Distinct from toolCard - not colour, per avatar.md's "no per-teammate hue"
+ * ruling - the teammate's own character (js/avatars.js, seeded from its teammate id, "<role>-<project>"
+ * from `b.project`, the session's project), its role name, a plain
+ * "Teammate" tag, verb "Asked" while no reply has landed yet (b.reply), "Replied" once it has.
+ * Never folded into a run (core/grouping.js's BY_NAME/foldable), always its own line; "collapsed"
+ * (the default) only ever means the reply detail is shut. The reply renders as turn prose
+ * (markdown), never a code block - it is words, not a tool's output.
+ * @param {any} b { tool: "team_ask"|"team.ask", input: { to, text, ... }, reply?: string, error?: boolean, project?: string }
+ * @returns {HTMLElement & { update: (b: any) => void, tick: (now?: number) => void }}
+ */
+export function handoffCard(b) {
+  const project = b.project || b.input?.project || null;
+  const el = /** @type {any} */ (tag(h("div", { class: "cv-row cv-tool cv-handoff" }), "assistant", b.ts));
+  let open = false;
+  el.tick = () => {}; // no elapsed timer while waiting (tool-row.md: "a teammate's own pace is its business")
+  el.update = nb => {
+    b = nb;
+    const role = String(b.input?.to || "");
+    const ask = String(b.input?.text || b.summary || "");
+    const replied = typeof b.reply === "string";
+    const failed = !!b.error;
+    const verb = failed ? "Asked" : replied ? "Replied" : "Asked";
+    const inner = h("div", { class: "cv-tool-inner cv-handoff-reply msg-text" });
+    const body = h("div", { class: "cv-tool-body", "aria-hidden": String(!open) }, inner);
+    let built = false;
+    const fill = () => { if (!built && replied) { built = true; add(inner, renderMarkdown(b.reply || "")); } };
+    const show = () => {
+      if (open) { fill(); el.setAttribute("data-open", ""); } else el.removeAttribute("data-open");
+      body.setAttribute("aria-hidden", String(!open));
+      head.setAttribute("aria-expanded", String(!!open));
+    };
+    el.setAttribute("data-state", failed ? "failed" : replied ? "done" : "running");
+    const head = h("button", { class: "cv-tool-head cv-handoff-head", type: "button",
+      disabled: !replied && !failed, "aria-label": `${verb} ${role}, Teammate, ${ask}`,
+      onclick: () => { if (!replied && !failed) return; open = !open; show(); } },
+      h("span", { class: "cv-chev", "aria-hidden": "true" }, icon("right", 12)),
+      teammateAvatar(teammateId(role, project), { size: 24, cls: "av-agent", project }),
+      h("span", { class: "cv-handoff-line" },
+        h("span", { class: "cv-tool-name" }, verb + " "),
+        h("span", { class: "cv-handoff-name" }, role),
+        h("span", { class: "tag cv-handoff-tag" }, "Teammate"),
+        ask ? h("span", { class: "cv-handoff-sum" }, " to " + ask) : null,
+      ),
+      failed ? h("span", { class: "cv-tool-state cv-failed" }, "no answer") : null,
+    );
+    put(el, head, body);
+    show();
+  };
+  el.update(b);
+  return el;
 }
 
 /**
@@ -256,11 +364,16 @@ export function toolCard(b) {
     timeEl = null;
     const state = toolState(b);
     if (open === null && (state !== "running" || b.input)) open = opensByDefault({ ...b, error: state === "failed" });
-    const title = b.input && Object.keys(b.input).length ? toolTitle(b.tool, b.input) : (b.summary || "");
+    const title = b.input && Object.keys(b.input).length ? toolTitle(b.tool, b.input, b.cwd) : (b.summary || "");
+    // Running but the session waits on the person (its ask is open): no clock, "waiting on you".
+    const waiting = state === "running" && !!b.waiting;
+    const shown = waiting ? "waiting" : state;
     // A call still running counts up ("0:42"), so quiet work never looks stalled; tick() moves it.
-    const d = state === "running" && b.ts ? elapsed(Date.now() - b.ts) : duration(b.duration_ms);
+    // A todo list's time says nothing.
+    const d = b.tool === "TodoWrite" || waiting ? "" : state === "running" && b.ts ? elapsed(Date.now() - b.ts) : duration(b.duration_ms);
+    const word = shown === "failed" ? "failed" : shown === "canceled" ? "stopped" : shown === "waiting" ? "waiting on you" : null;
     el.setAttribute("data-tool", String(b.tool || ""));
-    el.setAttribute("data-state", state);
+    el.setAttribute("data-state", shown);
     // The body is built the first time it opens, so a long session's closed cards cost nothing.
     // It stays in the DOM once built, and CSS expands and collapses it (grid rows, 180 ms).
     const inner = h("div", { class: "cv-tool-inner" });
@@ -272,13 +385,16 @@ export function toolCard(b) {
       body.setAttribute("aria-hidden", String(!open));
       head.setAttribute("aria-expanded", String(!!open));
     };
-    const head = h("button", { class: "cv-tool-head", type: "button", onclick: () => { open = !open; show(); } },
+    const verb = toolVerb(b.tool, shown);
+    const head = h("button", { class: "cv-tool-head", type: "button", "aria-label": [verb, title, word || (d && state !== "running" ? d : null)].filter(Boolean).join(", "),
+      onclick: () => { open = !open; show(); } },
       h("span", { class: "cv-chev", "aria-hidden": "true" }, icon("right", 12)),
-      h("span", { class: "cv-tool-name" }, displayName(b.tool)),
-      h("span", { class: "cv-tool-title" }, title),
+      h("span", { class: "cv-tool-icon", "aria-hidden": "true" }, state === "running" && !waiting ? h("span", { class: "cv-spin" }) : toolIcon(b.tool)),
+      h("span", { class: "cv-tool-name" }, verb),
+      h("span", { class: "cv-tool-title", title: title.length > 60 ? title : null }, title),
       h("span", { class: "cv-tool-meta" },
         d ? (timeEl = h("span", { class: "cv-tool-time" }, d)) : null,
-        h("span", { class: "cv-tool-state cv-" + state }, state)),
+        word ? h("span", { class: "cv-tool-state cv-" + shown }, word) : null),
     );
     put(el, head, body);
     show();
@@ -287,14 +403,10 @@ export function toolCard(b) {
   return el;
 }
 
-/** Tool names as a person reads them; unknown tools keep their own name. */
-function displayName(tool) {
-  return ({ TodoWrite: "Todos", MultiEdit: "Edit", WebFetch: "Fetch", WebSearch: "Search web", NotebookEdit: "Notebook" })[tool] || String(tool || "tool");
-}
 
 /** A block as its row. @param {any} b @param {{ who?: string, me?: string|null }} [ctx] */
 export function blockRow(b, ctx = {}) {
-  if (b.kind === "user") { const el = userRow(ctx.who || "you", b.command ? commandText(b.text) : b.text, b.ts, ctx.me, Number(b.images) || 0); if (b.command) el.classList.add("cv-command"); return el; }
+  if (b.kind === "user") { const el = userRow(ctx.who || "you", b.command ? commandText(b.text) : b.text, b.ts, ctx.me, Array.isArray(b.images) ? b.images : Number(b.images) || 0); if (b.command) el.classList.add("cv-command"); return el; }
   if (b.kind === "text") return textRow(b.text, b.ts);
   if (b.kind === "thinking") return thinkingRow(b.text, b.ts);
   if (b.kind === "tool") return toolCard(b);

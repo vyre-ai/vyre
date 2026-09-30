@@ -7,9 +7,33 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { start } from "../core/daemon/index.js";
+import { start, retryUnknown } from "../core/daemon/index.js";
 import { request, call } from "../core/daemon/client.js";
 import { tempHome, writeModule } from "./helpers.js";
+
+test("daemon: retryUnknown gives a /proc TOCTOU race a second look, bounded, still failing closed", async () => {
+  // A flat unknown (no named server) succeeds on a later attempt: the race resolved, trusted.
+  const calls1 = [{ unknown: true }, { inside: false }];
+  assert.deepEqual(await retryUnknown(() => calls1.shift(), 2, 1), { inside: false });
+
+  // Every attempt agrees it's unknown: still unknown after exhausting attempts, never more than
+  // asked (2 retries -> 3 calls total, not stretched into a long hang).
+  let n = 0;
+  assert.deepEqual(await retryUnknown(() => { n++; return { unknown: true }; }, 2, 1), { unknown: true });
+  assert.equal(n, 3, "the first try plus exactly 2 retries, never more");
+
+  // A NAMED server (the terminal-host allowlist's other unknown shape) is not a race: never
+  // retried, returned as-is on the first call.
+  let calledOnce = 0;
+  const server = { unknown: true, server: { exe: "/usr/bin/tmux", pid: 1, started: "t" } };
+  assert.deepEqual(await retryUnknown(() => { calledOnce++; return server; }, 2, 1), server);
+  assert.equal(calledOnce, 1);
+
+  // A definite answer (inside:true, or inside:false with no unknown) is never retried either.
+  let definiteCalls = 0;
+  assert.deepEqual(await retryUnknown(() => { definiteCalls++; return { inside: true, by: 42 }; }, 2, 1), { inside: true, by: 42 });
+  assert.equal(definiteCalls, 1);
+});
 
 test("daemon: answers health, lists the system module and runs its tools", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
@@ -23,8 +47,11 @@ test("daemon: answers health, lists the system module and runs its tools", { tim
   assert.deepEqual(await call("system.echo", { text: "hello" }, { root }), { data: { text: "hello" } });
   const info = (await call("system.info", {}, { root })).data;
   assert.match(info.version, /^\d+\.\d+\.\d+/);
-  assert.deepEqual(info.owner, { name: null }, "no name before onboarding step 1");
-  assert.deepEqual(info.assistant, { name: null }, "no assistant name before onboarding: surfaces say Vyre");
+  // owner.id's fingerprints ride along (anywhere, ADR 0043 2f): base64url, 8 bytes; never the id itself.
+  assert.equal(info.owner.name, null, "no name before onboarding step 1");
+  assert.ok(info.owner.fingerprint8 == null || /^[A-Za-z0-9_-]{11}$/.test(info.owner.fingerprint8), String(info.owner.fingerprint8));
+  assert.ok(!("id" in info.owner), "owner.id never leaves the box");
+  assert.equal(info.assistant.name, null, "no assistant name before onboarding: surfaces say Vyre");
   const ev = (await request("GET", "/v1/events", undefined, { root })).data;
   assert.ok(ev.some(e => e.type === "system.started"));
   // A surface follows the stream from here rather than replaying the whole log.
@@ -300,12 +327,12 @@ test("daemon: vyred checks presence, so a forged caller cannot run a human-only 
   const tools = (await request("GET", "/v1/tools", undefined, { root })).data;
   assert.equal(tools.find(x => x.name === "held.release").presence, true);
 
-  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   d.registry.deps.db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, sign_count, created) VALUES (?,?,?,?,?,0,?)")
-    .run("capsule-test", "capsule", "Capsule", publicKey.export({ format: "der", type: "spki" }).toString("base64url"), -8, Date.now());
+    .run("capsule-test", "capsule", "Capsule", publicKey.export({ format: "der", type: "spki" }).toString("base64url"), -7, Date.now());
   const sign = (tool, inp) => {
     const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
-    const sig = crypto.sign(null, Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(inp)}\n${ts}\n${nonce}`), privateKey).toString("base64url");
+    const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(inp)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
     return `capsule key=capsule-test ts=${ts} nonce=${nonce} sig=${sig}`;
   };
   const header = sign("held.release", input);
@@ -366,12 +393,16 @@ test("daemon: system.info names the owner as onboarding saved them, for a device
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const info = (await call("system.info", {}, { root })).data;
-  assert.deepEqual(info.owner, { name: "Alex Rivera" });
-  assert.deepEqual(info.assistant, { name: "juno" }, "replies are labelled with the assistant's name");
+  assert.equal(info.owner.name, "Alex Rivera");
+  assert.match(String(info.owner.fingerprint8), /^[A-Za-z0-9_-]{11}$/, "and the fingerprint a device's avatar is seeded from");
+  assert.equal(info.assistant.name, "juno", "replies are labelled with the assistant's name");
+  assert.ok(!("id" in info.owner) && !("id" in info.assistant), "owner.id never leaves the box");
 });
 
-test("daemon: /theme.css serves config's theme.colors, read on every request", { timeout: 20_000 }, async t => {
+test("daemon: without the appearance module, /theme.css serves config's theme.colors, read on every request", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
+  // The fallback path: with appearance on, it answers instead (core/settings/hub.test.js).
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ modules: { disable: ["appearance"] } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const { socketPath } = await import("../core/config/index.js");
@@ -386,4 +417,87 @@ test("daemon: /theme.css serves config's theme.colors, read on every request", {
   const cur = fs.existsSync(cfgPath) ? JSON.parse(fs.readFileSync(cfgPath, "utf8")) : {};
   fs.writeFileSync(cfgPath, JSON.stringify({ ...cur, theme: { colors: { dark: { signal: "#B4E35A" } } } }));
   assert.match(/** @type {any} */ (await get()).body, /--signal: #B4E35A;/);
+});
+
+test("daemon: asking for something that is not there is a 404 not_found, not a 500", { timeout: 20_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const { paths } = await import("../core/config/index.js");
+  const http = await import("node:http");
+  const post = (/** @type {string} */ tool, /** @type {any} */ body) => new Promise((resolve, reject) => {
+    const req = http.request({ socketPath: paths(root).socket, path: "/v1/tools/" + tool, method: "POST", agent: false,
+      headers: { "content-type": "application/json", "x-vyre-caller": "cli" } }, res => {
+      let b = ""; res.setEncoding("utf8"); res.on("data", c => (b += c)); res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(b) }));
+    });
+    req.on("error", reject); req.end(JSON.stringify(body));
+  });
+  for (const [tool, body] of [["gate.get", { id: "x" }], ["agents.delete", { agent: "x" }]]) {
+    const r = /** @type {any} */ (await post(tool, body));
+    assert.equal(r.status, 404, `${tool}: ${JSON.stringify(r.body)}`);
+    assert.equal(r.body.error.code, "not_found");
+  }
+});
+
+test("daemon: the Deck's resilience client is served from core/resilience, and nothing else there is", { timeout: 20_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const { socketPath } = await import("../core/config/index.js");
+  const http = await import("node:http");
+  const get = (/** @type {string} */ p) => new Promise((resolve, reject) => http.get({ socketPath: socketPath(root), path: p }, res => {
+    let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
+  }).on("error", reject));
+  for (const f of ["stream", "sse", "backoff", "outbox", "web"]) {
+    const r = /** @type {any} */ (await get(`/core/resilience/${f}.js`));
+    assert.equal(r.status, 200, f);
+    assert.equal(r.headers["content-type"], "text/javascript");
+    assert.equal(r.headers["cache-control"], "no-cache");
+    assert.match(r.headers["content-security-policy"], /default-src 'self'/);
+    assert.equal(r.body, fs.readFileSync(path.join(import.meta.dirname, "..", "core", "resilience", f + ".js"), "utf8"));
+  }
+  // lib/avatar-seed (ADR 0043 section 6): the project tile's one shared rule, served the same way.
+  const seed = /** @type {any} */ (await get("/lib/avatar-seed/index.js"));
+  assert.equal(seed.status, 200);
+  assert.equal(seed.headers["content-type"], "text/javascript");
+  assert.equal(seed.body, fs.readFileSync(path.join(import.meta.dirname, "..", "lib", "avatar-seed", "index.js"), "utf8"));
+  // node.js (Node transports) and the tests are not the Deck's; neither is anything else in core/ or lib/.
+  for (const p of ["/core/resilience/node.js", "/core/resilience/sse.test.js", "/core/daemon/index.js", "/lib/avatar-seed/index.test.js", "/lib/identity.js"]) {
+    const r = /** @type {any} */ (await get(p));
+    assert.doesNotMatch(r.body, /^\/\/ @ts-check/, p);
+  }
+});
+
+test("daemon: Wink's relay client (deck/js/pair-ticket.js's ../../relay/client/*.js imports) is served from relay/client, and the Deck's CSP allows the relay it needs", { timeout: 20_000 }, async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], relay: { url: "wss://relay.example.com" } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const { socketPath } = await import("../core/config/index.js");
+  const http = await import("node:http");
+  const get = (/** @type {string} */ p) => new Promise((resolve, reject) => http.get({ socketPath: socketPath(root), path: p }, res => {
+    let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
+  }).on("error", reject));
+  for (const f of ["client", "channel", "bytes", "response", "sse", "webcrypto", "noise"]) {
+    const r = /** @type {any} */ (await get(`/relay/client/${f}.js`));
+    assert.equal(r.status, 200, f);
+    assert.equal(r.headers["content-type"], "text/javascript");
+    assert.equal(r.body, fs.readFileSync(path.join(import.meta.dirname, "..", "relay", "client", f + ".js"), "utf8"));
+    // The default relay and this box's own configured one, both wss: and the https: resolveTicket()
+    // fetches /v1/pair on - never a wildcard.
+    const csp = r.headers["content-security-policy"];
+    assert.match(csp, /connect-src [^;]*'self'/);
+    for (const origin of ["wss://relay.vyre.run", "https://relay.vyre.run", "wss://relay.example.com", "https://relay.example.com"]) {
+      assert.ok(csp.includes(origin), `${f}: connect-src missing ${origin} (${csp})`);
+    }
+  }
+  // relay/client/nodecrypto.js is Node-only, never imported from the Deck; not on the allowlist,
+  // so it falls through to the Deck's own client-routing shell (as any unmatched path does), not
+  // the real file.
+  const nodeOnly = /** @type {any} */ (await get("/relay/client/nodecrypto.js"));
+  assert.notEqual(nodeOnly.body, fs.readFileSync(path.join(import.meta.dirname, "..", "relay", "client", "nodecrypto.js"), "utf8"));
+  // The Deck's own shell carries the same connect-src fix (deck/views/wink.js's own fetch/WebSocket
+  // to the relay runs from here, not from /relay/client/*.js).
+  const shell = /** @type {any} */ (await get("/pair/scan"));
+  assert.ok(shell.headers["content-security-policy"].includes("wss://relay.vyre.run"));
 });

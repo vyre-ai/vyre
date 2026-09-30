@@ -10,4 +10,7 @@ site/_redirects
 __pycache__/
 docs-site/
 build.json
+modules/vault-extension/dist/
+# Old Electron-era helper builds (hotkey, local, vyre-launcher); never committed.
+local/capsule/bin/
 app-out/

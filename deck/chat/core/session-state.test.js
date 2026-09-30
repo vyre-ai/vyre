@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createSession, applyEvent, applyBlocks, localSend, dropLocal, checkpoints, localShell, confirmSend, noteRewind, filesNote, contextLabel,
+import { createSession, applyEvent, pendingEvents, applyBlocks, localSend, dropLocal, checkpoints, localShell, confirmSend, noteRewind, filesNote, contextLabel,
   splitShells, seedTasks } from "./session-state.js";
 
 const T = "th-harlow";
@@ -44,6 +44,23 @@ test("text, tool, text in one message (old shapes): two text items, then the tra
   const tool = s.byKey.get("t:tu_1");
   assert.equal(tool.seq, 6);
   assert.deepEqual(tool.detail, { type: "read", filePath: "invoices/northwind.js", offset: 1 });
+});
+
+test("a picture on a user or a tool block (cohesion item 18) rides through applyBlocks and marks the item changed", () => {
+  const s = createSession(T);
+  const PIC = { media_type: "image/png", data: "iVBOR" };
+  const changed = applyBlocks(s, [
+    { seq: 1, kind: "user", ts: 0, text: "What's wrong with this invoice?", images: [PIC] },
+    { seq: 2, kind: "tool", ts: 0, id: "tu_9", tool: "Read", input: { file_path: "invoice.png" }, output: "[image]", error: false, images: [PIC] },
+  ]);
+  assert.deepEqual(changed.sort(), ["t:tu_9", "u:@1"]);
+  assert.deepEqual(s.byKey.get("u:@1").images, [PIC]);
+  assert.deepEqual(s.byKey.get("t:tu_9").images, [PIC]);
+  // A second read with the same picture changes nothing (holds() sees the same value both times).
+  assert.deepEqual(applyBlocks(s, [
+    { seq: 1, kind: "user", ts: 0, text: "What's wrong with this invoice?", images: [PIC] },
+    { seq: 2, kind: "tool", ts: 0, id: "tu_9", tool: "Read", input: { file_path: "invoice.png" }, output: "[image]", error: false, images: [PIC] },
+  ]), []);
 });
 
 test("text, tool, text with ADR 0030 block indexes keeps block keys", () => {
@@ -119,14 +136,14 @@ test("the old event shapes: no provider, no block, no uuid, no thread.state", ()
   assert.equal(s.state, "starting");
   assert.equal(s.provider, null);
   ev(s, "thread.sent", { text: "hi", surface: "deck" });
-  assert.equal(s.state, "running");
+  assert.equal(s.state, "working");
   ev(s, "ask.raised", { ask: "ask-1", tool: "Bash", summary: "rm -rf build" });
-  assert.equal(s.state, "waiting");
+  assert.equal(s.state, "asking");
   assert.equal(s.asks.get("ask-1").kind, "permission");
   assert.equal(s.byKey.get("a:ask-1").state, "open");
   ev(s, "ask.answered", { ask: "ask-1", decision: "allow", by: "deck" });
   assert.equal(s.asks.get("ask-1").state, "answered");
-  assert.equal(s.state, "running");
+  assert.equal(s.state, "working");
   ev(s, "ask.raised", { ask: "ask-2", tool: "Edit" });
   ev(s, "ask.answered", { ask: "ask-2", decision: "cancelled", by: "thread stopped" });
   assert.equal(s.asks.get("ask-2").state, "cancelled");
@@ -138,10 +155,10 @@ test("the old event shapes: no provider, no block, no uuid, no thread.state", ()
   const turn = s.byKey.get("turn:1");
   assert.equal(turn.cost_usd, 0.02);
   assert.equal(turn.reason, "end_turn");
-  assert.equal(s.state, "idle");
+  assert.equal(s.state, "waiting", "the turn ended: ready for you, canonical 'waiting'");
   ev(s, "thread.stopped", { code: 0, reason: "done" });
   assert.equal(s.stopped, "done");
-  assert.equal(s.state, "stopped");
+  assert.equal(s.state, "finished", "a one-shot's own done, mirrored from lib/thread-status.js");
 });
 
 test("the ADR 0030 shapes: started fields, thread.state wins over guesses, usage, reasoning", () => {
@@ -168,6 +185,43 @@ test("the ADR 0030 shapes: started fields, thread.state wins over guesses, usage
   applyBlocks(s, [{ seq: 7, kind: "thinking", ts: 0, text: "Thinking about it (transcript)." }]);
   assert.equal(s.byKey.get("r:msg_r:0").text, "Thinking about it (transcript).");
   assert.equal(s.byKey.get("r:msg_r:0").message, "msg_r");
+});
+
+test("thread.status is canonical (sessions' lib/thread-status.js): read as-is, and once seen, a legacy thread.state's word is ignored for good", () => {
+  const s = createSession(T);
+  ev(s, "thread.started", { provider: "claude", model: "opus", auth: "ambient" });
+  // A box that sends both (sessions' 6e2f8a71: "at the same point"): thread.status wins.
+  ev(s, "thread.state", { state: "waiting" }); // legacy word: an ask is open
+  ev(s, "thread.status", { status: "asking" }); // canonical word for the same thing
+  assert.equal(s.state, "asking");
+  // A later legacy thread.state (its own next transition) no longer overrides: canonical governs
+  // from here on, since a box that ever sent thread.status sends it for every future change too.
+  ev(s, "thread.state", { state: "idle" });
+  assert.equal(s.state, "asking", "the legacy word is ignored once thread.status has been seen");
+  ev(s, "thread.status", { status: "waiting" });
+  assert.equal(s.state, "waiting");
+  // The 8th state (28a8b4f8): paused, distinct from stopped and failed.
+  ev(s, "thread.status", { status: "paused" });
+  assert.equal(s.state, "paused");
+});
+
+test("a teammate's result (core/team's threads.post, kind teammate-result) attaches to the handoff that asked, never a message of its own (teammates.md section 3)", () => {
+  const s = createSession(T);
+  ev(s, "thread.tool", { call: "tu_1", id: "tu_1", name: "team_ask", tool: "team_ask", input: { to: "design", text: "make the intake form calmer" } });
+  const handoff = s.byKey.get("t:tu_1");
+  assert.equal(handoff.name, "team_ask");
+  assert.equal(handoff.reply, undefined, "nothing yet");
+  // Idle: threads.post delivers it as an ordinary thread.sent.
+  const changed = ev(s, "thread.sent", { text: "Done - the copy is warmer now.", surface: "design", kind: "teammate-result", uuid: "post-1" });
+  assert.deepEqual(changed, ["t:tu_1"], "the handoff's own key, not a new user row");
+  assert.equal(handoff.reply, "Done - the copy is warmer now.");
+  assert.equal(s.byKey.has("u:post-1"), false, "never an ordinary user message");
+  assert.equal(s.items.filter(it => it.kind === "user").length, 0);
+  // Busy: threads.post's queue() path - never a "queued for after" row for it either.
+  ev(s, "thread.tool", { call: "tu_2", id: "tu_2", name: "team_ask", tool: "team_ask", input: { to: "backend", text: "add the webhook" } });
+  const changed2 = ev(s, "thread.queued", { queued: 9, uuid: "q-1", text: "on it", surface: "backend", kind: "teammate-result" });
+  assert.deepEqual(changed2, []);
+  assert.equal(s.queued.length, 0);
 });
 
 test("re-reading the same blocks changes nothing; a tool's result arriving updates it in place", () => {
@@ -260,15 +314,17 @@ test("events for another thread, and events already applied, are skipped", () =>
   assert.deepEqual(applyEvent(s, /** @type {any} */ (null)), []);
 });
 
-test("a stop: a crash reads stopped (there is no failed state), streaming ends", () => {
+test("a stop: a real crash reads failed (28a8b4f8's reason shape, 'exited <code>'), an unrecognized reason reads plain stopped, streaming ends", () => {
   const s = createSession(T);
   ev(s, "thread.text", { message: "m", delta: "partial" });
-  ev(s, "thread.stopped", { reason: "crash" });
-  assert.equal(s.state, "stopped");
-  assert.equal(s.stopped, "crash");
+  ev(s, "thread.stopped", { reason: "exited 1" });
+  assert.equal(s.state, "failed", "a nonzero exit code, mirrored from lib/thread-status.js");
+  assert.equal(s.stopped, "exited 1");
   assert.equal(s.byKey.get("m:m:0").streaming, false);
   ev(s, "thread.started", {});
   assert.equal(s.stopped, null);
+  ev(s, "thread.stopped", { reason: "crash" });
+  assert.equal(s.state, "stopped", "an unrecognized reason (not the exit-code shape): the plain word, not a guess at failed");
 });
 
 test("a closed turn and a new open turn in one read each find their own item; a live call learns its length", () => {
@@ -296,15 +352,32 @@ test("a closed turn and a new open turn in one read each find their own item; a 
   assert.equal(turns[1].cost_usd, 0.02);
 });
 
-test("a session closed for idleness is idle, not stopped", () => {
+test("a session closed for idleness is paused, not stopped or failed", () => {
   const s = createSession(T);
   ev(s, "thread.started", { provider: "claude", model: "opus", auth: "subscription" });
   ev(s, "thread.stopped", { reason: "idle" });
-  assert.equal(s.state, "idle");
+  assert.equal(s.state, "paused", "mirrors lib/thread-status.js: resumable, not wrong");
   assert.equal(s.stopped, "idle");
 });
 
 // ---- steering, the queue, rewinds, modes, todos and tasks (the composer like Claude Code) ----
+
+test("a plain send: the words drawn at once with no marker, then the box's echo (its own uuid) is the same row", () => {
+  const s = createSession(T);
+  const drawn = localSend(s, { uuid: "deck-1", text: "Add the autumn specials", mode: "send", at: 1000 });
+  assert.deepEqual(keys(s), ["u:deck-1"]);
+  assert.ok(drawn.includes("u:deck-1"));
+  assert.equal(s.items.some(i => i.kind === "steer"), false, "no steer marker");
+  ev(s, "thread.sent", { text: "Add the autumn specials", surface: "deck", uuid: "box-1" }, { at: 1050 });
+  assert.equal(s.items.filter(i => i.kind === "user").length, 1, "the echo is the same message");
+  assert.equal(s.meta.uuids.get("box-1"), s.items[0].key, "known by the box's uuid now");
+  // A send that failed takes its row away.
+  const t = createSession(T);
+  localSend(t, { uuid: "deck-2", text: "Try again later", mode: "send" });
+  dropLocal(t, "deck-2");
+  assert.deepEqual(keys(t), []);
+  assert.deepEqual(localSend(t, { uuid: "deck-3", text: "x", mode: null }), [], "null draws nothing");
+});
 
 test("a steer: drawn on send, echoed via steer, moved to where it joined at the step counted here, and a re-read keeps one marker", () => {
   const s = createSession(T);
@@ -796,4 +869,30 @@ test("thread.usage keeps the context; model.switched moves the model, and a scop
   assert.equal(s.model, "haiku");
   assert.deepEqual(ev(s, "model.changed", { model: "sonnet" }), ["@session"], "an older box's thread model");
   assert.equal(s.model, "sonnet");
+});
+
+test("pendingEvents: the rows still queued and the steers not taken in, from threads.get's events, without their ids", () => {
+  const ev = [
+    { id: 1, type: "thread.sent", payload: { text: "demo", uuid: "u0" } },
+    { id: 2, type: "thread.sent", payload: { text: "read it first", uuid: "s0", via: "steer" } },
+    { id: 3, type: "thread.steered", payload: { uuid: "s0" } },
+    { id: 4, type: "thread.queued", payload: { queued: 3, uuid: "q3", text: "never mind" } },
+    { id: 5, type: "thread.unqueued", payload: { queued: 3, uuid: "q3", reason: "taken" } },
+    { id: 6, type: "thread.queued", payload: { queued: 4, uuid: "q4", text: "old words" } },
+    { id: 7, type: "thread.sent", payload: { queued: 4, uuid: "q4", via: "turn" } },
+    { id: 8, type: "thread.sent", payload: { text: "lost at a turn end", uuid: "s1", via: "steer" } },
+    { id: 9, type: "thread.finished", payload: { ok: true } },
+    { id: 10, type: "thread.sent", payload: { text: "use the rye price too", uuid: "s2", via: "steer" } },
+    { id: 11, type: "thread.queued", payload: { queued: 5, uuid: "q5", text: "then check the hours" } },
+    { id: 12, type: "thread.queued", payload: { queued: 5, uuid: "q5", text: "then check the opening hours", edited: true } },
+  ];
+  const got = pendingEvents(ev);
+  assert.deepEqual(got.map(e => [e.type, e.payload.uuid]), [["thread.sent", "s2"], ["thread.queued", "q5"], ["thread.queued", "q5"]]);
+  assert.ok(got.every(e => e.id === undefined), "no ids: the view's cursor is already past them");
+  const s = createSession("t1");
+  for (const e of got) applyEvent(s, e);
+  assert.deepEqual(s.queued.map(q => [q.queued, q.text]), [[5, "then check the opening hours"]]);
+  const marker = s.items.find(it => it.kind === "steer");
+  assert.equal(marker && marker.pending, true);
+  assert.deepEqual(pendingEvents([...ev, { id: 13, type: "thread.steered", payload: { uuid: "s2" } }, { id: 14, type: "thread.sent", payload: { queued: 5, via: "turn" } }]), []);
 });

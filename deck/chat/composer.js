@@ -39,19 +39,22 @@
 // answers {queued: true, queued_id: <row id>, uuid, name, note} (an older box: no queued_id), and
 // opts.onQueue hears how many wait and for whom (the Mac's lease line).
 
-import { h, put } from "../js/dom.js";
-import { attempt, on } from "../js/api.js";
+import { h, put, link } from "../js/dom.js";
+import { attempt, queued as viaOutbox, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import {
-  draftKind, draftBody, kindLabel, findMention, applyMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
+  draftKind, draftBody, teammateRole, kindLabel, findMention, applyMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
   upAction, enterAction, createEsc, escape, nextMode, modeLabel, actionFor, addImage, removeImage, sendImages, newUuid, IMAGE_TYPES,
   modelChoices, shortModel,
 } from "./core/composer-state.js";
 import { findCommand, rankCommands, applyCommand, normalizeCommands, sourceLabel } from "./core/commands.js";
 import { scorePath, compareScores } from "./core/match.js";
+import { queryInput, suggestRows, applySuggestion, pickedInput, tokenBefore } from "./core/suggest.js";
 import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
 import { listMenu, keysLine } from "./pickers.js";
+import { voiceStatus, listen as listenVoice } from "./core/voice.js";
+import { ago, agoLong } from "../js/need-rows.js";
 
 const touch = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 const isMacOS = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(String(navigator.platform || navigator.userAgent || ""));
@@ -62,14 +65,44 @@ const HISTORY = historyStore();
 try { const raw = localStorage.getItem(HISTORY_KEY); if (raw) HISTORY.load(JSON.parse(raw)); } catch {}
 const saveHistory = () => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(HISTORY)); } catch {} };
 
+/** An unsent draft per thread (Paseo's input/state.ts): what you were typing comes back after a
+ *  thread switch or a reload, until it is sent. Debounced (below) so a keystroke costs no write;
+ *  capped like HISTORY's rings so a long-lived box does not grow this file forever. */
+const DRAFT_KEY = "vyre.chat.drafts";
+const DRAFT_MAX_THREADS = 50;
+/** @type {Map<string, string>} */
+const DRAFTS = new Map();
+try {
+  const raw = localStorage.getItem(DRAFT_KEY);
+  if (raw) { const obj = JSON.parse(raw); if (obj && typeof obj === "object") for (const [k, v] of Object.entries(obj)) if (typeof v === "string" && v) DRAFTS.set(k, v); }
+} catch {}
+const saveDrafts = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(Object.fromEntries(DRAFTS))); } catch {} };
+/** @param {string} thread @param {string} text */
+function setDraft(thread, text) {
+  DRAFTS.delete(thread); DRAFTS.set(thread, text); // re-insert: most-recently-drafted last
+  while (DRAFTS.size > DRAFT_MAX_THREADS) DRAFTS.delete(/** @type {string} */ (DRAFTS.keys().next().value));
+  saveDrafts();
+}
+/** @param {string} thread */
+function clearDraft(thread) { if (DRAFTS.delete(thread)) saveDrafts(); }
+
 /** Where a "#" memory goes. */
 const SCOPES = Object.freeze([
   { id: "project", label: "This project", hint: "Only here" },
   { id: "user", label: "About you", hint: "Every project and chat" },
   { id: "local", label: "Just this folder", hint: "Not shared" },
 ]);
+/** The browser sizes a textarea to its text by itself (Chrome 123, Safari 26). */
+const FIELD_SIZING = typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("field-sizing", "content");
+const frame = typeof requestAnimationFrame === "function" ? (/** @type {() => void} */ f) => requestAnimationFrame(f) : (/** @type {() => void} */ f) => setTimeout(f, 16);
+/** A message with images is not queued: the box keeps only a queued message's words (sessions to fix). */
+const IMAGES_NO_QUEUE = "Images can't wait in the queue yet. Send them as a steer now (Enter), or after this turn.";
 /** How long the send button is held to queue. */
 const HOLD_MS = 450;
+// This module's own timers (holdTimer, leaseTimer, fileTimer, below) call .unref?.() right after
+// setTimeout: a no-op in the browser, but in a Node test that fails (or otherwise never calls
+// composer.stop()) before its own timer fires, it stops that one dangling timer from keeping the
+// whole test-runner process alive - a hanging glob is worse than a test that leaks harmlessly.
 /** A fallback "/" list is asked again after this long (the session was not running: it had none). */
 const COMMANDS_RETRY_MS = 15_000;
 
@@ -77,12 +110,17 @@ const COMMANDS_RETRY_MS = 15_000;
  * @param {{ thread: string, agents?: string[], threads?: { id: string, name: string|null }[], holder?: string|null, surface?: string,
  *   machine?: string|null, onOffline?: (machine: string|null) => void, onQueue?: (n: number, name: string) => void, onStop?: () => void,
  *   session?: import("./core/session-state.js").Session, patch?: (keys: string[]) => void, cwd?: () => string|null, name?: () => string,
- *   onRewind?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean }} opts
+ *   project?: () => string|null, onRewind?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean, onFind?: (query: string) => void,
+ *   onRecall?: (hit: { session: string, seq: number, role: string, ts: number, name: string|null, title: string|null, cwd: string|null, snippet: string }) => void }} opts
  * session and patch: the view's session-state and how it redraws what changed (steers, queue rows and shell rows are drawn
  * here, on send). onOffline: called with the Mac's name when a send finds it offline, with null when a send goes through.
+ * project: this thread's project slug, for "@role" (team.default.get/team.add both require one) - null with no project.
+ * onFind: "/find [words]" (a local command, nothing sent) - words is "" when none were typed.
+ * onRecall: a "From your past sessions" row was tapped (recall.related's own hit shape) - opening
+ * and rendering that session at its seq is the caller's job; without onRecall the hint never shows.
  * @returns {{ el: HTMLElement, focus: () => void, stop: () => void, setMachine: (m: string|null) => void, setBusy: (on: boolean) => void,
  *   setText: (text: string, note?: string) => void, editQueued: (q: { uuid: string|null, queued?: any, text: string }) => void,
- *   key: (e: KeyboardEvent) => boolean, draw: () => void, value: () => string }}
+ *   key: (e: KeyboardEvent) => boolean, keyUp: (e: KeyboardEvent) => boolean, draw: () => void, value: () => string }}
  */
 export function mountComposer(opts) {
   const { thread } = opts;
@@ -99,6 +137,9 @@ export function mountComposer(opts) {
   /** A queued message taken back into the box to edit (Up, or its Edit button). */
   let editing = /** @type {{ uuid: string|null, queued?: any } | null} */ (null);
   let scope = "project";
+  /** "/goal" mode: Enter adds the title, then a milestone at a time; Cmd+Enter or "Set goal" sends
+   *  it (the milestone-list piece of the goal + milestones cheap win - the engine is sessions'). */
+  let goal = /** @type {{ title: string, milestones: string[] } | null} */ (null);
   const hist = HISTORY.get(thread);
   const esc = createEsc();
   const menu = listMenu();
@@ -106,46 +147,77 @@ export function mountComposer(opts) {
   let commands = /** @type {import("./core/commands.js").Command[]|null} */ (null);
   let commandsAt = 0;
   let fileTimer = /** @type {any} */ (null), fileSeq = 0;
+  let draftTimer = /** @type {any} */ (null);
+  /** Write (or clear) the draft now; cancels a pending debounced one. */
+  function flushDraft() { clearTimeout(draftTimer); draftTimer = null; const v = ta.value; if (v) setDraft(thread, v); else clearDraft(thread); }
+  const scheduleDraftSave = () => { clearTimeout(draftTimer); draftTimer = setTimeout(flushDraft, 200); draftTimer.unref?.(); };
 
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
     rows: 1, placeholder: "Message this session", "aria-label": "Message", enterkeyhint: "send",
-    oninput: () => { grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); },
-    onkeydown: onKey, onpaste: onPaste,
+    oninput: () => { grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); scheduleHint(); },
+    onkeydown: onKey, onkeyup: (/** @type {KeyboardEvent} */ e) => { if (keyUp(e)) e.preventDefault(); }, onpaste: onPaste,
   }));
   const thumbs = h("div", { class: "composer-images", hidden: true });
   let holdTimer = /** @type {any} */ (null), held = false;
   const send = h("button", { class: "ibtn composer-send", "aria-label": "Send", title: "Send (hold to queue for after this turn)",
-    onpointerdown: () => { held = false; clearTimeout(holdTimer); holdTimer = setTimeout(() => { held = true; }, HOLD_MS); },
+    onpointerdown: () => { held = false; clearTimeout(holdTimer); holdTimer = setTimeout(() => { held = true; }, HOLD_MS); holdTimer.unref?.(); },
     onpointerup: () => clearTimeout(holdTimer),
     onclick: () => { const hold = held; held = false; clearTimeout(holdTimer); submit({ button: true, hold }); } }, icon("send", 16));
   const stopBtn = h("button", { class: "btn btn-ghost btn-sm composer-stop", type: "button", hidden: true, title: "Stop this turn (Esc)",
     onclick: () => opts.onStop?.() }, "Stop", h("span", { class: "kbd" }, "Esc"));
   const chips = h("div", { class: "composer-chips" });
+  /** "From your past sessions" (recall.related), quiet rows above the input row. */
+  const hintBox = h("div", { class: "composer-hints", hidden: true });
   // Attach: the same path as a paste (a picked or dropped file).
   const picker = /** @type {HTMLInputElement} */ (h("input", { type: "file", accept: IMAGE_TYPES.join(","), multiple: true, hidden: true,
     onchange: () => { const fs = [...(picker.files || [])]; picker.value = ""; takeFiles(fs); } }));
   const attachBtn = h("button", { class: "ibtn composer-attach", type: "button", "aria-label": "Attach images", title: "Attach images (PNG, JPEG, GIF, WebP)",
     onclick: () => picker.click() }, icon("plus", 16));
+  const micBtn = h("button", { class: "ibtn composer-mic", type: "button", disabled: !!machine, "aria-label": "Talk", title: "Tap to talk, hold to push-to-talk (Ctrl+M)",
+    onpointerdown: /** @type {any} */ (e => { if (e.button !== undefined && e.button !== 0) return; try { micBtn.setPointerCapture(e.pointerId); } catch {} voicePressBegin(); }),
+    onpointerup: () => voicePressEnd(), onpointercancel: () => voicePressEnd() }, icon("mic", 16));
+  const voicePill = h("div", { class: "composer-voice-pill", hidden: true, role: "status" });
   const wrap = h("div", { class: "composer-wrap", ondragover: (/** @type {DragEvent} */ e) => { if (!machine) e.preventDefault(); },
     ondrop: (/** @type {DragEvent} */ e) => { const fs = [...(e.dataTransfer?.files || [])]; if (!fs.length || machine) return; e.preventDefault(); takeFiles(fs); } }, menu.el,
-    h("div", { class: "composer-row" }, attachBtn, picker, ta, stopBtn, send),
+    h("div", { class: "composer-row" }, attachBtn, micBtn, picker, ta, stopBtn, send),
   );
   /** Messages waiting in the inbox queue of a session busy in the terminal (the Mac's), by the id thread.queued gives. */
   const waiting = new Map();
   let busyName = "";
   function drawQueued() { opts.onQueue?.(waiting.size, busyName); }
   const note = h("div", { class: "composer-note", role: "status" });
-  const hint = h("div", { class: "composer-hint" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "memory"]));
-  const root = h("div", { class: "composer" }, note, thumbs, wrap, chips, hint);
+  // The tip sits on the left of the hint line, the key hints stay on the right (tip.md; chat's tip-line.js fills it).
+  const tipSlot = h("div", { class: "composer-tip", hidden: true });
+  const hint = h("div", { class: "composer-hint" }, tipSlot, h("span", { class: "composer-keys" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "memory"])));
+  const root = h("div", { class: "composer" }, note, thumbs, hintBox, voicePill, wrap, chips, hint);
 
-  function grow() { ta.style.height = "auto"; ta.style.height = Math.min(200, ta.scrollHeight || 0) + "px"; }
+  // The box fits its text. Where CSS can size it (field-sizing, chat.css) nothing runs per key.
+  // Elsewhere it is measured once a frame, and the height is reset only when the text got
+  // shorter, so a key on a line that fits costs one read, never a layout of the timeline.
+  let growing = false, grownLen = 0;
+  function grow() {
+    if (FIELD_SIZING || growing) return;
+    growing = true;
+    frame(() => {
+      growing = false;
+      const shrank = ta.value.length < grownLen;
+      grownLen = ta.value.length;
+      if (!shrank && (ta.scrollHeight || 0) <= (ta.clientHeight || 0)) return;
+      if (shrank) ta.style.height = "auto";
+      ta.style.height = Math.min(200, ta.scrollHeight || 0) + "px";
+    });
+  }
   const caret = () => (typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length);
-  const setValue = (/** @type {string} */ v, at = v.length) => { ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} grow(); drawChips(); };
+  const setValue = (/** @type {string} */ v, at = v.length) => {
+    ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} grow(); drawChips(); flushDraft();
+    // An empty box is a fresh compose: the next message gets its own hint, not the last one's "not now".
+    if (!v) { clearTimeout(hintTimer); hintDismissed = false; hideHints(); }
+  };
   const say = (/** @type {any} */ what, soft = true) => { note.classList.toggle("soft", soft); put(note, what); };
 
   function maybeLease() {
     if (leaseTimer || machine) return; // a Mac's lease is not forwarded
-    leaseTimer = setTimeout(() => { leaseTimer = null; }, 4000);
+    leaseTimer = setTimeout(() => { leaseTimer = null; }, 4000); leaseTimer.unref?.();
     attempt("threads.lease", { thread }).catch(() => {});
   }
 
@@ -159,6 +231,24 @@ export function mountComposer(opts) {
   let chipSig = "";
   function drawChips() {
     drawAttach();
+    if (goal) {
+      ta.placeholder = goal.title ? "Add a milestone, Enter to add another" : "What's the goal?";
+      root.setAttribute("data-mode", "goal");
+      chips.hidden = false;
+      put(chips,
+        h("span", { class: "composer-kind" }, "Goal"),
+        goal.title ? h("span", { class: "small ellipsis" }, goal.title) : null,
+        goal.milestones.length ? h("span", { class: "composer-scopes", role: "list", "aria-label": "Milestones" },
+          goal.milestones.map((m, i) => h("span", { class: "btn btn-ghost btn-sm composer-scope", role: "listitem" }, m,
+            h("button", { type: "button", "aria-label": "Remove " + m, onclick: () => { goal?.milestones.splice(i, 1); drawChips(); ta.focus(); } }, "×")))) : null,
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: !goal.title,
+          title: goal.title ? "Send the goal and its milestones" : "Type a goal first", onclick: () => finishGoal() },
+          "Set goal", h("span", { class: "kbd" }, "⌘⏎")),
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => cancelGoal() }, "Cancel", h("span", { class: "kbd" }, "Esc")),
+      );
+      chipSig = "";
+      return;
+    }
     const kind = draftKind(ta.value);
     ta.placeholder = machine ? "Message this session"
       : busy ? `Steer ${opts.name?.() || "the session"}, or Alt+Enter to queue for after` : "Message this session";
@@ -225,9 +315,9 @@ export function mountComposer(opts) {
   async function openModels() {
     if (!rich()) return;
     if (off("threads.model")) { say(NEEDS_UPDATE); return; }
-    // No list of models on the box: the aliases, the per-purpose map, and this thread's own.
+    // The box's aliases, the per-purpose map, and this thread's own (sessions.models.get).
     const r = await CAPS.use("sessions.models.get", () => attempt("sessions.models.get", {}));
-    const list = modelChoices({ current: /** @type {any} */ (S).model, purposes: /** @type {any} */ (r.data)?.purposes });
+    const list = modelChoices({ current: /** @type {any} */ (S).model, purposes: /** @type {any} */ (r.data)?.purposes, aliases: /** @type {any} */ (r.data)?.aliases });
     menu.setKind("model");
     menu.open(list.map(m => ({ key: m.id, value: m, render: () => [
       h("span", { class: "cv-menu-name" }, m.label || m.id), m.description ? h("span", { class: "cv-menu-desc" }, m.description) : null,
@@ -290,9 +380,272 @@ export function mountComposer(opts) {
     setValue(r.text, r.caret);
     ta.focus();
   }
-  function runLocal(/** @type {string} */ what) {
+  function runLocal(/** @type {string} */ what, query = "") {
     if (what === "model") openModels();
     else if (what === "rewind") opts.onRewind?.();
+    else if (what === "find") opts.onFind?.(query);
+    else if (what === "goal") { goal = { title: query, milestones: [] }; setValue(""); drawChips(); }
+  }
+  /** Enter in goal mode: the first line is the title, each one after is a milestone. Empty does
+   *  nothing (Cmd+Enter or "Set goal" finishes; Esc cancels - onEscape, below). */
+  function advanceGoal() {
+    const v = ta.value.trim();
+    if (!v || !goal) return;
+    if (!goal.title) goal.title = v; else goal.milestones.push(v);
+    setValue("");
+  }
+  /** Sends the goal as one message (title + a numbered milestone list) - the engine (parsing it
+   *  into a tracked goal, notifying on each milestone) is sessions', not the composer's. */
+  function finishGoal() {
+    if (!goal || !goal.title) return;
+    const text = "Goal: " + goal.title + (goal.milestones.length
+      ? "\nMilestones:\n" + goal.milestones.map((m, i) => (i + 1) + ". " + m).join("\n") : "");
+    goal = null;
+    // A running turn: this joins the queue like any other command sent mid-turn, not a steer.
+    sendMessage(text, busy && !machine ? "queue" : null);
+  }
+  function cancelGoal() { goal = null; setValue(""); }
+
+  // ---- tap-to-talk / push-to-talk (voice) ---------------------------------------------------
+  //
+  // TAP the mic or Ctrl+M to start; talk as long as you like; tap or Ctrl+M again to STOP (the
+  // words stay to edit). Enter stops and sends. Esc cancels and removes only what this dictation
+  // added - never anything typed before or after it. HOLD past VOICE_HOLD_MS for quick
+  // push-to-talk instead: release stops (never sends) - Wispr Flow/superwhisper's own pattern.
+  // Interim and final words land at the cursor (never over typed text); a command word recognised
+  // only at the end of a final ("send it", "new line", "scratch that") is stripped and acted on.
+
+  const VOICE_HOLD_MS = 350;
+  const VOICE_SILENCE_WARN_MS = 2 * 60_000;
+  const VOICE_SILENCE_STOP_MS = 5 * 60_000;
+  const VOICE_COMMANDS = Object.freeze([
+    { id: "send", re: /\s*\bsend it\b\.?\s*$/i },
+    { id: "newline", re: /\s*\bnew line\b\.?\s*$/i },
+    { id: "scratch", re: /\s*\bscratch that\b\.?\s*$/i },
+  ]);
+
+  /** null: not checked yet; true/false: whether the box has a voice key. Checked once per mount. */
+  let voiceKnown = /** @type {boolean|null} */ (null);
+  /** @type {{ stop: () => void }|null} */
+  let voiceSession = null;
+  /** True between opening and listenVoice() answering. */
+  let voiceOpening = false;
+  /** True once actually streaming (voiceOpening resolved to a live session). */
+  let voiceListening = false;
+  /** True from a stop tap until onDone/onError answers: the box is finishing the last words, not
+   *  hearing new ones - the pill and mic read differently (session-view voice states, queued
+   *  after native-core's composer piece landed). */
+  let voiceStopping = false;
+  let voiceWantStopOnOpen = false, voiceWantCancelOnOpen = false;
+  /** This press/hold's own bookkeeping, reset at the start of every press. */
+  let voicePressTimer = /** @type {any} */ (null), voiceHeld = false, voicePressWasOpen = false;
+  /** Ctrl+M is a keydown/keyup pair; e.ctrlKey can already be false by keyup if Ctrl let go
+   *  first, so the M key's own up (not actionFor's Ctrl+M match) ends the press. */
+  let voiceKeyDown = false;
+  /** The dictated span this utterance owns in ta.value: [voiceStart, voiceEnd). Esc removes
+   *  exactly this; nothing typed before or after it is ever touched. */
+  let voiceStart = 0, voiceEnd = 0;
+  /** local/voice/listen.js's own "final" is cumulative (its committed string, growing with each
+   *  phrase) - this is how much of it has already become box text, so a new final's own newly
+   *  added tail is what gets checked for a command word. */
+  let voiceCommittedLen = 0;
+  /** Offsets within the cumulative committed text where each phrase began, oldest first -
+   *  "scratch that" truncates back to the last one. */
+  let voiceSegmentStarts = /** @type {number[]} */ ([]);
+  let voiceStartedAt = 0, voiceElapsedTimer = /** @type {any} */ (null);
+  let voiceSilenceWarn = /** @type {any} */ (null), voiceSilenceStop = /** @type {any} */ (null);
+
+  const voiceKeyNote = () => ["Add a voice key in ", link("/settings", {}, "Settings"), " to use voice."];
+
+  /** Replaces [voiceStart, voiceEnd) with text, moves voiceEnd, caret at the end of it. */
+  function voiceReplace(/** @type {string} */ text) {
+    const before = ta.value.slice(0, voiceStart), after = ta.value.slice(voiceEnd);
+    const at = voiceStart + text.length;
+    setValue(before + text + after, at);
+    voiceEnd = at;
+  }
+  function voiceElapsedText() {
+    const s = Math.max(0, Math.round((Date.now() - voiceStartedAt) / 1000));
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+  function drawVoicePill() {
+    if (!voiceListening) { voicePill.hidden = true; voicePill.replaceChildren(); return; }
+    voicePill.hidden = false;
+    if (voiceStopping) { put(voicePill, h("span", { class: "composer-voice-dot" }), "Transcribing…"); return; }
+    put(voicePill, h("span", { class: "composer-voice-dot" }), "Listening " + voiceElapsedText());
+  }
+  function startVoiceElapsed() { voiceStartedAt = Date.now(); clearInterval(voiceElapsedTimer); voiceElapsedTimer = setInterval(drawVoicePill, 1000); voiceElapsedTimer.unref?.(); }
+  function stopVoiceElapsed() { clearInterval(voiceElapsedTimer); voiceElapsedTimer = null; }
+  function resetSilenceTimers() {
+    clearTimeout(voiceSilenceWarn); clearTimeout(voiceSilenceStop);
+    voiceSilenceWarn = setTimeout(() => say("Still listening? Tap to stop."), VOICE_SILENCE_WARN_MS); voiceSilenceWarn.unref?.();
+    voiceSilenceStop = setTimeout(() => stopTalk(), VOICE_SILENCE_STOP_MS); voiceSilenceStop.unref?.();
+  }
+  function clearSilenceTimers() { clearTimeout(voiceSilenceWarn); clearTimeout(voiceSilenceStop); voiceSilenceWarn = voiceSilenceStop = null; }
+
+  /** A command word at the very end of a final's cumulative text, or null. */
+  function matchVoiceCommand(/** @type {string} */ text) {
+    for (const c of VOICE_COMMANDS) { const m = c.re.exec(text); if (m) return { id: c.id, index: m.index }; }
+    return null;
+  }
+
+  function finishTalk() {
+    voiceListening = false; voiceStopping = false; voiceSession = null;
+    micBtn.classList.remove("on", "held", "stopping");
+    micBtn.style.removeProperty("--voice-level");
+    micBtn.setAttribute("aria-label", "Talk");
+    stopVoiceElapsed(); clearSilenceTimers(); drawVoicePill();
+  }
+  function finishTalkAndSend() {
+    const session = voiceSession;
+    finishTalk();
+    session?.stop();
+    submit({ button: true });
+  }
+
+  async function openVoice() {
+    if (voiceSession || voiceOpening || machine) return;
+    voiceOpening = true; voiceWantStopOnOpen = false; voiceWantCancelOnOpen = false;
+    if (voiceKnown === null) { const s = await voiceStatus(); voiceKnown = s ? s.ready : null; }
+    if (voiceKnown !== true) {
+      voiceOpening = false;
+      say(voiceKnown === false ? voiceKeyNote() : "Could not reach voice.");
+      return;
+    }
+    voiceStart = caret(); voiceEnd = voiceStart; voiceCommittedLen = 0; voiceSegmentStarts = [];
+    say("Listening…");
+    micBtn.classList.add("on");
+    micBtn.setAttribute("aria-label", "Stop listening");
+    const session = await listenVoice({
+      onOpen: () => { voiceListening = true; startVoiceElapsed(); resetSilenceTimers(); drawVoicePill(); put(note); },
+      onPartial: text => { resetSilenceTimers(); voiceReplace(text); },
+      onFinal: text => {
+        resetSilenceTimers();
+        const priorLen = voiceCommittedLen; // this final's own text, before whatever it just added
+        const m = matchVoiceCommand(text);
+        if (m) {
+          const words = text.slice(0, m.index);
+          if (m.id === "send") { voiceCommittedLen = words.length; voiceReplace(words); say("\"send it\": sending"); finishTalkAndSend(); return; }
+          if (m.id === "newline") { voiceCommittedLen = words.length; voiceReplace(words + "\n"); say("\"new line\""); return; }
+          // "scratch that": undo whatever this final just added: back to the length as of the
+          // previous final. If nothing new came before the command (words itself is no longer
+          // than that), there was nothing to undo here, so undo the phrase before that instead.
+          let kept = words.slice(0, priorLen);
+          if (words.length <= priorLen) {
+            voiceSegmentStarts.pop();
+            kept = kept.slice(0, voiceSegmentStarts.length ? voiceSegmentStarts[voiceSegmentStarts.length - 1] : 0);
+          }
+          voiceCommittedLen = kept.length;
+          voiceReplace(kept);
+          say("\"scratch that\": removed the last phrase");
+          return;
+        }
+        if (text.length > voiceCommittedLen) voiceSegmentStarts.push(voiceCommittedLen);
+        voiceCommittedLen = text.length;
+        voiceReplace(text);
+      },
+      onDone: text => {
+        const was = voiceListening;
+        finishTalk();
+        if (text && was) voiceReplace(text);
+        put(note); ta.focus();
+      },
+      onError: message => { finishTalk(); say(message); },
+      onLevel: level => micBtn.style.setProperty("--voice-level", String(Math.max(0, Math.min(1, level)))),
+    });
+    voiceOpening = false;
+    if (voiceWantCancelOnOpen) { voiceWantCancelOnOpen = false; cancelVoiceNow(session); return; }
+    if (voiceWantStopOnOpen) { voiceWantStopOnOpen = false; session.stop(); return; }
+    voiceSession = session;
+  }
+  function stopTalk() {
+    if (voiceSession) {
+      voiceStopping = true;
+      micBtn.classList.add("stopping");
+      micBtn.setAttribute("aria-label", "Transcribing");
+      stopVoiceElapsed(); clearSilenceTimers(); drawVoicePill();
+      voiceSession.stop();
+      return;
+    }
+    if (voiceOpening) voiceWantStopOnOpen = true;
+  }
+  /** Stops and removes exactly [voiceStart, voiceEnd) - nothing else in the box moves. */
+  function cancelVoiceNow(/** @type {{ stop: () => void }} */ session) {
+    const before = ta.value.slice(0, voiceStart), after = ta.value.slice(voiceEnd);
+    setValue(before + after, voiceStart);
+    session.stop();
+  }
+  function cancelTalk() {
+    if (voiceSession) { const s = voiceSession; finishTalk(); cancelVoiceNow(s); return; }
+    if (voiceOpening) voiceWantCancelOnOpen = true;
+  }
+
+  /** The mic button, or Ctrl+M: tap starts and stays open; held past VOICE_HOLD_MS, release stops. */
+  function voicePressBegin() {
+    if (machine) return;
+    voicePressWasOpen = voiceListening || voiceOpening;
+    if (voicePressWasOpen) return; // already open: wait for the release to stop it (tap-to-stop)
+    voiceHeld = false;
+    clearTimeout(voicePressTimer);
+    voicePressTimer = setTimeout(() => { voiceHeld = true; micBtn.classList.add("held"); }, VOICE_HOLD_MS); voicePressTimer.unref?.();
+    openVoice();
+  }
+  function voicePressEnd() {
+    clearTimeout(voicePressTimer);
+    micBtn.classList.remove("held");
+    if (voicePressWasOpen) { stopTalk(); return; } // a tap (or Ctrl+M) while already open: stop
+    if (voiceHeld) stopTalk(); // held past the threshold: release stops, push-to-talk
+    voiceHeld = false; // else: a quick tap that just opened it - stays open
+  }
+
+  // ---- "From your past sessions" (recall.related) ------------------------------------------
+
+  /** Under this many characters, no call - the hint is for a real thought in progress, not "hi". */
+  const HINT_MIN_CHARS = 12;
+  const HINT_DEBOUNCE_MS = 350;
+  let hintTimer = /** @type {any} */ (null);
+  /** Guards a stale answer: only the most recent request's reply is drawn. */
+  let hintSeq = 0;
+  /** "Not now" for this compose - cleared the next time the box goes empty (a send or a clear). */
+  let hintDismissed = false;
+  /** @type {{ session: string, seq: number, role: string, ts: number, name: string|null, title: string|null, cwd: string|null, snippet: string }[]} */
+  let hints = [];
+
+  function scheduleHint() {
+    clearTimeout(hintTimer);
+    if (!wantHint()) { hideHints(); return; }
+    hintTimer = setTimeout(runHint, HINT_DEBOUNCE_MS); hintTimer.unref?.();
+  }
+  /** Whether the box is in a state worth asking recall.related about at all. */
+  function wantHint() {
+    return !!opts.onRecall && !machine && draftKind(ta.value) === "message" && ta.value.trim().length >= HINT_MIN_CHARS && !hintDismissed;
+  }
+  async function runHint() {
+    if (!wantHint()) { hideHints(); return; }
+    const cwd = opts.cwd?.();
+    if (!cwd) { hideHints(); return; }
+    const text = ta.value.trim();
+    const my = ++hintSeq;
+    const r = await attempt("recall.related", { project_cwds: [cwd], text, limit: 3 });
+    if (my !== hintSeq || !wantHint()) return; // a newer keystroke, or the box moved on, while this was in flight
+    if (r.error) { hideHints(); return; }
+    const d = /** @type {any} */ (r.data) || {};
+    hints = Array.isArray(d.hits) ? d.hits : [];
+    drawHints();
+  }
+  function hideHints() { if (!hints.length && hintBox.hidden) return; hints = []; drawHints(); }
+  function dismissHints() { hintDismissed = true; hideHints(); }
+  function drawHints() {
+    if (!hints.length) { hintBox.hidden = true; hintBox.replaceChildren(); return; }
+    hintBox.hidden = false;
+    put(hintBox,
+      h("div", { class: "composer-hints-head" }, h("span", { class: "lbl" }, "From your past sessions"),
+        h("button", { type: "button", class: "ibtn composer-hints-close", "aria-label": "Dismiss", title: "Dismiss (Esc)", onclick: () => dismissHints() }, icon("close", 12))),
+      hints.map(hit => h("button", { type: "button", class: "composer-hint-row", title: agoLong(hit.ts),
+        onclick: () => opts.onRecall?.(hit) },
+        h("span", { class: "composer-hint-snip ellipsis" }, hit.snippet || ""),
+        h("span", { class: "composer-hint-meta faint" }, (hit.role === "user" ? "you said" : "you were told") + " · " + ago(hit.ts)))),
+    );
   }
 
   function showFiles(/** @type {import("./core/composer-state.js").MentionRange} */ range) {
@@ -306,18 +659,51 @@ export function mountComposer(opts) {
     }
     const seq = ++fileSeq;
     fileTimer = setTimeout(async () => {
-      const r = await attempt("files.search", { q: range.query, limit: 50, where: "here" });
+      // Agents, projects, threads and people from suggest (one ranked list for every surface),
+      // then the files of this session's folder.
+      const [r, s] = await Promise.all([attempt("files.search", { q: range.query, limit: 50, where: "here" }),
+        CAPS.use("suggest.query", () => attempt("suggest.query", queryInput(ta.value, caret())))]);
       if (seq !== fileSeq) return;
       const found = r.error ? [] : (/** @type {any} */ (r.data)?.results || []).map((/** @type {any} */ x) => ({ path: String(x.path || ""), mtime: x.mtime ?? x.modified }));
       const now = findMention(ta.value, caret());
       if (!now) return;
+      const named = s.error ? [] : suggestRows(s.data, 5).filter(x => x.kind === "mention");
       const list = rankFiles(found, now.query, cwd, scorePath, compareScores);
       menu.setKind("mention");
-      menu.open(list.map(f => {
-        const cut = f.rel.lastIndexOf("/");
-        return { key: f.path, value: f, render: () => [h("span", { class: "cv-menu-dir" }, cut >= 0 ? f.rel.slice(0, cut + 1) : ""), h("span", { class: "cv-menu-name" }, cut >= 0 ? f.rel.slice(cut + 1) : f.rel)] };
-      }), row => pickFile(row.value.rel), "Files in " + (folder || "this folder"), keysLine(["⏎", "insert"], ["Esc", "close"]));
+      menu.open([
+        ...named.map(x => ({ key: "s:" + x.source + ":" + x.id, value: { suggestion: x }, render: () => [h("span", { class: "cv-menu-name" }, x.label),
+          x.detail ? h("span", { class: "cv-menu-desc" }, x.detail) : null, h("span", { class: "cv-menu-badge" }, x.sub || x.kind)] })),
+        ...list.map(f => {
+          const cut = f.rel.lastIndexOf("/");
+          return { key: f.path, value: f, render: () => [h("span", { class: "cv-menu-dir" }, cut >= 0 ? f.rel.slice(0, cut + 1) : ""), h("span", { class: "cv-menu-name" }, cut >= 0 ? f.rel.slice(cut + 1) : f.rel)] };
+        })], row => (row.value.suggestion ? pickSuggestion(row.value.suggestion) : pickFile(row.value.rel)),
+      named.length ? "People, agents and files" : "Files in " + (folder || "this folder"), keysLine(["⏎", "insert"], ["Esc", "close"]));
     }, 120);
+    fileTimer.unref?.();
+  }
+  /** A word completed from suggest (Tab on a word, or an @ name): put it in and say it was picked. */
+  function pickSuggestion(/** @type {ReturnType<typeof suggestRows>[number]} */ row) {
+    menu.close();
+    const r = applySuggestion(ta.value, caret(), row);
+    setValue(r.text, r.caret);
+    void CAPS.use("suggest.picked", () => attempt("suggest.picked", pickedInput(row)));
+    ta.focus();
+  }
+  /** Tab on a plain word asks suggest for what it may be; nothing opens on its own while typing. */
+  async function showSuggestions() {
+    const at = caret(), text = ta.value;
+    const { token } = tokenBefore(text, at);
+    if (token.length < 2 || token.startsWith("@") || token.startsWith("/")) return false;
+    const seq = ++fileSeq;
+    const r = await CAPS.use("suggest.query", () => attempt("suggest.query", queryInput(text, at)));
+    if (seq !== fileSeq || ta.value !== text || caret() !== at) return true;
+    const rows = r.error ? [] : suggestRows(r.data, 8).filter(x => x.kind !== "mention" && x.kind !== "command");
+    if (!rows.length) { say("No suggestions for that word", true); return true; }
+    if (rows.length === 1) { pickSuggestion(rows[0]); return true; }
+    menu.setKind("suggest");
+    menu.open(rows.map(x => ({ key: x.source + ":" + x.id, value: x, render: () => [h("span", { class: "cv-menu-name" }, x.label),
+      x.detail ? h("span", { class: "cv-menu-desc" }, x.detail) : null] })), row => pickSuggestion(row.value), "Suggestions", keysLine(["↑↓", "move"], ["⏎", "insert"], ["Esc", "close"]));
+    return true;
   }
   function pickFile(/** @type {string} */ rel) {
     const range = findMention(ta.value, caret());
@@ -384,15 +770,26 @@ export function mountComposer(opts) {
 
   /** Enter, the send button, or a hold on it. @param {{ button?: boolean, hold?: boolean, alt?: boolean, shift?: boolean }} how */
   function submit(how = {}) {
+    // The send button while listening: stop and send, same as Enter (finishTalkAndSend calls
+    // back into submit() once voiceListening is already false, so this never loops).
+    if (voiceListening) { finishTalkAndSend(); return; }
+    // The Send button (or its hold) while a goal is being built: keyboard Cmd+Enter finishes
+    // (handled in onKey, below, where the modifier is at hand); a click just adds the line.
+    if (goal) { advanceGoal(); return; }
     const a = enterAction({ text: ta.value, running: busy && !machine, queueToggle, images: images.length, touch: touch(), ...how });
+    if (a.do === "refuse") { say(IMAGES_NO_QUEUE); return; }
     if (a.do !== "send" || sending) return;
     if (editing) { saveEdit(); return; }
     if (a.kind === "shell") { runShell(draftBody(ta.value)); return; }
     if (a.kind === "memory") { saveMemory(draftBody(ta.value)); return; }
+    if (a.kind === "teammate" && !machine) { askTeammate(teammateRole(ta.value), draftBody(ta.value), ta.value); return; }
     if (a.kind === "command" && !machine) {
       const name = ta.value.trim().slice(1).split(/\s/)[0];
-      const local = (commands || normalizeCommands(null)).find(c => c.name === name && c.local);
-      if (local && local.local) { setValue(""); runLocal(local.local); return; }
+      const local = (commands || normalizeCommands(null)).find(c => c.local && (c.name === name || c.aliases?.includes(name)));
+      if (local && local.local) {
+        const query = ta.value.trim().slice(1 + name.length).trim();
+        setValue(""); runLocal(local.local, query); return;
+      }
     }
     sendMessage(ta.value.trim(), a.mode);
   }
@@ -408,14 +805,26 @@ export function mountComposer(opts) {
     put(note); note.classList.remove("soft");
     remember(hist, text); saveHistory();
     queueToggle = false;
-    const drawn = !machine && !!mode && !!S;
-    if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode, at: Date.now(), ...(imgs.length ? { images: imgs.length } : {}) }));
+    // Drawn at once (a steer, a queued row, or a plain send's words), except a / command, which the
+    // transcript shows its own way.
+    const drawn = !machine && !!S && (!!mode || !text.startsWith("/"));
+    // The pictures themselves, not just a count: this device drew them once already (the thumbs
+    // under the composer), so the sent row can show the same pictures inline (cohesion item 18).
+    if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode: mode || "send", at: Date.now(), ...(imgs.length ? { images: imgs } : {}) }));
     /** @type {Record<string, any>} */
     const input = machine ? { thread, text, surface: "deck", machine }
       : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
-    const r = await attempt("threads.send", input);
+    // Through the outbox (ADR 0029): a box out of reach keeps the words on this device and sends
+    // them, once, when it is back. Meanwhile the note says so and the composer takes the next one.
+    let waited = false;
+    const r = await viaOutbox("threads.send", input, { onWait: () => {
+      waited = true; sending = false; send.disabled = false;
+      note.classList.add("soft");
+      put(note, icon("clock", 12), " Sending when your server answers: ", h("span", { class: "faint" }, text.length > 60 ? text.slice(0, 59) + "…" : text));
+    } });
     sending = false;
     send.disabled = false;
+    if (waited && !r.error) { put(note); note.classList.remove("soft"); }
     drawChips();
     const back = () => {
       if (drawn) patch(dropLocal(/** @type {any} */ (S), uuid));
@@ -445,7 +854,10 @@ export function mountComposer(opts) {
       // message. The answer names the row (queued_id, and the box's uuid; an older box only says
       // queued: true and thread.queued names it). A steer drawn on send was not one: it becomes the row.
       const id = d.queued_id ?? (d.queued === true ? null : d.queued);
-      if (drawn && mode === "steer") patch(dropLocal(/** @type {any} */ (S), uuid));
+      // A session busy in a terminal queued it anyway: the box kept the words, not the images.
+      // They go back in the box, so they can be sent once the turn ends.
+      if (imgs.length && !images.length) { images = imgs; drawImages(); say("Queued without the images: a queued message keeps only its words. They are back on the server to send after this turn."); }
+      if (drawn && mode !== "queue") patch(dropLocal(/** @type {any} */ (S), uuid));
       if (drawn && mode === "queue") patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
       if (S && !machine && (id != null || drawn)) patch(localSend(S, { uuid: d.uuid || uuid, text, mode: "queue", at: Date.now(), queued: id }));
       if (id != null && !machine) return;
@@ -500,6 +912,76 @@ export function mountComposer(opts) {
     say([h("span", { class: "lbl" }, "Saved to memory"), " · ", where.label, " ", h("span", { class: "faint" }, file ? file.split(/[\\/]/).pop() + ": " + text : text)]);
   }
 
+  // ---- "@role": a project teammate's own turn (teammates.md section 2) ----------------------
+
+  /** @param {string|null} role @param {string} text @param {string} raw the whole draft, "@role" and all - "answer here" (below) sends this, not just the stripped body, so declining creation never silently edits what was typed */
+  async function askTeammate(role, text, raw) {
+    if (!role || !text || sending) return;
+    sending = true; send.disabled = true;
+    // Not CAPS.use: a role simply not existing yet answers not_found the same way an absent tool
+    // does (vyred's generic 404), and CAPS's own isMissing() cannot tell the two apart from the
+    // status code alone - it would mark team.ask missing FOR GOOD the first time any one role
+    // came up empty, breaking every later @role even to a teammate that exists. Checked directly,
+    // same distinction session.js's own recall.transcript not_found already makes.
+    const r = await attempt("team.ask", { to: role, text, surface: "deck" });
+    sending = false; send.disabled = false;
+    if (!r.error) { setValue(""); put(note); note.classList.remove("soft"); return; }
+    if (r.error.missing && r.error.code !== "not_found") { say(NEEDS_UPDATE); return; }
+    // Any project's teammates match on the role slug only (never fuzzy): a typo or a role that
+    // does not exist yet both read as not_found - the offer to create is exactly where that gets
+    // caught, per teammates.md section 2.
+    if (r.error.code !== "not_found") { say(`Could not reach ${role}: ${r.error.message || r.error.code}`); return; }
+    const project = opts.project?.();
+    if (!project) { say(`There's no ${role} teammate here.`); return; }
+    const d = await attempt("team.default.get", { project });
+    if (d.error || !/** @type {any} */ (d.data)?.enabled) {
+      say(`There's no ${role} teammate in this project. Add one in Setup, or turn Teammates on for this project.`);
+      return;
+    }
+    confirmCreate(role, text, project, raw);
+  }
+
+  /** The inline confirm before team.add on @role's first use: one tap creates and sends, the
+   * other answers here instead - never a form, per teammates.md section 2. */
+  function confirmCreate(/** @type {string} */ role, /** @type {string} */ text, /** @type {string} */ project, /** @type {string} */ raw) {
+    put(note); note.classList.remove("soft");
+    say([
+      h("span", null, `There's no ${role} teammate yet. I'll create one and send it your message.`), " ",
+      h("button", { class: "btn btn-primary btn-sm", type: "button", onclick: () => createAndAsk(role, text, project, raw) }, "Create and send"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { put(note); note.classList.remove("soft"); sendMessage(raw, null); } }, "Don't create, answer here"),
+    ]);
+  }
+
+  /** The middle tier of the box's own model list (sessions.models.get's aliases, its one list:
+   *  no model id lives here, test/cohesion-drift.test.js) - never the most capable one, for a
+   *  guessed teammate nobody has scoped yet. Falls back to the cheapest, then to none (the
+   *  server's own default) when the box names one alias or fewer, or the call fails. */
+  async function guessModel() {
+    const r = await attempt("sessions.models.get", {});
+    const aliases = Array.isArray(/** @type {any} */ (r.data)?.aliases) ? /** @type {any} */ (r.data).aliases : [];
+    const id = aliases[1]?.id || aliases[aliases.length - 1]?.id;
+    return typeof id === "string" ? id : null;
+  }
+
+  /** @param {string} role @param {string} text @param {string} project @param {string} raw the
+   *  whole draft, passed through so a not_found right after team.add still has it (createAndAsk
+   *  calls askTeammate again, which needs raw for its own possible confirmCreate). */
+  async function createAndAsk(role, text, project, raw) {
+    sending = true; send.disabled = true;
+    // A generic template on a guess (teammates.md section 2): no role-specific brief guessed from
+    // the name (guessing wrong is worse than asking), never worktree isolation (a deliberate,
+    // person-made choice, not a side effect of typing a word with an @ in front of it), the box's
+    // own middle-tier model (not the ADR's Opus default for a person-made teammate, read from
+    // sessions.models.get rather than named here) since it exists on a guess and should not spend
+    // Opus turns proving out a role nobody has scoped yet.
+    const model = await guessModel();
+    const r = await attempt("team.add", { project, role, brief: "Ask me about anything; I'll figure out the role from what you send me.",
+      isolation: "folder", tools: ["files", "web"], ...(model ? { model } : {}) });
+    if (r.error) { sending = false; send.disabled = false; say(`Could not add ${role}: ${r.error.message || r.error.code}`); return; }
+    sending = false; send.disabled = false;
+    askTeammate(role, text, raw);
+  }
+
   /** A queued message back in the box: Enter saves the new words (threads.edit), Esc lets it be. */
   function editQueued(/** @type {{ uuid: string|null, queued?: any, text: string }} */ q) {
     if (!q) return;
@@ -528,14 +1010,21 @@ export function mountComposer(opts) {
 
   /** Esc, from the box or from anywhere on the page. @returns {boolean} whether it did something */
   function onEscape() {
+    // Listening (like goal mode and the rewind picker) closes first: Esc cancels the recording
+    // AND removes exactly what this dictation added - anything typed before or after it stays.
+    if (voiceSession || voiceOpening) { cancelTalk(); return true; }
+    // Goal mode (like the rewind picker) closes first: Esc cancels it, not a general clear.
+    if (goal) { cancelGoal(); return true; }
     // A sheet over the composer (the rewind picker) closes first.
     if (opts.onOverlayEscape?.()) return true;
+    // A past-sessions hint dismisses easily: Esc while it shows closes it, not the box's own escape.
+    if (hints.length) { dismissHints(); return true; }
     const act = escape(esc, { now: Date.now(), running: busy && !machine && !!opts.onStop, text: ta.value, pickerOpen: menu.isOpen(), recalled: recalling(hist) || !!editing });
     if (act === "close") { menu.close(); return true; }
     if (act === "interrupt") { opts.onStop?.(); return true; }
     if (act === "rewind") { if (opts.onRewind && !machine) { opts.onRewind(); return true; } return false; }
     if (act === "clear") { stopRecall(hist); editing = null; setValue(""); put(note); return true; }
-    if (act === "leave-mode") { setValue(ta.value.slice(1)); return true; }
+    if (act === "leave-mode") { setValue(draftKind(ta.value) === "teammate" ? draftBody(ta.value) : ta.value.slice(1)); return true; }
     return false;
   }
 
@@ -551,6 +1040,13 @@ export function mountComposer(opts) {
     if (id === "thinking" && rich()) { toggleThinking(); return true; }
     if (id === "thinking-view" && opts.onThinkingView) { opts.onThinkingView(); return true; }
     if (id === "tasks" && opts.onTasks) { opts.onTasks(); return true; }
+    if (id === "voice" && !/** @type {any} */ (e).repeat && !machine) { voiceKeyDown = true; voicePressBegin(); return true; }
+    return false;
+  }
+  /** Ctrl+M's own release: the whole session view, not only the textarea (session.js wires this
+   *  to a document keyup, same as key() to its keydown). */
+  function keyUp(/** @type {KeyboardEvent} */ e) {
+    if (voiceKeyDown && String(e.key).toLowerCase() === "m") { voiceKeyDown = false; voicePressEnd(); return true; }
     return false;
   }
 
@@ -563,9 +1059,14 @@ export function mountComposer(opts) {
       if ((e.key === "Enter" && !e.shiftKey) || (e.key === "Tab" && !e.shiftKey)) { if (menu.pick()) { e.preventDefault(); return; } }
     }
     if (e.key === "Escape") { if (onEscape()) e.preventDefault(); return; }
+    // Tab on a word: suggest's completions (the box's names, entities and phrases).
+    if (e.key === "Tab" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !menu.isOpen() && rich()) {
+      const { token } = tokenBefore(ta.value, caret());
+      if (token.length >= 2 && !token.startsWith("@") && !token.startsWith("/")) { e.preventDefault(); void showSuggestions(); return; }
+    }
     const id = actionFor(/** @type {any} */ (e), isMacOS());
     if (id === "mode") { if (rich()) { e.preventDefault(); cycleMode(); } return; }
-    if (id === "thinking" || id === "thinking-view" || id === "tasks") { if (key(e)) e.preventDefault(); return; }
+    if (id === "thinking" || id === "thinking-view" || id === "tasks" || id === "voice") { if (key(e)) e.preventDefault(); return; }
     if (e.key === "ArrowUp" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
       const firstLine = !ta.value.slice(0, caret()).includes("\n");
       const act = upAction({ text: ta.value, firstLine, recalling: recalling(hist), queued: machine ? 0 : (S?.queued.length || 0) });
@@ -576,6 +1077,12 @@ export function mountComposer(opts) {
     if (e.key === "ArrowDown" && recalling(hist) && !ta.value.slice(caret()).includes("\n")) {
       const v = recall(hist, "down", ta.value);
       if (v !== null) { e.preventDefault(); setValue(v); }
+      return;
+    }
+    if (e.key === "Enter" && voiceListening && !e.shiftKey && !e.isComposing) { e.preventDefault(); finishTalkAndSend(); return; }
+    if (e.key === "Enter" && goal && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      if (e.metaKey || e.ctrlKey) finishGoal(); else advanceGoal();
       return;
     }
     if (e.key === "Enter") {
@@ -607,10 +1114,18 @@ export function mountComposer(opts) {
     }),
     CAPS.on(() => drawChips()),
   ];
+  // The mic is never left open: the window losing focus (another app or tab) stops it, keeping
+  // the words so far - the same as a tap to stop, not Esc's cancel.
+  const onWindowBlur = () => { if (voiceListening) stopTalk(); };
+  window.addEventListener("blur", onWindowBlur);
   drawChips();
 
+  // What was mid-typed here, restored (Paseo's own draft persistence): a fresh box always starts
+  // empty, so this always applies once, after everything above it is set up.
+  if (DRAFTS.has(thread)) setValue(/** @type {string} */ (DRAFTS.get(thread)));
+
   return {
-    el: root, key, editQueued, draw: drawChips, value: () => String(ta.value ?? ""),
+    el: root, key, keyUp, editQueued, draw: drawChips, value: () => String(ta.value ?? ""), tipSlot, input: ta,
     focus: () => ta.focus(),
     setMachine: m => { machine = m || null; drawChips(); },
     setBusy: v => {
@@ -621,7 +1136,7 @@ export function mountComposer(opts) {
       drawChips();
     },
     setText: (t, why) => { setValue(String(t ?? "")); if (why) say(why); ta.focus(); },
-    stop: () => { for (const off of offs) off(); clearTimeout(leaseTimer); clearTimeout(fileTimer); clearTimeout(holdTimer); menu.close(); },
+    stop: () => { flushDraft(); voiceSession?.stop(); stopVoiceElapsed(); clearSilenceTimers(); window.removeEventListener("blur", onWindowBlur); clearTimeout(hintTimer); for (const off of offs) off(); clearTimeout(leaseTimer); clearTimeout(fileTimer); clearTimeout(holdTimer); menu.close(); },
   };
 }
 

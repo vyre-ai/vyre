@@ -1,0 +1,144 @@
+/* The Deck's one button system (Design A v1: docs/design/system/components/button.md and
+   icon-button.md). Linked right after deck.css, so every view picks it up.
+
+   Buttons    .button + one variant: .button-primary, .button-secondary, .button-outline,
+              .button-ghost, .button-hold; and a size: .button-xs (28), .button-sm (32, the
+              desktop default), .button-touch (44, the phone default), .button-touch-lg (54).
+              Busy is aria-busy="true" (js/button.js swaps in the spinner and the -ing word);
+              disabled is :disabled or aria-disabled="true". Key hint: .button-key.
+   Icon       .icon-button (32), .icon-button-xs (28), .icon-button-touch (44),
+   buttons    .icon-button-round (44 circle, filled); aria-pressed="true" is the toggle.
+
+   The old names are aliases of these, so no view had to change:
+     .btn = outline, .btn-primary = primary, .btn-ghost = ghost, .btn-sm = 28,
+     .sb = secondary at 44, .sb-primary = primary at 54, .sb-full = full width,
+     .ibtn = icon button.
+
+   Every size, radius and motion is a token from tokens.css, with the spec value as its fallback,
+   so this reads right before and after the generated tokens carry them. */
+
+/* ---- one box for all five ------------------------------------------------------------------ */
+
+.button, .btn, .sb {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-3, 8px);
+  box-sizing: border-box; height: var(--control-sm, 32px); padding: 0 12px; margin: 0;
+  border: 1px solid transparent; border-radius: var(--radius-button, 8px);
+  background: transparent; color: var(--text);
+  font-family: var(--sans); font-size: var(--size-base, 13px); line-height: var(--line-base, 18px); font-weight: 600;
+  letter-spacing: 0; text-transform: none; text-decoration: none; white-space: nowrap;
+  cursor: pointer; -webkit-user-select: none; user-select: none;
+  transition: background-color var(--motion-tap, 120ms) var(--ease, cubic-bezier(0.25, 0.1, 0.25, 1)),
+    border-color var(--motion-tap, 120ms) var(--ease, cubic-bezier(0.25, 0.1, 0.25, 1)),
+    color var(--motion-tap, 120ms) var(--ease, cubic-bezier(0.25, 0.1, 0.25, 1));
+}
+.button:focus-visible, .btn:focus-visible, .sb:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.button > svg, .btn > svg, .sb > svg { flex-shrink: 0; }
+
+/* ---- variants ------------------------------------------------------------------------------ */
+
+/* Outline: a real alternative. Plain .btn has always been this one. */
+.button-outline, .btn { background: transparent; border-color: var(--rule-strong); color: var(--text); }
+/* Secondary: a common second choice. */
+.button-secondary, .sb { background: var(--hover); border-color: var(--hover); color: var(--text); }
+/* Ghost: Cancel, Deny, Discard, Details, Pause. */
+.button-ghost, .btn-ghost { background: transparent; border-color: transparent; color: var(--text); }
+/* Primary: the one action on the surface. Lime on dark, ink on paper. */
+.button-primary, .btn-primary, .sb.sb-primary { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); }
+/* Hold: destructive. A --hover fill grows from the left while it is held (js/button.js). */
+.button-hold { position: relative; isolation: isolate; overflow: hidden; background: transparent; border-color: var(--text); color: var(--text); }
+.button-hold::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--hover);
+  transform: scaleX(0); transform-origin: left center; transition: transform var(--motion-tap, 120ms) linear; }
+.button-hold.holding::before { transform: scaleX(1); transition-duration: var(--motion-hold, 600ms); }
+
+/* Hover (pointer only) and pressed (on press, over the same colours; no scale, no shadow). A
+   disabled or busy button takes neither. */
+@media (hover: hover) {
+  :is(.button-primary, .btn-primary, .sb.sb-primary):not(:disabled, [aria-disabled="true"]):hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+  :is(.button-secondary, .sb:not(.sb-primary)):not(:disabled, [aria-disabled="true"]):hover { background: var(--rule); border-color: var(--rule); }
+  :is(.button-outline, .btn:not(.btn-primary), .button-ghost, .button-hold):not(:disabled, [aria-disabled="true"]):hover { background: var(--hover); }
+  /* The fill that grows under a hovered hold would be --hover on --hover; it grows in --rule instead. */
+  .button-hold:hover::before { background: var(--rule); }
+}
+:is(.button-primary, .btn-primary, .sb.sb-primary):not(:disabled, [aria-disabled="true"]):active { background: var(--primary-hover); border-color: var(--primary-hover); }
+:is(.button-secondary, .sb:not(.sb-primary)):not(:disabled, [aria-disabled="true"]):active { background: var(--rule); border-color: var(--rule); }
+:is(.button-outline, .btn:not(.btn-primary), .button-ghost):not(:disabled, [aria-disabled="true"]):active { background: var(--hover); }
+
+/* ---- sizes --------------------------------------------------------------------------------- */
+
+.button-xs, .btn-sm { height: var(--control-xs, 28px); padding: 0 10px; }
+.button-sm { height: var(--control-sm, 32px); padding: 0 12px; }
+.button-touch, .sb { height: auto; min-height: var(--control-touch, 44px); padding: 0 16px; border-radius: var(--radius-button-touch, 10px);
+  font-size: var(--size-read, 17px); line-height: var(--line-read, 24px); }
+.button-touch-lg, .sb.sb-primary { height: auto; min-height: var(--control-touch-lg, 54px); padding: 0 16px; border-radius: var(--radius-card, 12px);
+  font-size: var(--size-read, 17px); line-height: var(--line-read, 24px); }
+.button-full, .sb-full { width: 100%; }
+
+/* On the phone nothing a finger taps is under 44: every button takes the touch size. */
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .button, .btn { height: auto; min-height: var(--control-touch, 44px); padding: 0 16px; border-radius: var(--radius-button-touch, 10px);
+    font-size: var(--size-read, 17px); line-height: var(--line-read, 24px); }
+  .button-touch-lg { min-height: var(--control-touch-lg, 54px); border-radius: var(--radius-card, 12px); }
+}
+
+/* ---- busy and disabled --------------------------------------------------------------------- */
+
+/* Busy: the spinner replaces the icon, the label becomes the -ing word, the width holds. */
+.button[aria-busy="true"], .btn[aria-busy="true"], .sb[aria-busy="true"] { pointer-events: none; cursor: default; }
+.button-spin { flex-shrink: 0; width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%;
+  border: 1.5px solid var(--rule-strong); border-top-color: var(--text-2); animation: button-spin 0.9s linear infinite; }
+.button-primary .button-spin, .btn-primary .button-spin, .sb-primary .button-spin { border-color: var(--primary-hover); border-top-color: var(--primary-ink); }
+@keyframes button-spin { to { transform: rotate(360deg); } }
+
+/* Disabled: the label's ink on a quiet fill, never opacity alone. */
+.button:disabled, .button[aria-disabled="true"], .btn:disabled, .btn[aria-disabled="true"], .sb:disabled, .sb[aria-disabled="true"] {
+  cursor: default; opacity: 1; background: transparent; border-color: var(--rule); color: var(--label); }
+.button-ghost:disabled, .button-ghost[aria-disabled="true"], .btn-ghost:disabled, .btn-ghost[aria-disabled="true"] { border-color: transparent; }
+.button-primary:disabled, .button-primary[aria-disabled="true"], .btn-primary:disabled, .btn-primary[aria-disabled="true"],
+.sb.sb-primary:disabled, .sb.sb-primary[aria-disabled="true"] { background: var(--hover); border-color: var(--hover); color: var(--label); }
+.button-hold:disabled::before, .button-hold[aria-disabled="true"]::before { display: none; }
+
+/* ---- the key hint inside (desktop only) ---------------------------------------------------- */
+
+.button-key { font-size: var(--size-meta, 12px); line-height: var(--line-meta, 16px); font-weight: 400; color: var(--label); }
+.button-primary .button-key, .btn-primary .button-key { color: var(--primary-ink); }
+.button-primary:disabled .button-key, .btn-primary:disabled .button-key { color: var(--label); }
+@media (max-width: 719px), (hover: none) { .button-key { display: none; } }
+
+/* The meta line beside a hold ("hold 0.6 s", "Hold to delete"). */
+.button-hold-note { font-size: var(--size-meta, 12px); line-height: var(--line-meta, 16px); color: var(--label); }
+
+/* ---- icon buttons -------------------------------------------------------------------------- */
+
+.icon-button, .ibtn {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;
+  width: var(--control-sm, 32px); height: var(--control-sm, 32px); padding: 0; margin: 0;
+  border: 1px solid transparent; border-radius: var(--radius-button, 8px);
+  background: transparent; color: var(--text-2); cursor: pointer;
+  transition: background-color var(--motion-tap, 120ms) var(--ease, cubic-bezier(0.25, 0.1, 0.25, 1)),
+    color var(--motion-tap, 120ms) var(--ease, cubic-bezier(0.25, 0.1, 0.25, 1));
+}
+.icon-button:focus-visible, .ibtn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.icon-button-xs { width: var(--control-xs, 28px); height: var(--control-xs, 28px); }
+.icon-button-touch { width: var(--control-touch, 44px); height: var(--control-touch, 44px); border-radius: var(--radius-button-touch, 10px); }
+.icon-button-round { width: var(--control-touch, 44px); height: var(--control-touch, 44px); border-radius: var(--radius-full, 999px);
+  background: var(--hover); color: var(--text); }
+@media (hover: hover) {
+  :is(.icon-button, .ibtn):not(:disabled, [aria-disabled="true"]):hover { background: var(--hover); color: var(--text); }
+}
+:is(.icon-button, .ibtn):not(:disabled, [aria-disabled="true"]):active,
+.icon-button[aria-pressed="true"], .ibtn[aria-pressed="true"] { background: var(--hover); color: var(--text); }
+.icon-button:disabled, .icon-button[aria-disabled="true"], .ibtn:disabled, .ibtn[aria-disabled="true"] {
+  cursor: default; background: transparent; color: var(--label); }
+.icon-button[aria-busy="true"], .ibtn[aria-busy="true"] { pointer-events: none; }
+/* On the phone a 28 or 32 drawing still gets a 44 hit area. :where() keeps a view's own position. */
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  :where(.icon-button, .ibtn) { position: relative; }
+  .icon-button::after, .ibtn::after { content: ""; position: absolute;
+    inset: min(0px, calc((100% - var(--control-touch, 44px)) / 2)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button, .btn, .sb, .icon-button, .ibtn { transition: none; }
+  /* The spinner stops as a static arc; the hold fill still tracks the press (it is feedback). */
+  .button-spin { animation: none; }
+}

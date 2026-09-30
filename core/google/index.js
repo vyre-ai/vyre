@@ -23,7 +23,8 @@
 // item it makes for itself, google-<name>, granted to itself, and adds the account the way
 // google.add does. Only people start, finish or cancel a sign-in; a model never can.
 
-import { Credentials, CredentialError } from "../connectors/auth.js";
+import { Credentials, CredentialError } from "../../lib/connectors/auth.js";
+import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { client, SCOPE, SCOPES } from "./api.js";
 import { MIGRATIONS, check, store, forRead, forWrite, EMAIL, loopback } from "./accounts.js";
 import { calendar, fieldsOf, dayRange } from "./calendar.js";
@@ -79,9 +80,14 @@ export default {
     for (const a of accounts.all()) await offer(a);
 
     /** Hold something at the Gate, filed under the model's own thread when vyred verified one. */
+    // One of Vyre's own modules (mail) passes the chat or agent vyred verified for it as
+    // `on_behalf`, checked against the Switchboard (connectors/behalf.js); from anyone else that
+    // field is ignored, so neither a model nor a home module can file a send under another thread.
     const hold = async (acct, to, content, input, meta) => {
+      const b = (await checkBehalf((tool, x) => ctx.call(tool, x), meta, input.on_behalf)) || {};
+      const thread = b.thread || (meta && meta.thread) || undefined;
       const r = await ctx.call("gate.request", { kind: "send", via: `google:${acct.name}`, to, content,
-        ...(named(input.why) ? { why: input.why } : {}), ...(meta && meta.thread ? { thread: meta.thread } : {}) });
+        ...(named(input.why) ? { why: input.why } : {}), ...(thread ? { thread } : {}), ...(b.agent ? { agent: b.agent } : {}) });
       if (r.error) throw fail(r.error.message, r.error.code || "failed");
       return r.data.id;
     };
@@ -135,10 +141,10 @@ export default {
     });
 
     ctx.tool("google.connect", {
-      description: "Start \"Sign in with Google\": `client` names a vault env-set with the OAuth client's client_id and client_secret (and optionally auth_uri, token_uri), granted to google. Returns { id, url, redirect }: open `url` in a browser. When Google sends the browser back, the account is added as `name` and google.connected is emitted. A browser on another device cannot reach `redirect`; paste the address it landed on into google.connect.finish.",
-      input: obj({ name: str, client: str, base: str }, ["name", "client"]),
+      description: "Start \"Sign in with Google\": `client` (default google-oauth-client) names a vault env-set with the OAuth client's client_id and client_secret (and optionally auth_uri, token_uri), granted to google. Returns { id, url, redirect }: open `url` in a browser. When Google sends the browser back, the account is added as `name` and google.connected is emitted. A browser on another device cannot reach `redirect`; paste the address it landed on into google.connect.finish.",
+      input: obj({ name: str, client: { type: "string", description: "the OAuth client env-set; default google-oauth-client" }, base: str }, ["name"]),
       callers: PEOPLE,
-      run: async ({ name, client, base }) => {
+      run: async ({ name, client = "google-oauth-client", base }) => {
         if (base !== undefined && !loopback(base)) throw fail("base must be a loopback origin such as http://127.0.0.1:8080 (it exists for test fakes)");
         return signIn.start({ name, client, base });
       },
@@ -368,7 +374,7 @@ export default {
 
     ctx.tool("google.mail.send", {
       description: "Send an email as the user. It is always held at the Gate until the user approves it (and may edit it); returns { held, message }. Nothing is sent from here.",
-      input: obj({ ...mailInput, why: str }, ["to", "subject", "body"]),
+      input: obj({ ...mailInput, why: str, on_behalf: obj({ thread: str, agent: str }) }, ["to", "subject", "body"]),
       run: safe(async (input, meta) => {
         const acct = forWrite(accounts.all(), named(input.account));
         const { to, c } = mailContent(input);

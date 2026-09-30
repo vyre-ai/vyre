@@ -1,5 +1,6 @@
 // @ts-check
-// popup: settings, unlock and the list of logins for this page. It never holds a password:
+// popup: settings, unlock, the list of logins for this page, the vault's cards and addresses,
+// and the two page toggles (suggestions, passkeys). It never holds a password or a card number:
 // it asks the background worker to fill a login by name, and the worker hands the value
 // straight to the page. The passphrase typed here goes to the worker once and is not kept.
 
@@ -47,7 +48,49 @@ async function refresh() {
   show("logins");
   const inl = await ask({ type: "inline-state" });
   input("inline").checked = Boolean(inl.data && inl.data.inline);
+  const pk = await ask({ type: "passkeys-state" });
+  input("passkeys").checked = Boolean(pk.data && pk.data.passkeys);
+  input("passkeys").disabled = Boolean(pk.data && !pk.data.supported);
+  if (pk.data && !pk.data.supported) $("passkeys-row").title = "Passkeys need Firefox 128 or later.";
   await listLogins();
+  await listCards();
+}
+
+/** Cards and addresses: the same on every page, each with a Fill for the active tab. */
+async function listCards() {
+  const list = $("cards");
+  list.replaceChildren();
+  const r = await ask({ type: "cards" });
+  if (r.error) { $("cards-box").hidden = true; return; }
+  const rows = [...r.data.cards.map(c => ({ ...c, kind: "card" })), ...r.data.addresses.map(a => ({ ...a, kind: "address" }))];
+  $("cards-box").hidden = rows.length === 0;
+  for (const c of rows) {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = c.description || c.name;
+    const d = document.createElement("small");
+    d.textContent = c.kind === "card" ? `Card · ${c.name}` : `Address · ${c.name}`;
+    label.append(d);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "Fill";
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      const f = await ask({ type: c.kind === "card" ? "card-fill" : "address-fill", name: c.name });
+      b.disabled = false;
+      if (f.error) {
+        // A card that asks every time needs a fresh proof: the unlock box, then Fill again.
+        if (f.error.code === "reprompt") { show("unlock"); input("passphrase").focus(); return say(f.error.message, true); }
+        say(f.error.message, true);
+        if (/session/.test(f.error.code)) await refresh();
+        return;
+      }
+      if (!f.data.filled.length) return say(f.data.why || "nothing to fill here", true);
+      window.close();
+    });
+    li.append(label, b);
+    list.append(li);
+  }
 }
 
 async function listLogins() {
@@ -113,8 +156,27 @@ input("inline").addEventListener("change", async () => {
     say("Suggestions are on. Reload open pages to see them.");
   } else {
     await ask({ type: "inline-disable" });
-    await chrome.permissions.remove({ origins: ["https://*/*", "http://*/*"] });
+    // Passkeys share the page permission; it goes only when both are off.
+    if (!input("passkeys").checked) await chrome.permissions.remove({ origins: ["https://*/*", "http://*/*"] });
     say("Suggestions are off.");
+  }
+});
+
+// Passkeys run on every page too (the page's own world and a prompt beside it), so they need
+// the same leave, asked for on this click. On by default: once page access is granted for
+// either toggle, passkeys come on unless turned off here.
+input("passkeys").addEventListener("change", async () => {
+  const box = input("passkeys");
+  say("");
+  if (box.checked) {
+    const granted = await chrome.permissions.request({ origins: ["https://*/*", "http://*/*"] });
+    const r = granted ? await ask({ type: "passkeys-enable" }) : { error: { message: "The browser did not allow passkeys on pages." } };
+    if (r.error) { box.checked = false; return say(r.error.message, true); }
+    say("Vyre answers passkey requests now. Reload open pages to use it.");
+  } else {
+    await ask({ type: "passkeys-disable" });
+    if (!input("inline").checked) await chrome.permissions.remove({ origins: ["https://*/*", "http://*/*"] });
+    say("Passkeys are the browser's own again.");
   }
 });
 

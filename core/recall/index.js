@@ -25,7 +25,7 @@
 //   maxChunks  the dense index's hard cap in chunk vectors (default 50,000, ~78MB); past it the
 //              oldest sessions drop out of ranking by meaning and fall back to full-text search
 
-import os from "node:os";
+import fs from "node:fs";
 import path from "node:path";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
@@ -36,7 +36,9 @@ import { pacer, gate } from "./pace.js";
 import { Dense } from "./dense.js";
 import { Watches } from "./watch.js";
 import { blocks, find, peek } from "../transcripts/index.js";
+import { transcriptFolders } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
+import { ownerDevice } from "../modules/index.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -49,16 +51,11 @@ let injected = null;
 export function useEmbedder(e) { injected = e; }
 
 /**
- * The transcript folders to read. Under `node --test` the real ~/.claude is never read, whatever
- * the config says: a test that starts vyred with default settings would otherwise index every
- * real conversation on the machine into its temp home. Tests point `transcripts` at fixtures.
- * @param {string[]} folders
+ * The transcript folders to read: the kernel's rule (core/config transcriptFolders). The person's
+ * own ~/.claude only for their own ~/.vyre, never under `node --test`, symlinks followed.
+ * @param {string[]} folders @param {string} [root] the Vyre home @param {NodeJS.ProcessEnv} [env]
  */
-export function readable(folders) {
-  if (!process.env.NODE_TEST_CONTEXT) return folders;
-  const real = path.join(os.homedir(), ".claude") + path.sep;
-  return folders.filter(f => !(path.resolve(f) + path.sep).startsWith(real));
-}
+export const readable = (folders, root = "", env = process.env) => transcriptFolders(folders, root, env);
 
 /**
  * A session's row by id or an unambiguous prefix of one, the way recall.thread finds it, or null.
@@ -82,7 +79,14 @@ export default {
     const db = ctx.store.db;
     const opts = ctx.config.recall || {};
     const every = opts.every ?? 5;
-    const folders = readable(ctx.config.transcripts || []);
+    const configured = readable(ctx.config.transcripts || [], ctx.paths?.root || "");
+    // <home>/synced holds one folder per device that sent its sessions (ADR 0008, amendment), each
+    // in Claude Code's own layout: read afresh each time, since a device can be added or revoked.
+    const syncedRoot = ctx.paths?.root ? path.join(ctx.paths.root, "synced") : null;
+    const folders = () => configured.flatMap(f => {
+      if (!syncedRoot || path.resolve(f) !== path.resolve(syncedRoot)) return [f];
+      try { return fs.readdirSync(f, { withFileTypes: true }).filter(e => e.isDirectory() && /^[A-Za-z0-9._-]{1,80}$/.test(e.name)).map(e => path.join(f, e.name)).sort(); } catch { return []; }
+    });
     // Every vector in memory for retrieval by meaning: built once, then appended to as turns are
     // embedded, and rebuilt only when a rewrite deletes turns or the chunk cap is reached.
     const dense = new Dense(db, { maxChunks: opts.maxChunks });
@@ -122,7 +126,7 @@ export default {
         if (stopped) return null;
         running = true;
         try {
-          const s = await indexer.run(folders, { stopped: isStopped, pace: paced, onProgress: (d, t) => { progress.done = d; progress.total = t; } });
+          const s = await indexer.run(folders(), { stopped: isStopped, pace: paced, onProgress: (d, t) => { progress.done = d; progress.total = t; } });
           return s;
         }
         finally { running = false; vectorLoop(); }
@@ -185,7 +189,10 @@ export default {
             if (g && await g.check()) break;
             const e = await embedder();
             if (!e || stopped) break;
-            const r = await indexer.vectorize(e, { stopped: () => stopped || paused(), pace: paced });
+            // How far embedding has got, for an import's progress: at most every 2 s, and at the end.
+            let said = 0;
+            const r = await indexer.vectorize(e, { stopped: () => stopped || paused(), pace: paced,
+              onProgress: (done, total) => { const t = Date.now(); if (done < total && t - said < 2000) return; said = t; ctx.events.emit("recall.embedded", { done, total }); } });
             if (r.turns) ctx.log(`embedded ${r.turns} turns into ${r.chunks} vectors in ${r.ms}ms`);
           } while (vec.again && !stopped);
           // Build the dense index now, in the background, so the first search does not pay for it.
@@ -202,45 +209,196 @@ export default {
     const stringArray = { type: "array", items: { type: "string" } };
     // On the box, "all" takes in the paired Macs' rows too (the default for the person), "local" only the box's.
     const machines = { type: "string", enum: ["all", "local"] };
+
+    // Project scoping (security: recall.search/thread/sessions had none — an agent limited to
+    // project A could search or read any other project's sessions). Mirrors core/memory/index.js's
+    // reach()/guard() 1:1 by design, so the two modules never drift into two different answers for
+    // "what may this agent read." Coordinate any shape change with federation (owns projects.access
+    // and agents.projects) rather than diverging here.
+    /** A folder is inside one of these granted folders. Recall's own copy: no cross-feature import
+     * (module boundary) — this is memory's teach.js `within`, restated. */
+    const within = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
+    const denied = message => Object.assign(new Error(message), { code: "denied" });
+    /** The user's own surfaces and modules see every session; only a named agent is scoped. */
+    const OWNER = new Set(["deck", "cli", "local", "capsule"]);
+    const owner = caller => OWNER.has(String(caller)) || String(caller).startsWith("module:");
+    /** A model's own session: a bare "mcp", or "mcp:thread:<id>" (a session Vyre runs for the
+     * user, ADR 0030). Neither names an agent, so it reads as the user's own surfaces do. */
+    const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller || ""));
+    /** Every tool a caller kind may reach, checked before run() at all (core/modules/index.js's
+     * callerAllowed): the person's surfaces, first-party modules, and "mcp" (a model's own
+     * session, or a named agent — reach() below tells those apart and scopes the latter). Not
+     * "tailnet": callerAllowed still lets the owner's OWN verified device through via "deck"
+     * (ownerDevice), so this is "no guest, no unknown tailnet peer, no hook", not "no tailnet at
+     * all". Declared here (reviewer's MEDIUM, alongside the reach() fix below) so a caller kind
+     * neither of us has thought of yet is refused by default, not admitted by default.
+     */
+    const READERS = ["cli", "local", "deck", "capsule", "module", "mcp"];
+    /** recall.related is never an agent's: the person's own surfaces and first-party modules
+     * only (chat, native-core render it; no MCP server ever forwards it to a model). */
+    const OWNERS_ONLY = ["cli", "local", "deck", "capsule", "module"];
+    /** Projects, as the projects module knows them: slug and its folders. No module without projects: no scoping to do. */
+    const projectList = async () => {
+      const r = await ctx.call("projects.list", {});
+      if (r.error && r.error.code !== "no_such_tool") throw new Error(r.error.message);
+      const list = r.error ? [] : (Array.isArray(r.data) ? r.data : r.data?.projects || []);
+      return list.filter(p => p && p.slug).map(p => ({ slug: String(p.slug), name: String(p.name || p.slug),
+        folders: [...new Set([p.home, ...(p.workspaces || []), ...(p.folders || [])].filter(Boolean).map(String))] }));
+    };
+    /**
+     * What a caller may read: { all: true } for the user's own surfaces, modules, a paired
+     * device or the owner's own verified device over the tailnet (ownerDevice), and a model's
+     * own session (never a named agent); else { all: false, agent, folders }. The assistant and
+     * a wildcard (projects: "*") agent both walk the per-project path, starting from every
+     * MAPPED project — raw session content, unlike a personal fact, is not the assistant's to
+     * read past what is linked, so recall narrows it the same way memory's unfiled room does
+     * (the lead's ruling, 2026-09-28, after federation's read of d897210d: personal facts stay
+     * unrestricted for the assistant; raw content from an unmapped folder does not). The
+     * assistant is unchecked against projects.access (being the assistant is what grants it,
+     * same as core/memory/index.js's reach()); a wildcard or named agent is intersected with it
+     * (deny by default; an install without that module keeps today's behavior unchanged).
+     * Everyone else with no agent named — a guest, an unrecognised tailnet peer, a hook, any
+     * caller kind neither this nor callerAllowed's READERS list has been taught about — is
+     * refused outright, not defaulted to "all" (reviewer's MEDIUM on the first cut of this). Who
+     * the agent is comes from the caller ("...agent:<name>") or input.agent; if both are given
+     * they must agree. When agents cannot be checked, a named agent is refused.
+     * @param {string|undefined} agent @param {string|undefined} caller
+     */
+    const reach = async (agent, caller) => {
+      const said = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
+      if (said && agent && said !== agent) throw denied(`the call came from agent ${said} but names agent ${agent}`);
+      const who = said || agent || null;
+      if (!who) {
+        if (owner(caller) || ownSession(caller) || ownerDevice(caller)) return { all: true, agent: null, folders: [] };
+        throw denied(`recall is for the user's own surfaces, modules and named agents, not ${String(caller || "an unnamed caller").slice(0, 60)}`);
+      }
+      const r = await ctx.call("agents.list", {});
+      if (r.error) throw new Error(`agent ${who}: its projects cannot be checked (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`);
+      const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
+      const a = list.find(x => x && x.name === who);
+      if (!a) throw denied(`no agent ${who}`);
+      const assistant = a.kind === "assistant";
+      const wildcard = a.projects === "*";
+      const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
+      const granted = assistant || wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
+      const checked = assistant ? granted : await Promise.all(granted.map(async p => {
+        const c = await ctx.call("projects.access.check", { project: p.slug, agent: who });
+        if (c.error && c.error.code === "no_such_tool") return p;
+        return c.data && c.data.granted ? p : null;
+      }));
+      return { all: false, agent: who, folders: checked.filter(Boolean).flatMap(p => p.folders) };
+    };
+    /** Narrows q.project_cwds to what a scoped agent may read, or throws. Owners/modules pass through. */
+    const scopeQuery = async (q, caller) => {
+      const r = await reach(q.agent, caller);
+      delete q.agent;
+      if (r.all) return r;
+      const requested = (q.project_cwds || []).map(String);
+      if (requested.length) {
+        const outside = requested.filter(c => !within(c, r.folders));
+        if (outside.length) throw denied(`${r.agent} is not granted ${outside.join(", ")}`);
+      } else {
+        if (!r.folders.length) throw denied(`${r.agent} is not granted any project yet`);
+        q.project_cwds = r.folders;
+      }
+      return r;
+    };
+    const agentField = { agent: { type: "string" } };
+
     ctx.tool("recall.search", {
       description: "Search every Claude Code session on this machine for turns about something. Returns the best turns with their session's name, title and folder.",
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
+        sessions: { ...stringArray, description: "also these sessions wherever they ran (a project's attached sessions); from modules and the person's surfaces only" },
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
-        per_session: { type: "integer" }, machines,
+        per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines, ...agentField,
       } },
+      callers: READERS,
       run: async (input, { caller } = {}) => {
         const { machines: _, ...q } = input;
+        // sessions widens a scope, so only a module or the person's own surface may name them: a
+        // model's scope is its folders (the MCP server holds an agent to its projects' folders).
+        if (q.sessions && !/^(?:module:|deck$|cli$|local$|capsule$)/.test(String(caller || ""))) delete q.sessions;
+        // A named agent (a project-scoped one, or one asked for by a module on its behalf) reads
+        // only its granted projects' folders: no project_cwds, no cross-project cwds, no whole corpus.
+        const scopeR = await scopeQuery(q, caller);
+        // Defense in depth: q.project_cwds already carries the grant, so this is a no-op unless a
+        // paired Mac is on an older build that does not scope its own side yet.
+        const scoped = hits => scopeR.all ? hits : hits.filter(h => within(h.cwd, scopeR.folders));
         const here = async () => {
           // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
           const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
           const e = q.hybrid === false || !any ? null : await embedder();
-          return (await search(db, q, e, dense)).hits;
+          return scoped((await search(db, q, e, dense)).hits);
         };
         if (!wantsMacs(ctx, input, caller)) return here();
         // On the box, for the person: the Macs' best turns too, by score, capped at the limit.
         const [own, answers] = await Promise.all([here(), askMacs(ctx, "recall.search", q)]);
-        return mergeRows(ctx, own, answers, { compare: (a, b) => b.score - a.score, limit: Math.max(1, Math.min(100, q.limit || 10)) });
+        return mergeRows(ctx, own, answers, { rows: scoped, compare: (a, b) => b.score - a.score, limit: Math.max(1, Math.min(100, q.limit || 10)) });
+      },
+    });
+    ctx.tool("recall.related", {
+      description: "1 to 3 of a project's own past sessions relevant to what the person is about to say, for chat's \"From your past sessions\" hint while they type. Each hit is one turn (its own session, seq, role, ts, name, cwd and a short snippet), the person's own or the assistant's; chat/native-core render the reason sentence and the link. Owner surfaces only, and only inside a real, mapped project: project_cwds must name at least one folder that is actually a project's; an ad-hoc or unmapped folder gets no hint rather than the whole corpus.",
+      input: { type: "object", required: ["project_cwds", "text"], properties: {
+        project_cwds: stringArray, text: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 3 } } },
+      callers: OWNERS_ONLY,
+      run: async (input, { caller } = {}) => {
+        // Never an agent (OWNERS_ONLY already refuses one at the gate); reach() with no agent
+        // still runs, so a caller kind that slips past OWNERS_ONLY some day is refused here too,
+        // the same way recall.search's does.
+        if (!(await reach(undefined, caller)).all) return { hits: [] };
+        const text = String(input.text || "").trim();
+        const cwds = [...new Set((input.project_cwds || []).map(String).filter(Boolean))];
+        if (!text || !cwds.length) return { hits: [] };
+        // Never an unmapped folder: at least one given folder must be a real project's own (or
+        // inside one), never a raw path a caller made up.
+        const projects = await projectList();
+        const mapped = cwds.filter(c => projects.some(p => within(c, p.folders)));
+        if (!mapped.length) return { hits: [] };
+        const limit = Math.max(1, Math.min(3, input.limit || 3));
+        const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
+        const e = any ? await embedder() : null;
+        const { hits } = await search(db, { q: text, project_cwds: mapped, per_session: 1, limit }, e, dense);
+        return { hits: hits.map(h => ({ session: h.session, seq: h.seq, role: h.role, ts: h.ts, name: h.name, title: h.title, cwd: h.cwd, snippet: h.snippet, score: h.score })) };
       },
     });
     ctx.tool("recall.thread", {
       description: "One session and its turns, in order. Takes a session id or an unambiguous prefix of one.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, machines,
-        source: { type: "string", enum: ["box", "mac"] } } },
+        source: { type: "string", enum: ["box", "mac"] }, ...agentField } },
+      callers: READERS,
       run: async (input, { caller } = {}) => {
-        const { machines: _, source, ...q } = input;
-        if (!wantsMacs(ctx, input, caller)) return thread(db, q);
+        const { machines: _, source, agent, ...q } = input;
+        const r = await reach(agent, caller);
+        // A scoped agent reads a session only inside its granted projects' folders: not by naming
+        // any session id it likes. Thrown the same way as "not found", so a scoped agent learns
+        // nothing about a session it may not read (not even that it exists).
+        const gate = row => { if (!r.all && !within(row?.session?.cwd, r.folders)) throw new Error(`no session ${q.session}`); return row; };
+        // Resolved among only what this caller may read, so an id or prefix outside its grant
+        // never surfaces even as "more than one session starts with X" (reviewer's LOW: that
+        // told a scoped agent such a session exists before the gate above ever ran).
+        const resolveScoped = session => {
+          if (r.all) return session;
+          const exact = /** @type {any} */ (db.prepare("SELECT cwd FROM recall_sessions WHERE id = ?").get(session));
+          if (exact) { if (!within(exact.cwd, r.folders)) throw new Error(`no session ${session}`); return session; }
+          const like = /** @type {any[]} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE substr(id, 1, ?) = ?").all(session.length, session))
+            .filter(row => within(row.cwd, r.folders));
+          if (!like.length) throw new Error(`no session ${session}`);
+          if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
+          return like[0].id;
+        };
+        if (!wantsMacs(ctx, input, caller)) return gate(thread(db, { ...q, session: resolveScoped(q.session) }));
         // On the box, for the person: the box's own session first. A session the box does not
         // have, or one the caller says is on the Mac, is asked of the Macs, and the first that
         // has it answers. Its turns go back to the caller and are never stored here.
         if (source !== "mac") {
-          try { return { ...thread(db, q), ...boxLabel(ctx) }; }
+          try { return gate({ ...thread(db, { ...q, session: resolveScoped(q.session) }), ...boxLabel(ctx) }); }
           catch (e) { if (!/^no session /.test(/** @type {Error} */ (e).message)) throw e; }
         }
         const answers = await askMacs(ctx, "recall.thread", q);
         const found = answers.find(a => a.ok && a.data);
-        if (found) return { ...found.data, ...macLabel(found) };
+        if (found) return gate({ ...found.data, ...macLabel(found) });
         const why = answers.length ? answers.map(a => `${a.name}: ${a.error ? a.error.code : "no answer"}`).join(", ") : "no Mac is paired";
         throw new Error(`no session ${q.session} (${why})`);
       },
@@ -280,7 +438,7 @@ export default {
       // is "not_found", which the Deck takes quietly.
       let row = sessionRow(db, input.session);
       if (!row) {
-        const e = find(folders, input.session);
+        const e = find(folders(), input.session);
         if (!e) throw Object.assign(new Error(`no session ${input.session}`), { code: "not_found" });
         row = { id: e.id, file: e.file, ...peek(e.file), title: null };
       }
@@ -295,7 +453,7 @@ export default {
       resolve: session => {
         const row = sessionRow(db, session);
         if (row) return { id: String(row.id), file: String(row.file) };
-        const e = find(folders, session);
+        const e = find(folders(), session);
         return e ? { id: e.id, file: e.file } : null;
       },
     });
@@ -317,14 +475,26 @@ export default {
     ctx.tool("recall.sessions", {
       description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
-        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines } },
+        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines, ...agentField } },
+      callers: READERS,
       run: async (input, { caller } = {}) => {
-        const { machines: _, ...q } = input;
-        if (!wantsMacs(ctx, input, caller)) return sessions(db, q);
+        const { machines: _, agent, ...q } = input;
+        const r = await reach(agent, caller);
+        if (!r.all && q.cwd && !within(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
+        // ids can name any session (the box's cross-project resolve for a Mac's picked ones): a
+        // scoped agent's own list still narrows to what it is granted, never all of them.
+        const scoped = rows => r.all ? rows : rows.filter(row => within(row.cwd, r.folders));
+        if (!wantsMacs(ctx, input, caller)) return scoped(sessions(db, q));
         // On the box, for the person: the Macs' sessions too, newest first, capped at the limit.
         const [own, answers] = await Promise.all([sessions(db, q), askMacs(ctx, "recall.sessions", q)]);
-        return mergeRows(ctx, own, answers, { compare: (a, b) => (b.ended || 0) - (a.ended || 0), limit: Math.max(1, Math.min(1000, q.limit || 50)) });
+        return mergeRows(ctx, scoped(own), answers, { rows: scoped, compare: (a, b) => (b.ended || 0) - (a.ended || 0), limit: Math.max(1, Math.min(1000, q.limit || 50)) });
       },
+    });
+    ctx.tool("recall.forget", {
+      internal: true,
+      description: "Forget these sessions outright: turns, vectors and rows. For memory, when a device's synced sessions are revoked; the files are already gone.",
+      input: { type: "object", required: ["sessions"], properties: { sessions: stringArray } },
+      run: async ({ sessions: ids }) => { const n = indexer.forget(ids.map(String)); dense.invalidate(); return { forgot: n }; },
     });
     ctx.tool("recall.index", {
       description: "Index new and changed transcripts now. Returns what the pass did.",
@@ -341,7 +511,7 @@ export default {
         const last = /** @type {any} */ (db.prepare("SELECT v FROM recall_meta WHERE k = 'last_index'").get());
         return {
           sessions: n("SELECT COUNT(*) n FROM recall_sessions"), turns,
-          folders, every, indexing: running, last: last ? JSON.parse(String(last.v)) : null, error: lastError,
+          folders: folders(), every, indexing: running, last: last ? JSON.parse(String(last.v)) : null, error: lastError,
           progress: { sessions: progress.total ? { done: progress.done, total: progress.total } : null, paused: g ? g.why : null, priority: "low" },
           watches: watches.stats(),
           vectors: { on: vec.on, ready: Boolean(vec.embedder), why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
@@ -387,7 +557,7 @@ export default {
       clearTimeout(soon.get(id));
       soon.set(id, setTimeout(() => {
         soon.delete(id);
-        chain = chain.then(() => { if (!stopped) indexer.session(folders, id); }).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
+        chain = chain.then(() => { if (!stopped) indexer.session(folders(), id); }).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
       }, SOON_MS));
     };
     const offs = [ctx.events.on("turn.completed", indexSoon), ctx.events.on("thread.started", indexSoon),

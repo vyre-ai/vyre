@@ -279,7 +279,7 @@ test("install-box.sh: shellcheck is clean when available", t => {
 test("install-box.sh: dry run lists every change and makes none", t => {
   const r = runScript(t, ["--dry-run", "--yes"]);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^dry run: nothing on this box will change$/m);
+  assert.match(r.stdout, /^dry run: nothing on this server will change$/m);
   assert.ok(r.stdout.split("\n").includes("would download: https://vyre.run/box/SHA256SUMS"), r.stdout);
   for (const f of ["compose.yml", "compose.build.yml", "vyre.env.example", "vyre"]) {
     assert.ok(r.stdout.split("\n").includes(`would download and verify: https://vyre.run/box/${f}`), `${f}: ${r.stdout}`);
@@ -313,13 +313,13 @@ test("install-box.sh: without --yes and no terminal, it prints the Docker comman
 test("install-box.sh: an old Compose stops the install", t => {
   const r = runScript(t, ["--dry-run", "--yes"], { docker: `[ "$1 $2" = "compose version" ] && echo 2.20.0; exit 0` });
   assert.equal(r.status, 1);
-  assert.match(r.stdout, /Compose 2\.24 or newer; this box has 2\.20\.0/);
+  assert.match(r.stdout, /Compose 2\.24 or newer; this server has 2\.20\.0/);
 });
 
 test("install-box.sh: says what to do on a Mac", t => {
   const mac = runScript(t, ["--dry-run"], { uname: `echo Darwin` });
   assert.equal(mac.status, 0);
-  assert.match(mac.stdout, /on a Mac: npm install -g vyre && vyre up/);
+  assert.match(mac.stdout, /On a Mac, Vyre installs with npm:\n {2}npm install -g https:\/\/vyre\.run\/box\/vyre\.tgz && vyre up$/m);
   assert.deepEqual(mac.calls, ["uname -s"]);
 });
 

@@ -40,6 +40,10 @@ test("recall module: indexes in the background and answers every tool", async t 
 
   const hits = (await call("recall.search", { q: "intake form", limit: 3 }, { root })).data;
   assert.equal(hits[0].name, "Harlow site rebuild");
+  // sessions widens a scope: a module may name them, a model (mcp) may not.
+  const nowhere = { q: "intake form", project_cwds: ["/nonexistent/scope"], sessions: [hits[0].session] };
+  assert.ok((await d.registry.call("recall.search", nowhere, "module:memory")).data.length > 0);
+  assert.equal((await d.registry.call("recall.search", nowhere, "mcp")).data.length, 0, "a model widened its scope by naming sessions");
   const th = (await call("recall.thread", { session: hits[0].session }, { root })).data;
   assert.equal(th.turns.length, 4);
   const ss = (await call("recall.sessions", { human: false }, { root })).data;
@@ -82,6 +86,24 @@ test("recall module: with an embedder, vectors fill in after a pass and search g
 test("recall module: under node --test the real ~/.claude is never read", () => {
   const real = path.join(os.homedir(), ".claude", "projects");
   assert.deepEqual(readable([real, "/tmp/elsewhere"]), ["/tmp/elsewhere"]);
+});
+
+test("recall module: a temp, dev or trial home never reads the person's ~/.claude, only its own", () => {
+  const real = path.join(os.homedir(), ".claude", "projects");
+  const cfgDir = path.join(os.homedir(), "claude-config", "projects");
+  const dev = "/tmp/vyre-dev-home";
+  const env = { CLAUDE_CONFIG_DIR: path.join(os.homedir(), "claude-config") };   // no NODE_TEST_CONTEXT: a dev world is not a test
+  assert.deepEqual(readable([real, cfgDir, "/tmp/elsewhere", `${dev}/claude/projects`], dev, env), ["/tmp/elsewhere", `${dev}/claude/projects`]);
+  assert.deepEqual(readable(["~/.claude/projects"], dev, env), []);
+  // Said on purpose: the real one is read.
+  assert.deepEqual(readable([real], dev, { ...env, VYRE_ALLOW_REAL_TRANSCRIPTS: "1" }), [real]);
+  // A home kept elsewhere on purpose names its folder, and reads it.
+  const named = path.join(os.homedir(), ".claude", "projects", "fixture-only");
+  assert.deepEqual(readable([named, real], dev, { VYRE_CLAUDE_HOME: path.dirname(path.dirname(named)) }), [named, real]);
+  // The person's own ~/.vyre reads their own conversations.
+  assert.deepEqual(readable([real], path.join(os.homedir(), ".vyre"), {}), [real]);
+  // Under node --test nothing real, even for ~/.vyre or with the opt-in.
+  assert.deepEqual(readable([real], path.join(os.homedir(), ".vyre"), { NODE_TEST_CONTEXT: "child", VYRE_ALLOW_REAL_TRANSCRIPTS: "1" }), []);
 });
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "bin", "vyre");

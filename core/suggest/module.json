@@ -1,0 +1,12 @@
+{
+  "name": "suggest",
+  "version": "0.1.0",
+  "description": "Predictive text for every surface: names after @, commands after /, entities, accounts and times as the user types.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["suggest.query", "suggest.offer", "suggest.picked"] },
+  "watches": { "emits": ["suggest.ready"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

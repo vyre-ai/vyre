@@ -7,6 +7,9 @@
 // never drift from what was said. derive() writes only when the result differs.
 
 import { extractPersonal, CONF, KIN, SINGULAR, SINGLE_VALUED, TIME_VARYING, relOfRole } from "./extract.js";
+import { signal, turnHash } from "./reader.js";
+import { ordinary } from "./words.js";
+import { sessionTrust, userWords, devTalk, DEV_TURNS, TRUST_VERSION } from "./trust.js";
 import { MIGRATIONS } from "../schema.js";
 import { migrate } from "../../store/index.js";
 
@@ -20,7 +23,7 @@ const TOLD_MAX = 1000;
 const INTERNAL = new Set(["called", "ended:owns", "named", "at"]);
 /** A fact only Claude's words support is an echo: never sure enough to be told as a fact. */
 export const ASSISTANT_MAX = 0.45;
-const KIN_WORD = { spouse: "spouse", partner: "partner", mother: "mother", father: "father", sister: "sister", brother: "brother", son: "son", daughter: "daughter", child: "child", dog: "dog", cat: "cat" };
+const KIN_WORD = { spouse: "spouse", partner: "partner", mother: "mother", father: "father", sister: "sister", brother: "brother", son: "son", daughter: "daughter", child: "child", dog: "dog", cat: "cat", friend: "friend" };
 
 const round = x => Math.round(x * 1000) / 1000;
 const combine = cs => 1 - cs.reduce((p, c) => p * (1 - c), 1);
@@ -43,10 +46,12 @@ const keyOf = ref => ref.slice(ref.indexOf(":") + 1);
 export class Personal {
   /**
    * @param {import("node:sqlite").DatabaseSync} db
-   * @param {{ log?: (m: string) => void, now?: () => number }} [opts]
+   * @param {{ log?: (m: string) => void, now?: () => number, trust?: () => { scratch?: string|null, skip?: string[] } }} [opts]
+   *   trust: the Capsule's ask folder and the folders the user left out (personal/trust.js)
    */
   constructor(db, opts = {}) {
     this.db = db;
+    this.trustOpts = opts.trust || (() => ({}));
     this.log = opts.log || (() => {});
     this.now = opts.now || (() => Date.now());
     migrate(db, "memory", MIGRATIONS);
@@ -69,7 +74,7 @@ export class Personal {
 
   /** Forget what was read from one session (its transcript was rewritten, or is gone). */
   reset(session) {
-    this.tx(() => { for (const t of ["memory_me_claims", "memory_me_cues", "memory_me_cursor"]) this.db.prepare(`DELETE FROM ${t} WHERE session = ?`).run(session); });
+    this.tx(() => { for (const t of ["memory_me_claims", "memory_me_cues", "memory_me_cursor", "memory_me_queue", "memory_me_trust"]) this.db.prepare(`DELETE FROM ${t} WHERE session = ?`).run(session); });
     // A rewritten transcript can reuse rowids: the cached scan is no longer to be trusted.
     this.idx.clear(); this.hw = 0;
     this.dirty = true;
@@ -85,10 +90,16 @@ export class Personal {
     const db = this.db;
     if (full) {
       // Claims a model added stay: they are keyed to turns that did not change.
-      this.tx(() => db.exec("DELETE FROM memory_me_claims WHERE method NOT IN ('model', 'told'); DELETE FROM memory_me_cues; DELETE FROM memory_me_cursor;"));
+      this.tx(() => db.exec("DELETE FROM memory_me_claims WHERE method NOT IN ('model', 'told'); DELETE FROM memory_me_cues; DELETE FROM memory_me_cursor; DELETE FROM memory_me_trust;"));
       this.dirty = true;
     }
-    const recall = new Map(db.prepare("SELECT id, turns FROM recall_sessions ORDER BY started, id").all().map(r => [String(r.id), Number(r.turns)]));
+    const rowsS = db.prepare("SELECT id, turns, cwd, human, parent, name, title FROM recall_sessions ORDER BY started, id").all();
+    const recall = new Map(rowsS.map(r => [String(r.id), Number(r.turns)]));
+    // Source trust: a session read under older rules is read again.
+    const trust = new Map(db.prepare("SELECT session, ok, why, dev, v FROM memory_me_trust").all().map(r => [String(r.session), { ok: Number(r.ok) === 1, why: r.why == null ? null : String(r.why), dev: Number(r.dev), v: Number(r.v) }]));
+    for (const [s, t] of trust) if (t.v < TRUST_VERSION) { this.reset(s); trust.delete(s); }
+    const topts = this.trustOpts() || {};
+    const meta = new Map(rowsS.map(r => [String(r.id), sessionTrust(/** @type {any} */ ({ ...r, human: Number(r.human) }), topts)]));
     const cursor = new Map(db.prepare("SELECT session, upto, focus FROM memory_me_cursor").all().map(r => [String(r.session), { upto: Number(r.upto), focus: r.focus ? String(r.focus) : null }]));
     // Gone from Recall, or shrunk (rewritten, seq restarted): read again from the start.
     for (const [s, c] of cursor) if (!recall.has(s) || /** @type {number} */ (recall.get(s)) < c.upto) { this.reset(s); cursor.delete(s); }
@@ -102,7 +113,14 @@ export class Personal {
     const addClaim = db.prepare(`INSERT INTO memory_me_claims (session, seq, ts, subj, rel, obj, conf, method) VALUES (?,?,?,?,?,?,?,?)
       ON CONFLICT DO UPDATE SET ts = excluded.ts, conf = max(conf, excluded.conf), method = excluded.method`);
     const addCue = db.prepare("INSERT OR IGNORE INTO memory_me_cues (session, seq, ts, text) VALUES (?,?,?,?)");
+    // Names memory knows (people, pets): a turn that mentions one is read too.
+    const known = this.known();
+    // A user turn with a personal signal waits for the reader (./reader.js), keyed by its text.
+    const enqueue = db.prepare("INSERT INTO memory_me_queue (session, seq, ts, hash, pri) VALUES (?,?,?,?,?) ON CONFLICT DO UPDATE SET ts = excluded.ts, hash = excluded.hash, pri = excluded.pri");
     const done = db.prepare("INSERT INTO memory_me_cursor (session, upto, at, focus) VALUES (?,?,?,?) ON CONFLICT DO UPDATE SET upto = excluded.upto, at = excluded.at, focus = excluded.focus");
+    const setTrust = db.prepare("INSERT INTO memory_me_trust (session, ok, why, dev, v) VALUES (?,?,?,?,?) ON CONFLICT DO UPDATE SET ok = excluded.ok, why = excluded.why, dev = excluded.dev, v = excluded.v");
+    const dropClaims = db.prepare("DELETE FROM memory_me_claims WHERE session = ? AND method != 'told'");
+    const dropQueue = db.prepare("DELETE FROM memory_me_queue WHERE session = ?");
     let turns = 0, claims = 0, more = false;
     // One transaction per batch, not per session: a commit per session was most of a first
     // pass's time.
@@ -113,15 +131,30 @@ export class Personal {
         const take = list.slice(0, limit - turns);
         const all = take.length === list.length;
         let focus = cursor.get(session)?.focus ? safeJson(cursor.get(session)?.focus) : null;
+        const m = /** @type {{ ok: boolean, why: string|null }} */ (meta.get(session));
+        const tr = trust.get(session) || { ok: m.ok, why: m.why, dev: 0, v: TRUST_VERSION };
         for (const { rowid, seq } of take) {
+          // Only the user's own words teach personal facts, and never in a session that is a
+          // program's, the Capsule's, Vyre's own, or about building memory (personal/trust.js).
+          if (!tr.ok) break;
           const t = text.get(rowid);
           if (!t) continue;       // deleted since the scan: gone, not an error
+          // Claude's words teach nothing, but they say who "he" or "the car" is in the user's next turn.
+          if (String(t.role) !== "user") { focus = extractPersonal(String(t.text), { role: String(t.role), prev: focus }).focus; continue; }
+          const own = userWords(String(t.text));
+          if (devTalk(own)) {
+            if (++tr.dev >= DEV_TURNS) { tr.ok = false; tr.why = "about memory"; dropClaims.run(session); dropQueue.run(session); this.dirty = true; }
+            continue;
+          }
           const ts = Number(t.ts) || 0;
-          const r = extractPersonal(String(t.text), { role: String(t.role), prev: focus });
+          const r = extractPersonal(own, { role: "user", prev: focus });
           focus = r.focus;
           for (const c of r.claims) { addClaim.run(session, seq, ts, c.subj, c.rel, c.obj, c.conf, c.method); claims++; }
           for (const q of r.cues) addCue.run(session, seq, ts, q);
+          const pri = signal(own, known);
+          if (pri) enqueue.run(session, seq, ts, turnHash(own), pri);
         }
+        setTrust.run(session, tr.ok ? 1 : 0, tr.why, tr.dev, TRUST_VERSION);
         const upto = all ? /** @type {number} */ (recall.get(session)) : take[take.length - 1].seq + 1;
         done.run(session, upto, this.now(), focus ? JSON.stringify(focus) : null);
         turns += take.length;
@@ -130,6 +163,33 @@ export class Personal {
     });
     if (claims) this.dirty = true;
     return { turns, claims, more };
+  }
+
+  /** Names memory knows for people and pets, one lower-case word each, no kin or ordinary words. */
+  known() {
+    return new Set(/** @type {any[]} */ (this.db.prepare(`SELECT DISTINCT lower(a.alias) w FROM memory_me_aliases a JOIN memory_me_entities e ON e.id = a.entity
+      WHERE e.kind IN ('person', 'pet') AND a.alias NOT LIKE '% %' AND length(a.alias) >= 3`).all()).map(r => String(r.w)).filter(w => /^[a-z][a-z-]+$/.test(w) && !KIN[w] && !ordinary(w)));
+  }
+
+  /**
+   * A name memory just learned: the user turns that mention it move to the front of the reader's
+   * queue ("biscuit's crate fits" was read before Biscuit was known). Returns the turns queued.
+   * @param {Iterable<string>} names
+   */
+  requeue(names) {
+    if (!this.hasRecall()) return 0;
+    const find = this.db.prepare("SELECT t.session, t.seq, t.ts, t.text FROM recall_turns t JOIN memory_me_trust r ON r.session = t.session AND r.ok = 1 WHERE t.role = 'user' AND lower(t.text) LIKE ? LIMIT 2000");
+    const put = this.db.prepare("INSERT INTO memory_me_queue (session, seq, ts, hash, pri) VALUES (?,?,?,?,2) ON CONFLICT DO UPDATE SET pri = 2");
+    let n = 0;
+    this.tx(() => {
+      for (const name of names) for (const r of /** @type {any[]} */ (find.all(`%${name}%`))) {
+        const text = userWords(String(r.text));
+        if (devTalk(text)) continue;
+        if (!new RegExp(`\\b${name}\\b`, "i").test(text) || signal(text, new Set([name])) !== 2) continue;
+        n += Number(put.run(String(r.session), Number(r.seq), Number(r.ts) || 0, turnHash(text)).changes);
+      }
+    });
+    return n;
   }
 
   /**
@@ -204,6 +264,22 @@ export class Personal {
   }
 
   /** One remembered line by id, or null. */
+  /**
+   * The person settled one slot by picking its value (memory.settle): kept as their words, with
+   * exactly that one claim, so a value that happens to read like another sentence adds nothing else.
+   * @param {string} text @param {{ subj: string, rel: string, obj: string }} claim
+   */
+  tell(text, claim, { who = null } = {}) {
+    const t = String(text ?? "").replace(/\s+/g, " ").trim().slice(0, TOLD_MAX);
+    const ts = this.now();
+    const id = Number(this.db.prepare("INSERT INTO memory_me_told (ts, text, room, who) VALUES (?,?,?,?)").run(ts, t, null, who).lastInsertRowid);
+    this.addClaims(`told:${id}`, 0, ts, [{ subj: claim.subj, rel: claim.rel, obj: claim.obj, conf: TOLD.explicit, method: "told" }]);
+    this.derive();
+    const facts = this.db.prepare(`SELECT f.* FROM memory_me_facts f JOIN memory_me_evidence v ON v.fact = f.id WHERE v.session = ? ORDER BY f.confidence DESC, f.rel`)
+      .all(`told:${id}`).map(row => this.row(row));
+    return { id, text: t, facts };
+  }
+
   told(id) {
     const r = this.db.prepare("SELECT id, ts, text, room FROM memory_me_told WHERE id = ?").get(Number(id));
     return r ? { id: Number(r.id), ts: Number(r.ts), text: String(r.text), room: r.room == null ? null : String(r.room) } : null;
@@ -224,7 +300,9 @@ export class Personal {
     if (!this.dirty && !force) return { changed: false };
     this.dirty = false;
     const db = this.db;
-    const claims = db.prepare("SELECT session, seq, ts, subj, rel, obj, conf, method FROM memory_me_claims").all()
+    // A session found untrusted after some of its claims were kept (a model's, read earlier) adds nothing.
+    const claims = db.prepare(`SELECT c.session, c.seq, c.ts, c.subj, c.rel, c.obj, c.conf, c.method FROM memory_me_claims c
+      LEFT JOIN memory_me_trust r ON r.session = c.session WHERE r.ok IS NOT 0 AND c.method != 'assistant'`).all()
       .map(r => ({ session: String(r.session), seq: Number(r.seq), ts: Number(r.ts) || 0, subj: String(r.subj), rel: String(r.rel), obj: String(r.obj), conf: Number(r.conf), method: String(r.method || "rule") }));
     const turnOf = c => `${c.session}\u0000${c.seq}`;
 
@@ -236,7 +314,8 @@ export class Personal {
       if (!usedAsName.has(k)) usedAsName.set(k, new Set());
       usedAsName.get(k).add(turnOf(c));
     }
-    for (const c of claims) if (c.method === "lower" && c.rel === "name" && isLit(c.obj)) {
+    // A friend is named by the link itself: me -friend-> name:Theo.
+    for (const c of claims) if (c.method === "lower" && (c.rel === "name" && isLit(c.obj) || c.rel === "friend" && c.obj.startsWith("name:"))) {
       const turns = usedAsName.get(keyOf(c.obj).toLowerCase());
       if (turns && [...turns].some(t => t !== turnOf(c))) c.conf = Math.max(c.conf, CONF.explicit);
     }
@@ -335,7 +414,7 @@ export class Personal {
 
     // ---- what is connected to me: facts about anyone else are someone else's.
     const out = new Map();
-    for (const r of rows) if (!isLit(r.obj) && !INTERNAL.has(r.rel)) { if (!out.has(r.subj)) out.set(r.subj, new Set()); out.get(r.subj).add(r.obj); }
+    for (const r of rows) if (!isLit(r.obj) && (!INTERNAL.has(r.rel) || r.rel === "ended:owns")) { if (!out.has(r.subj)) out.set(r.subj, new Set()); out.get(r.subj).add(r.obj); }
     const mine = new Set(["me"]);
     const queue = ["me"];
     while (queue.length) for (const n of out.get(/** @type {string} */ (queue.shift())) || []) if (!mine.has(n)) { mine.add(n); queue.push(n); }
@@ -361,10 +440,12 @@ export class Personal {
     const ended = new Map();
     for (const r of rows) {
       if (!mine.has(r.subj)) continue;
-      if (r.rel === "ended:owns") { const k = `${r.subj}|${r.obj}`; ended.set(k, Math.max(ended.get(k) || 0, r.ts)); continue; }
-      if (INTERNAL.has(r.rel)) continue;
-      const id = `${r.subj}|${r.rel}|${r.obj}`;
-      const g = groups.get(id) || { id, subj: r.subj, rel: r.rel, obj: r.obj, turns: new Map(), sessions: new Set(), first: r.ts, last: r.ts, user: false };
+      // Sold: it was owned until then ("sold the outback" says the user had one).
+      if (r.rel === "ended:owns") { const k = `${r.subj}|${r.obj}`; ended.set(k, Math.max(ended.get(k) || 0, r.ts)); }
+      else if (INTERNAL.has(r.rel)) continue;
+      const rel = r.rel === "ended:owns" ? "owns" : r.rel;
+      const id = `${r.subj}|${rel}|${r.obj}`;
+      const g = groups.get(id) || { id, subj: r.subj, rel, obj: r.obj, turns: new Map(), sessions: new Set(), first: r.ts, last: r.ts, user: false };
       if (r.method !== "assistant") g.user = true;
       const tk = `${r.session}\u0000${r.seq}`;
       const had = g.turns.get(tk);
@@ -374,8 +455,10 @@ export class Personal {
       g.first = Math.min(g.first, r.ts); g.last = Math.max(g.last, r.ts);
       groups.set(id, g);
     }
+    // The person said an answer resting on it was wrong (core/memory/iq/fix.js): it carries no belief.
+    const denied = new Set(/** @type {any[]} */ (db.prepare("SELECT DISTINCT fact FROM memory_me_denied").all()).map(r => String(r.fact)));
     const facts = [...groups.values()].map(g => {
-      const raw = combine([...g.turns.values()].map(t => t.conf));
+      const raw = denied.has(g.id) ? 0 : combine([...g.turns.values()].map(t => t.conf));
       return { ...g, raw: g.user ? raw : Math.min(raw, ASSISTANT_MAX), confidence: 0, current: 1 };
     });
     // Single-valued relations: rival values share the belief; the newest is favoured where a
@@ -393,6 +476,7 @@ export class Personal {
       const win = [...list].sort((a, b) => b.confidence - a.confidence || b.last - a.last)[0];
       for (const f of list) f.current = f === win ? 1 : 0;
     }
+    for (const f of facts) if (denied.has(f.id)) f.current = 0;
     // Sold: owning (and driving) it stopped, unless it was said again after.
     for (const f of facts) if ((f.rel === "owns" || f.rel === "drives") && (ended.get(`${f.subj}|${f.obj}`) || -1) >= f.last) f.current = 0;
 
@@ -419,7 +503,7 @@ export class Personal {
       if (e.kind === "vehicle") { const k = keyOf(e.id); alias(k, e.id); alias(k.split(" ")[0], e.id); if (k.includes(" ")) alias(k.split(" ").slice(1).join(" "), e.id); }
     }
     for (const f of facts) if (f.subj === "me" && !isLit(f.obj)) {
-      if (["spouse", "partner", "mother", "father", "sister", "brother", "son", "daughter", "child", "pet"].includes(f.rel)) { alias(f.rel, f.obj); alias(`my ${f.rel}`, f.obj); }
+      if (["spouse", "partner", "mother", "father", "sister", "brother", "son", "daughter", "child", "pet", "friend"].includes(f.rel)) { alias(f.rel, f.obj); alias(`my ${f.rel}`, f.obj); }
       if (f.rel === "owns" && f.current && f.obj.startsWith("vehicle:")) { alias("car", f.obj); alias("my car", f.obj); }
     }
     for (const f of facts) if (f.rel === "name" && f.subj !== "me") alias(keyOf(f.obj), f.subj);

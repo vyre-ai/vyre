@@ -15,20 +15,21 @@
 //                      attention role kept, text of 12 or more, 44 px targets, fonts not empty.
 //                      The whole value is refused, naming the failing pair.
 //
-// Levels: account only for now. ADR 0035 gives all three account and device level; the
-// registry (core/config/settings.js) accepts "device" once native-core's build step 2 lands, and
-// then each declaration's levels become ["account", "device"].
+// Levels: all three are set at account and device level (ADR 0035): a dark phone beside a paper
+// Mac. The hub keeps every value in hub.json (a key set per device has no store), and the hub
+// calls appearance.check, as the settings module, before it stores appearance.theme or
+// appearance.tokens, and refuses the change when the check says no, is off, or is slow.
 //
-// Where appearance.tokens lives: still this module's own table, behind appearance.tokens.get and
-// appearance.tokens.set (a tool store), because the registry doesn't call check yet. When it
-// does, the "store" line in module.json goes and the value moves to hub.json like any plain key;
-// nothing here changes, since every read goes through the hub (settings.snapshot, or settings.get)
-// and falls back to the table only when the settings module is off.
+// Old values: before the hub kept appearance.tokens, this module kept it in its own table. That
+// row is still read for one release, only while the hub holds no value of its own, and is
+// dropped the first time the person changes appearance.tokens through the hub (set or reset).
+// It is not copied into the hub at start: only a person writes a setting, and a module has no
+// path to settings.set.
 //
-// Surfaces read appearance.resolve { device?, project?, format? } (or GET /v1/appearance/theme,
-// the same answer): the preset, the scheme, the whole merged tokens.json, its custom properties,
-// a version, and the hub's rev when settings.snapshot exists. format "css" is only the custom
-// properties, so vyred can serve GET /theme.css?device= and GET /v1/theme?device= by calling it.
+// Surfaces read vyred's GET /theme.css?device= and GET /v1/theme?device= (core/daemon), which
+// call appearance.resolve { device } and carry the hub's rev as the ETag. resolve's answer: the
+// preset, the scheme, the whole merged tokens.json, its custom properties (css, always), a
+// version, the hub's rev and the device it resolved. format "css" is only the custom properties.
 // resolve checks the merged tokens again on every read: a stored value that no longer passes
 // paints the preset's tokens instead, and the answer names each problem. A bad value never paints.
 //
@@ -39,8 +40,9 @@
 // The older config.theme.colors folds in under the preset for one release (lib/theme fromLegacy),
 // only when the result still keeps every rule.
 //
-// Switched off, the keys leave the settings list, the tools and route are gone, and every surface
-// keeps the shipped tokens it already has. Nothing else depends on this module.
+// Switched off, the keys leave the settings list and the tools are gone: vyred's /theme.css paints
+// the Deck's own colours (and config.theme.colors), and /v1/theme answers 404. Nothing else
+// depends on this module.
 
 import * as theme from "../../lib/theme/index.js";
 import * as config from "../config/index.js";
@@ -48,16 +50,12 @@ import * as config from "../config/index.js";
 const MIGRATIONS = [
   `CREATE TABLE appearance_tokens (scope TEXT PRIMARY KEY, value TEXT NOT NULL, at INTEGER NOT NULL)`,
 ];
-const PEOPLE = ["cli", "local", "deck", "capsule"];
 const SCHEMES = ["system", "dark", "paper"];
 const DEFAULT_PRESET = "vyre";
 /** Old appearance.theme values, read as the vyre preset and a scheme, for one release. */
 const LEGACY_THEME = /** @type {Record<string, string>} */ ({ system: "system", dark: "dark", paper: "paper" });
 const KEYS = ["appearance.theme", "appearance.scheme", "appearance.tokens"];
 const HEAD = "Vyre's design tokens from the hub (the appearance module).";
-
-const fault = (/** @type {string} */ code, /** @type {string} */ message, /** @type {any} */ detail) =>
-  Object.assign(new Error(message), { code, ...(detail ? { detail } : {}) });
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -66,7 +64,7 @@ export default {
     const db = ctx.store.db;
     const shipped = theme.tokens();
 
-    /** The person's override as this module's table holds it, or undefined. */
+    /** An old value in this module's table, from before the hub kept appearance.tokens. */
     const stored = () => {
       const row = /** @type {any} */ (db.prepare("SELECT value FROM appearance_tokens WHERE scope = 'account'").get());
       return row ? JSON.parse(String(row.value)) : undefined;
@@ -110,16 +108,19 @@ export default {
     };
 
     /**
-     * The three values from the hub, for one device and project, and where each came from.
-     * settings.snapshot when native-core has it (the hub's rev and the device level too), else
-     * settings.get (account and project), else this module's own table and the defaults.
+     * The three values from the hub, for one device and project, and where each came from:
+     * settings.snapshot (device beats project beats account beats default), else settings.get,
+     * else the defaults (the settings module is off). An old table value fills in only where the
+     * hub has none of its own.
      * @param {{ device?: string, project?: string }} at
      */
     const fromHub = async at => {
       const snap = await ctx.call("settings.snapshot", { ...(at.device ? { device: at.device } : {}), ...(at.project ? { project: at.project } : {}) });
       if (snap && !snap.error && snap.data && snap.data.values) {
         const d = snap.data;
-        return { values: d.values, sources: d.sources || {}, rev: d.rev, device: d.device };
+        const values = { ...d.values }, sources = { ...(d.sources || {}) };
+        oldTokens(values, sources);
+        return { values, sources, rev: d.rev, device: d.device };
       }
       /** @type {Record<string, any>} */ const values = {};
       /** @type {Record<string, string>} */ const sources = {};
@@ -130,11 +131,16 @@ export default {
         values[key] = r.data.value;
         sources[key] = r.data.source;
       }
-      if (!("appearance.tokens" in values)) {
-        const own = stored();
-        if (own !== undefined) { values["appearance.tokens"] = own; sources["appearance.tokens"] = "account"; }
-      }
+      oldTokens(values, sources);
       return { values, sources, rev: undefined, device: undefined };
+    };
+
+    /** The old table value, where the hub has none of its own. @param {Record<string, any>} values @param {Record<string, string>} sources */
+    const oldTokens = (values, sources) => {
+      const src = sources["appearance.tokens"];
+      if (src && src !== "default" && src !== "unset") return;
+      const old = stored();
+      if (old !== undefined) { values["appearance.tokens"] = old; sources["appearance.tokens"] = "account"; }
     };
 
     /** @param {{ device?: string, project?: string }} [at] */
@@ -172,8 +178,7 @@ export default {
       };
     };
 
-    // appearance.changed, when the account's answer moves. Many paths lead here for one change
-    // (appearance.tokens.set, then the hub's settings.changed for the same key): send it once.
+    // appearance.changed, when the account's answer moves: sent once per real change.
     let last = "";
     const changed = async () => {
       try {
@@ -187,7 +192,7 @@ export default {
     try { const r = await resolve(); last = `${r.version} ${r.theme} ${r.scheme}`; } catch {}
 
     ctx.tool("appearance.check", {
-      description: "Check a proposed appearance value without saving it. The hub calls it as the settings module with { key, value } before it stores appearance.theme or appearance.tokens; a direct caller gives { override } (a partial tokens.json). Returns ok, each problem by name (a group or key that may not change, a text pair under AA, the focus ring under 3:1, the attention colour reused, text under 12, a target under 44, an empty font, a preset that isn't installed), and a message naming them when it fails.",
+      description: "Check a proposed appearance value without saving it. The hub calls it as the settings module with { key, value, level, device? } before it stores appearance.theme or appearance.tokens; a direct caller gives { override } (a partial tokens.json). Returns ok, each problem by name (a group or key that may not change, a text pair under AA, the focus ring under 3:1, the attention colour reused, text under 12, a target under 44, an empty font, a preset that isn't installed), and a message naming them when it fails.",
       input: { type: "object", properties: { override: {}, value: {}, key: { type: "string" } } },
       run: async i => {
         let problems;
@@ -215,55 +220,12 @@ export default {
       },
     });
 
-    // The store behind appearance.tokens, until the hub keeps it. Reading is harmless and open to
-    // anyone. Writing is a person's change: the settings module relays it here under the person's
-    // label, and a person's own surface may call it too. Either way it is checked first.
-    ctx.tool("appearance.tokens.get", {
-      description: "The person's own theme override (appearance.tokens), as saved, or nothing when there is none. appearance.resolve gives the merged tokens.",
-      input: { type: "object", properties: {} },
-      run: async () => ({ value: stored() }),
-    });
-
-    ctx.tool("appearance.tokens.set", {
-      description: "Save the person's theme override (appearance.tokens), or remove it with null. It is checked first and refused whole, with each problem named, if it breaks a rule. Change it with settings.set, which calls this.",
-      input: { type: "object", required: ["value"], properties: { value: {} } },
-      callers: PEOPLE,
-      run: async i => {
-        const v = i.value;
-        if (v === null) {
-          db.prepare("DELETE FROM appearance_tokens WHERE scope = 'account'").run();
-        } else {
-          if (typeof v !== "object" || Array.isArray(v)) throw fault("bad_input", "appearance.tokens is an object shaped like a partial tokens.json");
-          const { ok, problems } = checkOver(v);
-          if (!ok) throw fault("bad_input", `appearance.tokens refused: ${problems.join("; ")}`, { problems });
-          db.prepare(`INSERT INTO appearance_tokens (scope, value, at) VALUES ('account', ?, ?)
-            ON CONFLICT(scope) DO UPDATE SET value = excluded.value, at = excluded.at`).run(JSON.stringify(v), Date.now());
-        }
-        await changed();
-        return { value: stored() };
-      },
-    });
-
     const off = ctx.events.on("settings.changed", (/** @type {any} */ ev) => {
       const key = ev && ev.payload && ev.payload.key;
-      if (typeof key === "string" && key.startsWith("appearance.")) void changed();
-    });
-
-    // The same answer as appearance.resolve, over plain HTTP: ?device=, ?project=, ?format=css.
-    // The ETag is the hub's rev when there is one (a surface sends If-None-Match: <rev> from the
-    // last settings.changed), else the version with the preset and scheme.
-    ctx.route("theme", async (/** @type {any} */ req, /** @type {any} */ res) => {
-      if (req.method !== "GET") {
-        res.writeHead(405, { "content-type": "application/json", allow: "GET" });
-        return res.end(JSON.stringify({ error: { code: "bad_input", message: "GET only" } }));
-      }
-      const q = new URL(req.url || "/", "http://vyre").searchParams;
-      const css = q.get("format") === "css";
-      const r = await resolve({ device: q.get("device") || undefined, project: q.get("project") || undefined });
-      const etag = r.rev !== undefined ? `"${r.rev}"` : `"${r.version}-${r.theme}-${r.scheme}"`;
-      if (req.headers["if-none-match"] === etag) { res.writeHead(304, { etag }); return res.end(); }
-      res.writeHead(200, { "content-type": css ? "text/css; charset=utf-8" : "application/json", "cache-control": "no-cache", etag, "x-content-type-options": "nosniff" });
-      return res.end(css ? r.css : JSON.stringify({ data: r }));
+      if (typeof key !== "string" || !key.startsWith("appearance.")) return;
+      // The person has spoken through the hub: the old table value is done with.
+      if (key === "appearance.tokens") db.prepare("DELETE FROM appearance_tokens").run();
+      void changed();
     });
 
     return { async stop() { off(); } };

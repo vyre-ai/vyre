@@ -217,6 +217,8 @@ const ENV_MEANING = {
   AGENT: "The agent a thread runs as.",
   AGENT_KEY: "The key that proves a thread's calls come from its agent.",
   AGENT_KIND: "`assistant` or `agent`. Only the assistant is offered the tools that drive other threads.",
+  ALLOW_REAL_TRANSCRIPTS: "`1`: a home other than `~/.vyre` reads the transcripts in `~/.claude` too. Never under tests.",
+  CLAUDE_HOME: "Claude Code's folder for a home other than `~/.vyre`. Without it such a home uses its own `claude` folder and never reads `~/.claude`.",
   ALLOW_DIALOGS: "`1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins.",
   BOX_INSTALLER: "The installer `vyre box add` runs on the server, in place of the published one.",
   BOX_POLL_MS: "How often `vyre box` checks on an install in progress. Default 5000.",
@@ -239,9 +241,11 @@ const ENV_MEANING = {
   NO_DIALOGS: "`1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab).",
   NO_OPEN: "Never open a browser tab from the terminal.",
   NO_UP: "`vyre box add` installs Vyre without starting it.",
+  NPM_BIN: "The `npm` that `vyre update` installs a release with. Tests point it at a fake.",
   ONBOARD_HOST: "The address onboarding listens on. Default `127.0.0.1`.",
   OPEN_BIN: "The command that opens links. Tests point it at a fake.",
   PROJECT: "The project a thread belongs to, for its brief.",
+  RELEASES_API: "Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server.",
   PROJECTS: "The projects an agent's thread is limited to, comma separated, or `*` for all of them.",
   SCOPE_CWDS: "The folders an agent's `recall.search` is held to, as JSON.",
   SOCKET: "The path of vyred's socket, for the Capsule.",
@@ -284,6 +288,8 @@ function cliPage(commands) {
     { name: "help", aliases: ["--help", "-h"], summary: "every command, with a line on what it does", usage: "vyre help", hidden: false, help: "" },
     { name: "version", aliases: ["--version", "-v"], summary: "the version of Vyre installed", usage: "vyre version", hidden: false, help: "" },
   ];
+  // A `secret` command (core/cli/index.js) never reaches this page at all: harvest.mjs drops it
+  // before writing docs/index.json, so there is nothing here to filter further.
   const shown = [...commands.filter(c => !c.hidden), ...builtins];
   const hidden = commands.filter(c => c.hidden);
   const section = c => {
@@ -383,7 +389,7 @@ function fields(schema, prefix = "", depth = 0) {
 }
 
 function callersText(t) {
-  if (t.internal) return "other modules only (internal, never listed)";
+  if (t.internal) return "other modules only (internal: `vyre call` answers no_such_tool)";
   if (t.hook) return "its webhook route only, `POST /v1/<module>/<name>/hook`";
   if (!t.callers) return "any caller";
   return t.callers.slice().sort(byName).map(code).join(", ");
@@ -433,6 +439,7 @@ function toolsPage(mods, byModule) {
     `${total} tools across ${[...byModule.values()].filter(ts => ts.length).length} modules. Every caller reaches a tool through the same path: Claude through MCP, a surface through HTTP, the CLI with \`vyre call <tool> [json]\`. The input is checked against the schema below, then the rules run, then the tool.`,
     "",
     "Callers are the kinds of caller that may use a tool: `cli` (the terminal), `local` (the Mac's own surfaces), `deck`, `capsule`, `mcp` (Claude and agents), `module` (another module). Any caller means the tool does not limit them. See [tools and events](../build/tools-and-events.md).",
+    "A tool marked internal is registered, but only another module can call it: `vyre call`, MCP and HTTP answer `no_such_tool`, and `vyre tools` never lists it. A person reaches what it does through a public tool (`agents.history` reads `threads.history`, for example).",
     "",
     "A tool marked \"needs a person present\" runs only after someone proves they are at the machine, with Touch ID, a passkey or the terminal: see [presence](../concepts/presence.md). A call from Claude alone cannot pass it.",
     "",
@@ -495,6 +502,8 @@ const MEANING = {
   "modules.disable": "Modules never to start.",
   network: "How this machine is reached. See [Tailscale](../using/tailscale.md).",
   onboard: "Onboarding's own settings.",
+  owner: "The person's own, non-secret identity. Written only by core/onboard's own startup, never by a tool's input.",
+  "owner.id": "16 random bytes, hex. Made once and never changed; `system.info` exposes only a fingerprint of it (fingerprint8), never this value itself.",
   "network.tailscale": "Whether this machine serves over Tailscale.",
   "network.address": "The https URL the Deck is served at.",
   "network.owner": "The one Tailscale login this box serves (ADR 0002). Set by `vyre owner`.",
@@ -503,7 +512,7 @@ const MEANING = {
   "network.port": "The port the tailnet listener serves on.",
   "network.acme": "`staging` to get test certificates while trying things out; `production` otherwise.",
   "network.box": "On a Mac: the address of the box it is paired with.",
-  "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset.",
+  "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset, except 7301 on a Mac chosen as server, which never binds 7300.",
   "network.ownerSeen": "When the owner was first seen on the tailnet. Written by Vyre.",
   "network.origins": "Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `[\"https://app.vyre.run\"]` when unset; `[]` turns it off. Each call but the reachability probe and the token exchange needs a person session.",
   term: "Terminals in the browser. `keep_hours`: how long a terminal nobody is looking at is kept before it ends (12). `max`: how many may be open at once (8). `shell`: the shell to run, in place of your login shell.",

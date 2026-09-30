@@ -15,13 +15,14 @@
 // is picked at render and redrawn when the width crosses 760 px; the desktop list is unchanged.
 
 import { h, put, link, head, empty, PHONE_QUERY } from "../js/dom.js";
-import { attempt, on } from "../js/api.js";
+import { attempt, on, snapshot } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { assistantCard } from "../js/assistant-setup.js";
 import { createProjectInline, action } from "../js/empty-actions.js";
 import { createAgent } from "../js/agent-create.js";
-import { since, initial, count, plural, clock } from "../js/fmt.js";
+import { since, count, plural, clock } from "../js/fmt.js";
+import { assistantAvatar, agentAvatar, teammateAvatar, readSystem, setTeammates, setProjects } from "../js/avatars.js";
 
 // Making and changing an agent is the person's own business: no passkey (the no-nag rule).
 
@@ -42,6 +43,9 @@ const glassHref = name => `/agents/${encodeURIComponent(name)}/glass`;
 const why = err => err?.missing ? `The ${err.module} module is not running on this machine.` : String(err?.message || err || "");
 const clip = (s, n) => { const t = String(s ?? ""); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 
+/** An agent's avatar (js/avatars.js): the assistant's creature, else the agent's blob, seeded from its name (its stable id). */
+const tileFor = (a, size, cls) => a?.kind === "assistant" ? assistantAvatar({ size, cls }) : agentAvatar(String(a?.name || ""), { size, cls });
+
 /** @param {any} ctx */
 export default async function agents(ctx) {
   if (ctx.params.name) return board(ctx, ctx.params.name);
@@ -54,6 +58,7 @@ async function world() {
   const names = new Map();
   for (const th of t.data || []) if (th.project && th.projectName) names.set(th.project, th.projectName);
   for (const pr of p.data?.projects || []) names.set(pr.slug, pr.name);
+  setProjects(p.data?.projects || []); // each project's tile seed, for its teammates' colour
   const threads = new Map((t.data || []).map(th => [th.id, th]));
   return { names, threads, projects: p.data?.projects || [], threadsErr: t.error || null };
 }
@@ -81,22 +86,34 @@ async function list(ctx) {
   const newBtn = h("button", { type: "button", class: "btn btn-primary", "aria-expanded": "false", "aria-controls": "ag-new" }, icon("plus", 14), "New agent");
   const form = h("section", { class: "ag-new", id: "ag-new", hidden: true, "aria-label": "New agent" });
   const rows = h("section", { class: "ag-list", "aria-labelledby": "ag-list-h" });
+  // Teammates (team.list): a project's persistent roles. Absent when the team module is off.
+  const teamEl = h("section", { class: "ag-team", "aria-labelledby": "ag-team-h", hidden: true });
+  /** @type {any[]} */ let team = [];
   // No assistant yet: the card to make one comes before everything else on the page.
   const setup = h("div", { class: "ag-setup" });
   const mq = matchMedia(PHONE_QUERY);
   const root = h("div", { class: "ag" + (mq.matches ? " ag-phone" : "") }, h("div", { class: "ag-col" },
     h("div", { class: "ag-top" }, h("div", { class: "ag-top-text" }, title, sub), newBtn),
-    setup, form, rows));
+    setup, form, rows, teamEl));
   put(ctx.root, root);
   /** The phone's page: its state lives here so a redraw keeps the consoles. */
   const ph = phonePage(ctx, () => w, () => all, openNew, form);
 
   /** @type {any[]} */ let all = [];
-  let w = await world();
+  /** Project and thread names; empty until world() answers. */
+  let w = /** @type {Awaited<ReturnType<typeof world>>} */ ({ names: new Map(), threads: new Map(), projects: [], threadsErr: null });
   let listErr = null;
 
+  const drawTeam = () => {
+    teamEl.hidden = !team.length;
+    if (!team.length) { put(teamEl); return; }
+    const th = head("Teammates", h("span", { class: "lbl" }, count(team.length)));
+    /** @type {HTMLElement} */ (th.firstChild).id = "ag-team-h";
+    put(teamEl, th, h("div", { class: "rows" }, team.map(t => teammateRow(t, w))));
+  };
   const draw = () => {
     root.classList.toggle("ag-phone", mq.matches);
+    drawTeam();
     if (mq.matches) {
       if (!listErr) {
         const assistant = all.find(a => a.kind === "assistant");
@@ -126,11 +143,22 @@ async function list(ctx) {
       assistant && !others.length && form.hidden ? h("div", { class: "empty" }, "No other agents yet. An agent works only in the projects you give it.", action("New agent", openNew)) : null] : null);
   };
 
+  // The list as this device last saw it, at once (ADR 0029 R3); the box's answer replaces it.
+  const snap = await snapshot.get("agents");
+  if (!ctx.alive()) return;
+  if (snap && Array.isArray(snap.value) && snap.value.length) { all = snap.value; draw(); }
+  w = await world();
+  if (!ctx.alive()) return;
+
   const load = async () => {
-    const r = await attempt("agents.list");
+    const [r, tm] = await Promise.all([attempt("agents.list"), attempt("team.list", {}), readSystem(attempt)]);
+    if (!tm.error) { team = Array.isArray(tm.data) ? tm.data : tm.data?.teammates || []; setTeammates(team); }
     if (!ctx.alive()) return;
+    // Out of reach with a list on screen: keep it (R3) rather than trade it for an error.
+    if (r.error?.code === "offline" && all.length) return;
     listErr = r.error || null;
     all = Array.isArray(r.data) ? r.data : r.data?.agents || [];
+    if (!r.error) void snapshot.set("agents", all);
     draw();
     // Scheduled is the phone's alone: read once per load, not on a desktop.
     if (mq.matches && !listErr) ph.schedules().then(() => { if (ctx.alive() && mq.matches) draw(); });
@@ -326,7 +354,7 @@ function phonePage(ctx, getWorld, getAll, openNew, form) {
     } }, glyph("pause", 20), "Pause");
     return h("article", { class: "agp-work", "aria-label": `${a.name}, working on ${session}` },
       h("div", { class: "agp-whead" },
-        h("span", { class: "agp-tile", "aria-hidden": "true" }, initial(a.name)),
+        tileFor(a, 32, "agp-tile"),
         h("div", { class: "agp-wid" },
           h("div", { class: "agp-name" }, a.name),
           h("div", { class: "agp-on" }, h("span", { class: "agp-live", "aria-hidden": "true" }), h("span", { class: "agp-ontext" }, "Working on ",
@@ -345,7 +373,7 @@ function phonePage(ctx, getWorld, getAll, openNew, form) {
     const where = a.projects === "*" ? "sees every project" : projectsText(a, w.names).join(", ") || "no projects yet";
     const role = a.kind === "assistant" ? "Assistant" : a.role || "";
     return link(agentHref(a.name), { class: "agp-row", "aria-label": `${a.name}${role ? `, ${role}` : ""}. Idle, ${where}.` },
-      h("span", { class: "agp-tile", "aria-hidden": "true" }, initial(a.name)),
+      tileFor(a, 32, "agp-tile"),
       h("span", { class: "agp-rmain" },
         h("span", { class: "agp-rname" }, h("span", { class: "agp-name" }, a.name), role ? h("span", { class: "agp-tag" }, role) : null),
         h("span", { class: "agp-rsub" }, `Idle · ${where}`)),
@@ -391,11 +419,21 @@ function phonePage(ctx, getWorld, getAll, openNew, form) {
   return { draw, schedules, live };
 }
 
+/** A teammate: its character (seeded from its teammate id), its role, the Teammate tag, its project and state. */
+function teammateRow(t, w) {
+  const state = t.state === "working" ? "Working" : t.queued ? `${t.queued} queued` : "Asleep";
+  return h("div", { class: "ag-team-row", "aria-label": `${t.role}, Teammate in ${nameOf(w.names, t.project)}. ${state}.` },
+    teammateAvatar(String(t.agent || ""), { size: 40, cls: "ag-av", project: t.project }),
+    h("span", { class: "ag-team-main" },
+      h("span", { class: "ag-team-name" }, h("span", { class: "ag-name" }, t.role), h("span", { class: "tag" }, "Teammate")),
+      h("span", { class: "small faint ellipsis" }, `${nameOf(w.names, t.project)} · ${state}`)));
+}
+
 function agentRow(a, w) {
   const d = doing(a, w);
   const where = projectsText(a, w.names);
   return link(agentHref(a.name), { class: "ag-row" },
-    h("span", { class: "ag-tile", "aria-hidden": "true" }, initial(a.name)),
+    tileFor(a, 40, "ag-av"),
     h("span", { class: "ag-row-main" },
       h("span", { class: "ag-row-name" }, h("span", { class: "ag-name" }, a.name),
         a.kind === "assistant" ? h("span", { class: "tag" }, "Assistant") : null,
@@ -561,7 +599,7 @@ async function board(ctx, agentName) {
       ? h("button", { type: "button", class: "btn btn-primary", disabled: true, title: glassWhy }, icon("watch", 14), "Open Glass")
       : link(glassHref(nm), { class: "btn btn-primary" }, icon("watch", 14), "Open Glass");
     put(headEl,
-      h("span", { class: "ab-tile", "aria-hidden": "true" }, initial(nm)),
+      tileFor(a, 56, "ab-av"),
       h("div", { class: "ab-id" },
         h("div", { class: "ab-name" }, h("h1", { class: "h2" }, nm),
           a.kind === "assistant" ? h("span", { class: "tag" }, "Assistant") : null,

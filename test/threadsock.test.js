@@ -74,3 +74,31 @@ test("threadsock: belonging is the session's process, group, session or an ances
   assert.ok(!belongs(21, { pids: [10], pgids: [10], sids: [10] }, look));
   assert.ok(!belongs(11, { pids: [] }, look));
 });
+
+test("threadsock: a session's call id reaches the tool; other callers' and malformed ids never do", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const tool = { module: "system", description: "", input: { type: "object" }, internal: false, callers: null, hook: false, presence: false };
+  d.registry.tools.set("probe.call", { ...tool, run: async (_, meta) => ({ call: meta.call ?? null, thread: meta.thread || null }) });
+  // A stand-in for the Switchboard's check of a session's key.
+  d.registry.tools.set("threads.vouch", { ...tool, internal: true, run: async ({ session, key }) => (session === "s1" && key === "k1" ? { thread: "t9" } : {}) });
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "ts-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
+  /** @type {number[]} */ const inThread = [];
+  const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", dir, pids: async () => ({ pids: inThread }) });
+  t.after(() => sock.close());
+  const on = async (/** @type {Record<string, string>} */ headers) => { const c = client(sock.path, "probe.call", {}, headers); inThread.push(c.pid); return (await c.done).body.data; };
+
+  assert.deepEqual(await on({ "x-vyre-call-id": "toolu_01AbC-9" }), { call: "toolu_01AbC-9", thread: "t1" }, "the session's own socket");
+  assert.deepEqual(await on({ "x-vyre-call-id": "not an id!" }), { call: null, thread: "t1" }, "malformed: dropped");
+  assert.deepEqual(await on({ "x-vyre-call-id": "x".repeat(129) }), { call: null, thread: "t1" }, "too long: dropped");
+
+  // vyred's own socket: with a session it vouched for, the id rides along; without one, never.
+  const { request } = await import("../core/daemon/client.js");
+  const bound = await request("POST", "/v1/tools/probe.call", {}, { root, caller: "mcp", session: { id: "s1", key: "k1" }, headers: { "x-vyre-call-id": "toolu_02" } });
+  assert.deepEqual(bound.data, { call: "toolu_02", thread: "t9" });
+  const cli = await request("POST", "/v1/tools/probe.call", {}, { root, caller: "cli", headers: { "x-vyre-call-id": "toolu_03" } });
+  assert.deepEqual(cli.data, { call: null, thread: null }, "a caller with no thread never sets it");
+});

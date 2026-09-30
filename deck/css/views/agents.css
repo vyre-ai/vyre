@@ -3,7 +3,7 @@
 /* Shared */
 .ag-dot { width: 7px; height: 7px; border-radius: 4px; border: 1.5px solid var(--label); flex-shrink: 0; display: inline-block; }
 .ag-dot.on { border-color: var(--text); }
-.ag-chip { display: inline-flex; align-items: center; padding: 3px 8px; border: 1px solid var(--rule-strong); border-radius: var(--r-1);
+.ag-chip { display: inline-flex; align-items: center; padding: 3px 8px; border: 1px solid var(--rule-strong); border-radius: var(--radius-chip, 4px);
   font-size: 13px; line-height: 18px; color: var(--text-2); text-decoration: none; white-space: nowrap; }
 .ag-chip-a:hover { color: var(--text); background: var(--hover); }
 .ag-em { color: var(--text); }
@@ -16,7 +16,7 @@
 .ag-list { margin-top: 4px; }
 .ag-row { display: flex; align-items: center; gap: 16px; min-height: 72px; padding: 12px 0; text-decoration: none; color: var(--text); }
 .ag-row:hover { background: var(--hover); margin: 0 -12px; padding-left: 12px; padding-right: 12px; }
-.ag-tile { width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: var(--r-2);
+.ag-tile { width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-field, 8px);
   background: var(--panel); border: 1px solid var(--rule-strong); font-family: var(--mono); font-size: 16px; font-weight: 500; color: var(--text); }
 .ag-row-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .ag-row-name { display: flex; align-items: baseline; gap: 10px; }
@@ -29,7 +29,7 @@
 /* No assistant yet: the Create your assistant card (js/assistant-setup.js), first on the page.
    The same card rules are in now.css, since each view loads only its own stylesheet. */
 .ag-setup:not(:empty) { margin-bottom: 32px; }
-.asst-card { padding: 20px 24px 18px; border: 1px solid var(--rule-strong); border-radius: var(--r-3); background: var(--panel); }
+.asst-card { padding: 20px 24px 18px; border: 1px solid var(--rule-strong); border-radius: var(--radius-card, 12px); background: var(--panel); }
 .asst-title { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: var(--text); }
 .asst-lede { margin: 4px 0 0; font-size: 14px; line-height: 20px; }
 .asst-form { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; max-width: 480px; }
@@ -48,7 +48,7 @@
 .na-hint { margin-top: 6px; }
 .na-projects { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 6px; }
 .na-pick { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--rule-strong);
-  border-radius: var(--r-1); font-size: 13px; color: var(--text-2); cursor: pointer; }
+  border-radius: var(--radius-chip, 4px); font-size: 13px; color: var(--text-2); cursor: pointer; }
 .na-pick:has(input:checked) { color: var(--text); background: var(--hover); }
 .na-pick input, .na-check input, .na-radio input { accent-color: var(--text); margin: 0; }
 .na-auth { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
@@ -69,7 +69,7 @@
 /* ---- /agents/:name ---- */
 .ab { min-height: 100%; display: flex; flex-direction: column; }
 .ab-head { display: flex; align-items: center; gap: 20px; padding: 28px 40px 24px; border-bottom: 1px solid var(--rule); }
-.ab-tile { width: 56px; height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: var(--r-3);
+.ab-tile { width: 56px; height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-card, 12px);
   background: var(--panel); border: 1px solid var(--rule-strong); box-shadow: inset 0 1px 0 rgba(241,238,230,0.06);
   font-family: var(--mono); font-size: 22px; font-weight: 500; color: var(--text); }
 .ab-id { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-grow: 1; }
@@ -115,7 +115,7 @@
 .ab-model { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding-top: 14px; }
 .ab-model-pick { position: relative; }
 .ab-model-show { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px 0 14px; border: 1px solid var(--rule-strong);
-  border-radius: var(--r-2); background: var(--panel); font-size: 14px; color: var(--text); pointer-events: none; }
+  border-radius: var(--radius-field, 8px); background: var(--panel); font-size: 14px; color: var(--text); pointer-events: none; }
 .ab-model-show svg { color: var(--text-2); }
 .ab-model-sel { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
 .ab-model-pick:has(.ab-model-sel:focus-visible) .ab-model-show { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -127,18 +127,18 @@
 .ab-aside { width: min(552px, 40%); flex-shrink: 0; display: flex; flex-direction: column; padding: 28px 40px 48px; border-left: 1px solid var(--rule); }
 .ab-screen { display: block; margin-top: 16px; border: 1px solid var(--rule-strong); border-radius: 8px; overflow: hidden; box-shadow: var(--light-top); }
 .ab-pv { display: block; width: 100%; height: auto; }
-.pv-ground { fill: var(--raised); }
-.pv-bar { fill: var(--graphite); }
-.pv-t { font-family: var(--mono); font-size: 8px; fill: var(--ash); }
+.pv-ground { fill: var(--swatch-raised); }
+.pv-bar { fill: var(--swatch-graphite); }
+.pv-t { font-family: var(--mono); font-size: 8px; fill: var(--swatch-ash); }
 .pv-win { fill: #F4F1EA; }
 .pv-chrome { fill: #DCD7CC; }
 .pv-field { fill: #FBFAF6; }
 .pv-ink { fill: #141311; }
 .pv-line { fill: #C9C3B7; }
 .pv-box { fill: #FBFAF6; stroke: #DCD7CC; }
-.pv-term { fill: var(--graphite); stroke: var(--rule); }
+.pv-term { fill: var(--swatch-graphite); stroke: var(--rule); }
 .pv-tline { fill: var(--rule-strong); }
-.pv-cursor { fill: var(--stone); }
+.pv-cursor { fill: var(--swatch-stone); }
 .ab-live { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; color: var(--text-2); }
 .ab-live-t { display: flex; align-items: center; gap: 8px; }
 .ab-specs { margin: 18px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
@@ -159,13 +159,14 @@
   .ab-aside { width: auto; border-left: none; border-top: 1px solid var(--rule); max-width: 640px; }
 }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .ag-col { padding: 16px 16px 24px; }
   .ag-top { flex-direction: column; align-items: stretch; gap: 14px; padding-bottom: 20px; }
   .ag-top .btn-primary { align-self: flex-start; }
   .ag-row { flex-wrap: wrap; gap: 12px; min-height: 64px; position: relative; }
   .ag-row:hover { margin: 0; padding-left: 0; padding-right: 0; }
   .ag-tile { width: 36px; height: 36px; }
+  span.ag-av { --av: 36px !important; }
   .ag-row-main { flex-basis: calc(100% - 80px); }
   .ag-row-projects { order: 3; justify-content: flex-start; max-width: none; padding-left: 48px; }
   .ag-chev { display: none; }
@@ -182,7 +183,8 @@
   .asst-go { height: 44px; }
 
   .ab-head { flex-wrap: wrap; gap: 14px; padding: 16px 16px 18px; }
-  .ab-tile { width: 44px; height: 44px; font-size: 18px; border-radius: var(--r-2); }
+  .ab-tile { width: 44px; height: 44px; font-size: 18px; border-radius: var(--radius-field, 8px); }
+  span.ab-av { --av: 44px !important; }
   .ab-id { flex-basis: calc(100% - 60px); }
   .ab-acts { width: 100%; }
   .ab-acts > * { flex: 1; }
@@ -198,3 +200,9 @@
 }
 .asst-check { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; color: var(--text); cursor: pointer; }
 .asst-check input { width: 18px; height: 18px; margin: 1px 0 0; flex-shrink: 0; accent-color: var(--primary-bg); }
+
+/* Teammates (team.list): a character on its tile, the role name beside it, a "Teammate" tag
+   (avatar.md: the tile is never shown bare). */
+.ag-team-row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.ag-team-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.ag-team-name { display: flex; align-items: center; gap: 8px; }

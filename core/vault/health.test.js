@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { judge, estimateBits, registrable, breachCheck, twofaDomains, WEAK_BITS, BREACH_URL } from "./health.js";
+import { judge, estimateBits, registrable, breachCheck, twofaDomains, passkeyDomains, WEAK_BITS, BREACH_URL } from "./health.js";
 
 const NOW = Date.parse("2026-09-26T12:00:00Z");
 const DAY = 86400_000;
@@ -25,6 +25,7 @@ test("health: registrable domains", () => {
   assert.equal(registrable("mail.example.co.uk"), "example.co.uk");
   assert.equal(registrable("example.com"), "example.com");
   assert.ok(twofaDomains().has("github.com"), "the bundled list loads");
+  assert.ok(passkeyDomains().has("github.com"), "the bundled passkey list loads");
 });
 
 test("health: each rule, names and codes only", () => {
@@ -50,12 +51,12 @@ test("health: each rule, names and codes only", () => {
   assert.match(by["reuse-a"].group, /^g\d+$/);
   assert.deepEqual(by["old-key"].reasons, ["old"]);
   assert.deepEqual(by["marked"].reasons, ["rotate"]);
-  assert.deepEqual(by["gh"].reasons, ["2fa-available"]);
-  assert.equal(by["gh-with-code"], undefined, "a login with a seed is not flagged for 2FA");
+  assert.deepEqual(by["gh"].reasons, ["2fa-available", "passkey-available"]);
+  assert.deepEqual(by["gh-with-code"].reasons, ["passkey-available"], "a seed clears 2FA, but a passkey drops the password too");
   assert.deepEqual(by["agents-note"].reasons, ["unprotected"]);
   assert.equal(by["fine"], undefined);
   assert.equal(out.checked, items.length);
-  assert.deepEqual(out.counts, { weak: 1, reused: 2, old: 1, rotate: 1, "2fa-available": 1, unprotected: 1 });
+  assert.deepEqual(out.counts, { weak: 1, reused: 2, old: 1, rotate: 1, "2fa-available": 1, "passkey-available": 2, unprotected: 1, expired: 0, expiring: 0 });
   // Nothing but names, kinds, codes and group ids.
   const text = JSON.stringify(out);
   for (const it of items) for (const v of Object.values(it.fields)) assert.ok(!text.includes(v), "no value in the result");

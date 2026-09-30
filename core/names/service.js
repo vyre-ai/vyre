@@ -10,17 +10,14 @@ import fs from "node:fs";
 import https from "node:https";
 import path from "node:path";
 import { identifier } from "./identity.js";
+import { hostedOrigins } from "../config/index.js";
 
 const NAME = /^[a-z][a-z0-9-]{0,30}[a-z0-9]$/;
 const RESERVED = new Set(["www", "api", "app", "admin", "mail", "docs", "status", "blog", "help", "support", "deck", "vyre",
   "root", "ns1", "ns2", "dev", "staging", "test", "download", "install", "login", "auth", "directory"]);
 const HSTS = "max-age=31536000";
 
-/**
- * Pages on other sites that may call this box from the owner's browser: Vyre's hosted app. Config
- * network.origins replaces the list; an empty list turns cross-origin calls off.
- */
-export const HOSTED_ORIGINS = Object.freeze(["https://app.vyre.run"]);
+export { HOSTED_ORIGINS } from "../config/index.js";
 /** What the hosted app may send. Anything else fails its preflight. */
 const CORS_METHODS = "GET, POST";
 const CORS_HEADERS = "content-type, authorization, x-vyre-proof, x-vyre-presence, idempotency-key, last-event-id";
@@ -72,8 +69,13 @@ export function names(deps) {
     return r && !r.error && r.data && typeof r.data.agent === "string" ? r.data.agent : null;
   });
   const agentNodes = () => (ctx.config.computers && ctx.config.computers.tailnet) || null;
+  // Which paired desktop a tag:vyre-device node was bound to (ADR 0046): the relay knows.
+  const deviceOf = deps.deviceOf || (async stableId => {
+    const r = await ctx.call("relay.devices.tailnet", { stableId });
+    return r && !r.error && r.data && typeof r.data.device === "string" ? r.data.device : null;
+  });
   const identify = identifier({ whois: ip => ts.whois(ip), selfIps: () => selfIps, selfId: () => selfId, owner: () => net().owner || null,
-    network: net, agentNodes, agentOf });
+    network: net, agentNodes, agentOf, deviceOf });
 
   async function tailscale() {
     const s = await ts.status();
@@ -198,11 +200,44 @@ export function names(deps) {
 
   let handle = null;
   /** Who a peer is to vyred's router. A guest and an agent's node never get the owner's caller. */
-  const callerOf = who => who.kind === "guest" ? `tailnet-guest:${who.login}` : who.kind === "agent" ? `tailnet:agent:${who.agent}` : `tailnet:${who.login}`;
+  const callerOf = who => who.kind === "guest" ? `tailnet-guest:${who.login}` : who.kind === "agent" ? `tailnet:agent:${who.agent}`
+    : who.kind === "device" ? `device:${who.device}` : `tailnet:${who.login}`;
+  /** The peer beside the caller. A bound desktop reads as it does over the relay (stableId is its device id), plus the transport. */
+  const peerOf = who => who.kind === "device"
+    ? { node: who.node, stableId: who.device, nodeId: who.stableId || null, login: null, tags: who.tags || [], caps: {}, kind: "device", via: "tailnet" }
+    : { node: who.node, stableId: who.stableId || null, login: who.login, tags: who.tags || [], caps: who.caps || {}, kind: who.kind, ...(who.kind === "agent" ? { agent: who.agent } : {}) };
+
+  /**
+   * GET /v1/whoami: the join flow's reachability probe. A device adding itself as a second
+   * device, or a laptop moving to a server, hits this once it thinks Tailscale (or the relay) has
+   * it on the tailnet, to learn whether IT ALSO sees itself reaching the box, and as whom. Never
+   * for an agent's node (a computer has no join flow of its own) and rate-limited per node, since
+   * it needs no proof beyond whois and must not become a way to probe the box from a captured
+   * tailnet login. The answer stays minimal: kind, and the box's own name only for the owner , 
+   * never a login, tag or capability, which callerOf/peer already carry to the router for tools
+   * that want them.
+   */
+  const whoamiHits = new Map(); // node or stableId -> recent call times, this minute
+  function whoamiAllowed(who) {
+    const key = who.stableId || who.node || who.login || "?";
+    const cut = now() - 60_000;
+    const hits = (whoamiHits.get(key) || []).filter(t => t > cut);
+    hits.push(now());
+    whoamiHits.set(key, hits);
+    if (whoamiHits.size > 1000) whoamiHits.delete(/** @type {string} */ (whoamiHits.keys().next().value));
+    return hits.length <= 10;
+  }
+  function whoami(res, who) {
+    const json = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+    if (who.kind === "agent") return json(403, { error: { code: "denied", message: "not for an agent node" } });
+    if (!whoamiAllowed(who)) return json(429, { error: { code: "rate_limited", message: "slow down and try again" } });
+    return json(200, { data: { kind: who.kind, name: who.kind === "owner" ? (ctx.config.name || null) : null } });
+  }
   async function onRequest(req, res) {
     res.setHeader("strict-transport-security", HSTS);
     const url = new URL(req.url || "/", "https://vyred");
     const who = await identify(String(req.socket.remoteAddress || ""));
+    if (!who.ok && who.bindable && req.method === "POST" && url.pathname === "/v1/tailnet/bind") return bindNode(req, res, who);
     if (!who.ok) {
       if (!net().owner && who.login && req.method === "GET" && url.pathname === "/onboard/claim") {
         const h = sha(url.searchParams.get("c") || "");
@@ -228,6 +263,7 @@ export function names(deps) {
       res.writeHead(421, { "content-type": "application/json" });
       return res.end(JSON.stringify({ error: { code: "misdirected", message: "not this box's address" } }));
     }
+    if (req.method === "GET" && url.pathname === "/v1/whoami") return whoami(res, who);
     // Vyre's hosted app (app.vyre.run) is another site that may call in, with CORS, from the
     // owner's own browser. Whois must still say owner, and vyred's router wants a person session
     // for every call from it (core/presence/person.js).
@@ -248,16 +284,28 @@ export function names(deps) {
     // The peer rides beside the caller, for tools that bind to a device (link.pair); never in input or events.
     // A guest and an agent's node each get a caller class of their own, never the owner's; the
     // router limits a guest to its tools and wants an agent's key beside `tailnet:agent:<name>`.
-    const peer = { node: who.node, stableId: who.stableId || null, login: who.login, tags: who.tags || [], caps: who.caps || {},
-      kind: who.kind, ...(who.kind === "agent" ? { agent: who.agent } : {}) };
-    return handle(req, res, callerOf(who), peer);
+    return handle(req, res, callerOf(who), peerOf(who));
+  }
+
+  /**
+   * A new tag:vyre-device node presents the bind code its paired desktop got inside its own Noise
+   * channel with the key (ADR 0046 section 3, step 4). The node id is whois's, never the body's.
+   */
+  async function bindNode(req, res, who) {
+    const json = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+    if (!/^application\/json\b/.test(String(req.headers["content-type"] || ""))) return json(403, { error: { code: "denied", message: "cross-site request" } });
+    let raw = "";
+    for await (const chunk of req) { raw += chunk; if (raw.length > 2048) return json(413, { error: { code: "bad_input", message: "too large" } }); }
+    let body = null;
+    try { body = JSON.parse(raw); } catch {}
+    if (!body || typeof body.device !== "string" || typeof body.code !== "string") return json(400, { error: { code: "bad_input", message: "a bind needs the device id and its bind code" } });
+    const r = await ctx.call("relay.devices.bind", { stableId: String(who.stableId), node: String(who.node || ""), device: body.device, code: body.code });
+    if (r.error) { ctx.log(`names: refused a bind from ${who.node || "a node"}: ${r.error.message}`); return json(403, { error: { code: "denied", message: r.error.message } }); }
+    return json(200, { data: r.data });
   }
 
   /** Is this origin one of the hosted app's (network.origins, default HOSTED_ORIGINS)? */
-  const hosted = origin => {
-    const list = Array.isArray(net().origins) ? net().origins : HOSTED_ORIGINS;
-    return list.some(o => String(o).toLowerCase().replace(/\/+$/, "") === origin);
-  };
+  const hosted = origin => hostedOrigins(net()).includes(origin);
 
   /**
    * A request from the hosted app's origin. Only the owner gets CORS headers at all; a guest or an
@@ -303,7 +351,8 @@ export function names(deps) {
     if (!who.ok) { ctx.log(`names: refused a stream from ${who.node || "an address"}: ${who.why}`); return refuse(403, "Forbidden"); }
     // A stream is the owner's alone (the terminal, Glass's screen): a guest and an agent's node
     // get none, whatever tools they hold, as a tool that reaches the terminal would refuse them.
-    if (who.kind !== "owner") { ctx.log(`names: refused a stream from ${who.node || "a node"}: streams are the owner's (${who.kind})`); return refuse(403, "Forbidden"); }
+    // A bound desktop (ADR 0046) is the owner's own device, as it already is through the relay.
+    if (who.kind !== "owner" && who.kind !== "device") { ctx.log(`names: refused a stream from ${who.node || "a node"}: streams are the owner's (${who.kind})`); return refuse(403, "Forbidden"); }
     const host = String(req.headers.host || "").toLowerCase();
     const mine = [certName(), ...selfIps].filter(Boolean).map(h => String(h).toLowerCase());
     if (!mine.some(h => host === h || host === `${h}:${bound()}` || host === `[${h}]:${bound()}`)) return refuse(421, "Misdirected Request");

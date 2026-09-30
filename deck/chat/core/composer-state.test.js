@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MODES, nextMode, modeLabel, draftKind, draftBody, kindLabel, findMention, applyMention, rankFiles,
+  MODES, nextMode, modeLabel, draftKind, draftBody, teammateRole, kindLabel, findMention, applyMention, rankFiles,
   createHistory, remember, recall, recalling, stopRecall, historyStore, upAction, enterAction,
   createEsc, escape, KEYMAP, binding, keyOf, actionFor, addImage, removeImage, sendImages, b64Bytes, newUuid,
   modelChoices, shortModel,
@@ -25,6 +25,23 @@ test("the draft's mode is its first character; its body drops the character", ()
   assert.equal(kindLabel("shell"), "Shell");
   assert.equal(kindLabel("memory"), "Memory");
   assert.equal(kindLabel("message"), null);
+});
+
+test("@role at the start of a draft is a teammate's own turn (teammates.md section 2), lowercased, matched on the slug only", () => {
+  assert.equal(draftKind("@design make the intake form calmer"), "teammate");
+  assert.equal(draftKind("@Research find comparable filing fees"), "teammate", "lowercased, so case never matters");
+  assert.equal(draftKind("@design"), "teammate", "bare - still typing the name, nothing to send yet");
+  assert.equal(draftKind("email me @ noon"), "message", "not at the start");
+  assert.equal(draftKind("@"), "message", "no name at all");
+  assert.equal(draftKind("@2legit"), "message", "must start with a letter, same charset as agentName");
+  assert.equal(teammateRole("@design make it calmer"), "design");
+  assert.equal(teammateRole("@Research-Ops needs the county's fee schedule"), "research-ops");
+  assert.equal(teammateRole("@design"), "design", "the role alone, no body yet");
+  assert.equal(teammateRole("designing without an @"), null);
+  assert.equal(draftBody("@design make the intake form calmer"), "make the intake form calmer");
+  assert.equal(draftBody("@Research   find comparable filing fees"), "find comparable filing fees", "case and extra spaces dropped with the marker");
+  assert.equal(draftBody("@design"), "", "nothing typed yet");
+  assert.equal(kindLabel("teammate"), "Teammate");
 });
 
 test("an @ mention at the caret, anywhere in the draft; an email is not one", () => {
@@ -99,6 +116,17 @@ test("Up: edits the newest queued message in an empty composer, else recalls", (
   assert.equal(upAction({ text: "typing", firstLine: true, recalling: false, queued: 2 }), "none");
 });
 
+test("Enter: a message with images is never queued (the box keeps a queued message's words only)", () => {
+  const msg = "Use this photo of the shop front";
+  assert.deepEqual(enterAction({ text: msg, running: true, alt: true, images: 1 }), { do: "refuse", why: "images-queue" });
+  assert.deepEqual(enterAction({ text: msg, running: true, queueToggle: true, images: 2 }), { do: "refuse", why: "images-queue" });
+  assert.deepEqual(enterAction({ text: msg, running: true, button: true, hold: true, images: 1 }), { do: "refuse", why: "images-queue" });
+  assert.deepEqual(enterAction({ text: "", running: true, alt: true, images: 1 }), { do: "refuse", why: "images-queue" }, "images alone");
+  assert.deepEqual(enterAction({ text: "/compact", running: true, images: 1 }), { do: "refuse", why: "images-queue" }, "a command waits, so it would queue");
+  assert.deepEqual(enterAction({ text: msg, running: true, images: 1 }), { do: "send", kind: "message", mode: "steer" }, "a steer takes them");
+  assert.deepEqual(enterAction({ text: msg, running: false, alt: true, images: 1 }), { do: "send", kind: "message", mode: null }, "idle: sent now");
+});
+
 test("Enter: idle sends; running steers by default and queues with Alt, the toggle or a hold", () => {
   const msg = "Keep the witness page as its own step";
   assert.deepEqual(enterAction({ text: msg, running: false }), { do: "send", kind: "message", mode: null });
@@ -111,6 +139,9 @@ test("Enter: idle sends; running steers by default and queues with Alt, the togg
   assert.deepEqual(enterAction({ text: "!git status", running: true }), { do: "send", kind: "shell", mode: null });
   assert.deepEqual(enterAction({ text: "#dates as 27 September 2026", running: false }), { do: "send", kind: "memory", mode: null });
   assert.deepEqual(enterAction({ text: "!", running: false }), { do: "none" }, "a mode character alone");
+  assert.deepEqual(enterAction({ text: "@design make it calmer", running: true }), { do: "send", kind: "teammate", mode: null },
+    "a teammate's own turn, never this session's - not steer/queue, even mid-turn");
+  assert.deepEqual(enterAction({ text: "@design", running: false }), { do: "none" }, "the role alone, nothing to send yet");
   assert.deepEqual(enterAction({ text: msg, running: false, shift: true }), { do: "newline" });
   assert.deepEqual(enterAction({ text: msg, running: false, touch: true }), { do: "newline" }, "a phone's Enter is a new line");
   assert.deepEqual(enterAction({ text: msg, running: false, touch: true, button: true }), { do: "send", kind: "message", mode: null }, "its send button sends");
@@ -131,6 +162,7 @@ test("Esc: stops a turn, twice rewinds (empty) or clears (words), closes a picke
   assert.equal(escape(st, { now: 9100, running: false, text: "" }), "none", "the picker's press does not count toward two");
   assert.equal(escape(createEsc(), { now: 1, running: false, text: "!npm run lint" }), "leave-mode");
   assert.equal(escape(createEsc(), { now: 1, running: false, text: "#remember this" }), "leave-mode");
+  assert.equal(escape(createEsc(), { now: 1, running: false, text: "@design make it calmer" }), "leave-mode");
   assert.equal(escape(createEsc(), { now: 1, running: false, text: "Use v2", recalled: true }), "clear");
 });
 
@@ -205,18 +237,21 @@ test("uuids are v4 shaped, with or without crypto", () => {
   try { assert.match(newUuid(), re); } finally { if (c) Object.defineProperty(globalThis, "crypto", c); }
 });
 
-test("the model picker: the aliases, then the ids the per-purpose map and the thread name, 'now' on the thread's", () => {
-  const plain = modelChoices({ current: "opus" });
+test("the model picker: the box's aliases, then the ids the per-purpose map and the thread name, 'now' on the thread's", () => {
+  // The box's list (sessions.models.get aliases); the Deck keeps none of its own.
+  const aliases = [{ id: "opus", label: "Opus", description: "The most capable" }, { id: "sonnet", label: "Sonnet" }, { id: "haiku", label: "Haiku" }, { id: "<b>", label: "x" }];
+  const plain = modelChoices({ current: "opus", aliases });
   assert.deepEqual(plain.map(m => [m.id, m.now]), [["opus", true], ["sonnet", false], ["haiku", false]]);
   const got = modelChoices({
-    current: "claude-sonnet-4-5",
+    current: "claude-sonnet-4-5", aliases,
     purposes: { chat: { model: "opus", from: "config:chat" }, agent: { model: "opus", from: "config:agent" }, job: { model: "claude-haiku-4-5", from: "purpose:job" } },
   });
   assert.deepEqual(got.map(m => m.id), ["opus", "sonnet", "haiku", "claude-haiku-4-5", "claude-sonnet-4-5"]);
   assert.equal(got[0].description, "Used for chat, agent");
   assert.equal(got[3].description, "Used for job");
   assert.deepEqual(got.filter(m => m.now).map(m => m.id), ["claude-sonnet-4-5"], "the exact id wins over its family");
-  assert.deepEqual(modelChoices({ current: "claude-opus-4-5[1m]" }).filter(m => m.now).map(m => m.id), ["claude-opus-4-5[1m]"]);
-  assert.deepEqual(modelChoices({ current: null, purposes: { chat: { model: "<b>x</b>" } } }).map(m => m.id), ["opus", "sonnet", "haiku"], "only what a model id can be");
+  assert.deepEqual(modelChoices({ current: "claude-opus-4-5[1m]", aliases }).filter(m => m.now).map(m => m.id), ["claude-opus-4-5[1m]"]);
+  assert.deepEqual(modelChoices({ current: null, aliases, purposes: { chat: { model: "<b>x</b>" } } }).map(m => m.id), ["opus", "sonnet", "haiku"], "only what a model id can be");
+  assert.deepEqual(modelChoices({ current: "opus" }).map(m => m.id), ["opus"], "an older box with no aliases: the thread's own model still shows");
   assert.equal(shortModel("claude-opus-4-5"), "opus");
 });

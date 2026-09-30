@@ -193,11 +193,11 @@ export function mountFolders(container, opts) {
         h("div", { class: "section-head" }, h("h2", { class: "lbl", id: "fb-recent-h" }, "Recent")),
         h("div", { class: "rows", role: "listbox", "aria-label": "Recent folders" }, recent.map(d => row(d, i++)))) : null,
       h("section", { "aria-labelledby": "fb-dirs-h" },
-        h("div", { class: "section-head" }, h("h2", { class: "lbl", id: "fb-dirs-h" }, state.q ? `Folders named like "${state.q}"` : state.at ? baseName(state.at) : "On the box")),
+        h("div", { class: "section-head" }, h("h2", { class: "lbl", id: "fb-dirs-h" }, state.q ? `Folders named like "${state.q}"` : state.at ? baseName(state.at) : "On the server")),
         state.dirs.length ? h("div", { class: "rows", role: "listbox", "aria-label": "Folders" }, state.dirs.map(d => row(d, i++)))
           : state.loading ? h("div", { class: "empty" }, "Reading folders...")
           : state.error ? null
-          : h("div", { class: "empty" }, state.q ? "No folder by that name." : state.at ? "No folders inside this one." : "No folders yet. The box's files folders are set in its config."),
+          : h("div", { class: "empty" }, state.q ? "No folder by that name." : state.at ? "No folders inside this one." : "No folders yet. The server's files folders are set in its config."),
         state.truncated ? h("div", { class: "empty faint" }, state.q ? "Showing the first matches. Type more of the name to narrow it." : "Showing the first 1,000 folders.") : null));
   }
 

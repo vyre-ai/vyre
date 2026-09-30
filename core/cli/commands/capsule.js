@@ -8,6 +8,10 @@
 //   vyre capsule install    build it on this Mac now, without opening it. Nothing is downloaded:
 //                           the app is built here, from this package. `vyre capsule build` is
 //                           the same command.
+//
+// --json prints { opened, app, built, hidden } for open and { built, app } for install, and a
+// refusal as {"error":{code,message,next?}}: not_mac, no_dialogs, no_source, build_failed,
+// open_failed. Under --view the one-time signing question is never asked (no terminal to ask on).
 
 import path from "node:path";
 import fs from "node:fs";
@@ -18,7 +22,7 @@ import { REPO } from "../../daemon/index.js";
 import { ensureUp } from "../daemonctl.js";
 import { out, dim, signal, beacon } from "../style.js";
 import * as native from "./capsule-native.js";
-import { usage } from "../kit.js";
+import { usage, json, emit, fail, viewing } from "../kit.js";
 
 export const CAPSULE = path.join(REPO, "local", "capsule");
 export const NATIVE = path.join(CAPSULE, "native");
@@ -28,27 +32,49 @@ export function nativeAvailable({ platform = process.platform, dir = NATIVE } = 
   return platform === "darwin" && fs.existsSync(path.join(dir, "build.sh"));
 }
 
+/** Every verb run() handles, for `vyre commands --json`; run() refuses any other word. */
+export const VERBS = [
+  { verb: "open", summary: "open the Capsule, building it first when its source changed (the default)", usage: "[--hidden] [--json]" },
+  { verb: "install", aliases: ["build"], summary: "build the Capsule on this Mac now, without opening it; nothing is downloaded", usage: "[--json]" },
+];
+
+const NOT_MAC = "The Capsule runs on macOS. On this machine, use vyre or the Deck.";
+
+/** A line a person reads; nothing under --json, where stdout holds only the answer. @param {string} line */
+const say = line => { if (!json()) out(line); };
+
+/** A refusal: words for a person, the error object under --json. Exit 1. */
+const refuse = (/** @type {string} */ code, /** @type {string} */ message, /** @type {string} */ shown = message, /** @type {string} */ next = "") => {
+  if (json()) return fail(message, { code, ...(next ? { next } : {}) });
+  out(shown);
+  return 1;
+};
+
 async function open(flags) {
-  if (process.platform !== "darwin") { out("  The Capsule runs on macOS. On this machine, use vyre or the Deck."); return 1; }
-  if (!dialogsAllowed()) { out("  The Capsule does not open under tests (VYRE_TEST_DIALOGS=1 to allow it)."); return 1; }
-  if (!nativeAvailable()) { out(beacon("  The Capsule's source is missing from this package") + dim(` · ${path.relative(process.cwd(), NATIVE) || NATIVE}`)); return 1; }
+  if (process.platform !== "darwin") return refuse("not_mac", NOT_MAC, "  " + NOT_MAC);
+  if (!dialogsAllowed()) return refuse("no_dialogs", "The Capsule does not open under tests (VYRE_TEST_DIALOGS=1 to allow it).", "  The Capsule does not open under tests (VYRE_TEST_DIALOGS=1 to allow it).");
+  if (!nativeAvailable()) return refuse("no_source", "The Capsule's source is missing from this package", beacon("  The Capsule's source is missing from this package") + dim(` · ${path.relative(process.cwd(), NATIVE) || NATIVE}`));
   const up = await ensureUp();
-  if (!up.ok) out(dim("  vyred did not start; the Capsule will open and say it is offline."));
+  if (!up.ok) say(dim("  vyred did not start; the Capsule will open and say it is offline."));
   return openNative(flags);
 }
+
+/** The signing question, once, on a terminal; never under --view, where no one can answer it. */
+const identityOffer = (/** @type {string} */ home) => native.offerIdentity({ home, ask: askYesNo, ...(viewing() || json() ? { tty: false } : {}) });
 
 /**
  * `vyre capsule install`: the local build, and nothing downloaded. It was a zip from vyre.run;
  * now the app is built here with swiftc (capsule-native.js), so install means build now.
  */
 async function installNative() {
-  if (process.platform !== "darwin") { out("  The Capsule runs on macOS. On this machine, use vyre or the Deck."); return 1; }
-  out(dim("  vyre capsule install builds the Capsule on this Mac; nothing is downloaded."));
+  if (process.platform !== "darwin") return refuse("not_mac", NOT_MAC, "  " + NOT_MAC);
+  say(dim("  vyre capsule install builds the Capsule on this Mac; nothing is downloaded."));
   const home = config.paths().root;
-  const said = await native.offerIdentity({ home, ask: askYesNo });
-  if (said) out(dim("  " + said));
-  const b = native.ensureBuilt({ dir: NATIVE, home, say: s => out(dim("  " + s)) });
-  if (!b.ok) { out(beacon("  " + b.message)); return 1; }
+  const said = await identityOffer(home);
+  if (said) say(dim("  " + said));
+  const b = native.ensureBuilt({ dir: NATIVE, home, say: s => say(dim("  " + s)) });
+  if (!b.ok) return refuse("build_failed", b.message, beacon("  " + b.message));
+  if (json()) return emit({ built: Boolean(b.built), app: b.app });
   out(`  Capsule ${signal(b.built ? "built" : "up to date")} ${dim("· " + b.app + " · vyre capsule opens it")}`);
   return 0;
 }
@@ -56,34 +82,37 @@ async function installNative() {
 /** The native Capsule: build it if it is missing or stale, then launch it (or show it). */
 async function openNative(flags) {
   const home = config.paths().root;
-  const said = await native.offerIdentity({ home, ask: askYesNo });
-  if (said) out(dim("  " + said));
-  const b = native.ensureBuilt({ dir: NATIVE, home, say: s => out(dim("  " + s)) });
-  if (!b.ok) { out(beacon("  " + b.message)); return 1; }
-  if (b.built) out(dim(`  ${b.message}`));
+  const said = await identityOffer(home);
+  if (said) say(dim("  " + said));
+  const b = native.ensureBuilt({ dir: NATIVE, home, say: s => say(dim("  " + s)) });
+  if (!b.ok) return refuse("build_failed", b.message, beacon("  " + b.message));
+  if (b.built) say(dim(`  ${b.message}`));
   const env = { VYRE_SOCKET: config.paths().socket, VYRE_HOME: home, ...(flags.hidden ? {} : { VYRE_CAPSULE_OPEN: "1" }) };
   const r = spawnSync("open", native.launchArgs(b.app, env), { encoding: "utf8" });
-  if (r.status !== 0) { out(beacon("  The Capsule did not open: ") + dim(String(r.stderr || "").trim())); return 1; }
+  if (r.status !== 0) return refuse("open_failed", `The Capsule did not open: ${String(r.stderr || "").trim()}`, beacon("  The Capsule did not open: ") + dim(String(r.stderr || "").trim()));
+  if (json()) return emit({ opened: true, app: b.app, built: Boolean(b.built), hidden: Boolean(flags.hidden) });
   out(`  Capsule ${signal("open")} ${dim("· ⌥Space, or Control twice once it is allowed · " + b.app)}`);
   return 0;
 }
 
 /** A y/N on this terminal; null when there is none. @param {string} question */
 async function askYesNo(question) {
-  if (!process.stdin.isTTY) return null;
+  if (!process.stdin.isTTY || viewing()) return null;
   const rl = (await import("node:readline/promises")).createInterface({ input: process.stdin, output: process.stdout });
   try { return /^y(es)?$/i.test((await rl.question(`  ${question} [y/N] `)).trim()); }
   finally { rl.close(); }
 }
 
 export default {
-  name: "capsule", order: 30, usage: "vyre capsule [--hidden] | install", summary: "the Mac command bar: Control twice, anywhere",
+  name: "capsule", order: 30, usage: "vyre capsule [open [--hidden] | install | build] [--json]", summary: "the Mac command bar: Control twice, anywhere",
+  verbs: VERBS,
   /** @param {string[]} args */
   async run(args) {
     const flags = { hidden: args.includes("--hidden") };
-    if (args[0] === "install" || args[0] === "build") return installNative();
+    const verb = args.find(a => !a.startsWith("--"));
+    if (verb === "install" || verb === "build") return installNative();
     // A mistyped word ("biuld") used to open the Capsule; now it says so.
-    if (args[0] && !args[0].startsWith("--")) return usage(`vyre capsule ${args[0]}: not a subcommand`, "vyre capsule or vyre capsule install");
+    if (verb && verb !== "open") return usage(`vyre capsule ${verb}: not a subcommand`, "vyre capsule, vyre capsule open or vyre capsule install");
     return open(flags);
   },
 };

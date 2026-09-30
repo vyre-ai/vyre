@@ -68,3 +68,62 @@ test("tokens: deck/css/tokens.css is what scripts/gen-tokens renders from tokens
   execFileSync(process.execPath, [path.join(REPO, "scripts/gen-tokens"), "--check", "--css", "deck/css/tokens.css"],
     { cwd: REPO, stdio: "pipe" });
 });
+
+/** Every file under deck/ a raw-name check reads: stylesheets, scripts and pages, not vendor code. */
+const deckSources = () => {
+  /** @type {string[]} */ const out = [];
+  const walk = (/** @type {string} */ dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { if (e.name !== "vendor" && e.name !== "node_modules") walk(p); continue; }
+      if (/\.(css|js|html)$/.test(e.name) && !e.name.endsWith(".test.js")) out.push(p);
+    }
+  };
+  walk(DECK);
+  return out;
+};
+
+test("tokens: the Deck's raw palette and radii are gone; every use goes through a token role", () => {
+  // --signal-wash, --beacon-ink, --beacon-dot and --beacon-badge-ink are tokens and stay.
+  const RAW = /--(graphite|carbon|raised|ash|stone|bone|signal|signal-hover|signal-ink|signal-ink-text|beacon|r-[1-4])(?![\w-])/g;
+  /** @type {string[]} */ const found = [];
+  let files = 0;
+  for (const f of deckSources()) {
+    files++;
+    fs.readFileSync(f, "utf8").split("\n").forEach((line, i) => {
+      for (const m of line.matchAll(RAW)) found.push(`${path.relative(DECK, f)}:${i + 1} ${m[0]}`);
+    });
+  }
+  assert.ok(files > 50, `read the Deck's sources (${files})`);
+  assert.deepEqual(found, []);
+});
+
+test("tokens: the four Deck-only names app-design retired are gone (tokens.md, Retired names)", () => {
+  // --recall and --recall-ink -> --text-2 or a source chip, --recall-wash -> no fill or --hover,
+  // --beacon-wash -> no fill, --beacon-rule -> --rule. Violet is only for "needs you".
+  const RETIRED = /--(recall|recall-ink|recall-wash|beacon-wash|beacon-rule)(?![\w-])/g;
+  /** @type {string[]} */ const found = [];
+  for (const f of deckSources()) {
+    fs.readFileSync(f, "utf8").split("\n").forEach((line, i) => {
+      for (const m of line.matchAll(RETIRED)) found.push(`${path.relative(DECK, f)}:${i + 1} ${m[0]}`);
+    });
+  }
+  assert.deepEqual(found, []);
+  assert.doesNotMatch(read("css/deck.css"), /Deck-only, no token yet/);
+});
+
+test("tokens: deck.css does not define the radius tokens (they come from tokens.css, with fallbacks until then)", () => {
+  const radius = [...declared(read("css/deck.css"))].filter(k => k.startsWith("radius-"));
+  assert.deepEqual(radius, []);
+});
+
+test("tokens: the fixed --swatch-* colours are defined once in deck.css and drawn only by the Computer preview", () => {
+  const swatches = [...declared(read("css/deck.css"))].filter(k => k.startsWith("swatch-"));
+  assert.ok(swatches.length > 0);
+  for (const f of deckSources()) {
+    const rel = path.relative(DECK, f);
+    if (rel === path.join("css", "deck.css")) continue;
+    assert.doesNotMatch(fs.readFileSync(f, "utf8"), /--swatch-[\w-]+\s*:/, `${rel} defines a swatch`);
+    if (rel !== path.join("css", "views", "agents.css")) assert.doesNotMatch(fs.readFileSync(f, "utf8"), /var\(--swatch-/, `${rel} uses a swatch`);
+  }
+});

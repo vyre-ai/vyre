@@ -157,7 +157,8 @@ export function onAttachError(err) {
 
 /**
  * A key from the key bar or the keyboard with the bar's Ctrl and Alt applied. Ctrl turns a letter
- * (or @ [ \ ] ^ _ ?, and space) into its control character; Alt puts Esc before the key.
+ * (or @ [ \ ] ^ _ ?, space, and / or - as xterm does) into its control character; Alt puts Esc
+ * before the key.
  * @param {string} d @param {{ ctrl?: boolean, alt?: boolean }} mods
  */
 export function withMods(d, { ctrl = false, alt = false } = {}) {
@@ -166,6 +167,7 @@ export function withMods(d, { ctrl = false, alt = false } = {}) {
     const c = d.toUpperCase().charCodeAt(0);
     if (d === " ") out = "\x00";
     else if (d === "?") out = "\x7f";
+    else if (d === "/" || d === "-") out = "\x1f";
     else if (c >= 0x40 && c <= 0x5f) out = String.fromCharCode(c & 0x1f);
   }
   return alt ? "\x1b" + out : out;
@@ -175,6 +177,56 @@ export function withMods(d, { ctrl = false, alt = false } = {}) {
 export function arrow(dir, app = false) {
   const k = { up: "A", down: "B", right: "C", left: "D" }[dir];
   return (app ? "\x1bO" : "\x1b[") + k;
+}
+
+/**
+ * The phone's key bar (docs/design/system/components/terminal.md): two rows of seven. Each key
+ * sends bytes, latches a modifier, or pastes. Arrows follow the cursor mode (keySend).
+ * @typedef {{ label: string, aria?: string, send?: string, arrow?: "up"|"down"|"left"|"right", mod?: "ctrl"|"alt", paste?: true }} Key
+ * @type {Readonly<Record<string, Key>>}
+ */
+export const KEYS = Object.freeze({
+  esc: { label: "Esc", aria: "Escape", send: "\x1b" },
+  tab: { label: "Tab", send: "\t" },
+  ctrl: { label: "Ctrl", mod: "ctrl" },
+  alt: { label: "Alt", mod: "alt" },
+  up: { label: "\u2191", aria: "Up", arrow: "up" },
+  down: { label: "\u2193", aria: "Down", arrow: "down" },
+  paste: { label: "Paste", paste: true },
+  slash: { label: "/", aria: "Slash", send: "/" },
+  pipe: { label: "|", aria: "Pipe", send: "|" },
+  tilde: { label: "~", aria: "Tilde", send: "~" },
+  dash: { label: "-", aria: "Dash", send: "-" },
+  left: { label: "\u2190", aria: "Left", arrow: "left" },
+  right: { label: "\u2192", aria: "Right", arrow: "right" },
+  enter: { label: "Enter", send: "\r" },
+});
+
+/** The key bar's rows, in order. */
+export const KEY_ROWS = Object.freeze([
+  Object.freeze(["esc", "tab", "ctrl", "alt", "up", "down", "paste"]),
+  Object.freeze(["slash", "pipe", "tilde", "dash", "left", "right", "enter"]),
+]);
+
+/**
+ * The bytes a key-bar key sends (before Ctrl and Alt), or null for a modifier, Paste or an
+ * unknown key. @param {string} id @param {boolean} [app] cursor keys in application mode
+ */
+export function keySend(id, app = false) {
+  const k = Object.prototype.hasOwnProperty.call(KEYS, id) ? KEYS[id] : null;
+  if (!k) return null;
+  if (k.arrow) return arrow(k.arrow, app);
+  return typeof k.send === "string" ? k.send : null;
+}
+
+/**
+ * xterm's lineHeight (a multiple of the font's own line, at least 1) that draws rows `target` px
+ * tall when the font's line at its size measures `char` px. Spec: mono 12/18.
+ * @param {number} target @param {number} char
+ */
+export function lineHeightFor(target, char) {
+  if (!(char > 0) || !(target > 0)) return 1;
+  return Math.max(1, Math.round((target / char) * 1000) / 1000);
 }
 
 /**
@@ -199,11 +251,23 @@ export function remember(list, entry, max = 16) {
  * What this screen knows about the size: whether the box has said anything (`known`), whether
  * this socket owns it, the box's size, and the size this screen last sent on this socket.
  * @typedef {{ cols: number, rows: number }} Dims
- * @typedef {{ known: boolean, owner: boolean, cols: number, rows: number, sent: Dims|null }} Sizing
+ * @typedef {{ known: boolean, owner: boolean, cols: number, rows: number, sent: Dims|null, device: string }} Sizing
  */
 
 /** Nothing heard yet: fit and send, as a box without size frames expects. @type {Sizing} */
-export const unsized = Object.freeze({ known: false, owner: true, cols: 0, rows: 0, sent: null });
+export const unsized = Object.freeze({ known: false, owner: true, cols: 0, rows: 0, sent: null, device: "" });
+
+/**
+ * The owner's device name from a size frame, when the box gives one (`device`, such as "alex's
+ * MacBook Pro"). The term contract does not send one yet, so this is "" and the watch line says
+ * "another screen". Whitespace folded, at most 64 characters, never markup (a text node).
+ * @param {any} v
+ */
+export function deviceName(v) {
+  if (typeof v !== "string") return "";
+  const t = v.replace(/\s+/g, " ").trim();
+  return t.length > 64 ? t.slice(0, 63).trimEnd() + "\u2026" : t;
+}
 
 /** A fresh socket: the box has no size from it yet, so the next fit sends again. @param {Sizing} s @returns {Sizing} */
 export const sizeReopened = s => ({ ...s, sent: null });
@@ -222,7 +286,7 @@ const sizeMsg = d => ({ t: "size", cols: d.cols, rows: d.rows });
  */
 export const drawAt = (s, fitted) => (s.known && !s.owner ? { cols: s.cols, rows: s.rows } : { cols: fitted.cols, rows: fitted.rows });
 
-/** Is this screen watching another's size (show "Watching at ... · Take size")? @param {Sizing} s */
+/** Is this screen watching another's size (show the watch line and Take size)? @param {Sizing} s */
 export const watching = s => s.known && !s.owner;
 
 /**
@@ -248,7 +312,7 @@ export function onFit(s, fitted) {
 export function onSizeFrame(s, m, fitted) {
   const cols = dim(m?.cols), rows = dim(m?.rows);
   if (!m || m.t !== "size" || cols === null || rows === null || typeof m.owner !== "boolean") return { state: s, send: null };
-  const next = { ...s, known: true, owner: m.owner, cols, rows };
+  const next = { ...s, known: true, owner: m.owner, cols, rows, device: m.owner ? "" : deviceName(m.device) };
   if (!m.owner || !fitted || same(fitted, { cols, rows })) return { state: next, send: null };
   return onFit(next, fitted);
 }
@@ -265,8 +329,14 @@ export function takeSize(s, fitted) {
   return { state: { ...s, sent: d }, send: { t: "take", cols: d.cols, rows: d.rows } };
 }
 
-/** "Watching at 120x40". @param {Sizing} s */
-export const watchLabel = s => `Watching at ${s.cols}x${s.rows}`;
+/**
+ * The watch line (spec: "This phone is watching. Size is owned by alex's MacBook Pro"). `self`
+ * is what this screen is: "phone" in the phone layout, else "screen". The owner is the device the
+ * box names, or "another screen" when it names none.
+ * @param {Sizing} s @param {"phone"|"screen"} [self]
+ */
+export const watchLabel = (s, self = "screen") =>
+  `This ${self === "phone" ? "phone" : "screen"} is watching. Size is owned by ${s.device || "another screen"}`;
 
 /**
  * Letterbox: the scale (never above 1) and offsets that fit a drawn terminal of `drawn` pixels in

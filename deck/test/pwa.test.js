@@ -10,10 +10,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const read = (/** @type {string} */ f) => fs.readFileSync(path.join(DECK, f), "utf8");
-const exists = (/** @type {string} */ p) => fs.existsSync(path.join(DECK, p === "/" ? "index.html" : p.slice(1)));
+// vyred serves core/resilience/*.js and lib/avatar-seed/index.js beside the Deck's own files
+// (core/daemon), and the Deck imports them.
+const SERVED = ["core/resilience/", "lib/avatar-seed/"];
+const file = (/** @type {string} */ f) => path.join(SERVED.some(d => f.startsWith(d)) ? path.join(DECK, "..") : DECK, f);
+const read = (/** @type {string} */ f) => fs.readFileSync(file(f), "utf8");
+const exists = (/** @type {string} */ p) => fs.existsSync(file(p === "/" ? "index.html" : p.slice(1)));
 
-test("pwa: every path the service worker keeps at install is a file in deck/", () => {
+test("pwa: every path the service worker keeps at install is a file in deck/ (or core/resilience/ and lib/avatar-seed/, which vyred serves)", () => {
   const m = /const SHELL = \[([\s\S]*?)\];/.exec(read("sw.js"));
   assert.ok(m, "SHELL list in sw.js");
   const paths = [...m[1].matchAll(/"([^"]+)"/g)].map(x => x[1]);
@@ -70,7 +74,7 @@ test("pwa: the service worker caches no tool call but its two offline reads", ()
 /** The rules inside deck.css's phone block (PHONE_QUERY), the one that starts the shell. */
 function phoneCss() {
   const css = read("css/deck.css");
-  const at = css.indexOf("@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {\n  .top { display: none; }");
+  const at = css.indexOf("@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {\n  .top { display: none; }");
   assert.ok(at > 0, "the phone block in deck.css");
   let depth = 0, i = css.indexOf("{", at);
   for (let j = i; j < css.length; j++) { if (css[j] === "{") depth++; else if (css[j] === "}" && --depth === 0) return css.slice(i, j); }
@@ -92,7 +96,9 @@ test("pwa shell: three pages, Now Chats Agents, in pager order, and nothing else
   const pages = [...m[1].matchAll(/href: "([^"]+)", label: "([^"]+)"/g)].map(x => [x[1], x[2]]);
   assert.deepEqual(pages, [["/now", "Now"], ["/chat", "Chats"], ["/agents", "Agents"]]);
   // A swipe swaps the address in place; pages are not history.
-  assert.match(app, /history\.replaceState\(history\.state, "", PAGER\[i\]\.href\)/);
+  assert.match(app, /history\.replaceState\(history\.state, "", strip\[i\]\.href\)/);
+  // The pager's pages are the three, then the place kept from the Places sheet, if any.
+  assert.match(app, /const strip = \[\.\.\.PAGER\];/);
   // Rows that swipe on their own are left alone by the pager.
   assert.match(app, /\[data-swipe\]/);
   assert.match(phoneCss(), /\[data-swipe\] \{ touch-action: pan-y; \}/);
@@ -145,7 +151,7 @@ test("pwa shell: dictated words go into Find and are never sent on their own", (
   assert.match(cap, /if \(words\) o\.open\(words\)/);
   assert.doesNotMatch(cap, /agents\.ask|threads\.send|requestSubmit|\.submit\(/);
   assert.match(app, /go\("\/find\?q=" \+ encodeURIComponent\(words\)\)/);
-  assert.doesNotMatch(app.slice(app.indexOf("function openFind"), app.indexOf("function openSettings")), /requestSubmit|Enter|\.submit\(/);
+  assert.doesNotMatch(app.slice(app.indexOf("function openFind"), app.indexOf("function openPlaces")), /requestSubmit|Enter|\.submit\(/);
 });
 
 test("pwa shell: light by default: passive gesture listeners, no interval, nothing polls", () => {
@@ -269,7 +275,7 @@ test("pwa ios: safe areas on the shell (sideways too), the Capsule and sheets; v
   assert.match(deck, /^\.shell \{ padding-top: env\(safe-area-inset-top\); padding-left: env\(safe-area-inset-left\); padding-right: env\(safe-area-inset-right\); \}/m);
   assert.match(phoneCss(), /\.capsule \{[^}]*left: calc\(12px \+ env\(safe-area-inset-left\)\); right: calc\(12px \+ env\(safe-area-inset-right\)\)/);
   assert.match(deck, /--cap-bottom: max\(12px, env\(safe-area-inset-bottom\)\)/);
-  const sheet = block(read("css/sheet.css"), "@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {\n  /* Sideways");
+  const sheet = block(read("css/sheet.css"), "@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {\n  /* Sideways");
   assert.match(sheet, /\.sheet \{ padding-left: env\(safe-area-inset-left, 0px\); padding-right: env\(safe-area-inset-right, 0px\); \}/);
   assert.match(read("css/sheet.css"), /\.sheet \{[^}]*top: calc\(env\(safe-area-inset-top, 0px\) \+ 10px\)/);
   assert.match(read("css/sheet.css"), /\.sheet-actions \{[^}]*env\(safe-area-inset-bottom, 0px\)/);
@@ -300,7 +306,8 @@ test("pwa ios: the keyboard lifts the composer and a sheet, and the transcript f
   assert.match(read("css/sheet.css"), /:root\[data-kb\] \.sheet \{ bottom: var\(--kb\); \}/);
   const session = read("chat/session.js");
   assert.match(session, /window\.addEventListener\("deck:kb", onKb\)/);
-  assert.match(session, /if \(following\) toBottom\(\); else if \(pad >= 0\) timeline\.scrollTop \+= p - pad;/);
+  // The behaviour, not chat's names for it: at the bottom it stays there, scrolled up it keeps its place.
+  assert.match(session, /if \((following|stick\.stuck)\) toBottom\(\); else if \(pad >= 0\) timeline\.scrollTop \+= p - pad;/);
   assert.match(read("js/pwa.js"), /watchKeyboard\(\);/);
 });
 
@@ -374,11 +381,16 @@ test("pwa ios: the keyboard listener runs only while a field has focus on a phon
   stop();
 });
 
-test("pwa ios: long lists and the transcript skip off-screen rows; the newest 40 turns always draw", () => {
+test("pwa ios: long lists skip off-screen rows; the transcript is windowed or skips its old turns", () => {
   const chat = read("chat/chat.css");
-  assert.match(chat, /\.cv-timeline > :nth-last-child\(n\+41\) \{ content-visibility: auto; contain-intrinsic-size: auto 96px; \}/);
+  // Chat (27 Sep) replaced content-visibility on transcript rows with window-view.js, which windows
+  // long sessions (a just-finished reply could drop to its placeholder and jump a reader scrolled up).
+  // Either way a long transcript never lays out every row.
+  const skips = /\.cv-timeline > :nth-last-child\(n\+41\) \{ content-visibility: auto; contain-intrinsic-size: auto 96px; \}/.test(chat);
+  const windowed = fs.existsSync(path.join(DECK, "chat", "window-view.js")) && !/\.cv-timeline > [^{]*\{[^}]*content-visibility: auto/.test(chat);
+  assert.ok(skips || windowed, "the transcript skips its off-screen turns or is windowed");
   assert.match(chat, /\.rows > \.thread-row \{ content-visibility: auto; contain-intrinsic-size: auto \d+px; \}/);
-  assert.match(block(read("css/views/find.css"), "@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {"), /\.fd-row \{ content-visibility: auto; contain-intrinsic-size: auto \d+px; \}/);
+  assert.match(block(read("css/views/find.css"), "@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {"), /\.fd-row \{ content-visibility: auto; contain-intrinsic-size: auto \d+px; \}/);
 });
 
 test("pwa ios: a row swipe moves only the face's transform, once a frame, promoted only while it moves", () => {
@@ -412,15 +424,16 @@ function cssFiles(/** @type {string} */ dir = DECK) {
 
 test("pwa sideways: every CSS phone query also takes a short, wide touch screen, and its complement matches", async () => {
   const { PHONE_QUERY } = await import("../js/dom.js");
-  assert.equal(PHONE_QUERY, "(max-width: 760px), (max-height: 500px) and (pointer: coarse)");
-  const NOT_PHONE = "(min-width: 761px) and (min-height: 501px), (min-width: 761px) and (pointer: fine), (min-width: 761px) and (pointer: none)";
+  assert.equal(PHONE_QUERY, "(max-width: 719px), (max-height: 500px) and (pointer: coarse)");
+  const NOT_PHONE = "(min-width: 720px) and (min-height: 501px), (min-width: 720px) and (pointer: fine), (min-width: 720px) and (pointer: none)";
   let phone = 0;
   for (const f of cssFiles()) {
     const rel = path.relative(DECK, f);
     for (const m of fs.readFileSync(f, "utf8").matchAll(/@media ([^{]*)\{/g)) {
       const q = m[1].trim();
-      if (/760px|761px/.test(q)) {
-        assert.ok(q === PHONE_QUERY || q === NOT_PHONE, `${rel}: "@media ${q}" is a bare width query; use the phone query`);
+      assert.doesNotMatch(q, /76[01]px/, `${rel}: "@media ${q}" is the old 760 switch point; the phone query is at 719`);
+      if (/^\((max-width: 719px|min-width: 720px)\)/.test(q)) {
+        assert.ok(q === PHONE_QUERY || q === NOT_PHONE || /, \(hover: none\)$/.test(q), `${rel}: "@media ${q}" is a bare width query; use the phone query`);
         if (q === PHONE_QUERY) phone++;
       }
     }
@@ -440,7 +453,7 @@ test("pwa sideways: the JS asks the phone question only through dom.js isPhone /
         const src = fs.readFileSync(p, "utf8");
         const rel = path.relative(DECK, p);
         if (rel === path.join("js", "dom.js")) continue;
-        assert.doesNotMatch(src, /["'`]\(max-width: 760px\)/, `${rel} spells the phone query itself`);
+        assert.doesNotMatch(src, /["'`]\(max-width: (719|760)px\)/, `${rel} spells the phone query itself`);
         if (/\b(isPhone|PHONE_QUERY)\b/.test(src)) {
           assert.match(src, /import \{[^}]*\b(isPhone|PHONE_QUERY)\b[^}]*\} from "(\.\/|\.\.\/js\/)dom\.js"/, `${rel} takes the helper from dom.js`);
           users++;
@@ -461,4 +474,14 @@ test("pwa sideways: isPhone asks matchMedia the one query and is false without m
   assert.equal(isPhone({ matchMedia: (/** @type {string} */ q) => { asked.push(q); return { matches: true }; } }), true);
   assert.deepEqual(asked, [PHONE_QUERY]);
   assert.equal(isPhone({}), false);
+});
+
+test("pwa: the Reconnecting pill floats under the header and takes no layout space (ADR 0029 R3)", () => {
+  const css = read("css/deck.css");
+  const rule = /\n\.reach \{([^}]*)\}/.exec(css);
+  assert.ok(rule, "the .reach rule");
+  assert.match(rule[1], /position: fixed/);
+  assert.match(rule[1], /top: calc\(env\(safe-area-inset-top\) \+ 48px \+ 8px\)/);
+  assert.match(rule[1], /border-radius: 999px/);
+  assert.doesNotMatch(css, /\.reach \{[^}]*position: (relative|static)/, "no rule puts it back in the flow");
 });

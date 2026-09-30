@@ -26,21 +26,21 @@ private func harlow(_ v: FakeVyred, assistant: Bool = true) {
 @MainActor private func rows(_ m: CapsuleModel) -> [String] { m.flat.filter { $0.kind == "ask" }.map { "\($0.title) | \($0.sendsTo ?? "")" } }
 
 let agentRouteSuite = Suite("agent route") { t in
-    t.test("no assistant: a question goes to Claude first, deeper second, and the rows lead the list") {
+    t.test("no assistant: a question answers itself on the fast model, with no Quick or Deeper rows") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         harlow(v, assistant: false)
         v.tool("threads.start") { _ in ["id": "q1"] }
-        let got: ([String], String?)? = t.wait {
-            let m = await MainActor.run { () -> CapsuleModel in let m = routeModel(v); m.willShow(front: nil); return m }
+        let got: ([String], String)? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = routeModel(v); m.autoDelay = 0.08; m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && !m.catalog.projects.isEmpty }
             await MainActor.run { m.text = "what is the capital of France?" }
-            _ = await until { !m.flat.isEmpty }
-            let r = await MainActor.run { (rows(m), m.current?.title) }
+            _ = await until { !v.callsOf("threads.start").isEmpty }
+            let r = await MainActor.run { rows(m) }
             await MainActor.run { m.didHide() }
-            return r
+            return (r, VJ.s(v.callsOf("threads.start").first?["prompt"]))
         }
-        t.eq(got?.0, ["Quick answer | Vyre", "Deeper answer | Vyre, deeper"])
-        t.eq(got?.1, "Quick answer", "Enter sends to the first row")
+        t.eq(got?.0, [])
+        t.eq(got?.1, "what is the capital of France?")
     }
 
     t.test("with an assistant: the user's own work goes to it first, and says why; a command goes to it alone") {
@@ -63,7 +63,7 @@ let agentRouteSuite = Suite("agent route") { t in
             await MainActor.run { m.didHide() }
             return (own, why, cmd, v.callsOf("agents.ask").first)
         }
-        t.eq(got?.0, ["Ask juno | juno", "Quick answer | juno", "Deeper answer | juno, deeper"])
+        t.eq(got?.0, ["Ask juno | juno"])
         t.eq(got?.1, "Dana is in Harlow Legal, so juno answers with your memory.")
         t.eq(got?.2, ["Ask juno | juno"])
         t.eq(VJ.s(got?.3?["agent"]), "juno")
@@ -106,16 +106,16 @@ let agentRouteSuite = Suite("agent route") { t in
         t.eq(got ?? nil, "The assistant and agents come with the switchboard, which this vyred is not running yet.")
     }
 
-    t.test("under an answer: Follow up types into the same thread; Deeper asks sonnet; Copy copies the answer") {
+    t.test("under an answer: ⏎ opens the follow-up box, which types into the same thread; ⌘⏎ asks sonnet; Copy copies the answer") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         harlow(v, assistant: false)
         var n = 0
         v.tool("threads.start") { _ in n += 1; return ["id": "q\(n)"] }
         v.tool("threads.send") { _ in ["sent": true, "thread": "q1"] }
-        let got: (first: String?, send: [String: Any]?, model: String?, deep: [String: Any]?, copied: String?)? = t.wait {
-            let m = await MainActor.run { () -> CapsuleModel in let m = routeModel(v); m.willShow(front: nil); return m }
+        let got: (send: [String: Any]?, model: String?, deep: [String: Any]?, copied: String?)? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = routeModel(v); m.autoDelay = 0.08; m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.follower.isStreaming }
-            await MainActor.run { m.text = "what is 2+2?"; m.selected = 0; m.run() }
+            await MainActor.run { m.text = "what is 2+2?"; _ = m.handleReturn(command: false) }
             _ = await until { m.reply?.thread == "q1" }
             _ = v.emit("thread.text", thread: "q1", ["message": "m1", "text": "4", "done": true])
             _ = v.emit("thread.finished", thread: "q1", ["ok": true])
@@ -126,26 +126,23 @@ let agentRouteSuite = Suite("agent route") { t in
                 defer { CapsuleModel.replyBoard.releaseGlobally(); CapsuleModel.replyBoard = .general }
                 return m.copyReply() ? CapsuleModel.replyBoard.string(forType: .string) : nil
             }
-            await MainActor.run { m.text = "and 3+3?" }
-            _ = await until { !m.flat.isEmpty }
-            let first = await MainActor.run { m.flat.first?.title }
-            await MainActor.run { m.selected = 0; m.run() }
+            await MainActor.run { m.text = "and 3+3?"; _ = m.handleReturn(command: false) }
             _ = await until { !v.callsOf("threads.send").isEmpty }
             let model = await MainActor.run { m.reply?.model }
             _ = v.emit("thread.text", thread: "q1", ["message": "m2", "text": "6", "done": true])
             _ = v.emit("thread.finished", thread: "q1", ["ok": true])
-            _ = await until { m.reply?.finished == true && m.canGoDeeper }
-            await MainActor.run { m.deeper() }
+            _ = await until { m.reply?.finished == true }
+            await MainActor.run { m.text = "and 4+4?"; _ = m.handleReturn(command: true) }
             _ = await until { v.callsOf("threads.start").count == 2 }
             await MainActor.run { m.didHide() }
-            return (first, v.callsOf("threads.send").first, model, v.callsOf("threads.start").last, copied)
+            return (v.callsOf("threads.send").first, model, v.callsOf("threads.start").last, copied)
         }
-        t.eq(got?.first, "Follow up")
         t.eq(VJ.s(got?.send?["thread"]), "q1")
         t.eq(VJ.s(got?.send?["text"]), "and 3+3?")
         t.eq(got?.model, "haiku", "a follow-up of a quick answer is still that model")
         t.eq(VJ.s(got?.deep?["model"]), "sonnet")
-        t.eq(VJ.s(got?.deep?["prompt"]), "and 3+3?")
+        t.eq(VJ.s(got?.deep?["prompt"]), "and 4+4?")
+        t.ok(VJ.s(got?.deep?["append"]).contains("Q: what is 2+2?\nA: 4"), "the deeper model is told the conversation")
         t.eq(got?.copied, "4")
     }
 }

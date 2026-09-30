@@ -23,6 +23,10 @@ struct PanelSession: Equatable, Identifiable {
     /// The thread when known. The assistant's may be nil until its first words start one.
     var thread: String?
     var status: String?
+    /// The agent running a switchboard thread (threads.list's agent), when one does.
+    var runBy: String? = nil
+    /// The project a switchboard thread belongs to (threads.list's project), when it says.
+    var project: String? = nil
 
     var isAssistant: Bool { if case .assistant = kind { return true }; return false }
     var isTerminal: Bool { kind == .terminal }
@@ -49,7 +53,8 @@ struct PanelSession: Equatable, Identifiable {
             let id = VJ.s(x["id"])
             guard !id.isEmpty, seen.insert(id).inserted else { continue }
             let label = VJ.nonEmpty(x["name"]) ?? folder(x) ?? String(id.prefix(8))
-            run.append(PanelSession(id: "thread:\(id)", label: label, kind: .thread, thread: id, status: VJ.nonEmpty(x["status"])))
+            run.append(PanelSession(id: "thread:\(id)", label: label, kind: .thread, thread: id, status: VJ.nonEmpty(x["status"]), runBy: VJ.nonEmpty(x["agent"]),
+                                    project: VJ.nonEmpty(x["project"])))
         }
         let recent = ((catalog as? [String: Any])?["sessions"] as? [[String: Any]]) ?? []
         for x in recent {
@@ -131,7 +136,11 @@ final class SessionPanelModel: ObservableObject {
     var renewEvery: Duration = .seconds(60)
     /// system.info's assistant.name, read once per show of the panel; nil until read or unset.
     @Published var assistantName: String?
+    /// system.info's owner and assistant, for the marks beside the lines (read with the name).
+    @Published var identities = Identities()
     private var namesRead = false
+    /// Told the session now shown (nil when the panel stops): the Capsule's current project.
+    var onShown: (PanelSession?) -> Void = { _ in }
     /// Voice from the panel's mic button or Option-Return in its box.
     var onTalk: () -> Void = {}
 
@@ -153,6 +162,7 @@ final class SessionPanelModel: ObservableObject {
     }
 
     func stop() {
+        if shown != nil { onShown(nil) }
         sub?.cancel(); sub = nil
         endWatch()
         buffered = []
@@ -168,13 +178,25 @@ final class SessionPanelModel: ObservableObject {
             guard let self else { return }
             let r = await vyred.call("system.info", [:], presence: false)
             if r.error != nil { namesRead = false; return }
-            assistantName = VJ.nonEmpty(((r.data as? [String: Any])?["assistant"] as? [String: Any])?["name"])
+            let d = (r.data as? [String: Any]) ?? [:]
+            assistantName = VJ.nonEmpty((d["assistant"] as? [String: Any])?["name"])
+            let who = Identities.from(d)
+            if who != identities { identities = who }
         }
     }
 
     /// The label over a reply in the shown tab.
     var replyLabel: String {
-        ReplyLabel.of(agent: shown.flatMap { $0.isAssistant ? $0.agent : nil }, assistant: assistantName)
+        ReplyLabel.of(agent: shown.flatMap { $0.isAssistant ? $0.agent : $0.runBy }, assistant: assistantName)
+    }
+
+    /// The mark beside a reply: the blob of the agent running the tab's thread, else the
+    /// assistant's creature (the assistant's own tab, a terminal session, a thread no agent runs).
+    var replyAvatar: AvatarKind {
+        if let s = shown, !s.isAssistant, let a = s.runBy, ReplyLabel.of(agent: a, assistant: nil) == a, a != assistantName {
+            return .agent(a)
+        }
+        return identities.assistant(assistantName ?? shown.flatMap { $0.isAssistant ? $0.agent : nil })
     }
 
     var isWatching: Bool { watchID != nil }
@@ -193,6 +215,7 @@ final class SessionPanelModel: ObservableObject {
     func show(_ s: PanelSession) async {
         endWatch()
         shown = s
+        onShown(s)
         line = nil
         note = nil
         if s.isTerminal { await showIndexed(s); return }
@@ -513,7 +536,10 @@ struct SessionPanelView: View {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, m in
                         // A reply says who it is from, once per run of replies.
                         if m.role == .agent, i == 0 || rows[i - 1].role != .agent {
-                            Text(model.replyLabel).font(Theme.label).foregroundColor(Theme.ash)
+                            HStack(spacing: 6) {
+                                AvatarView(model.replyAvatar, size: 16)
+                                Text(model.replyLabel).font(Theme.label).foregroundColor(Theme.ash)
+                            }
                         }
                         message(m)
                     }
@@ -533,12 +559,13 @@ struct SessionPanelView: View {
 
     @ViewBuilder private func message(_ m: DmMessage) -> some View {
         if m.role == .user {
-            HStack {
+            HStack(alignment: .bottom, spacing: 6) {
                 Spacer(minLength: 24)
                 Text(m.text).font(Theme.reply).foregroundColor(m.pending ? Theme.stone : Theme.bone)
                     .textSelection(.enabled)
                     .padding(.horizontal, 10).padding(.vertical, 7)
                     .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.raised))
+                AvatarView(model.identities.person, size: 16)
             }
         } else {
             VStack(alignment: .leading, spacing: 6) {

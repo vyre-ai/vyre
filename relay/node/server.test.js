@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRelay } from "./server.js";
-import { newRouteKey, routeId, authMessage, signRoute, CLOSE } from "../../core/relay/wire.js";
+import { newRouteKey, routeId, authMessage, signRoute, CLOSE, ticketSeal } from "../../core/relay/wire.js";
 
 /** A WebSocket that queues what it receives, so a test can await the next message or the close. */
 function sock(url) {
@@ -134,4 +134,48 @@ test("a text ping is answered by the relay and never forwarded", async t => {
   await b.s.json();
   b.s.ws.send("ping");
   assert.equal(await b.s.next(), "pong");
+});
+
+test("a pairing ticket's record must be sealed: a plaintext one is refused, a sealed one resolves once", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const b = await box(base);
+  assert.equal((await b.s.json()).t, "ready");
+  const exp = Date.now() + 60_000;
+  const ticket = Buffer.alloc(8, 3);
+  const sealed = ticketSeal(ticket, JSON.stringify({ v: 1, name: "alex", route: b.route }));
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "p".repeat(43), record: JSON.stringify({ v: 1, name: "alex" }), mac: "q".repeat(43), exp }));
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "r".repeat(43), record: sealed, mac: "q".repeat(43), exp }));
+  const http = base.replace(/^ws/, "http");
+  const resolve = loc => fetch(`${http}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
+  // The two registrations ride one socket in order; poll the sealed one until it lands.
+  let ok;
+  for (let i = 0; i < 20 && !(ok = await resolve("r".repeat(43))).ok; i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(ok.status, 200);
+  assert.equal((await ok.json()).record, sealed);
+  assert.equal((await resolve("p".repeat(43))).status, 404, "the plaintext record was never stored");
+});
+
+test("/v1/pair alone answers any origin, without credentials: the preflight, and every POST answer", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const pre = await fetch(`${http}/v1/pair`, { method: "OPTIONS", headers: { origin: "https://phone.vyre.run", "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get("access-control-allow-origin"), "*");
+  assert.equal(pre.headers.get("access-control-allow-methods"), "POST");
+  assert.equal(pre.headers.get("access-control-allow-headers"), "content-type");
+  assert.equal(pre.headers.get("access-control-allow-credentials"), null);
+  const miss = await fetch(`${http}/v1/pair`, { method: "POST", headers: { origin: "https://alex.vyre.run", "content-type": "application/json" }, body: JSON.stringify({ loc: "z".repeat(43) }) });
+  assert.equal(miss.status, 404);
+  assert.equal(miss.headers.get("access-control-allow-origin"), "*", "an error answer is readable too, so the phone sees ticket_gone");
+  assert.equal(miss.headers.get("access-control-allow-credentials"), null);
+  for (const p of ["/health", "/v1/box", "/v1/device", "/nothing"]) {
+    const r = await fetch(`${http}${p}`, { headers: { origin: "https://phone.vyre.run" } });
+    assert.equal(r.headers.get("access-control-allow-origin"), null, p);
+  }
+  const other = await fetch(`${http}/v1/device`, { method: "OPTIONS", headers: { origin: "https://phone.vyre.run" } });
+  assert.equal(other.headers.get("access-control-allow-origin"), null, "no preflight answer anywhere else");
 });

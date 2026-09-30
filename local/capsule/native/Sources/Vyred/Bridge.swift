@@ -20,7 +20,7 @@ public enum Bridge {
 
     /// Words for an error, for the one line the Capsule shows.
     public static func explain(code: String, message: String) -> String {
-        if code == "unreachable" { return "vyred is not running. Start it with vyre up." }
+        if code == "unreachable" { return "vyred is not running. Start Vyre: Return on an empty Capsule." }
         if code == "presence" { return message }
         if code == "no_such_tool" {
             if let mod = VyRx.first("no tool (\\w+)\\.", message, group: 1, caseless: false), let words = missing[mod] { return words }
@@ -41,7 +41,6 @@ public enum Bridge {
     }
 
     /// The words a quick question is sent with: the user's own, then how to answer.
-    public static let quickAppend = "Answer briefly, in markdown. You have no tools here; if the question needs the user's files or accounts, say so in one line."
 
     /// The tool a destination needs.
     static func needs(_ d: VyreDestination) -> String? {

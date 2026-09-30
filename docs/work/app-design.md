@@ -175,9 +175,11 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 
 ## Changed contracts
 
-- New module core/appearance: settings appearance.theme and appearance.tokens (group
-  "appearance"), tools appearance.check, appearance.resolve, appearance.tokens.get/.set, route GET
-  /v1/appearance/theme (ETag), event appearance.changed {version, theme}.
+- New module core/appearance (ADR 0035): settings appearance.theme (a preset), appearance.scheme
+  and appearance.tokens (group "appearance", account and device level, kept in the hub), tools
+  appearance.check (the hub's check), appearance.presets (choicesFrom) and appearance.resolve
+  {device?, project?, format?}, event appearance.changed {version, theme, scheme}. No route of its
+  own: vyred serves GET /v1/theme and GET /theme.css by calling appearance.resolve.
 - tokens.json moved to lib/theme/tokens.json; package.json files gains "lib"; release-check
   requires lib/theme/tokens.json in the tarball.
 

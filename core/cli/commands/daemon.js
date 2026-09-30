@@ -1,20 +1,31 @@
 // @ts-check
-// Commands about vyred itself. `vyre up` lives in up.js.
+// Commands about vyred itself. `vyre up` lives in up.js. Each is one verb with no sub-verbs, so
+// `vyre commands` lists their arguments and flags from the usage line.
+//
+// --json shapes: down {stopped, wasRunning, pid?} · status {running, version, commit, role, pid,
+// uptime, modules:{running, failed}, note?, recall?, memory?} · modules [{name, version, state,
+// error?}] · tools [{name, description}] · call: the tool's data (always JSON; one frame under --view).
 
 import { progressLine } from "../../recall/progress.js";
 import { label } from "../../daemon/build.js";
 import { request, call } from "../../daemon/client.js";
 import { stop } from "../daemonctl.js";
 import { callAsPerson } from "../presence.js";
+import { personIO } from "./presence.js";
 import { out, dim, signal, beacon } from "../style.js";
-import { EXIT, json, emit, fail, failTool, usage } from "../kit.js";
+import { EXIT, json, emit, fail, failTool, usage, viewing } from "../kit.js";
 
 export default [
   {
-    name: "down", order: 11, usage: "vyre down", summary: "stop it",
+    name: "down", order: 11, usage: "vyre down [--json]", summary: "stop it",
     async run() {
       const r = await stop();
-      if (json()) { emit({ stopped: r.ok && r.wasRunning, wasRunning: r.wasRunning, ...(r.pid ? { pid: r.pid } : {}) }); return r.ok ? 0 : 1; }
+      if (json()) {
+        const d = { stopped: r.ok && r.wasRunning, wasRunning: r.wasRunning, ...(r.pid ? { pid: r.pid } : {}) };
+        emit(d, { kind: "card", title: "vyred", state: r.ok ? "ok" : "failed",
+          fields: [{ label: "vyred", value: !r.wasRunning ? "was not running" : r.ok ? "stopped" : `did not stop within 5 seconds (pid ${r.pid})` }] });
+        return r.ok ? 0 : 1;
+      }
       if (!r.wasRunning) { out("  vyred is not running"); return 0; }
       if (r.ok) { out("  vyred stopped"); return 0; }
       return fail(`vyred did not stop within 5 seconds (pid ${r.pid})`, { next: `kill ${r.pid}, then vyre up` });
@@ -35,7 +46,12 @@ export default [
       // What memory knows about the user, and the model pass's spend; absent when memory is.
       const personal = (await call("memory.stats").catch(() => null))?.data?.personal;
       const mem = memoryLine(personal);
-      if (json()) return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}), ...(mem ? { memory: personal } : {}) });
+      if (json()) {
+        return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}), ...(mem ? { memory: personal } : {}) }, { kind: "card", title: "vyred", state: d.modules.failed ? "failed" : "ok", fields: [
+          { label: "vyred", value: `running · ${label(d)} · ${d.role}` }, { label: "Up", value: `${Math.round(d.uptime / 1000)} s · pid ${d.pid}` },
+          { label: "Modules", value: `${d.modules.running} running${d.modules.failed ? `, ${d.modules.failed} failed (vyre modules)` : ""}` },
+          ...(mem ? [{ label: "Memory", value: mem.replace(/^memory\s+/, "") }] : []), ...(recall ? [{ label: "Search", value: recall }] : [])] });
+      }
       out(`  vyred ${signal("running")} ${dim(`· ${label(d)} · ${d.role} · pid ${d.pid} · up ${Math.round(d.uptime / 1000)}s`)}`);
       out(`  ${d.modules.running} modules running${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
       if (mem) out(`  ${mem}`);
@@ -48,7 +64,10 @@ export default [
     async run() {
       const r = await request("GET", "/v1/modules");
       if (r.error) return failTool(r.error);
-      if (json()) return emit(r.data);
+      if (json()) {
+        return emit(r.data, { kind: "table", title: "Modules", rows: r.data,
+          columns: [{ key: "name", label: "Module" }, { key: "version", label: "Version" }, { key: "state", label: "State" }, { key: "error", label: "Error" }] });
+      }
       for (const m of r.data) {
         const state = m.state === "running" ? signal(m.state) : ["failed", "invalid"].includes(m.state) ? beacon(m.state) : dim(m.state);
         out(`  ${String(m.name).padEnd(20)} ${String(m.version || "").padEnd(8)} ${state}${m.error ? dim("  " + m.error) : ""}`);
@@ -61,7 +80,7 @@ export default [
     async run() {
       const r = await request("GET", "/v1/tools");
       if (r.error) return failTool(r.error);
-      if (json()) return emit(r.data);
+      if (json()) return emit(r.data, { kind: "table", title: "Tools", rows: r.data, columns: [{ key: "name", label: "Tool" }, { key: "description", label: "What it does" }] });
       for (const t of r.data) out(`  ${t.name.padEnd(28)} ${dim(t.description)}`);
       return 0;
     },
@@ -76,7 +95,9 @@ export default [
       if (!name) return usage("vyre call needs a tool", "vyre tools lists them · vyre call system.echo '{\"text\":\"hi\"}'");
       let input = {};
       if (input0) { try { input = JSON.parse(input0); } catch { return usage("vyre call: the input must be JSON", `vyre call ${name} '{"key":"value"}'`); } }
-      const r = await callAsPerson(name, input, { tty });
+      const r = await callAsPerson(name, input, { tty, io: personIO() });
+      // Under --view it is one frame of the tool's data, or an error frame.
+      if (viewing()) return r.error ? failTool(r.error) : emit(r.data);
       if (r.error) {
         // The code word first, as before: scripts match on it.
         out(beacon(`  ${r.error.code}: `) + r.error.message);
@@ -92,7 +113,8 @@ export default [
 
 /**
  * The memory line of vyre status, from memory.stats' `personal` field: "memory   412 facts about
- * you, model pass $0.02 of $0.05 today". null when memory said nothing usable.
+ * you, reading 40% of today's plan share". In plan terms, never dollars: nothing here is a charge
+ * (the reads run on the person's Claude plan). null when memory said nothing usable.
  * @param {any} p
  */
 export function memoryLine(p) {
@@ -101,10 +123,15 @@ export function memoryLine(p) {
   if (!Number.isFinite(n)) return null;
   let line = `memory   ${n} ${n === 1 ? "fact" : "facts"} about you`;
   const m = p.model;
-  const usd = x => `$${Number(x).toFixed(2)}`;
+  const pct = (a, b) => `${Math.min(100, Math.round((Number(a) / Math.max(1e-9, Number(b))) * 100))}%`;
   if (m && typeof m === "object") {
-    if (m.on === false) line += ", model pass off";
-    else if (Number.isFinite(Number(m.today_usd)) && Number.isFinite(Number(m.cap_usd))) line += `, model pass ${usd(m.today_usd)} of ${usd(m.cap_usd)} today`;
+    if (m.on === false) line += ", reading off";
+    else if (Number.isFinite(Number(m.today_usd)) && Number(m.cap_usd) > 0) {
+      line += `, reading ${pct(m.today_usd, m.cap_usd)} of today's plan share`;
+      // The one-time read of the history that was there before, while it lasts.
+      if (Number(m.backfill_usd) > 0 && Number(m.backfill_cap_usd) > 0) line += `, first read ${pct(m.backfill_usd, m.backfill_cap_usd)} of its share`;
+      if (Number(m.waiting_turns) > 0) line += `, ${m.waiting_turns} turns to read`;
+    }
   }
   return line;
 }

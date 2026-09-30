@@ -96,6 +96,23 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - chat: the browser terminal client on the new term contract (from=, cut/at frames, 1012
   reattach, 4 KB key buffer, keep scrollback). docs: ADR 0024 still says 10 s idle.
 
+## While you were paused (pwa, 2026-09-28)
+Team-lead gave pwa ownership of core/resilience/stream.js for one change, since resilience was
+paused: native-core's budget 8 (native-bar's reconnect metric) measured 1,646-1,679 ms to reopen
+inside a 2.5 s outage where neither `online` nor `visibilitychange` ever fires (their harness cuts
+the socket at the proxy, not the network, and the tab stays visible) — a wait scheduled by
+`backoff.delay()` before the box comes back has no way to know it came back, so the metric was
+riding the exponential schedule alone. Added `fastReach()` in `follow()`'s `down()`: while a
+backoff wait is pending, probe `paths[0]` + `/v1/health` every `fastProbeMs` (default 150 ms) and
+cancel the wait to reconnect at once the moment it answers; capped at `fastProbeFor` (default
+5 s) from the *first* failure, so a genuinely long outage falls back to backoff alone rather than
+polling forever. Cleared in `pause()`/`stop()`/`connect()` alongside the existing `wait` and
+`probe` timers. New options on `follow()`: `fastProbeMs`, `fastProbeFor` (both optional, same
+style as `stallMs`/`probeMs`). Tests: `core/resilience/stream.test.js` (new file, 3 tests,
+synthetic transport — the fault-proxy/real-vyred version stays in test/chaos/chaos.test.js).
+Please review the cap value and whether `/v1/health` is the right endpoint for this probe (chosen
+because `schedule()`'s existing path-probe already uses it) when you're back.
+
 ## Changed contracts
 - Registry.call: new meta `idempotencyKey` (from the Idempotency-Key header); tools receive it.
 - vyred HTTP: 409 `idempotency_conflict`; 503 `restarting` with retry-after during drain.

@@ -10,7 +10,7 @@
 
 import { h, put } from "../js/dom.js";
 import { attempt } from "../js/api.js";
-import { gicon, errText, clock, surfaceKind } from "./util.js";
+import { gicon, errText, clock, yourDevice } from "./util.js";
 
 /**
  * @param {any} s the screen state from watch.js: name, target, surface, holder, phone, visible()
@@ -103,7 +103,7 @@ export function takeover(s, hooks) {
     // While holding, the control bar under the screen has the hand-back button.
     if (mine()) return [];
     const blocked = other() || !s.canTake();
-    const why = other() ? `Someone has control from ${surfaceKind(s.holder.surface)}.` : !s.canTake() ? "The screen is not connected." : "";
+    const why = other() ? `${yourDevice(s.holder.surface)} has control.` : !s.canTake() ? "The screen is not connected." : "";
     return [
       h("button", { type: "button", class: "btn btn-ghost", disabled: busy || blocked, title: why || `Sign in on ${s.name}'s screen without ${s.name} seeing the page`,
         onclick: explainPrivate }, gicon("shield"), "Sign in privately"),
@@ -128,9 +128,9 @@ export function takeover(s, hooks) {
   /** What another viewer sees while someone else holds the keyboard. */
   function banner() {
     if (!other()) return null;
-    const since = s.holder.since ? ` · since ${new Date(Number(s.holder.since)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}` : "";
+    const since = s.holder.since ? ` · ${clock(Date.now() - Number(s.holder.since))}` : "";
     return h("div", { class: "gl-banner", role: "status" }, gicon("pointer"),
-      h("span", null, `Someone has control from ${surfaceKind(s.holder.surface)}${since}. ${s.name} is paused and this view is read-only.`));
+      h("span", null, `${yourDevice(s.holder.surface)} has the keyboard${since}. ${s.name} is paused and this view is read-only.`));
   }
 
   /** The side panel while holding: where the keystrokes go (board GlassTakeover). */

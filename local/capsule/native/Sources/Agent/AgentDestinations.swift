@@ -47,14 +47,15 @@ extension CapsuleModel {
         // An extension's @ target (an app, a service) sends through the extension, not vyred.
         if let t = target, t.kind == .app { return [appSendItem(q, t)] }
         var options: [VyreDestination] = []
-        if let r = reply, !r.thread.isEmpty, r.queued == nil, asked != nil, target == nil {
-            options.append(VyreDestination(kind: .thread, thread: r.thread, threadLabel: "this answer", model: r.model, meta: "follow up"))
-        }
         if let t = target, t.kind == .agent {
             routes.load(t.id, vyred, projectName: { [weak self] s in self?.catalog.projectName(s) ?? s }) { [weak self] in self?.search() }
         }
         let agentThreads = target.flatMap { $0.kind == .agent ? routes.threads($0.id) : nil } ?? []
-        let r = Route.destinations(target, words, catalog, agentThreads: agentThreads, quick: vyred.has("threads.start"))
+        var r = Route.destinations(target, words, catalog, agentThreads: agentThreads, quick: vyred.has("threads.start"),
+                                     models: (models.quick, models.deeper))
+        // With no chip, a question answers itself and ⏎ / ⌘⏎ ask (AutoAsk.swift): no Quick or
+        // Deeper answer rows.
+        if target == nil { r.options.removeAll { $0.kind == .quick } }
         options += r.options
         return options.enumerated().map { i, d in destinationItem(d, words: words, why: i == options.count - r.options.count ? r.why : nil) }
     }
@@ -86,7 +87,7 @@ extension CapsuleModel {
     /// Send the words to exactly this destination.
     func go(_ d: VyreDestination, _ words: String) async -> ActionOutcome {
         switch d.kind {
-        case .quick: return await ask(words, model: d.model ?? "haiku")
+        case .quick: return await ask(words, model: d.model ?? models.quick)
         case .recall: return .said("Nothing to send to: there is no assistant on this vyred yet. Memory has answered what it can.")
         case .assistant, .agent:
             let a = d.agent ?? ""
@@ -106,7 +107,6 @@ extension CapsuleModel {
     /// matches them strongly (Route.intent), or a chip or an answer on screen says where they go.
     func asksFirst(_ q: Query, top: ResultItem?) -> Bool {
         if target != nil { return true }
-        if asked != nil, reply.map({ !$0.thread.isEmpty }) == true { return true }
         return Route.intent(q.text, topKind: top?.kind, topScore: top?.score ?? 0) == .ask && Route.asksQuestion(q.text)
     }
 
@@ -118,11 +118,11 @@ extension CapsuleModel {
     // MARK: the answer's own actions
 
     /// Deeper: the same question again, to the deeper model. Only after a fast answer finished.
-    var canGoDeeper: Bool { reply.map { $0.finished && $0.model == "haiku" && $0.queued == nil } == true && asked != nil }
+    var canGoDeeper: Bool { reply.map { $0.finished && $0.model == models.quick && $0.queued == nil } == true && asked != nil }
 
     func deeper() {
         guard canGoDeeper, let words = asked else { return }
-        Task { @MainActor in handleOutcome(await ask(words, model: "sonnet")) }
+        deeper(words)
     }
 
     /// Where Copy writes: the general pasteboard, or a private one under tests.
@@ -135,7 +135,7 @@ extension CapsuleModel {
         guard !t.isEmpty else { return false }
         Self.replyBoard.clearContents()
         Self.replyBoard.setString(t, forType: .string)
-        line = "Copied."
+        flash("Copied.")
         return true
     }
 

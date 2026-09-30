@@ -48,7 +48,10 @@ const { askCard } = await import("./ask-item.js");
 test("question card: stepper, number keys, multi-select with space, review, Submit sends the answers", async () => {
   const api = vyred();
   const card = questionCard(structuredClone(fx.asks[0]));
-  assert.match(text(card), /Vyre asks/);
+  assert.equal(text($(card, ".cv-ask-kind")), "Question");
+  assert.equal(text($(card, ".cv-q-step")), "1 of 2");
+  assert.equal(text($(card, ".cv-q-chip")), "Slots", "the header as a meta word, not a caps chip");
+  assert.equal(text($(card, ".cv-ask-meta")), "Vyre");
   assert.match(text(card), /1 of 2/);
   assert.match(text(card), /Which pickup slots should the form offer\?/);
   assert.match(text(card), /7:00 to 11:00/);
@@ -183,11 +186,16 @@ test("tool cards: the checklist, a short diff and a run open on their own; a rea
   assert.equal(open(bash), true);
   assert.equal(text($(bash, ".cv-out")).split("\n").length, 6);
   assert.match(text(bash), /show all \(7 lines\)/);
-  assert.equal(text(personAv("you", "alex")), "A");
-  assert.ok($(personAv("you", null), ".cv-dot"));
-  assert.equal(text(personAv("capsule")), "C");
+  // ADR 0043's families: the person's circle on every message of theirs (named in its title), the
+  // assistant's creature, an agent's blob.
+  assert.equal(personAv("you", "alex").getAttribute("data-family"), "person");
+  assert.equal(personAv("you", "alex").getAttribute("title"), "alex");
+  assert.equal(personAv("capsule").getAttribute("title"), "capsule");
+  assert.ok($(personAv("you", null), "svg"), "drawn even before the owner's name is known");
+  assert.equal(agentAv("Vyre").getAttribute("data-family"), "assistant");
   assert.ok($(agentAv("Vyre"), "svg"));
-  assert.equal(text(agentAv("juno")), "ju");
+  assert.equal(agentAv("kit", false).getAttribute("data-family"), "agent");
+  assert.equal(agentAv("juno").getAttribute("data-family"), "agent", "an agent: its blob, not two letters");
 });
 
 test("permission card: the diff summary, totals first, a row per file on a tap, binary and 'and N more'", async () => {
@@ -244,6 +252,163 @@ test("permission card: a single-file Edit keeps its inline diff with the summary
     detail: { command: "git push", changes: [], totals: { files: 0, added: 0, removed: 0 } } });
   assert.equal($(empty, ".cv-changes"), null);
   assert.equal($(askCard({ id: "ask_n3", tool: "Bash", kind: "permission", reason: null }), ".cv-changes"), null, "no detail at all");
+});
+
+// ---- the design system's ask and question cards (ask-card.md, question-card.md) ---------------
+
+/** A fake vyred whose threads.answer waits until the test lets it go, to see the busy state. */
+function heldVyred() {
+  const api = vyred();
+  const inner = globalThis.fetch;
+  /** @type {(() => void)[]} */
+  const waiting = [];
+  globalThis.fetch = /** @type {any} */ (async (url, o) => {
+    if (String(url).includes("threads.answer")) await new Promise(r => waiting.push(() => r(undefined)));
+    return inner(url, o);
+  });
+  return { ...api, release: async () => { for (const go of waiting.splice(0)) go(); await settle(); } };
+}
+const act = (card, a) => $(card, `button[data-act=${a}]`);
+
+test("permission card: a neutral header with the dot, Permission and who; A allows once, D denies at once", async () => {
+  const api = vyred();
+  const card = askCard({ ...structuredClone(fx.asks[1]), id: "ask_k1", agent: "kit", at: Date.UTC(2026, 8, 27, 14, 40) });
+  assert.equal(card.tagName, "SECTION");
+  assert.equal(card.getAttribute("aria-label"), "Permission ask from kit");
+  assert.equal(card.getAttribute("tabindex"), "0");
+  assert.ok($(card, ".cv-ask-head .cv-ask-dot"));
+  assert.equal(text($(card, ".cv-ask-kind")), "Permission");
+  assert.match(text($(card, ".cv-ask-meta")), /^kit · \d\d:\d\d$/);
+  assert.equal(text($(card, ".ask-title")), "kit wants to run a command");
+  // Allow once A (primary), Always (outline, not ghost), Deny D (ghost); the keys as the shared
+  // kbd chip (key-hint.md, app-design's review - was plain text), hidden from readers.
+  const allow = act(card, "allow"), always = act(card, "always"), deny = act(card, "deny");
+  assert.match(allow.className, /btn-primary/);
+  assert.doesNotMatch(always.className, /btn-ghost|btn-primary/, "Always is an outline button");
+  assert.match(deny.className, /btn-ghost/);
+  assert.equal(allow.getAttribute("aria-keyshortcuts"), "A");
+  assert.equal(deny.getAttribute("aria-keyshortcuts"), "D");
+  assert.equal(text($(allow, ".cv-ask-key")), "A");
+  assert.equal(text($(deny, ".cv-ask-key")), "D");
+  assert.equal($(allow, ".cv-ask-key").getAttribute("aria-hidden"), "true");
+  assert.ok($(card, ".gate-actions .kbd"), "the real key-hint chip, not plain text");
+  assert.equal(card.onKey(key("a")), true);
+  await settle();
+  assert.deepEqual(api.of("threads.answer")[0].input, { ask: "ask_k1", decision: "allow", surface: "deck" });
+  assert.match(text(card), /Allowed once/);
+  assert.equal($(card, ".cv-ask-dot"), null, "answered: the dot and the violet label leave");
+  assert.equal($(card, ".cv-ask-kind"), null);
+
+  const c2 = askCard({ ...structuredClone(fx.asks[1]), id: "ask_k2" });
+  assert.equal(c2.onKey(key("D")), true);
+  assert.equal($(c2, "input.cv-why"), null, "D denies at once, with no note field");
+  await settle();
+  assert.deepEqual(api.of("threads.answer")[1].input, { ask: "ask_k2", decision: "deny", surface: "deck" });
+  assert.match(text(c2), /Denied/);
+
+  const c3 = askCard({ ...structuredClone(fx.asks[1]), id: "ask_k3" });
+  c3.onKey(key("A"));
+  await settle();
+  assert.equal(api.of("threads.answer")[2].input.decision, "allow", "capital A too");
+  const c4 = askCard({ ...structuredClone(fx.asks[1]), id: "ask_k4", always: false, always_project: "Harlow Legal" });
+  assert.equal(text(act(c4, "always")), "Always in Harlow Legal");
+});
+
+test("permission card: the pressed button goes busy with its own verb; the other two wait", async () => {
+  for (const [press, verb, decision] of [["allow", "Allowing", "allow"], ["always", "Saving rule", "always"], ["deny", "Denying", "deny"]]) {
+    const api = heldVyred();
+    const card = askCard({ ...structuredClone(fx.asks[1]), id: `ask_b_${press}` });
+    if (press === "always") act(card, "always").click();
+    else card.onKey(key(press === "allow" ? "a" : "d"));
+    await settle();
+    const b = act(card, press);
+    assert.equal(text(b), verb, `${press} says ${verb}`);
+    assert.equal(b.getAttribute("aria-busy"), "true");
+    assert.ok($(b, ".cv-ask-spin"), "a spinner in place of the label");
+    for (const other of ["allow", "always", "deny"].filter(x => x !== press)) {
+      assert.equal(act(card, other).disabled, true, `${other} waits`);
+      assert.equal(act(card, other).getAttribute("aria-busy"), null);
+    }
+    assert.equal(card.onKey(key("a")), false, "no second answer while one is on the way");
+    await api.release();
+    assert.equal(api.of("threads.answer").length, 1);
+    assert.equal(api.of("threads.answer")[0].input.decision, decision);
+    assert.equal($(card, ".cv-ask-spin"), null);
+  }
+});
+
+test("permission card: a failed answer gives the buttons back, none busy", async () => {
+  vyred({ "threads.answer": { $error: { code: "failed", message: "The box did not answer. Try again." } } });
+  const card = askCard({ ...structuredClone(fx.asks[1]), id: "ask_f1" });
+  card.onKey(key("a"));
+  await settle();
+  assert.match(text(card), /did not answer/);
+  assert.equal(text(act(card, "allow")), "Allow onceA");
+  assert.equal(act(card, "allow").disabled, false);
+  assert.equal($(card, "[aria-busy=true]"), null);
+});
+
+/** A question with five choices and Other: more rows than a laptop card shows at once. */
+const bigQuestion = () => ({ id: "ask_big", kind: "question", agent: "kit", questions: [{ question: "Which intake form should the Estate branch use?", header: "Intake", multiSelect: false,
+  options: ["Estate intake v2", "Estate intake v1", "Probate short form", "Harlow Legal general", "Ask alex first"].map((label, n) => ({ label, description: `Choice ${n + 1} for Harlow Legal` })) }] });
+
+test("question card: many choices keep every row and the footer; the number is a key chip on the right", async () => {
+  const api = vyred();
+  const card = questionCard(bigQuestion());
+  const rows = $$(card, ".cv-q-opt");
+  assert.equal(rows.length, 6, "five choices and Other");
+  rows.forEach((r, n) => {
+    const kids = r.children;
+    const chip = kids[kids.length - 1];
+    assert.ok(chip.classList.contains("kbd") && chip.classList.contains("cv-q-num"), `row ${n + 1} ends in its key chip`);
+    assert.equal(text(chip), String(n + 1));
+    assert.equal(chip.getAttribute("aria-hidden"), "true");
+    assert.equal(r.getAttribute("aria-keyshortcuts"), String(n + 1));
+    assert.ok(kids[0].classList.contains("cv-q-mark"), "the mark comes first");
+  });
+  assert.equal(text(rows[5]), "Other6");
+  // The footer sits outside the scrolling body, as the card's own child, after the question.
+  const kids = [...card.children];
+  const at = c => kids.findIndex(k => k.classList.contains(c));
+  assert.ok(at("cv-q-actions") > at("cv-q-q") && at("cv-q-q") > at("cv-ask-head"), "head, question, then the footer");
+  assert.equal($(card, ".cv-q-body .cv-q-actions"), null, "the footer is not inside the scroller");
+  assert.ok(btn(card, /^Submit/) && btn(card, /^Decline$/));
+  assert.equal($(btn(card, /^Submit/), ".cv-ask-key").getAttribute("aria-hidden"), "true");
+  assert.equal(btn(card, /^Submit/).disabled, true, "Submit waits for an answer");
+  // Description tied to its row, the list named by the question.
+  const d = $(rows[0], ".cv-q-desc");
+  assert.equal(rows[0].getAttribute("aria-describedby"), d.getAttribute("id"));
+  const list = $(card, ".cv-q-opts");
+  assert.equal(list.getAttribute("role"), "radiogroup");
+  assert.equal(text($(card, `#${list.getAttribute("aria-labelledby")}`)), "Which intake form should the Estate branch use?");
+  // Arrow keys reach the last choice; 5 picks the fifth; the footer is still there after each redraw.
+  for (let n = 0; n < 5; n++) card.onKey(key("ArrowDown"));
+  assert.ok($$(card, ".cv-q-opt")[5].classList.contains("cv-focus"));
+  assert.ok($(card, ".cv-q-actions"));
+  card.onKey(key("5"));
+  await settle();
+  assert.deepEqual(api.of("threads.answer")[0].input.answers, { "Which intake form should the Estate branch use?": "Ask alex first" });
+});
+
+test("question card: Submit goes busy as Sending and keeps the footer; a checked box is ink", async () => {
+  const api = heldVyred();
+  const card = questionCard({ ...bigQuestion(), id: "ask_big2" });
+  card.onKey(key("2"));
+  await settle();
+  const b = $(card, "button[data-act=submit]");
+  assert.equal(text(b), "Sending");
+  assert.equal(b.getAttribute("aria-busy"), "true");
+  assert.ok($(b, ".cv-ask-spin"));
+  assert.equal($(card, "button[data-act=decline]").disabled, true);
+  await api.release();
+  assert.match(text(card), /Answered/);
+  assert.equal($(card, ".cv-ask-dot"), null);
+
+  vyred();
+  const multi = questionCard({ ...structuredClone(fx.asks[0]), id: "ask_m", questions: [fx.asks[0].questions[1]] });
+  multi.onKey(key(" "));
+  assert.ok($(multi, ".cv-q-box.cv-chk-on"));
+  assert.equal($(multi, ".cv-q-opts").getAttribute("role"), "group");
 });
 
 // ---- a Mac session's ask, answered from here (federation v2) -----------------------------------------
@@ -379,4 +544,65 @@ test("the rewind sheet: Claude Code's three restores, code off on a box that res
   sheet.key(/** @type {any} */ ({ key: "Enter" }));
   await new Promise(r => setTimeout(r, 0));
   assert.deepEqual(chose, [["u1", "code"]]);
+});
+
+test("the rewind sheet: 'Fork from here' is the fourth item only when onFork is given, and it does not call onChoose", async () => {
+  const { rewindSheet } = await import("./pickers.js");
+  const barren = rewindSheet({ points: [{ uuid: "u1", text: "Read the intake folder", at: null }],
+    can: () => true, onChoose: async () => null, onClose: () => {} });
+  assert.deepEqual($$(barren.el, ".cv-rw-opt").map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code"], "no onFork: three items, as before");
+  /** @type {any[]} */
+  const chose = [];
+  /** @type {any[]} */
+  const forked = [];
+  let forkOk = /** @type {boolean|null} */ (null);
+  const sheet = rewindSheet({ points: [{ uuid: "u2", text: "Rebuild the Estate intake", at: null }, { uuid: "u1", text: "Read the intake folder", at: null }],
+    can: () => true, codeOk: () => true, canFork: () => forkOk,
+    onChoose: async (p, r) => { chose.push([p.uuid, r]); return null; },
+    onFork: async p => { forked.push(p.uuid); return null; }, onClose: () => {} });
+  const opts = () => $$(sheet.el, ".cv-rw-opt");
+  assert.deepEqual(opts().map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code", "Fork from here"]);
+  assert.equal(opts()[3].disabled, true, "canFork null: waits, off");
+  forkOk = true;
+  sheet.refresh();
+  assert.equal(opts()[3].disabled, false);
+  sheet.key(/** @type {any} */ ({ key: "ArrowLeft" }));
+  assert.equal(sheet.restore(), "fork", "left from the default (both) wraps to the last item");
+  assert.equal(text($(sheet.el, ".cv-rw-go")).replace("⏎", "").trim(), "Fork here");
+  sheet.key(/** @type {any} */ ({ key: "Enter" }));
+  await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(forked, ["u2"]);
+  assert.deepEqual(chose, [], "fork never calls onChoose");
+});
+
+test("tool row (tool-row.md): a verb, the path relative to the session's folder, no 'done' word; waiting on you has no clock; failed says so", async () => {
+  const { toolCard } = await import("./blocks.js");
+  const cwd = "/home/alex/Work/harlow-site";
+  const done = toolCard({ kind: "tool", id: "t1", tool: "Edit", input: { file_path: cwd + "/menu.md", old_string: "a", new_string: "b" }, output: "ok", done: true, duration_ms: 225, cwd });
+  assert.equal(text($(done, ".cv-tool-name")), "Edited");
+  assert.equal(text($(done, ".cv-tool-title")), "menu.md");
+  assert.equal(text($(done, ".cv-tool-time")), "0.2 s");
+  assert.equal($(done, ".cv-tool-state"), null, "done carries no state word");
+  assert.doesNotMatch(everything(done), /\/home\/alex/, "no absolute path in the row");
+  const wait = toolCard({ kind: "tool", id: "t2", tool: "Edit", input: { file_path: cwd + "/menu.md" }, output: null, done: false, ts: Date.now() - 38_000, cwd, waiting: true });
+  assert.equal(wait.getAttribute("data-state"), "waiting");
+  assert.equal(text($(wait, ".cv-tool-name")), "Editing");
+  assert.equal(text($(wait, ".cv-tool-state")), "waiting on you");
+  assert.equal($(wait, ".cv-tool-time"), null, "no clock while it waits on you");
+  const run = toolCard({ kind: "tool", id: "t3", tool: "Bash", input: { command: "npm test" }, output: null, done: false, ts: Date.now() - 5_000, cwd });
+  assert.equal(run.getAttribute("data-state"), "running");
+  assert.ok($(run, ".cv-spin"), "a spinner in place of the icon");
+  assert.match(text($(run, ".cv-tool-time")), /^0:0\d$/);
+  const bad = toolCard({ kind: "tool", id: "t4", tool: "Bash", input: { command: "npm test" }, output: "exit 1", error: true, done: true, duration_ms: 1200, cwd });
+  assert.equal(text($(bad, ".cv-tool-name")), "Ran");
+  assert.equal(text($(bad, ".cv-tool-state")), "failed");
+  const todo = toolCard({ kind: "tool", id: "t5", tool: "TodoWrite", input: { todos: [{ content: "Ask kit to review the copy", status: "pending" }] }, output: "ok", done: true, duration_ms: 1, cwd });
+  assert.equal($(todo, ".cv-tool-time"), null, "a todo list's time says nothing");
+});
+
+test("turn footer: time and tokens in one number, nothing while the turn is open", async () => {
+  const { turnRow } = await import("./blocks.js");
+  assert.equal(text(turnRow({ duration_ms: 18_000, tokens: { input: 4000, output: 200 } })), "18 s · 4.2k tokens");
+  assert.equal(text(turnRow({ duration_ms: 15, tokens: { input: 7400, output: 178 }, open: true })), "", "an open turn draws nothing");
+  assert.match(text(turnRow({ canceled: true, byMe: true, duration_ms: 3000 })), /^Stopped by you/);
 });

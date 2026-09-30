@@ -53,7 +53,11 @@ no project. A session can be in several rooms.
   Never the list of rooms, a global confidence, a close caused elsewhere, a short form measured
   elsewhere, or a hub role. Short forms keep every claimant; the one in view wins at read time.
 - **Unfiled sessions** read the `unfiled` room, not a folder prefix. Only the owner surfaces (Deck,
-  CLI, local) and the assistant or an agent granted every project read `'*'`.
+  CLI, local) and the assistant read `'*'`. (Narrowed 2026-09-28: an agent granted every project
+  used to read `'*'` too, personal facts included; the user decided an agent, wildcard-granted or
+  not, is never the assistant's equal for the main graph, the unfiled room, or personal facts. It
+  now reads every project it is granted one room at a time, the same door a named-projects agent
+  uses, just starting from every project instead of a named few.)
 - **Hub rule:** an org is a hub when it is in at least `max(3, rooms/2)` rooms, or passes today's
   session share and no project names it. An org taught as `client_of` is never a hub.
 

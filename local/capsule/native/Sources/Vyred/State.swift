@@ -75,7 +75,8 @@ public struct Waiting: Sendable, Equatable {
     public var quiet: Bool
 
     public var key: String { "\(source.rawValue):\(id)" }
-    public func age(now: Double = vyNowMs()) -> String { Route.age(at, now: now) }
+    /// "just now" under a minute (copy.md), "" with no time.
+    public func age(now: Double = vyNowMs()) -> String { let a = Route.age(at, now: now); return a == "now" ? "just now" : a }
 }
 
 public typealias SlugName = (String) -> String
@@ -222,10 +223,26 @@ public enum VyState {
         var x = r
         // A notice is vyred talking (a usage limit), not the model: status, never the answer.
         if e.type == "thread.text" && VJ.truthy(p["notice"]) { x.notice = s(p["text"]); return x }
-        // Words queued for a session busy in a terminal reached it (the Harness handed them over).
-        if e.type == "thread.sent" && p["queued"] != nil && !(p["queued"] is NSNull), x.queued != nil { x.queued?.delivered = true; return x }
-        // Every event of a turn names it: the first one fixes this reply's turn.
-        if let t = VJ.nonEmpty(p["turn"]) {
+        // Words queued for a busy session reached it: the Harness at a terminal's Stop, or the owned
+        // session's own turn end. Only our row counts; another surface's queued words are not ours.
+        if e.type == "thread.sent" && p["queued"] != nil && !(p["queued"] is NSNull), let q = x.queued {
+            if q.delivered { return r }
+            if let id = q.id, VJ.int(p["queued"]) != id { return r }
+            x.queued?.delivered = true
+            if let t = VJ.nonEmpty(p["turn"]) { x.queued?.turn = t }
+            // The turn it was busy with is not this reply's: the answering turn fixes it afresh.
+            x.turn = VJ.nonEmpty(p["turn"])
+            return x
+        }
+        // Until then the thread is answering something else (the turn it is busy with): none of that
+        // is this reply. After it, only the answering turn is, when events name their turn.
+        if let q = x.queued, ["thread.text", "thread.tool", "thread.finished"].contains(e.type) {
+            if !q.delivered { return r }
+            if let t = q.turn, let et = VJ.nonEmpty(p["turn"]), et != t { return r }
+        }
+        // Every event of a turn names it: the first one fixes this reply's turn (for queued words,
+        // the first after they were handed over).
+        if let t = VJ.nonEmpty(p["turn"]), x.queued.map({ $0.delivered }) ?? true {
             if x.turn == nil { x.turn = t } else if t != x.turn { return r }
         }
         switch e.type {
@@ -574,6 +591,8 @@ public struct QueuedSend: Sendable, Equatable {
     public var delivered = false
     /// Its id in the queue (threads.send's queued_id), for Esc to take it back (threads.unqueue).
     public var id: Int?
+    /// The turn answering it (thread.sent's `turn`), when vyred names turns.
+    public var turn: String?
     /// Taken back before it was handed over.
     public var withdrawn = false
     public init(name: String, note: String? = nil, id: Int? = nil) { self.name = name; self.note = note; self.id = id }

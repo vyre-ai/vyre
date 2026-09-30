@@ -68,7 +68,7 @@ test("talk: the terminal path end to end, with the key saved through the CLI and
     const empty = await vyre(root, ["voice", "key"], "");
     assert.equal(empty.code, 1); assert.match(empty.out, /nothing stored/);
     const bad = await vyre(root, ["voice", "key", "whisper"], "x\n");
-    assert.equal(bad.code, 1); assert.match(bad.out, /usage/);
+    assert.equal(bad.code, 2, "a usage error exits 2 (EXIT.USAGE)"); assert.match(bad.out, /vyre voice key \[deepgram/);
   });
 
   await t.test("utterance: mic PCM streamed, partials heard, done with the words after stop", async () => {

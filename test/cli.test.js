@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempHome, upPresent } from "./helpers.js";
+import { tempHome, upPresent, upLeader } from "./helpers.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
 const run = (args, env) => new Promise(resolve =>
@@ -52,8 +52,9 @@ test("cli: learn adds, lists, re-levels and retires lessons", async t => {
   const env = { VYRE_HOME: tempHome(t) };
   t.after(() => run(["down"], env));
   assert.match((await run(["learn"], env)).out, /not running/);
-  // The real verifier: nothing here proves a person is present.
-  await run(["up"], env);
+  // The real verifier: nothing here proves a person is present. upLeader only trusts the
+  // terminal server this test runs under (the testbox's sshd), not any tool's own proof.
+  await upLeader(env.VYRE_HOME);
   assert.match((await run(["learn"], env)).out, /no lessons yet/);
   const add = await run(["learn", "add", "never", "use", "em", "dashes"], env);
   assert.equal(add.code, 0);
@@ -80,7 +81,7 @@ test("cli: learn adds, lists, re-levels and retires lessons", async t => {
 test("cli: learn show, scope, relax, stats, signals and skills", async t => {
   const env = { VYRE_HOME: tempHome(t) };
   t.after(() => run(["down"], env));
-  await run(["up"], env);
+  await upLeader(env.VYRE_HOME);
   await run(["learn", "add", "never", "use", "em", "dashes"], env);
   const list = await run(["learn"], env);
   assert.match(list.out, /1 Never use em dashes\. \[block\] measuring/, "the effect column");

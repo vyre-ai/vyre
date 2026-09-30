@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { whoLabel, plan, groupBlocks, mergeBlocks, blockKey, rawLines, rawToolHead, duration, tokens, cost, turnParts, clip,
+import { shortPath, toolVerb, whoLabel, plan, groupBlocks, mergeBlocks, blockKey, rawLines, rawToolHead, duration, tokens, cost, turnParts, clip,
   langOf, toolTitle, toolState, commandText } from "./blocks.js";
 
 const fx = JSON.parse(readFileSync(new URL("../fixtures/session-blocks.json", import.meta.url), "utf8"));
@@ -78,7 +78,9 @@ test("raw view: running, failed and live tools", () => {
 });
 
 test("formatters: duration, tokens, cost, the turn footer", () => {
-  assert.equal(duration(840), "840 ms");
+  assert.equal(duration(840), "0.8 s");
+  assert.equal(duration(1), "", "under a twentieth of a second says nothing");
+  assert.equal(duration(49), "");
   assert.equal(duration(2400), "2.4 s");
   assert.equal(duration(19000), "19 s");
   assert.equal(duration(185000), "3 min 05 s");
@@ -89,8 +91,43 @@ test("formatters: duration, tokens, cost, the turn footer", () => {
   assert.equal(cost(0.0423), "$0.042");
   assert.equal(cost(1.2), "$1.20");
   assert.equal(cost(0), "");
-  assert.deepEqual(turnParts({ duration_ms: 19000, tokens: { input: 18420, output: 912 } }), ["19 s", "18k in, 912 out"]);
-  assert.deepEqual(turnParts({ duration_ms: 19000, tokens: { input: 18420, output: 912 }, cost_usd: 0.05 }), ["19 s", "18k in, 912 out", "$0.050"]);
+  assert.deepEqual(turnParts({ duration_ms: 19000, tokens: { input: 18420, output: 912 } }), ["19 s", "19k tokens"]);
+  // No $ figure without api-key billing: a subscription runs on the person's plan, never a charge
+  // (the user's rule) - cost_usd with no `auth`, or any auth but api-key, drops the $ figure.
+  assert.deepEqual(turnParts({ duration_ms: 19000, tokens: { input: 18420, output: 912 }, cost_usd: 0.05 }), ["19 s", "19k tokens"]);
+  assert.deepEqual(turnParts({ duration_ms: 19000, tokens: { input: 18420, output: 912 }, cost_usd: 0.05, auth: "subscription" }), ["19 s", "19k tokens"]);
+  assert.deepEqual(turnParts({ duration_ms: 19000, tokens: { input: 18420, output: 912 }, cost_usd: 0.05, auth: "api-key" }), ["19 s", "19k tokens", "$0.050"]);
+});
+
+test("shortPath: inside the session's folder relative, outside whole", () => {
+  const cwd = "/home/alex/Work/harlow-site";
+  assert.equal(shortPath(cwd + "/menu.md", cwd), "menu.md");
+  assert.equal(shortPath(cwd + "/src/app.js", cwd + "/"), "src/app.js");
+  assert.equal(shortPath(cwd, cwd), ".");
+  assert.equal(shortPath("/home/alex/Work/harlow-site-old/menu.md", cwd), "/home/alex/Work/harlow-site-old/menu.md", "a sibling with the same prefix is not inside");
+  assert.equal(shortPath("/srv/data/alex/Work/other/notes/q3.md", cwd), "/srv/data/alex/Work/other/notes/q3.md", "outside the folder: whole");
+  assert.equal(shortPath("notes.md", null), "notes.md");
+  assert.equal(shortPath(null, cwd), "");
+  assert.equal(toolTitle("Read", { file_path: cwd + "/menu.md" }, cwd), "menu.md");
+  assert.equal(toolTitle("Grep", { pattern: "price", path: cwd + "/src" }, cwd), "price in src");
+  assert.equal(toolTitle("Bash", { command: `cat ${cwd}/menu.md && ls ${cwd}` }, cwd), "cat menu.md && ls .");
+});
+
+test("raw view: paths relative to the session's folder, as Claude Code prints them", () => {
+  const cwd = "/home/alex/Work/harlow-site";
+  assert.equal(rawToolHead("Edit", { file_path: cwd + "/menu.md" }, cwd), "Update(menu.md)");
+  assert.deepEqual(rawLines([{ kind: "tool", tool: "Edit", input: { file_path: cwd + "/menu.md" }, output: "ok", done: true, cwd }]), ["⏺ Update(menu.md)", "  ⎿  Updated menu.md"]);
+});
+
+test("toolVerb: past tense done, -ing while running or waiting, never the SDK's names", () => {
+  assert.equal(toolVerb("Edit", "done"), "Edited");
+  assert.equal(toolVerb("Edit", "running"), "Editing");
+  assert.equal(toolVerb("Bash", "failed"), "Ran");
+  assert.equal(toolVerb("Bash", "waiting"), "Running");
+  assert.equal(toolVerb("TodoWrite", "done"), "Todos");
+  assert.equal(toolVerb("AskUserQuestion", "running"), "Asking");
+  assert.equal(toolVerb("mcp__harlow__lookup_client", "done"), "Lookup client");
+  assert.equal(toolVerb("Frobnicate", "done"), "Frobnicate");
 });
 
 test("clip, langOf, toolTitle, toolState, commandText", () => {

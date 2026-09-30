@@ -41,7 +41,7 @@ export function startCall(where, agent, text, fallback) {
   if (where.kind === "project") input.project = where.slug;
   else if (where.kind === "folder") input.cwd = where.path;
   else if (fallback) input.cwd = fallback;
-  else return { error: "There is no folder to start in: the box has no folders set up for files." };
+  else return { error: "There is no folder to start in: the server has no folders set up for files." };
   return { tool: "threads.start", input };
 }
 
@@ -104,8 +104,14 @@ export function mountNewSession(container, opts) {
   load();
 
   async function load() {
-    const [p, r, a, d, nm] = await Promise.all([attempt("projects.list"), attempt("files.recent", { limit: 8 }), attempt("agents.list"), attempt("files.dirs", {}), readNames(attempt)]);
+    const [p, r, a, d, nm, now] = await Promise.all([attempt("projects.list"), attempt("files.recent", { limit: 8 }), attempt("agents.list"), attempt("files.dirs", {}), readNames(attempt),
+      // What the person is working on now, merged across surfaces (cohesion's context.now {}, not chat's own
+      // last report, which is the thread just left): a new session defaults to its project.
+      // An older box without it answers no_such_tool, and the sheet opens on "none" as before.
+      attempt("context.now", {})]);
     if (!alive) return;
+    const nowProject = typeof now?.data?.project === "string" && now.data.project ? now.data.project : null;
+    if (state.where.kind === "none" && nowProject && (p.data?.projects || []).some(x => x.slug === nowProject)) state.where = { kind: "project", slug: nowProject };
     state.assistant = labelFor({ role: "assistant" }, nm);
     state.projects = p.data?.projects || [];
     state.recent = Array.isArray(r.data) ? r.data : [];
@@ -168,7 +174,7 @@ export function mountNewSession(container, opts) {
     if (r.error) { state.error = `Could not start: ${r.error.message || r.error.code}`; draw(); return; }
     if (r.data && r.data.ok === false) { state.error = r.data.note || "The agent did not take the message."; draw(); return; }
     const href = openHref(r.data, state.where.kind === "project" && !state.agent ? state.where.slug : null);
-    if (!href) { state.error = "The session started, but the box did not say which thread it is."; draw(); return; }
+    if (!href) { state.error = "The session started, but the server did not say which thread it is."; draw(); return; }
     // The shell keeps this page; coming back to it later starts a fresh message, not this one again.
     /** @type {any} */ (text).value = "";
     draw();

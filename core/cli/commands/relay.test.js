@@ -11,7 +11,6 @@ import { fileURLToPath } from "node:url";
 import { start } from "../../daemon/index.js";
 import { tempHome } from "../../../test/helpers.js";
 import { createRelay } from "../../../relay/node/server.js";
-import { terminalQr } from "./relay.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "vyre");
 
@@ -19,15 +18,6 @@ const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", 
 const run = (root, args) => new Promise(resolve =>
   execFile(process.execPath, [BIN, ...args], { env: { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1" }, timeout: 30_000 },
     (err, stdout, stderr) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, out: stdout + stderr })));
-
-test("relay cli: the terminal QR is square, with a quiet zone, in half blocks only", () => {
-  const qr = terminalQr("https://vyre.run/pair#eyJ2IjoxfQ").split("\n");
-  const width = qr[0].length;
-  assert.ok(qr.every(l => l.length === width));
-  assert.equal(qr.length, Math.ceil(width / 2));
-  assert.match(qr.join(""), /^[█▀▄ ]+$/);
-  assert.match(qr[0], /^█+$/, "the quiet zone is light");
-});
 
 test("relay cli: status and devices read without presence; pair and changes need a person", async t => {
   const relay = createRelay();

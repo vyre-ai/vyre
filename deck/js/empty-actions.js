@@ -6,7 +6,7 @@
 // view's New project form sends, startThread what its New thread box sends, indexHistory what
 // Settings' Re-index now sends. Those views call these functions too, so there is one of each.
 //
-// Styles: .ea in css/deck.css (44px targets under 760px).
+// Styles: .ea in css/deck.css (44px targets under 720px).
 
 import { h, put, go } from "./dom.js";
 import { attempt } from "./api.js";
@@ -15,7 +15,7 @@ const enc = encodeURIComponent;
 
 /**
  * projects.create. → { slug, name } or { error } in plain words.
- * @param {{ name: string, home?: string, people?: any[] }} input
+ * @param {{ name: string, home?: string, people?: any[], from_thread?: string }} input from_thread: the chat it is made from (its tile carries over)
  */
 export async function createProject(input) {
   const r = await attempt("projects.create", input);

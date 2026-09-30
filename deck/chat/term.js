@@ -21,23 +21,26 @@
 //    the screen dims meanwhile;
 //  - closes: 1000 is a real end (the box's reason says which); 1012 "restarting" is vyred
 //    stopping with the shell alive, so the screen reattaches at once; anything else is a drop;
-//  - after a box update the shell is gone: term.closed {reason: "box updated"} on the event
+//  - after a server update the shell is gone: term.closed {reason: "server updated"} on the event
 //    stream, and term.attach answers terminal_closed for a day. One line says so, with a button
 //    that opens a new terminal in the same folder;
 //  - the size: one screen owns it (the first to attach, or the last to Take size) and only its
 //    size resizes the shell. The box says {"t":"size",cols,rows,"owner"} after the "at" and on every
 //    change. Owning, this screen fits and sends its size as before. Not owning, it draws at the
-//    owner's size, scaled down to fit (letterboxed, never reflowed), and shows "Watching at
-//    <cols>x<rows> · Take size"; its own fitted size still goes to the box as the size it would
+//    owner's size, scaled down to fit (letterboxed, never reflowed), and shows the watch line
+//    ("This phone is watching. Size is owned by ...", with Take size); its own fitted size still goes to the box as the size it would
 //    like. A box that sends no size frames: fit and send, no Take size (lib/term-link.js);
-//  - on a phone a key bar gives Esc, Tab, Ctrl, Alt, arrows and Paste;
+//  - the view fills the Chat content area (term.css), and xterm refits whenever its box changes
+//    (window resize, orientation, the phone keyboard): one ResizeObserver on the screen;
+//  - on a phone a key bar of two rows of seven (lib/term-link.js KEY_ROWS) docks above the home
+//    indicator, or above the keyboard while it is up (--kb-lift, deck.css);
 //  - no timers but the reconnect wait. Every string from the box is a text node (deck/js/dom.js).
 
-import { h, put, go } from "../js/dom.js";
+import { h, put, go, isPhone } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
 import { surfaceId } from "../glass/util.js";
-import { linkVerdict, holdKeys, withFrom, withMods, arrow, step, reopened, onClose, onAttachError, remember,
-  unsized, sizeReopened, drawAt, watching, onFit, onSizeFrame, takeSize, watchLabel, letterbox } from "./lib/term-link.js";
+import { linkVerdict, holdKeys, withFrom, withMods, step, reopened, onClose, onAttachError, remember,
+  unsized, sizeReopened, drawAt, watching, onFit, onSizeFrame, takeSize, watchLabel, letterbox, KEYS, KEY_ROWS, keySend, lineHeightFor } from "./lib/term-link.js";
 
 /** Tickets term.open already issued, so the first mount needs no second round trip. One use, 30 s. */
 /** @type {Map<string, { path: string, cwd: string, until: number }>} */
@@ -68,11 +71,11 @@ export function termError(err) {
   if (!err) return "";
   if (err.missing && err.code !== "offline") return "Terminals are not available on this machine yet (the term module is not running).";
   const words = {
-    not_available: "That folder is outside the folders the box shares, or it holds keys.",
+    not_available: "That folder is outside the folders the server shares, or it holds keys.",
     too_many: "Eight terminals are already open. Close one first.",
     not_found: "That terminal has ended.",
-    terminal_closed: "The box was updated and this terminal was closed.",
-    offline: "vyred did not answer. The box may be asleep or out of reach.",
+    terminal_closed: "The server was updated and this terminal was closed.",
+    offline: "vyred did not answer. The server may be asleep or out of reach.",
   };
   return words[err.code] || String(err.message || err);
 }
@@ -110,18 +113,51 @@ function loadXterm() {
 function theme() {
   const cs = getComputedStyle(document.documentElement);
   const v = (name, dflt) => cs.getPropertyValue(name).trim() || dflt;
+  // Spec (terminal.md, Colour mapping): ANSI folds onto the roles and lime; no other hue, and
+  // never the beacon colour. Paths (blue) in --text-2, user and host in --label, success in --focus.
+  const text = v("--text", "#F1EEE6"), text2 = v("--text-2", "#B3AEA4"), label = v("--label", "#8C877D"), focus = v("--focus", "#C6F36B");
   return {
-    background: v("--panel", "#161513"), foreground: v("--text", "#F1EEE6"),
-    cursor: v("--focus", "#C6F36B"), cursorAccent: v("--panel", "#161513"),
+    background: v("--code-bg", "#121110"), foreground: text,
+    cursor: focus, cursorAccent: v("--code-bg", "#121110"),
     selectionBackground: v("--rule-strong", "#3A3733"),
-    red: v("--beacon-ink", "#B8A4FF"), brightRed: v("--beacon-dot", "#B8A4FF"),
-    green: v("--focus", "#C6F36B"), brightGreen: v("--signal-hover", "#D4F88A"),
-    yellow: v("--recall-ink", "#EBC76B"), brightYellow: v("--recall", "#EBC76B"),
-    brightBlack: v("--label", "#8C877D"),
+    black: label, brightBlack: label,
+    red: text, brightRed: text,
+    green: focus, brightGreen: focus,
+    yellow: text2, brightYellow: text,
+    blue: text2, brightBlue: text2,
+    magenta: label, brightMagenta: text2,
+    cyan: text2, brightCyan: text,
+    white: text2, brightWhite: text,
   };
 }
 
 const monoFont = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "ui-monospace, Menlo, monospace";
+
+/** Spec: screen type mono 12/18 on every surface. */
+const FONT_PX = 12, ROW_PX = 18;
+
+/** The mono font's own line at 12 px, as xterm measures it (a span, line-height normal). */
+function charHeight() {
+  const span = h("span", { "aria-hidden": "true", style: { position: "absolute", visibility: "hidden", whiteSpace: "pre", fontFamily: monoFont(), fontSize: `${FONT_PX}px`, lineHeight: "normal" } }, "W");
+  document.body.append(span);
+  const px = span.getBoundingClientRect().height;
+  span.remove();
+  return px;
+}
+
+/** "This phone" in the phone layout (deck.css), else "This screen". */
+const selfWord = () => (isPhone() ? "phone" : "screen");
+
+const SVG = "http://www.w3.org/2000/svg";
+/** The eye on the watch line (no eye in deck/js/icons.js yet). */
+function eyeIcon() {
+  const svg = document.createElementNS(SVG, "svg");
+  for (const [k, v] of Object.entries({ width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", "stroke-width": "1.5", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", class: "term-watch-eye" })) svg.setAttribute(k, v);
+  const p = document.createElementNS(SVG, "path"); p.setAttribute("d", "M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8z");
+  const c = document.createElementNS(SVG, "circle"); c.setAttribute("cx", "8"); c.setAttribute("cy", "8"); c.setAttribute("r", "2");
+  svg.append(p, c);
+  return svg;
+}
 
 /**
  * Draw a live terminal in container. Returns cleanup, which closes the socket; the box keeps the
@@ -165,27 +201,33 @@ export function mountTerminal(container, { term, onBack }) {
   const back = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => onBack?.() }, "Back");
   const closeBtn = h("button", { type: "button", class: "btn btn-sm", onclick: () => closeIt() }, "Close");
   const note = h("div", { class: "term-note", role: "status", "aria-live": "polite", hidden: true });
-  const screen = h("div", { class: "term-screen" });
+  const screen = h("div", { class: "term-screen", role: "application", "aria-label": "Terminal" });
   const watchWords = h("span", { class: "term-watch-words" }, "");
-  const takeBtn = h("button", { type: "button", class: "term-take", title: "Size the terminal to this screen", onclick: () => take() }, "Take size");
-  const watch = h("span", { class: "term-watch", hidden: true }, watchWords, h("span", { class: "term-watch-sep", "aria-hidden": "true" }, " · "), takeBtn);
+  const takeBtn = h("button", { type: "button", class: "btn term-take", title: "Size the terminal to this screen", onclick: () => take() }, "Take size");
+  // Spec: its own line above the screen while another device owns the size.
+  const watch = h("div", { class: "term-watch", hidden: true }, eyeIcon(), watchWords, takeBtn);
 
   /** A key-bar button: it never takes focus from the terminal. @param {string} label @param {() => void} act @param {object} [attrs] */
   const key = (label, act, attrs = {}) => h("button", { type: "button", class: "term-key", onpointerdown: e => e.preventDefault(), onclick: () => { act(); xt?.focus(); }, ...attrs }, label);
-  const ctrlKey = key("Ctrl", () => toggle("ctrl"), { "aria-pressed": "false" });
-  const altKey = key("Alt", () => toggle("alt"), { "aria-pressed": "false" });
   const app = () => Boolean(xt && xt.modes && xt.modes.applicationCursorKeysMode);
+  /** @type {Record<string, HTMLElement>} */ const modKeys = {};
   const keys = h("div", { class: "term-keys", role: "toolbar", "aria-label": "Terminal keys" },
-    key("Esc", () => input("\x1b")), key("Tab", () => input("\t")), ctrlKey, altKey,
-    key("←", () => input(arrow("left", app())), { "aria-label": "Left" }),
-    key("↑", () => input(arrow("up", app())), { "aria-label": "Up" }),
-    key("↓", () => input(arrow("down", app())), { "aria-label": "Down" }),
-    key("→", () => input(arrow("right", app())), { "aria-label": "Right" }),
-    key("Paste", () => paste()));
+    KEY_ROWS.flat().map(id => {
+      const k = KEYS[id];
+      const attrs = { "data-key": id, ...(k.aria ? { "aria-label": k.aria } : {}), ...(k.mod ? { "aria-pressed": "false" } : {}) };
+      const b = key(k.label, () => {
+        if (k.mod) toggle(k.mod);
+        else if (k.paste) paste();
+        else { const d = keySend(id, app()); if (d !== null) input(d); }
+      }, attrs);
+      if (k.mod) modKeys[k.mod] = b;
+      return b;
+    }));
+  const ctrlKey = modKeys.ctrl, altKey = modKeys.alt;
 
   const root = h("section", { class: "term", "aria-label": "Terminal" },
-    h("header", { class: "term-head" }, back, h("span", { class: "term-title" }, where), h("span", { class: "term-status" }, dot, word), watch, closeBtn),
-    note, screen, keys);
+    h("header", { class: "term-head" }, back, h("span", { class: "term-title" }, where), h("span", { class: "term-status" }, dot, word), closeBtn),
+    watch, note, screen, keys);
   put(container, root);
 
   /** @param {"connecting"|"live"|"waiting"|"ended"|"error"|"blocked"|"gone"} state @param {string} [msg] @param {any} [action] */
@@ -205,6 +247,7 @@ export function mountTerminal(container, { term, onBack }) {
     const parts = cwd.split("/").filter(Boolean);
     where.textContent = parts.length ? parts[parts.length - 1] : "/";
     where.setAttribute("title", cwd);
+    screen.setAttribute("aria-label", `Terminal, ${where.textContent}`);
   };
   setWhere(cwd);
 
@@ -246,7 +289,7 @@ export function mountTerminal(container, { term, onBack }) {
   function showWatch() {
     const on = watching(sizing) && root.dataset.state === "live" && !ended;
     watch.hidden = !on;
-    if (on) watchWords.textContent = watchLabel(sizing);
+    if (on) watchWords.textContent = watchLabel(sizing, selfWord());
   }
 
   /**
@@ -266,10 +309,10 @@ export function mountTerminal(container, { term, onBack }) {
       return;
     }
     root.dataset.watching = "";
-    const drawn = /** @type {HTMLElement|null} */ (el.querySelector(".xterm-screen"));
+    // The xterm element carries the screen's padding (term.css), so its whole box is what is drawn.
     const cs = getComputedStyle(screen);
     const box = { w: screen.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), h: screen.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) };
-    const lb = letterbox({ w: drawn?.offsetWidth || 0, h: drawn?.offsetHeight || 0 }, box);
+    const lb = letterbox({ w: el.offsetWidth || 0, h: el.offsetHeight || 0 }, box);
     el.style.transformOrigin = "0 0";
     el.style.transform = `translate(${lb.x}px, ${lb.y}px) scale(${lb.scale})`;
   }
@@ -311,7 +354,9 @@ export function mountTerminal(container, { term, onBack }) {
     try { X = await loadXterm(); } catch { status("error", "The terminal did not load."); return; }
     if (dead) return;
     if (!xt) {
-      xt = new X.Terminal({ theme: theme(), fontFamily: monoFont(), fontSize: 13, lineHeight: 1.2, cursorBlink: true, scrollback: 5000, allowProposedApi: false });
+      const still = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      xt = new X.Terminal({ theme: theme(), fontFamily: monoFont(), fontSize: FONT_PX, lineHeight: lineHeightFor(ROW_PX, charHeight()),
+        cursorBlink: !still, scrollback: 5000, allowProposedApi: false });
       fit = new X.FitAddon();
       xt.loadAddon(fit);
       xt.open(screen);
@@ -323,6 +368,13 @@ export function mountTerminal(container, { term, onBack }) {
       // The Deck switches light and dark on <html data-theme>; follow it.
       mo = new MutationObserver(() => { if (xt) xt.options.theme = theme(); });
       mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
+      // JetBrains Mono swaps in after the fallback: measure its line again, then refit.
+      document.fonts?.ready?.then(() => {
+        if (!xt || dead) return;
+        const lh = lineHeightFor(ROW_PX, charHeight());
+        if (lh !== xt.options.lineHeight) xt.options.lineHeight = lh;
+        fitAndSend();
+      }, () => {});
       draw();
     }
     const r = await ticket();
@@ -331,7 +383,7 @@ export function mountTerminal(container, { term, onBack }) {
       const verdict = onAttachError(r.error);
       if (verdict === "gone") { gone(); return; }
       if (verdict === "ended") { finish("That terminal has ended."); return; }
-      if (verdict === "retry") { later(r.error.code === "offline" ? "The box did not answer." : "The box is restarting."); return; }
+      if (verdict === "retry") { later(r.error.code === "offline" ? "The server did not answer." : "The server is restarting."); return; }
       status("error", termError(r.error)); return;
     }
     setWhere(r.data.cwd);
@@ -388,7 +440,7 @@ export function mountTerminal(container, { term, onBack }) {
       // 1000: the terminal itself ended, and the reason says how.
       if (c.act === "end") { finish(c.why); return; }
       // 1012 "restarting": vyred is stopping and the shell lives on; reattach from here, at once.
-      if (c.act === "reattach") { backoff = 1; attempts = []; later("The box is restarting.", true); return; }
+      if (c.act === "reattach") { backoff = 1; attempts = []; later("The server is restarting.", true); return; }
       if (!seen.data) {
         attempts.push({ ...seen });
         if (linkVerdict(attempts) === "blocked") { blocked(); return; }
@@ -397,10 +449,10 @@ export function mountTerminal(container, { term, onBack }) {
     };
   }
 
-  /** This path to the box does not carry live streams: say so and wait for a tap, never loop. */
+  /** This path to the server does not carry live streams: say so and wait for a tap, never loop. */
   function blocked() {
     clearTimeout(retry);
-    status("blocked", "The terminal needs the box link. Your Deck reaches the box through a path that does not carry live streams yet.",
+    status("blocked", "The terminal needs the server link. Your Deck reaches the server through a path that does not carry live streams yet.",
       h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: () => { attempts = []; backoff = 1; connect(); } }, "Try again"));
   }
 
@@ -432,7 +484,7 @@ export function mountTerminal(container, { term, onBack }) {
     if (xt) xt.options.cursorBlink = false;
   }
 
-  /** A box update took the shell. One line, and a new terminal in the same folder when this screen knows it. */
+  /** A server update took the shell. One line, and a new terminal in the same folder when this screen knows it. */
   function gone() {
     if (dead) return;
     finish("");
@@ -445,11 +497,11 @@ export function mountTerminal(container, { term, onBack }) {
       if ("error" in r) { again.disabled = false; status("gone", termError(r.error), again); return; }
       go("/chat?term=" + encodeURIComponent(r.term));
     } }, "Open a new terminal here") : null;
-    status("gone", "The box was updated and this terminal was closed.", again);
+    status("gone", "The server was updated and this terminal was closed.", again);
   }
 
-  // After a deploy the box says so on the event log, for every screen that had the terminal.
-  const unhear = on("term.closed", ev => { if (ev?.payload?.term === term && ev.payload.reason === "box updated") gone(); });
+  // After a deploy the server says so on the event log, for every screen that had the terminal.
+  const unhear = on("term.closed", ev => { if (ev?.payload?.term === term && ev.payload.reason === "server updated") gone(); });
 
   async function closeIt() {
     closeBtn.disabled = true;

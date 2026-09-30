@@ -4,11 +4,25 @@
   "description": "Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["files.search", "files.stat", "files.dirs", "files.recent", "files.preview", "files.fetch", "files.send",
+  "does": { "tools": ["files.search", "files.stat", "files.dirs", "files.recent", "files.preview", "files.fetch", "files.send", "files.deliver", "files.receive",
     "files.drive.status", "files.drive.share", "files.drive.unshare", "files.drive.access", "files.drive.audit",
     "files.drive.url", "files.drive.mount", "files.drive.unmount", "files.drive.open", "files.drive.local"] },
   "watches": { "emits": ["files.sent", "files.received", "drive.exposed"] },
   "shows": { "deck": [], "capsule": [], "cli": ["files", "send"] },
   "needs": {},
-  "teaches": {}
+  "teaches": {
+    "tips": [
+      {"id": "send-taildrop", "text": "Run `vyre send report.pdf` on your Mac to Taildrop it to the box. It lands in the box's inbox, `/work/inbox`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre send <file>", "docs": "reference/cli.md#vyre-send"},
+      {"id": "deliver-taildrop", "text": "`files.deliver` Taildrops a file from the box to a paired Mac's `~/Vyre/inbox`, once that Mac turns files.receive on.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call files.deliver", "docs": "reference/tools.md#files"},
+      {"id": "receive-config", "text": "A Mac takes box deliveries only once you turn `files.receive` on. Off by default, so pairing never changes Taildrop. Applies at once.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.1", "command": "vyre call files.receive", "key": "files.receive", "docs": "reference/tools.md#files"},
+      {"id": "capsule-search", "text": "Press Control twice and type a file's name. The Capsule searches your Mac with Spotlight, plus up to three files from your box.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "Control Control", "docs": "using/capsule.md"},
+      {"id": "never-secrets", "text": "Files never shows secrets: `.env` files, key-like names, dot folders and `~/.ssh` stay out of every search and send.", "surfaces": ["capsule", "deck", "phone", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#files"},
+      {"id": "send-many", "text": "`vyre send` takes several files at once. One refused file does not stop the rest, and the exit code says if any failed.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre send <file> [more files]", "docs": "reference/cli.md#vyre-send"},
+      {"id": "roots", "text": "Files looks only in the folders you chose: `/work` on a box and your home on a Mac, until `files.roots` in config.json says otherwise.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "files.roots", "docs": "reference/tools.md#files"},
+      {"id": "inbox-config", "text": "Want Taildrop files somewhere else on the box? Set `files.inbox` in config.json to a folder inside one of your roots.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "files.inbox", "docs": "reference/tools.md#files"},
+      {"id": "find-one-box", "text": "Open Find in the Deck, `/find`, to search sessions, files, agents, memory and projects in one box. On the phone it is a tab.", "surfaces": ["deck", "phone"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/deck.md"},
+      {"id": "drive-mount", "text": "Mount a shared box folder at `~/Vyre/Box/<share>` with `vyre call files.drive.mount` so Finder opens box files in place.", "surfaces": ["cli", "capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre call files.drive.mount", "docs": "reference/tools.md#files"},
+      {"id": "recent-folders", "text": "`vyre call files.recent` lists the folders your sessions worked in lately, newest first, with how many sessions ran in each.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre call files.recent", "docs": "reference/tools.md#files"}
+    ]
+  }
 }

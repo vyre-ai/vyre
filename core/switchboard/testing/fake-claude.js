@@ -7,6 +7,7 @@
 // nothing more. What it does depends on the prompt:
 //   "write <file>"  asks permission for Write (offering "always"), then writes the file only if allowed
 //   "bash <command>" asks permission for Bash with that command, and runs nothing
+//   "use <tool>"    asks permission for that tool (an MCP name, say) with no input, and runs nothing
 //   "subagent[-slow] <task>"  runs Claude Code's Agent tool (after the host's PreToolUse hooks)
 //   "background <cmd>"  starts a background task (task_started) that runs until stop_task
 //   "fail"          a turn that ends in an error result
@@ -14,6 +15,8 @@
 //   "settings"      asks to Write its own .claude/settings.local.json with allow Bash(*)
 //   "ask"           asks an AskUserQuestion (a single-select with previews, then a multi-select)
 //                   and says back the answers it got
+//   "plan"          asks ExitPlanMode with a sample plan (steps, what it will not touch, the files);
+//                   says it starts building if allowed, else that it keeps planning (with the note)
 //   "demo"          a rich turn: thinking, Read, an Edit and a Bash each behind a permission ask,
 //                   a TodoWrite, then a markdown reply
 //   "limit"         on a setup token, fails as a subscription at its limit would
@@ -40,6 +43,9 @@ import readline from "node:readline";
 const argv = process.argv.slice(2).flatMap(a => (/^--[a-z-]+=/.test(a) ? [a.slice(0, a.indexOf("=")), a.slice(a.indexOf("=") + 1)] : [a]));
 const flag = n => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
 const session = flag("--session-id") || flag("--resume") || "no-session";
+// The permission mode, as Claude Code keeps it: bypassPermissions only when the launch allowed it.
+let permMode = flag("--permission-mode") || "default";
+const skippable = argv.includes("--allow-dangerously-skip-permissions") || argv.includes("--dangerously-skip-permissions");
 // An API key comes on fd 3 (CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR), never in the environment.
 const auth = process.env.CLAUDE_CODE_OAUTH_TOKEN ? "subscription"
   : process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR ? "api-key" : "ambient";
@@ -57,7 +63,7 @@ function logLaunch(init = {}) {
   if (typeof init.systemPrompt === "string") extra.push("--system-prompt", init.systemPrompt);
   else if (Array.isArray(init.systemPrompt)) extra.push("--system-prompt", init.systemPrompt.join("\n"));
   fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
-    projects: process.env.VYRE_PROJECTS || null, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
+    projects: process.env.VYRE_PROJECTS || null, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, socket: process.env.VYRE_SOCKET || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
 }
 setTimeout(() => logLaunch(), 1000).unref();                               // no initialize at all: log anyway
 
@@ -184,6 +190,35 @@ async function preToolUse(name, input, tu) {
   return null;
 }
 
+/**
+ * The plugin's own PreToolUse command hooks (--plugin-dir <dir>/hooks/hooks.json), as Claude Code
+ * runs them. Only in bypassPermissions, where they are the one check left: elsewhere every test
+ * would pay a node start per tool call for hooks it does not look at.
+ */
+async function pluginPreToolUse(name, input, tu) {
+  if (permMode !== "bypassPermissions") return null;
+  const { spawnSync } = await import("node:child_process");
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] !== "--plugin-dir") continue;
+    const dir = argv[i + 1];
+    let spec;
+    try { spec = JSON.parse(fs.readFileSync(path.join(dir, "hooks", "hooks.json"), "utf8")); } catch { continue; }
+    for (const h of (spec.hooks && spec.hooks.PreToolUse) || []) {
+      if (h.matcher && !new RegExp(`^(?:${h.matcher})$`).test(name)) continue;
+      for (const c of h.hooks || []) {
+        const r = spawnSync("sh", ["-c", String(c.command).replaceAll("${CLAUDE_PLUGIN_ROOT}", dir)], { encoding: "utf8", timeout: 10_000,
+          input: JSON.stringify({ hook_event_name: "PreToolUse", session_id: session, cwd: process.cwd(), tool_name: name, tool_input: input, tool_use_id: tu }),
+          env: { ...process.env, CLAUDE_PLUGIN_ROOT: dir } });
+        let got = {};
+        try { got = JSON.parse(String(r.stdout || "{}")); } catch {}
+        const spec2 = got.hookSpecificOutput || {};
+        if (spec2.permissionDecision === "deny") return spec2.permissionDecisionReason || "a plugin hook refused it";
+      }
+    }
+  }
+  return null;
+}
+
 async function useTool(name, input, o) {
   const id = `msg_${++n}`, tu = `toolu_${++n}`;
   const block = { type: "tool_use", id: tu, name, input };
@@ -191,8 +226,9 @@ async function useTool(name, input, o) {
   out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [block] }, session_id: session, parent_tool_use_id: null });
   // The host's PreToolUse hooks first (the Agent SDK registers them at initialize), as Claude Code
   // runs them before any permission question: a deny ends the call.
-  const hooked = await preToolUse(name, input, tu);
-  const r = hooked ? { behavior: "deny", message: hooked } : o.ask ? await permission(name, input, tu, o.suggestions) : { behavior: "allow", updatedInput: input };
+  const hooked = await preToolUse(name, input, tu) || await pluginPreToolUse(name, input, tu);
+  // bypassPermissions asks nothing: what the hooks let through runs.
+  const r = hooked ? { behavior: "deny", message: hooked } : o.ask && permMode !== "bypassPermissions" ? await permission(name, input, tu, o.suggestions) : { behavior: "allow", updatedInput: input };
   const allowed = r.behavior === "allow";
   const done = allowed ? await o.run(r.updatedInput || input) : { content: REJECTED, error: true, result: `Error: ${REJECTED}` };
   const res = { tool_use_id: tu, type: "tool_result", content: done.content, is_error: Boolean(done.error) };
@@ -203,6 +239,22 @@ async function useTool(name, input, o) {
 }
 
 // ------------------------------------------------------------ sample content (the made-up sample world only)
+
+const PLAN = `# Update the Northwind Bakery price list
+
+1. Read \`menu.md\` and \`prices.json\` to see where the prices live.
+2. Add the pumpkin loaf (5.50) and the apple cider donut (3.25) to \`prices.json\`.
+3. Show the new prices on the site in \`src/menu/PriceList.js\`.
+4. Add a test for the two new items in \`src/menu/PriceList.test.js\`.
+5. Run \`npm test\` and fix anything that fails.
+
+**Will not touch:** the order form, \`src/checkout/\` or anything outside this folder.
+
+## Files it expects to change
+- \`prices.json\` +4 -0
+- \`src/menu/PriceList.js\` +12 -3
+- \`src/menu/PriceList.test.js\` new +24
+`;
 
 const QUESTIONS = [
   { question: "Which palette should the Northwind Bakery menu use?", header: "Palette", multiSelect: false, options: [
@@ -275,6 +327,11 @@ async function turn(prompt, uuid = null) {
     await say(allowed ? "Ran it." : "I was not allowed to.");
     return result(true, allowed ? "Ran it." : "I was not allowed to.");
   }
+  if (/^use \S+$/i.test(p)) {
+    const { allowed } = await useTool(p.slice(4).trim(), {}, { ask: true, run: () => ({ content: "" }) });
+    await say(allowed ? "Used it." : "I was not allowed to.");
+    return result(true, allowed ? "Used it." : "I was not allowed to.");
+  }
   if (/^ask$/i.test(p)) {
     let got = null;
     const { allowed, r } = await useTool("AskUserQuestion", { questions: QUESTIONS }, { ask: true,
@@ -284,6 +341,13 @@ async function turn(prompt, uuid = null) {
         return { content: `User has answered your questions: ${said}. You can now continue with the user's answers in mind.`, result: { questions: i.questions, answers: got } };
       } });
     const text = allowed ? `answers: ${JSON.stringify(got)}` : `You declined the question${r.message ? `: ${r.message}` : "."}`;
+    await say(text);
+    return result(true, text);
+  }
+  if (/^plan$/i.test(p)) {
+    const { allowed, r } = await useTool("ExitPlanMode", { plan: PLAN }, { ask: true,
+      run: () => ({ content: "User has approved your plan. You can now start coding.", result: { plan: PLAN, isAgent: false } }) });
+    const text = allowed ? "Starting on the plan: the price list first." : `I'll keep planning${r.message ? `: ${r.message}` : "."}`;
     await say(text);
     return result(true, text);
   }
@@ -325,33 +389,81 @@ async function turn(prompt, uuid = null) {
     return result(false, "Claude usage limit reached.", 0);
   }
   // What a careless forgery from this thread's Bash looks like: its own key, someone else's name.
-  const forge = /^forge (\S+) (\S+)$/.exec(p);
-  if (forge) {
+  // "forge <caller> <tool>" sends the agent's own key with it, which the daemon refuses outright
+  // (the key must name its own agent); "bareforge <caller> <tool>" sends neither a key nor a
+  // session header, the plainer and more realistic forgery ("its Bash can call vyre call ... with
+  // no agent key and no session header", e2e review HIGH 1) that only fromClaude (peer ancestry)
+  // catches. Both, like "vyre", are found anywhere in the prompt: at the very start they take the
+  // rest of the string (unused today, kept for symmetry), embedded further in they take just that
+  // line, since request-wrapped text (core/team) has a closing tag after it that must not be
+  // swallowed.
+  const lines = p.split("\n");
+  const CMD = /^(forge|bareforge) (\S+) (\S+)(?:\s+(.*))?$/s;
+  const cmdAt = lines.findIndex(l => CMD.test(l));
+  const cmd = cmdAt < 0 ? null : CMD.exec(cmdAt === 0 ? p : lines[cmdAt]);
+  if (cmd) {
+    const [, kind, caller, toolName, body] = cmd;
     const http = await import("node:http");
     const { paths } = await import("../../config/index.js");
     const r = await new Promise(resolve => {
-      const req = http.request({ socketPath: paths(process.env.VYRE_HOME).socket, path: "/v1/tools/" + forge[2], method: "POST",
-        headers: { "content-type": "application/json", "x-vyre-caller": forge[1], "x-vyre-agent-key": process.env.VYRE_AGENT_KEY || "" } }, res => {
+      const req = http.request({ socketPath: paths(process.env.VYRE_HOME).socket, path: "/v1/tools/" + toolName, method: "POST",
+        headers: { "content-type": "application/json", "x-vyre-caller": caller, ...(kind === "forge" ? { "x-vyre-agent-key": process.env.VYRE_AGENT_KEY || "" } : {}) } }, res => {
         let raw = ""; res.on("data", c => { raw += c; }); res.on("end", () => resolve(`${res.statusCode} ${raw}`));
       });
       req.on("error", e => resolve(`error ${e.message}`));
-      req.end("{}");
+      req.end(body || "{}");
     });
     await say(String(r));
     return result(true, String(r));
   }
-  const tool = /^vyre (\S+)\s*(.*)$/s.exec(p);
-  if (tool) {
+  // The plugin's own way in (the MCP server, the hooks): no root, so a session's VYRE_SOCKET is used.
+  const own = /^vyre-sock (\S+)\s*(.*)$/s.exec(p);
+  if (own) {
     const { call } = await import("../../daemon/client.js");
-    const caller = process.env.VYRE_AGENT ? `mcp:agent:${process.env.VYRE_AGENT}` : "mcp";
-    const r = JSON.stringify(await call(tool[1], tool[2] ? JSON.parse(tool[2]) : {}, { root: process.env.VYRE_HOME, caller }));
+    const r = JSON.stringify(await call(own[1], own[2] ? JSON.parse(own[2]) : {}, { caller: "cli" }));
     await say(r);
     return result(true, r);
+  }
+  // A prompt with a "vyre <tool> <json>" line anywhere in it, not only at the very start, so a
+  // teammate's wrapped <vyre-request> text (core/team, ADR 0031) can still script a tool call. At
+  // the very start the rest of the prompt is the call, as before (a multi-line JSON body works),
+  // and only one call is made. Found further in, EVERY such line is its own single-line call, run
+  // in order, so a test can script a teammate trying something, reacting to the answer (a refusal,
+  // say) and trying again, all in the one turn a real model would; a wrapper's closing tag after
+  // the last one is never swallowed into any call's JSON, since each line is matched on its own.
+  const vyreAt = lines.findIndex(l => /^vyre \S/.test(l));
+  if (vyreAt === 0) {
+    const tool = /^vyre (\S+)\s*(.*)$/s.exec(p);
+    if (tool) {
+      const { call } = await import("../../daemon/client.js");
+      const caller = process.env.VYRE_AGENT ? `mcp:agent:${process.env.VYRE_AGENT}` : "mcp";
+      const r = JSON.stringify(await call(tool[1], tool[2] ? JSON.parse(tool[2]) : {}, { root: process.env.VYRE_HOME, caller }));
+      await say(r);
+      return result(true, r);
+    }
+  } else if (vyreAt > 0) {
+    const { call } = await import("../../daemon/client.js");
+    const caller = process.env.VYRE_AGENT ? `mcp:agent:${process.env.VYRE_AGENT}` : "mcp";
+    const results = [];
+    for (const l of lines) {
+      const m = /^vyre (\S+)\s*(.*)$/.exec(l);
+      if (!m) continue;
+      results.push(JSON.stringify(await call(m[1], m[2] ? JSON.parse(m[2]) : {}, { root: process.env.VYRE_HOME, caller })));
+    }
+    const text = results.join("\n");
+    await say(text);
+    return result(true, text);
   }
   const spend = /^spend (\d+(?:\.\d+)?)$/i.exec(p);
   if (spend) { await say(`spent ${spend[1]}`); return result(true, `spent ${spend[1]}`, Number(spend[1])); }
   // A subagent (Claude Code's Agent tool), which Vyre's concurrency slots hold back when full.
-  const sub = /^subagent(-slow)? (.+)$/i.exec(p);
+  // Found anywhere in the prompt, like vyre/forge/bareforge above, so a teammate's wrapped
+  // <vyre-request> text can hold its turn open for a real interval (core/team's priority-order
+  // test needs this: a request-wrapped prompt never starts with "subagent", so the old
+  // start-anchored-only match let the turn finish in milliseconds instead of the 1.5s it asked for).
+  const SUB = /^subagent(-slow)? (.+)$/i;
+  const subAt = lines.findIndex(l => SUB.test(l));
+  const sub = subAt < 0 ? null : SUB.exec(lines[subAt]);
   if (sub) {
     const { allowed, r } = await useTool("Agent", { description: sub[2], prompt: sub[2], subagent_type: "general-purpose" }, {
       run: async () => { if (sub[1]) await sleep(1500); return { content: `subagent done: ${sub[2]}` }; } });
@@ -374,7 +486,7 @@ async function turn(prompt, uuid = null) {
     await say("plenty left"); return result(true, "plenty left", 0);
   }
   if (/^nearlimit$/i.test(p)) {
-    out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "five_hour", resetsAt: 1790000000, utilization: 0.85 } });
+    out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "five_hour", resetsAt: Number(process.env.FAKE_CLAUDE_RESETS_AT) || 1790000000, utilization: 0.85 } });
     await say("still here"); return result(true, "still here", 0);
   }
   if (/^whoami$/i.test(p)) { await say(`auth=${auth}`); return result(true, `auth=${auth}`, auth === "api-key" ? 0.25 : 0); }
@@ -404,6 +516,11 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;
   }
+  if (m.type === "control_request" && m.request?.subtype === "apply_flag_settings") {
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ effort: m.request.settings ? m.request.settings.effortLevel ?? null : null }) + "\n");
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
+    return;
+  }
   if (m.type === "control_request" && m.request?.subtype === "set_model") {
     MODEL = String(m.request.model || MODEL);
     if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ model: MODEL }) + "\n");
@@ -420,6 +537,12 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     return;
   }
   if (m.type === "control_request" && m.request?.subtype === "set_permission_mode") {
+    // As Claude Code: bypassPermissions only in a session launched to allow it.
+    if (m.request.mode === "bypassPermissions" && !skippable) {
+      out({ type: "control_response", response: { subtype: "error", request_id: m.request_id, error: "Cannot set permission mode to bypassPermissions because the session was not launched with --dangerously-skip-permissions" } });
+      return;
+    }
+    permMode = String(m.request.mode);
     if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ mode: m.request.mode }) + "\n");
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;

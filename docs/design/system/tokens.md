@@ -68,15 +68,14 @@ calls before it stores a value; the rules are `lib/theme`'s `applyOverride` and 
 
 Modules never override the global tokens; a module theme is only something the person can pick.
 
-Surfaces read the result for their own device from the two routes ADR 0035 names, which vyred
-serves by calling `appearance.resolve { device }`: `GET /v1/theme?device=<id>` (JSON: preset,
-scheme, the whole merged tokens.json, the CSS, a version and the hub's `rev`) and
-`GET /theme.css?device=<id>` (the custom properties alone, `format: "css"`). The ETag is the hub's
-`rev`. Build against those two paths only. `GET /v1/appearance/theme` is the module's own route,
-kept as an interim alias until vyred serves the two, then removed. resolve checks the merged tokens
-again on every read: a stored value that no longer passes paints the preset instead and is named under `problems`, so a bad value never paints. A surface
-repaints on `settings.changed` for any `appearance.*` key, the contract; `appearance.changed` is a
-convenience. The old `appearance.theme` values `system`, `dark` and `paper` read as `vyre` with
+All three keys are set at account or device level; a device's value wins for that device. Surfaces
+read the result for their own device from the two routes ADR 0035 names, which vyred serves by
+calling `appearance.resolve { device }`: `GET /v1/theme?device=<id>` (JSON: preset, scheme, the
+whole merged tokens.json, the CSS, a version and the hub's `rev`) and `GET /theme.css?device=<id>`
+(the custom properties alone). The ETag is `"<rev>-<device>"`. resolve checks the merged tokens
+again on every read: a stored value that no longer passes paints the preset instead and is named
+under `problems`, so a bad value never paints. A surface repaints on `settings.changed` for any
+`appearance.*` key, the contract; `appearance.changed` is a convenience. The old `appearance.theme` values `system`, `dark` and `paper` read as `vyre` with
 that scheme for one release, and `config.theme.colors` folds in under the preset for one release.
 
 ## Retired names

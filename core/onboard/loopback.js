@@ -24,12 +24,20 @@ const HEADER = "x-vyre-onboard";
 const sha = s => crypto.createHash("sha256").update(String(s)).digest("hex");
 
 /** The tools the onboarding page may call. onboard.link is not one: only the socket mints links. */
-export const TOOLS = new Set(["onboard.status", "onboard.you", "onboard.name", "onboard.claude", "onboard.tailscale", "onboard.history",
-  "onboard.skip", "onboard.finish", "onboard.passkey", "projects.catalog", "projects.create", "projects.list", "recall.status"]);
+export const TOOLS = new Set(["onboard.status", "onboard.you", "onboard.machine", "onboard.name", "onboard.claude", "onboard.tailscale", "onboard.history",
+  "onboard.skip", "onboard.finish", "onboard.passkey", "projects.catalog", "projects.create", "projects.list", "recall.status",
+  // The import step (docs/design/import.md, memory-iq): discover, choose and watch, plus a
+  // question box once the first sessions are searchable.
+  "import.scan", "import.plan", "import.start", "import.status", "memory.ask"]);
 
 const onboardPath = p => p === "/onboard" || p.startsWith("/onboard/");
-/** The Deck's shared files the onboarding page loads, theme and fonts included: static, the same for everyone. */
-const assetPath = p => /^\/(css|js|vendor|fonts)\/[\w./-]+$/.test(p) && !p.includes("..") || p === "/icon.svg" || p === "/theme.css";
+/** The Deck's shared files the onboarding page loads, theme and fonts included: static, the same
+ * for everyone. `fixtures` added (launch, found while testing the "How will Vyre run?" step
+ * against ?fixtures=1, docs/work/launch-surfaces.md): those files are dev-only fixture data, no
+ * more sensitive than css/js, and without this the onboarding page's own fixtures mechanism
+ * (deck/js/api.js) 403s on every fetch, silently falling back to "missing tool" instead. */
+const assetPath = p => /^\/(css|js|vendor|fonts|fixtures)\/[\w./-]+$/.test(p) && !p.includes("..") || p === "/icon.svg" || p === "/theme.css"
+  || /^\/core\/resilience\/(backoff|sse|stream|outbox|web)\.js$/.test(p);   // the client js/api.js imports (ADR 0029)
 const TAILNET4 = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./;
 
 /**

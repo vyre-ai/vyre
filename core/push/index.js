@@ -30,10 +30,10 @@ export const MIGRATIONS = [
 /** The push services browsers use. Anything else is refused: vyred must not POST to any URL a client names. */
 const SERVICES = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "push.apple.com", "notify.windows.com"];
 const KEY_ITEM = "push-vapid";
-const KINDS = ["ask", "draft", "watch", "lesson", "planner"];
-const PEOPLE = ["cli", "local", "deck", "capsule"];
+const KINDS = ["ask", "draft", "watch", "lesson", "planner", "goal"];
+const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet"];
 /** Kinds on until switched off. A lesson is not "needs you", so it is off until switched on. */
-const DEFAULT_KINDS = { ask: true, draft: true, watch: true, lesson: false, planner: true };
+const DEFAULT_KINDS = { ask: true, draft: true, watch: true, lesson: false, planner: true, goal: true };
 /** The kinds that wait while a screen is in use. */
 const HELD = new Set(["ask", "draft", "watch"]);
 const HOLD_MS = 180_000;
@@ -82,6 +82,11 @@ const NOTES = {
     tag: plannerTag(e.payload), item: String(e.payload.item ?? ""), due: Math.floor(Number(e.payload.due) / 1000),
     actions: ["done", "snooze"], loud: e.payload.kind === "alarm" || e.payload.kind === "timer",
     ...(s.planner_label && e.payload.title ? { body: String(e.payload.title).slice(0, 120) } : {}) }),
+  // core/goals: a milestone landing, or the last one landing (the goal itself done). One push
+  // per event, no escalation (unlike planner's rings) - a milestone does not need answering.
+  "goal.milestone": e => ({ kind: "goal", title: "A milestone is done", path: `/goals/${enc(e.payload.goal)}`,
+    tag: `goal-milestone-${e.payload.goal}-${e.payload.index}`, body: String(e.payload.text || "").slice(0, 120) }),
+  "goal.done": e => ({ kind: "goal", title: "A goal is done", path: `/goals/${enc(e.payload.goal)}`, tag: `goal-done-${e.payload.goal}` }),
 };
 const PLANNER_TITLES = /** @type {Record<string, string>} */ ({ alarm: "Alarm", timer: "Timer finished", reminder: "Reminder", event: "Starting soon", todo: "Todo due" });
 const enc = v => encodeURIComponent(String(v ?? ""));

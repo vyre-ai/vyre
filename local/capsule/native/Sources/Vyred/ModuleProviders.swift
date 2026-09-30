@@ -262,6 +262,9 @@ public final class ModuleProviders: ResultProvider, @unchecked Sendable {
     static func symbol(_ r: ModuleRow) -> String {
         if r.module == "vault" { return r.rowKind == "note" ? "lock.doc" : r.rowKind == "card" ? "creditcard" : "key.fill" }
         if r.rowKind == "note" { return "note.text" }
+        // Mail's rows (connectors): an account to send from, or a message.
+        if r.rowKind == "compose" { return "square.and.pencil" }
+        if r.rowKind == "email" { return "envelope" }
         return "puzzlepiece.extension"
     }
 
@@ -307,6 +310,15 @@ public final class ModuleProviders: ResultProvider, @unchecked Sendable {
                     || VyRx.test("\\bin no app\\b|nothing (was )?filled|no field", said ?? "")
                 if nothing { return .failed(line.flatMap { VyRx.test("\\bin no app\\b", $0) ? nil : $0 } ?? "Nothing was filled: no field in the front app took it.") }
                 return .close(line ?? "Filled \(item.title).")
+            }
+            if line == nil, let o = data as? [String: Any] {
+                // mail.compose held a send at the Gate: it waits in Needs you, and nothing went out.
+                if VJ.str(o["kind"]) == "held" { return .said("Waiting for you: \(item.title). Nothing is sent until you send it from Needs you.") }
+                // A message row gives the message: its subject and who it is from.
+                if VJ.str(o["kind"]) == "email", let m = o["message"] as? [String: Any] {
+                    let words = [VJ.nonEmpty(m["subject"] as? String) ?? item.title, VJ.nonEmpty(m["from"] as? String)].compactMap { $0 }
+                    return .said(words.joined(separator: " · "))
+                }
             }
             return .said(line ?? "Done.")
         }

@@ -35,9 +35,13 @@ cd relay/worker
 npx wrangler deploy
 ```
 
-Then set the route `relay.vyre.run/*` and, if wanted, the `DEVICE_LIMITER` rate limiting binding
-(both are commented in `wrangler.toml`). `RELAY_LIMITS` (a JSON object) can override the limits,
-for tests only.
+Run `npx wrangler deploy --dry-run` first: it should list the two Durable Objects (`ROUTES`,
+`TICKETS`) and the three rate limiters. The migrations are tagged `v1` (RouteRelay) and `v2`
+(PairTicket); Cloudflare applies each tag once per Worker. The rate limiters' `namespace_id`s
+(26001 to 26003) are this account's own choice, nothing to create first. The hostname
+`relay.vyre.run` is attached as a Worker custom domain (the `routes` line in `wrangler.toml`),
+which also makes its DNS record and certificate. `RELAY_LIMITS` (a JSON object) can override the
+limits, for tests only.
 
 ## Cost
 
