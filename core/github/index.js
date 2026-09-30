@@ -82,6 +82,10 @@ function checkModuleCaller(tool, meta, allowed) {
  */
 function inGrant(project, meta) {
   const g = meta && meta.granted;
+  // A claimed agent (mcp:agent:<name>, or any label carrying an agent claim) always arrives with a
+  // grant; none means the lookup failed, and that must not open every project. The person and an
+  // unnamed mcp caller (the person's own session) have no grant to check.
+  if ((g === undefined || g === null) && /(?:^|[\s:])agent:\S/.test(String((meta && meta.caller) || ""))) throw fail(`no project named ${String(project).slice(0, 60)}`, "not_found");
   if (g === undefined || g === null || g === "*") return;
   const list = Array.isArray(g) ? g : typeof g === "string" ? g.split(",").map(x => x.trim()) : [];
   if (list.includes("*") || list.includes(String(project))) return;

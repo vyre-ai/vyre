@@ -92,7 +92,7 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
     if (!def) return { error: { code: "no_such_tool" } };
     if (def.callers && !def.callers.some(c => caller === c || caller.startsWith(c + ":"))) return { error: { code: "denied" } };
     if (def.internal && !caller.startsWith("module:")) return { error: { code: "no_such_tool" } };
-    try { return { data: await def.run(input, { caller, firstParty, ...(asked ? { asked: true } : {}), ...(door ? { door: true } : {}), ...(granted !== undefined ? { granted } : {}) }) }; }
+    try { return { data: await def.run(input, { caller, firstParty, ...(asked ? { asked: true } : {}), ...(door ? { door: true } : {}), ...(granted === "omit" ? {} : granted !== undefined ? { granted } : /(?:^|[\s:])agent:\S/.test(caller) ? { granted: "*" } : {}) }) }; }
     catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code, message: err.message, ...(err.detail ? { detail: err.detail } : {}) } }; }
   };
   return { db, events, calls, as, ctx, mcpRows };
@@ -612,6 +612,9 @@ test("an agent's project grant bounds which projects it may name: a project outs
     assert.notEqual((await w.as("mcp:agent:kit", { granted })("github.project.pr.status", { project: "app", pr: 7 })).error?.code, "not_found", JSON.stringify(granted));
   }
   assert.equal((await w.as("deck")("github.project.pr.status", { project: "app", pr: 7 })).error, undefined, "the person has no grant to check");
+  // a claimed agent whose grant is missing (a failed lookup) is denied, not let in
+  for (const [tool, input] of calls) assert.equal((await w.as("mcp:agent:kit", { granted: "omit" })(tool, input)).error.code, "not_found", `${tool} for a claimed agent with no grant`);
+  assert.equal((await w.as("mcp", { granted: "omit" })("github.project.pr.status", { project: "app", pr: 7 })).error, undefined, "an unnamed mcp caller is the person's own session");
 });
 
 test("github.project.pr.merge / .review: a person runs; a project without a repo is not_found (agents are held by reach: asked, see registry.test.js)", async t => {
