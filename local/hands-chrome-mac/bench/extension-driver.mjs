@@ -51,6 +51,12 @@ export class ExtensionDriver {
 
   /** @param {string} op @param {any} a */
   async call(op, a = {}) {
+    try { return await this.callOp(op, a); }
+    catch (e) { const x = /** @type {any} */ (e); x.message = `${op}: ${x.message}`; throw x; }
+  }
+
+  /** @param {string} op @param {any} a */
+  async callOp(op, a) {
     const b = this.bridge;
     const { tabId, ...rest } = a;
     switch (op) {

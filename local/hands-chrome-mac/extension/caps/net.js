@@ -70,7 +70,7 @@ export async function target(ctx, args, op, acting = false) {
     tab = a && typeof a === "object" ? a.id : a;
   }
   if (tab == null) throw refuse("no_tab");
-  const f = ctx.floorAllows(tab, op);
+  const f = await ctx.floorAllows(tab, op);
   if (!f || !f.allow) throw refuse("blocked", f?.why);
   if (acting && ctx.stopped()) throw refuse("stopped");
   return /** @type {number} */ (tab);
