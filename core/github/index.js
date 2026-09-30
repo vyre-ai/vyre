@@ -552,24 +552,24 @@ export default {
 
     /**
      * What a person's "yes" has to name for an agent's outward call to run: the registry calls this
-     * for merge, review and open (manifest `target`) and adds the answer to the tool name in the
-     * said-match. So "merge it" said about alex/app#12 covers alex/app#12 and nothing else, and an
-     * open is bound to the repo and the branch it is opened from.
+     * for merge, review and open (manifest `target`) and uses the answer as the said-match's whole
+     * `to`. So "merge it" said about alex/app#12 is `github.project.pr.merge:alex/app#12` and
+     * covers that PR and nothing else; an open is bound to the repo and the branch it opens from.
      */
     ctx.tool("github.act.target", {
       internal: true,
-      description: "Registry only: the destination an asked call must be said for. For pr.merge and pr.review: owner/name#<pr>. For pr.open: owner/name@<branch> (the session's branch or head). Answers { to: [key] }.",
+      description: "Registry only: the destination an asked call must be said for, used as the whole `to` of the said-match. pr.merge and pr.review: <tool>:owner/name#<pr>. pr.open: <tool>:owner/name@<branch> (the session's branch or head). Answers { to: [key] }.",
       input: obj({ tool: str, input: { type: "object" } }, ["tool", "input"]),
       callers: ["module"],
       run: async ({ tool, input }, meta = {}) => {
         checkModuleCaller("github.act.target", { ...meta, firstParty: meta.firstParty !== false }, MODULE_CALLERS["github.act.target"]);
         const repo = projects.get(named(input && input.project));
         if (!repo) throw fail(`${named(input && input.project) || "that project"} has no primary GitHub repo`, "not_found");
-        if (tool === "github.project.pr.merge" || tool === "github.project.pr.review") return { to: [`${repo.full_name}#${prNumber(input.pr)}`] };
+        if (tool === "github.project.pr.merge" || tool === "github.project.pr.review") return { to: [`${tool}:${repo.full_name}#${prNumber(input.pr)}`] };
         if (tool === "github.project.pr.open") {
           const branch = input.session ? `vyre/${safeSegment(input.session, "session id")}` : named(input.head);
           if (!branch) throw fail("say which branch to open it from: a session, or head", "bad_input");
-          return { to: [`${repo.full_name}@${branch}`] };
+          return { to: [`${tool}:${repo.full_name}@${branch}`] };
         }
         throw fail(`${tool} is not one of github's asked tools`, "bad_input");
       },

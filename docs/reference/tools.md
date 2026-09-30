@@ -1662,7 +1662,7 @@ The GitHub accounts Vyre can use: name, login and avatar, never a token.
 
 ### `github.act.target`
 
-Registry only: the destination an asked call must be said for. For pr.merge and pr.review: owner/name#<pr>. For pr.open: owner/name@<branch> (the session's branch or head). Answers { to: [key] }.
+Registry only: the destination an asked call must be said for, used as the whole `to` of the said-match. pr.merge and pr.review: <tool>:owner/name#<pr>. pr.open: <tool>:owner/name@<branch> (the session's branch or head). Answers { to: [key] }.
 
 - Input:
   - `input` object, required

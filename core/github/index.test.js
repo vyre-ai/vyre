@@ -559,10 +559,10 @@ test("github.act.target: the destination a person's yes must name - merge and re
   const w = await prWorld(t);
   const reg = w.as("module:vyred", { firstParty: true });
   const to = async (tool, input) => (await reg("github.act.target", { tool, input }));
-  assert.deepEqual((await to("github.project.pr.merge", { project: "app", pr: 12, method: "squash" })).data, { to: ["alex/app#12"] });
-  assert.deepEqual((await to("github.project.pr.review", { project: "app", pr: 40, event: "APPROVE" })).data, { to: ["alex/app#40"] });
-  assert.deepEqual((await to("github.project.pr.open", { project: "app", session: "s1", title: "t" })).data, { to: ["alex/app@vyre/s1"] });
-  assert.deepEqual((await to("github.project.pr.open", { project: "app", head: "feature/x", title: "t" })).data, { to: ["alex/app@feature/x"] });
+  assert.deepEqual((await to("github.project.pr.merge", { project: "app", pr: 12, method: "squash" })).data, { to: ["github.project.pr.merge:alex/app#12"] });
+  assert.deepEqual((await to("github.project.pr.review", { project: "app", pr: 40, event: "APPROVE" })).data, { to: ["github.project.pr.review:alex/app#40"] });
+  assert.deepEqual((await to("github.project.pr.open", { project: "app", session: "s1", title: "t" })).data, { to: ["github.project.pr.open:alex/app@vyre/s1"] });
+  assert.deepEqual((await to("github.project.pr.open", { project: "app", head: "feature/x", title: "t" })).data, { to: ["github.project.pr.open:alex/app@feature/x"] });
   assert.equal((await to("github.project.pr.merge", { project: "nope", pr: 1 })).error.code, "not_found");
   assert.equal((await to("github.project.pr.merge", { project: "app", pr: "x" })).error.code, "bad_input");
   assert.equal((await to("github.project.pr.open", { project: "app", title: "t" })).error.code, "bad_input");
