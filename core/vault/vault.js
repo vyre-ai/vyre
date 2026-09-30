@@ -1266,7 +1266,16 @@ export class Vault {
 
   grantOut(g) { return { id: g.id, name: g.item, module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}), ...(g.project ? { project: g.project } : {}), status: g.status }; }
 
-  revoke({ name, module, watcher, project }, caller) {
+  revoke({ name, module, watcher, project }, caller, { onlyPendingBy = null } = {}) {
+    // A named agent or another module may only withdraw a request it made itself, never an active grant (reviewer-2 M-V4).
+    if (onlyPendingBy) {
+      const w = watcher === undefined ? "" : watcher;
+      const r = this.db.prepare(`DELETE FROM vault_grants WHERE item=? AND module=? AND status='pending' AND by=?${project !== undefined ? " AND project=?" : ""}${watcher !== undefined ? " AND watcher=?" : ""}`)
+        .run(...[name, module, onlyPendingBy, ...(project !== undefined ? [project] : []), ...(watcher !== undefined ? [w] : [])]);
+      const n = Number(r.changes);
+      this.audit("revoke", name, caller, true, `${watcher ? `${module}/${watcher}` : module} (own pending request)`);
+      return { revoked: n };
+    }
     const r = project !== undefined
       ? (watcher === undefined
         ? this.db.prepare("DELETE FROM vault_grants WHERE item=? AND module=? AND project=?").run(name, module, project)

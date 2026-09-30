@@ -175,7 +175,14 @@ export default {
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
-      obj({ filter: str, kind: str, host: str }), input => cli.list(vault.list(input), input));
+      obj({ filter: str, kind: str, host: str }), (input, { caller, project }) => {
+        const r = cli.list(vault.list(input), input);
+        // A named agent sees only the items granted to it or to its project, and only their names and kinds (reviewer-2 L-V3).
+        const who = /^mcp:agent:(.+)$/.exec(String(caller));
+        if (!who || !r || !Array.isArray(r.items)) return r;
+        const mine = g => g.module === who[1] || (project && g.project === project);
+        return { ...r, items: r.items.filter(i => (i.grants || []).some(mine)).map(i => ({ name: i.name, kind: i.kind })) };
+      });
 
     tool("vault.delete", SURFACES, "Delete an item and its grants.",
       obj({ name: str }, ["name"]), (input, { caller }) => {
@@ -194,7 +201,11 @@ export default {
         { skip: ({ caller }) => callerKind(caller) === "mcp", session: () => true }));
 
     tool("vault.revoke", null, "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.",
-      obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller }) => vault.revoke(input, caller));
+      obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller }) => {
+        const c = String(caller);
+        // A named agent, or another module, may only withdraw a request it made itself; the person's surfaces and an unnamed session revoke freely.
+        return vault.revoke(input, c, /^mcp:agent:/.test(c) || c.startsWith("module:") ? { onlyPendingBy: c } : {});
+      });
 
     tool("vault.pending", [...SURFACES, "mcp"], "Grants and passes an agent asked for, waiting for a person.",
       obj({}), () => vault.pending());
@@ -204,7 +215,7 @@ export default {
       presence("Approve a pending grant or pass", ({ id }) => {
         const p = vault.pending();
         const g = p.grants.find(x => x.id === id);
-        if (g) return `Let ${g.module}${g.watcher ? `/${g.watcher}` : ""} use ${quoted(g.name)} while you are away${vault.row(g.name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`;
+        if (g) return `Let ${g.module}${g.watcher ? `/${g.watcher}` : ""} use ${quoted(g.name)}${g.project ? ` in project ${g.project}` : " in every project"}${/^mcp:agent:/.test(String(g.by)) ? `, asked by agent ${String(g.by).slice(10)}` : ""} while you are away${vault.row(g.name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`;
         const ag = p.agentGrants.find(x => x.id === id);
         if (ag) return vault.agents.summary(ag, () => ag.expires);
         const s = p.passes.find(x => x.id === id);

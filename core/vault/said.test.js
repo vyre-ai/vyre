@@ -265,3 +265,25 @@ test("act_out: the threads module records and resolves; a key with # @ and : is 
   assert.ok((await reg("vault.mention.resolve", { id: "nope", thread: "t-1" }, "module:threads")).error.code === "not_found");
   assert.match((await reg("vault.mention.resolve", { id: "nope", thread: "t-1" }, "module:watchers")).error.message, /only sessions and the assistant/);
 });
+
+test("grants: a named agent withdraws only its own pending request, lists only what is granted to it, and the approval prompt says who asked and for which project (M-V4, L-V3)", async t => {
+  const { reg, cli } = await daemon(t);
+  await cli("vault.put", { name: "api-a", kind: "api-key", fields: { value: "fixture-key-aaaaaaaaaaaa" }, hosts: ["https://a.example.test"] });
+  await cli("vault.put", { name: "api-b", kind: "api-key", fields: { value: "fixture-key-bbbbbbbbbbbb" }, hosts: ["https://b.example.test"] });
+  assert.equal((await cli("vault.grant", { name: "api-a", module: "planner" })).data.grant.status, "active");
+  assert.equal((await cli("vault.grant", { name: "api-b", module: "kit" })).data.grant.status, "active");
+  const kit = (tool, input) => reg(tool, input, "mcp:agent:kit", { agent: "kit", thread: "t-1" });
+  // A named agent cannot take away an active grant, however it asks.
+  assert.equal((await kit("vault.revoke", { name: "api-a", module: "planner" })).data.revoked, 0);
+  assert.equal((await kit("vault.revoke", { name: "api-b", module: "kit" })).data.revoked, 0, "not even its own active grant");
+  assert.equal((await reg("vault.revoke", { name: "api-a", module: "planner" }, "module:watchers")).data.revoked, 0, "another module cannot either");
+  // It may withdraw a request it made.
+  const asked = (await kit("vault.grant", { name: "api-a", module: "kit" })).data.grant;
+  assert.equal(asked.status, "pending");
+  assert.equal((await kit("vault.revoke", { name: "api-a", module: "kit" })).data.revoked, 1, "its own pending request");
+  // The person, and an unnamed session, revoke freely.
+  assert.equal((await reg("vault.revoke", { name: "api-a", module: "planner" }, "mcp")).data.revoked, 1);
+  // List: a named agent sees names and kinds of what is granted to it, nothing else.
+  assert.deepEqual((await kit("vault.list", {})).data.items, [{ name: "api-b", kind: "api-key" }]);
+  assert.equal((await cli("vault.list")).data.items.length, 2, "the person sees everything");
+});
