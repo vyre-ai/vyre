@@ -55,6 +55,7 @@ rc=0
 node scripts/matrix/j1.mjs --site "$SITE" --env-file "$OUT/env.json" --out "$OUT/j1" || rc=$?
 docker logs --tail 80 vyre-vyre-1 >"$OUT/vyred.log" 2>&1 || true
 docker exec -u vyre vyre-vyre-1 sh -c 'for f in ~/.vyre/logs/* ~/.vyre/*.log; do [ -f "$f" ] && { echo "== $f"; tail -60 "$f"; }; done' >>"$OUT/vyred.log" 2>&1 || true
+docker exec -u vyre vyre-vyre-1 vyre call sessions.accounts.signin '{"provider":"claude","label":"diag"}' >>"$OUT/vyred.log" 2>&1 || true
 docker exec -u vyre vyre-vyre-1 sh -c 'ls -la /opt/rc; echo $VYRE_CLAUDE_BIN; /opt/rc/fake-claude --version' >>"$OUT/vyred.log" 2>&1 || true
 docker logs --tail 40 e2e-headscale >"$OUT/headscale.log" 2>&1 || true
 kill "$(cat "$OUT/services.pid")" 2>/dev/null || true
