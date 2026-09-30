@@ -76,7 +76,7 @@ Spacing: 4px base. Use 8, 12, 16, 24, 32, 48, 72. Page side gutter 72px desktop,
 
 - Hairline: `1px solid #2B2926`. Separate with rules, not nested boxes. A box inside a box is a bug.
 - Strong: `1px solid #3A3733`.
-- Primary: Bone (30 Sep 2026, user's pick): no accent hue. Dark: cream `#F1EEE6` fill, `#0E0D0C` ink, hover `#FFFFFF`. Paper: ink `#141311` fill, `#F4F1EA` ink. Focus, washes and the mark dot use the same neutral. On Deep glass a chip has no wash and focus is two-tone (see chip.md). `test/no-lime.test.js` fails if the retired lime returns.
+- Primary: Bone (30 Sep 2026, user's pick): no accent hue. Dark: cream `#F1EEE6` fill, `#0E0D0C` ink, hover `#FFFFFF`. Paper: ink `#141311` fill, `#F4F1EA` ink. Focus, washes and the mark dot use the same neutral. On Deep glass a chip has no wash and focus is two-tone (see chip.md). `test/no-lime.test.js` fails if the retired accent returns.
 - Focus: `outline: 2px solid #F1EEE6; outline-offset: 2px;` (paper: `#141311`).
 - Light drawn once (top edge only, on windows and the Capsule):
   `box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);`
