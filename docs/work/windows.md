@@ -25,6 +25,15 @@ and calls the box itself (files.drive.address etc.); the panel stays IPC-free. O
 learns the app's nonce; what the shell presents to the box as its session after pairing (needs
 tailnet: the shell has no Noise channel yet); own-domain boxes (record has only a handle).
 
+**Round 3 (tailnet answers, CI green):** pairing is now seed-based, no `vyre://pair` link: `begin_pair`
+makes a 16-byte CSPRNG seed (memory only, 5 min), the Deck turns it into a ticket, a bundled page
+resolves it with relay/client and calls `offer_pair`; `shell::pin_from_offer` applies reviewer-2's
+address rules; the confirm window shows the host. `device_key_pub`/`device_key_dh` keep the X25519
+key DPAPI-protected in Rust (RFC 7748 tested). capsule-win now builds the NSIS installer
+(`app-windows-<sha>` artifact); release.yml adds Vyre_<version>_x64-setup.exe + VyreSetup.exe
+before SHA256SUMS. NOT DONE: the bundled page that runs relay/client (needs tailnet's work/tailnet-win
+to land: resolveTicket with address, words.js, shellkey.js), a Rust-side 409 surface (the page shows it).
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in
