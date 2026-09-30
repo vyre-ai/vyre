@@ -53,7 +53,7 @@ export const firstParty = dir => {
  * @type {Record<string, string[]>}
  */
 // settings passes a person's change on to the module that keeps the value, as that person.
-const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"] };
+const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) };
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
@@ -205,6 +205,20 @@ export function validate(m, { firstParty = false } = {}) {
     const own = new Set(toolEntries(m).map(t => t.name));
     if (!Array.isArray(m.setupTools) || m.setupTools.some(/** @param {any} t */ t => typeof t !== "string")) out.push("setupTools must be a list of tool names");
     else for (const t of m.setupTools) if (!own.has(t)) out.push(`setupTools "${t}" is not a tool this module declares in does.tools`);
+  }
+  // mentions: the # picker's kinds, each naming this module's own search and resolve tools (built in only, see addedCheck).
+  if (Array.isArray(m.mentions)) {
+    const own = new Set(toolEntries(m).map(t => t.name));
+    const kinds = new Set();
+    for (const e of m.mentions) {
+      if (!e || typeof e !== "object") continue;
+      if (typeof e.kind !== "string" || !/^[a-z][a-z0-9-]{1,24}$/.test(e.kind)) out.push(`mentions kind ${JSON.stringify(e.kind)} must be lowercase letters, digits and dashes, 2 to 25 characters`);
+      if (typeof e.label !== "string" || !e.label || e.label.length > 40) out.push(`mentions "${e.kind}" needs a label of up to 40 characters`);
+      if (e.icon !== undefined && (typeof e.icon !== "string" || !/^[a-z][a-z0-9-]{0,24}$/.test(e.icon))) out.push(`mentions "${e.kind}" icon must be a short lowercase slug`);
+      if (kinds.has(e.kind)) out.push(`mentions kind "${e.kind}" is declared twice`);
+      kinds.add(e.kind);
+      for (const f of ["search", "resolve"]) if (typeof e[f] === "string" && !own.has(e[f])) out.push(`mentions "${e.kind}" ${f} "${e[f]}" is not a tool this module declares in does.tools`);
+    }
   }
   // ADR 0047, reviews/platform.md H2: an added module replaces nothing in 0.2.
   if (!firstParty && m.replaces !== undefined) out.push("replaces: an added module can't replace one of Vyre's modules; the 0.2 allowlist of replaceable modules is empty");
@@ -487,6 +501,8 @@ export class Registry {
    * injectable (default process.platform) so a test can cover the darwin server case on any CI
    * machine, same as roleBuckets() and core/config's defaults(). */
   async start(found, { role, enable = [], disable = [], platform = process.platform }) {
+    /** @type {Map<string, string>} the # kinds offered so far, by module */
+    const mentionKinds = new Map();
     for (const f of found) {
       const name = f.manifest && f.manifest.name;
       // A module with a problem never starts, but it never disappears without a word either: it
@@ -511,6 +527,15 @@ export class Registry {
         this.deps.log(`warn: module ${name}@${f.dir} invalid: ${error}`);
         continue;
       }
+      // One provider per # kind: the first module found keeps it, and a later one that claims it fails.
+      const taken = (Array.isArray(f.manifest.mentions) ? f.manifest.mentions : []).map(e => [e && e.kind, mentionKinds.get(e && e.kind)]).find(([, by]) => by && by !== name);
+      if (taken) {
+        const error = `mentions kind "${taken[0]}" is already offered by ${taken[1]}`;
+        this.modules.set(name, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
+        this.deps.log(`warn: module ${name} invalid: ${error}`);
+        continue;
+      }
+      for (const e of Array.isArray(f.manifest.mentions) ? f.manifest.mentions : []) if (e && e.kind) mentionKinds.set(e.kind, name);
       const roles = f.manifest.roles || ["box", "local"];
       // "mac" and "windows" are "local" on that OS only (roleBuckets); box and local are themselves.
       const here = roleBuckets(role, platform);
@@ -761,7 +786,10 @@ export class Registry {
         }
         if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: fp });
         const core = Boolean(rec && path.resolve(rec.dir).startsWith(CORE_DIR + path.sep));
-        if (!core || !(CALL_AS[m.name] || []).includes(String(as))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
+        const allowed = /** @type {any} */ (CALL_AS)[m.name];
+        if (!core || !(typeof allowed === "function" ? allowed(String(as)) : (allowed || []).includes(String(as)))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
+        // mentions replays the asking person to a provider's search tool, never to any other tool.
+        if (m.name === "mentions" && !this.mentionTools().has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
         // settings relays a person only to the tools first-party modules declared as their own
         // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
         if (m.name === "settings" && !this.settingTools().has(tool)) throw new Error(`settings may not call ${tool} as ${as}: no first-party setting names it`);
@@ -963,6 +991,16 @@ export class Registry {
     }
   }
 
+  /** The search tools running first-party modules offer the # picker (core/mentions calls them as the asking person). */
+  mentionTools() {
+    const out = new Set();
+    for (const r of this.modules.values()) {
+      if (r.state !== "running" || !r.manifest || !Array.isArray(r.manifest.mentions) || !this.isFirstParty(r.dir)) continue;
+      for (const e of r.manifest.mentions) if (e && typeof e.search === "string") out.add(e.search);
+    }
+    return out;
+  }
+
   /** The getter and setter tools first-party modules name in their settings' tool stores. */
   settingTools() {
     const out = new Set();
@@ -989,6 +1027,7 @@ export class Registry {
         ...(m.does && m.does.commands ? { commands: m.does.commands } : {}),
         ...(m.does && m.does.connections ? { connections: m.does.connections } : {}),
         ...(m.does && m.does.suggest ? { suggest: m.does.suggest } : {}),
+        ...(Array.isArray(m.mentions) ? { mentions: m.mentions } : {}),
         ...(m.shows && m.shows.notices ? { notices: m.shows.notices } : {}),
         ...(m.watches && m.watches.emits ? { emits: m.watches.emits } : {}),
         ...(m.needs && Array.isArray(m.needs.credentials) ? { credentials: m.needs.credentials } : {}),

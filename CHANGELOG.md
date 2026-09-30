@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The `#` tag mechanism: an optional, built in only `mentions: [{ kind, label, icon?, search, resolve }]` in
+  module.json (schema, checker, docs), a new core module `mentions` with `mentions.kinds`, `mentions.search`
+  (fans out to every provider as the asking person, 400 ms each, fail-soft, names only, grouped by kind) and
+  `mentions.resolve` (sessions and the assistant only), one provider per kind (`core/mentions`,
+  `core/modules/index.js`, `packages/module-sdk`).
 - The caller check now counts a connection as the person on positive proof only (reviews/platform.md,
   reviewer-2 and the lead, 30 Sep). Every link up to the top must be readable (a command line, vyred's uid,
   no child older than its parent), none an agent host (claude, codex, gemini, grok, opencode, cursor-agent,

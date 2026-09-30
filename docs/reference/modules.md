@@ -43,6 +43,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 29 | 13 | capsule, cli, deck |
+| [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 12 | 2 | none |
@@ -359,6 +360,17 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Emits: [13 events](events.md#memory)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## mentions
+
+The # tag: one picker over everything the person may mention, from the modules that offer a kind.
+
+- Folder: `core/mentions`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [3](tools.md#mentions), 1 of them only for other modules
+- Emits: no events
+- Shows on: no surface
 
 ## names
 

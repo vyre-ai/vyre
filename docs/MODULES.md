@@ -214,6 +214,22 @@ Your module keeps working when Vyre updates. The rules:
 
 ## What's built in only, for now
 
-Session providers (`does.providers`), streams (`shows.streams`), raw HTTP routes and raw vault
-values stay with Vyre's own modules in 0.2, because each needs a process, a socket or a secret that
+Session providers (`does.providers`), streams (`shows.streams`), raw HTTP routes, raw vault
+values and the `#` picker's kinds (`mentions`) stay with Vyre's own modules in 0.2, because each needs a process, a socket or a secret that
 the sandbox withholds. `vyre module check` says so if you use them.
+
+## The `#` tag: `mentions`
+
+Typing `#` in a chat opens one picker over everything the person may mention. A built in module
+offers a kind of thing with one entry in `mentions`, and `mentions.search` asks every module that
+does at once.
+
+```json
+"mentions": [{ "kind": "vault", "label": "Vault", "icon": "key", "search": "vault.mentions.search", "resolve": "vault.mentions.resolve" }]
+```
+
+`search` and `resolve` are tools of the same module. Search takes `{ q, limit }` and answers
+`{ items: [{ id, name, hint?, icon? }] }`: names only, never a value, and it runs as the person who
+is typing. Resolve takes `{ id }` and answers what the tag means for a thread: a `grant` (a use, a
+read) and a `context` (a title, a summary), decided from the person's own turn and never from a
+model. A kind has one provider; a second module that claims it fails to load.

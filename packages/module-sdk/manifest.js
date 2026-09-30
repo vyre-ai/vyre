@@ -183,6 +183,8 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
     }
     // The setup channel's allowlist is Vyre's to grow: an added module can't put a tool on it.
     if (m.setupTools !== undefined) out.push(`setupTools is built in only; an added module can't put a tool on the setup channel`);
+    // The # picker's providers are Vyre's own: an added module can't put a kind in it.
+    if (m.mentions !== undefined) out.push(`mentions is built in only; an added module can't offer a kind to the # picker`);
     // H2: in 0.2 the allowlist of modules an added module may replace is empty.
     if (m.replaces !== undefined) out.push(`replaces: an added module can't replace one of Vyre's modules; the 0.2 allowlist of replaceable modules is empty`);
     if (Array.isArray(m.roles) && m.roles.length && m.roles.every((/** @type {string} */ r) => r === "windows")) out.push(`roles ["windows"] loads nowhere in 0.2: only the Mac has a local node yet; add "mac" or "box"`);
@@ -234,6 +236,17 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
   if (Array.isArray(m.setupTools)) {
     const own = new Set(toolEntries(m).map(t => t.name));
     for (const t of m.setupTools) if (typeof t === "string" && !own.has(t)) out.push(`setupTools "${t}" is not a tool this module declares in does.tools`);
+  }
+  // mentions name this module's own tools, one provider per kind.
+  if (Array.isArray(m.mentions)) {
+    const own = new Set(toolEntries(m).map(t => t.name));
+    const kinds = new Set();
+    for (const e of m.mentions) {
+      if (!e || typeof e !== "object") continue;
+      if (kinds.has(e.kind)) out.push(`mentions kind "${e.kind}" is declared twice`);
+      kinds.add(e.kind);
+      for (const f of ["search", "resolve"]) if (typeof e[f] === "string" && !own.has(e[f])) out.push(`mentions "${e.kind}" ${f} "${e[f]}" is not a tool this module declares in does.tools`);
+    }
   }
   // A replacement registers the original's tools, so it carries the original's name; replaces
   // says so out loud, since a duplicate name without it is refused.
