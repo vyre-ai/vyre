@@ -7,7 +7,7 @@
 // URL, storage, a log or an event.
 import { h, put } from "./dom.js";
 import { webCrypto } from "../../relay/client/webcrypto.js";
-import { parseSeedText, QR_PREFIX } from "../../relay/client/seedwords.js";
+import { parseSeedText, seedToWords, QR_PREFIX } from "../../relay/client/seedwords.js";
 import { base64url } from "../../relay/client/bytes.js";
 
 const crypto = webCrypto();
@@ -26,9 +26,9 @@ export function seedProblem(e) {
 }
 
 /**
- * A code handed over by a native app that opened a `vyre-pc:` QR: the Deck's address carries it in the
+ * A code handed over in the Deck's address (a native app that opened a `vyre-pc:` QR, or any link): it rides in the
  * fragment as `#add-pc=<22 characters>` (a fragment is never sent to a server). Read once, then cleared
- * from the address; it only fills the box, the person still taps Add.
+ * from the address; it is shown as its 13 words to compare with the PC's own screen, never filled in quietly (a link can come from anyone).
  * @param {string} hash location.hash
  * @returns {string | null}
  */
@@ -64,11 +64,18 @@ export function buildAddPcCard({ attempt, cleanup, alive = () => true }) {
   let stream = /** @type {MediaStream | null} */ (null), timer = /** @type {any} */ (null);
   const stopScan = () => { if (timer) clearInterval(timer); timer = null; if (stream) for (const t of stream.getTracks()) t.stop(); stream = null; video.hidden = true; };
   cleanup(stopScan);
+  // A link (or a native app) can hand a code over in the address, and a link can come from anyone: so
+  // it is never filled in quietly. The 13 words it stands for are shown read-only, and the person
+  // compares them with their own PC's screen before tapping Add.
   const handed = seedFromHash(globalThis.location && globalThis.location.hash);
   if (handed) {
-    words.value = handed;
     try { history.replaceState(null, "", globalThis.location.pathname + globalThis.location.search); } catch {}
-    put(status, "The code from your camera is filled in. Tap Add this PC.");
+    parseSeedText(handed, crypto).then(bytes => seedToWords(bytes, crypto)).then(list => {
+      if (!alive()) return;
+      words.value = list.join(" ");
+      words.readOnly = true;
+      put(status, "This code came from a link, not from you. Add it only if these are exactly the words on your PC's screen right now. If not, close this page.");
+    }).catch(() => {});
   }
   cleanup(() => { words.value = ""; });
 
