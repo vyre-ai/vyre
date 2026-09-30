@@ -2575,7 +2575,7 @@ The listener, the open routes, and what Tailscale Funnel is publishing from this
 Stop this import. What it already sent stays until the server can drop just this import's files (a per-import delete, coming from federation); deleting everything a device sent is the person's own previewed action in Settings, never a cancel.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ### `import.plan`
 
@@ -2584,7 +2584,7 @@ Exactly what an import of these folders would take: { plan, sessions, bytes, fol
 - Input:
   - `include` list of string, required
   - `exclude` list of string
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ### `import.scan`
 
@@ -2592,7 +2592,7 @@ The coding-agent sessions on this device (Claude Code, Codex, Gemini CLI; each s
 
 - Input:
   - `folders` list of string
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ### `import.start`
 
@@ -2602,21 +2602,21 @@ Import a plan the person confirmed: { plan, mode: once (these sessions) | sync (
   - `mode` "once" or "sync", required
   - `pace` "fast" or "gentle", required
   - `plan` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ### `import.status`
 
 How far the import has got, stage by stage: search (sessions indexed), meaning (turns embedded), graph (people, orgs and facts so far) and personal facts (turns read and waiting). Each { done, total }. Counts only, read when asked.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `onboard`
 
 ### `import.stop`
 
 Stop sending: the files already sent stay, and so does everything made from them. For a sync import, new sessions stop going too (the server's consent turns off). Deletes nothing.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ## learn
 
