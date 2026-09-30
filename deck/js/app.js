@@ -63,6 +63,9 @@ const ROUTES = [
   ["/find", "find"],
   // An artifact an agent made, full screen (views/artifact.js).
   ["/a/:id", "artifact"],
+  // The box's shared folders, browsed from a phone (views/files.js).
+  ["/files", "files"],
+  ["/files/:share", "files"],
   ["/planner", "planner"],
   // A planner push notification opens /planner/<firing> (ADR 0025).
   ["/planner/:firing", "planner"],

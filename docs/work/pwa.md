@@ -1054,3 +1054,14 @@ chat/term.js (`term-dot`), chat/chat.css (`.cv-state-*`, `.rail-sub .count`), vi
   continuous 0-360deg x 9-scale rotation/perspective search). Flagged as a follow-up in "Next":
   move it to a Worker and add a cheap localization pre-pass before this is a live-scan-speed
   feature; it functions today, it just isn't fast.
+
+## Doing (Files view, 2026-09-30)
+
+`deck/views/files.js` (+ `deck/css/views/files.css`, `deck/js/drive-browse.js`, route `/files` and
+`/files/:share?p=`, all in sw.js SHELL). Built against work/drive's real shapes (files.drive.list
+`{entries:[{name,dir,kind,mime,size,mtime}],total,next}`, files.drive.read 1 MiB base64 chunks with
+`done`), not on stage yet, so on a box without the tools it says "does not have the Files tools".
+Read-only: preview for image/text/pdf up to 8 MB (svg is a download), Save link, else a plain line.
+Refusals are one line (not_available covers unknown, ungranted and hidden). Unit tests pass with a
+fake chunking box; the DOM itself is a browser check. Open: no Places tile (app-design's 3x2 grid);
+needs their placement, and a real-phone check once drive lands.
