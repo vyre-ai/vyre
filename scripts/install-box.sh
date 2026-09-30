@@ -423,20 +423,21 @@ write_env() {
     return 0
   fi
   TMP=${TMP:-$(mktemp -d)}
+  # printf, not say: in --print-link mode say writes to stderr, and the file came out empty.
   {
-    say "# Read by docker compose in $DIR. Written once by install-box.sh; yours to edit."
-    say "COMPOSE_PROJECT_NAME=vyre"
+    printf '%s\n' "# Read by docker compose in $DIR. Written once by install-box.sh; yours to edit."
+    printf '%s\n' "COMPOSE_PROJECT_NAME=vyre"
     if [ -n "$FROM" ]; then
-      say "COMPOSE_FILE=compose.yml:compose.build.yml"
-      say "VYRE_SOURCE=$FROM"
+      printf '%s\n' "COMPOSE_FILE=compose.yml:compose.build.yml"
+      printf '%s\n' "VYRE_SOURCE=$FROM"
     elif [ "$TGZ" = 1 ]; then
-      say "COMPOSE_FILE=compose.yml:compose.build.yml"
-      say "VYRE_SOURCE=$DIR/src"
+      printf '%s\n' "COMPOSE_FILE=compose.yml:compose.build.yml"
+      printf '%s\n' "VYRE_SOURCE=$DIR/src"
     else
-      say "COMPOSE_FILE=compose.yml"
+      printf '%s\n' "COMPOSE_FILE=compose.yml"
     fi
     # The Docker socket's group, for the computers profile's docker-api proxy.
-    [ -z "$gid" ] || say "DOCKER_GID=$gid"
+    [ -z "$gid" ] || printf '%s\n' "DOCKER_GID=$gid"
   } >"$TMP/env"
   if [ "$DRY" = 1 ]; then
     say "would write $DIR/.env (0600):"
