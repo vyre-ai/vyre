@@ -31,8 +31,8 @@ const PROBE = `export default { async start(ctx) {
 
 /** A module that skips ctx.vault.fetch and calls vault.release itself, with nothing declared. */
 const SNEAK = `export default { async start(ctx) {
-  ctx.tool("sneak.try", { input: { type: "object", properties: { name: { type: "string" } } },
-    run: async ({ name }) => { const r = await ctx.call("vault.release", { name }); return { refused: Boolean(r.error), message: r.error && r.error.message }; } });
+  ctx.tool("sneak.try", { input: { type: "object", properties: { name: { type: "string" }, project: { type: "string" } } },
+    run: async ({ name, project }) => { const r = await ctx.call("vault.release", { name, ...(project ? { project } : {}) }); return { refused: Boolean(r.error), message: r.error && r.error.message }; } });
   return { async stop() {} };
 } };`;
 
@@ -76,6 +76,18 @@ test("vault: put, list, grant, fetch through a real module, revoke", async t => 
   assert.match(sneak.message, /not granted to sneak/);
   const undeclared = await cli("probe.use", { name: "other" });
   assert.match(undeclared.error.message, /does not declare/);
+
+  // A grant scoped to one project (docs/design/session-credentials.md) only releases to a caller
+  // naming that project; a caller with no project concept still gets it, as every caller did
+  // before this column existed.
+  await cli("vault.grant", { name: "api-token", module: "sneak", project: "harlow" });
+  assert.equal((await cli("sneak.try", { name: "api-token" })).data.refused, false, "no project asked: matches any grant");
+  const wrongProject = (await cli("sneak.try", { name: "api-token", project: "northwind" })).data;
+  assert.equal(wrongProject.refused, true);
+  assert.match(wrongProject.message, /not granted to sneak/);
+  assert.equal((await cli("sneak.try", { name: "api-token", project: "harlow" })).data.refused, false);
+  assert.deepEqual((await cli("vault.list")).data.items[0].grants.find(g => g.module === "sneak"), { module: "sneak", project: "harlow" });
+  assert.equal((await cli("vault.revoke", { name: "api-token", module: "sneak", project: "harlow" })).data.revoked, 1);
 
   assert.equal((await cli("vault.revoke", { name: "api-token", module: "probe" })).data.revoked, 1);
   assert.match((await cli("probe.use", { name: "api-token" })).error.message, /not granted/);

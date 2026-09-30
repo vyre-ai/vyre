@@ -180,14 +180,14 @@ export default {
       },
       presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`));
 
-    tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",
-      obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },
+    tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. `project` scopes it to one project; omitted, it is good for every project. From Claude it waits for a person to approve it.",
+      obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },
       // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
-      presence("Let a module use a vault item", ({ name, module, watcher }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
+      presence("Let a module use a vault item", ({ name, module, watcher, project }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
         { skip: ({ caller }) => callerKind(caller) === "mcp", session: () => true }));
 
-    tool("vault.revoke", null, "Take an item away from a module, or from one of its watchers.",
-      obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller }) => vault.revoke(input, caller));
+    tool("vault.revoke", null, "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.",
+      obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller }) => vault.revoke(input, caller));
 
     tool("vault.pending", [...SURFACES, "mcp"], "Grants and passes an agent asked for, waiting for a person.",
       obj({}), () => vault.pending());
@@ -208,8 +208,8 @@ export default {
 
     ctx.tool("vault.release", {
       internal: true,
-      description: "One value, to a module holding a grant for it.",
-      input: obj({ name: str, field: str, watcher: str }, ["name"]),
+      description: "One value, to a module holding a grant for it. `project`, when the grant names one, must match.",
+      input: obj({ name: str, field: str, watcher: str, project: str }, ["name"]),
       run: (input, { caller }) => vault.release(input, caller),
     });
 
