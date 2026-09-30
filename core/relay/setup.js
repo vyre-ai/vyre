@@ -22,7 +22,7 @@ const sha = s => crypto.createHash("sha256").update(String(s)).digest();
  */
 export const SETUP_TOOLS = Object.freeze(new Set([
   "relay.pair.ticket", "relay.setup.status",
-  "names.check", "names.claim", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine",
+  "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine",
 ]));
 /** The Tailscale tools the channel may call, by exact name: a later tool (logout, an auth key) is not exposed by being added. */
 export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.tailscale\.(login|status|peers)$/]);

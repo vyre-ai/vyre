@@ -318,6 +318,13 @@ export function createFlow(o) {
     const certCheck = async () => {
       if (!chan || !state.named || !state.tailscale.address || done() || typeof chan.events !== "function") return;
       lastCert = now();
+      // The backstop: the box's own answer for its name, so a missed event can never strand a person on "Publishing your address".
+      try {
+        const st = await chan.call("names.status");
+        if (mine !== run) return;
+        if (st && st.phase === "serving") return void set({ tailscale: { ...state.tailscale, address: { phase: "serving", why: null } } });
+        if (st && st.phase === "failed") return void set({ tailscale: { ...state.tailscale, address: { phase: "failed", why: st.why ? String(st.why).slice(0, 200) : "the address could not be published" } } });
+      } catch { /* a box that does not answer this (older) leaves it to the events below */ }
       const mineName = event => { const n = event && event.payload && event.payload.name; return !n || String(n).toLowerCase().startsWith(state.named.name + "."); };
       const issued = (await chan.events("certificate.issued", 0)).filter(mineName).reduce((n, e) => Math.max(n, e.id), 0);
       const failed = (await chan.events("certificate.failed", 0)).filter(mineName).reduce((m, e) => (e.id > m.id ? e : m), { id: 0, payload: null });
@@ -344,7 +351,7 @@ export function createFlow(o) {
     while (live() && !done() && now() < until) {
       await sleep(Math.max(pollMs, 1000));
       if (!live()) return;
-      try { await certCheck(); } catch { /* the next look tries again */ }
+      if (now() - lastCert >= certEvery()) { try { await certCheck(); } catch { /* the next look tries again */ } }
       if (done()) return;
       try { await read(); } catch (e) {
         if (!live()) return;
