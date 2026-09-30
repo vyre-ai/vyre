@@ -171,8 +171,8 @@ test("the signed list covers every code file the daemon serves for the Deck", as
   const { codePaths } = await import("../../scripts/shell-hashes.mjs");
   const listed = new Set(codePaths());
   const DECK = path.join(import.meta.dirname, "..");
-  // The only places code is left out on purpose: tests and fixtures, and the onboarding and sign-in pages the worker never handles. A new one needs a decision here.
-  const SKIP = new Set(["test", "fixtures", "node_modules", "onboard", "person"]);
+  // The only places code is left out on purpose: tests and fixtures. A new one needs a decision here. The onboarding and sign-in pages are listed.
+  const SKIP = new Set(["test", "fixtures", "node_modules"]);
   const missing = [];
   (function walk(dir, base) {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -182,7 +182,7 @@ test("the signed list covers every code file the daemon serves for the Deck", as
     }
   })(DECK, "");
   assert.deepEqual(missing, []);
-  for (const must of ["/vault/client.js", "/views/vault.js", "/views/settings-keys.js", "/js/pair-scan.js", "/glass/util.js", "/", "/index.html".replace("/index.html", "/")]) assert.ok(listed.has(must), must);
+  for (const must of ["/vault/client.js", "/views/vault.js", "/views/settings-keys.js", "/js/pair-scan.js", "/onboard/passkey/passkey.js", "/onboard/passkey", "/onboard/passkey/", "/onboard/passkey/index.html", "/person/signin/signin.js", "/glass/util.js", "/", "/index.html".replace("/index.html", "/")]) assert.ok(listed.has(must), must);
 });
 
 test("a signed worker refuses a script the release did not list, but lets an unlisted image through", async () => {
@@ -200,4 +200,30 @@ test("a signed worker refuses a script the release did not list, but lets an unl
   assert.equal(fetched, 0, "an unlisted script is not even fetched");
   await assert.rejects(async () => { const r = await script; if (r.type === "error") throw new Error("refused"); }, /refused/);
   assert.equal((await (await ask("/icon-x.png")) .text()), "bytes", "an unlisted image passes");
+});
+
+test("a signed worker serves the passkey claim page only when the release lists it and the bytes match, never from cache", async () => {
+  const page = "<html>claim</html>";
+  const sha = crypto.createHash("sha256").update(page).digest("hex");
+  const store = new Map([["/__shell-hashes", JSON.stringify([["/onboard/passkey", sha]])]]);
+  const name = k => (typeof k === "string" ? k : new URL(k.url).pathname);
+  const cache = { match: async k => (store.has(name(k)) ? new Response(store.get(name(k))) : undefined), put: async (k, r) => { store.set(name(k), await r.text()); } };
+  const on = {};
+  const src = SW_SRC.replace("const SHELL_SIGNED = false;", "const SHELL_SIGNED = true;");
+  let served = page;
+  vm.runInNewContext(src, { self: { addEventListener: (t, fn) => { on[t] = fn; } }, location: { origin: "https://box" }, URL, Response, TextEncoder, TextDecoder, atob, crypto: globalThis.crypto, console,
+    caches: { open: async () => cache, keys: async () => [], delete: async () => true },
+    fetch: async () => Object.defineProperty(new Response(served), "type", { value: "basic" }) });
+  const ask = async p => { let out; on.fetch({ request: { url: "https://box" + p, method: "GET", mode: "navigate" }, respondWith: x => { out = x; }, waitUntil: x => x }); return out; };
+  assert.equal(await (await ask("/onboard/passkey")).text(), page);
+  served = "<html>evil</html>";
+  assert.equal((await ask("/onboard/passkey")).type, "error", "different bytes are refused");
+  assert.equal((await ask("/onboard/other")).type, "error", "an unlisted page is refused");
+  assert.equal([...store.keys()].some(k => k.startsWith("/onboard")), false, "never cached");
+  // An unsigned build leaves these pages alone entirely.
+  let seen = 0;
+  const on2 = {};
+  vm.runInNewContext(SW_SRC, { self: { addEventListener: (t, fn) => { on2[t] = fn; } }, location: { origin: "https://box" }, URL, Response, TextEncoder, TextDecoder, atob, crypto: globalThis.crypto, console, caches: {}, fetch: () => {} });
+  on2.fetch({ request: { url: "https://box/onboard/passkey", method: "GET", mode: "navigate" }, respondWith: () => { seen++; }, waitUntil: () => {} });
+  assert.equal(seen, 0);
 });

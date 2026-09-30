@@ -302,7 +302,24 @@ self.addEventListener("fetch", e => {
   // /app/ is the one app's own export with its own worker (scope /app/): never answer for it,
   // or a first visit there would get the Deck's shell.
   if (url.pathname === "/app" || url.pathname.startsWith("/app/")) return;
-  if (e.request.method !== "GET" || url.pathname.startsWith("/v1/") || url.pathname.startsWith("/fixtures/") || url.pathname.startsWith("/onboard") || url.pathname.startsWith("/person/")) return;
+  if (e.request.method !== "GET" || url.pathname.startsWith("/v1/") || url.pathname.startsWith("/fixtures/")) return;
+  // The onboarding and sign-in pages (the passkey claim among them) are never cached, and on an
+  // unsigned build never touched. On a signed build they are fetched and held to the release's
+  // hash list like every other served file: a page the release does not list, or whose bytes
+  // differ, is refused. (The first visit to a box has no worker yet: that load is the box's own.)
+  if (url.pathname.startsWith("/onboard") || url.pathname.startsWith("/person/")) {
+    if (!SHELL_SIGNED) return;
+    e.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      const want = await listed(cache, url.pathname);
+      if (!want) return Response.error();
+      let res;
+      try { res = await fetch(e.request); } catch { return Response.error(); }
+      if (!res.ok) return res;
+      return hex(await crypto.subtle.digest("SHA-256", await res.clone().arrayBuffer())) === want ? res : Response.error();
+    })());
+    return;
+  }
   // The Deck's own files: from the cache at once, and fetched behind it so the next launch has
   // whatever changed (stale-while-revalidate). A phone on the tailnet would otherwise wait a round
   // trip per module on every tab it opens. Every page address is the one shell, index.html.

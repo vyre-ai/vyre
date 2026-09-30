@@ -16,8 +16,8 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Directories the daemon never serves as the Deck's code, or the worker never handles: tests, fixtures, and the onboarding and sign-in pages (their own pages). */
-const SKIP_DIR = new Set(["test", "fixtures", "node_modules", "onboard", "person"]);
+/** Directories that are not the Deck's served code: tests and fixtures. The onboarding and sign-in pages ARE listed (the worker checks them too). */
+const SKIP_DIR = new Set(["test", "fixtures", "node_modules"]);
 const CODE = /\.(m?js|css|html)$/;
 // Served from the repo root, not deck/ (core/daemon/index.js): the resilience files, the avatar rule, and the relay client's browser closure.
 const ROOT_FILES = ["core/resilience/backoff.js", "core/resilience/sse.js", "core/resilience/stream.js", "core/resilience/outbox.js", "core/resilience/web.js",
@@ -34,11 +34,18 @@ function walk(dir, base) {
   return out;
 }
 
-/** Every code path the daemon serves for the Deck (the URL paths, "/" for index.html too), the one list the worker holds a signed shell to. @param {string} [repo] */
+/** A folder's index.html is also served at the folder's own address ("/onboard/passkey", with or without the slash), and "/" is "/index.html". @param {string} p @returns {string[]} */
+const twin = (p) => (p === "/" ? ["/index.html"] : p.endsWith("/index.html") && p !== "/index.html" ? [p.slice(0, -"/index.html".length), p.slice(0, -"index.html".length)] : []);
+
+/** The real files served as code (URL paths), "/" for index.html included, no twins. @param {string} [repo] */
+function realCode(repo = REPO) {
+  return [...new Set([...walk(path.join(repo, "deck"), "").map((r) => "/" + r), "/", ...ROOT_FILES.map((f) => "/" + f)])].sort();
+}
+
+/** Every code path the daemon serves for the Deck, addresses that serve the same file included: what the worker holds a signed shell to. @param {string} [repo] */
 export function codePaths(repo = REPO) {
-  const paths = walk(path.join(repo, "deck"), "").map((r) => "/" + r);
-  paths.push("/", ...ROOT_FILES.map((f) => "/" + f));
-  return [...new Set(paths)].sort();
+  const real = realCode(repo);
+  return [...new Set([...real, ...real.flatMap(twin)])].sort();
 }
 
 /** The shell's precache paths, as sw.js lists them (sw.js itself is stamped per build, so it is left out). @param {string} [repo] */
@@ -56,12 +63,15 @@ const fileOf = (/** @type {string} */ repo, /** @type {string} */ p) => (ROOT_FI
  * @param {string} [repo] @param {string} [version] @returns {{ v: 1, version: string, files: [string, string][] }}
  */
 export function shellHashes(repo = REPO, version = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")).version) {
-  const all = [...new Set([...codePaths(repo), ...shellPaths(repo)])];
+  const real = [...new Set([...realCode(repo), ...shellPaths(repo)])];
+  /** @type {Map<string, string>} */ const hashes = new Map();
+  for (const p of real) {
+    const h = crypto.createHash("sha256").update(fs.readFileSync(fileOf(repo, p))).digest("hex");
+    hashes.set(p, h);
+    for (const t of twin(p)) hashes.set(t, h);
+  }
   /** @type {[string, string][]} */
-  const files = all.map((p) => [p, crypto.createHash("sha256").update(fs.readFileSync(fileOf(repo, p))).digest("hex")]);
-  const index = files.find((f) => f[0] === "/");
-  if (index) files.push(["/index.html", index[1]]);
-  files.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  const files = [...hashes].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   return { v: 1, version, files };
 }
 
