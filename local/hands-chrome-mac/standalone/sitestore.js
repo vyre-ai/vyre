@@ -8,10 +8,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk, heal, itemId } from "../extension/shared/sk/site-knowledge.js";
+import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk, heal, itemId, testNow } from "../extension/shared/sk/site-knowledge.js";
 
 /** @param {{ dataDir: string, now?: () => number }} o */
-export function createSiteStore({ dataDir, now = Date.now }) {
+export function createSiteStore({ dataDir, now: clock = Date.now, env = process.env }) {
+  // The store's ONE clock. Under a test flag (NODE_ENV=test or VYRE_CHROME_TEST) VYRE_SITE_TEST_CLOCK may name a file holding an ISO time, so a harness can put misses on different days; never a setting.
+  const now = () => { const t = testNow(env, (/** @type {string} */ p) => fs.readFileSync(p, "utf8")); return t ?? clock(); };
   const dir = path.join(dataDir, "sites");
   const fileOf = (/** @type {string} */ key) => path.join(dir, `${crypto.createHash("sha256").update(key).digest("hex").slice(0, 16)}.json`);
   /** @param {string} key @returns {any} */

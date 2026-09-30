@@ -1,4 +1,4 @@
-// VENDORED from work/iq (lib/site-knowledge.js, lib/secret-shapes.js, core/vault/detect.js) at ee41f250, import path adjusted. Do not edit here: change it upstream and re-copy (see VERSION).
+// VENDORED from work/iq-s2 (lib/site-knowledge.js, lib/secret-shapes.js, core/vault/detect.js) at 0bc87300, import path adjusted. Do not edit here: change it upstream and re-copy (see VERSION).
 // @ts-check
 // site-knowledge: what Vyre for Chrome learns about a website, as a record that holds structure and
 // never a value (team/0.2/chrome-learning-plan.md). PURE: no fs, no vyred, no chrome.* API, so the
@@ -49,6 +49,8 @@ const PHONE = /(?:\+?\d[\s().-]?){7,}\d/;
 const LONG_NUMBER = /\d{6,}/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 const DAY = 86_400_000;
+/** The length of a visit: a second miss of the same item inside it does not count. */
+const MISS_GAP = 30 * 60_000;
 
 /** @typedef {{ path: string, why: string }} Problem */
 
@@ -174,7 +176,7 @@ function fact(f, path, c) {
     conf: Math.round(num(f && f.conf, 0, 1, 0.5) * 1000) / 1000,
     // A date in the future is a claim of trust we cannot give: never later than now.
     verified: at ? (Date.parse(at) > c.now ? new Date(c.now).toISOString() : at) : null, seen: int(f && f.seen, 0, 1e9, 1), misses: int(f && f.misses, 0, 1e6, 0), src,
-    ...(iso(f && f.missAt) ? { missAt: iso(f && f.missAt) } : {}), ...(iso(f && f.qAt) ? { qAt: iso(f && f.qAt) } : {}),
+    ...(iso(f && f.missAt) ? { missAt: iso(f && f.missAt) } : {}), ...(iso(f && f.lastMissAt) ? { lastMissAt: iso(f && f.lastMissAt) } : {}), ...(iso(f && f.qAt) ? { qAt: iso(f && f.qAt) } : {}),
     ...(f && f.outcome === "ok" || f && f.outcome === "miss" ? { outcome: f.outcome } : {}),
   };
 }
@@ -499,10 +501,14 @@ export function heal(f, outcome, now = Date.now()) {
   const at = new Date(now).toISOString();
   const out = { ...f };
   if (outcome === "ok") {
-    out.conf = Math.round(Math.min(1, (f.conf ?? 0.5) + 0.1) * 1000) / 1000; out.verified = at; out.misses = 0; delete out.missAt; delete out.qAt;
+    out.conf = Math.round(Math.min(1, (f.conf ?? 0.5) + 0.1) * 1000) / 1000; out.verified = at; out.misses = 0; delete out.missAt; delete out.lastMissAt; delete out.qAt;
   } else {
-    out.misses = (f.misses || 0) + 1; out.conf = Math.round((f.conf ?? 0.5) * 0.6 * 1000) / 1000; out.missAt = f.missAt || at;
-    if ((out.misses >= 3 && now - Date.parse(out.missAt) >= 2 * DAY) || out.conf < 0.15) out.qAt = f.qAt || at;
+    // One miss per item per visit: a slow load or a hidden control that fails three times in a row is one miss, however fast the client
+    // flushes, so no client can quarantine an item in seconds.
+    if (f.lastMissAt && now - Date.parse(f.lastMissAt) < MISS_GAP) return out;
+    out.misses = (f.misses || 0) + 1; out.conf = Math.round((f.conf ?? 0.5) * 0.6 * 1000) / 1000; out.missAt = f.missAt || at; out.lastMissAt = at;
+    // Set aside only when the misses span two days (conf alone never does it: a low conf is "stale", tried last).
+    if (out.misses >= 3 && now - Date.parse(out.missAt) >= 2 * DAY) out.qAt = f.qAt || at;
   }
   return out;
 }
@@ -524,7 +530,9 @@ function foldItem(part, old, inc, now) {
     return inc.outcome ? heal(f, inc.outcome, now) : f;
   }
   let out = { ...old, ...inc, conf: old.conf, verified: old.verified, seen: (old.seen || 0) + (inc.seen || 1), misses: old.misses || 0 };
-  if (old.missAt) out.missAt = old.missAt; if (old.qAt) out.qAt = old.qAt;
+  // The miss bookkeeping is the store's own: a patch cannot set or clear it.
+  delete out.missAt; delete out.lastMissAt; delete out.qAt;
+  if (old.missAt) out.missAt = old.missAt; if (old.lastMissAt) out.lastMissAt = old.lastMissAt; if (old.qAt) out.qAt = old.qAt;
   if (part === "api") { out.count = (old.count || 0) + (inc.count || 0); out.statuses = [...new Set([...(old.statuses || []), ...(inc.statuses || [])])].sort((a, b) => a - b).slice(0, 12); out.query = { ...old.query, ...inc.query }; }
   if (part === "flows") { out.runs = Math.max(old.runs || 0, inc.runs || 0); out.fails = Math.max(old.fails || 0, inc.fails || 0); if (inc.src === "shipped" || old.src === "shipped") out.src = "shipped"; }
   if (part === "controls") {
@@ -675,3 +683,14 @@ export function arrivalCard(rec, { now = Date.now() } = {}) {
   return card;
 }
 export const cardBytes = (/** @type {any} */ c) => JSON.stringify(c).length;
+
+/**
+ * A clock for tests only. Under a test flag (NODE_ENV=test or VYRE_CHROME_TEST) and with VYRE_SITE_TEST_CLOCK naming a file that holds
+ * an ISO time, that time is "now", so a harness can put misses on two different days without waiting. Never a person's setting, never
+ * read without a test flag, and null otherwise. `read` returns a file's text (injected so this file stays pure).
+ * @param {Record<string, string | undefined>} env @param {(path: string) => string} read @returns {number | null}
+ */
+export function testNow(env, read) {
+  if (!(env.NODE_ENV === "test" || env.VYRE_CHROME_TEST) || !env.VYRE_SITE_TEST_CLOCK) return null;
+  try { const t = Date.parse(String(read(env.VYRE_SITE_TEST_CLOCK)).trim()); return Number.isFinite(t) ? t : null; } catch { return null; }
+}

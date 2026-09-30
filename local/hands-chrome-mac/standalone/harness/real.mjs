@@ -81,7 +81,10 @@ async function main() {
     const rel = build({ out: path.join(tmp, "release") });
     out.release = { version: rel.version, sha256: rel.sha };
     const home = path.join(tmp, "home"); fs.mkdirSync(home);
-    const env = { ...process.env, HOME: home, USERPROFILE: home, VYRE_CHROME_HOME: data };
+    // The site store's clock is a file in this run, so the heal stage can put misses on different days (honoured only under this test flag, never a setting).
+    const clockFile = path.join(tmp, "site-clock.txt");
+    fs.writeFileSync(clockFile, "2026-10-01T09:00:00Z\n");
+    const env = { ...process.env, HOME: home, USERPROFILE: home, VYRE_CHROME_HOME: data, VYRE_CHROME_TEST: "1", VYRE_SITE_TEST_CLOCK: clockFile };
     const cliInstall = path.join(rel.dir, "standalone", "cli.mjs");
     const app = path.join(data, "app");
     const cli = path.join(app, "standalone", "cli.mjs");
@@ -271,7 +274,7 @@ async function main() {
       // label, re-learned under the SAME id with the new selector, then moved where nothing finds it: repeated misses quarantine it and the card stops offering it.
       await stage("site_heal", async () => {
         writeConfig(data, { learn: true, learnVisitMinutes: 0.02 });
-        const store = createSiteStore({ dataDir: data });
+        const store = createSiteStore({ dataDir: data, env: { VYRE_CHROME_TEST: "1", VYRE_SITE_TEST_CLOCK: clockFile } });
         const origin = new URL(fixture.url).origin;
         const url = `${fixture.url}/checkout?heal=1`;
         const hn = await mcp.call("chrome_tabs", { action: "use", url, openIfMissing: true }); const ht = hn.id ?? (hn.tab && hn.tab.id);
@@ -297,14 +300,25 @@ async function main() {
         // move 2: nothing finds it; each failed step is one miss for the stored fact
         await mcp.call("chrome_tabs", { action: "navigate", tab: ht, url }); await sleep(800); await go().catch(() => {}); await sleep(800);
         await mcp.call("chrome_eval", { tab: ht, expression: "(() => { const b = document.getElementById('apply-promo') || document.getElementById('apply-promo-v2'); if (b) { b.id = 'gone'; b.textContent = 'Removed'; } return true; })()" });
-        for (let i = 0; i < 4; i++) { let failed = false; try { await go(300); } catch { failed = true; } if (!failed) throw new Error("a button that is gone was found"); await flush(); await sleep(400); }
+        const missOnce = async () => { let failed = false; try { await go(300); } catch { failed = true; } if (!failed) throw new Error("a button that is gone was found"); await flush(); await sleep(500); };
+        const clock = (/** @type {string} */ iso) => fs.writeFileSync(clockFile, iso + "\n");
+        // day 1: four failed steps in a few seconds are ONE miss for the store (one per item per 30-minute window), and three of them cannot quarantine anything
+        for (let i = 0; i < 4; i++) await missOnce();
+        const day1 = rec();
+        if (!day1 || day1.qAt || (day1.misses || 0) !== 1) throw new Error("four quick misses on one day should count once and set nothing aside: " + JSON.stringify(day1).slice(0, 300));
+        // day 3 (two days later): a miss counts again, still two misses
+        clock("2026-10-03T09:30:00Z"); await missOnce();
+        const day3 = rec();
+        if (!day3 || day3.qAt || (day3.misses || 0) !== 2) throw new Error("a miss two days later should be the second: " + JSON.stringify(day3).slice(0, 300));
+        // a third counted miss, 31 minutes later and two days after the first, sets it aside
+        clock("2026-10-03T10:05:00Z"); await missOnce();
         const after = rec();
-        if (!after || !after.qAt) throw new Error("repeated misses did not quarantine the control: " + JSON.stringify(after).slice(0, 300));
+        if (!after || !after.qAt) throw new Error("three counted misses over two days did not set the control aside: " + JSON.stringify(after).slice(0, 300));
         const card = store.get({ origin }).data;
         if (card.origin && card.origin.controls.some((/** @type {any} */ c) => c.id === id)) throw new Error("the arrival card still offers a quarantined control");
         writeConfig(data, { learn: false });
         await mcp.call("chrome_site", { tab: ht }); // the next call tells the extension learning is off
-        return { id, learned: learned.selector.identifier, healedTo: healed.selector.identifier, conf: after.conf, misses: after.misses, quarantined: true };
+        return { id, learned: learned.selector.identifier, healedTo: healed.selector.identifier, conf: after.conf, misses: after.misses, quarantined: true, dedupedDay1: day1.misses };
       });
 
       // A script cannot write with the page's login by submitting a form either.

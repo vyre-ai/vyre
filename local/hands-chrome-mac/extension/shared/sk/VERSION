@@ -1,2 +1,2 @@
-source: work/iq ee41f250 (lib/site-knowledge.js, lib/secret-shapes.js, core/vault/detect.js)
+source: work/iq-s2 0bc87300 = deb59e28 (cleared) + the harness-only clock helper testNow (lib/site-knowledge.js +11 lines)
 import path in secret-shapes.js changed to ./detect.js; nothing else differs

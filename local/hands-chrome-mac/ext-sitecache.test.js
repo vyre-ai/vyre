@@ -246,24 +246,37 @@ test("a miss is reported only for a control the card knows, and only for not_fou
   assert.equal((await c.flush()).length, 0);
 });
 
-test("the file store: a miss lowers a stored fact's confidence, three misses quarantine it and the card stops offering it, a success raises it", () => {
+test("the file store: one miss counts per item per 30 minutes, three counted misses over two days set it aside (the card stops offering it), a success raises it, and the test clock is honoured only under the test flag", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sk-"));
   try {
-    let now = Date.parse("2026-10-01T00:00:00Z");
-    const st = createSiteStore({ dataDir: dir, now: () => now });
+    const clockFile = path.join(dir, "clock.txt");
+    const at = (/** @type {string} */ iso) => fs.writeFileSync(clockFile, iso + "\n");
+    at("2026-10-01T09:00:00Z");
+    const st = createSiteStore({ dataDir: dir, env: { VYRE_CHROME_TEST: "1", VYRE_SITE_TEST_CLOCK: clockFile } });
     const origin = "https://app.gohighlevel.com";
-    const id = "c_test01";
+    const id = "c_test0001";
     st.put({ origin, patch: { key: origin, controls: [{ id, page: "/workflows", role: "button", selector: { strategy: "identifier", identifier: "save-workflow" }, identifierVisits: ["a", "b"] }] } });
-    assert.equal(st.report({ origin, part: "controls", id, outcome: "miss" }).data.conf, 0.3);
-    assert.equal(st.report({ origin, part: "controls", id, outcome: "ok" }).data.conf, 0.4);
+    const miss = () => st.report({ origin, part: "controls", id, outcome: "miss" }).data;
+    assert.equal(miss().conf, 0.3);
+    at("2026-10-01T09:10:00Z");
+    assert.equal(miss().misses, 1, "a second miss ten minutes later is the same visit: it does not count");
     assert.equal(st.report({ origin, part: "controls", id: "nope", outcome: "miss" }).data.known, false);
     assert.equal(st.report({ origin, part: "controls", id, outcome: "sideways" }).error.code, "bad_request");
-    for (let i = 0; i < 3; i++) st.report({ origin, part: "controls", id, outcome: "miss" });
-    const r = st.report({ origin, part: "controls", id, outcome: "miss" }).data;
-    assert.equal(r.quarantined, true, "conf under 0.15: quarantined");
+    at("2026-10-03T09:30:00Z");
+    const two = miss();
+    assert.equal(two.misses, 2);
+    assert.equal(two.quarantined, false, "two counted misses, and conf below 0.15 alone no longer sets it aside");
+    at("2026-10-03T10:05:00Z");
+    const three = miss();
+    assert.equal(three.misses, 3);
+    assert.equal(three.quarantined, true, "three counted misses over two days");
     assert.equal(st.get({ origin }).data.origin.controls.length, 0, "the arrival card no longer offers it");
-    now += 1000; // the record itself still holds it, as "used to work"
-    assert.equal(st.record(origin).controls.length, 1);
+    assert.equal(st.record(origin).controls.length, 1, "the record keeps it as used to work");
+    // without the test flag the clock file is ignored
+    const real = createSiteStore({ dataDir: dir, env: {}, now: () => Date.parse("2030-01-01T00:00:00Z") });
+    at("2026-10-01T09:00:00Z");
+    assert.ok(real.report({ origin, part: "controls", id, outcome: "ok" }).data.known);
+    assert.ok(Date.parse(real.record(origin).updated) >= Date.parse("2030-01-01T00:00:00Z"), "the real clock was used");
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
