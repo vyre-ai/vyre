@@ -38,6 +38,8 @@ import { run as tailscale } from "../names/tailscale.js";
 import * as config from "../config/index.js";
 import { looksLikeKey, secretName, HOME_DENIED } from "./safety.js";
 import { reach, within } from "./access.js";
+import { classify, KINDS } from "./kinds.js";
+import { walk as searchWalk, defaults as searchDefaults } from "./search.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: { mount(url, dir, opts), unmount(dir),
@@ -486,6 +488,98 @@ export function drive(ctx, { role, guard: g, roots }) {
         return audit();
       },
     });
+
+    /**
+     * A path already known to sit inside a share's real folder, checked and described the same
+     * way files/index.js's own describe() does (same guard, same key-content refusal), without
+     * requiring the path to fall under one of the box's configured files.roots: a share may name
+     * any folder (shareSpecs), and search must cover it regardless.
+     * @param {string} shareReal @param {string} p
+     */
+    const describeInShare = (shareReal, p) => {
+      const rs = { live: [{ given: shareReal, real: shareReal }] };
+      const safe = g.resolveSafe(p, rs);
+      const st = fs.statSync(safe.real);
+      const name = path.basename(safe.path);
+      const { kind, mime } = classify(name, st.isDirectory());
+      return { path: safe.path, name, kind, mime, size: st.isDirectory() ? 0 : st.size, mtime: st.mtime.toISOString() };
+    };
+
+    ctx.tool("files.drive.search", {
+      description: "Find files by name or content across the box's offered VyreDrive shares (server files). It is the search behind the Capsule's find-a-file and the Windows panel, neither of which keeps its own index of the box's folders. A named agent sees only the shares whose folder falls inside its own granted projects (files.drive.status's own rule); an offered share outside that is left out of the search entirely, not merely hidden from the list.",
+      input: { type: "object", required: ["q"], properties: {
+        q: { type: "string" }, limit: { type: "integer" }, share: { type: "string" },
+        kinds: { type: "array", items: { type: "string", enum: KINDS } } } },
+      run: async ({ q, limit = 50, share, kinds }, meta = {}) => {
+        q = String(q || "").trim();
+        if (!q) throw refuse("q is required", "bad_input");
+        limit = Math.min(500, Math.max(1, Number(limit) || 50));
+        kinds = kinds && kinds.length ? kinds : undefined;
+        const scope = await reach(ctx, meta && meta.caller);
+        const map = shares();
+        let names = Object.keys(map);
+        if (share) {
+          if (!Object.prototype.hasOwnProperty.call(map, share)) {
+            // Reviewer M1: an agent never learns the box's other share names from a typo or a
+            // probe. The owner still gets the helpful list; a scoped caller gets the same bare
+            // "unknown" an ungranted-but-real share would also produce below.
+            throw refuse(scope.all ? `no share called "${share}"; the box offers ${names.join(", ") || "none"}` : `no share called "${share}"`, "unknown_share");
+          }
+          names = [share];
+        }
+        // Same rule as files.drive.status: an unrestricted caller sees every offered share; a
+        // named agent sees only the ones its own granted projects reach, either direction (a
+        // share nested inside a granted project, or a share that itself contains one).
+        if (!scope.all) names = names.filter(n => within(map[n], scope.folders) || scope.folders.some(f => within(f, [map[n]])));
+        const want = limit * 4 + 100;
+        const notes = [];
+        const results = [];
+        for (const name of names) {
+          if (results.length >= limit) break;
+          let shareReal;
+          try { shareReal = folder(map[name]); } catch { continue; } // must still pass the same check sharing does
+          // Reviewer H1: a share can be broader than what a named agent is granted (a share of
+          // /work with a grant of only /work/harlow-site). Walking and rg'ing the share's whole
+          // real folder in that case would hand the agent file names, and through rg a content
+          // oracle, for every sibling project under the same share. So for a restricted scope,
+          // narrow to the actual intersection: each granted folder that falls inside this share
+          // (the narrower side), or the whole share when it instead falls inside a granted
+          // folder (already covered end to end, same as today). An unrestricted caller keeps
+          // searching the whole share, as before.
+          //
+          // Compared against the share's own configured (not yet realpath-resolved) path, the
+          // same domain scope.folders itself lives in — a project's granted folder is never
+          // realpath-resolved either, so comparing against shareReal directly could miss a match
+          // behind a symlinked temp dir. Each winning raw folder is then resolved the same way
+          // folder() resolved the share itself (the module-level real(), not this loop's own
+          // shareReal), so what actually gets walked is real.
+          const rawShare = map[name];
+          const dirs = scope.all ? [shareReal] : [...new Set(scope.folders
+            .map(f => (within(f, [rawShare]) ? f : within(rawShare, [f]) ? rawShare : null))
+            .filter(Boolean)
+            .map(d => real(d) || d))];
+          if (!dirs.length) continue;
+          let candidates = [];
+          try { candidates = searchWalk(dirs, q, g, { max: want }); } catch { continue; }
+          try {
+            candidates.push(...await searchDefaults.rg(["-l", "-i", "-F", "--max-count", "1", "--max-filesize", "2M", "--", q, ...dirs], { max: want }));
+          } catch (e) {
+            if (/** @type {any} */ (e).code === "ENOENT" && !notes.includes("ripgrep is not installed, so only file names were matched")) notes.push("ripgrep is not installed, so only file names were matched");
+          }
+          const seen = new Set();
+          for (const c of candidates) {
+            if (results.length >= limit) break;
+            if (typeof c !== "string" || seen.has(c) || c.split(path.sep).includes("node_modules")) continue;
+            seen.add(c);
+            let d;
+            try { d = describeInShare(shareReal, c); } catch { continue; }
+            if (kinds && !kinds.includes(d.kind)) continue;
+            results.push({ share: name, path: d.path, name: d.name, kind: d.kind, mime: d.mime, size: d.size, mtime: d.mtime });
+          }
+        }
+        return { results, ...(notes.length ? { note: notes.join("; ") } : {}) };
+      },
+    });
   }
 
   function macSide() {
@@ -613,11 +707,17 @@ export function drive(ctx, { role, guard: g, roots }) {
     });
 
     ctx.tool("files.drive.local", {
-      description: "Where a box file is on this Mac through a mounted VyreDrive share, or null when no mounted share holds it.",
+      description: "Where a box file is on this Mac through a mounted VyreDrive share, or null when no mounted share holds it. A named agent gets null for a box path outside its own granted projects, the same as any other refusal here (Vyre Drive step 5): it never learns whether a mount holds a path it may not see.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" } } },
-      run: async ({ path: p }) => {
+      run: async ({ path: p }, meta = {}) => {
         const want = String(p);
         if (!path.posix.isAbsolute(want) || want.includes("\0") || want.split("/").includes("..")) return { local: null };
+        const scope = await reach(ctx, meta && meta.caller);
+        // Reviewer H1: checking the SHARE against the grant (an overlap either direction) was
+        // not enough when the share is broader than the grant (a share of /work, a grant of only
+        // /work/harlow-site) — every path under that share, including a sibling project's,
+        // passed. The requested path itself must sit inside the grant.
+        if (!scope.all && !within(want, scope.folders)) return { local: null };
         const m = load();
         for (const [share, rec] of Object.entries(m)) {
           const bp = String(rec && rec.boxPath || "");
@@ -627,6 +727,18 @@ export function drive(ctx, { role, guard: g, roots }) {
           if (inside(local, String(rec.dir))) return { local, share };
         }
         return { local: null };
+      },
+    });
+
+    ctx.tool("files.drive.search", {
+      description: "Find files by name or content across the box's offered VyreDrive shares, asked from this Mac (the search behind the Capsule's find-a-file and the Windows panel). An agent's identity does not survive the hop to the box (see files.search's own note on this), so this is the owner's own surfaces only for now; an agent searches this Mac's own files.search instead.",
+      input: { type: "object", required: ["q"], properties: {
+        q: { type: "string" }, limit: { type: "integer" }, share: { type: "string" },
+        kinds: { type: "array", items: { type: "string" } } } },
+      run: async (input, meta = {}) => {
+        const scope = await reach(ctx, meta && meta.caller);
+        if (!scope.all) throw refuse("an agent searches this Mac's own files only, not the box directly; use files.search", "denied");
+        return forward("files.drive.search", input);
       },
     });
   }

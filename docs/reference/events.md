@@ -377,7 +377,7 @@ Listens for: `floor.wrote`
 
 | Event | Fields |
 | --- | --- |
-| `settings.changed` | `apply`, `key`, `level`, `rev`; sometimes `by`, `project`, `session` |
+| `settings.changed` | `apply`, `by`, `key`, `level`, `rev`; sometimes `change`, `project`, `session` |
 
 ## sight
 
