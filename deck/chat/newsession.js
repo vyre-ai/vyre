@@ -99,7 +99,7 @@ export function mountNewSession(container, opts) {
   const text = /** @type {HTMLTextAreaElement} */ (h("textarea", { class: "input ns-text", id: "ns-text", rows: 4, placeholder: "What should this session start with?", "aria-label": "First message",
     onpaste: () => { pendingPaste = true; setTimeout(() => { pendingPaste = false; }, 0); },
     oninput: (/** @type {any} */ e) => {
-      const v = text.value; pastes.edit(prevText, v, pendingPaste || NOT_TYPED.has(e?.inputType)); prevText = v; pendingPaste = false;
+      const v = text.value; pastes.edit(prevText, v, pendingPaste || !e?.inputType || NOT_TYPED.has(e.inputType)); prevText = v; pendingPaste = false;
       if (!tagUI.suggest() && menu.kind === "vault") menu.close();
       drawTags();
     },

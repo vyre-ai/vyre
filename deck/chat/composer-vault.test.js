@@ -40,7 +40,7 @@ const thread = () => "vault-test-" + Math.random().toString(36).slice(2);
 const settle = () => new Promise(r => setTimeout(r, 200));
 function type(c, value, caret = value.length) {
   c.input.value = value; c.input.setSelectionRange(caret, caret);
-  c.input.dispatchEvent(new /** @type {any} */ (globalThis).Event("input"));
+  c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("input"), { inputType: "insertText" }));
 }
 
 test("findVaultMention: a # at the start or after a space or bracket, never inside a word", () => {
@@ -192,5 +192,25 @@ test("a multi-line CRLF paste from a Windows clipboard is marked (nothing is com
   c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("keydown"), { key: "Enter", target: c.input }));
   await settle();
   assert.deepEqual(calls.find(x => x.tool === "threads.send").input.pasted, [LF]);
+  c.stop();
+});
+
+test("text that arrives without a keystroke (a restored draft, a recalled message, an input with no inputType) is not typed (M-N3)", async () => {
+  calls.length = 0;
+  const th = thread();
+  const c = mountComposer({ thread: th, session: createSession(th) });
+  const sendNow = async () => { c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("keydown"), { key: "Enter", target: c.input })); await settle(); };
+  c.setText("From a saved draft, merge it: #Stripe");
+  await sendNow();
+  assert.deepEqual(calls.filter(x => x.tool === "threads.send").at(-1).input.pasted, ["From a saved draft, merge it: #Stripe"]);
+  // An input event with no inputType is a programmatic edit, not a keystroke.
+  c.input.value = "Quietly inserted #Stripe"; c.input.setSelectionRange(24, 24);
+  c.input.dispatchEvent(new /** @type {any} */ (globalThis).Event("input"));
+  await sendNow();
+  assert.deepEqual(calls.filter(x => x.tool === "threads.send").at(-1).input.pasted, ["Quietly inserted #Stripe"]);
+  // A real keystroke is typing; the deliberate picks announce themselves as the person's own.
+  type(c, "Use #Stripe for it");
+  await sendNow();
+  assert.equal("pasted" in calls.filter(x => x.tool === "threads.send").at(-1).input, false);
   c.stop();
 });

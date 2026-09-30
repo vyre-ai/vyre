@@ -160,8 +160,13 @@ export function mountComposer(opts) {
   // Which stretches of the draft were pasted: sent as `pasted` so a #Name inside one never tags (reviewer-2 M-P2).
   const pastes = pasteTracker();
   let prevValue = "", pendingPaste = false;
-  /** `inputType` is the input event's: paste, drop, undo, redo and replacement text are not typing (a paste event alone counts too). @param {string} [inputType] */
-  const trackValue = (inputType) => { if (ta.value !== prevValue) { pastes.edit(prevValue, ta.value, pendingPaste || (!!inputType && NOT_TYPED.has(inputType))); prevValue = ta.value; pendingPaste = false; } };
+  /**
+   * Text counts as typed only when a keystroke's own `inputType` says so: a missing one is a programmatic edit (a draft
+   * restored, an earlier message recalled) and paste, drop, undo, redo and replacement text are never typing. The code's
+   * own deliberate insertions (a picked command, file or tag) announce themselves with `own` (reviewer-2 M-N3).
+   * @param {string} [inputType] @param {boolean} [own]
+   */
+  const trackValue = (inputType, own = false) => { if (ta.value !== prevValue) { pastes.edit(prevValue, ta.value, own ? false : pendingPaste || !inputType || NOT_TYPED.has(inputType)); prevValue = ta.value; pendingPaste = false; } };
 
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
     rows: 1, placeholder: "Message this session", "aria-label": "Message", enterkeyhint: "send",
@@ -219,13 +224,13 @@ export function mountComposer(opts) {
     });
   }
   const caret = () => (typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length);
-  const setValue = (/** @type {string} */ v, at = v.length) => {
-    ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} trackValue(); grow(); drawChips(); flushDraft();
+  const setValue = (/** @type {string} */ v, at = v.length, own = false) => {
+    ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} trackValue(undefined, own); grow(); drawChips(); flushDraft();
     // An empty box is a fresh compose: the next message gets its own hint, not the last one's "not now".
     if (!v) { clearTimeout(hintTimer); hintDismissed = false; hideHints(); }
   };
   // "#": one universal tag (chat/tag-picker.js, shared with the new-session sheet).
-  const tagUI = tagPicker({ ta, menu, caret, setValue, attempt, use: (tool, fn) => CAPS.use(tool, fn) });
+  const tagUI = tagPicker({ ta, menu, caret, setValue: (v, at) => setValue(v, at, true), attempt, use: (tool, fn) => CAPS.use(tool, fn) });
   const say = (/** @type {any} */ what, soft = true) => { note.classList.toggle("soft", soft); put(note, what); };
 
   function maybeLease() {
@@ -394,7 +399,7 @@ export function mountComposer(opts) {
     if (c.local && !complete) { setValue(""); runLocal(c.local); return; }
     const range = findCommand(ta.value, caret()) || { start: 0, end: ta.value.indexOf(" ") < 0 ? ta.value.length : ta.value.indexOf(" "), query: "" };
     const r = applyCommand(ta.value, range, c.name);
-    setValue(r.text, r.caret);
+    setValue(r.text, r.caret, true);
     ta.focus();
   }
   function runLocal(/** @type {string} */ what, query = "") {
@@ -702,7 +707,7 @@ export function mountComposer(opts) {
   function pickSuggestion(/** @type {ReturnType<typeof suggestRows>[number]} */ row) {
     menu.close();
     const r = applySuggestion(ta.value, caret(), row);
-    setValue(r.text, r.caret);
+    setValue(r.text, r.caret, true);
     void CAPS.use("suggest.picked", () => attempt("suggest.picked", pickedInput(row)));
     ta.focus();
   }
@@ -727,7 +732,7 @@ export function mountComposer(opts) {
     menu.close();
     if (!range) return;
     const r = applyMention(ta.value, range, rel);
-    setValue(r.text, r.caret);
+    setValue(r.text, r.caret, true);
     ta.focus();
   }
 
@@ -969,7 +974,7 @@ export function mountComposer(opts) {
   function takeNear() {
     if (!nearFor) return false;
     const rest = ta.value.replace(/^@[A-Za-z][A-Za-z0-9-]{0,40}/, "");
-    setValue("@" + nearFor + (rest || " "));
+    setValue("@" + nearFor + (rest || " "), undefined, true);
     nearFor = null; put(note); note.classList.remove("soft");
     ta.focus();
     return true;

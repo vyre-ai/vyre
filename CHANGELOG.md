@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: text is typed only when a keystroke says so (reviewer-2 M-N3)
+
+- The pasted-span default is flipped: an `input` with no `inputType`, a restored draft, a recalled message and a dictation replacement are not typing and mark their stretch; the composer's own deliberate insertions (a picked command, file, suggestion, tag or the @role near-miss) announce themselves as the person's own. The new-session sheet follows the same rule.
+
 #### deck: the Windows shell contract (C22): window.__VYRE_SHELL__, /quick
 
 - `deck/js/platform.js` reads `window.__VYRE_SHELL__ = { platform }` (the Windows app injects it frozen before any page script; the older `__vyreShell = { os }` still reads). Inside the shell the key glyphs are Ctrl (every hard-coded Cmd-Enter hint now comes from `kbd()`), the browser "Install" step is hidden, and `installed()` is true. It only changes presentation and never grants anything.
