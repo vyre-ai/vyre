@@ -544,3 +544,5 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
 
 ## 2026-10-01 restart
 - Answered native-core's PR review and multi-file diff card field names in CHAT.md (09:10 github -> native-core): tools are github.project.pr.merge/.review keyed by {project, pr}, payload shape listed there. pr.get/.merge/.review added to the PR step (not built yet).
+- Built github.project.pr.get / .merge / .review (core/github/pr.js, REST with the project's recorded account token). Merge and review: person always runs, an agent needs meta.asked (Gate's P17 field, from said_intents) or is held with code "held". Not yet declared as object entries (outward: asked) in module.json, waiting on platform's docs tooling on the stage base. 3 new tests, 46/46 in core/github, docs suites green after docs:ref.
+- Next: pr.open + hosted-MCP allowlist once vault posts oauth.js; local-only projects (github.project.local-init); wire meta.asked to vault's confirmed field; rebase onto stage/0.2 tip before landing.

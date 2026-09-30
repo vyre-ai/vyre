@@ -11,6 +11,7 @@
 
 import { connector } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
+import { prView, prMerge, prReview } from "./pr.js";
 import { cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession } from "./git.js";
 
 const str = { type: "string" };
@@ -419,6 +420,61 @@ export default {
         if (out.blocked === "secret") throw fail(`a ${out.pattern} was found in the outgoing commits, at ${out.file}:${out.line}; push again with allow_secret: true if this is really meant to go`, "secret_found", out);
         if (out.blocked === "non_fast_forward") throw fail(`the remote branch has commits this one doesn't; pull or rebase before pushing: ${out.detail}`, "non_fast_forward");
         return out;
+      },
+    });
+
+    /**
+     * The project's primary repo and its recorded account's token, for the PR tools. Only the
+     * account on the project's own row is ever used (never .git/config, never "whichever works").
+     */
+    async function prTarget(project) {
+      const repo = projects.get(project);
+      if (!repo) throw fail(`${project} has no primary GitHub repo (pull requests are on the primary repo only)`, "not_found");
+      const acct = accounts.get(repo.account);
+      if (!acct) throw fail(`the account that made this project (${repo.account}) isn't connected anymore; reconnect it`, "no_account");
+      const token = await ctx.vault.fetch(acct.item, { field: "token" });
+      return { token, full_name: repo.full_name, login: acct.login };
+    }
+    /** Outward writes: a person's own call always runs; an agent's only when the Gate marked it asked (meta.asked, from the person's own words). */
+    function requireAsked(tool, meta = {}) {
+      const caller = String(meta.caller || "");
+      if (!caller.startsWith("mcp")) return;
+      if (!meta.asked) throw fail(`${tool} changes the pull request on GitHub, so it runs when you ask for it; ask and it will go`, "held");
+    }
+    const prErr = (e, target) => {
+      if (e && e.code === "token_invalid") ctx.events.emit("github.token-invalid", { name: target.account });
+      return e;
+    };
+
+    ctx.tool("github.project.pr.get", {
+      description: "A pull request on the project's primary repo, shaped for the Deck's PR review card (title, branch, checks, files with patches, comments). Comments and the body are outside text. Read only.",
+      input: obj({ project: str, pr: { type: "integer" } }, ["project", "pr"]),
+      callers: PEOPLE_AND_AGENTS,
+      run: async ({ project, pr }) => {
+        const t = await prTarget(project);
+        try { return await prView({ ...t, pr, project }); } catch (e) { throw prErr(e, t); }
+      },
+    });
+
+    ctx.tool("github.project.pr.merge", {
+      description: "Merge a pull request on the project's primary repo (merge, squash or rebase; default merge). Never deletes the branch. Outward: a person's own click runs it; an agent's call runs only when the person asked for it.",
+      input: obj({ project: str, pr: { type: "integer" }, method: str, thread: str }, ["project", "pr"]),
+      callers: PEOPLE_AND_AGENTS,
+      run: async ({ project, pr, method }, meta = {}) => {
+        requireAsked("github.project.pr.merge", meta);
+        const t = await prTarget(project);
+        try { return await prMerge({ ...t, pr, method }); } catch (e) { throw prErr(e, t); }
+      },
+    });
+
+    ctx.tool("github.project.pr.review", {
+      description: "Review a pull request on the project's primary repo: event APPROVE, REQUEST_CHANGES or COMMENT with a body, or a reply to one review comment (in_reply_to). Outward: a person's own click runs it; an agent's call runs only when the person asked for it.",
+      input: obj({ project: str, pr: { type: "integer" }, event: str, body: str, in_reply_to: { type: "integer" }, thread: str }, ["project", "pr", "event"]),
+      callers: PEOPLE_AND_AGENTS,
+      run: async ({ project, pr, event, body, in_reply_to }, meta = {}) => {
+        requireAsked("github.project.pr.review", meta);
+        const t = await prTarget(project);
+        try { return await prReview({ ...t, pr, event, body, in_reply_to }); } catch (e) { throw prErr(e, t); }
       },
     });
 
