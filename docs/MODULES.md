@@ -131,25 +131,25 @@ attaches them outside the sandbox, and a write through it is held at the Gate th
 Every member that reaches outside the module returns a promise. Types are in
 [`packages/module-sdk/index.d.ts`](https://github.com/vyre-ai/vyre/blob/main/packages/module-sdk/index.d.ts).
 
-| Member | Use it to | Declare it in |
-|---|---|---|
-| `ctx.tool(name, { description, input, examples, run })` | register a tool. `run(input, meta)` returns JSON or throws `{ code, message }`. | `does.tools` |
-| `ctx.call(tool, input)` | use another module's tool. It answers `{ data }` or `{ error }`. | `needs.tools` |
-| `ctx.events.emit / on / since / latestId` | emit and follow events | `watches.emits`, `watches.on` |
-| `ctx.store.db`, `ctx.store.migrate(steps)` | your own SQLite tables, with migrations that only go forward | |
-| `ctx.paths.data` | your own folder, the one place you write files | |
-| `ctx.settings.get / set / on` | your own settings | `settings` |
-| `ctx.vault.request(id, { method, url, ... })` | call a vendor API with a credential you never see | `needs.credentials` |
-| `ctx.connections.call(provider, tool, input)` | use a connected vendor MCP server (Google, Notion, Slack...) | `needs.connections` |
-| `ctx.fetch(url, init)` | GET or HEAD from a public host, with no credentials and no body. To send data, use `ctx.vault.request` or an `outward` tool. | `needs.network` |
-| `ctx.gate.request({ kind, via, to, content, why })` | propose a send through another module's sender | `needs.tools: ["gate.request"]` |
-| `ctx.memory.write({ kind, project, text, subject?, source_ref? })` | write memory, shown with your module as its source and quoted as data | `teaches.memory` |
-| `ctx.ask(prompt, { purpose, maxUsd })` | a one-shot model read with no tools, counted against your daily cap | `needs.spend` |
-| `ctx.spend.record / check` | count your own paid API use | `needs.spend` |
-| `ctx.push.offer({ title, body, kind })` | ask to notify the person. It answers `sent` or `deferred`, under one shared daily budget. | `shows.notices` |
-| `ctx.undo.record({ tool, input, inverse })` | give an action you took an Undo | |
-| `ctx.log.info / warn / error / debug` | logs, read with `vyre logs <module>` | |
-| `ctx.api.version`, `ctx.api.has(feature)` | find newer features without breaking on older Vyre | |
+| Member | Use it to | Declare it in | Available |
+|---|---|---|---|
+| `ctx.tool(name, { description, input, examples, run })` | register a tool. `run(input, meta)` returns JSON or throws `{ code, message }`. | `does.tools` | now |
+| `ctx.call(tool, input)` | use another module's tool. It answers `{ data }` or `{ error }`. | `needs.tools` | now |
+| `ctx.events.emit / on / since / latestId` | emit and follow events | `watches.emits`, `watches.on` | now |
+| `ctx.store.db`, `ctx.store.migrate(steps)` | your own SQLite tables, with migrations that only go forward | | now |
+| `ctx.paths.data` | your own folder, the one place you write files | | now |
+| `ctx.settings.get / set / on` | your own settings | `settings` | now |
+| `ctx.vault.request(id, { method, url, ... })` | call a vendor API with a credential you never see | `needs.credentials` | when vault.request lands |
+| `ctx.connections.call(provider, tool, input)` | use a connected vendor MCP server (Google, Notion, Slack...) | `needs.connections` | now |
+| `ctx.fetch(url, init)` | GET or HEAD from a public host, with no credentials and no body. To send data, use `ctx.vault.request` or an `outward` tool. | `needs.network` | when the module host lands |
+| `ctx.gate.request({ kind, via, to, content, why })` | propose a send through another module's sender | `needs.tools: ["gate.request"]` | now |
+| `ctx.memory.write({ kind, project, text, subject?, source_ref? })` | write memory, shown with your module as its source and quoted as data | `teaches.memory` | when memory.write lands |
+| `ctx.ask(prompt, { purpose, maxUsd })` | a one-shot model read with no tools, counted against your daily cap | `needs.spend` | when spend.check lands |
+| `ctx.spend.record / check` | count your own paid API use | `needs.spend` | when spend.record lands |
+| `ctx.push.offer({ title, body, kind })` | ask to notify the person. It answers `sent` or `deferred`, under one shared daily budget. | `shows.notices` | when push.offer lands |
+| `ctx.undo.record({ tool, input, inverse })` | give an action you took an Undo | | when undo.record lands |
+| `ctx.log.info / warn / error / debug` | logs, read with `vyre logs <module>` | | now |
+| `ctx.api.version`, `ctx.api.has(feature)` | find newer features without breaking on older Vyre | | now |
 
 A call without its declaration throws `undeclared`.
 
