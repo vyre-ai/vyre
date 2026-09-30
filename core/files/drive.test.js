@@ -43,7 +43,7 @@ function stoppers(t) {
 function tmp(t, prefix = "vyre-drive-") {
   stoppers(t);
   const dir = fs.mkdtempSync(path.join(SCRATCH, prefix));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
   return dir;
 }
 

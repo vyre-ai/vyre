@@ -59,7 +59,9 @@ export function tempHome(t, { stop } = {}) {
     // any daemon this home started, unless it is this process (an in-process start()).
     if (stop) await Promise.resolve(stop()).catch(e => console.error(`test helpers: tempHome's stop() failed (${dir}): ${e.message}`));
     await stopDaemon(dir);
-    fs.rmSync(dir, { recursive: true, force: true });
+    // Retried: on a busy hosted runner a late write from a just-stopped child (a fake binary's log) can land while the
+    // folder is being removed, which is ENOTEMPTY (files.drive.search, stage run 36772688407); a second pass removes it.
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
   return dir;
 }
