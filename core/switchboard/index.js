@@ -820,6 +820,7 @@ export class Switchboard {
     if (t.delta) {
       if (typeof t.block === "number" && t.block !== st.pendingBlock) { this.flush(id, st); st.pendingBlock = t.block; }
       st.pending += t.delta;
+      if (st.onText) { try { st.onText(t.delta); } catch {} }
       if (!st.timer) st.timer = setTimeout(() => this.flush(id, st), TEXT_EVERY_MS);
     }
     for (const e of t.events) {
@@ -1650,7 +1651,7 @@ export class Switchboard {
    * @param {{ purpose: string, system?: string|null, prompt: string, model?: string|null, timeoutMs?: number }} o
    * @returns {Promise<{ text: string, ok: boolean, cost_usd: number, warm: boolean, ms: number, thread: string }>}
    */
-  async quick({ purpose, system = null, prompt, model = null, timeoutMs = 60_000 }) {
+  async quick({ purpose, system = null, prompt, model = null, timeoutMs = 60_000, onText = null }) {
     const t0 = Date.now();
     const key = `${purpose}\u0000${model || ""}\u0000${crypto.createHash("sha256").update(String(system || "")).digest("hex")}`;
     this.spares = this.spares || new Map();
@@ -1665,6 +1666,7 @@ export class Switchboard {
       const t = setTimeout(() => { st.answered = null; reject(Object.assign(new Error(`no answer within ${timeoutMs} ms`), { code: "timeout" })); }, timeoutMs);
       t.unref?.();
     });
+    if (onText) st.onText = onText;
     this.write(id, String(prompt));
     // The next question's session starts now, while this one answers.
     if (!this.closing) {
@@ -2423,8 +2425,9 @@ export default {
     // instructions. Internal, so no surface or model can hand a thread an environment.
     ctx.tool("threads.quick", {
       description: "One question to a purpose's warm session (a lean one already started, so no start-up wait): memory (Vyre IQ), planner, helper and the like. A fresh session per question; the system text is fixed per spare, the question's material goes in prompt. Returns { text, ok, cost_usd, warm, ms, thread }.", internal: true,
-      input: { type: "object", required: ["purpose", "prompt"], properties: { purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
-      run: async i => sb.quick({ purpose: i.purpose, prompt: i.prompt, system: i.system || null, model: i.model || null, timeoutMs: i.timeout_ms || 60_000 }),
+      input: { type: "object", required: ["purpose", "prompt"], properties: { purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, stream: { type: "boolean", description: "Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole." }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
+      run: async (i, meta) => sb.quick({ purpose: i.purpose, prompt: i.prompt, system: i.system || null, model: i.model || null, timeoutMs: i.timeout_ms || 60_000,
+        onText: i.stream && meta && typeof /** @type {any} */ (meta).partial === "function" ? /** @type {any} */ (meta).partial : null }),
     });
 
     ctx.tool("threads.launch", {

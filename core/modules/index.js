@@ -759,7 +759,9 @@ export class Registry {
         if (!as && rec && !fp && !declared.has(tool) && !((m.needs && m.needs.tools) || []).includes(tool)) {
           return Promise.reject(Object.assign(new Error(`${m.name} called ${tool}, which needs.tools does not list`), { code: "undeclared" }));
         }
-        if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: fp });
+        // opts.onPartial: a tool that streams (threads.quick with stream: true) hands its partial text to
+        // this function, on this call only. Never the events bus, and never over a connection.
+        if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: fp, ...(opts && typeof opts.onPartial === "function" ? { partial: opts.onPartial } : {}) });
         const core = Boolean(rec && path.resolve(rec.dir).startsWith(CORE_DIR + path.sep));
         if (!core || !(CALL_AS[m.name] || []).includes(String(as))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // settings relays a person only to the tools first-party modules declared as their own

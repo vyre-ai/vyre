@@ -219,6 +219,20 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(launch.includes("--no-session-persistence"), "no transcript for Recall to index");
   });
 
+  test(`${driver}: threads.quick with stream hands partial text to the calling module, never to a caller that did not ask`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    // As a first-party module would call it (ctx.call's opts.onPartial becomes meta.partial).
+    const ask = async (extra, partial) => (await w.d.registry.call("threads.quick", { purpose: "memory", prompt: "who is kit", ...extra }, "module:vyred", partial ? { partial } : {}));
+    const parts = [];
+    const a = await ask({ stream: true }, d => parts.push(d));
+    assert.equal(a.error, undefined, JSON.stringify(a));
+    assert.equal(a.data.text, "echo: who is kit");
+    assert.equal(parts.join(""), "echo: who is kit", "the partials add up to the answer");
+    const none = [];
+    await ask({}, d => none.push(d));
+    assert.deepEqual(none, [], "no stream asked, none given");
+  });
+
   test(`${driver}: an interrupted turn ends canceled, by you`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
