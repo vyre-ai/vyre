@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### box: a uid and a 0700 HOME per AI account, and a no-network uid for watchers (0.2, Wave A0)
+
+- box/Dockerfile makes uids 2000-2063 their own HOMEs at /home/acct/<uid> (0700, owned by that
+  uid), so one account's CLI tokens can't be read by another account's sessions, /proc included.
+  box/compose.yml keeps them in a new vyre-accounts volume, seeded from the image the first time.
+  The spawner's account-to-uid mapping is sessions' part.
+- box/compose.yml's tailscale service installs an OUTPUT REJECT for uid 3000 (the watchers'
+  child) in the namespace vyred shares, before tailscaled starts: that uid reaches no network at
+  all, loopback and the tailnet included.
+
 ## 0.1.1
 
 What's new:

@@ -43,6 +43,12 @@ services:
       - -c
       - |
         set -e
+        # Watchers' child (uid 3000) has no network at all: this is the one namespace vyred and its
+        # children share, so the rule lives here, before tailscaled starts. REJECT, not DROP, so a
+        # child fails at once instead of timing out. Unix sockets aren't covered; vyred's are 0700.
+        for t in iptables ip6tables; do
+          $$t -C OUTPUT -m owner --uid-owner 3000 -j REJECT 2>/dev/null || $$t -I OUTPUT 1 -m owner --uid-owner 3000 -j REJECT
+        done
         grep -q '^vyre:' /etc/passwd || echo 'vyre:x:1000:1000:vyre:/nonexistent:/sbin/nologin' >> /etc/passwd
         tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
         pid=$$!
@@ -133,6 +139,9 @@ services:
       - vyre-home:/home/vyre
       # Vyre-owned sessions' own home (their ~/.claude and transcripts), readable by vyred's group.
       - vyre-agent-home:/home/vyre-agent
+      # One HOME per AI account (uids 2000-2063, each 0700; box/Dockerfile). Seeded from the image
+      # the first time the volume is made, so a box that updates gets them too.
+      - vyre-accounts:/home/acct
       # Projects.
       - vyre-work:/work
       # The CLI in this image talks to tailscaled through this socket.
@@ -205,6 +214,9 @@ volumes:
     labels:
       run.vyre: "1"
   vyre-agent-home:
+    labels:
+      run.vyre: "1"
+  vyre-accounts:
     labels:
       run.vyre: "1"
   docker-api-bearer:

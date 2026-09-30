@@ -117,3 +117,65 @@ jobs:
           start=$(date +%s%N)
           "$d/cosign" verify --allow-insecure-registry --certificate-identity "$id" --certificate-oidc-issuer "$iss" "$DIGEST" >/dev/null 2>&1
           echo "one verify: $(( ($(date +%s%N) - start) / 1000000 )) ms (needs the Rekor and Fulcio roots over the network)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # IM1 (PLAN P2-H4): the 0.2 box image's per-account uids and the watchers' no-network uid,
+  # in the same topology as box/compose.yml (vyred shares a namespace owned by a NET_ADMIN
+  # container that installs the OUTPUT rule; vyred's container keeps only SETUID/SETGID/KILL).
+  isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: docker/setup-buildx-action@v3
+      - name: Pack and build the box image
+        run: |
+          mkdir -p "$RUNNER_TEMP/src"
+          sh scripts/build-app.sh
+          tgz=$(npm pack --silent --pack-destination "$RUNNER_TEMP")
+          tar -xzf "$RUNNER_TEMP/$tgz" -C "$RUNNER_TEMP/src" --strip-components=1
+          docker buildx build --load -t vyre-box:im1 -f "$RUNNER_TEMP/src/box/Dockerfile" "$RUNNER_TEMP/src" 2>&1 | tail -5
+      - name: The namespace owner, with the watchers' rule (as box/compose.yml's tailscale service)
+        run: |
+          docker run -d --name ns --cap-add NET_ADMIN --cap-add NET_RAW --device /dev/net/tun \
+            --entrypoint /bin/sh tailscale/tailscale:stable -c '
+              for t in iptables ip6tables; do $t -C OUTPUT -m owner --uid-owner 3000 -j REJECT 2>/dev/null || $t -I OUTPUT 1 -m owner --uid-owner 3000 -j REJECT; done
+              ip link add ts-fake type dummy && ip addr add 100.100.1.1/32 dev ts-fake && ip link set ts-fake up
+              tailscaled --state=mem: --socket=/tmp/ts.sock & sleep infinity'
+          sleep 5
+          docker exec ns iptables -S OUTPUT | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The box container on that namespace, a seeded accounts volume
+        run: |
+          docker volume create im1-acct >/dev/null
+          docker run -d --name box --network container:ns -u 0 --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL \
+            --security-opt no-new-privileges -v im1-acct:/home/acct --entrypoint sleep vyre-box:im1 infinity
+          docker exec box sh -c 'ls -ldn /home/acct /home/acct/2000 /home/acct/2001 /home/acct/2063; ls /home/acct | wc -l' | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: "IM1 checks"
+        run: |
+          fail=0
+          as() { u=$1; shift; docker exec box setpriv --reuid="$u" --regid="$u" --clear-groups --inh-caps=-all -- "$@"; }
+          res() { if [ "$1" = expect-fail ]; then shift; if "$@" >/dev/null 2>&1; then echo "FAIL (allowed): $*"; fail=1; else echo "ok (refused): $*"; fi
+                  else shift; if "$@" >/dev/null 2>&1; then echo "ok (allowed): $*"; else echo "FAIL (refused): $*"; fail=1; fi; fi; }
+          # a long-lived account-2001 process holding a secret in its environment
+          docker exec -d box setpriv --reuid=2001 --regid=2001 --clear-groups --inh-caps=-all -- env ACCOUNT_SECRET=s3cret sleep 600
+          sleep 1
+          pid=$(docker exec box sh -c "ps -eo pid,uid,args | awk '\$2==2001 && /sleep 600/ {print \$1; exit}'")
+          as 2001 sh -c 'echo t > /home/acct/2001/token'
+          {
+          res expect-ok   as 2001 cat /home/acct/2001/token
+          res expect-fail as 2000 cat /home/acct/2001/token
+          res expect-fail as 2000 ls /home/acct/2001
+          res expect-fail as 2000 cat /proc/$pid/environ
+          res expect-fail as 1001 cat /proc/$pid/environ
+          res expect-fail as 2000 sh -c 'echo x > /home/acct/2001/planted'
+          net='const s=require("net").connect({host:process.argv[1],port:+process.argv[2],timeout:4000});s.on("connect",()=>process.exit(0));s.on("error",()=>process.exit(1));s.on("timeout",()=>process.exit(1))'
+          res expect-ok   as 1000 node -e "$net" 1.1.1.1 443
+          res expect-fail as 3000 node -e "$net" 1.1.1.1 443
+          res expect-fail as 3000 node -e "$net" 100.100.1.1 80
+          res expect-fail as 3000 node -e "$net" 127.0.0.1 22
+          res expect-fail as 3000 node -e "$net" ::1 22
+          res expect-ok   as 2000 node -e "$net" 1.1.1.1 443
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -q FAIL "$GITHUB_STEP_SUMMARY" && exit 1 || exit 0

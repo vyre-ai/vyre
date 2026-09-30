@@ -51,6 +51,15 @@ RUN groupadd -g 1002 vyre-work \
  && mkdir -p /run/vyre && chown 0:1000 /run/vyre && chmod 2750 /run/vyre \
  && mkdir -p /run/vyre-threads && chown 1000:1002 /run/vyre-threads && chmod 2710 /run/vyre-threads \
  && mkdir -p /var/lib/vyre-secrets && chown 1000:1000 /var/lib/vyre-secrets && chmod 700 /var/lib/vyre-secrets
+# One uid per AI account (0.2, P3): uids 2000-2063, each with its own HOME at /home/acct/<uid>,
+# 0700, so a token one account's CLI writes can't be read by another account's sessions, /proc
+# included. Made here as root because the spawner (cap_drop ALL but SETUID/SETGID/KILL) can't
+# chown; compose persists /home/acct in the vyre-accounts volume, which Docker seeds from this
+# image on first use, so an updating box gets them too. No passwd entries: the spawner setprivs
+# by number. uid 3000 is the watchers' child: no HOME, no groups, and no network (the tailscale
+# service's OUTPUT rule in box/compose.yml).
+RUN mkdir -p /home/acct && chmod 0711 /home/acct \
+ && for u in $(seq 2000 2063); do mkdir -m 0700 "/home/acct/$u" && chown "$u:$u" "/home/acct/$u"; done
 
 # Everything .dockerignore lets through: package files, bin, core, harness, docs, LICENSE,
 # README.md, and deck, modules and local when they exist.
