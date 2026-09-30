@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### install-box.sh: --print-link wrote an empty .env, so compose pulled an unpublished image
+
+- In `--print-link` mode `say` writes to stderr, and the .env block was built with `say`, so
+  `/srv/vyre/.env` came out empty (its lines went to the terminal). Compose then ran compose.yml
+  alone and tried to pull ghcr.io/vyre-ai/vyre:latest, which is not published: "denied", and the
+  install stopped. The block uses printf now. Found by e2e2's matrix on a fresh hosted runner;
+  test/install-box-look.test.js covers it.
+
 #### matrix: the real-device rehearsal matrix on GitHub-hosted runners (e2e2, 0.2)
 
 - `.github/workflows/matrix.yml` builds the box files, runs rc-smoke on x64 and arm64 runners,
