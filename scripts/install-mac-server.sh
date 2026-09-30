@@ -93,8 +93,8 @@ NODE_SHA256_X64=8a677b0219178efd6eb0e475457c4afb452b521a92f6e67845a73bd85727f2a8
 # The release public key (Ed25519, base64 SPKI), the same constant as RELEASE_KEY in
 # core/vyre-core/release.js (scripts/check-release-key.mjs keeps them equal). This script is the
 # thing the person already trusts, so the first install is checked against THIS key, before sudo,
-# and never against a key inside the tarball. While it is the placeholder the release scripts refuse.
-RELEASE_KEY=MCowBQYDK2VwAyEAfFTFccqQNhkHQ3II6EniEoRfWgDDDjQn+GKEJZQIHoE=
+# and never against a key inside the tarball.
+RELEASE_KEY=MCowBQYDK2VwAyEAKXSdujH7tO/gscXCJZmYCjB+Cv1sVlOfdgLNedMR7FU=
 NODE_TGZ_SHA=""
 RELEASE_VERSION=""
 TGZ_SHA=""

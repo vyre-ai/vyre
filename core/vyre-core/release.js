@@ -10,11 +10,11 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
 
-// PLACEHOLDER. This is a throwaway public key, generated only so the code has something to
-// compile against. The real release key is generated once, offline, by the person who signs
-// releases, and replaces this constant at release time. It is never generated in CI and its
-// private half never touches a machine vyre-core runs on. Base64 of the SPKI DER encoding.
-export const RELEASE_KEY = "MCowBQYDK2VwAyEAfFTFccqQNhkHQ3II6EniEoRfWgDDDjQn+GKEJZQIHoE=";
+// The release public key (Ed25519, base64 SPKI DER). Its private half is the GitHub Actions secret
+// VYRE_RELEASE_SIGNING_KEY, used only by the release workflow on main; never on a machine vyre-core
+// runs on. scripts/mac-proof and the tests use throwaway keys through the seams. The old placeholder
+// is refused by scripts/check-release-key.mjs.
+export const RELEASE_KEY = "MCowBQYDK2VwAyEAKXSdujH7tO/gscXCJZmYCjB+Cv1sVlOfdgLNedMR7FU=";
 
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]+)?$/;
 const HEX64 = /^[0-9a-fA-F]{64}$/;

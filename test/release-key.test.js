@@ -44,5 +44,5 @@ test("release key: a dry run may pass the placeholder, out loud", t => {
 });
 
 test("release key: this checkout's two keys agree", () => {
-  assert.ok(!keyProblems(REPO).some(p => /differs|no RELEASE_KEY/.test(p)));
+  assert.deepEqual(keyProblems(REPO), [], "the real key is pinned in both places");
 });
