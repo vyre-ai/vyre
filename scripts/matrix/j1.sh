@@ -80,9 +80,11 @@ esac
 
 PATHV=$PATH; [ -z "$SHIM" ] || PATHV=$SHIM:$PATH
 printf '{"VYRE_BOX_URL":"%s/box/","VYRE_RELAY":"http://%s:%s","VYRE_BUILD":"tgz","COMPOSE_FILE":"/srv/vyre/compose.yml:/srv/vyre/compose.build.yml:/srv/vyre/compose.e2e.yml","PATH":"%s"}\n' "$SITE" "$IP" "${RELAY##*:}" "$PATHV" >"$OUT/env.json"
-${J1_CHROME:-google-chrome} --headless=new --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome-j1" --use-mock-keychain --password-store=basic --no-first-run about:blank >/dev/null 2>&1 &
+# A browser that is not the runner's own Chrome (arm64) gets Playwright's usual flags for a container-like runner.
+EXTRA=""; [ -z "${J1_CHROME:-}" ] || EXTRA="--no-sandbox --disable-gpu --disable-dev-shm-usage"
+${J1_CHROME:-google-chrome} --headless=new --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome-j1" --use-mock-keychain --password-store=basic --no-first-run $EXTRA about:blank >"$OUT/chrome.log" 2>&1 &
 for i in $(seq 1 150); do curl -fs http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.2; done
-curl -fs http://127.0.0.1:9222/json/version >/dev/null || { echo "j1.sh: Chrome DevTools never came up" >&2; exit 1; }
+curl -fs http://127.0.0.1:9222/json/version >/dev/null || { echo "j1.sh: Chrome DevTools never came up" >&2; tail -20 "$OUT/chrome.log" >&2; exit 1; }
 rc=0
 node scripts/matrix/j1.mjs --site "$SITE" --env-file "$OUT/env.json" --out "$OUT/j1" || rc=$?
 docker logs --tail 80 vyre-vyre-1 >"$OUT/vyred.log" 2>&1 || true
